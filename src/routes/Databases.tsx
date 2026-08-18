@@ -7,7 +7,16 @@ import { Placeholder } from "@/components/common/Placeholder";
 import { StatusPill } from "@/components/common/StatusPill";
 import { AdminerFrame } from "@/components/database/AdminerFrame";
 import { confirm } from "@/components/ui/dialog";
-import { databasesStatus, dbEngineVersions, setDbEngineVersion } from "@/lib/ipc";
+import { Button } from "@/components/ui/button";
+import { toast, toastBackendError } from "@/lib/toast";
+import {
+  adminerStatus,
+  adminerUpdateApply,
+  adminerUpdateCheck,
+  databasesStatus,
+  dbEngineVersions,
+  setDbEngineVersion,
+} from "@/lib/ipc";
 import { adminerFrameSrc, adminerUrl } from "@/lib/adminer";
 import type { DbStatus } from "@/types";
 
@@ -125,6 +134,93 @@ function DbRow({
   );
 }
 
+
+/** The Adminer version row: what the console is serving, and the one control
+ *  that changes it.
+ *
+ *  **Here, not Settings.** Adminer has exactly one entry point in this app — the
+ *  Browse button beside a database — so the version of the thing you are about
+ *  to open belongs on the screen you open it from. Settings → Services is wrong
+ *  twice: that card is titled "PHP versions" and is a PICKER, and Adminer is not
+ *  a `ServiceInfo`. And it is a card BELOW the engine table, never a row inside
+ *  it: inside, it would be the only row with no status pill, no pid, no port and
+ *  no meters — quietly reversing the recorded divergence in docs/DESIGN.md.
+ *
+ *  One fact, not two. There is no "exists" chip: rexenv downloads Adminer's own
+ *  release asset, so a version that exists and one rexenv can install are the
+ *  same thing (see `AdminerStatus`). */
+export function AdminerVersionCard() {
+  const qc = useQueryClient();
+  const { data: st } = useQuery({ queryKey: ["adminer-status"], queryFn: adminerStatus });
+  // Its own query, and `retry: false`: a manifest fetch that fails must not fail
+  // the row, and a poll nobody asked for should not hammer.
+  useQuery({
+    queryKey: ["adminer-update-check"],
+    queryFn: async () => {
+      const fresh = await adminerUpdateCheck();
+      qc.setQueryData(["adminer-status"], fresh);
+      return fresh;
+    },
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  });
+  const update = useMutation({
+    mutationFn: (version: string) => adminerUpdateApply(version),
+    onSuccess: (fresh) => {
+      qc.setQueryData(["adminer-status"], fresh);
+      // MEASURED, not assumed: the backend re-reads the row after restaging, so
+      // the sentence names what is actually being served rather than what was
+      // asked for.
+      toast.success(`Adminer is now on ${fresh.staged ?? fresh.effective}`);
+    },
+    onError: (e) => toastBackendError(e),
+  });
+  if (!st) return null;
+
+  // What the console IS running. Before the first start nothing is staged, and
+  // that is a different sentence from "staged, and it is 5.4.2".
+  const serving = st.staged ?? null;
+  const pending = serving !== null && serving !== st.effective;
+  return (
+    <div
+      data-probe="adminer-version"
+      data-effective={st.effective}
+      data-staged={st.staged ?? ""}
+      data-updatable={st.updatable ?? ""}
+      className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-rex-border bg-rex-surface-1 px-4 py-3"
+    >
+      <span className="text-[0.84375rem] font-semibold text-rex-text">Adminer</span>
+      <span className="whitespace-nowrap font-mono text-[0.6875rem] text-rex-text-muted">
+        {serving ?? "not installed yet"}
+      </span>
+      {/* Only when the two genuinely disagree — a restart is still pending. A
+          console already on the chosen version is not a discrepancy, and calling
+          it one is how a correct state gets painted amber. */}
+      {pending && (
+        <span
+          className="whitespace-nowrap font-mono text-[0.6875rem] text-rex-accent-amber"
+          title={`Adminer is set to ${st.effective}. The console is still serving ${serving} — it restages on the next start.`}
+        >
+          → {st.effective} on next start
+        </span>
+      )}
+      <div className="ml-auto flex items-center gap-2">
+        {st.updatable && (
+          <Button
+            variant="ghost"
+            disabled={update.isPending}
+            onClick={() => update.mutate(st.updatable!)}
+            title={`Download Adminer ${st.updatable}, check it still binds to rexenv's login gate and frame protections, and restage the console onto it.`}
+            className="text-brand hover:text-brand"
+          >
+            {update.isPending ? "…" : `Update to ${st.updatable}`}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function Databases() {
   const navigate = useNavigate();
   const [browse, setBrowse] = useState<{
@@ -222,6 +318,7 @@ export function Databases() {
             ))}
           </div>
         )}
+        {!isLoading && <AdminerVersionCard />}
       </div>
     </>
   );

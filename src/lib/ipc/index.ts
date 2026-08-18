@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, AgentAction, Blueprint, BrowserApp, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoGitOp, RepoJobState, RepoKind, RepoPullRef, RepoStashEntry, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpUpdateOutcome, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteProvisionState, SiteRepoInfo, SiteResources, SiteServing, ResolverPlan, ScratchPackage, TeardownReport, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser } from "@/types";
+import type { AdminerStatus, AppInfo, AgentAction, Blueprint, BrowserApp, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoGitOp, RepoJobState, RepoKind, RepoPullRef, RepoStashEntry, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpUpdateOutcome, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteProvisionState, SiteRepoInfo, SiteResources, SiteServing, ResolverPlan, ScratchPackage, TeardownReport, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser } from "@/types";
 import {
   mockAppInfo,
   mockDatabases,
@@ -14,6 +14,7 @@ import {
   mockMailDetail,
   mockMailList,
   mockPhpSettings,
+  mockAdminerStatus,
   mockPhpVersions,
   mockResolverDrift,
   mockServices,
@@ -474,6 +475,28 @@ export async function phpUpdateApply(
 ): Promise<PhpUpdateOutcome> {
   if (!isTauri()) return { patch, restarted: true };
   return invoke<PhpUpdateOutcome>("php_update_apply", { minor, patch });
+}
+
+/** The Adminer version row: what is staged, what will run, what is offered. */
+export async function adminerStatus(): Promise<AdminerStatus> {
+  if (!isTauri()) return mockAdminerStatus;
+  return invoke<AdminerStatus>("adminer_status");
+}
+
+/** Refresh the signed manifest and return the fresh Adminer row.
+ *  Best-effort: the caller renders a failure as "couldn't check", never a block. */
+export async function adminerUpdateCheck(): Promise<AdminerStatus> {
+  if (!isTauri()) return mockAdminerStatus;
+  return invoke<AdminerStatus>("adminer_update_check");
+}
+
+/** Move Adminer onto `version`, or fail leaving it exactly where it was.
+ *
+ *  Returns the RE-MEASURED row rather than a success flag, so there is no field
+ *  the frontend can assert and the backend can get wrong. */
+export async function adminerUpdateApply(version: string): Promise<AdminerStatus> {
+  if (!isTauri()) return { staged: version, effective: version, updatable: null };
+  return invoke<AdminerStatus>("adminer_update_apply", { version });
 }
 
 /** The PHP minor FrankenPHP actually serves (its embedded build, never the

@@ -116,6 +116,14 @@ const SCENARIOS = [
   // border). Nothing caught it because the row had no scenario — reviewers only
   // ever saw a fresh install, where `serving` and `exists` are absent.
   ["php-versions", "view=phpversions", []],
+  // The Adminer version card, in all four states. It carries the one control in
+  // the app that installs bytes this build was not shipped with, on the screen
+  // whose only other job is opening a database console — so what it SAYS is the
+  // whole check, not just whether it fits.
+  ["adminer-offer", "view=adminer", []],
+  ["adminer-current", "view=adminer&adminer=current", []],
+  ["adminer-pending", "view=adminer&adminer=pending", []],
+  ["adminer-fresh", "view=adminer&adminer=fresh", []],
 ];
 
 /** Per-scenario layout assertions (beyond the universal overflow probe).
@@ -280,6 +288,49 @@ const PROBES = {
         (r) => r.dataset.upstream && r.dataset.upstream !== r.dataset.updatable
       );
       if (!anyChipOnly && note) problems.push("the why-no-button note renders on a screen where every upstream version has a button");
+      return problems;
+    }),
+  // The Adminer card tells the truth about three different facts: what is
+  // SERVING, what will run, and what is offered. They are separate on purpose —
+  // conflating "chosen" with "serving" is how a pending restage renders as done.
+  adminerVersion: async (page) =>
+    page.evaluate(() => {
+      const problems = [];
+      const card = document.querySelector('[data-probe="adminer-version"]');
+      if (!card) return ["the Adminer version card rendered nothing"];
+      const text = (card.innerText || "").replace(/\s+/g, " ");
+      const staged = card.dataset.staged;
+      const effective = card.dataset.effective;
+      const updatable = card.dataset.updatable;
+      const button = [...card.querySelectorAll("button")].find((b) =>
+        /^Update to /.test((b.textContent || "").trim())
+      );
+
+      // A button appears IF AND ONLY IF a verified manifest offers something.
+      if (updatable && !button) problems.push(`offers ${updatable} but has no Update button`);
+      if (!updatable && button) problems.push(`an Update button with nothing offered — "${text}"`);
+      if (button && !button.textContent.includes(updatable))
+        problems.push(`the button says "${button.textContent.trim()}" but the row offers ${updatable}`);
+
+      // What is SERVING, said honestly. Nothing staged is its own sentence.
+      if (!staged && !/not installed yet/.test(text))
+        problems.push(`nothing is staged, yet the row shows a version: "${text}"`);
+      if (staged && !text.includes(staged))
+        problems.push(`serving ${staged}, and the row does not say so: "${text}"`);
+
+      // The amber line ONLY when the two genuinely disagree. A console already
+      // on the chosen version is not a discrepancy, and painting it as one is
+      // how a completed update reads as pending.
+      const pendingShown = /on next start/.test(text);
+      const reallyPending = !!staged && staged !== effective;
+      if (reallyPending && !pendingShown)
+        problems.push(`serving ${staged} while set to ${effective}, and the row is silent about it`);
+      if (!reallyPending && pendingShown)
+        problems.push(`nothing pending, yet the row says "on next start": "${text}"`);
+
+      // Adminer has ONE fact, not two. An "exists" chip here would be a
+      // falsehood: rexenv downloads Adminer's own release asset.
+      if (/exists/.test(text)) problems.push(`an "exists" chip on a row with one fact: "${text}"`);
       return problems;
     }),
   // Onboarding's :443 notice. The clear case is the load-bearing one: reporting
@@ -597,6 +648,7 @@ function probeFor(name) {
   if (name.startsWith("delete")) return PROBES.deleteGate;
   if (name === "resolver-drift") return PROBES.resolverDrift;
   if (name === "php-versions") return PROBES["php-versions"];
+  if (name.startsWith("adminer-")) return PROBES.adminerVersion;
   if (name.startsWith("agents-mail")) return PROBES.agents;
   return null;
 }

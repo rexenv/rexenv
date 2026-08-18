@@ -523,6 +523,26 @@ export interface SiteServing {
   serving: boolean;
 }
 
+/** The Adminer version row (mirrors `commands::database::AdminerStatus`).
+ *
+ *  **There is deliberately no `upstream` field.** PHP carries two facts because
+ *  static-php.dev lags php.net, so "8.4.24 exists" and "8.4.23 is installable"
+ *  are genuinely different. rexenv downloads Adminer's OWN release asset, so a
+ *  version that exists and one rexenv can install are the same thing — a second
+ *  field would be one fact rendered twice, and the copy explaining the gap would
+ *  be a straight falsehood. */
+export interface AdminerStatus {
+  /** What the docroot is serving right now. `null` before the first start has
+   *  staged anything — a state, not a zero value: "nothing staged yet" and
+   *  "staged, and it is 5.4.2" are different sentences. */
+  staged: string | null;
+  /** What it WILL serve: the choice, floored by the pin this build ships, and
+   *  vouched by the verified catalog. */
+  effective: string;
+  /** A newer version a VERIFIED manifest offers, or null. */
+  updatable: string | null;
+}
+
 /** What a PHP update actually changed (mirrors `commands::php::PhpUpdateOutcome`).
  *
  *  `restarted` exists because "the update worked" and "the running interpreter

@@ -47,7 +47,7 @@
  */
 import { useEffect, useState } from "react";
 import { mockIPC } from "@tauri-apps/api/mocks";
-import { mockPhpVersions } from "@/lib/mock";
+import { mockAdminerStatus, mockPhpVersions } from "@/lib/mock";
 import { StatusPill } from "@/components/common/StatusPill";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { DatabaseTab } from "@/components/sites/DatabaseTab";
@@ -56,6 +56,7 @@ import { DeleteSiteDialog } from "@/components/sites/DeleteSiteDialog";
 import { KeepSiteDialog, ResolverDriftBanner, ScratchGroupHeading, SiteRow } from "@/routes/Sites";
 import { ResolverHandBackRow } from "@/routes/Import";
 import { PhpVersionsSetting } from "@/routes/Settings";
+import { AdminerVersionCard } from "@/routes/Databases";
 import { WpCliPackagesCard } from "@/routes/Settings";
 import { Mail as MailScreen } from "@/routes/Mail";
 import { OnboardingDone } from "@/routes/Onboarding";
@@ -880,6 +881,30 @@ export function DevUiReview() {
         // `versions.some(…)` threw — the whole view rendered nothing.
         case "php_update_check":
           return mockPhpVersions;
+        // The Adminer version card. Four states via `?adminer=`, because a
+        // fixture in one state proves that one state renders.
+        case "adminer_status":
+        case "adminer_update_check":
+          switch (params.get("adminer")) {
+            // Already on the newest — no button, nothing amber.
+            case "current":
+              return { staged: "6.0.1", effective: "6.0.1", updatable: null };
+            // Chosen but not restaged yet: the ONE case that is amber.
+            case "pending":
+              return { staged: "5.4.2", effective: "6.0.1", updatable: null };
+            // Before the first start: nothing staged is a different sentence
+            // from "staged, and it is 5.4.2".
+            case "fresh":
+              return { staged: null, effective: "5.4.2", updatable: "6.0.1" };
+            default:
+              return mockAdminerStatus;
+          }
+        case "adminer_update_apply":
+          return {
+            staged: String((args as Record<string, unknown> | undefined)?.version ?? ""),
+            effective: String((args as Record<string, unknown> | undefined)?.version ?? ""),
+            updatable: null,
+          };
         case "php_update_apply":
           return {
             patch: String((args as Record<string, unknown> | undefined)?.patch ?? ""),
@@ -1030,6 +1055,13 @@ export function DevUiReview() {
         {view === "toast" && <ToastView />}
         {view === "pills" && <PillsView />}
         {view === "phpversions" && <PhpVersionsView />}
+        {view === "adminer" && (
+          // The real Databases content width, not the viewport: this card sits
+          // under the engine table and its chips have to fit there.
+          <div className="w-[46rem]">
+            <AdminerVersionCard />
+          </div>
+        )}
         {view === "agents" && <AgentsView />}
         {view === "scratch" && <ScratchView />}
         {view === "keep" && (

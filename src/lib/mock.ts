@@ -2,7 +2,7 @@
  * Mock data for the static shell (Phase 1 task 0.6). Replaced by real IPC data
  * as backend tasks land. Kept in one place so it's easy to delete later.
  */
-import type { AppInfo, DbStatus, GlobalStatus, MailDetail, MailList, PhpSetting, PhpVersion, ServiceInfo, Site, SiteServing } from "@/types";
+import type { AdminerStatus, AppInfo, DbStatus, GlobalStatus, MailDetail, MailList, PhpSetting, PhpVersion, ServiceInfo, Site, SiteServing } from "@/types";
 
 export const mockAppInfo: AppInfo = {
   name: "rexenv",
@@ -119,6 +119,18 @@ export const mockPhpVersions: PhpVersion[] = [
   { minor: "8.4", patch: "8.4.23", serving: null, upstream: "8.4.24", updatable: null, upstreamCheckedAt: "2026-08-17 09:12:00", fpmPort: 9784, installed: true, isDefault: false, xdebugSupported: true, xdebugVersion: "3.5.3", eolSince: null },
   { minor: "8.5", patch: "8.5.8", serving: null, upstream: "8.5.9", updatable: null, upstreamCheckedAt: "2026-08-17 09:12:00", fpmPort: 9785, installed: true, isDefault: false, xdebugSupported: true, xdebugVersion: "3.5.3", eolSince: null },
 ];
+
+/** The Adminer version row.
+ *
+ *  Carries an OFFER by default, because the state with a button is the one that
+ *  renders something and therefore the one worth looking at — and because
+ *  upstream really is ahead: rexenv pins 5.4.2 while Adminer shipped 6.0.1.
+ *  `?adminer=` in the dev harness swaps the other states in. */
+export const mockAdminerStatus: AdminerStatus = {
+  staged: "5.4.2",
+  effective: "5.4.2",
+  updatable: "6.0.1",
+};
 
 /** Whitelisted keys + PHP compiled defaults (mirrors core::php::SETTINGS). */
 export const mockPhpSettings: PhpSetting[] = [

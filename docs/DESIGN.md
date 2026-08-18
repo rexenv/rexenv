@@ -42,6 +42,18 @@ the shipped UI toward one.
   ("…will use 8.2.32 — nothing was running to restart"). The general rule: when an
   action's *effect* depends on state the frontend cannot see, the effect is part of the
   return value, not an inference at the call site.
+- **One fact per row, and Adminer has one.** The PHP row carries `updatable` AND
+  `upstream` because static-php.dev lags php.net, so "exists" and "installable" are
+  genuinely different. rexenv downloads Adminer's OWN release asset, so for it they are
+  the same thing — the Adminer card therefore has no "exists" chip, and the L2 probe
+  fails if one appears. Copying a pattern because it looked good next door is how a
+  sentence about honesty becomes a falsehood.
+- **The version a thing IS running and the version it WILL run are separate fields, in
+  every row that has both.** The Adminer card shows what is staged, and says
+  "→ X on next start" ONLY when the two disagree. A console already on the chosen
+  version is not a discrepancy, and painting it as one is how a completed update reads
+  as pending — the same defect the PHP row's `serving` chip was fixed for. "Nothing
+  staged yet" is a third sentence, not a blank.
 - **A chip that means "there is no button for this" must vanish when a button appears.**
   The Settings PHP row carries two upstream facts: `updatable` (a signed manifest offers
   it — a button) and `upstream` (php.net lists it; rexenv may have no verified build yet
