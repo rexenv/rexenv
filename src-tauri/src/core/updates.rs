@@ -308,6 +308,26 @@ pub fn cached(conn: &Connection) -> VersionCatalog {
 ///
 /// Rejecting a stale serial happens BEFORE the write, so a replayed older
 /// manifest cannot displace a newer one it was validly signed alongside.
+///
+/// # Equal is not stale
+///
+/// `serial == highest` is **the document we already have** — the ordinary state
+/// on every launch after the first, since the manifest only changes when a new
+/// PHP patch is published. It returns the catalog and writes nothing.
+///
+/// It used to be refused with "refusing a replay", which put that sentence in a
+/// user's log at every single launch about rexenv's own current manifest. A log
+/// line that cries wolf daily is worse than no log line: it trains the reader to
+/// scroll past the one that means it. **A replay is an OLDER document being
+/// served in place of a newer one** — a host holding users on a known-CVE patch —
+/// and that is `<`, which is still refused, loudly, and is the case the rule
+/// exists for.
+///
+/// Two different documents sharing one serial would be a publisher error, not an
+/// attack (both carry our signature, and `publish-manifest.sh` reads the
+/// published serial and increments). Equal therefore writes NOTHING: the stored
+/// pair stays whatever was last accepted at that serial, rather than letting a
+/// same-serial variant quietly displace it.
 pub fn accept(conn: &Connection, doc: &[u8], sig_hex: &str) -> Result<VersionCatalog> {
     accept_with(RELEASE_PUBKEY, conn, doc, sig_hex)
 }
@@ -325,12 +345,17 @@ fn accept_with(
         .flatten()
         .and_then(|s| s.parse().ok())
         .unwrap_or(0);
-    if m.serial <= highest {
+    if m.serial < highest {
         return Err(Error::Other(format!(
-            "this manifest's serial ({}) is not newer than the highest already accepted ({highest}) \
-             — refusing a replay",
+            "this manifest's serial ({}) is OLDER than the highest already accepted \
+             ({highest}) — refusing a replay, which is how a host would hold this machine \
+             on a superseded PHP patch",
             m.serial
         )));
+    }
+    if m.serial == highest {
+        // Already ours at this serial. Nothing to write, nothing to report.
+        return Ok(VersionCatalog { entries: m.artifacts });
     }
     let text = std::str::from_utf8(doc)
         .map_err(|_| Error::Other("the manifest is not valid UTF-8".into()))?;
@@ -642,14 +667,52 @@ mod tests {
         let d6 = doc(6, &[&oldv]);
         let err = accept_with(&pub_hex, &conn, &d6, &sign(&kp, &d6)).unwrap_err().to_string();
         assert!(err.contains("refusing a replay"), "{err}");
-        // The SAME serial is a replay too.
-        let again = doc(7, &[&oldv]);
-        assert!(accept_with(&pub_hex, &conn, &again, &sign(&kp, &again)).is_err());
         // And nothing was displaced: the stored document is still serial 7's.
         assert_eq!(store::get_setting(&conn, SERIAL_KEY).unwrap().as_deref(), Some("7"));
         let stored = store::get_setting(&conn, DOC_KEY).unwrap().unwrap();
         assert!(stored.contains(&newv), "the replay overwrote the newer document");
         assert!(!stored.contains(&oldv));
+    }
+
+    /// **The SAME serial is the document we already have, not an incident.**
+    ///
+    /// The manifest only changes when a new PHP patch is published, so on every
+    /// launch after the first the app re-fetches the identical document. That
+    /// used to be refused with "refusing a replay", and the sentence landed in a
+    /// user's log at every launch, about rexenv's own current manifest — a log
+    /// line that cries wolf daily is worse than none, because it trains the
+    /// reader to scroll past the one that means it.
+    ///
+    /// Equal ACCEPTS (returning the catalog, so the ordinary path just works) and
+    /// writes NOTHING: two documents sharing a serial is a publisher error rather
+    /// than an attack — both carry our signature — and not writing means a
+    /// same-serial variant cannot quietly displace what was stored.
+    #[test]
+    fn the_same_serial_is_accepted_as_a_no_op_and_never_called_a_replay() {
+        let (pub_hex, kp) = keypair();
+        let conn = crate::state::db::open_in_memory().unwrap();
+        let minor = php::minor_of(binaries::PHP_VERSION);
+        let newv = format!("{minor}.9999");
+        let oldv = format!("{minor}.9998");
+
+        let d7 = doc(7, &[&newv]);
+        accept_with(&pub_hex, &conn, &d7, &sign(&kp, &d7)).expect("serial 7 accepted");
+
+        // Re-fetching the IDENTICAL document: accepted, catalog returned.
+        let again = accept_with(&pub_hex, &conn, &d7, &sign(&kp, &d7))
+            .expect("re-reading our own current manifest must not be an error");
+        assert_eq!(again.newer_than(&minor, binaries::PHP_VERSION, "arm64"), None);
+        assert!(again.versions().iter().any(|v| v == &newv));
+
+        // A DIFFERENT document at the same serial changes nothing on disk.
+        let variant = doc(7, &[&oldv]);
+        accept_with(&pub_hex, &conn, &variant, &sign(&kp, &variant)).expect("also ours");
+        let stored = store::get_setting(&conn, DOC_KEY).unwrap().unwrap();
+        assert!(
+            stored.contains(&newv) && !stored.contains(&oldv),
+            "a same-serial variant displaced the stored document"
+        );
+        assert_eq!(store::get_setting(&conn, SERIAL_KEY).unwrap().as_deref(), Some("7"));
     }
 
     /// **A cache tampered with in place is refused on READ.** `rexenv.db` is

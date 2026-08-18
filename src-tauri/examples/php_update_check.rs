@@ -83,11 +83,24 @@ async fn main() -> ExitCode {
         true,
         "",
     );
-    // A REPLAY of the same document must be refused, live.
+    // Re-reading the SAME document is the ordinary state on every launch after
+    // the first — it must be a no-op, not an error, and must not rewrite what is
+    // stored. A genuine replay is an OLDER serial, which L0 covers against a
+    // generated key (there is only ever one live serial to fetch here).
+    let before = rexenv_lib::state::store::get_setting(&conn, "php_update_manifest_serial")
+        .ok()
+        .flatten();
     checks.is(
-        "replaying the same serial is refused",
-        updates::accept(&conn, &doc, sig.trim()).is_err(),
-        "the serial rule did not hold against the real document",
+        "re-reading our own current manifest is accepted, not called a replay",
+        updates::accept(&conn, &doc, sig.trim()).is_ok(),
+        "the live manifest was refused on a second read — that sentence would land in a \
+         user's log at every launch",
+    );
+    checks.is(
+        "…and it rewrote nothing",
+        rexenv_lib::state::store::get_setting(&conn, "php_update_manifest_serial").ok().flatten()
+            == before,
+        "a same-serial read displaced the stored serial",
     );
 
     let offered = catalog.newer_than(&minor, &pinned, updates::catalog_arch(plat.binaries().arch()));
