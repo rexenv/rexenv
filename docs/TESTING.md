@@ -256,6 +256,14 @@ it can:
   so a colour drops out on what it SITS on rather than on its name. Beside it,
   `no_raw_tailwind_hue_reaches_the_ui` closes the route none of this could ever compute:
   a palette class has no second theme to check.
+  **`wpgitchip.js` (19 Aug 2026) is L2 covering what L0 structurally cannot see: the
+  Tailwind CONFIG.** `every_rex_colour_class_names_a_token_that_exists` reads
+  `tokens.css`, so a class whose token exists but whose key was never added to
+  `tailwind.config.js` passes it — and Tailwind emits no rule, leaving the element with
+  no colour at all. Proven by plant: deleting `accent-blue-bg` from the config fails the
+  L2 check in both themes and leaves the L0 guard green. It also closed a plain coverage
+  hole found while verifying dark mode — the git chips on a plugin row had no fixture in
+  any harness, so their colours were changed with nothing rendering them.
 - **Cannot prove:** a CSS chain resolves, a WKWebView quirk, real-internet DNS
   propagation, anything needing root or a second device (some examples DO take prompts
   — those are L3-adjacent and marked).

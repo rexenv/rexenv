@@ -19,6 +19,11 @@ evidence cited.
   `style={{ color: var(--rex-*) }}` (the site-type and Mail-avatar accents at
   4.27–4.41:1). All repaired; the AA scan now reads all three routes and
   `no_raw_tailwind_hue_reaches_the_ui` bans the palette outright, plant-proven.
+  **Dark verified after** (a token swap moves both themes): full `wk-checks` suite green
+  + the changed surfaces rendered and read. It surfaced a coverage hole, not a defect —
+  the git chips on a plugin row had no fixture in any harness, so `wpgitchip.js` (new,
+  both themes, computed styles) now renders them and catches the config-mapping failure
+  L0 cannot see.
 
 - [x] **Plugin search matched the slug, not the name on the row** ✓ 19 Aug 2026,
   ledger #372, `wpsearch.js` (L2, plant-proven both directions). Reported with a

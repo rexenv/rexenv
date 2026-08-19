@@ -654,9 +654,17 @@ export function DevGitPanel() {
           return null;
         case "wp_org_plugin_icons":
           return {};
+        // `?git=1` makes one listed plugin a git checkout and another LOOK like
+        // one, so the two chips on a plugin row render at all. Without it both
+        // are `[]` and the chips have never appeared in any harness — which is
+        // how their colours (`bg-rex-accent-blue-bg`, `border-rex-accent-blue-border`)
+        // could be changed with nothing rendering them (#373).
         case "repo_assets":
+          return params.get("git") === "1"
+            ? [{ kind: "plugin", dirName: "akismet", url: "git@github.com:acme/akismet.git", gitRef: null, source: "adopted" }]
+            : [];
         case "repo_unmanaged":
-          return [];
+          return params.get("git") === "1" ? [{ dirName: "hello-dolly", linked: false }] : [];
         case "wp_org_search_plugins":
           return [
             { slug: "akismet", name: "Akismet Anti-spam", author: "Automattic", rating: 92, numRatings: 900, activeInstalls: 5000000, icon: null, shortDescription: "Spam protection" },
