@@ -1,10 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { Check, Copy, Database, ExternalLink } from "lucide-react";
 import { Placeholder } from "@/components/common/Placeholder";
-import { isTauri, openExternal } from "@/lib/ipc";
+import { adminerSetTheme, isTauri, openExternal } from "@/lib/ipc";
+import { currentTheme, subscribeTheme } from "@/lib/theme";
 import { toastBackendError } from "@/lib/toast";
 
-/** Embeds the stack-served Adminer (framed, dark via Adminer's prefers-color-scheme).
+/** Embeds the stack-served Adminer (framed; its palette follows the APP's theme,
+ *  written to the console's docroot before the frame loads — Adminer's own
+ *  prefers-color-scheme default is what left it in the opposite theme).
  *  Off-Tauri the `rexdb://` proxy scheme doesn't exist, so we show a placeholder.
  *
  *  `externalUrl` (the `adminerUrl(...)` deep-link) adds a slim bar above the
@@ -13,6 +16,26 @@ import { toastBackendError } from "@/lib/toast";
  *  first-party context, no iframe cookie games needed). */
 export function AdminerFrame({ src, externalUrl }: { src: string; externalUrl?: string }) {
   const [copied, setCopied] = useState(false);
+  // The console renders in its own process off a file rexenv writes, so the
+  // write has to LAND before the frame loads — hence `applied` gating the
+  // iframe rather than a plain effect beside it. A frame that loaded first
+  // would paint the old scheme and only correct itself on the next navigation.
+  const theme = useSyncExternalStore(subscribeTheme, currentTheme, currentTheme);
+  const [applied, setApplied] = useState<"dark" | "light" | null>(null);
+  useEffect(() => {
+    let live = true;
+    // A failure still loads the console: it would render in the OS scheme,
+    // which is exactly what it did before this existed — worse than matching,
+    // better than a blank panel.
+    void adminerSetTheme(theme)
+      .catch(() => {})
+      .then(() => {
+        if (live) setApplied(theme);
+      });
+    return () => {
+      live = false;
+    };
+  }, [theme]);
   if (!isTauri()) {
     return (
       <Placeholder
@@ -64,7 +87,17 @@ export function AdminerFrame({ src, externalUrl }: { src: string; externalUrl?: 
           are exactly what broke here, and inset-0 sizes against the
           containing block with no percentage resolution at all. */}
       <div className="relative min-h-0 flex-1 overflow-hidden rounded-xl border border-rex-border bg-rex-bg">
-        <iframe title="Adminer" src={src} className="absolute inset-0 h-full w-full border-0 bg-rex-bg" />
+        {/* `key` on the palette: a theme change has to RELOAD the console —
+            it is a separate document that read the file at request time, and
+            nothing inside it re-reads anything. */}
+        {applied && (
+          <iframe
+            key={applied}
+            title="Adminer"
+            src={src}
+            className="absolute inset-0 h-full w-full border-0 bg-rex-bg"
+          />
+        )}
       </div>
     </div>
   );

@@ -895,6 +895,7 @@ pub fn run() {
             commands::php::php_update_check,
             commands::php::php_update_apply,
             commands::database::adminer_status,
+            commands::database::adminer_set_theme,
             commands::database::adminer_update_check,
             commands::database::adminer_update_apply,
             commands::php::get_php_settings,

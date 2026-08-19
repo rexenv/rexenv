@@ -57,6 +57,13 @@ the shipped UI toward one.
   variant reads at 4.1–4.4:1 there. `text-white`/`bg-black/50` stay allowed: the brand
   button's label, the toggle knob and the dialog scrim are deliberately the same colour
   in both themes.
+- **An embedded surface follows the app's theme, not the OS's.** The Adminer console
+  renders in its own process off its own stylesheet, so it defaulted to
+  `prefers-color-scheme` — and a rexenv set to Light framed a dark console, which reads
+  as a broken embed rather than a third-party default. The app writes its RESOLVED
+  palette where that surface can read it, and reloads it on change. Resolved, never the
+  preference: passing "system" through would leave two processes each asking the OS,
+  which is not the same as agreeing.
 - **A search box searches what the row SHOWS.** The installed-plugin filter matched
   the slug while every row is labelled with its title, so typing "loopback" against a
   list plainly reading "rexenv loopback DNS" (slug `rexenv-dns`) answered "No plugins

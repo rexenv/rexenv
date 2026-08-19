@@ -896,6 +896,23 @@ editor" → `open -a <editor> <site folder>`, so the folder lands as a PROJECT) 
   stack — never a tunnel origin. Per-site deep link via a generated `index.php` wrapper
   (`adminer_object()` hook): passwordless login for loopback servers only, auto-submits
   Adminer's own CSRF-tokened + CSP-nonced form on `?rexenv_auto`.
+- **The console's palette follows the APP, not the OS** (`adminer::set_theme` +
+  the wrapper's `css()` · `adminer_set_theme` · 20 Aug 2026). Adminer decides its
+  scheme from what `css()` returns — values naming only `dark` make it load
+  `dark.css` WITHOUT the `prefers-color-scheme` media query and emit
+  `<meta name="color-scheme" content="dark">`; only `light` drops `dark.css`
+  entirely; returning nothing leaves both, media-gated. That default is what left a
+  light-themed rexenv framing a dark console. rexenv now writes the RESOLVED palette
+  (`dark`/`light` — "system" is resolved app-side, so the two can never disagree about
+  what the OS meant) into `.rexenv-theme` in the console's docroot, and the wrapper
+  reads it per request. **A file, not a query parameter:** Adminer's own links carry no
+  parameter of ours, so one click inside the console would have dropped it and snapped
+  the page back. A dotfile, so the existing `NGINX_DOTFILE_DENY` keeps it unservable;
+  the empty `rexenv-theme.css` beside it is deliberately NOT one, because Adminer emits
+  a `<link>` for whatever key `css()` returns and a 404 in the console's own head is a
+  defect report waiting to happen. The frame writes the file BEFORE it loads and is
+  `key`ed on the palette, since the console is a separate document that read the file at
+  request time and re-reads nothing.
 - **Blueprints** (`core/blueprints.rs`): reusable presets (plugins/themes/WP_DEBUG/
   multisite) applied AFTER the one-click install.
 - **Plugin/theme lists are TWO passes** (`useWpPlugins`/`useWpThemes`): an instant

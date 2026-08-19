@@ -219,6 +219,37 @@ function adminer_object() {
                 // re-adds frame protection scoped to the app's webview origins.
                 header_remove('X-Frame-Options');
             }
+            function css() {
+                // The console follows the APP's theme, not the OS's.
+                //
+                // This is Adminer's own switch, not a paint job over it. Adminer
+                // decides its scheme from what css() returns: values naming only
+                // 'dark' make it load dark.css WITHOUT the
+                // prefers-color-scheme media query and emit
+                // <meta name="color-scheme" content="dark">; values naming only
+                // 'light' drop dark.css entirely. Returning nothing leaves its
+                // default — both, media-gated — which is what shipped, and why
+                // the console stayed on the OS palette while rexenv sat in the
+                // other one.
+                //
+                // The choice is read from a FILE rather than a query parameter
+                // because Adminer's own links carry no parameter of ours: one
+                // click inside the console (Create database, a table) would have
+                // dropped it and snapped the page back to the OS scheme.
+                $file = __DIR__ . '/.rexenv-theme';
+                $want = is_file($file) ? trim((string) @file_get_contents($file)) : '';
+                if ($want !== 'dark' && $want !== 'light') {
+                    // Absent or unreadable = say nothing and let Adminer do what
+                    // it always did. A half-written file must not become a
+                    // console with no stylesheet at all.
+                    return parent::css();
+                }
+                // The value carries the scheme; the file itself is empty. It has
+                // to EXIST though — Adminer emits a <link> for whatever key is
+                // returned, and a 404 in the console's own <head> is a defect
+                // report waiting to happen.
+                return array('rexenv-theme.css' => $want);
+            }
             function csp(array $csp) {
                 // Embeddable ONLY by the rexenv app webview (prod macOS/Linux +
                 // prod Windows origins) — every other ancestor stays blocked. The
@@ -481,6 +512,55 @@ pub fn docroot(platform: &dyn Platform) -> Result<PathBuf> {
 /// { deny all; }` — that adds a rule to keep true, while this removes the path.
 pub(crate) const STAGED_ADMINER: &str = ".adminer.php";
 
+/// The palette the console must render in — `dark` or `light`, written by
+/// rexenv whenever the app's own theme resolves or changes, read by the wrapper
+/// on EVERY request.
+///
+/// A dotfile, so the same `NGINX_DOTFILE_DENY` that hides the console's source
+/// hides this; nothing about it is servable and nothing needs to be.
+pub(crate) const THEME_FILE: &str = ".rexenv-theme";
+
+/// The stylesheet Adminer `<link>`s when rexenv is driving the scheme. Empty by
+/// design: its VALUE in [`WRAPPER_INDEX_PHP`]'s `css()` return is the whole
+/// signal, and Adminer needs a real file behind the key it emits.
+pub(crate) const THEME_CSS: &str = "rexenv-theme.css";
+
+const THEME_CSS_BODY: &str =
+    "/* rexenv — generated. Deliberately empty: Adminer reads the SCHEME from
+      * this file's entry in the wrapper's css() return, not from any rule here. */
+";
+
+/// Record which palette the console must use. `dark` and `light` only —
+/// "system" is resolved by the app before it gets here, so the console matches
+/// what rexenv is actually rendering rather than re-consulting the OS and
+/// possibly disagreeing with it.
+///
+/// Published by RENAME: the wrapper reads this file on every request, and a
+/// half-written one would fall back to Adminer's default mid-navigation.
+pub fn set_theme(platform: &dyn Platform, theme: &str) -> Result<()> {
+    write_theme(&docroot(platform)?, theme)
+}
+
+/// [`set_theme`] against a GIVEN directory — split out for the reason
+/// [`needs_restage`] is: the rule is then testable with a temp dir instead of a
+/// `Platform`, and the rule is the part that can be wrong.
+pub(crate) fn write_theme(dir: &std::path::Path, theme: &str) -> Result<()> {
+    if theme != "dark" && theme != "light" {
+        return Err(Error::Other(format!(
+            "unknown console theme \"{theme}\" — the app resolves \"system\" before this point"
+        )));
+    }
+    std::fs::create_dir_all(dir)?;
+    let path = dir.join(THEME_FILE);
+    if std::fs::read_to_string(&path).ok().as_deref() == Some(theme) {
+        return Ok(());
+    }
+    let tmp = dir.join(format!("{THEME_FILE}.new"));
+    std::fs::write(&tmp, theme)?;
+    std::fs::rename(&tmp, &path)?;
+    Ok(())
+}
+
 /// Records which version the staged copy IS.
 ///
 /// Staleness used to be a FILE SIZE comparison against the cached source, which
@@ -551,6 +631,15 @@ pub async fn ensure(platform: &dyn Platform, version: &str) -> Result<PathBuf> {
     let rendered = wrapper_index_php();
     if std::fs::read_to_string(&index).ok().as_deref() != Some(rendered.as_str()) {
         std::fs::write(&index, &rendered)?;
+    }
+
+    // The empty stylesheet the wrapper's css() points at when rexenv drives the
+    // scheme. Staged here rather than written on demand, because it must exist
+    // BEFORE the first themed request — Adminer emits the <link> whether or not
+    // anything is behind it.
+    let theme_css = dir.join(THEME_CSS);
+    if std::fs::read_to_string(&theme_css).ok().as_deref() != Some(THEME_CSS_BODY) {
+        std::fs::write(&theme_css, THEME_CSS_BODY)?;
     }
     Ok(dir)
 }
@@ -720,6 +809,60 @@ mod tests {
         assert!(ADMINER_HOST.ends_with(&format!(".rexenv.{}", crate::core::tld::BACKBONE_TLD)));
         // Not a wildcard / not a user site domain.
         assert_eq!(ADMINER_HOST, "adminer.rexenv.rex");
+    }
+
+    /// The palette wiring is three names that must agree across two languages:
+    /// the file rexenv WRITES, the file the wrapper READS, and the stylesheet
+    /// key Adminer is handed. A drift in any one of them is a console that
+    /// silently goes back to following the OS — which is the bug this exists to
+    /// close, and it would look exactly like nothing happening.
+    #[test]
+    fn the_wrapper_reads_the_theme_file_rexenv_writes() {
+        assert!(
+            WRAPPER_INDEX_PHP.contains("function css()"),
+            "the css() override is gone — Adminer decides its scheme from that return"
+        );
+        assert!(
+            WRAPPER_INDEX_PHP.contains(&format!("__DIR__ . '/{THEME_FILE}'")),
+            "the wrapper no longer reads the file `set_theme` writes"
+        );
+        assert!(
+            WRAPPER_INDEX_PHP.contains(&format!("'{THEME_CSS}' => $want")),
+            "the wrapper hands Adminer a stylesheet `ensure` does not stage"
+        );
+        // Adminer's own contract: the VALUE is the scheme, and only these two
+        // words make it commit. Anything else leaves it media-gated.
+        assert!(WRAPPER_INDEX_PHP.contains("$want !== 'dark' && $want !== 'light'"));
+        // The two files sit on opposite sides of the dotfile deny rule ON
+        // PURPOSE: the choice must not be readable over HTTP, and the
+        // stylesheet must — Adminer emits a <link> for it either way.
+        assert!(THEME_FILE.starts_with('.'), "{THEME_FILE} is web-readable");
+        assert!(!THEME_CSS.starts_with('.'), "{THEME_CSS} is denied by the dotfile rule → 404 in <head>");
+    }
+
+    /// `set_theme` takes the RESOLVED palette only. "system" is the app's word
+    /// for "ask the OS", and the whole point here is that the console stops
+    /// asking — if it ever reached this function it would mean the caller
+    /// forgot to resolve, and writing it would put the string "system" in a
+    /// file the wrapper then ignores, silently restoring the bug.
+    #[test]
+    fn set_theme_takes_a_resolved_palette_and_nothing_else() {
+        let dir = std::env::temp_dir().join(format!("rexenv-theme-rule-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        for good in ["dark", "light"] {
+            write_theme(&dir, good).expect("a resolved palette is written");
+            assert_eq!(std::fs::read_to_string(dir.join(THEME_FILE)).unwrap(), good);
+            // Idempotent: the second call must not churn a file the console
+            // reads on every request.
+            write_theme(&dir, good).expect("idempotent");
+        }
+        for bad in ["system", "", "DARK", "moonlight"] {
+            assert!(write_theme(&dir, bad).is_err(), "{bad:?} was accepted");
+        }
+        // ...and the last good value survives every refusal: a rejected call
+        // must not leave the console with no answer.
+        assert_eq!(std::fs::read_to_string(dir.join(THEME_FILE)).unwrap(), "light");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -885,6 +885,12 @@ export function DevUiReview() {
           return mockPhpVersions;
         // The Adminer version card. Four states via `?adminer=`, because a
         // fixture in one state proves that one state renders.
+        // The Database tab's frame writes the console's palette before it
+        // loads. Mocked rather than left to the default arm's throw: the frame
+        // catches, so a missing fixture would be invisible here — and the
+        // harness's whole point is that an unmocked command says so.
+        case "adminer_set_theme":
+          return null;
         case "adminer_status":
         case "adminer_update_check":
           switch (params.get("adminer")) {

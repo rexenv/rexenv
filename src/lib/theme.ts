@@ -34,6 +34,18 @@ function resolved(theme: Theme): "dark" | "light" {
 export function applyTheme(theme: Theme): void {
   if (typeof document === "undefined") return;
   document.documentElement.dataset.theme = resolved(theme);
+  // Notify from HERE, not only from `setTheme`: under "system" the OS moving is
+  // a theme change nobody chose, and anything mirroring the palette OUTSIDE
+  // this document — the Adminer console, which renders in its own process —
+  // would otherwise never hear about it.
+  for (const fn of listeners) fn();
+}
+
+/** The concrete palette in force right now — what `data-theme` says, which is
+ *  what the token layer is actually painting with. */
+export function currentTheme(): "dark" | "light" {
+  const applied = typeof document !== "undefined" ? document.documentElement.dataset.theme : null;
+  return applied === "dark" || applied === "light" ? applied : resolved(getStoredTheme());
 }
 
 /** Subscribers notified whenever the stored preference changes (any control). */
@@ -52,8 +64,7 @@ export function subscribeTheme(fn: () => void): () => void {
 /** Persist + apply a theme choice. */
 export function setTheme(theme: Theme): void {
   if (typeof localStorage !== "undefined") localStorage.setItem(KEY, theme);
-  applyTheme(theme);
-  for (const fn of listeners) fn();
+  applyTheme(theme); // notifies
 }
 
 /**

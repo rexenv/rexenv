@@ -9,6 +9,14 @@ evidence cited.
 
 ## Now — actionable code/test work
 
+- [x] **Adminer followed the OS theme, not rexenv's** ✓ 20 Aug 2026, ledger #375.
+  A light-themed app framing a dark console. Fixed through Adminer's own `css()` hook
+  (its return decides whether `dark.css` is media-gated at all), fed by a
+  `.rexenv-theme` file the wrapper reads per request — a file rather than a URL
+  parameter, because Adminer's own links would have dropped the parameter on the first
+  click inside the console. L1 reads the head Adminer really emits for all three states
+  plus junk; L0 ties the three filenames together, plant-proven.
+
 - [x] **Re-uploading a zip of an installed plugin dead-ended** ✓ 19 Aug 2026, ledger
   #374, `wpinstallcard.js` (`install=blocked`, plant-proven). wp-cli refuses to unpack
   over an existing folder and says only `Error: No plugins installed.`; wp-admin offers

@@ -400,6 +400,12 @@ asserts a disabled control), so this is the only place it is seen.
   Repeat for a git asset: `git checkout -b smoke/x` in a terminal, click back, the
   branch chip follows. The Refresh control does the same on demand.
 - [ ] Tools: toggle WP_DEBUG; run a dry-run search-replace (reports a count, no data change).
+- [ ] **Flip the theme with the console open** (20 Aug 2026, #375 — the reload is a
+  `key` on a cross-origin iframe, which no harness can observe): Databases → Browse, then
+  switch rexenv between Dark and Light. Adminer must follow within one reload, both ways,
+  and must KEEP the palette after clicking into a database inside the console (that click
+  is the case a query parameter would have lost). Then set the app to **System** and flip
+  the OS appearance: the console follows that too.
 - [ ] **Re-upload a zip of a plugin you already have** (19 Aug 2026, #374 — L2 mocks
   the backend, so the actual overwrite only happens here): Plugins → Upload zip → pick a
   zip whose plugin is already installed → Install. It must FAIL naming the folder
