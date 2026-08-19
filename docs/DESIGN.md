@@ -42,6 +42,15 @@ the shipped UI toward one.
   ("…will use 8.2.32 — nothing was running to restart"). The general rule: when an
   action's *effect* depends on state the frontend cannot see, the effect is part of the
   return value, not an inference at the call site.
+- **A search box searches what the row SHOWS.** The installed-plugin filter matched
+  the slug while every row is labelled with its title, so typing "loopback" against a
+  list plainly reading "rexenv loopback DNS" (slug `rexenv-dns`) answered "No plugins
+  match" — and a filter searching a string the user cannot see is indistinguishable
+  from a broken one. It matches BOTH now: the displayed title and the slug, since the
+  slug is what someone pastes from a folder name or a wp.org URL. The rule generalises
+  to any list that displays one field and stores another, and `wpsearch.js` holds it
+  in the rendered list — plant-proven in both directions, because a fix that swapped
+  the fields instead of adding one passes every test written for the new half.
 - **A filter may hide a row; it may never hide an EXPOSURE.** Every search box in
   rexenv shrinks a list, and everywhere else that is free: the rows it removes are
   still exactly where they were and nothing about them changed. On Tunnels a hidden

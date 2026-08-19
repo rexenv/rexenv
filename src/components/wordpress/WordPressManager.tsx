@@ -2952,7 +2952,14 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
   const visible = plugins.filter((p) => {
     if (filter === "active" && !isActive(p)) return false;
     if (filter === "updates" && p.update !== "available") return false;
-    if (q && !p.name.toLowerCase().includes(q)) return false;
+    // BOTH, because the row shows both — and the one a person types is the one
+    // they can SEE. This matched the slug alone, so searching "loopback" for
+    // the row reading "rexenv loopback DNS" (slug `rexenv-dns`) answered "No
+    // plugins match", and so did "yoast" for `wordpress-seo`. A filter that
+    // searches a field the row does not display is indistinguishable from a
+    // broken filter.
+    if (q && !p.name.toLowerCase().includes(q) && !p.title.toLowerCase().includes(q))
+      return false;
     return true;
   });
 

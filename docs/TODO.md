@@ -9,6 +9,17 @@ evidence cited.
 
 ## Now — actionable code/test work
 
+- [x] **Plugin search matched the slug, not the name on the row** ✓ 19 Aug 2026,
+  ledger #372, `wpsearch.js` (L2, plant-proven both directions). Reported with a
+  screenshot: "loopback" against a list reading `rexenv loopback DNS` answered "No
+  plugins match" — the filter read `name` (the slug, `rexenv-dns`) while every row is
+  labelled with `title`. Matches both now.
+  **Themes checked in the same pass — not the same bug, but worth knowing:** the themes
+  panel has NO filter, and its cards are labelled by SLUG (`twentytwentyfive`, where
+  wp-admin says "Twenty Twenty-Five") because `WpTheme` carries no title. `wp theme list
+  --fields=name,title` supplies one, so adding a title is a small change — and it is a
+  PREREQUISITE for any theme filter, or that filter ships with the bug above on day one.
+
 - [x] **Search on the Tunnels page** ✓ 19 Aug 2026, ledger #371, L2 plant-proven.
   Name, domain, or the public URL — the last one because this is the only screen that can
   answer "which site is this link?". The work was not the filter: a hidden row here is a
