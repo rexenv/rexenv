@@ -14,6 +14,11 @@
 //     well after the timer would have fired.
 //   - offering a dismiss on a RUNNING job, which would hide work still
 //     happening — the one thing this card exists to prevent.
+//
+// Both panels are driven: the plugins one through the git-panel harness, the
+// themes one through `/dev/ui-review?view=themes`. They share a hook and a
+// component, and that is precisely why the second is checked — a shared
+// implementation still needs both call sites to pass the props.
 const { webkit } = require("playwright");
 
 const BASE = process.env.WK_BASE_URL ?? "http://localhost:5199";
@@ -102,6 +107,41 @@ const dismissBtn = (page) => page.getByRole("button", { name: "Dismiss install r
     if ((await cardCount(page)) === 0) problems.push("running: the card cleared itself mid-install");
     await page.screenshot({ path: `${__dirname}/shot-wpinstallcard.png` });
     await page.close();
+  }
+
+  // 5. THE THEMES PANEL. Same hook, same component — which is an argument, not
+  //    evidence. The rules are re-asserted where a job's `kind` really is
+  //    "theme", because "it is the same code" is exactly what someone says
+  //    right before one of the two call sites is missing a prop.
+  {
+    const themeUrl = (q) => `${BASE}/dev/ui-review?view=themes&install=${q}`;
+    const themeCards = (page) =>
+      page.evaluate(() => document.body.innerText.split("theme install").length - 1);
+
+    const ok = await browser.newPage({ viewport: { width: 1180, height: 900 }, colorScheme: "dark" });
+    ok.on("pageerror", (e) => problems.push(`themes ok: pageerror ${String(e).split("\n")[0]}`));
+    await ok.goto(themeUrl("ok"), { waitUntil: "networkidle" });
+    await ok.waitForTimeout(300);
+    if ((await themeCards(ok)) === 0) problems.push("themes ok: the card never rendered");
+    await ok.waitForTimeout(PAST_LINGER);
+    if ((await themeCards(ok)) !== 0)
+      problems.push("themes ok: the card is still there after the linger — the themes panel did not get the rule");
+    await ok.close();
+
+    const bad = await browser.newPage({ viewport: { width: 1180, height: 900 }, colorScheme: "dark" });
+    bad.on("pageerror", (e) => problems.push(`themes partial: pageerror ${String(e).split("\n")[0]}`));
+    await bad.goto(themeUrl("partial"), { waitUntil: "networkidle" });
+    await bad.waitForTimeout(PAST_LINGER);
+    if ((await themeCards(bad)) === 0) {
+      problems.push("themes partial: the card cleared itself — the failure's log is gone");
+    } else if ((await dismissBtn(bad).count()) === 0) {
+      problems.push("themes partial: no dismiss control — the card cannot be put away");
+    } else {
+      await dismissBtn(bad).click();
+      await bad.waitForTimeout(200);
+      if ((await themeCards(bad)) !== 0) problems.push("themes partial: dismiss did not clear the card");
+    }
+    await bad.close();
   }
 
   await browser.close();

@@ -1005,7 +1005,9 @@ editor" → `open -a <editor> <site folder>`, so the folder lands as a PROJECT) 
   to put it away. Two rules keep the auto-hide from becoming the defect it replaced:
   **opening the log HOLDS the timer** (3s is exactly long enough to click "Show log" and
   watch it vanish), and a RUNNING job never offers dismiss — hiding work still happening
-  is what this card exists to prevent.
+  is what this card exists to prevent. Both lists get this — plugins and themes run the
+  same hook and the same card, and `wpinstallcard.js` drives both rather than trusting
+  that they do.
 - **Adding a plugin/theme has FOUR sources, and two of them are the same job**
   (`SourceTabs`): WordPress.org search, **Upload zip**, From Git, Link folder.
   wp.org and zip both run `commands/wp_install.rs` — same streamed card, same

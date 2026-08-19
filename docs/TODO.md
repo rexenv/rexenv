@@ -14,7 +14,9 @@ evidence cited.
   failed/partial/cancelled/timed-out stay and gain an × instead, since that card is
   where the reason lives. Opening the log holds the timer — three seconds is exactly
   long enough to click "Show log" and lose it — and a running job offers Cancel, never
-  dismiss.
+  dismiss. **Themes get the same behaviour and are checked separately** (same hook, same
+  card — but a shared implementation still needs both call sites wired; dropping the
+  props from the themes one alone fails `themes partial` and nothing else).
 
 - [x] **Light-mode: the update badge and its target version were barely readable** ✓
   19 Aug 2026, ledger #373. Reported with a screenshot. Not a bad token — no token:

@@ -1030,6 +1030,35 @@ export function DevUiReview() {
         case "repo_assets":
         case "repo_unmanaged":
           return [];
+        // The THEMES panel's install card (`?install=ok|partial`). It is the
+        // same hook and the same component as the plugins panel — which is an
+        // argument, not evidence, and the reason this fixture exists: the
+        // linger/dismiss rules are asserted against the themes panel too, in a
+        // job whose `kind` really is "theme".
+        case "wp_install_active":
+          return params.get("install") === "ok" || params.get("install") === "partial"
+            ? {
+                id: "wpi-theme-dev",
+                siteId: "s-ea",
+                kind: "theme",
+                source: "wporg",
+                slugs: ["astra"],
+                itemsTotal: 1,
+                itemCursor: 1,
+                pct: params.get("install") === "ok" ? 100 : 40,
+                status: params.get("install"),
+                summary:
+                  params.get("install") === "ok"
+                    ? "Success: Installed 1 of 1 themes."
+                    : "Error: Only installed 0 of 1 themes.",
+                error: null,
+                logKey: "wp-install-dev.rex-wpi-theme-dev.log",
+              }
+            : null;
+        case "tail_log":
+          return ["Installing the theme...", "Downloading installation package..."];
+        case "wp_install_cancel":
+          return null;
         case "list_editors":
           return params.get("view") === "openin" ? mockEditors() : [];
         case "list_browsers":
