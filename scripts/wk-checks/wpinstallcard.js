@@ -129,6 +129,23 @@ const dismissBtn = (page) => page.getByRole("button", { name: "Dismiss install r
     if (!text.includes("betterlinks-pro is already installed")) {
       problems.push("blocked: the card does not name the folder that is in the way");
     }
+    // The TOAST is half of this: reporting "Install … failed: Error: No plugins
+    // installed." is wp-cli's sentence and a lie about what happened — nothing
+    // was installed and nothing was harmed, and the card is offering a way
+    // forward while the toast calls it a failure.
+    const toastText = await page.evaluate(() => {
+      const el = [...document.querySelectorAll("div")].filter((d) =>
+        /already installed|failed/i.test(d.textContent || ""),
+      );
+      return el.map((d) => d.textContent.trim()).join(" | ");
+    });
+    if (/install .*failed/i.test(toastText)) {
+      problems.push(`blocked: the toast still calls it a failure — ${toastText.slice(0, 120)}`);
+    }
+    if (!/already installed/i.test(toastText)) {
+      problems.push("blocked: the toast does not say the plugin is already installed");
+    }
+
     const replace = page.getByRole("button", { name: "Replace with the uploaded zip" });
     if ((await replace.count()) === 0) {
       problems.push("blocked: no Replace control — the only way forward is re-uploading and failing again");

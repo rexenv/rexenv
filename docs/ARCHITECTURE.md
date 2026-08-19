@@ -1005,7 +1005,15 @@ editor" → `open -a <editor> <site folder>`, so the folder lands as a PROJECT) 
   already exists. "…/plugins/<dir>/"`, wp-cli's own line — the folder name is taken from
   there rather than from the zip's filename, which is routinely `plugin.1.2.3.zip` for a
   folder called `plugin`), names that folder, and offers "Replace with the uploaded
-  zip", which re-runs the SAME job with `--force`. **`force` is never defaulted on**, and
+  zip", which re-runs the SAME job with `--force`. **The fact rides the job STATE
+  (`blockedBy`), parsed once on the stream** — not re-read from the log by each
+  consumer: the log is a rotating 300-line tail and the TOAST never receives it at all.
+  That toast is why it matters. It said *"Install of thinkrank.1.31.0.zip failed: Error:
+  No plugins installed."* — wp-cli's sentence, and a lie about what happened, next to a
+  card offering a one-click way forward. It now says the plugin is already installed and
+  points at Replace, and the card's glyph and colour follow the same fact: an amber `!`
+  rather than a red `✕`, because nothing broke and nothing was touched. wp-cli's own
+  summary line stays verbatim under it — never paraphrased, only re-toned. **`force` is never defaulted on**, and
   the retry keeps the job's own source — a zip re-runs as a zip, a wp.org job as wp.org,
   because sending a slug down the zip gate would fail `ensure_zip_paths` and read as a
   second unrelated error. **One guard wp-admin has no need for:** rexenv knows which of

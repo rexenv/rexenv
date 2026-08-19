@@ -1189,6 +1189,11 @@ export interface WpInstallState {
   status: "running" | "ok" | "partial" | "failed" | "cancelled" | "timed_out";
   summary: string | null;
   error: string | null;
+  /** The directory wp-cli refused to unpack over, when that is why the job
+   *  failed. Set from wp-cli's own line by the backend — the card names it and
+   *  offers the `--force` replace, and the toast stops calling it a plain
+   *  failure. */
+  blockedBy: string | null;
   logKey: string;
 }
 

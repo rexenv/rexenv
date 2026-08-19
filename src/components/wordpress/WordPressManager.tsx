@@ -121,6 +121,16 @@ function announceInstall(s: WpInstallState): void {
   announcedInstalls.add(s.id);
   const what = subject(installLabels(s), s.kind);
   const detail = s.summary?.split("\n").find((l) => l.trim() !== "")?.trim();
+  // Nothing was installed, and nothing was harmed either: wp-cli refused to
+  // unpack over a directory that is already there. Reporting that as
+  // "Install … failed: Error: No plugins installed." is technically wp-cli's
+  // sentence and practically a lie about what happened — the user sees a
+  // failure where the card is offering them a one-click way forward.
+  if (s.blockedBy && s.status !== "ok") {
+    return toast.info(
+      `${s.blockedBy} is already installed — nothing was unpacked. Use Replace to overwrite it.`,
+    );
+  }
   switch (s.status) {
     case "ok":
       return toast.success(`Installed ${what}`);

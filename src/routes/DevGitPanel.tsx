@@ -295,6 +295,7 @@ const CHECK_LINES = [
  *  mirror the real wp-cli output shape (phase lines verbatim). */
 const WPI_BASE = {
   id: "wpi-dev",
+  blockedBy: null as string | null,
   siteId: "dev",
   kind: "plugin" as const,
   source: "wporg" as const,
@@ -344,6 +345,9 @@ const WPI_BLOCKED = {
   status: "failed",
   summary: null,
   error: "Error: No plugins installed.",
+  // Set by the backend from wp-cli's own line — the card and the toast both
+  // read THIS rather than the log.
+  blockedBy: "betterlinks-pro",
 };
 const WPI_BLOCKED_LINES = [
   "Unpacking the package...",

@@ -103,6 +103,12 @@ pub struct WpInstallState {
     pub status: String,
     pub summary: Option<String>,
     pub error: Option<String>,
+    /// The directory wp-cli refused to unpack over, when that is why the job
+    /// failed ([`wordpress::install_blocked_dir`]). Carried on the STATE, not
+    /// re-parsed per consumer: the card names it and offers a `--force`
+    /// replace, and the toast has to stop calling it a plain failure — two
+    /// readers of one fact, and a log the toast never even receives.
+    pub blocked_by: Option<String>,
     pub log_key: String,
 }
 
@@ -211,6 +217,7 @@ pub async fn wp_install_job<R: tauri::Runtime>(
             status: "running".into(),
             summary: None,
             error: None,
+            blocked_by: None,
             log_key,
         }),
     });
@@ -318,6 +325,10 @@ fn run_install_job<R: tauri::Runtime>(
         let _ = sink_app.emit(&output_event(&sink_entry.id), line.to_string());
         let header = wordpress::is_install_item_header(line);
         let pct = progress.observe(line);
+        // Read here, on the STREAM, rather than from the log afterwards: the
+        // log is tailed (300 lines) and rotates, and the toast never sees it
+        // at all.
+        let blocked = wordpress::install_blocked_dir(line);
         let changed = {
             let mut st = sink_entry.state.lock().expect("install state lock");
             if header {
@@ -325,7 +336,11 @@ fn run_install_job<R: tauri::Runtime>(
             }
             let moved = pct != st.pct;
             st.pct = pct;
-            header || moved
+            let newly_blocked = blocked.is_some() && st.blocked_by != blocked;
+            if newly_blocked {
+                st.blocked_by = blocked;
+            }
+            header || moved || newly_blocked
         };
         if changed {
             emit_state(&sink_app, &sink_entry);

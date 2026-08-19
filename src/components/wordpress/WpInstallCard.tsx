@@ -35,30 +35,6 @@ export function installLabels(job: WpInstallState): string[] {
   return job.slugs.map((p) => p.split("/").filter(Boolean).pop() ?? p);
 }
 
-/** The directory wp-cli refused to unpack over, or null.
- *
- *  wp-cli prints, verbatim (measured 19 Aug 2026, wp-cli 2.12.0):
- *
- *      Warning: Destination folder already exists. "/…/wp-content/plugins/betterlinks-pro/"
- *      Plugin installation failed.
- *      Warning: The '/…/betterlinks-pro.2.1.1.zip' plugin could not be found.
- *      Error: No plugins installed.
- *
- *  The summary a user sees is that last line — "No plugins installed." — which
- *  says what did NOT happen and nothing about why. wp-admin meets the same wall
- *  and offers "Replace current with uploaded"; the folder name is what turns
- *  our card into that offer, so it is read from the line that names it rather
- *  than guessed from the zip's filename (a zip is routinely named
- *  `plugin.1.2.3.zip` while its folder is `plugin`). */
-export function blockedByExisting(lines: string[]): string | null {
-  const hit = lines.find((l) => l.includes("Destination folder already exists."));
-  if (!hit) return null;
-  const path = /"([^"]+)"/.exec(hit)?.[1];
-  if (!path) return null;
-  const dir = path.split("/").filter(Boolean).pop();
-  return dir ?? null;
-}
-
 const END_COPY: Partial<Record<WpInstallState["status"], string>> = {
   cancelled:
     "Cancelled — the current item may remain installed (inactive); leftover temp files may sit in wp-content/upgrade.",
@@ -121,9 +97,9 @@ export function WpInstallCard({
     ? (lastLine ?? "starting wp-cli…")
     : (job.summary ?? job.error ?? END_COPY[job.status] ?? job.status);
   const failedish = job.status === "failed" || job.status === "timed_out";
-  // Read from the LOG, not from the status: wp-cli reports this as an ordinary
-  // failure, and the reason only exists in the lines above the summary.
-  const blocked = running ? null : blockedByExisting(lines);
+  // The backend read it off the stream and put it on the state — one parser,
+  // in one place, shared with the toast (which never receives the log at all).
+  const blocked = running ? null : job.blockedBy;
   // Every non-ok settle FREEZES the bar where the work stopped ("stopped"
   // renders a pct-width tint) — never full ("error"), never empty ("idle").
   const trackState = running ? "run" : job.status === "ok" ? "ok" : "stopped";
@@ -138,12 +114,17 @@ export function WpInstallCard({
             className={`w-3.5 flex-none text-center font-mono text-[0.75rem] ${
               job.status === "ok"
                 ? "text-status-running-bright"
-                : job.status === "partial" || failedish
-                  ? "text-status-error-bright"
-                  : "text-rex-text-muted"
+                : blocked
+                  ? "text-status-warning-bright"
+                  : job.status === "partial" || failedish
+                    ? "text-status-error-bright"
+                    : "text-rex-text-muted"
             }`}
           >
-            {job.status === "ok" ? "✓" : job.status === "cancelled" ? "–" : "✕"}
+            {/* A blocked job is not a break: nothing installed AND nothing was
+                touched, and there is a one-click way forward under it. Red ✕
+                says something went wrong; this says something is in the way. */}
+            {job.status === "ok" ? "✓" : blocked ? "!" : job.status === "cancelled" ? "–" : "✕"}
           </span>
         )}
         <span
@@ -197,7 +178,7 @@ export function WpInstallCard({
       </div>
       <div
         className={`mt-1.5 truncate font-mono text-[0.6875rem] ${
-          !running && (failedish || job.status === "partial")
+          !running && (failedish || job.status === "partial") && !blocked
             ? "text-status-error-bright"
             : "text-rex-text-muted"
         }`}

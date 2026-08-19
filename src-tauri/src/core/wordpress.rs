@@ -748,6 +748,34 @@ pub fn is_install_item_header(line: &str) -> bool {
     line.starts_with("Installing ") && line.contains(" (")
 }
 
+/// The directory wp-cli refused to unpack over, read from its own line.
+///
+/// Measured verbatim (wp-cli 2.12.0, 19 Aug 2026, re-uploading the zip of an
+/// installed plugin):
+///
+/// ```text
+/// Warning: Destination folder already exists. "/…/wp-content/plugins/betterlinks-pro/"
+/// Plugin installation failed.
+/// Warning: The '/…/betterlinks-pro.2.1.1.zip' plugin could not be found.
+/// Error: No plugins installed.
+/// ```
+///
+/// The summary line — the one the UI would otherwise report — says only what did
+/// NOT happen. This is the reason, and it is the ONE place it is parsed: the
+/// job's state carries the answer so the card and the toast read a FACT rather
+/// than each re-reading the log and drifting apart.
+///
+/// The folder comes from the quoted path, never from the archive's name: a zip
+/// is routinely `plugin.1.2.3.zip` for a folder called `plugin`.
+pub fn install_blocked_dir(line: &str) -> Option<String> {
+    if !line.contains("Destination folder already exists.") {
+        return None;
+    }
+    let quoted = line.split('"').nth(1)?;
+    let dir = quoted.trim_end_matches('/').rsplit('/').next()?;
+    (!dir.is_empty()).then(|| dir.to_string())
+}
+
 /// The batch's terminal truth: the last verbatim `Success:`/`Error:` line
 /// ("Success: Installed 2 of 2 plugins." / "Error: Only installed 1 of 2
 /// plugins."). Shown as-is — never paraphrased.
@@ -3191,6 +3219,39 @@ pub fn wp_config_path(docroot: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The line the Replace offer rests on. wp-cli's wording is a THIRD
+    /// PARTY's, so the fixture is its real output (captured 19 Aug 2026) and
+    /// `wp_install_stream_check` jobs 5/6 re-measure it against the live tool —
+    /// a parser agreeing with a remembered string proves only that memory.
+    #[test]
+    fn the_blocked_directory_is_read_from_wp_clis_own_line() {
+        let real = "Warning: Destination folder already exists. \
+                    \"/Users/wpdev/rexenv/Sites/bl.rex/wp-content/plugins/betterlinks-pro/\"";
+        assert_eq!(install_blocked_dir(real).as_deref(), Some("betterlinks-pro"));
+        // A theme says the same thing about a different tree.
+        assert_eq!(
+            install_blocked_dir(
+                "Warning: Destination folder already exists. \"/srv/wp/wp-content/themes/astra/\""
+            )
+            .as_deref(),
+            Some("astra")
+        );
+        // Every other line of that run, and of a healthy one — none of which
+        // may produce a folder name.
+        for other in [
+            "Plugin installation failed.",
+            "Warning: The '/Users/dev/betterlinks-pro.2.1.1.zip' plugin could not be found.",
+            "Error: No plugins installed.",
+            "Unpacking the package...",
+            "Installing the plugin...",
+            "Success: Installed 1 of 1 plugins.",
+        ] {
+            assert_eq!(install_blocked_dir(other), None, "{other}");
+        }
+        // Malformed rather than absent: the marker with no quoted path at all.
+        assert_eq!(install_blocked_dir("Warning: Destination folder already exists."), None);
+    }
 
     /// The theme row's shape, CAPTURED from a real site (19 Aug 2026, wp-cli
     /// 2.12.0 against `tr.rex`) rather than written by hand: the field list is

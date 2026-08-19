@@ -16,7 +16,10 @@ evidence cited.
   folder out of wp-cli's own `Destination folder already exists` line, names it, and
   offers a replace that re-runs the same job with `--force`; `wp_install_stream_check`
   jobs 5/6 ran green — refused in the exact words the card parses, then replaced with
-  force. `force` is never defaulted
+  force. **Follow-up the same day:** the fact moved onto the job STATE (`blockedBy`),
+  because the TOAST never sees the log and was still announcing "Install … failed:
+  Error: No plugins installed." beside a card offering the fix. Toast, glyph and colour
+  now follow the fact; wp-cli's summary line stays verbatim. `force` is never defaulted
   on, and a git-tracked target gets a danger confirm first — an overwrite there takes the
   working tree, the branch and `.git` with it, which is a hazard wp-admin does not have.
 

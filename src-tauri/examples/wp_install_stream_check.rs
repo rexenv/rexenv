@@ -373,6 +373,16 @@ async fn main() {
                  offer Replace, so the offer is now dead: {again_ls:?}"
             ));
         }
+        // The STATE carries the answer, not just the log: the toast never
+        // receives the log at all, and the card would otherwise re-parse a
+        // tail that rotates. This is the field both of them read.
+        if again_fin.blocked_by.as_deref() != Some("hello-dolly") {
+            failures.push(format!(
+                "job5 blocked_by = {:?} (want Some(\"hello-dolly\")) — the card names nothing \
+                 and the toast falls back to calling it a plain failure",
+                again_fin.blocked_by
+            ));
+        }
         // The folder name has to be READABLE out of it — the UI takes the last
         // path segment of the quoted path, and a message without the quotes
         // would leave the card naming nothing.
@@ -398,6 +408,13 @@ async fn main() {
         }
         if !docroot.join("wp-content/plugins/hello-dolly").is_dir() {
             failures.push("job6: the plugin dir is gone after a forced replace".into());
+        }
+        if forced_fin.blocked_by.is_some() {
+            failures.push(format!(
+                "job6 blocked_by = {:?} on a run that SUCCEEDED — the card would offer a \
+                 replace for something already replaced",
+                forced_fin.blocked_by
+            ));
         }
 
         // The gate, live: the same job refuses a path that isn't a real zip.
