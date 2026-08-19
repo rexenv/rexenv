@@ -996,6 +996,16 @@ editor" → `open -a <editor> <site folder>`, so the folder lands as a PROJECT) 
   error is the one the user reads instead of our kill. ONE command, not a UI variant:
   CLI/MCP callers just have no listener. The captured `plugin_update` (hard total
   cap) stays for callers with no sink.
+- **The install card outlives the install only when it has something left to say**
+  (`INSTALL_CARD_LINGER_MS`, `useWpInstall`'s `dismiss`/`hold` · 19 Aug 2026): a
+  SUCCESSFUL job clears its card 3s after settling — the toast already announced it and
+  the list underneath now shows the plugin, so the card is a panel the user would have
+  to tidy after every install. Every other outcome (failed, partial, cancelled, timed
+  out) STAYS, because there the card holds the only copy of the reason, and gains an ×
+  to put it away. Two rules keep the auto-hide from becoming the defect it replaced:
+  **opening the log HOLDS the timer** (3s is exactly long enough to click "Show log" and
+  watch it vanish), and a RUNNING job never offers dismiss — hiding work still happening
+  is what this card exists to prevent.
 - **Adding a plugin/theme has FOUR sources, and two of them are the same job**
   (`SourceTabs`): WordPress.org search, **Upload zip**, From Git, Link folder.
   wp.org and zip both run `commands/wp_install.rs` — same streamed card, same

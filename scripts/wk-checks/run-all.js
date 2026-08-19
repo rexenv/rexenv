@@ -14,6 +14,7 @@ const CHECKS = [
   "wpverdict.js",
   "wpsearch.js",
   "wpgitchip.js",
+  "wpinstallcard.js",
   "zipinstall.js",
   "openin.js",
   "mail.js",

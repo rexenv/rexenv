@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast, toastBackendError } from "@/lib/toast";
 import { confirm, PromptDialog } from "@/components/ui/dialog";
 import { confirmPhraseMatches, TypeToConfirm } from "@/components/ui/type-to-confirm";
@@ -135,6 +135,15 @@ function announceInstall(s: WpInstallState): void {
   }
 }
 
+/** How long a SUCCESSFUL install card stays on screen before it clears itself.
+ *  Only success: the toast already said "Installed 1 of 1", the list below it
+ *  now shows the plugin, and a card repeating that is a panel a user has to
+ *  tidy up after every install. Every OTHER outcome stays until dismissed —
+ *  a failure is the one case where the log is the point, and a card that
+ *  vanished after three seconds would take the only copy of the reason with
+ *  it. */
+const INSTALL_CARD_LINGER_MS = 3_000;
+
 function useWpInstall(
   siteId: string,
   kind: "plugin" | "theme",
@@ -144,6 +153,10 @@ function useWpInstall(
   const listKey = kind === "plugin" ? ["wp-plugins", siteId] : ["wp-themes", siteId];
   const [job, setJob] = useState<WpInstallState | null>(null);
   const [lines, setLines] = useState<string[]>([]);
+  /** The card asks for a HOLD while its log pane is open. Without it, opening
+   *  the log on a successful install starts a countdown against the reader —
+   *  three seconds is exactly long enough to click "Show log" and lose it. */
+  const [held, setHeld] = useState(false);
   // Re-adopt a live/settled job after a tab switch (job survives unmount).
   useEffect(() => {
     void wpInstallActive(siteId, kind)
@@ -183,13 +196,30 @@ function useWpInstall(
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job?.id]);
+  const dismiss = useCallback(() => {
+    setJob(null);
+    setLines([]);
+    setHeld(false);
+  }, []);
+  // Success clears itself; nothing else does. Keyed on the JOB ID as well as
+  // the status, so the timer of a settled job is torn down the moment another
+  // install starts — a stale timer firing on a NEW card is the one way an
+  // auto-hide can eat something a user is reading.
+  useEffect(() => {
+    if (job?.status !== "ok" || held) return;
+    const t = setTimeout(dismiss, INSTALL_CARD_LINGER_MS);
+    return () => clearTimeout(t);
+  }, [job?.id, job?.status, held, dismiss]);
   return {
     job,
     lines,
     start: (snap: WpInstallState) => {
       setJob(snap);
       setLines([]);
+      setHeld(false);
     },
+    dismiss,
+    hold: setHeld,
     running: job?.status === "running",
   };
 }
@@ -2593,6 +2623,8 @@ export function ThemesPanel({ siteId }: { siteId: string }) {
             job={install.job}
             lines={install.lines}
             onCancel={() => wpInstallCancel(install.job!.id).catch(toastBackendError)}
+            onDismiss={install.dismiss}
+            onHoldChange={install.hold}
           />
         )}
       </div>
@@ -3214,6 +3246,8 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
             job={install.job}
             lines={install.lines}
             onCancel={() => wpInstallCancel(install.job!.id).catch(toastBackendError)}
+            onDismiss={install.dismiss}
+            onHoldChange={install.hold}
           />
         )}
       </div>

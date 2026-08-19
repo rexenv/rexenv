@@ -9,6 +9,13 @@ evidence cited.
 
 ## Now — actionable code/test work
 
+- [x] **The install card stayed forever after a successful install** ✓ 19 Aug 2026,
+  `wpinstallcard.js` (L2, plant-proven twice). Success now clears itself after 3s;
+  failed/partial/cancelled/timed-out stay and gain an × instead, since that card is
+  where the reason lives. Opening the log holds the timer — three seconds is exactly
+  long enough to click "Show log" and lose it — and a running job offers Cancel, never
+  dismiss.
+
 - [x] **Light-mode: the update badge and its target version were barely readable** ✓
   19 Aug 2026, ledger #373. Reported with a screenshot. Not a bad token — no token:
   `bg-amber-500/15 text-amber-400`, a raw Tailwind hue, which has one value and cannot

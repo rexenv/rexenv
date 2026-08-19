@@ -17,7 +17,7 @@
  *    percentage reads as frozen without it) with Cancel as the escape,
  *    visible from the moment the job starts. */
 import { useEffect, useRef, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, X } from "lucide-react";
 import type { WpInstallState } from "@/types";
 import { Track } from "@/components/shell/DownloadPanel";
 import { LogPane } from "./repoJobUi";
@@ -46,10 +46,20 @@ export function WpInstallCard({
   job,
   lines,
   onCancel,
+  onDismiss,
+  onHoldChange,
 }: {
   job: WpInstallState;
   lines: string[];
   onCancel: () => void;
+  /** Clear the card. Offered on every SETTLED job, not only failed ones: a
+   *  successful card clears itself after three seconds, but opening its log
+   *  holds that timer, and a card held open with no way to close it is a
+   *  panel the user is stuck with. */
+  onDismiss?: () => void;
+  /** True while the log pane is open — the parent stops the success timer, so
+   *  reading the log is never a race against it. */
+  onHoldChange?: (held: boolean) => void;
 }) {
   const [logOpen, setLogOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
@@ -69,6 +79,13 @@ export function WpInstallCard({
     const el = logRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [lines, logOpen]);
+  useEffect(() => {
+    onHoldChange?.(logOpen);
+    // Releasing on unmount matters: the panel unmounts on every sub-tab
+    // switch, and a hold left set there would keep a settled card forever.
+    return () => onHoldChange?.(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [logOpen]);
 
   const silentFor = Math.floor((now - lastLineAt.current) / 1000);
   const lastLine = lines.length > 0 ? lines[lines.length - 1] : null;
@@ -127,6 +144,20 @@ export function WpInstallCard({
         >
           {logOpen ? "Hide log" : "Show log"}
         </button>
+        {/* Only once the job has SETTLED: dismissing a running install would
+            hide work that is still happening, which is the one thing this card
+            exists to prevent. */}
+        {!running && onDismiss && (
+          <button
+            type="button"
+            onClick={onDismiss}
+            aria-label="Dismiss install result"
+            title="Dismiss"
+            className="flex h-4 w-4 flex-none items-center justify-center rounded text-rex-text-muted transition-colors hover:text-rex-text"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        )}
       </div>
       <div className="mt-1.5">
         {/* ok → 100 (exit-0 belt); every other settle shows pct FROZEN where
