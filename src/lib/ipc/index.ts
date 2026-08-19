@@ -1705,8 +1705,12 @@ export async function wpInstallJob(
   slugs: string[],
   activate: boolean,
   source: "wporg" | "zip" = "wporg",
+  /** `--force`: unpack over a destination that already exists (wp-admin's
+   *  "Replace current with uploaded"). Defaults OFF — an overwrite discards
+   *  whatever is in that directory. */
+  force = false,
 ): Promise<WpInstallState> {
-  return invoke<WpInstallState>("wp_install_job", { siteId, kind, source, slugs, activate });
+  return invoke<WpInstallState>("wp_install_job", { siteId, kind, source, slugs, activate, force });
 }
 
 /** Cancel a running install (kills the wp-cli process group — safe; the UI

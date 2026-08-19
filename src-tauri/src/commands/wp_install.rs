@@ -153,6 +153,15 @@ pub async fn wp_install_job<R: tauri::Runtime>(
     source: String,
     slugs: Vec<String>,
     activate: bool,
+    // `force` = `wp <kind> install --force`: unpack over a destination that
+    // already exists. wp-cli refuses otherwise ("Destination folder already
+    // exists"), which is the wall a user hits re-uploading a zip of something
+    // they already have — wp-admin answers it with "Replace current with
+    // uploaded", and this is that answer. NEVER defaulted on: an overwrite
+    // discards whatever is in that directory, including a working tree rexenv
+    // itself may be tracking as a git asset, so it stays a decision the caller
+    // makes out loud.
+    force: bool,
 ) -> Result<WpInstallState> {
     if !matches!(kind.as_str(), "plugin" | "theme") {
         return Err(Error::Other(format!("unknown install kind \"{kind}\"")));
@@ -238,7 +247,7 @@ pub async fn wp_install_job<R: tauri::Runtime>(
     let worker = entry.clone();
     let worker_app = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        run_install_job(&worker_app, &worker, &php_bin, &wp_phar, &docroot, &kind, activate);
+        run_install_job(&worker_app, &worker, &php_bin, &wp_phar, &docroot, &kind, activate, force);
         worker.running.store(false, Ordering::SeqCst);
     });
     Ok(snapshot(&entry))
@@ -253,6 +262,7 @@ fn run_install_job<R: tauri::Runtime>(
     docroot: &std::path::Path,
     kind: &str,
     activate: bool,
+    force: bool,
 ) {
     let state = app.state::<AppState>();
     let sup = state.platform.supervisor();
@@ -282,6 +292,13 @@ fn run_install_job<R: tauri::Runtime>(
     args.extend(snapshot(entry).slugs.iter().cloned());
     if activate {
         args.push("--activate".into());
+    }
+    // The overwrite. Placed with the other flags rather than folded into the
+    // slug list, because `--force` applies to the whole batch: a mixed
+    // "replace this one, refuse that one" run does not exist in wp-cli, and
+    // pretending otherwise in the UI would be a promise the tool cannot keep.
+    if force {
+        args.push("--force".into());
     }
     // Single-token form REQUIRED: a bare `--path <dir>` parses as a boolean
     // flag + a positional "slug" named after the docroot.

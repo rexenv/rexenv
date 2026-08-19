@@ -2457,6 +2457,47 @@ export function ThemesPanel({ siteId }: { siteId: string }) {
     () => new Set((unmanaged.data ?? []).map((u) => u.dirName)),
     [unmanaged.data],
   );
+
+  /** wp-admin's "Replace current with uploaded", reached the same way: the
+   *  install refused because `dir` is already there, and this re-runs the SAME
+   *  zip with `--force`.
+   *
+   *  The confirm exists for a hazard wp-admin does not have. rexenv knows which
+   *  of these directories are GIT CHECKOUTS — it put some of them there — and
+   *  `--force` unpacks straight over the working tree: uncommitted work, the
+   *  branch, `.git` itself. So a tracked (or merely git-looking) target is
+   *  named before anything is overwritten; everything else replaces on the
+   *  click, which is the confirmation wp-admin's own button is.
+   *
+   *  The retry keeps the job's OWN source. A zip re-runs as a zip (its paths
+   *  are still on disk); a wp.org job re-runs as wp.org — sending it back down
+   *  the zip gate would fail `ensure_zip_paths` on a slug and read as a second,
+   *  unrelated error. */
+  const replaceExisting = async (dir: string) => {
+    const job = install.job;
+    if (!job) return;
+    const tracked = gitDirs.has(dir) || unmanagedSet.has(dir);
+    if (
+      tracked &&
+      !(await confirm({
+        title: `Replace ${dir}?`,
+        message:
+          `${dir} is a git checkout in this site. Replacing it unpacks the zip over the ` +
+          `working tree — uncommitted changes, the branch and the repository itself go with it. ` +
+          `This cannot be undone from rexenv.`,
+        danger: true,
+        confirmLabel: "Replace",
+      }))
+    )
+      return;
+    try {
+      install.start(
+        await wpInstallJob(siteId, "theme", job.slugs, activateOnAdd, job.source, true),
+      );
+    } catch (e) {
+      toastBackendError(e);
+    }
+  };
   const [openRepo, setOpenRepo] = useState<string | null>(null);
   const adoptRepo = async (name: string) => {
     if (
@@ -2625,6 +2666,7 @@ export function ThemesPanel({ siteId }: { siteId: string }) {
             onCancel={() => wpInstallCancel(install.job!.id).catch(toastBackendError)}
             onDismiss={install.dismiss}
             onHoldChange={install.hold}
+            onReplace={(dir) => void replaceExisting(dir)}
           />
         )}
       </div>
@@ -3065,6 +3107,47 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
     () => new Set((unmanaged.data ?? []).map((u) => u.dirName)),
     [unmanaged.data],
   );
+
+  /** wp-admin's "Replace current with uploaded", reached the same way: the
+   *  install refused because `dir` is already there, and this re-runs the SAME
+   *  zip with `--force`.
+   *
+   *  The confirm exists for a hazard wp-admin does not have. rexenv knows which
+   *  of these directories are GIT CHECKOUTS — it put some of them there — and
+   *  `--force` unpacks straight over the working tree: uncommitted work, the
+   *  branch, `.git` itself. So a tracked (or merely git-looking) target is
+   *  named before anything is overwritten; everything else replaces on the
+   *  click, which is the confirmation wp-admin's own button is.
+   *
+   *  The retry keeps the job's OWN source. A zip re-runs as a zip (its paths
+   *  are still on disk); a wp.org job re-runs as wp.org — sending it back down
+   *  the zip gate would fail `ensure_zip_paths` on a slug and read as a second,
+   *  unrelated error. */
+  const replaceExisting = async (dir: string) => {
+    const job = install.job;
+    if (!job) return;
+    const tracked = gitDirs.has(dir) || unmanagedSet.has(dir);
+    if (
+      tracked &&
+      !(await confirm({
+        title: `Replace ${dir}?`,
+        message:
+          `${dir} is a git checkout in this site. Replacing it unpacks the zip over the ` +
+          `working tree — uncommitted changes, the branch and the repository itself go with it. ` +
+          `This cannot be undone from rexenv.`,
+        danger: true,
+        confirmLabel: "Replace",
+      }))
+    )
+      return;
+    try {
+      install.start(
+        await wpInstallJob(siteId, "plugin", job.slugs, activateOnAdd, job.source, true),
+      );
+    } catch (e) {
+      toastBackendError(e);
+    }
+  };
   const [openRepo, setOpenRepo] = useState<string | null>(null);
   const adoptRepo = async (name: string) => {
     if (
@@ -3248,6 +3331,7 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
             onCancel={() => wpInstallCancel(install.job!.id).catch(toastBackendError)}
             onDismiss={install.dismiss}
             onHoldChange={install.hold}
+            onReplace={(dir) => void replaceExisting(dir)}
           />
         )}
       </div>

@@ -400,6 +400,14 @@ asserts a disabled control), so this is the only place it is seen.
   Repeat for a git asset: `git checkout -b smoke/x` in a terminal, click back, the
   branch chip follows. The Refresh control does the same on demand.
 - [ ] Tools: toggle WP_DEBUG; run a dry-run search-replace (reports a count, no data change).
+- [ ] **Re-upload a zip of a plugin you already have** (19 Aug 2026, #374 — L2 mocks
+  the backend, so the actual overwrite only happens here): Plugins → Upload zip → pick a
+  zip whose plugin is already installed → Install. It must FAIL naming the folder
+  ("<dir> is already installed — nothing was unpacked") and offer **Replace with the
+  uploaded zip**. Press it: the plugin is replaced, the row shows the zip's version, and
+  the site still loads. **Then the guard:** do the same against a plugin rexenv shows a
+  `git` chip for — the confirm must name the working tree and the branch, and cancelling
+  must leave the checkout untouched (`git status` in that folder proves it).
 - [ ] **A PREMIUM plugin's update — badge AND button** (18 Aug 2026, #370. Needs a
   site with a licensed paid plugin; `wp_premium_update_check` plants the vendors'
   capability gate but cannot own a licence, so the install itself only happens here):

@@ -996,6 +996,23 @@ editor" → `open -a <editor> <site folder>`, so the folder lands as a PROJECT) 
   error is the one the user reads instead of our kill. ONE command, not a UI variant:
   CLI/MCP callers just have no listener. The captured `plugin_update` (hard total
   cap) stays for callers with no sink.
+- **Re-uploading a zip of something already installed offers the REPLACE wp-admin
+  offers** (`wp_install_job`'s `force` → `wp <kind> install --force` ·
+  `blockedByExisting` · 19 Aug 2026). wp-cli refuses to unpack over an existing folder
+  and reports it as an ordinary failure whose summary says only `Error: No plugins
+  installed.` — true, unactionable, and exactly what a user sees after picking the zip
+  they meant. The card now reads the reason out of the LOG (`Warning: Destination folder
+  already exists. "…/plugins/<dir>/"`, wp-cli's own line — the folder name is taken from
+  there rather than from the zip's filename, which is routinely `plugin.1.2.3.zip` for a
+  folder called `plugin`), names that folder, and offers "Replace with the uploaded
+  zip", which re-runs the SAME job with `--force`. **`force` is never defaulted on**, and
+  the retry keeps the job's own source — a zip re-runs as a zip, a wp.org job as wp.org,
+  because sending a slug down the zip gate would fail `ensure_zip_paths` and read as a
+  second unrelated error. **One guard wp-admin has no need for:** rexenv knows which of
+  those directories are git checkouts (it put some of them there), and `--force` unpacks
+  over the working tree — uncommitted work, the branch, `.git` itself. A tracked or
+  git-looking target gets a danger confirm naming exactly that; everything else replaces
+  on the click, which is the confirmation wp-admin's own button is.
 - **The install card outlives the install only when it has something left to say**
   (`INSTALL_CARD_LINGER_MS`, `useWpInstall`'s `dismiss`/`hold` · 19 Aug 2026): a
   SUCCESSFUL job clears its card 3s after settling — the toast already announced it and

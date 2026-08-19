@@ -15,6 +15,12 @@
 //   - offering a dismiss on a RUNNING job, which would hide work still
 //     happening — the one thing this card exists to prevent.
 //
+// It also covers the OTHER thing this card has to do with a failure: when
+// wp-cli refused because the destination folder already exists, the card names
+// that folder and offers wp-admin's "Replace current with uploaded" — and the
+// check reads what the button SENDS, since `--force` is the whole difference
+// and nothing on screen shows it.
+//
 // Both panels are driven: the plugins one through the git-panel harness, the
 // themes one through `/dev/ui-review?view=themes`. They share a hook and a
 // component, and that is precisely why the second is checked — a shared
@@ -109,7 +115,41 @@ const dismissBtn = (page) => page.getByRole("button", { name: "Dismiss install r
     await page.close();
   }
 
-  // 5. THE THEMES PANEL. Same hook, same component — which is an argument, not
+  // 5. The wall a re-uploaded zip hits, and the way out.
+  //    wp-cli refuses to unpack over a folder that exists and reports it as an
+  //    ordinary failure whose summary says only "No plugins installed." —
+  //    which is what the report showed. wp-admin answers the same wall with
+  //    "Replace current with uploaded"; the card has to name the folder and
+  //    offer that, and the offer has to actually send `--force`, which is
+  //    invisible on screen: a button that looked right and re-sent the same
+  //    refused command would pass every rendering assertion.
+  {
+    const page = await open("blocked");
+    const text = await page.evaluate(() => document.body.innerText);
+    if (!text.includes("betterlinks-pro is already installed")) {
+      problems.push("blocked: the card does not name the folder that is in the way");
+    }
+    const replace = page.getByRole("button", { name: "Replace with the uploaded zip" });
+    if ((await replace.count()) === 0) {
+      problems.push("blocked: no Replace control — the only way forward is re-uploading and failing again");
+    } else {
+      await replace.click();
+      await page.waitForTimeout(300);
+      const sent = await page.evaluate(() => window.__wpInstalls ?? []);
+      const last = sent[sent.length - 1];
+      if (!last) {
+        problems.push("blocked: Replace started no install at all");
+      } else {
+        if (last.force !== true) problems.push(`blocked: Replace sent force=${JSON.stringify(last.force)} — it re-runs the command wp-cli already refused`);
+        if (last.source !== "zip") problems.push(`blocked: Replace changed the source to ${JSON.stringify(last.source)}`);
+        if (!Array.isArray(last.slugs) || !last.slugs[0]?.endsWith(".zip"))
+          problems.push(`blocked: Replace did not re-send the zip (${JSON.stringify(last.slugs)})`);
+      }
+    }
+    await page.close();
+  }
+
+  // 6. THE THEMES PANEL. Same hook, same component — which is an argument, not
   //    evidence. The rules are re-asserted where a job's `kind` really is
   //    "theme", because "it is the same code" is exactly what someone says
   //    right before one of the two call sites is missing a prop.
@@ -149,5 +189,5 @@ const dismissBtn = (page) => page.getByRole("button", { name: "Dismiss install r
     console.log(`✗ wpinstallcard — ${problems.join("; ")}`);
     process.exit(1);
   }
-  console.log("✓ wpinstallcard — success clears itself, every other outcome waits to be dismissed");
+  console.log("✓ wpinstallcard — success clears itself, failures wait to be dismissed, and a blocked zip offers a real --force replace");
 })();

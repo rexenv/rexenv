@@ -35,6 +35,30 @@ export function installLabels(job: WpInstallState): string[] {
   return job.slugs.map((p) => p.split("/").filter(Boolean).pop() ?? p);
 }
 
+/** The directory wp-cli refused to unpack over, or null.
+ *
+ *  wp-cli prints, verbatim (measured 19 Aug 2026, wp-cli 2.12.0):
+ *
+ *      Warning: Destination folder already exists. "/…/wp-content/plugins/betterlinks-pro/"
+ *      Plugin installation failed.
+ *      Warning: The '/…/betterlinks-pro.2.1.1.zip' plugin could not be found.
+ *      Error: No plugins installed.
+ *
+ *  The summary a user sees is that last line — "No plugins installed." — which
+ *  says what did NOT happen and nothing about why. wp-admin meets the same wall
+ *  and offers "Replace current with uploaded"; the folder name is what turns
+ *  our card into that offer, so it is read from the line that names it rather
+ *  than guessed from the zip's filename (a zip is routinely named
+ *  `plugin.1.2.3.zip` while its folder is `plugin`). */
+export function blockedByExisting(lines: string[]): string | null {
+  const hit = lines.find((l) => l.includes("Destination folder already exists."));
+  if (!hit) return null;
+  const path = /"([^"]+)"/.exec(hit)?.[1];
+  if (!path) return null;
+  const dir = path.split("/").filter(Boolean).pop();
+  return dir ?? null;
+}
+
 const END_COPY: Partial<Record<WpInstallState["status"], string>> = {
   cancelled:
     "Cancelled — the current item may remain installed (inactive); leftover temp files may sit in wp-content/upgrade.",
@@ -48,6 +72,7 @@ export function WpInstallCard({
   onCancel,
   onDismiss,
   onHoldChange,
+  onReplace,
 }: {
   job: WpInstallState;
   lines: string[];
@@ -60,6 +85,9 @@ export function WpInstallCard({
   /** True while the log pane is open — the parent stops the success timer, so
    *  reading the log is never a race against it. */
   onHoldChange?: (held: boolean) => void;
+  /** Re-run this job with `--force`, given the directory that blocked it. Only
+   *  ever offered when wp-cli said that directory is in the way. */
+  onReplace?: (dir: string) => void;
 }) {
   const [logOpen, setLogOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
@@ -93,6 +121,9 @@ export function WpInstallCard({
     ? (lastLine ?? "starting wp-cli…")
     : (job.summary ?? job.error ?? END_COPY[job.status] ?? job.status);
   const failedish = job.status === "failed" || job.status === "timed_out";
+  // Read from the LOG, not from the status: wp-cli reports this as an ordinary
+  // failure, and the reason only exists in the lines above the summary.
+  const blocked = running ? null : blockedByExisting(lines);
   // Every non-ok settle FREEZES the bar where the work stopped ("stopped"
   // renders a pct-width tint) — never full ("error"), never empty ("idle").
   const trackState = running ? "run" : job.status === "ok" ? "ok" : "stopped";
@@ -178,6 +209,21 @@ export function WpInstallCard({
         <div className="mt-0.5 font-mono text-[0.625rem] text-rex-text-muted">
           waiting on wp-cli · no output for {silentFor}s (downloads print nothing until they
           finish — Cancel is safe)
+        </div>
+      )}
+      {/* wp-cli refused because the folder is already there. That is not a
+          failure a user can act on from the summary line ("No plugins
+          installed."), so the card says WHICH folder and offers the same way
+          out wp-admin does. */}
+      {!running && blocked && onReplace && (
+        <div className="mt-1.5 flex items-center gap-2">
+          <span className="min-w-0 flex-1 text-[0.6875rem] text-rex-text-muted">
+            <span className="font-mono text-rex-text">{blocked}</span> is already installed —
+            nothing was unpacked.
+          </span>
+          <button className={BTN} onClick={() => onReplace(blocked)}>
+            Replace with the uploaded zip
+          </button>
         </div>
       )}
       {!running && job.status === "partial" && (

@@ -7,6 +7,12 @@
 //!      snapshot, ~/.wp-cli/cache genuinely works (wp-cli's own line, not an
 //!      assertion of ours),
 //!   3. cancel mid-download: status "cancelled", process group dead,
+//!   5/6. the wall and the way through it: the SAME zip re-uploaded over the
+//!      plugin it just installed must be refused, in the exact words the card
+//!      parses to offer "Replace with the uploaded zip" — and the same job with
+//!      `force` must then succeed. The refusal's wording is a THIRD PARTY's
+//!      (wp-cli's); if it changes, the offer silently stops appearing and only
+//!      this leg says so.
 //!   4. the ZIP source (wp-admin's "upload a zip"): a real archive built from
 //!      an installed plugin dir installs through the SAME job, and the
 //!      documented consequence holds live — wp-cli prints no per-item
@@ -106,22 +112,27 @@ async fn main() {
     let mut failures: Vec<String> = Vec::new();
 
     // Helpers: start a job, collect its output lines, wait for settle.
+    let start_forced =
+        |source: &'static str, slugs: Vec<String>, activate: bool, force: bool| {
+            let handle = handle.clone();
+            async move {
+                wp_install::wp_install_job(
+                    handle.clone(),
+                    handle.state::<AppState>(),
+                    handle.state::<commands::repo::RepoJobs>(),
+                    handle.state::<wp_install::WpInstallJobs>(),
+                    site_id_of(&handle),
+                    "plugin".into(),
+                    source.into(),
+                    slugs,
+                    activate,
+                    force,
+                )
+                .await
+            }
+        };
     let start_from = |source: &'static str, slugs: Vec<String>, activate: bool| {
-        let handle = handle.clone();
-        async move {
-            wp_install::wp_install_job(
-                handle.clone(),
-                handle.state::<AppState>(),
-                handle.state::<commands::repo::RepoJobs>(),
-                handle.state::<wp_install::WpInstallJobs>(),
-                site_id_of(&handle),
-                "plugin".into(),
-                source.into(),
-                slugs,
-                activate,
-            )
-            .await
-        }
+        start_forced(source, slugs, activate, false)
     };
     let start = |slugs: Vec<String>, activate: bool| start_from("wporg", slugs, activate);
     fn site_id_of<R: tauri::Runtime>(h: &tauri::AppHandle<R>) -> String {
@@ -339,6 +350,56 @@ async fn main() {
         if fin.pct != 100 {
             failures.push(format!("job4 final pct {} (want 100)", fin.pct));
         }
+        // ── job 5: the wall a re-upload hits, and `--force` through it ──────
+        // The plugin from job 4 is now installed, so the SAME zip must be
+        // refused — and refused in the exact words the card reads. wp-cli's
+        // summary here says only "No plugins installed.", which is why the UI
+        // parses the log line instead; if that line ever changes, the Replace
+        // control silently stops appearing and only this leg notices.
+        let again = start_from("zip", vec![zip_path.display().to_string()], false)
+            .await
+            .expect("start job 5");
+        let again_lines = collect_lines(&again.id);
+        let again_fin = wait_settled(again.id.clone()).await;
+        let again_ls = again_lines.lock().unwrap().clone();
+        println!("job5 (zip, already installed): status={}", again_fin.status);
+        if again_fin.status == "ok" {
+            failures.push("job5: wp-cli unpacked over an existing plugin without --force".into());
+        }
+        let marker = "Destination folder already exists.";
+        if !again_ls.iter().any(|l| l.contains(marker)) {
+            failures.push(format!(
+                "job5: wp-cli no longer says {marker:?} — the card reads that line to \
+                 offer Replace, so the offer is now dead: {again_ls:?}"
+            ));
+        }
+        // The folder name has to be READABLE out of it — the UI takes the last
+        // path segment of the quoted path, and a message without the quotes
+        // would leave the card naming nothing.
+        if !again_ls
+            .iter()
+            .any(|l| l.contains(marker) && l.contains("\"") && l.contains("hello-dolly"))
+        {
+            failures.push("job5: the marker line no longer carries the quoted folder path".into());
+        }
+
+        // ...and the same job with force = the Replace button's own call.
+        let forced = start_forced("zip", vec![zip_path.display().to_string()], false, true)
+            .await
+            .expect("start job 6");
+        let _forced_lines = collect_lines(&forced.id);
+        let forced_fin = wait_settled(forced.id.clone()).await;
+        println!("job6 (zip, --force): status={}", forced_fin.status);
+        if forced_fin.status != "ok" {
+            failures.push(format!(
+                "job6 status {} (want ok) — --force did not replace the existing plugin",
+                forced_fin.status
+            ));
+        }
+        if !docroot.join("wp-content/plugins/hello-dolly").is_dir() {
+            failures.push("job6: the plugin dir is gone after a forced replace".into());
+        }
+
         // The gate, live: the same job refuses a path that isn't a real zip.
         let bad = start_from("zip", vec![zip_dir.join("nope.zip").display().to_string()], false)
             .await;

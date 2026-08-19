@@ -327,6 +327,33 @@ const WPI_CANCELLED = {
   status: "cancelled",
   summary: null,
 };
+/** `?panel=wp-add&install=blocked`: the zip of a plugin that is ALREADY
+ *  installed. wp-cli refuses to unpack over the folder and reports it as an
+ *  ordinary failure whose summary — "No plugins installed." — says nothing
+ *  about why. The lines below are wp-cli 2.12.0's own, measured on 19 Aug 2026
+ *  against a real site, because the card reads the folder name OUT of them:
+ *  a fixture that paraphrased this would let a parser pass on text wp-cli
+ *  never prints. */
+const WPI_BLOCKED = {
+  ...WPI_BASE,
+  source: "zip" as const,
+  slugs: ["/Users/dev/Downloads/betterlinks-pro.2.1.1.zip"],
+  itemsTotal: 1,
+  itemCursor: 1,
+  pct: 40, // frozen where it stopped
+  status: "failed",
+  summary: null,
+  error: "Error: No plugins installed.",
+};
+const WPI_BLOCKED_LINES = [
+  "Unpacking the package...",
+  "Installing the plugin...",
+  'Warning: Destination folder already exists. "/Users/dev/Sites/dev.rex/wp-content/plugins/betterlinks-pro/"',
+  "Plugin installation failed.",
+  "Warning: The '/Users/dev/Downloads/betterlinks-pro.2.1.1.zip' plugin could not be found.",
+  "Error: No plugins installed.",
+];
+
 /** The ZIP source (`?panel=wp-add&install=zip`): absolute paths, and
  *  `itemCursor: 0` because wp-cli prints no per-item header on this path —
  *  the fixture carries the real backend value so the card's "hide the cursor
@@ -584,7 +611,11 @@ export function DevGitPanel() {
           return key.includes("site-provision-")
             ? PROV_LINES
             : key.includes("wp-install-")
-              ? (params.get("install") === "zip" ? WPI_ZIP_LINES : WPI_LINES)
+              ? (params.get("install") === "blocked"
+                  ? WPI_BLOCKED_LINES
+                  : params.get("install") === "zip"
+                    ? WPI_ZIP_LINES
+                    : WPI_LINES)
               : key.includes("-check")
                 ? CHECK_LINES
                 : TAIL_LINES;
@@ -619,7 +650,9 @@ export function DevGitPanel() {
             : { batch: null, items: [] };
         // `?panel=wp-add` install-card mocks (`&install=running|partial`):
         case "wp_install_active":
-          return params.get("install") === "zip"
+          return params.get("install") === "blocked"
+            ? WPI_BLOCKED
+            : params.get("install") === "zip"
             ? WPI_ZIP
             : params.get("install") === "running"
             ? WPI_RUNNING
@@ -630,8 +663,14 @@ export function DevGitPanel() {
                 : params.get("install") === "cancelled"
                   ? WPI_CANCELLED
                   : null;
-        case "wp_install_job":
+        case "wp_install_job": {
+          // `force` is the whole point of the Replace control and it is not
+          // visible on screen — a button that looked right and sent the same
+          // refused command would pass every rendering check.
+          const w = window as unknown as { __wpInstalls?: unknown[] };
+          (w.__wpInstalls ??= []).push(args);
           return WPI_RUNNING;
+        }
         case "wp_install_cancel":
           return null;
         // `?panel=wp-add` (chips-above-input layout check) mocks:

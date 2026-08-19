@@ -712,6 +712,10 @@ where
                 "wporg".into(),
                 vec![slug],
                 activate,
+                // No `--force` from the CLI: `rex wp plugin install` takes
+                // wp.org slugs, where an existing install is an UPDATE
+                // question, not an overwrite one.
+                false,
             )
             .await?;
             let st = loop {

@@ -9,6 +9,15 @@ evidence cited.
 
 ## Now — actionable code/test work
 
+- [x] **Re-uploading a zip of an installed plugin dead-ended** ✓ 19 Aug 2026, ledger
+  #374, `wpinstallcard.js` (`install=blocked`, plant-proven). wp-cli refuses to unpack
+  over an existing folder and says only `Error: No plugins installed.`; wp-admin offers
+  "Replace current with uploaded" and rexenv offered nothing. The card now reads the
+  folder out of wp-cli's own `Destination folder already exists` line, names it, and
+  offers a replace that re-runs the same job with `--force`. `force` is never defaulted
+  on, and a git-tracked target gets a danger confirm first — an overwrite there takes the
+  working tree, the branch and `.git` with it, which is a hazard wp-admin does not have.
+
 - [x] **The install card stayed forever after a successful install** ✓ 19 Aug 2026,
   `wpinstallcard.js` (L2, plant-proven twice). Success now clears itself after 3s;
   failed/partial/cancelled/timed-out stay and gain an × instead, since that card is
