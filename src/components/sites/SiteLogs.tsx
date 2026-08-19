@@ -264,7 +264,7 @@ export function SiteLogs({
                 className={cn(
                   "rounded-full border px-2 py-0.5 font-mono text-[0.65625rem]",
                   loggingOn
-                    ? "border-rex-border text-status-running"
+                    ? "border-rex-border text-status-running-bright"
                     : "border-rex-border text-rex-text-muted",
                 )}
               >

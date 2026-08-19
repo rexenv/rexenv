@@ -245,6 +245,17 @@ it can:
   unfiltered page. **Plant-proven:** deleting the warning's two call sites reddens three
   of four scenarios by name while `tunnels-plain` stays green — a plant that fails
   everything only proves the view mounted.
+  **The AA scan grew two routes on 19 Aug 2026 (#373), and both convicted real text the
+  day they landed** — which is the honest answer to "does this guard cover its claimed
+  surface". It read `text-rex-*` classes and raw CSS `color:`. It now also reads
+  `text-status-*` (a second Tailwind name for the same tokens — that half found an
+  "Installed" label and four destructive buttons at 4.14–4.45:1 in light) and inline
+  `style={{ color: var(--rex-*) }}`, which is how every chip in the app is coloured —
+  that half found the site-type and Mail-avatar accents at 4.27–4.41:1. Icons are
+  excluded from the inline route by the same structural reader the Tailwind route uses,
+  so a colour drops out on what it SITS on rather than on its name. Beside it,
+  `no_raw_tailwind_hue_reaches_the_ui` closes the route none of this could ever compute:
+  a palette class has no second theme to check.
 - **Cannot prove:** a CSS chain resolves, a WKWebView quirk, real-internet DNS
   propagation, anything needing root or a second device (some examples DO take prompts
   — those are L3-adjacent and marked).

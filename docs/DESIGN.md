@@ -42,6 +42,21 @@ the shipped UI toward one.
   ("…will use 8.2.32 — nothing was running to restart"). The general rule: when an
   action's *effect* depends on state the frontend cannot see, the effect is part of the
   return value, not an inference at the call site.
+- **No raw Tailwind hue, anywhere — and `-bright` is the TEXT variant.** A palette
+  class (`text-amber-400`, `bg-sky-500/15`) has one value, so it cannot follow the
+  theme: it is legible in whichever mode it was written against and washed out in the
+  other. That is not hypothetical — the plugin list's update badge and its `→ 5.7.2`
+  target shipped that way and were reported as unreadable in light mode, while every
+  automated check stayed green, because a hue outside the design system has no
+  light-theme value for the contrast scan to compute. Use `status-*` for
+  running/warning/error, `rex-accent-*` for the hue chips, and add a token rather than
+  reaching for the palette; `no_raw_tailwind_hue_reaches_the_ui` fails the build
+  otherwise. Within a status family the plain token (`--rex-warning`) is the FILL or the
+  dot and the `-bright` one is the text — the light theme darkens the `-bright`
+  variants specifically so text clears AA on light surfaces, so text on the plain
+  variant reads at 4.1–4.4:1 there. `text-white`/`bg-black/50` stay allowed: the brand
+  button's label, the toggle knob and the dialog scrim are deliberately the same colour
+  in both themes.
 - **A search box searches what the row SHOWS.** The installed-plugin filter matched
   the slug while every row is labelled with its title, so typing "loopback" against a
   list plainly reading "rexenv loopback DNS" (slug `rexenv-dns`) answered "No plugins

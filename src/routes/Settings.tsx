@@ -442,7 +442,7 @@ function PhpVersionRow({
                 {busy ? "…" : "Make default"}
               </Button>
             )}
-            <span className="text-[0.71875rem] text-status-running">Installed</span>
+            <span className="text-[0.71875rem] text-status-running-bright">Installed</span>
             <Button variant="ghost" onClick={onExpand}>
               <ChevronRight
                 className={cn("h-3.5 w-3.5 transition-transform", expanded && "rotate-90")}
@@ -454,7 +454,7 @@ function PhpVersionRow({
                 variant="ghost"
                 disabled={busy}
                 onClick={() => onToggle(false)}
-                className="hover:text-status-error"
+                className="hover:text-status-error-bright"
               >
                 {busy ? "…" : "Remove"}
               </Button>
@@ -787,7 +787,7 @@ function DnsSslSetting() {
             <Lock
               className={cn(
                 "h-[18px] w-[18px] flex-none",
-                dns?.caTrusted ? "text-status-running" : "text-rex-text-muted",
+                dns?.caTrusted ? "text-status-running-bright" : "text-rex-text-muted",
               )}
               strokeWidth={1.8}
             />
@@ -1246,7 +1246,7 @@ function BlueprintsSetting() {
                   {b.spec.plugins.length} plugin(s){b.spec.wpDebug ? " · WP_DEBUG" : ""}
                 </div>
               </div>
-              <Button variant="ghost" disabled={remove.isPending} onClick={() => remove.mutate(b.id)} className="hover:text-status-error">
+              <Button variant="ghost" disabled={remove.isPending} onClick={() => remove.mutate(b.id)} className="hover:text-status-error-bright">
                 Delete
               </Button>
             </div>
@@ -1353,7 +1353,7 @@ function UninstallSetting() {
             )
               run.mutate();
           }}
-          className="border border-status-error/50 text-status-error hover:bg-status-error/10"
+          className="border border-status-error/50 text-status-error-bright hover:bg-status-error/10"
         >
           {run.isPending ? "Removing…" : "Remove"}
         </Button>

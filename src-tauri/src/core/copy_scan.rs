@@ -672,6 +672,74 @@ const LINK = "https://example.test/a//b";
         out
     }
 
+    /// Token names used as a text colour through an INLINE STYLE
+    /// (`color: "var(--rex-x)"` in a `.tsx`), which Tailwind never sees either.
+    ///
+    /// The third route into the same hole. The first was raw CSS
+    /// (`::placeholder`, the app's most widespread text, at 2.58:1); the second
+    /// was raw Tailwind hues (the light-mode update badge); this is the one the
+    /// site-type chips, the service groups and the mail avatars all take —
+    /// their colour is a `style` prop because the tint and border travel with
+    /// it, so a Tailwind-only scan sees none of them.
+    fn inline_style_text_tokens() -> Vec<String> {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("repo root")
+            .join("src");
+        fn walk(dir: &std::path::Path, out: &mut Vec<String>) {
+            let Ok(entries) = std::fs::read_dir(dir) else { return };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    walk(&path, out);
+                    continue;
+                }
+                let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+                if ext != "tsx" && ext != "ts" {
+                    continue;
+                }
+                let Ok(raw) = std::fs::read_to_string(&path) else { continue };
+                let stripped = strip_ts_comments(&raw);
+                let all: Vec<&str> = stripped.lines().collect();
+                for (n, &line) in all.iter().enumerate() {
+                    // Icons are excluded the SAME way as for Tailwind classes —
+                    // by asking what the colour sits on, never by trusting a
+                    // token name. `accent-teal` is a `<Shield>` in Onboarding
+                    // and `lock-insecure` is the Tunnels lightbulb; WCAG 1.4.11
+                    // asks 3:1 of those, not 1.4.3's 4.5:1. Exempting them BY
+                    // NAME is the mistake this file already records paying for.
+                    if sits_on_an_icon(&all, n) {
+                        continue;
+                    }
+                    let mut rest = line;
+                    // `color:` only — never `background`/`borderColor`, which are
+                    // the fill and the rule around it rather than the text.
+                    while let Some(i) = rest.find("color:") {
+                        // `backgroundColor:` ends in `color:` too. The character
+                        // before has to be a boundary, or every tint fill would
+                        // be read as a text colour and the check would start
+                        // asserting contrast against things nobody reads.
+                        let boundary = rest[..i]
+                            .chars()
+                            .last()
+                            .is_none_or(|c| !c.is_ascii_alphanumeric() && c != '_');
+                        rest = &rest[i + "color:".len()..];
+                        if !boundary {
+                            continue;
+                        }
+                        let Some(v) = rest.trim_start().strip_prefix("\"var(--rex-") else { continue };
+                        if let Some(name) = v.split(')').next() {
+                            out.push(name.to_string());
+                        }
+                    }
+                }
+            }
+        }
+        let mut out = Vec::new();
+        walk(&root, &mut out);
+        out
+    }
+
     /// **A `text-rex-*` / `bg-rex-*` class that names no token generates NOTHING.**
     ///
     /// Tailwind emits nothing for a key that is not in the theme, so the element
@@ -694,7 +762,16 @@ const LINK = "https://example.test/a//b";
         // debt list is supposed to have. The assertion below is the permanent
         // version: no undefined name, ever, no list to keep honest.
         let mut bad: Vec<String> = Vec::new();
-        for (prefix, role) in [("text-rex-", "text colour"), ("bg-rex-", "background")] {
+        // `status-*` is the SAME token family under a second Tailwind name
+        // (`status.warning-bright` → `--rex-warning-bright`), so a typo there
+        // fails exactly as silently and belongs in the same guard.
+        for (prefix, role) in [
+            ("text-rex-", "text colour"),
+            ("bg-rex-", "background"),
+            ("text-status-", "text colour"),
+            ("bg-status-", "background"),
+            ("border-status-", "border"),
+        ] {
             for (name, file, line) in used_rex_classes(prefix) {
                 if !dark.contains_key(&name) {
                     bad.push(format!(
@@ -712,6 +789,109 @@ const LINK = "https://example.test/a//b";
              a token that exists:\n{}",
             bad.join("\n")
         );
+    }
+
+    /// **No raw Tailwind hue reaches the UI — every colour is a token.**
+    ///
+    /// This is the guard the light-mode report of 19 Aug 2026 asked for. The
+    /// plugin list's update badge was `bg-amber-500/15 text-amber-400`: legible
+    /// on the dark surface it was designed against, washed out on the light one,
+    /// and — the part that matters — INVISIBLE to every check here, because
+    /// `amber-400` is Tailwind's own palette rather than a rex token. The
+    /// contrast guard below computes both themes for tokens; a raw hue has no
+    /// light-theme value to compute, so it silently sat outside the check that
+    /// exists to catch exactly this.
+    ///
+    /// Achromatic classes stay allowed and the reason is not "they are close
+    /// enough": `text-white` on the brand button, the toggle KNOB, and the
+    /// dialog scrim (`bg-black/50`) are the same colour in both themes ON
+    /// PURPOSE — they sit on a fill that does not re-skin, so a token would
+    /// only add a level of indirection that the light theme must then be
+    /// careful NOT to change.
+    #[test]
+    fn no_raw_tailwind_hue_reaches_the_ui() {
+        const HUES: &[&str] = &[
+            "slate", "gray", "zinc", "neutral", "stone", "red", "orange", "amber", "yellow",
+            "lime", "green", "emerald", "teal", "cyan", "sky", "blue", "indigo", "violet",
+            "purple", "fuchsia", "pink", "rose",
+        ];
+        const PROPS: &[&str] = &[
+            "text", "bg", "border", "ring", "fill", "stroke", "from", "to", "via", "divide",
+            "outline", "decoration", "shadow", "caret", "accent",
+        ];
+
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("repo root")
+            .join("src");
+        let mut bad: Vec<String> = Vec::new();
+        let mut scanned = 0usize;
+
+        fn walk(dir: &std::path::Path, out: &mut Vec<(String, String)>) {
+            let Ok(entries) = std::fs::read_dir(dir) else { return };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    walk(&path, out);
+                    continue;
+                }
+                let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+                if ext != "tsx" && ext != "ts" {
+                    continue;
+                }
+                if let Ok(raw) = std::fs::read_to_string(&path) {
+                    out.push((path.display().to_string(), strip_ts_comments(&raw)));
+                }
+            }
+        }
+        let mut files = Vec::new();
+        walk(&root, &mut files);
+        assert!(files.len() > 20, "only {} frontend files found — the walk is broken", files.len());
+
+        for (file, text) in &files {
+            scanned += 1;
+            for (n, line) in text.lines().enumerate() {
+                for prop in PROPS {
+                    for hue in HUES {
+                        let needle = format!("{prop}-{hue}-");
+                        let mut rest = line;
+                        while let Some(i) = rest.find(&needle) {
+                            // A class boundary before it, and a DIGIT after —
+                            // `border-red-500` is a hue, `bg-rex-accent-red-bg`
+                            // is a token and must not be convicted for
+                            // containing a colour word.
+                            let before = rest[..i].chars().last();
+                            let boundary =
+                                before.is_none_or(|c| !c.is_ascii_alphanumeric() && c != '-');
+                            let after = &rest[i + needle.len()..];
+                            let numeric = after.chars().next().is_some_and(|c| c.is_ascii_digit());
+                            if boundary && numeric {
+                                let shade: String =
+                                    after.chars().take_while(|c| c.is_ascii_digit()).collect();
+                                bad.push(format!(
+                                    "  {file}:{}  {prop}-{hue}-{shade}",
+                                    n + 1
+                                ));
+                            }
+                            rest = &rest[i + needle.len()..];
+                        }
+                    }
+                }
+            }
+        }
+        bad.sort();
+        assert!(
+            bad.is_empty(),
+            "{} raw Tailwind hue(s) in the UI. A palette class has ONE value, so it cannot \
+             follow the theme — it is legible in whichever mode it was written against and \
+             washed out in the other, and no guard here can compute it because there is no \
+             light-theme value to read. Use the token that carries both (`status-*` for \
+             running/warning/error, `rex-accent-*` for the hue chips), or add the token if \
+             none fits:\n{}",
+            bad.len(),
+            bad.join("\n")
+        );
+        assert!(scanned > 20, "only {scanned} files scanned");
     }
 
     /// **Text a user reads meets WCAG AA (4.5:1) against the surface it sits on,
@@ -797,6 +977,19 @@ const LINK = "https://example.test/a//b";
                 .filter(|(_, _, _, icon)| !icon)
                 .map(|(n, _, _, _)| n)
                 .collect();
+        // ...plus the same tokens reached through the `status-*` Tailwind name.
+        // This was the hole the light-mode update badge fell through, and it had
+        // TWO halves: the badge used a raw Tailwind hue (`text-amber-400`), which
+        // is outside the design system entirely, and the fix moved it to
+        // `text-status-warning-bright` — a real token this scan still could not
+        // see, because it only ever looked for `text-rex-`. Moving a colour into
+        // the system has to move it into the guard, or the repair is invisible
+        // to the thing that was supposed to catch it.
+        for (name, _, _, icon) in used_rex_classes_classified("text-status-") {
+            if !icon {
+                text_tokens.insert(name);
+            }
+        }
         // ...plus text colours set in RAW CSS rather than through Tailwind.
         // This was a hole and it was load-bearing: `globals.css` styled EVERY
         // input's `::placeholder` with `--rex-text-faint` — the app's most
@@ -807,6 +1000,18 @@ const LINK = "https://example.test/a//b";
         for name in raw_css_text_tokens() {
             text_tokens.insert(name);
         }
+        // ...plus the ones set inline in a `style` prop (the chips).
+        for name in inline_style_text_tokens() {
+            text_tokens.insert(name);
+        }
+        // The BACKGROUND set stays the surfaces (`bg-rex-*`). `bg-status-*` is
+        // deliberately not added, and the reason is the same one the rgba
+        // exemptions rest on: the status fills are either translucent tints
+        // (`warning-bg` and friends — they composite over the surface beneath,
+        // and text-on-that-surface is what this check already computes) or
+        // SOLID dots and pill fills that never host text. Adding them produced
+        // 16 pairings nothing renders — muted body text on a solid green dot —
+        // which is how a cross-product turns into noise nobody reads.
         let bg_tokens: std::collections::BTreeSet<String> =
             used_rex_classes("bg-rex-").into_iter().map(|(n, _, _)| n).collect();
         assert!(!text_tokens.is_empty() && !bg_tokens.is_empty(), "no classes found — the walk is broken");

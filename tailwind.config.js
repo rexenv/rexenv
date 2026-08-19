@@ -32,6 +32,12 @@ export default {
           "accent-periwinkle": "var(--rex-accent-periwinkle)",
           "accent-teal": "var(--rex-accent-teal)",
           "accent-amber": "var(--rex-accent-amber)",
+          // The tints beside the accent hues. They existed as CSS vars only,
+          // so a chip needing a fill reached for a raw Tailwind hue instead —
+          // which is how `bg-sky-500/15` (fine in dark, washed out in light)
+          // got onto the git chips and stayed invisible to the contrast guard.
+          "accent-blue-bg": "var(--rex-accent-blue-bg)",
+          "accent-blue-border": "var(--rex-accent-blue-border)",
           hover: "var(--rex-hover)",
           "hover-strong": "var(--rex-hover-strong)",
           active: "var(--rex-active)",

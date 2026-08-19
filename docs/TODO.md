@@ -9,6 +9,17 @@ evidence cited.
 
 ## Now — actionable code/test work
 
+- [x] **Light-mode: the update badge and its target version were barely readable** ✓
+  19 Aug 2026, ledger #373. Reported with a screenshot. Not a bad token — no token:
+  `bg-amber-500/15 text-amber-400`, a raw Tailwind hue, which has one value and cannot
+  follow the theme. 38 of them were in the tree (all in the WordPress manager), now
+  tokens, with `-bright` wherever the colour is text. Two more routes into the same hole
+  fell out of the fix and each carried real defects: `text-status-*` (an "Installed"
+  label, a log chip, four destructive buttons at 4.14–4.45:1 in light) and inline
+  `style={{ color: var(--rex-*) }}` (the site-type and Mail-avatar accents at
+  4.27–4.41:1). All repaired; the AA scan now reads all three routes and
+  `no_raw_tailwind_hue_reaches_the_ui` bans the palette outright, plant-proven.
+
 - [x] **Plugin search matched the slug, not the name on the row** ✓ 19 Aug 2026,
   ledger #372, `wpsearch.js` (L2, plant-proven both directions). Reported with a
   screenshot: "loopback" against a list reading `rexenv loopback DNS` answered "No

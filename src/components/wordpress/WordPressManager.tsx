@@ -706,7 +706,7 @@ function NetworkPanel({ siteId, mode, domain }: { siteId: string; mode: Multisit
                   {s.url}
                 </span>
                 {s.deleted && (
-                  <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[0.625rem] text-amber-400">
+                  <span className="rounded-full bg-status-warning-bg px-1.5 py-0.5 text-[0.625rem] text-status-warning-bright">
                     archived
                   </span>
                 )}
@@ -717,7 +717,7 @@ function NetworkPanel({ siteId, mode, domain }: { siteId: string; mode: Multisit
                   <ExternalLink className="h-3.5 w-3.5" />
                 </IconBtn>
                 <button
-                  className={BTN + " hover:border-red-500/60 hover:text-red-400 disabled:hover:border-rex-border disabled:hover:text-rex-text"}
+                  className={BTN + " hover:border-status-error-border hover:text-status-error-bright disabled:hover:border-rex-border disabled:hover:text-rex-text"}
                   disabled={sitesRun.isPending || s.id === "1"}
                   title={s.id === "1" ? "Can't delete the main site" : "Delete sub-site"}
                   onClick={async () => {
@@ -751,13 +751,13 @@ function NetworkPanel({ siteId, mode, domain }: { siteId: string; mode: Multisit
                 >
                   <span className="min-w-0 flex-1 truncate text-[0.78125rem] text-rex-text">{p.name}</span>
                   {net && (
-                    <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[0.65625rem] font-medium text-emerald-400">
+                    <span className="rounded-full bg-status-running-bg px-2 py-0.5 text-[0.65625rem] font-medium text-status-running-bright">
                       Network active
                     </span>
                   )}
                   {immutable ? (
                     <span
-                      className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[0.65625rem] font-medium text-emerald-400"
+                      className="rounded-full bg-status-running-bg px-2 py-0.5 text-[0.65625rem] font-medium text-status-running-bright"
                       title="Loads automatically on every site (must-use / drop-in) — nothing to toggle."
                     >
                       {p.status === "must-use" ? "Must-use" : "Drop-in"}
@@ -2336,7 +2336,7 @@ function WpOrgThemeHit({ t, onPick }: { t: WpOrgTheme; onPick: () => void }) {
       <span className="flex flex-none items-center gap-2 font-mono text-[0.65625rem] text-rex-text-muted">
         {t.rating > 0 && (
           <span className="flex items-center gap-0.5">
-            <Star className="h-3 w-3 fill-current text-amber-400" />
+            <Star className="h-3 w-3 fill-current text-status-warning-bright" />
             {(t.rating / 20).toFixed(1)}
           </span>
         )}
@@ -2718,7 +2718,7 @@ function ThemeCard({
             <button
               type="button"
               onClick={onGitClick}
-              className="rounded-full bg-sky-500/15 px-1.5 py-0.5 font-mono text-[0.625rem] font-medium text-sky-400 transition-colors hover:bg-sky-500/25"
+              className="rounded-full bg-rex-accent-blue-bg px-1.5 py-0.5 font-mono text-[0.625rem] font-medium text-rex-accent-blue transition-colors hover:bg-rex-accent-blue-border"
               title="Git checkout — click for repo state"
             >
               git
@@ -2728,20 +2728,20 @@ function ThemeCard({
             <button
               type="button"
               onClick={onGitClick}
-              className="rounded-full border border-dashed border-sky-400/40 px-1.5 py-0.5 font-mono text-[0.625rem] font-medium text-sky-400/80 transition-colors hover:border-sky-400 hover:text-sky-400"
+              className="rounded-full border border-dashed border-rex-accent-blue-border px-1.5 py-0.5 font-mono text-[0.625rem] font-medium text-rex-accent-blue transition-colors hover:border-rex-accent-blue hover:text-rex-accent-blue"
               title="Looks like a git checkout — click to manage it in rexenv"
             >
               git?
             </button>
           )}
           {active && (
-            <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[0.625rem] font-medium text-emerald-400">
+            <span className="flex items-center gap-1 rounded-full bg-status-running-bg px-1.5 py-0.5 text-[0.625rem] font-medium text-status-running-bright">
               <Check className="h-3 w-3" />
               Active
             </span>
           )}
           {updatable && !active && (
-            <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[0.625rem] font-medium text-amber-400">
+            <span className="rounded-full bg-status-warning-bg px-1.5 py-0.5 text-[0.625rem] font-medium text-status-warning-bright">
               update
             </span>
           )}
@@ -2750,7 +2750,7 @@ function ThemeCard({
           {t.title && <>{t.name} · </>}v{t.version}
           {/* Drawn only from the checked pass's own target — never guessed
               from the badge. */}
-          {target && <span className="text-amber-400/90"> → {target}</span>}
+          {target && <span className="text-status-warning-bright"> → {target}</span>}
         </div>
         {updating && (
           <div className="flex flex-col gap-1">
@@ -2777,7 +2777,7 @@ function ThemeCard({
             </button>
           )}
           <button
-            className={BTN + " hover:border-red-500/60 hover:text-red-400 disabled:hover:border-rex-border disabled:hover:text-rex-text"}
+            className={BTN + " hover:border-status-error-border hover:text-status-error-bright disabled:hover:border-rex-border disabled:hover:text-rex-text"}
             disabled={busy || active}
             onClick={onDelete}
             title={active ? "Can't delete the active theme" : "Delete"}
@@ -2878,7 +2878,7 @@ function WpOrgHit({ p, onPick }: { p: WpOrgPlugin; onPick: () => void }) {
       <span className="flex flex-none items-center gap-2 font-mono text-[0.65625rem] text-rex-text-muted">
         {p.rating > 0 && (
           <span className="flex items-center gap-0.5">
-            <Star className="h-3 w-3 fill-current text-amber-400" />
+            <Star className="h-3 w-3 fill-current text-status-warning-bright" />
             {(p.rating / 20).toFixed(1)}
           </span>
         )}
@@ -3273,7 +3273,7 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
             Update
           </button>
           <button
-            className={BTN + " hover:border-red-500/60 hover:text-red-400"}
+            className={BTN + " hover:border-status-error-border hover:text-status-error-bright"}
             disabled={busy}
             onClick={async () => {
               if (await confirmDelete(`Delete ${selNames.length} plugin(s)?`, selNames))
@@ -3587,7 +3587,7 @@ function PluginRow({
             <button
               type="button"
               onClick={onGitClick}
-              className="rounded-full bg-sky-500/15 px-1.5 py-0.5 font-mono text-[0.625rem] font-medium text-sky-400 transition-colors hover:bg-sky-500/25"
+              className="rounded-full bg-rex-accent-blue-bg px-1.5 py-0.5 font-mono text-[0.625rem] font-medium text-rex-accent-blue transition-colors hover:bg-rex-accent-blue-border"
               title="Git checkout — click for repo state"
             >
               git
@@ -3597,14 +3597,14 @@ function PluginRow({
             <button
               type="button"
               onClick={onGitClick}
-              className="rounded-full border border-dashed border-sky-400/40 px-1.5 py-0.5 font-mono text-[0.625rem] font-medium text-sky-400/80 transition-colors hover:border-sky-400 hover:text-sky-400"
+              className="rounded-full border border-dashed border-rex-accent-blue-border px-1.5 py-0.5 font-mono text-[0.625rem] font-medium text-rex-accent-blue transition-colors hover:border-rex-accent-blue hover:text-rex-accent-blue"
               title="Looks like a git checkout — click to manage it in rexenv"
             >
               git?
             </button>
           )}
           {updatable && (
-            <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[0.625rem] font-medium text-amber-400">
+            <span className="rounded-full bg-status-warning-bg px-1.5 py-0.5 text-[0.625rem] font-medium text-status-warning-bright">
               update
             </span>
           )}
@@ -3615,7 +3615,7 @@ function PluginRow({
           {p.version && <span> · v{p.version}</span>}
           {/* The arrow only appears once the update-check pass supplied a real
               target — never invent one from the badge alone. */}
-          {p.version && target && <span className="text-amber-400/90"> → {target}</span>}
+          {p.version && target && <span className="text-status-warning-bright"> → {target}</span>}
         </div>
       </div>
       {/* Updating beats the button: the click is spent, and what the user
@@ -3664,7 +3664,7 @@ function PluginRow({
           BTN,
           immutable
             ? "cursor-not-allowed opacity-45"
-            : "hover:border-red-500/60 hover:text-red-400",
+            : "hover:border-status-error-border hover:text-status-error-bright",
         )}
         disabled={busy || immutable}
         onClick={onDelete}

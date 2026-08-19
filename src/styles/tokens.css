@@ -256,9 +256,9 @@
 
   /* ── Accent hues (darkened for AA chip/badge text on light) ── */
   --rex-accent-blue: #2e6e93; /* 1% darker than the comp: #2e6f94 read 4.49:1 on surface-3, one hundredth under AA (#337) */
-  --rex-accent-red: #bb3f38;
+  --rex-accent-red: #b63d37; /* 4.41:1 on surface-3 before — the same one-hundredths miss as accent-blue below (#372) */
   --rex-accent-periwinkle: #5a5fae;
-  --rex-accent-teal: #177a66;
+  --rex-accent-teal: #167562; /* 4.27:1 before, and it was NOT icon-only: Mail avatars and the Services group title read it as text */
 
   /* ── Toggle tracks ── */
   --rex-toggle-off: #d0d5dd;
