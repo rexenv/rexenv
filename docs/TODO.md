@@ -14,7 +14,9 @@ evidence cited.
   over an existing folder and says only `Error: No plugins installed.`; wp-admin offers
   "Replace current with uploaded" and rexenv offered nothing. The card now reads the
   folder out of wp-cli's own `Destination folder already exists` line, names it, and
-  offers a replace that re-runs the same job with `--force`. `force` is never defaulted
+  offers a replace that re-runs the same job with `--force`; `wp_install_stream_check`
+  jobs 5/6 ran green — refused in the exact words the card parses, then replaced with
+  force. `force` is never defaulted
   on, and a git-tracked target gets a danger confirm first — an overwrite there takes the
   working tree, the branch and `.git` with it, which is a hazard wp-admin does not have.
 
@@ -52,7 +54,10 @@ evidence cited.
   the same defect one step earlier:** its cards were labelled by SLUG because `WpTheme`
   carried no title, so a filter added there would have had nothing but the slug to
   match. ✓ Closed 19 Aug 2026 in the follow-up commit: `title` through `theme_list` →
-  DTO → card, slug kept beside it, `themes-titles` (L2) plant-proven twice. A theme
+  DTO → card, slug kept beside it, `themes-titles` (L2) plant-proven twice, and
+  `wp_themes_check` ran green against real wp-cli ("Twenty Twenty" for the slug
+  `twentytwenty` — non-empty AND different from the slug, so it cannot pass on a
+  fallback). A theme
   FILTER was declined deliberately — 3–5 themes is not a list you search.
 
 - [x] **Search on the Tunnels page** ✓ 19 Aug 2026, ledger #371, L2 plant-proven.
