@@ -49,6 +49,7 @@ import { useEffect, useState } from "react";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { mockAdminerStatus, mockPhpVersions } from "@/lib/mock";
 import { Tunnels as TunnelsScreen } from "@/routes/Tunnels";
+import { ThemesPanel as ThemesScreen } from "@/components/wordpress/WordPressManager";
 import { StatusPill } from "@/components/common/StatusPill";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { DatabaseTab } from "@/components/sites/DatabaseTab";
@@ -1016,6 +1017,19 @@ export function DevUiReview() {
         // matters indistinguishable in a screenshot.
         case "wp_default_creds":
           return false;
+        // The themes grid. Titles that are NOT the slug, plus one theme whose
+        // header carries no name at all — a fixture where every title equalled
+        // its slug would render identically whether the card read the title or
+        // fell back to it, which is the whole thing under test.
+        case "wp_themes":
+          return [
+            { name: "twentytwentyfive", title: "Twenty Twenty-Five", status: "active", version: "1.5", update: "none", updateVersion: "", screenshot: null },
+            { name: "twentytwentyfour", title: "Twenty Twenty-Four", status: "inactive", version: "1.5", update: "available", updateVersion: "1.6", screenshot: null },
+            { name: "custom-child", title: "", status: "inactive", version: "1.0", update: "none", updateVersion: "", screenshot: null },
+          ];
+        case "repo_assets":
+        case "repo_unmanaged":
+          return [];
         case "list_editors":
           return params.get("view") === "openin" ? mockEditors() : [];
         case "list_browsers":
@@ -1075,6 +1089,11 @@ export function DevUiReview() {
           </div>
         )}
         {view === "openin" && <OpenInView />}
+        {view === "themes" && (
+          <div className="rounded-xl border border-rex-border bg-rex-surface-1 p-4">
+            <ThemesScreen siteId="s-ea" />
+          </div>
+        )}
         {view === "tunnels" && (
           // The REAL route, in a frame the height of the app's own region, so
           // the sections scroll exactly as they do in the app.

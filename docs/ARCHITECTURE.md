@@ -963,6 +963,15 @@ editor" → `open -a <editor> <site folder>`, so the folder lands as a PROJECT) 
   back**: if the context run fails for any reason other than the clock, the plain list
   runs, so vendor code dying on an unseen site costs the premium rows and never all
   the badges.
+- **A row is labelled with the thing's own NAME, and keeps its slug** (`WpPlugin::title`,
+  `WpTheme::title` — the theme half added 19 Aug 2026). wp-admin says "Twenty
+  Twenty-Five"; rexenv said `twentytwentyfive`, because `title` is not in wp-cli's
+  DEFAULT field set for themes and the argv never asked for it. Both lists now show the
+  header name with the slug beside it rather than instead of it: the slug is the folder
+  name, the argument every `theme`/`plugin` command takes, and what a person greps for.
+  An empty title (a theme whose header has none) falls back to the slug — never a blank
+  label. This is also what makes the plugin FILTER honest, since it matches the label
+  the row displays as well as the slug (#372).
 - **A finished update SETTLES both caches before it refetches** (`settleAfterUpdate`).
   The checked pass on a real site takes tens of seconds to over a minute (every
   plugin against wp.org, plus every premium plugin's own API), so a check that

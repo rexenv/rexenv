@@ -731,6 +731,10 @@ export interface WpTheme {
   update: string; // none | available | …
   /** The version the update installs; empty until the update-check pass lands. */
   updateVersion: string;
+  /** The theme header's name ("Twenty Twenty-Five" for `twentytwentyfive`);
+   *  may be empty for a theme whose header has none — the card falls back to
+   *  the slug. */
+  title: string;
   /** The theme's screenshot.* preview as a `data:` URL; null when it has none. */
   screenshot?: string | null;
 }

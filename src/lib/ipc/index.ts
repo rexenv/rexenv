@@ -996,9 +996,14 @@ export async function wpPluginDelete(id: string, names: string[]): Promise<void>
 // ── WordPress Manager — themes (§6.2) ───────────────────────────────────────
 
 const mockWpThemes: WpTheme[] = [
-  { name: "twentytwentyfive", status: "active", version: "1.2", update: "none", updateVersion: "" },
-  { name: "twentytwentyfour", status: "inactive", version: "1.3", update: "available", updateVersion: "1.4" },
-  { name: "twentytwentythree", status: "inactive", version: "1.6", update: "none", updateVersion: "" },
+  // Titles that are NOT the slug, because that is the shape production has —
+  // a fixture where the two match would render identically whether the card
+  // reads the title or falls back to the slug.
+  { name: "twentytwentyfive", title: "Twenty Twenty-Five", status: "active", version: "1.2", update: "none", updateVersion: "" },
+  { name: "twentytwentyfour", title: "Twenty Twenty-Four", status: "inactive", version: "1.3", update: "available", updateVersion: "1.4" },
+  // A theme whose header carries no name: the card must fall back to the slug
+  // rather than rendering a blank label.
+  { name: "custom-child", title: "", status: "inactive", version: "1.6", update: "none", updateVersion: "" },
 ];
 
 /** List a site's themes (`wp theme list`), each with its screenshot as a

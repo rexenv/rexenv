@@ -1477,6 +1477,14 @@ pub struct WpTheme {
     /// a real update check fills it, so the fast list shows no arrow.
     #[serde(default, rename = "updateVersion", alias = "update_version")]
     pub update_version: String,
+    /// The theme header's `Theme Name:` — "Twenty Twenty-Five" for the
+    /// stylesheet `twentytwentyfive`. Same rule as [`WpPlugin::title`]: it is
+    /// what the card is LABELLED with, so the slug stays beside it rather than
+    /// being replaced (the slug is the folder name, and what `theme activate`
+    /// takes). May be empty for a theme whose header has none — the UI falls
+    /// back to the slug then.
+    #[serde(default)]
+    pub title: String,
     #[serde(default)]
     pub screenshot: Option<String>,
 }
@@ -1516,7 +1524,8 @@ pub fn theme_list(
 ) -> Result<Vec<WpTheme>> {
     // The field list is EXPLICIT because `update_version` is not in wp-cli's
     // default set for themes — without it the arrow would silently never show.
-    let mut args = vec!["theme", "list", "--fields=name,status,update,update_version,version"];
+    let mut args =
+        vec!["theme", "list", "--fields=name,status,update,update_version,version,title"];
     if !check_updates {
         args.push("--skip-update-check");
     }
@@ -3182,6 +3191,52 @@ pub fn wp_config_path(docroot: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The theme row's shape, CAPTURED from a real site (19 Aug 2026, wp-cli
+    /// 2.12.0 against `tr.rex`) rather than written by hand: the field list is
+    /// explicit in `theme_list`, so what proves it is what WP-CLI actually
+    /// answers with. `title` is the theme header's own name — the card is
+    /// labelled with it, and a fixture whose title equalled its slug would
+    /// render identically whether the label read the title or fell back.
+    #[test]
+    fn a_theme_row_carries_the_header_name_beside_the_slug() {
+        let rows: Vec<WpTheme> = serde_json::from_str(
+            r#"[
+                {"name":"twentytwentyfive","status":"active","update":"none",
+                 "update_version":"","version":"1.5","title":"Twenty Twenty-Five"},
+                {"name":"Divi","status":"inactive","update":"none",
+                 "update_version":"","version":"5.9.0","title":"Divi"},
+                {"name":"custom-child","status":"inactive","update":false,
+                 "version":"1.0"}
+            ]"#,
+        )
+        .expect("the captured theme-list shape must parse");
+        assert_eq!(rows.len(), 3);
+        assert_eq!(rows[0].name, "twentytwentyfive");
+        assert_eq!(rows[0].title, "Twenty Twenty-Five", "the human name is what the card shows");
+        // A theme whose directory IS its name — the two are allowed to match.
+        assert_eq!(rows[1].title, "Divi");
+        // No title at all: empty, never a parse failure. The card falls back to
+        // the slug, which is the pre-title behaviour rather than a blank label.
+        assert!(rows[2].title.is_empty(), "a missing title must read as empty");
+        assert_eq!(rows[2].update, "none", "the boolean-update tolerance still holds");
+    }
+
+    /// The field list is EXPLICIT for themes (wp-cli's default set has neither
+    /// `update_version` nor `title`), so a field dropped from that string is a
+    /// column that silently comes back empty — the exact trap the arrow hit
+    /// once already.
+    #[test]
+    fn the_theme_field_list_still_asks_for_every_column_the_ui_reads() {
+        let src = include_str!("wordpress.rs");
+        let line = src
+            .lines()
+            .find(|l| l.contains("\"theme\", \"list\""))
+            .expect("the theme_list argv moved — this guard is now reading nothing");
+        for field in ["name", "status", "update", "update_version", "version", "title"] {
+            assert!(line.contains(field), "`{field}` is no longer requested from wp-cli");
+        }
+    }
 
     /// A two-plugin `wp plugin update` transcript. Every line is the string
     /// WP-CLI really prints, checked against BOTH ends of the pipeline rather

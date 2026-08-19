@@ -124,6 +124,10 @@ const SCENARIOS = [
   ["adminer-current", "view=adminer&adminer=current", []],
   ["adminer-pending", "view=adminer&adminer=pending", []],
   ["adminer-fresh", "view=adminer&adminer=fresh", []],
+  // The themes grid labels each card with the theme's own name, the way
+  // wp-admin does — and keeps the slug, because that is the folder name and
+  // what `theme activate` takes. The third fixture row has no title at all.
+  ["themes-titles", "view=themes", []],
   // The Tunnels filter. Every other search box in this app hides rows that are
   // still exactly where they were; this one can hide a site the whole internet
   // can reach right now, so three of these four scenarios are about what the
@@ -641,6 +645,32 @@ const PROBES = {
   },
 };
 
+/** Each theme card shows the theme's NAME, with its slug still on the card —
+ *  and falls back to the slug when the header has no name. */
+PROBES.themeTitles = async (page) =>
+  page.evaluate(() => {
+    const problems = [];
+    const text = document.body.innerText;
+    // The label a person reads.
+    for (const title of ["Twenty Twenty-Five", "Twenty Twenty-Four"]) {
+      if (!text.includes(title)) problems.push(`the card is not labelled "${title}"`);
+    }
+    // The slug is NOT dropped: it is the directory name and the argument every
+    // theme command takes, so replacing the label must not remove it.
+    for (const slug of ["twentytwentyfive", "twentytwentyfour"]) {
+      if (!text.includes(slug)) problems.push(`the slug "${slug}" vanished from its card`);
+    }
+    // No title in the header → the slug is the label, never a blank line.
+    if (!text.includes("custom-child")) problems.push("the untitled theme rendered no label at all");
+    // Three cards, or the assertions above could be passing on one row.
+    // The version line reads "<slug> · v1.5" on a titled card and a bare
+    // "v1.0" on the untitled one, so the counter accepts both — a /^v/
+    // count sees only the fallback row and calls the fixture thin.
+    const cards = text.split("\n").filter((l) => /(^|·\s*)v\d/.test(l.trim())).length;
+    if (cards < 3) problems.push(`only ${cards} version lines rendered — fixture too thin`);
+    return problems;
+  });
+
 /** The Tunnels filter, per scenario. The assertion that matters is the third
  *  one in each list: a hidden LIVE row must be announced. */
 PROBES.tunnelsFilter = async (page, name) =>
@@ -706,6 +736,7 @@ function probeFor(name) {
   if (name === "php-versions") return PROBES["php-versions"];
   if (name.startsWith("adminer-")) return PROBES.adminerVersion;
   if (name.startsWith("tunnels-")) return PROBES.tunnelsFilter;
+  if (name === "themes-titles") return PROBES.themeTitles;
   if (name.startsWith("agents-mail")) return PROBES.agents;
   return null;
 }

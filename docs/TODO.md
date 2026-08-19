@@ -14,11 +14,12 @@ evidence cited.
   screenshot: "loopback" against a list reading `rexenv loopback DNS` answered "No
   plugins match" — the filter read `name` (the slug, `rexenv-dns`) while every row is
   labelled with `title`. Matches both now.
-  **Themes checked in the same pass — not the same bug, but worth knowing:** the themes
-  panel has NO filter, and its cards are labelled by SLUG (`twentytwentyfive`, where
-  wp-admin says "Twenty Twenty-Five") because `WpTheme` carries no title. `wp theme list
-  --fields=name,title` supplies one, so adding a title is a small change — and it is a
-  PREREQUISITE for any theme filter, or that filter ships with the bug above on day one.
+  **Themes checked in the same pass — not the same bug (that panel has no filter), but
+  the same defect one step earlier:** its cards were labelled by SLUG because `WpTheme`
+  carried no title, so a filter added there would have had nothing but the slug to
+  match. ✓ Closed 19 Aug 2026 in the follow-up commit: `title` through `theme_list` →
+  DTO → card, slug kept beside it, `themes-titles` (L2) plant-proven twice. A theme
+  FILTER was declined deliberately — 3–5 themes is not a list you search.
 
 - [x] **Search on the Tunnels page** ✓ 19 Aug 2026, ledger #371, L2 plant-proven.
   Name, domain, or the public URL — the last one because this is the only screen that can

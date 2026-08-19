@@ -2346,7 +2346,7 @@ function WpOrgThemeHit({ t, onPick }: { t: WpOrgTheme; onPick: () => void }) {
   );
 }
 
-function ThemesPanel({ siteId }: { siteId: string }) {
+export function ThemesPanel({ siteId }: { siteId: string }) {
   const qc = useQueryClient();
   const [slug, setSlug] = useState("");
   const [activateOnAdd, setActivateOnAdd] = useState(false);
@@ -2690,7 +2690,7 @@ function ThemeCard({
         {t.screenshot ? (
           <img
             src={t.screenshot}
-            alt={`${t.name} preview`}
+            alt={`${t.title || t.name} preview`}
             loading="lazy"
             className="h-full w-full object-cover"
           />
@@ -2708,7 +2708,12 @@ function ThemeCard({
       </div>
       <div className="flex flex-1 flex-col gap-2 p-3">
         <div className="flex items-center gap-2">
-          <span className="min-w-0 flex-1 truncate text-[0.8125rem] font-medium text-rex-text">{t.name}</span>
+          {/* The theme's own name, like wp-admin — the slug moves to the mono
+              line below rather than disappearing: it is the folder name, what
+              `theme activate` takes, and what a person greps for. */}
+          <span className="min-w-0 flex-1 truncate text-[0.8125rem] font-medium text-rex-text">
+            {t.title || t.name}
+          </span>
           {git && (
             <button
               type="button"
@@ -2741,8 +2746,8 @@ function ThemeCard({
             </span>
           )}
         </div>
-        <div className="font-mono text-[0.6875rem] text-rex-text-muted">
-          v{t.version}
+        <div className="truncate font-mono text-[0.6875rem] text-rex-text-muted">
+          {t.title && <>{t.name} · </>}v{t.version}
           {/* Drawn only from the checked pass's own target — never guessed
               from the badge. */}
           {target && <span className="text-amber-400/90"> → {target}</span>}

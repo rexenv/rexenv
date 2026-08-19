@@ -120,6 +120,19 @@ async fn main() {
     assert!(out.status.success(), "install {NEW}: {}", String::from_utf8_lossy(&out.stderr));
     let list = wordpress::theme_list(&php, &wp, &docroot, "wp-content", false).expect("list");
     println!("after install: {NEW} status = {:?}", status(&list, NEW));
+    // The card is labelled with the theme's own name, so the field has to
+    // arrive from wp-cli — `title` is NOT in its default set for themes, which
+    // is the same silent-empty trap `update_version` fell into. A lib test can
+    // only prove the captured shape parses; this is the half that proves the
+    // ARGV still asks for it.
+    let row = list.iter().find(|t| t.name == NEW).expect("the theme we just installed");
+    assert!(!row.title.is_empty(), "{NEW} came back with no title — the field list dropped it");
+    assert_ne!(
+        row.title, row.name,
+        "the title equals the slug, so this assertion could not tell a populated field \
+         from a fallback"
+    );
+    println!("✓ title arrives from wp-cli: {:?} (slug {:?})", row.title, row.name);
     assert_eq!(status(&list, NEW).as_deref(), Some("inactive"), "theme not installed/inactive");
 
     // Activate it → flips to active; whatever was active flips off.
