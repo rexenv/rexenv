@@ -98,7 +98,11 @@ async fn main() -> ExitCode {
     let nginx = services::start_nginx(&*plat, &nginx_bin, &conf, &prefix).expect("start nginx");
     let mut nginx = Reaped::new(nginx, HTTP_PORT, "nginx");
 
-    thread::sleep(Duration::from_millis(800));
+    // Readiness, not a timer — see `common::await_listening` for the incident
+    // this pattern produced (a flat sleep loses under CPU contention, and the
+    // failure then reads as the SERVER being broken rather than as too-early).
+    common::await_listening(FPM_PORT, "php-fpm", None);
+    common::await_listening(HTTP_PORT, "nginx", None);
     checks.is("php-fpm listening", services::fpm_running(FPM_PORT), "port closed");
     checks.is("nginx listening", services::nginx_running(HTTP_PORT), "port closed");
 

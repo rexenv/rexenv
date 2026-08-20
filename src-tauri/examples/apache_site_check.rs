@@ -134,35 +134,11 @@ async fn main() {
         FPM_PORT,
         "php-fpm",
     );
-    // WAIT FOR THE POOL. Nothing did, and that is this example's documented
-    // transient (docs/TODO.md "live-check transients"): Apache binds in
-    // milliseconds and its own readiness loop is satisfied at once, while a
-    // cold php-fpm under CPU contention has not bound :FPM_PORT yet. The first
-    // PHP request then reaches mod_proxy_fcgi with nothing behind it, and the
-    // example reported `php-via-fpm=false` — which reads as "Apache cannot
-    // execute PHP" and sent two investigations at the wrong subject. The
-    // captured 20 Aug 2026 failure says so exactly: php-via-fpm=false,
-    // fallback-routing=false (both need PHP), css-mime=true, htaccess-302=true
-    // (neither does). Apache was fine; there was no pool.
-    let mut pool_up = false;
-    for _ in 0..80 {
-        if apache::running(FPM_PORT) {
-            pool_up = true;
-            break;
-        }
-        thread::sleep(Duration::from_millis(250));
-    }
-    // And say so HERE rather than letting it surface as a PHP failure below.
-    // A check that misreports its own precondition is worse than one that
-    // fails: it is a signpost pointing away from the problem.
-    if !pool_up {
-        eprintln!("\nphp-fpm never bound :{FPM_PORT} in 20s — the PHP legs below would blame Apache.");
-        eprintln!("php-fpm's own log ({}):", docroot.join("fpm.log").display());
-        eprintln!("{}", std::fs::read_to_string(docroot.join("fpm.log")).unwrap_or_default());
-        fpm.reap();
-        std::process::exit(1);
-    }
-    println!("  pool listening on :{FPM_PORT} = {pool_up}");
+    // Wait for the pool — see `common::await_listening`, which carries the
+    // reasoning and the incident that produced it. Not waiting is what made
+    // this example's failures read as "Apache cannot execute PHP".
+    common::await_listening(FPM_PORT, "php-fpm", Some(&docroot.join("fpm.log")));
+    println!("  pool listening on :{FPM_PORT}");
 
     println!("\n=== apache::start on the override port ===");
     let port = apache::site_port(DOMAIN);

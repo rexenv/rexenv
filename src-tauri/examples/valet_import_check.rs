@@ -22,7 +22,6 @@ use rexenv_lib::state::db;
 use rexenv_lib::state::models::{NewSite, SiteDbEngine, WebServer};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 mod common;
 use common::Reaped;
@@ -152,7 +151,10 @@ async fn main() {
         NGINX_PORT,
         "nginx",
     );
-    tokio::time::sleep(Duration::from_millis(800)).await;
+    // Readiness, not a timer — see `common::await_listening` for the incident
+    // this pattern produced (a flat sleep loses under CPU contention, and the
+    // failure then reads as the SERVER being broken rather than as too-early).
+    common::await_listening(NGINX_PORT, "nginx", None);
     let body = match reqwest::Client::new()
         .get(format!("http://127.0.0.1:{NGINX_PORT}/marker.txt"))
         .header("Host", DOMAIN)

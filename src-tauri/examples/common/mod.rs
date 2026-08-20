@@ -192,6 +192,57 @@ pub fn require_ports_free(ports: &[(u16, &str)]) {
     }
 }
 
+/// Block until `port` is accepting connections, or die naming the service.
+///
+/// # The defect this exists to end
+///
+/// Three examples spawned a service and then USED it with nothing in between:
+/// `apache_site_check` (no wait at all), `dotfile_guard_check` (a flat
+/// `sleep(800ms)`, which is a timing assumption wearing a wait's clothes), and
+/// the shape recurs wherever a pool is spawned before a server that fronts it.
+/// The server binds in milliseconds and satisfies its own readiness loop at
+/// once; a cold php-fpm under CPU contention has not bound yet, so the first
+/// request reaches the front-end with nothing behind it.
+///
+/// What made it expensive was not the flake — it was the MISDIAGNOSIS. The
+/// failure surfaced downstream as `php-via-fpm=false` (Apache), `502` (nginx),
+/// `503` (httpd): all of which read as "the web server cannot execute PHP" and
+/// send the reader at the wrong subject. `apache_site_check`'s instance sat in
+/// `docs/TODO.md` as an unexplained transient from 3 Aug 2026 until the second
+/// capture, on 20 Aug, showed the two PHP legs failing while the two static
+/// legs passed — which is the pool's fingerprint, not the server's.
+///
+/// So: wait HERE, and when the wait fails, fail HERE — with the port and the
+/// service named, before any downstream check can offer a plausible wrong
+/// answer. Exits the process for [`require_ports_free`]'s reason: there is
+/// nothing sensible for a caller to do with it, and a caller that could ignore
+/// it is the shape this exists to prevent.
+///
+/// `log` is an optional file to spill on failure (php-fpm's error_log is the
+/// one that says WHY, and every one of these examples was discarding it).
+pub fn await_listening(port: u16, what: &str, log: Option<&Path>) {
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while Instant::now() < deadline {
+        if rexenv_lib::core::ports::is_listening(port) {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    eprintln!(
+        "\n✗ {what} never bound 127.0.0.1:{port} within 20s.\n           Every check below that needs it would fail as though the SERVER were \
+         broken — this says otherwise, here, before they run."
+    );
+    if let Some(path) = log {
+        eprintln!("  {what}'s own log ({}):", path.display());
+        match std::fs::read_to_string(path) {
+            Ok(text) if !text.trim().is_empty() => eprintln!("{text}"),
+            Ok(_) => eprintln!("  (empty — it never got far enough to write)"),
+            Err(e) => eprintln!("  (unreadable: {e})"),
+        }
+    }
+    std::process::exit(1);
+}
+
 use rexenv_lib::error::Result as RexResult;
 use rexenv_lib::platform::traits::{
     AutostartManager, BinaryProvider, CertTrustManager, DnsAgentManager, DnsManager,

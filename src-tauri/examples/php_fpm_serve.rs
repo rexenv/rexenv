@@ -57,7 +57,10 @@ async fn main() -> ExitCode {
     let child = services::start_fpm(&*plat, &fpm, &conf).expect("start php-fpm");
     println!("FPM_PID={}", child.id());
     let mut master = Reaped::new(child, FPM_PORT, "php-fpm");
-    thread::sleep(Duration::from_millis(800));
+    // Readiness, not a timer — see `common::await_listening` for the incident
+    // this pattern produced (a flat sleep loses under CPU contention, and the
+    // failure then reads as the SERVER being broken rather than as too-early).
+    common::await_listening(FPM_PORT, "php-fpm", None);
     checks.is(
         &format!("php-fpm {minor} master listening on the fixture port"),
         services::fpm_running(FPM_PORT),

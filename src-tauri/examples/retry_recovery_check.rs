@@ -92,7 +92,10 @@ async fn main() {
         NGINX_PORT,
         "nginx",
     );
-    tokio::time::sleep(Duration::from_millis(800)).await;
+    // Readiness, not a timer — see `common::await_listening` for the incident
+    // this pattern produced (a flat sleep loses under CPU contention, and the
+    // failure then reads as the SERVER being broken rather than as too-early).
+    common::await_listening(NGINX_PORT, "nginx", None);
     println!("  {FIRST} -> {}", body(FIRST).await.trim());
 
     println!("\n=== a second site is imported, and the pid file is unusable ===");

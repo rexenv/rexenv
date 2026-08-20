@@ -271,6 +271,16 @@ it can:
   user's own php-fpm pool through the vhost's `try_files → index.php` fallback: with the
   stack up it read 404, with it down 502, and the check had been passing on the machine's
   state rather than on rexenv's behaviour. Nothing in a stack-up run can see that.
+  **`common::await_listening` is where "the service is up" is decided, and a flat sleep
+  is not an answer** (20 Aug 2026). Every spawn helper in this tree bottoms out in
+  `Command::spawn()`, which returns at fork — so an example that spawns and then requests
+  is racing the bind. A swept audit found 33 such sites across 28 examples. What makes it
+  worth naming as a LAYER rule rather than a bug list is the failure MODE: it never
+  reports "not ready", it reports the front-end's symptom (`php-via-fpm=false`, `502`,
+  `503`, `ConnectionRefused`), so the reader investigates the product. One instance cost
+  17 days as an unexplained transient. The helper waits and then fails AT THE
+  PRECONDITION with the port named and the service's own log spilled — the log every one
+  of these examples was discarding.
 - **Cannot prove:** a CSS chain resolves, a WKWebView quirk, real-internet DNS
   propagation, anything needing root or a second device (some examples DO take prompts
   — those are L3-adjacent and marked).

@@ -9,6 +9,36 @@ evidence cited.
 
 ## Now — actionable code/test work
 
+- [ ] **Spawn-then-use without a readiness gate — 33 confirmed sites, 5 fixed** (20 Aug
+  2026). Found by fixing three flakes in one gate run and then sweeping every example for
+  the shape: an example spawns a service (php-fpm, nginx, caddy, httpd) and depends on it
+  with either NOTHING in between, a flat `thread::sleep`, or a poll on a DIFFERENT port.
+  All three spawn helpers bottom out in `spawn_logged` → `Command::spawn()`, which returns
+  at fork, not at bind.
+  **Why it is worth a row rather than a shrug:** the failure never says "not ready". It
+  says `php-via-fpm=false`, `502`, `503`, `ConnectionRefused` — the SERVER's symptoms —
+  so it reads as a product bug and gets investigated as one. `apache_site_check`'s
+  instance sat in this file as an unexplained transient for 17 days for exactly that
+  reason.
+  **And the project had already learned it once:** `wp_create_serve.rs` carries the
+  recorded incident ("`proxy::start` returns when the process is SPAWNED, not when it is
+  listening… gate on the socket like every sibling does") and polls properly — while
+  every sibling kept the pattern that incident was about. One example fixed, the class
+  left open: the guard-covers-claimed-surface shape again.
+  ✓ **Closed for the RELEASE GATE**: `common::await_listening` added (waits, then fails
+  naming the service and spilling its log), and every **sandbox-tier** site converted —
+  `apache_site_check`, `dotfile_guard_check`, `linked_site_check`, `nginx_php_serve`,
+  `php_fpm_serve`, `retry_recovery_check`, `valet_import_check`. All run green.
+  **Still open — tiers the gate does not run**, each verified by an adversarial pass, so
+  this list is findings and not suspicions:
+  - **service**: `adminer_serve_check`(1), `create_site_serve`(1), `delete_site_serve`(1), `frankenphp_edge_serve`(1), `frankenphp_serve`(1), `log_tail_check`(1), `mail_route_check`(1), `monitor_coverage_demo`(1), `override_fallthrough_check`(1), `php_per_site_serve`(3), `php_pools_serve`(1), `php_switch_serve`(4), `server_switch_serve`(1)
+  - **network**: `adminer_deeplink_check`(1), `multisite_check`(1), `multisite_wildcard_check`(1), `tunnel_check`(1), `wp_create_serve`(1), `wp_install_serve`(1)
+  - **demo**: `wp_real443_setup`(1)
+  Mechanical: replace the sleep with `common::await_listening(PORT, "name", log)`. Left
+  undone deliberately rather than swept into a release commit — they cannot flake
+  `verify-full.sh`, and 23 files of untested edits on the way out the door is the trade
+  this project's own rules warn about.
+
 - [x] **Adminer followed the OS theme, not rexenv's** ✓ 20 Aug 2026, ledger #375.
   A light-themed app framing a dark console. Fixed through Adminer's own `css()` hook
   (its return decides whether `dark.css` is media-gated at all), fed by a

@@ -74,7 +74,15 @@ async fn main() -> ExitCode {
     let (conf, prefix) = services::write_nginx_config(&*plat, HTTP_PORT, vec![site]).unwrap();
     let nginx = services::start_nginx(&*plat, &nginx_bin, &conf, &prefix).expect("start nginx");
     let mut nginx = Reaped::new(nginx, HTTP_PORT, "nginx");
-    thread::sleep(Duration::from_millis(800));
+    // Both, and neither is the flat 800ms sleep that used to stand here. The
+    // sleep was a timing assumption, and on 20 Aug 2026 it lost: the two PHP
+    // CONTROLS came back 502/nginx and 503/httpd while all twelve dotfile
+    // assertions passed — the pool's fingerprint, read as the server's. The
+    // controls exist so a `.php` returning 404 cannot pass vacuously, so a
+    // control that fails for the WRONG reason is the check disqualifying
+    // itself with a misleading reason attached.
+    common::await_listening(FPM_PORT, "php-fpm", Some(&fpm_conf.with_file_name("php-fpm.log")));
+    common::await_listening(HTTP_PORT, "nginx", None);
 
     let control = common::http_get(HTTP_PORT, domain, "/index.php");
     checks.is("control: PHP executes", control.contains("rexenv-control-ok"), &control);
