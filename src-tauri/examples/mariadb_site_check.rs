@@ -1,5 +1,5 @@
-//! Manual check: a WordPress SITE on the MariaDB engine, end to end (TODO
-//! "Deferred services" — site→engine selection).
+//! Manual check: a WordPress SITE on the MariaDB engine, end to end (the shipped
+//! "Deferred services" plan — docs/archive/SHIPPED-2026-07.md, site→engine selection).
 //! Run: `cargo run --example mariadb_site_check`
 //!
 //! Exercises the engine-aware site DB path exactly as `create_site` does for a

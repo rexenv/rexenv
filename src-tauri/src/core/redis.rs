@@ -1,4 +1,5 @@
-//! core::redis — Redis service (TODO "Deferred services").
+//! core::redis — Redis service (shipped from the "Deferred services" plan;
+//! evidence in docs/archive/SHIPPED-2026-07.md).
 //!
 //! One shared Redis server on a loopback port, from the FIRST bottle bundle
 //! (`core::binaries::resolve_bundle("redis", …)` — redis + relinked openssl@3

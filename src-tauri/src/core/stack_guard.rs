@@ -4,7 +4,7 @@
 //! app-data dir (the shared binary cache and admin socket are the point of a
 //! live check) — which historically let an example's `stop_all` /
 //! `recover_stale_edge` tear down the user's serving stack over the shared
-//! admin socket (docs/TODO.md "Isolate live-check examples").
+//! admin socket (docs/archive/SHIPPED-2026-07.md, "Isolate live-check examples").
 //!
 //! Rule: a process that is not the rexenv app may stop only what it SPAWNED
 //! (`Proc::Child`). Stopping ADOPTED survivors, the admin-socket edge stop

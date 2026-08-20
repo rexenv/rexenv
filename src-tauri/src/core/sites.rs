@@ -86,9 +86,13 @@ fn ensure_server_available(server: WebServer) -> Result<()> {
 /// than naming versions, so it stays true when either pin moves.
 ///
 /// Scope, stated: the same-major mismatch (an 8.1 site served by 8.5) is NOT
-/// refused here. It is a real honesty gap and it predates 7.4; it is tracked in
-/// `docs/TODO.md` rather than fixed by widening this guard, because refusing it
-/// would break FrankenPHP sites that work today.
+/// refused here. Refusing it would break FrankenPHP sites that work today, so
+/// it was ANSWERED by disclosure instead, on 15 Aug 2026 (ledger #333): the
+/// SiteDetail Environment card shows the SERVED version, disables the picker,
+/// and says "Fixed by FrankenPHP. Switch the web server to Nginx or Apache to
+/// choose a version." This comment said "tracked in docs/TODO.md" for six days
+/// after that shipped, pointing at a row that no longer existed — a dangling
+/// pointer describing an open gap that was closed.
 fn ensure_server_runs_php(server: WebServer, php_version: &str) -> Result<()> {
     if server != WebServer::Frankenphp {
         return Ok(());

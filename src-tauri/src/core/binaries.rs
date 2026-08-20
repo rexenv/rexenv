@@ -84,8 +84,9 @@ pub const ADMINER_VERSION: &str = "5.4.2";
 pub const CLOUDFLARED_VERSION: &str = "2026.6.1";
 /// Pinned Redis version — the FIRST Homebrew-bottle BUNDLE (no portable static
 /// build exists): the redis bottle's `bin/` merged with the openssl@3 bottle's
-/// two dylibs, relinked to `@loader_path` by `prepare_binary_tree` (TODO
-/// "Deferred services"). Resolved via [`resolve_bundle`].
+/// two dylibs, relinked to `@loader_path` by `prepare_binary_tree` (the shipped
+/// "Deferred services" plan — docs/archive/SHIPPED-2026-07.md). Resolved via
+/// [`resolve_bundle`].
 pub const REDIS_VERSION: &str = "8.8.0";
 /// Offered Redis versions (single — homebrew-core keeps no versioned redis
 /// formula worth pinning; the picker hides for a one-entry set).
@@ -1202,7 +1203,8 @@ fn openssl_part(arch: Arch) -> BundlePart {
 
 /// Look up the BUNDLE spec for `name`@`version` on `os`+`arch` — services with
 /// no portable static build, assembled from Homebrew bottles and relinked into
-/// a self-contained tree (TODO "Deferred services"). Disjoint from
+/// a self-contained tree (the shipped "Deferred services" plan —
+/// docs/archive/SHIPPED-2026-07.md). Disjoint from
 /// [`manifest`]: a name resolves through exactly one of the two.
 pub fn bundle_manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<BundleSpec> {
     match (name, os, version) {

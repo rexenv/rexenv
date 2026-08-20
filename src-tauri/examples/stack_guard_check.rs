@@ -1,6 +1,6 @@
 //! Live check: `core::stack_guard` — a non-app process (this example) must NOT
 //! be able to stop the USER'S running stack, even through the exact paths that
-//! historically tore it down (docs/TODO.md "Isolate live-check examples").
+//! historically tore it down (docs/archive/SHIPPED-2026-07.md, "Isolate live-check examples").
 //! Run WITH the stack running: `cargo run --example stack_guard_check`
 //!
 //! Deliberately does NOT call `allow_real_stack_control()` — exercising the

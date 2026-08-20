@@ -469,11 +469,11 @@ pub fn build_and_deliver(
 
 /// The user's Downloads folder.
 ///
-/// A third copy of the four lines `logs::downloads_dir` and
-/// `database::export_to_downloads` already carry. Left duplicated rather than
-/// extracted mid-feature — the fact is one `UserDirs` call with nothing to
-/// drift — but three is the number at which that stops being true, so it is
-/// filed as a nit in `docs/TODO.md`.
+/// One definition, in `core::downloads::user_downloads_dir`. This was a third
+/// hand-rolled copy, filed as a nit and then closed on 13 Aug 2026 — at which
+/// point there turned out to be FOUR copies, not three: `core/wordpress.rs`
+/// had one the note never mentioned. The count is why the nit was worth
+/// closing rather than re-justifying.
 fn downloads_dir() -> Result<PathBuf> {
     crate::core::downloads::user_downloads_dir()
 }

@@ -28,7 +28,7 @@ pub fn mysqld_bin(basedir: &Path) -> PathBuf {
 /// obtained as a [`crate::core::db::SqlClient`] from `sql_client_bins` /
 /// `cached_sql_client`, so a bare path can no longer be handed to the
 /// functions that exec it — the `&Path`-means-two-things class that left nine
-/// examples red for a month (docs/TODO.md, 14 Aug 2026).
+/// examples red for a month (14 Aug 2026; docs/archive/SHIPPED-2026-08.md).
 pub(crate) fn mysql_client_bin(basedir: &Path) -> PathBuf {
     basedir.join("bin/mysql")
 }

@@ -1,4 +1,5 @@
-//! Manual check: per-engine DB version switch (TODO "Deferred services").
+//! Manual check: per-engine DB version switch (the shipped "Deferred services"
+//! plan — docs/archive/SHIPPED-2026-07.md).
 //! Run: `cargo run --example db_version_switch_check`
 //!
 //! Proves the switch semantics end to end on PostgreSQL (its port must be

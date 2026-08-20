@@ -1,4 +1,5 @@
-//! Linux implementations — Phase 5. Stubs only: every method is `todo!()`.
+//! Linux implementations — Phase 4 (same era as Windows; this said "Phase 5"
+//! until 21 Aug 2026, which is two numbers for one era). Stubs only: every method is `todo!()`.
 //! Filling these in is the entire Linux port; `core/` does not change.
 #![allow(dead_code)]
 

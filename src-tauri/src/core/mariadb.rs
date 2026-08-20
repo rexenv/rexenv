@@ -1,4 +1,5 @@
-//! core::mariadb — MariaDB service (TODO "Deferred services").
+//! core::mariadb — MariaDB service (shipped from the "Deferred services" plan;
+//! evidence in docs/archive/SHIPPED-2026-07.md).
 //!
 //! One shared MariaDB server on a loopback port, from a bottle bundle
 //! (`core::binaries::resolve_bundle("mariadb", …)` — server/client/dump +

@@ -1,4 +1,5 @@
-//! Manual check: MariaDB via a bottle bundle (TODO "Deferred services").
+//! Manual check: MariaDB via a bottle bundle (the shipped "Deferred services"
+//! plan — docs/archive/SHIPPED-2026-07.md).
 //! Run: `cargo run --example mariadb_bundle_check`
 //!
 //! Proves the mariadb bundle end to end on the REAL binary cache:

@@ -401,9 +401,6 @@ cause: a commit did the work and the surrounding claim stayed as it was.
   that "what stays uncovered is a plugin that `echo`es mid-command" — the third door into
   the same symptom (every WordPress screen dead on the affected site), held open with no
   row anywhere.
-- [ ] **`platform/linux/mod.rs:1` says "Phase 5"** where `platform/windows/mod.rs`,
-  `CLAUDE.md` and this file all say Phase 4. One line, free to leave wrong until someone
-  plans the port and finds two numbers for one era.
 
 ### Promoted out of ticked rows (21 Aug 2026)
 
