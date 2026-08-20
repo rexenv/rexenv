@@ -133,15 +133,39 @@ async fn main() {
     // Control: the vhost still points at the OLD path, which no longer
     // exists — the marker must STOP being served, or the reload below could
     // pass on a config nobody rebuilt.
+    //
+    // The claim is "not served", and it is asserted as that rather than as a
+    // STATUS CODE — because the code here belongs to a process this example
+    // does not own. The vhost is `try_files $uri $uri/ /index.php` over
+    // `fastcgi_pass 127.0.0.1:9783`, so a missing file falls through to the
+    // shared 8.3 POOL: with the user's stack up that pool answers "no input
+    // file" (404), and with it stopped nothing answers (502). This asserted
+    // 404, so it passed only while the user's stack happened to be running —
+    // a sandbox-tier check resting on the machine's state, and reaching into
+    // the real pool to do it. Found 20 Aug 2026 by running the tier with the
+    // stack down, which is the configuration the tier is supposed to be
+    // INDEPENDENT of.
     let stale = client
         .get(format!("http://127.0.0.1:{NGINX_PORT}/marker.txt"))
         .header("Host", DOMAIN)
         .send()
-        .await
-        .map(|r| r.status().as_u16())
-        .unwrap_or(0);
-    println!("  after the move, before re-point: /marker.txt -> {stale} (want 404)");
-    ok &= stale == 404;
+        .await;
+    let (stale_code, stale_body) = match stale {
+        Ok(r) => {
+            let code = r.status().as_u16();
+            (code, r.text().await.unwrap_or_default())
+        }
+        Err(_) => (0, String::new()),
+    };
+    // Two halves, because a status alone can lie in both directions: a 200
+    // serving the marker is the failure, and so is a 200 serving anything at
+    // all from a root that is gone.
+    let gone = stale_code != 200 && !stale_body.contains(MARKER);
+    println!(
+        "  after the move, before re-point: /marker.txt -> {stale_code}, marker present: {} (want not-served)",
+        stale_body.contains(MARKER)
+    );
+    ok &= gone;
 
     // A marker that exists ONLY post-move, so serving it can only mean the
     // root really is the new folder — not a cache, not the old tree.

@@ -1045,8 +1045,29 @@ first:
   fresh sockets (the subject is `port_bound`'s answer for a known state, not this
   process's ability to reserve a port against the OS). Whether the un-named 3 Aug
   lib-test transient was this same test is NOT claimable — its name was never
-  captured — but the shape fits, and this instance is closed. `apache_site_check`'s
-  transient remains unexplained.
+  captured — but the shape fits, and this instance is closed.
+  **20 Aug 2026 — `apache_site_check`'s transient is EXPLAINED and closed**, on the
+  second capture, by the output the mitigation above preserved. The failing line was
+  `php-via-fpm=false · fallback-routing=false · css-mime=true · htaccess-302=true`: the
+  two legs needing PHP failed and the two that are pure Apache passed, so Apache was
+  fine and there was no pool behind it. The example spawned php-fpm and went straight to
+  `apache::start` with NO readiness wait for `:9799` — Apache binds in milliseconds and
+  satisfies its own loop at once, while a cold php-fpm under contention has not bound
+  yet. Fixed by waiting for the pool, and — the half that actually cost the two
+  investigations — by FAILING THERE, naming the pool and printing php-fpm's own log
+  (which the example was discarding to `/dev/null`), instead of letting a missing
+  precondition surface as `php-via-fpm=false`, which reads as "Apache cannot execute
+  PHP" and points at the wrong subject. Plant-proven: watching the wrong port fails at
+  the precondition with the pool's log attached.
+  **The same run found a second, unrelated defect that only a stopped stack reveals.**
+  `linked_site_check` asserted its post-move control as `404`, but that status belongs to
+  a process it does not own: the vhost is `try_files $uri $uri/ /index.php` over
+  `fastcgi_pass 127.0.0.1:9783`, so a missing file falls through to the shared 8.3 POOL —
+  the user's real one. With their stack up that pool answers "no input file" (404); with
+  it stopped nothing answers (502). A sandbox-tier check that passes only while the
+  machine's stack is running is resting on exactly what the tier is supposed to be
+  independent of. It now asserts the claim it always meant — the marker is NOT SERVED
+  (status ≠ 200 AND the marker absent) — which holds either way.
 
 - [ ] **Verdict receipt — bind the COMMIT path, not just the verdict.** 3 Aug
   2026: `live-checks.sh ... | tail -3 && git commit` landed a commit on a RED

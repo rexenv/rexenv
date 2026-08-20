@@ -264,6 +264,13 @@ it can:
   L2 check in both themes and leaves the L0 guard green. It also closed a plain coverage
   hole found while verifying dark mode — the git chips on a plugin row had no fixture in
   any harness, so their colours were changed with nothing rendering them.
+  **Run the sandbox tier with the stack STOPPED at least once per release, and it is not
+  a formality** (20 Aug 2026). The tier's definition is "safe with the stack RUNNING",
+  which is a statement about what it may HARM — not a licence to depend on it. Running it
+  with the stack down found `linked_site_check` asserting a `404` that came from the
+  user's own php-fpm pool through the vhost's `try_files → index.php` fallback: with the
+  stack up it read 404, with it down 502, and the check had been passing on the machine's
+  state rather than on rexenv's behaviour. Nothing in a stack-up run can see that.
 - **Cannot prove:** a CSS chain resolves, a WKWebView quirk, real-internet DNS
   propagation, anything needing root or a second device (some examples DO take prompts
   — those are L3-adjacent and marked).
