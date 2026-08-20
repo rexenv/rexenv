@@ -11,6 +11,7 @@
 //!      --bootstrap over stdin — no install-db script) then serves on :13307:
 //!      `SELECT VERSION()` + a CREATE/DROP DATABASE round-trip through the
 //!      bundled `mariadb` client, passwordless root over TCP (the MySQL model).
+//!
 //! Cleans up its own child only — never touches the running stack.
 
 use rexenv_lib::core::db::DbEngine;

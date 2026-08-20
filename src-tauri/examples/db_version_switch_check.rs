@@ -14,6 +14,7 @@
 //!      switching away and back). Marker dropped, engine stopped.
 //!   4. MariaDB 11.4.12 bundle + MySQL 8.0.44 tree resolve into the real
 //!      cache and their servers run (`--version` — no port needed).
+//!
 //! The legacy default-series datadirs are never touched.
 
 use rexenv_lib::core::db::DbEngine;

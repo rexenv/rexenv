@@ -7,18 +7,21 @@
 //!      snapshot, ~/.wp-cli/cache genuinely works (wp-cli's own line, not an
 //!      assertion of ours),
 //!   3. cancel mid-download: status "cancelled", process group dead,
+//!
 //!   5/6. the wall and the way through it: the SAME zip re-uploaded over the
 //!      plugin it just installed must be refused, in the exact words the card
 //!      parses to offer "Replace with the uploaded zip" — and the same job with
 //!      `force` must then succeed. The refusal's wording is a THIRD PARTY's
 //!      (wp-cli's); if it changes, the offer silently stops appearing and only
 //!      this leg says so.
+//!
 //!   4. the ZIP source (wp-admin's "upload a zip"): a real archive built from
 //!      an installed plugin dir installs through the SAME job, and the
 //!      documented consequence holds live — wp-cli prints no per-item
 //!      `Installing name (version)` header on this path, so the attempt
 //!      cursor stays 0 while the bar still reaches 100. That is exactly why
 //!      the card hides the cursor for zip jobs instead of showing "1 of N".
+//!
 //! Bootstrap mirrors wp_plugins_check (real MySQL + real WP install; reuses
 //! a running MySQL on :13306, else starts one). Network required.
 //! Run: `cargo run --example wp_install_stream_check`

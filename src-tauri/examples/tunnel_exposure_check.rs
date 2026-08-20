@@ -251,6 +251,10 @@ async fn main() {
     let bin = binaries::resolve(&*plat, "cloudflared", binaries::CLOUDFLARED_VERSION)
         .await
         .expect("cloudflared");
+    // Not `wait()`ed on deliberately: the pid is handed to `adopt_public_tunnel`
+    // below, and that guard owns the reaping (stop → SIGTERM → SIGKILL) from
+    // every teardown path. Waiting here would block for the tunnel's lifetime.
+    #[allow(clippy::zombie_processes)]
     let child = tunnels::start(&*plat, &bin, SHARED, services::NGINX_HTTP_PORT).expect("start tunnel");
     let pid = child.id();
     // The shared guard: registers the pid for every teardown path AND proves the

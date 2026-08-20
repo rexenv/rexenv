@@ -84,7 +84,7 @@ fn main() {
     git_in(&scratch, &["clone", "-q", origin.to_str().unwrap(), "asset"]);
 
     // 1. fetch — sees the feat branch.
-    match repo::git_fetch(&*sup, &git, &env, &a, &cancel, &mut quiet) {
+    match repo::git_fetch(sup, &git, &env, &a, &cancel, &mut quiet) {
         Ok(()) => println!("fetch ok"),
         Err(e) => failures.push(format!("fetch failed: {e}")),
     }
@@ -94,7 +94,7 @@ fn main() {
     git_in(&seed, &["add", "-A"]);
     git_in(&seed, &["commit", "-qm", "ff change"]);
     git_in(&seed, &["push", "-q"]);
-    match repo::git_pull_ff(&*sup, &git, &env, &a, &cancel, &mut quiet) {
+    match repo::git_pull_ff(sup, &git, &env, &a, &cancel, &mut quiet) {
         Ok(()) if a.join("new-file.txt").is_file() => println!("pull --ff-only ok (file arrived)"),
         Ok(()) => failures.push("pull ok but file missing".into()),
         Err(e) => failures.push(format!("ff pull failed: {e}")),
@@ -108,7 +108,7 @@ fn main() {
     git_in(&seed, &["add", "-A"]);
     git_in(&seed, &["commit", "-qm", "remote moved"]);
     git_in(&seed, &["push", "-q"]);
-    match repo::git_pull_ff(&*sup, &git, &env, &a, &cancel, &mut quiet) {
+    match repo::git_pull_ff(sup, &git, &env, &a, &cancel, &mut quiet) {
         Ok(()) => failures.push("diverged pull succeeded?!".into()),
         Err(e) if e.to_string().contains("DIVERGED") => {
             println!("diverged pull mapped (good): {}", e.to_string().lines().next().unwrap())
@@ -122,7 +122,7 @@ fn main() {
     write(&seed, "new-file.txt", "remote edit");
     git_in(&seed, &["commit", "-qam", "touch shared file"]);
     git_in(&seed, &["push", "-q"]);
-    match repo::git_pull_ff(&*sup, &git, &env, &a, &cancel, &mut quiet) {
+    match repo::git_pull_ff(sup, &git, &env, &a, &cancel, &mut quiet) {
         Ok(()) => failures.push("dirty pull succeeded?!".into()),
         Err(e) if e.to_string().contains("Commit or stash") => {
             println!("dirty pull mapped (good)")
@@ -134,7 +134,7 @@ fn main() {
 
     // 5. checkout feat (remote-tracking DWIM) + the lockfile fingerprint flips.
     let fp_before = repo::lockfile_fingerprint(&a);
-    match repo::git_checkout(&*sup, &git, &env, &a, "feat", &cancel, &mut quiet) {
+    match repo::git_checkout(sup, &git, &env, &a, "feat", &cancel, &mut quiet) {
         Ok(()) => {
             let st = repo::read_git_status(sup, &git, &env, &a).unwrap();
             let fp_after = repo::lockfile_fingerprint(&a);
@@ -157,7 +157,7 @@ fn main() {
     write(&a, "pushed.txt", "x");
     git_in(&a, &["add", "-A"]);
     git_in(&a, &["commit", "-qm", "push me"]);
-    match repo::git_push(&*sup, &git, &env, &a, &cancel, &mut quiet) {
+    match repo::git_push(sup, &git, &env, &a, &cancel, &mut quiet) {
         Ok(()) => {
             git_in(&seed, &["fetch", "-q"]);
             let seen = std::process::Command::new("git")
@@ -175,7 +175,7 @@ fn main() {
 
     // 7. push with NO upstream → auto --set-upstream.
     git_in(&a, &["checkout", "-qb", "local-only"]);
-    match repo::git_push(&*sup, &git, &env, &a, &cancel, &mut quiet) {
+    match repo::git_push(sup, &git, &env, &a, &cancel, &mut quiet) {
         Ok(()) => {
             let st = repo::read_git_status(sup, &git, &env, &a).unwrap();
             println!("no-upstream push ok, upstream now = {:?}", st.upstream);
@@ -197,7 +197,7 @@ fn main() {
     write(&a, "race2.txt", "asset raced");
     git_in(&a, &["add", "-A"]);
     git_in(&a, &["commit", "-qm", "asset advances feat"]);
-    match repo::git_push(&*sup, &git, &env, &a, &cancel, &mut quiet) {
+    match repo::git_push(sup, &git, &env, &a, &cancel, &mut quiet) {
         Ok(()) => failures.push("non-ff push succeeded?!".into()),
         Err(e) if e.to_string().contains("Pull first") => println!("non-ff push mapped (good)"),
         Err(e) => failures.push(format!("non-ff push unmapped: {e}")),
@@ -222,14 +222,14 @@ fn main() {
     write(&b, "scratch-note.txt", "not added to git");
 
     // 9. The wedge itself: checkout refused on a dirty tree.
-    match repo::git_checkout(&*sup, &git, &env, &b, &main_branch, &cancel, &mut quiet) {
+    match repo::git_checkout(sup, &git, &env, &b, &main_branch, &cancel, &mut quiet) {
         Ok(()) => failures.push("checkout over a dirty tracked file succeeded?! (no wedge to fix)".into()),
         Err(e) if e.to_string().contains("Commit or stash") => println!("dirty checkout refused (the wedge)"),
         Err(e) => failures.push(format!("dirty checkout unmapped: {e}")),
     }
 
     // 10. Stash clears it — and leaves the IGNORED tree alone.
-    match repo::git_stash_push(&*sup, &git, &env, &b, &cancel, &mut quiet) {
+    match repo::git_stash_push(sup, &git, &env, &b, &cancel, &mut quiet) {
         Ok(()) => {
             let st = repo::read_git_status(sup, &git, &env, &b).unwrap();
             if st.changed != 0 || st.untracked != 0 {
@@ -250,18 +250,18 @@ fn main() {
     }
 
     // 11. …so the checkout the user wanted now works.
-    match repo::git_checkout(&*sup, &git, &env, &b, &main_branch, &cancel, &mut quiet) {
+    match repo::git_checkout(sup, &git, &env, &b, &main_branch, &cancel, &mut quiet) {
         Ok(()) => println!("checkout after stash ok (the wedge is gone)"),
         Err(e) => failures.push(format!("checkout after stash still failed: {e}")),
     }
     git_in(&b, &["checkout", "-q", "feat"]);
 
     // 12. The list names the entry, and restore brings BOTH files back.
-    let stashes = repo::list_stashes(&*sup, &git, &env, &b).unwrap_or_default();
+    let stashes = repo::list_stashes(sup, &git, &env, &b).unwrap_or_default();
     match stashes.first() {
         Some(top) if top.reference == "stash@{0}" && top.message.contains("rexenv") => {
             println!("stash list: {} · {} · {}", top.reference, top.message, top.age);
-            match repo::git_stash_pop(&*sup, &git, &env, &b, &top.reference, &cancel, &mut quiet) {
+            match repo::git_stash_pop(sup, &git, &env, &b, &top.reference, &cancel, &mut quiet) {
                 Ok(()) => {
                     let back = std::fs::read_to_string(b.join("package-lock.json")).unwrap_or_default();
                     let untracked_back = b.join("scratch-note.txt").is_file();
@@ -270,7 +270,7 @@ fn main() {
                             "restore lost work: lockfile={back:?}, untracked file back={untracked_back}"
                         ));
                     }
-                    if !repo::list_stashes(&*sup, &git, &env, &b).unwrap_or_default().is_empty() {
+                    if !repo::list_stashes(sup, &git, &env, &b).unwrap_or_default().is_empty() {
                         failures.push("pop left the entry in the list (a second copy of the same work)".into());
                     }
                     println!("restore ok (tracked edit + untracked file both back, list empty)");
@@ -284,7 +284,7 @@ fn main() {
 
     // 13. Reset reverts TRACKED changes and keeps untracked ones — the exact
     //     promise the confirm dialog makes, which nothing else here can check.
-    match repo::git_reset_hard(&*sup, &git, &env, &b, &cancel, &mut quiet) {
+    match repo::git_reset_hard(sup, &git, &env, &b, &cancel, &mut quiet) {
         Ok(()) => {
             let lock = std::fs::read_to_string(b.join("package-lock.json")).unwrap_or_default();
             let kept = b.join("scratch-note.txt").is_file();
@@ -307,7 +307,7 @@ fn main() {
     // 14. A clean tree refuses to stash rather than reporting a phantom entry
     //     (git's own "No local changes to save" exits 0).
     git_in(&b, &["clean", "-qfd"]); // fixture-owned: only this throwaway clone
-    match repo::git_stash_push(&*sup, &git, &env, &b, &cancel, &mut quiet) {
+    match repo::git_stash_push(sup, &git, &env, &b, &cancel, &mut quiet) {
         Ok(()) => failures.push("stashed a CLEAN tree — the list now shows an entry that isn't work".into()),
         Err(e) if e.to_string().contains("Nothing to stash") => println!("clean-tree stash refused (good)"),
         Err(e) => failures.push(format!("clean-tree stash unmapped: {e}")),
@@ -315,13 +315,13 @@ fn main() {
 
     // 15. Revision syntax never reaches pop, and a missing entry is honest.
     for bad in ["HEAD@{0}", "stash@{0}^{/x}", ":/text", "--all"] {
-        match repo::git_stash_pop(&*sup, &git, &env, &b, bad, &cancel, &mut quiet) {
+        match repo::git_stash_pop(sup, &git, &env, &b, bad, &cancel, &mut quiet) {
             Ok(()) => failures.push(format!("pop accepted the revision expression {bad:?}")),
             Err(e) if e.to_string().contains("is not a stash entry") => {}
             Err(e) => failures.push(format!("pop refused {bad:?} for the wrong reason: {e}")),
         }
     }
-    match repo::git_stash_pop(&*sup, &git, &env, &b, "stash@{7}", &cancel, &mut quiet) {
+    match repo::git_stash_pop(sup, &git, &env, &b, "stash@{7}", &cancel, &mut quiet) {
         Ok(()) => failures.push("popped a stash entry that does not exist".into()),
         Err(e) if e.to_string().contains("no longer exists") => println!("missing stash entry mapped (good)"),
         Err(e) => failures.push(format!("missing stash entry unmapped: {e}")),
@@ -333,7 +333,7 @@ fn main() {
     let mut seen: Vec<String> = Vec::new();
     {
         let mut sink = |l: &str| seen.push(l.to_string());
-        if let Err(e) = repo::git_status_report(&*sup, &git, &env, &b, &cancel, &mut sink) {
+        if let Err(e) = repo::git_status_report(sup, &git, &env, &b, &cancel, &mut sink) {
             failures.push(format!("status failed: {e}"));
         }
     }
@@ -347,7 +347,7 @@ fn main() {
     let mut clean_lines: Vec<String> = Vec::new();
     {
         let mut sink = |l: &str| clean_lines.push(l.to_string());
-        let _ = repo::git_status_report(&*sup, &git, &env, &b, &cancel, &mut sink);
+        let _ = repo::git_status_report(sup, &git, &env, &b, &cancel, &mut sink);
     }
     if !clean_lines.iter().any(|l| l.contains("working tree clean")) {
         failures.push(format!(

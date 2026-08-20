@@ -112,6 +112,11 @@ fn record(state: &AppState, id: &str, outcome: Outcome, detail: &str) {
     }
 }
 
+// The production items below this module stay where they are. `summary` reads
+// as the continuation of the sweep it formats, and hoisting ~200 lines above the
+// tests to satisfy a lint would produce a diff nobody can review against a file
+// whose ordering is deliberate.
+#[allow(clippy::items_after_test_module)]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -128,8 +133,10 @@ mod tests {
         // Naming beats counting: a user recognises a domain they cared about and
         // can act on it, where "3 sites" only says something is gone.
         assert_eq!(summary(&SweepOutcome::default()), None, "a quiet launch is silent");
-        let mut out = SweepOutcome::default();
-        out.deleted = vec!["probe.scratch.rex".into(), "plugin-test.scratch.rex".into()];
+        let out = SweepOutcome {
+            deleted: vec!["probe.scratch.rex".into(), "plugin-test.scratch.rex".into()],
+            ..Default::default()
+        };
         let text = summary(&out).unwrap();
         assert!(text.contains("`probe.scratch.rex` and `plugin-test.scratch.rex`"), "{text}");
         assert!(text.contains("removed 2 expired scratch sites"), "{text}");
@@ -137,8 +144,10 @@ mod tests {
         assert!(text.contains("press Keep"), "names the way to prevent it: {text}");
 
         // The shared case reads as left-alone, never as failed.
-        let mut shared = SweepOutcome::default();
-        shared.skipped_shared = vec!["demo.scratch.rex".into()];
+        let shared = SweepOutcome {
+            skipped_shared: vec!["demo.scratch.rex".into()],
+            ..Default::default()
+        };
         let text = summary(&shared).unwrap();
         assert!(text.contains("still shared publicly") && text.contains("left it alone"), "{text}");
         assert!(!text.contains("removed"), "nothing was removed: {text}");

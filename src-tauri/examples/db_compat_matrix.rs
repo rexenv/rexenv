@@ -34,7 +34,7 @@ fn main() {
         ("MySQL, no version", source(Some(Vendor::Mysql), None)),
     ];
 
-    println!("{:<24}{:<16}{:<16}{:<16}{}", "source \\ target", "MySQL 8.4.6", "MySQL 8.0.44", "MariaDB 12.3.2", "MariaDB 11.4.12");
+    println!("{:<24}{:<16}{:<16}{:<16}MariaDB 11.4.12", "source \\ target", "MySQL 8.4.6", "MySQL 8.0.44", "MariaDB 12.3.2");
     println!("{}", "-".repeat(96));
     for (name, s) in &sources {
         print!("{name:<24}");

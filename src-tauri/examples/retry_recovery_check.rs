@@ -23,7 +23,7 @@
 use rexenv_lib::core::{binaries, services, sites, ssl};
 use rexenv_lib::state::db;
 use rexenv_lib::state::models::{NewSite, SiteDbEngine, SiteType, WebServer};
-use std::path::PathBuf;
+use std::path::Path;
 use std::time::Duration;
 
 mod common;
@@ -45,7 +45,7 @@ async fn body(host: &str) -> String {
     }
 }
 
-fn project(root: &PathBuf, name: &str, marker: &str) -> String {
+fn project(root: &Path, name: &str, marker: &str) -> String {
     let dir = root.join(name);
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("marker.txt"), marker).unwrap();

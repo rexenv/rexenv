@@ -752,8 +752,7 @@ mod tests {
         full.extend(env_overrides(&s));
         let last = full
             .iter()
-            .filter(|(k, _)| k == "WP_CLI_PACKAGES_DIR")
-            .next_back()
+            .rfind(|(k, _)| k == "WP_CLI_PACKAGES_DIR")
             .expect("override present");
         assert_eq!(last.1, p[3].display().to_string(), "the user's value won: {full:?}");
         let _ = std::fs::remove_dir_all(&f.root);
@@ -912,8 +911,7 @@ mod tests {
             use std::os::unix::process::CommandExt;
             let tmp = env
                 .iter()
-                .filter(|(k, _)| k == "TMPDIR")
-                .next_back()
+                .rfind(|(k, _)| k == "TMPDIR")
                 .map(|(_, v)| PathBuf::from(v))
                 .expect("TMPDIR must be set for the child");
             *self.seen_tmpdir.lock().unwrap() = Some(tmp);

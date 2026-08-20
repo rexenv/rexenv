@@ -1417,10 +1417,9 @@ mod tests {
     fn the_sync_wording_never_claims_the_source_is_unchanged() {
         // The fingerprint is stat-only: a difference is reliable, sameness is a
         // strong hint. So the copy says what was DETECTED, and hedges the rest.
-        let same = format!(
-            "`acme` was re-copied. No changes were detected in the source since the last sync, \
-             so the site was probably already running this code."
-        );
+        let same = "`acme` was re-copied. No changes were detected in the source since the \
+                    last sync, so the site was probably already running this code."
+            .to_string();
         assert!(same.contains("No changes were detected"), "{same}");
         assert!(!same.contains("unchanged"), "must not claim more than a stat read can know: {same}");
         assert!(same.contains("probably"), "hedged, deliberately: {same}");

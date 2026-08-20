@@ -677,6 +677,11 @@ impl Hub {
     }
 }
 
+// The planners below this module stay where they are: they read as the tail of
+// the download plan they build on, and hoisting ~330 lines of tests over them to
+// satisfy a lint would produce a diff nobody can review for a purely cosmetic
+// reordering.
+#[allow(clippy::items_after_test_module)]
 #[cfg(test)]
 mod tests {
     use super::*;

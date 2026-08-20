@@ -6,9 +6,9 @@
 //!      recycled-pid case). The sweep must NOT kill it, and must still remove
 //!      the mu-plugin and the row. This is the branch that would be silently
 //!      wrong in either direction.
-//!   2. OURS — the pid's argv carries the full identity (app-data binary path
-//!      + exact `--http-host-header <domain>` pair). The sweep must kill it
-//!      and clean up.
+//!   2. OURS — the pid's argv carries the full identity (app-data binary
+//!      path + exact `--http-host-header <domain>` pair). The sweep must
+//!      kill it and clean up.
 //!   3. DEAD — the pid doesn't exist. Cleanup only, no signal.
 //!
 //! Fixture-owned throughout (see `common`): sandbox platform + DB, docroots

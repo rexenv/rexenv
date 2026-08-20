@@ -1202,7 +1202,7 @@ mod tests {
         let id = "c58e0a41-7d2f-4b19-93a6-6e1c5d8f0a24";
         refresh_scratch_ttl(&conn, Some(id));
         let after = store::get_site(&conn, id).unwrap().unwrap().expires_at.unwrap();
-        assert!(after > "2026-08-02 09:00:00".to_string(), "the deadline moved out: {after}");
+        assert!(after.as_str() > "2026-08-02 09:00:00", "the deadline moved out: {after}");
         // ...and it moved to roughly the TTL from now, not to some other clock.
         let expected: String = conn
             .query_row("SELECT datetime('now', '+24 hours')", [], |r| r.get(0))

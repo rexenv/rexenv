@@ -33,6 +33,9 @@ async fn main() {
     std::fs::create_dir_all(&docroot).expect("temp docroot");
 
     let env_pair = [("APP_ENV".to_string(), "local dev".to_string())];
+    // A fixture TABLE, not a type worth naming: the tuple is the row shape of
+    // the four cases below and exists nowhere else.
+    #[allow(clippy::type_complexity)]
     let cases: [(&str, RewriteMode, &[(String, String)]); 4] = [
         ("single", RewriteMode::Single, &[]),
         ("subdomain-multisite", RewriteMode::SubdomainMultisite, &[]),

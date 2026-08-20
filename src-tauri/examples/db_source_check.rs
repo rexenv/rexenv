@@ -86,7 +86,7 @@ fn main() {
             "  DBngin port {port}: answered={answered} -> servers={in_servers} silent={in_silent}"
         );
         ok &= in_servers == answered;
-        ok &= in_silent == !answered;
+        ok &= in_silent != answered;
     }
 
     println!("\n=== 5. a site's own config outranks a generic guess ===");

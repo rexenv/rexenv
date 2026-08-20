@@ -6,6 +6,7 @@
 //!      build must read "skipped" (never "failed", never left "pending").
 //!   2. CANCEL MID-STEP: npm install blocks on a `preinstall` sleep; cancel
 //!      kills it → install "cancelled", build "skipped", nothing else ran.
+//!
 //! Drives `cli_server::handle_request` in-process against a throwaway site
 //! row (the cli_repo_check pattern) — real dispatch path, no services, no
 //! running app touched. Composer resolves the bundled phar + pinned PHP from

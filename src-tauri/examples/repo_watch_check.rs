@@ -67,7 +67,7 @@ fn main() {
             }
         };
         repo::node_run_script(
-            &*plat2.supervisor(),
+            plat2.supervisor(),
             &npm2,
             &dir2,
             "watch",
@@ -92,7 +92,7 @@ fn main() {
     if before.is_empty() {
         failures.push("no live process group for the watcher".into());
     }
-    cancel.cancel(&*sup);
+    cancel.cancel(sup);
     let result = runner.join().expect("runner join").expect("step result");
     std::thread::sleep(Duration::from_millis(300));
     let after = ps_group(pgid);
@@ -112,7 +112,7 @@ fn main() {
     let cancel = repo::CancelToken::new();
     let mut lines = 0u32;
     let result = repo::node_run_script(
-        &*sup,
+        sup,
         &npm,
         &scratch,
         "boom",

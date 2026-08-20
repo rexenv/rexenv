@@ -1023,10 +1023,19 @@ const LINK = "https://example.test/a//b";
         // The assertion below is the permanent one: no pairing under AA, ever.
 
         let mut fails: Vec<String> = Vec::new();
+        // Every pairing an EXEMPT row skipped, with the reason it rests on. A
+        // failing run has to say what it did NOT check: the exemptions are the
+        // part of this guard that shrinks its own surface, and reading them
+        // beside the failures is how a wrong one gets noticed.
+        let mut skipped: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
         let mut checked = 0usize;
         for t in &text_tokens {
             for b in &bg_tokens {
-                if EXEMPT.iter().any(|e| (e.text == "*" || e.text == t) && (e.surface == "*" || e.surface == b)) {
+                if let Some(e) = EXEMPT
+                    .iter()
+                    .find(|e| (e.text == "*" || e.text == t) && (e.surface == "*" || e.surface == b))
+                {
+                    skipped.insert(format!("  text-rex-{t} on bg-rex-{b} — {}", e.why));
                     continue;
                 }
                 for (theme, map) in [("dark", &dark), ("light", &light)] {
@@ -1048,9 +1057,12 @@ const LINK = "https://example.test/a//b";
              computed). Some of these render at 9.5-10.5px, so AA-large's 3:1 does not apply. \
              Move the consumer to a passing token, or add an EXEMPT entry WITH A REASON if it \
              is ornament or never composed — and read the call site before writing that reason, \
-             which is how the four existing exemptions were decided:\n{}",
+             which is how the four existing exemptions were decided:\n{}\n\n\
+             NOT checked, because an EXEMPT row claims they are ornament or never composed \
+             — if one of these is wrong, a real failure is hiding behind it:\n{}",
             fails.len(),
-            fails.join("\n")
+            fails.join("\n"),
+            skipped.iter().cloned().collect::<Vec<_>>().join("\n")
         );
     }
 

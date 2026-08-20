@@ -80,7 +80,7 @@ async fn main() {
     let mut lines = 0u32;
     print!("A: clone local fixture … ");
     match repo::clone_repo(
-        &*sup,
+        sup,
         &git,
         &env,
         &src_a.to_string_lossy(),
@@ -105,7 +105,7 @@ async fn main() {
     }
     print!("A: composer install … ");
     let mut clines = 0u32;
-    match repo::composer_install(&*sup, &php_bin, &composer, &a, &env, &cancel, &mut |_| {
+    match repo::composer_install(sup, &php_bin, &composer, &a, &env, &cancel, &mut |_| {
         clines += 1
     }) {
         Ok(()) => {
@@ -145,7 +145,7 @@ async fn main() {
     }
     print!("B: npm install … ");
     let mut nlines = 0u32;
-    match repo::node_install(&*sup, &npm, &b, &env, &cancel, &mut |_| nlines += 1) {
+    match repo::node_install(sup, &npm, &b, &env, &cancel, &mut |_| nlines += 1) {
         Ok(()) => {
             let dep = b.join("node_modules/is-odd").is_dir();
             println!("ok ({nlines} lines), node_modules/is-odd present = {dep}");
@@ -156,7 +156,7 @@ async fn main() {
         Err(e) => failures.push(format!("B npm install failed: {e}")),
     }
     print!("B: npm run build … ");
-    match repo::node_build(&*sup, &npm, &b, &env, &cancel, &mut |_| {}) {
+    match repo::node_build(sup, &npm, &b, &env, &cancel, &mut |_| {}) {
         Ok(()) => {
             let out = std::fs::read_to_string(b.join("build/out.js")).unwrap_or_default();
             println!("ok, build/out.js = {out:?}");
@@ -197,7 +197,7 @@ async fn main() {
         ],
     );
     print!("\nF: composer install (requires php >=9.0) … ");
-    match repo::composer_install(&*sup, &php_bin, &composer, &f, &env, &cancel, &mut |_| {}) {
+    match repo::composer_install(sup, &php_bin, &composer, &f, &env, &cancel, &mut |_| {}) {
         Ok(()) => failures.push("F: impossible php requirement installed Ok?!".into()),
         Err(e) => {
             let msg = e.to_string();

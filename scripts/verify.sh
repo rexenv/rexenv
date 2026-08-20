@@ -63,7 +63,18 @@ TREE_BEFORE="$(./scripts/verify-receipt.sh fingerprint 2>/dev/null || true)"
 # Zero-warning baseline established 28 Jul 2026 — a bar that ships with known
 # warnings trains people to ignore it. Pre-existing 8-arg fns carry explicit,
 # reasoned allows; new warnings fail the build.
-(cd src-tauri && cargo clippy --lib -- -D warnings)
+#
+# `--all-targets`, since 21 Aug 2026, and the reason is the same one that added
+# the `cli` crate's tests on 12 Aug: a gate that skips a shipped target is not a
+# gate. `--lib` covered the library and nothing else — not `main.rs`, not the 134
+# files in `examples/`, not `#[cfg(test)]` code — and the examples are precisely
+# where that week's audit found 22 defects. Clearing the backlog it exposed took
+# ~48 fixes; four deliberate cases carry an explicit `#[allow]` WITH its reason
+# (a test name whose capitals are load-bearing, two `items_after_test_module`
+# where hoisting production code would make the diff unreviewable, a fixture
+# tuple, and the tunnel `Child`s whose reaping belongs to a Drop guard).
+(cd src-tauri && cargo clippy --all-targets -- -D warnings)
+(cd cli && cargo clippy --all-targets -- -D warnings)
 npx tsc --noEmit
 # The ledger's tally is a claim about the ledger, so it is checked like one.
 # It went stale within a day of being typed (4 Aug 2026) while every ROW obeyed

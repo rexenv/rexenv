@@ -136,7 +136,7 @@ fn main() -> std::process::ExitCode {
     let after: Option<Retained<AnyObject>> = unsafe { msg_send![&*webview, UIDelegate] };
     checks.is(
         "the same delegate object is still installed after the re-set",
-        after.as_ref().map(|d| Retained::as_ptr(d) as *const AnyObject) == Some(delegate_ptr),
+        after.as_ref().map(Retained::as_ptr) == Some(delegate_ptr),
         "the delegate changed or vanished — the file picker would die silently",
     );
     // 5. Idempotent: a second install changes nothing.
@@ -157,8 +157,7 @@ fn main() -> std::process::ExitCode {
     checks.is(
         "a second install is a no-op (imps and delegate unchanged)",
         imps_first == imps_second
-            && after2.as_ref().map(|d| Retained::as_ptr(d) as *const AnyObject)
-                == Some(delegate_ptr),
+            && after2.as_ref().map(Retained::as_ptr) == Some(delegate_ptr),
         "re-installing moved an implementation or the delegate",
     );
 

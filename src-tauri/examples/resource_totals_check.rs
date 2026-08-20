@@ -4,6 +4,7 @@
 //!   - group into trees (masters + workers) exactly like the Services rows do,
 //!   - read each tree via Monitor::tree (+ the ps fallback for the ROOT edge),
 //!   - cross-check the summed RAM against raw `ps` RSS ground truth (±15%).
+//!
 //! Prints a per-tree table you can eyeball against Activity Monitor.
 
 use rexenv_lib::core::monitor::Monitor;
@@ -20,7 +21,7 @@ fn ps_rows() -> Vec<(u32, u32, u64, String)> {
     String::from_utf8_lossy(&out.stdout)
         .lines()
         .filter_map(|l| {
-            let rest = l.trim().split_whitespace().collect::<Vec<_>>();
+            let rest = l.split_whitespace().collect::<Vec<_>>();
             let pid = rest.first()?.parse().ok()?;
             let ppid = rest.get(1)?.parse().ok()?;
             let rss = rest.get(2)?.parse().ok()?;
@@ -68,7 +69,7 @@ fn main() {
     let mut app_total_ours = 0u64;
     let mut app_total_ps = 0u64;
     for (pid, _, _, cmd) in roots.iter().map(|r| **r) {
-        let name = cmd.split('/').last().unwrap_or("?").split_whitespace().next().unwrap_or("?");
+        let name = cmd.split('/').next_back().unwrap_or("?").split_whitespace().next().unwrap_or("?");
         let truth = ps_tree_rss_mb(*pid);
         let (ours, src) = match mon.tree(*pid) {
             Some(t) if t.ram_mb > 0 => (t.ram_mb, "sysinfo"),

@@ -1488,7 +1488,7 @@ mod tests {
 
         // A long line with no newline is bounded to the cap (memory guard) — it
         // never grows past max_bytes even though 100 bytes were offered.
-        let long = vec![b'a'; 100];
+        let long = [b'a'; 100];
         let capped = read_request_line(&long[..], 8, Duration::from_secs(5)).await;
         assert_eq!(capped.as_deref().map(str::len), Some(8), "bounded to the cap");
 

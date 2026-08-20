@@ -63,7 +63,7 @@ fn probe_dump_tool(ok: &mut bool, label: &str, tool: &Path, vendor: Vendor, tmp:
 
     // --result-file with a value, as dump() passes it.
     let result = format!("--result-file={}", tmp.join("probe.sql").display());
-    let (pass, err) = parses(tool, &[result.clone()]);
+    let (pass, err) = parses(tool, std::slice::from_ref(&result));
     check(ok, "accepts --result-file=<path>", pass, &err);
 
     // A defaults file shaped like DefaultsFile::create (the [client] group,

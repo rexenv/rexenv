@@ -79,7 +79,7 @@ fn main() {
     let mut lines = 0u32;
     print!("clone {SMALL_REPO} … ");
     match repo::clone_repo(
-        &*plat.supervisor(),
+        plat.supervisor(),
         &git,
         &env,
         SMALL_REPO,
@@ -103,7 +103,7 @@ fn main() {
     std::fs::create_dir_all(&taken).unwrap();
     std::fs::write(taken.join("keep.txt"), "keep").unwrap();
     match repo::clone_repo(
-        &*plat.supervisor(),
+        plat.supervisor(),
         &git,
         &env,
         SMALL_REPO,
@@ -140,12 +140,12 @@ fn main() {
         let before = ps_group(pgid);
         println!("process group {pgid} BEFORE cancel:\n{before}");
         let n_before = before.lines().count();
-        cancel2.cancel(&*plat2.supervisor());
+        cancel2.cancel(plat2.supervisor());
         (pgid, n_before)
     });
     let mut big_lines = 0u32;
     let clone_res = repo::clone_repo(
-        &*sup,
+        sup,
         &git,
         &env,
         BIG_REPO,

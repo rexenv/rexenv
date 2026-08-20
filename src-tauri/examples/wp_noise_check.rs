@@ -336,7 +336,7 @@ fn check_clean(leg: &str, stdout: &str, stderr: &str) {
     }
     match serde_json::from_str::<serde_json::Value>(stdout.trim()) {
         Ok(v) => {
-            if v.to_string() != serde_json::from_str::<serde_json::Value>(FIXTURE_JSON).unwrap().to_string() {
+            if v != serde_json::from_str::<serde_json::Value>(FIXTURE_JSON).unwrap() {
                 fail(
                     &format!("{leg} — the cut changed the answer"),
                     &format!("expected {FIXTURE_JSON}, got {v}"),

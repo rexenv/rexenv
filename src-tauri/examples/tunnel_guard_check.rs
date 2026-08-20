@@ -49,6 +49,11 @@ fn run_child(mode: &str) {
     // exits rather than until this process does — the same inherited-pipe trap
     // `core::proxy::start_privileged` documents for the detached edge. First
     // version of this file hung for 300s on exactly that.
+    // Not `wait()`ed on deliberately: the pid goes to `adopt_public_tunnel`, and
+    // THAT guard owns the reaping through all three teardown paths. A `wait()`
+    // here would block until the stand-in exits, which is the opposite of what
+    // each mode is arranging to measure.
+    #[allow(clippy::zombie_processes)]
     let child = Command::new("sleep")
         .arg("300")
         .stdout(std::process::Stdio::null())

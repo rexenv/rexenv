@@ -621,6 +621,10 @@ mod tests {
         assert_eq!(clamp_summary("   ").as_deref(), None, "whitespace summarises to nothing");
     }
 
+    // The capitals are the point: this repo's test names put the load-bearing
+    // word in caps, and renaming it to satisfy snake_case would delete the
+    // emphasis the name exists to carry.
+    #[allow(non_snake_case)]
     #[test]
     fn a_summary_is_clamped_at_the_WRITE_not_only_at_the_summariser() {
         // Defence placement, asserted: a tool whose own `summarise` was wrong —

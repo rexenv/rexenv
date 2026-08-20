@@ -1146,7 +1146,6 @@ mod tests {
         assert_eq!(minor_of("8.3"), "8.3");
     }
 
-    #[test]
     /// **Every shipped minor gets a port, and no two pool ports collide — across
     /// normal pools, debug pools, and every other fixed port in the app.**
     ///
@@ -1282,7 +1281,6 @@ mod tests {
         assert_eq!(minor_of(&unshipped_patch()), m);
     }
 
-    #[test]
     /// The one thing that keeps a hand-written date table honest: a minor
     /// cannot enter `PHP_VERSIONS` without declaring when its security support
     /// ends. Without this the failure is silent and in the safe-looking
@@ -1494,7 +1492,7 @@ mod tests {
         let minor = minor_of(binaries::PHP_VERSION);
         assert_eq!(pools.effective(&minor).unwrap(), patch_for_minor(&minor).unwrap());
         // A minor with no pin at all is an error, not a guess.
-        assert!(pools.effective(&unshipped_minor()).is_err());
+        assert!(pools.effective(unshipped_minor()).is_err());
 
         // With a snapshot, BOTH the normal and debug pool read the same answer —
         // they share a binary by design, and two lookups is how they would stop.
@@ -1628,7 +1626,7 @@ mod tests {
 
         // BEFORE: on the pin, pool on the pin — and the button IS offered, which
         // is what makes the "after" assertions mean something.
-        let before = row(&conn, &[pin.clone()]);
+        let before = row(&conn, std::slice::from_ref(&pin));
         assert_eq!(before.patch, pin);
         assert_eq!(before.serving, None, "a pool on the pin is not a discrepancy");
         assert_eq!(
@@ -1641,7 +1639,7 @@ mod tests {
         store::set_php_selected_patch(&conn, &minor, Some(&target)).unwrap();
 
         // AFTER — the three things the user read off the screen and reported.
-        let after = row(&conn, &[target.clone()]);
+        let after = row(&conn, std::slice::from_ref(&target));
         assert_eq!(after.patch, target, "the row still showed the old patch");
         assert_eq!(
             after.serving, None,
@@ -1654,7 +1652,7 @@ mod tests {
 
         // AND the pending-restart case must STILL be reported: selection moved,
         // pool has not. That is the one time `serving` should appear.
-        let pending = row(&conn, &[pin.clone()]);
+        let pending = row(&conn, std::slice::from_ref(&pin));
         assert_eq!(pending.patch, target);
         assert_eq!(
             pending.serving.as_deref(),
@@ -1665,7 +1663,7 @@ mod tests {
         // A stale selection below the pin never moves the row (the floor), and the
         // button comes back, because the catalog is still newer than the pin.
         store::set_php_selected_patch(&conn, &minor, Some(&format!("{minor}.0"))).unwrap();
-        let stale = row(&conn, &[pin.clone()]);
+        let stale = row(&conn, std::slice::from_ref(&pin));
         assert_eq!(stale.patch, pin);
         assert_eq!(stale.updatable.as_deref(), Some(target.as_str()));
     }
@@ -1692,13 +1690,19 @@ mod tests {
         assert_eq!(r.serving, None);
 
         // A pool running the pinned patch is not a disagreement either.
-        let r = row(list_versions(&conn, &[pinned.clone()], &Default::default(), "arm64").unwrap());
+        let r = row(
+            list_versions(&conn, std::slice::from_ref(&pinned), &Default::default(), "arm64")
+                .unwrap(),
+        );
         assert_eq!(r.serving, None, "running the pin is not worth a second line");
 
         // A pool running something else IS, and the row carries both.
         let stale = format!("{minor}.0");
         assert_ne!(stale, pinned);
-        let r = row(list_versions(&conn, &[stale.clone()], &Default::default(), "arm64").unwrap());
+        let r = row(
+            list_versions(&conn, std::slice::from_ref(&stale), &Default::default(), "arm64")
+                .unwrap(),
+        );
         assert_eq!(r.patch, pinned, "the pin is still the pin");
         assert_eq!(r.serving, Some(stale), "…and the row must say what is serving");
 
@@ -1998,6 +2002,7 @@ mod tests {
     ///      cannot make it wrong.
     ///   2. **The floor** — `updates::floored`, and the ONE planner seam below it.
     ///   3. This module, which defines both.
+    ///
     /// Anything that RUNS php uses [`patch_to_run`]. If you came here to add a
     /// fourth: you almost certainly want `patch_to_run`.
     #[test]
@@ -2083,11 +2088,11 @@ mod tests {
         assert!(saw_existence, "no existence check classified — the classifier is dead code");
         let comment_only = format!("{} {} {}", "eleven", "call", "sites reached for");
         assert!(
-            std::fs::read_to_string(&root.join("core/php.rs")).unwrap().contains(&comment_only),
+            std::fs::read_to_string(root.join("core/php.rs")).unwrap().contains(&comment_only),
             "canary phrase moved — this test can no longer prove comments are stripped"
         );
         let scanned_php = crate::core::copy_scan::production_source(
-            &std::fs::read_to_string(&root.join("core/php.rs")).unwrap(),
+            &std::fs::read_to_string(root.join("core/php.rs")).unwrap(),
         );
         assert!(
             scanned_php.contains("pub fn patch_to_run"),

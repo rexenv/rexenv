@@ -2774,8 +2774,12 @@ mod tests {
         // Tree distributions, and the bundles (which have no plain manifest).
         for n in ["mysql", "postgres"] {
             assert_eq!(shape_of(n), Shape::Dir);
-            assert_eq!(manifest(n, MYSQL_VERSION, "macos", Arch::Arm64).map(|s| s.archive)
-                .or(Some(Archive::TarGzTree)).unwrap(), Archive::TarGzTree);
+            assert_eq!(
+                manifest(n, MYSQL_VERSION, "macos", Arch::Arm64)
+                    .map(|s| s.archive)
+                    .unwrap_or(Archive::TarGzTree),
+                Archive::TarGzTree
+            );
         }
         for n in ["redis", "mariadb", "httpd", "xdebug-8.4"] {
             assert_eq!(shape_of(n), Shape::Bundle);

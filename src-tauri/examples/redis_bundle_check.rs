@@ -9,6 +9,7 @@
 //!      signature.
 //!   3. `DbEngine::Redis.start()` serves on :16379 — PING and a SET/GET
 //!      round-trip through the bundled `redis-cli` (itself relinked).
+//!
 //! Cleans up its own child only — never touches the running stack.
 
 use rexenv_lib::core::db::DbEngine;
