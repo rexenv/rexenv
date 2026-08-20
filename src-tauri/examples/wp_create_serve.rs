@@ -165,6 +165,16 @@ async fn main() {
     // arrives as a 502 from an edge that is demonstrably up.
     common::await_listening(services::NGINX_HTTP_PORT, "nginx", None);
     common::await_listening(services::PHP_FPM_PORT, "php-fpm 8.3", None);
+    // ...and then for the edge to ANSWER. Everything above proves sockets
+    // ACCEPT; the request below `.unwrap()`s on the first HTTPS call, so a
+    // request inside Caddy's load window fails the example with a transport
+    // error rather than a status.
+    common::await_answering(
+        domain,
+        CADDY_HTTPS,
+        &ca.cert_path,
+        "the caddy edge answering HTTPS",
+    );
 
     // 4) Verify over HTTPS (validated against our CA): homepage + wp-admin login.
     let addr: SocketAddr = format!("127.0.0.1:{CADDY_HTTPS}").parse().unwrap();

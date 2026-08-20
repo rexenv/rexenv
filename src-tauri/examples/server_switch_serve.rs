@@ -74,6 +74,16 @@ async fn main() -> std::process::ExitCode {
     common::await_listening(CADDY_HTTPS, "the caddy edge", None);
     common::await_listening(services::NGINX_HTTP_PORT, "nginx", None);
     common::await_listening(services::PHP_FPM_PORT, "php-fpm 8.3", None);
+    // ACCEPTING is not ANSWERING. The 1200ms sleep the sweep deleted at this
+    // exact spot was the only thing covering Caddy's certificate/route load
+    // window, and the very next statement is the FIRST fetch — whose `000`
+    // would be recorded as the nginx backend failing to serve.
+    common::await_answering(
+        DOMAIN,
+        CADDY_HTTPS,
+        std::path::Path::new(&ca_pem),
+        "the caddy edge answering HTTPS",
+    );
 
     let mut results = Vec::new();
     let (c0, v0) = fetch(&ca_pem);

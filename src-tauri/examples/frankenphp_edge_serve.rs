@@ -149,9 +149,12 @@ async fn main() {
     //
     // NOT circular: this waits for ANY http status, then the assertions below
     // demand 200. A 502 ends the wait immediately and fails on its own merits.
-    common::await_ready("the caddy edge answering HTTPS", None, || {
-        fetch(&ng.domain, &ca_pem).0 != "000"
-    });
+    common::await_answering(
+        &ng.domain,
+        CADDY_HTTPS,
+        std::path::Path::new(&ca_pem),
+        "the caddy edge answering HTTPS",
+    );
 
     println!("fp.test backend port = {fp_port} (override range)\n");
     let (ng_code, ng_ver) = fetch("ng.test", &ca_pem);

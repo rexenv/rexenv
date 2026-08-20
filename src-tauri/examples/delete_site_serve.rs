@@ -91,6 +91,16 @@ async fn main() {
     common::await_listening(services::PHP_FPM_PORT, "php-fpm 8.3", None);
     common::await_listening(NGINX_PORT, "nginx", None);
     common::await_listening(CADDY_HTTPS, "the caddy edge", None);
+    // ...and for it to ANSWER, before the BEFORE-delete baseline is taken. That
+    // baseline is what the whole check rests on: if `keep.test` reads
+    // `ERROR (connect)` because the request landed inside Caddy's load window,
+    // the AFTER comparison still "passes" while proving nothing at all.
+    common::await_answering(
+        "keep.test",
+        CADDY_HTTPS,
+        &ca.cert_path,
+        "the caddy edge answering HTTPS",
+    );
 
     let addr: SocketAddr = format!("127.0.0.1:{CADDY_HTTPS}").parse().unwrap();
     let ca_cert = reqwest::Certificate::from_pem(&std::fs::read(&ca.cert_path).unwrap()).unwrap();

@@ -281,6 +281,14 @@ it can:
   17 days as an unexplained transient. The helper waits and then fails AT THE
   PRECONDITION with the port named and the service's own log spilled — the log every one
   of these examples was discarding.
+  **ACCEPTING is not ANSWERING, and the edge is where the difference bites** (21 Aug
+  2026). `await_listening` proves the socket accepts; Caddy binds its listener before it
+  has loaded certificates and routes, so a request inside that window comes back `000` and
+  the example records it as the SITE being broken. `common::await_answering` polls for any
+  HTTP status through our own CA — any status, because the assertions afterwards still
+  demand 200, which is what keeps it a readiness gate rather than a retry loop that hides
+  a failure. Worth stating as a layer rule because the first fix for it was a longer
+  sleep, and a sleep is not a check: it is a long one.
   **A check that only PRINTS cannot fail, and that is not a small thing** (20 Aug 2026).
   Several `*_serve` examples ended with `println!("READY https://…:8443")` and a sleep for
   a human to curl. Caddy had been dying at startup for weeks — its admin socket exceeded

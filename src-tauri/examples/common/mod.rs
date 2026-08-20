@@ -601,6 +601,53 @@ pub fn fixture_db(tag: &str) -> (rusqlite::Connection, FixtureDb) {
 // Plain HTTP probe
 // ---------------------------------------------------------------------------
 
+/// The edge's HTTPS status for `host`, or `"000"` when it answered nothing.
+///
+/// `curl` through our own CA with an explicit `--resolve`, because that is what
+/// every example that talks to the edge already does and a second mechanism
+/// here would be a second set of TLS behaviours to reason about.
+pub fn https_status(host: &str, port: u16, ca_pem: &Path) -> String {
+    let out = std::process::Command::new("curl")
+        .args([
+            "-s",
+            "--resolve",
+            &format!("{host}:{port}:127.0.0.1"),
+            "--cacert",
+            &ca_pem.display().to_string(),
+            "-o",
+            "/dev/null",
+            "-w",
+            "%{http_code}",
+            &format!("https://{host}:{port}/"),
+        ])
+        .output();
+    match out {
+        Ok(o) => String::from_utf8_lossy(&o.stdout).trim().to_string(),
+        Err(_) => "000".to_string(),
+    }
+}
+
+/// Wait for the edge to ANSWER, which is not what [`await_listening`] proves.
+///
+/// `await_listening` proves the socket ACCEPTS. Caddy binds its listener before
+/// it has finished loading certificates and routes, so a request made in that
+/// window comes back `000` — curl's "no HTTP response at all" — and the example
+/// reads it as the SITE being broken. Measured 20 Aug 2026 in
+/// `frankenphp_edge_serve`: the edge logged `enabling HTTP/3 listener addr
+/// :8443` and the run was over 245ms later with both sites at 000.
+///
+/// The flat sleeps this replaces hid the window by being generous, which is the
+/// honest reason a sleep sometimes "works": it is not a check, but it is a long
+/// one. The answer is not a longer sleep — it is polling the fact the assertions
+/// depend on.
+///
+/// **Not circular.** This waits for ANY status; the assertions afterwards demand
+/// 200. A 502 ends the wait immediately and fails on its own merits, which is
+/// the difference between a readiness gate and a retry loop that hides a bug.
+pub fn await_answering(host: &str, port: u16, ca_pem: &Path, what: &str) {
+    await_ready(what, None, || https_status(host, port, ca_pem) != "000");
+}
+
 /// One loopback HTTP/1.1 GET with an explicit Host header (how the shared
 /// nginx routes vhosts). Returns the raw response (headers + body), or the
 /// error as a string — callers assert on content either way. Deliberately

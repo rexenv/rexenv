@@ -96,14 +96,16 @@ paying for anyway: **the tick belongs in the commit that does the work.**
     was the `process::exit(1)` variant and went with the verdict-contract fix.
     `frankenphp_edge_serve` had already had this fix in `48e5046`, where it measured 1
     leaked caddy per panicking run → 0.
-  - [ ] **Accept-vs-answer — the gate proves the socket ACCEPTS.** Caddy binds its
-    listener before certificates and routes are loaded, so a request in that window
-    returns `000`/connect-error and the table blames the site. `server_switch_serve`
-    deleted a 1200ms sleep that was the only thing covering that window;
-    `delete_site_serve`'s BEFORE-delete baseline — the thing its whole assertion rests on
-    — is taken ~1ms after the accept gate; `wp_create_serve` unwraps its first HTTPS
-    request on the next statement. `frankenphp_edge_serve:152` has the answer gate the
-    others need; promote it to `common` rather than copying it a fourth time.
+  - [x] **Accept-vs-answer — the gate proves the socket ACCEPTS.** ✓ 21 Aug 2026,
+    promoted to `common::await_answering` (+ `common::https_status`) rather than copied a
+    fourth time, and `frankenphp_edge_serve` — where the local version was written — now
+    calls the shared one. Wired into the three that needed it: `server_switch_serve` (the
+    sweep had deleted the 1200ms sleep that was the only thing covering Caddy's load
+    window, one statement before the first fetch), `delete_site_serve` (its BEFORE-delete
+    baseline is what the whole check rests on, and was taken ~1ms after the accept gate),
+    and `wp_create_serve` (whose first HTTPS request `.unwrap()`s). The helper waits for
+    ANY status and the assertions still demand 200, so it is a readiness gate and not a
+    retry loop that hides a bug.
   - [ ] **Wrong subject — the gate is satisfied by someone else's server.**
     `wp_install_serve` never calls `common::require_ports_free`, so all three of its gates
     can be satisfied by listeners it did not spawn; `service_manager_demo` gates only the
