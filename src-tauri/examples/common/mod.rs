@@ -221,19 +221,34 @@ pub fn require_ports_free(ports: &[(u16, &str)]) {
 /// `log` is an optional file to spill on failure (php-fpm's error_log is the
 /// one that says WHY, and every one of these examples was discarding it).
 pub fn await_listening(port: u16, what: &str, log: Option<&Path>) {
+    await_ready(&format!("{what} (127.0.0.1:{port})"), log, || {
+        rexenv_lib::core::ports::is_listening(port)
+    });
+}
+
+/// [`await_listening`] for readiness that is not a TCP port.
+///
+/// The edge's admin surface is a UNIX SOCKET by design — a TCP admin on a root
+/// Caddy is arbitrary file r/w as root (docs/ARCHITECTURE.md) — so the examples
+/// that wait for it cannot poll a port at all, and a helper that only knew
+/// about ports would have sent them back to flat sleeps. Same contract: poll,
+/// then fail HERE with the subject named and its log spilled, so a missing
+/// precondition never masquerades as a broken subject downstream.
+pub fn await_ready(what: &str, log: Option<&Path>, mut ready: impl FnMut() -> bool) {
     let deadline = Instant::now() + Duration::from_secs(20);
     while Instant::now() < deadline {
-        if rexenv_lib::core::ports::is_listening(port) {
+        if ready() {
             return;
         }
         std::thread::sleep(Duration::from_millis(100));
     }
     eprintln!(
-        "\n✗ {what} never bound 127.0.0.1:{port} within 20s.\n           Every check below that needs it would fail as though the SERVER were \
+        "\n✗ {what} was not ready within 20s.\n  \
+         Every check below that needs it would fail as though the SERVICE were \
          broken — this says otherwise, here, before they run."
     );
     if let Some(path) = log {
-        eprintln!("  {what}'s own log ({}):", path.display());
+        eprintln!("  its own log ({}):", path.display());
         match std::fs::read_to_string(path) {
             Ok(text) if !text.trim().is_empty() => eprintln!("{text}"),
             Ok(_) => eprintln!("  (empty — it never got far enough to write)"),

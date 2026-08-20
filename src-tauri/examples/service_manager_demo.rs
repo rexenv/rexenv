@@ -11,6 +11,8 @@ use rexenv_lib::state::models::{NewSite, SiteType, WebServer};
 use std::net::SocketAddr;
 use std::time::Duration;
 
+mod common;
+
 // High ports so this runs unattended (no privileged :443 admin prompt). The
 // privileged :443 path is the same start_privileged proven in task 4.2; pass
 // `real443` as an arg to use :443 (will prompt — run in the foreground).
@@ -64,6 +66,11 @@ async fn main() {
         eprintln!("start_all failed: {e}");
         return;
     }
+
+    // `start_all` returns without awaiting the EDGE — its ReadyChecks cover the
+    // databases, mailpit and the FrankenPHP overrides only — and the HTTPS
+    // request further down needs it.
+    common::await_listening(https_port, "the caddy edge", None);
 
     println!("\n=== service status + live metrics ===");
     let mut mon = Monitor::new();

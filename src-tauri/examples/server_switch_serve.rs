@@ -18,6 +18,8 @@ use rexenv_lib::state::models::{NewSite, SiteType, WebServer};
 use std::process::Command;
 use std::time::Duration;
 
+mod common;
+
 const CADDY_HTTPS: u16 = 8443;
 const DOMAIN: &str = "sw.test";
 
@@ -62,7 +64,12 @@ async fn main() {
         eprintln!("start_all failed: {e}");
         std::process::exit(1);
     }
-    std::thread::sleep(Duration::from_millis(1200));
+    // `start_all` awaits ReadyChecks for the databases, mailpit and the
+    // FrankenPHP overrides — not the edge, not nginx, not the pools. The flat
+    // sleep that stood here was covering all three of those.
+    common::await_listening(CADDY_HTTPS, "the caddy edge", None);
+    common::await_listening(services::NGINX_HTTP_PORT, "nginx", None);
+    common::await_listening(services::PHP_FPM_PORT, "php-fpm 8.3", None);
 
     let mut results = Vec::new();
     let (c0, v0) = fetch(&ca_pem);

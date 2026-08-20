@@ -97,7 +97,11 @@ async fn main() {
     let caddy_bin = binaries::resolve(&*plat, "caddy", binaries::CADDY_VERSION).await.unwrap();
     let mut nginx = services::start_nginx(&*plat, &nginx_bin, &cfg.nginx_conf, &cfg.nginx_prefix).unwrap();
     let mut caddy = proxy::start(&*plat, &caddy_bin, &cfg.caddyfile).unwrap();
-    thread::sleep(Duration::from_millis(1500));
+    // Gate on the sockets, not the clock (`common::await_listening` carries the
+    // incident): every spawn helper here returns at fork, not at bind.
+    common::await_listening(rexenv_lib::core::php::fpm_port("8.1").expect("8.1 pool port"), "php-fpm 8.1", None);
+    common::await_listening(NGINX_PORT, "nginx", None);
+    common::await_listening(CADDY_HTTPS, "caddy", None);
 
     let (code_before, ver_before) = fetch_version(&ca_pem);
     println!("before switch: http={code_before}  reports PHP {ver_before}");
@@ -105,6 +109,12 @@ async fn main() {
     // ── SWITCH 8.1 → 8.3 (the same steps the IPC command runs) ──────────────
     sites::set_php_version(&conn, &site.id, "8.3").expect("set version");
     pools.ensure(&*plat, "8.3").await.expect("ensure 8.3 pool");
+    // The pool the switch just created — the request below runs THROUGH it.
+    common::await_listening(
+        rexenv_lib::core::php::fpm_port("8.3").expect("8.3 pool port"),
+        "php-fpm 8.3",
+        None,
+    );
     let cfg = sites::rebuild_configs(&conn, &*plat, &ca, NGINX_PORT, CADDY_HTTP, CADDY_HTTPS).unwrap();
     thread::sleep(Duration::from_millis(800));
     services::reload_nginx(&*plat, &nginx_bin, &cfg.nginx_conf, &cfg.nginx_prefix, NGINX_PORT).expect("reload");

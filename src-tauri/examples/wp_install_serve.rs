@@ -86,7 +86,11 @@ async fn main() {
     let mut fpm = services::start_fpm(&*plat, &php_fpm, &fpm_conf).unwrap();
     let mut ngx = services::start_nginx(&*plat, &nginx, &cfg.nginx_conf, &cfg.nginx_prefix).unwrap();
     let mut cad = proxy::start(&*plat, &caddy, &cfg.caddyfile).unwrap();
-    std::thread::sleep(Duration::from_millis(1200));
+    // Gate on the sockets, not the clock: all three spawn helpers return at
+    // fork, not at bind (`common::await_listening`).
+    common::await_listening(services::PHP_FPM_PORT, "php-fpm 8.3", None);
+    common::await_listening(NGINX_PORT, "nginx", None);
+    common::await_listening(CADDY_HTTPS, "the caddy edge", None);
 
     // One-click WordPress install.
     println!("installing WordPress…");

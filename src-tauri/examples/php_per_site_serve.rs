@@ -13,10 +13,8 @@ use rexenv_lib::core::{binaries, proxy, services, sites, ssl};
 use rexenv_lib::state::db;
 use rexenv_lib::state::models::{NewSite, SiteType, WebServer};
 use std::process::Command;
-use std::thread;
 
 mod common;
-use std::time::Duration;
 
 const NGINX_PORT: u16 = services::NGINX_HTTP_PORT; // 18088
 const CADDY_HTTP: u16 = 8080;
@@ -79,7 +77,17 @@ async fn main() {
     let mut nginx =
         services::start_nginx(&*plat, &nginx_bin, &cfg.nginx_conf, &cfg.nginx_prefix).expect("nginx");
     let mut caddy = proxy::start(&*plat, &caddy_bin, &cfg.caddyfile).expect("caddy");
-    thread::sleep(Duration::from_millis(1500));
+    // Gate on the sockets, not the clock (`common::await_listening` carries the
+    // incident): every spawn helper here returns at fork, not at bind.
+    for minor in ["8.1", "8.3"] {
+        common::await_listening(
+            rexenv_lib::core::php::fpm_port(minor).expect("pool port"),
+            &format!("php-fpm {minor}"),
+            None,
+        );
+    }
+    common::await_listening(NGINX_PORT, "nginx", None);
+    common::await_listening(CADDY_HTTPS, "caddy", None);
 
     println!("\n=== fetch each site through Caddy→nginx→php-fpm ===");
     let mut all_ok = true;

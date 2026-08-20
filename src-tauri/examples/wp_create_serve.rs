@@ -159,6 +159,13 @@ async fn main() {
         );
     }
 
+    // ...and the two services BEHIND the edge, which this block never covered.
+    // The incident above was about caddy, so caddy is what got gated; the
+    // request below still traverses nginx and the pool, and a miss on either
+    // arrives as a 502 from an edge that is demonstrably up.
+    common::await_listening(services::NGINX_HTTP_PORT, "nginx", None);
+    common::await_listening(services::PHP_FPM_PORT, "php-fpm 8.3", None);
+
     // 4) Verify over HTTPS (validated against our CA): homepage + wp-admin login.
     let addr: SocketAddr = format!("127.0.0.1:{CADDY_HTTPS}").parse().unwrap();
     let ca_cert = reqwest::Certificate::from_pem(&std::fs::read(&ca.cert_path).unwrap()).unwrap();

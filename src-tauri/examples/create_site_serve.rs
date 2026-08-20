@@ -75,7 +75,12 @@ async fn main() {
         .expect("nginx");
     let mut caddy = proxy::start(&*plat, &caddy_bin, &cfg.caddyfile).expect("caddy");
 
-    thread::sleep(Duration::from_secs(1));
+    // Gate on the sockets, not the clock: all three spawn helpers return at
+    // fork, not at bind. The READY line below advertises a URL for a human to
+    // curl, so announcing it early is announcing a 502.
+    common::await_listening(services::PHP_FPM_PORT, "php-fpm 8.3", None);
+    common::await_listening(NGINX_PORT, "nginx", None);
+    common::await_listening(CADDY_HTTPS, "the caddy edge", None);
     println!(
         "READY https://{domain}:{CADDY_HTTPS}  fpm={} nginx={}",
         services::fpm_running(services::PHP_FPM_PORT),

@@ -49,7 +49,11 @@ async fn main() {
     if let Err(e) = mgr.ensure_db(&*plat, DbEngine::Postgres).await {
         eprintln!("postgres start failed: {e}");
     }
-    std::thread::sleep(Duration::from_millis(1200));
+    // The edge and the pool are both spawned inside `start_all` and neither is
+    // covered by its `await_ready`, so this flat sleep was the only thing
+    // standing between them and the status table below — which REPORTS
+    // per-service liveness, so a service still binding read as one that died.
+    common::await_listening(services::PHP_FPM_PORT, "php-fpm 8.3", None);
 
     // Two refresh sweeps so CPU% is computed over an interval (`process()` is
     // read-only since M6 — `refresh_processes()` does the sampling).

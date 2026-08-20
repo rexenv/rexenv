@@ -13,7 +13,6 @@
 use rexenv_lib::core::php::{self, PhpFpmPools};
 use rexenv_lib::core::services;
 use std::process::ExitCode;
-use std::time::Duration;
 
 mod common;
 
@@ -32,8 +31,16 @@ async fn main() -> ExitCode {
         return checks.verdict();
     }
 
-    // Give the masters a moment to bind their ports.
-    std::thread::sleep(Duration::from_millis(800));
+    // Wait for the masters to bind — "a moment" was a guess, and the status
+    // table below reports `listening` per pool, so a pool still binding read
+    // as a pool that failed.
+    for minor in &minors {
+        common::await_listening(
+            rexenv_lib::core::php::fpm_port(minor).expect("pool port"),
+            &format!("php-fpm {minor}"),
+            None,
+        );
+    }
 
     println!("=== pool status (version · port · pid · listening) ===");
     let status = pools.status();

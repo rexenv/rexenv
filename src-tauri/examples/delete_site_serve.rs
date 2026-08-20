@@ -70,7 +70,11 @@ async fn main() {
     let mut fpm = services::start_fpm(&*plat, &fpm_bin, &fpm_conf).unwrap();
     let mut nginx = services::start_nginx(&*plat, &nginx_bin, &cfg.nginx_conf, &cfg.nginx_prefix).unwrap();
     let mut caddy = proxy::start(&*plat, &caddy_bin, &cfg.caddyfile).unwrap();
-    tokio::time::sleep(Duration::from_millis(1200)).await;
+    // Gate on the sockets, not the clock: all three spawn helpers return at
+    // fork, not at bind (`common::await_listening`).
+    common::await_listening(services::PHP_FPM_PORT, "php-fpm 8.3", None);
+    common::await_listening(NGINX_PORT, "nginx", None);
+    common::await_listening(CADDY_HTTPS, "the caddy edge", None);
 
     let addr: SocketAddr = format!("127.0.0.1:{CADDY_HTTPS}").parse().unwrap();
     let ca_cert = reqwest::Certificate::from_pem(&std::fs::read(&ca.cert_path).unwrap()).unwrap();

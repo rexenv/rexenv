@@ -19,10 +19,8 @@ use rexenv_lib::state::db;
 use rexenv_lib::state::models::{NewSite, SiteType, WebServer};
 use std::path::Path;
 use std::process::Command;
-use std::thread;
 
 mod common;
-use std::time::Duration;
 
 const NGINX_PORT: u16 = services::NGINX_HTTP_PORT;
 const CADDY_HTTP: u16 = 8080;
@@ -95,7 +93,14 @@ async fn main() {
     let caddy_bin = binaries::resolve(&*plat, "caddy", binaries::CADDY_VERSION).await.unwrap();
     let mut nginx = services::start_nginx(&*plat, &nginx_bin, &cfg.nginx_conf, &cfg.nginx_prefix).unwrap();
     let mut caddy = proxy::start(&*plat, &caddy_bin, &cfg.caddyfile).unwrap();
-    thread::sleep(Duration::from_millis(1800));
+    // FOUR spawns shared one flat sleep. Each returns at fork, and the two
+    // requests below traverse different backends — a pool for ng.test, the
+    // FrankenPHP process for fp.test — so a miss on either reads as the edge
+    // routing to the wrong place.
+    common::await_listening(services::PHP_FPM_PORT, "php-fpm 8.3", None);
+    common::await_listening(fp_port, "frankenphp", None);
+    common::await_listening(NGINX_PORT, "nginx", None);
+    common::await_listening(CADDY_HTTPS, "the caddy edge", None);
 
     println!("fp.test backend port = {fp_port} (override range)\n");
     let (ng_code, ng_ver) = fetch("ng.test", &ca_pem);

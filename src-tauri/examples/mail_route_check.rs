@@ -16,6 +16,8 @@ use rexenv_lib::state::models::{NewSite, SiteType, WebServer};
 use std::net::SocketAddr;
 use std::time::Duration;
 
+mod common;
+
 const HTTPS: u16 = 8443;
 const SUBJECT: &str = "FPM mail test";
 
@@ -76,6 +78,13 @@ async fn main() {
             edge_up = true;
             break;
         }
+    // The edge is not the whole stack: the request below traverses Caddy → the
+    // shared nginx → the 8.3 pool, and `start_all` emits ReadyChecks for the
+    // databases, mailpit and the FrankenPHP overrides only. `edge_up` above
+    // stays the example's own reported fact; these are the two it never waited
+    // for.
+    common::await_listening(rexenv_lib::core::services::NGINX_HTTP_PORT, "nginx", None);
+    common::await_listening(rexenv_lib::core::services::PHP_FPM_PORT, "php-fpm 8.3", None);
         std::thread::sleep(Duration::from_millis(250));
     }
     println!("edge listening on :{HTTPS} = {edge_up}");

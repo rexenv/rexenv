@@ -12,8 +12,8 @@ use rexenv_lib::core::services::RewriteMode;
 use rexenv_lib::core::{binaries, frankenphp, ports};
 use rexenv_lib::platform;
 use std::process::Command;
-use std::thread;
-use std::time::Duration;
+
+mod common;
 
 const PORT: u16 = frankenphp::FRANKENPHP_BASE_PORT; // 8200
 const DOT_SECRET: &str = "REXENV_FP_DOT_7a31";
@@ -47,7 +47,9 @@ async fn main() {
     let bin = binaries::resolve(&*plat, "frankenphp", binaries::FRANKENPHP_VERSION).await.unwrap();
     let conf = frankenphp::write_config(&*plat, DOMAIN, &docroot, PORT, RewriteMode::Single, &[]).unwrap();
     let mut child = frankenphp::start(&*plat, &bin, DOMAIN, &conf, &[]).expect("start frankenphp");
-    thread::sleep(Duration::from_millis(1500));
+    // Gate on the sockets, not the clock (`common::await_listening` carries the
+    // incident): every spawn helper here returns at fork, not at bind.
+    common::await_listening(PORT, "frankenphp", None);
 
     let listening = frankenphp::running(PORT);
     let admin_bound = ports::is_listening(2019); // must be false — admin is off

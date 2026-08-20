@@ -10,8 +10,8 @@
 use rexenv_lib::core::proxy::{self, CaddyConfig};
 use rexenv_lib::core::binaries;
 use rexenv_lib::platform;
-use std::thread;
-use std::time::Duration;
+
+mod common;
 
 #[tokio::main]
 async fn main() {
@@ -35,7 +35,10 @@ async fn main() {
 
     // 1) Start a "stale" leftover edge (holds the admin socket).
     let mut stale = proxy::start(&*plat, &caddy, &caddyfile).expect("start stale edge");
-    thread::sleep(Duration::from_millis(1000));
+    // The subject is the admin UNIX SOCKET, not a port — `await_ready` exists
+    // for exactly this. A flat second also had to cover a freshly
+    // de-quarantined caddy's first exec, which Gatekeeper can stall.
+    common::await_ready("the stale edge's admin socket", None, || proxy::admin_alive(&*plat));
     let stale_up = proxy::admin_alive(&*plat);
     println!("stale edge holding the admin socket = {stale_up}");
 
@@ -47,7 +50,7 @@ async fn main() {
 
     // 3) A fresh edge now starts cleanly (previously: bind: address already in use).
     let mut fresh = proxy::start(&*plat, &caddy, &caddyfile).expect("start fresh edge");
-    thread::sleep(Duration::from_millis(1000));
+    common::await_ready("the fresh edge's admin socket", None, || proxy::admin_alive(&*plat));
     let fresh_up = proxy::admin_alive(&*plat);
     println!("fresh edge started, admin socket alive = {fresh_up}");
 

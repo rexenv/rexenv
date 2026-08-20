@@ -20,7 +20,8 @@ use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::process::Command;
-use std::time::Duration;
+
+mod common;
 
 const HTTPS: u16 = 8443;
 
@@ -65,12 +66,16 @@ async fn main() {
         eprintln!("start_all failed: {e}");
         return;
     }
-    for _ in 0..40 {
-        if rexenv_lib::core::ports::is_listening(HTTPS) {
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(250));
-    }
+    // The EDGE is not the whole stack. This loop waited only for Caddy, while
+    // every request below traverses Caddy → the shared nginx → the 8.3 pool —
+    // and `start_all` awaits ReadyChecks for the databases, mailpit and the
+    // FrankenPHP overrides ONLY: neither nginx nor the pools emit one, so both
+    // are spawned and returned from unwaited. Waiting for the front door and
+    // then knocking on the back one is how this reads as a 502 from a working
+    // stack.
+    common::await_listening(HTTPS, "the caddy edge", None);
+    common::await_listening(rexenv_lib::core::services::NGINX_HTTP_PORT, "nginx", None);
+    common::await_listening(rexenv_lib::core::services::PHP_FPM_PORT, "php-fpm 8.3", None);
 
     // Real DB with tables to land in.
     let php = binaries::resolve(&*plat, "php", binaries::PHP_VERSION).await.unwrap();

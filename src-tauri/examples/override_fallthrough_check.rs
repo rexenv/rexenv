@@ -110,7 +110,8 @@ async fn main() {
         .expect("start nginx");
     // Fixture port, so `Reaped`'s sweep is safe here (see its contract).
     let mut nginx = common::Reaped::new(child, NGINX_PORT, "nginx");
-    std::thread::sleep(Duration::from_millis(1200));
+    // Gate on the socket, not the clock (`common::await_listening`).
+    common::await_listening(NGINX_PORT, "nginx", None);
 
     let get = |host: &str| -> String {
         // "/index.html", not "/": the generated vhost's try_files sends "/" to
