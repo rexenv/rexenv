@@ -1,42 +1,51 @@
 # TODO — the single active-work file
 
 Everything open lives here, and ONLY open work lives here — the completed evidence
-log this file used to carry is `docs/archive/SHIPPED-2026-07.md` (historical). When
-you finish an item, tick it here with a one-line ✓ evidence note; when a section is
-fully shipped, move it to the archive log. Reconciled against code 28 Jul 2026
-(commit `b31ce3a`): every item below was re-verified as genuinely open, with the
-evidence cited.
+log this file used to carry is `docs/archive/SHIPPED-2026-07.md`, and everything
+finished in August 2026 is now `docs/archive/SHIPPED-2026-08.md` (both historical).
+When you finish an item, tick it here with a one-line ✓ evidence note; when a section
+is fully shipped, move it to the archive log.
+
+**Reconciled against the code 21 Aug 2026** (HEAD `48e5046`, the first reconcile after
+v0.3.0 shipped), by reading every row against the tree rather than trusting it. What it
+found is worth more than the tidy file it produced, because it names how this file goes
+wrong:
+
+- **57 finished blocks had accumulated here** and are now in `SHIPPED-2026-08.md`. The
+  file's own rule ("ONLY open work lives here") had quietly stopped being true, and the
+  cost is not tidiness — it is that 50 open rows were hiding among 57 shipped ones.
+- **Six rows were open only on paper.** The work had landed in a commit that never
+  touched this file: the readiness-gate sweep (`2f564bb`), the "exists" line's
+  explanation (`be6a14d`), resolver-drift surfacing, the tunnel-replay leg (`77ba587`),
+  the verdict receipt (whose own body had said **DONE** for eight days while the box
+  stayed `[ ]`), and PHP 7.4. Every one of them was a commit that did the work and left
+  the tick for later; nobody came back.
+- **One row described a guard that does not exist** — `wp_dns_check` was said to "FAIL
+  LOUDLY the day a build stops using c-ares", and it does not: it prints a NOTE and
+  passes green. That is the dangerous kind of staleness, because someone would have
+  relied on it.
+- **And the reconcile itself found new work**: a post-release audit of the readiness-gate
+  sweep confirmed 22 defects *inside the fix*, including gates that cannot run and
+  examples that report green having asserted nothing.
+
+So the rule this file needs is the one CLAUDE.md already states and this file kept
+paying for anyway: **the tick belongs in the commit that does the work.**
 
 ## Now — actionable code/test work
 
-- [ ] **`frankenphp_edge_serve` still fails on a CLEAN machine — and may never have
-  passed on its own.** Three real defects were found and fixed inside it on 20 Aug 2026;
-  a fourth is open, and the honest reading is that the example's green runs were
-  borrowed.
-  1. ✓ **It spawned FrankenPHP on the DERIVED port while the edge routed to the
-     RECORDED one** — `derived site_port=8243` vs `recorded_override_port=Some(8200)`,
-     with `reverse_proxy 127.0.0.1:8200` in the Caddyfile and nothing there, so `fp.test`
-     502'd past a healthy backend one port away. The product states this rule against
-     itself (`reconcile_overrides`: "The RECORDED backend port (B20 §4), never
-     re-derived"), so the example was testing an arrangement the product never produces.
-  2. ✓ **The readiness gate proved the wrong thing.** `await_listening` proves the socket
-     ACCEPTS; Caddy binds its listener before it has loaded certificates and routes, so a
-     request in that window returns `000` and the table blames the site. It now waits for
-     the edge to ANSWER (any HTTP status — a 502 ends the wait and fails on its merits,
-     so it is not circular).
-  3. ✓ **nginx, caddy and frankenphp were raw `Child`s**, which Rust does not kill on
-     drop — and the gates exit by PANICKING, so they leaked more than the flat sleep ever
-     did. Four failing runs left four caddies alive, which then fought over :8443 and
-     turned every later run into `000`. All three are `common::OwnedService` now, and the
-     happy-path teardown calls the guard's own `stop()` rather than a hand-written
-     duplicate. **Measured: 1 leaked caddy per panicking run → 0.**
-  4. ✗ **OPEN:** with the machine genuinely clean, its own edge binds :8443 and then never
-     answers HTTPS within 20s. It DID serve 200/200 twice earlier in the same session —
-     but leaked caddies from previous runs were alive then, so the strong hypothesis is
-     that those runs were answered by a LEFTOVER edge and this example has never served
-     through the one it starts. That is a hypothesis, not a finding: it needs someone to
-     confirm which process answered. Start there — `lsof` the socket during the wait —
-     rather than reading the edge config, which is where I lost the most time.
+- [ ] **`frankenphp_edge_serve`: the edge it starts has never been PROVEN to answer.**
+  Three defects were found and fixed inside it on 20 Aug 2026 (`021fb40`, `48e5046`) and
+  are recorded in `docs/archive/SHIPPED-2026-08.md`; the fourth is the one that matters
+  and it is still open. On a genuinely clean machine its own edge binds :8443 and then
+  never answers HTTPS within 20s — yet it DID serve 200/200 twice earlier in the same
+  session, while leaked caddies from previous runs were alive. The strong hypothesis is
+  that those green runs were answered by a LEFTOVER edge, and that this example has never
+  served through the one it starts.
+  **It is a hypothesis, and the next step is to settle WHICH PROCESS ANSWERED** — not to
+  read the edge config, which is where the last attempt lost the most time. Run it with
+  the stack stopped (it is `service` tier) and, in a second shell during the answer-wait,
+  `lsof -nP -iTCP:8443 -sTCP:LISTEN`: record the pid and whether it is the caddy this run
+  spawned.
   **Method note worth more than the bug.** The first diagnosis was wrong: FrankenPHP's log
   showed `started 🐘` … 110ms … `SIGTERM`, which read as "something kills the backend",
   and it sent me through `recover_stale_edge`, `ensure_free` and every terminate site for
@@ -45,319 +54,69 @@ evidence cited.
   until something rules the alternative out, and probing the subject at the moment of the
   symptom beats reading code that might be innocent.
 
-- [x] **The edge had never started in ANY sandboxed example** ✓ 20 Aug 2026.
-  Caddy's admin socket lives at `<sandbox root>/config/caddy-admin.sock`, macOS binds at
-  most 103 bytes of socket path, and `std::env::temp_dir()` on macOS is a 49-character
-  per-user TMPDIR — so every sandboxed socket path came to **110–115 bytes** and caddy
-  died on `bind: invalid argument` before it ever listened.
-  **`common::sandbox`'s own comment named the wrong cause**, which is why it survived: it
-  blamed the TAG ("whether a sandboxed example can start the edge depends on how it was
-  NAMED… shorten the tag"), and shortening `create_site_serve` to `createsrv` — 8
-  characters off, exactly what the warning asked for — still failed. The base was always
-  the larger half. Root moved to `/private/tmp` (12 chars): the same paths are now 75–79.
-  **It was invisible because nothing asserted it.** These examples printed
-  `READY https://…:8443` and slept for a human to curl; a reader who never curled saw a
-  green run. The readiness gates added the same day are what turned it loud — the first
-  thing they did was fail on a service that had been dead for weeks.
-  Tradeoff stated in the code: `/private/tmp` is world-writable where TMPDIR is per-user
-  0700. Still pid-scoped, still `SandboxGuard`-removed, still fixture scaffolding — but
-  it is a weaker directory, and that is the price of an edge that starts.
+- [ ] **The readiness-gate sweep's OWN defects — 22 confirmed, 21 Aug 2026.** The sweep
+  itself is done (`be3c88d` + `2f564bb`, archived); this row is what an adversarial audit
+  of it found afterwards, one verifier per finding, 44 further claims refuted. They fall
+  into five families, and the families are the useful part — every one of them is a way a
+  gate can be PRESENT and not GATE:
+  - [ ] **Placement — a gate after an early exit is not a gate.** `mail_route_check`'s two
+    gates landed INSIDE the pre-existing `for _ in 0..40` edge loop, one statement past its
+    `break`: on the ordinary path (edge already listening on the first poll) they never
+    executed at all, and on the unlucky path they ran once per 250ms and would have failed
+    naming nginx for an edge that had not come up. `wp_install_serve:56` has the sibling
+    shape — a 15s MySQL poll that falls through, prints `mysql running=false` and carries on.
+  - [ ] **Silent pass — `start_all` fails and the example exits 0.** `if let Err(e) = …
+    { eprintln!(…); return; }` inside `async fn main() -> ()` returns SUCCESS, and
+    `live-checks.sh` takes its verdict from the exit status alone — so the tier prints
+    `all green` for a run that asserted nothing and never reached its gates. Confirmed in
+    `adminer_deeplink_check`, `log_tail_check`, `mail_route_check`, `multisite_check`,
+    `multisite_wildcard_check`; the same idiom is in ~6 more (`adminer_serve_check`,
+    `blueprint_check`, `network_check`, `service_manager_demo`, `tunnel_check`,
+    `wp_login_check`). Pre-existing, not sweep-introduced — but the sweep is what put
+    gates behind it. Fix is the contract `docs/TESTING.md` already states: `-> ExitCode`,
+    `FAILURE` on that branch.
+  - [ ] **Leak — a PANICKING gate in front of raw `Child`s.** Rust does not kill children
+    on drop, so every gate the sweep added between a spawn and its teardown is a new leak
+    path holding production ports: `create_site_serve`, `delete_site_serve`,
+    `frankenphp_serve`, `php_per_site_serve`, `php_switch_serve`, `wp_install_serve`
+    (mysqld included), and `monitor_coverage_demo` (which `process::exit(1)`s, skipping
+    destructors outright). `frankenphp_edge_serve` already got this fix in `48e5046` —
+    `common::OwnedService` for all three — and measured 1 leaked caddy per panicking run
+    → 0. The rest did not.
+  - [ ] **Accept-vs-answer — the gate proves the socket ACCEPTS.** Caddy binds its
+    listener before certificates and routes are loaded, so a request in that window
+    returns `000`/connect-error and the table blames the site. `server_switch_serve`
+    deleted a 1200ms sleep that was the only thing covering that window;
+    `delete_site_serve`'s BEFORE-delete baseline — the thing its whole assertion rests on
+    — is taken ~1ms after the accept gate; `wp_create_serve` unwraps its first HTTPS
+    request on the next statement. `frankenphp_edge_serve:152` has the answer gate the
+    others need; promote it to `common` rather than copying it a fourth time.
+  - [ ] **Wrong subject — the gate is satisfied by someone else's server.**
+    `wp_install_serve` never calls `common::require_ports_free`, so all three of its gates
+    can be satisfied by listeners it did not spawn; `service_manager_demo` gates only the
+    edge while its request traverses edge → nginx :18088 → pool :9783 (its sibling
+    `log_tail_check` got all three gates in the same commit); `frankenphp_serve` asserts
+    `is_listening(2019)` absolutely, so a developer's own Caddy fails the run — read the
+    port BEFORE the spawn and assert the TRANSITION.
+  **Two fixture-ownership defects came out of the same audit and are NOT gate bugs** —
+  they are the invariant in `examples/common/mod.rs` being broken in the plain sense:
+  - [ ] `adminer_deeplink_check` opens a bare `db::open` fixture DB with no
+    `common::pin_sites_dir`, so `sites::provision` resolves the docroot from the HOME
+    directory and it then `remove_dir_all`s a path inside the user's REAL `~/rexenv/Sites`.
+    This is the incident that cost this project a Sites folder once already.
+  - [ ] `adminer_serve_check` writes `dbprobe.php` into the REAL Adminer docroot and
+    removes it with a bare statement at the end of `main` that six `assert!`s can unwind
+    past. Every non-dotfile `.php` there is directly executable, so a failed run leaves a
+    root-connectivity oracle live in the console's docroot. Needs a Drop guard, and a
+    dotfile name so `NGINX_DOTFILE_DENY` covers it even if it survives.
+  **What this row is really about.** The sweep was written to end a bug class and was
+  verified by `verify.sh` + the sandbox tier, both of which only compile these files or
+  run a seventh of them. The class it was closing (spawn-then-use) is genuinely closed;
+  what it could not catch is that a gate is a RUNTIME claim and the gate on tiers nobody
+  runs is a comment that compiles. Fix them family by family, and prefer the fix that
+  makes the shape impossible (an `ExitCode` contract, an `OwnedService` type) to the fix
+  that adds another line someone must remember.
 
-- [ ] **Spawn-then-use without a readiness gate — 33 confirmed sites, 5 fixed** (20 Aug
-  2026). Found by fixing three flakes in one gate run and then sweeping every example for
-  the shape: an example spawns a service (php-fpm, nginx, caddy, httpd) and depends on it
-  with either NOTHING in between, a flat `thread::sleep`, or a poll on a DIFFERENT port.
-  All three spawn helpers bottom out in `spawn_logged` → `Command::spawn()`, which returns
-  at fork, not at bind.
-  **Why it is worth a row rather than a shrug:** the failure never says "not ready". It
-  says `php-via-fpm=false`, `502`, `503`, `ConnectionRefused` — the SERVER's symptoms —
-  so it reads as a product bug and gets investigated as one. `apache_site_check`'s
-  instance sat in this file as an unexplained transient for 17 days for exactly that
-  reason.
-  **And the project had already learned it once:** `wp_create_serve.rs` carries the
-  recorded incident ("`proxy::start` returns when the process is SPAWNED, not when it is
-  listening… gate on the socket like every sibling does") and polls properly — while
-  every sibling kept the pattern that incident was about. One example fixed, the class
-  left open: the guard-covers-claimed-surface shape again.
-  ✓ **Closed for the RELEASE GATE**: `common::await_listening` added (waits, then fails
-  naming the service and spilling its log), and every **sandbox-tier** site converted —
-  `apache_site_check`, `dotfile_guard_check`, `linked_site_check`, `nginx_php_serve`,
-  `php_fpm_serve`, `retry_recovery_check`, `valet_import_check`. All run green.
-  **Still open — tiers the gate does not run**, each verified by an adversarial pass, so
-  this list is findings and not suspicions:
-  - **service**: `adminer_serve_check`(1), `create_site_serve`(1), `delete_site_serve`(1), `frankenphp_edge_serve`(1), `frankenphp_serve`(1), `log_tail_check`(1), `mail_route_check`(1), `monitor_coverage_demo`(1), `override_fallthrough_check`(1), `php_per_site_serve`(3), `php_pools_serve`(1), `php_switch_serve`(4), `server_switch_serve`(1)
-  - **network**: `adminer_deeplink_check`(1), `multisite_check`(1), `multisite_wildcard_check`(1), `tunnel_check`(1), `wp_create_serve`(1), `wp_install_serve`(1)
-  - **demo**: `wp_real443_setup`(1)
-  Mechanical: replace the sleep with `common::await_listening(PORT, "name", log)`. Left
-  undone deliberately rather than swept into a release commit — they cannot flake
-  `verify-full.sh`, and 23 files of untested edits on the way out the door is the trade
-  this project's own rules warn about.
-
-- [x] **Adminer followed the OS theme, not rexenv's** ✓ 20 Aug 2026, ledger #375.
-  A light-themed app framing a dark console. Fixed through Adminer's own `css()` hook
-  (its return decides whether `dark.css` is media-gated at all), fed by a
-  `.rexenv-theme` file the wrapper reads per request — a file rather than a URL
-  parameter, because Adminer's own links would have dropped the parameter on the first
-  click inside the console. L1 reads the head Adminer really emits for all three states
-  plus junk; L0 ties the three filenames together, plant-proven.
-
-- [x] **Re-uploading a zip of an installed plugin dead-ended** ✓ 19 Aug 2026, ledger
-  #374, `wpinstallcard.js` (`install=blocked`, plant-proven). wp-cli refuses to unpack
-  over an existing folder and says only `Error: No plugins installed.`; wp-admin offers
-  "Replace current with uploaded" and rexenv offered nothing. The card now reads the
-  folder out of wp-cli's own `Destination folder already exists` line, names it, and
-  offers a replace that re-runs the same job with `--force`; `wp_install_stream_check`
-  jobs 5/6 ran green — refused in the exact words the card parses, then replaced with
-  force. **Follow-up the same day:** the fact moved onto the job STATE (`blockedBy`),
-  because the TOAST never sees the log and was still announcing "Install … failed:
-  Error: No plugins installed." beside a card offering the fix. Toast, glyph and colour
-  now follow the fact; wp-cli's summary line stays verbatim. `force` is never defaulted
-  on, and a git-tracked target gets a danger confirm first — an overwrite there takes the
-  working tree, the branch and `.git` with it, which is a hazard wp-admin does not have.
-
-- [x] **The install card stayed forever after a successful install** ✓ 19 Aug 2026,
-  `wpinstallcard.js` (L2, plant-proven twice). Success now clears itself after 3s;
-  failed/partial/cancelled/timed-out stay and gain an × instead, since that card is
-  where the reason lives. Opening the log holds the timer — three seconds is exactly
-  long enough to click "Show log" and lose it — and a running job offers Cancel, never
-  dismiss. **Themes get the same behaviour and are checked separately** (same hook, same
-  card — but a shared implementation still needs both call sites wired; dropping the
-  props from the themes one alone fails `themes partial` and nothing else).
-
-- [x] **Light-mode: the update badge and its target version were barely readable** ✓
-  19 Aug 2026, ledger #373. Reported with a screenshot. Not a bad token — no token:
-  `bg-amber-500/15 text-amber-400`, a raw Tailwind hue, which has one value and cannot
-  follow the theme. 38 of them were in the tree (all in the WordPress manager), now
-  tokens, with `-bright` wherever the colour is text. Two more routes into the same hole
-  fell out of the fix and each carried real defects: `text-status-*` (an "Installed"
-  label, a log chip, four destructive buttons at 4.14–4.45:1 in light) and inline
-  `style={{ color: var(--rex-*) }}` (the site-type and Mail-avatar accents at
-  4.27–4.41:1). All repaired; the AA scan now reads all three routes and
-  `no_raw_tailwind_hue_reaches_the_ui` bans the palette outright, plant-proven.
-  **Dark verified after** (a token swap moves both themes): full `wk-checks` suite green
-  + the changed surfaces rendered and read. It surfaced a coverage hole, not a defect —
-  the git chips on a plugin row had no fixture in any harness, so `wpgitchip.js` (new,
-  both themes, computed styles) now renders them and catches the config-mapping failure
-  L0 cannot see.
-
-- [x] **Plugin search matched the slug, not the name on the row** ✓ 19 Aug 2026,
-  ledger #372, `wpsearch.js` (L2, plant-proven both directions). Reported with a
-  screenshot: "loopback" against a list reading `rexenv loopback DNS` answered "No
-  plugins match" — the filter read `name` (the slug, `rexenv-dns`) while every row is
-  labelled with `title`. Matches both now.
-  **Themes checked in the same pass — not the same bug (that panel has no filter), but
-  the same defect one step earlier:** its cards were labelled by SLUG because `WpTheme`
-  carried no title, so a filter added there would have had nothing but the slug to
-  match. ✓ Closed 19 Aug 2026 in the follow-up commit: `title` through `theme_list` →
-  DTO → card, slug kept beside it, `themes-titles` (L2) plant-proven twice, and
-  `wp_themes_check` ran green against real wp-cli ("Twenty Twenty" for the slug
-  `twentytwenty` — non-empty AND different from the slug, so it cannot pass on a
-  fallback). A theme
-  FILTER was declined deliberately — 3–5 themes is not a list you search.
-
-- [x] **Search on the Tunnels page** ✓ 19 Aug 2026, ledger #371, L2 plant-proven.
-  Name, domain, or the public URL — the last one because this is the only screen that can
-  answer "which site is this link?". The work was not the filter: a hidden row here is a
-  site the internet can reach, so hidden SHARED sites are counted in amber with the
-  consequence spelled out, on the list and on the no-match screen, while the header's
-  count and Stop all sharing keep describing the machine rather than the view.
-  Four `uireview.js` scenarios at both widths; the fixture runs two live tunnels so the
-  plural copy is exercised.
-
-- [x] **`wp_themes_check` was not re-runnable, and leaked a mysqld** ✓ 19 Aug 2026,
-  found by running the network tier after #370. Two defects in one example, both of the
-  fixture-ownership family: (1) the run rebuilt the DOCROOT but inherited the DATABASE,
-  and since the example ends with `twentytwenty` active, the surviving `stylesheet`
-  option made a freshly installed theme come back `active` where the first assertion
-  demands `inactive` — it had been red since the previous run (14 Aug), and nobody knew;
-  (2) mysqld was the raw child rather than a `common::OwnedService`, so that panic left
-  it holding :13306 and the next run refused to start — the 14 Aug corpse-mysqld
-  incident in the one example never converted. Now drops its own database first (name
-  asserted before the DROP) and owns its child across the panic path. **Evidence: run
-  twice back to back, green both times, port free after.**
-  **Worth noting for whoever writes the next one:** `wp_plugins_check` survives only
-  because it happens to delete what it installs. Idempotence there is luck, not design.
-
-- [x] **Premium plugins showed no update badge** ✓ 18 Aug 2026, ledger #370,
-  `core/wordpress.rs` (`update_context_arg`, `checked_list`). wp-admin listed BetterDocs
-  Pro 3.9.0 → 4.1.0 and rexenv showed nothing: the vendors' updaters register their
-  `pre_set_site_transient_update_plugins` filter behind
-  `current_user_can( 'manage_options' )`, and a wp-cli run has no user. A second
-  `--require` file grants three named capabilities + `WP_ADMIN` to the checked pass and
-  to the update itself (the package URL comes from the same filter, so a badge without
-  it is a dead button). Measured on the reporting site: **2 of 10 paid plugins reported
-  an update before, 5 after** — the rest are ones wp-admin says nothing about either.
-  Scoped by a source-scanning guard (plant-proven), and the checked pass falls back to
-  the plain list on any non-clock failure.
-  `examples/wp_premium_update_check.rs` (network tier) **ran green 19 Aug 2026** with the
-  stack stopped, and is plant-proven: dropping the flag fails its second leg by name.
-  What stays manual is the INSTALL of a premium update (a real licence) — `docs/SMOKE-TEST.md`.
-
-- [x] **Premium plugins had no icon in the plugin list** ✓ 18 Aug 2026,
-  `core/wporg.rs::plugin_icons` + `wporg_icons_check` (L1 network, run green:
-  `betterdocs-pro` → `ps.w.org/betterdocs/…`, `wp-security-audit-log-premium` →
-  `ps.w.org/wp-security-audit-log/…`, 5135-byte `image/png`). Every paid plugin on a
-  real site was a letter tile while wp-admin's update screen showed the vendor's logo:
-  rexenv asks wp.org per slug, and `betterdocs-pro`/`elementor-pro` are not in the
-  directory. wp-admin reads those icons from the `update_plugins` transient — measured
-  unreachable from wp-cli (the STORED transient had no premium row; a fully-loaded
-  `wp eval` produced 1 of 9, the rest inject on `is_admin()` only). So the icon is
-  derived from the free counterpart's slug, narrowly: `-pro`/`-premium` only, only
-  where wp.org itself had nothing, and no counterpart the directory doesn't know.
-  **Still open, deliberately:** a paid plugin whose free half is not a suffix away
-  (`essential-addons-elementor` → `essential-addons-for-elementor-lite`) keeps its
-  letter tile — the fix for that is a real dependency link (`Requires Plugins:`), not
-  a fuzzier rule.
-
-- [x] **Read-only "a newer PHP patch exists"** ✓ 16 Aug 2026, ledger #343,
-  plant-proven. `core/php_upstream.rs` fetches php.net's `active.php?json` at launch,
-  best-effort, and derives a version STRING per minor — nothing else. `source`/`sha256`
-  are in that document and are never read; a source scan asserts exactly one field is.
-  The Settings row says `8.3.33 exists`, with `checked N ago` beside the section and an
-  explicit "couldn't reach php.net yet" when it never has. **The copy is the mechanism**:
-  php.net leads static-php.dev (where 8.x installs come from) by weeks — measured, 8.4.24
-  vs our pinned 8.4.23 — so "update available" would promise what no button delivers and
-  "up to date" is unprovable; `core::copy_scan` bans both.
-
-- [x] **Delete `php_versions.patch`; derive it** ✓ 16 Aug 2026, migration v36, two
-  commits (`67f17c8` the live read, `afe5bb6` the drop). Ledger #339 RETIRED with its
-  reason, #338/#340 amended, #342 added. `PhpVersionView::serving` carries what the pool
-  is actually executing beside the pin, so the row says both — without it a derived row
-  could only ever show the pin, which is the same silent lie somewhere harder to see.
-
-- [ ] **Say WHY the "exists" line often names a patch rexenv can't install yet** —
-  one sentence, somewhere a curious user lands, NOT in the row (which stays short).
-  php.net publishes on release day; static-php.dev, where 8.x builds come from, trails —
-  measured 17 days on 16 Aug 2026 (php.net 8.4.24/8.5.9 vs our pinned 8.4.23/8.5.8). So
-  the row will spend most of its life truthfully naming a patch that has no portable
-  build yet. That is honest but reads as a defect to someone who does not know the
-  pipeline. Candidates: the Settings section's existing footer line, or `INSTALL.md`'s
-  "how rexenv gets its components". Ledger #343 has the measurement and the reasoning;
-  this is the user-facing half of it.
-
-- [x] **Audit every table for the user-fact-vs-derived-fact clobber** ✓ 17 Aug 2026,
-  ledger #344 + #345. Swept every upsert, all 35 `UPDATE … SET` sites, every migration and
-  every launch-path writer: **49 candidates, 48 rejected — no iceberg.** The three `sites`
-  backfills are strict NULL-only set-once; the v6/v32 migrations weld their UPDATE to their
-  own ADD COLUMN inside one batch; migration v9's `default_tld` flip is closed by release
-  history (it shipped inside v0.1.1, so no released build ever sat at `user_version 8`).
-  ONE live defect, in the statement already known to be dangerous: `seed_registry`'s INSERT
-  arm gave a newly-pinned minor `is_default = 1` beside the user's, so every user got two
-  rows badged Default the first time the pin moved to a new minor. Fixed (#344) and guarded
-  (#345), the guard justified by that statement's history rather than by the count.
-
-- [x] **`fpm_port` collided at an x.10 minor** ✓ 17 Aug 2026, ledger #346,
-  plant-proven both paths. `base + major*10 + minor` gives each major ten slots, so
-  `fpm_port("8.10") == fpm_port("9.0") == 9790`. The scheme keeps its ten slots and
-  REFUSES the eleventh — every current port is byte-identical, because widening would
-  move them all and adoption/managed-ports/the orphan sweep all enumerate by CALLING
-  `fpm_port`, stranding running masters. `every_shipped_minor_has_a_unique_pool_port`
-  turns the day PHP ships 8.10 into a `cargo test` failure that says what to change.
-  **Deferred, not solved** — the scheme still needs a second base or an explicit table
-  then; the guard is what makes that a build failure instead of a field incident.
-
-- [x] **Create a site FROM a git repository — Stage 1, Laravel + Blank PHP** (planned +
-  built 11 Aug 2026, `docs/PLAN-git-site-clone.md`). Laravel developers keep their
-  projects in git; the Laravel card could only make a NEW app, so an existing repo meant
-  cloning by hand, linking the folder, and wiring `.env` yourself. ✓ `NewSite.git_url`
-  + one validator refusing clone-beside-link, agents, and WordPress (a checkout without
-  its database is not a site); `clone_into_docroot` (staging sibling → `remove_dir` →
-  `rename`, so the kernel — not a check of ours — is what makes a clone unable to delete
-  a docroot's contents); `clone`/`deps`/`finalize` phases with `.env` written BEFORE
-  composer (post-autoload-dump boots the app); the New Site dialog's third source with
-  the ls-remote probe gating Create. v33 records the repo at INSERT because Retry is the
-  recovery path. ARCHITECTURE §9; ledger #263–277; `git_site_clone_check` (L1, sandbox);
-  SMOKE-TEST has the packaged-app half.
-- [x] **Stage 2 — front-end assets for a cloned site** (built 11 Aug 2026). A Laravel
-  app with Vite throws *"Unable to locate file in Vite manifest"* until `npm run build`
-  has run, so Stage 1 was honest-but-incomplete for most real repos. ✓ v35
-  `git_build_assets` + an `assets` phase that belongs to the CLONE (any repo can carry a
-  `package.json`), running the repo's own package manager from the developer's
-  login-shell Node. **The one NON-FATAL phase**: a failed build settles the job `ok`
-  with an `assets_warning` banner, because failing it would park a created, wired,
-  serving site behind a "setup incomplete" badge over the one step that was never
-  rexenv's to guarantee. Ledger #280–283; `git_site_clone_check` §7 proves the phase's
-  inputs; the non-fatal outcome is a SMOKE-TEST item (needs a machine without node).
-  **Not done here, and deliberately:** the build is offered only at CREATE. Re-running
-  it later belongs with Stage 3's site-level RepoPanel, which is where a per-site step
-  runner already fits.
-- [x] **Stage 3 — a Git panel on the site itself** (built 11 Aug 2026). ✓ A `site` job
-  kind: `commands/repo.rs::job_target` resolves it to the project root, so nine existing
-  commands work unchanged and the SAME `RepoPanel` renders a Repository tab — status,
-  branch switcher, fetch/pull/push, the dependency steps a pull offers, and the repo's
-  own package.json scripts (which is also how a Vite build gets re-run after create,
-  closing Stage 2's known gap). A site target carries **no `dir_name`** — the one sent
-  is the domain, display-only — making it the one kind with no user-supplied path
-  segment. **Never an upward walk** from the docroot: `repo_site_info` is a single
-  `<path>/.git` test, because the folder above a linked site can be a repo holding every
-  project the user has. Ledger #284–288; `git_site_clone_check` §8; SMOKE-TEST covers
-  the packaged half.
-- [x] **Stage 4 — any PHP repo, and WordPress** (built 11 Aug 2026). ✓ A cloned
-  Blank-PHP site gets `composer install` (Symfony/Craft/Statamic are `vendor/`-less by
-  design), and WordPress runs the same four phases a created site does — each was
-  already skip-aware, so what it needed was a dependency step first and one fork for
-  Roots' layouts. What the user gets is their CODE and a fresh empty database, stated in
-  the dialog rather than discovered. `core/dotenv.rs` came out of `core/laravel.rs` for
-  the second caller and immediately caught a duplicate-key bug. Ledger #289–297;
-  `git_site_clone_check` §9–10.
-- [x] ⚠ **Bedrock from git — VERIFIED, and it was broken** (filed + fixed 11 Aug 2026,
-  same day). Shipped marked unverified; running it against the real `roots/bedrock`
-  found that `wp core install` was pinned to the docroot while Composer puts core in
-  `web/wp`, so every wp-cli call on a Bedrock site answered "This does not seem to be a
-  WordPress installation". ✓ `wordpress::core_root` follows the layout at the one place
-  the invocation is built (so LINKED Bedrock checkouts get it too); ledger #294 + #299;
-  `git_site_provision_check` case 4 now installs WordPress and lands 12 tables.
-  **Radicle is still unverified** — same code path, no live project to hand.
-
-- [x] **Every link opened in whatever browser the OS points at** (filed + fixed
-  11 Aug 2026). rexenv could pick your code editor but not your browser, so a
-  Chrome-default machine could not send its sites to the browser it develops in,
-  and no button ever said WHERE a click would land. ✓ `preferred_browser` +
-  `detect_browsers`/`open_in_browser`, applied at the ONE choke point
-  (`open_external`, so all ~12 call sites obey), URL-only guard, per-open
-  installed-ness re-check, real extracted app icons for browsers AND editors, a
-  one-time chevron beside "Open in browser", and a Settings "Web browser" row.
-  ARCHITECTURE §8.2; ledger #301–262; `browser_detect_check` (L1) +
-  `openin.js` (L2, plant-proven); design record `docs/PLAN-browser-preference.md`.
-- [x] **Open a site in a browser's PRIVATE window** (14 Aug 2026). Checking a site
-  logged-out meant signing out of the session you were working in. ✓ Each row of
-  the browser chevron carries a second target behind a divider (`MenuItem`'s
-  `action`), backed by a per-browser private flag in the macOS `BROWSERS` table
-  (`open -na <app> --args --incognito|-private-window <url>` — `-n` is
-  load-bearing) and a `private` ARGUMENT on `open_in_browser`, so the URL-only
-  guard stays one check for both modes. Offered only where the flag is known to
-  work: Safari has none, and the backend refuses rather than opening a normal
-  window. ARCHITECTURE §8.2; ledger #261 (widened) + #309; `browser_detect_check`
-  (L1) + `openin.js` (L2, plant-proven ×2); the window really being private is a
-  human eye — SMOKE "Which app opens a link".
-- [x] ⚠ **A plugin's shutdown hook broke every WordPress screen on a PHP 8.4 site**
-  (filed + fixed 14 Aug 2026). Activating Elementor 4.2.2 under PHP 8.4 made the
-  Plugins/Themes/Users/Tools tabs die with `wp plugin: bad JSON: trailing characters
-  at line 1 column 814` — the site was unmanageable from rexenv, and `wp option get
-  home` was wrong the same way, so it was never a JSON problem. Cause, traced rather
-  than guessed: Elementor registers its own WP-CLI logger and prints the notices it
-  collected from a shutdown hook (`Manager::shutdown` → `Cli_Logger::save_log` →
-  `WP_CLI::log` → `fwrite(STDOUT)`), i.e. AFTER the command's own output. ✓ Fixed by
-  POSITION, not by mechanism: a rexenv `--require` file beside the phar registers the
-  FIRST shutdown function, its marker separates the command's output from everything
-  printed after it, and every captured spawn cuts there (`cut_post_run_tail`) and
-  carries the tail over to stderr attributed rather than dropping it. The two
-  plausible alternatives are recorded as MEASURED NON-FIXES —
-  `-d display_errors=stderr` and a shutdown-opened output buffer both move nothing.
-  ARCHITECTURE §9; ledger #316; 7 lib tests + the module-wide coverage guard +
-  `wp_noise_check` (L1, sandbox, control leg plants the disease); verified end to end
-  against the reporting site (7 plugins parsed, the notice on stderr).
-- [x] ⚠ **…and the same report on PHP 8.5, from the OTHER end** (filed + fixed 14 Aug
-  2026, ledger #317). Same dead WordPress tab, no plugin involved: PHP's CLI SAPI
-  prints its own diagnostics to STDOUT, and the pinned 2.12.0 phar raises one under
-  8.5 in its own vendored code (`Deprecated: Case statements followed by a semicolon
-  (;) … react/promise/src/functions.php on line 369`) before wp-cli prints a byte — so
-  the notice arrived in FRONT of every answer. ✓ `-d display_errors=stderr` in the
-  SHARED argv prefix (so the streamed spawns get it too, and before the phar — a `-d`
-  after the script name is an argument to the script). Moved, not silenced: streamed
-  steps merge both streams into one live log, so nothing vanishes from an install.
-  The pair is the point — this flag cannot fix #316's tail and the marker cannot fix
-  this head; both ends verified end to end on the reporting site under 8.4 AND 8.5.
 - [ ] **The pinned wp-cli phar (2.12.0) is not PHP 8.5-clean.** #317 moves its
   deprecation off stdout; it does not make it go away, and a user running `wp` in
   rexenv's terminal (deliberately unpinned, #228) still sees it on every command. Worth
@@ -367,51 +126,6 @@ evidence cited.
   `react/promise` 3.3.0 carries the fix and wp-cli's source already depends on it
   transitively via composer ^2.9.5, so the NEXT wp-cli release should clear it —
   nothing to bump yet.
-- [x] ✅ **Three text tokens failed WCAG AA on every surface, in both themes — and
-  one carried a comment claiming it didn't** (ledger #337, reported 16 Aug 2026 by
-  an outside reader building the docs site; **closed the same day**).
-  `tokens.css` said `--rex-text-label: /* mono section labels (darker: small type
-  needs AA) */` — the only contrast claim in the codebase, true on pure white and
-  false on every other light surface.
-
-  ✓ **The scan first, and it decided the fix.** `every_text_on_surface_pairing_meets_wcag_aa`
-  + `every_rex_colour_class_names_a_token_that_exists` (`core::copy_scan`), both
-  sets DERIVED from the frontend's own class usage. It sized the debt at 39 pairs
-  and then answered the design question with data: **135 of 142 usages sat on
-  `<div>/<span>/<li>`** — emails, versions, paths, a status pill, placeholders —
-  and only 7 on icons. They were text tokens below AA, not ornament tokens.
-
-  ✓ **The repair.** 135 consumers → `text-muted` (AA-clean everywhere); `text-faint`
-  and `text-label` went unused and were **deleted**, which the sibling guard now
-  polices for free since a deleted token names nothing; `text-dim` survives on its
-  7 lucide glyphs; light `accent-blue` darkened one step (`#2e6f94` → `#2e6e93`)
-  for a pair reading 4.49:1, one hundredth under. Every replacement's contrast was
-  computed BEFORE it was written.
-
-  ✓ **The scan found the worst instance in a place it could not originally see.**
-  `globals.css` styled EVERY input's `::placeholder` with `--rex-text-faint` in raw
-  CSS at 2.58–3.35:1 — the most widespread text in the app, invisible to a
-  Tailwind-only scan. It now reads `color: var(--rex-*)` from `src/styles` too.
-
-  ⚠ **And the exemptions had to be rebuilt, because a plant walked through them.**
-  They were declared BY TOKEN NAME ("`text-dim` is icon-only"), so moving
-  `text-rex-text-dim` onto a `<span>` kept the exemption and the guard stayed
-  green — **the guard-covers-claimed-surface defect, committed inside the guard
-  written to end that family**. Icons are now excluded STRUCTURALLY, by reading
-  which element the class sits on. The same plant now fails with 13 pairs. The
-  lesson is not "be careful with allow-lists" — it is that an exemption keyed on a
-  NAME cannot notice when the thing changes underneath it, and the only version
-  that holds reads the thing.
-
-  ✓ **The ratchet's lifecycle, which is the reusable part.** 39 pairs recorded so
-  the gate could go live while the fix was scoped (a red `verify.sh` blocks every
-  commit through the pre-commit receipt), then a forced failure at "38 now PASS"
-  that made the repayment be written down rather than absorbed, then deleted along
-  with the debt. Both lists are gone; both assertions are unconditional.
-
-  **Still owed, and stated:** no L2 render check — the app's look changed in ~40
-  files and nothing but an eye has confirmed it. Worth a pass on the packaged app,
-  or a wk-check that samples a dense screen.
 - [ ] **Private-window flags for Arc, ChatGPT Atlas, Orion.** Left `None` in the
   `BROWSERS` table because no one has run the flag on a real install, and a fork
   that swallows the flag it inherited opens an ordinary window under a control
@@ -424,24 +138,6 @@ evidence cited.
   part of that stub: `supports_private` is false everywhere, so those platforms
   show no private target rather than a dead one.
 
-- [x] **MCP server M1 — read-only diagnosis + opt-in card** (branch `feat/mcp-m1`).
-  ✓ Socket + `rex mcp` shim + registry (list_sites / site_status / tail_log) +
-  ReadCtx read-only boundary (guard scans both surfaces) + secret-leak sweep +
-  activity feed + the opt-in toggle that really binds/unbinds + Settings "AI
-  agents" card + per-site SiteDetail section. Ledger #198–#203; wk-checks
-  `agents-*`. Diverged from PLAN §7.3 honestly: no mail tools/sub-toggle in M1;
-  `site_status` runs nothing (Option A, no HTTP GET); status line is feed-driven
-  not a live-session list. **Next MCP stage = M2a (scratch sites)** — see
-  `docs/PLAN-mcp-server.md §7.3`, reconciled against this shipped M1 on 1 Aug.
-- [x] **PHP could not resolve `.rex` — WP-Cron silently dead on every hosted site**
-  (filed 10 Aug 2026). The bundled static-php builds link libcurl against **c-ares**,
-  which reads `/etc/resolv.conf` alone and never `/etc/resolver/<tld>`; `gethostbyname`
-  worked, every `curl` to a rexenv host returned errno 6, and WP-Cron never reports a
-  failed spawn. ✓ Fixed by the `rexenv-dns.php` mu-plugin (`core/wp_dns.rs`) —
-  `CURLOPT_RESOLVE` from the system resolver's own answer, restricted to
-  loopback-served resolver zones; installed at provision, re-installed after a rename,
-  swept for all sites at launch. Ledger #251–253; `wp_dns_check` reproduces the bug
-  (errno 6) and proves the fix (200) under the real bundled PHP.
 - [ ] **Eliminate the bug class: bundled PHP with curl's THREADED resolver** (the real
   fix for #251 — the mu-plugin covers the WordPress HTTP API, not raw `curl_init()` in
   a plugin, and not non-WordPress PHP apps rexenv hosts). Needs a self-built
@@ -453,229 +149,26 @@ evidence cited.
   now.** Rebuilding seven minors self-hosted is a maintenance burden carried
   forever, for a dependency nobody has complained about — a commitment, not a
   fix. The option stays recorded here with the runtimes-repo note so it is
-  known when there is a reason. Until then `wp_dns_check` FAILS LOUDLY the
-  day a build stops using c-ares — that is the signal this item is done.
-- [x] **DNS agent answers ARBITRARY names when queried directly — ACCEPTED
-  15 Aug 2026, not deferred.** `dig -p 15353 @127.0.0.1 <any-hostname>` returns
-  `127.0.0.1`; the hickory handler is a catch-all, not per-TLD zones. RULED
-  accepted with reason: scoping to configured TLDs would require the agent to
-  KNOW the TLD set — reloadable state or per-query config reads — and #45's
-  proven, load-bearing design is exactly "no in-process TLD state; adding a TLD
-  never restarts DNS"; a KeepAlive LaunchAgent that outlives app updates is the
-  worst place to introduce reloadable state. The actual containment is the
-  loopback bind (#44, structural since T10) and it holds. **What would reopen
-  this is the agent ever binding beyond loopback — never the arbitrary-names
-  behaviour itself.**
-- [x] **rexenv's WP-CLI no longer inherits `~/.wp-cli/packages`** — DONE, all four
-  parts (found 4 Aug 2026
-  while costing dist-archive; ledger #228). Every `wp` rexenv runs FOR A USER is
-  pinned to the bundled command set; `core::terminal`'s `wp` wrapper stays ambient
-  by decision — that is the user's own command line, and pinning it would break
-  `wp package install` from inside rexenv in a way that looks like our bug.
-  ✓ (a) **DECIDED 5 Aug 2026 — neutralise WITH A TELL**; ✓ **LANDED 13 Aug 2026**,
-  first thing after v0.1.0 as queued.
-  ✓ (b)+(c) **the spawn sites and the L0 scan — done by refusing to count them.**
-  This is the part worth remembering: the ledger row named FOUR sites and there
-  were SEVEN, two added after the row was written. A guard asserting the four
-  would have shipped narrower than its own claim. So there is ONE argv builder
-  (`wordpress::wp_argv_prefix`) and ONE `Command::new(php_bin)`
-  (`wordpress::wp_command`), and the scan asserts the marker literal appears in
-  exactly two files in `src/` + `examples/` — the builder, and the terminal
-  wrapper with its reason. 6 lib guards, all five failure modes plant-proven;
-  the scan itself first failed by reading its own prose (#235's defect, caught by
-  its own canary) and now strips comments.
-  ✓ (d) **done 4 Aug, rewritten 13 Aug** — `core/wordpress.rs`'s module doc stated
-  the unfixed state; it now states the pin, its scope and why the terminal is out.
-  ✓ **the tell — LANDED 13 Aug 2026** (ledger #301): the Settings card + the
-    explanation APPENDED to `not a registered wp command` at the captured path and
-    the MCP raw runner. Copy approved with one redline ("not loaded into the commands
-    rexenv runs for you" — "into them" referred back across a sentence boundary).
-    Both must-say lists plant-proven; the don't-guess rule proven at BOTH layers
-    (L0 asserts the branch, L2 `wppackages-unnamed` asserts what it renders).
-  ✓ **the L1 leg — LANDED 13 Aug 2026**: `wp_packages_check` (sandbox tier).
-    Plants its own canary package and REQUIRES it to resolve unpinned first —
-    a control that silently failed would make the whole check "nothing resolved
-    either way", green and vacuous. Five legs, plant-proven five ways. Ledger
-    #228 is ✅, **scoped to what the run showed**: a package registering via
-    `WP_CLI::add_command`, on this machine, through both production spawns. Not
-    a package that hooks WP-CLI another way, and by design not the terminal
-    wrapper — leg D pins that the OPPOSITE way, because the tell's last sentence
-    depends on it staying ambient.
-- [x] **B29b — fpm pool reap is still one-miss** — ✓ DONE 15 Aug 2026, ledger #330.
-  `Pool::misses` + `pool_fate` (the shared `adopted_reap_decision` arithmetic, one
-  definition): probe evidence reaps only after `POOL_MISS_LIMIT` consecutive misses;
-  a spawned child's `try_wait` exit still reaps on sight; an ADOPTED master is judged
-  by `pid_command` containing `php-fpm`, never `kill -0` — a recycled pid or orphan
-  workers on a green port accrue misses instead of living forever. Plant-proven both
-  ways (limit=1 and identification-always-true each fail the named leg).
-- [x] **New Site "Laravel" card promises an installer that doesn't exist** —
-  the flow was BUILT rather than the copy softened (9 Aug 2026, `cfe4be3` +
-  `fb4ae08` + `52c4783`). ✓ Evidence: `phase_defs` gains db → app_install →
-  configure for `SiteType::Laravel`; `core::laravel` runs
-  `composer create-project laravel/laravel` through the site's bundled PHP,
-  wires `.env` (DB_* + APP_URL) and re-runs the migrations against the site's
-  database — the skeleton's own post-create `migrate` runs while `.env` still
-  says sqlite, so without that step the MySQL database stays empty; `.env` is
-  kept OUT of the served tree by v32 `docroot_subdir` + `Site::served_root()`,
-  with a backfill for pre-existing Laravel rows; `db_created` is recorded so
-  delete drops the database instead of orphaning it. Live-verified against
-  laravel/framework ^13.8. The nit parked here — every type deriving a `wp_`
-  database name — was FIXED 13 Aug 2026: `wordpress::db_name_prefix` makes the
-  prefix per type (`wp_`/`lv_`/`php_`) and `db_name_for` takes the type as a
-  required parameter, so no call site can inherit `wp_` by omission. Creation-time
-  only: pre-existing rows keep their stored name and the v6 backfill stays `wp_`,
-  because renaming a live site's database is not cosmetic. ✓ Evidence: ledger #97,
-  `db_name_prefix_is_per_site_type_and_never_wp_for_a_non_wp_site` +
-  `create_stores_the_prefix_of_the_sites_own_type_not_wordpresss`.
-- [x] **Onboarding's :443 probe — DONE 13 Aug 2026** (migration plan §3a, gap 2 of 2) — RULED
-  13 Aug 2026: **warn and continue, never block** (onboarding needs nothing on :443,
-  and Herd running while someone tries rexenv is a deliberate state; the follow-on
-  surfaces already exist — the provision card's servingBlocked note, the watchdog's
-  edge-blocked event, doctor's Edge line). **It was never a fifth caller**:
-  onboarding runs BEFORE services, so `edge_answers_as_ours` — "is OURS what
-  answers" — is false for every user on a clean first run, and adding it would have
-  shipped a foreign-proxy warning to everyone.
-  ✓ **Phase A landed** — `proxy::EdgeWire{Ours,Foreign,NoAnswer}` + `edge_wire`,
-  with the boolean kept as `== Ours` so the four existing callers are untouched
-  (ledger #304, `edge_wire_check`).
-  ✓ **Phase B — all four callers landed 13 Aug 2026** (ledger #305). Each says
-    something DIFFERENT about `NoAnswer`, because the variant means a different
-    thing in each: import → the stack isn't running (and offers **Start all as a
-    button in the toast**, since the fix is in this app); watchdog and doctor →
-    our edge process is alive and not serving; `verify_edge_wire` → the start we
-    just ran didn't take. `commands/site_provision.rs` needed no change — it reads
-    `mgr.edge_blocked()`, which only the watchdog sets and only when our edge is
-    alive.
-  ✓ **Onboarding itself — landed 13 Aug 2026** (ledger #306). Warns, never blocks;
-    `NoAnswer` renders NOTHING, because nothing on :443 at onboarding is the ordinary
-    state and reporting it would be the import bug in a new place. Copy approved
-    13 Aug, guarded, with `you can finish setting up` as the load-bearing clause.
-    One voice across all five :443 messages: the holder is named from the supervisor,
-    never guessed (the provision card's "most likely Herd" is gone), and "unreachable"
-    became "won't load".
-- [ ] **Resolver-drift surfacing — RULED 13 Aug 2026: wire the surfaces, keep the
-  binding.** A user whose TLD was taken back has genuinely lost resolution; today
-  they learn it from a log line nobody reads or by happening to visit `/import`.
-  ✓ **`rex doctor` renders it** (13 Aug): a `Resolvers` line that COUNTS toward
-  findings and the exit code, names the TLDs, and points at rexenv → Import (the
-  only place a takeover can be redone — there is no `rex` command for it). An
-  absent field reads ⚠ unknown, never ✓, so an older app cannot report a clean
-  check it never ran. `doctor`'s one-line description gained resolvers.
-  - [x] **remaining: the frontend binding needs a caller — RULED, copy approved
-    with one redline ("You can take it back from Import."), BUILT 15 Aug 2026.**
-    ✓ `ResolverDriftBanner` on Sites, first in the banner stack; ledger #334
-    (L2 lifecycle probe, plant-proven ×2, and the probe's first run caught the
-    self-heal firing on the query's loading state — it would have wiped every
-    dismissal on every launch). Original ruling kept below.** Shape approved: a dismissible
-    launch-time banner on the Sites screen when `resolverDrift()` reports lost
-    TLDs, pointing at Import, doctor's voice. Two ruled conditions: (a) it must
-    NOT render when nothing was taken back — `[]` renders NOTHING, the ordinary
-    state, exactly the onboarding-notice rule (#306); (b) dismissal persists
-    PER-TLD, and clears when that TLD reads as ours again — so a dismissed
-    `.test` re-shows on the NEXT takeover-loss, and a newly lost `.dev` is never
-    hidden by an old dismissal (self-healing: drop stored dismissals for TLDs no
-    longer drifted). DRAFT COPY, awaiting redline before landing —
-    title: "Your .test sites stopped resolving" (multi-TLD: "Your .test and
-    .dev sites stopped resolving"); body: "Valet or Herd took .test's resolver
-    file back, so those sites won't load until rexenv takes it over again.
-    That's redone in Import."; actions: [Go to Import] [Dismiss].
-  ✓ **The continuous watcher is CLOSED, not deferred again** (Stage 1 D3): a fact
-  surfaced in doctor, Import and startup is enough without polling. If that is
-  wrong it shows up as someone confused about why their sites stopped resolving,
-  and that report is the evidence to reopen it — not a guess now.
-- [x] **`teardown` and `change_site_domain` now remove the Apache per-site
-  config/log** ✓ 13 Aug 2026, ledger #302. Additive fix in both sweeps + the test
-  in the `teardown_removes_row_and_per_site_artifacts` shape — plus the guard that
-  makes the fix hold: both sweeps are hand-maintained lists behind names promising
-  ALL per-site artifacts, so detection moved to the WRITE side (a core module with
-  `config_path`/`log_path` taking a `domain` owns a per-site file and must appear
-  in both). Plant-proven; removing Apache from `change_site_domain` fails ONLY the
-  guard, because no lib test reaches the rename path.
-- [x] **`sites_dir` is validated at the setter** ✓ 13 Aug 2026, ledger #303.
-  Refused, never sanitised — a stripped character hands back a folder the user did
-  not pick. Relative paths refused; spaces, unicode and `'` accepted (the configs
-  quote, nothing goes near a shell). **An existing value that would fail the rule is
-  left alone**: validation is write-path only, because refusing at read time would
-  relocate someone's sites folder to the default and make every site they own look
-  missing. Plant-proven, including the read-path over-fix.
+  known when there is a reason.
+  **Corrected 21 Aug 2026 — this row used to claim a guard that does not exist.** It
+  said "`wp_dns_check` FAILS LOUDLY the day a build stops using c-ares — that is the
+  signal this item is done". It does not fail: on a threaded-resolver build the example
+  takes its `field("ares") == "-"` branch (`examples/wp_dns_check.rs:171-178`), prints
+  `NOTE: this php's libcurl uses the THREADED resolver — the c-ares bug class is gone on
+  this build`, asserts both requests return 200, and exits 0 green. So the signal is a
+  NOTE in a log nobody reads on a run that passed, not a red gate — which is the
+  difference between a control and a hope. Either make the branch loud (a check that
+  fails once the whole pinned set is threaded, so the day it flips is a build failure
+  that says "this row is done") or keep the note and stop calling it a guard. The row
+  says it plainly meanwhile.
+  - [ ] Decide which: a real gate, or an honest note. Not both.
 - [ ] **Debug-log truth on Bedrock** (deferred with the wp-config-reader work):
   parse `config/application.php` env defines so WP_DEBUG/WP_DEBUG_LOG read
   truthfully on non-stock layouts; today's honest state is `indeterminate`
   ("can't determine", `core/logs.rs:208-252`).
-- [x] **Per-backend tunnel origins for override sites** ✓ DONE 15 Aug 2026, ledger
-  #332. `tunnels::origin_port` resolves nginx-served → shared HTTP port, override →
-  `sites::recorded_override_port` (the config generator's own accessor, so origin and
-  reality cannot drift); a stopped override backend refuses at start from the
-  ServiceManager's override map (ownership+liveness, never a bare port-listen);
-  `ensure_tunnelable` and the Tunnels card's courtesy wall are retired. Mid-share
-  drift was already covered (web-server switch/docroot move refuse while shared).
-  Plant-proven at L0. **Still owed (the row's noted half): an override site serving
-  through a REAL tunnel end to end** — SMOKE §Public sharing gained the step; a
-  network-tier leg would need a FrankenPHP fixture on `tunnel_exposure_check`.
-- [x] **`wp dist-archive` in the RepoPanel — build a distributable zip to Downloads**
-  ✓ **shipped 5 Aug 2026**, all 9 tasks (`docs/PLAN-dist-archive.md`, one commit each),
-  ledger **#229–#236**, SMOKE §Git assets (5 steps, step 2 a HOLD — the zip is opened).
-  ✓ **6 Aug** — three panel faults from the first real use, fixed in `d93afde` and
-  written up in the plan's §8: the step frozen at pending (lost pre-attach events), the
-  bogus offered row under Build zip, the zip re-announced on every re-expand.
-  Researched + ruled 4 Aug 2026. Availability **ruled: bundle** the MIT package tree (~470 KB, one zero-dep
-  transitive) and load it with `--require` — proven to register with an empty packages
-  dir; `wp package install` rejected (network + composer at runtime + writes a dir we
-  don't own), a Rust reimplementation rejected (a compatibility claim we'd defend
-  forever). The three findings that shape it: **no `.gitignore` fallback exists** at
-  v3.1.0/v3.2.0, so a missing `.distignore` ships `.git` + `node_modules` **as a
-  `Success:`** ⇒ the feature REFUSES rather than warns; the tool **litters `TMPDIR` and
-  never sweeps** (304 KB measured per run in the copy branch) ⇒ our own temp dir with
-  `TMPDIR` pointed at it, swept on all three exits; and an occupied target makes the
-  interactive prompt a **PHP fatal under a non-TTY** ⇒ build in temp so the path is
-  never occupied. MCP tagged M-later (it can't ride `wp_run`: the zip lands somewhere
-  an agent may not choose).
 - [ ] **WP Manager cron list: arguments display** — placeholder for QA's exact
   complaint (likely the event-args column in the SiteDetail cron tab). Get the
   repro or drop after the next QA round.
-- [x] **Nits batch** ✓ 13 Aug 2026. The interpolated Tailwind class in
-  `ui/dialog.tsx` (harmless by LUCK — `mt-3` existed because another file used
-  it, `mt-0` never existed and its absence looks identical to a margin of zero)
-  is now whole class names through `cn()`, **and the shape is linted**
-  (`no_tailwind_class_name_is_built_by_interpolation`): every `className={…}`
-  expression is brace-matched, and `${` must follow whitespace or a delimiter.
-  The lint took three plants to become true — a line window both MISSED a `cn()`
-  continuation line and FLAGGED an unrelated `example={…}` prop, and keying on
-  `-${` alone missed `text-[${n}]` and `hover:${c}`. `wp_login.rs`'s "256-bit" is
-  now ~244 (a v4 UUID carries 122 random bits, not 128; corrected because a
-  security comment that rounds in the FLATTERING direction is one a later reader
-  trusts instead of re-deriving). `downloads_dir()` is one definition
-  (`core::downloads::user_downloads_dir`) — there turned out to be FOUR copies,
-  not three: `core/wordpress.rs` had one the note never mentioned.
-  - [ ] Still open: the `validate_linked_docroot` per-call `list(conn)` cost note
-    (`core/sites.rs` — fine at current scale, hoist if imports grow).
-
-- [x] ⚠ **The macOS floor we CLAIM and the one our binaries have are different
-  numbers - RULED 'fix the claim, not the binaries' and DONE 15 Aug 2026, with the
-  full measurement worse than this item knew.** The complete cache sweep
-  (`docs/PORTS.md` now carries every number): PHP/caddy/mailpit/FrankenPHP 12.0,
-  MySQL/MariaDB/Redis **14.0**, nginx/cloudflared **15.0**, PostgreSQL **26.0**.
-  ✓ `minimumSystemVersion` 11.0→**15.0** and INSTALL.md says macOS 15 (Sequoia),
-  because 15 is what the DEFAULT stack (edge+nginx+PHP+MySQL) actually requires -
-  the ruling's 12.0 shape assumed nginx could be re-pinned ≤12, and it cannot:
-  jirutka publishes nothing below minos 14 (checked 1.24.0→1.31.3), and the only
-  14.0 builds are stale 1.24/1.26.1-2, a security downgrade to gain one macOS
-  version. ✓ PORTS.md carries the per-binary `minos` beside the pins with the
-  re-measure rule. Two follow-ups filed below. Original finding kept for the record: `tauri.conf.json` sets `minimumSystemVersion: "11.0"` and
-  `docs/INSTALL.md:12` says "macOS 11 (Big Sur) or later" — but the pinned
-  binaries, measured 14 Aug 2026 on the real cache, are: **php 8.1.34 / 8.3.31 /
-  8.5.8 → `minos 12.0`** (static-php-cli's macOS default), **caddy → 12.0**,
-  **mailpit → 12.0**, and **nginx 1.30.3 → `minos 15.0`**. So on macOS 11 or 12
-  the app installs and then cannot run its own web server, and the install page
-  promised it would. Found while setting the deployment target for the 7.4 build,
-  which is why the number is measured rather than assumed.
-  **Two ways out, and it is a product decision, not a bug fix:** raise the claim
-  to what we actually ship (12.0, and re-pin nginx to something ≤ that), or keep
-  11.0 and re-pin every binary to match. Either way `docs/PORTS.md` should carry
-  the per-binary `minos` beside the version, because this drifted silently and a
-  number nobody records drifts again. Do NOT fold this into the 7.4 work: 7.4
-  matches the 12.0 the other PHP rows already have, so it neither causes nor
-  worsens this.
 - [ ] ⚠ **PostgreSQL's pinned builds carry `minos 26.0` — presumed dead below
   macOS 26, and the presumption cannot be tested from this machine** (found
   15 Aug 2026 during the floor sweep; MEASURED as far as this host allows the
@@ -701,135 +194,9 @@ evidence cited.
   would drop the app floor from 15 to 14** (MySQL's floor). Same
   `rexenv/runtimes` path that built PHP 7.4; recorded like the c-ares ruling -
   known, waiting for a reason (e.g. macOS-14 users actually asking).
-- [x] **A FrankenPHP site's `php_version` is a promise it cannot keep — RULED
-  read-only-with-annotation and BUILT 15 Aug 2026** (refusal rejected: the pairing
-  is not invalid, it is fixed by the backend, and refusing teaches nothing —
-  the same reasoning that retired the override-site tunnel wall). ✓ The
-  SiteDetail Environment card on a FrankenPHP site shows the SERVED version
-  (the `frankenphp_embedded_php` command — one backend pin, no frontend copy
-  to drift), a DISABLED select labelled "8.5 — FrankenPHP's embedded PHP", and
-  the sentence "Fixed by FrankenPHP. Switch the web server to Nginx or Apache
-  to choose a version." Ledger #326 (major-mismatch refusal) stands unchanged.
-  Ledger #333; mock's `network.rex` is FrankenPHP now so the dev route renders
-  the state. **L2 gap stated:** no wk-check asserts the picker is disabled.
-- [ ] **PHP 7.4 support** (planned 14 Aug 2026, `docs/PLAN-php-74-support.md`). The
-  standing claim that 7.4 "has no build and never will" was true about static-php.dev
-  and **false about PHP**: static-php-cli has no version floor (7.4 download+extract
-  run live), Herd already ships 7.4 built by spc 2.8.6, and a full WP extension set
-  compiled clean against curl 8.21 / ICU 78.3 / OpenSSL 3.6.3 in 74s. Chosen source:
-  self-build with spc in a public `rexenv/runtimes` repo, from
-  `shivammathur/php-src-backports` (vanilla 7.4.33 fails on OpenSSL 3.6), hosted as
-  immutable GitHub Release assets — one manifest arm + four checksums, versus ~76
-  pinned digests for the ghcr-bottle alternative.
-  - [x] **S0.1 — derive the "unshipped version" fixture.** ✓ `php::unshipped_minor()`
-    /`unshipped_patch()` walk candidates and PANIC if they all ship; all 8 asserts,
-    the example and both manual steps moved off the `7.4` literal. Ledger #318,
-    plant-proven (7.2.34 into `PHP_VERSIONS` → fixture self-heals to 7.1). The two
-    manual steps still carry a literal and the row says so.
-  - [x] **S0.2 — `needs_tree_relink` waved through an ESCAPING `@loader_path`.**
-    ✓ The prefix is now RESOLVED (lexically, component-wise) and required to land
-    under the bundle root; `@executable_path` is always rewritten because it is
-    unanswerable from the tree. Ledger #319, plant-proven at BOTH layers — L0
-    `an_escaping_loader_path_is_not_mistaken_for_in_tree` and the new L1
-    `relink_tree_check` (sandbox), whose leg B proves the tree is REPAIRED rather
-    than merely refused and whose leg C is the control.
-  - [x] **S0.3 — a bundle tree that dyld cannot load is cached FOREVER.** ✓ DONE
-    15 Aug 2026, ledger #331 — the **relink-receipt** shape, not exec-the-member
-    (a member can be a dylib — `xdebug.so` — and exec proves nothing about one).
-    `.rexenv-prepared` records the prepare-logic revision, stamped after
-    prepare+member-verify, before the atomic publish; `resolve_bundle` and
-    `is_cached` both require a CURRENT receipt, absence is stale (every
-    pre-receipt tree is from the era that includes #319's broken predicate, and
-    no stat can tell a good one from a poisoned one — one refetch per cached
-    bundle is the price of repairing the field). Fixing a future prepare bug =
-    bump `PREPARE_REV`, which is what carries the fix to machines already
-    holding the broken output. Plant-proven (absence-reads-cached fails by name).
-  - [x] **S0.4 — per-minor Xdebug version.** ✓ `XdebugBottle` carries version +
-    formula + both digests as ONE row; `bundle_manifest` gates on the row, not on
-    `XDEBUG_VERSION` (now the DEFAULT the in-window minors reference). Ledger #320,
-    plant-proven in both directions with a frozen `"7.4" => 3.1.6` row. The old gate
-    failed SILENTLY — `None` reads exactly like "this minor has no Xdebug", which is
-    a real state (8.0), so the bug wore a supported outcome's disguise.
-  - [x] **S0.5 — Xdebug support in the DTO.** ✓ `PhpVersionView` (a SEPARATE type
-    from the persistence `PhpVersion`, so a row whose derived fields were never
-    filled is unrepresentable rather than merely unlikely) carries
-    `xdebugSupported` + `xdebugVersion`, derived per read in `core::php::list_versions`.
-    `SiteDetail`'s `minor === "8.0"` literal is gone. Ledger #321. **L2 gap stated:**
-    no wk-check renders `XdebugCard`, so "the control is actually disabled" is
-    unproven; `mock.ts` carries the 8.0 not-supported row so the dev route shows it.
-  - [x] **S0.6 — the EOL tell.** ✓ Covers 8.0 (dead Nov 2023) and **8.1** (dead Dec
-    2025), both of which rexenv had been offering silently — found while building
-    this. `core::php::security_end` holds php.net's END DATES and `eol_since`
-    compares against today, so the answer is computed, not remembered; a new minor
-    without a date fails the build. Surfaced on the Settings row, the create-dialog
-    note, and the site's own Environment card (most sites on a dead runtime got
-    there by import or by outliving the version). For WordPress the note names WP's
-    own outdated-PHP notice in advance. Ledger #322, DESIGN.md honest-UI rule.
-    **L2 gap stated:** no wk-check renders any of the three surfaces.
-  - [x] **S2.0 — branch `manifest()` on source BEFORE any checksum is pinned.** ✓
-    `php_url` picks the publishing source; `php_self_hosted_tag` carries the FULL
-    immutable release tag into the URL (a rebuild is a new tag, never a re-upload
-    — the property neither static-php.dev nor FrankenPHP offers). An empty hash
-    const reads as unpinned, so 7.4 is wired but unresolvable until its artifact
-    exists. Ledger #323, plant-proven. `manifest_pins_every_pinned_php_version`
-    strengthened from URL *shape* to HOST — shape was the hole: every 404 in this
-    family has the right shape.
-  - [x] **S1.1 — `rexenv/runtimes` + the build workflow.** ✓ Public repo created
-    15 Aug 2026 with the workflow, four publish gates, licence collection (a source
-    with no findable licence FAILS the build) and the immutability contract. 14
-    build rounds; the three real blockers were all fixes upstream had already made
-    and 7.4 never received — PLAN §10c.
-  - [x] **S2.1 — pin + `PHP_VERSIONS`.** ✓ Ledger #325. Pinned from the bytes rexenv
-    itself downloads, cross-checked against the release's SHA256SUMS, run-proven by
-    hand AND through `php_versions_check`. The resolvability assertion flipped in
-    the same commit as the pin.
-  - [x] **S2.2 — doc sweep.** ✓ PORTS/ARCHITECTURE/README/valet-import/valet-migration
-    corrected in place; the c-ares item's "blocked on the self-hosted path" is
-    retired because that path now exists.
-  - [x] **S3 — live proof beyond the download.** ✓ `php_versions_check` (NETWORK):
-    7.4 downloads, verifies, relinks, signs and RUNS. ✓ `php_fpm_serve 7.4.33`
-    (sandbox): 7.4's own php-fpm accepts the config rexenv generates for it
-    (ledger #327). ✓ `php_pools_serve` (SERVICE, stack stopped): all seven pools up
-    together, 7.4 on 9774, all stopped clean with no leaked workers.
-    **Still owed, and not claimed:** a 7.4 SITE answering over HTTPS end to end
-    (browser → Caddy → nginx → 9774 → WordPress). Needs a real site; it is a
-    SMOKE-TEST item, not an example. Neither tier runs in `verify.sh`.
-  - [x] **S1.2 — 7.4 is at parity with the 8.x rows except five.** ✓ 60 modules
-    (was 36), release `php-7.4.33-6`: the phar fix brought back dba/pgsql/soap/
-    xsl/gmp/bz2/ftp/calendar/posix/pcntl/readline/shmop/sysv* **and phar**, and
-    the parity pass added **apcu, redis, imagick, imap, event** — all five
-    attempted rather than assumed, because whether a PECL release still supports
-    7.4 is a fact about that release. **redis mattered most**: rexenv ships Redis
-    as a SERVICE, so without it a 7.4 site could not use the object cache the app
-    itself offers. Absent, each for a reason and none an omission: `random` (a
-    PHP 8.2 CORE extension), `opcache` (spc's static patch starts at 8.0),
-    `opentelemetry`/`protobuf` (spc guards on < 8.0), `swoole` (dropped 7.4).
-    Recorded in `docs/PORTS.md` beside the pin, which is where someone looks.
-  - [x] **Ship the PHP 7.4 licence texts onto the user's machine.** ✓ 16 Aug 2026,
-    ledger #336. rexenv BUILDS and hosts 7.4, so it is the distributor and PHP
-    License 3.01 §2 attaches. Reproduced-in-the-docs was defensible; shipped-
-    beside-the-bytes is not arguable, and a licence obligation is the last place
-    to hold a position that needs defending. ✓ `php_licenses_spec` — a second
-    manifest arm keyed on `is_self_distributed` (never on "7.4"), fetched INSIDE
-    the same staging dir as the binary so it rides the atomic publish: a
-    published 7.4 either carries `licenses/` or does not exist. A fetch failure
-    FAILS the resolve, because "ship the interpreter anyway" is the outcome being
-    prevented. Caches from before this are stale via `licenses_satisfied` and
-    repair on next resolve (the `.rexenv-prepared` asymmetry, #331 — one refetch
-    is the price of repairing the field). Both arches pinned from the release's
-    own SHA256SUMS. L0 plant-proven both ways; L1 `php_versions_check` asserts 15
-    files incl. `PHP-3.01.txt` beside BOTH `php` and `php-fpm`, and a
-    licence-less cache was planted and observed self-repairing.
-  - [x] **A guard for the class, not the instance** (the notices lesson). ✓
-    `the_notices_cannot_disclaim_distribution_while_we_distribute`. The finding
-    was not "check the notices": `docs/PLAN-php-74-support.md` §6.5 named that
-    exact sentence, and called it the one item a later commit could not fix — and
-    it shipped false anyway, in a public repo, for a day, through a docs sweep.
-    **Flagging is not a mechanism**, which is `core::copy_scan`'s finding one
-    layer down. Ban + must-say halves (a ban alone is satisfied by deleting the
-    sentence and saying nothing), keyed on the live `is_self_distributed` fact so
-    a second self-built runtime inherits it by existing and the guard stands down
-    on its own if self-building ever stops.
+- [ ] **PHP 7.4 — the two residuals of a shipped feature** (`docs/PLAN-php-74-support.md`;
+  the stage log is in `docs/archive/SHIPPED-2026-08.md`). Kept as open rows because they
+  were living inside a ticked block, which is where open work goes to be forgotten.
   - [ ] **`rexenv/runtimes`' release notes for `php-7.4.33-6` describe `-4`.** Two
     lines are stale on the release page users and auditors read: it says
     `MACOSX_DEPLOYMENT_TARGET=11.0` was "asserted per artifact" (the artifacts
@@ -845,6 +212,184 @@ evidence cited.
     on 7.4 is therefore lower than on the 8.x rows. Worth revisiting ONLY if
     someone builds 7.4 against a newer external PCRE2; not worth it for an EOL
     version nobody runs for speed.
+  - [ ] **The upstream source commit is recorded nowhere in rexenv.** PLAN §11 names the
+    risk in its own words — "the backports branch is one volunteer's rebased branch… if it
+    stops, the artifact quietly becomes a frozen, known-vulnerable PHP" — and prescribes
+    the mitigation: record the exact `shivammathur/php-src-backports` commit in the pin
+    comment, the way `core/binaries.rs` already does for FrankenPHP. The pin comment
+    (`binaries.rs:715-731`) does not carry it, so nothing in this tree can answer "which
+    7.4 is this?" without leaving it.
+  - [ ] **The x86_64 half is on a clock: GitHub's x86_64 runners end August 2027.** PLAN
+    §4.5/§11 says to land the cross-compile path before then, and notes that a cross-built
+    artifact can never run a native smoke test. Nothing in this file mentioned 2027 until
+    this reconcile.
+  - [ ] **Xdebug is silently unavailable on 7.4, and unlike 8.0 it is not blocked by
+    anything.** `xdebug_bottle` has rows for 8.1–8.5 only, so `xdebug_supported("7.4")`
+    is false through the SAME `None` that means "8.0 physically cannot dlopen" — the
+    exact conflation `binaries.rs:126-133` warns about. Decide which it is for 7.4 (a
+    bottle that exists and is not pinned, or a genuine absence) and say so where the user
+    reads it.
+  - [ ] **The upstream source commit is recorded nowhere in rexenv.** PLAN §11 names the
+    risk in its own words — "the backports branch is one volunteer's rebased branch… if it
+    stops, the artifact quietly becomes a frozen, known-vulnerable PHP" — and prescribes
+    the mitigation: record the exact `shivammathur/php-src-backports` commit in the pin
+    comment, the way `core/binaries.rs` already does for FrankenPHP. The pin comment
+    (`binaries.rs:715-731`) does not carry it, so nothing in this tree can answer "which
+    7.4 is this?" without leaving the repo.
+  - [ ] **The x86_64 half is on a clock: GitHub's x86_64 runners end August 2027.** PLAN
+    §4.5/§11 says to land the cross-compile path before then, and notes that a cross-built
+    artifact can never run a native smoke test. Nothing in this file mentioned 2027 until
+    the 21 Aug reconcile.
+  - [ ] **Xdebug is silently unavailable on 7.4, and unlike 8.0 nothing blocks it.**
+    `xdebug_bottle` (`core/binaries.rs:426-436`) has rows for 8.1–8.5 only, so
+    `xdebug_supported("7.4")` is false through the SAME `None` that means "8.0 physically
+    cannot dlopen" — the exact conflation `binaries.rs:126-133` warns about. Decide which
+    it is for 7.4 (a bottle that exists and is simply unpinned, or a genuine absence) and
+    say so where the user reads it.
+### Opened by the 21 Aug 2026 reconcile
+
+These are rows the audit created, not rows it inherited. Grouped because they share one
+cause: a commit did the work and the surrounding claim stayed as it was.
+
+- [ ] **Six hand-written counts across the docs are stale, and every one of them is a
+  number a reader trusts instead of re-deriving.** Measured 21 Aug 2026 against the tree:
+  `docs/ARCHITECTURE.md:440` says migrations are "currently 33" (v37);
+  `docs/ARCHITECTURE.md:1252` says lib tests are "539 and growing" (897 + 6 in `cli`);
+  `docs/MAP.md:50` and `README.md:186` both say the schema is "v1–v25" (v37);
+  `docs/MAP.md:67` says the IPC bridge has "217 exports" (233), `:35` says
+  `commands/wordpress.rs` has "60 cmds" (61) and `:45` says `commands/repo.rs` has "24
+  cmds" (26); `docs/TESTING.md:468` says the ledger holds "194 claims … 117/32/36/9" when
+  `scripts/ledger-tally.sh` computes 375 rows at ✅292 · ◐53 · 🔨25 · 🚫5.
+  **The fix is not six edits.** The ledger tally already proved the shape that works: a
+  script computes it and `verify.sh` fails when the file disagrees. Anything else here
+  that can be derived should be derived the same way; what cannot should stop being a
+  number.
+- [ ] **The MCP server is a shipped subsystem that `docs/ARCHITECTURE.md` does not know
+  exists.** No section, and §1's inventory omits it; `README.md` does not contain the
+  word MCP; `CONTRIBUTING.md` neither; `CLAUDE.md` still calls the plan "(proposed)".
+  Only `docs/MAP.md` carries a row. ARCHITECTURE is the file CLAUDE.md and CONTRIBUTING
+  both name as "read this before any feature or bug — it replaces reading the codebase
+  end to end", and what it is missing is a second `0600` socket, an executing-tool tier,
+  a scratch-site lifecycle with a TTL reaper, and five migrations. A reader who trusts it
+  will design against a system that has one IPC surface.
+- [ ] **`CLAUDE.md`'s router carries four labels that are the opposite of the truth, and
+  omits a plan.** "(parked)" for the Valet/Herd migration whose four stages all shipped;
+  "(planned)" for PHP 7.4, shipped 15 Aug; "(proposed)" for MCP, whose M1/M2a/M2b shipped;
+  "(ruled, not started)" for `wp dist-archive`, finished 5 Aug. `docs/PLAN-browser-
+  preference.md` has no row at all. The router is the first thing every session reads,
+  so a wrong label costs on every task, not once.
+- [ ] **Five PLAN headers assert a state the tree contradicts** — `PLAN-adminer-updates`
+  (being built vs shipped), `PLAN-binary-updates` (":3 not started" against a live signed
+  manifest, a key ceremony and `core/updates.rs`), `PLAN-git-site-clone:4` (Bedrock
+  unverified vs ledger #294 ✅), `PLAN-php-74-support:23` (extension parity ⏳ vs S1.2
+  done), `PLAN-valet-herd-db-import:536` ("Stage 3 does not exist yet" — Stage 3 shipped
+  28 Jul). A plan header is what a reader checks BEFORE deciding whether to build
+  something; these invite someone to rebuild what is there.
+- [ ] **Code comments point at TODO rows that are not in TODO.** `core/sites.rs:88-90`
+  says the FrankenPHP same-major PHP skew "is tracked in `docs/TODO.md`" and it is not
+  (it was ANSWERED on 15 Aug by the disabled-picker annotation, ledger #333 — so the
+  comment is not just a dangling pointer, it describes an open gap that is closed). Nine
+  more sites cite a "Deferred services" row that moved to `docs/archive/SHIPPED-2026-07.md`
+  (`core/apache.rs:1`, `core/mariadb.rs:1`, `core/redis.rs:1`, `core/binaries.rs:1205`,
+  and the examples beside them). Following any of them lands a reader in a file that does
+  not mention the thing.
+- [ ] **`caddy_serve` and `caddy_443` announce READY before anything is listening.**
+  `caddy_serve.rs:42-44` calls `proxy::start`, prints `CADDY_READY https=8443 http=8080`
+  and then sleeps 20s for a human to curl; `caddy_443.rs:32-33` prints `CADDY_READY
+  :80/:443` and exits. `Command::spawn()` returns at fork, so the human curls into a
+  socket that may not exist yet and reads the refusal as the product failing. Same class
+  as the sweep above, missed because neither example ASSERTS anything — the reason they
+  survived a sweep that keyed on assertions.
+- [ ] **The sandbox leftover-sweep looks in the directory the roots left.** `bd9748b`
+  moved the sandbox root to `/private/tmp` (`examples/common/mod.rs:462`) and left the
+  self-healing sweep reading `std::env::temp_dir()` (`:506`) — the per-user TMPDIR that
+  no longer holds any root. The sweep exists because `fail()` still `process::exit`s and
+  runs no destructors, and two failed `tunnel_exposure_check` runs left 280 MB each. It
+  has been sweeping an empty directory since the day the root moved.
+- [ ] **`verify.sh` lints one target of four.** `cargo clippy --lib -- -D warnings`
+  covers the library and nothing else: not `src-tauri/src/main.rs`, not the 134 files in
+  `examples/`, not `#[cfg(test)]` code, and not the `cli` crate — which the same script
+  deliberately started testing on 12 Aug with the reasoning "a gate that skips a shipped
+  crate is not a gate". The examples are where this session found 22 defects.
+  **And the frontend has no linter at all**: no eslint/biome/oxlint in `package.json`, no
+  config, `verify.sh` runs `tsc --noEmit` only — while `src/` carries 17
+  `// eslint-disable-next-line` comments suppressing rules nothing runs. Decide: adopt a
+  linter, or delete the comments that pretend one exists.
+- [ ] **Two pinned facts are missing from the docs that exist to hold them.**
+  `PHP_DEBUG_XDEBUG_VERSION = 3.4.5` (`core/binaries.rs:39`) is the only pinned version
+  with no row in `docs/PORTS.md`, where all sixteen siblings appear. And
+  `PHP_DEBUG_BASE_URL` still names `dl.rexenv.dev` (`:42`, `:951`, pinned by a test at
+  `:3137`) after the B33 ruling moved the host — `docs/xdebug-debug-build.md:84-86` says
+  that host "is not used", which is a doc asserting a state the code contradicts. Nothing
+  breaks today only because the artefacts are unresolvable; it will be discovered at
+  upload time.
+- [ ] **Ledger hygiene — three of them, all in the file that polices staleness.**
+  (a) `docs/CLAIM-LEDGER.md:561`'s hand-curated tail says "plus 5 🚫 premises living
+  inside ◐/✅ rows" and names five; there are about eleven. It is the one clause
+  deliberately outside `scripts/ledger-tally.sh`, which is exactly why it drifted.
+  (b) The Tier-1/Tier-2 blast-radius tables — the work-ordering index this file's proof
+  backlog says to work "top first" — list rows that are now fully ✅.
+  (c) `scripts/ledger-tally.sh:8-15` calls the ledger "a 500-line file" twice; it is 881
+  lines. The script that exists to stop stale numbers carries two.
+- [ ] **Two UNCALLED-allowlist entries have stopped being temporary.** `core/copy_scan.rs`
+  exempts `createSite` ("superseded by the job-based provision flow; the wrapper predates
+  it") and `wpThemeEnableNetwork`/`wpThemeDisableNetwork` ("multisite theme
+  network-enable has no UI yet"). The allowlist's own comment says it "is allowed to
+  SHRINK, never to grow silently" — so the dead wrapper should go, and the missing UI is
+  a feature whose only record is a const array inside a test.
+- [ ] **`REXENV_LARAVEL_DOTENV` is read by a test and set by nothing.**
+  `core/laravel.rs:357` returns early when the var is absent, and a repo-wide search finds
+  exactly two mentions: that line, and `docs/CLAIM-LEDGER.md:459`, which credits the test
+  as the thing that stops the hand-copied `.env` fixture going stale "in silence". The
+  guard against silence has never run.
+- [ ] **Three small CLI gaps, all with the backend already built.** `cli_server.rs:981`
+  answers `mail.mark_read` and no `rex` verb sends it — the one unreachable arm of the
+  whole dispatch table. `docs/CLI-ROADMAP.md` lists four 🟢 wins whose IPC exists
+  (`site retry` matters most: `rex site create`'s failure message names a recovery the CLI
+  cannot perform) and a 🟡 protocol-version handshake, which is the standing answer to a
+  hazard this repo has already hit — a stale `rex` against a newer app produced the
+  "unknown command … newer than the running app" confusion. None of the five is recorded
+  here.
+- [ ] **`docs/TESTING.md` §3.3's layout-fixture matrix was designed and never built.**
+  `layouts()` appears in no source file. It is the named mechanism for the Bedrock bug
+  class — a path assumption a layout invalidates — which has produced the unlink-delete
+  guard defeat, the `wp core install --path` bug (#299) and the content-dir rule (v24).
+  §3.3 says "the class is fully testable once the matrix exists"; until it does, that
+  sentence is a plan, not coverage, and it reads as coverage.
+- [ ] **One stdout surface stays uncovered and only ARCHITECTURE says so.**
+  `docs/ARCHITECTURE.md:773-775` records that #316's marker cut and #317's
+  `display_errors=stderr` close the tail and the head of the wp-cli noise problem, and
+  that "what stays uncovered is a plugin that `echo`es mid-command" — the third door into
+  the same symptom (every WordPress screen dead on the affected site), held open with no
+  row anywhere.
+- [ ] **`platform/linux/mod.rs:1` says "Phase 5"** where `platform/windows/mod.rs`,
+  `CLAUDE.md` and this file all say Phase 4. One line, free to leave wrong until someone
+  plans the port and finds two numbers for one era.
+
+### Promoted out of ticked rows (21 Aug 2026)
+
+Open work that was living inside `[x]` blocks. It is here because the archive is not a
+place to keep unfinished things.
+
+- [ ] **The WCAG token sweep has no L2 render check.** The app's look changed in ~40
+  files (135 consumers moved to `text-muted`, two tokens deleted, one accent darkened)
+  and nothing but an eye has confirmed the result. Worth a pass on the packaged app, or a
+  wk-check that samples a dense screen.
+- [ ] **An override site has never served through a REAL tunnel end to end.**
+  `tunnels::origin_port` resolves the recorded override port and the L0 proof is
+  plant-proven; SMOKE §Public sharing gained the step, and a network-tier leg would need
+  a FrankenPHP fixture on `tunnel_exposure_check`.
+- [ ] **No wk-check asserts the FrankenPHP PHP picker is disabled.** The SiteDetail
+  Environment card shows the served version and a disabled select; the L2 gap was stated
+  when it shipped (ledger #333) and is still open.
+- [ ] **`validate_linked_docroot` does a per-call `list(conn)`** (`core/sites.rs`) — fine
+  at current scale, hoist if imports grow.
+- [ ] **Plugin-update progress: the TIMING half** (ledger #249) — cancel-then-settle beats
+  an in-flight check; the wiring half landed, this did not.
+- [ ] **Radicle-hosted repos are unverified** — same code path as the Bedrock clone that
+  was verified and found broken, no live project to hand.
+- [ ] **Why that `rex` instance went deaf was never diagnosed** — the evidence died with
+  the pid. Reproduce before blaming App Translocation.
 
 ## Ledger-driven proof backlog
 
@@ -855,87 +400,6 @@ in one place drifts, and a stale one reads as progress that did not happen. Run
 `scripts/ledger-tally.sh`. The backlog = every 🔨
 row + the noted half of every ◐ row, worked by the ledger's blast-radius tiers, top
 first:
-
-- [x] **Tier-1 group B — the four tunnel-lifecycle L0s** ✓ 13 Aug 2026: #26 (claim
-  revoked by the stop, against real SQLite), #29 (the reaper skips a shared site and
-  can never reach `stop_for_domain` — guarded where the invariant became load-bearing,
-  not where it was written), #30 (`should_signal_row`: never re-signal a reaped or
-  sentinel pid), #31 (both readers settle dead children before reading). All
-  plant-proven; live legs ride group A's one tunnel example.
-  **Also fixed here: the stale cluster summary** that said #103 had never been proven
-  live. It had — `dotfile_guard_check` covers nginx over the wire; Apache and
-  FrankenPHP are what remain. A stale index over accurate rows reads as a decision
-  rather than a gap, and it sent the next piece of work at something already built.
-- [x] **Tier-1 group C — four independent L0s** ✓ 13 Aug 2026: #49 (the cancelled
-  takeover DRIVEN, not asserted — plus a second test for the ordering the first one
-  provably could not see), #54 (the cli crate's one dependency), #59 (what the DNS
-  agent can reach, scope stated), #37 (a tunnel target can only be a site row).
-  #54 and #59 fail with the DESIGN rather than a mismatch: both go false through one
-  line added by someone reading a diff.
-- [ ] **Tunnel-replay posture — RULED 14 Aug 2026; one leg still owed.** (ledger #307/#33/#308.)
-  ✓ (1) What denies is identified: the **CF-header** gate fires first. The Host gate is
-  reached only with that gate removed, and only while `rexenv-tunnel.php` is present —
-  it is a second expression of the same Cloudflare fact, not an independent layer, and
-  the include-time→`init` ordering that makes it work is WordPress's boot order, not
-  filename sort (#308, guarded).
-  ✓ (2) Posture ruled: two Cloudflare behaviours must BOTH change (CF sends its header
-  set; CF appends the connecting IP to `X-Forwarded-For`) where one used to. Higher cost
-  of failure, same shape. Not independence — the independent mark (cloudflared on its own
-  loopback port, stamped by nginx) is recorded in #307 **with the objection attached**:
-  a tunnel adopted from an older running version arrives unmarked, so it fails open
-  across exactly one upgrade.
-  ✓ The client-IP gate now reads the LAST hop, not the first (#307) — proven by
-  `wp_login_client_ip_check` (sandbox tier, 13 shapes, self-defending matrix,
-  plant-proved 3×). **Scope corrected after measuring:** the hole was reachable through
-  a tunnel and ONLY through a tunnel — the edge replaces a caller-supplied
-  `X-Forwarded-For` with its own peer, so the LAN exposure an earlier note claimed here
-  never existed (leg E refuted it).
-  ✓ `wp_login.rs`'s module doc rewritten to what is known, hedged where it is inference.
-  ☐ (3) The leg. Two pieces: a **network-tier** leg in `wp_login_check` asserting our own
-  edge replaces caller-supplied XFF — leg (E) ✓ RUN 14 Aug 2026 (with a control header, so a dropped request cannot read as a dropped header), and the
-  end-to-end "replay denied through a real tunnel" observation on the next live
-  `tunnel_exposure_check` run. Do NOT reinstate a leg that passes with the CF gate
-  removed — that is what was cut, twice.
-- [x] **Nine examples passed the MySQL basedir where `install_for_site` wants the client
-  binary — FIXED 14 Aug 2026, all nine now use `database::mysql_client_bin`. Red since
-  15 Jul 2026, invisible because of their tier.** ✓ 7 of 9 now pass end-to-end
-  (`adminer_deeplink_check`, `blueprint_check`, `multisite_check`,
-  `multisite_wildcard_check`, `network_check`, `wp_themes_check`, `wp_tools_check`); the
-  two that still fail do so for their OWN reasons, listed as separate items below —
-  **the second failure behind the first was real**. `b5861c4` renamed
-  `mysql_basedir` → `db_client` and changed its MEANING (extracted tree → client binary).
-  Both are `&Path`, so nothing failed to compile. That commit did touch these files, but
-  only to add the unrelated `db_engine` field, so the wrong argument rode along.
-  `create_database` execs the client unconditionally (`CREATE DATABASE IF NOT EXISTS` is
-  SQL-level idempotence, not a skipped exec), and exec'ing a directory is EACCES before
-  any DB contact — measured 14 Aug 2026 — so **no leftover database can make these pass
-  on any machine**. They are simply red, and all are network/stack tier, which is not
-  the tier that runs routinely.
-  Affected: `adminer_deeplink_check`, `blueprint_check`, `multisite_check`,
-  `multisite_wildcard_check`, `network_check`, `wp_create_serve`, `wp_plugins_check`,
-  `wp_themes_check`, `wp_tools_check`. Already correct: `cli_wp_install_check`,
-  `mariadb_site_check`, `wp_install_stream_check`, `wp_login_check` (fixed 14 Aug).
-  ⚠ **The codebase already knew** — `wp_install_stream_check` carries "db_client = the
-  CLIENT BINARY … not the base dir — wp_plugins_check passes the base and is latently
-  stale". Someone hit it, fixed their own caller, named a second victim, and the note sat
-  there. Fourth instance of the codebase-knew-already shape.
-  Production is NOT reachable: every real caller derives the client through
-  `DbEngine::sql_client_bins` (`site_provision.rs:1130/1386`, `dbrestore.rs:101`), the one
-  place that knows the layout. Only examples hand-roll it.
-  Work: (a) the nine one-line fixes ✓; (b) make `mysql_exec` refuse a directory with a
-  message that NAMES the argument — **subsumed by (c), 15 Aug 2026**: a directory can no
-  longer reach `mysql_exec`, because its argument can no longer be built from a path;
-  (c) ✓ **DONE 15 Aug 2026, ledger #329** — `SqlClient` in `core/db.rs`, constructible
-  only by `sql_client_bins`/`cached_sql_client` (plus a `#[cfg(test)]` door), private
-  field, raw path helpers demoted to `pub(crate)`. Every client-taking signature in
-  database/dbrestore/dbmirror/dbdump/confverify/wordpress takes `&SqlClient`; ~30
-  example call sites converted to the constructors. **The migration found TWO more
-  victims the 14 Aug sweep missed** (neither called `mysql_client_bin`, so the grep
-  never saw them): `site_resources_check` passed a hand-built `bin_dir/mysql-<v>` TREE
-  to `db_sizes`, and `db_drop_check` passed `&basedir` to `create_database`/
-  `drop_database` — both latently red at the same tier that hid the first nine, both
-  surfaced as compile errors the moment the type existed. That is the class argument in
-  one sentence: the sweep fixed nine instances; the type found eleven.
 
 - [ ] **`wp_plugins_check` failed its deactivate assertion once and has not reproduced —
   the product-bug flag raised 14 Aug 2026 is RETRACTED, mechanism refuted.** The suspicion
@@ -969,72 +433,25 @@ first:
   (`common::OwnedService`) so the panic cannot manufacture the corpse-mysqld condition
   the first sighting was tangled with. Nothing new was ruled in or out — still filed
   as unexplained.
-- [x] **`common::sandbox` roots are long enough to break Caddy's admin unix socket
-  (macOS `sun_path` = 104 bytes). RULED 15 Aug 2026 — the current containment IS the
-  fix.** Shape (1) (short roots like `/tmp/rx-<hex>`) is REJECTED: moving fixture
-  roots out of the OS temp dir trades a real invariant every example depends on for
-  a rarer failure. What stands: production refuses at the point of use
-  (`core::proxy::admin_socket_path`, where whether an admin socket is even asked for
-  is known) and `common::sandbox` WARNS with the byte arithmetic at the point the
-  length is chosen (a refusal there was tried and blocked a working check — the
-  sandboxed edge in `tunnel_exposure_check` runs with admin off). The class is
-  contained where it can bite. Original diagnosis kept below. `wp_create_serve`'s edge never bound, and caddy's
-  own first line said why once the example was made to print it before panicking:
-  `starting caddy administration endpoint: listen unix //var/folders/51/…/T/
-  rexenv-sandbox-wp_create_serve-4823/config/caddy-admin.sock: bind: invalid argument`.
-  That path is **108 bytes against a 104-byte limit** — over by four. Nothing to do with
-  readiness, ports, or certs.
-  **This is not specific to one example.** It is a function of the sandbox tag's length:
-  `/var/folders/<2>/<27>/T/rexenv-sandbox-<tag>-<pid>/config/caddy-admin.sock`. Shorter
-  tags fit and longer ones don't, so any sandboxed example that starts the edge passes or
-  fails on how it was NAMED. `wp_login_check` is unaffected only because it does not
-  sandbox its paths.
-  ❓ **NEEDS A RULING — three shapes, none obviously right.** (1) Shorten the sandbox root
-  (e.g. `/tmp/rx-<8 hex>`), which fixes every example at once but moves fixtures out of
-  the OS temp dir the invariant currently names. (2) Put the admin socket somewhere short
-  regardless of app-data root, which touches production path logic for a test-only
-  problem. (3) Cap the tag length in `common::sandbox` and refuse a tag that would
-  overflow, which keeps the failure in the fixture layer and makes it loud — but leaves
-  the underlying limit live for any real app-data path a user could choose.
-  I lean (3) plus a refusal message naming the byte count, because it fails at the place
-  the length is chosen; but (1) is the only one that makes the class go away.
-  <details><summary>the symptom it was mistaken for</summary> Was
-  diagnosed 14 Aug 2026 as a missing readiness wait; the wait is now IN (a 10s
-  `ports::is_listening` gate, like every sibling) and it turned the symptom from a
-  ConnectionRefused deep in reqwest into `edge never bound :8443 within 10s (caddy pid
-  N)`. The wait was necessary but was not the bug: caddy spawns and never listens.
-  Note the discriminator — the same edge on the same port comes up fine in
-  `wp_login_check`, which does NOT sandbox its paths. So the suspicion is something the
-  edge needs that `common::sandbox` relocates (CA/cert paths, config dir, admin socket).
-  **Did not block the tunnel session**, whose fixture is `wp_login_check`.</details>
-- [x] **`wp_create_serve` leaked its whole stack on the panic path — FIXED 14 Aug 2026,
-  and proved by its own real failure rather than a plant.** Its four services are now
-  owned by `common::OwnedService`, whose `Drop` runs while unwinding. Before: the panic
-  left mysqld, nginx and php-fpm running. After, on the SAME panic path: zero marked
-  processes and 18088/9783/13306/8443/8080 all free. `OwnedService` deliberately does NOT
-  sweep its port the way `Reaped` does — that sweep decides ownership by program name,
-  which is safe on a fixture port and would let a sweep of 9783 kill the user's own
-  php-fpm. Ownership here is the `Child` handle. The residual is documented on the type:
-  a master that ignores SIGTERM can still orphan workers, which is why it is paired with
-  `require_ports_free`. Original finding kept below for the shape.
-  <details><summary>what it looked like</summary> After the panic,
-  `mysqld`, `nginx` and `php-fpm` were still running, all carrying its
-  `rexenv-sandbox-wp_create_serve-<pid>` marker, and its sandbox datadir had been removed
-  on drop — leaving a mysqld serving a datadir that no longer exists. Killing the masters
-  left `nginx: worker process` and `php-fpm: pool www` holding 18088/9783 with `ppid=1`
-  and no marker (the orphan-worker shape).</details>
-- [x] **These examples didn't refuse a busy port, so they borrowed a broken server —
-  FIXED 14 Aug 2026.** `common::require_ports_free` is now the first statement in
-  `wp_create_serve`, `wp_plugins_check`, `wp_themes_check` and `wp_tools_check` (and in
-  `wp_login_check`, earlier today).</details><details><summary>what it looked like</summary> The
-  leaked mysqld above made `wp_plugins_check`/`wp_themes_check`/`wp_tools_check` fail with
-  `ERROR 3680: Failed to create schema directory (errno 2)` — a message that names nothing
-  useful.</details>
-- [ ] **Running provisioning examples in bulk writes into the user's REAL Sites folder.**
-  The nine added 8 directories to `~/rexenv/Sites` (`sites::provision` reads the
-  `sites_dir` SETTING, which a sandboxed `Platform` cannot redirect). Known hazard, hit
-  again by running nine in a row. Until the pin is structural, snapshot the folder before
-  any bulk example run so the delta is attributable.
+- [ ] **Provisioning examples that do not PIN `sites_dir` write into the user's REAL
+  Sites folder — and one of them deletes there.** `sites::provision` reads the `sites_dir`
+  SETTING, which falls back to `~/rexenv/Sites`: a path derived from the home directory,
+  not from `Paths`, so a sandboxed `Platform` cannot redirect it. The door that closes it
+  is `common::sandbox_db` (pin included, cannot be used without it) or
+  `common::pin_sites_dir` for examples that open their own database; 12 examples call one
+  of them.
+  **Re-measured 21 Aug 2026 — the row used to say "snapshot the folder before a bulk run",
+  which is a habit, not a control.** The specific live instance found by the audit:
+  `adminer_deeplink_check` opens a bare `db::open` on a temp path, never pins, provisions
+  `dbsite.test`, and then calls `remove_dir_all` on the resulting docroot — a path inside
+  the user's real `~/rexenv/Sites`. That is the same shape as the incident this project
+  already paid for (an example `rm -rf`'d `docroot.parent()` and took the whole Sites
+  folder). It is tracked as a sub-item of the readiness-gate audit row above; this row
+  stays open for the CLASS.
+  - [ ] Sweep every example that calls `sites::provision` for a missing pin, and make the
+    unpinned path impossible rather than reviewed: `provision` could refuse when
+    `sites_dir` still resolves to the home-derived default while the platform is a
+    sandbox, which is a check the fixture cannot forget to write.
 
 - [ ] ❓ **Does `tunnels::stop` routinely need SIGTERM?** Observed once, 14 Aug 2026, on
   the first run of `common::adopt_public_tunnel`: cloudflared was still alive 3s after
@@ -1074,21 +491,17 @@ first:
   measurements, both instant — the weight now leans hard toward the 14 Aug sighting
   having been the zombie artifact.
 
-- [x] Tier-1 cluster — WORKED DRY 15 Aug 2026. Every automatable item is closed
-  (the strikethrough history moved to the rows themselves; this line stops
-  restating them — the 13 Aug and 15 Aug stale-cluster incidents both happened
-  in exactly this list). What remains is not backlog:
-  - **#2 is a WATCH** on Cloudflare's header set — not automatable, goes false
-    silently, re-observed on every live `tunnel_exposure_check` run.
-  - **#25/#26/#29/#30/#31's live legs ride the next `tunnel_exposure_check`
-    run** (group A's one tunnel example), alongside the tunnel-replay leg (3)'s
-    end-to-end denial observation.
-  Everything else in the old list (#10/#13, #33, #37, #49, #54/#59, #103,
-  #104/#191, #116, #190, #242, the manifest sweep) is ✅/◐-watch in the ledger —
-  run `grep '^| <n> '` there, don't trust a list here.
-- [x] Live re-point (#242 L1) ✓ 15 Aug 2026 — `linked_site_check`'s re-point leg:
-  real rename, a 404 control proving the reload is load-bearing, the command's
-  core sequence, and a post-move-only marker served through the vhost.
+  **Re-read 21 Aug 2026 — the log now has 48 entries and every one says `outcome=stop`,
+  and that number answers a DIFFERENT question than the one this row asks.** All 48 come
+  from `tunnel_guard_check` (45) and `tunnel_delete_order_check` (3), and both spawn a
+  `sleep 300` STAND-IN rather than cloudflared (`tunnel_guard_check.rs:52`). So what the
+  base rate proves is that the GUARD stops a process that has no shutdown work to do —
+  useful for the guard, silent about `tunnels::stop` against a real cloudflared, which is
+  the only subject the row cares about. The instrument is recording the wrong subject, and
+  a clean 48/48 reads exactly like the answer while being none of it.
+  **What would settle it:** entries from `tunnel_exposure_check` / the network tier, where
+  the pid IS cloudflared. Until one of those runs appends a line, this row has no evidence
+  at all — which is a better description of its state than "watching".
 - [ ] Then: ~~Apache/FrankenPHP dotfile legs (#103)~~ (closed 15 Aug 2026 — all three backends live, plant-proven per template), ~~fpm candidate
   isolation (#104/#191)~~ (closed 15 Aug 2026, `fpm_candidate_check`, plant-proven), ~~manifest HEAD+digest sweep~~ (closed 15 Aug 2026, `manifest_sweep_check` #335 — 88 URLs answer, 78 re-hashed incl. every Intel digest), Bedrock live provision (#35),
   sandbox-adoption cohorts + `wp_fixture()` — incl. scoping
@@ -1153,76 +566,59 @@ first:
   independent of. It now asserts the claim it always meant — the marker is NOT SERVED
   (status ≠ 200 AND the marker absent) — which holds either way.
 
-- [ ] **Verdict receipt — bind the COMMIT path, not just the verdict.** 3 Aug
-  2026: `live-checks.sh ... | tail -3 && git commit` landed a commit on a RED
-  tier, because a pipe replaces the script's exit code with `tail`'s. The
-  documented rule ("verify.sh is the bar; never a piped check") did not hold —
-  it was walked into by the person who wrote it, in the session where it was
-  written about, which is as good an argument as exists that a rule relying on
-  memory is not a control. **Half fixed:** all three verdict-bearing scripts now
-  REFUSE to run with stdout piped (file redirect and TTY still fine;
-  `REXENV_ALLOW_PIPE=1` to opt out), so no `&&` chain can follow a false green.
-  **Still open:** the chain still reaches `git commit`, now after a refusal
-  rather than a red verdict. The structural version is a receipt — `verify.sh`
-  records `green <HEAD> <hash of git status --porcelain>` on success, and a
-  `pre-commit` hook refuses when the receipt is missing or no longer matches the
-  tree, with `--no-verify` as the explicit, traceable override. Scope it to
-  commits that touch code (`src/`, `src-tauri/src/`, `examples/`) so doc-only
-  work isn't gated. NOT done mid-release deliberately: a hook that misfires
-  during the v0.1.0 gates would cost more than it saves.
-  ✓ **DONE 13 Aug 2026** — the release shipped, so the reason for waiting expired.
-  `scripts/verify-receipt.sh` (the one definition, shared by verify.sh and the
-  hook) + `scripts/git-hooks/pre-commit`, installed with
-  `git config core.hooksPath scripts/git-hooks`. Verified on every path: fresh
-  receipt passes, an edit after verify blocks, a docs-only commit passes with a
-  deliberately stale receipt (control: adding one code file to the same commit
-  blocks), and mid-merge / mid-rebase / mid-cherry-pick all skip. **Two design
-  faults found by testing rather than by review**: the fingerprint first mixed in
-  `git status --porcelain`, so `git add` invalidated it and EVERY commit was
-  blocked; and hashing tracked and untracked files as two streams meant staging
-  reordered the input. Both are why it hashes a SORTED SET of file contents now.
-  `verify.sh` also refuses to write a receipt when the tree changed while it was
-  running, which is what closes the verify→edit→commit window.
-
 ## Release gates (human, scripted — see the docs named)
 
-- [x] **PUBLISH-TESTING §A** — Apple-Silicon ad-hoc launch test. ✓ **PASSED 12 Aug 2026**
-  on `b29f21f7…`, the dmg actually published as v0.1.0 (quarantined → Gatekeeper
-  blocked → `xattr -rd` → launched); §A0 passed on the same artefact. Re-run it on
-  every future release candidate — the pass belongs to the artefact, not the app.
-  ⚠ **Build it with `npm run release:mac`** (= `tauri build --target
-  universal-apple-darwin`) — NOT a bare `tauri build`, which produces a thin
-  arm64 `rexenv_<v>_aarch64.dmg` that an Intel user cannot run, while INSTALL.md,
-  this document and the cask in `rexenv/homebrew-tap` all promise a universal
-  `rexenv_<v>_universal.dmg`. Built wrong once on 3 Aug by reaching for the
-  generic command; naming the COMMAND here rather than the outcome is the fix.
-  Verify before gating: `lipo -archs <app>/Contents/MacOS/rexenv` and the same
-  for `MacOS/rex` must both report `x86_64 arm64`.
+- [ ] **0.3.0 SHIPPED on 20 Aug 2026 and NOTHING in this repo records it.** The tap has
+  it (`Casks/rexenv.rb` = 0.3.0 / `381952fa…`, bumped by CI at 13:31Z), the GitHub
+  release is published with both assets, and `package.json` / `tauri.conf.json` /
+  `Cargo.toml` all say 0.3.0 — but there is no release row here, no §A0/§A verdict
+  against that dmg, and `docs/PUBLISH-TESTING.md` still heads §A "✅ 0.2.0 — PUBLISHED"
+  and certifies `bd019d8d…`. **0.2.0 has a full row precisely because a shipped artefact
+  needs its commit, its hash and its §A verdict tied together**; for 0.3.0 nobody can now
+  tell whether §A ran on `381952fa…` or was skipped. Two things to close it:
+  - [ ] Record the release the way 0.2.0's row does — dmg sha, source commit, and the
+    verify-full → §A0 → §A → draft → publish → cask-bump chain that actually happened.
+  - [ ] Run §A on the SHIPPED 0.3.0 dmg (quarantined → Gatekeeper → launch), or state in
+    the row that it was not run and why. An unrecorded gate is indistinguishable from a
+    skipped one six weeks later, which is the whole reason the section exists.
+- [ ] **The v0.3.0 TAG does not point at the 0.3.0 release commit.** `v0.3.0` → `bd0648c`
+  (20 Aug 18:19); the version bump is `5cb295e` (17 Aug 19:38). Fifteen commits of later
+  work — the Adminer-updates family, the release-key/logging fixes, the WP install-card
+  work and two thirds of the readiness-gate sweep — are inside a tag whose message
+  describes only what shipped as of 17 Aug. Decide which is true (re-tag, or amend the
+  tag's message to say what it really contains) and write the rule down in
+  `docs/RELEASING.md`, because the next release will do the same thing by default.
+- [ ] ⚠ **The shipped cask lets macOS 11–14 install an app that needs macOS 15.**
+  `Casks/rexenv.rb` carries `depends_on macos: :big_sur # minimumSystemVersion 11.0`
+  while `tauri.conf.json` has said `"minimumSystemVersion": "15.0"` since the floor sweep
+  (nginx 1.30.3 and cloudflared 2026.6.1 are both `minos 15.0` — `docs/PORTS.md`). So a
+  macOS 11–14 user runs `brew install --cask rexenv` today, gets no refusal, and lands on
+  an app whose web server binary cannot start. The floor row further down predicted this
+  failure ("invisible until someone finds their web server will not start"); this is the
+  install path where it is live. One line in `rexenv/homebrew-tap`, and the comment beside
+  it is the reason it drifted — it pins a NUMBER that the app is free to change.
+- [ ] **`docs/PUBLISH-TESTING.md` is stale in the three places a release-day reader
+  uses.** (a) §A's heading and the publish-blocking summary still present 0.2.0 as the
+  newest release; (b) the summary table names itself the publish-blocking summary and
+  omits §F and §G, both marked 🚧 in the body — the guard-covers-claimed-surface family
+  again, and this one clears a release without ever showing two blocking gates; (c) §D's
+  trigger still reads "once the dmg is on GitHub Releases", an event that happened four
+  releases ago, so a reader skips it as not-yet-applicable. `docs/RELEASING.md:167` has
+  the matching drift — it calls the interim flow "the flow in effect today (2026-08-12)"
+  when it is now the only flow that has ever cut a release.
+- [ ] **The release gates are not all in this section.** `docs/SMOKE-TEST.md` grew five
+  steps FOR 0.3.0 (cold-path 7.4 licences, the PHP update button + revert, the Adminer
+  update, the PHP ini revert, the "exists" row and the serving-vs-pinned line) and carries
+  the MCP HOLDs, and none of them is visible from the section a release-day reader works
+  from. Either list them here or make this section say plainly that SMOKE-TEST is the
+  other half — silence reads as "this is the set".
 - [ ] **PUBLISH-TESTING §B** — uninstall removes the root :443 daemon (live launchd).
-- [x] **`rex` hangs forever on a half-alive app** — ✓ **FIXED 12 Aug 2026** (ledger
-  #300): `soft_request` is bounded at 2s (it promised "works WITHOUT the app" and
-  delivered it only for ENOENT/ECONNREFUSED), and `request` — which must stay
-  unbounded, since a finished reply arrives in one write at the end — now prints one
-  stall notice after 10s instead of leaving a dead terminal. Five tests, the deaf-peer
-  one proven to fail on the pre-fix code, and `verify.sh` now runs the `cli` crate at
-  all. **Still open, deliberately:** why that instance went deaf was never diagnosed —
-  the evidence died with the pid. Reproduce before blaming App Translocation.
-  **Shipped in v0.1.1** (13 Aug 2026, `14b64dae…`) — v0.1.0 was deliberately not
-  re-cut (the trigger needs a half-alive app; a re-cut costs §A0 + §A again). A user
-  still on v0.1.0 whose app goes deaf sees `rex` hang with no output; the answer is
-  `brew upgrade --cask rexenv`.
-  Original report: found running §D, 12 Aug 2026. An
-  App-Translocated instance from §A owned `config/rexenv-cli.sock`, accepted the
-  connection and never replied; `rex --version` and `rex status` sat in `recvfrom`
-  with no output and no timeout, and only completed when that pid was killed. The
-  no-read-timeout is deliberate in `request()` (a `site create` runs for minutes) but
-  `soft_request()` inherits it while promising the opposite — `cli/src/main.rs:255-266`,
-  "must work WITHOUT the app". Fix is a read timeout on `soft_request` at least;
-  whether `request()` deserves a *connect-and-first-byte* deadline (distinct from the
-  long-running body) is the real design question. Not yet diagnosed: WHY that instance
-  stopped answering — the evidence died with the pid, so reproduce it before assuming
-  translocation was the cause rather than a wedged app.
-- [ ] **PUBLISH-TESTING §D** — full tap install dry-run. **Half done 12 Aug 2026**:
+- [ ] **PUBLISH-TESTING §D** — `--zap` ONLY; everything else has now run four times.
+  **Re-scoped 21 Aug 2026**: the row below pins the v0.1.0 cask hash, but the cask has
+  bumped cleanly through 0.1.1, 0.2.0 and 0.3.0 since, so the install half is not "half
+  done from August 12" — it is the routine path and `--zap` is the single step that has
+  never run anywhere. Original text, still accurate about what was proven:
+  full tap install dry-run. **Half done 12 Aug 2026**:
   v0.1.0 is published on `rexenv/homebrew-tap` (private repos 404 `brew`'s anonymous
   fetch, so the artefact ships from the tap — `docs/RELEASING.md`, interim section),
   the cask is bumped to the shipped `b29f21f7…`, the asset fetches anonymously (200),
@@ -1235,15 +631,6 @@ first:
   Two teeth grown from the first real run: the cask hash bump now compares sha256
   as well as version (a placeholder hash under an unchanged version silently
   skipped), and `brew trust rexenv/tap` is a required user-facing install step.
-- [x] **0.2.0 released** ✓ 16 Aug 2026. `rexenv_0.2.0_universal.dmg` `bd019d8d…`
-  from `3755966` (tag `v0.2.0`, local — origin stays tagless while the repo is
-  private). `verify-full: all green` → §A0 → §A → draft → publish → cask bumped by
-  `update-cask.yml` (`449b576`). The published asset was re-checked ANONYMOUSLY and
-  three-way-matched against the cask's pin and the bytes §A was run on. Two things
-  this release cost that are written up rather than remembered: the licence texts
-  now ship beside the PHP we build (#336), and §A's first run was VOID because the
-  dev login already trusted the app — the script needed `/Applications/rexenv.app`
-  removed and a browser download to be capable of failing at all.
 - [ ] **Flip the release host back when `rexenv/rexenv` goes public** — three things
   in ONE commit, or the tap's guard fails the bump: the cask's `url`, its `verified:`,
   and `SOURCE_REPO` in `update-cask.yml` (all in `rexenv/homebrew-tap`). Then CI's
@@ -1263,15 +650,6 @@ first:
   advances during a live WooCommerce/Elementor/core download is unproven at any
   layer. Needs one run against a real site (a plugin held one version back), or an
   L2 case rendering the panel with a scripted event stream.
-- [x] **The update-claim rule now has a test** ✓ 13 Aug 2026 — `wk-checks/wpverdict.js`
-  (ledger #250). Two fixture rows in `DevGitPanel`'s `plugins=list`: one claiming an
-  update to its OWN version (must offer nothing) and one claiming `1.1.11` over
-  `1.1.3.8` (must offer, since a string compare gets it backwards). Plant-proven both
-  ways; a third ordinary row keeps the two from passing on a panel where nothing ever
-  offers. **The plan's route was wrong and is corrected here**: `uireview.js` does NOT
-  drive the plugin list — `DevGitPanel` + `wptoast.js` do.
-  - [ ] **remaining: the TIMING half** (cancel-then-settle beats an in-flight check)
-    needs a real site — same run as the #249 wiring pass above.
 - [ ] **Release 5.4 — clean-Mac smoke test** (`docs/SMOKE-TEST.md`): first pass
   10 Jul 2026 green except multisite-convert (UI didn't exist yet — since built);
   re-verify converted-multisite + onboarding fixes + the TLD v1 Done-when list
@@ -1324,61 +702,20 @@ first:
 
 ## Decisions pending (owner)
 
-- [x] **LICENSE** — DECIDED + LANDED 28 Jul 2026: **Apache-2.0** (explicit patent
-  grant; §5 licenses inbound contributions without a CLA). ✓ `LICENSE` + `NOTICE`
-  at root, `Apache-2.0` in `package.json` + both `Cargo.toml`s,
-  `THIRD-PARTY-NOTICES.md` generated from the real graphs (389 crates + 112 npm
-  packages + OFL fonts + bundled SQLite; regeneration commands in its header),
-  DCO sign-off in `CONTRIBUTING.md`, README licence section. Regenerate the
-  notices file per release.
-- [x] **B33 — php-debug download host — DECIDED + BUILT 14 Aug 2026: GitHub
-  Releases in the public `rexenv/runtimes` repo; `dl.rexenv.dev` is not used.**
-  ✓ Repo created with the build workflow, gates, licence collection and the
-  immutability contract (`docs/PLAN-php-74-support.md` §6). What decided it: a
-  release there is immutable and its tag is never reused, so a pinned URL can 404
-  but can never resolve to different bytes — the property neither static-php.dev
-  nor FrankenPHP offers, and the reason `core/binaries.rs` carries two comments
-  about pins going stale. The distributor obligation is met in the repo (PHP
-  licence shipped; dep licences collected from the sources the build actually
-  downloaded, not a checked-in list that would describe last year's extension set).
-  **The prize is smaller than this row implied**, and that correction matters more
-  than the decision: `docs/PORTS.md` records Xdebug already shipping for PHP
-  8.1–8.5 via ghcr bottles, so B33 unblocks Xdebug on **8.0 only** —
-  `docs/xdebug-debug-build.md` said otherwise and has been corrected in place.
 - [ ] **`rex config get|set`** — parked on which settings keys to allow-list
   (never the whole KV table).
-- [x] **Neutralise the WP-CLI packages-dir inheritance, or accept it in writing?**
-  — **DECIDED 5 Aug 2026: (b) NEUTRALISE WITH A TELL. LANDED 13 Aug 2026** (the pin
-  + its L0 scan; the tell is ledger #301, the L1 leg still open). Queued as the
-  FIRST thing after v0.1.0 shipped; deliberately not on the release artefact,
-  because it is a behaviour change and wanted its own verification rather than
-  riding a build that was gated before it existed. **What the work actually turned
-  on**: the scope of (a) below was wrong — it named three spawn sites and there
-  were seven, so the fix was to stop enumerating them (see the item above).
-  **The reasoning, recorded so it is not re-derived**: neutralising alone would hand
-  someone who genuinely relies on a global package a bare `not a registered wp
-  command` with no explanation — the same unreproducibility pointed the other way.
-  Accept-and-document would make the ledger honest and leave every future bug report
-  just as unexplainable. The TELL is what makes it a fix rather than a trade: pin the
-  command set, and **when a packages dir exists that WOULD have contributed, say so**,
-  so a user learns what changed and why instead of discovering that a capability
-  vanished.
-  **Scope when picked up:** (a) set `WP_CLI_PACKAGES_DIR` at every wp-cli spawn
-  (`core/wordpress.rs:15/83/149` + any later one); (b) the L0 scan that must cover ALL
-  of them or repeat the coverage/surface family; (c) detect the would-have-contributed
-  case and surface it once, not per call; (d) **the tell's wording comes for approval
-  before it lands**, and joins a must-say list afterwards — the same route the MCP card
-  copy and the Build-zip tooltip took.
-
-- [x] **Publish history or start fresh** — DECIDED 28 Jul 2026: **fresh start**.
-  The public repo begins at the cleaned HEAD; the private repo keeps full
-  history. Reason: the docs cite commit hashes as evidence throughout, and a
-  filter-repo rewrite would break that proof chain. Execution happens at
-  publish time (init public repo from HEAD, push, add remotes).
 - [ ] Stage-3 leftovers awaiting a ruling only if they resurface: none — the
   collision-rename tell-only and pdo_mysql exclusions are SETTLED (pinned by
   tests; do not reopen).
-- [ ] **MCP server — M1 SHIPPED; M2 SCOPE RULED 1 Aug 2026, building M2a → M2b → M3**
+- [ ] **MCP server — M1 + M2a + M2b are SHIPPED and code-complete (13 Aug 2026); M3 is
+  the only milestone left.** Header corrected 21 Aug 2026: it had read "building M2a →
+  M2b → M3" for eight days after both were done, and "D2/D5 open" when D5 (no SDK,
+  hand-rolled — PLAN §9.5) was settled and D2 (`wp_login_url`, scratch-only) is the one
+  open decision, non-blocking. All 8 executing tools are registered
+  (`mcp_server/scratch.rs`) beside M1's three (`mcp_server/tools.rs`), and the schema
+  work v27–v30 is in `state/db.rs` with the DB now at v37. **What is genuinely left is
+  M3 and the human gates** — both below, and the gates were invisible from this file
+  until the reconcile.
   (`docs/PLAN-mcp-server.md`): expose an MCP server so a dev's AI agent can drive
   rexenv — disposable WordPress "scratch" sites (new `origin='agent'` column,
   TTL+cap+reaper), real-site DB SELECT-only via a native driver, read-only
@@ -1406,7 +743,10 @@ first:
     `agent_actions.actor`, and two M1 leftovers that would have narrowed shipped
     claims by omission (the sweep walks ONE registry; `target_site` is unfillable
     for a create).
-  - [ ] **M2a — the scratch-site scenario**, 14 tasks in `PLAN §7.3`, one commit
+  - [x] **M2a — the scratch-site scenario** — all 14 tasks are in the tree (v27–v30, the
+    `ScratchSite` witness, the second registry, the reaper). Box flipped 21 Aug 2026: the
+    sub-items were ticked one by one and the parent never was. The HUMAN gate is a
+    separate row below and is not closed. 14 tasks in `PLAN §7.3`, one commit
     each. ✓ task 2 — **v27** (`origin` / `agent_client` / `expires_at`), ledger
     #204: origin recorded not derived + read conservatively (anything ≠ "agent"
     is the user's), `expires_at` NULL = never so a user site and a Kept scratch
@@ -1611,7 +951,10 @@ first:
     unlabelled — captioning it "command" would overclaim what two tokens say.
     ⚠ **These stale the c7424fa DMG** (they touch `src-tauri/src/` and `src/`).
     Next = M2b.
-  - [ ] **M2b** — ◐ nearly done. ✓ the mechanism extraction (#223 — *reusing a
+  - [x] **M2b — CODE-COMPLETE 13 Aug 2026**, box flipped 21 Aug (the row's last line
+    already said "M2b is code-complete" and both "open by tier" legs were resolved in the
+    same paragraph). Detail below.
+  - [x] **M2b** — code-complete 13 Aug 2026, box flipped 21 Aug. ✓ the mechanism extraction (#223 — *reusing a
     command reuses its POLICY*: routing an agent through the app's PHP switch
     would have inherited `promote_if_scratch`, adopting the scratch site and
     freeing a cap slot); ✓ `set_php_version` (#224 — unshipped versions refused
@@ -1651,45 +994,24 @@ first:
       passing filter. It also refuses to run beside a live Mailpit — found by
       running it with the stack up, where `mail::start` cannot bind, exits, and
       `mail::running()` sees the USER'S catcher on the fixed port.
+  - [ ] **M3 — database access, and it has never had a checkbox of its own.** A fully
+    specified stage in `PLAN-mcp-server.md` §1058-1062 with NOTHING in the tree: the
+    native-driver query path, agent principals with escaped + expiring grants, `db_query`,
+    and the first T1 consent dialog. A grep for `db_query`/`agent_db_grants` across
+    `src-tauri/src` finds one comment. It is the largest single piece of unbuilt work
+    tracked in this file and it was living as a fragment at the end of another row.
+  - [ ] **The MCP human gates have never been recorded as run, and MCP has shipped in
+    four releases.** `docs/SMOKE-TEST.md` §M2a/§M2b carry 14 unticked steps and FOUR
+    HOLDs — step 4 (disabling really tears the socket down), step 8 (the tier boundary in
+    front of a human), step 11 (no admin prompt), step 14 (the mail scope that bounds D4's
+    credential-harvest pivot) — under a heading that says "ships only if this passes".
+    Either they ran and nobody wrote it down, or they did not; both are answered by
+    running them once and recording the verdict, and neither is answered by this row
+    staying where only a feature-tracker would find it.
     **M3** — DB, its own session (T1 consent dialog).
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)
 
-- [x] **In-app PHP patch updates — BUILT 17–18 Aug 2026, dark until the key
-  ceremony.** Reverses the 16 Aug decision at the user's direction: the update
-  button is 0.3.0's purpose. The custody objection that blocked it dissolved on a
-  fact neither reading had noticed — the app holds only the PUBLIC key, so the
-  app-side code is identical whether the private half is a CI secret or a hardware
-  token, and custody can improve later for the price of a key rotation.
-  Ledger #348 (verify + serial + four structural limits), #349 (`selected_patch`,
-  pin as floor, the pool snapshot seam), #350 (the apply flow with revert, the
-  button, the key ceremony), #353 (nothing that RUNS php asks for the pin),
-  #354 (the apply reports what it changed; one apply per minor), #355 (never
-  offer a half-published version). **Key ceremony DONE 18 Aug 2026** — key minted,
-  `RELEASE_PUBKEY` pinned, manifest serial 1 published (8.2.32, 8.3.32), and the
-  `manifest-signing` Environment secret + reviewer gate verified live (a dispatched
-  run sat at `waiting` until approved; its CI-computed digests match the local
-  publish byte for byte).
-
-  **The eight-hour lesson, kept because the next feature will earn it again:** the
-  button shipped working and every layer BEHIND it disagreed with it. `patch_to_run`
-  existed in two places while eleven others asked for the pin; the toast asserted a
-  running process from a bare `Ok(())`; the revert threw away both failure results
-  while claiming recovery; the GC would have deleted the tree the user just
-  installed. Each was found by a person using the app, not by a test — because the
-  tests checked MECHANISM (does the signature verify, does the pool restart) and
-  never *what the user sees after the action*. The guards added since fire on the
-  call site, not on the outcome, for the same reason.
-
-- [x] **Exercise the PHP-row states in the WebKit harness (L2).** ✓ 18 Aug 2026 —
-  `uireview.js`'s `php-versions` probe asserts the row's TRUTH as well as its
-  layout (button iff offered AND installed, chip suppressed once a button names
-  the same version, a settled row renders quiet, the note only where it applies),
-  over five fixture states with a coverage assert so no rule is a branch nothing
-  exercises. Green at both widths; three plants fail by name. Ledger #356. Two of
-  the rules were wrong as first written and planting is what said so — one of them
-  convicted a legitimate state. **Still not askable here:** whether the patch shown
-  is the post-update one; nothing in the DOM carries the pin, so that stays L0.
 - [ ] **The live pool swap is still L3.** `php_update_check` proves the chain up
   to "a pool on the new patch answers on a FIXTURE port". Stopping the running
   master on the PRODUCTION port and reverting when it does not come back needs
@@ -1705,24 +1027,6 @@ first:
   not. Same family as ledger #344 (guard-covers-claimed-surface). Fixing it needs
   a declared registry of gated keys next to the setters, since nothing derivable
   distinguishes "has a validating setter" today.
-
-- [x] **In-app ADMINER updates — the SECOND manifest family.** ✓ 18 Aug 2026.
-  Upstream was six releases and a MAJOR ahead of the pin (5.4.2 → 6.0.1) the day
-  it shipped. `updates::Family` replaces the flat name allowlist; the ceiling and
-  the binding probe answer the one axis on which Adminer is worse than PHP
-  (rexenv's login gate and frame protections live inside Adminer's own plugin
-  API). Ledger #361–#369, design in `docs/PLAN-adminer-updates.md`.
-
-  **Three pre-existing bugs fell out of building it, all live:** a publish could
-  reset the serial to 1 from one flaky `gh` call and lock every install out of
-  updates forever; naming an explicit version DELETED every other version from the
-  document; and `/adminer.php` served the real console with no wrapper — no login
-  gate, no frame bound — because every `.php` in that docroot is executable.
-
-  **And the delivery mechanism broke in production while shipping it:** GitHub
-  burns a tag name once an immutable release on it is deleted, so the moved
-  `manifest` tag is gone for good. The manifest is two files on a branch now,
-  which is also atomic where delete-then-create never was (#368).
 
 - [ ] **Install WordPress into an empty LINKED folder** — out of Stage 0 by
   design (`docs/PLAN-linked-sites.md` decision 2): linking is adopt-only. If
@@ -1782,5 +1086,3 @@ first:
 - On networks that negative-cache DNS, a fresh tunnel URL can be dead on THIS
   machine while live from a second device — the router race, not a bug
   (`docs/SMOKE-TEST.md` tunnels section).
-
-

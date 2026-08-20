@@ -13,6 +13,7 @@ bottle-bundle path — only OpenLiteSpeed remains blocked.
 | File | What it records |
 |------|-----------------|
 | `SHIPPED-2026-07.md` | The June–July 2026 completed-work evidence log (moved out of `docs/TODO.md` when it became open-items-only). |
+| `SHIPPED-2026-08.md` | The August 2026 completed-work evidence log — 57 finished blocks moved out of `docs/TODO.md` by the 21 Aug 2026 reconcile, plus the rows that reconcile found had shipped without ever being ticked. |
 | `PROJECT_SPEC.md` | Founding spec: decisions, feature tiers, phase plan, per-OS divergence notes for the future ports, the naming appendix. |
 | `DESIGN_BRIEF.md` | The prompt blocks that generated the comps in `/design` (repo root — kept there for its relative `support.js` paths). Its Design-DNA section now lives, refreshed, in `docs/DESIGN.md`. |
 | `DESIGN-GAPS.md` | UI-fidelity burndown vs the comps — complete. Its intentional-divergences list now lives, refreshed, in `docs/DESIGN.md`. |
