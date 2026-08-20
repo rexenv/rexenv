@@ -606,7 +606,13 @@ pub fn sandbox(tag: &str) -> (Box<dyn Platform>, SandboxGuard) {
     // run leaves its root behind. Two failed `tunnel_exposure_check` runs left
     // 280 MB each (13 Aug 2026). Self-healing beats remembering: the next run
     // of the SAME example clears them, and nothing outside this tag is touched.
-    if let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) {
+    // The SAME directory the roots live in — `/private/tmp`, not
+    // `std::env::temp_dir()`. When the root moved here (bd9748b, the 103-byte
+    // socket limit) this sweep was left reading macOS's per-user TMPDIR, so from
+    // that day it swept a directory that could no longer contain a single
+    // leftover: self-healing that healed nothing, and silently, because an empty
+    // read_dir looks exactly like a clean machine.
+    if let Ok(entries) = std::fs::read_dir(root.parent().expect("sandbox root has a parent")) {
         let prefix = format!("rexenv-sandbox-{tag}-");
         for entry in entries.flatten() {
             let name = entry.file_name();

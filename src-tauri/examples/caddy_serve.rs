@@ -13,6 +13,8 @@ use rexenv_lib::platform;
 use std::thread;
 use std::time::Duration;
 
+mod common;
+
 #[tokio::main]
 async fn main() {
     let plat = platform::current();
@@ -39,13 +41,26 @@ async fn main() {
     let caddyfile = proxy::write_caddyfile(&*plat, &cfg).expect("write caddyfile");
     println!("CADDYFILE={}", caddyfile.display());
 
-    let mut child = proxy::start(&*plat, &caddy, &caddyfile).expect("start caddy");
+    // Drop-guarded, and READY only once it is TRUE. `proxy::start` returns at
+    // fork, so the line below used to advertise a URL for a human to curl before
+    // anything was listening — and the refusal they got read as rexenv's edge
+    // being broken. This example asserts nothing, which is exactly why it
+    // survived the readiness sweep: there was no failing assertion to notice.
+    let mut child = common::OwnedService::new(
+        proxy::start(&*plat, &caddy, &caddyfile).expect("start caddy"),
+        "caddy",
+    );
     println!("CADDY_PID={}", child.id());
+    common::await_listening(8443, "the caddy edge", None);
+    // ACCEPT is not ANSWER: caddy binds before it has loaded certificates and
+    // routes. The upstream here is a deliberately dead :9999, so the answer that
+    // ends this wait is a 502 — which still proves the route table is live, and
+    // is the honest thing to advertise to someone about to curl it.
+    common::await_answering(host, 8443, &ca.cert_path, "the caddy edge answering HTTPS");
     println!("CADDY_READY https=8443 http=8080 host={host}");
 
     thread::sleep(Duration::from_secs(20));
 
-    let _ = proxy::stop(&*plat, child.id());
-    let _ = child.wait();
+    child.stop();
     println!("caddy stopped");
 }

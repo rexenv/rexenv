@@ -319,19 +319,27 @@ cause: a commit did the work and the surrounding claim stayed as it was.
   (`core/apache.rs:1`, `core/mariadb.rs:1`, `core/redis.rs:1`, `core/binaries.rs:1205`,
   and the examples beside them). Following any of them lands a reader in a file that does
   not mention the thing.
-- [ ] **`caddy_serve` and `caddy_443` announce READY before anything is listening.**
-  `caddy_serve.rs:42-44` calls `proxy::start`, prints `CADDY_READY https=8443 http=8080`
-  and then sleeps 20s for a human to curl; `caddy_443.rs:32-33` prints `CADDY_READY
-  :80/:443` and exits. `Command::spawn()` returns at fork, so the human curls into a
-  socket that may not exist yet and reads the refusal as the product failing. Same class
-  as the sweep above, missed because neither example ASSERTS anything — the reason they
-  survived a sweep that keyed on assertions.
-- [ ] **The sandbox leftover-sweep looks in the directory the roots left.** `bd9748b`
-  moved the sandbox root to `/private/tmp` (`examples/common/mod.rs:462`) and left the
-  self-healing sweep reading `std::env::temp_dir()` (`:506`) — the per-user TMPDIR that
-  no longer holds any root. The sweep exists because `fail()` still `process::exit`s and
-  runs no destructors, and two failed `tunnel_exposure_check` runs left 280 MB each. It
-  has been sweeping an empty directory since the day the root moved.
+- [x] **`caddy_serve` announced READY before anything was listening** ✓ 21 Aug 2026. It
+  called `proxy::start` (which returns at fork), printed `CADDY_READY https=8443
+  http=8080` and slept 20s for a human to curl — so the human curled into a socket that
+  might not exist and read the refusal as rexenv's edge failing. It now gates on the
+  socket AND on an answer before printing, and its caddy is an `OwnedService`. The
+  answering gate is honest about what it waits for: the upstream is a deliberately dead
+  :9999, so the status that ends the wait is a 502, which still proves the route table
+  loaded.
+  **`caddy_443` was RE-CHECKED and is fine** — it starts the privileged edge through
+  `proxy::start_privileged`, which shells `caddy start`, and that subcommand does not
+  return until the server has started. Recorded because the audit flagged it by shape
+  (a READY line after a start call) and the shape was not the fact.
+- [x] **The sandbox leftover-sweep looked in the directory the roots left** ✓ 21 Aug
+  2026. `bd9748b` moved the sandbox root to `/private/tmp` and left the self-healing sweep
+  reading `std::env::temp_dir()` — the per-user TMPDIR that no longer holds any root, so
+  from that day it swept a directory that could not contain a leftover. It now reads
+  `root.parent()`, which cannot drift from where the roots are put.
+  **Measured on this machine when the fix landed: 15 orphaned sandbox roots, 1.4 MB**,
+  the oldest from the day the root moved. The failure was silent by construction — an
+  empty `read_dir` looks exactly like a clean machine, which is the property to distrust
+  in any self-healing sweep.
 - [ ] **`verify.sh` lints one target of four.** `cargo clippy --lib -- -D warnings`
   covers the library and nothing else: not `src-tauri/src/main.rs`, not the 134 files in
   `examples/`, not `#[cfg(test)]` code, and not the `cli` crate — which the same script
