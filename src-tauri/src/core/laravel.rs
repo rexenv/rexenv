@@ -347,15 +347,41 @@ mod tests {
 mod live_shape_tests {
     use super::*;
 
-    /// Runs the writer over the .env from a REAL `composer create-project` run
-    /// staged by the live check, when one is present. Skips silently otherwise
-    /// so the unit suite stays hermetic — this exists to catch the day the
-    /// skeleton changes its .env shape and the hand-copied fixture above goes
-    /// stale without anything failing.
+    /// Runs the writer over the `.env` from a REAL `composer create-project` run.
+    ///
+    /// **A MANUAL leg, and it has never run automatically** (recorded 21 Aug
+    /// 2026, ledger #245). It was written as the thing that stops the
+    /// hand-copied fixture above going stale "in silence" — but nothing sets
+    /// `REXENV_LARAVEL_DOTENV`: no example runs `composer create-project` (the
+    /// clone-based checks read the repo's `.env.example`, which is a different
+    /// file), so this skipped on every run since the day it was added. A guard
+    /// against silence that is itself silent is worth less than no guard, because
+    /// the ledger row was counting it.
+    ///
+    /// To actually run it, stage a real generated file and point at it:
+    ///
+    /// ```text
+    /// composer create-project laravel/laravel /tmp/lv   # or take the .env from a real site
+    /// REXENV_LARAVEL_DOTENV=/tmp/lv/.env cargo test --lib wire_env_over_a_real
+    /// ```
+    ///
+    /// The skip is now LOUD — it prints what it wanted and how to give it that,
+    /// visible under `cargo test -- --nocapture`, rather than returning in
+    /// silence.
     #[test]
     fn wire_env_over_a_real_generated_dotenv_when_one_is_staged() {
-        let Ok(path) = std::env::var("REXENV_LARAVEL_DOTENV") else { return };
-        let Ok(original) = std::fs::read_to_string(&path) else { return };
+        let Ok(path) = std::env::var("REXENV_LARAVEL_DOTENV") else {
+            println!(
+                "SKIPPED: REXENV_LARAVEL_DOTENV is unset, so the writer was not run over a \
+                 real generated .env. Stage one and re-run: \
+                 REXENV_LARAVEL_DOTENV=<path>/.env cargo test --lib wire_env_over_a_real"
+            );
+            return;
+        };
+        let Ok(original) = std::fs::read_to_string(&path) else {
+            println!("SKIPPED: REXENV_LARAVEL_DOTENV={path} could not be read");
+            return;
+        };
         let db = DbSettings {
             connection: "mysql".into(),
             host: "127.0.0.1".into(),

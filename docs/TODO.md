@@ -421,11 +421,21 @@ cause: a commit did the work and the surrounding claim stayed as it was.
   whose only record is a const array inside a test is one nobody will ever pick up. Small
   and well-defined: a network-enable toggle on the themes list when the site is a
   multisite.
-- [ ] **`REXENV_LARAVEL_DOTENV` is read by a test and set by nothing.**
-  `core/laravel.rs:357` returns early when the var is absent, and a repo-wide search finds
-  exactly two mentions: that line, and `docs/CLAIM-LEDGER.md:459`, which credits the test
-  as the thing that stops the hand-copied `.env` fixture going stale "in silence". The
-  guard against silence has never run.
+- [x] **`REXENV_LARAVEL_DOTENV` was read by a test and set by nothing** ✓ 21 Aug 2026 —
+  corrected where it counted, which was the LEDGER. Ledger #245 credited that test as the
+  thing that stops the hand-copied `.env` fixture going stale "in silence"; nothing sets
+  the variable (no example runs `composer create-project` — the clone-based checks read
+  the repo's `.env.example`, a different file), so it skipped on every run since it was
+  written. A guard against silence that is itself silent is worth less than no guard,
+  because the row was counting it. The row now says what actually holds — four fixture
+  tests, against a copy that CAN go stale — and the test is documented as a MANUAL leg
+  with the command to run it. Its skip is LOUD now (it prints what it wanted and how to
+  give it that), and both paths were exercised: unset → the skip line, staged → the
+  assertions run and pass.
+  - [ ] Optional follow-up, deliberately not done: give it a producer. No example runs
+    `composer create-project` because it costs a network install of a whole Laravel
+    skeleton per run; the honest home for it is a SMOKE step that stages the file once,
+    not a check that pays that on every tier run.
 - [ ] **Three small CLI gaps, all with the backend already built.** `cli_server.rs:981`
   answers `mail.mark_read` and no `rex` verb sends it — the one unreachable arm of the
   whole dispatch table. `docs/CLI-ROADMAP.md` lists four 🟢 wins whose IPC exists
