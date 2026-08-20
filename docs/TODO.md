@@ -9,26 +9,41 @@ evidence cited.
 
 ## Now — actionable code/test work
 
-- [x] **`frankenphp_edge_serve`: `fp.test` 502'd through a working edge** ✓ 20 Aug 2026.
-  The example spawned FrankenPHP on the DERIVED port and the edge routed to the
-  RECORDED one:
-
-      [probe] derived site_port=8243  recorded_override_port=Some(8200)
-      [caddyfile] reverse_proxy 127.0.0.1:8200
-
-  Nothing was on 8200, so the request 502'd with a healthy backend listening one port
-  away. **The product states this rule against itself** — `reconcile_overrides`: "The
-  RECORDED backend port (B20 §4), never re-derived — so the spawned backend and the edge
-  route always agree, even after a domain change." The example did the one thing that
-  comment forbids, so it was testing an arrangement the product never produces.
-  **The first diagnosis was wrong and the correction is the lesson.** FrankenPHP's log
-  showed `started 🐘` … 110ms … `SIGTERM`, and that read as "something kills the
-  backend" — I wrote it up that way. Probing liveness at REQUEST time refuted it:
-  `listening=true` at the gate and still true immediately before the curl. The SIGTERM
-  was teardown after the failure, not its cause; a log timestamp near a failure is a
-  coincidence until something rules the alternative out.
-  Fixed by reading the record. Both sites now 200 (`ng.test` PHP 8.3.31 via nginx→pool,
-  `fp.test` PHP 8.5.8 via FrankenPHP).
+- [ ] **`frankenphp_edge_serve` still fails on a CLEAN machine — and may never have
+  passed on its own.** Three real defects were found and fixed inside it on 20 Aug 2026;
+  a fourth is open, and the honest reading is that the example's green runs were
+  borrowed.
+  1. ✓ **It spawned FrankenPHP on the DERIVED port while the edge routed to the
+     RECORDED one** — `derived site_port=8243` vs `recorded_override_port=Some(8200)`,
+     with `reverse_proxy 127.0.0.1:8200` in the Caddyfile and nothing there, so `fp.test`
+     502'd past a healthy backend one port away. The product states this rule against
+     itself (`reconcile_overrides`: "The RECORDED backend port (B20 §4), never
+     re-derived"), so the example was testing an arrangement the product never produces.
+  2. ✓ **The readiness gate proved the wrong thing.** `await_listening` proves the socket
+     ACCEPTS; Caddy binds its listener before it has loaded certificates and routes, so a
+     request in that window returns `000` and the table blames the site. It now waits for
+     the edge to ANSWER (any HTTP status — a 502 ends the wait and fails on its merits,
+     so it is not circular).
+  3. ✓ **nginx, caddy and frankenphp were raw `Child`s**, which Rust does not kill on
+     drop — and the gates exit by PANICKING, so they leaked more than the flat sleep ever
+     did. Four failing runs left four caddies alive, which then fought over :8443 and
+     turned every later run into `000`. All three are `common::OwnedService` now, and the
+     happy-path teardown calls the guard's own `stop()` rather than a hand-written
+     duplicate. **Measured: 1 leaked caddy per panicking run → 0.**
+  4. ✗ **OPEN:** with the machine genuinely clean, its own edge binds :8443 and then never
+     answers HTTPS within 20s. It DID serve 200/200 twice earlier in the same session —
+     but leaked caddies from previous runs were alive then, so the strong hypothesis is
+     that those runs were answered by a LEFTOVER edge and this example has never served
+     through the one it starts. That is a hypothesis, not a finding: it needs someone to
+     confirm which process answered. Start there — `lsof` the socket during the wait —
+     rather than reading the edge config, which is where I lost the most time.
+  **Method note worth more than the bug.** The first diagnosis was wrong: FrankenPHP's log
+  showed `started 🐘` … 110ms … `SIGTERM`, which read as "something kills the backend",
+  and it sent me through `recover_stale_edge`, `ensure_free` and every terminate site for
+  nothing. Probing liveness at REQUEST time refuted it in one run (`listening=true` right
+  before the curl); the SIGTERM was teardown. A log line near a failure is a coincidence
+  until something rules the alternative out, and probing the subject at the moment of the
+  symptom beats reading code that might be innocent.
 
 - [x] **The edge had never started in ANY sandboxed example** ✓ 20 Aug 2026.
   Caddy's admin socket lives at `<sandbox root>/config/caddy-admin.sock`, macOS binds at

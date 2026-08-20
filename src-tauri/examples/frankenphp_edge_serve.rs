@@ -102,14 +102,29 @@ async fn main() {
     // produces.
     let fp_port = sites::recorded_override_port(&fp).expect("fp.test has a recorded override port");
     let fp_conf = frankenphp::write_config(&*plat, &fp.domain, Path::new(&fp.path), fp_port, RewriteMode::Single, &[]).unwrap();
-    let mut fp_child = frankenphp::start(&*plat, &fp_bin, &fp.domain, &fp_conf, &[]).expect("frankenphp");
+    // Drop-GUARDED, all three. These were raw `Child`s, which Rust does not kill
+    // on drop, so any early exit leaked them — and the readiness gates above
+    // exit by PANICKING, which made the leak likelier than the flat sleep ever
+    // did. Four failing runs on 20 Aug 2026 left four caddies alive, and they
+    // then fought each other for :8443 and turned every later run into `000`.
+    // A guard that reports a problem must not manufacture one.
+    let mut fp_child = common::OwnedService::new(
+        frankenphp::start(&*plat, &fp_bin, &fp.domain, &fp_conf, &[]).expect("frankenphp"),
+        "frankenphp",
+    );
 
     // Shared nginx (ng.test) + edge Caddy (routes both).
     let cfg = sites::rebuild_configs(&conn, &*plat, &ca, NGINX_PORT, CADDY_HTTP, CADDY_HTTPS).unwrap();
     let nginx_bin = binaries::resolve(&*plat, "nginx", binaries::NGINX_VERSION).await.unwrap();
     let caddy_bin = binaries::resolve(&*plat, "caddy", binaries::CADDY_VERSION).await.unwrap();
-    let mut nginx = services::start_nginx(&*plat, &nginx_bin, &cfg.nginx_conf, &cfg.nginx_prefix).unwrap();
-    let mut caddy = proxy::start(&*plat, &caddy_bin, &cfg.caddyfile).unwrap();
+    let mut nginx = common::OwnedService::new(
+        services::start_nginx(&*plat, &nginx_bin, &cfg.nginx_conf, &cfg.nginx_prefix).unwrap(),
+        "nginx",
+    );
+    let mut caddy = common::OwnedService::new(
+        proxy::start(&*plat, &caddy_bin, &cfg.caddyfile).unwrap(),
+        "caddy",
+    );
     // FOUR spawns shared one flat sleep. Each returns at fork, and the two
     // requests below traverse different backends — a pool for ng.test, the
     // FrankenPHP process for fp.test — so a miss on either reads as the edge
@@ -118,6 +133,25 @@ async fn main() {
     common::await_listening(fp_port, "frankenphp", None);
     common::await_listening(NGINX_PORT, "nginx", None);
     common::await_listening(CADDY_HTTPS, "the caddy edge", None);
+    // ...and then wait for it to ANSWER, which is a different fact.
+    //
+    // `await_listening` proves the socket accepts. Caddy binds its listener
+    // before it has finished loading certificates and routes, so a request in
+    // that window comes back `000` — curl's "no HTTP response at all" — and the
+    // table below reads it as the SITE being broken. Measured 20 Aug 2026: the
+    // edge logged `enabling HTTP/3 listener addr :8443` and the whole run was
+    // over 245ms later with both sites at 000.
+    //
+    // The flat `sleep(1800ms)` this replaced hid that by being generous, which
+    // is the honest reason a sleep sometimes "works": it is not a check, but it
+    // is a long one. The fix is not to go back to sleeping — it is to poll the
+    // thing the assertions actually depend on.
+    //
+    // NOT circular: this waits for ANY http status, then the assertions below
+    // demand 200. A 502 ends the wait immediately and fails on its own merits.
+    common::await_ready("the caddy edge answering HTTPS", None, || {
+        fetch(&ng.domain, &ca_pem).0 != "000"
+    });
 
     println!("fp.test backend port = {fp_port} (override range)\n");
     let (ng_code, ng_ver) = fetch("ng.test", &ca_pem);
@@ -126,10 +160,12 @@ async fn main() {
     println!("  ng.test  (nginx→pool)        http={ng_code}  PHP {ng_ver}");
     println!("  fp.test  (frankenphp backend) http={fp_code}  PHP {fp_ver}");
 
-    // Cleanup.
-    let _ = proxy::stop(&*plat, caddy.id()); let _ = caddy.wait();
-    let _ = services::stop(&*plat, nginx.id()); let _ = nginx.wait();
-    let _ = frankenphp::stop(&*plat, fp_child.id()); let _ = fp_child.wait();
+    // Cleanup. `stop()` is the guard's own idempotent shutdown — the same code
+    // its Drop runs, so the happy path and the panic path tear down identically
+    // instead of the happy path having its own hand-written version.
+    caddy.stop();
+    nginx.stop();
+    fp_child.stop();
     pools.stop_all(&*plat);
 
     // ng.test served by the pool (8.3.x); fp.test by FrankenPHP embedded PHP (8.5.x).
