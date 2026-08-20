@@ -84,14 +84,18 @@ paying for anyway: **the tick belongs in the commit that does the work.**
     written down once, in `examples/common/mod.rs` ("The verdict contract: exit 0 means
     PROVEN"), and each site carries a two-line pointer to it, because this idiom is what
     an editor reaches for by habit.
-  - [ ] **Leak — a PANICKING gate in front of raw `Child`s.** Rust does not kill children
-    on drop, so every gate the sweep added between a spawn and its teardown is a new leak
-    path holding production ports: `create_site_serve`, `delete_site_serve`,
-    `frankenphp_serve`, `php_per_site_serve`, `php_switch_serve`, `wp_install_serve`
-    (mysqld included), and `monitor_coverage_demo` (which `process::exit(1)`s, skipping
-    destructors outright). `frankenphp_edge_serve` already got this fix in `48e5046` —
-    `common::OwnedService` for all three — and measured 1 leaked caddy per panicking run
-    → 0. The rest did not.
+  - [x] **Leak — a PANICKING gate in front of raw `Child`s.** ✓ 21 Aug 2026. Rust does
+    not kill children on drop, so every gate the sweep added between a spawn and its
+    teardown was a new leak path holding a SHARED production port. All six are
+    `common::OwnedService` now, with the happy-path teardown calling the guard's own
+    idempotent `stop()` instead of a hand-written duplicate: `create_site_serve`,
+    `delete_site_serve`, `frankenphp_serve`, `php_per_site_serve`, `php_switch_serve`,
+    `wp_install_serve` (mysqld included — four services in that one). `OwnedService` and
+    not `Reaped`, deliberately: `Reaped`'s sweep is keyed on the program NAME, which on a
+    production port would kill the user's own nginx. `monitor_coverage_demo`'s instance
+    was the `process::exit(1)` variant and went with the verdict-contract fix.
+    `frankenphp_edge_serve` had already had this fix in `48e5046`, where it measured 1
+    leaked caddy per panicking run → 0.
   - [ ] **Accept-vs-answer — the gate proves the socket ACCEPTS.** Caddy binds its
     listener before certificates and routes are loaded, so a request in that window
     returns `000`/connect-error and the table blames the site. `server_switch_serve`

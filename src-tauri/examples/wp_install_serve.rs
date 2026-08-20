@@ -51,7 +51,15 @@ async fn main() {
     let socket = database::socket_path(&*plat).unwrap();
     std::fs::create_dir_all(socket.parent().unwrap()).unwrap();
     database::initialize(&*plat, &mysql_base, &datadir).unwrap();
-    let mut mysqld = database::start(&*plat, &mysql_base, &datadir, database::MYSQL_PORT, &socket).unwrap();
+    // Drop-GUARDED, all four services below. Rust does not kill a `Child` on
+    // drop, and this example now has PANICKING readiness gates between every
+    // spawn and its teardown — so an unwind through a raw `Child` would leave
+    // mysqld :13306, php-fpm :9783, nginx :18088 and caddy :8443 running, which
+    // is every shared production port this tier uses.
+    let mut mysqld = common::OwnedService::new(
+        database::start(&*plat, &mysql_base, &datadir, database::MYSQL_PORT, &socket).unwrap(),
+        "mysqld",
+    );
     // `await_ready`, not the poll-then-carry-on loop this replaced. That loop fell
     // THROUGH after 15s, printed `mysql running=false`, and let the example continue
     // into `install_for_site` — so a dead engine was reported as one line of output in
@@ -86,9 +94,18 @@ async fn main() {
     // Shared web stack.
     let cfg = sites::rebuild_configs(&conn, &*plat, &ca, NGINX_PORT, CADDY_HTTP, CADDY_HTTPS).unwrap();
     let fpm_conf = services::write_fpm_config(&*plat, "8.3", services::PHP_FPM_PORT, None, &[]).unwrap();
-    let mut fpm = services::start_fpm(&*plat, &php_fpm, &fpm_conf).unwrap();
-    let mut ngx = services::start_nginx(&*plat, &nginx, &cfg.nginx_conf, &cfg.nginx_prefix).unwrap();
-    let mut cad = proxy::start(&*plat, &caddy, &cfg.caddyfile).unwrap();
+    let mut fpm = common::OwnedService::new(
+        services::start_fpm(&*plat, &php_fpm, &fpm_conf).unwrap(),
+        "php-fpm",
+    );
+    let mut ngx = common::OwnedService::new(
+        services::start_nginx(&*plat, &nginx, &cfg.nginx_conf, &cfg.nginx_prefix).unwrap(),
+        "nginx",
+    );
+    let mut cad = common::OwnedService::new(
+        proxy::start(&*plat, &caddy, &cfg.caddyfile).unwrap(),
+        "caddy",
+    );
     // Gate on the sockets, not the clock: all three spawn helpers return at
     // fork, not at bind (`common::await_listening`).
     common::await_listening(services::PHP_FPM_PORT, "php-fpm 8.3", None);
@@ -141,9 +158,11 @@ async fn main() {
         Err(e) => println!("request error: {e}"),
     }
 
-    let _ = proxy::stop(&*plat, cad.id()); let _ = cad.wait();
-    let _ = services::stop(&*plat, ngx.id()); let _ = ngx.wait();
-    let _ = services::stop(&*plat, fpm.id()); let _ = fpm.wait();
-    let _ = database::stop(&*plat, mysqld.id()); let _ = mysqld.wait();
+    // The guards' own idempotent shutdown — same code on the happy path and the
+    // panic path.
+    cad.stop();
+    ngx.stop();
+    fpm.stop();
+    mysqld.stop();
     println!("stopped");
 }

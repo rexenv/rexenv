@@ -74,9 +74,19 @@ async fn main() {
     let caddy_bin = binaries::resolve(&*plat, "caddy", binaries::CADDY_VERSION).await.unwrap();
     services::test_nginx_config(&*plat, &nginx_bin, &cfg.nginx_conf, &cfg.nginx_prefix)
         .expect("nginx -t");
-    let mut nginx =
-        services::start_nginx(&*plat, &nginx_bin, &cfg.nginx_conf, &cfg.nginx_prefix).expect("nginx");
-    let mut caddy = proxy::start(&*plat, &caddy_bin, &cfg.caddyfile).expect("caddy");
+    // Drop-GUARDED: four PANICKING readiness gates follow, and a raw `Child` is
+    // not killed by an unwind — the failing run would leave nginx on :18088 and
+    // caddy on :8443, the shared production ports, and take the rest of the tier
+    // with it.
+    let mut nginx = common::OwnedService::new(
+        services::start_nginx(&*plat, &nginx_bin, &cfg.nginx_conf, &cfg.nginx_prefix)
+            .expect("nginx"),
+        "nginx",
+    );
+    let mut caddy = common::OwnedService::new(
+        proxy::start(&*plat, &caddy_bin, &cfg.caddyfile).expect("caddy"),
+        "caddy",
+    );
     // Gate on the sockets, not the clock (`common::await_listening` carries the
     // incident): every spawn helper here returns at fork, not at bind.
     for minor in ["8.1", "8.3"] {
@@ -138,11 +148,11 @@ async fn main() {
         }
     }
 
-    // Cleanup (explicit — process::exit skips Drop).
-    let _ = proxy::stop(&*plat, caddy.id());
-    let _ = caddy.wait();
-    let _ = services::stop(&*plat, nginx.id());
-    let _ = nginx.wait();
+    // Cleanup through the guards' own idempotent `stop()`, so this path and the
+    // panic path are the same code. (`process::exit` below still skips Drop,
+    // which is exactly why the teardown is explicit here rather than implicit.)
+    caddy.stop();
+    nginx.stop();
     pools.stop_all(&*plat);
 
     if all_ok {

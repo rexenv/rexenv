@@ -95,8 +95,17 @@ async fn main() {
     let cfg = sites::rebuild_configs(&conn, &*plat, &ca, NGINX_PORT, CADDY_HTTP, CADDY_HTTPS).unwrap();
     let nginx_bin = binaries::resolve(&*plat, "nginx", binaries::NGINX_VERSION).await.unwrap();
     let caddy_bin = binaries::resolve(&*plat, "caddy", binaries::CADDY_VERSION).await.unwrap();
-    let mut nginx = services::start_nginx(&*plat, &nginx_bin, &cfg.nginx_conf, &cfg.nginx_prefix).unwrap();
-    let mut caddy = proxy::start(&*plat, &caddy_bin, &cfg.caddyfile).unwrap();
+    // Drop-GUARDED: four PANICKING readiness gates follow (two here, two after
+    // the switch), and Rust does not kill a raw `Child` on an unwind — a failing
+    // gate would leave nginx :18088 and caddy :8443 up for every later example.
+    let mut nginx = common::OwnedService::new(
+        services::start_nginx(&*plat, &nginx_bin, &cfg.nginx_conf, &cfg.nginx_prefix).unwrap(),
+        "nginx",
+    );
+    let mut caddy = common::OwnedService::new(
+        proxy::start(&*plat, &caddy_bin, &cfg.caddyfile).unwrap(),
+        "caddy",
+    );
     // Gate on the sockets, not the clock (`common::await_listening` carries the
     // incident): every spawn helper here returns at fork, not at bind.
     common::await_listening(rexenv_lib::core::php::fpm_port("8.1").expect("8.1 pool port"), "php-fpm 8.1", None);
@@ -131,8 +140,8 @@ async fn main() {
     );
 
     // Cleanup (explicit — process::exit skips Drop).
-    let _ = proxy::stop(&*plat, caddy.id()); let _ = caddy.wait();
-    let _ = services::stop(&*plat, nginx.id()); let _ = nginx.wait();
+    caddy.stop();
+    nginx.stop();
     pools.stop_all(&*plat);
 
     let ok = code_before == "200" && ver_before.starts_with("8.1")

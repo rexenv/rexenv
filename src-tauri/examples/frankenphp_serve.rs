@@ -20,7 +20,7 @@ const DOT_SECRET: &str = "REXENV_FP_DOT_7a31";
 const DOMAIN: &str = "fp.test";
 
 #[tokio::main]
-async fn main() {
+async fn main() -> std::process::ExitCode {
     let plat = platform::current();
 
     // A throwaway docroot with a phpinfo() page.
@@ -41,12 +41,21 @@ async fn main() {
 
     if let Err(e) = ports::ensure_free(&*plat, PORT, ports::Proto::Tcp, "FrankenPHP") {
         eprintln!("port {PORT} busy: {e}");
-        std::process::exit(1);
+        // `FAILURE` rather than `exit(1)`: exit runs no destructors (common/mod.rs,
+        // the verdict contract).
+        return std::process::ExitCode::FAILURE;
     }
 
     let bin = binaries::resolve(&*plat, "frankenphp", binaries::FRANKENPHP_VERSION).await.unwrap();
     let conf = frankenphp::write_config(&*plat, DOMAIN, &docroot, PORT, RewriteMode::Single, &[]).unwrap();
-    let mut child = frankenphp::start(&*plat, &bin, DOMAIN, &conf, &[]).expect("start frankenphp");
+    // Drop-GUARDED: the readiness gate on the next line PANICS on timeout, and a
+    // raw `Child` is not killed by an unwind — so the failing run would leave
+    // FrankenPHP holding :8200 and the next run would fail its own
+    // `ensure_free` above, blaming the port instead of the leak.
+    let mut child = common::OwnedService::new(
+        frankenphp::start(&*plat, &bin, DOMAIN, &conf, &[]).expect("start frankenphp"),
+        "frankenphp",
+    );
     // Gate on the sockets, not the clock (`common::await_listening` carries the
     // incident): every spawn helper here returns at fork, not at bind.
     common::await_listening(PORT, "frankenphp", None);
@@ -100,16 +109,17 @@ async fn main() {
     let wk_ok = wk.starts_with("HTTP/1.1 200") && wk.contains("well-known-ok");
     println!("dotfiles-404={dot_ok} · well-known-still-200={wk_ok}");
 
-    // Cleanup.
-    let _ = frankenphp::stop(&*plat, child.id());
-    let _ = child.wait();
+    // Cleanup. `stop()` is the guard's own idempotent shutdown, so this path and
+    // the panic path tear down through the same code.
+    child.stop();
     let _ = std::fs::remove_dir_all(&docroot);
 
     let ok = listening && code == "200" && php_ver.starts_with("8.") && !admin_bound && dot_ok && wk_ok;
     if ok {
         println!("\nOK — FrankenPHP backend serves embedded PHP on a loopback port, no edge/admin.");
+        std::process::ExitCode::SUCCESS
     } else {
         eprintln!("\nFAILED — see above.");
-        std::process::exit(1);
+        std::process::ExitCode::FAILURE
     }
 }

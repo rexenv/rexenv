@@ -67,9 +67,25 @@ async fn main() {
     let caddy_bin = binaries::resolve(&*plat, "caddy", binaries::CADDY_VERSION).await.unwrap();
 
     let fpm_conf = services::write_fpm_config(&*plat, "8.3", services::PHP_FPM_PORT, None, &[]).unwrap();
-    let mut fpm = services::start_fpm(&*plat, &fpm_bin, &fpm_conf).unwrap();
-    let mut nginx = services::start_nginx(&*plat, &nginx_bin, &cfg.nginx_conf, &cfg.nginx_prefix).unwrap();
-    let mut caddy = proxy::start(&*plat, &caddy_bin, &cfg.caddyfile).unwrap();
+    // Drop-GUARDED, all three: Rust does not kill a `Child` on drop, and between
+    // these spawns and the teardown at the end sit three PANICKING readiness
+    // gates and four `.unwrap()`s on the delete path. Any one of them unwinds
+    // past a raw `Child` and leaves php-fpm :9783, nginx :18088 and caddy :8443
+    // running — the shared production ports, which is why these are
+    // `OwnedService` and not `Reaped`: `Reaped`'s name-keyed sweep would kill
+    // the user's own nginx.
+    let mut fpm = common::OwnedService::new(
+        services::start_fpm(&*plat, &fpm_bin, &fpm_conf).unwrap(),
+        "php-fpm",
+    );
+    let mut nginx = common::OwnedService::new(
+        services::start_nginx(&*plat, &nginx_bin, &cfg.nginx_conf, &cfg.nginx_prefix).unwrap(),
+        "nginx",
+    );
+    let mut caddy = common::OwnedService::new(
+        proxy::start(&*plat, &caddy_bin, &cfg.caddyfile).unwrap(),
+        "caddy",
+    );
     // Gate on the sockets, not the clock: all three spawn helpers return at
     // fork, not at bind (`common::await_listening`).
     common::await_listening(services::PHP_FPM_PORT, "php-fpm 8.3", None);
@@ -111,11 +127,10 @@ async fn main() {
         ssl::site_cert_dir(plat.paths(), "del.test").map(|d| d.exists()).unwrap_or(false),
     );
 
-    let _ = proxy::stop(&*plat, caddy.id());
-    let _ = caddy.wait();
-    let _ = services::stop(&*plat, nginx.id());
-    let _ = nginx.wait();
-    let _ = services::stop(&*plat, fpm.id());
-    let _ = fpm.wait();
+    // The guards' own idempotent shutdown, so the happy path and the panic path
+    // tear down through the same code.
+    caddy.stop();
+    nginx.stop();
+    fpm.stop();
     println!("stopped");
 }

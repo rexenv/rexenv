@@ -68,12 +68,26 @@ async fn main() {
     let caddy_bin = binaries::resolve(&*plat, "caddy", binaries::CADDY_VERSION).await.unwrap();
 
     let fpm_conf = services::write_fpm_config(&*plat, "8.3", services::PHP_FPM_PORT, None, &[]).unwrap();
-    let mut fpm = services::start_fpm(&*plat, &fpm_bin, &fpm_conf).expect("fpm");
+    // Drop-GUARDED, all three. Rust does not kill a `Child` on drop, and the
+    // readiness gates below exit by PANICKING — so between the spawn and the
+    // teardown there is now an unwinding path that a raw `Child` would leak
+    // through, holding :9783/:18088/:8443 and poisoning every later example in
+    // the tier. Same fix, same reason, as `frankenphp_edge_serve` (48e5046).
+    let mut fpm = common::OwnedService::new(
+        services::start_fpm(&*plat, &fpm_bin, &fpm_conf).expect("fpm"),
+        "php-fpm",
+    );
     services::test_nginx_config(&*plat, &nginx_bin, &cfg.nginx_conf, &cfg.nginx_prefix)
         .expect("nginx -t");
-    let mut nginx = services::start_nginx(&*plat, &nginx_bin, &cfg.nginx_conf, &cfg.nginx_prefix)
-        .expect("nginx");
-    let mut caddy = proxy::start(&*plat, &caddy_bin, &cfg.caddyfile).expect("caddy");
+    let mut nginx = common::OwnedService::new(
+        services::start_nginx(&*plat, &nginx_bin, &cfg.nginx_conf, &cfg.nginx_prefix)
+            .expect("nginx"),
+        "nginx",
+    );
+    let mut caddy = common::OwnedService::new(
+        proxy::start(&*plat, &caddy_bin, &cfg.caddyfile).expect("caddy"),
+        "caddy",
+    );
 
     // Gate on the sockets, not the clock: all three spawn helpers return at
     // fork, not at bind. The READY line below advertises a URL for a human to
@@ -89,11 +103,11 @@ async fn main() {
 
     thread::sleep(Duration::from_secs(15));
 
-    let _ = proxy::stop(&*plat, caddy.id());
-    let _ = caddy.wait();
-    let _ = services::stop(&*plat, nginx.id());
-    let _ = nginx.wait();
-    let _ = services::stop(&*plat, fpm.id());
-    let _ = fpm.wait();
+    // `stop()` is the guard's own idempotent shutdown — the same code its Drop
+    // runs, so the happy path and the panic path tear down identically instead
+    // of the happy path keeping a hand-written duplicate.
+    caddy.stop();
+    nginx.stop();
+    fpm.stop();
     println!("stopped");
 }
