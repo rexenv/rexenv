@@ -58,10 +58,16 @@ paying for anyway: **the tick belongs in the commit that does the work.**
   21 Aug 2026.** The sweep itself is done (`be3c88d` + `2f564bb`, archived); this row is
   what an adversarial audit of it found afterwards, one verifier per finding, 44 further
   claims refuted. Every sub-item below is closed, one commit per family.
-  **What is NOT closed by any of them: none of this has been RUN.** `verify.sh` compiles
-  these examples; the sandbox tier runs a seventh of them; the service, network and stack
-  tiers — where every one of these files lives — need the stack stopped and a human to
-  start them. The fixes are the shape being right, not the run being green. They fall
+  **Ran, and what that does and does not prove.** `scripts/live-checks.sh sandbox` came
+  back **`live-checks(sandbox): all green`** on 21 Aug 2026 with all seven families in —
+  56 examples, including the ones the fixes touched that live in that tier. So the changes
+  compile, the new `ExitCode` contract does not fire on a healthy machine, and the
+  `OwnedService`/fixture-dir guards tear down cleanly.
+  **The tiers where most of these files LIVE were not run**: service, network and stack
+  need the stack stopped and a human to start them. For those files the fixes are the
+  shape being right, not the run being green — and the honest way to close that gap is
+  one `verify-full.sh` pass plus the service tier by hand, not another reading of the
+  diff. They fall
   into five families, and the families are the useful part — every one of them is a way a
   gate can be PRESENT and not GATE:
   - [x] **Placement — a gate after an early exit is not a gate.** ✓ 21 Aug 2026, both
