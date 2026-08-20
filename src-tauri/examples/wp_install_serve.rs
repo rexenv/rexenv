@@ -19,6 +19,19 @@ async fn main() {
     // Sandboxed: every path the app derives (config dir, nginx PREFIX and
     // therefore nginx.pid, run/, certs) lands in a throwaway root, so this
     // example cannot touch the running stack. See examples/common.
+    // FIRST statement, before anything is created: `common::sandbox` makes the
+    // PATHS throwaway and does NOTHING about ports. These are the production
+    // ports, so beside a live stack this example's three readiness gates would
+    // all be satisfied by the USER'S services — green, and measuring their
+    // machine rather than rexenv's behaviour. The sibling `wp_create_serve`
+    // already refuses this way; this one never did.
+    common::require_ports_free(&[
+        (CADDY_HTTPS, "this example's edge"),
+        (CADDY_HTTP, "this example's HTTP edge"),
+        (NGINX_PORT, "the SHARED nginx — the user's running stack"),
+        (services::PHP_FPM_PORT, "a php-fpm pool"),
+        (database::MYSQL_PORT, "MySQL"),
+    ]);
     let (plat, _sandbox) = common::sandbox("wp_install_serve");
     let domain = "wpdemo.test";
     let url = format!("https://{domain}:{CADDY_HTTPS}");

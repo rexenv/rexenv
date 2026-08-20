@@ -46,6 +46,11 @@ async fn main() -> std::process::ExitCode {
         return std::process::ExitCode::FAILURE;
     }
 
+    // Read :2019 BEFORE the spawn — see the assertion below.
+    let admin_before = ports::is_listening(2019);
+    if admin_before {
+        println!("NOTE: something already holds :2019 (not ours) — the admin check reads the delta");
+    }
     let bin = binaries::resolve(&*plat, "frankenphp", binaries::FRANKENPHP_VERSION).await.unwrap();
     let conf = frankenphp::write_config(&*plat, DOMAIN, &docroot, PORT, RewriteMode::Single, &[]).unwrap();
     // Drop-GUARDED: the readiness gate on the next line PANICS on timeout, and a
@@ -61,7 +66,13 @@ async fn main() -> std::process::ExitCode {
     common::await_listening(PORT, "frankenphp", None);
 
     let listening = frankenphp::running(PORT);
-    let admin_bound = ports::is_listening(2019); // must be false — admin is off
+    // The TRANSITION, not the absolute. `is_listening(2019)` asks whether
+    // ANYTHING holds Caddy's admin port — and a developer running their own
+    // Caddy holds it all day, which failed this run for a reason that has
+    // nothing to do with rexenv. What the claim is actually about is whether
+    // OUR FrankenPHP opened it, so the reading is taken before the spawn and the
+    // assertion is "we did not add one".
+    let admin_bound = !admin_before && ports::is_listening(2019); // must be false — admin is off
 
     let code = Command::new("curl")
         .args(["-s", "-H", &format!("Host: {DOMAIN}"), "-o", "/dev/null", "-w", "%{http_code}",

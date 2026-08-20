@@ -106,13 +106,15 @@ paying for anyway: **the tick belongs in the commit that does the work.**
     and `wp_create_serve` (whose first HTTPS request `.unwrap()`s). The helper waits for
     ANY status and the assertions still demand 200, so it is a readiness gate and not a
     retry loop that hides a bug.
-  - [ ] **Wrong subject — the gate is satisfied by someone else's server.**
-    `wp_install_serve` never calls `common::require_ports_free`, so all three of its gates
-    can be satisfied by listeners it did not spawn; `service_manager_demo` gates only the
-    edge while its request traverses edge → nginx :18088 → pool :9783 (its sibling
-    `log_tail_check` got all three gates in the same commit); `frankenphp_serve` asserts
-    `is_listening(2019)` absolutely, so a developer's own Caddy fails the run — read the
-    port BEFORE the spawn and assert the TRANSITION.
+  - [x] **Wrong subject — the gate is satisfied by someone else's server.** ✓ 21 Aug
+    2026. `wp_install_serve` now refuses first, like its sibling `wp_create_serve`:
+    `common::require_ports_free` on all five production ports, because `sandbox` makes the
+    PATHS throwaway and says nothing about ports — beside a live stack its three gates
+    were all satisfiable by the USER'S services, which is green while measuring their
+    machine. `service_manager_demo` gates the two services BEHIND the edge that its final
+    request traverses. `frankenphp_serve` reads :2019 before the spawn and asserts the
+    TRANSITION (`!admin_before && is_listening(2019)`) rather than the absolute, so a
+    developer's own Caddy no longer fails a claim that is about what FrankenPHP opened.
   **Two fixture-ownership defects came out of the same audit and are NOT gate bugs** —
   they are the invariant in `examples/common/mod.rs` being broken in the plain sense:
   - [ ] `adminer_deeplink_check` opens a bare `db::open` fixture DB with no

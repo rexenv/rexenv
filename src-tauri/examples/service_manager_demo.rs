@@ -74,6 +74,14 @@ async fn main() -> std::process::ExitCode {
     // databases, mailpit and the FrankenPHP overrides only — and the HTTPS
     // request further down needs it.
     common::await_listening(https_port, "the caddy edge", None);
+    // The edge is the front door, not the path. The request at the end of this
+    // demo traverses edge → the SHARED nginx → the 8.3 pool, and `start_all`
+    // awaits neither of those; the sibling with the identical topology
+    // (`log_tail_check`) got all three gates in the same sweep and this one got
+    // one. A miss here prints `request error` or a 502 and reads as the demo
+    // being broken.
+    common::await_listening(services::NGINX_HTTP_PORT, "nginx", None);
+    common::await_listening(services::PHP_FPM_PORT, "php-fpm 8.3", None);
 
     println!("\n=== service status + live metrics ===");
     let mut mon = Monitor::new();
