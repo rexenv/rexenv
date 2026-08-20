@@ -34,7 +34,7 @@ fn has_login_cookie(resp: &reqwest::Response) -> bool {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> std::process::ExitCode {
     // FIRST statement: a precondition that runs after the side effect is not a
     // precondition. This example provisions a site and starts real services; if
     // a live stack already holds these ports it would quietly use the user's.
@@ -86,7 +86,10 @@ async fn main() {
     let php_minors = rexenv_lib::core::php::installed_minors(&conn).unwrap();
     if let Err(e) = mgr.start_all(&*plat, &ca, &all, &php_minors, binaries::ADMINER_VERSION).await {
         eprintln!("start_all failed: {e}");
-        return;
+        // `FAILURE`, never a bare `return` — a bare return from `main` exits 0 and the
+        // tier records a run that asserted nothing as green (common/mod.rs, the
+        // verdict contract).
+        return std::process::ExitCode::FAILURE;
     }
     for _ in 0..40 {
         if rexenv_lib::core::ports::is_listening(HTTPS) {
@@ -224,7 +227,7 @@ async fn main() {
                  Caddy's. Stop it and re-run rather than believing this number.\n"
             );
             let _ = mgr.stop_all(&*plat);
-            std::process::exit(1);
+            return std::process::ExitCode::FAILURE;
         }
     }
 
@@ -312,4 +315,5 @@ async fn main() {
     mgr.stop_all(&*plat).unwrap();
     println!("\nALL GOOD — magic login is single-use, short-TTL, and local-only; the edge \
               replaces caller-supplied X-Forwarded-For.");
+    std::process::ExitCode::SUCCESS
 }

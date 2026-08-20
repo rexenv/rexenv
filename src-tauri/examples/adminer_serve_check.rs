@@ -22,7 +22,7 @@ mod common;
 const HTTPS: u16 = 8443;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> std::process::ExitCode {
     let plat = platform::current();
     let site_domain = "other.test";
 
@@ -58,7 +58,10 @@ async fn main() {
     let php_minors = rexenv_lib::core::php::installed_minors(&conn).unwrap();
     if let Err(e) = mgr.start_all(&*plat, &ca, &all, &php_minors, binaries::ADMINER_VERSION).await {
         eprintln!("start_all failed: {e}");
-        return;
+        // `FAILURE`, never a bare `return` — a bare return from `main` exits 0 and the
+        // tier records a run that asserted nothing as green (common/mod.rs, the
+        // verdict contract).
+        return std::process::ExitCode::FAILURE;
     }
     // The EDGE is not the whole stack. This loop waited only for Caddy, while
     // every request below traverses Caddy → the shared nginx → the 8.3 pool —
@@ -129,4 +132,5 @@ async fn main() {
     let _ = std::fs::remove_file(&probe);
     mgr.stop_all(&*plat).unwrap();
     println!("\nALL GOOD — Adminer is served through the stack, pre-filled, and reaches MySQL.");
+    std::process::ExitCode::SUCCESS
 }

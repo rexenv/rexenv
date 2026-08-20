@@ -17,7 +17,7 @@ mod common;
 // privileged :443 path is the same start_privileged proven in task 4.2; pass
 // `real443` as an arg to use :443 (will prompt — run in the foreground).
 #[tokio::main]
-async fn main() {
+async fn main() -> std::process::ExitCode {
     // Deliberate real-stack control: this utility exists to adopt/stop the
     // shared stack. Without this, core::stack_guard skips adopted services.
     rexenv_lib::core::stack_guard::allow_real_stack_control();
@@ -64,7 +64,10 @@ async fn main() {
     let php_minors = rexenv_lib::core::php::installed_minors(&conn).unwrap();
     if let Err(e) = mgr.start_all(&*plat, &ca, &all, &php_minors, binaries::ADMINER_VERSION).await {
         eprintln!("start_all failed: {e}");
-        return;
+        // `FAILURE`, never a bare `return` — a bare return from `main` exits 0 and the
+        // tier records a run that asserted nothing as green (common/mod.rs, the
+        // verdict contract).
+        return std::process::ExitCode::FAILURE;
     }
 
     // `start_all` returns without awaiting the EDGE — its ReadyChecks cover the
@@ -120,4 +123,5 @@ async fn main() {
         "stopped; :{https_port} free now = {}",
         rexenv_lib::core::ports::is_free(https_port, rexenv_lib::core::ports::Proto::Tcp)
     );
+    std::process::ExitCode::SUCCESS
 }

@@ -19,7 +19,7 @@ use std::time::Duration;
 
 mod common;
 #[tokio::main]
-async fn main() {
+async fn main() -> std::process::ExitCode {
     let plat = platform::current();
     let (conn, _dbf) = common::fixture_db("monitor_coverage_demo");
     let ca = ssl::load_or_create(plat.paths(), plat.permissions()).expect("ca");
@@ -43,7 +43,11 @@ async fn main() {
     let all = sites::list(&conn).unwrap();
     if let Err(e) = mgr.start_all(&*plat, &ca, &all, &["8.3".to_string()], binaries::ADMINER_VERSION).await {
         eprintln!("start_all failed: {e}");
-        std::process::exit(1);
+        // `FAILURE` rather than `process::exit(1)`: exit runs no destructors, so it
+        // skipped the ServiceManager's own Drop and left whatever `start_core` had
+        // already spawned holding a production port (common/mod.rs, the verdict
+        // contract).
+        return std::process::ExitCode::FAILURE;
     }
     // Also start PostgreSQL (a standalone DB engine).
     if let Err(e) = mgr.ensure_db(&*plat, DbEngine::Postgres).await {
@@ -102,6 +106,7 @@ async fn main() {
         println!("\nOK — every supervised Phase-2 service reports live RAM/CPU.");
     } else {
         eprintln!("\nFAILED — missing service or zero metrics. present={present} names={names:?}");
-        std::process::exit(1);
+        return std::process::ExitCode::FAILURE;
     }
+    std::process::ExitCode::SUCCESS
 }

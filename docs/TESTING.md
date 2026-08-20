@@ -575,6 +575,17 @@ Workstreams, in order:
 1. **Uniform verdict contract.** Every example exits 0 = proven / non-zero = not.
    Print-only "examples" (`frankenphp_subdir_validate`, `dns_serve`, demos) either gain
    assertions or are renamed `*_demo` and excluded from the runner.
+   **The contract had a hole in 13 examples until 21 Aug 2026, and it failed in the
+   direction that looks like success.** The idiom
+   `if let Err(e) = mgr.start_all(..).await { eprintln!("start_all failed: {e}"); return; }`
+   returns from `async fn main() -> ()`, which exits **0** — so the tier printed
+   `all green` for a run in which the stack never started, nothing was asserted, and every
+   readiness gate below was jumped over. The `start_all failed:` line was visible only to
+   someone reading the log of a run that had passed. All 13 now return
+   `std::process::ExitCode`; the reasoning, including why `FAILURE` and not
+   `process::exit(1)` (exit skips the guards' destructors and leaks the service), lives in
+   `examples/common/mod.rs` under "The verdict contract". Worth remembering as a shape:
+   the runner's verdict came from a signal the example was free to not send.
 2. **A tiered runner** (`scripts/live-checks.sh`), same discipline as verify.sh (own
    cwd, no pipes between check and verdict, one green line):
    - `sandbox` tier — sandboxed, fixture ports, no network, no prompts: safe anytime.

@@ -70,16 +70,20 @@ paying for anyway: **the tick belongs in the commit that does the work.**
     dead engine surfaced as wp-cli's error rather than MySQL's — and is now
     `common::await_ready("mysqld (accepting queries)", …)`; `await_ready` rather than
     `await_listening` because `mysql_running` is a protocol check, not a port listen.
-  - [ ] **Silent pass — `start_all` fails and the example exits 0.** `if let Err(e) = …
-    { eprintln!(…); return; }` inside `async fn main() -> ()` returns SUCCESS, and
-    `live-checks.sh` takes its verdict from the exit status alone — so the tier prints
-    `all green` for a run that asserted nothing and never reached its gates. Confirmed in
-    `adminer_deeplink_check`, `log_tail_check`, `mail_route_check`, `multisite_check`,
-    `multisite_wildcard_check`; the same idiom is in ~6 more (`adminer_serve_check`,
-    `blueprint_check`, `network_check`, `service_manager_demo`, `tunnel_check`,
-    `wp_login_check`). Pre-existing, not sweep-introduced — but the sweep is what put
-    gates behind it. Fix is the contract `docs/TESTING.md` already states: `-> ExitCode`,
-    `FAILURE` on that branch.
+  - [x] **Silent pass — `start_all` fails and the example exits 0.** ✓ 21 Aug 2026, all
+    13 files. `if let Err(e) = … { eprintln!(…); return; }` inside `async fn main() -> ()`
+    returns SUCCESS, and `live-checks.sh` takes its verdict from the exit status alone —
+    so the tier printed `all green` for runs that asserted nothing and never reached their
+    gates. Every one now has `async fn main() -> std::process::ExitCode` with `FAILURE` on
+    the precondition path: `adminer_deeplink_check`, `adminer_serve_check`,
+    `blueprint_check`, `log_tail_check`, `mail_route_check`, `monitor_coverage_demo`,
+    `multisite_check`, `multisite_wildcard_check`, `network_check`, `server_switch_serve`,
+    `service_manager_demo`, `tunnel_check`, `wp_login_check`. **`FAILURE`, not
+    `process::exit(1)`** — the two examples that already exited non-zero were skipping
+    every destructor to do it, which turns a failed run into a leaked service. The rule is
+    written down once, in `examples/common/mod.rs` ("The verdict contract: exit 0 means
+    PROVEN"), and each site carries a two-line pointer to it, because this idiom is what
+    an editor reaches for by habit.
   - [ ] **Leak — a PANICKING gate in front of raw `Child`s.** Rust does not kill children
     on drop, so every gate the sweep added between a spawn and its teardown is a new leak
     path holding production ports: `create_site_serve`, `delete_site_serve`,

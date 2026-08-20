@@ -15,7 +15,7 @@ use rexenv_lib::state::models::{NewSite, SiteType, WebServer};
 use std::time::{Duration, Instant};
 
 #[tokio::main]
-async fn main() {
+async fn main() -> std::process::ExitCode {
     let plat = platform::current();
     let domain = "share.test";
 
@@ -50,7 +50,10 @@ async fn main() {
     let php_minors = rexenv_lib::core::php::installed_minors(&conn).unwrap();
     if let Err(e) = mgr.start_all(&*plat, &ca, &all, &php_minors, binaries::ADMINER_VERSION).await {
         eprintln!("start_all failed: {e}");
-        return;
+        // `FAILURE`, never a bare `return` — a bare return from `main` exits 0 and the
+        // tier records a run that asserted nothing as green (common/mod.rs, the
+        // verdict contract).
+        return std::process::ExitCode::FAILURE;
     }
 
     // Resolve cloudflared + start the quick tunnel.
@@ -122,4 +125,5 @@ async fn main() {
 
     mgr.stop_all(&*plat).unwrap();
     println!("\nALL GOOD — per-site quick tunnel shares the local site publicly, scoped to its Host.");
+    std::process::ExitCode::SUCCESS
 }

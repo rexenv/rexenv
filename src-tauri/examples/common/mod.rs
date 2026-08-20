@@ -100,6 +100,32 @@
 //! neither the binary path nor the config path. A sweep keyed on the executable
 //! would miss precisely the processes that leak, so [`Reaped`] matches on the
 //! program NAME (`php-fpm`, `httpd`, `nginx`).
+//!
+//! ## The verdict contract: exit 0 means PROVEN
+//!
+//! `scripts/live-checks.sh` takes an example's verdict from its EXIT STATUS and
+//! nothing else, and `docs/TESTING.md` states the rule as "exit 0 = proven,
+//! non-zero = not". So a precondition that fails must reach the exit code, and
+//! the idiom that quietly broke this in 13 examples is:
+//!
+//! ```ignore
+//! if let Err(e) = mgr.start_all(..).await { eprintln!("start_all failed: {e}"); return; }
+//! ```
+//!
+//! A bare `return` from `async fn main() -> ()` **exits 0**. The tier prints
+//! `all green` for a run in which the stack never came up, no assertion
+//! executed, and every readiness gate below was jumped over — and the operator
+//! sees the `start_all failed:` line only if they read the log of a run that
+//! passed. Fixed 21 Aug 2026 by giving those `main`s a return type:
+//! `async fn main() -> std::process::ExitCode`, `ExitCode::FAILURE` on the
+//! precondition path, `ExitCode::SUCCESS` at the end.
+//!
+//! **`ExitCode::FAILURE`, not `process::exit(1)`** — the two are not equivalent
+//! here. `exit` runs no destructors, so it skips the [`Reaped`] and
+//! [`OwnedService`] guards and the `ServiceManager`'s own `Drop`, turning a
+//! failed run into a leaked service holding a production port. Returning the
+//! code unwinds the stack normally first. (The same reasoning is why
+//! [`await_ready`] panics rather than exits.)
 
 #![allow(dead_code)] // each example uses a subset
 

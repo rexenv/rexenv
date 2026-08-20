@@ -25,7 +25,7 @@ use std::time::Duration;
 const HTTPS: u16 = 8443;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> std::process::ExitCode {
     let plat = platform::current();
     let domain = "mysite.test";
 
@@ -62,7 +62,10 @@ async fn main() {
     let php_minors = rexenv_lib::core::php::installed_minors(&conn).unwrap();
     if let Err(e) = mgr.start_all(&*plat, &ca, &all, &php_minors, binaries::ADMINER_VERSION).await {
         eprintln!("start_all failed: {e}");
-        return;
+        // `FAILURE`, never a bare `return` — a bare return from `main` exits 0 and the
+        // tier records a run that asserted nothing as green (common/mod.rs, the
+        // verdict contract).
+        return std::process::ExitCode::FAILURE;
     }
     for _ in 0..40 {
         if rexenv_lib::core::ports::is_listening(HTTPS) {
@@ -157,4 +160,5 @@ async fn main() {
 
     mgr.stop_all(&*plat).unwrap();
     println!("\nALL GOOD — network sub-site CRUD, network-activate (active-network badge), and super-admins all work.");
+    std::process::ExitCode::SUCCESS
 }

@@ -40,7 +40,7 @@ fn fetch(ca_pem: &str) -> (String, String) {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> std::process::ExitCode {
     let plat = platform::current();
     let db_path = std::env::temp_dir().join("rexenv-4_1.db");
     let _ = std::fs::remove_file(&db_path);
@@ -62,7 +62,11 @@ async fn main() {
     let all = sites::list(&conn).unwrap();
     if let Err(e) = mgr.start_all(&*plat, &ca, &all, &["8.3".to_string()], binaries::ADMINER_VERSION).await {
         eprintln!("start_all failed: {e}");
-        std::process::exit(1);
+        // `FAILURE` rather than `process::exit(1)`: exit runs no destructors, so it
+        // skipped the ServiceManager's own Drop and left whatever `start_core` had
+        // already spawned holding a production port (common/mod.rs, the verdict
+        // contract).
+        return std::process::ExitCode::FAILURE;
     }
     // `start_all` awaits ReadyChecks for the databases, mailpit and the
     // FrankenPHP overrides — not the edge, not nginx, not the pools. The flat
@@ -101,6 +105,7 @@ async fn main() {
         println!("\nOK — switched Nginx → FrankenPHP → Nginx live; each served 200 at the same URL, no rebuild.");
     } else {
         eprintln!("\nFAILED — see above.");
-        std::process::exit(1);
+        return std::process::ExitCode::FAILURE;
     }
+    std::process::ExitCode::SUCCESS
 }
