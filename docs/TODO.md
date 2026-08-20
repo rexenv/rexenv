@@ -54,9 +54,14 @@ paying for anyway: **the tick belongs in the commit that does the work.**
   until something rules the alternative out, and probing the subject at the moment of the
   symptom beats reading code that might be innocent.
 
-- [ ] **The readiness-gate sweep's OWN defects — 22 confirmed, 21 Aug 2026.** The sweep
-  itself is done (`be3c88d` + `2f564bb`, archived); this row is what an adversarial audit
-  of it found afterwards, one verifier per finding, 44 further claims refuted. They fall
+- [x] **The readiness-gate sweep's OWN defects — 22 confirmed, all seven families fixed
+  21 Aug 2026.** The sweep itself is done (`be3c88d` + `2f564bb`, archived); this row is
+  what an adversarial audit of it found afterwards, one verifier per finding, 44 further
+  claims refuted. Every sub-item below is closed, one commit per family.
+  **What is NOT closed by any of them: none of this has been RUN.** `verify.sh` compiles
+  these examples; the sandbox tier runs a seventh of them; the service, network and stack
+  tiers — where every one of these files lives — need the stack stopped and a human to
+  start them. The fixes are the shape being right, not the run being green. They fall
   into five families, and the families are the useful part — every one of them is a way a
   gate can be PRESENT and not GATE:
   - [x] **Placement — a gate after an early exit is not a gate.** ✓ 21 Aug 2026, both
@@ -348,31 +353,54 @@ cause: a commit did the work and the surrounding claim stayed as it was.
   the oldest from the day the root moved. The failure was silent by construction — an
   empty `read_dir` looks exactly like a clean machine, which is the property to distrust
   in any self-healing sweep.
-- [ ] **`verify.sh` lints one target of four.** `cargo clippy --lib -- -D warnings`
-  covers the library and nothing else: not `src-tauri/src/main.rs`, not the 134 files in
-  `examples/`, not `#[cfg(test)]` code, and not the `cli` crate — which the same script
-  deliberately started testing on 12 Aug with the reasoning "a gate that skips a shipped
-  crate is not a gate". The examples are where this session found 22 defects.
-  **And the frontend has no linter at all**: no eslint/biome/oxlint in `package.json`, no
-  config, `verify.sh` runs `tsc --noEmit` only — while `src/` carries 17
-  `// eslint-disable-next-line` comments suppressing rules nothing runs. Decide: adopt a
-  linter, or delete the comments that pretend one exists.
-- [ ] **Two pinned facts are missing from the docs that exist to hold them.**
-  `PHP_DEBUG_XDEBUG_VERSION = 3.4.5` (`core/binaries.rs:39`) is the only pinned version
-  with no row in `docs/PORTS.md`, where all sixteen siblings appear. And
-  `PHP_DEBUG_BASE_URL` still names `dl.rexenv.dev` (`:42`, `:951`, pinned by a test at
-  `:3137`) after the B33 ruling moved the host — `docs/xdebug-debug-build.md:84-86` says
-  that host "is not used", which is a doc asserting a state the code contradicts. Nothing
-  breaks today only because the artefacts are unresolvable; it will be discovered at
-  upload time.
-- [ ] **Ledger hygiene — three of them, all in the file that polices staleness.**
-  (a) `docs/CLAIM-LEDGER.md:561`'s hand-curated tail says "plus 5 🚫 premises living
-  inside ◐/✅ rows" and names five; there are about eleven. It is the one clause
-  deliberately outside `scripts/ledger-tally.sh`, which is exactly why it drifted.
-  (b) The Tier-1/Tier-2 blast-radius tables — the work-ordering index this file's proof
-  backlog says to work "top first" — list rows that are now fully ✅.
-  (c) `scripts/ledger-tally.sh:8-15` calls the ledger "a 500-line file" twice; it is 881
-  lines. The script that exists to stop stale numbers carries two.
+- [x] **`verify.sh` linted one target of four** ✓ 21 Aug 2026 — now
+  `cargo clippy --all-targets -- -D warnings` in BOTH crates. `--lib` had covered the
+  library and nothing else: not `main.rs`, not the 134 files in `examples/`, not
+  `#[cfg(test)]` code, and not `cli` — the same reasoning that added the cli crate's
+  tests on 12 Aug ("a gate that skips a shipped crate is not a gate"), and the examples
+  are exactly where this week's audit found 22 defects. Clearing the backlog it exposed
+  was ~48 fixes; four deliberate cases carry an `#[allow]` **with its reason**, which is
+  this repo's rule for allows. One of them was worth more than the lint: `copy_scan`'s
+  WCAG guard had a `why` field on every EXEMPT row that nothing ever read, so a failing
+  run now prints the pairings it did NOT check and the reason each rests on — an
+  exemption that is wrong is invisible until something makes you read it.
+- [ ] **The frontend has no linter at all, and 17 `eslint-disable` comments say
+  otherwise.** No eslint/biome/oxlint in `package.json`, no config file, and `verify.sh`
+  runs `tsc --noEmit` for the frontend — while `src/` carries 16
+  `react-hooks/exhaustive-deps` suppressions and one `no-control-regex` across 10 files.
+  They are honest intent-markers ("this dep list is deliberate") and completely inert.
+  **The decision is the owner's, because it buys a dependency**: adopt
+  `eslint-plugin-react-hooks` so those 16 comments start meaning something (and find out
+  what else the rule says about a codebase that has never run it), or delete them and
+  stop implying a gate. Measured, not guessed, 21 Aug 2026 — the Rust half of this row is
+  closed above.
+- [x] **`PHP_DEBUG_XDEBUG_VERSION = 3.4.5` had no row in `docs/PORTS.md`** ✓ 21 Aug
+  2026 — the only pinned constant in `core/binaries.rs` missing from the file that holds
+  the pins, now recorded beside the Xdebug row with why it is deliberately not 3.5.3 (the
+  debug build is a recipe, not a shipped artefact).
+- [ ] **`PHP_DEBUG_BASE_URL` still names `dl.rexenv.dev` after the B33 ruling moved the
+  host to GitHub Releases.** `core/binaries.rs` builds every php-debug URL from it and a
+  test pins the string, while `docs/xdebug-debug-build.md` says that host "is not used" —
+  a doc asserting a state the code contradicts, which is the shape this project has paid
+  for twice. Nothing breaks today only because the artefacts are unresolvable, and that
+  is exactly why it gets discovered at upload time by the person following the recipe.
+  The doc now carries the warning (21 Aug 2026); the const is the fix, and it belongs to
+  whoever builds first, because repointing a URL nobody can fetch is untestable until
+  then.
+- [x] **Ledger hygiene — three of them, all in the file that polices staleness** ✓
+  21 Aug 2026.
+  (a) The hand-curated tail said "plus 5 🚫 premises living inside ◐/✅ rows" and named
+  five; there were **twelve** (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343,
+  #350, #365). It was the ONE clause deliberately exempted from `ledger-tally.sh` as
+  "hand-curated", which is exactly why it was the part that drifted — so the script
+  computes and enforces it now. A number inside a generated line that is not itself
+  generated is just the next stale number.
+  (b) The Tier-1/Tier-2 blast-radius tables — the work-ordering index `docs/TODO.md`
+  sends an agent to work "top first" — listed four entries whose rows read ✅ (#37, #49,
+  #104/#191). Struck, with each closure's evidence, and the table now says it was checked
+  against the rows rather than remembered.
+  (c) `scripts/ledger-tally.sh` called the ledger "a 500-line file" twice; it is 890.
+  The script written to stop stale numbers carried two of its own.
 - [ ] **Two UNCALLED-allowlist entries have stopped being temporary.** `core/copy_scan.rs`
   exempts `createSite` ("superseded by the job-based provision flow; the wrapper predates
   it") and `wpThemeEnableNetwork`/`wpThemeDisableNetwork` ("multisite theme
@@ -646,15 +674,16 @@ first:
   failure ("invisible until someone finds their web server will not start"); this is the
   install path where it is live. One line in `rexenv/homebrew-tap`, and the comment beside
   it is the reason it drifted — it pins a NUMBER that the app is free to change.
-- [ ] **`docs/PUBLISH-TESTING.md` is stale in the three places a release-day reader
-  uses.** (a) §A's heading and the publish-blocking summary still present 0.2.0 as the
-  newest release; (b) the summary table names itself the publish-blocking summary and
-  omits §F and §G, both marked 🚧 in the body — the guard-covers-claimed-surface family
-  again, and this one clears a release without ever showing two blocking gates; (c) §D's
-  trigger still reads "once the dmg is on GitHub Releases", an event that happened four
-  releases ago, so a reader skips it as not-yet-applicable. `docs/RELEASING.md:167` has
-  the matching drift — it calls the interim flow "the flow in effect today (2026-08-12)"
-  when it is now the only flow that has ever cut a release.
+- [x] **`docs/PUBLISH-TESTING.md` was stale in the three places a release-day reader
+  uses** ✓ 21 Aug 2026. (a) §A now carries a warning that 0.3.0 shipped and is not
+  recorded, and says why that matters — an unrecorded gate is indistinguishable from a
+  skipped one; (b) the publish-blocking summary omitted §F and §G, both 🚧 in the body,
+  so a release could be cleared from that table without either being seen — the
+  guard-covers-claimed-surface shape, in the file that gates shipping. Both added, plus
+  §L, plus a note saying the table has to be the WHOLE set; (c) §D's trigger read "do
+  once the dmg is released" four releases after that happened, and now reads `--zap`
+  ONLY. `docs/RELEASING.md`'s "the flow in effect today (2026-08-12)" now says it is the
+  only flow that has ever cut a release.
 - [ ] **The release gates are not all in this section.** `docs/SMOKE-TEST.md` grew five
   steps FOR 0.3.0 (cold-path 7.4 licences, the PHP update button + revert, the Adminer
   update, the PHP ini revert, the "exists" row and the serving-vs-pinned line) and carries

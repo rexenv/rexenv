@@ -84,6 +84,14 @@ one that ships in one slice.
 
 ## A) ✅ 0.2.0 — PUBLISHED (§A0 ✅, §A ✅ on the second run)
 
+> ⚠ **0.3.0 shipped on 20 Aug 2026 and is NOT recorded below.** The tap has it
+> (`Casks/rexenv.rb` = 0.3.0 / `381952fa…`, bumped by CI at 13:31Z) and the GitHub
+> release is published with both assets, but this file still certifies 0.2.0's dmg and
+> nothing here says whether §A0/§A ran on the 0.3.0 artefact. **An unrecorded gate is
+> indistinguishable from a skipped one**, which is the whole reason this file exists —
+> so the next release must either add its §A row or state that the check was skipped and
+> why. Tracked in `docs/TODO.md` (Release gates).
+
 **0.2.0 PUBLISHED 16 Aug 2026** at `homebrew-tap/releases/tag/v0.2.0`, and the cask
 bumped to it by `update-cask.yml` (commit `449b576`, `github-actions[bot]`).
 **Verified independent of any local Homebrew, the check that caught the placeholder
@@ -937,14 +945,23 @@ Result: ____ (date, reqwest version).
 
 ## Publish-blocking summary
 
+> **This table is the thing a release-day reader clears, so it has to be the WHOLE set.**
+> It was not: §F and §G are both marked 🚧 publish-blocking in the body and neither had a
+> row here, so a release could be cleared from this table without either ever being seen
+> — the guard-covers-claimed-surface shape this repo keeps paying for, in the file that
+> gates shipping. Added 21 Aug 2026, along with §L.
+
 | # | Check | Status |
 |---|---|---|
 | A0 | Artefact integrity, per slice — **0.2.0 `bd019d8d…`** | ✅ passed 16 Aug 2026 (by hand; CI does not run while the repo is private) |
 | A | Apple-Silicon ad-hoc launch (de-quarantine → launches) — **on the 0.2.0 dmg `bd019d8d…`** | ✅ **passed 16 Aug 2026, second run** — blocked while quarantined, launched after `xattr -rd`. The first run that day was VOID (dev login already trusted the app); see §A for why that distinction is kept. **0.2.0 published; cask bumped and the anonymous download three-way-matched** |
 | B | Uninstall removes the root :443 daemon | 🚧 do when convenient (tears down your edge) |
 | C | B31 CSP packaged smoke test | ✅ done |
-| D | Full tap install dry-run (after Release + tap push) | 🚧 do once the dmg is released |
+| D | Full tap install dry-run (after Release + tap push) | 🚧 **`--zap` ONLY** — the install half passed 12 Aug 2026 and the cask has bumped cleanly through 0.1.1 / 0.2.0 / 0.3.0 since. The trigger used to read "do once the dmg is released", an event that happened four releases ago |
 | E | Clean-Mac QA + example live-checks + deferred-pass wiring (B28/B29/B7/B20) + (deferred) signing | 🟢 nice-to-have |
 | I | Database import: live DBngin source + packaged GUI pass (user starts DBngin) | ✅ passed 27 Jul 2026 |
 | J | Connection rewrite (Stage 3): packaged GUI pass on <site>.test | ✅ passed 28 Jul 2026 |
 | K | The whole migration as ONE journey (seams + reversibility) | 🚧 rebuild, then run |
+| F | Resolver TAKEOVER + RESTORE — clean-VM only (fixture-tested, never live-run) | 🚧 **publish-blocking, and it was missing from this table until 21 Aug 2026** |
+| G | `/import` screen — packaged-app GUI pass | 🚧 **publish-blocking, and it was missing from this table until 21 Aug 2026** |
+| L | Offline/timeout behaviour of the update check | 🟢 nice-to-have (no row here before 21 Aug 2026) |

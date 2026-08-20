@@ -13,7 +13,9 @@
 # followed for the rows and skipped for the line, which is the project's own
 # finding about itself: unguarded prose rots, guarded prose does not. So the
 # number is now GENERATED here and ENFORCED by verify.sh, rather than typed and
-# remembered.
+# remembered — and as of 21 Aug 2026 that includes the 🚫-premises clause, which
+# had been deliberately exempted as "hand-curated" and was therefore the one part
+# that drifted (it said five; there were twelve).
 #
 #   ./scripts/ledger-tally.sh           print the current line
 #   ./scripts/ledger-tally.sh --check   fail if the file disagrees (verify.sh)
@@ -38,8 +40,23 @@ SUM=$(( OK + HALF + OPEN + NEVER ))
 
 EXPECTED="**✅ $OK · ◐ $HALF · 🔨 $OPEN · 🚫 $NEVER** of $ROWS rows"
 
+# The 🚫 PREMISES — rows whose verdict is ◐ or ✅ but which carry a 🚫 somewhere
+# inside, because one leg of the claim is inherently unprovable. This clause used
+# to be hand-curated and was explicitly exempted from this script ("deliberately
+# outside the tally"), and on 21 Aug 2026 it said FIVE when there were TWELVE:
+# the exemption was the whole reason it drifted. So it is computed too now. A
+# number in a generated line that is not generated is the next stale number.
+PREMISES=$(awk -F'|' '
+  /🚫/ && /^\| [0-9]+ \|/ {
+    row = $2; gsub(/ /, "", row);
+    verdict = $(NF-1); sub(/^ +/, "", verdict);
+    if (verdict !~ /^🚫/) print row
+  }' "$LEDGER" | sort -n | sed 's/^/#/' | paste -sd, - | sed 's/,/, /g')
+PREMISE_COUNT=$(printf '%s' "$PREMISES" | tr ',' '\n' | grep -c '#' || true)
+EXPECTED_PREMISES="plus $PREMISE_COUNT 🚫 premises living inside ◐/✅ rows ($PREMISES)"
+
 if [ "${1:-}" != "--check" ]; then
-  echo "$EXPECTED"
+  echo "$EXPECTED, $EXPECTED_PREMISES."
   exit 0
 fi
 
@@ -65,4 +82,15 @@ if ! grep -qF "$EXPECTED" "$LEDGER"; then
   exit 1
 fi
 
-echo "ledger-tally: $EXPECTED (matches)"
+if ! grep -qF "$EXPECTED_PREMISES" "$LEDGER"; then
+  echo "ledger-tally: the 🚫-premises clause in $LEDGER is stale." >&2
+  echo "" >&2
+  echo "  computed: $EXPECTED_PREMISES" >&2
+  echo "  in file:  $(grep -oE 'plus [0-9]+ 🚫 premises living inside ◐/✅ rows \([^)]*\)' "$LEDGER" || echo '(no premises clause found)')" >&2
+  echo "" >&2
+  echo "  A row that adds a 🚫 leg to an otherwise-proven claim belongs in that" >&2
+  echo "  list; that is what the list is FOR. Paste the computed clause in." >&2
+  exit 1
+fi
+
+echo "ledger-tally: $EXPECTED · $PREMISE_COUNT 🚫 premises (matches)"

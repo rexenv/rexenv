@@ -558,7 +558,7 @@ import-graph lint #163 closed; the FrankenPHP read-only picker #333; the
 mid-dump-kill server-side leg #116 closed; the resolver-drift banner #334; the
 delete-kill ordering #190 closed; #103's Apache/FrankenPHP legs; the fpm
 candidate isolation #104/#191; the manifest sweep #335):
-**✅ 292 · ◐ 53 · 🔨 25 · 🚫 5** of 375 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
+**✅ 292 · ◐ 53 · 🔨 25 · 🚫 5** of 375 rows, plus 12 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365).
 Recomputed mechanically with the one-liner above. The working backlog = every 🔨
 row + the noted half of every ◐ row, ranked below.
 
@@ -830,14 +830,20 @@ Rank = what a FALSE claim costs, not how easy the proof is.
 
 **Tier 1 — cross-site exposure, auth bypass, or data loss if false:**
 
+> Struck entries are closed and kept for the tier's shape. Checked 21 Aug 2026 against
+> each row's own verdict, which is the only way this index stays honest: four entries
+> were still listed as backlog while their rows read ✅ (#37, #49, #104/#191, and #228
+> already struck). `docs/TODO.md` sends an agent here to "work the tiers, top first",
+> so a closed row at the top of the list costs the next session its first hour.
+
 | Rows | If false |
 |---|---|
 | #10, #13-half | a tunnel publishes ANOTHER site's content (second-Host probe through a live tunnel; default-vhost fallthrough premise) |
 | #2, #33-half | CF-header discriminator fails ⇒ login-token replay through a public tunnel |
-| #37 | Adminer (passwordless DB) reachable as a tunnel origin |
+| ~~#37~~ | *(closed — ✅ `a_tunnel_target_can_only_ever_be_a_site_row`; the refusal is a CONSEQUENCE of tunnels only ever resolving a site id, not a check that could be forgotten.)* Adminer (passwordless DB) reachable as a tunnel origin |
 | #25, #26, #29, #30, #31 | a share outlives its site / claim races ⇒ stale PUBLIC exposure; #30 additionally signals a recycled (foreign) pid |
 | #54, #59 | a second SQLite writer/brain (cli crate linking the lib; dns-agent touching state) ⇒ corruption class |
-| #49 | cancelled takeover loses the user's own resolver config (Valet's file, no backup) |
+| ~~#49~~ | *(closed — ✅ two lib tests that DRIVE the rollback rather than asserting an order.)* cancelled takeover loses the user's own resolver config (Valet's file, no backup) |
 | ~~#116~~ | *(closed 15 Aug 2026 — `db_dump_check` §8, control-first, real mid-table kill.)* a cancelled dump mutates THEIR server (locks/sessions) |
 | ~~#190-half~~ | *(closed 15 Aug 2026 — `tunnel_delete_order_check`, observer + live plant.)* site delete leaves its tunnel publishing a dead docroot |
 
@@ -847,7 +853,7 @@ Rank = what a FALSE claim costs, not how easy the proof is.
 |---|---|
 | #57 | CLI silently diverges from the UI code path |
 | #79, #80, #86 | leaked workers defeat probes; adoption downloads on a poll; a poisoned cache ships a binary that can't load |
-| #104/#191-half | a rejected PHP value reaches the live pool anyway |
+| ~~#104/#191-half~~ | *(closed 15 Aug 2026 — `fpm_candidate_check`, sandbox tier, real php-fpm: the candidate carries a different port + marker so any path that read it binds visibly wrong.)* a rejected PHP value reaches the live pool anyway |
 | #141, #180-half | wp-cli's internal bounds looser than assumed ⇒ false timeouts/hangs |
 | ~~#228~~ | *(closed at L0, 13 Aug 2026 — kept as the tier's definition.)* A user's `~/.wp-cli/packages` silently extended every `wp` rexenv ran ⇒ behaviour that differs per machine with nothing in any log, diff or bug report naming the difference. The archetype of this tier: not wrong, **unreproducible**. The lesson that generalises is not the pin, it is that the row's own list of four spawn sites was already wrong when it was worked |
 | #46, #60 | DNS agent handoff/fallback fails ⇒ sites dark with green health |

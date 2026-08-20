@@ -84,7 +84,14 @@ shasum -a 256 php-8.3.31-*-xdebug-macos-*.tar.gz   # → the four SHA-256s
 1. Upload the four `.tar.gz` as a release in **`rexenv/runtimes`** — the public
    build/host repo, created 14 Aug 2026. **This settles B33**, which had been open
    since the Xdebug work: the host is GitHub Releases, and `dl.rexenv.dev` is not
-   used. The reasons are in `docs/PLAN-php-74-support.md` §6, and the one that
+   used.
+   ⚠ **The CODE has not caught up, recorded 21 Aug 2026.**
+   `core/binaries.rs`'s `PHP_DEBUG_BASE_URL` is still `https://dl.rexenv.dev/php-debug`,
+   and every php-debug URL is built from it (a test pins that string). Nothing breaks
+   today only because the artifacts do not exist and the path is unresolvable — which is
+   precisely why it will be discovered at upload time, by the person following this
+   recipe. Whoever builds first must repoint the const before pinning checksums;
+   `docs/TODO.md` carries the row. The reasons are in `docs/PLAN-php-74-support.md` §6, and the one that
    decided it is that a release there is IMMUTABLE and its tag is never reused, so
    a pinned URL can 404 but can never resolve to different bytes — which is
    exactly what static-php.dev and FrankenPHP cannot promise.
