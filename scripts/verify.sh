@@ -71,6 +71,11 @@ npx tsc --noEmit
 # and guarded prose doesn't, so the number is generated and enforced rather than
 # remembered.
 ./scripts/ledger-tally.sh --check
+# The counts the docs state about the CODE (schema version, command counts, IPC
+# exports). Same reasoning as the tally above, and the same evidence behind it:
+# six of them were stale at once on 21 Aug 2026, none in a way that broke
+# anything and all in the way that costs a reader their trust in the file.
+./scripts/doc-counts.sh --check
 
 # The receipt (see scripts/verify-receipt.sh). Written LAST, and only when the
 # tree is still the one that was checked.

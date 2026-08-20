@@ -61,8 +61,9 @@ The system mental model lives in `docs/ARCHITECTURE.md` — read it for any feat
   JetBrains Mono for ALL technical values; Space Grotesk hero/onboarding only; Inter body.
 - `src/routes/` map 1:1 to screens (Sites, SiteDetail, Services, Databases, Mail,
   Tunnels, Settings, Onboarding).
-- Verification: **`scripts/verify.sh` is the pre-commit bar** (lib tests + example
-  builds + clippy at zero + tsc). A green verdict comes ONLY from the script's own
+- Verification: **`scripts/verify.sh` is the pre-commit bar** (lib tests + `cli` tests +
+  example builds + clippy at zero + tsc + the two generated-number gates,
+  `ledger-tally.sh` and `doc-counts.sh`). A green verdict comes ONLY from the script's own
   `verify: all green` line — an ad-hoc `cargo test`/`tsc` invocation is never a gate:
   it can silently run from the wrong cwd (shell state resets between tool calls) and
   a `&&`-chain then passes on partial checks, exactly as a piped exit code once

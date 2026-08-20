@@ -437,7 +437,7 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
 
 ## 8. Data & app state
 
-- **SQLite for all app state** (`state/db.rs`), `user_version` migrations, currently 33:
+- **SQLite for all app state** (`state/db.rs`), `user_version` migrations, currently 37:
   v1 `sites` + `settings` · v2 `php_versions` registry · v3 `sites.multisite` ·
   v4 `blueprints` (JSON `spec`) · v5 `php_settings` · v6 `sites.db_name` (stored, never
   re-derived) · v7 `site_env` · v8/v9 `default_tld` seed + `.rex` flip ·
@@ -1249,7 +1249,11 @@ Layer model + gate tiers: `docs/TESTING.md`. Claim inventory (the test metric):
 example builds + clippy at zero + tsc — green ONLY from its own final line);
 `scripts/verify-full.sh` adds the sandbox live-check tier + the WebKit harness.
 
-- `cargo test --lib` in `src-tauri/` — unit tests on pure functions (539 and growing).
+- `cargo test --lib` in `src-tauri/` — unit tests on pure functions. The count is
+  deliberately not written here: it was "539 and growing" for long enough to be wrong
+  by 350, and a number nobody can cheaply check is worse than no number. `verify.sh`
+  prints it on every run; the counts this file DOES state are generated and enforced
+  (`scripts/doc-counts.sh`).
 - Live checks = standalone `src-tauri/examples/*.rs` binaries (spawn real services,
   probe real ports) — the repo's convention instead of mocked integration tests.
   Each declares a tier in `scripts/live-checks.sh`; read the invariant in

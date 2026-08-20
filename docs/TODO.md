@@ -277,19 +277,19 @@ paying for anyway: **the tick belongs in the commit that does the work.**
 These are rows the audit created, not rows it inherited. Grouped because they share one
 cause: a commit did the work and the surrounding claim stayed as it was.
 
-- [ ] **Six hand-written counts across the docs are stale, and every one of them is a
-  number a reader trusts instead of re-deriving.** Measured 21 Aug 2026 against the tree:
-  `docs/ARCHITECTURE.md:440` says migrations are "currently 33" (v37);
-  `docs/ARCHITECTURE.md:1252` says lib tests are "539 and growing" (897 + 6 in `cli`);
-  `docs/MAP.md:50` and `README.md:186` both say the schema is "v1–v25" (v37);
-  `docs/MAP.md:67` says the IPC bridge has "217 exports" (233), `:35` says
-  `commands/wordpress.rs` has "60 cmds" (61) and `:45` says `commands/repo.rs` has "24
-  cmds" (26); `docs/TESTING.md:468` says the ledger holds "194 claims … 117/32/36/9" when
-  `scripts/ledger-tally.sh` computes 375 rows at ✅292 · ◐53 · 🔨25 · 🚫5.
-  **The fix is not six edits.** The ledger tally already proved the shape that works: a
-  script computes it and `verify.sh` fails when the file disagrees. Anything else here
-  that can be derived should be derived the same way; what cannot should stop being a
-  number.
+- [x] **Six hand-written counts across the docs were stale** ✓ 21 Aug 2026, and fixed as
+  a class rather than as six edits. `scripts/doc-counts.sh` computes the schema version,
+  the two command counts and the IPC export count from the code and FAILS when a doc
+  disagrees; `verify.sh` runs it beside `ledger-tally.sh`, which had already proved this
+  shape on exactly this problem. The numbers it now enforces: schema v37 (docs said
+  v25/33), `commands/wordpress.rs` 61 (60), `commands/repo.rs` 26 (24), IPC 233 exports
+  (217).
+  **Two were fixed by DELETING the number instead.** `docs/ARCHITECTURE.md`'s "539 and
+  growing" lib tests was wrong by ~350 and cannot be computed cheaply, so it now says
+  where to get it; `docs/TESTING.md`'s copy of the ledger tally ("194 claims …
+  117/32/36/9") was a second copy of a generated number, drifting exactly as the ledger's
+  own summary had before the tally script was written to stop it — it now points at the
+  script. A number in the docs is either derived or it is not a number.
 - [ ] **The MCP server is a shipped subsystem that `docs/ARCHITECTURE.md` does not know
   exists.** No section, and §1's inventory omits it; `README.md` does not contain the
   word MCP; `CONTRIBUTING.md` neither; `CLAUDE.md` still calls the plan "(proposed)".

@@ -473,11 +473,14 @@ commands/ 9 — commands/ is 1.7% of tests for ~20 files of orchestration):
 
 ## 2. The claim inventory
 
-Full inventory: **`docs/CLAIM-LEDGER.md`** — 194 claims from a sweep of every
-invariant-language comment in `src-tauri/src`, each with file:line, the claim, and a
-verdict. Tally at compile time: **117 proven · 32 half-proven · 36 provable-unproven ·
-9 inherently unprovable.** The 🔨 rows plus the unproven halves of ◐ rows ARE the
-testing backlog, worked highest-risk first:
+Full inventory: **`docs/CLAIM-LEDGER.md`** — one row per invariant-language comment in
+`src-tauri/src`, each with file:line, the claim, and a verdict. **The tally is not
+copied here.** It was, once: "194 claims … 117/32/36/9", written 28 Jul 2026 and still
+sitting in this file on 21 Aug when the real numbers were 375 rows at ✅292 · ◐53 ·
+🔨25 · 🚫5 — a second copy of a number that is generated in one place, drifting exactly
+as the ledger's own summary had before `scripts/ledger-tally.sh` was written to stop it.
+Run that script, or read the line it enforces at the bottom of the ledger. The 🔨 rows
+plus the unproven halves of ◐ rows ARE the testing backlog, worked highest-risk first:
 
 1. CF-header set as tunnel discriminator (wp_tunnel + wp_login) — L1
 2. "a tunnel can only expose its one site" — asserted in three modules, negative never
