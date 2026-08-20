@@ -408,8 +408,10 @@ const MIGRATIONS: &[&str] = &[
     // runner ran, not what it did.
     //
     // NULLABLE, and the null is MEANINGFUL: it says "this tool's name and target
-    // already describe it", which is true of seven of the eight. It does not
-    // mean a summary was wanted and missed.
+    // already describe it", which is true of 8 of the 11 registered tools. It
+    // does not mean a summary was wanted and missed. (Read "seven of the eight"
+    // until 21 Aug 2026 — a count that stopped counting when the second registry
+    // grew.)
     //
     // The typed-shape rule (#202) is intact, and this is the part worth reading
     // before touching it. The column is NOT a free-form argument dump: each tool

@@ -128,6 +128,13 @@ check `docs/ARCHITECTURE.md` and this list:
   Caddy is arbitrary file r/w as root.
 - **One php-fpm pool per PHP version, not per site.** Per-site needs ride the
   request (fastcgi_param / SetEnv), not the pool.
+- **The MCP endpoint's capability comes from WHICH REGISTRY a tool is in**, never from
+  anything the tool says about itself — read-only tools live in `mcp_server/tools.rs` and
+  take a `ReadCtx` that has no mutating method; executing tools live in
+  `mcp_server/scratch.rs` and can only reach a site through a witness whose only
+  constructor checks `origin='agent'`. Adding a tool to the wrong file is a failing test,
+  and adding one that touches a user's site is a compile error. It ships OFF, and it is
+  deliberately not called a sandbox (`docs/ARCHITECTURE.md` §8.3).
 - **The `rex` CLI never links the app lib** — remote control only, over a private
   socket, dispatching to the same command fns as the UI. App not running = exit 2,
   by design (a headless second brain is the bug class the stack guard exists to kill).

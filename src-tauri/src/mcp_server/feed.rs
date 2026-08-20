@@ -199,7 +199,11 @@ pub struct PendingLog {
     /// What the call was ABOUT, when the tool's name and target don't say (v30).
     /// Produced by the TOOL's own `summarise`, never by parsing agent JSON here,
     /// and clamped by [`clamp_summary`] at the write. `None` means "the name and
-    /// target already describe this" — true of seven of the eight tools.
+    /// target already describe this" — true of 8 of the 11 registered tools, the
+    /// three exceptions being `scratch_add_package`, `wp_run` and
+    /// `set_php_version`. (This comment said "seven of the eight" until 21 Aug
+    /// 2026: the arithmetic was left behind when the second registry grew, while
+    /// the RULE it states stayed correct. Count the registries, not the memory.)
     pub args_summary: Option<String>,
 }
 

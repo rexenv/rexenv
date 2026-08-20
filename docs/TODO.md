@@ -290,14 +290,17 @@ cause: a commit did the work and the surrounding claim stayed as it was.
   117/32/36/9") was a second copy of a generated number, drifting exactly as the ledger's
   own summary had before the tally script was written to stop it — it now points at the
   script. A number in the docs is either derived or it is not a number.
-- [ ] **The MCP server is a shipped subsystem that `docs/ARCHITECTURE.md` does not know
-  exists.** No section, and §1's inventory omits it; `README.md` does not contain the
-  word MCP; `CONTRIBUTING.md` neither; `CLAUDE.md` still calls the plan "(proposed)".
-  Only `docs/MAP.md` carries a row. ARCHITECTURE is the file CLAUDE.md and CONTRIBUTING
-  both name as "read this before any feature or bug — it replaces reading the codebase
-  end to end", and what it is missing is a second `0600` socket, an executing-tool tier,
-  a scratch-site lifecycle with a TTL reaper, and five migrations. A reader who trusts it
-  will design against a system that has one IPC surface.
+- [x] **The MCP server was a shipped subsystem `docs/ARCHITECTURE.md` did not know
+  existed** ✓ 21 Aug 2026 — §8.3, written from a citation-backed read of the code rather
+  than from the plan (which the code contradicts in eight places, now recorded).
+  ARCHITECTURE's §1 inventory, README's feature paragraph and CONTRIBUTING's
+  deliberate-decisions list all carry it now.
+  **Writing it found three claims in the CODE that were false**, which is the argument
+  for writing these sections at all: `mcp_server.rs`'s module doc and ledger #198 both
+  said the socket "reuses `cli_server::bind`" — it cannot, that binder returns a tokio
+  listener and panics off-runtime, which is how the toggle crashed in the packaged build;
+  and two comments said `args_summary` is NULL for "seven of the eight" tools when there
+  are eleven. All three corrected in place, each recording what it had said.
 - [x] **`CLAUDE.md`'s router carried four labels that were the opposite of the truth** ✓
   21 Aug 2026. "(parked)" for the Valet/Herd migration whose four stages all shipped;
   "(planned)" for PHP 7.4, shipped 15 Aug; "(proposed)" for MCP, whose M1/M2a/M2b shipped;

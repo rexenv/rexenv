@@ -33,15 +33,18 @@ platform/   ALL OS-specific code, behind 11 traits (platform/traits.rs):
 **Module map** — the per-subsystem file/entry-point index is `docs/MAP.md`; every
 module also carries a `//!` doc header stating its job. Quick inventory:
 - `core/`: adminer · apache · binaries · blueprints · cli · confedit · confrewrite ·
-  confverify · database (MySQL) · db (`DbEngine`) · dbcompat · dbdump · dbimport ·
-  dbmirror · dbrestore · dbsource · devtools · dns · downloads · firefox ·
-  frankenphp · logs · mail · mariadb · monitor · php · phpconf · ports · postgres ·
-  proc · proxy · redis · repo · service_manager · services · setup · site_env ·
-  site_metrics · sites · ssl · stack_guard · terminal · tld · tunnels · valet ·
-  wordpress · wp_login · wp_tunnel · wporg
-- `commands/`: blueprints · database · db_import · downloads · logs · mail · php ·
-  repo · rewrite · services · settings · site_provision · sites · system · terminal ·
-  tunnels · valet_import · wordpress · wp_install
+  confverify · copy_scan · database (MySQL) · db (`DbEngine`) · dbcompat · dbdump ·
+  dbimport · dbmirror · dbrestore · dbsource · devtools · dist_archive · dns · dotenv ·
+  downloads · firefox · frankenphp · laravel · logs · mail · mariadb · monitor · php ·
+  php_upstream · phpconf · ports · postgres · proc · proxy · redis · repo · scratch ·
+  service_manager · services · setup · site_env · site_metrics · sites · ssl ·
+  stack_guard · terminal · tld · tunnels · updates · valet · wordpress · wp_dns ·
+  wp_login · wp_mailtag · wp_packages · wp_tunnel · wporg
+- `commands/`: blueprints · database · db_import · downloads · logs · mail · mcp · php ·
+  repo · rewrite · scratch · services · settings · site_provision · sites · system ·
+  terminal · tunnels · valet_import · wordpress · wp_install
+- `mcp_server.rs` + `mcp_server/`: feed · readctx · scratch · tools · view — the SECOND
+  IPC surface (§8.3), and the only one that executes
 - `state/`: app (AppState) · db (migrations) · models · store (repo)
 - `src/routes/`: Sites · SiteDetail · Services · Databases · Mail · Tunnels ·
   Import · Settings · Onboarding (+ dev-only `/dev/git-panel`, `/dev/ui-review`)
@@ -697,6 +700,98 @@ editor" → `open -a <editor> <site folder>`, so the folder lands as a PROJECT) 
   watchdog racing the GUI — the exact second-brain class the stack guard exists to
   kill. Protocol: newline-delimited JSON, one request per connection,
   `{"ok":true,"data":…}` / `{"ok":false,"error":…}`; `--json` for scripting.
+
+## 8.3 MCP server — a second socket, and the one that EXECUTES (`src-tauri/src/mcp_server.rs`, `mcp_server/`)
+
+Added to this file 21 Aug 2026, three weeks after M1 shipped. Until then the file
+CLAUDE.md calls "read this before any feature or bug" did not know rexenv had a second
+IPC surface — which is how a reader ends up designing against a system with one.
+
+- **What it is.** An opt-in MCP endpoint so a developer's AI agent can drive rexenv:
+  read-only diagnosis (M1), and disposable WordPress **scratch sites** the agent owns
+  outright (M2a/M2b). In-process beside `cli_server`, second `0600` unix socket, bridged
+  by `rex mcp`. M3 (database access, agent principals, the first consent dialog) is
+  specified in `docs/PLAN-mcp-server.md` and **not built** — nothing of it is in the tree.
+- **The honest guarantee, first, because it constrains everything below.** This is **not
+  a sandbox** (ledger #197). A read tool cannot mutate rexenv's state; an executing tool
+  runs the user's own code — `wp eval`, `wp db query`, `wp plugin install --force` — as
+  the user, inside a site the agent owns. The tier bounds **which site**, never **what
+  code**. `core/scratch.rs` says it in one line: *"It is not containment."* What the
+  tiers deliver is a safe paved road and no silent amplifier.
+- **Transport.** `<config>/rexenv-mcp.sock`, `0600`, sibling of `rexenv-cli.sock`, never
+  TCP; newline-delimited JSON-RPC 2.0 with a 4 MB line cap. Unlike the CLI socket — one
+  request per connection — an MCP connection is a **long-lived session**. The protocol
+  core (`initialize`, `tools/list`, `tools/call`, `ping`) is hand-rolled; there is no SDK
+  dependency. The unlink at teardown uses the path the listener actually BOUND
+  (`local_addr`), never a re-derived one.
+  **It does not share `cli_server::bind`**, though a comment and ledger #198 said so for
+  weeks: that binder returns a tokio listener and panics off-runtime, which was a
+  packaged-build enable crash. The *convention* is shared; the binder is its own, and a
+  test pins that binding needs no ambient runtime.
+- **Two registries, and the registry IS the capability.** `mcp_server/tools.rs` holds the
+  three read-only tools (`list_sites`, `site_status`, `tail_log`); `mcp_server/scratch.rs`
+  holds the eight executing ones (`scratch_create_site`, `scratch_delete_site`,
+  `scratch_add_package`, `scratch_sync_package`, `wp_run`, `set_php_version`, `mail_list`,
+  `mail_get`). What a tool may do is decided by **which registry its name came from** —
+  never by a field the tool sets about itself. A guard proves the two are disjoint and, on
+  a collision, names the offender and the file it belongs in.
+- **The read-only boundary is a TYPE, and its scope is the handler.** A read handler
+  receives a `ReadCtx` (`mcp_server/readctx.rs`) — one private `&AppState`, five read
+  methods, no mutating method to reach. A source scan over both `tools.rs` and
+  `readctx.rs` fails on `core::`, `commands::`, `ServiceManager`, `Command`, `std::fs`,
+  `run_privileged` and their neighbours. **Stated precisely because the wider reading is
+  false:** every `tools/call` writes two rexenv records — the activity feed row and the
+  named scratch site's TTL touch — from the SESSION layer, which no handler can reach. "An
+  M1 call writes nothing" is not the claim and is said nowhere.
+- **Scratch sites: recorded ownership, a witness, a TTL and a cap.** `sites.origin` (v27)
+  is written at INSERT and never derived from a name or a path; anything that is not
+  `agent` reads as the user's. An executing tool can only reach a site through
+  `ScratchSite`, a witness whose field is private and whose only constructor is `claim()`
+  — applying an agent tool to a user's site is a **compile error**, not a runtime refusal
+  (ledger #208). `still_the_agents` re-reads immediately before each destructive step,
+  because the user may have pressed Keep since. TTL is 24h and the cap is 5, both
+  compile-time constants (the plan proposed settings; the code did not follow it).
+  A TTL touch can only MOVE an expiry, never start one, and its SQL carries
+  `AND origin='agent'`.
+- **The reaper: skip, never stop.** A launch sweep plus an hourly loop deletes expired
+  scratch sites, at most five per pass, and **skips a site that is currently shared
+  through a tunnel** rather than stopping the share (#29) — then surfaces it. Its feed
+  rows are `actor='rexenv'`, and the banner says "Nothing of yours was touched".
+  **Users promote; agents cannot.** Any user-facing site mutation promotes through one
+  choke point (`promote_if_scratch`); `set_php_version` deliberately routes around it,
+  and a guard asserts it stays that way — an agent promoting its own site would clear the
+  expiry and free a cap slot, making switch→create unbounded (ledger #223).
+- **Opt-in, twice, and never ambient.** `mcp_enabled` (absent = off) BINDS FIRST and
+  persists second, so the toggle can never read on while nothing listens; disabling drops
+  the accept loop and every live session mid-idle, then unlinks the socket file. The mail
+  sub-toggle (`mcp_mail_enabled`, default off, independent) also **backfills the
+  filesystem** at the consent moment — writing or removing the `wp_mailtag` stamp on every
+  scratch site — which is what eliminates "this site predates the feature" as a category.
+  Mail's fail-closed direction is stated to the user in those words: the agent **misses
+  its own mail, never sees yours**, and one predicate both filters the list and gates the
+  fetch because Mailpit ids are global.
+- **The feed is complete by construction.** Every `tools/call` outcome is recorded at ONE
+  place in the session loop — including unknown tools and unparseable messages — before
+  the reply is written. Rows are typed (`agent_actions`, v26/v28/v30): an unrecognised
+  actor reads as **rexenv**, never as the agent; a row names a site only if such a row
+  exists; the only argument stored is the target, and rexenv's own knowledge of what it
+  acted on beats what the agent asked for. `args_summary` is clamped **at the writer** to
+  two `[a-z][a-z0-9-]{0,19}` tokens — a security property, not tidiness: the charset
+  excludes every character a forged `rexenv · automatic` row would need. Cap: 2000 rows,
+  pruned on every write.
+- **One scrubber, and it says what it does not cover.** `view::scrub_log_line` is the
+  single redactor (login tokens, cookie values, and rexenv's own path prefixes derived
+  from `Paths` rather than a hand list); a guard asserts there is exactly one definition
+  and that both output doors call it. Its claim is "rexenv's own paths are removed",
+  never "no path escapes". A leak sweep runs EVERY registered tool in both registries
+  against planted secrets, and a tool cannot be registered without declaring the args
+  that sweep uses.
+- **Proof:** ledger #197–#227 and #301; `mcp_socket_check` (stack — a spec-literal
+  handshake over the real socket), `mcp_scratch_check` and `mcp_secret_sweep` (sandbox),
+  `mcp_control_check` (sandbox — the OFF switch drops a live session and removes the
+  socket FILE), `mcp_mail_check` (service — it brings its own Mailpit rather than planting
+  test mail in the user's real store). **What is NOT proven here is the human half**:
+  `docs/SMOKE-TEST.md` §M2a/§M2b carry four HOLDs that have never been recorded as run.
 
 ## 9. WordPress layer
 

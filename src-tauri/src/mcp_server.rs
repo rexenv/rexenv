@@ -52,9 +52,19 @@
 //! about — but "an M1 call writes nothing" would be the false wider reading, so
 //! it is not said anywhere.
 //!
-//! Socket: `<config>/rexenv-mcp.sock`, `0600`, bound with the SAME convention as
-//! the CLI socket — `cli_server::bind`, deliberately reused so there is one
-//! socket convention, not two. Never TCP.
+//! Socket: `<config>/rexenv-mcp.sock`, `0600`, sibling of the CLI socket and
+//! bound with the SAME convention — unlink a stale file, chmod 0600, never TCP.
+//!
+//! **The convention is shared; the BINDER is not, and the difference is why this
+//! sentence was corrected on 21 Aug 2026.** It used to say the socket was bound
+//! by `cli_server::bind`, "deliberately reused so there is one socket
+//! convention, not two". That was the intent and it did not survive contact:
+//! `cli_server::bind` returns a TOKIO listener and panics when constructed off a
+//! runtime, which is exactly how it failed in the packaged build the first time
+//! someone flipped the toggle. [`bind_socket`] below is a plain `std` binder for
+//! that reason, pinned by `binding_the_socket_needs_no_ambient_runtime`. A
+//! comment describing the design that was TRIED, beside code that does something
+//! else, is the shape this project keeps paying for.
 
 // `pub` because the feed's read/clear API (`feed::recent`, `feed::clear`) is the
 // surface the Settings card's IPC consumes; `record` is the server's own write.

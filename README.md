@@ -30,6 +30,14 @@ nearly everything: `rex status|start|stop`, full site lifecycle incl. `site crea
 --multisite`, logs with `--follow`, `db export/import`, PHP/Xdebug switches, the
 whole WP plugin/theme/user manager, and `rex doctor`.
 
+There is also an **opt-in MCP endpoint** (off by default, a second `0600` unix socket,
+connected with `claude mcp add rexenv -- rex mcp`) so an AI agent can diagnose your
+sites read-only and work in disposable **scratch sites** it owns — with a TTL, a cap, a
+reaper that never touches a site of yours, and an activity feed of everything it did.
+It is deliberately **not** described as a sandbox: an agent running your code in its own
+site is still your machine's power, which is why it ships off and says so where you turn
+it on (`docs/ARCHITECTURE.md` §8.3).
+
 ## Docs
 
 - **`docs/ARCHITECTURE.md`** — how rexenv works today, end-to-end. *Read this first.*
