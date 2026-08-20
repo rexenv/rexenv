@@ -242,20 +242,33 @@ pub fn await_ready(what: &str, log: Option<&Path>, mut ready: impl FnMut() -> bo
         }
         std::thread::sleep(Duration::from_millis(100));
     }
-    eprintln!(
-        "\n✗ {what} was not ready within 20s.\n  \
+    let said = log
+        .map(|path| match std::fs::read_to_string(path) {
+            Ok(text) if !text.trim().is_empty() => {
+                format!("\n  its own log ({}):\n{text}", path.display())
+            }
+            Ok(_) => format!("\n  its own log ({}) is empty — it never got far enough to write", path.display()),
+            Err(e) => format!("\n  its own log ({}) is unreadable: {e}", path.display()),
+        })
+        .unwrap_or_default();
+    // PANIC, never `process::exit`. This is the difference between reporting a
+    // leak and CAUSING one: `exit` skips every Drop, so the `Reaped` and
+    // `OwnedService` guards that own the just-spawned children never run and
+    // those children keep their ports. Measured on 20 Aug 2026, the first day
+    // this helper existed — one `exit` here left a php-fpm on :9783 and took
+    // out EIGHT later examples in the same tier run, every one of them
+    // reporting "already in use by rexenv (php-fpm, pid 11694)". A readiness
+    // guard that poisons the rest of the suite is worse than the flake it
+    // replaced.
+    //
+    // `require_ports_free` may still `exit`, and the distinction is the point:
+    // it runs BEFORE anything is spawned, so it has nothing to leak. This runs
+    // after.
+    panic!(
+        "{what} was not ready within 20s.\n  \
          Every check below that needs it would fail as though the SERVICE were \
-         broken — this says otherwise, here, before they run."
+         broken — this says otherwise, here, before they run.{said}"
     );
-    if let Some(path) = log {
-        eprintln!("  its own log ({}):", path.display());
-        match std::fs::read_to_string(path) {
-            Ok(text) if !text.trim().is_empty() => eprintln!("{text}"),
-            Ok(_) => eprintln!("  (empty — it never got far enough to write)"),
-            Err(e) => eprintln!("  (unreadable: {e})"),
-        }
-    }
-    std::process::exit(1);
 }
 
 use rexenv_lib::error::Result as RexResult;
@@ -430,7 +443,23 @@ pub fn sandbox(tag: &str) -> (Box<dyn Platform>, SandboxGuard) {
     let real = rexenv_lib::platform::current();
     let bin = real.paths().bin_dir().expect("real binary cache");
     let hosts = real.paths().hosts_file();
-    let root = std::env::temp_dir()
+    // NOT `std::env::temp_dir()`, and the difference is 37 bytes that decide
+    // whether the edge can start at all. macOS's per-user TMPDIR is 49
+    // characters (`/var/folders/51/kd63p2nj6sz67msbn4pvzc3h0000gq/T/`), which
+    // put every sandboxed `<root>/config/caddy-admin.sock` at 110-115 bytes
+    // against a 103-byte ceiling — so caddy died on `bind: invalid argument`
+    // before it ever listened, in EVERY sandboxed example that enables the
+    // admin socket. The note below blames the TAG, and that reading is what hid
+    // this: shortening `create_site_serve` to `createsrv` (8 characters off)
+    // still failed, because the base was always the larger half. `/private/tmp`
+    // is 12 characters and puts the same paths at 75-79.
+    //
+    // The tradeoff, stated: `/private/tmp` is world-writable where TMPDIR is
+    // per-user 0700. The root is still pid-scoped and still removed by
+    // `SandboxGuard`, and this is fixture scaffolding on a developer's machine
+    // — but it IS a weaker directory, and that is the price of an edge that
+    // starts.
+    let root = std::path::PathBuf::from("/private/tmp")
         .join(format!("rexenv-sandbox-{tag}-{}", std::process::id()));
 
     // A sandbox root that is too LONG breaks the edge, and the failure names

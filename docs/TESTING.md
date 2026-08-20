@@ -281,6 +281,14 @@ it can:
   17 days as an unexplained transient. The helper waits and then fails AT THE
   PRECONDITION with the port named and the service's own log spilled — the log every one
   of these examples was discarding.
+  **A check that only PRINTS cannot fail, and that is not a small thing** (20 Aug 2026).
+  Several `*_serve` examples ended with `println!("READY https://…:8443")` and a sleep for
+  a human to curl. Caddy had been dying at startup for weeks — its admin socket exceeded
+  macOS's 103-byte limit under the sandbox root — and every one of those runs still exited
+  0. The defect was found by ADDING ASSERTIONS (readiness gates), not by reading: the very
+  first thing the new gate did was fail on a service nothing had been checking. When an
+  example's output is an invitation rather than a verdict, its exit code is measuring
+  nothing.
 - **Cannot prove:** a CSS chain resolves, a WKWebView quirk, real-internet DNS
   propagation, anything needing root or a second device (some examples DO take prompts
   — those are L3-adjacent and marked).

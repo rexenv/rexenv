@@ -9,6 +9,24 @@ evidence cited.
 
 ## Now — actionable code/test work
 
+- [x] **The edge had never started in ANY sandboxed example** ✓ 20 Aug 2026.
+  Caddy's admin socket lives at `<sandbox root>/config/caddy-admin.sock`, macOS binds at
+  most 103 bytes of socket path, and `std::env::temp_dir()` on macOS is a 49-character
+  per-user TMPDIR — so every sandboxed socket path came to **110–115 bytes** and caddy
+  died on `bind: invalid argument` before it ever listened.
+  **`common::sandbox`'s own comment named the wrong cause**, which is why it survived: it
+  blamed the TAG ("whether a sandboxed example can start the edge depends on how it was
+  NAMED… shorten the tag"), and shortening `create_site_serve` to `createsrv` — 8
+  characters off, exactly what the warning asked for — still failed. The base was always
+  the larger half. Root moved to `/private/tmp` (12 chars): the same paths are now 75–79.
+  **It was invisible because nothing asserted it.** These examples printed
+  `READY https://…:8443` and slept for a human to curl; a reader who never curled saw a
+  green run. The readiness gates added the same day are what turned it loud — the first
+  thing they did was fail on a service that had been dead for weeks.
+  Tradeoff stated in the code: `/private/tmp` is world-writable where TMPDIR is per-user
+  0700. Still pid-scoped, still `SandboxGuard`-removed, still fixture scaffolding — but
+  it is a weaker directory, and that is the price of an edge that starts.
+
 - [ ] **Spawn-then-use without a readiness gate — 33 confirmed sites, 5 fixed** (20 Aug
   2026). Found by fixing three flakes in one gate run and then sweeping every example for
   the shape: an example spawns a service (php-fpm, nginx, caddy, httpd) and depends on it
