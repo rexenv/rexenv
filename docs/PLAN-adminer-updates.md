@@ -1,6 +1,8 @@
 # PLAN — in-app Adminer version updates
 
-**Status: designed 18 Aug 2026, being built.** Produced by a four-reader map →
+**Status: SHIPPED 18 Aug 2026** (designed and built the same day; header corrected
+21 Aug, when the reconcile found it still saying "being built"). Originally:
+designed 18 Aug 2026. Produced by a four-reader map →
 three independent designs (minimal-diff / generalise / security-first) → three
 judges (correctness / security / fit) → an adversarial synthesis, all against the
 real files. `docs/PLAN-binary-updates.md` is the parent design; this is the

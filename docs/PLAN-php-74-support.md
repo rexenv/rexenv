@@ -20,7 +20,7 @@ it is corrected rather than merely annotated.
 | ✅ EOL tell covering 7.4 **and** 8.0/8.1 | ✅ FrankenPHP × 7.4 refused in core (#326) |
 | ✅ Licence texts ship beside the bytes (#336) | ✅ …and a guard on the notices claim |
 | ❌ **No Xdebug on 7.4** — measured, §10c | ❌ No `opcache` — spc cannot build it for 7.4 |
-| ⏳ Extension set narrower than the 8.x rows | S1.2 in `docs/TODO.md` |
+| ✅ Extension parity closed (S1.2) — 60 modules, was 36 | five absences, each measured: `random`, `opcache`, `xdebug`, … §10 |
 
 Goal: a rexenv site can run PHP 7.4, from the same picker, with the same pool model, as
 every other minor — because the legacy WordPress and Laravel projects developers actually

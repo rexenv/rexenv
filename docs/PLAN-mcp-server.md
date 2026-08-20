@@ -1,7 +1,15 @@
 # MCP server — let AI agents drive rexenv (scratch sites, DB access, tiered capability)
 
-**Status: M1 SHIPPED 30 Jul 2026 (ledger #198–#203). M2 SCOPE RULED 1 Aug 2026 —
-building M2a → M2b → M3, one task at a time.**
+**Status: M1 SHIPPED 30 Jul 2026 (ledger #198–#203). M2a AND M2b SHIPPED and
+code-complete 13 Aug 2026 — all eight executing tools registered in
+`mcp_server/scratch.rs`, schema v27–v30. M3 (database access) is the only milestone
+left, and nothing of it is in the tree.**
+Header corrected 21 Aug 2026: it had read "building M2a → M2b → M3" for eight days after
+both were done, and listed D5 as open when it is settled (no SDK, hand-rolled — §9.5).
+D2 (`wp_login_url`, scratch-only) is the one open decision and is non-blocking.
+**Not shipped with the code: the human gates.** `docs/SMOKE-TEST.md` §M2a/§M2b carry 14
+unticked steps and four HOLDs under a heading that says "ships only if this passes", and
+MCP has now shipped in four releases without those being recorded as run.
 Planned 28 Jul 2026 against `5dbaa8d`, from a full-codebase research pass + an
 adversarial review that rewrote the security model (three blockers, §3.1
 reckoning); scope ruled the next day. D1/D3/D4/D6/D7 settled (§9); D2/D5 open but

@@ -123,17 +123,18 @@ Two rules with teeth, learned the hard way:
 | rex CLI — future commands, IPC-exists tags | `docs/CLI-ROADMAP.md` |
 | Module/file map | `README.md` ("Project structure") |
 | Xdebug debug-PHP build (blocked item) | `docs/xdebug-debug-build.md` |
-| Valet/Herd migration — research + staged design (parked) | `docs/PLAN-valet-herd-migration.md` |
+| Valet/Herd migration — ALL FOUR STAGES SHIPPED; the empirical research (layouts, conflicts, engine compat, dump flags) lives here | `docs/PLAN-valet-herd-migration.md` |
 | Link an existing folder / serve a docroot outside the sites dir | `docs/PLAN-linked-sites.md` |
 | Create a site FROM a git repo (Laravel first) — clone, `.env`, composer, migrate | `docs/PLAN-git-site-clone.md` |
 | Valet/Herd import — scan, resolver consent, import loop (Stage 1) | `docs/PLAN-valet-herd-import.md` |
 | Valet/Herd database import — dump/restore, provenance, credentials (Stage 2) | `docs/PLAN-valet-herd-db-import.md` |
 | Valet/Herd connection rewrite — diff/consent, backup, connected fact (Stage 3) | `docs/PLAN-valet-herd-rewrite.md` |
-| PHP 7.4 — where the binary comes from, self-build + hosting, EOL honesty (planned) | `docs/PLAN-php-74-support.md` |
-| MCP server — agents drive rexenv, scratch sites, capability tiers (proposed) | `docs/PLAN-mcp-server.md` |
-| `wp dist-archive` — distributable zip from a repo asset (ruled, not started) | `docs/PLAN-dist-archive.md` |
-| In-app PHP/engine patch updates — signed manifest, trust model | `docs/PLAN-binary-updates.md` |
-| Adminer in-app updates — the SECOND manifest family, `updates::Family`, the binding probe | `docs/PLAN-adminer-updates.md` |
+| PHP 7.4 — SHIPPED 15 Aug 2026; where the binary comes from, self-build + hosting, EOL honesty | `docs/PLAN-php-74-support.md` |
+| MCP server — M1/M2a/M2b SHIPPED, M3 (DB access) unbuilt; agents drive rexenv, scratch sites, capability tiers | `docs/PLAN-mcp-server.md` |
+| `wp dist-archive` — SHIPPED 5 Aug 2026; distributable zip from a repo asset | `docs/PLAN-dist-archive.md` |
+| In-app PHP/engine patch updates — SHIPPED 17–18 Aug 2026; signed manifest, trust model | `docs/PLAN-binary-updates.md` |
+| Adminer in-app updates — SHIPPED 18 Aug 2026; the SECOND manifest family, `updates::Family`, the binding probe | `docs/PLAN-adminer-updates.md` |
+| Preferred browser + real app icons — shipped 11 Aug 2026, kept as the design record | `docs/PLAN-browser-preference.md` |
 | WebKit/wry dialog + custom-scheme claims — why they are NOT L2-provable, where each leg lives | `docs/PLAN-webview-dialog-proofs.md` |
 | User-facing install / first-run prompts | `docs/INSTALL.md` |
 | Cutting a release — CI pipeline, draft gate, tap auto-bump | `docs/RELEASING.md` (cask itself lives in `rexenv/homebrew-tap`) |

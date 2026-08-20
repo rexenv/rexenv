@@ -533,7 +533,7 @@ the plan says so up front rather than discovering it at run time.
 
 ---
 
-## 9. The interim state (Stage 3 does not exist yet)
+## 9. The interim state (written before Stage 3 existed — it shipped 28 Jul 2026)
 
 After a successful database import and before Stage 3, the site **still connects to their
 old server**. The UI must make that the headline, not a footnote, because a green "done"

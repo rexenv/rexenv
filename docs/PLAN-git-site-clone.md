@@ -1,8 +1,12 @@
 # Create a site FROM a Git repository
 
 **Status: SHIPPED 11 Aug 2026, Stages 1–4** (`de07ed0` → HEAD), planned the same day
-against `62a9f9e`. One open caveat: Bedrock/Radicle is unverified against a real project
-(`docs/TODO.md`, ledger #294).
+against `62a9f9e`. One open caveat, narrowed 21 Aug 2026: **Radicle** is unverified
+against a real project. **Bedrock was verified the day it shipped — and was broken**
+(`wp core install` was pinned to the docroot while Composer puts core in `web/wp`, so
+every wp-cli call answered "This does not seem to be a WordPress installation"); fixed
+via `wordpress::core_root`, ledger #294 + #299, and `git_site_provision_check` case 4
+now installs WordPress and lands 12 tables.
 
 Machine-verified (745 lib tests + `git_site_clone_check` on the sandbox tier); the
 packaged-app half — real event streaming into WKWebView, a real remote, your own SSH

@@ -298,19 +298,24 @@ cause: a commit did the work and the surrounding claim stayed as it was.
   end to end", and what it is missing is a second `0600` socket, an executing-tool tier,
   a scratch-site lifecycle with a TTL reaper, and five migrations. A reader who trusts it
   will design against a system that has one IPC surface.
-- [ ] **`CLAUDE.md`'s router carries four labels that are the opposite of the truth, and
-  omits a plan.** "(parked)" for the Valet/Herd migration whose four stages all shipped;
+- [x] **`CLAUDE.md`'s router carried four labels that were the opposite of the truth** ✓
+  21 Aug 2026. "(parked)" for the Valet/Herd migration whose four stages all shipped;
   "(planned)" for PHP 7.4, shipped 15 Aug; "(proposed)" for MCP, whose M1/M2a/M2b shipped;
-  "(ruled, not started)" for `wp dist-archive`, finished 5 Aug. `docs/PLAN-browser-
-  preference.md` has no row at all. The router is the first thing every session reads,
-  so a wrong label costs on every task, not once.
-- [ ] **Five PLAN headers assert a state the tree contradicts** — `PLAN-adminer-updates`
-  (being built vs shipped), `PLAN-binary-updates` (":3 not started" against a live signed
-  manifest, a key ceremony and `core/updates.rs`), `PLAN-git-site-clone:4` (Bedrock
-  unverified vs ledger #294 ✅), `PLAN-php-74-support:23` (extension parity ⏳ vs S1.2
-  done), `PLAN-valet-herd-db-import:536` ("Stage 3 does not exist yet" — Stage 3 shipped
-  28 Jul). A plan header is what a reader checks BEFORE deciding whether to build
-  something; these invite someone to rebuild what is there.
+  "(ruled, not started)" for `wp dist-archive`, finished 5 Aug — plus two rows that named
+  a shipped feature as a plan (binary updates, Adminer updates), and no row at all for
+  `docs/PLAN-browser-preference.md`. Each label now says what shipped and when. The router
+  is the first thing every session reads, so a wrong label costs on every task, not once.
+- [x] **Six PLAN headers asserted a state the tree contradicts** ✓ 21 Aug 2026.
+  `PLAN-adminer-updates` ("being built" vs shipped the same day it was designed),
+  `PLAN-binary-updates` ("PROPOSED, not started" against a live signed manifest, a done
+  key ceremony and `core/updates.rs`), `PLAN-git-site-clone` (Bedrock unverified — it was
+  verified the day it shipped, and was broken, #294/#299; only Radicle is unverified),
+  `PLAN-php-74-support` (extension parity ⏳ vs S1.2's 60 modules),
+  `PLAN-valet-herd-db-import` §9 ("Stage 3 does not exist yet" — it shipped 28 Jul), and
+  `PLAN-mcp-server` ("building M2a → M2b → M3" with both done). A plan header is what a
+  reader checks BEFORE deciding whether to build something, so a stale one invites
+  someone to rebuild what is already there — which is why each correction says what it
+  had claimed, not just what is true now.
 - [ ] **Code comments point at TODO rows that are not in TODO.** `core/sites.rs:88-90`
   says the FrankenPHP same-major PHP skew "is tracked in `docs/TODO.md`" and it is not
   (it was ANSWERED on 15 Aug by the disabled-picker annotation, ledger #333 — so the

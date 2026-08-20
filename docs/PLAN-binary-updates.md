@@ -1,6 +1,14 @@
 # In-app binary updates — a signed version manifest (proposed)
 
-**Status: PROPOSED, not started.** Written 8 Aug 2026 against `3bac4bc`.
+**Status: SHIPPED 17–18 Aug 2026** — PHP patch updates first, then Adminer as the
+second manifest family (`docs/PLAN-adminer-updates.md`). `core/updates.rs` owns the
+signed-manifest trust boundary (`RELEASE_PUBKEY`, `verify`, the serial/replay gate, the
+host allowlist, `Family { Php, Adminer }`); the key ceremony is done; the evidence log is
+`docs/archive/SHIPPED-2026-08.md`. **The header said "PROPOSED, not started" until 21 Aug
+2026**, four days after the feature shipped and while a live signing key existed — kept
+named here because a plan header is what a reader checks BEFORE deciding whether to build
+something, so a stale one invites someone to build what is already there.
+Written 8 Aug 2026 against `3bac4bc`.
 **Revised 16 Aug 2026** after re-reading the record: the premise the original draft
 argued from was a paraphrase of the objection, not the objection, and three of the
 mechanisms it proposed to build already exist in shipped code. §0 is the correction;
