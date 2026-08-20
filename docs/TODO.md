@@ -9,6 +9,29 @@ evidence cited.
 
 ## Now — actionable code/test work
 
+- [ ] **`frankenphp_edge_serve`: the FrankenPHP backend is SIGTERM'd ~110ms after it
+  starts** (found 20 Aug 2026, service tier, stack down). `fp.test` comes back **502**
+  through the edge while `ng.test` (nginx→pool) is a clean 200, so the edge and its
+  routing are fine — the backend is not there to answer. FrankenPHP's own log is
+  unambiguous:
+  `FrankenPHP started 🐘` … 110ms later … `shutting down apps, then terminating
+  {"signal":"SIGTERM"}` … `FrankenPHP stopped 🐘`, `exit_code: 0`. A clean, deliberate
+  shutdown — something SENT it that signal.
+  **PRE-EXISTING, and proven so rather than assumed:** restoring the original flat
+  `sleep(1800ms)` in place of the readiness gates reproduces it exactly, so it predates
+  the 20 Aug sweep. It had been invisible for the usual reason — the example printed a
+  502 into a table nobody diffed.
+  **Ruled out so far:** the edge's admin-socket recovery (`recover_stale_edge` →
+  `stop_admin`) cannot reach it, because `frankenphp::write_config` emits `admin off`
+  and the backend holds no admin endpoint; and `ports::ensure_free` errors rather than
+  kills. The window is between the spawn and the first request — `sites::rebuild_configs`,
+  `services::start_nginx`, `proxy::start` — and one of those, or something they call, is
+  signalling a process it does not own.
+  **Worth taking seriously beyond the example**: if a path in that window terminates
+  FrankenPHP backends, a user switching a site to FrankenPHP and then touching anything
+  that rebuilds configs would lose their backend the same way. That is the question to
+  answer first — whether this is only the fixture's arrangement or the product's.
+
 - [x] **The edge had never started in ANY sandboxed example** ✓ 20 Aug 2026.
   Caddy's admin socket lives at `<sandbox root>/config/caddy-admin.sock`, macOS binds at
   most 103 bytes of socket path, and `std::env::temp_dir()` on macOS is a 49-character

@@ -64,6 +64,7 @@ async fn main() {
 
     println!("=== services_status coverage (name · running · pid · CPU · RAM) ===");
     let rows = mgr.status(&*plat, &[]);
+    let expected = ["MySQL", "PostgreSQL", "PHP-FPM 8.3", "FrankenPHP fp6.test", "Nginx", "Caddy"];
     let mut all_ok = true;
     for i in &rows {
         let m = i.pid.and_then(|p| mon.tree(p));
@@ -76,15 +77,23 @@ async fn main() {
             cpu,
             ram
         );
-        // Every supervised service should be running with a pid + measurable RAM.
-        if !i.running || i.pid.is_none() || ram == 0 {
+        // Every service THIS EXAMPLE STARTED should be running with a pid and
+        // measurable RAM. The row set from `status` covers every engine rexenv
+        // knows, and this example starts MySQL and PostgreSQL only — so MariaDB
+        // and Redis come back `running=false, pid=None, ram=0` by design, and
+        // the loop convicted them. It passed anyway for as long as LEFTOVER
+        // MariaDB/Redis processes from other examples happened to be up;
+        // sweeping the machine clean before a run (20 Aug 2026) is what made it
+        // fail, which is the same story as everything else found that day: the
+        // check was reading the machine, not the subject. `expected` below
+        // already listed the right six — the loop just was not consulting it.
+        if expected.contains(&i.name.as_str()) && (!i.running || i.pid.is_none() || ram == 0) {
             all_ok = false;
         }
     }
 
     // The Phase-2 services must all be present.
     let names: Vec<&str> = rows.iter().map(|r| r.name.as_str()).collect();
-    let expected = ["MySQL", "PostgreSQL", "PHP-FPM 8.3", "FrankenPHP fp6.test", "Nginx", "Caddy"];
     let present = expected.iter().all(|e| names.iter().any(|n| n == e));
 
     mgr.stop_all(&*plat).ok();

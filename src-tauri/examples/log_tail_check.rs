@@ -74,8 +74,13 @@ async fn main() {
     common::await_listening(rexenv_lib::core::services::NGINX_HTTP_PORT, "nginx", None);
     common::await_listening(rexenv_lib::core::services::PHP_FPM_PORT, "php-fpm 8.3", None);
 
-    let before = logs::tail(&*plat, "nginx-access.log", 1000).unwrap().len();
-    println!("\nnginx-access.log lines before: {before}");
+    // Keep the tail ITSELF, not its length. `logs::tail(_, N)` returns at most
+    // N lines, so on a file past N the length pins at N and any `after > before`
+    // is unreachable — this example read the REAL log dir, where
+    // nginx-access.log stood at 31,544 lines on 20 Aug 2026, and had been
+    // asserting nothing for a long time while exiting 0.
+    let before = logs::tail(&*plat, "nginx-access.log", 1000).unwrap();
+    println!("\nnginx-access.log tail before: {} line(s)", before.len());
 
     // Hit the site a few times through the edge (each is an access-log line).
     let ca_cert = reqwest::Certificate::from_pem(&std::fs::read(&ca.cert_path).unwrap()).unwrap();
@@ -92,9 +97,20 @@ async fn main() {
 
     let tail = logs::tail(&*plat, "nginx-access.log", 1000).unwrap();
     let after = tail.len();
-    println!("nginx-access.log lines after:  {after}");
-    assert!(after > before, "no new nginx access lines appeared ({before} → {after})");
-    println!("✓ {} new access line(s); last:\n   {}", after - before, tail.last().cloned().unwrap_or_default());
+    println!("nginx-access.log tail after:   {after} line(s)");
+    // Ask whether the WINDOW MOVED. New lines shift a full tail and lengthen a
+    // short one, so this holds at any file size — where a count saturates and a
+    // content match cannot work either: nginx's access format here is
+    // `domain timestamp bytes`, with no request line, so the `?ping=1` above is
+    // never written down. (That was the first repair attempt, and it failed for
+    // exactly that reason — the format has to be read, not assumed.)
+    assert!(
+        tail != before,
+        "the tailed requests never reached the access log — the window is unchanged \
+         at {after} line(s), which on a capped tail is what NOTHING happening looks \
+         like as well as what a full window looks like"
+    );
+    println!("✓ the access-log window moved; last:\n   {}", tail.last().cloned().unwrap_or_default());
 
     // A different source tails independently (php-fpm pool log).
     let fpm = logs::tail(&*plat, "php-fpm-8.3.log", 20).unwrap();
