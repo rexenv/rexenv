@@ -9,7 +9,6 @@ use rexenv_lib::state::models::{NewSite, SiteType, WebServer};
 use std::net::SocketAddr;
 
 mod common;
-use std::time::Duration;
 
 const NGINX_PORT: u16 = services::NGINX_HTTP_PORT;
 const CADDY_HTTP: u16 = 8080;
@@ -53,11 +52,15 @@ async fn main() {
     std::fs::create_dir_all(socket.parent().unwrap()).unwrap();
     database::initialize(&*plat, &mysql_base, &datadir).unwrap();
     let mut mysqld = database::start(&*plat, &mysql_base, &datadir, database::MYSQL_PORT, &socket).unwrap();
-    for _ in 0..30 {
-        if database::mysql_running(database::MYSQL_PORT) { break; }
-        std::thread::sleep(Duration::from_millis(500));
-    }
-    println!("mysql running={}", database::mysql_running(database::MYSQL_PORT));
+    // `await_ready`, not the poll-then-carry-on loop this replaced. That loop fell
+    // THROUGH after 15s, printed `mysql running=false`, and let the example continue
+    // into `install_for_site` — so a dead engine was reported as one line of output in
+    // the middle of a run that then failed on wp-cli's error instead of MySQL's.
+    // `mysql_running` is a protocol check rather than a port listen, which is why this
+    // is `await_ready` and not `await_listening`.
+    common::await_ready("mysqld (accepting queries)", None, || {
+        database::mysql_running(database::MYSQL_PORT)
+    });
 
     // Provision the WordPress site (docroot + cert + DB row).
     let site = sites::provision(

@@ -78,15 +78,22 @@ async fn main() {
             edge_up = true;
             break;
         }
+        std::thread::sleep(Duration::from_millis(250));
+    }
     // The edge is not the whole stack: the request below traverses Caddy → the
     // shared nginx → the 8.3 pool, and `start_all` emits ReadyChecks for the
     // databases, mailpit and the FrankenPHP overrides only. `edge_up` above
     // stays the example's own reported fact; these are the two it never waited
     // for.
+    //
+    // AFTER the loop, deliberately. These two lines first landed INSIDE it, one
+    // statement past the `break` — so on the ordinary path (edge already
+    // listening on the first poll) they never ran at all, and on the unlucky
+    // path they ran once per 250ms poll and would have failed naming nginx for
+    // an edge that had not come up. A gate placed after an early exit is not a
+    // gate; it is a comment that compiles.
     common::await_listening(rexenv_lib::core::services::NGINX_HTTP_PORT, "nginx", None);
     common::await_listening(rexenv_lib::core::services::PHP_FPM_PORT, "php-fpm 8.3", None);
-        std::thread::sleep(Duration::from_millis(250));
-    }
     println!("edge listening on :{HTTPS} = {edge_up}");
     for s in mgr.status(&*plat, &[]) {
         println!("  {:<10} running={} port={}", s.name, s.running, s.port);

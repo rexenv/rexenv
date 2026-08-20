@@ -59,12 +59,17 @@ paying for anyway: **the tick belongs in the commit that does the work.**
   of it found afterwards, one verifier per finding, 44 further claims refuted. They fall
   into five families, and the families are the useful part — every one of them is a way a
   gate can be PRESENT and not GATE:
-  - [ ] **Placement — a gate after an early exit is not a gate.** `mail_route_check`'s two
-    gates landed INSIDE the pre-existing `for _ in 0..40` edge loop, one statement past its
-    `break`: on the ordinary path (edge already listening on the first poll) they never
-    executed at all, and on the unlucky path they ran once per 250ms and would have failed
-    naming nginx for an edge that had not come up. `wp_install_serve:56` has the sibling
-    shape — a 15s MySQL poll that falls through, prints `mysql running=false` and carries on.
+  - [x] **Placement — a gate after an early exit is not a gate.** ✓ 21 Aug 2026, both
+    instances. `mail_route_check`'s two gates had landed INSIDE the pre-existing
+    `for _ in 0..40` edge loop, one statement past its `break`: on the ordinary path (edge
+    already listening on the first poll) they never executed at all, and on the unlucky
+    path they ran once per 250ms and would have failed naming nginx for an edge that had
+    not come up. They are below the loop now, with the reason in the code so the next
+    editor does not put them back. `wp_install_serve`'s MySQL poll had the sibling shape —
+    15s, fall through, print `mysql running=false`, carry on into `install_for_site`, so a
+    dead engine surfaced as wp-cli's error rather than MySQL's — and is now
+    `common::await_ready("mysqld (accepting queries)", …)`; `await_ready` rather than
+    `await_listening` because `mysql_running` is a protocol check, not a port listen.
   - [ ] **Silent pass — `start_all` fails and the example exits 0.** `if let Err(e) = …
     { eprintln!(…); return; }` inside `async fn main() -> ()` returns SUCCESS, and
     `live-checks.sh` takes its verdict from the exit status alone — so the tier prints
