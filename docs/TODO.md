@@ -9,28 +9,26 @@ evidence cited.
 
 ## Now — actionable code/test work
 
-- [ ] **`frankenphp_edge_serve`: the FrankenPHP backend is SIGTERM'd ~110ms after it
-  starts** (found 20 Aug 2026, service tier, stack down). `fp.test` comes back **502**
-  through the edge while `ng.test` (nginx→pool) is a clean 200, so the edge and its
-  routing are fine — the backend is not there to answer. FrankenPHP's own log is
-  unambiguous:
-  `FrankenPHP started 🐘` … 110ms later … `shutting down apps, then terminating
-  {"signal":"SIGTERM"}` … `FrankenPHP stopped 🐘`, `exit_code: 0`. A clean, deliberate
-  shutdown — something SENT it that signal.
-  **PRE-EXISTING, and proven so rather than assumed:** restoring the original flat
-  `sleep(1800ms)` in place of the readiness gates reproduces it exactly, so it predates
-  the 20 Aug sweep. It had been invisible for the usual reason — the example printed a
-  502 into a table nobody diffed.
-  **Ruled out so far:** the edge's admin-socket recovery (`recover_stale_edge` →
-  `stop_admin`) cannot reach it, because `frankenphp::write_config` emits `admin off`
-  and the backend holds no admin endpoint; and `ports::ensure_free` errors rather than
-  kills. The window is between the spawn and the first request — `sites::rebuild_configs`,
-  `services::start_nginx`, `proxy::start` — and one of those, or something they call, is
-  signalling a process it does not own.
-  **Worth taking seriously beyond the example**: if a path in that window terminates
-  FrankenPHP backends, a user switching a site to FrankenPHP and then touching anything
-  that rebuilds configs would lose their backend the same way. That is the question to
-  answer first — whether this is only the fixture's arrangement or the product's.
+- [x] **`frankenphp_edge_serve`: `fp.test` 502'd through a working edge** ✓ 20 Aug 2026.
+  The example spawned FrankenPHP on the DERIVED port and the edge routed to the
+  RECORDED one:
+
+      [probe] derived site_port=8243  recorded_override_port=Some(8200)
+      [caddyfile] reverse_proxy 127.0.0.1:8200
+
+  Nothing was on 8200, so the request 502'd with a healthy backend listening one port
+  away. **The product states this rule against itself** — `reconcile_overrides`: "The
+  RECORDED backend port (B20 §4), never re-derived — so the spawned backend and the edge
+  route always agree, even after a domain change." The example did the one thing that
+  comment forbids, so it was testing an arrangement the product never produces.
+  **The first diagnosis was wrong and the correction is the lesson.** FrankenPHP's log
+  showed `started 🐘` … 110ms … `SIGTERM`, and that read as "something kills the
+  backend" — I wrote it up that way. Probing liveness at REQUEST time refuted it:
+  `listening=true` at the gate and still true immediately before the curl. The SIGTERM
+  was teardown after the failure, not its cause; a log timestamp near a failure is a
+  coincidence until something rules the alternative out.
+  Fixed by reading the record. Both sites now 200 (`ng.test` PHP 8.3.31 via nginx→pool,
+  `fp.test` PHP 8.5.8 via FrankenPHP).
 
 - [x] **The edge had never started in ANY sandboxed example** ✓ 20 Aug 2026.
   Caddy's admin socket lives at `<sandbox root>/config/caddy-admin.sock`, macOS binds at

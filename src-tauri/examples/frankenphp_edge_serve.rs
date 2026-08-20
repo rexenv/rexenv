@@ -83,7 +83,24 @@ async fn main() {
     pools.start(&*plat, &["8.3".to_string()]).await.expect("pool");
 
     let fp_bin = binaries::resolve(&*plat, "frankenphp", binaries::FRANKENPHP_VERSION).await.unwrap();
-    let fp_port = frankenphp::site_port(&fp.domain);
+    // The RECORDED port, never the derived one — the same rule the product
+    // states at `service_manager::reconcile_overrides`: "The RECORDED backend
+    // port (B20 §4), never re-derived — so the spawned backend and the edge
+    // route always agree, even after a domain change."
+    //
+    // This example re-derived it, and so spawned FrankenPHP on
+    // `site_port("fp.test")` = 8243 while `rebuild_configs` wrote the edge a
+    // route to the site's recorded 8200. Nothing was on 8200, so `fp.test`
+    // came back 502 through a working edge, with a healthy backend listening
+    // one port away — measured 20 Aug 2026:
+    //
+    //   [probe] derived site_port=8243  recorded_override_port=Some(8200)
+    //   [caddyfile] reverse_proxy 127.0.0.1:8200
+    //
+    // It read as "FrankenPHP is broken" for as long as nobody diffed the two
+    // numbers. The example was testing an arrangement the product never
+    // produces.
+    let fp_port = sites::recorded_override_port(&fp).expect("fp.test has a recorded override port");
     let fp_conf = frankenphp::write_config(&*plat, &fp.domain, Path::new(&fp.path), fp_port, RewriteMode::Single, &[]).unwrap();
     let mut fp_child = frankenphp::start(&*plat, &fp_bin, &fp.domain, &fp_conf, &[]).expect("frankenphp");
 
