@@ -171,8 +171,14 @@ const LINK = "https://example.test/a//b";
         // allowed to SHRINK, never to grow silently: a new entry means someone
         // built a door and left it shut.
         const UNCALLED: &[(&str, &str)] = &[
-            ("createSite", "superseded by the job-based provision flow; the wrapper predates it"),
-            ("wpThemeEnableNetwork", "multisite theme network-enable has no UI yet"),
+            // `createSite` was here until 21 Aug 2026 and is DELETED, not exempted:
+            // "superseded by the job-based provision flow" had stopped being a
+            // temporary state. An exemption that outlives the thing it was waiting
+            // for is how this list grows silently, which the comment above forbids.
+            (
+                "wpThemeEnableNetwork",
+                "multisite theme network-enable: backend + IPC shipped, no UI yet                  (tracked in docs/TODO.md, so this reason is not the only record of it)",
+            ),
             ("wpThemeDisableNetwork", "the sibling of the above"),
         ];
 

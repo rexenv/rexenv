@@ -407,12 +407,20 @@ cause: a commit did the work and the surrounding claim stayed as it was.
   against the rows rather than remembered.
   (c) `scripts/ledger-tally.sh` called the ledger "a 500-line file" twice; it is 890.
   The script written to stop stale numbers carried two of its own.
-- [ ] **Two UNCALLED-allowlist entries have stopped being temporary.** `core/copy_scan.rs`
-  exempts `createSite` ("superseded by the job-based provision flow; the wrapper predates
-  it") and `wpThemeEnableNetwork`/`wpThemeDisableNetwork` ("multisite theme
-  network-enable has no UI yet"). The allowlist's own comment says it "is allowed to
-  SHRINK, never to grow silently" — so the dead wrapper should go, and the missing UI is
-  a feature whose only record is a const array inside a test.
+- [x] **The UNCALLED allowlist shrank by one** ✓ 21 Aug 2026. `createSite` was exempted
+  as "superseded by the job-based provision flow; the wrapper predates it" — a temporary
+  state that had stopped being temporary, in a list whose own comment says it "is allowed
+  to SHRINK, never to grow silently". The wrapper is deleted (with a note in its place
+  saying where the flow went); the BACKEND `create_site` command stays, because
+  `rex site create` calls it through `cli_server` — what is gone is a frontend door onto
+  a flow the UI no longer uses. The guard enforces the pairing in both directions, so the
+  wrapper and its exemption had to go in one commit.
+- [ ] **Multisite theme network-enable: backend + IPC shipped, no UI.**
+  `wpThemeEnableNetwork` / `wpThemeDisableNetwork` are live Tauri commands with typed
+  wrappers and nothing that calls them. Their reason now points here, because a feature
+  whose only record is a const array inside a test is one nobody will ever pick up. Small
+  and well-defined: a network-enable toggle on the themes list when the site is a
+  multisite.
 - [ ] **`REXENV_LARAVEL_DOTENV` is read by a test and set by nothing.**
   `core/laravel.rs:357` returns early when the var is absent, and a repo-wide search finds
   exactly two mentions: that line, and `docs/CLAIM-LEDGER.md:459`, which credits the test

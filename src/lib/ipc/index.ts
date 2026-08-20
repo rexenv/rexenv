@@ -327,17 +327,14 @@ export async function regenerateSiteCert(id: string): Promise<void> {
   await invoke("regenerate_site_cert", { id });
 }
 
-/** Create a site (provision + WordPress one-click install when type=wordpress +
- *  bring up if the stack is running). A `blueprintId` applies that preset's
- *  plugins/themes/multisite after install (§11.3). No-op outside Tauri. */
-export async function createSite(
-  input: NewSiteInput,
-  wp?: WpInstallInput,
-  blueprintId?: string,
-): Promise<Site | null> {
-  if (!isTauri()) return null;
-  return invoke<Site | null>("create_site", { site: input, wp, blueprintId });
-}
+/* `createSite` lived here until 21 Aug 2026 — the one-shot wrapper the New Site
+ * dialog used before the job-based provision flow replaced it. It had been
+ * exempted as UNCALLED ("superseded… the wrapper predates it") for long enough
+ * that the exemption stopped being temporary, which is the state the allowlist's
+ * own comment says it must never reach: the list "is allowed to SHRINK, never to
+ * grow silently". The backend `create_site` command STAYS — `rex site create`
+ * calls it through `cli_server` — so what is gone is a frontend door onto a
+ * flow the UI no longer uses. Use `siteProvisionJob` below. */
 
 /** Start a STREAMED site-provision job (the New Site card): prepare runs
  *  inline (validation/duplicate/prompt errors reject HERE with nothing
