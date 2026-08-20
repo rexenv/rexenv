@@ -19,6 +19,8 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::time::Duration;
 
+mod common;
+
 const HTTPS: u16 = 8443;
 
 #[tokio::main]
@@ -31,6 +33,12 @@ async fn main() -> std::process::ExitCode {
         let _ = std::fs::remove_file(&p);
         db::open(&p).unwrap()
     };
+    // Fixture-owned sites dir, pinned BEFORE the first `sites::provision`.
+    // `sites::provision` reads the `sites_dir` SETTING, which falls back to a
+    // path computed from the HOME directory — so without this the docroot lands
+    // in the user's real ~/rexenv/Sites, and the `remove_dir_all` below deletes
+    // it there. See `common::pin_fixture_sites_dir`.
+    let _sites_dir = common::pin_fixture_sites_dir(&conn, "blueprint");
 
     // 1) Seeds present + store CRUD round-trip.
     let seeded = store::list_blueprints(&conn).unwrap();

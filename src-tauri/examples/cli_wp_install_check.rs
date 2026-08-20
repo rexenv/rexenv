@@ -16,6 +16,8 @@ use serde_json::{json, Value};
 use std::time::Duration;
 use tauri::Manager;
 
+mod common;
+
 #[tokio::main]
 async fn main() {
     let plat = rexenv_lib::platform::current();
@@ -26,6 +28,12 @@ async fn main() {
         let _ = std::fs::remove_file(&p);
         rexenv_lib::state::db::open(&p).unwrap()
     };
+    // Fixture-owned sites dir, pinned BEFORE the first `sites::provision`.
+    // `sites::provision` reads the `sites_dir` SETTING, which falls back to a
+    // path computed from the HOME directory — so without this the docroot lands
+    // in the user's real ~/rexenv/Sites, and the `remove_dir_all` below deletes
+    // it there. See `common::pin_fixture_sites_dir`.
+    let _sites_dir = common::pin_fixture_sites_dir(&conn, "cliwpi");
     let ca = ssl::load_or_create(plat.paths(), plat.permissions()).unwrap();
     let php = binaries::resolve(&*plat, "php", binaries::PHP_VERSION).await.unwrap();
     let wp = binaries::resolve_file(&*plat, "wp-cli", binaries::WP_CLI_VERSION).await.unwrap();

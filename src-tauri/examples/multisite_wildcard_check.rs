@@ -35,6 +35,12 @@ async fn main() -> std::process::ExitCode {
     let other = "other.test";
 
     let (conn, _dbf) = common::fixture_db("multisite_wildcard_check");
+    // Fixture-owned sites dir, pinned BEFORE the first `sites::provision`.
+    // `sites::provision` reads the `sites_dir` SETTING, which falls back to a
+    // path computed from the HOME directory — so without this the docroot lands
+    // in the user's real ~/rexenv/Sites, and the `remove_dir_all` below deletes
+    // it there. See `common::pin_fixture_sites_dir`.
+    let _sites_dir = common::pin_fixture_sites_dir(&conn, "mswild");
     let ca = ssl::load_or_create(plat.paths(), plat.permissions()).unwrap();
 
     // The subdomain-multisite site + a plain non-multisite control site.

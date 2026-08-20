@@ -183,6 +183,83 @@ pub fn pin_sites_dir(conn: &rusqlite::Connection, platform: &dyn Platform) {
         .expect("pin the sandbox sites dir");
 }
 
+/// A file this example created, removed when the guard drops.
+///
+/// For artifacts that must live in a REAL directory — a probe inside the Adminer
+/// docroot, say, because the point is to be served by the same vhost and pool
+/// Adminer uses. A trailing `let _ = std::fs::remove_file(..)` at the end of
+/// `main` does not survive the six `assert!`s above it: one unwind and the file
+/// stays. In the Adminer docroot that matters more than it sounds — every
+/// non-dotfile `.php` there is directly executable through the console's own
+/// vhost, so a failed run leaves a live endpoint behind the wrapper's controls.
+pub struct FixtureFile {
+    path: PathBuf,
+}
+
+impl FixtureFile {
+    /// Write `contents` to `path` and own the removal.
+    pub fn write(path: PathBuf, contents: &str) -> Self {
+        std::fs::write(&path, contents).expect("write the fixture file");
+        FixtureFile { path }
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for FixtureFile {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+/// A fixture-owned sites directory, pinned into `conn` and removed on drop.
+///
+/// [`pin_sites_dir`] pins into the SANDBOX's app-data root and is the right
+/// answer for an example that sandboxes its platform. This is for the ones that
+/// deliberately run on the REAL `Paths` — they talk to the real Adminer docroot,
+/// the real certs, the real stack — and would otherwise provision into the
+/// user's own `~/rexenv/Sites`, because `sites::provision` reads the `sites_dir`
+/// SETTING and that setting falls back to a path computed from the HOME
+/// directory rather than from `Paths`.
+///
+/// Writing there was known ("snapshot the folder before a bulk run"). What made
+/// it a defect rather than a nuisance is that `adminer_deeplink_check` then
+/// called `remove_dir_all` on the docroot it had provisioned — a delete inside
+/// the user's real Sites folder, which is the incident this repo has already
+/// paid for once (an example `rm -rf`'d `docroot.parent()` and took the whole
+/// folder with it). A habit is not a control; this is.
+pub struct FixtureSitesDir {
+    path: PathBuf,
+}
+
+impl FixtureSitesDir {
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for FixtureSitesDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.path);
+    }
+}
+
+/// Pin `sites_dir` at a fresh fixture directory for the life of the guard.
+///
+/// `/private/tmp` for the same reason [`sandbox`] uses it — it keeps derived
+/// paths short — and pid-scoped so two runs never share a docroot.
+pub fn pin_fixture_sites_dir(conn: &rusqlite::Connection, tag: &str) -> FixtureSitesDir {
+    let path = PathBuf::from("/private/tmp")
+        .join(format!("rexenv-sites-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&path);
+    std::fs::create_dir_all(&path).expect("fixture sites dir");
+    rexenv_lib::state::store::set_setting(conn, "sites_dir", &path.to_string_lossy())
+        .expect("pin the fixture sites dir");
+    FixtureSitesDir { path }
+}
+
 /// Every entry in the REAL sites folder, for the guard's before/after.
 fn real_sites_snapshot() -> Vec<String> {
     let Ok(dir) = rexenv_lib::core::sites::default_sites_dir() else { return Vec::new() };

@@ -117,15 +117,24 @@ paying for anyway: **the tick belongs in the commit that does the work.**
     developer's own Caddy no longer fails a claim that is about what FrankenPHP opened.
   **Two fixture-ownership defects came out of the same audit and are NOT gate bugs** —
   they are the invariant in `examples/common/mod.rs` being broken in the plain sense:
-  - [ ] `adminer_deeplink_check` opens a bare `db::open` fixture DB with no
-    `common::pin_sites_dir`, so `sites::provision` resolves the docroot from the HOME
-    directory and it then `remove_dir_all`s a path inside the user's REAL `~/rexenv/Sites`.
-    This is the incident that cost this project a Sites folder once already.
-  - [ ] `adminer_serve_check` writes `dbprobe.php` into the REAL Adminer docroot and
-    removes it with a bare statement at the end of `main` that six `assert!`s can unwind
-    past. Every non-dotfile `.php` there is directly executable, so a failed run leaves a
-    root-connectivity oracle live in the console's docroot. Needs a Drop guard, and a
-    dotfile name so `NGINX_DOTFILE_DENY` covers it even if it survives.
+  - [x] `adminer_deeplink_check` opened a bare `db::open` fixture DB with no pin, so
+    `sites::provision` resolved the docroot from the HOME directory and it then
+    `remove_dir_all`'d a path inside the user's REAL `~/rexenv/Sites` — the incident that
+    cost this project a Sites folder once already. ✓ 21 Aug 2026: `common::
+    pin_fixture_sites_dir` (a Drop-guarded `/private/tmp` dir pinned into the setting) and
+    **all seven examples that provision-then-delete now use it** —
+    `adminer_deeplink_check`, `blueprint_check`, `cli_wp_install_check`, `multisite_check`,
+    `multisite_wildcard_check`, `network_check`, `wp_install_stream_check`. The pin exists
+    separately from `pin_sites_dir` because these run on the REAL `Paths` deliberately (the
+    real Adminer docroot, the real certs) and cannot use the sandbox door.
+  - [x] `adminer_serve_check` wrote `dbprobe.php` into the REAL Adminer docroot and
+    removed it with a bare statement at the end of `main` that six `assert!`s could unwind
+    past. Every non-dotfile `.php` there is directly executable through the console's own
+    vhost, so a failed run left a root-connectivity endpoint outside every control the
+    wrapper installs. ✓ 21 Aug 2026: `common::FixtureFile`, a write-and-own guard whose
+    Drop removes it on the panic path too. **NOT renamed to a dotfile** — the probe is
+    fetched through nginx on purpose, and `NGINX_DOTFILE_DENY` would 404 the thing the
+    check exists to measure; the ownership is the fix, not the name.
   **What this row is really about.** The sweep was written to end a bug class and was
   verified by `verify.sh` + the sandbox tier, both of which only compile these files or
   run a seventh of them. The class it was closing (spawn-then-use) is genuinely closed;
@@ -465,10 +474,20 @@ first:
   already paid for (an example `rm -rf`'d `docroot.parent()` and took the whole Sites
   folder). It is tracked as a sub-item of the readiness-gate audit row above; this row
   stays open for the CLASS.
-  - [ ] Sweep every example that calls `sites::provision` for a missing pin, and make the
-    unpinned path impossible rather than reviewed: `provision` could refuse when
-    `sites_dir` still resolves to the home-derived default while the platform is a
-    sandbox, which is a check the fixture cannot forget to write.
+  - [ ] **The seven that DELETE are pinned (21 Aug 2026); ~17 that only WRITE are not.**
+    The remaining unpinned provisioners — `adminer_serve_check`, `health_watchdog_check`,
+    `log_tail_check`, `mail_adopt_settings_check`, `mail_route_check`,
+    `monitor_coverage_demo`, `seed_and_list`, `server_switch_serve`,
+    `service_manager_demo`, `terminal_site_check`, `tunnel_check`, `wp_info_check`,
+    `wp_login_check`, `wp_plugins_check`, `wp_premium_update_check`, `wp_themes_check`,
+    `wp_tools_check` — still add directories to the user's real `~/rexenv/Sites` on every
+    run. One line each (`common::pin_fixture_sites_dir`), left separate because pinning a
+    docroot moves what a running stack serves and each one deserves a look rather than a
+    sweep. (`sites_folder_check` is correctly excluded: pointing `sites_dir` somewhere
+    else IS its subject.)
+  - [ ] Then make the unpinned path impossible rather than reviewed: `sites::provision`
+    could refuse when `sites_dir` still resolves to the home-derived default while the
+    platform is a sandbox — a check the fixture cannot forget to write.
 
 - [ ] ❓ **Does `tunnels::stop` routinely need SIGTERM?** Observed once, 14 Aug 2026, on
   the first run of `common::adopt_public_tunnel`: cloudflared was still alive 3s after

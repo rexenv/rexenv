@@ -626,7 +626,16 @@ at THING Y ≠ X. They diverge along different axes:
     ALL output; the drop was checked on `list_sites` and re-emitted via log content.
   - the sandbox invariant (`examples/common/mod.rs`): "no example writes real app
     data" asserted of ALL 109 examples; structure covers the ~20 that call
-    `sandbox()`, and the bin cache is a real, mutable hole even there.
+    `sandbox()`, and the bin cache is a real, mutable hole even there. **21 Aug
+    2026 — the surface was wider than that sentence too.** 25 examples call
+    `sites::provision` without pinning `sites_dir`, so they write into the user's
+    own `~/rexenv/Sites`, and SEVEN of them then `remove_dir_all` a docroot
+    there. Those seven are now `common::pin_fixture_sites_dir`; the other ~17
+    still write real folders and are a row in `docs/TODO.md`. The instructive
+    part is that the hole was DOCUMENTED here as a known limit and the sentence
+    named the wrong dimension — paths versus ports — while a third dimension (a
+    setting read from `$HOME`, reachable from a sandboxed platform) went
+    unmentioned for a month.
   - the M1 read-only guard (#199): asserted of the whole read surface; originally
     scanned only `tools.rs` when the boundary is also `ReadCtx` in `readctx.rs`
     (fixed — now scans both, proven to fire on a planted violation).

@@ -75,13 +75,18 @@ async fn main() -> std::process::ExitCode {
     common::await_listening(rexenv_lib::core::services::PHP_FPM_PORT, "php-fpm 8.3", None);
 
     // A server-side probe in the Adminer docroot: same vhost/pool Adminer uses.
-    let probe = adminer::docroot(&*plat).unwrap().join("dbprobe.php");
-    std::fs::write(
-        &probe,
+    // DROP-GUARDED, because the docroot is the REAL one: six `assert!`s stand
+    // between this write and the removal that used to sit at the end of `main`,
+    // and one unwind would leave `dbprobe.php` behind. Every non-dotfile `.php`
+    // in that directory is directly executable through the console's vhost, so
+    // the leftover is a root-connectivity endpoint outside every control the
+    // wrapper installs — the same shape as the raw `adminer.php` incident this
+    // file's own history records.
+    let _probe_file = common::FixtureFile::write(
+        adminer::docroot(&*plat).unwrap().join("dbprobe.php"),
         "<?php $m=@mysqli_connect('127.0.0.1','root','','',13306); \
          echo $m ? 'RESULT='.mysqli_fetch_row(mysqli_query($m,'SELECT 6*7'))[0] : 'ERR='.mysqli_connect_error();",
-    )
-    .unwrap();
+    );
 
     let ca_cert = reqwest::Certificate::from_pem(&std::fs::read(&ca.cert_path).unwrap()).unwrap();
     let addr: SocketAddr = format!("127.0.0.1:{HTTPS}").parse().unwrap();
@@ -129,7 +134,6 @@ async fn main() -> std::process::ExitCode {
     assert!(probe_out.contains("RESULT=42"), "SELECT through the Adminer pool failed: {probe_out}");
     println!("✓ connect + SELECT 6*7 → 42 through the Adminer php-fpm pool → MySQL");
 
-    let _ = std::fs::remove_file(&probe);
     mgr.stop_all(&*plat).unwrap();
     println!("\nALL GOOD — Adminer is served through the stack, pre-filled, and reaches MySQL.");
     std::process::ExitCode::SUCCESS
