@@ -149,7 +149,8 @@ rexenv/
         │   ├── sites.rs · site_provision.rs · services.rs · database.rs · php.rs
         │   ├── wordpress.rs · wp_install.rs · repo.rs · blueprints.rs
         │   ├── valet_import.rs · db_import.rs · rewrite.rs · downloads.rs
-        │   └── mail.rs · logs.rs · terminal.rs · tunnels.rs · settings.rs
+        │   ├── mail.rs · logs.rs · terminal.rs · tunnels.rs · settings.rs
+        │   └── mcp.rs · scratch.rs      # the MCP surface + agent scratch sites
         │
         ├── core/               # domain logic (PLATFORM-AGNOSTIC — "the what");
         │   │                   #   every module has a //! doc header; index: docs/MAP.md
@@ -168,7 +169,11 @@ rexenv/
         │   ├── dbsource.rs · dbcompat.rs · dbdump.rs · dbrestore.rs · dbmirror.rs · dbimport.rs
         │   │                   # database import (Stage 2): identify → gate → dump → restore → mirror
         │   ├── confedit.rs · confverify.rs · confrewrite.rs  # connection rewrite (Stage 3)
-        │   ├── repo.rs · devtools.rs                      # add-from-Git, toolchain discovery
+        │   ├── repo.rs · devtools.rs · dist_archive.rs    # add-from-Git, toolchain, `wp dist-archive`
+        │   ├── laravel.rs · dotenv.rs                     # Laravel create/install, `.env` read+write
+        │   ├── scratch.rs · wp_mailtag.rs                 # agent scratch sites (TTL, cap, reaper) + their mail stamp
+        │   ├── updates.rs · php_upstream.rs               # signed update manifests; "a newer patch exists"
+        │   ├── wp_packages.rs · copy_scan.rs · proc.rs    # WP-CLI package pin; UI-copy guards; process ownership
         │   ├── mail.rs · adminer.rs · logs.rs · terminal.rs · monitor.rs
         │   ├── blueprints.rs · setup.rs · ports.rs · stack_guard.rs · cli.rs
         │   ├── downloads.rs    # download-manager hub (prefetch-before-lock)

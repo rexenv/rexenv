@@ -24,7 +24,8 @@ those permissions. `Settings → Remove system changes` undoes all of it.
 ## The verification gate
 
 ```bash
-scripts/verify.sh        # THE pre-commit bar: lib tests + example builds + clippy -D warnings + tsc
+scripts/verify.sh        # THE pre-commit bar: lib + cli tests, example builds, clippy -D warnings,
+                         #   tsc, and the two generated-number gates (ledger-tally, doc-counts)
 scripts/verify-full.sh   # release gate: verify + L1 sandbox tier + WebKit harness
 scripts/live-checks.sh   # tiered live checks (see the tier table inside)
 ```
