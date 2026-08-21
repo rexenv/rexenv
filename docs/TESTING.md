@@ -281,6 +281,17 @@ it can:
   17 days as an unexplained transient. The helper waits and then fails AT THE
   PRECONDITION with the port named and the service's own log spilled — the log every one
   of these examples was discarding.
+  **A connect probe cannot tell your service from the corpse of your last one — and
+  `SO_REUSEPORT` means you will not even collide with it** (21 Aug 2026). Four leaked
+  FrankenPHP backends from earlier `frankenphp_edge_serve` runs were found LISTENING on
+  the same override port at once. Caddy binds with `SO_REUSEPORT`, so each new run joined
+  them rather than failing, and the kernel then split requests across five processes, four
+  of which served deleted docroots; `ports::is_listening` connects, so every readiness
+  gate on that port passed instantly against a corpse. The example had been recorded for a
+  day as "its own edge never answers", which was the wrong subject entirely. **The rule:
+  a readiness gate proves something is THERE, never that it is YOURS** — the only defence
+  is refusing a busy port before you create anything (`common::require_ports_free`), and
+  the only reason that works is that it runs before the leak can be joined.
   **ACCEPTING is not ANSWERING, and the edge is where the difference bites** (21 Aug
   2026). `await_listening` proves the socket accepts; Caddy binds its listener before it
   has loaded certificates and routes, so a request inside that window comes back `000` and

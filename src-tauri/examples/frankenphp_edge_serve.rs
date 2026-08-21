@@ -44,6 +44,34 @@ fn fetch(domain: &str, ca_pem: &str) -> (String, String) {
 
 #[tokio::main]
 async fn main() {
+    // FIRST statement: `common::sandbox` below makes the PATHS throwaway and
+    // does NOTHING about ports, and this example's four readiness gates are all
+    // satisfiable by a listener it did not spawn.
+    //
+    // That is not theoretical here — it is this example's own open defect,
+    // diagnosed 21 Aug 2026 with the evidence in hand. FOUR leaked FrankenPHP
+    // backends from earlier runs of THIS file were found alive, every one of
+    // them LISTENING on 127.0.0.1:8200, the recorded override port, serving
+    // docroots inside sandbox roots that had been deleted. Two things made that
+    // invisible:
+    //
+    //   - Caddy (and therefore FrankenPHP) binds with SO_REUSEPORT, so a new
+    //     run's backend binds :8200 successfully BESIDE the squatters and the
+    //     kernel splits incoming connections across all of them. A run could be
+    //     answered by any of five processes, four of them serving nothing.
+    //   - `ports::is_listening` is a CONNECT probe, so `await_listening(8200)`
+    //     returned true instantly — satisfied by a corpse.
+    //
+    // Which is the whole of the "it served 200/200 twice and then never
+    // answered" mystery: the green runs were borrowed. Refuse instead, before
+    // anything is created, so a leaked previous run stops the next one loudly
+    // rather than answering for it.
+    common::require_ports_free(&[
+        (CADDY_HTTPS, "this example's edge"),
+        (CADDY_HTTP, "this example's HTTP edge"),
+        (NGINX_PORT, "the SHARED nginx — the user's running stack"),
+        (services::PHP_FPM_PORT, "a php-fpm pool"),
+    ]);
     // Sandboxed: every path the app derives (config dir, nginx PREFIX and
     // therefore nginx.pid, run/, certs) lands in a throwaway root, so this
     // example cannot touch the running stack. See examples/common.
@@ -101,6 +129,16 @@ async fn main() {
     // numbers. The example was testing an arrangement the product never
     // produces.
     let fp_port = sites::recorded_override_port(&fp).expect("fp.test has a recorded override port");
+    // The override port is only known now (it is RECORDED, not derived), so its
+    // refusal cannot ride the block at the top of `main` — but it is the port
+    // the leak actually squats, so it is the one that matters most. Nothing has
+    // been spawned yet at this point.
+    common::require_ports_free(&[(
+        fp_port,
+        "fp.test's recorded FrankenPHP backend — a leaked backend from an earlier run of \
+         this example would be bound here, and SO_REUSEPORT would let ours join it rather \
+         than fail",
+    )]);
     let fp_conf = frankenphp::write_config(&*plat, &fp.domain, Path::new(&fp.path), fp_port, RewriteMode::Single, &[]).unwrap();
     // Drop-GUARDED, all three. These were raw `Child`s, which Rust does not kill
     // on drop, so any early exit leaked them — and the readiness gates above

@@ -33,27 +33,31 @@ paying for anyway: **the tick belongs in the commit that does the work.**
 
 ## Now — actionable code/test work
 
-- [ ] **`frankenphp_edge_serve`: the edge it starts has never been PROVEN to answer.**
-  Three defects were found and fixed inside it on 20 Aug 2026 (`021fb40`, `48e5046`) and
-  are recorded in `docs/archive/SHIPPED-2026-08.md`; the fourth is the one that matters
-  and it is still open. On a genuinely clean machine its own edge binds :8443 and then
-  never answers HTTPS within 20s — yet it DID serve 200/200 twice earlier in the same
-  session, while leaked caddies from previous runs were alive. The strong hypothesis is
-  that those green runs were answered by a LEFTOVER edge, and that this example has never
-  served through the one it starts.
-  **It is a hypothesis, and the next step is to settle WHICH PROCESS ANSWERED** — not to
-  read the edge config, which is where the last attempt lost the most time. Run it with
-  the stack stopped (it is `service` tier) and, in a second shell during the answer-wait,
-  `lsof -nP -iTCP:8443 -sTCP:LISTEN`: record the pid and whether it is the caddy this run
-  spawned.
-  **Method note worth more than the bug.** The first diagnosis was wrong: FrankenPHP's log
-  showed `started 🐘` … 110ms … `SIGTERM`, which read as "something kills the backend",
-  and it sent me through `recover_stale_edge`, `ensure_free` and every terminate site for
-  nothing. Probing liveness at REQUEST time refuted it in one run (`listening=true` right
-  before the curl); the SIGTERM was teardown. A log line near a failure is a coincidence
-  until something rules the alternative out, and probing the subject at the moment of the
-  symptom beats reading code that might be innocent.
-
+- [x] **`frankenphp_edge_serve`: the edge it starts has never been PROVEN to answer —
+  DIAGNOSED AND CLOSED 21 Aug 2026, and the cause was not the edge.** Four leaked
+  FrankenPHP backends from earlier runs of this same example were found alive (started
+  22:38–22:44 the previous evening), **every one of them LISTENING on 127.0.0.1:8200** —
+  the recorded override port — serving docroots inside sandbox roots that had already
+  been deleted. Two facts made that invisible, and they are the reusable part:
+  - **Caddy binds with `SO_REUSEPORT`**, so a new run's backend binds :8200 *successfully
+    beside* the squatters and the kernel splits incoming connections across all of them.
+    A run could be answered by any of five processes, four of them serving nothing. That
+    is the whole of "it served 200/200 twice and then never answered": the green runs were
+    borrowed, and so were the red ones.
+  - **`ports::is_listening` is a CONNECT probe**, so `await_listening(8200)` returned true
+    instantly, satisfied by a corpse. A readiness gate cannot tell your service from the
+    remains of your last one.
+  ✓ **Fixed by refusing, not by diagnosing**: `common::require_ports_free` now runs as the
+  first statement (edge, HTTP edge, shared nginx, pool) and again for the RECORDED
+  override port once it is known — before anything is spawned — so a leaked previous run
+  stops the next one loudly instead of answering for it.
+  ✓ **Proven by running it**: with the four corpses reaped, `live-checks.sh service` came
+  back **all green**, 22 examples, this one included — `ng.test` 200 (PHP 8.3.31) and
+  `fp.test` 200 (PHP 8.5.8) through the edge it started — and **zero processes and zero
+  held ports survived the run**, which is the `OwnedService` half of the sweep-defect work
+  proven at runtime rather than by reading.
+  The three earlier defects (derived-vs-recorded port, accept-vs-answer, raw `Child`s) are
+  in `docs/archive/SHIPPED-2026-08.md`.
 - [x] **The readiness-gate sweep's OWN defects — 22 confirmed, all seven families fixed
   21 Aug 2026.** The sweep itself is done (`be3c88d` + `2f564bb`, archived); this row is
   what an adversarial audit of it found afterwards, one verifier per finding, 44 further
