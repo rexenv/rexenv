@@ -545,10 +545,32 @@ visible before the verdict contract landed this morning.
 Open work that was living inside `[x]` blocks. It is here because the archive is not a
 place to keep unfinished things.
 
-- [ ] **The WCAG token sweep has no L2 render check.** The app's look changed in ~40
-  files (135 consumers moved to `text-muted`, two tokens deleted, one accent darkened)
-  and nothing but an eye has confirmed the result. Worth a pass on the packaged app, or a
-  wk-check that samples a dense screen.
+- [x] **The WCAG token sweep has no L2 render check** ✓ 21 Aug 2026 —
+  `scripts/wk-checks/contrast.js`, in `run-all`. It measures the contrast a user SEES:
+  computed colour over the nearest ancestor that actually paints, alpha composited, with
+  AA's size threshold read off the rendered font (4.5:1, or 3:1 only at 24px / 18.66px
+  bold). 822 text elements across six routes × both themes. Icons are skipped
+  STRUCTURALLY (an element with no text node of its own), which is the lesson from the
+  sweep whose name-keyed exemptions a plant walked straight through.
+  **It found six failing pairs on its first run, and every one is a pair L0 cannot see** —
+  `every_text_on_surface_pairing_meets_wcag_aa` computes text tokens against SURFACE
+  tokens, and none of these is text-on-surface:
+  - [ ] **`--rex-placeholder` on the Sites list column headers — 2.11:1 light, 2.61:1
+    dark.** The worst on screen by a distance, and the likeliest to be a mistake rather
+    than a trade: the token is documented as "unbuilt-screen placeholder icon/label" and
+    is doing duty as real UI text. The spans carry no colour class of their own, so the
+    colour is inherited — invisible to any class-pair scan.
+  - [ ] **White on `--rex-brand` — 4.35:1.** The PRIMARY button (New site, Magic Login,
+    Add blueprint) and the mail count badge; plus brand-as-text on surface-2 at 4.12:1.
+    Fixing it moves the brand colour, which is a design decision and explicitly not a
+    check's to make.
+  - [ ] **`--rex-accent-blue` 4.37:1 and `--rex-accent-red` 4.48:1 on the letter TILES.**
+    Both tokens were darkened on 16 Aug for exactly this reason — but computed against
+    surface-3, and a tile is a tinted background nobody computed.
+  Recorded as a ratchet rather than fixed, the same lifecycle the 16 Aug sweep used: the
+  list may only SHRINK, and a recorded pair that starts passing FAILS the check so the
+  repayment cannot go unnoticed. Plant-proven both ways — a new low-contrast pair fails,
+  and a recorded pair that no longer renders fails.
 - [ ] **An override site has never served through a REAL tunnel end to end.**
   `tunnels::origin_port` resolves the recorded override port and the L0 proof is
   plant-proven; SMOKE §Public sharing gained the step, and a network-tier leg would need
