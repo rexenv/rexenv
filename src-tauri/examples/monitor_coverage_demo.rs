@@ -22,6 +22,12 @@ mod common;
 async fn main() -> std::process::ExitCode {
     let plat = platform::current();
     let (conn, _dbf) = common::fixture_db("monitor_coverage_demo");
+    // Fixture-owned docroot. `sites::provision` reads the `sites_dir` SETTING,
+    // which falls back to a path derived from $HOME — so without this the site
+    // lands in the user's real ~/rexenv/Sites and SURVIVES into the next run.
+    // That is not untidy, it is the bug: two checks failed on their own
+    // leftovers on 21 Aug 2026 (`wp_tools_check`, `wp_themes_check`).
+    let _sites_dir = common::pin_fixture_sites_dir(&conn, "moncov");
     let ca = ssl::load_or_create(plat.paths(), plat.permissions()).expect("ca");
 
     for (name, domain, server) in [

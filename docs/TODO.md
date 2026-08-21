@@ -622,11 +622,20 @@ first:
   already paid for (an example `rm -rf`'d `docroot.parent()` and took the whole Sites
   folder). It is tracked as a sub-item of the readiness-gate audit row above; this row
   stays open for the CLASS.
-  - [ ] **The seven that DELETE are pinned, plus two more the tier proved (21 Aug 2026);
-    ~15 that only WRITE are not.** `wp_tools_check` and `wp_themes_check` were pinned
-    because unpinned docroots turned out not to be merely untidy: they SURVIVE into the
-    next run and make a check fail on its own leftovers. That is the argument this row was
-    missing when the sweep was deferred.**
+  - [x] **The sweep is DONE — 23 examples pinned** ✓ 21 Aug 2026. Seven that DELETE
+    (first pass), two the tier convicted (`wp_tools_check`, `wp_themes_check`), and the
+    remaining fourteen that only WRITE. The argument the deferral was missing arrived from
+    the tier: an unpinned docroot is not untidy, it SURVIVES into the next run and makes a
+    check fail on its own leftovers — which is what both of that day's fixture bugs were.
+  - [x] **And the sweep found a trap one command before someone fell into it** ✓
+    `seed_and_list` opens the REAL app database (`db::open_for_platform`), so pinning
+    `sites_dir` there would have rewritten the USER'S setting and repointed their Sites
+    folder — every site they own reading as missing. It is excluded, and the helper now
+    REFUSES: `pin_fixture_sites_dir` and `pin_sites_dir` compare `Connection::path()`
+    against the real app database and exit with what to open instead. The difference
+    between the safe call and the catastrophic one is one earlier line choosing
+    `db::open(temp)` over `db::open_for_platform(real)`, which is not a difference review
+    reliably sees — so it is a fact the code checks, not a convention.
     The remaining unpinned provisioners — `adminer_serve_check`, `health_watchdog_check`,
     `log_tail_check`, `mail_adopt_settings_check`, `mail_route_check`,
     `monitor_coverage_demo`, `seed_and_list`, `server_switch_serve`,

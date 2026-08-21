@@ -168,6 +168,42 @@ async fn main() -> ExitCode {
                         .and_then(|v| v.parse().ok())
                         .filter(|l| *l > 0);
                 }
+                // A 5xx is the HOST having a moment, not evidence about the PIN,
+                // and this sweep asks 88 URLs in a burst. Measured 21 Aug 2026:
+                // three postgres targets came back `504 Gateway Timeout` in one
+                // run and all three answered 200 on a re-check minutes later.
+                // Retry those; a 404 still fails on the first answer, because a
+                // 404 IS evidence about the pin.
+                Ok(resp) if resp.status().is_server_error() => {
+                    let mut last = resp.status();
+                    let mut recovered = false;
+                    for wait in [2u64, 5] {
+                        tokio::time::sleep(std::time::Duration::from_secs(wait)).await;
+                        match auth(client.get(&t.url)).header("Range", "bytes=0-0").send().await {
+                            Ok(r) if r.status().is_success() => {
+                                status = Some(r.status());
+                                len = r
+                                    .headers()
+                                    .get("content-range")
+                                    .and_then(|v| v.to_str().ok())
+                                    .and_then(|v| v.rsplit('/').next())
+                                    .and_then(|v| v.parse().ok())
+                                    .filter(|l| *l > 0);
+                                recovered = true;
+                                break;
+                            }
+                            Ok(r) => last = r.status(),
+                            Err(_) => {}
+                        }
+                    }
+                    if !recovered && status.is_none() {
+                        failures.push(format!(
+                            "{} → HTTP {last} after 3 attempts (server-side; this does NOT \
+                             disprove the pin — re-check the host before re-pinning)",
+                            t.label
+                        ));
+                    }
+                }
                 Ok(resp) if status.is_none() => {
                     failures.push(format!("{} → HTTP {}", t.label, resp.status()))
                 }

@@ -173,6 +173,7 @@ pub fn sandbox_db(platform: &dyn Platform) -> rusqlite::Connection {
 /// eleven are what it had not happened to catch yet, because catching them
 /// required someone to run them.
 pub fn pin_sites_dir(conn: &rusqlite::Connection, platform: &dyn Platform) {
+    refuse_on_the_real_app_db(conn, "pin_sites_dir");
     let sites = platform
         .paths()
         .app_data_dir()
@@ -313,7 +314,43 @@ impl Drop for FixtureSitesDir {
 ///
 /// `/private/tmp` for the same reason [`sandbox`] uses it — it keeps derived
 /// paths short — and pid-scoped so two runs never share a docroot.
+/// Refuse to write a setting into the REAL app database.
+///
+/// Added 21 Aug 2026, one command before making the mistake it prevents. Pinning
+/// `sites_dir` is exactly right on a fixture database and catastrophic on the
+/// real one: it REPOINTS THE USER'S SITES FOLDER, so every site they own reads
+/// as missing and the next launch's sweep looks at an empty directory. The
+/// difference between the two calls is one earlier line choosing
+/// `db::open(temp)` over `db::open_for_platform(real)`, which is not a
+/// difference review reliably sees.
+///
+/// `Connection::path()` knows which file it opened, so the check is a fact
+/// rather than a convention.
+fn refuse_on_the_real_app_db(conn: &rusqlite::Connection, what: &str) {
+    let Some(open_path) = conn.path() else { return };
+    let real = rexenv_lib::platform::current()
+        .paths()
+        .app_data_dir()
+        .map(|d| d.join(rexenv_lib::state::db::DB_FILE));
+    let Ok(real) = real else { return };
+    if std::path::Path::new(open_path) == real {
+        eprintln!(
+            "\n✗ REFUSING — {what} was handed the REAL app database.\n  {}\n  \
+             Pinning a setting there rewrites the USER'S configuration: `sites_dir` \
+             would repoint their Sites folder and every site they own would read as \
+             missing.\n  Open a fixture database instead — `common::fixture_db`, \
+             `common::sandbox_db`, or a temp path.\n",
+            real.display()
+        );
+        // Same refusal shape as `require_ports_free`: there is nothing sensible to
+        // do with this failure, and a caller that could ignore it is exactly what
+        // this exists to prevent.
+        std::process::exit(1);
+    }
+}
+
 pub fn pin_fixture_sites_dir(conn: &rusqlite::Connection, tag: &str) -> FixtureSitesDir {
+    refuse_on_the_real_app_db(conn, "pin_fixture_sites_dir");
     let path = PathBuf::from("/private/tmp")
         .join(format!("rexenv-sites-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&path);

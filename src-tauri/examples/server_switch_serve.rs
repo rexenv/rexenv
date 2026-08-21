@@ -45,6 +45,12 @@ async fn main() -> std::process::ExitCode {
     let db_path = std::env::temp_dir().join("rexenv-4_1.db");
     let _ = std::fs::remove_file(&db_path);
     let conn = db::open(&db_path).expect("db");
+    // Fixture-owned docroot. `sites::provision` reads the `sites_dir` SETTING,
+    // which falls back to a path derived from $HOME — so without this the site
+    // lands in the user's real ~/rexenv/Sites and SURVIVES into the next run.
+    // That is not untidy, it is the bug: two checks failed on their own
+    // leftovers on 21 Aug 2026 (`wp_tools_check`, `wp_themes_check`).
+    let _sites_dir = common::pin_fixture_sites_dir(&conn, "swserve");
     let ca = ssl::load_or_create(plat.paths(), plat.permissions()).expect("ca");
     let ca_pem = ca.cert_path.display().to_string();
 

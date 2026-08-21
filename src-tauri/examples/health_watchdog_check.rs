@@ -12,6 +12,8 @@ use rexenv_lib::state::db;
 use rexenv_lib::state::models::{NewSite, SiteType, WebServer};
 use std::time::Duration;
 
+mod common;
+
 fn kill(pid: u32, name: &str) {
     let ok = std::process::Command::new("kill")
         .args(["-9", &pid.to_string()])
@@ -31,6 +33,12 @@ async fn main() {
         let _ = std::fs::remove_file(&p);
         db::open(&p).unwrap()
     };
+    // Fixture-owned docroot. `sites::provision` reads the `sites_dir` SETTING,
+    // which falls back to a path derived from $HOME — so without this the site
+    // lands in the user's real ~/rexenv/Sites and SURVIVES into the next run.
+    // That is not untidy, it is the bug: two checks failed on their own
+    // leftovers on 21 Aug 2026 (`wp_tools_check`, `wp_themes_check`).
+    let _sites_dir = common::pin_fixture_sites_dir(&conn, "healthchk");
     let ca = ssl::load_or_create(plat.paths(), plat.permissions()).unwrap();
     sites::provision(
         &conn,
