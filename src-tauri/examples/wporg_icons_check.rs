@@ -90,15 +90,40 @@ async fn main() {
     // The derived URL must be a real image, not a plausible string. A letter
     // tile beats a broken <img>, so this is the assertion that would catch a
     // counterpart slug that resolves in the API but has no asset behind it.
-    let resp = reqwest::Client::builder()
+    // Retried, because the SUBJECT is "this derived URL is a real image" and the
+    // INSTRUMENT is a third-party CDN this very check has just asked for a dozen
+    // icons. On 21 Aug 2026 the network tier failed here on `403 Forbidden` and
+    // the same URL returned 200 seconds later, from the same machine, with and
+    // without a User-Agent — ps.w.org throttling a burst, not a broken
+    // derivation. A single-shot assertion against someone else's rate limiter
+    // measures the limiter.
+    //
+    // Three attempts, not "until it works": if the URL is genuinely wrong this
+    // still fails, and it says how many times it asked so the next reader can
+    // tell a dead link from a throttle.
+    let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .build()
-        .unwrap()
-        .get(&premium)
-        .send()
-        .await
-        .unwrap_or_else(|e| panic!("derived icon {premium} is not fetchable: {e}"));
-    assert!(resp.status().is_success(), "derived icon {premium} → HTTP {}", resp.status());
+        .unwrap();
+    let mut attempts = 0;
+    let resp = loop {
+        attempts += 1;
+        let r = client
+            .get(&premium)
+            .send()
+            .await
+            .unwrap_or_else(|e| panic!("derived icon {premium} is not fetchable: {e}"));
+        if r.status().is_success() || attempts == 3 {
+            break r;
+        }
+        println!("  attempt {attempts}: HTTP {} — retrying in 3s", r.status());
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    };
+    assert!(
+        resp.status().is_success(),
+        "derived icon {premium} → HTTP {} after {attempts} attempts",
+        resp.status()
+    );
     let ctype = resp
         .headers()
         .get(reqwest::header::CONTENT_TYPE)

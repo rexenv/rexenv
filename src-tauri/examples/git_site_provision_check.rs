@@ -88,7 +88,7 @@ fn entries(dir: &Path) -> Vec<String> {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> std::process::ExitCode {
     let plat = rexenv_lib::platform::current();
     let pid = std::process::id();
 
@@ -106,6 +106,27 @@ async fn main() {
     app.manage(site_provision::ProvisionJobs::default());
     app.manage(AppState::new(conn, plat, ca));
     let handle = app.handle().clone();
+
+    // Was the engine already up? The answer decides whether stopping it at the
+    // end is tidy-up or vandalism, and it has to be read BEFORE anything runs.
+    //
+    // Found the hard way on 21 Aug 2026: with the stack down — which is what the
+    // network tier documents — provisioning STARTS MySQL through the app's own
+    // path, this example adopted it, asserted its four cases, printed ALL PASS,
+    // and exited leaving mysqld on :13306 against the REAL datadir. Thirteen
+    // later examples in the same tier run then failed, every one of them naming
+    // the port rather than the cause: `start_all failed: port 13306 is still
+    // held by a leftover rexenv process`. One green run, thirteen red ones, and
+    // the green one was the culprit.
+    //
+    // Adoption is deliberately not ownership — an adopted pid is nobody's child,
+    // so no `Drop` reaches it (services outlive the app, by design). That is
+    // correct for the product and is exactly why the example has to say what it
+    // caused.
+    let mysql_was_running = database::mysql_running(database::MYSQL_PORT);
+    if mysql_was_running {
+        println!("MySQL was ALREADY running — leaving it up at the end\n");
+    }
 
     // DB tier ONLY — see the module doc. Never the edge.
     {
@@ -440,13 +461,26 @@ async fn main() {
     }
     let _ = std::fs::remove_file(&db_file);
 
+    // Leave the machine as it was found. Only when THIS run is what started it:
+    // stopping an engine the developer had up would be the same defect pointing
+    // the other way.
+    if !mysql_was_running && database::mysql_running(database::MYSQL_PORT) {
+        let state = handle.state::<AppState>();
+        let mut mgr = state.services.lock().await;
+        match mgr.stop_db(state.platform.as_ref(), rexenv_lib::core::db::DbEngine::Mysql) {
+            Ok(()) => println!("stopped the MySQL this run started (it was down before)"),
+            Err(e) => println!("could not stop the MySQL this run started: {e}"),
+        }
+    }
+
     println!();
     if failures.is_empty() {
         println!("git_site_provision_check: ALL PASS");
+        std::process::ExitCode::SUCCESS
     } else {
         for f in &failures {
             println!("FAIL: {f}");
         }
-        std::process::exit(1);
+        std::process::ExitCode::FAILURE
     }
 }

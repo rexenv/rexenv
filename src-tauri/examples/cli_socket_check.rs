@@ -32,6 +32,21 @@ fn ask(path: &std::path::Path, line: &str) -> Value {
 async fn main() {
     let platform = rexenv_lib::platform::current();
     let conn = rexenv_lib::state::db::open_for_platform(platform.paths()).expect("open app db");
+    // Do what LAUNCH does one line later: rehydrate the verified update catalog
+    // from the app database. `binaries::resolve` consults the compiled-in pins
+    // FIRST and the catalog second, so without this an interpreter the user
+    // installed through Settings → PHP → Update does not resolve at all, and the
+    // failure names an internal: `no binary manifest for php 8.3.32`.
+    //
+    // Found 21 Aug 2026 by running the network tier on a machine that had taken
+    // the update: `repo.check --install` resolves the patch the site's POOL runs
+    // (`php::patch_to_run`), which after an update is 8.3.32, while this process
+    // only knew the pinned 8.3.31. It is a FIXTURE defect, not a product one —
+    // the app calls `updates::install_cached` at launch precisely so a selected
+    // patch resolves offline — but it is the fixture-unlike-production shape that
+    // breaks only on the machine of whoever uses the feature, which is the
+    // maintainer's, which is the worst place for a check to be wrong.
+    rexenv_lib::core::updates::install_cached(&conn);
     let ca = rexenv_lib::core::ssl::load_or_create(platform.paths(), platform.permissions())
         .expect("load CA");
     let sites = rexenv_lib::core::sites::list(&conn).unwrap_or_default();

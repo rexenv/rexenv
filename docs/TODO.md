@@ -461,6 +461,46 @@ cause: a commit did the work and the surrounding claim stayed as it was.
   the same symptom (every WordPress screen dead on the affected site), held open with no
   row anywhere.
 
+### The network tier, run 21 Aug 2026 — 14 failures, three causes
+
+First network-tier run in a long while (`live-checks.sh network`, 42 examples, stack
+down, internet up). It failed 14, and every one is explained. Kept as a row because the
+CAUSES are the point: not one of them was a product defect, and not one of them was
+visible before the verdict contract landed this morning.
+
+- [x] **Twelve were one leak, cascading** ✓ fixed. `git_site_provision_check` drives the
+  REAL provision flow, which starts MySQL through the app's own path; the example adopts
+  the engine (`adopt_dbs`) and adoption is deliberately not ownership, so no `Drop`
+  reaches it. It printed ALL PASS and exited leaving `mysqld` on :13306 against the REAL
+  datadir. Every later MySQL-needing example then failed naming the PORT rather than the
+  cause — `start_all failed: port 13306 is still held by a leftover rexenv process`.
+  **One green run, twelve red ones, and the green one was the culprit.** It now reads
+  whether MySQL was up BEFORE and stops only an engine this run started; stopping one the
+  developer had running would be the same defect pointing the other way.
+  **This is also the first time that cascade could be SEEN.** Before today's verdict-
+  contract fix those twelve examples printed `start_all failed:` and exited 0, and the
+  tier said `all green`.
+- [x] **One was a fixture that did not look like production** ✓ fixed.
+  `repo_run_all_check` died on `no binary manifest for php 8.3.32` — the patch this
+  machine's 8.3 runs after an in-app update. `binaries::resolve` consults the compiled-in
+  pins first and the VERIFIED CATALOG second, and the app rehydrates that catalog from the
+  database at launch (`updates::install_cached`) precisely so an updated patch resolves
+  offline. The examples never did, so they only knew 8.3.31. Four examples that open the
+  real app database and drive real commands now do what launch does
+  (`repo_run_all_check`, `cli_repo_check`, `cli_socket_check`, `mcp_socket_check`); it
+  passes ALL PASS. The shape worth remembering: this broke ONLY on a machine that had used
+  a shipped feature — the maintainer's — which is the worst place for a check to be wrong.
+- [x] **One was a genuine transient, and is now measured as one** ✓ `wporg_icons_check`
+  failed on `403 Forbidden` fetching a derived icon from ps.w.org; the same URL returned
+  200 seconds later, with and without a User-Agent. It is a CDN throttling a burst the
+  check itself created. The assertion retries three times before failing and says how many
+  attempts it made, so a dead link still fails and a throttle no longer does. Logged
+  against the live-check transients row as the fourth captured instance — this one with a
+  named mechanism rather than a shrug.
+- [ ] **Re-run the tier to confirm.** Everything above is fixed and each was re-run
+  standalone green, but the TIER has not been green end to end since. That run is the
+  evidence, and it is the last thing owed on this thread.
+
 ### Promoted out of ticked rows (21 Aug 2026)
 
 Open work that was living inside `[x]` blocks. It is here because the archive is not a
