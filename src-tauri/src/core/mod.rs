@@ -14,6 +14,10 @@ pub mod confedit;
 /// two guards independently shipped the same defect before it was extracted).
 #[cfg(test)]
 pub(crate) mod copy_scan;
+/// Test-only: the WordPress LAYOUT fixture matrix (docs/TESTING.md §3.3) — the
+/// named mechanism for the path-assumption-a-layout-invalidates class.
+#[cfg(test)]
+pub(crate) mod layouts;
 pub mod confrewrite;
 pub mod confverify;
 pub mod database;

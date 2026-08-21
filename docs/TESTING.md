@@ -554,11 +554,24 @@ Per recurring class: the honest mechanism — lint, test helper, or documented a
 
 ### 3.3 Path assumption a layout invalidates (Bedrock class)
 
-- **Test helper: a layout fixture matrix.** `layouts()` in test-support + examples
-  common: stock, Bedrock (`web/` + `app/`), subdir-docroot (`public/`), each a small
-  on-disk skeleton. Any path-building fn gets matrix-parameterized tests; one L1
-  example provisions a real Bedrock-shaped site (today only a unit test covers it).
-- The class is fully testable once the matrix exists — no audit needed, but adding a
+- **Test helper: a layout fixture matrix.** ✓ BUILT 21 Aug 2026 —
+  `core::layouts` (`#[cfg(test)]`, the same shape as `core::copy_scan`):
+  `layouts(tag)` returns stock, Bedrock (`web/wp` + `web/app` + `config/`) and
+  subdir-docroot (`public/`) as REAL on-disk skeletons, because a function that asks the
+  filesystem cannot be tested with a string. Each row carries what the layout MEANS
+  (`core_root`, `content_rel`, `config_readable`), so a test asserts against the row
+  rather than restating the expectation. Parameterized today: `wordpress::core_root` +
+  `core_path_arg`, and `logs::wp_debug_log_status`'s `indeterminate` verdict. **The L1
+  half already exists** — `git_site_provision_check` case 4 provisions a real
+  Bedrock-shaped site and lands 12 tables (ledger #294).
+  **Plant-proven, and its own canary fired first.** Reverting `core_root` to its
+  pre-#294 body fails the matrix naming `bedrock`. And the landmark canary
+  (`every_layout_row_is_a_real_tree_that_matches_what_it_claims`) caught a defect in the
+  FIXTURE on the first run: every row held a cleanup guard over the same root, and `for l
+  in layouts(..)` consumed the vec, so dropping row 1 deleted the tree row 2 was about to
+  read. Without the canary that would have read as a bug in `core_root` — which is the
+  argument for a canary in one incident.
+- The class is fully testable now that the matrix exists — no audit needed, but adding a
   NEW supported layout must add a matrix row (review checklist).
 
 ### 3.4 Assumed tool behavior (the mysqldump class)

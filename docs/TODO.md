@@ -448,12 +448,16 @@ cause: a commit did the work and the surrounding claim stayed as it was.
   hazard this repo has already hit — a stale `rex` against a newer app produced the
   "unknown command … newer than the running app" confusion. None of the five is recorded
   here.
-- [ ] **`docs/TESTING.md` §3.3's layout-fixture matrix was designed and never built.**
-  `layouts()` appears in no source file. It is the named mechanism for the Bedrock bug
-  class — a path assumption a layout invalidates — which has produced the unlink-delete
-  guard defeat, the `wp core install --path` bug (#299) and the content-dir rule (v24).
-  §3.3 says "the class is fully testable once the matrix exists"; until it does, that
-  sentence is a plan, not coverage, and it reads as coverage.
+- [x] **`docs/TESTING.md` §3.3's layout-fixture matrix was designed and never built** ✓
+  21 Aug 2026 — `core::layouts`, three real on-disk skeletons (stock, Bedrock,
+  subdir-docroot), with `wordpress::core_root` / `core_path_arg` and
+  `logs::wp_debug_log_status` parameterized over them. Plant-proven: reverting `core_root`
+  to its pre-#294 body fails the matrix and names `bedrock`.
+  **Its canary fired on the first run, against the fixture itself** — every row held a
+  cleanup guard over the same root and `for l in layouts(..)` consumes the vec, so
+  dropping row 1 deleted the tree row 2 was about to read. That surfaced as "core_root
+  pointed at the wrong directory", i.e. it would have been read as a bug in the code under
+  test. One guard for the whole matrix now, and the incident is in the module doc.
 - [ ] **One stdout surface stays uncovered and only ARCHITECTURE says so.**
   `docs/ARCHITECTURE.md:773-775` records that #316's marker cut and #317's
   `display_errors=stderr` close the tail and the head of the wp-cli noise problem, and
