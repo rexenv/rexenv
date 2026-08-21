@@ -235,7 +235,7 @@ paying for anyway: **the tick belongs in the commit that does the work.**
   would drop the app floor from 15 to 14** (MySQL's floor). Same
   `rexenv/runtimes` path that built PHP 7.4; recorded like the c-ares ruling -
   known, waiting for a reason (e.g. macOS-14 users actually asking).
-- [ ] **PHP 7.4 — the two residuals of a shipped feature** (`docs/PLAN-php-74-support.md`;
+- [ ] **PHP 7.4 — the five residuals of a shipped feature** (`docs/PLAN-php-74-support.md`;
   the stage log is in `docs/archive/SHIPPED-2026-08.md`). Kept as open rows because they
   were living inside a ticked block, which is where open work goes to be forgotten.
   - [ ] **`rexenv/runtimes`' release notes for `php-7.4.33-6` describe `-4`.** Two
@@ -253,23 +253,6 @@ paying for anyway: **the tick belongs in the commit that does the work.**
     on 7.4 is therefore lower than on the 8.x rows. Worth revisiting ONLY if
     someone builds 7.4 against a newer external PCRE2; not worth it for an EOL
     version nobody runs for speed.
-  - [ ] **The upstream source commit is recorded nowhere in rexenv.** PLAN §11 names the
-    risk in its own words — "the backports branch is one volunteer's rebased branch… if it
-    stops, the artifact quietly becomes a frozen, known-vulnerable PHP" — and prescribes
-    the mitigation: record the exact `shivammathur/php-src-backports` commit in the pin
-    comment, the way `core/binaries.rs` already does for FrankenPHP. The pin comment
-    (`binaries.rs:715-731`) does not carry it, so nothing in this tree can answer "which
-    7.4 is this?" without leaving it.
-  - [ ] **The x86_64 half is on a clock: GitHub's x86_64 runners end August 2027.** PLAN
-    §4.5/§11 says to land the cross-compile path before then, and notes that a cross-built
-    artifact can never run a native smoke test. Nothing in this file mentioned 2027 until
-    this reconcile.
-  - [ ] **Xdebug is silently unavailable on 7.4, and unlike 8.0 it is not blocked by
-    anything.** `xdebug_bottle` has rows for 8.1–8.5 only, so `xdebug_supported("7.4")`
-    is false through the SAME `None` that means "8.0 physically cannot dlopen" — the
-    exact conflation `binaries.rs:126-133` warns about. Decide which it is for 7.4 (a
-    bottle that exists and is not pinned, or a genuine absence) and say so where the user
-    reads it.
   - [ ] **The upstream source commit is recorded nowhere in rexenv.** PLAN §11 names the
     risk in its own words — "the backports branch is one volunteer's rebased branch… if it
     stops, the artifact quietly becomes a frozen, known-vulnerable PHP" — and prescribes
