@@ -31,6 +31,11 @@ async fn main() {
         let _ = std::fs::remove_file(&p);
         db::open(&p).unwrap()
     };
+    // Fixture-owned docroot. The fixture DATABASE was already dropped per run
+    // (below) but the docroot was not, so a previous run's wp-content survived
+    // into a fresh install — which is why "the theme we just installed" came
+    // back ACTIVE instead of inactive on 21 Aug 2026. Half a fixture is not one.
+    let _sites_dir = common::pin_fixture_sites_dir(&conn, "wpthemes");
     let ca = ssl::load_or_create(plat.paths(), plat.permissions()).unwrap();
     let php = binaries::resolve(&*plat, "php", binaries::PHP_VERSION).await.unwrap();
     let wp = binaries::resolve_file(&*plat, "wp-cli", binaries::WP_CLI_VERSION).await.unwrap();

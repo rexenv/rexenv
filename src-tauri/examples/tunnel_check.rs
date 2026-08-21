@@ -115,6 +115,34 @@ async fn main() -> std::process::ExitCode {
         }
         tokio::time::sleep(Duration::from_secs(2)).await;
     }
+    if !served {
+        // Before blaming the tunnel: ask WHOSE resolver is failing. Measured
+        // 21 Aug 2026 — 30 attempts of `error sending request`, and then, while
+        // the same URL was still live: the system resolver returned NOTHING for
+        // the host (`curl` reported `dns=0.000000s`, an instant negative-cache
+        // hit) while `dig @1.1.1.1` answered `104.16.231.132`. The tunnel was up
+        // the whole time; this machine's network could not see it.
+        //
+        // `docs/TODO.md` already carries that as a known baseline ("a fresh
+        // tunnel URL can be dead on THIS machine while live from a second
+        // device — the router race"). What it did not have was a run that SAYS
+        // so: the bare assertion read as "the product did not serve", which is
+        // the wrong subject and the expensive kind of wrong.
+        let host = url.trim_start_matches("https://").trim_end_matches('/');
+        let locally_resolvable =
+            std::net::ToSocketAddrs::to_socket_addrs(&(host, 443)).is_ok();
+        if !locally_resolvable {
+            eprintln!(
+                "\n✗ THIS MACHINE CANNOT RESOLVE THE TUNNEL HOST — the router race, not a \
+                 product failure.\n  {host} does not resolve through the system resolver. On a \
+                 network that negative-caches DNS a brand-new trycloudflare hostname stays dead \
+                 here while it is live everywhere else.\n  Confirm in one line:  \
+                 dig +short {host}   vs   dig +short @1.1.1.1 {host}\n  If the second answers and \
+                 the first does not, this run proved nothing about rexenv (docs/TODO.md, known \
+                 baselines).\n"
+            );
+        }
+    }
     assert!(served, "public URL did not serve the local site");
     println!("✓ public URL serves the LOCAL site (phpinfo) from outside");
 

@@ -11,7 +11,6 @@ use rexenv_lib::core::{binaries, database, sites, ssl, wordpress};
 use rexenv_lib::platform;
 use rexenv_lib::state::db;
 use rexenv_lib::state::models::{NewSite, SiteType, WebServer};
-use std::time::Duration;
 
 mod common;
 
@@ -32,6 +31,11 @@ async fn main() {
         let _ = std::fs::remove_file(&p);
         db::open(&p).unwrap()
     };
+    // Fixture-owned docroot. Without the pin `sites::provision` reads the
+    // `sites_dir` SETTING, which falls back to the home directory, so every run
+    // left `wptools.test` in the user's real ~/rexenv/Sites — and the NEXT run
+    // inherited it.
+    let _sites_dir = common::pin_fixture_sites_dir(&conn, "wptools");
     let ca = ssl::load_or_create(plat.paths(), plat.permissions()).unwrap();
     let php = binaries::resolve(&*plat, "php", binaries::PHP_VERSION).await.unwrap();
     let wp = binaries::resolve_file(&*plat, "wp-cli", binaries::WP_CLI_VERSION).await.unwrap();
@@ -45,14 +49,33 @@ async fn main() {
     let socket = database::socket_path(&*plat).unwrap();
     std::fs::create_dir_all(socket.parent().unwrap()).unwrap();
     database::initialize(&*plat, &mysql_base, &datadir).unwrap();
-    let mut mysqld =
-        database::start(&*plat, &mysql_base, &datadir, database::MYSQL_PORT, &socket).unwrap();
-    for _ in 0..30 {
-        if database::mysql_running(database::MYSQL_PORT) {
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(500));
-    }
+    // Drop-GUARDED: the assertions below panic, and a raw `Child` survives an
+    // unwind — which is how a failing run left mysqld on :13306 and took nine
+    // later examples down with it (21 Aug 2026).
+    let mut mysqld = common::OwnedService::new(
+        database::start(&*plat, &mysql_base, &datadir, database::MYSQL_PORT, &socket).unwrap(),
+        "mysqld",
+    );
+    common::await_ready("mysqld (accepting queries)", None, || {
+        database::mysql_running(database::MYSQL_PORT)
+    });
+
+    // Start from a database this run owns. `search-replace` below REWRITES the
+    // site's rows (`wptools.test` → `changed.test`) and the previous run left
+    // them rewritten, so run N+1 opened a site whose siteurl was already
+    // `https://changed.test`, found nothing to replace, and failed on
+    // "dry-run found no rows to change" — after which it could never pass again
+    // without someone dropping the database by hand. A check that poisons its
+    // own next run is worse than one that fails, because the second failure
+    // looks like a different bug.
+    //
+    // Guarded rather than trusted, exactly as `wp_themes_check` guards its own:
+    // the name is DERIVED, and a future rename of the fixture domain must not
+    // turn this into a DROP of something a person owns (the July incident where
+    // an example's derived path took out the whole Sites folder).
+    let db_name = wordpress::db_name_for(SiteType::Wordpress, domain);
+    assert_eq!(db_name, "wp_wptools_test", "the fixture database name drifted — refusing to drop");
+    database::drop_database(&db_client, database::MYSQL_PORT, &db_name).expect("drop fixture db");
 
     let site = sites::provision(
         &conn,
@@ -117,7 +140,6 @@ async fn main() {
     wordpress::rewrite_flush(&php, &wp, &docroot).expect("rewrite flush");
     println!("✓ rewrite flush ran");
 
-    let _ = database::stop(&*plat, mysqld.id());
-    let _ = mysqld.wait();
+    mysqld.stop();
     println!("\nALL GOOD — WP_DEBUG toggle, search-replace (dry vs real), and permalink flush work.");
 }

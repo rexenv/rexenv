@@ -512,9 +512,33 @@ visible before the verdict contract landed this morning.
   attempts it made, so a dead link still fails and a throttle no longer does. Logged
   against the live-check transients row as the fourth captured instance — this one with a
   named mechanism rather than a shrug.
-- [ ] **Re-run the tier to confirm.** Everything above is fixed and each was re-run
-  standalone green, but the TIER has not been green end to end since. That run is the
-  evidence, and it is the last thing owed on this thread.
+- [x] **Re-ran the tier twice, and each run found the next layer down** ✓ 21 Aug 2026.
+  **14 → 9 → 3**, and the last three were not the cascade at all:
+  - [x] **`wp_tools_check` poisoned its own next run.** It `search-replace`s the fixture
+    site's rows (`wptools.test` → `changed.test`) and never dropped that database, so run
+    N+1 opened a site whose siteurl was ALREADY `https://changed.test`, found nothing to
+    replace, and failed on "dry-run found no rows to change" — after which it could never
+    pass again without someone dropping the database by hand. Fixed the way its sibling
+    already had been: drop the fixture database first (with the name assertion that keeps
+    a future domain rename from dropping something a person owns), pin the docroot, and
+    own the mysqld. **Proven by running it twice in a row, green both times, nothing left
+    on :13306.**
+  - [x] **`wp_themes_check` had HALF a fixture.** It dropped its database per run (fixed
+    19 Aug for exactly this symptom) and kept its DOCROOT, so a previous run's
+    `wp-content` survived into a fresh install and the freshly installed theme came back
+    ACTIVE where the assertion demands inactive. Pinned; green twice in a row.
+  - [x] **`tunnel_check` was the environment, and now says so.** 30 attempts of
+    `error sending request`, and measured while the URL was still live: the system
+    resolver returned NOTHING for the host (`curl` reported `dns=0.000000s` — an instant
+    negative-cache hit) while `dig @1.1.1.1` answered `104.16.231.132`. The tunnel was up
+    the whole time; this machine's network could not see it. That is the router race this
+    file already lists under Known baselines — what was missing was a RUN that says so
+    instead of asserting "public URL did not serve the local site", which names the wrong
+    subject. It now prints the differential and the two-command confirmation, and still
+    exits non-zero, because a run that proved nothing is not green.
+  **Still owed: one clean end-to-end tier run.** Everything above is fixed and each was
+  re-run standalone (twice, where re-runnability was the bug), but no single `network`
+  run has been green from start to finish yet.
 
 ### Promoted out of ticked rows (21 Aug 2026)
 
@@ -598,7 +622,11 @@ first:
   already paid for (an example `rm -rf`'d `docroot.parent()` and took the whole Sites
   folder). It is tracked as a sub-item of the readiness-gate audit row above; this row
   stays open for the CLASS.
-  - [ ] **The seven that DELETE are pinned (21 Aug 2026); ~17 that only WRITE are not.**
+  - [ ] **The seven that DELETE are pinned, plus two more the tier proved (21 Aug 2026);
+    ~15 that only WRITE are not.** `wp_tools_check` and `wp_themes_check` were pinned
+    because unpinned docroots turned out not to be merely untidy: they SURVIVE into the
+    next run and make a check fail on its own leftovers. That is the argument this row was
+    missing when the sweep was deferred.**
     The remaining unpinned provisioners — `adminer_serve_check`, `health_watchdog_check`,
     `log_tail_check`, `mail_adopt_settings_check`, `mail_route_check`,
     `monitor_coverage_demo`, `seed_and_list`, `server_switch_serve`,
