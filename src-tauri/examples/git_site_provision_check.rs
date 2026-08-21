@@ -37,6 +37,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::{Listener, Manager};
 
+mod common;
+
 /// The Laravel skeleton itself — the same shape every Laravel repository has
 /// (artisan, public/index.php, composer.json, a `.env.example` whose DB block
 /// is commented out and whose DB_CONNECTION says sqlite).
@@ -123,10 +125,7 @@ async fn main() -> std::process::ExitCode {
     // so no `Drop` reaches it (services outlive the app, by design). That is
     // correct for the product and is exactly why the example has to say what it
     // caused.
-    let mysql_was_running = database::mysql_running(database::MYSQL_PORT);
-    if mysql_was_running {
-        println!("MySQL was ALREADY running — leaving it up at the end\n");
-    }
+    let _engines = common::engines_as_found();
 
     // DB tier ONLY — see the module doc. Never the edge.
     {
@@ -460,18 +459,6 @@ async fn main() -> std::process::ExitCode {
         }
     }
     let _ = std::fs::remove_file(&db_file);
-
-    // Leave the machine as it was found. Only when THIS run is what started it:
-    // stopping an engine the developer had up would be the same defect pointing
-    // the other way.
-    if !mysql_was_running && database::mysql_running(database::MYSQL_PORT) {
-        let state = handle.state::<AppState>();
-        let mut mgr = state.services.lock().await;
-        match mgr.stop_db(state.platform.as_ref(), rexenv_lib::core::db::DbEngine::Mysql) {
-            Ok(()) => println!("stopped the MySQL this run started (it was down before)"),
-            Err(e) => println!("could not stop the MySQL this run started: {e}"),
-        }
-    }
 
     println!();
     if failures.is_empty() {

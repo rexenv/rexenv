@@ -183,6 +183,69 @@ pub fn pin_sites_dir(conn: &rusqlite::Connection, platform: &dyn Platform) {
         .expect("pin the sandbox sites dir");
 }
 
+/// Leave the DATABASE ENGINES the way this run found them.
+///
+/// For examples that drive the app's own provisioning: creating a site STARTS
+/// the engine through production code, the example then `adopt_dbs`-es it, and
+/// adoption is deliberately not ownership — an adopted pid is nobody's child, so
+/// no `Drop` reaches it and services outlive the app on purpose. Correct for the
+/// product; a leak in a fixture.
+///
+/// **Both instances were found the same way, on 21 Aug 2026, and neither example
+/// failed.** `git_site_provision_check` and `site_provision_check` each printed
+/// ALL PASS and exited leaving `mysqld` on :13306 against the REAL datadir; the
+/// twelve later examples that then could not start their own MySQL failed naming
+/// the PORT, not the cause. A green run that reddens the rest of the tier is the
+/// worst shape a check can have, because the bisect starts at the wrong file.
+///
+/// Restores a TRANSITION, never a state: an engine the developer already had
+/// running is left alone, because stopping that would be the identical defect
+/// pointing the other way.
+pub struct EnginesAsFound {
+    platform: Box<dyn Platform>,
+    were_running: Vec<(rexenv_lib::core::db::DbEngine, bool)>,
+}
+
+/// Record which engines are up NOW; stop the ones this run starts, on every exit
+/// path that runs destructors.
+pub fn engines_as_found() -> EnginesAsFound {
+    use rexenv_lib::core::db::DbEngine;
+    let platform = rexenv_lib::platform::current();
+    let were_running =
+        DbEngine::ALL.into_iter().map(|e| (e, rexenv_lib::core::ports::is_listening(e.port()))).collect();
+    EnginesAsFound { platform, were_running }
+}
+
+impl Drop for EnginesAsFound {
+    fn drop(&mut self) {
+        let marker = match self.platform.paths().app_data_dir() {
+            Ok(p) => p.display().to_string(),
+            Err(_) => return,
+        };
+        for (engine, was_running) in &self.were_running {
+            if *was_running || !rexenv_lib::core::ports::is_listening(engine.port()) {
+                continue;
+            }
+            // Ownership before signalling, always: `owned_master` matches our
+            // app-data marker on the cmdline, so a developer's own MySQL on the
+            // same port is never a candidate.
+            let Some(pid) = self.platform.supervisor().owned_master(engine.port(), &marker) else {
+                eprintln!(
+                    "NOTE: {:?} is up on :{} and this run started it, but no rexenv-owned \
+                     master was found to stop — leaving it",
+                    engine,
+                    engine.port()
+                );
+                continue;
+            };
+            match engine.stop(&*self.platform, pid) {
+                Ok(()) => println!("stopped the {:?} this run started (it was down before)", engine),
+                Err(e) => eprintln!("could not stop the {:?} this run started: {e}", engine),
+            }
+        }
+    }
+}
+
 /// A file this example created, removed when the guard drops.
 ///
 /// For artifacts that must live in a REAL directory — a probe inside the Adminer

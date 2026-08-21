@@ -468,7 +468,18 @@ down, internet up). It failed 14, and every one is explained. Kept as a row beca
 CAUSES are the point: not one of them was a product defect, and not one of them was
 visible before the verdict contract landed this morning.
 
-- [x] **Twelve were one leak, cascading** ✓ fixed. `git_site_provision_check` drives the
+- [x] **Twelve were one leak, cascading — and there were TWO leakers** ✓ fixed with a
+  shared guard, `common::engines_as_found`, after the first re-run proved a one-file fix
+  was the wrong shape: 14 failures became 9, `mysqld` was leaked again, and the second
+  time it was `site_provision_check`. Both examples drive the app's own provisioning,
+  both ADOPT the engine it starts, both printed ALL PASS, both left it running. The guard
+  records which engines are up before the run and stops only the ones that run started —
+  a TRANSITION, never a state, because stopping an engine the developer already had up is
+  the identical defect pointing the other way. Ownership is checked before signalling
+  (`owned_master` against our app-data marker), so a developer's own MySQL on the same
+  port is never a candidate. Proven: run alone, it prints `stopped the Mysql this run
+  started (it was down before)` and leaves :13306 free.
+  Original single-instance finding: `git_site_provision_check` drives the
   REAL provision flow, which starts MySQL through the app's own path; the example adopts
   the engine (`adopt_dbs`) and adoption is deliberately not ownership, so no `Drop`
   reaches it. It printed ALL PASS and exited leaving `mysqld` on :13306 against the REAL
@@ -480,6 +491,10 @@ visible before the verdict contract landed this morning.
   **This is also the first time that cascade could be SEEN.** Before today's verdict-
   contract fix those twelve examples printed `start_all failed:` and exited 0, and the
   tier said `all green`.
+  **And the lesson about the fix, not the bug:** patching the one example the evidence
+  named left the class open, and the re-run found the second instance in 35 minutes. Two
+  instances of one shape is a helper in `common`, not two patches — the same call the
+  gate sweep made this morning and the same one this row nearly repeated.
 - [x] **One was a fixture that did not look like production** ✓ fixed.
   `repo_run_all_check` died on `no binary manifest for php 8.3.32` — the patch this
   machine's 8.3 runs after an in-app update. `binaries::resolve` consults the compiled-in

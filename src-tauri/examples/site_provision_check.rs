@@ -26,8 +26,16 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::{Listener, Manager};
 
+mod common;
+
 #[tokio::main]
 async fn main() {
+    // Provisioning STARTS the database engine through the app's own path, and
+    // nothing here owns it afterwards — so without this guard the run ends with
+    // mysqld still on :13306 and every later example in the tier fails naming
+    // the port. Measured 21 Aug 2026: this example printed ALL PASS and took
+    // nine others down with it.
+    let _engines = common::engines_as_found();
     let plat = rexenv_lib::platform::current();
     let pid = std::process::id();
 
