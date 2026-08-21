@@ -553,9 +553,22 @@ place to keep unfinished things.
   `tunnels::origin_port` resolves the recorded override port and the L0 proof is
   plant-proven; SMOKE §Public sharing gained the step, and a network-tier leg would need
   a FrankenPHP fixture on `tunnel_exposure_check`.
-- [ ] **No wk-check asserts the FrankenPHP PHP picker is disabled.** The SiteDetail
-  Environment card shows the served version and a disabled select; the L2 gap was stated
-  when it shipped (ledger #333) and is still open.
+- [x] **No wk-check asserts the FrankenPHP PHP picker is disabled** ✓ 21 Aug 2026 —
+  `scripts/wk-checks/phppicker.js`, in `run-all`. Asserts the DISABLED attribute, that the
+  option names FrankenPHP's embedded build, that it does NOT show the stored 8.1 (which is
+  the promise the row was filed about), and both halves of the sentence that gives the
+  user their choice back. **Control included**: an nginx site's picker must still be
+  ENABLED, because a page where every select happened to be disabled would satisfy all of
+  the above. Plant-proven three ways — remove `disabled`, soften the copy, and the control
+  itself.
+  **And it found a crash on its way in.** `SiteDetail` called `useQuery` for
+  `repo-site-info` BELOW its `if (!site)` early return, so a COLD render of the route ran
+  fewer hooks than the render after `sites` resolved and React threw "Rendered more hooks
+  than during the previous render" — a blank screen instead of a site page. Navigating
+  from the Sites list hides it (the query is cached, `site` is found on the first render);
+  a reload or a deep link straight to `/sites/:id` does not. Hoisted above the return with
+  `enabled: !!site`. Nothing in `verify.sh` could have caught it: `tsc` type-checks and
+  the hooks rule is a RUNTIME contract, which is the argument for L2 in one line.
 - [ ] **`validate_linked_docroot` does a per-call `list(conn)`** (`core/sites.rs`) — fine
   at current scale, hoist if imports grow.
 - [ ] **Plugin-update progress: the TIMING half** (ledger #249) — cancel-then-settle beats

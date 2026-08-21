@@ -147,6 +147,27 @@ export function SiteDetail() {
     onError: (e) => toastBackendError(e),
   });
 
+  // Pure filesystem on the backend (no git spawn), so it is cheap enough to ask
+  // for every site and honest enough to re-ask on focus: a `git init` or an
+  // `rm -rf .git` in a terminal shows up the moment the user comes back.
+  //
+  // ABOVE the `!site` return, and that placement is the fix rather than a style
+  // choice. It used to sit below, so a COLD render of this route ran fewer hooks
+  // than the render after `sites` resolved, and React threw "Rendered more hooks
+  // than during the previous render" — a blank screen instead of a site page.
+  // Navigating from the Sites list hides it (the query is already cached and
+  // `site` is found on the first render); a reload or a deep link straight to
+  // /sites/:id does not. Found 21 Aug 2026 by the wk-check written for the
+  // FrankenPHP picker, which loads this route cold — which is the whole reason
+  // an L2 check earns its keep.
+  const { data: repoInfo } = useQuery({
+    queryKey: ["repo-site-info", site?.id],
+    queryFn: () => repoSiteInfo(site!.id),
+    enabled: !!site,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+  });
+
   if (!site) {
     return (
       <>
@@ -169,15 +190,6 @@ export function SiteDetail() {
   // install never finished" case, where the tab goes away again.
   const isWordpress = wpResolved ? !!wp?.isWordpress : site.type === "wordpress";
   const isServing = !!serving?.find((s) => s.domain === site.domain)?.serving;
-  // Pure filesystem on the backend (no git spawn), so it is cheap enough to ask
-  // for every site and honest enough to re-ask on focus: a `git init` or an
-  // `rm -rf .git` in a terminal shows up the moment the user comes back.
-  const { data: repoInfo } = useQuery({
-    queryKey: ["repo-site-info", site.id],
-    queryFn: () => repoSiteInfo(site.id),
-    staleTime: 0,
-    refetchOnWindowFocus: true,
-  });
   const active: TabKey = tab ?? "overview";
   const tabs: { key: TabKey; label: string; show: boolean }[] = [
     { key: "overview", label: "Overview", show: true },

@@ -17,6 +17,7 @@ const CHECKS = [
   "wpinstallcard.js",
   "zipinstall.js",
   "openin.js",
+  "phppicker.js",
   "mail.js",
   // The UI-review sweep asserts now (overflow fatal, pageerror listeners,
   // dbtab height probe, pill metrics) — it belongs in the bar.

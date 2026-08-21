@@ -326,6 +326,14 @@ it can:
   A rendered IMAGE is proved by decoding, not by presence: `openin.js` reads each app
   icon's `naturalWidth`, because a broken `data:` URI still leaves an `<img>` in the DOM
   that a count-the-elements assertion would happily pass.
+  **And it catches what `tsc` structurally cannot: the hooks rule is a RUNTIME contract.**
+  `phppicker.js` (21 Aug 2026) was written for a copy-and-disabled claim and its first run
+  found `SiteDetail` throwing "Rendered more hooks than during the previous render" — a
+  `useQuery` below an `if (!site)` early return, so a COLD render of `/sites/:id` ran fewer
+  hooks than the render after `sites` resolved, and the page went blank. A typecheck cannot
+  see it, no lib test reaches it, and navigating from the Sites list HIDES it because the
+  query is already cached. What exposed it was loading the route cold, which is what a
+  browser check does by construction.
 - **Cannot prove:** backend truth (IPC is mocked BY DESIGN) — **it proves a card RENDERS,
   never that its command WORKS.** The MCP toggle rendered correctly across 10 harness
   scenarios while `mcp_set_enabled` *aborted the packaged app* on click (the mock returned
