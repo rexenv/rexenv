@@ -1154,8 +1154,24 @@ export async function wpChecksumCleanup(id: string, paths: string[]): Promise<Wp
 }
 
 /** The site's scheduled cron events, soonest first. */
+/** Mock cron events, shaped like a real site's rather than a tidy one.
+ *
+ *  The empty array this used to return meant the cron panel rendered blank in
+ *  the dev harness, so no L2 check could ever see it. The rows below carry the
+ *  case the args column exists for: `action_scheduler_run_queue` scheduled
+ *  TWICE with different args — which is what WooCommerce's Action Scheduler
+ *  does — plus a `publish_future_post` carrying a bare post id. Without args
+ *  the first two rows are indistinguishable. */
+const mockCronEvents: WpCronEvent[] = [
+  { hook: "action_scheduler_run_queue", nextRun: "2026-08-23 10:00:00", nextRunRelative: "3 minutes", recurrence: "1 minute", args: '["WP Cron"]' },
+  { hook: "action_scheduler_run_queue", nextRun: "2026-08-23 10:00:00", nextRunRelative: "3 minutes", recurrence: "1 minute", args: '["Async Request"]' },
+  { hook: "publish_future_post", nextRun: "2026-08-23 14:30:00", nextRunRelative: "4 hours 33 minutes", recurrence: "Non-repeating", args: "[1284]" },
+  { hook: "wp_update_themes", nextRun: "2026-08-23 12:00:00", nextRunRelative: "2 hours", recurrence: "12 hours", args: "" },
+  { hook: "wp_privacy_delete_old_export_files", nextRun: "2026-08-23 11:00:00", nextRunRelative: "1 hour", recurrence: "1 hour", args: "" },
+];
+
 export async function wpCronEvents(id: string): Promise<WpCronEvent[]> {
-  if (!isTauri()) return [];
+  if (!isTauri()) return mockCronEvents;
   return invoke<WpCronEvent[]>("wp_cron_events", { id });
 }
 

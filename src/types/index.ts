@@ -828,6 +828,14 @@ export interface WpCronEvent {
   nextRun: string; // GMT timestamp, e.g. "2026-07-11 12:00:00"
   nextRunRelative: string; // e.g. "11 hours 4 minutes"
   recurrence: string; // "1 hour", "1 day", … or "Non-repeating"
+  /** The event's arguments as compact JSON (`["WP Cron"]`), or "" for none.
+   *
+   *  WP-CLI addresses events by HOOK, not by id, so args are the only thing
+   *  that distinguishes two events of the same hook — without them the list
+   *  shows identical rows whose Run buttons do the same thing. Formatted in
+   *  core: args are arbitrary JSON, and a client-side stringify would disagree
+   *  the first time a plugin scheduled something that is not a string. */
+  args: string;
 }
 
 /** One plugin/theme in a blueprint (slug + activate-on-install). §11.3 */

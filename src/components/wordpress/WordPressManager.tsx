@@ -1676,8 +1676,20 @@ function CronCard({ siteId }: { siteId: string }) {
   const shown = !events ? [] : !q
     ? events
     : events.filter(
-        (e) => e.hook.toLowerCase().includes(q) || e.recurrence.toLowerCase().includes(q),
+        (e) =>
+          e.hook.toLowerCase().includes(q) ||
+          e.recurrence.toLowerCase().includes(q) ||
+          e.args.toLowerCase().includes(q),
       );
+
+  // Hooks scheduled more than once. Computed over ALL events, not the filtered
+  // set: a search that hides one instance must not make the Run button stop
+  // warning that it runs both.
+  const dupHooks = useMemo(() => {
+    const seen = new Map<string, number>();
+    for (const e of events ?? []) seen.set(e.hook, (seen.get(e.hook) ?? 0) + 1);
+    return new Set([...seen].filter(([, n]) => n > 1).map(([h]) => h));
+  }, [events]);
 
   return (
     <Card title="Cron">
@@ -1733,6 +1745,7 @@ function CronCard({ siteId }: { siteId: string }) {
             <>
               <div className="flex items-center gap-3 border-b border-rex-border-subtle px-3 py-2 font-mono text-[0.625rem] uppercase tracking-[0.1em] text-rex-text-muted">
                 <span className="flex-1">Hook</span>
+                <span className="w-[130px]">Arguments</span>
                 <span className="w-[170px]">Next run</span>
                 <span className="w-[110px]">Recurrence</span>
                 <span className="w-[64px]" />
@@ -1751,13 +1764,29 @@ function CronCard({ siteId }: { siteId: string }) {
                     <span className="min-w-0 flex-1 truncate font-mono text-[0.75rem] text-rex-text-bright" title={e.hook}>
                       {e.hook}
                     </span>
+                    {/* WP-CLI addresses events by HOOK, not by id, so args are
+                      * the only thing telling two events of one hook apart —
+                      * Action Scheduler schedules `action_scheduler_run_queue`
+                      * more than once with different runners. Without this
+                      * column those rows are identical and the Run button on
+                      * each does the same thing. */}
+                    <span
+                      className="w-[130px] truncate font-mono text-[0.71875rem] text-rex-text-muted"
+                      title={e.args || "no arguments"}
+                    >
+                      {e.args}
+                    </span>
                     <span className="w-[170px] text-[0.75rem] text-rex-text-muted" title={`${e.nextRun} GMT`}>
                       {e.nextRunRelative || "now"}
                     </span>
                     <span className="w-[110px] text-[0.75rem] text-rex-text-muted">{e.recurrence}</span>
                     <button
                       className={BTN + " w-[64px] justify-center text-center"}
-                      title={`Run ${e.hook} now (due or not)`}
+                      title={
+                        dupHooks.has(e.hook)
+                          ? `Run ${e.hook} now (due or not). This hook is scheduled more than once and WP-CLI runs events by hook name, so EVERY instance runs — not just this row.`
+                          : `Run ${e.hook} now (due or not)`
+                      }
                       disabled={busy}
                       onClick={() => runHook.mutate(e.hook)}
                     >

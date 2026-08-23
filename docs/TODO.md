@@ -223,9 +223,30 @@ paying for anyway: **the tick belongs in the commit that does the work.**
   parse `config/application.php` env defines so WP_DEBUG/WP_DEBUG_LOG read
   truthfully on non-stock layouts; today's honest state is `indeterminate`
   ("can't determine", `core/logs.rs:208-252`).
-- [ ] **WP Manager cron list: arguments display** — placeholder for QA's exact
-  complaint (likely the event-args column in the SiteDetail cron tab). Get the
-  repro or drop after the next QA round.
+- [x] **WP Manager cron list: arguments display** ✓ 23 Aug 2026 — ledger #384.
+  The row guessed "likely the event-args column". **There was no such column, and no
+  args anywhere**: `cron_event_list` asked wp-cli for `hook,next_run_gmt,
+  next_run_relative,recurrence` and stopped, so the field was never fetched, never in the
+  DTO, never rendered.
+  **Why that is a defect and not a missing nicety:** WP-CLI addresses cron events by HOOK
+  — there is no per-instance id, which `cron_run_hook`'s own comment already said — so a
+  hook scheduled more than once renders as N identical rows whose Run buttons all do the
+  same thing. Args are the only thing telling them apart. Measured against a real site on
+  this machine (23 Aug): `action_scheduler_run_queue` carries `["WP Cron"]`, and Action
+  Scheduler ships with WooCommerce, so this is common rather than exotic;
+  `publish_future_post` carries a post id per scheduled post.
+  Shipped: the field is fetched and formatted in core (args are arbitrary JSON — numbers,
+  nested arrays, objects — so a client-side stringify would disagree the first time a
+  plugin scheduled a non-string), an Arguments column, args included in the filter, and
+  the Run tooltip on a duplicated hook now says every instance runs.
+  The mock returned `[]`, so the cron panel rendered BLANK in the dev harness and no L2
+  check could ever have seen it; it now carries the duplicate-hook case.
+  - [ ] **Still QA's to confirm.** This is a diagnosis of the most defensible defect in
+    that panel, not the repro — the original complaint was never captured. If it was
+    something else, say so and this reopens.
+  - [ ] **No L2 leg:** the WordPress manager's cron tab has no dev-route arm, so nothing
+    asserts the column RENDERS. Adding one means a new `DevGitPanel` arm plus a check —
+    worth it next time this panel is touched, not on a placeholder row.
 - [ ] ⚠ **PostgreSQL's pinned builds carry `minos 26.0` — presumed dead below
   macOS 26, and the presumption cannot be tested from this machine** (found
   15 Aug 2026 during the floor sweep; MEASURED as far as this host allows the

@@ -2015,6 +2015,22 @@ pub struct WpCronEvent {
     pub next_run_relative: String,
     /// `1 hour`, `1 day`, … or `Non-repeating`.
     pub recurrence: String,
+    /// The event's arguments as compact JSON (`["WP Cron"]`), or empty when it
+    /// has none — which is most events.
+    ///
+    /// **WP-CLI addresses cron events by HOOK, not by id, so args are the only
+    /// thing that distinguishes two events of the same hook.** Without them the
+    /// list renders N identical rows and the Run button on each does the same
+    /// thing (see [`cron_run_hook`]). Action Scheduler — which WooCommerce ships,
+    /// so it is on a large share of real sites — schedules
+    /// `action_scheduler_run_queue` with a runner name in exactly this position;
+    /// `publish_future_post` carries a post id per scheduled post.
+    ///
+    /// Formatted HERE rather than in the UI so there is one answer to "what did
+    /// this event carry": args are arbitrary JSON (numbers, nested arrays,
+    /// objects), and a client-side stringify would quietly disagree with this
+    /// one the first time a plugin scheduled something that is not a string.
+    pub args: String,
 }
 
 // `wp cron event list --format=json` wire shape (WP-CLI's snake_case keys).
@@ -2028,6 +2044,10 @@ struct WireCronEvent {
     next_run_relative: String,
     #[serde(default)]
     recurrence: String,
+    /// Arbitrary JSON — WP-CLI serialises the event's PHP args array as-is, so
+    /// this is a list of anything, not a list of strings.
+    #[serde(default)]
+    args: Vec<serde_json::Value>,
 }
 
 /// List scheduled cron events, soonest first (WP-CLI's default order).
@@ -2036,7 +2056,7 @@ pub fn cron_event_list(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result
         php_bin,
         wp_phar,
         docroot,
-        &["cron", "event", "list", "--fields=hook,next_run_gmt,next_run_relative,recurrence"],
+        &["cron", "event", "list", "--fields=hook,next_run_gmt,next_run_relative,recurrence,args"],
     )?;
     Ok(wire
         .into_iter()
@@ -2045,8 +2065,21 @@ pub fn cron_event_list(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result
             next_run: e.next_run_gmt,
             next_run_relative: e.next_run_relative,
             recurrence: e.recurrence,
+            args: format_cron_args(&e.args),
         })
         .collect())
+}
+
+/// An event's args as compact JSON, or empty for none.
+///
+/// Empty rather than `[]` because the overwhelming majority of events carry no
+/// args, and a column of `[]` is noise that trains the eye to skip the one row
+/// where it matters.
+fn format_cron_args(args: &[serde_json::Value]) -> String {
+    if args.is_empty() {
+        return String::new();
+    }
+    serde_json::to_string(args).unwrap_or_default()
 }
 
 /// Run every cron event that is currently due (`wp cron event run --due-now`).
@@ -4944,6 +4977,59 @@ mod packages_pin_guards {
             .join("nope")
             .join("wp-cli.phar");
         assert!(eoo_require_arg(&phar).is_none(), "a flag was passed for a file that isn't there");
+    }
+
+    /// **Cron args are what tell two events of the same hook apart.**
+    ///
+    /// WP-CLI addresses events by HOOK — there is no per-instance id — so a hook
+    /// scheduled twice renders as two identical rows whose Run buttons both run
+    /// both. The args are the only visible difference, and the list did not ask
+    /// for them: `--fields` requested hook, next_run, recurrence and stopped.
+    ///
+    /// The shapes here are from a REAL site (23 Aug 2026): Action Scheduler —
+    /// which WooCommerce ships — schedules `action_scheduler_run_queue` with
+    /// `["WP Cron"]`, and the other 29 events on that site carry `[]`.
+    #[test]
+    fn cron_args_render_faithfully_and_stay_quiet_when_there_are_none() {
+        use serde_json::json;
+
+        // The common case, and why it is empty rather than "[]": a column of
+        // brackets on 29 of 30 rows trains the eye to skip the one that matters.
+        assert_eq!(format_cron_args(&[]), "");
+
+        // The measured one.
+        assert_eq!(format_cron_args(&[json!("WP Cron")]), r#"["WP Cron"]"#);
+
+        // Args are arbitrary PHP serialised as JSON, not a list of strings — a
+        // post id, a nested array, an object. Rendering them as compact JSON is
+        // the only form that cannot silently lose one.
+        assert_eq!(format_cron_args(&[json!(1284)]), "[1284]");
+        assert_eq!(
+            format_cron_args(&[json!("sync"), json!({"id": 7})]),
+            r#"["sync",{"id":7}]"#
+        );
+        // Explicit null is an argument, not an absence.
+        assert_eq!(format_cron_args(&[json!(null)]), "[null]");
+    }
+
+    /// The wire shape, taken from a real `wp cron event list --format=json`: an
+    /// event carries `args` as an ARRAY, and a missing field must not fail the
+    /// whole list (older WP-CLI, or a `--fields` set that omits it).
+    #[test]
+    fn the_cron_wire_row_accepts_the_shape_wp_cli_actually_sends() {
+        let rows: Vec<WireCronEvent> = serde_json::from_str(
+            r#"[{"hook":"action_scheduler_run_queue","next_run_gmt":"2026-08-23 10:00:00",
+                 "next_run_relative":"3 minutes","recurrence":"1 minute","args":["WP Cron"]},
+                {"hook":"wp_update_themes","next_run_gmt":"2026-08-23 12:00:00",
+                 "next_run_relative":"2 hours","recurrence":"12 hours","args":[]},
+                {"hook":"legacy_no_args_field","next_run_gmt":"","next_run_relative":"",
+                 "recurrence":"1 day"}]"#,
+        )
+        .expect("the real wire shape must deserialize");
+        assert_eq!(rows.len(), 3);
+        assert_eq!(format_cron_args(&rows[0].args), r#"["WP Cron"]"#);
+        assert_eq!(format_cron_args(&rows[1].args), "");
+        assert_eq!(format_cron_args(&rows[2].args), "", "a missing field is not an error");
     }
 
     /// The `allowedthemes` shapes a real network produces, none of which is the
