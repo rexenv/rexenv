@@ -308,8 +308,13 @@ it can:
   its own services. **19 of the 23 service-tier examples still have no
   `require_ports_free`** — most are saved by production's `ensure_free` firing when they
   try to BIND, which is luck rather than design: it does nothing for an example that
-  reaches a reload or a read path first. `docs/TODO.md` carries the open row, including
-  whether the guard belongs per-example or once in the tier runner.
+  reaches a reload or a read path first. **The runner enforces it now** (23 Aug 2026): the
+  service and network tiers REFUSE with the stack up, naming every port that
+  answered, and the stack tier refuses with it down. Those were two `echo NOTE:`
+  lines before — a precondition written down and not checked, which is the same
+  shape as the two notes-that-were-called-guards closed earlier the same day.
+  Per-example `require_ports_free` is still worth adding: the runner protects the
+  tier, not an example someone runs by hand.
   **ACCEPTING is not ANSWERING, and the edge is where the difference bites** (21 Aug
   2026). `await_listening` proves the socket accepts; Caddy binds its listener before it
   has loaded certificates and routes, so a request inside that window comes back `000` and

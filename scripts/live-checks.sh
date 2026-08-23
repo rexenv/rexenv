@@ -262,11 +262,69 @@ case "$cmd" in sandbox | service | network | stack) ;; *)
   ;;
 esac
 
+# ── Tier preconditions, ENFORCED ─────────────────────────────────────────────
+#
+# These were two `echo NOTE:` lines, and a note is not a control. Running the
+# service tier against a LIVE stack on 23 Aug 2026 produced thirteen failures,
+# eleven of them loud and correct — and one that was not: `delete_site_serve`'s
+# nginx could not take :18088 because the user's had it, `await_listening(18088)`
+# then passed against the USER's nginx, and the example printed
+# `del.test -> HTTP 200` before dying later on an unrelated unwrap. A fixture
+# reported that its precondition held while reading a server it does not own.
+#
+# Per-example `require_ports_free` is the other half and 19 of the 23
+# service-tier examples still lack it. This is the half that cannot be forgotten
+# when someone adds the 24th: one check, before any example starts, for the whole
+# tier.
+#
+# **No override, deliberately.** An env escape hatch here would recreate exactly
+# the note this replaces. The fix is `rex stop`, which takes seconds.
+#
+# Only rexenv's OWN fixed service ports are probed — not :443. The edge is
+# designed to outlive the app, other tools shadow-bind it (Herd does), and "some
+# Caddy is up" is not the same claim as "rexenv's stack is running". Ports that
+# belong to somebody else are the per-example guard's job.
+stack_ports_up() {
+  local up=""
+  local p
+  for p in 18088 18025 13306 13307 9774 9780 9781 9782 9783 9784 9785; do
+    if nc -z 127.0.0.1 "$p" >/dev/null 2>&1; then up="$up $p"; fi
+  done
+  echo "$up"
+}
+
 if [ "$cmd" = "service" ] || [ "$cmd" = "network" ]; then
-  echo "NOTE: the $cmd tier assumes the rexenv stack is STOPPED (fixture-unsafe ports)."
+  busy="$(stack_ports_up)"
+  if [ -n "$busy" ]; then
+    cat >&2 <<STACKMSG
+live-checks.sh: refusing to run the $cmd tier — the rexenv stack is RUNNING.
+
+  Answering on:$busy
+
+  These examples bring up their OWN services on these exact ports. Beside a live
+  stack they do not collide, they JOIN: a readiness gate that connects is
+  satisfied by your server, and an example can then report on a stack it does
+  not own. That is not hypothetical — it is why this check exists.
+
+  Stop the stack, then run this again:
+      rex stop        # or the Stop button in rexenv
+STACKMSG
+    exit 1
+  fi
 fi
 if [ "$cmd" = "stack" ]; then
-  echo "NOTE: the stack tier assumes the rexenv stack is RUNNING."
+  if [ -z "$(stack_ports_up)" ]; then
+    cat >&2 <<'STACKDOWN'
+live-checks.sh: refusing to run the stack tier — the rexenv stack is NOT running.
+
+  These examples probe adoption, wiring and resource use of a LIVE stack. With
+  nothing up they would assert against absence and could only pass vacuously.
+
+  Start the stack, then run this again:
+      rex start       # or the Start button in rexenv
+STACKDOWN
+    exit 1
+  fi
 fi
 
 # Build everything first so per-example runs are launch-only.

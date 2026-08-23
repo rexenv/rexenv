@@ -363,16 +363,45 @@ paying for anyway: **the tick belongs in the commit that does the work.**
   Same family as the SO_REUSEPORT case in `frankenphp_edge_serve` (21 Aug): a readiness gate
   satisfiable by someone else's process is not a readiness gate.
   - [ ] Give it `require_ports_free` before it creates anything, like the two that refused.
-  - [ ] **The broader shape, and the reason this is not a one-line row:** 19 of the 23
-    service-tier examples have no `require_ports_free`. Most are saved by production's
-    `ensure_free` firing when they try to BIND — which is luck, not design: it does not
-    protect an example that reaches a RELOAD or a read path first, as this one did. Decide
-    whether the guard belongs in every service-tier example or in the tier runner itself
-    (one refusal for the whole tier, before any example starts, is cheaper and cannot be
-    forgotten per-example).
+  - [x] **Decided: the tier RUNNER** ✓ 23 Aug 2026. 19 of the 23 service-tier examples have
+    no `require_ports_free`; most are saved by production's `ensure_free` firing when they
+    try to BIND, which is luck rather than design — it does nothing for an example that
+    reaches a reload or a read path first, as this one did. The runner is the half that
+    cannot be forgotten when someone adds the 24th example.
+    **The precondition was already written down and not enforced**: `live-checks.sh`
+    printed `NOTE: the service tier assumes the rexenv stack is STOPPED` and carried on.
+    A note is not a control — the same shape as the c-ares note and the `wp_dns_check`
+    note closed earlier today. It refuses now, naming every port that answered.
+    No env override, deliberately: an escape hatch here would recreate the note.
+    Only rexenv's OWN fixed ports are probed, not `:443` — the edge outlives the app,
+    other tools shadow-bind it, and "some Caddy is up" is not "rexenv's stack is running".
+    The `stack` tier's opposite note is enforced too: with nothing up, its examples would
+    assert against absence and could only pass vacuously.
+    Verified live both ways: service refused with the stack up; stack proceeded with the
+    stack up; and the stack-down branch fires when pointed at ports nothing answers.
+    Per-example `require_ports_free` is still worth adding — the runner protects the tier,
+    not a single example run by hand — but it is no longer the only thing standing between
+    a live stack and a fixture reading it.
   - [ ] Replace the `unwrap` at `delete_site_serve.rs:121` — a panic with a backtrace is
     the wrong shape for "something else owns this port", which the error text already says
     plainly.
+
+- [ ] **The stack tier's stated precondition is not its whole precondition, and it has no
+  recorded baseline.** Run 23 Aug 2026 (as a side effect of testing the enforcement above,
+  so this is an observation and not a regression report — nobody knows what it looked like
+  before). Five of its examples failed, and they are not one thing:
+  - `cli_socket_check` and `mcp_socket_check` refuse with *"the app's CLI socket is live —
+    quit the app first"*. So their real precondition is **services UP and the app QUIT** —
+    which is coherent, because services outlive the app by design, but the tier header says
+    only "needs the user's stack RUNNING". A tier whose stated precondition is a subset of
+    its examples' cannot be satisfied by reading it.
+  - `site_resources_check` expects a non-empty `wp_photocontest_test`; that site's database
+    is empty on this machine. Data-shaped, not code-shaped.
+  - `adminer_proxy_check` (login POST got 403, wanted 302) and `edge_adopt_reload_check`
+    ("admin socket answers but no caddy pid found") are unclassified — they may be the same
+    app-running precondition, or real.
+  Worth one deliberate run with the app quit and services up, to separate the precondition
+  failures from the rest. Until then the stack tier has no green anyone has seen.
 
 ### Opened by the 21 Aug 2026 reconcile
 
