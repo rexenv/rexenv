@@ -37,9 +37,26 @@ pub const PHP_VERSIONS: &[&str] =
 pub const PHP_DEBUG_VERSION: &str = "8.3.31";
 /// Xdebug version compiled into the debug build (recorded for the recipe + UI).
 pub const PHP_DEBUG_XDEBUG_VERSION: &str = "3.4.5";
-/// Where the self-built debug artifacts will be hosted (filled at hosting time).
-/// A maintainer builds with the recipe, uploads here, then pins the checksums.
-const PHP_DEBUG_BASE_URL: &str = "https://dl.rexenv.dev/php-debug";
+/// The `rexenv/runtimes` release TAG serving the self-built debug artifacts —
+/// EMPTY until the first upload, exactly like the four digests below.
+///
+/// **This const replaced a base URL naming `dl.rexenv.dev`, and the replacement
+/// is the point.** B33 moved php-debug hosting to GitHub Releases in
+/// `rexenv/runtimes` (`docs/PLAN-php-74-support.md` §6/§9) and
+/// `docs/xdebug-debug-build.md` recorded that `dl.rexenv.dev` "is not used" —
+/// while the code went on building every php-debug URL from that dead host. A
+/// doc asserting a state the code contradicts is a shape this project has
+/// already paid for twice, and it survived because nothing FETCHES these URLs
+/// yet: the contradiction was scheduled to be discovered at upload time, by the
+/// person following the recipe, which is the worst possible reader.
+///
+/// So the host stopped being a string that can be wrong. It is now derived from
+/// [`RUNTIMES_RELEASE_BASE`] — the same construction the 7.4 artifacts use — and
+/// the only thing left to fill is what genuinely cannot be known until a release
+/// exists: its tag. Like [`php_self_hosted_tag`], this is the FULL immutable tag
+/// (`php-8.3.31-xdebug-1`, then `-2` for a rebuild), never a stable base, so a
+/// pin here can 404 but can never resolve to different bytes.
+const PHP_DEBUG_TAG: &str = "";
 /// Pinned nginx version (jirutka/nginx-binaries static build).
 pub const NGINX_VERSION: &str = "1.30.3";
 /// Default MySQL version (official macOS tarball — a full bin/lib/share tree).
@@ -537,6 +554,16 @@ fn pick(arch: Arch, arm: &str, amd: &str) -> String {
     .to_string()
 }
 
+/// Where every artifact rexenv BUILDS is published: releases in the public
+/// `rexenv/runtimes` repo.
+///
+/// One const rather than two format strings, so the bulk builds and the Xdebug
+/// debug build cannot drift onto different hosts — which is exactly what had
+/// happened (`PHP_DEBUG_TAG`). It is a prefix of `SELF_DISTRIBUTED_HOSTS`'
+/// `https://github.com/rexenv/` entry, so anything built from it carries the
+/// licence obligation by construction rather than by remembering to.
+const RUNTIMES_RELEASE_BASE: &str = "https://github.com/rexenv/runtimes/releases/download";
+
 /// The rexenv-hosted release TAG serving a self-built PHP artifact, or `None`
 /// for a version that comes from static-php.dev.
 ///
@@ -692,7 +719,7 @@ fn php_url(kind: &str, version: &str, arch: Arch) -> String {
     let arch = php_arch(arch);
     match php_self_hosted_tag(version) {
         Some(tag) => format!(
-            "https://github.com/rexenv/runtimes/releases/download/{tag}/php-{version}-{kind}-macos-{arch}.tar.gz"
+            "{RUNTIMES_RELEASE_BASE}/{tag}/php-{version}-{kind}-macos-{arch}.tar.gz"
         ),
         None => format!(
             "https://dl.static-php.dev/static-php-cli/bulk/php-{version}-{kind}-macos-{arch}.tar.gz"
@@ -786,8 +813,8 @@ const SELF_DISTRIBUTED_HOSTS: &[&str] = &["https://github.com/rexenv/", "https:/
 /// carrying a comment that a second self-built runtime would "inherit the
 /// obligation by existing". **It would not, and the counter-example was already
 /// in this file**: `php-debug` / `php-fpm-debug` are self-built (a custom
-/// static-php compile — `docs/xdebug-debug-build.md`) and self-hosted at
-/// `PHP_DEBUG_BASE_URL`, and the name check excluded both. The day their digests
+/// static-php compile — `docs/xdebug-debug-build.md`) and self-hosted under
+/// `RUNTIMES_RELEASE_BASE`, and the name check excluded both. The day their digests
 /// are pinned they would have shipped with no licences and nothing would have
 /// said so. Same family as the four guards in the ledger that claimed a whole
 /// surface and checked one place inside it.
@@ -942,20 +969,57 @@ fn php_debug_sha256(kind: &str, arch: Arch) -> Option<&'static str> {
     }
 }
 
-/// The download spec for a debug (Xdebug) build artifact. Pure — same URL/archive
-/// shape as a bulk build, but from the self-hosted debug bucket and tagged
-/// `-xdebug`. The checksum is filled once hosted; `manifest` only surfaces this
-/// when [`php_debug_sha256`] is `Some` (so it's a no-op until then).
-fn php_debug_spec(kind: &str, arch: Arch) -> BinarySpec {
-    BinarySpec {
-        url: format!(
-            "{PHP_DEBUG_BASE_URL}/php-{PHP_DEBUG_VERSION}-{kind}-xdebug-macos-{}.tar.gz",
-            php_arch(arch)
-        ),
-        checksum: Checksum::Sha256(php_debug_sha256(kind, arch).unwrap_or_default().to_string()),
+/// The URL a hosted debug artifact HAS, given the release tag serving it.
+///
+/// Separate from [`php_debug_spec`] because the shape is knowable now and the
+/// tag is not: this is what lets the licence guards and the URL-shape test keep
+/// a real subject while `PHP_DEBUG_TAG` is still empty. Before, they asserted
+/// against a `dl.rexenv.dev` URL no artifact would ever be uploaded to.
+fn php_debug_url(tag: &str, kind: &str, arch: Arch) -> String {
+    format!(
+        "{RUNTIMES_RELEASE_BASE}/{tag}/php-{PHP_DEBUG_VERSION}-{kind}-xdebug-macos-{}.tar.gz",
+        php_arch(arch)
+    )
+}
+
+/// The download spec for a debug (Xdebug) build artifact, or `None` while the
+/// artifact is not hosted. Pure — same archive shape as a bulk build, tagged
+/// `-xdebug`, from the same `rexenv/runtimes` releases as the 7.4 builds.
+///
+/// **Both halves gate, and that is the fix, not tidiness.** Hosting a debug
+/// build takes two edits — the tag and the four digests — and the resolve path
+/// used to read only the digests. Pin the digests first (which is step 2 of the
+/// recipe, and the natural order: you hash the files you just uploaded) and
+/// `manifest` would have started handing out URLs built from a host the ruling
+/// deleted a week earlier. Requiring the tag makes the half-done state
+/// unresolvable instead of wrong.
+fn php_debug_spec(kind: &str, arch: Arch) -> Option<BinarySpec> {
+    php_debug_spec_from(PHP_DEBUG_TAG, php_debug_sha256(kind, arch), kind, arch)
+}
+
+/// The gate itself, with both halves as PARAMETERS.
+///
+/// Split out so the half-done states are reachable from a test. They are not
+/// reachable through [`php_debug_spec`]: both consts are empty today, so a test
+/// calling it cannot tell "the tag gate works" from "the digest gate works" —
+/// deleting the tag check would leave every assertion still passing. That is the
+/// vacuous-green shape, and a guard against a two-edit mistake is worthless if
+/// the only state it is ever exercised in is zero-edits.
+fn php_debug_spec_from(
+    tag: &str,
+    sum: Option<&str>,
+    kind: &str,
+    arch: Arch,
+) -> Option<BinarySpec> {
+    if tag.is_empty() {
+        return None;
+    }
+    Some(BinarySpec {
+        url: php_debug_url(tag, kind, arch),
+        checksum: Checksum::Sha256(sum?.to_string()),
         archive: Archive::TarGz,
         member: if kind == "fpm" { "php-fpm" } else { "php" },
-    }
+    })
 }
 
 /// File recording WHICH pinned bytes a published cache dir was built from.
@@ -1058,18 +1122,11 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
         ("php", "macos", v) => php_spec("cli", v, arch),
         ("php-fpm", "macos", v) => php_spec("fpm", v, arch),
         // Debug builds (Xdebug compiled in) for the §8.2 debug pool. Only resolve
-        // once the self-built artifact is hosted + its checksum pinned (§11.2);
-        // until then `php_debug_sha256` is None and these stay unresolvable.
-        ("php-debug", "macos", v)
-            if v == PHP_DEBUG_VERSION && php_debug_sha256("cli", arch).is_some() =>
-        {
-            Some(php_debug_spec("cli", arch))
-        }
-        ("php-fpm-debug", "macos", v)
-            if v == PHP_DEBUG_VERSION && php_debug_sha256("fpm", arch).is_some() =>
-        {
-            Some(php_debug_spec("fpm", arch))
-        }
+        // once the self-built artifact is hosted — BOTH its release tag and its
+        // checksum pinned (§11.2). The gate lives in `php_debug_spec` rather than
+        // here so the two conditions cannot be satisfied one at a time.
+        ("php-debug", "macos", v) if v == PHP_DEBUG_VERSION => php_debug_spec("cli", arch),
+        ("php-fpm-debug", "macos", v) if v == PHP_DEBUG_VERSION => php_debug_spec("fpm", arch),
         ("nginx", "macos", "1.30.3") => Some(BinarySpec {
             // jirutka/nginx-binaries ships a single static binary (not an archive).
             url: format!(
@@ -3134,19 +3191,70 @@ mod tests {
         }
     }
 
+    /// A tag that does not exist, standing in for the one an upload will create.
+    /// The URL SHAPE is knowable today; only the tag is not.
+    const SAMPLE_DEBUG_TAG: &str = "php-8.3.31-xdebug-1";
+
     #[test]
     fn php_debug_spec_has_the_expected_url_and_member_shape() {
-        // The pure spec builder defines the contract the hosted artifact must meet:
-        // `-xdebug` tagged, from the debug bucket, with the right member binary.
-        let cli = php_debug_spec("cli", Arch::Arm64);
-        assert!(cli.url.ends_with("php-8.3.31-cli-xdebug-macos-aarch64.tar.gz"), "{}", cli.url);
-        assert!(cli.url.starts_with(PHP_DEBUG_BASE_URL));
-        assert_eq!(cli.member, "php");
-        assert!(matches!(cli.archive, Archive::TarGz));
+        // The pure URL builder defines the contract the hosted artifact must meet:
+        // `-xdebug` tagged, under the release tag, with the right member binary.
+        let cli = php_debug_url(SAMPLE_DEBUG_TAG, "cli", Arch::Arm64);
+        assert!(cli.ends_with("php-8.3.31-cli-xdebug-macos-aarch64.tar.gz"), "{cli}");
+        assert_eq!(php_debug_url(SAMPLE_DEBUG_TAG, "fpm", Arch::X86_64).split('/').next_back(),
+            Some("php-8.3.31-fpm-xdebug-macos-x86_64.tar.gz"));
 
-        let fpm = php_debug_spec("fpm", Arch::X86_64);
-        assert!(fpm.url.ends_with("php-8.3.31-fpm-xdebug-macos-x86_64.tar.gz"), "{}", fpm.url);
-        assert_eq!(fpm.member, "php-fpm");
+        // The host, asserted against a LITERAL rather than the const it is built
+        // from. The previous form was `starts_with(PHP_DEBUG_BASE_URL)` on a URL
+        // formatted from that same const — it could not fail, and so said nothing
+        // when the const named a host B33 had already retired.
+        assert!(
+            cli.starts_with("https://github.com/rexenv/runtimes/releases/download/"),
+            "B33: the debug build is hosted in rexenv/runtimes, not on a bucket: {cli}"
+        );
+        assert!(!cli.contains("dl.rexenv.dev"), "the retired host is back: {cli}");
+    }
+
+    /// **Hosting the debug build takes two edits, and either one alone must not
+    /// resolve.**
+    ///
+    /// The recipe's natural order is upload → hash → pin, so the digests get
+    /// filled first; the release tag is the edit that is easy to forget because
+    /// nothing fails without it. Before `PHP_DEBUG_TAG` existed the URL host was
+    /// a const nobody would revisit at that moment, which is how a retired host
+    /// stayed wired in for a week after the ruling that retired it.
+    ///
+    /// This asserts the TAG is load-bearing, not just present: with digests
+    /// present but no tag, the spec is still `None`.
+    #[test]
+    fn a_debug_build_with_digests_but_no_release_tag_does_not_resolve() {
+        // Today both halves are empty, so the whole thing is unresolvable.
+        assert!(PHP_DEBUG_TAG.is_empty(), "the tag is filled — update this test with the pin");
+        assert!(php_debug_spec("cli", Arch::Arm64).is_none());
+
+        // The half-done states, driven through the gate's parameters because
+        // neither is reachable from the consts today.
+        let digest = Some("0".repeat(64));
+        let digest = digest.as_deref();
+        for kind in ["cli", "fpm"] {
+            for arch in [Arch::Arm64, Arch::X86_64] {
+                // Digests pinned, tag forgotten — the order the recipe produces.
+                assert!(
+                    php_debug_spec_from("", digest, kind, arch).is_none(),
+                    "{kind}/{arch:?} resolved with digests but no release tag"
+                );
+                // Tag filled, digests forgotten — the pre-existing gate, kept.
+                assert!(
+                    php_debug_spec_from(SAMPLE_DEBUG_TAG, None, kind, arch).is_none(),
+                    "{kind}/{arch:?} resolved with a tag but no digest"
+                );
+                // Both, which is what hosting actually means.
+                let spec = php_debug_spec_from(SAMPLE_DEBUG_TAG, digest, kind, arch)
+                    .expect("tag + digest ⇒ resolvable");
+                assert!(spec.url.contains(SAMPLE_DEBUG_TAG), "{}", spec.url);
+                assert_eq!(spec.member, if kind == "fpm" { "php-fpm" } else { "php" });
+            }
+        }
     }
 
     #[test]
@@ -3513,8 +3621,9 @@ mod tests {
     /// **The previous version of this guard said exactly that and was wrong.** It
     /// keyed on `php_self_hosted_tag` behind a `name == "php" || name == "php-fpm"`
     /// check, and the second self-built runtime was already in the file:
-    /// `php-debug` is a custom static-php compile hosted at `PHP_DEBUG_BASE_URL`,
-    /// and the name check excluded it. See `the_debug_build_is_ours_too`.
+    /// `php-debug` is a custom static-php compile rexenv hosts itself (see
+    /// `PHP_DEBUG_TAG`), and the name check excluded it. See
+    /// `the_debug_build_is_ours_too`.
     #[test]
     fn every_php_we_distribute_ourselves_ships_its_licences() {
         let mut ours = 0;
@@ -3732,8 +3841,8 @@ mod tests {
     /// **The Xdebug debug build is ours, and the old guard could not see it.**
     ///
     /// `php-debug` / `php-fpm-debug` are a custom static-php compile
-    /// (`docs/xdebug-debug-build.md`) hosted at `PHP_DEBUG_BASE_URL` — rexenv
-    /// builds those bytes and serves them, so PHP License 3.01 §2 attaches
+    /// (`docs/xdebug-debug-build.md`) hosted in `rexenv/runtimes` alongside the
+    /// 7.4 builds (`PHP_DEBUG_TAG`) — rexenv builds those bytes and serves them, so PHP License 3.01 §2 attaches
     /// exactly as it does to 7.4. The obligation used to be
     /// `(name == "php" || name == "php-fpm") && php_self_hosted_tag(version)`,
     /// which answered **false** for both, under a doc comment promising that a
@@ -3746,15 +3855,14 @@ mod tests {
     fn the_debug_build_is_ours_too() {
         for kind in ["cli", "fpm"] {
             for arch in [Arch::Arm64, Arch::X86_64] {
-                let spec = php_debug_spec(kind, arch);
+                let url = php_debug_url(SAMPLE_DEBUG_TAG, kind, arch);
                 assert!(
-                    is_self_distributed(&spec.url),
-                    "rexenv builds and hosts the debug build: {}",
-                    spec.url
+                    is_self_distributed(&url),
+                    "rexenv builds and hosts the debug build: {url}"
                 );
                 // …and with no licence pin, resolving it is an ERROR rather than
                 // a silent publish. This is the fail-closed half.
-                let err = licenses_spec(&spec.url, "php-debug", PHP_DEBUG_VERSION, arch)
+                let err = licenses_spec(&url, "php-debug", PHP_DEBUG_VERSION, arch)
                     .expect_err("ours + unpinned licences ⇒ refuse");
                 let msg = err.to_string();
                 assert!(msg.contains("distributor"), "{msg}");
@@ -3921,7 +4029,7 @@ mod tests {
         // than reading as nothing-owed. The old form asked the licence SPEC, and
         // so answered "satisfied" for exactly the case that is a violation:
         // an artifact rexenv serves whose licences nobody remembered to pin.
-        assert!(!licenses_satisfied(&tmp, &php_debug_spec("cli", Arch::Arm64).url));
+        assert!(!licenses_satisfied(&tmp, &php_debug_url(SAMPLE_DEBUG_TAG, "cli", Arch::Arm64)));
         // An EMPTY licenses/ is stale too. A tarball that unpacked to nothing
         // would otherwise read as satisfied, which is the vacuous-green shape.
         std::fs::create_dir_all(tmp.join(LICENSES_DIR)).unwrap();

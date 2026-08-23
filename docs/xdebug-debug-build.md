@@ -85,34 +85,48 @@ shasum -a 256 php-8.3.31-*-xdebug-macos-*.tar.gz   # → the four SHA-256s
    build/host repo, created 14 Aug 2026. **This settles B33**, which had been open
    since the Xdebug work: the host is GitHub Releases, and `dl.rexenv.dev` is not
    used.
-   ⚠ **The CODE has not caught up, recorded 21 Aug 2026.**
-   `core/binaries.rs`'s `PHP_DEBUG_BASE_URL` is still `https://dl.rexenv.dev/php-debug`,
-   and every php-debug URL is built from it (a test pins that string). Nothing breaks
-   today only because the artifacts do not exist and the path is unresolvable — which is
-   precisely why it will be discovered at upload time, by the person following this
-   recipe. Whoever builds first must repoint the const before pinning checksums;
-   `docs/TODO.md` carries the row. The reasons are in `docs/PLAN-php-74-support.md` §6, and the one that
+   ✓ **The code caught up 23 Aug 2026.** It had not, for two days: `binaries.rs`
+   went on building every php-debug URL from a `PHP_DEBUG_BASE_URL` naming
+   `dl.rexenv.dev` — the host this step says is not used — and the only reason
+   nothing broke is that the artifacts do not exist. That scheduled the
+   contradiction to be found at upload time, by whoever is reading this line.
+   The host is no longer a string that can be wrong: php-debug URLs are built
+   from `RUNTIMES_RELEASE_BASE`, the same const the 7.4 artifacts use.
+   The reasons are in `docs/PLAN-php-74-support.md` §6, and the one that
    decided it is that a release there is IMMUTABLE and its tag is never reused, so
    a pinned URL can 404 but can never resolve to different bytes — which is
    exactly what static-php.dev and FrankenPHP cannot promise.
    Prefer adding a job to that repo's workflow over building by hand: what
    produced an artifact should be a public log with an attestation, not a laptop.
-   Keep the exact file names `php-{ver}-{cli|fpm}-xdebug-macos-{aarch64|x86_64}.tar.gz`
-   and point `PHP_DEBUG_BASE_URL` (`core/binaries.rs`) at the release tag —
-   the FULL tag, like `php_self_hosted_tag` does, not a stable base.
+   Keep the exact file names `php-{ver}-{cli|fpm}-xdebug-macos-{aarch64|x86_64}.tar.gz`.
    rexenv becomes a DISTRIBUTOR of PHP at that moment: ship the PHP licence, the
    Xdebug licence, and the statically linked deps' licences alongside (the
    `rexenv/runtimes` build script already collects the last set automatically).
-2. Fill the four consts `PHP_DEBUG_{CLI,FPM}_MAC_{ARM64,AMD64}_SHA256` with the
-   `shasum` output. The moment they're non-empty, `manifest("php-debug", …)` and
-   `manifest("php-fpm-debug", …)` resolve and `prepare_binary` (de-quarantine →
-   relink → ad-hoc codesign) applies as usual.
+2. Fill **two** things in `core/binaries.rs`, and note that filling either alone
+   leaves php-debug unresolvable **by design**:
+   - `PHP_DEBUG_TAG` — the FULL release tag you just created
+     (`php-8.3.31-xdebug-1`; a rebuild is `-2`, never a re-upload), like
+     `php_self_hosted_tag` does for 7.4. Not a stable base.
+   - the four `PHP_DEBUG_{CLI,FPM}_MAC_{ARM64,AMD64}_SHA256` consts, from the
+     `shasum` output above.
+
+   The natural order here is upload → hash → pin, so the digests get filled first
+   and the tag is the edit that is easy to forget — which is why
+   `php_debug_spec` refuses on a missing tag before it looks at a digest, and
+   `a_debug_build_with_digests_but_no_release_tag_does_not_resolve` holds it.
+   With both filled, `manifest("php-debug", …)` and `manifest("php-fpm-debug", …)`
+   resolve and `prepare_binary` (de-quarantine → relink → ad-hoc codesign)
+   applies as usual.
 3. Unblock §8.2: route the debug pool's fpm to the `php-fpm-debug` binary with
    `zend_extension=xdebug` + `xdebug.mode=debug,develop`.
 
 ## Verify after pinning
 
-`cargo test --lib binaries` flips `php_debug_variant_is_wired_but_unresolvable_until_hosted`
-expectations — update that test to assert the variant now **resolves** with a 64-char
-SHA-256, mirroring `manifest_pins_php_cli_and_fpm`. Then a live check should show
+`cargo test --lib binaries` flips two tests, and both are deliberate tripwires
+rather than chores: `php_debug_variant_is_wired_but_unresolvable_until_hosted`
+(update it to assert the variant now **resolves** with a 64-char SHA-256,
+mirroring `manifest_pins_php_cli_and_fpm`) and
+`a_debug_build_with_digests_but_no_release_tag_does_not_resolve`, whose first
+line asserts `PHP_DEBUG_TAG` is still empty and fails with "the tag is filled —
+update this test with the pin". Then a live check should show
 `php-fpm-debug` downloading, verifying, and `phpinfo()` reporting Xdebug.

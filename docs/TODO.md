@@ -371,15 +371,27 @@ cause: a commit did the work and the surrounding claim stayed as it was.
   2026 — the only pinned constant in `core/binaries.rs` missing from the file that holds
   the pins, now recorded beside the Xdebug row with why it is deliberately not 3.5.3 (the
   debug build is a recipe, not a shipped artefact).
-- [ ] **`PHP_DEBUG_BASE_URL` still names `dl.rexenv.dev` after the B33 ruling moved the
-  host to GitHub Releases.** `core/binaries.rs` builds every php-debug URL from it and a
-  test pins the string, while `docs/xdebug-debug-build.md` says that host "is not used" —
-  a doc asserting a state the code contradicts, which is the shape this project has paid
-  for twice. Nothing breaks today only because the artefacts are unresolvable, and that
-  is exactly why it gets discovered at upload time by the person following the recipe.
-  The doc now carries the warning (21 Aug 2026); the const is the fix, and it belongs to
-  whoever builds first, because repointing a URL nobody can fetch is untestable until
-  then.
+- [x] **`PHP_DEBUG_BASE_URL` still names `dl.rexenv.dev` after the B33 ruling moved the
+  host to GitHub Releases.** ✓ 23 Aug 2026 — ledger #376, plant-proven twice.
+  The row's own plan was "the const is the fix, and it belongs to whoever builds first,
+  because repointing a URL nobody can fetch is untestable until then." That was wrong in
+  a way worth keeping: the untestable part is whether the URL RESOLVES, and nobody was
+  asking for that. What was testable today is everything that actually bites — the host,
+  and the order the two edits land in.
+  - The const is **gone** rather than corrected. php-debug URLs are built from
+    `RUNTIMES_RELEASE_BASE`, the same const the 7.4 artifacts use, so a retired host
+    cannot be a string that survives a ruling; only the release TAG (`PHP_DEBUG_TAG`)
+    is left to fill, which genuinely cannot be known until a release exists.
+  - The **two-edit gate** was the real find. The recipe's order is upload → hash → pin,
+    so the four digests land first and the tag is the edit nothing fails without — and
+    the resolve path read only the digests. `php_debug_spec` now refuses on an empty tag
+    before it reads one.
+  - The test that should have caught the original defect was a tautology:
+    `starts_with(PHP_DEBUG_BASE_URL)` on a URL formatted from that same const. It asserts
+    a literal now and bans `dl.rexenv.dev` by name.
+  - The new guard takes both halves as PARAMETERS (`php_debug_spec_from`) because both
+    consts are empty today: called through `php_debug_spec` it cannot tell the tag gate
+    from the digest gate, and deleting the tag check leaves every assertion green.
 - [x] **Ledger hygiene — three of them, all in the file that polices staleness** ✓
   21 Aug 2026.
   (a) The hand-curated tail said "plus 5 🚫 premises living inside ◐/✅ rows" and named
