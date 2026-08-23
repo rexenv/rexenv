@@ -6,7 +6,7 @@
 //!       assert its requests show up in the 60s activity window.
 //! Read-mostly: the only mutation is the config regen + reload (idempotent).
 
-use rexenv_lib::core::{binaries, database, db::DbEngine, services, site_metrics, sites, ssl, wordpress};
+use rexenv_lib::core::{binaries, database, db::DbEngine, services, site_metrics, sites, ssl};
 use rexenv_lib::platform;
 use rexenv_lib::state::db;
 
@@ -34,14 +34,72 @@ async fn main() {
     for (name, bytes) in &sizes {
         println!("{name:<30} {:>8.1} MB", *bytes as f64 / 1e6);
     }
-    for s in all.iter().filter(|s| s.site_type == rexenv_lib::state::models::SiteType::Wordpress) {
-        let dbn = wordpress::db_name_for(s.site_type, &s.domain);
-        assert!(
-            sizes.iter().any(|(n, b)| *n == dbn && *b > 0),
-            "expected a non-empty database {dbn} for {}",
-            s.domain
-        );
+    // The site's RECORDED database name, never a re-derivation from the domain.
+    //
+    // `models::Site::db_name`'s own doc says it: derived once at creation and
+    // stored, "never re-derived". This loop re-derived it with
+    // `wordpress::db_name_for(site_type, domain)` and asserted the result exists
+    // — which is true only for sites rexenv CREATED. An IMPORTED site keeps its
+    // original database (that is the point of the import: it connects to what
+    // was already there), so `photocontest.test` records `photocontest` while
+    // the derivation demands `wp_photocontest_test`, and the check failed
+    // against a site that was completely healthy — 41 tables, 6 MB.
+    //
+    // Found 24 Aug 2026 on a machine with five Valet-imported sites. It would
+    // fail on ANY install with an imported site, which is the entire cohort the
+    // Valet/Herd migration exists for. Textbook recorded-vs-derived
+    // (`docs/TESTING.md` §3.1/§3.5).
+    // What this can prove, and what it cannot.
+    //
+    // It CAN prove `db_sizes` reads real databases and that a site's RECORDED
+    // name is the one to look them up by. It CANNOT prove every WordPress site
+    // has a database: a site imported without one, a half-provisioned site, or
+    // one whose database was dropped by hand are all legitimate states on a real
+    // machine, and this example runs against the user's real app data.
+    //
+    // The old loop asserted the second thing, and got the first one wrong on the
+    // way: it re-derived the name with `wordpress::db_name_for(site_type,
+    // domain)` — which `models::Site::db_name`'s own doc forbids ("derived ONCE
+    // at creation and stored, never re-derived") — so it demanded
+    // `wp_photocontest_test` from a site recording `photocontest` and failed
+    // against a completely healthy 41-table, 6 MB database. That failure was not
+    // rare: it fires on ANY install with an imported site, which is the entire
+    // cohort the Valet/Herd migration exists for.
+    let wp: Vec<_> = all
+        .iter()
+        .filter(|s| s.site_type == rexenv_lib::state::models::SiteType::Wordpress)
+        .collect();
+    let mut matched = 0;
+    let mut absent = Vec::new();
+    for s in &wp {
+        assert!(!s.db_name.is_empty(), "{} is a WordPress site with no recorded database name", s.domain);
+        match sizes.iter().find(|(n, _)| *n == s.db_name) {
+            Some((_, bytes)) => {
+                assert!(*bytes > 0, "{} has database {} and it is EMPTY", s.domain, s.db_name);
+                matched += 1;
+            }
+            // Reported, never asserted — and reported by NAME so it is not a
+            // silent skip. A number here is the honest limit of an example
+            // reading somebody else's data.
+            None => absent.push(format!("{} → {}", s.domain, s.db_name)),
+        }
     }
+    if !absent.is_empty() {
+        println!("NOTE: {} WordPress site(s) have no database on this machine:", absent.len());
+        for a in &absent {
+            println!("  - {a}");
+        }
+        println!("  (imported without one, half-provisioned, or dropped by hand — all legitimate)");
+    }
+    // The landmark: a run that matched nothing proves nothing, and would sail
+    // past every assertion above by having no site to check.
+    assert!(
+        matched > 0,
+        "no WordPress site's recorded database was found among {} sizes — db_sizes or the \
+         recorded names are wrong, not the machine",
+        sizes.len()
+    );
+    println!("✓ {matched} of {} WordPress sites resolved by RECORDED db_name", wp.len());
 
     // (2) Activity: roll out the rexenv log_format (config regen + reload —
     // exactly what the app does on any site change), then generate traffic.

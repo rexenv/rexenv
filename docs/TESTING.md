@@ -624,6 +624,23 @@ Per recurring class: the honest mechanism — lint, test helper, or documented a
 
 Covered by 3.1 (same family — poison tests + the recorded-fact ledger rows).
 
+**The class reaches the CHECKS too, and there it hides longer** (24 Aug 2026,
+ledger #390). `site_resources_check` re-derived a site's database name with
+`wordpress::db_name_for(site_type, domain)` and asserted the result exists —
+while `models::Site::db_name`'s own doc says the name is "derived ONCE at
+creation and stored, never re-derived". That is true only for sites rexenv
+CREATED: an imported site keeps the database it came with, so the check demanded
+`wp_photocontest_test` from a site recording `photocontest` and failed against a
+healthy 41-table database. **It fires on any install with an imported site** —
+the whole Valet/Herd cohort — and had never been seen, because the stack tier it
+belongs to had a precondition nobody could satisfy and so was never run.
+Two rules follow, and the second is the one that costs:
+- when a fact is RECORDED, a test that re-derives it is testing a different
+  fact, and will disagree exactly where the two legitimately differ;
+- **a tier nobody can run to green is a tier whose checks rot silently.** Three
+  of that tier's checks were wrong simultaneously (#388–#390), each for its own
+  reason, and nothing had reported any of them.
+
 ### 3.6 Percentage-height chain (the h-full class)
 
 - **Test helper: an L2 heights probe.** wk-checks gains a shared measurement helper:

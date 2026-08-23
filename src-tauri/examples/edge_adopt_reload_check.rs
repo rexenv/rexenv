@@ -17,8 +17,26 @@
 use rexenv_lib::core::{binaries, proxy, service_manager::ServiceManager, ssl};
 use rexenv_lib::platform;
 
+/// Pids of a live edge, whichever of the TWO caddys is serving.
+///
+/// **There are two, and this only knew one** (found 24 Aug 2026 by running the
+/// stack tier in the shipped configuration). The user-space edge runs the
+/// versioned binary out of the per-user cache; the PRIVILEGED edge — the one
+/// that holds :443 on a normal install — runs a root-owned copy at
+/// `/Library/Application Support/dev.rexenv.rexenv/bin/caddy`, unversioned.
+///
+/// That is not an accident to paper over: a root daemon executing a
+/// user-writable binary is a standing local privilege escalation, so the
+/// daemon's binary MUST live in a root-owned tree
+/// (`platform/macos/mod.rs`, `MacosEdgeDaemon`). The path difference is the
+/// security property.
+///
+/// Matching only the user-cache marker meant this check could pass only when the
+/// edge was the UNPRIVILEGED one — i.e. never on a normal install. It asserted
+/// "the admin socket answers, so a caddy pid must match" and got "no caddy pid
+/// found" against an edge that was running perfectly.
 fn edge_pids(plat: &dyn rexenv_lib::platform::traits::Platform) -> Vec<u32> {
-    let marker = plat
+    let user_space = plat
         .paths()
         .bin_dir()
         .unwrap()
@@ -26,7 +44,12 @@ fn edge_pids(plat: &dyn rexenv_lib::platform::traits::Platform) -> Vec<u32> {
         .join("caddy")
         .display()
         .to_string();
-    plat.supervisor().owned_pids(&marker)
+    let privileged = plat.edge().daemon_binary_path().display().to_string();
+    let mut pids = plat.supervisor().owned_pids(&user_space);
+    pids.extend(plat.supervisor().owned_pids(&privileged));
+    pids.sort_unstable();
+    pids.dedup();
+    pids
 }
 
 #[tokio::main]

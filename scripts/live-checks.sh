@@ -18,7 +18,11 @@
 #             THE STACK first. No prompts, warm-cache offline.
 #   network — needs the internet (wp.org, ghcr, Cloudflare, GitHub); also
 #             assumes the stack is stopped unless the example says otherwise.
-#   stack   — needs the user's stack RUNNING (adoption/wire/resource probes).
+#   stack   — needs the user's stack RUNNING **and the app QUIT**: services outlive
+#             the app by design, and `cli_socket_check`/`mcp_socket_check` refuse
+#             while the app holds its sockets. Stating only "stack RUNNING" made
+#             this tier unsatisfiable-by-reading, and it went un-run long enough for
+#             three of its checks to rot (ledger #388-#390, 24 Aug 2026).
 #   system  — admin prompts, root state, LaunchAgents, the REAL app database,
 #             or real system teardown. Run singly with eyes open.
 #   demo    — takes args, needs a second process, or demonstrates rather than

@@ -386,22 +386,32 @@ paying for anyway: **the tick belongs in the commit that does the work.**
     the wrong shape for "something else owns this port", which the error text already says
     plainly.
 
-- [ ] **The stack tier's stated precondition is not its whole precondition, and it has no
-  recorded baseline.** Run 23 Aug 2026 (as a side effect of testing the enforcement above,
-  so this is an observation and not a regression report — nobody knows what it looked like
-  before). Five of its examples failed, and they are not one thing:
-  - `cli_socket_check` and `mcp_socket_check` refuse with *"the app's CLI socket is live —
-    quit the app first"*. So their real precondition is **services UP and the app QUIT** —
-    which is coherent, because services outlive the app by design, but the tier header says
-    only "needs the user's stack RUNNING". A tier whose stated precondition is a subset of
-    its examples' cannot be satisfied by reading it.
-  - `site_resources_check` expects a non-empty `wp_photocontest_test`; that site's database
-    is empty on this machine. Data-shaped, not code-shaped.
-  - `adminer_proxy_check` (login POST got 403, wanted 302) and `edge_adopt_reload_check`
-    ("admin socket answers but no caddy pid found") are unclassified — they may be the same
-    app-running precondition, or real.
-  Worth one deliberate run with the app quit and services up, to separate the precondition
-  failures from the rest. Until then the stack tier has no green anyone has seen.
+- [x] **The stack tier had no green anyone had seen — it has one now** ✓ 24 Aug 2026.
+  `live-checks(stack): all green`, 9 examples, services up and the app quit. **Three of the
+  five failures were real defects, and none of them was in the product** — each was a check
+  asserting something the code had stopped doing, or never did.
+  - [x] `cli_socket_check` / `mcp_socket_check`: **precondition, not a defect.** Their real
+    requirement is services UP and the app QUIT, which is coherent — services outlive the app
+    by design — while the tier header said only "needs the stack RUNNING". Both pass with the
+    app quit. **A tier whose stated precondition is a subset of its examples' cannot be
+    satisfied by reading it**, so the header now says so.
+  - [x] `edge_adopt_reload_check` ✓ ledger #388 — matched only the per-user cache marker, so
+    it could pass only when the edge was the UNPRIVILEGED caddy, i.e. never on a shipped
+    install. The privileged edge runs a root-owned *unversioned* copy under `/Library`,
+    because a root daemon executing a user-writable binary is a privilege escalation. It
+    matches both now.
+  - [x] `adminer_proxy_check` ✓ ledger #389 — stale twice over: a hardcoded POST body with no
+    CSRF token (Adminer answers that with 403 and a re-rendered form), and then an assertion
+    on a 302 that `forward` is designed to follow internally, because WKWebView cannot follow
+    a redirect from a custom-scheme handler.
+  - [x] `site_resources_check` ✓ ledger #390 — re-derived a database name the model's own doc
+    forbids re-deriving, so it demanded `wp_photocontest_test` from a site recording
+    `photocontest`. **Fires on any install with an imported site.** It also stopped asserting
+    that every WordPress site has a database — a claim about the user's data, not rexenv's
+    behaviour — and reports the exceptions by name instead.
+  **The transferable finding:** a tier nobody can run to green is a tier whose checks rot
+  silently. All three had been wrong for a while; none was noticed, because the tier had a
+  precondition nobody could satisfy and so was never run.
 
 ### Opened by the 21 Aug 2026 reconcile
 
