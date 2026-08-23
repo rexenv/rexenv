@@ -9,7 +9,7 @@
 //! admin API; on a high port it's a supervised child.
 
 use crate::core::db::DbEngine;
-use crate::core::{adminer, apache, binaries, frankenphp, mail, php, ports, proxy, services, sites, ssl, stack_guard};
+use crate::core::{adminer, apache, binaries, frankenphp, macho, mail, php, ports, proxy, services, sites, ssl, stack_guard};
 use crate::error::{Error, Result};
 use crate::platform::traits::Platform;
 use crate::state::models::{Site, SiteServing, WebServer};
@@ -373,6 +373,9 @@ impl ServiceManager {
             log: stdout_log(platform, engine.key())?,
             tries: 30,
             probe: Box::new(move || engine.running()),
+            // PostgreSQL is the reason this field exists: its pinned builds
+            // declare `minos 26.0` while rexenv's floor is macOS 15.
+            bin: engine.server_binary(platform, &self.db_version(engine)),
         }))
     }
 
@@ -744,6 +747,7 @@ impl ServiceManager {
             log: stdout_log(platform, "mailpit")?,
             tries: 20,
             probe: Box::new(mail::running),
+            bin: None,
         }))
     }
 
@@ -1063,6 +1067,7 @@ impl ServiceManager {
             log: stdout_log(platform, &log_key)?,
             tries: 20,
             probe: Box::new(move || frankenphp::running(port)),
+            bin: None,
         })
     }
 
@@ -1222,6 +1227,7 @@ impl ServiceManager {
                 log: platform.paths().log_dir()?.join(log_name),
                 tries: 20,
                 probe: Box::new(move || services::fpm_running(port)),
+                bin: None,
             });
         }
         Ok(checks)
@@ -2178,6 +2184,14 @@ pub struct ReadyCheck {
     log: PathBuf,
     tries: u32,
     probe: Box<dyn Fn() -> bool + Send + Sync>,
+    /// The binary this service runs, when the caller has it cheaply to hand.
+    ///
+    /// Used for ONE thing, on the failure path only: if the service never came
+    /// up and its binary declares a macOS newer than this machine's, say so.
+    /// `None` everywhere that would have to resolve or download something to
+    /// answer — an unexplained timeout is bad, but not bad enough to fetch an
+    /// artifact in order to explain it.
+    bin: Option<PathBuf>,
 }
 
 /// Append health-watchdog events to `<log_dir>/health.log` (timestamped) — the
@@ -2215,8 +2229,8 @@ pub async fn await_ready(checks: Vec<ReadyCheck>) -> Result<()> {
     let mut set = tokio::task::JoinSet::new();
     for check in checks {
         set.spawn(async move {
-            let ReadyCheck { service, log, tries, probe } = check;
-            wait_until_ready(&service, &log, tries, probe).await
+            let ReadyCheck { service, log, tries, probe, bin } = check;
+            wait_until_ready(&service, &log, tries, probe, bin.as_deref()).await
         });
     }
     let mut failures = Vec::new();
@@ -2252,16 +2266,47 @@ async fn wait_until_ready(
     log: &Path,
     tries: u32,
     cond: impl FnMut() -> bool,
+    bin: Option<&Path>,
 ) -> Result<()> {
     if wait_until(cond, tries).await {
         Ok(())
     } else {
         Err(Error::Other(format!(
-            "{service} did not start within {}s — see {}",
+            "{service} did not start within {}s{} — see {}",
             tries / 2, // 500ms per try
+            bin.and_then(macos_floor_note).unwrap_or_default(),
             log.display()
         )))
     }
+}
+
+/// The macOS-version half of a start failure, when there is one.
+///
+/// **Diagnosis, never a gate.** rexenv must not refuse to spawn on `minos`:
+/// measured 15 Aug 2026, dyld on macOS 26 enforces it for neither executables
+/// nor dylibs, so refusing would block builds that may run perfectly on the
+/// strength of a prediction this project cannot test from a current machine.
+/// Enforcement is a property of the OLDER host's dyld, and only a macOS 14/15 VM
+/// can settle it (`docs/TODO.md`, `docs/PORTS.md`).
+///
+/// This runs only after the service has ALREADY failed, so it costs nothing when
+/// the prediction is wrong: the sentence simply never appears. What it buys when
+/// the prediction is right is the difference between "PostgreSQL did not start
+/// within 15s — see postgres-stdout.log", which sends the reader at Postgres,
+/// and a line naming the one fact that explains it. PostgreSQL's pinned builds
+/// declare macOS 26 while rexenv's own floor is 15, so this is not an edge: it
+/// is every supported user below 26.
+fn macos_floor_note(bin: &Path) -> Option<String> {
+    let need = macho::min_macos(bin)?;
+    let host = macho::host_macos()?;
+    if !macho::newer_than(need, host) {
+        return None;
+    }
+    Some(format!(
+        " — this build needs macOS {}.{}, and this Mac runs {}.{}, which can stop it \
+         loading at all",
+        need.0, need.1, host.0, host.1
+    ))
 }
 
 /// The `spawn_logged` stdout log path for a service `key` (`<key>-stdout.log` under
@@ -2845,17 +2890,66 @@ mod tests {
     #[tokio::test]
     async fn wait_until_ready_errors_naming_service_and_log() {
         // A cond that's already true returns Ok without waiting.
-        assert!(wait_until_ready("X", Path::new("/tmp/x-stdout.log"), 1, || true)
+        assert!(wait_until_ready("X", Path::new("/tmp/x-stdout.log"), 1, || true, None)
             .await
             .is_ok());
         // A cond that never becomes true errors, naming the service + its log path so
         // the failure is actionable (M3) rather than a silent Ok.
-        let err = wait_until_ready("MySQL", Path::new("/var/log/mysql-stdout.log"), 1, || false)
+        let err = wait_until_ready("MySQL", Path::new("/var/log/mysql-stdout.log"), 1, || false, None)
             .await
             .unwrap_err()
             .to_string();
         assert!(err.contains("MySQL"), "error names the service: {err}");
         assert!(err.contains("mysql-stdout.log"), "error names the log: {err}");
+    }
+
+    /// **A start failure names the macOS mismatch, and nothing else does.**
+    ///
+    /// PostgreSQL's pinned builds declare `minos 26.0` while rexenv's floor is
+    /// macOS 15, so every supported user below 26 is in the suspect band. If
+    /// dyld refuses them, the only thing they see is "PostgreSQL did not start
+    /// within 15s — see postgres-stdout.log", which sends them at Postgres.
+    ///
+    /// The note is DIAGNOSIS, never a gate: dyld on macOS 26 enforces minos for
+    /// nothing, so refusing to spawn would block builds that may run perfectly
+    /// on a prediction this project cannot test from a current machine.
+    #[test]
+    fn a_binary_that_needs_a_newer_macos_says_so_and_only_then() {
+        // Equal, older, and per-component ordering — "9" > "26" as text.
+        assert!(!macho::newer_than((15, 4, 0), (15, 4, 0)));
+        assert!(!macho::newer_than((9, 0, 0), (26, 0, 0)));
+        assert!(macho::newer_than((26, 0, 0), (15, 4, 0)));
+
+        // A path with no Mach-O behind it must produce NO note rather than a
+        // guess — the failure message stays exactly as it was.
+        assert_eq!(macos_floor_note(Path::new("/nonexistent/postgres")), None);
+
+        // And the real one, when the cache has it: postgres is the binary this
+        // whole mechanism exists for.
+        if let Some(home) = std::env::var_os("HOME") {
+            let dir = Path::new(&home).join("Library/Application Support/dev.rexenv.rexenv/bin");
+            let pg = std::fs::read_dir(&dir)
+                .into_iter()
+                .flatten()
+                .flatten()
+                .map(|e| e.path().join("bin/postgres"))
+                .find(|p| p.is_file());
+            if let Some(pg) = pg {
+                let need = macho::min_macos(&pg).expect("a cached postgres is a Mach-O");
+                let host = macho::host_macos().expect("this test runs on macOS");
+                let note = macos_floor_note(&pg);
+                assert_eq!(
+                    note.is_some(),
+                    macho::newer_than(need, host),
+                    "the note must appear exactly when the build outranks the host \
+                     (needs {need:?}, host {host:?})"
+                );
+                if let Some(note) = note {
+                    assert!(note.contains(&need.0.to_string()), "{note}");
+                    assert!(note.contains(&host.0.to_string()), "{note}");
+                }
+            }
+        }
     }
 
     #[tokio::test]
@@ -2865,6 +2959,7 @@ mod tests {
             log: PathBuf::from(format!("/var/log/{}-stdout.log", service.to_lowercase())),
             tries: 1,
             probe: Box::new(move || ok),
+            bin: None,
         };
 
         // Empty batch and an all-ready batch are Ok.

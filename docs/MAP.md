@@ -47,6 +47,7 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
 | `.env` read + write (Laravel create, git clone, connection rewrite) | `core/dotenv.rs` (came out of `core/laravel.rs` for its second caller, and immediately caught a duplicate-key bug) | via `core/laravel.rs`, `core/sites.rs` | — | `core::dotenv` unit tests |
 | Add-from-Git + assets (clone, jobs, watchers, link guard) | `core/repo.rs`, `core/devtools.rs` | `commands/repo.rs` (26 cmds; `job_target` resolves the `site` kind to the project root) | ShellRunner | #134–140, #183–185, #284–288; `repo_*_check` |
 | Logs viewer | `core/logs.rs` | `commands/logs.rs` | Paths | #102; `log_tail_check` |
+| macOS floor a binary DECLARES (`minos`) | `core/macho.rs` | none — read on the failure path by `service_manager::macos_floor_note` | — | #383; diagnosis only, never gates a spawn |
 | Terminal (PTY) | `core/terminal.rs` | `commands/terminal.rs` | ShellRunner | `terminal_check` |
 | Setup / teardown (system changes) | `core/setup.rs` | `commands/system.rs` | PrivilegeManager, CertTrustManager, DnsManager | `system_setup`, `system_teardown` |
 | rex CLI (remote control, never a second brain) | `cli/src/main.rs` (own crate) + `cli_server.rs` (app side), `core/cli.rs` (PATH install) | dispatches to the SAME commands::* fns | Paths | #54–58; `cli_socket_check`; surface: `CLI-ROADMAP.md` |

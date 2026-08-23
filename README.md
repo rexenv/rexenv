@@ -183,6 +183,7 @@ rexenv/
         │   ├── updates.rs · php_upstream.rs               # signed update manifests; "a newer patch exists"
         │   ├── wp_packages.rs · copy_scan.rs · proc.rs    # WP-CLI package pin; UI-copy guards; process ownership
         │   ├── mail.rs · adminer.rs · logs.rs · terminal.rs · monitor.rs
+        │   ├── macho.rs      # the macOS version a pinned binary DECLARES (minos)
         │   ├── blueprints.rs · setup.rs · ports.rs · stack_guard.rs · cli.rs
         │   ├── downloads.rs    # download-manager hub (prefetch-before-lock)
         │   └── binaries.rs     # BinaryProvider: pinned manifest, checksum, prepare

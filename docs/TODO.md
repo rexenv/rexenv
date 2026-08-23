@@ -247,6 +247,23 @@ paying for anyway: **the tick belongs in the commit that does the work.**
   not just the log pointer. If the VM confirms the refusal: re-pin to
   lower-target theseus-rs releases (or another source), and consider a
   version-aware tell on the Databases screen.
+  - [x] **The message half is DONE** ✓ 23 Aug 2026 — ledger #383. This was ruled as the
+    second of the VM's two questions, and it did not need the VM: whether the top-level
+    line leads anywhere is answerable here, and the answer was no. A start failure now
+    reads *"PostgreSQL did not start within 15s — this build needs macOS 26.0, and this
+    Mac runs 15.4, which can stop it loading at all — see postgres-stdout.log"* (observed
+    by planting an older host, since this machine is on 26 and gets no note).
+    The floor is READ from the Mach-O rather than recorded, because the recorded version
+    has already been wrong once — `docs/PORTS.md`'s table said all PHP minors were 12.0
+    while 8.0.30 was 14.0, from the day it was written. `core::macho` is cross-checked
+    against `otool -l` on the real cache (14 binaries, 23 Aug).
+    **It is diagnosis, never a gate, and that must stay.** Refusing to spawn on `minos`
+    would block builds that may run perfectly, on a prediction this tree cannot test —
+    dyld on macOS 26 enforces it for nothing. Running only after a failure makes a wrong
+    prediction free: the sentence simply never appears.
+  - [ ] **Still open, and still needs the VM:** whether dyld actually refuses these builds
+    below macOS 26, and therefore whether to re-pin to lower-target releases. Nothing
+    above changes that — it makes the failure legible if it is real, not less likely.
 - [ ] **Option, not a commitment: a self-built nginx (deployment target 12)
   would drop the app floor from 15 to 14** (MySQL's floor). Same
   `rexenv/runtimes` path that built PHP 7.4; recorded like the c-ares ruling -

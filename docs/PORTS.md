@@ -96,6 +96,15 @@ above therefore rests on measured metadata + the documented enforcement class, n
 on a refusal reproduced here; confirming what actually happens on macOS 14/15 needs
 an older-macOS VM (PUBLISH-TESTING's clean-VM shape).
 
+**If it IS real, the user is told which fact explains it** (23 Aug 2026, ledger #383).
+A readiness timeout now reads the binary's own `minos` (`core::macho`, cross-checked
+against `otool -l` on the real cache) and, when it outranks the running macOS, says so
+in the top-level line instead of only pointing at a log. Diagnosis, never a gate:
+refusing to spawn on `minos` would block builds that may run perfectly, on a prediction
+this tree cannot test. **The table above is therefore no longer the only record** — the
+number that matters at runtime is read from the artifact, which is what stops the
+PHP-row mistake from recurring where it counts.
+
 All checksum-locked (SHA-256/512 by source). macOS `prepare_binary` order is non-negotiable:
 **de-quarantine → relink Homebrew dylibs → codesign LAST** (relinking invalidates the
 signature; Apple Silicon kills unsigned binaries). The bundle counterpart

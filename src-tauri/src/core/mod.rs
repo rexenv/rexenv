@@ -37,6 +37,7 @@ pub mod firefox;
 pub mod frankenphp;
 pub mod laravel;
 pub mod logs;
+pub mod macho;
 pub mod mail;
 pub mod mariadb;
 pub mod monitor;

@@ -320,6 +320,35 @@ impl DbEngine {
         }
     }
 
+    /// The SERVER binary this engine runs, if its version is already cached.
+    ///
+    /// Offline and non-resolving on purpose — [`cached_path`](binaries::cached_path)
+    /// never downloads — because the one caller runs on a failure path, where
+    /// fetching an artifact to explain why a spawn failed would be absurd.
+    ///
+    /// It exists so a readiness timeout can name a macOS-version mismatch:
+    /// PostgreSQL's pinned builds declare `minos 26.0` while rexenv's own floor
+    /// is macOS 15, and "PostgreSQL did not start within 15s" sends the reader at
+    /// Postgres rather than at their OS. See `core::macho`.
+    pub fn server_binary(&self, platform: &dyn Platform, version: &str) -> Option<PathBuf> {
+        let dir = binaries::cached_path(platform, self.binary_name(), version)?;
+        Some(match self {
+            DbEngine::Postgres => postgres::postgres_bin(&dir),
+            // The others' cache entries already point at the member that runs.
+            _ => dir,
+        })
+    }
+
+    /// The `binaries` catalog name for this engine's server artifact.
+    fn binary_name(&self) -> &'static str {
+        match self {
+            DbEngine::Mysql => "mysql",
+            DbEngine::Postgres => "postgres",
+            DbEngine::Mariadb => "mariadb",
+            DbEngine::Redis => "redis",
+        }
+    }
+
     /// Stop a running engine by pid.
     pub fn stop(&self, platform: &dyn Platform, pid: u32) -> Result<()> {
         platform.supervisor().stop(pid)
