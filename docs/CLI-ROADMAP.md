@@ -169,6 +169,13 @@ line streaming is the same 🔴 "progress streaming" infra item as always.
   once, benefits everything.
 - **Protocol version handshake** 🟡 — v1 already errors on unknown cmds both
   directions; add an explicit version field when the surface grows.
+- **Every dispatch arm is now REACHABLE, and a guard keeps it that way** (23 Aug
+  2026, ledger #385). `mail.mark_read` had been answered since mail shipped with
+  no `rex` verb sending it — a door built and left shut, found by a docs
+  reconcile reading the table by eye. `rex mail mark-read` sends it, and
+  `every_command_this_server_answers_is_reachable_from_the_cli` fails on the next
+  one. The same scan found `mail.list`'s `query`/`unread` parameters unreachable
+  (the CLI sent `Null`); `rex mail list [--unread] [query]` uses them.
 - **`--json` everywhere** — v1 rule, keep it: every new command returns the
   raw IPC payload under `--json`.
 
@@ -185,4 +192,6 @@ line streaming is the same 🔴 "progress streaming" infra item as always.
    guard-blocked in the example harness — exercise each once against the
    running app): `php install/uninstall`, `php settings set`, `db versions
    --set`, `site server/domain/move`, `mail clear`, `tunnel start`,
-   `wp core update/switch`.
+   `wp core update/switch`, and **`mail mark-read` / `mail list --unread`**
+   (added 23 Aug 2026; the app was not running when they were written, so both
+   are built and L0-guarded but never once exercised end to end).

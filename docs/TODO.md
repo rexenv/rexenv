@@ -543,14 +543,28 @@ cause: a commit did the work and the surrounding claim stayed as it was.
     `composer create-project` because it costs a network install of a whole Laravel
     skeleton per run; the honest home for it is a SMOKE step that stages the file once,
     not a check that pays that on every tier run.
-- [ ] **Three small CLI gaps, all with the backend already built.** `cli_server.rs:981`
-  answers `mail.mark_read` and no `rex` verb sends it — the one unreachable arm of the
-  whole dispatch table. `docs/CLI-ROADMAP.md` lists four 🟢 wins whose IPC exists
-  (`site retry` matters most: `rex site create`'s failure message names a recovery the CLI
-  cannot perform) and a 🟡 protocol-version handshake, which is the standing answer to a
-  hazard this repo has already hit — a stale `rex` against a newer app produced the
-  "unknown command … newer than the running app" confusion. None of the five is recorded
-  here.
+- [ ] **Three small CLI gaps, all with the backend already built.** Partly done, and the
+  row's framing was off in a way worth keeping.
+  - [x] **`mail.mark_read` — the unreachable arm** ✓ 23 Aug 2026, ledger #385.
+    `rex mail mark-read` sends it, and the fix that matters is the GUARD:
+    `every_command_this_server_answers_is_reachable_from_the_cli` fails on the next one.
+    This was found by a reconcile reading the dispatch table by eye, which is not a
+    mechanism — the frontend has had `every_ipc_wrapper_is_actually_called` for exactly
+    this defect and the CLI had nothing.
+    The same scan found a **second, quieter instance the row did not know about**:
+    `mail.list` takes a search term and an unread filter — the UI's own inbox search uses
+    them — and the CLI sent `Null`, so both parameters were unreachable. `rex mail list
+    [--unread] [query]` uses them.
+    ◐ **Neither verb has been run against the app** — it was not running when they were
+    written. Recorded in `docs/CLI-ROADMAP.md`'s in-app-verifies-owed list.
+  - [ ] **The remaining "🟢 wins whose IPC exists" are NOT unreachable arms — they are
+    unbuilt commands.** `site relink`, `site retry` and `config get|set` have no dispatch
+    arm at all, so each is arm + verb + formatting, not one line. `site retry` and
+    `config get|set` are the owner's (the latter parked on which keys to allow-list);
+    **`site relink` is the one that is nobody's decision** and is the next pick here.
+  - [ ] **Protocol-version handshake** 🟡 — still unbuilt. The standing answer to a hazard
+    this repo has already hit: a stale `rex` against a newer app produced the "unknown
+    command … newer than the running app" confusion.
 - [x] **`docs/TESTING.md` §3.3's layout-fixture matrix was designed and never built** ✓
   21 Aug 2026 — `core::layouts`, three real on-disk skeletons (stock, Bedrock,
   subdir-docroot), with `wordpress::core_root` / `core_path_arg` and

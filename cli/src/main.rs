@@ -119,8 +119,9 @@ COMMANDS:
   repo tools [--refresh]               Detected git/node (login-shell resolution)
   service start|stop <mysql|mariadb|postgres|redis|mailpit>
                 Start/stop one optional service (web tier stays via rex start/stop)
-  mail          List caught messages (Mailpit)
-  mail open     Open the Mailpit web UI · mail clear [--yes] deletes ALL messages
+  mail          List caught messages (Mailpit) · mail list --unread [query] filters
+  mail open     Open the Mailpit web UI · mail mark-read marks every message read
+  mail clear    Delete ALL caught messages (--yes to skip the prompt)
   tunnel list | tunnel start|stop <domain>
                 Public cloudflared tunnels (start prints the public URL)
   tld [--set <tld>]
@@ -1329,7 +1330,7 @@ fn cmd_completions(shell: Option<&str>) {
                 db) compadd {DB} ;;\n\
                 php) compadd {PHP} ;;\n\
                 service) compadd start stop ;;\n\
-                mail) compadd list open clear ;;\n\
+                mail) compadd list open mark-read clear ;;\n\
                 tunnel) compadd list start stop ;;\n\
                 completions) compadd zsh bash ;;\n\
                 repo) compadd tools ;;\n\
@@ -1347,7 +1348,7 @@ fn cmd_completions(shell: Option<&str>) {
                 db) COMPREPLY=($(compgen -W \"{DB}\" -- \"$cur\")) ;;\n\
                 php) COMPREPLY=($(compgen -W \"{PHP}\" -- \"$cur\")) ;;\n\
                 service) COMPREPLY=($(compgen -W \"start stop\" -- \"$cur\")) ;;\n\
-                mail) COMPREPLY=($(compgen -W \"list open clear\" -- \"$cur\")) ;;\n\
+                mail) COMPREPLY=($(compgen -W \"list open mark-read clear\" -- \"$cur\")) ;;\n\
                 tunnel) COMPREPLY=($(compgen -W \"list start stop\" -- \"$cur\")) ;;\n\
                 completions) COMPREPLY=($(compgen -W \"zsh bash\" -- \"$cur\")) ;;\n\
                 repo) COMPREPLY=($(compgen -W \"tools\" -- \"$cur\")) ;;\n\
@@ -1574,7 +1575,24 @@ fn cmd_service(words: &[String], json_output: bool) {
 fn cmd_mail(words: &[String], json_output: bool) {
     match words.first().map(String::as_str) {
         None | Some("list") => {
-            let data = request("mail.list", Value::Null);
+            // `mail.list` has always taken a search term and an unread filter —
+            // the UI's own inbox search uses them — and this sent `Null`, so
+            // both were unreachable from the CLI. Same shape as `mail.mark_read`
+            // below: a dispatch arm answering something nothing asked.
+            let rest: Vec<&String> = words.iter().skip(1).filter(|w| !w.starts_with("--")).collect();
+            let unread = words.iter().any(|w| w == "--unread");
+            let query = rest.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(" ");
+            let mut args = json!({});
+            if !query.is_empty() {
+                args["query"] = json!(query);
+            }
+            // Absent, not `false`: the server treats a missing `unread` as "the
+            // whole inbox", and sending `false` explicitly would mean the same
+            // thing today while making the CLI depend on it.
+            if unread {
+                args["unread"] = json!(true);
+            }
+            let data = request("mail.list", args);
             if json_output {
                 return print_json(&data);
             }
@@ -1614,8 +1632,21 @@ fn cmd_mail(words: &[String], json_output: bool) {
             }
             println!("✓ mailbox cleared");
         }
+        Some("mark-read") => {
+            // The last unreachable arm of the whole dispatch table: the server
+            // has answered `mail.mark_read` since the mail feature shipped and
+            // no `rex` verb sent it (docs/TODO.md, 21 Aug 2026 reconcile).
+            //
+            // Named `mark-read` rather than `read` because it marks EVERY
+            // message — `rex mail read` would read as "show me one".
+            let r = request("mail.mark_read", Value::Null);
+            if json_output {
+                return print_json(&r);
+            }
+            println!("✓ all messages marked read");
+        }
         _ => {
-            eprintln!("rex: usage: rex mail [list|open|clear]");
+            eprintln!("rex: usage: rex mail [list [--unread] [query] | open | mark-read | clear]");
             exit(1);
         }
     }

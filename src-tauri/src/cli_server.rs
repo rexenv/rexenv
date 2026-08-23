@@ -1443,6 +1443,86 @@ mod tests {
         std::env::temp_dir().join(format!("rexcli-{}-{name}.sock", std::process::id()))
     }
 
+    /// **Every command this server answers is reachable from a `rex` verb.**
+    ///
+    /// `mail.mark_read` was answered here from the day mail shipped and no verb
+    /// ever sent it — a door built and left shut, found only by a docs reconcile
+    /// reading the dispatch table by eye. It is the CLI's version of the defect
+    /// `core::copy_scan::every_ipc_wrapper_is_actually_called` guards on the
+    /// frontend, and it had no guard at all.
+    ///
+    /// The rule is deliberately LOOSE: an arm counts as reached if its name
+    /// appears as a string literal ANYWHERE in the CLI, not only inside a
+    /// `request(…)` call. That is not laziness — the CLI sends commands four
+    /// ways, and three of them defeat a strict scan: multi-line `request(\n
+    /// "x.y", …)`, computed names (`format!("tunnel.{act}")`), and genuinely
+    /// dynamic ones (`request(step, …)` where `step` came from a slice). A
+    /// strict rule reported ten false positives on a tree with zero real ones,
+    /// and a guard that cries wolf gets an allow-list that swallows the next
+    /// real case.
+    ///
+    /// What it therefore cannot catch: an arm whose name appears in the CLI only
+    /// in a COMMENT. It catches the defect that actually happened — a name
+    /// nothing in the CLI mentions at all.
+    #[test]
+    fn every_command_this_server_answers_is_reachable_from_the_cli() {
+        const THIS: &str = include_str!("cli_server.rs");
+        const CLI: &str = include_str!("../../cli/src/main.rs");
+
+        // The arms of `dispatch`'s own `match cmd`, by their declaration form.
+        // Started at the match rather than the file so the OTHER `match` in this
+        // file (the watch subcommands) cannot leak in.
+        let mut arms: Vec<&str> = Vec::new();
+        let mut inside = false;
+        for line in THIS.lines() {
+            if line.trim_start().starts_with("match cmd {") {
+                inside = true;
+                continue;
+            }
+            if !inside {
+                continue;
+            }
+            if line.starts_with("        _ =>") {
+                break;
+            }
+            if let Some(rest) = line.strip_prefix("        \"") {
+                if let Some(name) = rest.split('"').next() {
+                    if !name.is_empty() {
+                        arms.push(name);
+                    }
+                }
+            }
+        }
+        assert!(
+            arms.len() > 50,
+            "only {} dispatch arms parsed — the scan is broken, not the table small",
+            arms.len()
+        );
+
+        // Prefixes the CLI builds at runtime: `format!("tunnel.{act}")`.
+        let prefixes: Vec<&str> = CLI
+            .match_indices("&format!(\"")
+            .filter_map(|(i, _)| CLI[i + 10..].split('"').next())
+            .filter_map(|lit| lit.split_once(".{").map(|(head, _)| head))
+            .collect();
+
+        let unreachable: Vec<&str> = arms
+            .iter()
+            .copied()
+            .filter(|arm| {
+                let quoted = format!("\"{arm}\"");
+                !CLI.contains(&quoted)
+                    && !prefixes.iter().any(|p| arm.starts_with(&format!("{p}.")))
+            })
+            .collect();
+        assert!(
+            unreachable.is_empty(),
+            "these commands are answered by cli_server and no `rex` verb sends them: {unreachable:?}\n\
+             Either add the verb, or delete the arm — an arm nothing can reach is a \
+             promise the CLI does not keep."
+        );
+    }
+
     #[test]
     fn parse_request_defaults_args_and_rejects_garbage() {
         let req = parse_request("{\"cmd\":\"status\"}\n").expect("bare cmd parses");
