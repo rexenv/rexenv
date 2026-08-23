@@ -298,6 +298,18 @@ it can:
   a readiness gate proves something is THERE, never that it is YOURS** — the only defence
   is refusing a busy port before you create anything (`common::require_ports_free`), and
   the only reason that works is that it runs before the leak can be joined.
+  **The corpse does not have to be yours** (23 Aug 2026, found by running the service
+  tier against a LIVE stack). `delete_site_serve`'s nginx failed to take `:18088` — the
+  user's had it — and `await_listening(18088)` then passed against the USER's nginx. The
+  run continued and printed `del.test -> HTTP 200 / keep.test -> HTTP 200`, a fixture
+  reporting that its precondition holds while reading a server it does not own. It failed
+  only later, on an `unwrap` of a reload whose pid file was empty; had that reload
+  happened to succeed, the example could have reported green having proven nothing about
+  its own services. **19 of the 23 service-tier examples still have no
+  `require_ports_free`** — most are saved by production's `ensure_free` firing when they
+  try to BIND, which is luck rather than design: it does nothing for an example that
+  reaches a reload or a read path first. `docs/TODO.md` carries the open row, including
+  whether the guard belongs per-example or once in the tier runner.
   **ACCEPTING is not ANSWERING, and the edge is where the difference bites** (21 Aug
   2026). `await_listening` proves the socket accepts; Caddy binds its listener before it
   has loaded certificates and routes, so a request inside that window comes back `000` and

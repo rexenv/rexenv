@@ -343,6 +343,37 @@ paying for anyway: **the tick belongs in the commit that does the work.**
     a literal `minor === "8.0"`, which was moved into core as `xdebug_supported` — and the
     sentence beside the boolean was left behind. The reason now rides the registry row like
     the boolean does.
+### Opened by the 23 Aug 2026 service-tier run (stack UP)
+
+- [ ] **`delete_site_serve` read the USER's nginx and called it its own.** Found by running
+  the service tier against a live stack — which is not how that tier is meant to run, and is
+  exactly why it was worth watching what each failure DID.
+  Eleven of the thirteen failures were loud and correct: production's own `ports::ensure_free`
+  refused at bind time and named the holder. Two — `frankenphp_edge_serve` and `mcp_mail_check`
+  — refused BEFORE creating anything, with the port, what was answering, and the fix
+  (`common::require_ports_free`, added 21 Aug).
+  `delete_site_serve` did neither. Its nginx failed to take `:18088` (the user's had it), and
+  then **`await_listening(18088)` passed against that nginx** — `ports::is_listening` is a
+  CONNECT probe, so somebody else's server satisfies it. The run continued and printed
+  `BEFORE delete: del.test -> HTTP 200 / keep.test -> HTTP 200`, which is a fixture claiming
+  its precondition holds while reading a server it does not own. It only failed later, on an
+  `unwrap` of the nginx reload, because the pid file its own sandbox expected was empty.
+  **That ordering is the finding.** The example got as far as printing evidence that looks
+  like a passing precondition; the reload happening to fail is what stopped it, not a guard.
+  Same family as the SO_REUSEPORT case in `frankenphp_edge_serve` (21 Aug): a readiness gate
+  satisfiable by someone else's process is not a readiness gate.
+  - [ ] Give it `require_ports_free` before it creates anything, like the two that refused.
+  - [ ] **The broader shape, and the reason this is not a one-line row:** 19 of the 23
+    service-tier examples have no `require_ports_free`. Most are saved by production's
+    `ensure_free` firing when they try to BIND — which is luck, not design: it does not
+    protect an example that reaches a RELOAD or a read path first, as this one did. Decide
+    whether the guard belongs in every service-tier example or in the tier runner itself
+    (one refusal for the whole tier, before any example starts, is cheaper and cannot be
+    forgotten per-example).
+  - [ ] Replace the `unwrap` at `delete_site_serve.rs:121` — a panic with a backtrace is
+    the wrong shape for "something else owns this port", which the error text already says
+    plainly.
+
 ### Opened by the 21 Aug 2026 reconcile
 
 These are rows the audit created, not rows it inherited. Grouped because they share one
