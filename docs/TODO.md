@@ -560,8 +560,16 @@ cause: a commit did the work and the surrounding claim stayed as it was.
   - [ ] **The remaining "🟢 wins whose IPC exists" are NOT unreachable arms — they are
     unbuilt commands.** `site relink`, `site retry` and `config get|set` have no dispatch
     arm at all, so each is arm + verb + formatting, not one line. `site retry` and
-    `config get|set` are the owner's (the latter parked on which keys to allow-list);
-    **`site relink` is the one that is nobody's decision** and is the next pick here.
+    `config get|set` are the owner's (the latter parked on which keys to allow-list).
+    - [x] **`site relink`** ✓ 23 Aug 2026 — `site.relink` dispatch arm + `rex site relink
+      <domain> <path>`, covered by the reachability guard (plant-proven: dropping the verb
+      fails it by name). The CLI canonicalises the path before sending, so a relative one
+      typed at a shell prompt means what the USER's cwd says rather than the app's.
+      ◐ **Never run against the app** — it was not running. This is the in-app verify to
+      do FIRST of the three owed, because it is the only one that changes what a site
+      serves.
+    - [ ] `site retry` — the owner's.
+    - [ ] `config get|set` — the owner's, parked on the key allow-list.
   - [ ] **Protocol-version handshake** 🟡 — still unbuilt. The standing answer to a hazard
     this repo has already hit: a stale `rex` against a newer app produced the "unknown
     command … newer than the running app" confusion.

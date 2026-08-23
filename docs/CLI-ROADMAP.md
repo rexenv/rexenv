@@ -46,7 +46,7 @@ convention) — see "Infrastructure" for progress streaming.
 | `site rename <domain> <name>` | `rename_site` | ✓ | shipped 16 Jul — round-trip live |
 | `site domain <domain> <new-domain> [--yes]` | `change_site_domain` | ✓ | shipped 16 Jul — confirm-gated; passthrough, live-verify against the running app (guard blocks override bounce in the harness) |
 | `site move <domain> <dest-parent>` | `move_site_docroot` | ✓ | shipped 16 Jul — passthrough (preflights backend-side); verify in-app once |
-| `site relink <domain> <path>` | `relink_site_docroot` | 🟢 | IPC shipped 8 Aug — the re-point path for a linked/imported folder the USER moved (`site move` refuses those); records the path + reloads, touches no file |
+| `site relink <domain> <path>` | `relink_site_docroot` | ✓ | **shipped 23 Aug 2026** — the re-point path for a linked/imported folder the USER moved (`site move` refuses those); records the path + reloads, touches no file. The CLI canonicalises the path before sending, so a relative one means what the user's cwd says, not the app's. **Never run against the app** (it was not running): in-app verify owed |
 | `site php <domain> <minor>` | `set_site_php_version` | ✓ | shipped 16 Jul — 8.3→8.4→8.3 live, 200 both ways |
 | `site server <domain> nginx\|frankenphp\|apache` | `set_site_web_server` | ✓ | shipped 16 Jul — passthrough; verify against the running app (override stop is guard-blocked in the harness) |
 | `site xdebug <domain> on\|off` | `set_site_xdebug` | ✓ | shipped 16 Jul — on→200→off live; FrankenPHP refusal verbatim, exit 1 |
@@ -185,6 +185,8 @@ line streaming is the same 🔴 "progress streaming" infra item as always.
 
 1. `config get|set` (🟡) — parked on a decision: which settings keys to
    allow-list (never the whole KV table).
+1a. `site retry` (🟢) — the owner's call; `site.create`'s failure message still
+   names a recovery the CLI cannot perform.
 2. Design-first 🔴 set: single-site restart (manager seam), web-tier
    single-service control (topology invariant), raw wp passthrough (security
    decision), `wp_user_delete` (no IPC exists), progress streaming for long ops.
@@ -192,6 +194,8 @@ line streaming is the same 🔴 "progress streaming" infra item as always.
    guard-blocked in the example harness — exercise each once against the
    running app): `php install/uninstall`, `php settings set`, `db versions
    --set`, `site server/domain/move`, `mail clear`, `tunnel start`,
-   `wp core update/switch`, and **`mail mark-read` / `mail list --unread`**
-   (added 23 Aug 2026; the app was not running when they were written, so both
-   are built and L0-guarded but never once exercised end to end).
+   `wp core update/switch`, and **`mail mark-read` / `mail list --unread` /
+   `site relink`** (added 23 Aug 2026; the app was not running when they were
+   written, so all three are built and L0-guarded but never once exercised end
+   to end). `site relink` is the one to verify FIRST — it is the only one of the
+   three that changes what a site serves.

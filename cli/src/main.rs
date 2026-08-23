@@ -79,6 +79,7 @@ COMMANDS:
   site rename <domain> <name>        Display name only (domain unchanged)
   site domain <domain> <new-domain>  Change the domain (URL rewrite; asks first)
   site move <domain> <dest-parent>   Move the docroot under a new parent folder
+  site relink <domain> <path>        Re-point a LINKED site at a folder you moved (records only)
   site env <domain> [set K=V | unset K]          Per-site env vars
   site cert <domain> [--regenerate]  Certificate info / fresh leaf
   blueprints                         Saved blueprints (for site create --blueprint)
@@ -425,6 +426,7 @@ fn main() {
             Some("rename") => cmd_site_rename(&words[2..], json_output),
             Some("domain") => cmd_site_domain(&words[2..], json_output),
             Some("move") => cmd_site_move(&words[2..], json_output),
+            Some("relink") => cmd_site_relink(&words[2..], json_output),
             Some("env") => cmd_site_env(&words[2..], json_output),
             Some("cert") => cmd_site_cert(&words[2..], json_output),
             Some("open") => cmd_site_open(&words[2..]),
@@ -1313,7 +1315,7 @@ fn cmd_repo(words: &[String], json_output: bool) {
 /// bash: rex completions bash > /usr/local/etc/bash_completion.d/rex
 fn cmd_completions(shell: Option<&str>) {
     const TOP: &str = "status start stop restart site wp repo php db service logs doctor mail tunnel tld blueprints version completions help";
-    const SITE: &str = "list create delete info open login logs php xdebug server rename domain move env cert";
+    const SITE: &str = "list create delete info open login logs php xdebug server rename domain move relink env cert";
     const DB: &str = "export import reset versions browse";
     const PHP: &str = "list default install uninstall settings";
     const WPA: &str = "plugin theme user search-replace cache-flush cron maintenance core";
@@ -1450,6 +1452,38 @@ fn cmd_site_move(words: &[String], json_output: bool) {
         return print_json(&r);
     }
     println!("✓ moved → {}", r["path"].as_str().unwrap_or("?"));
+}
+
+/// `rex site relink <domain> <path>` — re-point a LINKED or imported site at a
+/// folder the user moved themselves.
+///
+/// Not the same command as `site move`, and the difference is the whole reason
+/// this exists: `move` relocates a docroot rexenv owns (copy, then delete), and
+/// it REFUSES a linked folder because that folder is the user's and never ours
+/// to delete. `relink` records the new location and reloads the config; it
+/// touches no file, so a wrong path costs nothing but a second run.
+fn cmd_site_relink(words: &[String], json_output: bool) {
+    let site = find_site(words, "rex site relink <domain> <path>");
+    let Some(path) = words.get(1).filter(|w| !w.starts_with("--")) else {
+        eprintln!("rex: usage: rex site relink <domain> <path>");
+        exit(1);
+    };
+    // Canonicalised HERE as well as backend-side: the backend canonicalises the
+    // path it stores, and resolving it first means a relative path typed at a
+    // shell prompt (`rex site relink x.rex ./moved`) means what the user's cwd
+    // says it means, not what the app's does.
+    let path = match std::fs::canonicalize(path) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("rex: cannot use {path}: {e}");
+            exit(1);
+        }
+    };
+    let r = request("site.relink", json!({ "id": site["id"], "path": path.to_string_lossy() }));
+    if json_output {
+        return print_json(&r);
+    }
+    println!("✓ now serving from {}", r["path"].as_str().unwrap_or("?"));
 }
 
 fn cmd_site_env(words: &[String], json_output: bool) {

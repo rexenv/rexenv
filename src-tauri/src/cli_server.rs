@@ -521,6 +521,21 @@ where
             .await?;
             to_value(&site)
         }
+        // Re-point a LINKED/imported site at a folder the user moved themselves.
+        // Distinct from `site.move`, which relocates a docroot rexenv owns:
+        // this one records the new location and reloads, and touches no file.
+        "site.relink" => {
+            let state = app_state(app)?;
+            let site = commands::sites::relink_site_docroot(
+                state.clone(),
+                app.try_state::<commands::tunnels::Tunnels>()
+                    .ok_or_else(|| Error::Other("tunnel registry not ready".into()))?,
+                need_str(&args, "id", cmd)?,
+                need_str(&args, "path", cmd)?,
+            )
+            .await?;
+            to_value(&site)
+        }
         "site.env" => {
             let state = app_state(app)?;
             let vars = commands::sites::list_site_env(state.clone(), need_str(&args, "id", cmd)?)?;
