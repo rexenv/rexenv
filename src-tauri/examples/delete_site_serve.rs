@@ -52,6 +52,26 @@ async fn main() {
     let db_path = std::env::temp_dir().join("rexenv-7_3.db");
     let _ = std::fs::remove_file(&db_path);
     let conn = db::open(&db_path).expect("db");
+    // Refuse BEFORE anything is created, not after it has half-run.
+    //
+    // Found 23 Aug 2026 by running the service tier against a live stack. This
+    // example had no port guard: its nginx failed to take :18088 (the user's had
+    // it), `await_listening(18088)` then passed AGAINST THE USER'S NGINX because
+    // `ports::is_listening` connects, and the run carried on to print
+    // `del.test -> HTTP 200` — a fixture reporting that its precondition holds
+    // while reading a server it does not own. It died later on an unwrap of a
+    // reload whose pid file was empty; had that reload happened to succeed it
+    // could have reported green having proven nothing.
+    //
+    // `scripts/live-checks.sh` now refuses the whole tier with the stack up,
+    // which covers the tier. This covers the example someone runs BY HAND, which
+    // the runner cannot.
+    common::require_ports_free(&[
+        (NGINX_PORT, "the SHARED nginx — the user's running stack"),
+        (CADDY_HTTPS, "a TLS listener on this example's edge port"),
+        (services::PHP_FPM_PORT, "the shared php-fpm 8.3 pool"),
+    ]);
+
     // Pin `sites_dir` into the sandbox: `sites::provision` reads the SETTING,
     // which falls back to the home directory, so without this the docroots land
     // in the user's real ~/rexenv/Sites (14 Aug 2026 sweep).
@@ -118,6 +138,21 @@ async fn main() {
     // Delete del.test: DB row + cert + docroot, then rebuild configs + reload.
     let removed = sites::teardown(&conn, &*plat, &del.id).unwrap();
     let cfg2 = sites::rebuild_configs(&conn, &*plat, &ca, NGINX_PORT, CADDY_HTTP, CADDY_HTTPS).unwrap();
+    // `.unwrap()` here is deliberate, and the reason is not laziness.
+    //
+    // `docs/TODO.md` filed a sub-item to replace it — "a panic with a backtrace
+    // is the wrong shape for 'something else owns this port'", which the error
+    // text already says plainly. But the obvious replacement leaks: `fpm`,
+    // `nginx` and `caddy` above are `OwnedService` guards that reap in `Drop`,
+    // and `std::process::exit` does NOT run destructors. A panic UNWINDS (the
+    // profile does not set `panic = "abort"`), so every guard still stops its
+    // service. Swapping the panic for a tidy exit would trade a noisy backtrace
+    // for three leaked processes on fixed ports — the exact leak class
+    // `common::Reaped` exists to end.
+    //
+    // `common::require_ports_free` can use `process::exit` precisely because it
+    // runs BEFORE anything is spawned. After that line, exiting is the unsafe
+    // option. That ordering is the rule, not a detail of this file.
     services::reload_nginx(&*plat, &nginx_bin, &cfg2.nginx_conf, &cfg2.nginx_prefix, NGINX_PORT).unwrap();
     proxy::reload(&*plat, &caddy_bin, &cfg2.caddyfile, false).unwrap();
     tokio::time::sleep(Duration::from_millis(800)).await;

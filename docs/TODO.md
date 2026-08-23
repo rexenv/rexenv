@@ -362,7 +362,11 @@ paying for anyway: **the tick belongs in the commit that does the work.**
   like a passing precondition; the reload happening to fail is what stopped it, not a guard.
   Same family as the SO_REUSEPORT case in `frankenphp_edge_serve` (21 Aug): a readiness gate
   satisfiable by someone else's process is not a readiness gate.
-  - [ ] Give it `require_ports_free` before it creates anything, like the two that refused.
+  - [x] **Given `require_ports_free` before it creates anything** ✓ 24 Aug 2026, like the two
+    that refused. Verified in the state that produced the bug — with the stack UP it now
+    refuses cleanly naming `:18088`, instead of half-running and printing two false 200s.
+    The runner refuses the whole tier; this covers the example someone runs BY HAND, which
+    the runner cannot.
   - [x] **Decided: the tier RUNNER** ✓ 23 Aug 2026. 19 of the 23 service-tier examples have
     no `require_ports_free`; most are saved by production's `ensure_free` firing when they
     try to BIND, which is luck rather than design — it does nothing for an example that
@@ -382,9 +386,15 @@ paying for anyway: **the tick belongs in the commit that does the work.**
     Per-example `require_ports_free` is still worth adding — the runner protects the tier,
     not a single example run by hand — but it is no longer the only thing standing between
     a live stack and a fixture reading it.
-  - [ ] Replace the `unwrap` at `delete_site_serve.rs:121` — a panic with a backtrace is
-    the wrong shape for "something else owns this port", which the error text already says
-    plainly.
+  - [x] **Replace the `unwrap`? NO — closed as won't do** ✓ 24 Aug 2026, and the reason is
+    worth more than the change would have been. The obvious replacement leaks: `fpm`,
+    `nginx` and `caddy` are live `OwnedService` guards that reap in `Drop`, and
+    `std::process::exit` does not run destructors. A panic UNWINDS, so every guard still
+    stops its service; a tidy exit would trade a noisy backtrace for three leaked processes
+    on fixed ports — the exact leak class `common::Reaped` exists to end.
+    **The rule this makes explicit:** `require_ports_free` may exit only because it runs
+    BEFORE anything is spawned. After that line, exiting is the unsafe option. Recorded at
+    the call site so nobody "improves" it later.
 
 - [x] **The stack tier had no green anyone had seen — it has one now** ✓ 24 Aug 2026.
   `live-checks(stack): all green`, 9 examples, services up and the app quit. **Three of the
