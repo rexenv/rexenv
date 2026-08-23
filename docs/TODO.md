@@ -631,8 +631,25 @@ place to keep unfinished things.
   a reload or a deep link straight to `/sites/:id` does not. Hoisted above the return with
   `enabled: !!site`. Nothing in `verify.sh` could have caught it: `tsc` type-checks and
   the hooks rule is a RUNTIME contract, which is the argument for L2 in one line.
-- [ ] **`validate_linked_docroot` does a per-call `list(conn)`** (`core/sites.rs`) — fine
-  at current scale, hoist if imports grow.
+- [x] **`validate_linked_docroot` does a per-call `list(conn)`** ✓ 23 Aug 2026 —
+  **closed as WON'T DO, and the row was the bug.** Hoisting it would have broken the
+  Valet import: the apply loop creates sites one at a time through that validation, so
+  two scanned projects where one nests inside the other are refused only because the
+  second call reads the row the first one wrote. A pre-batch snapshot cannot contain it
+  and both would be created — two sites serving one tree, one under the other's domain.
+  `enrich` already holds a hoisted `existing` slice two lines from the call, so this was
+  a one-line change that looked free.
+  **A snapshot is what a hoist IS**, which makes "cache this read" and "turn this
+  lifetime guard into a one-time check" the same edit in two vocabularies — and only one
+  of them sounds dangerous. Recorded as a second form of the §3.2 class in
+  `docs/TESTING.md`, because the disguise is the durable part.
+  The per-call read is now documented as load-bearing at the call site and held by
+  `each_link_validation_sees_the_site_the_previous_one_created` (ledger #379),
+  plant-proven by making the row's own suggestion. The pre-existing overlap test could
+  not have caught it: it calls the function once, so it passes identically whether the
+  read is fresh or cached.
+  The cost was never there either — one SELECT per candidate, beside a `detect_project`
+  doing strictly more filesystem I/O in the same function.
 - [ ] **Plugin-update progress: the TIMING half** (ledger #249) — cancel-then-settle beats
   an in-flight check; the wiring half landed, this did not.
 - [ ] **Radicle-hosted repos are unverified** — same code path as the Bedrock clone that

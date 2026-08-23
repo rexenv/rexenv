@@ -1031,6 +1031,21 @@ pub fn validate_linked_docroot(
     // No overlap with an existing site, in EITHER direction (the same rule
     // `repo::validate_link_target` applies to linked plugin/theme folders):
     // nested docroots would serve one site's files under another's domain.
+    //
+    // **`list(conn)` is read HERE, per call, and must stay that way.** It looks
+    // like an obvious hoist — the Valet import's `enrich` already holds a
+    // hoisted `existing` slice two lines from its call — and `docs/TODO.md`
+    // carried "hoist if imports grow" as a row until 23 Aug 2026. It is a trap.
+    // The import APPLY loop creates sites one at a time, each through `create`,
+    // which calls this; so importing two Valet projects where one nests inside
+    // the other is refused only because the second validation sees the first
+    // site's freshly-written row. A snapshot taken before the batch cannot
+    // contain it, and both would be created — the one-time-check-on-a-mutable-
+    // fact family, which has bitten this tree repeatedly.
+    //
+    // The cost it buys is not the one the row worried about: this is one SELECT
+    // per candidate, and `detect_project` runs immediately before it in the same
+    // function doing strictly more filesystem I/O. The neighbour dominates.
     for other in list(conn)? {
         if other.path.is_empty() {
             continue;
@@ -3759,6 +3774,77 @@ mod tests {
         assert!(err.contains("overlaps") || err.contains("too broad"), "{err}");
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **Each validation sees the site created by the one before it** — which is
+    /// what makes importing a batch safe, and what a hoisted site list would
+    /// silently break.
+    ///
+    /// The Valet import applies its queue one site at a time, every one through
+    /// `create` → `validate_linked_docroot`. Two scanned projects where one
+    /// nests inside the other are refused only because the SECOND validation
+    /// reads state the first one wrote. A list fetched once before the batch —
+    /// which is exactly the "hoist if imports grow" optimisation `docs/TODO.md`
+    /// recommended — cannot contain it, and both would be created: two sites
+    /// serving one tree, one under the other's domain.
+    ///
+    /// `validate_linked_docroot_refuses_overlap_with_an_existing_site` proves
+    /// the RULE against a site that already existed. This proves the FRESHNESS,
+    /// which is a different property and the one an optimisation takes away.
+    #[test]
+    fn each_link_validation_sees_the_site_the_previous_one_created() {
+        let conn = db::open_in_memory().unwrap();
+        let platform = crate::platform::current();
+        let (root, _) = docroot_fixture("batch");
+        let canon = root.canonicalize().unwrap();
+
+        // Two sibling projects under one parent, the Valet layout: ~/Sites/a,
+        // ~/Sites/b — neither overlaps the other, both fine.
+        let a = canon.join("a");
+        let b = canon.join("b");
+        // …and a folder INSIDE the first, which is the pair that must be caught.
+        let a_nested = a.join("nested");
+        for d in [&a, &b, &a_nested] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+
+        // Nothing exists yet: every one of them validates clean.
+        for p in [&a, &b, &a_nested] {
+            assert!(
+                validate_linked_docroot(&conn, &*platform, &p.display().to_string()).is_ok(),
+                "{} should be linkable before anything is imported",
+                p.display()
+            );
+        }
+
+        // Import the first. Only now does the nested one become a conflict —
+        // and that transition is the whole point: a list read before this line
+        // would still say it is fine.
+        let mut first = sample("A", "a.test");
+        first.path = a.display().to_string();
+        create(&conn, first).unwrap();
+
+        let err = validate_linked_docroot(&conn, &*platform, &a_nested.display().to_string())
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("overlaps"), "nested under a just-created site: {err}");
+
+        // The unrelated sibling is still fine, so the refusal above is the
+        // overlap rule and not the validator having gone uniformly negative.
+        let mut second = sample("B", "b.test");
+        second.path = b.display().to_string();
+        create(&conn, second).unwrap();
+
+        // And the same again one level on: the SECOND site is visible to the
+        // third validation. One transition could be a fluke of ordering.
+        let b_nested = b.join("nested");
+        std::fs::create_dir_all(&b_nested).unwrap();
+        let err = validate_linked_docroot(&conn, &*platform, &b_nested.display().to_string())
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("overlaps"), "nested under the second site: {err}");
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

@@ -551,6 +551,17 @@ Per recurring class: the honest mechanism — lint, test helper, or documented a
   the dependent thing's LIFETIME, or is it a snapshot?"* Plus: any new `ensure_*`/
   preflight that reads mutable state gets a test for the state-changed-after case
   (`commands/sites.rs:311`'s guard family, ledger #188).
+- **The class also arrives disguised as an optimisation** (23 Aug 2026, ledger #379).
+  `docs/TODO.md` carried "`validate_linked_docroot` does a per-call `list(conn)` —
+  hoist if imports grow" as a straightforward perf note. Taking it would have broken
+  the Valet import: the apply loop creates sites one at a time through that
+  validation, so a nested pair is refused only because the second call reads the row
+  the first one wrote. **A snapshot is what a hoist IS**, which makes "cache this
+  read" and "convert this lifetime guard into a one-time check" the same edit
+  described in two vocabularies — and only one of them sounds dangerous.
+  So the audit question has a second form: *"is this repeated read the guard?"*
+  Freshness needs its OWN test; a rule test passes against a pre-seeded fixture
+  whether the read is fresh or cached, because it only ever calls the function once.
 
 ### 3.3 Path assumption a layout invalidates (Bedrock class)
 
