@@ -20,10 +20,12 @@ wrong:
   the verdict receipt (whose own body had said **DONE** for eight days while the box
   stayed `[ ]`), and PHP 7.4. Every one of them was a commit that did the work and left
   the tick for later; nobody came back.
-- **One row described a guard that does not exist** — `wp_dns_check` was said to "FAIL
-  LOUDLY the day a build stops using c-ares", and it does not: it prints a NOTE and
-  passes green. That is the dangerous kind of staleness, because someone would have
-  relied on it.
+- **One row described a guard that did not exist** — `wp_dns_check` was said to "FAIL
+  LOUDLY the day a build stops using c-ares", and it did not: it printed a NOTE and
+  passed green. That is the dangerous kind of staleness, because someone would have
+  relied on it. *(Closed 23 Aug 2026, ledger #381 — and the guard it finally got is not
+  the one the row described, because measuring first showed 7.4 already has the threaded
+  resolver, so "fail when c-ares is gone" would fail on good news.)*
 - **And the reconcile itself found new work**: a post-release audit of the readiness-gate
   sweep confirmed 22 defects *inside the fix*, including gates that cannot run and
   examples that report green having asserted nothing.
@@ -202,7 +204,21 @@ paying for anyway: **the tick belongs in the commit that does the work.**
   fails once the whole pinned set is threaded, so the day it flips is a build failure
   that says "this row is done") or keep the note and stop calling it a guard. The row
   says it plainly meanwhile.
-  - [ ] Decide which: a real gate, or an honest note. Not both.
+  - [x] **Decide which: a real gate, or an honest note. Not both.** ✓ 23 Aug 2026 —
+    **a real gate**, ledger #381, plant-proven three ways and RUN live (all green).
+    Not the gate the row imagined, because measuring first changed the question.
+    **7.4 already uses the threaded resolver.** It is the one build rexenv makes itself,
+    against its own curl 8.21.0, and it never received static-php.dev's `--enable-cares`.
+    Measured 23 Aug by running all seven cached builds — which nothing had ever done,
+    since `wp_dns_check` measures whichever PHP its fixture happens to run. So this row's
+    own costing above ("7 minors × cli/fpm × 2 arches") counted a minor that never had the
+    bug, and the expensive ruled-out fix has already been demonstrated, accidentally, on
+    the only build we control. That is evidence about the option's cost; the ruling stands.
+    So the gate cannot be "fail when the build stops using c-ares" — that fails on good
+    news today. `core::wp_dns::resolver_for` records the measurement per minor, L0 refuses
+    to let a pinned minor go unrecorded (and refuses a table that is uniformly `Ares`,
+    which is the assumption this disproves), and `wp_dns_check` fails on any DISAGREEMENT
+    between the record and the build in front of it — news in both directions.
 - [ ] **Debug-log truth on Bedrock** (deferred with the wp-config-reader work):
   parse `config/application.php` env defines so WP_DEBUG/WP_DEBUG_LOG read
   truthfully on non-stock layouts; today's honest state is `indeterminate`

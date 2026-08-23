@@ -1,7 +1,7 @@
 //! core::wp_dns — let a WordPress site reach ITSELF over its rexenv hostname.
 //!
 //! **The bug this exists for** (filed 10 Aug 2026, reproduced on the dev Mac):
-//! the bundled static-php builds link libcurl against **c-ares**
+//! the static-php.dev builds link libcurl against **c-ares**
 //! (`curl_version()['ares'] == "1.34.6"`), and c-ares resolves from
 //! `/etc/resolv.conf` alone. rexenv publishes its TLDs through macOS split-DNS
 //! (`/etc/resolver/<tld>` → `127.0.0.1` port 15353), which `/etc/resolv.conf`
@@ -26,12 +26,65 @@
 //! file never goes stale: it re-reads `/etc/resolver/` per host and asks the
 //! system resolver for the answer. A build that already uses curl's threaded
 //! resolver (FrankenPHP, Homebrew PHP) makes it a no-op on its first line.
+//!
+//! **Not every pinned build has the bug, and that was discovered by measuring
+//! rather than by reasoning** (23 Aug 2026). `docs/TODO.md` had carried the fix
+//! as "needs a self-built static-php with `--enable-threaded-resolver` for 7
+//! minors" since the bug was filed, on the assumption that the pinned set was
+//! uniform. It is not: **7.4.33 already uses the threaded resolver**, because it
+//! is the one build rexenv makes itself, against its own curl 8.21.0, and never
+//! passed static-php.dev's `--enable-cares`. Nobody had looked — `wp_dns_check`
+//! measures whichever build its fixture site happens to run, and the seven were
+//! never compared. See [`resolver_for`].
 
 use crate::error::Result;
 use crate::state::models::{Site, SiteType};
 use crate::state::store;
 use rusqlite::Connection;
 use std::path::{Path, PathBuf};
+
+/// Which resolver a pinned PHP build's libcurl uses — the fact the whole
+/// mu-plugin exists to work around.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CurlResolver {
+    /// c-ares: reads `/etc/resolv.conf` ONLY, never macOS split-DNS. The bug.
+    Ares,
+    /// curl's own threaded resolver: goes through `getaddrinfo`, so it sees
+    /// `/etc/resolver/<tld>` like everything else on the machine. No bug, and
+    /// the mu-plugin no-ops on its first guard.
+    Threaded,
+}
+
+/// What each pinned PHP minor's libcurl was MEASURED to use, on 23 Aug 2026,
+/// by running every cached build: `php -r 'print curl_version()["ares"];'`.
+///
+/// **The measurement is the point of this table, not the values.** `docs/TODO.md`
+/// described the real fix as "a self-built static-php with
+/// `--enable-threaded-resolver` for 7 minors × cli/fpm × 2 arches", ruled it too
+/// big, and left it. That framing assumed the seven were uniform. They are not:
+/// **7.4 already has the threaded resolver** — it is the one build rexenv makes
+/// itself, against its own curl 8.21.0, and it simply never received
+/// static-php.dev's `--enable-cares`. So the expensive fix has already been
+/// demonstrated, accidentally, on the only minor we control, which is evidence
+/// about the cost of the ruled-out option rather than a reason to reopen it.
+///
+/// Nobody had noticed because nothing compared the builds: `wp_dns_check`
+/// measures whichever PHP its fixture site runs, one at a time.
+///
+/// `None` for a minor rexenv does not pin. Never `None` for one it does —
+/// [`tests::every_pinned_php_has_a_measured_curl_resolver`] makes that
+/// unreachable, so a new minor forces the measurement at the moment somebody is
+/// looking at the build anyway.
+pub fn resolver_for(minor: &str) -> Option<CurlResolver> {
+    match minor {
+        // OURS (rexenv/runtimes), curl 8.21.0, no c-ares linked at all.
+        "7.4" => Some(CurlResolver::Threaded),
+        // static-php.dev bulk builds, `--enable-cares`. 8.0 carries an older
+        // c-ares (1.34.2) than the rest (1.34.6); same behaviour either way.
+        "8.0" | "8.1" | "8.2" | "8.3" | "8.4" | "8.5" => Some(CurlResolver::Ares),
+        _ => None,
+    }
+}
 
 /// The auto-managed mu-plugin. No placeholders: it is byte-identical for every
 /// site, which is why nothing here needs re-writing on a domain or TLD change.
@@ -224,6 +277,53 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    /// **Every PHP rexenv pins has a MEASURED curl resolver, and the set is not
+    /// uniform.**
+    ///
+    /// The uniformity assumption is what kept this bug class mis-scoped for two
+    /// weeks: `docs/TODO.md` costed the fix at "7 minors × cli/fpm × 2 arches"
+    /// when one of the seven never had the bug. Nothing compared the builds —
+    /// `wp_dns_check` measures one at a time, whichever its fixture happens to
+    /// run — so the assumption was never contradicted by anything.
+    ///
+    /// Derived from `PHP_VERSIONS`, so a new minor cannot join the pinned set
+    /// with its resolver unrecorded. That is the moment to measure it: somebody
+    /// is already holding the build.
+    #[test]
+    fn every_pinned_php_has_a_measured_curl_resolver() {
+        let mut ares = 0;
+        let mut threaded = 0;
+        for v in crate::core::binaries::PHP_VERSIONS {
+            let minor = v.rsplit_once('.').map(|(m, _)| m).unwrap_or(v);
+            match resolver_for(minor) {
+                Some(CurlResolver::Ares) => ares += 1,
+                Some(CurlResolver::Threaded) => threaded += 1,
+                None => panic!(
+                    "PHP {minor} is pinned but its curl resolver is unrecorded. Measure it \
+                     — `php -r 'print curl_version()[\"ares\"];'` on the cached build — and \
+                     add the arm to `resolver_for`. An empty string means the threaded \
+                     resolver and no bug; a version means c-ares and the mu-plugin is \
+                     load-bearing for that minor."
+                ),
+            }
+        }
+        // **Both kinds must be present.** A table that answered `Ares` for
+        // everything is exactly the state this test was written to disprove, and
+        // it would pass every assertion above.
+        assert!(ares > 0, "no c-ares build left — if that is real, this whole module can go");
+        assert!(
+            threaded > 0,
+            "no threaded build recorded, but 7.4 was measured as one on 23 Aug 2026"
+        );
+        // The one rexenv builds itself is the one without the bug. Named
+        // explicitly because it is the fact the TODO row got wrong.
+        assert_eq!(resolver_for("7.4"), Some(CurlResolver::Threaded));
+
+        // A minor rexenv does not pin has no recorded answer, rather than a
+        // default that would read as a measurement.
+        assert_eq!(resolver_for("8.9"), None);
     }
 
     #[test]

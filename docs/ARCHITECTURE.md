@@ -939,13 +939,22 @@ IPC surface — which is how a reader ends up designing against a system with on
   every other path the caller's entry never reaches PHP (measured, `wp_login_check` leg
   E — a Caddy default, so re-measured rather than assumed). The include-time/`init` ordering that makes the Host check
   work is WordPress's boot order, not filename sort (#308).
-- **A site can reach ITSELF** (`core/wp_dns.rs`, 10 Aug 2026): the bundled static-php
+- **A site can reach ITSELF** (`core/wp_dns.rs`, 10 Aug 2026): the **static-php.dev**
   builds link libcurl against **c-ares**, which resolves from `/etc/resolv.conf` ALONE
   and never reads macOS split-DNS (`/etc/resolver/<tld>`) — where rexenv publishes every
   TLD it serves. So inside php-fpm `gethostbyname("x.rex")` answered `127.0.0.1` while
   `curl` to the same host died with errno 6, and **WP-Cron stopped on every hosted
   WordPress site with nothing logged** (it spawns itself with a fire-and-forget HTTP
-  request and never checks the result). Site Health loopbacks, REST self-calls and
+  request and never checks the result). **Not every pinned build has it, measured 23 Aug
+  2026 and not before: 7.4 uses the THREADED resolver** — it is the one build rexenv
+  makes itself, against its own curl 8.21.0, and never got static-php.dev's
+  `--enable-cares`. The seven had never been compared (`wp_dns_check` measures whichever
+  PHP its fixture runs), so `docs/TODO.md` costed the real fix at "7 minors × cli/fpm ×
+  2 arches" when one of the seven never had the bug. `core::wp_dns::resolver_for` records
+  the measurement per minor; the L0 half refuses to let a pinned minor go unrecorded, and
+  `wp_dns_check` FAILS on any disagreement between the record and the build in front of
+  it — in either direction, because a minor that turned threaded means the mu-plugin is
+  dead weight for it. Site Health loopbacks, REST self-calls and
   sibling-site requests failed the same way; WP-CLI hid it (cron events run in-process,
   no HTTP). The fix is an auto-managed mu-plugin (`rexenv-dns.php`) that, on
   `http_api_curl`, hands cURL the address the SYSTEM resolver already has

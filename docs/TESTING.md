@@ -122,11 +122,17 @@ it can:
 - **Proves:** what real binaries accept and do — real mysqld/mariadbd handshakes, real
   nginx reloads, real php parsing our generated files, real wp-cli installs, real
   process lifecycle (adopt/orphan/reap), real filesystem layouts, **what a bundled
-  binary was COMPILED with** (`wp_dns_check`, sandbox tier: the bundled PHP's libcurl
-  uses c-ares, so it cannot see `/etc/resolver` — a fact no Rust test can hold, and the
-  reason WP-Cron was silently dead on every site until 10 Aug 2026; the check asserts
-  the bug still reproduces AND that the mu-plugin fixes it, so it also goes red the day
-  a threaded-resolver rebuild makes the whole class obsolete). **This layer caught
+  binary was COMPILED with** (`wp_dns_check`, sandbox tier: the static-php.dev PHPs'
+  libcurl uses c-ares, so it cannot see `/etc/resolver` — a fact no Rust test can hold,
+  and the reason WP-Cron was silently dead on every site until 10 Aug 2026; the check
+  asserts the bug still reproduces AND that the mu-plugin fixes it).
+  **It goes red on DISAGREEMENT with `core::wp_dns::resolver_for`, not on the bug going
+  away** (23 Aug 2026, ledger #381) — because rexenv's own 7.4 build is already threaded,
+  so "fail when this build has no c-ares" would fail on good news. This is the honest
+  shape for an L1 fact the code can only RECORD: L0 makes the record total over
+  `PHP_VERSIONS`, L1 checks it against the artifact, and the gate is the mismatch. Before
+  this the branch printed a note and exited 0, which `docs/TODO.md` called the signal that
+  the bug class was eliminated — a line in a log nobody reads, on a run that passed. **This layer caught
   the most bugs this month.** Discipline: `common::sandbox` + `common::Reaped` +
   fixture ports (`examples/common/mod.rs` — read its invariant first).
   **`relink_tree_check` (sandbox tier, 14 Aug 2026) is this layer aimed at the tool

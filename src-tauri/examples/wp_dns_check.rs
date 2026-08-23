@@ -4,7 +4,7 @@
 //! # What this proves that the unit tests cannot
 //!
 //! The unit tests can only assert that the mu-plugin CONTAINS its guards. The
-//! bug it fixes lives entirely outside Rust: the bundled static-php builds link
+//! bug it fixes lives entirely outside Rust: the static-php.dev builds link
 //! libcurl against **c-ares**, which reads `/etc/resolv.conf` alone and never
 //! macOS split-DNS (`/etc/resolver/<tld>`). So inside rexenv's PHP,
 //! `gethostbyname("x.rex")` answered `127.0.0.1` while `curl` on the same host
@@ -17,10 +17,19 @@
 //!   1. baseline (no plugin)  → expected: cURL error 6, the bug reproduced;
 //!   2. plugin applied        → expected: HTTP 200, the fix working.
 //!
-//! If the build ever stops using c-ares (a threaded-resolver rebuild — the
-//! upstream fix), step 1 succeeds too: that is reported as a PASS with a loud
-//! note, because the bug class is then gone and the plugin is a no-op by its
-//! own first guard.
+//! Which of those two is expected comes from `core::wp_dns::resolver_for`, and
+//! a DISAGREEMENT fails the run. It used to be a note — a threaded build printed
+//! "the bug class is gone" and exited 0 — which `docs/TODO.md` called the signal
+//! that this work was done. A line in a log nobody reads, on a run that passed,
+//! is a hope and not a control.
+//!
+//! The gate is deliberately not "fail when this build is threaded": **7.4
+//! already is** (measured 23 Aug 2026 — it is the build rexenv makes itself and
+//! it never got static-php.dev's `--enable-cares`), so that rule would fail on
+//! good news. It fails on DIVERGENCE from the record, which is news in either
+//! direction — a minor that gained the threaded resolver means the mu-plugin is
+//! dead weight for it, and one that gained c-ares means a machine is running the
+//! bug while the workaround is believed unnecessary.
 //!
 //! # Fixture scope (the examples invariant)
 //!
@@ -168,19 +177,56 @@ async fn main() {
     }
     check(field("public_host") == "NULL", "a public host has no resolver file → untouched");
 
-    if field("ares") == "-" {
-        println!(
-            "NOTE: this php's libcurl uses the THREADED resolver — the c-ares bug class is \
-             gone on this build and the mu-plugin no-ops by its first guard."
-        );
-        check(code("baseline") == 200, "baseline request succeeds (no bug to fix)");
-        check(code("plugin") == 200, "the plugin changes nothing on a threaded build");
+    // ── The resolver this build MEASURES as, against what rexenv RECORDS ────
+    //
+    // This branch used to be a note: on a threaded build it printed "the bug
+    // class is gone" and exited 0 green. `docs/TODO.md` called that the signal
+    // that the bug class was eliminated, which made it a hope rather than a
+    // control — a line in a log nobody reads, on a run that passed.
+    //
+    // It is a GATE now, and the decision the row asked for. Not "fail when the
+    // build is threaded" — 7.4 already is, so that would fail on good news —
+    // but "fail when the build DISAGREES with `core::wp_dns::resolver_for`".
+    // Divergence in either direction is news: a minor that gained the threaded
+    // resolver means the mu-plugin can go for it, and one that gained c-ares
+    // means a machine is running the workaround's bug with the workaround
+    // believed unnecessary.
+    let measured = if field("ares") == "-" {
+        wp_dns::CurlResolver::Threaded
     } else {
-        check(
-            errno("baseline") == 6,
-            "BUG REPRODUCED: unaided cURL cannot resolve a .rex host (errno 6)",
-        );
-        check(code("plugin") == 200, "FIXED: with the mu-plugin the same request returns 200");
+        wp_dns::CurlResolver::Ares
+    };
+    let minor = binaries::PHP_VERSION
+        .rsplit_once('.')
+        .map(|(m, _)| m)
+        .unwrap_or(binaries::PHP_VERSION);
+    let recorded = wp_dns::resolver_for(minor);
+    check(
+        recorded == Some(measured),
+        &format!(
+            "PHP {minor}'s libcurl matches what core records: measured {measured:?}, \
+             recorded {recorded:?} — if these disagree, fix `core::wp_dns::resolver_for` \
+             and re-cost the c-ares row in docs/TODO.md; a build that turned threaded \
+             means the mu-plugin is dead weight for this minor"
+        ),
+    );
+
+    match measured {
+        wp_dns::CurlResolver::Threaded => {
+            println!(
+                "NOTE: PHP {minor}'s libcurl uses the THREADED resolver — no bug class here, \
+                 and the mu-plugin no-ops by its first guard."
+            );
+            check(code("baseline") == 200, "baseline request succeeds (no bug to fix)");
+            check(code("plugin") == 200, "the plugin changes nothing on a threaded build");
+        }
+        wp_dns::CurlResolver::Ares => {
+            check(
+                errno("baseline") == 6,
+                "BUG REPRODUCED: unaided cURL cannot resolve a .rex host (errno 6)",
+            );
+            check(code("plugin") == 200, "FIXED: with the mu-plugin the same request returns 200");
+        }
     }
 
     // Drain the listener even if a request never arrived, then clean up OURS.
