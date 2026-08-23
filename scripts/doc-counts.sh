@@ -71,6 +71,80 @@ expect docs/MAP.md "\`commands/wordpress.rs\` ($CMD_WORDPRESS cmds)" "the wordpr
 expect docs/MAP.md "\`commands/repo.rs\` ($CMD_REPO cmds" "the repo command count"
 expect docs/MAP.md "the ONLY invoke path; $IPC_EXPORTS exports" "the IPC export count"
 
+# ── every docs/*.md path the tree cites must EXIST ────────────────────────────
+#
+# The inverse of the checks above: not what the docs say about the code, but
+# what everything says about the docs. Added 23 Aug 2026 with the sweep that
+# repaired four code comments citing the TODO file for rows that had moved to
+# the archive — and it immediately found one more the sweep was not looking for.
+#
+# **Stated limit, because it is the more common failure and this does not catch
+# it:** a pointer rots most often when a ROW moves between files, not when a
+# file disappears. `core/apache.rs` cited a "Deferred services" plan that had
+# been archived; the path it named still existed, so nothing here would have
+# fired. Verifying that needs anchors in the target, and an anchor convention is
+# a bigger change than this problem has earned. What this covers is the
+# rename/delete class, which is cheap and total.
+#
+# `docs/archive/` is excluded as a SOURCE of citations: those files record what
+# was true when they were written, and editing history to satisfy a linter is
+# the opposite of what an archive is for. They are still checked as TARGETS — a
+# live file may point into the archive, and often should. `dist/` is excluded
+# because it is BUILT: a stale bundle there would fail this check for a citation
+# no longer in any source file.
+#
+# The leading boundary is load-bearing: without it a path in the SIBLING repo —
+# `runtimes/docs/<file>`, which `docs/PLAN-adminer-updates.md` legitimately names
+# — matches from its `docs/` onward and is reported as dangling. Qualifying such
+# a path with its repo is the fix on the doc side; the boundary is the fix on
+# the scanner side, and both were needed.
+#
+# Note what these comments do NOT contain: a literal path of the form this
+# scanner matches. Writing the sibling-repo example out in full made THIS FILE a
+# citation of a file that does not exist, and the scan reported itself — the
+# scanner-counts-itself trap `core/binaries.rs` already carries a note about.
+#
+# The `|| true` is not defensive noise. Under `set -euo pipefail` a grep that
+# matches NOTHING exits 1, which fails the pipeline, which fails the command
+# substitution, which aborts the script — exit 1 with no output at all. That is
+# the exact state the landmark below exists to report, and without this the
+# landmark could never print: a broken scan would look like a failing check with
+# no reason given. Found by planting it.
+doc_refs() {
+  { grep -rhoE '(^|[^A-Za-z0-9._/-])docs/[A-Za-z0-9._/-]+\.md' \
+    --include='*.rs' --include='*.ts' --include='*.tsx' --include='*.sh' \
+    --include='*.js' --include='*.md' \
+    --exclude-dir=node_modules --exclude-dir=target --exclude-dir=.git \
+    --exclude-dir=archive --exclude-dir=dist \
+    . || true; } | sed -E 's/^[^d]//' | sort -u
+}
+DOC_REFS=$(doc_refs)
+DOC_REF_COUNT=$(printf '%s\n' "$DOC_REFS" | grep -c . || true)
+
+# A landmark, for the reason ledger-tally and the WCAG scan carry one: a scan
+# that matched nothing would report zero dangling pointers and look perfect.
+# The floor is set just under the live count so it is a real tripwire and not a
+# number that can never be reached — the docs directory alone carries most of it.
+if [ "$DOC_REF_COUNT" -lt 25 ]; then
+  echo "doc-counts: the doc-pointer scan found only $DOC_REF_COUNT paths (expected 25+)." >&2
+  echo "  That is a broken scan reporting a clean tree, not a clean tree." >&2
+  fail=1
+fi
+
+for ref in $DOC_REFS; do
+  if [ ! -f "$ref" ]; then
+    echo "doc-counts: $ref is cited in the tree but does not exist." >&2
+    grep -rlF "$ref" \
+      --include='*.rs' --include='*.ts' --include='*.tsx' --include='*.sh' \
+      --include='*.js' --include='*.md' \
+      --exclude-dir=node_modules --exclude-dir=target --exclude-dir=.git \
+      --exclude-dir=archive --exclude-dir=dist . 2>/dev/null | sed 's/^/    cited by /' >&2
+    echo "  Repoint it, or qualify it if it names a path in ANOTHER repo" >&2
+    echo "  (rexenv/runtimes and rexenv/homebrew-tap both have their own docs/)." >&2
+    fail=1
+  fi
+done
+
 if [ "$fail" -ne 0 ]; then
   echo "" >&2
   echo "  These numbers are generated (scripts/doc-counts.sh) precisely so that" >&2
@@ -79,4 +153,4 @@ if [ "$fail" -ne 0 ]; then
   exit 1
 fi
 
-echo "doc-counts: schema v$SCHEMA · wordpress $CMD_WORDPRESS cmds · repo $CMD_REPO cmds · ipc $IPC_EXPORTS exports (all match)"
+echo "doc-counts: schema v$SCHEMA · wordpress $CMD_WORDPRESS cmds · repo $CMD_REPO cmds · ipc $IPC_EXPORTS exports · $DOC_REF_COUNT doc paths cited (all match, all exist)"

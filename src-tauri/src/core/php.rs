@@ -1817,7 +1817,7 @@ mod tests {
         assert!(pools.status().is_empty());
     }
 
-    /// The watchdog/Start-all race (docs/TODO.md): a pool spawned by an
+    /// The watchdog/Start-all race (docs/archive/SHIPPED-2026-07.md): a pool spawned by an
     /// in-flight Start-all hasn't bound its port when a watchdog tick lands —
     /// alive + within the start grace must NOT be reaped. A dead master must
     /// still be reaped immediately, grace or no grace (a crash during start

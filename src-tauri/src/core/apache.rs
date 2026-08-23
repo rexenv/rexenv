@@ -1,5 +1,5 @@
-//! core::apache — Apache httpd as a per-site OVERRIDE server (TODO "Deferred
-//! services").
+//! core::apache — Apache httpd as a per-site OVERRIDE server (shipped from the
+//! "Deferred services" plan; evidence in docs/archive/SHIPPED-2026-07.md).
 //!
 //! httpd runs ONLY as a backend on an internal loopback HTTP port — NEVER the
 //! edge (same contract as `core::frankenphp`): the edge Caddy keeps :443,

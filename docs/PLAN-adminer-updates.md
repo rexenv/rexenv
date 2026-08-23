@@ -330,5 +330,5 @@ App before UI (DESIGN.md:99 — "a control whose only outcome is an error is not
 | `src/{types,lib/ipc}/index.ts`, `src/lib/mock.ts`, `src/routes/{Databases,DevUiReview}.tsx`, `scripts/wk-checks/uireview.js` | types, wrappers + mock branches, scenario fixture, the card, harness arms + probes |
 | `src-tauri/examples/{adminer_check,adminer_login_gate_check,adminer_update_check,manifest_sweep_check}.rs`, `scripts/live-checks.sh` | probe wiring, honest limits, new network-tier example |
 | `scripts/check-php-pins.sh` | reverse Adminer pin + ceiling check |
-| `runtimes/scripts/publish-manifest.sh`, `docs/MANIFEST.md`, `README.md`, `.github/workflows/*.yml` | serial-reset fix, explicit-versions fix, superset assertion, Adminer discovery, two-product docs |
+| `runtimes/scripts/publish-manifest.sh`, `runtimes/docs/MANIFEST.md`, `runtimes/README.md`, `runtimes/.github/workflows/*.yml` | serial-reset fix, explicit-versions fix, superset assertion, Adminer discovery, two-product docs |
 | `docs/{ARCHITECTURE,CLAIM-LEDGER,PLAN-binary-updates,DESIGN,SMOKE-TEST,PORTS,TESTING,TODO}.md` | per the CLAUDE.md table, in the same commits |

@@ -240,7 +240,8 @@ async fn main() {
         "Shared",
         &wordpress::db_name_for(SiteType::Wordpress, SHARED),
         &format!("127.0.0.1:{}", coredb::DbEngine::Mysql.port()),
-        // The CLIENT binary, never the basedir — see docs/TODO.md, 15 Jul→14 Aug.
+        // The CLIENT binary, never the basedir — the nine-example fix of
+        // 15 Jul→14 Aug (docs/archive/SHIPPED-2026-08.md).
         &db_client,
         &Default::default(),
     ) {

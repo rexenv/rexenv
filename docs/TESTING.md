@@ -690,6 +690,23 @@ bloating the fast path:
   §D then found `rex --version` hanging forever on an app that accepts and never
   answers (ledger #300). A crate that ships and a crate the gate visits are now the
   same set; keep them that way when a third crate appears.
+- **The two generated-doc gates, inside `verify.sh`:** `scripts/ledger-tally.sh`
+  computes the CLAIM-LEDGER tally, and `scripts/doc-counts.sh` computes the counts
+  the docs state about the code (schema version, per-file command counts, IPC
+  exports) **and, since 23 Aug 2026, checks every `docs/*.md` path the tree cites
+  actually exists.** The pointer half came out of a sweep that repaired four code
+  comments citing `docs/TODO.md` for rows that had moved to `docs/archive/`; it
+  found a fifth the sweep was not looking for.
+  **What it does NOT prove, because this is the commoner failure:** a pointer rots
+  most often when a ROW moves between files, not when a file disappears — and the
+  path stays valid through that, so nothing fires. Closing THAT needs anchors in
+  the target, which is a convention change, not a check. `docs/archive/` is
+  excluded as a source (history is not edited to satisfy a linter) and `dist/` as
+  a build output; both are still valid targets.
+  **And it cannot tell a mention from a reference:** prose *about* a missing doc
+  reads as a citation *of* it, so anything describing this gate must avoid
+  spelling the path out. That caught the gate's own comment and then the TODO row
+  announcing it — twice in one afternoon.
 - **`scripts/verify-full.sh`** (before release / after touching a layer's subject,
   ~10–20 min): runs verify.sh, then the L1 `sandbox` tier, then wk-checks `run-all`
   (spawns its own vite on 5199, kills it after). Own `verify-full: all green` line.

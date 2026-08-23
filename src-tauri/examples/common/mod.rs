@@ -411,9 +411,9 @@ pub fn require_ports_free(ports: &[(u16, &str)]) {
 /// failure surfaced downstream as `php-via-fpm=false` (Apache), `502` (nginx),
 /// `503` (httpd): all of which read as "the web server cannot execute PHP" and
 /// send the reader at the wrong subject. `apache_site_check`'s instance sat in
-/// `docs/TODO.md` as an unexplained transient from 3 Aug 2026 until the second
-/// capture, on 20 Aug, showed the two PHP legs failing while the two static
-/// legs passed — which is the pool's fingerprint, not the server's.
+/// `docs/archive/SHIPPED-2026-08.md` as an unexplained transient from 3 Aug 2026
+/// until the second capture, on 20 Aug, showed the two PHP legs failing while
+/// the two static legs passed — which is the pool's fingerprint, not the server's.
 ///
 /// So: wait HERE, and when the wait fails, fail HERE — with the port and the
 /// service named, before any downstream check can offer a plausible wrong

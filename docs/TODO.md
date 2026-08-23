@@ -317,14 +317,36 @@ cause: a commit did the work and the surrounding claim stayed as it was.
   reader checks BEFORE deciding whether to build something, so a stale one invites
   someone to rebuild what is already there — which is why each correction says what it
   had claimed, not just what is true now.
-- [ ] **Code comments point at TODO rows that are not in TODO.** `core/sites.rs:88-90`
-  says the FrankenPHP same-major PHP skew "is tracked in `docs/TODO.md`" and it is not
-  (it was ANSWERED on 15 Aug by the disabled-picker annotation, ledger #333 — so the
-  comment is not just a dangling pointer, it describes an open gap that is closed). Nine
-  more sites cite a "Deferred services" row that moved to `docs/archive/SHIPPED-2026-07.md`
-  (`core/apache.rs:1`, `core/mariadb.rs:1`, `core/redis.rs:1`, `core/binaries.rs:1205`,
-  and the examples beside them). Following any of them lands a reader in a file that does
-  not mention the thing.
+- [x] **Code comments point at TODO rows that are not in TODO** ✓ 23 Aug 2026.
+  The row's own inventory was already half-repaired when it was worked: `core/sites.rs`
+  and seven of the nine "Deferred services" citations had been corrected in passing, so
+  the sweep found four live dangling pointers, not ten — `tunnel_exposure_check.rs:243`
+  and `common/mod.rs:414` (both → `SHIPPED-2026-08.md`), `php.rs:1820`'s watchdog/Start-all
+  race (→ `SHIPPED-2026-07.md`), and `core/apache.rs:1`, the last bare `TODO "Deferred
+  services"`. The other nine `docs/TODO.md` citations in Rust were each checked against
+  the file and DO resolve; they are left alone.
+  **The durable half is a gate, because a sweep repairs a list and not the mechanism.**
+  `scripts/doc-counts.sh` now fails on any `docs/*.md` path the tree cites that does not
+  exist (38 paths today), plant-proven three ways. It found a fifth pointer the sweep was
+  not looking for: `docs/PLAN-adminer-updates.md` naming that repo's manifest doc as if
+  it were ours, when it is a path in the SIBLING `rexenv/runtimes` repo — now qualified
+  with its repo, and the scanner grew a leading boundary so a sibling-repo path is not
+  read as ours.
+  Two traps hit while building it, both already named in this tree:
+  - **the scanner counted itself, twice** — writing the sibling-repo example out in
+    full made `doc-counts.sh` a citation of a file that does not exist, and then this
+    very row did it again while describing the fix. It is not avoidable in general: a
+    scan over source text cannot tell prose ABOUT a path from a reference TO one, so
+    anything writing about a missing doc must avoid spelling it. Recorded because the
+    next person to describe this gate will hit it a third time;
+  - **the landmark could never have printed.** Under `set -euo pipefail` a grep that
+    matches nothing fails the pipeline, fails the substitution and aborts the script:
+    exit 1, no output — the exact state the landmark exists to REPORT. Found by
+    planting it, which is the argument for planting the vacuous case and not only the
+    defect case.
+  **Stated limit** (`docs/TESTING.md` §6): the gate catches the rename/delete class, not
+  the commoner one — a ROW moving between files, which is what actually happened here and
+  leaves the cited path valid. Closing that needs anchors in the target.
 - [x] **`caddy_serve` announced READY before anything was listening** ✓ 21 Aug 2026. It
   called `proxy::start` (which returns at fork), printed `CADDY_READY https=8443
   http=8080` and slept 20s for a human to curl — so the human curled into a socket that
