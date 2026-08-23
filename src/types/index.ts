@@ -595,6 +595,13 @@ export interface PhpVersion {
   isDefault: boolean;
   /** Can the per-site Xdebug toggle be offered for this minor? */
   xdebugSupported: boolean;
+  /** WHY the toggle is unavailable, as the sentence to show — `null` when it is
+   *  available. `xdebugSupported` says whether; this says why, and they are not
+   *  interchangeable: PHP 7.4 and 8.0 physically cannot load an extension, while
+   *  a minor whose Xdebug bottle is simply unpinned is a gap in rexenv rather
+   *  than a fact about the user's PHP. Derived in core (`xdebug_unavailable_reason`)
+   *  because the UI used to hardcode the first sentence for every absence. */
+  xdebugUnavailableReason: string | null;
   /** The Xdebug release this minor's debug pool loads — not app-wide; a minor
    *  past Xdebug's support window is frozen at its last release. */
   xdebugVersion: string | null;

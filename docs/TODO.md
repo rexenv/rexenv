@@ -270,12 +270,25 @@ paying for anyway: **the tick belongs in the commit that does the work.**
     §4.5/§11 says to land the cross-compile path before then, and notes that a cross-built
     artifact can never run a native smoke test. Nothing in this file mentioned 2027 until
     the 21 Aug reconcile.
-  - [ ] **Xdebug is silently unavailable on 7.4, and unlike 8.0 nothing blocks it.**
-    `xdebug_bottle` (`core/binaries.rs:426-436`) has rows for 8.1–8.5 only, so
-    `xdebug_supported("7.4")` is false through the SAME `None` that means "8.0 physically
-    cannot dlopen" — the exact conflation `binaries.rs:126-133` warns about. Decide which
-    it is for 7.4 (a bottle that exists and is simply unpinned, or a genuine absence) and
-    say so where the user reads it.
+  - [x] **Xdebug is silently unavailable on 7.4, and unlike 8.0 nothing blocks it**
+    ✓ 23 Aug 2026 — ledger #378, plant-proven four ways.
+    The row asked which it is for 7.4. It was already decided and MEASURED — `docs/PORTS.md`
+    has said since 14 Aug that our own 7.4 build exports ~22,400 symbols and not
+    `_OnUpdateBool`, the same wall 8.0 hits. So 7.4 is a genuine absence, and the shipped
+    message happened to be true of it. **The defect was never 7.4; it was that the type
+    could not tell the two apart**, so the sentence was right by luck and would go wrong
+    for the first minor that ships before its bottle does — telling that user their PHP is
+    broken when the gap is rexenv's, and offering "switch to 8.1 or newer" to someone on
+    something newer than the table.
+    `XdebugStatus` splits `Available` / `CannotLoadExtensions { measured }` / `NotPinned`,
+    and the durable half is that **`NotPinned` is unreachable for a version in
+    `PHP_VERSIONS`** — adding a minor fails the build until somebody decides, at the one
+    moment the answer is known.
+    **A second copy was found on the way:** `SiteDetail`'s `XdebugCard` hardcoded the same
+    conflated sentence. That card had already had this exact lesson — it used to disable on
+    a literal `minor === "8.0"`, which was moved into core as `xdebug_supported` — and the
+    sentence beside the boolean was left behind. The reason now rides the registry row like
+    the boolean does.
 ### Opened by the 21 Aug 2026 reconcile
 
 These are rows the audit created, not rows it inherited. Grouped because they share one

@@ -393,6 +393,7 @@ pub fn list_versions(
                 .unwrap_or_default();
             PhpVersionView {
                 xdebug_supported: binaries::xdebug_supported(&v.minor),
+                xdebug_unavailable_reason: binaries::xdebug_unavailable_reason(&v.minor),
                 xdebug_version: binaries::xdebug_version_for(&v.minor),
                 eol_since: eol_since(&v.minor),
                 // What the live pool is EXECUTING, said only when it differs from
@@ -1361,6 +1362,23 @@ mod tests {
             // The two travel together: a version without support, or support
             // without a version, would each render a control that lies.
             assert_eq!(r.xdebug_supported, r.xdebug_version.is_some(), "{}", r.minor);
+            // And so does the REASON, added 23 Aug 2026 when it turned out the
+            // card still hardcoded one sentence for every kind of absence. It is
+            // present exactly when support is absent — a row carrying both, or
+            // neither, renders either a reason for a working toggle or a
+            // disabled toggle that will not say why.
+            assert_eq!(
+                r.xdebug_unavailable_reason,
+                binaries::xdebug_unavailable_reason(&r.minor),
+                "{} disagrees with core about WHY",
+                r.minor
+            );
+            assert_eq!(
+                r.xdebug_supported,
+                r.xdebug_unavailable_reason.is_none(),
+                "{}: support and a reason-for-no-support cannot both be true",
+                r.minor
+            );
         }
         // …and the set is not uniformly true, so an accessor stubbed to a
         // constant could not pass this. 8.0 ships and has no Xdebug.

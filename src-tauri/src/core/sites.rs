@@ -1189,11 +1189,13 @@ pub fn set_xdebug(conn: &Connection, id: &str, enabled: bool) -> Result<Option<S
             ));
         }
         let minor = php::minor_of(&site.php_version);
-        if !crate::core::binaries::xdebug_supported(&minor) {
-            return Err(Error::Other(format!(
-                "Xdebug isn't available for PHP {minor} — its static build can't load \
-                 extensions. Switch the site to PHP 8.1 or newer first."
-            )));
+        // The sentence comes from `core::binaries`, not from here: it depends on
+        // WHY the minor has none, and this call site is in no position to know.
+        // It used to say "its static build can't load extensions" for every
+        // absence — true of 7.4 and 8.0, and a confident falsehood the day a
+        // minor ships before its Xdebug bottle does.
+        if let Some(why) = crate::core::binaries::xdebug_unavailable_reason(&minor) {
+            return Err(Error::Other(why));
         }
     }
     if !store::set_site_xdebug(conn, id, enabled)? {

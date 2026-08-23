@@ -973,7 +973,12 @@ function SettingsTab({ site }: { site: Site }) {
  *  Which minors support Xdebug comes from the registry row (`xdebugSupported`,
  *  derived in core from the pinned bottle table), NOT from a literal here. It
  *  was `minor === "8.0"`: a second copy of `binaries::xdebug_supported` free to
- *  disagree with it the moment the pinned set changed. */
+ *  disagree with it the moment the pinned set changed.
+ *
+ *  So does the REASON (`xdebugUnavailableReason`, 23 Aug 2026). The same lesson
+ *  had been learned for the boolean and not for the sentence beside it: a single
+ *  hardcoded "its build can't load extensions" covered both absences that
+ *  existed and would have been wrong about the first unpinned minor to ship. */
 function XdebugCard({ site }: { site: Site }) {
   const qc = useQueryClient();
   const { data: versions = [] } = useQuery({ queryKey: ["php-versions"], queryFn: listPhpVersions });
@@ -983,11 +988,16 @@ function XdebugCard({ site }: { site: Site }) {
   // shared cache with the page's own, so this is a first-paint blink at worst,
   // and the backend refuses regardless.
   const supported = row?.xdebugSupported ?? true;
+  // The REASON comes from the row too, not from a literal here. It was a single
+  // hardcoded sentence — "its build can't load extensions" — which is true of
+  // 7.4 and 8.0 and a confident falsehood for a minor whose Xdebug bottle is
+  // merely unpinned. Same defect as the `minor === "8.0"` literal this card
+  // already had removed once: a second copy of a core rule, free to disagree.
   const blocked =
     site.webServer === "frankenphp"
       ? "Not available on FrankenPHP sites — FrankenPHP embeds its own PHP. Switch the site to Nginx or Apache first."
       : !supported
-        ? `Not available for PHP ${minor} — its build can't load extensions. Switch the site to a version that supports Xdebug first.`
+        ? (row?.xdebugUnavailableReason ?? `Not available for PHP ${minor}.`)
         : null;
 
   const toggle = useMutation({

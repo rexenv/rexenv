@@ -438,17 +438,70 @@ struct XdebugBottle {
     amd64: &'static str,
 }
 
-/// The Xdebug row for a PHP minor. `None` = no Xdebug for that minor (8.0's
-/// static build can't dlopen — see [`XDEBUG_VERSION`]). The single source of
-/// which minors support the toggle AND of which release each one gets.
-fn xdebug_bottle(minor: &str) -> Option<XdebugBottle> {
-    let row = |version, formula, arm64, amd64| Some(XdebugBottle { version, formula, arm64, amd64 });
+/// Why a PHP minor has no Xdebug — or that it does.
+///
+/// **This exists because `Option<XdebugBottle>` answered two different questions
+/// with the same `None`,** and the difference is the whole user-facing message.
+/// 7.4 and 8.0 physically cannot load ANY external `.so`: their static builds
+/// export no Zend symbols (`_OnUpdateBool` unresolved), measured on 8.0 in Nov
+/// 2024 and on our own 7.4 build on 14 Aug 2026. No pin can fix that. A minor
+/// with no row for any OTHER reason is a gap in this table — somebody has not
+/// pinned a bottle yet — and telling that user "its static build can't load
+/// extensions" would be a confident falsehood about their PHP.
+///
+/// It cost nothing today only because both current absences happen to be the
+/// physical kind, so the one message shipped was true of both. It goes wrong the
+/// day a minor arrives before its bottle does, which is a normal Tuesday: PHP
+/// 8.6 lands, `PHP_VERSIONS` grows, and the toggle explains itself with a reason
+/// that is not the reason.
+/// Private on purpose: the outside world gets [`xdebug_supported`] and
+/// [`xdebug_unavailable_reason`], never the rows. A caller that could match on
+/// this could write its own message, which is the drift this type exists to stop.
+#[derive(Debug, Clone, Copy)]
+enum XdebugStatus {
+    /// A pinned bottle: the toggle works for this minor.
+    Available(XdebugBottle),
+    /// The PHP build cannot dlopen any extension. Carries where that was
+    /// measured, because "we tried it" is the only thing that makes this
+    /// different from "we did not get round to it".
+    CannotLoadExtensions { measured: &'static str },
+    /// No bottle pinned for this minor yet. A gap in the table, not a fact about
+    /// PHP — and never reachable for a version in [`PHP_VERSIONS`], which
+    /// `every_offered_php_minor_has_an_explicit_xdebug_verdict` enforces.
+    NotPinned,
+}
+
+/// The Xdebug status for a PHP minor: a pinned row, or the REASON there is none.
+/// The single source of which minors support the toggle, of which release each
+/// one gets, and of what to tell a user who asks for one that has none.
+fn xdebug_status(minor: &str) -> XdebugStatus {
+    let row = |version, formula, arm64, amd64| {
+        XdebugStatus::Available(XdebugBottle { version, formula, arm64, amd64 })
+    };
     match minor {
+        // Measured, not assumed. Both exports checked with `nm -gU`; 7.4's build
+        // shows ~22,400 symbols and not the one that matters.
+        "7.4" => XdebugStatus::CannotLoadExtensions {
+            measured: "rexenv's own 7.4.33 build, 14 Aug 2026",
+        },
+        "8.0" => XdebugStatus::CannotLoadExtensions {
+            measured: "static-php.dev's 8.0.30 build, Nov 2024",
+        },
         "8.1" => row(XDEBUG_VERSION, "xdebug@8.1", XDEBUG_PHP81_BOTTLE_ARM64_SHA256, XDEBUG_PHP81_BOTTLE_AMD64_SHA256),
         "8.2" => row(XDEBUG_VERSION, "xdebug@8.2", XDEBUG_PHP82_BOTTLE_ARM64_SHA256, XDEBUG_PHP82_BOTTLE_AMD64_SHA256),
         "8.3" => row(XDEBUG_VERSION, "xdebug@8.3", XDEBUG_PHP83_BOTTLE_ARM64_SHA256, XDEBUG_PHP83_BOTTLE_AMD64_SHA256),
         "8.4" => row(XDEBUG_VERSION, "xdebug@8.4", XDEBUG_PHP84_BOTTLE_ARM64_SHA256, XDEBUG_PHP84_BOTTLE_AMD64_SHA256),
         "8.5" => row(XDEBUG_VERSION, "xdebug@8.5", XDEBUG_PHP85_BOTTLE_ARM64_SHA256, XDEBUG_PHP85_BOTTLE_AMD64_SHA256),
+        _ => XdebugStatus::NotPinned,
+    }
+}
+
+/// The pinned row for a minor, dropping the reason. For callers that only need
+/// to know WHETHER, never why — everything user-facing goes through
+/// [`xdebug_unavailable_reason`] instead.
+fn xdebug_bottle(minor: &str) -> Option<XdebugBottle> {
+    match xdebug_status(minor) {
+        XdebugStatus::Available(b) => Some(b),
         _ => None,
     }
 }
@@ -456,6 +509,31 @@ fn xdebug_bottle(minor: &str) -> Option<XdebugBottle> {
 /// Whether the per-site Xdebug toggle is available for a PHP minor.
 pub fn xdebug_supported(minor: &str) -> bool {
     xdebug_bottle(minor).is_some()
+}
+
+/// Why the toggle is unavailable, as a sentence for the user — or `None` when it
+/// IS available.
+///
+/// Lives here rather than at the call site so the two refusal paths
+/// (`core::sites`' toggle and anything that grows one later) cannot drift into
+/// telling the same user two different stories. The advice differs with the
+/// reason on purpose: "switch to a newer PHP" is right for a build that cannot
+/// load extensions and actively wrong for a minor whose bottle is merely
+/// missing — there may be nothing newer to switch to.
+pub fn xdebug_unavailable_reason(minor: &str) -> Option<String> {
+    match xdebug_status(minor) {
+        XdebugStatus::Available(_) => None,
+        XdebugStatus::CannotLoadExtensions { measured } => Some(format!(
+            "Xdebug isn't available for PHP {minor} — its static build exports no Zend \
+             symbols, so it can't load any extension ({measured}). No version of Xdebug \
+             can change that. Switch the site to PHP 8.1 or newer first."
+        )),
+        XdebugStatus::NotPinned => Some(format!(
+            "Xdebug isn't available for PHP {minor} yet — rexenv has no Xdebug build \
+             pinned for this version. Nothing is wrong with your site; the toggle will \
+             work once one ships."
+        )),
+    }
 }
 
 /// The Xdebug release pinned for a PHP minor, or `None` where the toggle isn't
@@ -3388,6 +3466,93 @@ mod tests {
                 checksum_hex(&amd.parts[0].checksum)
             );
         }
+    }
+
+    /// **Every PHP rexenv OFFERS must have an explicit Xdebug verdict — the
+    /// undecided state is unreachable for a shipped version.**
+    ///
+    /// This is the guard the whole `XdebugStatus` split exists for. Splitting
+    /// the two absences apart fixes today's message; it does not stop tomorrow's
+    /// minor from falling through `_ => NotPinned` and picking up a reason
+    /// nobody chose. Adding a version to `PHP_VERSIONS` now fails here until
+    /// somebody decides which of the three it is, which is the one moment the
+    /// answer is actually known.
+    ///
+    /// Derived from `PHP_VERSIONS`, so a new minor joins the guard by existing
+    /// rather than by being remembered — the same derivation #336 and #377 had
+    /// to be corrected into after keying on names.
+    #[test]
+    fn every_offered_php_minor_has_an_explicit_xdebug_verdict() {
+        let mut available = 0;
+        let mut cannot_load = 0;
+        for v in PHP_VERSIONS {
+            let minor = v.rsplit_once('.').map(|(m, _)| m).unwrap_or(v);
+            match xdebug_status(minor) {
+                XdebugStatus::Available(b) => {
+                    available += 1;
+                    assert_eq!(
+                        checksum_hex(&Checksum::Sha256(b.arm64.into())).len(),
+                        64,
+                        "{minor}: available but its arm64 digest is not a SHA-256"
+                    );
+                }
+                XdebugStatus::CannotLoadExtensions { measured } => {
+                    cannot_load += 1;
+                    // A measurement with no provenance is an assumption wearing
+                    // a measurement's clothes.
+                    assert!(
+                        measured.contains("20"),
+                        "{minor}: CannotLoadExtensions with no date — say when it was measured"
+                    );
+                }
+                XdebugStatus::NotPinned => panic!(
+                    "PHP {minor} is in PHP_VERSIONS but has no Xdebug verdict. Decide in \
+                     `xdebug_status`: pin a bottle (Available), record the nm -gU result \
+                     (CannotLoadExtensions), or take the version out of PHP_VERSIONS. \
+                     Falling through to NotPinned tells the user a reason nobody chose."
+                ),
+            }
+        }
+        // Landmarks. A table gutted to one arm would satisfy every assertion
+        // above by having nothing to iterate.
+        assert!(available >= 5, "only {available} minors with a pinned bottle");
+        assert_eq!(cannot_load, 2, "expected exactly 7.4 and 8.0 to be unloadable");
+
+        // NotPinned must still be REACHABLE — it is the honest answer for a
+        // minor rexenv does not offer, and a version that no longer exists.
+        assert!(matches!(xdebug_status("8.9"), XdebugStatus::NotPinned));
+    }
+
+    /// The refusal a user reads differs with the reason, and neither sentence
+    /// may be the other's.
+    ///
+    /// The old single message ("its static build can't load extensions") was
+    /// true of both absences that existed, which is exactly why the conflation
+    /// survived: it was correct until the day it silently was not.
+    #[test]
+    fn the_xdebug_refusal_says_which_kind_of_unavailable_it_is() {
+        assert!(xdebug_unavailable_reason("8.3").is_none(), "8.3 has a pinned bottle");
+
+        for minor in ["7.4", "8.0"] {
+            let why = xdebug_unavailable_reason(minor).expect("no bottle for this minor");
+            assert!(why.contains(minor), "{minor}: the message does not name the version");
+            assert!(why.contains("exports no Zend symbols"), "{minor}: {why}");
+            assert!(why.contains("8.1 or newer"), "{minor}: no way out offered — {why}");
+            // The permanence is the point: a user who reads "not yet" will wait
+            // for a fix that is not coming.
+            assert!(why.contains("No version of Xdebug can change that"), "{minor}: {why}");
+        }
+
+        let unpinned = xdebug_unavailable_reason("8.9").expect("8.9 has no bottle");
+        assert!(unpinned.contains("8.9"));
+        assert!(
+            !unpinned.contains("exports no Zend symbols"),
+            "an unpinned minor must not be told its PHP is broken: {unpinned}"
+        );
+        assert!(
+            !unpinned.contains("8.1 or newer"),
+            "'switch to something newer' is not advice for a minor NEWER than the table: {unpinned}"
+        );
     }
 
     #[test]

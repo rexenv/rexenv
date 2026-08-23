@@ -482,6 +482,17 @@ pub struct PhpVersionView {
     /// Whether the per-site Xdebug toggle can be offered for this minor —
     /// `binaries::xdebug_supported`, not a client-side guess.
     pub xdebug_supported: bool,
+    /// WHY the toggle is unavailable, as the sentence to show — or `None` when
+    /// it is available. `xdebug_supported` says whether; this says why, and the
+    /// two answers are not interchangeable: 7.4 and 8.0 physically cannot load
+    /// an extension, while a minor whose bottle is merely unpinned is a gap in
+    /// rexenv, not a fact about the user's PHP.
+    ///
+    /// Carried on the row for the same reason `xdebug_supported` is: the UI had
+    /// a hardcoded sentence saying "its build can't load extensions" for every
+    /// absence — a second copy of a core rule, free to disagree with it, and
+    /// already wrong for the first unpinned minor to ship.
+    pub xdebug_unavailable_reason: Option<String>,
     /// The Xdebug release this minor's debug pool actually loads, or `None`
     /// where the toggle isn't offered. NOT app-wide: a minor past Xdebug's
     /// support window is frozen at its last release (ledger #320).
