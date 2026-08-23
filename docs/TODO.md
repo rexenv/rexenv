@@ -555,8 +555,11 @@ cause: a commit did the work and the surrounding claim stayed as it was.
     `mail.list` takes a search term and an unread filter — the UI's own inbox search uses
     them — and the CLI sent `Null`, so both parameters were unreachable. `rex mail list
     [--unread] [query]` uses them.
-    ◐ **Neither verb has been run against the app** — it was not running when they were
-    written. Recorded in `docs/CLI-ROADMAP.md`'s in-app-verifies-owed list.
+    ✓ **VERIFIED live 23 Aug 2026**: unread 2 → 0, the unread filter cut 3 rows to 2, a
+    query matched 1 of 3. The live run also found the header reporting the MAILBOX above a
+    FILTERED list — which reads as a listing bug rather than a filter; it says "1 of 3
+    messages shown" now. A filter with no label always looks like that, and only running
+    it showed it.
   - [ ] **The remaining "🟢 wins whose IPC exists" are NOT unreachable arms — they are
     unbuilt commands.** `site relink`, `site retry` and `config get|set` have no dispatch
     arm at all, so each is arm + verb + formatting, not one line. `site retry` and
@@ -565,9 +568,14 @@ cause: a commit did the work and the surrounding claim stayed as it was.
       <domain> <path>`, covered by the reachability guard (plant-proven: dropping the verb
       fails it by name). The CLI canonicalises the path before sending, so a relative one
       typed at a shell prompt means what the USER's cwd says rather than the app's.
-      ◐ **Never run against the app** — it was not running. This is the in-app verify to
-      do FIRST of the three owed, because it is the only one that changes what a site
-      serves.
+      ◐ **Still owed, and an ATTEMPT was made 23 Aug 2026.** The running app was built
+      from `460981c`, which predates the dispatch arm, so it answered "unknown command" —
+      which is the correct behaviour and not a verify. It needs an app rebuilt from this
+      commit. Still the one to do first: it is the only one of the four that changes what
+      a site serves.
+      **That attempt paid for itself**: it exposed that the version-skew check shipped an
+      hour earlier could not see a stale DEV build (same version, different commit) —
+      ledger #386, now fixed and live-verified.
     - [ ] `site retry` — the owner's.
     - [ ] `config get|set` — the owner's, parked on the key allow-list.
   - [x] **Protocol-version handshake** 🟡 ✓ 23 Aug 2026 — **answered differently**, ledger

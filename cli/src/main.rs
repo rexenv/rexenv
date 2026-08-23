@@ -306,7 +306,12 @@ fn request(cmd: &str, args: Value) -> Value {
 /// correct there, and guessing would put a version warning on an unrelated bug.
 fn version_skew() -> Option<String> {
     let app = soft_request("version")?;
-    version_skew_between(env!("CARGO_PKG_VERSION"), app["version"].as_str()?)
+    version_skew_between(
+        env!("CARGO_PKG_VERSION"),
+        app["version"].as_str()?,
+        env!("REX_GIT_COMMIT"),
+        app["commit"].as_str().unwrap_or(""),
+    )
 }
 
 /// The comparison, with both sides as parameters so a test can drive it.
@@ -314,14 +319,43 @@ fn version_skew() -> Option<String> {
 /// Split out for the reason the Xdebug and debug-PHP gates were: the live
 /// function reads a compile-time constant and a running app, so through it the
 /// interesting states — skewed, matched, unknown — are not reachable at all.
-fn version_skew_between(mine: &str, theirs: &str) -> Option<String> {
-    if theirs.is_empty() || theirs == mine {
+///
+/// **The COMMIT is the load-bearing half, and the first version of this did not
+/// have it.** Both builds carry the same `CARGO_PKG_VERSION` for a whole release
+/// cycle, so a version comparison is silent for exactly the case that keeps
+/// happening: a rebuilt CLI against an app still running an older binary.
+/// Measured 23 Aug 2026 by running the very command this check was written for —
+/// `rex site relink` against an app built from `460981c` returned "unknown
+/// command" and this said nothing, because both reported 0.3.0.
+fn version_skew_between(
+    mine: &str,
+    theirs: &str,
+    my_commit: &str,
+    their_commit: &str,
+) -> Option<String> {
+    // An app that could not be asked, or one too old to report a commit, is not
+    // evidence of anything — guessing would put a build warning on every failure
+    // from an app that simply is not running.
+    if theirs.is_empty() {
+        return None;
+    }
+    if theirs != mine {
+        return Some(format!(
+            "this rex is {mine} and the running rexenv is {theirs} — they ship together, so \
+             one of them is stale. Quit and reopen rexenv to pick up the newer app; if that \
+             does not change it, the app on disk is the older one."
+        ));
+    }
+    // Same version, different build. `unknown` on either side means the stamp is
+    // missing rather than different, which is not a mismatch.
+    let unknown = |c: &str| c.is_empty() || c == "unknown";
+    if unknown(my_commit) || unknown(their_commit) || my_commit == their_commit {
         return None;
     }
     Some(format!(
-        "this rex is {mine} and the running rexenv is {theirs} — they ship together, so \
-         one of them is stale. Quit and reopen rexenv to pick up the newer app; if that \
-         does not change it, the app on disk is the older one."
+        "both are {mine}, but this rex was built from {my_commit} and the running rexenv \
+         from {their_commit} — same version, different build. Quit and reopen rexenv so it \
+         picks up the binary you just built."
     ))
 }
 
@@ -1681,7 +1715,19 @@ fn cmd_mail(words: &[String], json_output: bool) {
                 return print_json(&data);
             }
             let (total, unread) = (data["total"].as_i64().unwrap_or(0), data["unread"].as_i64().unwrap_or(0));
-            println!("{total} message{} ({unread} unread)", if total == 1 { "" } else { "s" });
+            let shown = data["messages"].as_array().map(Vec::len).unwrap_or(0) as i64;
+            // The counts describe the MAILBOX; the rows below are what the
+            // filter left. Saying only "3 messages (2 unread)" above two rows
+            // reads as a bug in the listing — observed on the first live run of
+            // `--unread`, which is what a filter with no label always looks like.
+            if shown < total {
+                println!(
+                    "{shown} of {total} message{} shown ({unread} unread in the mailbox)",
+                    if total == 1 { "" } else { "s" }
+                );
+            } else {
+                println!("{total} message{} ({unread} unread)", if total == 1 { "" } else { "s" });
+            }
             for m in data["messages"].as_array().map(Vec::as_slice).unwrap_or_default() {
                 println!(
                     "{} {:<28} {}",
@@ -1812,13 +1858,20 @@ fn cmd_version(json_output: bool) {
         data["commit"].as_str().unwrap_or("?"),
     );
     // Printed HERE rather than left for the reader to spot: this command
-    // already shows both numbers, and two versions side by side are only
+    // already shows both numbers, and two builds side by side are only
     // obviously different to someone who was looking for a difference.
-    if data["version"].as_str() != Some(env!("CARGO_PKG_VERSION")) {
-        eprintln!(
-            "\nrex: these are different builds — they ship together, so one is stale. \
-             Quit and reopen rexenv to pick up the newer app."
-        );
+    //
+    // Routed through the SAME comparison as the unknown-command path rather than
+    // re-testing `version` here. The first cut of this did compare versions
+    // inline and stayed silent on a commit mismatch — in the command whose whole
+    // stated purpose is "is the running app the code I just changed?".
+    if let Some(skew) = version_skew_between(
+        env!("CARGO_PKG_VERSION"),
+        data["version"].as_str().unwrap_or(""),
+        env!("REX_GIT_COMMIT"),
+        data["commit"].as_str().unwrap_or(""),
+    ) {
+        eprintln!("\nrex: {skew}");
     }
 }
 
@@ -2635,9 +2688,9 @@ mod tests {
     /// never bump it.
     #[test]
     fn a_version_difference_is_reported_and_a_match_stays_quiet() {
-        // The case that bites: a rebuilt CLI against an app still running the
-        // old binary.
-        let skew = version_skew_between("0.3.0", "0.2.1").expect("different builds must be named");
+        // Different RELEASES.
+        let skew = version_skew_between("0.3.0", "0.2.1", "aaa1111", "bbb2222")
+            .expect("different builds must be named");
         assert!(skew.contains("0.3.0") && skew.contains("0.2.1"), "{skew}");
         assert!(skew.contains("stale"), "no diagnosis: {skew}");
         assert!(skew.contains("Quit and reopen"), "no way out offered: {skew}");
@@ -2645,14 +2698,30 @@ mod tests {
         // The reverse direction reads the same way on purpose — the message
         // names both numbers and does not claim to know which is newer, because
         // a higher version string is not proof of a newer BUILD on a dev machine.
-        assert!(version_skew_between("0.2.1", "0.3.0").is_some());
+        assert!(version_skew_between("0.2.1", "0.3.0", "a", "b").is_some());
 
-        // Matching builds must be silent: a version warning on an unrelated bug
-        // sends the reader at their install instead of at the bug.
-        assert_eq!(version_skew_between("0.3.0", "0.3.0"), None);
-        // …and so must an app that could not be asked. Guessing here would put
-        // the warning on every failure from an app that is simply not running.
-        assert_eq!(version_skew_between("0.3.0", ""), None);
+        // **Same version, different COMMIT — the case that actually keeps
+        // happening**, and the one the first version of this check missed. A
+        // release carries one version number for weeks while every rebuild
+        // changes the commit; measured live 23 Aug 2026 against an app built
+        // from 460981c, where a version-only check said nothing.
+        let dev = version_skew_between("0.3.0", "0.3.0", "86855cc", "460981c")
+            .expect("same version, different commit is a mismatch");
+        assert!(dev.contains("86855cc") && dev.contains("460981c"), "{dev}");
+        assert!(dev.contains("different build"), "{dev}");
+
+        // Matching builds must be silent: a warning on an unrelated bug sends
+        // the reader at their install instead of at the bug.
+        assert_eq!(version_skew_between("0.3.0", "0.3.0", "abc1234", "abc1234"), None);
+        // An app that could not be asked. Guessing here would put the warning on
+        // every failure from an app that is simply not running.
+        assert_eq!(version_skew_between("0.3.0", "", "a", "b"), None);
+        // A MISSING stamp is not a different one. `unknown` is what both build
+        // scripts emit when git cannot answer (a tarball build, no .git), and
+        // treating that as a mismatch would warn every such user on every error.
+        assert_eq!(version_skew_between("0.3.0", "0.3.0", "unknown", "abc1234"), None);
+        assert_eq!(version_skew_between("0.3.0", "0.3.0", "abc1234", "unknown"), None);
+        assert_eq!(version_skew_between("0.3.0", "0.3.0", "abc1234", ""), None);
     }
 
     #[test]

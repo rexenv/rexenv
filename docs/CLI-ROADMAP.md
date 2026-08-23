@@ -203,8 +203,13 @@ line streaming is the same 🔴 "progress streaming" infra item as always.
    guard-blocked in the example harness — exercise each once against the
    running app): `php install/uninstall`, `php settings set`, `db versions
    --set`, `site server/domain/move`, `mail clear`, `tunnel start`,
-   `wp core update/switch`, and **`mail mark-read` / `mail list --unread` /
-   `site relink`** (added 23 Aug 2026; the app was not running when they were
-   written, so all three are built and L0-guarded but never once exercised end
-   to end). `site relink` is the one to verify FIRST — it is the only one of the
-   three that changes what a site serves.
+   `wp core update/switch`.
+   **`mail mark-read`, `mail list --unread` and `mail list <query>` — VERIFIED
+   live 23 Aug 2026** against the running app: unread went 2 → 0, the unread
+   filter cut 3 rows to 2, and a query matched 1 of 3. The live run also found
+   the header describing the MAILBOX above a FILTERED list, which reads as a
+   listing bug; it says "1 of 3 messages shown" now.
+   **`site relink` is still OWED** — it could not be run: the app was on a build
+   predating the dispatch arm, so it answered "unknown command". It needs an app
+   rebuilt from this commit, and it is the one to verify first, being the only
+   one of the four that changes what a site serves.
