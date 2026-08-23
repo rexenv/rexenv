@@ -46,7 +46,7 @@ convention) — see "Infrastructure" for progress streaming.
 | `site rename <domain> <name>` | `rename_site` | ✓ | shipped 16 Jul — round-trip live |
 | `site domain <domain> <new-domain> [--yes]` | `change_site_domain` | ✓ | shipped 16 Jul — confirm-gated; passthrough, live-verify against the running app (guard blocks override bounce in the harness) |
 | `site move <domain> <dest-parent>` | `move_site_docroot` | ✓ | shipped 16 Jul — passthrough (preflights backend-side); verify in-app once |
-| `site relink <domain> <path>` | `relink_site_docroot` | ✓ | **shipped 23 Aug 2026** — the re-point path for a linked/imported folder the USER moved (`site move` refuses those); records the path + reloads, touches no file. The CLI canonicalises the path before sending, so a relative one means what the user's cwd says, not the app's. **Never run against the app** (it was not running): in-app verify owed |
+| `site relink <domain> <path>` | `relink_site_docroot` | ✓ | **shipped + live-verified 23 Aug 2026** — the re-point path for a linked/imported folder the USER moved (`site move` refuses those); records the path + reloads, touches no file. The CLI canonicalises the path before sending, so a relative one means what the user's cwd says, not the app's — verified from `/private/tmp` with `./first`. Live proof is what the site SERVED, which changed with the re-point while the old docroot stayed byte-identical |
 | `site php <domain> <minor>` | `set_site_php_version` | ✓ | shipped 16 Jul — 8.3→8.4→8.3 live, 200 both ways |
 | `site server <domain> nginx\|frankenphp\|apache` | `set_site_web_server` | ✓ | shipped 16 Jul — passthrough; verify against the running app (override stop is guard-blocked in the harness) |
 | `site xdebug <domain> on\|off` | `set_site_xdebug` | ✓ | shipped 16 Jul — on→200→off live; FrankenPHP refusal verbatim, exit 1 |
@@ -209,7 +209,8 @@ line streaming is the same 🔴 "progress streaming" infra item as always.
    filter cut 3 rows to 2, and a query matched 1 of 3. The live run also found
    the header describing the MAILBOX above a FILTERED list, which reads as a
    listing bug; it says "1 of 3 messages shown" now.
-   **`site relink` is still OWED** — it could not be run: the app was on a build
-   predating the dispatch arm, so it answered "unknown command". It needs an app
-   rebuilt from this commit, and it is the one to verify first, being the only
-   one of the four that changes what a site serves.
+   **`site relink` — VERIFIED live 23 Aug 2026** on a throwaway linked site with
+   two docroots: what the site SERVED changed with the re-point (the config
+   regenerated and the edge reloaded), the old docroot was untouched, a relative
+   path resolved against the CLI's cwd, and a missing path was refused before
+   anything was sent.

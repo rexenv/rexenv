@@ -2571,7 +2571,20 @@ fn cmd_site_delete(words: &[String], json_output: bool) {
     if json_output {
         return print_json(&result);
     }
-    println!("✓ deleted {domain} (database + files removed)");
+    // Derived the same way the confirm prompt above derives its warning, and for
+    // a reason found by running it (23 Aug 2026): this line said "database +
+    // files removed" for EVERY site, including a linked one whose folder rexenv
+    // correctly did not touch. The prompt already got this right — but `--yes`
+    // skips the prompt, so for the user most likely to be scripting, the false
+    // sentence was the only thing printed.
+    if site["docrootManaged"].as_bool() == Some(false) {
+        println!(
+            "✓ deleted {domain} (database removed; your folder at {} is untouched)",
+            site["path"].as_str().unwrap_or("?")
+        );
+    } else {
+        println!("✓ deleted {domain} (database + files removed)");
+    }
 }
 
 // ── status ───────────────────────────────────────────────────────────────────

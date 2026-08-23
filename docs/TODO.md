@@ -568,14 +568,21 @@ cause: a commit did the work and the surrounding claim stayed as it was.
       <domain> <path>`, covered by the reachability guard (plant-proven: dropping the verb
       fails it by name). The CLI canonicalises the path before sending, so a relative one
       typed at a shell prompt means what the USER's cwd says rather than the app's.
-      ◐ **Still owed, and an ATTEMPT was made 23 Aug 2026.** The running app was built
-      from `460981c`, which predates the dispatch arm, so it answered "unknown command" —
-      which is the correct behaviour and not a verify. It needs an app rebuilt from this
-      commit. Still the one to do first: it is the only one of the four that changes what
-      a site serves.
-      **That attempt paid for itself**: it exposed that the version-skew check shipped an
-      hour earlier could not see a stale DEV build (same version, different commit) —
-      ledger #386, now fixed and live-verified.
+      ✓ **VERIFIED live 23 Aug 2026** against an app rebuilt from `4974e5b`, on a
+      throwaway linked site of its own (`/private/tmp`, two docroots, deleted after) so no
+      real site was touched. The proof is what is SERVED, not what is recorded: the site
+      answered `FIRST-DOCROOT`, the relink moved it, and it then answered `SECOND-DOCROOT`
+      — so the config really was regenerated and the edge really did reload. The old
+      docroot was byte-identical afterwards, which is the non-destructive claim. A relative
+      path resolved against the CLI's cwd (`./first` from `/private/tmp/…`), and a missing
+      path was refused before anything was sent.
+      An identity relink is refused by core with "the site already points at that folder".
+      **The first attempt, against a stale app, paid for itself**: it exposed that the
+      version-skew check shipped an hour earlier could not see a stale DEV build (same
+      version, different commit) — ledger #386, fixed and live-verified in both directions.
+      **And deleting the throwaway found one more** (#387): `site delete` said "database +
+      files removed" for a LINKED site whose folder it correctly had not touched. The
+      confirm prompt already said the right thing, and `--yes` skips the prompt.
     - [ ] `site retry` — the owner's.
     - [ ] `config get|set` — the owner's, parked on the key allow-list.
   - [x] **Protocol-version handshake** 🟡 ✓ 23 Aug 2026 — **answered differently**, ledger
