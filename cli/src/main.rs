@@ -271,8 +271,58 @@ fn request(cmd: &str, args: Value) -> Value {
     } else {
         let msg = envelope["error"].as_str().unwrap_or("unknown error");
         eprintln!("rex: {msg}");
+        // Only for the one error that is ALWAYS a build mismatch. A typo is
+        // caught client-side by `rex`'s own match, so an unknown command
+        // reaching the app means it sent something this app does not answer.
+        // Costs a round trip on a path that has already failed, and nothing at
+        // all on every other path.
+        if msg.contains("unknown command") {
+            if let Some(skew) = version_skew() {
+                eprintln!("rex: {skew}");
+            }
+        }
         exit(1);
     }
+}
+
+/// What to add to an error when `rex` and the running app are different builds.
+///
+/// **This replaces the roadmap's 🟡 "protocol version handshake", and the
+/// substitution is deliberate.** A protocol integer answers "is the wire
+/// contract compatible", which is not the question anyone has here: `rex` and
+/// the app ship in the SAME cask, at the same version, so a difference is never
+/// a compatibility negotiation — it is a stale build, and naming which one is
+/// stale is the whole fix. A protocol number would also stay silent for exactly
+/// the case that keeps happening, since adding commands is backward-compatible
+/// and would never bump it.
+///
+/// The case it is for: `cli_server` answers "unknown command: X (this rex may be
+/// newer than the running app)" — a hedge, because the app cannot know. This
+/// turns it into a fact. It has bitten in development more than once (a rebuilt
+/// `cli_server.rs` against an app still running the old binary) and would bite a
+/// user who updated the cask without restarting rexenv.
+///
+/// `None` when the versions match or the app cannot be asked — silence is
+/// correct there, and guessing would put a version warning on an unrelated bug.
+fn version_skew() -> Option<String> {
+    let app = soft_request("version")?;
+    version_skew_between(env!("CARGO_PKG_VERSION"), app["version"].as_str()?)
+}
+
+/// The comparison, with both sides as parameters so a test can drive it.
+///
+/// Split out for the reason the Xdebug and debug-PHP gates were: the live
+/// function reads a compile-time constant and a running app, so through it the
+/// interesting states — skewed, matched, unknown — are not reachable at all.
+fn version_skew_between(mine: &str, theirs: &str) -> Option<String> {
+    if theirs.is_empty() || theirs == mine {
+        return None;
+    }
+    Some(format!(
+        "this rex is {mine} and the running rexenv is {theirs} — they ship together, so \
+         one of them is stale. Quit and reopen rexenv to pick up the newer app; if that \
+         does not change it, the app on disk is the older one."
+    ))
 }
 
 /// Best-effort request: `None` on any transport/command failure — for output
@@ -1761,6 +1811,15 @@ fn cmd_version(json_output: bool) {
         data["builtAt"].as_str().unwrap_or("?"),
         data["commit"].as_str().unwrap_or("?"),
     );
+    // Printed HERE rather than left for the reader to spot: this command
+    // already shows both numbers, and two versions side by side are only
+    // obviously different to someone who was looking for a difference.
+    if data["version"].as_str() != Some(env!("CARGO_PKG_VERSION")) {
+        eprintln!(
+            "\nrex: these are different builds — they ship together, so one is stale. \
+             Quit and reopen rexenv to pick up the newer app."
+        );
+    }
 }
 
 // ── wp: plugins / themes / users ─────────────────────────────────────────────
@@ -2559,6 +2618,43 @@ mod tests {
     /// nothing. Before the deadline this hung in `recvfrom` forever, which is
     /// how `rex --version` — documented as working WITHOUT the app — printed
     /// nothing at all until the wedged app was killed.
+    /// **"unknown command" is always a build mismatch, and the CLI can say which
+    /// side is stale.**
+    ///
+    /// `cli_server` answers `unknown command: X (this rex may be newer than the
+    /// running app)` — a hedge, because the app cannot know. A typo never gets
+    /// that far: `rex`'s own match rejects an unknown subcommand client-side, so
+    /// a command reaching the app and coming back unknown means the two builds
+    /// disagree. They ship in the same cask, so a version difference IS the
+    /// diagnosis.
+    ///
+    /// This is what `docs/CLI-ROADMAP.md` listed as a 🟡 protocol-version
+    /// handshake. A protocol integer answers "is the wire contract compatible",
+    /// which nobody is asking — and it would stay SILENT for the case that keeps
+    /// happening, because adding a command is backward-compatible and would
+    /// never bump it.
+    #[test]
+    fn a_version_difference_is_reported_and_a_match_stays_quiet() {
+        // The case that bites: a rebuilt CLI against an app still running the
+        // old binary.
+        let skew = version_skew_between("0.3.0", "0.2.1").expect("different builds must be named");
+        assert!(skew.contains("0.3.0") && skew.contains("0.2.1"), "{skew}");
+        assert!(skew.contains("stale"), "no diagnosis: {skew}");
+        assert!(skew.contains("Quit and reopen"), "no way out offered: {skew}");
+
+        // The reverse direction reads the same way on purpose — the message
+        // names both numbers and does not claim to know which is newer, because
+        // a higher version string is not proof of a newer BUILD on a dev machine.
+        assert!(version_skew_between("0.2.1", "0.3.0").is_some());
+
+        // Matching builds must be silent: a version warning on an unrelated bug
+        // sends the reader at their install instead of at the bug.
+        assert_eq!(version_skew_between("0.3.0", "0.3.0"), None);
+        // …and so must an app that could not be asked. Guessing here would put
+        // the warning on every failure from an app that is simply not running.
+        assert_eq!(version_skew_between("0.3.0", ""), None);
+    }
+
     #[test]
     fn soft_request_gives_up_on_a_listener_that_accepts_and_never_answers() {
         let path = fixture_socket("deaf");

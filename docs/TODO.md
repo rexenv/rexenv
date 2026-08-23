@@ -570,9 +570,18 @@ cause: a commit did the work and the surrounding claim stayed as it was.
       serves.
     - [ ] `site retry` — the owner's.
     - [ ] `config get|set` — the owner's, parked on the key allow-list.
-  - [ ] **Protocol-version handshake** 🟡 — still unbuilt. The standing answer to a hazard
-    this repo has already hit: a stale `rex` against a newer app produced the "unknown
-    command … newer than the running app" confusion.
+  - [x] **Protocol-version handshake** 🟡 ✓ 23 Aug 2026 — **answered differently**, ledger
+    #386, plant-proven both ways.
+    A protocol integer answers "is the wire contract compatible", which is not the question:
+    `rex` and the app ship in the SAME cask at the same version, so a difference is never a
+    negotiation — it is a stale build, and naming which side is stale is the fix. And a
+    protocol number would have stayed SILENT for the case that keeps happening, because
+    adding a command is backward-compatible and would never bump it.
+    The hedge was never necessary either: a typo is rejected by `rex`'s own match
+    client-side and never reaches the app, so an `unknown command` reply ALWAYS means the
+    builds disagree. `rex` now prints both versions and what to do; `rex version` gained the
+    same line, since it already showed both numbers and never said they differed.
+    ◐ Never exercised against a LIVE mismatch — that needs two builds and a running app.
 - [x] **`docs/TESTING.md` §3.3's layout-fixture matrix was designed and never built** ✓
   21 Aug 2026 — `core::layouts`, three real on-disk skeletons (stock, Bedrock,
   subdir-docroot), with `wordpress::core_root` / `core_path_arg` and

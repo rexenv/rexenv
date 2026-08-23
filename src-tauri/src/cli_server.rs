@@ -1367,8 +1367,14 @@ where
                 "resolverDrift": to_value(&resolver_drift)?,
             }))
         }
+        // A typo never reaches here — `rex`'s own match rejects an unknown
+        // subcommand client-side — so this ALWAYS means the two builds
+        // disagree. The app cannot tell which one is stale, which is why the
+        // wording stayed a hedge for so long; `rex` now follows this with the
+        // two version numbers (`version_skew`, 23 Aug 2026), so the hedge is
+        // the app's half of a sentence the CLI finishes.
         other => Err(Error::Other(format!(
-            "unknown command: {other} (this rex may be newer than the running app)"
+            "unknown command: {other} (this rex and the running app are different builds)"
         ))),
     }
 }

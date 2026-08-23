@@ -167,8 +167,17 @@ line streaming is the same 🔴 "progress streaming" infra item as always.
   update`) currently hold the connection silently; stream progress lines over
   the same socket (multi-line response before the final envelope). Design
   once, benefits everything.
-- **Protocol version handshake** 🟡 — v1 already errors on unknown cmds both
-  directions; add an explicit version field when the surface grows.
+- ~~**Protocol version handshake** 🟡~~ — **answered differently, 23 Aug 2026**
+  (ledger #386). A protocol integer answers "is the wire contract compatible",
+  which is not the question anyone has: `rex` and the app ship in the SAME cask
+  at the same version, so a difference is never a negotiation — it is a stale
+  build, and naming which side is stale is the whole fix. Worse, a protocol
+  number would stay SILENT for the case that actually keeps happening, because
+  adding a command is backward-compatible and would never bump it.
+  `rex` now compares its own version against the app's and says so: on any
+  `unknown command` reply (always a build mismatch — a typo is rejected
+  client-side and never reaches the app) and in `rex version`, which already
+  printed both numbers and never pointed out that they differed.
 - **Every dispatch arm is now REACHABLE, and a guard keeps it that way** (23 Aug
   2026, ledger #385). `mail.mark_read` had been answered since mail shipped with
   no `rex` verb sending it — a door built and left shut, found by a docs
