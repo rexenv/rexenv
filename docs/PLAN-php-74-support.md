@@ -755,6 +755,12 @@ work, not a blocker.
 - **The backports branch is one volunteer's rebased branch.** If it stops, the artifact
   quietly becomes a frozen, known-vulnerable PHP. Record the exact source commit in the pin
   comment (as `binaries.rs` already does for FrankenPHP) and mirror the tarball (§3).
+  ✓ **Both done.** The tarball is mirrored as an asset of the same immutable release, and
+  the commit is `PHP_7_4_33_SOURCE_COMMIT` (`core/binaries.rs`, 23 Aug 2026, ledger #377).
+  Note what took two days to notice: the commit had been in `THIRD-PARTY-NOTICES.md` since
+  7.4 shipped, so the risk was never unmitigated — it was mitigated in a file the resolve
+  path does not read. "Recorded" and "recorded where the reader is" are different claims,
+  and only the second one closes this bullet.
 - **Deployment-target discipline is all-or-nothing.** One dep built without
   `MACOSX_DEPLOYMENT_TARGET` (12.0 — §10b) produces a silent `minos` bump. Assert it per-dep in CI, not
   just on `php`.

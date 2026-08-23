@@ -253,13 +253,19 @@ paying for anyway: **the tick belongs in the commit that does the work.**
     on 7.4 is therefore lower than on the 8.x rows. Worth revisiting ONLY if
     someone builds 7.4 against a newer external PCRE2; not worth it for an EOL
     version nobody runs for speed.
-  - [ ] **The upstream source commit is recorded nowhere in rexenv.** PLAN §11 names the
-    risk in its own words — "the backports branch is one volunteer's rebased branch… if it
-    stops, the artifact quietly becomes a frozen, known-vulnerable PHP" — and prescribes
-    the mitigation: record the exact `shivammathur/php-src-backports` commit in the pin
-    comment, the way `core/binaries.rs` already does for FrankenPHP. The pin comment
-    (`binaries.rs:715-731`) does not carry it, so nothing in this tree can answer "which
-    7.4 is this?" without leaving the repo.
+  - [x] **The upstream source commit is recorded nowhere in rexenv** ✓ 23 Aug 2026 —
+    `PHP_7_4_33_SOURCE_COMMIT`, ledger #377, plant-proven three ways.
+    **The row's premise was wrong and that is the useful part.** The commit was NOT
+    recorded nowhere: `THIRD-PARTY-NOTICES.md` has carried it since 7.4 shipped. It was
+    absent from the file a resolve reads and present in the file a licence auditor reads,
+    so the risk PLAN §11 describes was mitigated for the wrong reader. *Recorded* and
+    *recorded where the reader is* are different claims, and a row that conflates them
+    reads as a bigger gap than it is — which is how it survived a reconcile whose whole
+    job was checking premises.
+    The second copy is deliberate and knowingly the one-fact-in-two-places family
+    (`docs/TESTING.md` §3.1): the two files serve different readers, so they are held
+    equal by test rather than deduplicated. `docs/PORTS.md` names where the fact lives
+    instead of repeating the hash — a third copy would be a third thing to drift.
   - [ ] **The x86_64 half is on a clock: GitHub's x86_64 runners end August 2027.** PLAN
     §4.5/§11 says to land the cross-compile path before then, and notes that a cross-built
     artifact can never run a native smoke test. Nothing in this file mentioned 2027 until

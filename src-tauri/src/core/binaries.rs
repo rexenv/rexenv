@@ -753,6 +753,30 @@ fn php_url(kind: &str, version: &str, arch: Arch) -> String {
 // Unlike static-php.dev and FrankenPHP, these bytes CANNOT change under the
 // URL: the release is immutable and the tag is never reused (a rebuild is
 // `php-7.4.33-2`). A pin here can 404; it can never drift.
+/// The upstream source commit the pinned 7.4 artifacts were built FROM.
+///
+/// PHP 7.4 is EOL, so there is no php.net release to name: the build takes
+/// `shivammathur/php-src-backports` (vanilla 7.4.33 does not compile against
+/// OpenSSL 3.6). `docs/PLAN-php-74-support.md` §11 states the risk this const
+/// answers in its own words — **"the backports branch is one volunteer's rebased
+/// branch; if it stops, the artifact quietly becomes a frozen, known-vulnerable
+/// PHP"** — and a rebased branch is the case where a branch NAME is worth
+/// nothing: it is rewritten, not appended, so `PHP-7.4-security-backports` today
+/// and the same name in a year are different code with no record of the
+/// difference. A commit is the only durable answer to "which 7.4 is this?".
+///
+/// It was not unrecorded — `THIRD-PARTY-NOTICES.md` has carried it since 7.4
+/// shipped — but it was unrecorded HERE, next to the digests it explains, so the
+/// answer required leaving the tree. The two copies now agree by test rather
+/// than by memory (`the_pinned_74_names_the_source_it_was_built_from`), which
+/// matters because the notices file is the one a licence auditor reads and this
+/// file is the one that decides what gets downloaded.
+///
+/// Short hash as published in the release. The mirrored source tarball is an
+/// asset of the SAME immutable release as the binaries, so the build is
+/// reproducible from URLs rather than from a branch that may have moved.
+pub const PHP_7_4_33_SOURCE_COMMIT: &str = "5a576d8eb53e";
+
 const PHP_7_4_33_CLI_MAC_ARM64_SHA256: &str = "7fac111fda4e549b136da008fb8f7568c9ea32b96e67cc5fb18e1e431569ed22";
 const PHP_7_4_33_CLI_MAC_AMD64_SHA256: &str = "f6878248da0b9e119d29ec21fbe73e8c6c1bfdc34b2d23250a3783b9c04b5598";
 const PHP_7_4_33_FPM_MAC_ARM64_SHA256: &str = "3f32e75738c66642c64b8d817680a872519007cf3903ad5824fa01c04be3fec9";
@@ -3836,6 +3860,67 @@ mod tests {
         // Leave no catalog behind for the rest of this test binary.
         install_catalog(crate::core::updates::VersionCatalog::default());
         assert!(manifest("php", &added, "macos", Arch::Arm64).is_none());
+    }
+
+    /// **A self-built PHP must say which source it was built from, in the file
+    /// that decides what gets downloaded.**
+    ///
+    /// For every PHP rexenv builds itself there is no upstream release to name:
+    /// 7.4 comes from `shivammathur/php-src-backports`, a REBASED branch, so the
+    /// branch name is not an identifier — it is rewritten rather than appended,
+    /// and two builds a year apart can share it while sharing no code.
+    /// `docs/PLAN-php-74-support.md` §11 asks for the commit to be recorded in
+    /// the pin comment for exactly that reason.
+    ///
+    /// It was already in `THIRD-PARTY-NOTICES.md`, which is why this is a
+    /// CONSISTENCY guard and not just a second copy. Recording the same fact in
+    /// two files is the defect family `docs/TESTING.md` §3.1 is about; the fix
+    /// is not to pick one, because the two files serve different readers (a
+    /// licence auditor reads the notices; a resolve reads this file), but to
+    /// make them unable to disagree.
+    ///
+    /// **Derived from `php_self_hosted_tag`, never from the string "7.4"**, so a
+    /// second self-built PHP inherits the requirement by existing — the same
+    /// derivation #336 had to be corrected INTO after keying on names.
+    #[test]
+    fn the_pinned_74_names_the_source_it_was_built_from() {
+        const NOTICES: &str = include_str!("../../../THIRD-PARTY-NOTICES.md");
+        // Landmark: a gutted file would satisfy every `contains` below vacuously
+        // on the ban half and fail confusingly on the must-say half.
+        assert!(
+            NOTICES.contains("# Third-party notices"),
+            "THIRD-PARTY-NOTICES.md is not the file this guard thinks it is"
+        );
+
+        let self_built: Vec<&str> =
+            PHP_VERSIONS.iter().copied().filter(|v| php_self_hosted_tag(v).is_some()).collect();
+        assert!(
+            !self_built.is_empty(),
+            "no self-built PHP — if that is now true, delete this guard rather than \
+             leaving it passing over an empty list"
+        );
+
+        // A short hash is a plausible-looking thing to type wrong, so assert its
+        // SHAPE as well as its presence: 12 lowercase hex, which is what the
+        // release publishes.
+        assert_eq!(PHP_7_4_33_SOURCE_COMMIT.len(), 12, "not a short git hash");
+        assert!(
+            PHP_7_4_33_SOURCE_COMMIT.chars().all(|c| c.is_ascii_hexdigit() && !c.is_uppercase()),
+            "not lowercase hex: {PHP_7_4_33_SOURCE_COMMIT}"
+        );
+
+        for v in self_built {
+            let tag = php_self_hosted_tag(v).expect("filtered on it");
+            assert!(
+                NOTICES.contains(tag),
+                "THIRD-PARTY-NOTICES.md does not name the release {tag} it describes"
+            );
+            assert!(
+                NOTICES.contains(PHP_7_4_33_SOURCE_COMMIT),
+                "THIRD-PARTY-NOTICES.md and this file disagree about which source \
+                 {v} was built from — this file says {PHP_7_4_33_SOURCE_COMMIT}"
+            );
+        }
     }
 
     /// **The Xdebug debug build is ours, and the old guard could not see it.**
