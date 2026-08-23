@@ -219,10 +219,23 @@ paying for anyway: **the tick belongs in the commit that does the work.**
     to let a pinned minor go unrecorded (and refuses a table that is uniformly `Ares`,
     which is the assumption this disproves), and `wp_dns_check` fails on any DISAGREEMENT
     between the record and the build in front of it — news in both directions.
-- [ ] **Debug-log truth on Bedrock** (deferred with the wp-config-reader work):
-  parse `config/application.php` env defines so WP_DEBUG/WP_DEBUG_LOG read
-  truthfully on non-stock layouts; today's honest state is `indeterminate`
-  ("can't determine", `core/logs.rs:208-252`).
+- [x] **Debug-log truth on Bedrock** ✓ 24 Aug 2026 — ledger #391, plant-proven both ways.
+  The row said "parse `config/application.php` env defines". Parsing PHP was never needed:
+  that file reads `env('WP_DEBUG')`, so the VALUE is in `.env`, which `core::dotenv` already
+  parses. The whole change is knowing where to look.
+  **The refusal half did not move, and it is the load-bearing one.** Only EXPLICIT keys
+  count — a missing `WP_DEBUG` stays `indeterminate` rather than becoming "off", which is
+  the lie the field exists to prevent. A value hardcoded in `config/application.php` instead
+  of `.env` also stays indeterminate; that is the remaining gap and it is stated, not hidden.
+  The project root needs BOTH markers (`.env` beside `config/application.php`) because a
+  bare `.env` says nothing, and only the docroot and its parent are searched — further up is
+  the Sites folder and somebody else's `.env`.
+  **The §3.3 matrix caught the change by failing on it**, named the row, and forced a
+  modelling fix: `config_readable` and `debug_determinable` had been one field, on the
+  assumption wp-config.php is the only place defines live. Three Bedrock-shaped rows now —
+  with an env answer, without one, and a stray `.env` with no marker.
+  **One guard was proving nothing until a plant said so**: dropping the
+  `config/application.php` requirement passed every test until `stray-env` was added.
 - [x] **WP Manager cron list: arguments display** ✓ 23 Aug 2026 — ledger #384.
   The row guessed "likely the event-args column". **There was no such column, and no
   args anywhere**: `cron_event_list` asked wp-cli for `hook,next_run_gmt,

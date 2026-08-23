@@ -222,6 +222,46 @@ pub struct WpDebugLogStatus {
     pub indeterminate: bool,
 }
 
+/// The project root of an ENV-CONFIGURED WordPress (Bedrock and its relatives),
+/// if the docroot is inside one.
+///
+/// Identified by BOTH markers together — a `.env` beside a
+/// `config/application.php` — because either alone is ambiguous. A bare `.env`
+/// says nothing (Laravel, Docker, anything), and requiring the pair is what
+/// stops this reading an unrelated `.env` that happens to sit one directory up
+/// from a docroot. Only the docroot and its immediate parent are considered:
+/// Bedrock serves `<project>/web`, and walking further would eventually reach
+/// the Sites folder, where somebody else's `.env` lives.
+fn env_project_root(docroot: &Path) -> Option<PathBuf> {
+    [docroot.to_path_buf(), docroot.parent()?.to_path_buf()]
+        .into_iter()
+        .find(|dir| dir.join(".env").is_file() && dir.join("config/application.php").is_file())
+}
+
+/// `WP_DEBUG` / `WP_DEBUG_LOG` as an env-configured install records them.
+///
+/// **Only EXPLICIT values count.** A key that is absent leaves `None`, which
+/// keeps the status indeterminate rather than turning "I did not find it" into
+/// "off" — the whole reason this function exists is that the second answer was
+/// a lie on these layouts. Bedrock's `config/application.php` reads
+/// `env('WP_DEBUG')`, so the value really is in `.env`; what this cannot see is
+/// a value hardcoded in that PHP instead, and that case stays indeterminate.
+fn env_debug_flags(docroot: &Path) -> (Option<bool>, Option<String>) {
+    let Some(root) = env_project_root(docroot) else {
+        return (None, None);
+    };
+    let Ok(text) = std::fs::read_to_string(root.join(".env")) else {
+        return (None, None);
+    };
+    let truthy = |v: &str| {
+        let v = v.trim().trim_matches(['"', '\'']).to_ascii_lowercase();
+        matches!(v.as_str(), "true" | "1" | "on" | "yes")
+    };
+    let debug = crate::core::dotenv::value_of(&text, "WP_DEBUG").map(|v| truthy(&v));
+    let log = crate::core::dotenv::value_of(&text, "WP_DEBUG_LOG");
+    (debug, log)
+}
+
 /// Resolve a site's WP debug-log status from its docroot. A missing / non-WP
 /// docroot just reports everything off (the UI hides the section for non-WP
 /// sites anyway). `content_rel` is the site's recorded content dir (v24).
@@ -248,6 +288,37 @@ pub fn wp_debug_log_status(docroot: &Path, content_rel: &str) -> WpDebugLogStatu
         },
         None => false,
     };
+    // A non-stock content layout means the defines are not in wp-config.php.
+    // Before giving up, look for the place they ACTUALLY are on the layout that
+    // motivated this: an env-configured install keeps them in `.env`, read by
+    // `config/application.php`. Explicit values there are the truth; anything
+    // missing stays indeterminate rather than becoming a confident "off".
+    let non_stock = content_rel != "wp-content";
+    let mut indeterminate = non_stock;
+    let (mut debug, mut log_enabled) = (debug, log_enabled);
+    if non_stock {
+        let (env_debug, env_log) = env_debug_flags(docroot);
+        if let Some(d) = env_debug {
+            debug = d;
+            indeterminate = false;
+        }
+        if let Some(raw) = env_log {
+            let v = raw.trim().trim_matches(['"', '\'']).to_string();
+            // Same rule as wp-config's: a string that is not a bare on/off is a
+            // custom PATH, and implies logging is on.
+            match v.to_ascii_lowercase().as_str() {
+                "true" | "1" | "on" | "yes" => log_enabled = true,
+                "false" | "0" | "off" | "no" | "" => log_enabled = false,
+                _ => {
+                    let p = Path::new(&v);
+                    path = if p.is_absolute() { p.to_path_buf() } else { docroot.join(p) };
+                    log_enabled = true;
+                }
+            }
+            indeterminate = false;
+        }
+    }
+
     let meta = std::fs::metadata(&path).ok();
     WpDebugLogStatus {
         debug,
@@ -259,7 +330,7 @@ pub fn wp_debug_log_status(docroot: &Path, content_rel: &str) -> WpDebugLogStatu
         // reader can't see them. The file probe above still ran (a custom
         // WP_DEBUG_LOG in wp-config.php is honored if present), but absence
         // of evidence here is NOT "off".
-        indeterminate: content_rel != "wp-content",
+        indeterminate,
     }
 }
 

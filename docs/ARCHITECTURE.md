@@ -493,6 +493,13 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   screenshots, the debug-log reader — takes the recorded rel. Bedrock (`web/
   app/`) is why: deriving at write time silently wrote where WordPress never
   loads. Anything the record can't answer reads honestly `indeterminate`.
+  **`indeterminate` is a floor, not a resting place** (24 Aug 2026, ledger #391): the
+  debug-log reader now reads an env-configured install's `WP_DEBUG`/`WP_DEBUG_LOG` out of
+  its `.env` — where `config/application.php` reads them from — instead of reporting the
+  whole Bedrock layout unknowable. Explicit keys only: a missing one stays indeterminate
+  rather than becoming "off", and a value hardcoded in the PHP instead of `.env` stays
+  indeterminate too. The project root needs a `.env` AND a `config/application.php`, since
+  a bare `.env` says nothing about WordPress.
 - **Docroot ownership is RECORDED, never inferred from the path** (v17
   `sites.docroot_managed`): `true` = rexenv created the folder and teardown may
   remove it; `false` = a folder the user LINKED, or one moved outside the sites

@@ -46,9 +46,18 @@ pub(crate) struct Layout {
     /// The content dir RELATIVE to the docroot, as v24 records it.
     pub content_rel: &'static str,
     /// Whether the wp-config defines are readable from the docroot at all —
-    /// false for layouts that keep them elsewhere (Bedrock's `config/`), which
-    /// is the difference `logs::wp_debug_log_status` reports as `indeterminate`.
+    /// false for layouts that keep them elsewhere (Bedrock's `config/`).
     pub config_readable: bool,
+    /// Whether `logs::wp_debug_log_status` can DETERMINE the debug flags.
+    ///
+    /// **Not the same fact as `config_readable`, and separating them is what
+    /// this row learned on 24 Aug 2026.** It used to be one field, on the
+    /// assumption that wp-config.php was the only place defines could live. An
+    /// env-configured Bedrock keeps them in `.env` (read by
+    /// `config/application.php`), so it is unreadable by the wp-config reader
+    /// and perfectly determinable anyway. A layout with neither is the case
+    /// that must stay honest — see the `bedrock-no-env` row.
+    pub debug_determinable: bool,
 }
 
 /// The matrix, owning the one tree every row lives in.
@@ -110,6 +119,26 @@ pub(crate) fn layouts(tag: &str) -> Matrix {
     touch(&bedrock.join("config/application.php"), "<?php // env-driven defines\n");
     touch(&bedrock.join(".env"), "WP_DEBUG=true\n");
 
+    // ── Bedrock with NO env answer: the honest-indeterminate case ───────────
+    // Same shape as the row above, minus any WP_DEBUG in `.env`. Without this
+    // row the matrix would only prove the path where the answer is FOUND, and
+    // the whole point of `indeterminate` is the path where it is not.
+    let bare = base.join("bedrock-no-env");
+    touch(&bare.join("web/wp/wp-load.php"), "<?php");
+    touch(&bare.join("web/app/plugins/.keep"), "");
+    touch(&bare.join("config/application.php"), "<?php // defines hardcoded here\n");
+    touch(&bare.join(".env"), "DB_NAME=example\n");
+
+    // ── a stray `.env` and NO Bedrock marker: must stay indeterminate ───────
+    // A `.env` on its own says nothing — Laravel, Docker and a dozen tools write
+    // one — so a WP_DEBUG in it is not evidence about THIS WordPress. Without
+    // this row, dropping the `config/application.php` half of the marker check
+    // passes every other assertion (verified by planting exactly that).
+    let stray = base.join("stray-env");
+    touch(&stray.join("web/wp/wp-load.php"), "<?php");
+    touch(&stray.join("web/app/plugins/.keep"), "");
+    touch(&stray.join(".env"), "WP_DEBUG=true\n");
+
     // ── subdir docroot: the project root is not the served root ─────────────
     let subdir = base.join("subdir");
     touch(&subdir.join("public/wp-load.php"), "<?php");
@@ -124,6 +153,7 @@ pub(crate) fn layouts(tag: &str) -> Matrix {
                 core_root: stock,
                 content_rel: "wp-content",
                 config_readable: true,
+                debug_determinable: true,
             },
             Layout {
                 name: "bedrock",
@@ -131,6 +161,27 @@ pub(crate) fn layouts(tag: &str) -> Matrix {
                 core_root: bedrock.join("web/wp"),
                 content_rel: "app",
                 config_readable: false,
+                // `.env` carries WP_DEBUG, so the reader CAN answer.
+                debug_determinable: true,
+            },
+            Layout {
+                name: "bedrock-no-env",
+                docroot: bare.join("web"),
+                core_root: bare.join("web/wp"),
+                content_rel: "app",
+                config_readable: false,
+                // Nothing anywhere says WP_DEBUG — "off" here would be a guess.
+                debug_determinable: false,
+            },
+            Layout {
+                name: "stray-env",
+                docroot: stray.join("web"),
+                core_root: stray.join("web/wp"),
+                content_rel: "app",
+                config_readable: false,
+                // A `.env` with no `config/application.php` beside it is not an
+                // env-configured WordPress, so its WP_DEBUG proves nothing here.
+                debug_determinable: false,
             },
             Layout {
                 name: "subdir-docroot",
@@ -138,6 +189,7 @@ pub(crate) fn layouts(tag: &str) -> Matrix {
                 core_root: subdir.join("public"),
                 content_rel: "wp-content",
                 config_readable: true,
+                debug_determinable: true,
             },
         ],
         _root: TempTree(base),
@@ -203,18 +255,25 @@ mod tests {
     }
 
     /// The debug-log reader must never report a confident answer for a layout
-    /// whose defines it cannot see. `indeterminate` is the honest verdict for
-    /// Bedrock (defines live in `config/application.php` and the environment),
-    /// and reporting "off" there would be a silent wrong answer — the class
-    /// docs/TESTING.md §3.3 is about.
+    /// whose defines it cannot see — and must not report `indeterminate` for one
+    /// where it CAN.
+    ///
+    /// `indeterminate` was Bedrock's verdict wholesale until 24 Aug 2026, on the
+    /// assumption that wp-config.php is the only place defines live. An
+    /// env-configured Bedrock keeps them in `.env`, read by
+    /// `config/application.php`, so the reader can answer truthfully; one with
+    /// nothing in `.env` still cannot, and "off" there would be a silent wrong
+    /// answer — the class docs/TESTING.md §3.3 is about. Both rows are here
+    /// because a matrix that only carried the answerable one would call the
+    /// improvement complete.
     #[test]
     fn the_debug_log_reader_says_indeterminate_exactly_where_it_cannot_see() {
         for l in layouts("debug-log").iter() {
             let st = crate::core::logs::wp_debug_log_status(&l.docroot, l.content_rel);
             assert_eq!(
-                st.indeterminate, !l.config_readable,
-                "{}: indeterminate={} for a layout whose config_readable={}",
-                l.name, st.indeterminate, l.config_readable
+                st.indeterminate, !l.debug_determinable,
+                "{}: indeterminate={} for a layout whose debug_determinable={}",
+                l.name, st.indeterminate, l.debug_determinable
             );
             // Wherever it points, the path is under the layout's OWN content
             // dir — never a stock `wp-content` guessed onto a tree that has none.
