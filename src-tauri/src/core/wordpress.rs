@@ -1907,6 +1907,61 @@ pub fn theme_disable_network(php_bin: &Path, wp_phar: &Path, docroot: &Path, nam
     wp_run(php_bin, wp_phar, docroot, &["theme", "disable", name, "--network"])
 }
 
+/// The stylesheets a multisite network has ENABLED for its sub-sites.
+///
+/// **`wp theme list` cannot answer this, which is why the toggle had no UI for
+/// so long.** Its `status` field is only `active`/`parent`/`inactive` and its
+/// `--status` filter offers the same three — there is no `active-network` for
+/// themes the way there is for plugins. The set lives in the network option
+/// `allowedthemes` (a stylesheet-keyed map), reachable through
+/// `wp network meta get`, because `wp option get` has no `--network` flag.
+///
+/// Network id 1: rexenv converts a single site into exactly one network
+/// (`wp multisite convert`), so there is never a second to choose between. A
+/// multi-network install is not something rexenv can create.
+///
+/// **An absent option is an EMPTY list, not an error.** A freshly converted
+/// network has no `allowedthemes` row at all until the first enable writes one,
+/// and wp-cli exits non-zero for a missing meta key. Treating that as a failure
+/// would leave the panel unable to render the normal state of every new network.
+pub fn theme_network_enabled(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<Vec<String>> {
+    let out = match wp_run(
+        php_bin,
+        wp_phar,
+        docroot,
+        &["network", "meta", "get", "1", "allowedthemes", "--format=json"],
+    ) {
+        Ok(out) => out,
+        // The key does not exist yet — the normal state of a new network.
+        Err(_) => return Ok(Vec::new()),
+    };
+    Ok(parse_allowed_themes(&out))
+}
+
+/// The stylesheet keys of an `allowedthemes` payload.
+///
+/// Split out because the SHAPE is the fiddly part and it is worth a test that
+/// does not need a WordPress install. WordPress stores a map of
+/// `stylesheet => true`; PHP's empty array serialises as `[]`, not `{}`, so both
+/// have to read as "none enabled" — and a key whose value is falsey is NOT
+/// enabled, which is how a theme that was disabled without the row being deleted
+/// would otherwise read as available on every sub-site.
+fn parse_allowed_themes(json: &str) -> Vec<String> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(json.trim()) else {
+        return Vec::new();
+    };
+    let Some(map) = value.as_object() else {
+        return Vec::new(); // `[]` (PHP's empty array) or `false`
+    };
+    let mut out: Vec<String> = map
+        .iter()
+        .filter(|(_, v)| !matches!(v, serde_json::Value::Bool(false) | serde_json::Value::Null))
+        .map(|(k, _)| k.clone())
+        .collect();
+    out.sort();
+    out
+}
+
 /// List the network's super-admins (`wp super-admin list` — one login per line).
 pub fn super_admin_list(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<Vec<String>> {
     let out = wp_run(php_bin, wp_phar, docroot, &["super-admin", "list"])?;
@@ -4889,6 +4944,42 @@ mod packages_pin_guards {
             .join("nope")
             .join("wp-cli.phar");
         assert!(eoo_require_arg(&phar).is_none(), "a flag was passed for a file that isn't there");
+    }
+
+    /// The `allowedthemes` shapes a real network produces, none of which is the
+    /// obvious one.
+    ///
+    /// This is the fact that kept the network-enable toggle UI-less: `wp theme
+    /// list` has no field for it (`status` is only active/parent/inactive), so
+    /// the state has to come from a network option — and that option has three
+    /// different empty forms depending on how the network got there.
+    #[test]
+    fn allowed_themes_reads_every_shape_a_network_actually_stores() {
+        assert_eq!(
+            parse_allowed_themes(r#"{"twentytwentyfive":true,"astra":true}"#),
+            vec!["astra".to_string(), "twentytwentyfive".to_string()],
+            "sorted, so the panel does not reorder itself between reads"
+        );
+
+        // PHP serialises an empty array as `[]`, never `{}` — a network that
+        // enabled a theme and then disabled every one lands here, and reading it
+        // as anything but "none" would show themes as available network-wide.
+        assert!(parse_allowed_themes("[]").is_empty());
+        // wp-cli prints `false` for an option that exists and is falsey.
+        assert!(parse_allowed_themes("false").is_empty());
+        // …and the not-JSON case, which is what a wp-cli notice looks like.
+        assert!(parse_allowed_themes("Error: could not get meta.").is_empty());
+        assert!(parse_allowed_themes("").is_empty());
+
+        // A key kept with a falsey value is NOT enabled. WordPress writes the
+        // map by rebuilding it, but a hand-edited or plugin-written option can
+        // carry `false`, and treating a present key as enabled would make a
+        // disabled theme available on every sub-site.
+        assert_eq!(
+            parse_allowed_themes(r#"{"astra":true,"storefront":false,"legacy":null}"#),
+            vec!["astra".to_string()],
+            "a falsey entry must not read as enabled"
+        );
     }
 
     /// The belt: trailing bytes are ignored, LEADING bytes are still an error.

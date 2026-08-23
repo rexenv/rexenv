@@ -999,6 +999,17 @@ pub async fn wp_plugin_deactivate_network(state: State<'_, AppState>, id: String
     .await
 }
 
+/// Which themes the network has enabled for its sub-sites.
+///
+/// A separate read because `wp theme list` cannot answer it — its `status` is
+/// only active/parent/inactive, with no `active-network` the way plugins have.
+/// See `core::wordpress::theme_network_enabled`.
+#[tauri::command]
+pub async fn wp_themes_network_enabled(state: State<'_, AppState>, id: String) -> Result<Vec<String>> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    wp_blocking(move || core::wordpress::theme_network_enabled(&php, &wp, &docroot)).await
+}
+
 /// Network-enable a theme (`wp theme enable <name> --network`).
 #[tauri::command]
 pub async fn wp_theme_enable_network(state: State<'_, AppState>, id: String, name: String) -> Result<()> {

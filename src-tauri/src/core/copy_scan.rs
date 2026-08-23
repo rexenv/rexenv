@@ -175,11 +175,14 @@ const LINK = "https://example.test/a//b";
             // "superseded by the job-based provision flow" had stopped being a
             // temporary state. An exemption that outlives the thing it was waiting
             // for is how this list grows silently, which the comment above forbids.
-            (
-                "wpThemeEnableNetwork",
-                "multisite theme network-enable: backend + IPC shipped, no UI yet                  (tracked in docs/TODO.md, so this reason is not the only record of it)",
-            ),
-            ("wpThemeDisableNetwork", "the sibling of the above"),
+            // `wpThemeEnableNetwork`/`wpThemeDisableNetwork` were here until
+            // 23 Aug 2026 and are DELETED, not exempted: the Network tab's
+            // "Themes (network)" card calls both. Worth recording WHY they sat
+            // shut for so long, because it was not laziness — `wp theme list`
+            // has no field for network-enabled state (theme status is only
+            // active/parent/inactive, with no `active-network` the way plugins
+            // have), so there was nothing to render a toggle's current position
+            // from. The missing piece was a read, not a button.
         ];
 
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../src");
@@ -202,8 +205,48 @@ const LINK = "https://example.test/a//b";
         }
         assert!(names.len() > 50, "only {} wrappers parsed — the scan is broken", names.len());
 
+        /// Drop `import … from "…"` statements.
+        ///
+        /// **Without this the guard proved the wrong thing.** It matched a
+        /// whole-identifier occurrence anywhere outside the ipc module — and an
+        /// IMPORT is such an occurrence, so a wrapper that was imported and then
+        /// never used counted as called. That is not a corner case: it is the
+        /// exact end-state of deleting the one line that used something, which
+        /// is the defect this test is named after.
+        ///
+        /// Found 23 Aug 2026 by planting it — removing the two calls the new
+        /// network-themes card makes, and watching the test stay green because
+        /// the imports were still at the top of the file.
+        ///
+        /// Imports are dropped rather than requiring a following `(` so that a
+        /// wrapper passed as a VALUE (`mutationFn: wpFoo`) still counts. Being
+        /// referenced without being invoked is a real use; being named in an
+        /// import list is not.
+        fn strip_imports(src: &str) -> String {
+            let mut out = String::with_capacity(src.len());
+            let mut in_import = false;
+            for line in src.lines() {
+                let t = line.trim_start();
+                if !in_import && (t == "import" || t.starts_with("import ")) {
+                    // Single-line unless the `from` clause has not arrived yet.
+                    in_import = !(t.contains(" from ") || t.ends_with(';'));
+                    continue;
+                }
+                if in_import {
+                    if t.contains(" from ") || t.ends_with(';') {
+                        in_import = false;
+                    }
+                    continue;
+                }
+                out.push_str(line);
+                out.push('\n');
+            }
+            out
+        }
+
         // Every other .ts/.tsx file, comments stripped so a wrapper merely
-        // MENTIONED in prose does not count as called.
+        // MENTIONED in prose does not count as called, and imports stripped so
+        // one merely IMPORTED does not either.
         fn walk(dir: &std::path::Path, skip: &std::path::Path, out: &mut String) {
             let Ok(entries) = std::fs::read_dir(dir) else { return };
             for e in entries.flatten() {
@@ -220,7 +263,7 @@ const LINK = "https://example.test/a//b";
                     continue;
                 }
                 if let Ok(raw) = std::fs::read_to_string(&p) {
-                    out.push_str(&strip_ts_comments(&raw));
+                    out.push_str(&strip_imports(&strip_ts_comments(&raw)));
                     out.push('\n');
                 }
             }

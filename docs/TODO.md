@@ -471,12 +471,25 @@ cause: a commit did the work and the surrounding claim stayed as it was.
   `rex site create` calls it through `cli_server` — what is gone is a frontend door onto
   a flow the UI no longer uses. The guard enforces the pairing in both directions, so the
   wrapper and its exemption had to go in one commit.
-- [ ] **Multisite theme network-enable: backend + IPC shipped, no UI.**
-  `wpThemeEnableNetwork` / `wpThemeDisableNetwork` are live Tauri commands with typed
-  wrappers and nothing that calls them. Their reason now points here, because a feature
-  whose only record is a const array inside a test is one nobody will ever pick up. Small
-  and well-defined: a network-enable toggle on the themes list when the site is a
-  multisite.
+- [x] **Multisite theme network-enable: backend + IPC shipped, no UI** ✓ 23 Aug 2026 —
+  ledger #382. The Network tab has a "Themes (network)" card; both wrappers are called and
+  their `copy_scan` exemption is DELETED rather than reworded.
+  **It was not "small and well-defined", and the reason is the interesting part: the
+  missing piece was a READ, not a button.** `wp theme list` has no field for
+  network-enabled state — theme `status` is only `active`/`parent`/`inactive`, and
+  `--status` offers the same three, with no `active-network` the way plugins have. So
+  there was nothing to render a toggle's current position from, and a pair of buttons that
+  cannot say what they would undo is exactly the control `docs/DESIGN.md` forbids. The set
+  lives in the `allowedthemes` network option, read via `wp network meta get 1` (`wp option
+  get` has no `--network`).
+  Placed in NetworkPanel, not on the Themes tab as this row proposed: network enabling
+  exists only for a multisite, and NetworkPanel is the one place that is structurally true
+  rather than a runtime `isNetwork` check that renders for a moment on a single site.
+  **A guard was proving the wrong thing, found by planting.**
+  `every_ipc_wrapper_is_actually_called` matched a whole-identifier occurrence anywhere
+  outside the ipc module — so a wrapper that was IMPORTED and never used counted as called,
+  which is the exact end-state of deleting the one line that used something. Removing the
+  new card's two calls left it green. It strips import statements now.
 - [x] **`REXENV_LARAVEL_DOTENV` was read by a test and set by nothing** ✓ 21 Aug 2026 —
   corrected where it counted, which was the LEDGER. Ledger #245 credited that test as the
   thing that stops the hand-copied `.env` fixture going stale "in silence"; nothing sets

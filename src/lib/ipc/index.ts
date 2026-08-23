@@ -1003,6 +1003,11 @@ const mockWpThemes: WpTheme[] = [
   { name: "custom-child", title: "", status: "inactive", version: "1.6", update: "none", updateVersion: "" },
 ];
 
+/** The network-enabled subset for the mock. Deliberately NOT all of them and
+ *  not none: a fixture where every row is in the same state renders one branch
+ *  of the toggle, which is the shape that hides a mis-wired button. */
+const MOCK_NETWORK_THEMES = ["twentytwentyfive", "custom-child"];
+
 /** List a site's themes (`wp theme list`), each with its screenshot as a
  *  `data:` URL. `checkUpdates` as in `wpPlugins`. Mock fallback outside Tauri. */
 export async function wpThemes(id: string, checkUpdates = false): Promise<WpTheme[]> {
@@ -1343,6 +1348,17 @@ export async function wpPluginActivateNetwork(id: string, names: string[]): Prom
 export async function wpPluginDeactivateNetwork(id: string, names: string[]): Promise<void> {
   if (!isTauri()) return;
   await invoke("wp_plugin_deactivate_network", { id, names });
+}
+
+/** The stylesheets the network has enabled for its sub-sites.
+ *
+ *  A separate call because `wp theme list` cannot answer it: theme `status` is
+ *  only active/parent/inactive, with no `active-network` the way plugins have.
+ *  Outside Tauri the mock enables the first two themes, so the panel renders
+ *  both states. */
+export async function wpThemesNetworkEnabled(id: string): Promise<string[]> {
+  if (!isTauri()) return MOCK_NETWORK_THEMES;
+  return invoke<string[]>("wp_themes_network_enabled", { id });
 }
 
 /** Network-enable a theme (`wp theme enable <name> --network`). No-op outside Tauri. */

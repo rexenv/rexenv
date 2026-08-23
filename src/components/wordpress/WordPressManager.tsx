@@ -64,6 +64,9 @@ import {
   wpSuperAdminAdd,
   wpSuperAdmins,
   wpThemeActivate,
+  wpThemeDisableNetwork,
+  wpThemeEnableNetwork,
+  wpThemesNetworkEnabled,
   wpThemeDelete,
   repoAdopt,
   repoAssetStatus,
@@ -667,6 +670,18 @@ function NetworkPanel({ siteId, mode, domain }: { siteId: string; mode: Multisit
     ...WP_QUERY,
   });
   const { plugins } = useWpPlugins(siteId);
+  const { themes } = useWpThemes(siteId);
+  // `wp theme list` cannot answer which themes the NETWORK has enabled — theme
+  // status is only active/parent/inactive, with no `active-network` the way
+  // plugins have — so the enabled set is a separate read of the `allowedthemes`
+  // network option. That gap is why `wpThemeEnableNetwork` shipped with typed
+  // wrappers and nothing calling them: without the state there is no honest
+  // toggle, only a pair of buttons that cannot say what they would undo.
+  const { data: netThemes = [] } = useQuery({
+    queryKey: ["wp-network-themes", siteId],
+    queryFn: () => wpThemesNetworkEnabled(siteId),
+    ...WP_QUERY,
+  });
   const { data: supers = [] } = useQuery({
     queryKey: ["wp-super-admins", siteId],
     queryFn: () => wpSuperAdmins(siteId),
@@ -681,6 +696,11 @@ function NetworkPanel({ siteId, mode, domain }: { siteId: string; mode: Multisit
   const pluginRun = useMutation({
     mutationFn: (fn: () => Promise<void>) => fn(),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["wp-plugins", siteId] }),
+    onError: (e) => toastBackendError(e),
+  });
+  const themeRun = useMutation({
+    mutationFn: (fn: () => Promise<void>) => fn(),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["wp-network-themes", siteId] }),
     onError: (e) => toastBackendError(e),
   });
   const superRun = useMutation({
@@ -817,6 +837,60 @@ function NetworkPanel({ siteId, mode, domain }: { siteId: string; mode: Multisit
                       {net ? "Network deactivate" : "Network activate"}
                     </button>
                   )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      </Card>
+
+      {/* Network-enabled themes.
+        *
+        * Sibling of the plugins card above, and placed here rather than on the
+        * Themes tab for the reason that tab cannot carry it: network enabling
+        * only exists for a multisite, and NetworkPanel is the one place that is
+        * structurally true. A toggle on the themes list would need a runtime
+        * `isNetwork` check to hide itself, which is the shape that renders for
+        * a moment on a single site. */}
+      <Card title="Themes (network)">
+        <p className="mb-2 text-[0.71875rem] leading-relaxed text-rex-text-muted">
+          Network-enabled themes can be activated by any site in the network. The
+          active theme of the main site is separate — enabling here only makes a
+          theme available.
+        </p>
+        <div className="overflow-hidden rounded-lg border border-rex-border">
+          {themes.length === 0 ? (
+            <div className="py-4 text-center text-[0.78125rem] text-rex-text-muted">No themes installed.</div>
+          ) : (
+            themes.map((t) => {
+              const net = netThemes.includes(t.name);
+              return (
+                <div
+                  key={t.name}
+                  className="flex items-center gap-2 border-b border-rex-border-subtle px-3 py-2 last:border-b-0"
+                >
+                  <span className="min-w-0 flex-1 truncate text-[0.78125rem] text-rex-text">
+                    {t.title || t.name}
+                  </span>
+                  <span className="font-mono text-[0.65625rem] text-rex-text-muted">{t.name}</span>
+                  {net && (
+                    <span className="rounded-full bg-status-running-bg px-2 py-0.5 text-[0.65625rem] font-medium text-status-running-bright">
+                      Network enabled
+                    </span>
+                  )}
+                  <button
+                    className={BTN}
+                    disabled={themeRun.isPending}
+                    onClick={() =>
+                      themeRun.mutate(() =>
+                        net
+                          ? wpThemeDisableNetwork(siteId, t.name)
+                          : wpThemeEnableNetwork(siteId, t.name),
+                      )
+                    }
+                  >
+                    {net ? "Network disable" : "Network enable"}
+                  </button>
                 </div>
               );
             })

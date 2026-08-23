@@ -958,6 +958,7 @@ pub fn run() {
             commands::wordpress::wp_network_site_delete,
             commands::wordpress::wp_plugin_activate_network,
             commands::wordpress::wp_plugin_deactivate_network,
+            commands::wordpress::wp_themes_network_enabled,
             commands::wordpress::wp_theme_enable_network,
             commands::wordpress::wp_theme_disable_network,
             commands::wordpress::wp_super_admins,
