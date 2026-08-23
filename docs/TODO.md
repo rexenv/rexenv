@@ -494,12 +494,26 @@ cause: a commit did the work and the surrounding claim stayed as it was.
   dropping row 1 deleted the tree row 2 was about to read. That surfaced as "core_root
   pointed at the wrong directory", i.e. it would have been read as a bug in the code under
   test. One guard for the whole matrix now, and the incident is in the module doc.
-- [ ] **One stdout surface stays uncovered and only ARCHITECTURE says so.**
-  `docs/ARCHITECTURE.md:773-775` records that #316's marker cut and #317's
-  `display_errors=stderr` close the tail and the head of the wp-cli noise problem, and
-  that "what stays uncovered is a plugin that `echo`es mid-command" — the third door into
-  the same symptom (every WordPress screen dead on the affected site), held open with no
-  row anywhere.
+- [x] **One stdout surface stays uncovered and only ARCHITECTURE says so** ✓ 23 Aug 2026
+  — ledger #380, plant-proven both ways.
+  **Not closed by recovering from it, which would be the wrong fix.** `json_from_wp`
+  already refuses to skip to the first brace, because guessing which one starts the
+  answer returns plausible wrong data instead of an error — worse than a refusal. That
+  stands.
+  What was actually wrong is that the failure was ANONYMOUS. All three doors produce the
+  same `bad JSON: expected value at line 1 column 1`, which sends the reader at rexenv,
+  or at WordPress, or at their database — and all three arrived as the same report, "the
+  WordPress tab is dead on this site". So the guess now drives the MESSAGE and never the
+  data: if a valid value parses from a later offset that is proof of a prefix, and the
+  error reports its length, quotes it (bounded, control characters flattened so a plugin
+  cannot inject newlines into a log), names the likely cause and says why rexenv will not
+  skip past.
+  **The no-invention half of the test was vacuous on its first write** — the garbage
+  fixture had no `[`/`{`, so it never entered the branch it was policing and stayed green
+  under the plant. Caught by planting, not by reading. The fixture carries a brace now.
+  Still uncovered, and now stated in the ledger rather than only in ARCHITECTURE: output
+  interleaved INSIDE the value. Nothing parses from any offset there, so it keeps the
+  plain parse error — correct, and still undiagnosable.
 
 ### The network tier, run 21 Aug 2026 — 14 failures, three causes
 

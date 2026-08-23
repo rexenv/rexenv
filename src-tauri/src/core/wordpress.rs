@@ -699,8 +699,80 @@ pub fn wp_json<T: serde::de::DeserializeOwned>(
 /// the answer, and a wrong guess returns a plausible object rather than an
 /// error — the failure mode this project rates worse than a refusal.
 fn json_from_wp<T: serde::de::DeserializeOwned>(text: &str, what: &str) -> Result<T> {
-    let mut de = serde_json::Deserializer::from_str(text.trim());
-    T::deserialize(&mut de).map_err(|e| Error::Other(format!("{what}: bad JSON: {e}")))
+    let trimmed = text.trim();
+    let mut de = serde_json::Deserializer::from_str(trimmed);
+    match T::deserialize(&mut de) {
+        Ok(v) => Ok(v),
+        Err(e) => Err(Error::Other(diagnose_bad_json::<T>(trimmed, what, &e))),
+    }
+}
+
+/// How much of an unexpected prefix to quote back. Long enough to recognise the
+/// plugin's own wording, short enough that the message stays a message.
+const JSON_PREFIX_QUOTE: usize = 160;
+
+/// Turn a parse failure into something the person reading it can act on.
+///
+/// **The third door into "every WordPress screen is dead on this site".** #316
+/// closed the tail (a plugin writing from a shutdown hook, cut by rexenv's
+/// marker) and #317 closed the head for DIAGNOSTICS (`-d display_errors=stderr`).
+/// Neither touches a plugin that plainly `echo`es while the command runs:
+/// `echo` is not PHP's error display, and the bytes land in FRONT of the answer
+/// rather than after it, where the marker cut cannot reach. `docs/ARCHITECTURE.md`
+/// §9 has named that gap since #317 shipped and nothing else did.
+///
+/// It is not closed here, and the reason is the one `json_from_wp` already
+/// states: skipping to the first brace means guessing which one starts the
+/// answer, and a wrong guess returns a plausible object instead of an error.
+/// **So the guess is used for the MESSAGE and never for the data.** If a valid
+/// value does parse from a later offset, that is proof the output had junk in
+/// front of it, and the error says so, quotes it, and names the likely cause.
+/// The read still fails.
+///
+/// Which is the whole gain: the failure was already total, and it was also
+/// anonymous — `bad JSON: expected value at line 1 column 1` sends the reader at
+/// rexenv, or at WordPress, or at their database. Every one of the three doors
+/// arrived as the same useless report, and this is the one that can still only
+/// be reported.
+fn diagnose_bad_json<T: serde::de::DeserializeOwned>(
+    trimmed: &str,
+    what: &str,
+    err: &serde_json::Error,
+) -> String {
+    let start = trimmed.find(['[', '{']).unwrap_or(0);
+    if start > 0 {
+        let tail = &trimmed[start..];
+        let mut de = serde_json::Deserializer::from_str(tail);
+        if T::deserialize(&mut de).is_ok() {
+            return format!(
+                "{what}: the site printed {start} bytes before its answer, so the reply \
+                 could not be read. Something on this site writes to output while WP-CLI \
+                 runs — usually a plugin or mu-plugin with a stray `echo` or `print`. \
+                 rexenv will not skip past it: the bytes could be part of the answer, and \
+                 guessing would show you plausible wrong data instead of this message. \
+                 What was printed first: {}",
+                quoted_prefix(&trimmed[..start])
+            );
+        }
+    }
+    format!("{what}: bad JSON: {err}")
+}
+
+/// One readable line of an unexpected prefix: bounded, control characters
+/// flattened so a plugin cannot smuggle newlines or escapes into a toast.
+fn quoted_prefix(prefix: &str) -> String {
+    let flat: String = prefix
+        .chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    let mut out: String = flat.chars().take(JSON_PREFIX_QUOTE).collect();
+    if flat.chars().count() > JSON_PREFIX_QUOTE {
+        out.push('…');
+    }
+    format!("\"{out}\"")
 }
 
 /// Fixed allowance for a download-capable command's non-download work (api
@@ -4828,7 +4900,77 @@ mod packages_pin_guards {
         let err = json_from_wp::<Vec<serde_json::Value>>(r#"notice…[{"name":"akismet"}]"#, "wp plugin")
             .unwrap_err()
             .to_string();
-        assert!(err.contains("bad JSON"), "leading junk was guessed past: {err}");
+        assert!(!err.is_empty());
+    }
+
+    /// **The third door names itself, and still refuses to walk through.**
+    ///
+    /// A plugin that `echo`es mid-command is the one wp-cli stdout problem
+    /// neither #316 (the shutdown-hook tail, cut by the marker) nor #317
+    /// (diagnostics, moved to stderr) covers: `echo` is not PHP's error display,
+    /// and the bytes land in FRONT of the answer where the marker cannot reach.
+    /// `docs/ARCHITECTURE.md` §9 had named it and nothing else had.
+    ///
+    /// The refusal is deliberate and unchanged — skipping to the first brace
+    /// means guessing which one starts the answer, and a wrong guess shows
+    /// plausible wrong data. What changes is that the failure stops being
+    /// anonymous: `bad JSON: expected value at line 1 column 1` is the message
+    /// all three doors produced, and it sends the reader at rexenv, or at
+    /// WordPress, or at their database.
+    #[test]
+    fn a_plugin_echoing_before_the_answer_is_named_rather_than_skipped() {
+        let echoed = r#"Notice: undefined index in my-plugin.php on line 12
+[{"name":"akismet"}]"#;
+        let err = json_from_wp::<Vec<serde_json::Value>>(echoed, "wp plugin")
+            .unwrap_err()
+            .to_string();
+
+        // Still a refusal. This is the half that must never soften.
+        assert!(
+            json_from_wp::<Vec<serde_json::Value>>(echoed, "wp plugin").is_err(),
+            "the read recovered — it must not guess which brace starts the answer"
+        );
+        // …and it says WHAT happened, WHERE to look, and WHY it will not guess.
+        assert!(err.contains("before its answer"), "{err}");
+        assert!(err.contains("mu-plugin"), "no place to look: {err}");
+        assert!(err.contains("guessing"), "does not say why it refuses: {err}");
+        assert!(err.contains("my-plugin.php"), "the prefix is not quoted back: {err}");
+
+        // Junk that is NOT hiding a valid answer keeps the plain parse error —
+        // claiming "bytes before the answer" when there is no answer would be
+        // the same guessing, one layer up. **This input must contain a brace**:
+        // without one the prefix branch is never entered, and the assertion
+        // below passes without exercising anything. The first version of this
+        // test used "Fatal error: out of memory" and proved nothing — caught by
+        // planting the invention and watching the test stay green.
+        let garbage = json_from_wp::<Vec<serde_json::Value>>(
+            "Fatal error: Allowed memory size exhausted in wp-content/plugins/x.php:9 {",
+            "wp plugin",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(garbage.contains("bad JSON"), "{garbage}");
+        assert!(!garbage.contains("before its answer"), "invented a prefix: {garbage}");
+
+        // Mid-VALUE output is the genuinely unrecoverable shape: nothing parses
+        // from any later offset, so it must not be dressed up either.
+        let mid = json_from_wp::<Vec<serde_json::Value>>(r#"[{"name":"aki"OOPS"smet"}]"#, "wp plugin")
+            .unwrap_err()
+            .to_string();
+        assert!(mid.contains("bad JSON"), "{mid}");
+    }
+
+    /// The quoted prefix is a MESSAGE, not a channel: a plugin cannot use it to
+    /// inject newlines into a log or run away with the length of a toast.
+    #[test]
+    fn the_quoted_prefix_is_bounded_and_flattened() {
+        let noisy = quoted_prefix("line one\nline\ttwo\r\n   spaced   out");
+        assert_eq!(noisy, "\"line one line two spaced out\"");
+        assert!(!noisy.contains('\n') && !noisy.contains('\t'));
+
+        let long = quoted_prefix(&"x".repeat(JSON_PREFIX_QUOTE * 3));
+        assert!(long.ends_with("…\""), "{long}");
+        assert!(long.chars().count() <= JSON_PREFIX_QUOTE + 3, "unbounded: {}", long.len());
     }
 
     /// Coverage as a property of the module, not a list of the three sites that

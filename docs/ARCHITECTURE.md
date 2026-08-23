@@ -863,9 +863,21 @@ IPC surface — which is how a reader ends up designing against a system with on
   involved. Here `-d display_errors=stderr` IS the fix, in the shared argv prefix: it
   covers any diagnostic from any file at any moment, which no marker can, and loses
   nothing (streamed steps merge both streams into one live log).
+  **The THIRD door (#380, 23 Aug 2026): a plugin that plainly `echo`es while the
+  command runs.** Neither fix reaches it — `echo` is not PHP's error display, and the
+  bytes land in FRONT of the answer, where a shutdown marker cannot cut. It is still
+  not RECOVERED from, for the reason `json_from_wp` already gave: skipping to the first
+  brace means guessing which one starts the answer, and a wrong guess returns plausible
+  data instead of an error. What changed is that the failure stopped being anonymous.
+  If a valid value parses from a later offset, that is proof the output had junk in
+  front of it — so the guess drives the MESSAGE and never the data: the error says how
+  many bytes preceded the answer, quotes them (bounded, control characters flattened),
+  names the likely cause and says why rexenv will not skip past. All three doors
+  arrived as the same report — "the WordPress tab is dead on this site" — and this is
+  the one that can only ever be reported.
   Scope stated rather than implied: the marker cut is the captured path only (streamed
-  output is a live log, where a marker line would be the defect); what stays uncovered
-  is a plugin that `echo`es mid-command; the JSON reads additionally tolerate trailing
+  output is a live log, where a marker line would be the defect); the JSON reads
+  additionally tolerate trailing
   bytes as the belt for a machine where the require file could not be written; and
   `wp cli info`/`--info` never run shutdown functions and so get no marker — harmless,
   because that path never loads WordPress.
