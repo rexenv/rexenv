@@ -1003,11 +1003,15 @@ first:
     is unpinned, correctly, because it opens the REAL app database and the helper refuses
     there. Verified empirically as well as by grep: today's sandbox, service and stack tier
     runs added **zero** entries to `~/rexenv/Sites`.
-  - [ ] **437 MB of historical leftovers are still on disk** — 19 orphaned directories in
-    `~/rexenv/Sites` with no site row pointing at them, five of them whole WordPress installs
-    (`wpinfo.test`, `wplogin.test`, `wpplugins.test`, `wppremium.test`, `wpthemes.test`, ~85 MB
-    each). They predate the pinning sweep and cannot regrow. **The owner's call, not a
-    guard's** — they are directories in the user's own folder.
+  - [x] **437 MB of historical leftovers removed** ✓ 24 Aug 2026, on the owner's say-so —
+    18 orphaned directories in `~/rexenv/Sites`, five of them whole WordPress installs. They
+    predated the pinning sweep and cannot regrow now that `provision` refuses (#392).
+    Verified unreferenced against EVERY path-shaped column in every table, not just
+    `sites.path`, then deleted one exact path at a time behind two guards — a plain
+    directory (never a symlink) that is a DIRECT child of the Sites folder — because the
+    incident this project already paid for was an `rm -rf` of a derived parent. An inventory
+    is at `~/rexenv/orphans-removed-2026-08-24.txt`. The six remaining directories all have
+    site rows; all 17 sites still serve.
 
 - [ ] ❓ **Does `tunnels::stop` routinely need SIGTERM?** Observed once, 14 Aug 2026, on
   the first run of `common::adopt_public_tunnel`: cloudflared was still alive 3s after
