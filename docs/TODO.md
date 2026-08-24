@@ -1063,7 +1063,7 @@ first:
   the pid IS cloudflared. Until one of those runs appends a line, this row has no evidence
   at all — which is a better description of its state than "watching".
 - [ ] Then: ~~Apache/FrankenPHP dotfile legs (#103)~~ (closed 15 Aug 2026 — all three backends live, plant-proven per template), ~~fpm candidate
-  isolation (#104/#191)~~ (closed 15 Aug 2026, `fpm_candidate_check`, plant-proven), ~~manifest HEAD+digest sweep~~ (closed 15 Aug 2026, `manifest_sweep_check` #335 — 88 URLs answer, 78 re-hashed incl. every Intel digest), Bedrock live provision (#35),
+  isolation (#104/#191)~~ (closed 15 Aug 2026, `fpm_candidate_check`, plant-proven), ~~manifest HEAD+digest sweep~~ (closed 15 Aug 2026, `manifest_sweep_check` #335 — 88 URLs answer, 78 re-hashed incl. every Intel digest), ~~Bedrock live provision (#35)~~ (the PREMISE is proven live 24 Aug 2026 — a real Bedrock WordPress, two planted mu-plugins, only the recorded content dir's one loaded; ledger #35 carries the method. A committed example is still open, and deliberately: it would download core, create a database and install WordPress on every network-tier run),
   sandbox-adoption cohorts + `wp_fixture()` — incl. scoping
   ~~`download_progress_check`'s bin-cache delete off the REAL shared cache~~
   (closed 24 Aug 2026 — **not by sandboxing it, which would have removed its
