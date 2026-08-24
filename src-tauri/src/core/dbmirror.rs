@@ -33,7 +33,7 @@ pub const RESERVED_USERS: &[&str] =
 
 /// The two host scopes a mirrored user gets — and the only two. `'%'` is not in
 /// this list on purpose, and [`mirror`] builds its SQL exclusively from it.
-const HOSTS: [&str; 2] = ["localhost", "127.0.0.1"];
+pub(crate) const HOSTS: [&str; 2] = ["localhost", "127.0.0.1"];
 
 /// What mirroring did.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -246,7 +246,7 @@ fn mirror_sql(db: &str, user: &str, password: &str) -> String {
 /// is inert. There is NO `LIKE` on a site-derived name anywhere. A future `LIKE`
 /// (or any new GRANT) would reintroduce the wildcard exposure and MUST route its
 /// name through this helper.
-fn grant_db_object(db: &str) -> String {
+pub(crate) fn grant_db_object(db: &str) -> String {
     let escaped = db.replace('_', r"\_").replace('%', r"\%");
     format!("`{escaped}`")
 }
@@ -263,7 +263,7 @@ fn drop_sql(user: &str) -> String {
 }
 
 /// Escape for a single-quoted MySQL string literal.
-fn sql_str(s: &str) -> String {
+pub(crate) fn sql_str(s: &str) -> String {
     s.replace('\\', "\\\\").replace('\'', "\\'")
 }
 

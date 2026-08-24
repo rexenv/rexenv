@@ -1684,8 +1684,22 @@ first:
       revoke-is-idempotent rule, and cascade-on-site-delete. **Plant-proved twice:**
       dropping the `expires_at > datetime('now')` clause from the gate fails it by
       name, and letting a second revoke rewrite the timestamp fails it by name.
-    - [ ] Stage 2 — native MySQL driver + agent principals (`rex_agent_*`, escaped
-      GRANTs, passwordless loopback, never `client_base_args`).
+    - [x] **Stage 2a — the agent principals.** ✓ `core/agent_db.rs`:
+      `Principal::{Scratch, ReadOnly}`, `principal_name`, `provision_sql`,
+      `drop_sql`. `SELECT` for a real site and `ALL` for a scratch schema follow
+      from what the database IS, not from a per-call argument — a privilege level
+      chosen at the call site is a promise the consent dialog never made. The
+      wildcard escape and the loopback `HOSTS` list are SHARED from `dbmirror`
+      rather than copied: `GRANT … ON \`wp_shop\`.*` also grants on `wpashop`
+      (MySQL reads `_` as a wildcard there even inside backticks) and that was a
+      live cross-site over-grant once (#196), so a second copy is a second place
+      for it to come back. Ledger #399 (◐ — the SQL is L0-proven; what MySQL does
+      with it is 🔨 L1 and arrives with stage 3). Plant-proved three ways.
+    - [ ] Stage 2b — the native MySQL driver itself (`mysql_async`/`sqlx`, single
+      statement, multi-statements and `local_infile` off). This is the new
+      protocol dependency, and it is deliberately the LAST piece before the tool:
+      nothing provisions a principal or opens a connection until the thing that
+      would use one exists.
     - [ ] Stage 3 — `db_query`: scratch sites read-write, a real site SELECT-only and
       only behind a live grant from stage 1.
     - [ ] Stage 4 — the T1 consent dialog (`PLAN-mcp-server.md` §529-540) plus the

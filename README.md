@@ -175,6 +175,7 @@ rexenv/
         │   ├── tunnels.rs · wp_tunnel.rs                  # cloudflared shares + URL rewrite
         │   ├── valet.rs        # read-only Valet/Herd discovery (import Stage 1)
         │   ├── dbsource.rs · dbcompat.rs · dbdump.rs · dbrestore.rs · dbmirror.rs · dbimport.rs
+        │   ├── agent_db.rs      # MCP agent DB principals (names + provisioning SQL)
         │   │                   # database import (Stage 2): identify → gate → dump → restore → mirror
         │   ├── confedit.rs · confverify.rs · confrewrite.rs  # connection rewrite (Stage 3)
         │   ├── repo.rs · devtools.rs · dist_archive.rs    # add-from-Git, toolchain, `wp dist-archive`
