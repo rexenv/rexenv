@@ -1719,20 +1719,27 @@ first:
       a future site at that domain would inherit a grant given to a site that no
       longer exists. Ledger #403 (◐ — half the ordering is compiler-enforced and
       the other half is a source assertion with no plant; said so in the row).
-    - [ ] **Stage 3b — the L1 live leg. WRITTEN, NOT YET RUN.**
-      `examples/agent_db_check.rs` (service tier) is built and green under
-      `verify.sh`, which proves it COMPILES and nothing more — an unrun example
-      is not evidence, and the four ◐ rows stay ◐ until it has actually
-      answered. Run it with the DB engine available:
-      `cargo run --example agent_db_check`. It provisions a real `rex_ro_*` on
-      its own fixture databases and requires the server to refuse INSERT,
-      UPDATE, DELETE, DROP DATABASE, `INTO OUTFILE`, the wildcard-sibling
-      database (#196, live), and a second statement after a `;` — each asserting
-      on the REASON, so a refusal for a missing table cannot pass as a privilege
-      being enforced. It also proves the positive leg first (or every refusal
-      could be "the account cannot connect"), the row cap on real rows, and that
-      a deprovisioned account genuinely cannot connect. Amend #399/#400/#401/#403
-      with the verdict when it runs.
+    - [x] **Stage 3b — the L1 live leg. RUN, and it found two of my claims
+      false.** ✓ `examples/agent_db_check.rs` PASS 24 Aug 2026 against the real
+      MySQL 8.4.6, with the stack up (it used the running engine, spawned and
+      stopped nothing, and its two fixture databases and account were verified
+      gone afterwards). **Finding 1:** the query path claimed
+      `CLIENT_MULTI_STATEMENTS` was never enabled. `mysql_async` sets it
+      unconditionally with no way to clear it, and `SELECT 1; SELECT 2` ran —
+      which on a scratch principal holding `ALL` made `SELECT 1; DROP TABLE x` a
+      working call. Fixed structurally by preparing (`COM_STMT_PREPARE` takes one
+      statement; the server now answers `ERROR 1064`), not by adding the SQL
+      parser this module refuses to be. **Finding 2:** `LOAD DATA LOCAL INFILE`
+      was reasoned to rest on the absent handler; the server refuses it one step
+      earlier (`ERROR 1295`, unsupported in the prepared protocol). Both true,
+      only one fires, and the docs now credit the one that does. Everything else
+      held: INSERT/UPDATE/DELETE/DROP DATABASE/`INTO OUTFILE` refused by name,
+      the wildcard-sibling database refused (#196 live), the 500-row cap and its
+      `truncated` flag on real rows, and a deprovisioned account unable to
+      reconnect. #399 and #400 are ✅ now; #401 and #403 stay ◐ for the reasons
+      in their rows. **The lesson worth keeping: two guarantees were read off a
+      library's flag names and both were wrong, and every L0 test passed —
+      because they asserted the code's INTENT faithfully. Only the engine knew.**
     - [ ] **The M3 human gate.** `docs/SMOKE-TEST.md` has no §M3: the consent
       prompt appearing when an agent asks, the grant surviving a restart, the
       revoke closing access mid-session. Add it with the other MCP gates below.

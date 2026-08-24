@@ -24,10 +24,21 @@
 //! 1. **The GRANT** (`core::agent_db`) — a real site's principal holds `SELECT`
 //!    on one escaped database. Writes, `DROP`, and `FILE` (so `INTO OUTFILE`)
 //!    are refused by the server, not by anything here.
-//! 2. **No `CLIENT_MULTI_STATEMENTS`** — one statement per call. A second
-//!    statement smuggled past a `;` is a protocol error, not a second query.
-//! 3. **No `LOCAL INFILE` handler** — `LOAD DATA LOCAL INFILE` has nothing to
-//!    read the file with, so it cannot exfiltrate one.
+//! 2. **The prepared-statement protocol** — `COM_STMT_PREPARE` takes exactly
+//!    one statement, so a second one past a `;` is refused by the server before
+//!    anything runs. This was originally written as "CLIENT_MULTI_STATEMENTS is
+//!    never enabled", which was FALSE: `mysql_async` sets that flag
+//!    unconditionally and offers no way to clear it. The live check found it —
+//!    `SELECT 1; SELECT 2` ran — which on a scratch principal holding `ALL`
+//!    meant `SELECT 1; DROP TABLE x` worked. Preparing makes the bound
+//!    structural again instead of a claim about a flag.
+//! 3. **`LOAD DATA LOCAL INFILE` is refused by the prepared protocol** (MySQL
+//!    error 1295, "not supported in the prepared statement protocol"), measured
+//!    rather than reasoned. `CLIENT_LOCAL_FILES` is set by the driver and not
+//!    clearable, so this was expected to rest on the absent handler; the server
+//!    refuses it one step earlier. Both hold — no handler is installed either —
+//!    but the protocol is what actually fires, and this says so rather than
+//!    claiming the guarantee comes from the half that never runs.
 //! 4. **A row and time bound**, because "SELECT-only" says nothing about
 //!    `SELECT * FROM wp_posts` on a real site: an unbounded result is a way to
 //!    exhaust memory, and an unbounded query is a way to hold a connection.
@@ -109,10 +120,23 @@ pub async fn run_query(port: u16, user: &str, db: &str, sql: &str) -> Result<Que
         let mut conn = pool.get_conn().await.map_err(|e| {
             Error::Other(format!("the agent principal {user:?} could not connect: {e}"))
         })?;
-        // `query_iter` sends ONE statement. With CLIENT_MULTI_STATEMENTS
-        // unset (never enabled above), a `;`-separated second statement is a
-        // protocol error rather than a second query.
-        let mut result = conn.query_iter(sql).await.map_err(|e| Error::Other(e.to_string()))?;
+        // PREPARED, not text — and this is a correction, not a style choice.
+        //
+        // The first version used `query_iter` (COM_QUERY) on the belief that
+        // CLIENT_MULTI_STATEMENTS was off. It is not: `mysql_async` sets that
+        // flag unconditionally in `get_capabilities`, with no option to clear
+        // it, and the live check found `SELECT 1; SELECT 2` executing happily.
+        // On a scratch principal — which holds ALL on its schema — that made
+        // `SELECT 1; DROP TABLE x` a working call.
+        //
+        // `exec_iter` prepares first, and COM_STMT_PREPARE accepts exactly one
+        // statement: a second one is rejected by the SERVER, in the protocol,
+        // before anything executes. That keeps the bound structural rather than
+        // making it the SQL parser this module deliberately refuses to be — a
+        // `;`-splitter would have to understand string literals and comments to
+        // be right, and would be wrong the day it was not.
+        let mut result =
+            conn.exec_iter(sql, ()).await.map_err(|e| Error::Other(e.to_string()))?;
         let columns: Vec<String> = result
             .columns()
             .map(|c| c.iter().map(|c| c.name_str().to_string()).collect())
@@ -190,6 +214,32 @@ mod tests {
                  so a GRANT SELECT principal fed through it has shell-exec and file-write"
             );
         }
+    }
+
+    /// **The query path PREPARES; it never sends text.**
+    ///
+    /// This exists because the thing it pins was wrong in the first version and
+    /// no unit test could see it. The module used `query_iter` (COM_QUERY) on
+    /// the belief that `CLIENT_MULTI_STATEMENTS` was off — `mysql_async` sets
+    /// that flag unconditionally and offers no way to clear it, so
+    /// `SELECT 1; SELECT 2` executed. The L1 check found it. On a scratch
+    /// principal, which holds `ALL` on its schema, that made
+    /// `SELECT 1; DROP TABLE x` a working call.
+    ///
+    /// `COM_STMT_PREPARE` accepts exactly one statement, so the bound is the
+    /// server's again. A source guard, because the difference between the two
+    /// calls is a protocol choice with no observable shape in-process — and
+    /// reverting to `query_iter` would look like a simplification.
+    #[test]
+    fn the_query_path_prepares_rather_than_sending_statement_text() {
+        let src = crate::core::copy_scan::production_source(include_str!("agent_query.rs"));
+        assert!(src.contains("exec_iter("), "the query path stopped preparing");
+        assert!(
+            !src.contains("query_iter("),
+            "the query path sends statement TEXT again — CLIENT_MULTI_STATEMENTS is on and \
+             cannot be turned off, so a second statement past a `;` executes. Measured, not \
+             theorised: `examples/agent_db_check.rs` caught exactly this."
+        );
     }
 
     /// The three connection flags this path's safety rests on, asserted where a

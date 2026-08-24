@@ -159,11 +159,17 @@ async fn main() {
     )
     .await;
 
-    // ── what the DRIVER must refuse, regardless of privileges ────────────────
-    // Multi-statement: the second statement is where an injection lands. The
-    // driver never enabled CLIENT_MULTI_STATEMENTS, so this is a protocol-level
-    // refusal, not a privilege one — the error names the SYNTAX, and asserting
-    // that is what tells the two apart.
+    // ── what the PROTOCOL must refuse, regardless of privileges ──────────────
+    // The second statement is where an injection lands. This leg is the reason
+    // the query path prepares rather than sending text: the first version
+    // believed CLIENT_MULTI_STATEMENTS was off, THIS CHECK FOUND IT ON (the
+    // driver sets it unconditionally and offers no way to clear it), and
+    // `SELECT 1; SELECT 2` ran. On a scratch principal holding ALL that made
+    // `SELECT 1; DROP TABLE x` a working call. COM_STMT_PREPARE accepts exactly
+    // one statement, so the refusal is now the server's, before execution.
+    //
+    // Asserted on the SYNTAX error specifically: a privilege refusal here would
+    // mean the bound is the GRANT, which is not a bound at all on scratch.
     must_refuse(
         port,
         &user,
@@ -171,6 +177,23 @@ async fn main() {
         "SELECT 1; SELECT 2",
         "syntax",
         "a second statement after a semicolon",
+    )
+    .await;
+
+    // LOCAL INFILE. `CLIENT_LOCAL_FILES` is also set by the driver and not
+    // clearable, so this was written expecting the guarantee to be the missing
+    // HANDLER — and the server gave a different, stronger answer: ERROR 1295,
+    // the prepared-statement protocol does not support the command at all. The
+    // expectation is the one the server actually enforces, not the one the code
+    // was reasoning from. Two independent things now stop it (the protocol, and
+    // the absent handler), and only the first is what fires.
+    must_refuse(
+        port,
+        &user,
+        DB,
+        "LOAD DATA LOCAL INFILE '/etc/hosts' INTO TABLE t",
+        "not supported in the prepared statement protocol",
+        "LOAD DATA LOCAL INFILE",
     )
     .await;
 
