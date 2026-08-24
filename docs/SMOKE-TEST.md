@@ -607,7 +607,7 @@ no SMOKE step today and is covered by `repo_*` examples only.*
   that swallowed it would cost them the one thing that finds an answer.
 
 ## AI agents (MCP) — opt-in endpoint (ships only if this passes)
-**Covers M1 (1–5), M2a (6–11) and M2b (12–14).** HOLDs: 4, 8, 11, 14.
+**Covers M1 (1–5), M2a (6–11), M2b (12–14) and M3 (15–21).** HOLDs: 4, 8, 11, 14, 18, 19, 21.
 Socket: `~/Library/Application Support/dev.rexenv.rexenv/config/rexenv-mcp.sock`.
 Run the four functional steps AND eyeball the PACKAGED webview — this project's UI
 bug class lives specifically in WKWebView, not in the dev harness: the residual copy
@@ -734,6 +734,110 @@ here meant it ran only when MCP was enabled. Run it there, before this section.)
   **⚠ A step-14 failure is a HOLD.** "Your own sites' mail is never returned" is
   the sentence the user consented to; shipping it false is worse than shipping
   without M2b.
+
+### M3 — database access. Ships only if 15–21 pass.
+
+Steps 12–14 gate what an agent may read of its OWN sites' mail. This section is
+the first time an agent can read **the data in a site you made yourself** — every
+post, every user row, every option. So the gate is not "does the feature work":
+it is **does each sentence the consent prompt says turn out to be true**, checked
+one at a time, in front of you.
+
+What the automated layers already prove, so you do not re-check it by hand:
+`examples/agent_db_check.rs` (service tier) connects as the real read-only
+principal against a real engine and confirms the SERVER refuses `INSERT`,
+`UPDATE`, `DELETE`, `DROP DATABASE`, `INTO OUTFILE`, a second statement after a
+`;`, `LOAD DATA LOCAL INFILE`, and a sibling database whose name differs only by
+the underscore wildcard. **Run it before this section** — if it fails, these
+steps are theatre. What it cannot see is everything below: whether a model that
+wants to help gets past the gate, whether the prompt tells the truth, and
+whether revoking in the UI actually stops a session that is already running.
+
+*That distinction is not academic here. The live check found two claims in this
+tree false that every unit test had certified — `CLIENT_MULTI_STATEMENTS` was ON
+and unclearable, so `SELECT 1; DROP TABLE x` worked on a scratch site. Assume
+the same about anything below that only a human can see.*
+
+Set up once: MCP toggle ON, `claude mcp add rexenv -- rex mcp`, at least one of
+**your own** WordPress sites with real content in it, and the database engine
+running. Keep Settings → AI agents visible — the prompt appears there, not in a
+modal that steals focus.
+
+- [ ] **15. A real site is refused, and the refusal ASKS.** With no grant, ask:
+  *"how many published posts are in `<your own site>`? query the database."* →
+  the call is REFUSED, and Settings → AI agents grows a **Database access**
+  prompt naming the client and that site. The agent must not have read anything.
+  **Tells:** the agent returns a row count (the gate is not gating); or the call
+  is refused and NO prompt appears (then consent is unreachable — the ask is
+  recorded on the refusal path precisely so there is no way to be refused
+  silently); or the prompt names a different site than the one you asked about.
+- [ ] **16. Read the prompt as a first-time user would.** Do not skim it. All six
+  facts must be present: it can read **everything** in that database; **including
+  user password hashes**; **and API keys or tokens in `wp_options`**; it
+  **cannot modify or delete anything**; the access **expires in 7 days**; and you
+  can **revoke it** here. Both buttons are real — **"Allow for 7 days"** and
+  **"Don't allow"**.
+  **Tell:** wording that has been shortened to "Allow X to read Y?" with the
+  concrete nouns gone. A copy guard fails the build on that, so if you are
+  reading a trimmed prompt here, the guard has been weakened too — check why
+  before anything else.
+- [ ] **17. "No" is an answer.** Click **Don't allow** → the prompt disappears and
+  NO grant is listed. Ask the agent to retry → refused again, and the prompt
+  comes back. **Tell:** denying leaves the prompt up, or silently grants; either
+  makes "no" the one response the UI cannot express.
+- [ ] **18. ⚠ Allow, then confirm read-only IN FRONT OF YOU.** Click **Allow for
+  7 days** → the agent's retry now returns the real count, and a grant is listed
+  with "Expires in 7 days". Now ask it to **write**: *"set that site's blog title
+  to 'agent was here' with a SQL UPDATE."* → REFUSED by the server, and the title
+  in WordPress is unchanged. Then ask it to read something sensitive it now
+  legitimately can (*"list the user emails"*) — it should succeed, because that
+  is what you consented to and the prompt said so.
+  **⚠ A step-18 failure is a HOLD.** "It cannot modify or delete anything" is a
+  sentence the user read and clicked Allow under. Shipping it false is worse than
+  shipping without M3 — the grant would be a write grant the user was told was a
+  read.
+- [ ] **19. ⚠ Revoke closes an ALREADY-RUNNING session.** With the same agent
+  still connected and its conversation still open, click **Revoke**. Ask it to
+  run the same query again → it must FAIL. Then check the list: the row is still
+  there, marked **Revoked**, not deleted.
+  **⚠ A step-19 failure is a HOLD**, and note which half failed, because they
+  fail differently. If the query still works, the UI is telling the user they are
+  safe while the agent reads — the worst direction. If the ROW vanished instead
+  of showing Revoked, the feature still works but the list has stopped being able
+  to answer "what could that agent see, and until when", which is the question it
+  exists for.
+- [ ] **20. Scope: one grant is one site, one client, and it survives a restart.**
+  Four checks, all quick: (a) ask about a **different** site of yours → refused,
+  new prompt — a grant is not a blanket. (b) Grant again, then connect a
+  **different** MCP client (Cursor, or `claude mcp add` under another name) and
+  ask about the same site → refused, and the prompt names the NEW client. (c)
+  Quit and relaunch rexenv → the grant is still listed with its expiry, and the
+  agent can still read (grants are stored; only unanswered PROMPTS are
+  session-scoped, so an unanswered prompt disappearing here is correct). (d) The
+  expiry shows a real countdown, not "Expires in 0 days" or a blank.
+  **Tell:** any one of (a) or (b) succeeding is a blanket grant wearing a
+  per-site label.
+- [ ] **21. ⚠ Deleting the site takes the account with it.** With a live grant on
+  a site, delete that site in rexenv. Then check the engine directly:
+  ```sh
+  "$HOME/Library/Application Support/dev.rexenv.rexenv/bin/mysql-8.4.6/bin/mysql" \
+    --no-defaults --protocol=TCP -h 127.0.0.1 -P 13306 -u root -N \
+    -e "SELECT user,host FROM mysql.user WHERE user LIKE 'rex\_ro\_%';"
+  ```
+  → **no row for the deleted site.** (Adjust the version in the path if the
+  engine has moved on.)
+  **Run it with `'r%'` in place of `'rex\_ro\_%'` first.** That must print rows —
+  `root`, and a `rex_<slug>` per imported site. An empty result and a BROKEN
+  query look identical, and "no leftover account" is exactly the answer a typo
+  gives you. Verified working 25 Aug 2026 on the dev machine: 15 rows.
+  **⚠ A step-21 failure is a HOLD, and this is the one step here that no
+  automated layer covers at all.** The L1 check proves `DROP USER` works; nothing
+  proves the delete PATH runs it (ledger #403 says so in as many words). It
+  matters because the account name is derived from the domain, exactly like the
+  database name it holds SELECT on — so a leftover account means a site you
+  create later at that domain inherits a grant you gave once, to a site that no
+  longer exists. That is cross-site exposure, the class this project has already
+  been bitten by twice.
 
 ## Robustness (spot-check) — §2
 - [ ] Quit with another app on :443, relaunch → a clear "port in use" message (no crash).

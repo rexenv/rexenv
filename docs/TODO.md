@@ -1740,9 +1740,14 @@ first:
       in their rows. **The lesson worth keeping: two guarantees were read off a
       library's flag names and both were wrong, and every L0 test passed —
       because they asserted the code's INTENT faithfully. Only the engine knew.**
-    - [ ] **The M3 human gate.** `docs/SMOKE-TEST.md` has no §M3: the consent
-      prompt appearing when an agent asks, the grant surviving a restart, the
-      revoke closing access mid-session. Add it with the other MCP gates below.
+    - [ ] **The M3 human gate — WRITTEN 25 Aug 2026, unrun.** ✓
+      `docs/SMOKE-TEST.md` §M3 steps 15–21, with three HOLDs. It states what the
+      automated layers already prove (so a human does not re-check `INSERT` being
+      refused) and confines itself to what only a human can see: whether a model
+      that wants to help gets past the gate, whether the prompt's six facts are
+      all still there, and whether revoking in the UI stops a session already
+      running. **Step 21 is the one no tier covers at all** — delete a granted
+      site, then read `mysql.user` (ledger #403's open half). Ticks when run.
     - [x] **Stage 4 — the consent surface.** ✓ `agent_db::GrantRequests` (in
       memory, session-scoped: a prompt whose context is gone is not consent) +
       five `commands/mcp.rs` commands + `components/mcp/AgentDbGrants.tsx`. The
@@ -1757,7 +1762,7 @@ first:
       noticed rather than caught: a paragraph that is not false can still leave
       a user unaware their database is reachable.
   - [ ] **The MCP human gates have never been recorded as run, and MCP has shipped in
-    four releases.** `docs/SMOKE-TEST.md` §M2a/§M2b carry 14 unticked steps and FOUR
+    four releases.** `docs/SMOKE-TEST.md` §M2a/§M2b/§M3 carry 21 unticked steps and SEVEN
     HOLDs — step 4 (disabling really tears the socket down), step 8 (the tier boundary in
     front of a human), step 11 (no admin prompt), step 14 (the mail scope that bounds D4's
     credential-harvest pivot) — under a heading that says "ships only if this passes".
