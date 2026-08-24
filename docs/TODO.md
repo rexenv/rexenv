@@ -1712,10 +1712,23 @@ first:
       a domain suffix. Ledger #401 (◐). **Nothing can grant yet** — the consent
       dialog is stage 4, so today every real site refuses and only scratch sites
       answer, which is the safe direction to be incomplete in.
-    - [ ] Stage 3b — the L1 live leg the plan names: connect as `rex_ro_*` and
-      confirm a running engine REFUSES `INSERT`, `system` and `INTO OUTFILE`.
-      Blocked on stage 4, because until a grant can exist no real site is
-      reachable to try it against.
+    - [x] **Site delete drops the agent accounts too.** ✓ `commands/sites.rs`
+      collects them from the grants BEFORE the row that cascades them away, then
+      deprovisions beside the mirrored-user drop. Not litter: the account name
+      is derived from the domain, like the database name it holds SELECT on, so
+      a future site at that domain would inherit a grant given to a site that no
+      longer exists. Ledger #403 (◐ — half the ordering is compiler-enforced and
+      the other half is a source assertion with no plant; said so in the row).
+    - [ ] **Stage 3b — the L1 live leg, and it is now the only unbuilt part of
+      M3.** The plan names it: connect as `rex_ro_*` against a RUNNING engine and
+      confirm it refuses `INSERT`, `system` and `INTO OUTFILE`, and that
+      `DROP USER` really removes the account. Everything M3 claims about what
+      MySQL does with these grants (#399, #400, #401, #403) rests on reading the
+      SQL, not on an engine having answered — which is why four rows are ◐. Wants
+      an example in the service tier (it needs the DB service, not the stack).
+    - [ ] **The M3 human gate.** `docs/SMOKE-TEST.md` has no §M3: the consent
+      prompt appearing when an agent asks, the grant surviving a restart, the
+      revoke closing access mid-session. Add it with the other MCP gates below.
     - [x] **Stage 4 — the consent surface.** ✓ `agent_db::GrantRequests` (in
       memory, session-scoped: a prompt whose context is gone is not consent) +
       five `commands/mcp.rs` commands + `components/mcp/AgentDbGrants.tsx`. The

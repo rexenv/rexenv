@@ -1192,6 +1192,28 @@ pub(crate) async fn delete_site_owned(
         let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
         crate::state::store::get_db_import(&conn, &id)?.and_then(|r| r.mirrored_user)
     };
+    // The agent principals this site's grants created (MCP M3). Read from the
+    // RECORD, like the mirrored user above, and read BEFORE the row is deleted —
+    // `agent_db_grants` cascades on the site, so after the delete there is
+    // nothing left to tell us which accounts to drop.
+    //
+    // This matters for the same reason the mirrored drop does, stated in the
+    // comment below: the name is DERIVED from the domain (`rex_ro_<slug>`), so a
+    // future site created at that domain would inherit a stale account that
+    // still holds SELECT on a database name that also collides by construction.
+    // A grant the user gave once, to a site that no longer exists, would come
+    // back attached to a different one.
+    let agent_users: Vec<String> = {
+        let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
+        let mut users: Vec<String> = crate::state::store::list_agent_db_grants(&conn)?
+            .into_iter()
+            .filter(|g| g.site_id == id)
+            .map(|g| g.db_user)
+            .collect();
+        users.sort();
+        users.dedup();
+        users
+    };
     let engine = DbEngine::from_site(site.db_engine);
     let engine_version = super::database::effective_db_version(state, engine)?;
     let want_db_drop = should_drop_database(&site);
@@ -1203,7 +1225,7 @@ pub(crate) async fn delete_site_owned(
     // inherit a stale account with an old password over it.
     // `datadir_initialized` already skips fresh installs, where neither the
     // database nor the user can exist.
-    if (want_db_drop || mirrored_user.is_some())
+    if (want_db_drop || mirrored_user.is_some() || !agent_users.is_empty())
         && engine.datadir_initialized(state.platform.as_ref(), &engine_version)
     {
         // Engine binaries cached before the locked spawn below (an initialized
@@ -1225,6 +1247,9 @@ pub(crate) async fn delete_site_owned(
         }
         if let Some(user) = &mirrored_user {
             core::dbmirror::drop_mirrored(&db_client, engine.port(), user)?;
+        }
+        for user in &agent_users {
+            core::agent_db::deprovision(&db_client, engine.port(), user)?;
         }
     }
 

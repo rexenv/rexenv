@@ -290,6 +290,47 @@ pub fn deprovision(client: &crate::core::db::SqlClient, port: u16, user: &str) -
 mod tests {
     use super::*;
 
+    /// **A deleted site's agent accounts are read while the site still exists.**
+    ///
+    /// `agent_db_grants` cascades on the sites row, so a delete path that reads
+    /// the accounts AFTER removing the site gets an empty list and silently
+    /// leaves them on the engine — and the name is derived from the domain, so
+    /// a future site at that domain inherits an account still holding SELECT on
+    /// a database name that collides by construction. A grant the user gave
+    /// once, to a site that no longer exists, would come back attached to a
+    /// different one. That is the same lifetime class the mirrored-user drop
+    /// already carries a comment about.
+    ///
+    /// Asserted as an ORDERING in the delete path's source, because the failure
+    /// is invisible at runtime: the wrong order returns an empty list, drops
+    /// nothing, and reports success.
+    ///
+    /// **Honest about which half this actually carries.** A plant that moves the
+    /// collection below the drop does not COMPILE — `agent_users` goes out of
+    /// scope — so the compiler already owns that half, and the assertion on it
+    /// is belt-and-braces rather than the guard. What is genuinely unproven by
+    /// the compiler is the second assertion: a future edit that moves the whole
+    /// drop block below the row removal would compile fine and silently drop
+    /// nothing. No plant was constructed for that one — it needs relocating two
+    /// separate blocks — so it is a source assertion taken on its reading, not a
+    /// proof, and it is recorded that way rather than counted as one.
+    #[test]
+    fn a_sites_agent_accounts_are_collected_before_the_row_that_cascades_them() {
+        let src = include_str!("../commands/sites.rs");
+        let collect = src.find("let agent_users: Vec<String> =").expect("the collection");
+        let drop_users = src.find("core::agent_db::deprovision(").expect("the drop");
+        assert!(collect < drop_users, "the accounts are dropped before they are known");
+        // The row deletion is what cascades the grants away. Located by the
+        // delete path's own step-3 marker rather than by a bare `delete_site`,
+        // which appears in several places.
+        let row_gone = src.find("// 3) Row + cert").expect("the row-removal step");
+        assert!(
+            collect < row_gone,
+            "the grants are read AFTER the site row is removed — the cascade has already \
+             emptied them, so this drops nothing and reports success"
+        );
+    }
+
     /// **An agent's retry loop is one prompt, not a hundred — and both answers
     /// clear it.**
     ///
