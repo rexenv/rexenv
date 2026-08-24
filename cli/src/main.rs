@@ -80,6 +80,7 @@ COMMANDS:
   site domain <domain> <new-domain>  Change the domain (URL rewrite; asks first)
   site move <domain> <dest-parent>   Move the docroot under a new parent folder
   site relink <domain> <path>        Re-point a LINKED site at a folder you moved (records only)
+  site retry <domain>                Finish a site whose setup stopped part-way
   site env <domain> [set K=V | unset K]          Per-site env vars
   site cert <domain> [--regenerate]  Certificate info / fresh leaf
   blueprints                         Saved blueprints (for site create --blueprint)
@@ -517,6 +518,7 @@ fn main() {
             Some("domain") => cmd_site_domain(&words[2..], json_output),
             Some("move") => cmd_site_move(&words[2..], json_output),
             Some("relink") => cmd_site_relink(&words[2..], json_output),
+            Some("retry") => cmd_site_retry(&words[2..], json_output),
             Some("env") => cmd_site_env(&words[2..], json_output),
             Some("cert") => cmd_site_cert(&words[2..], json_output),
             Some("open") => cmd_site_open(&words[2..]),
@@ -1405,7 +1407,7 @@ fn cmd_repo(words: &[String], json_output: bool) {
 /// bash: rex completions bash > /usr/local/etc/bash_completion.d/rex
 fn cmd_completions(shell: Option<&str>) {
     const TOP: &str = "status start stop restart site wp repo php db service logs doctor mail tunnel tld blueprints version completions help";
-    const SITE: &str = "list create delete info open login logs php xdebug server rename domain move relink env cert";
+    const SITE: &str = "list create delete info open login logs php xdebug server rename domain move relink retry env cert";
     const DB: &str = "export import reset versions browse";
     const PHP: &str = "list default install uninstall settings";
     const WPA: &str = "plugin theme user search-replace cache-flush cron maintenance core";
@@ -1574,6 +1576,51 @@ fn cmd_site_relink(words: &[String], json_output: bool) {
         return print_json(&r);
     }
     println!("✓ now serving from {}", r["path"].as_str().unwrap_or("?"));
+}
+
+/// `rex site retry <domain>` — finish a site whose provisioning stopped part-way.
+///
+/// The CLI equivalent of the app's "setup incomplete" Retry: a site whose row
+/// exists with `provisioned = 0` because provisioning stopped part-way. The app
+/// has offered that button since 24 Jul; the CLI had nothing.
+///
+/// NOT claimed: that `site create`'s failure text points here. `docs/CLI-ROADMAP.md`
+/// says so and nothing in the tree matches — it is the roadmap's sentence, left
+/// as the roadmap's.
+///
+/// Blocks for the whole run, like `site create` does: the app streams phases to
+/// its own card, and the socket has no read timeout precisely so a long
+/// provision can finish on it.
+fn cmd_site_retry(words: &[String], json_output: bool) {
+    let site = find_site(words, "rex site retry <domain>");
+    let domain = site["domain"].as_str().unwrap_or("?").to_string();
+    eprintln!("retrying {domain}… (downloads and installs may take a minute)");
+    let r = request("site.retry", json!({ "id": site["id"] }));
+    if json_output {
+        return print_json(&r);
+    }
+    let status = r["status"].as_str().unwrap_or("?");
+    // Report what the job SAYS, never a cheerful default: a retry that failed
+    // again is the case this command exists for, and it has to be readable.
+    match status {
+        "ok" => println!("✓ {domain} finished provisioning"),
+        "running" => println!(
+            "… {domain} is still running after the wait — open rexenv to watch it, or check {}",
+            r["logKey"].as_str().unwrap_or("the provision log")
+        ),
+        other => {
+            let phase = r["phases"]
+                .as_array()
+                .and_then(|p| p.iter().find(|x| x["status"] == json!("failed")))
+                .and_then(|x| x["label"].as_str())
+                .unwrap_or("?");
+            eprintln!(
+                "rex: {domain} {other} at phase `{phase}`{}",
+                r["error"].as_str().map(|e| format!(" — {e}")).unwrap_or_default()
+            );
+            exit(1);
+        }
+    }
 }
 
 fn cmd_site_env(words: &[String], json_output: bool) {

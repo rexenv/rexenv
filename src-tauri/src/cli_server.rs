@@ -473,6 +473,51 @@ where
         }
         // Site delete: the CLI resolves domain → id via site.list first; this
         // arm is by-id like the UI row action (tunnel stop + DB drop + files).
+        // Finish a half-provisioned site (`provisioned = 0`) — the recovery the
+        // app offers as the "setup incomplete" badge's Retry, which the CLI had
+        // no equivalent of.
+        //
+        // `docs/CLI-ROADMAP.md` says `site.create`'s failure "points here". That
+        // is the ROADMAP's claim and it is NOT verified: grepping the tree finds
+        // no message naming this command, and reproducing a mid-provision
+        // failure to read the text was not done. Recorded rather than repeated —
+        // writing the claim into a code comment would have laundered somebody
+        // else's untested sentence into a fact.
+        //
+        // Polls SERVER-side rather than handing the CLI a job id: `site.create`
+        // already blocks for the whole provision, `request()` has no read
+        // timeout for exactly that reason, and a second protocol for the same
+        // user-visible operation would be two things to keep in step.
+        "site.retry" => {
+            let state = app_state(app)?;
+            let id = need_str(&args, "id", cmd)?;
+            let started = commands::site_provision::site_provision_retry(
+                app.app_handle().clone(),
+                state.clone(),
+                provision_jobs_state(app)?,
+                id,
+            )
+            .await?;
+            let domain = started.domain.clone();
+            // The job runs in a spawned task; wait for it to settle. Bounded
+            // because a wedged provision must not hold the socket forever — the
+            // caller gets the last snapshot and can read the log it names.
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(900);
+            let mut last = started;
+            while last.status == "running" && std::time::Instant::now() < deadline {
+                tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+                match commands::site_provision::site_provision_active(
+                    provision_jobs_state(app)?,
+                    Some(domain.clone()),
+                )
+                .await?
+                {
+                    Some(snap) => last = snap,
+                    None => break,
+                }
+            }
+            to_value(&last)
+        }
         "site.delete" => {
             let state = app_state(app)?;
             let id = args["id"]

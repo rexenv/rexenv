@@ -53,7 +53,7 @@ convention) — see "Infrastructure" for progress streaming.
 | `site env <domain> [set K=V \| unset K]` | `list_site_env` / `set_site_env` | ✓ | shipped 16 Jul — set→list→unset live (client-side merge; backend replaces the set) |
 | `site cert <domain> [--regenerate]` | `site_cert_info` / `regenerate_site_cert` | ✓ | shipped 16 Jul — info live (SANs, days left) |
 | `site restart <domain>` (single-site backend bounce) | — | 🔴 | no single-site restart IPC (UI doesn't have it either); needs a manager seam |
-| `site retry <domain>` (finish a "setup incomplete" half-provision) | `site_provision_retry` (domain→id client-side) | 🟢 | IPC shipped 24 Jul with the streamed provision job; `site.create` failures name the failing phase + log path and point here |
+| `site retry <domain>` (finish a "setup incomplete" half-provision) | `site_provision_retry` (domain→id client-side) | ✓ | **shipped 24 Aug 2026.** Polls SERVER-side so the CLI stays request/reply, like `site.create`, which already blocks for a whole provision — a second protocol for the same user-visible operation would be two things to keep in step. Bounded at 15 min so a wedged provision cannot hold the socket forever; the caller gets the last snapshot and the log key it names. ⚠ **The "`site.create` failures … point here" half of this row is UNVERIFIED** — nothing in the tree matches a message naming this command, and reproducing a mid-provision failure to read the text has not been done. Left as this file's claim rather than repeated into a code comment. ◐ in-app verify owed: the running app predates the arm |
 
 ## PHP
 
@@ -194,8 +194,8 @@ line streaming is the same 🔴 "progress streaming" infra item as always.
 
 1. `config get|set` (🟡) — parked on a decision: which settings keys to
    allow-list (never the whole KV table).
-1a. `site retry` (🟢) — the owner's call; `site.create`'s failure message still
-   names a recovery the CLI cannot perform.
+1a. ~~`site retry`~~ — **shipped 24 Aug 2026.** Whether `site.create`'s failure
+   message actually names it is a separate, unverified claim (see the row above).
 2. Design-first 🔴 set: single-site restart (manager seam), web-tier
    single-service control (topology invariant), raw wp passthrough (security
    decision), `wp_user_delete` (no IPC exists), progress streaming for long ops.

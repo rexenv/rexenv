@@ -726,7 +726,16 @@ cause: a commit did the work and the surrounding claim stayed as it was.
       **And deleting the throwaway found one more** (#387): `site delete` said "database +
       files removed" for a LINKED site whose folder it correctly had not touched. The
       confirm prompt already said the right thing, and `--yes` skips the prompt.
-    - [ ] `site retry` — the owner's.
+    - [x] **`site retry`** ✓ 24 Aug 2026 — `site.retry` arm + `rex site retry <domain>`,
+      covered by the reachability guard. Polls server-side so the CLI stays request/reply
+      like `site.create`, bounded at 15 min so a wedged provision cannot hold the socket.
+      **Corrected on the way in:** my first comment repeated this row's claim that
+      `site.create`'s failure "points here" as if it were fact. Nothing in the tree matches
+      such a message, and I did not reproduce a mid-provision failure to read the text — so
+      the claim stays the roadmap's, flagged there, rather than being laundered into a code
+      comment.
+      ◐ **In-app verify owed** — the running app predates the arm; needs an app rebuild,
+      same as `site relink` did.
     - [ ] `config get|set` — the owner's, parked on the key allow-list.
   - [x] **Protocol-version handshake** 🟡 ✓ 23 Aug 2026 — **answered differently**, ledger
     #386, plant-proven both ways.
