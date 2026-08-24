@@ -734,8 +734,17 @@ cause: a commit did the work and the surrounding claim stayed as it was.
       such a message, and I did not reproduce a mid-provision failure to read the text — so
       the claim stays the roadmap's, flagged there, rather than being laundered into a code
       comment.
-      ◐ **In-app verify owed** — the running app predates the arm; needs an app rebuild,
-      same as `site relink` did.
+      ✓ **VERIFIED live 24 Aug 2026** against an app rebuilt from `043fc09`, on a
+      throwaway linked site whose own row was flipped to `provisioned = 0` (only that row;
+      the DB is WAL, so the write was safe beside the running app, and it was the only
+      half-provisioned site on the machine for the duration). All three paths:
+      a fully provisioned site is REFUSED (*"already fully provisioned — nothing to
+      retry"*), the half-site retried to `✓ finished provisioning` with `provisioned`
+      flipping back to 1, and the usage line prints without touching the app.
+      **One guarantee proved itself in passing**: the fixture's own `index.php` was
+      byte-identical afterwards, so the retry's "re-ensures artifacts, never clobbers user
+      files" held on a LINKED docroot — the case where clobbering would destroy something
+      rexenv does not own. Site and folder deleted; 17 sites, 0 half-provisioned.
     - [ ] `config get|set` — the owner's, parked on the key allow-list.
   - [x] **Protocol-version handshake** 🟡 ✓ 23 Aug 2026 — **answered differently**, ledger
     #386, plant-proven both ways.

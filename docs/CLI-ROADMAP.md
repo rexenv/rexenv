@@ -53,7 +53,7 @@ convention) — see "Infrastructure" for progress streaming.
 | `site env <domain> [set K=V \| unset K]` | `list_site_env` / `set_site_env` | ✓ | shipped 16 Jul — set→list→unset live (client-side merge; backend replaces the set) |
 | `site cert <domain> [--regenerate]` | `site_cert_info` / `regenerate_site_cert` | ✓ | shipped 16 Jul — info live (SANs, days left) |
 | `site restart <domain>` (single-site backend bounce) | — | 🔴 | no single-site restart IPC (UI doesn't have it either); needs a manager seam |
-| `site retry <domain>` (finish a "setup incomplete" half-provision) | `site_provision_retry` (domain→id client-side) | ✓ | **shipped 24 Aug 2026.** Polls SERVER-side so the CLI stays request/reply, like `site.create`, which already blocks for a whole provision — a second protocol for the same user-visible operation would be two things to keep in step. Bounded at 15 min so a wedged provision cannot hold the socket forever; the caller gets the last snapshot and the log key it names. ⚠ **The "`site.create` failures … point here" half of this row is UNVERIFIED** — nothing in the tree matches a message naming this command, and reproducing a mid-provision failure to read the text has not been done. Left as this file's claim rather than repeated into a code comment. ◐ in-app verify owed: the running app predates the arm |
+| `site retry <domain>` (finish a "setup incomplete" half-provision) | `site_provision_retry` (domain→id client-side) | ✓ | **shipped 24 Aug 2026.** Polls SERVER-side so the CLI stays request/reply, like `site.create`, which already blocks for a whole provision — a second protocol for the same user-visible operation would be two things to keep in step. Bounded at 15 min so a wedged provision cannot hold the socket forever; the caller gets the last snapshot and the log key it names. ⚠ **The "`site.create` failures … point here" half of this row is UNVERIFIED** — nothing in the tree matches a message naming this command, and reproducing a mid-provision failure to read the text has not been done. Left as this file's claim rather than repeated into a code comment. ✅ **in-app verified 24 Aug 2026**: a fully provisioned site refused, a half-site (`provisioned = 0`) retried to completion with the flag flipping back, and the linked docroot's own `index.php` byte-identical afterwards — the never-clobber guarantee on the case where clobbering would destroy a folder rexenv does not own |
 
 ## PHP
 
@@ -204,6 +204,8 @@ line streaming is the same 🔴 "progress streaming" infra item as always.
    running app): `php install/uninstall`, `php settings set`, `db versions
    --set`, `site server/domain/move`, `mail clear`, `tunnel start`,
    `wp core update/switch`.
+   **`site retry` — VERIFIED 24 Aug 2026** (refusal, a real half-provision retried to
+   completion, and no clobber of a linked docroot).
    **`mail mark-read`, `mail list --unread` and `mail list <query>` — VERIFIED
    live 23 Aug 2026** against the running app: unread went 2 → 0, the unread
    filter cut 3 rows to 2, and a query matched 1 of 3. The live run also found
