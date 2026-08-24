@@ -1065,9 +1065,15 @@ first:
 - [ ] Then: ~~Apache/FrankenPHP dotfile legs (#103)~~ (closed 15 Aug 2026 — all three backends live, plant-proven per template), ~~fpm candidate
   isolation (#104/#191)~~ (closed 15 Aug 2026, `fpm_candidate_check`, plant-proven), ~~manifest HEAD+digest sweep~~ (closed 15 Aug 2026, `manifest_sweep_check` #335 — 88 URLs answer, 78 re-hashed incl. every Intel digest), Bedrock live provision (#35),
   sandbox-adoption cohorts + `wp_fixture()` — incl. scoping
-  `download_progress_check`'s bin-cache delete off the REAL shared cache
-  (surface-coverage finding 29 Jul: the sandbox invariant is structural for only
-  ~20 of 109 examples, and this one deletes a real content-addressed entry),
+  ~~`download_progress_check`'s bin-cache delete off the REAL shared cache~~
+  (closed 24 Aug 2026 — **not by sandboxing it, which would have removed its
+  subject**: the shared binary cache is a deliberate exception and a private
+  bin dir would mean re-downloading everything per run. The entry is RENAMED
+  aside now and restored by `Drop` unless the run replaced it, so a failed
+  download — offline, or a registry outage like the 21 Aug GitHub 504 — leaves
+  the cache as it found it. Plant-proven: a panic mid-run puts the phar back and
+  leaves no stash. The old argument, "safe because every entry is re-fetchable by
+  checksum", was true only while the network is),
   ~~`webview_dialogs` L2 (#166)~~ (closed 15 Aug 2026 — the L2 shape was measured
   impossible before building, which was the queued instruction; legs landed at
   L0+L1, eye-half in SMOKE; `docs/PLAN-webview-dialog-proofs.md`),

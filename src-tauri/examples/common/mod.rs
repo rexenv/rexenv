@@ -501,9 +501,17 @@ struct SandboxPaths {
     /// content-addressed, checksum-verified and atomically published, and not
     /// sharing it would mean re-downloading ~600 MB of MySQL per example run.
     /// Deliberately MUTABLE, not add-only (that was overstated): examples add to
-    /// it, and `download_progress_check` deletes one content-addressed entry to
-    /// exercise re-download — safe only because every entry is re-fetchable by
-    /// checksum.
+    /// it, and `download_progress_check` takes one content-addressed entry out of
+    /// the way to exercise re-download.
+    ///
+    /// **That last argument used to end "safe only because every entry is
+    /// re-fetchable by checksum", and that is true only while the network is**
+    /// (24 Aug 2026). Offline, or during a registry outage — a GitHub 504 was hit
+    /// on this machine on 21 Aug — a delete leaves the user without their wp-cli
+    /// phar. The example RENAMES the entry now and restores it in `Drop` unless
+    /// the run replaced it, so the shared cache survives a failed download and a
+    /// panic alike. The exception this comment describes is still an exception;
+    /// it is no longer one that can cost the user something.
     bin: PathBuf,
     hosts: PathBuf,
 }
