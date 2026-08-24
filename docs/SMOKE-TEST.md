@@ -767,10 +767,20 @@ modal that steals focus.
   *"how many published posts are in `<your own site>`? query the database."* →
   the call is REFUSED, and Settings → AI agents grows a **Database access**
   prompt naming the client and that site. The agent must not have read anything.
+  **Then follow the refusal's own directions, literally, without using what you
+  already know about the app.** It names a card and a section; both must exist
+  under those names. This is the step's real content: M3 routes consent through
+  the refusal by design (there is no "request access" tool), so a refusal you
+  cannot follow is the feature's only door, locked. On 25 Aug 2026 this failed —
+  the message said "Settings → MCP" while the card said "AI agents (MCP)" and
+  the section "Database access" (#404).
   **Tells:** the agent returns a row count (the gate is not gating); or the call
   is refused and NO prompt appears (then consent is unreachable — the ask is
   recorded on the refusal path precisely so there is no way to be refused
   silently); or the prompt names a different site than the one you asked about.
+  **And one that is easy to mistake for a bug:** if you restarted rexenv between
+  the refusal and looking, the prompt is GONE and that is correct — unanswered
+  asks are session-scoped on purpose. Re-run the query to raise it again.
 - [ ] **16. Read the prompt as a first-time user would.** Do not skim it. All six
   facts must be present: it can read **everything** in that database; **including
   user password hashes**; **and API keys or tokens in `wp_options`**; it

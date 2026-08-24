@@ -1453,6 +1453,55 @@ mod tests {
             ("revoke it", "that the decision is reversible, at the place they are deciding"),
             ("Don't allow", "that NO is an available answer, not just closing the prompt"),
         ];
+        // The REFUSAL points a human at a place; these are the strings that
+        // place is actually called. Pinned together because the refusal lives in
+        // `core::agent_db` and the labels live in a `.tsx` two directories away,
+        // which is exactly the distance a rename travels without noticing.
+        //
+        // Found by a human failing on it: running §M3 the first question back
+        // was "where do I click Allow?", against a message reading
+        // "Settings → MCP" while the card said "AI agents (MCP)" and the section
+        // said "Database access".
+        // COMMENTS STRIPPED, and that is not hygiene — the first version of this
+        // guard was VACUOUS and a plant proved it: "AI agents (MCP)" appears
+        // twice in the card, once in a doc comment and once in the rendered
+        // heading, so renaming the heading left the comment matching and the
+        // check passed over a UI the refusal could no longer point at. The
+        // scanner-reads-a-comment trap, for the third time in this tree.
+        // `strip_ts_comments`, NOT `production_source` — the first version used
+        // the latter, which removes Rust `#[cfg(test)]` modules and leaves TS
+        // prose entirely intact. A plant renaming the RENDERED heading passed,
+        // because the same words sit in this component's doc comment. The
+        // wrong-stripper bug and the reads-its-own-comment bug, in one line.
+        let card = crate::core::copy_scan::strip_ts_comments(include_str!(
+            "../../src/components/mcp/AgentsMcpCard.tsx"
+        ));
+        let consent_ui = crate::core::copy_scan::strip_ts_comments(CONSENT);
+        // Landmarks, because `strip_ts_comments` returning nothing would make
+        // every `contains` below pass — the empty-scan trap `production_source`
+        // carries a warning about and this guard walked into once already.
+        assert!(card.contains("StartStopToggle"), "the card scan came back empty");
+        assert!(consent_ui.contains("AgentDbGrants"), "the consent scan came back empty");
+        const REFUSAL: &str = include_str!("core/agent_db.rs");
+        for (label, source, what) in [
+            (
+                "AI agents (MCP)",
+                card.as_str(),
+                "the card heading the refusal sends people to",
+            ),
+            ("Database access", consent_ui.as_str(), "the section heading inside it"),
+        ] {
+            assert!(
+                source.contains(label),
+                "the refusal message points at \"{label}\" ({what}) but the UI no longer calls \
+                 it that. Rename BOTH, or a user following the refusal lands nowhere — which \
+                 is a broken consent path, not a wording nit."
+            );
+            assert!(
+                REFUSAL.contains(label),
+                "the UI still calls it \"{label}\" ({what}) and the refusal stopped saying so"
+            );
+        }
         for (phrase, why) in CONSENT_MUST_SAY {
             assert!(
                 CONSENT.contains(phrase),

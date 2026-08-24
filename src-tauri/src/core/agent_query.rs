@@ -199,10 +199,16 @@ mod tests {
     /// principal shell-exec and file-write on a real site.
     ///
     /// A source guard, because the property is "this code does not call that
-    /// code" and no runtime test can observe a call that was never made. Comment
-    /// lines are stripped first, so this file's own prose about
-    /// `client_base_args` — which is the reason the module exists — does not
-    /// make the guard fire on itself. That trap has caught this repo before.
+    /// code" and no runtime test can observe a call that was never made.
+    ///
+    /// **This doc used to say comments are stripped first. They are not.**
+    /// `production_source` removes `#[cfg(test)]` modules, which is why the
+    /// prose in THIS test's own doc does not trip it — not because it filters
+    /// comments. The module-level docs above pass only because they say "the
+    /// bundled client" in words rather than naming the symbol, which is luck
+    /// rather than design: writing `client_base_args` in the module doc would
+    /// fail this test with a confusing message. Corrected 25 Aug 2026 after the
+    /// same mistaken belief made a NEW guard vacuous two files away.
     #[test]
     fn the_agent_query_path_never_calls_the_bundled_client() {
         let src = crate::core::copy_scan::production_source(include_str!("agent_query.rs"));

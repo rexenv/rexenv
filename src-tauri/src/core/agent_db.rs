@@ -250,7 +250,11 @@ pub fn authorize(
         // boundary. It deliberately does not say "ask the user to approve",
         // because an agent that relays that becomes the thing doing the asking.
         None => Err(Error::Other(format!(
-            "reading the database of `{domain}` needs the user's approval, which has not been given (or has expired). rexenv asks for it in the app — Settings → MCP lists every database grant and when it expires. This is not something the agent can grant itself."
+            "reading the database of `{domain}` needs the user's approval, which has not been \
+             given (or has expired). rexenv is asking for it now, in the app: \
+             Settings → \"AI agents (MCP)\" → \"Database access\", where it can be allowed for 7 \
+             days or refused. That section also lists every grant and when it expires. This is \
+             not something the agent can grant itself."
         ))),
     }
 }
@@ -434,7 +438,16 @@ mod tests {
         // missing reports it.
         let err = authorize(&conn, "s1", "shop.rex", false, "Claude Code").unwrap_err().to_string();
         assert!(err.contains("shop.rex"), "{err}");
-        assert!(err.contains("Settings"), "{err}");
+        // The FULL path, not just "Settings". A pointer that names the app's
+        // settings and not the section is what a person actually fails on:
+        // running §M3 on 25 Aug 2026 the first question back was "where do I
+        // click Allow?", against a message that said "Settings → MCP" while the
+        // card is titled "AI agents (MCP)" and the section "Database access" —
+        // three names for one place. A refusal a human cannot follow is a
+        // broken consent path, not a wording nit.
+        assert!(err.contains("AI agents (MCP)"), "the refusal must name the CARD: {err}");
+        assert!(err.contains("Database access"), "…and the SECTION in it: {err}");
+        assert!(err.contains("7 days"), "…and what allowing actually grants: {err}");
         assert!(err.contains("not something the agent can grant itself"), "{err}");
 
         // A scratch site is readable and WRITABLE with no grant at all — there
