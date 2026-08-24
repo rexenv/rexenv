@@ -1009,6 +1009,29 @@ first:
   escalates. Not urgent — the app's exit hook and the crash sweep both cover a survivor —
   so the plan is to watch the guard's output over the next few tunnel runs and open it
   properly only if it recurs.
+  **ANSWERED 24 Aug 2026: no, not routinely — 7 observations, 0 escalations.**
+  `src-tauri/target/tunnel-stop-evidence.log` now holds every stop the guard has seen:
+
+      2026-08-23 11:20:41Z  tunnel_guard_check     pid 87036  stop  3ms
+      2026-08-23 11:20:42Z  tunnel_guard_check     pid 87242  stop  6ms
+      2026-08-23 11:20:42Z  tunnel_guard_check     pid 87454  stop  5ms
+      2026-08-24 08:59:56Z  tunnel_exposure_check  pid 18645  stop  3ms
+      2026-08-24 09:03:50Z  tunnel_exposure_check  pid 29007  stop  5ms
+      2026-08-24 09:05:14Z  tunnel_exposure_check  pid 30395  stop  3ms
+      2026-08-24 09:05:15Z  tunnel_exposure_check  pid 30083  stop  6ms
+
+  Every one took in single-digit milliseconds through `tunnels::stop` alone. **The file is
+  not success-biased**, which is what makes the run of `stop`s mean something: all six
+  outcomes write a line (`stop`, `stop_slow_no_signal`, `stop_no_effect_10s`, `sigterm`,
+  `sigkill`, `survived_all`), so an escalation could not have gone unrecorded.
+  **The honest limits.** Seven is not many, they come from two examples on one machine, and
+  the original 14 Aug sighting PREDATES the evidence file — so it is unexplained rather
+  than refuted, and the 3ms-vs-3s gap between it and everything since is itself unexplained.
+  What can be said is that the premise the row was worried about — "if it IS routine,
+  production has the same gap" — is not supported: it is not routine.
+  - [ ] Leave the recording in place. It costs one appended line per tunnel stop and it is
+    the only thing that would catch a recurrence; deleting it now would put the next
+    sighting back to being a single observation nobody can compare.
   **15 Aug 2026 — the watch now has a record to accumulate into.** Checked for
   accumulated evidence first: there was none and there COULD have been none — a
   successful `live-checks.sh` run deletes its log directory, so the guard's stderr only
