@@ -10,7 +10,7 @@ import { mockIPC } from "@tauri-apps/api/mocks";
 import { GitAddPanel } from "@/components/wordpress/GitAddPanel";
 import { RepoPanel } from "@/components/wordpress/RepoPanel";
 import { LinkFolderPanel } from "@/components/wordpress/LinkFolderPanel";
-import { PluginsPanel } from "@/components/wordpress/WordPressManager";
+import { CronCard, PluginsPanel } from "@/components/wordpress/WordPressManager";
 import { SiteProvisionCard, useSiteProvision } from "@/components/sites/SiteProvisionCard";
 import { SiteRow } from "@/routes/Sites";
 import { useDownloads } from "@/lib/useDownloads";
@@ -527,12 +527,23 @@ function ProvisionHost() {
   );
 }
 
+/** Cron rows for `?panel=cron`. Shaped like a real site's, not a tidy one: the
+ *  first two share a hook and differ ONLY in their arguments. */
+const CRON_EVENTS = [
+  { hook: "action_scheduler_run_queue", nextRun: "2026-08-24 10:00:00", nextRunRelative: "3 minutes", recurrence: "1 minute", args: '["WP Cron"]' },
+  { hook: "action_scheduler_run_queue", nextRun: "2026-08-24 10:00:00", nextRunRelative: "3 minutes", recurrence: "1 minute", args: '["Async Request"]' },
+  { hook: "publish_future_post", nextRun: "2026-08-24 14:30:00", nextRunRelative: "4 hours", recurrence: "Non-repeating", args: "[1284]" },
+  { hook: "wp_update_themes", nextRun: "2026-08-24 12:00:00", nextRunRelative: "2 hours", recurrence: "12 hours", args: "" },
+  { hook: "wp_privacy_delete_old_export_files", nextRun: "2026-08-24 11:00:00", nextRunRelative: "1 hour", recurrence: "1 hour", args: "" },
+];
+
 export function DevGitPanel() {
   const [ready, setReady] = useState(false);
   const params = new URLSearchParams(window.location.search);
   const rehydrate = params.get("rehydrate") === "1";
   const showRepoPanel = params.get("panel") === "repo";
   const showLinkPanel = params.get("panel") === "link";
+  const showCron = params.get("panel") === "cron";
   const watchMode = params.get("watch"); // "1" running | "exited"
   const detached = params.get("detached") === "1";
   const cleanTree = params.get("clean") === "1";
@@ -546,6 +557,15 @@ export function DevGitPanel() {
         {});
       tally[cmd] = (tally[cmd] ?? 0) + 1;
       switch (cmd) {
+        // `?panel=cron` (wk-checks/cronargs.js): WP-CLI addresses cron events by
+        // HOOK and has no per-instance id, so a hook scheduled twice renders as
+        // two rows that are identical WITHOUT their arguments. Action Scheduler
+        // — which WooCommerce ships — does exactly that. The pair below is the
+        // case the Arguments column exists for; the third row carries a bare id
+        // and the last two carry none, so a panel that rendered the column
+        // blank, or filled it for everything, fails.
+        case "wp_cron_events":
+          return CRON_EVENTS;
         case "repo_site_jobs":
           return rehydrate ? [RUNNING_JOB] : [];
         case "repo_asset_status":
@@ -778,6 +798,8 @@ export function DevGitPanel() {
           <div className="rounded-lg border border-rex-border bg-rex-surface-1 p-2.5">
             <PluginsPanel siteId="dev" />
           </div>
+        ) : showCron ? (
+          <CronCard siteId="dev" />
         ) : showLinkPanel ? (
           <div className="rounded-lg border border-rex-border bg-rex-surface-1 p-2.5">
             <LinkFolderPanel siteId="dev" kind="plugin" onInstalled={() => {}} />

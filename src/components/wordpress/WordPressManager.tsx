@@ -1640,7 +1640,7 @@ function ChecksumResult({
 }
 
 /** Read-only cron schedule + a "run due now" trigger (Tools → Cron). */
-function CronCard({ siteId }: { siteId: string }) {
+export function CronCard({ siteId }: { siteId: string }) {
   const qc = useQueryClient();
   const { data: events, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["wp-cron", siteId],

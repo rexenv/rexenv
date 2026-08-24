@@ -269,9 +269,12 @@ paying for anyway: **the tick belongs in the commit that does the work.**
   - [ ] **Still QA's to confirm.** This is a diagnosis of the most defensible defect in
     that panel, not the repro — the original complaint was never captured. If it was
     something else, say so and this reopens.
-  - [ ] **No L2 leg:** the WordPress manager's cron tab has no dev-route arm, so nothing
-    asserts the column RENDERS. Adding one means a new `DevGitPanel` arm plus a check —
-    worth it next time this panel is touched, not on a placeholder row.
+  - [x] **L2 leg built** ✓ 24 Aug 2026 — `?panel=cron` in `DevGitPanel` + `cronargs.js`.
+    It asserts what RENDERS: the duplicated `action_scheduler_run_queue` pair is
+    distinguishable, a bare id renders, and argument-less rows stay BLANK rather than
+    showing `[]`. Plant-proven both ways — removing the column reproduces the original
+    defect verbatim ("the two rows render IDENTICALLY"), and rendering `[]` for empty args
+    fails the readability half. Registered in `run-all.js`, so it is in the wk-checks bar.
 - [ ] ⚠ **PostgreSQL's pinned builds carry `minos 26.0` — presumed dead below
   macOS 26, and the presumption cannot be tested from this machine** (found
   15 Aug 2026 during the floor sweep; MEASURED as far as this host allows the
