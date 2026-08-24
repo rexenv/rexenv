@@ -242,6 +242,12 @@ paying for anyway: **the tick belongs in the commit that does the work.**
   with an env answer, without one, and a stray `.env` with no marker.
   **One guard was proving nothing until a plant said so**: dropping the
   `config/application.php` requirement passed every test until `stray-env` was added.
+  ✓ **Live-verified 24 Aug 2026** on a real linked Bedrock tree with the app rebuilt from
+  the fix: rexenv detected `content_dir=app`, and all four branches answered correctly —
+  both keys present, no `WP_DEBUG`, `WP_DEBUG=false` (determinate OFF, not unknown), a
+  custom `WP_DEBUG_LOG` path, and the marker moved away (indeterminate again). Fixture and
+  site deleted after. The live leg exercised `core::logs` with the real row's path and
+  recorded content dir, not the UI — `wp_debug_log_status` has no CLI arm.
 - [x] **WP Manager cron list: arguments display** ✓ 23 Aug 2026 — ledger #384.
   The row guessed "likely the event-args column". **There was no such column, and no
   args anywhere**: `cron_event_list` asked wp-cli for `hook,next_run_gmt,

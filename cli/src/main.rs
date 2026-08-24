@@ -352,10 +352,16 @@ fn version_skew_between(
     if unknown(my_commit) || unknown(their_commit) || my_commit == their_commit {
         return None;
     }
+    // Deliberately does NOT say which side is behind. Observed 24 Aug 2026: after
+    // the app was rebuilt first, the APP was the newer one and this told the user
+    // to quit and reopen it — advice for the opposite situation. A commit sha
+    // gives no ordering, and guessing produces confidently wrong instructions in
+    // half the cases. Both fixes are named instead; whichever applies is cheap.
     Some(format!(
         "both are {mine}, but this rex was built from {my_commit} and the running rexenv \
-         from {their_commit} — same version, different build. Quit and reopen rexenv so it \
-         picks up the binary you just built."
+         from {their_commit} — same version, different build. Rebuild whichever is behind: \
+         quit and reopen rexenv to pick up a newer app, or rebuild `rex` to pick up a newer \
+         CLI."
     ))
 }
 
@@ -2722,6 +2728,13 @@ mod tests {
             .expect("same version, different commit is a mismatch");
         assert!(dev.contains("86855cc") && dev.contains("460981c"), "{dev}");
         assert!(dev.contains("different build"), "{dev}");
+        // It must NOT tell the user which side to rebuild. A sha carries no
+        // ordering, and the first version of this assumed the APP was behind —
+        // then said so when the app was the NEWER one (observed 24 Aug 2026,
+        // after rebuilding the app before the CLI). Naming both fixes is the
+        // only honest form.
+        assert!(dev.contains("whichever is behind"), "{dev}");
+        assert!(dev.contains("rebuild `rex`"), "no CLI-is-stale branch offered: {dev}");
 
         // Matching builds must be silent: a warning on an unrelated bug sends
         // the reader at their install instead of at the bug.
