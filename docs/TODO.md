@@ -876,10 +876,10 @@ place to keep unfinished things.
     registered in a static `reap_all` drains now, exactly as `STACK` already was.
     **This is the rule written into `delete_site_serve` the same morning** — "after the first
     spawn, exiting is the unsafe option" — walked into by the next thing I wrote.
-    - [ ] ◐ The new slot's drain is not planted directly; it needs a stack-down. What IS
-      observed: `reap_all` runs on the fail path (both failed runs printed `stack stopped`)
-      and the identical `STACK` drain worked in those same runs. Plant it next time the
-      stack is down.
+    - [x] ✓ **Planted 24 Aug 2026** — a run that dies immediately after the backend starts
+      printed `override backend stopped` on the `fail()` path, no FrankenPHP survived, and
+      port 8200 was free afterwards. (It leaves a sandbox ROOT behind: documented
+      `process::exit` behaviour that the next run's self-healing sweep clears, not a leak.)
 - [ ] **Plugin-update progress: the TIMING half** (ledger #249) — **the row's own premise
   was wrong and is corrected here, 24 Aug 2026.** It said "the wiring half landed, this did
   not", which reads as the CODE being missing. It is not: `settleAfterUpdate` has cancelled
@@ -939,6 +939,12 @@ first:
   0 with `Success: Plugin already deactivated.` on stdout and `Warning: Plugin 'x' isn't
   active.` on stderr — so exit-zero-with-a-warning is real on this surface, it just isn't
   what bit here.
+  **24 Aug 2026 — three more clean runs, back to back, stack stopped.** All three exited 0
+  with the deactivate assertion passing (`bulk-deactivate → Inactive`, then delete). That is
+  six consecutive passes since the leftover docroots were removed, and it moves nothing:
+  the row is about ONE unexplained failure, and clean runs cannot explain it — they only
+  narrow how often it happens. The capture instrumentation is what would settle it, and it
+  has still never fired.
   **15 Aug 2026 — a recurrence now captures itself.** The original sighting produced no
   evidence because the assert printed only "not deactivated" and the panic then leaked
   mysqld into the next run. The example now dumps deactivate's own stdout, the parsed
@@ -1021,7 +1027,8 @@ first:
   escalates. Not urgent — the app's exit hook and the crash sweep both cover a survivor —
   so the plan is to watch the guard's output over the next few tunnel runs and open it
   properly only if it recurs.
-  **ANSWERED 24 Aug 2026: no, not routinely — 7 observations, 0 escalations.**
+  **ANSWERED 24 Aug 2026: no, not routinely — 14 observations, 0 escalations.**
+  (Seven when first answered; today's later tunnel work doubled it, all still clean.)
   `src-tauri/target/tunnel-stop-evidence.log` now holds every stop the guard has seen:
 
       2026-08-23 11:20:41Z  tunnel_guard_check     pid 87036  stop  3ms
