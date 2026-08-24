@@ -1719,13 +1719,20 @@ first:
       a future site at that domain would inherit a grant given to a site that no
       longer exists. Ledger #403 (◐ — half the ordering is compiler-enforced and
       the other half is a source assertion with no plant; said so in the row).
-    - [ ] **Stage 3b — the L1 live leg, and it is now the only unbuilt part of
-      M3.** The plan names it: connect as `rex_ro_*` against a RUNNING engine and
-      confirm it refuses `INSERT`, `system` and `INTO OUTFILE`, and that
-      `DROP USER` really removes the account. Everything M3 claims about what
-      MySQL does with these grants (#399, #400, #401, #403) rests on reading the
-      SQL, not on an engine having answered — which is why four rows are ◐. Wants
-      an example in the service tier (it needs the DB service, not the stack).
+    - [ ] **Stage 3b — the L1 live leg. WRITTEN, NOT YET RUN.**
+      `examples/agent_db_check.rs` (service tier) is built and green under
+      `verify.sh`, which proves it COMPILES and nothing more — an unrun example
+      is not evidence, and the four ◐ rows stay ◐ until it has actually
+      answered. Run it with the DB engine available:
+      `cargo run --example agent_db_check`. It provisions a real `rex_ro_*` on
+      its own fixture databases and requires the server to refuse INSERT,
+      UPDATE, DELETE, DROP DATABASE, `INTO OUTFILE`, the wildcard-sibling
+      database (#196, live), and a second statement after a `;` — each asserting
+      on the REASON, so a refusal for a missing table cannot pass as a privilege
+      being enforced. It also proves the positive leg first (or every refusal
+      could be "the account cannot connect"), the row cap on real rows, and that
+      a deprovisioned account genuinely cannot connect. Amend #399/#400/#401/#403
+      with the verdict when it runs.
     - [ ] **The M3 human gate.** `docs/SMOKE-TEST.md` has no §M3: the consent
       prompt appearing when an agent asks, the grant surviving a restart, the
       revoke closing access mid-session. Add it with the other MCP gates below.
