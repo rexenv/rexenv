@@ -978,6 +978,8 @@ first:
     between the safe call and the catastrophic one is one earlier line choosing
     `db::open(temp)` over `db::open_for_platform(real)`, which is not a difference review
     reliably sees — so it is a fact the code checks, not a convention.
+    *(The list below is STALE — kept as written for the record; all of these were pinned by
+    `2e5b737`. See the ticked sub-item above.)*
     The remaining unpinned provisioners — `adminer_serve_check`, `health_watchdog_check`,
     `log_tail_check`, `mail_adopt_settings_check`, `mail_route_check`,
     `monitor_coverage_demo`, `seed_and_list`, `server_switch_serve`,
@@ -988,9 +990,24 @@ first:
     docroot moves what a running stack serves and each one deserves a look rather than a
     sweep. (`sites_folder_check` is correctly excluded: pointing `sites_dir` somewhere
     else IS its subject.)
-  - [ ] Then make the unpinned path impossible rather than reviewed: `sites::provision`
-    could refuse when `sites_dir` still resolves to the home-derived default while the
-    platform is a sandbox — a check the fixture cannot forget to write.
+  - [x] **Made impossible rather than reviewed** ✓ 24 Aug 2026 — ledger #392.
+    `sites::provision`'s CREATE branch refuses when the platform's app-data is outside the
+    home directory (a sandbox) while `sites_dir` is still the home-derived default. The
+    signal cannot fire on a real install, and the test asserts that rather than assuming it.
+    Live-proven by stripping the pin from `git_site_clone_check`: it fails naming both paths
+    and the fix. **Two earlier plant attempts passed and were right to** — `linked_site_check`
+    and `retry_recovery_check` supply a docroot PATH, never reach the create branch, and never
+    touched the user's folder. The guard sits in the one place a docroot is created.
+  - [x] **The "remaining unpinned provisioners" list was STALE** ✓ 24 Aug 2026. All 17 named
+    here were pinned by `2e5b737` ("pin the last 14 fixture docroots"); only `seed_and_list`
+    is unpinned, correctly, because it opens the REAL app database and the helper refuses
+    there. Verified empirically as well as by grep: today's sandbox, service and stack tier
+    runs added **zero** entries to `~/rexenv/Sites`.
+  - [ ] **437 MB of historical leftovers are still on disk** — 19 orphaned directories in
+    `~/rexenv/Sites` with no site row pointing at them, five of them whole WordPress installs
+    (`wpinfo.test`, `wplogin.test`, `wpplugins.test`, `wppremium.test`, `wpthemes.test`, ~85 MB
+    each). They predate the pinning sweep and cannot regrow. **The owner's call, not a
+    guard's** — they are directories in the user's own folder.
 
 - [ ] ❓ **Does `tunnels::stop` routinely need SIGTERM?** Observed once, 14 Aug 2026, on
   the first run of `common::adopt_public_tunnel`: cloudflared was still alive 3s after

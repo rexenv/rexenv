@@ -1710,6 +1710,62 @@ fn legacy_sites_dir(platform: &dyn Platform) -> Result<PathBuf> {
 
 /// Root directory for site docroots: the `sites_dir` setting if set, else the
 /// `~/rexenv/Sites` default.
+/// Refuse to create docroots in the USER'S real Sites folder from a sandboxed
+/// platform.
+///
+/// **The fixture cannot forget to write this one.** `sites::provision` reads the
+/// `sites_dir` SETTING, which falls back to a HOME-derived default — a path no
+/// sandboxed `Paths` can redirect — so an example that sandboxes its paths and
+/// forgets `common::pin_fixture_sites_dir` provisions into `~/rexenv/Sites` and
+/// leaves docroots there. Measured 24 Aug 2026 on the machine this was written
+/// on: **19 orphaned directories, 437 MB**, five of them whole WordPress
+/// installs, left by examples that ran before the pinning sweep.
+///
+/// The signal is unambiguous and cannot fire on a real install: a sandbox's
+/// `app_data_dir` lives under `/private/tmp`, while a real one is always inside
+/// the user's home (`~/Library/Application Support/…` on macOS). So "app-data is
+/// OUTSIDE the home directory, and `sites_dir` is still the home-derived
+/// default" means exactly one thing — a fixture that pinned its paths and not
+/// its sites folder.
+///
+/// A refusal rather than a redirect: silently relocating would make the example
+/// pass while proving something about a directory nobody chose, and the whole
+/// lesson of this class is that a fixture writing where it did not intend is the
+/// defect, not the cleanup.
+fn refuse_unpinned_sandbox_sites_dir(dir: &Path, platform: &dyn Platform) -> Result<()> {
+    let Ok(app_data) = platform.paths().app_data_dir() else {
+        return Ok(()); // cannot tell; production behaviour unchanged
+    };
+    refuse_unpinned_sandbox_sites_dir_for(dir, &app_data)
+}
+
+/// The rule, with the platform's app-data path as a PARAMETER.
+///
+/// Split out so a test can drive both sides. Through the live function the
+/// sandboxed case is unreachable — a unit test runs on the real platform — and a
+/// guard whose failing branch no test can reach is the vacuous shape this repo
+/// keeps finding.
+fn refuse_unpinned_sandbox_sites_dir_for(dir: &Path, app_data: &Path) -> Result<()> {
+    let Some(home) = directories::BaseDirs::new().map(|b| b.home_dir().to_path_buf()) else {
+        return Ok(());
+    };
+    let sandboxed = !app_data.starts_with(&home);
+    let is_default = default_sites_dir().is_ok_and(|d| d == dir);
+    if sandboxed && is_default {
+        return Err(Error::Other(format!(
+            "refusing to provision into {} from a sandboxed platform (app data is {}). \
+             This is a fixture that sandboxed its PATHS and not its SITES FOLDER: \
+             `sites_dir` is a setting with a home-derived default, which no sandboxed \
+             `Paths` can redirect. Call `common::pin_fixture_sites_dir(&conn, \"tag\")` \
+             (or open the database with `common::sandbox_db`, which pins for you) before \
+             provisioning.",
+            dir.display(),
+            app_data.display()
+        )));
+    }
+    Ok(())
+}
+
 pub fn sites_dir(conn: &Connection, _platform: &dyn Platform) -> Result<PathBuf> {
     match store::get_setting(conn, SITES_DIR_KEY)? {
         Some(p) if !p.trim().is_empty() => Ok(PathBuf::from(p)),
@@ -1813,7 +1869,11 @@ pub fn provision_with(
     let docroot = if linked {
         validate_linked_docroot(conn, platform, &new.path)?
     } else {
-        let docroot = sites_dir(conn, platform)?.join(&new.domain);
+        // The one place a docroot is CREATED, so the one place the sandbox
+        // check belongs — a linked site (the other branch) writes nothing.
+        let root = sites_dir(conn, platform)?;
+        refuse_unpinned_sandbox_sites_dir(&root, platform)?;
+        let docroot = root.join(&new.domain);
         std::fs::create_dir_all(&docroot)?;
         // The Blank-PHP probe page, but NOT when a clone is about to fill this
         // folder: `clone_into_docroot` requires an empty docroot, so writing a
@@ -3928,6 +3988,49 @@ mod tests {
     }
 
     #[cfg(target_os = "macos")]
+    /// **A fixture that sandboxes its PATHS and not its SITES FOLDER is refused,
+    /// rather than quietly filling the user's real one.**
+    ///
+    /// `sites_dir` is a SETTING whose fallback is derived from the home
+    /// directory, so no sandboxed `Paths` can redirect it — an example that
+    /// forgets `common::pin_fixture_sites_dir` provisions into `~/rexenv/Sites`
+    /// and leaves docroots behind. Measured 24 Aug 2026 on the machine this was
+    /// written on: 19 orphaned directories, 437 MB, five of them whole WordPress
+    /// installs, from runs that predate the pinning sweep.
+    ///
+    /// The sweep pinned all 17 remaining provisioners, and this is the half a
+    /// sweep cannot give: the eighteenth example, written next month, cannot
+    /// forget. A check the fixture does not have to remember to write.
+    #[test]
+    fn a_sandboxed_platform_may_not_provision_into_the_users_real_sites_folder() {
+        let real = crate::platform::current();
+        let home = directories::BaseDirs::new().expect("home").home_dir().to_path_buf();
+        let default = default_sites_dir().expect("default sites dir");
+
+        // A REAL platform is never refused, whatever the sites dir — this must
+        // not fire in production, which is the whole risk of adding it.
+        assert!(
+            real.paths().app_data_dir().is_ok_and(|d| d.starts_with(&home)),
+            "a real platform's app data must live under the home directory, or the \
+             signal this guard reads is the wrong one"
+        );
+        assert!(refuse_unpinned_sandbox_sites_dir(&default, &*real).is_ok());
+        assert!(refuse_unpinned_sandbox_sites_dir(Path::new("/private/tmp/x"), &*real).is_ok());
+
+        // A sandboxed platform's app data lives OUTSIDE the home directory.
+        let sandbox = Path::new("/private/tmp/rexenv-sandbox-x-1");
+        let tmp = std::env::temp_dir().join(format!("rexenv-guard-{}", std::process::id()));
+
+        // …provisioning into the DEFAULT is the mistake, and it is named.
+        let err = refuse_unpinned_sandbox_sites_dir_for(&default, sandbox)
+            .expect_err("an unpinned sandbox must be refused")
+            .to_string();
+        assert!(err.contains("pin_fixture_sites_dir"), "no fix offered: {err}");
+        assert!(err.contains("sandboxed"), "{err}");
+        // …and a PINNED one is fine, which is what keeps this a guard and not a ban.
+        assert!(refuse_unpinned_sandbox_sites_dir_for(&tmp, sandbox).is_ok());
+    }
+
     #[test]
     fn sites_dir_uses_setting_or_default() {
         let conn = db::open_in_memory().unwrap();
