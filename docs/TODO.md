@@ -850,61 +850,24 @@ place to keep unfinished things.
   list may only SHRINK, and a recorded pair that starts passing FAILS the check so the
   repayment cannot go unnoticed. Plant-proven both ways — a new low-contrast pair fails,
   and a recorded pair that no longer renders fails.
-- [ ] **An override site has never served through a REAL tunnel end to end.**
-  `tunnels::origin_port` resolves the recorded override port and the L0 proof is
-  plant-proven; SMOKE §Public sharing gained the step, and a network-tier leg would need
-  a FrankenPHP fixture on `tunnel_exposure_check`.
-  **Narrowed 24 Aug 2026 by reading the production path, which the row had not.** The
-  resolution is not merely unit-tested and hoping: `commands/tunnels.rs:512` calls
-  `tunnels::origin_port(&site)?` and hands the result to `tunnels::start` (:623), so the
-  shipped share path uses it, and L0 covers every `WebServer` variant plus the
-  no-recorded-port error. What is left untested is narrower than "an override site has
-  never served": it is **whether cloudflared proxies to a FrankenPHP loopback port**, which
-  has no rexenv-specific logic in it and which legs 1–3 already exercise for nginx's port
-  on the same tunnel type.
-  So this is a low-risk gap, not a live hole — worth closing when a tunnel session happens
-  anyway, and NOT worth its own stack-down run. The cheap form is also cheaper than the row
-  says: point the existing fixture's tunnel at a recorded override port via `origin_port`,
-  rather than standing up a whole FrankenPHP site.
-  - [ ] Deliberately NOT built unrun. `tunnel_exposure_check`'s own header records two legs
-    that were deleted for passing without testing anything ("on a fixture this expensive,
-    'we saw it work' is the default failure mode"), so adding a leg nobody has run would be
-    the exact mistake that file already paid for.
-- [x] **No wk-check asserts the FrankenPHP PHP picker is disabled** ✓ 21 Aug 2026 —
-  `scripts/wk-checks/phppicker.js`, in `run-all`. Asserts the DISABLED attribute, that the
-  option names FrankenPHP's embedded build, that it does NOT show the stored 8.1 (which is
-  the promise the row was filed about), and both halves of the sentence that gives the
-  user their choice back. **Control included**: an nginx site's picker must still be
-  ENABLED, because a page where every select happened to be disabled would satisfy all of
-  the above. Plant-proven three ways — remove `disabled`, soften the copy, and the control
-  itself.
-  **And it found a crash on its way in.** `SiteDetail` called `useQuery` for
-  `repo-site-info` BELOW its `if (!site)` early return, so a COLD render of the route ran
-  fewer hooks than the render after `sites` resolved and React threw "Rendered more hooks
-  than during the previous render" — a blank screen instead of a site page. Navigating
-  from the Sites list hides it (the query is cached, `site` is found on the first render);
-  a reload or a deep link straight to `/sites/:id` does not. Hoisted above the return with
-  `enabled: !!site`. Nothing in `verify.sh` could have caught it: `tsc` type-checks and
-  the hooks rule is a RUNTIME contract, which is the argument for L2 in one line.
-- [x] **`validate_linked_docroot` does a per-call `list(conn)`** ✓ 23 Aug 2026 —
-  **closed as WON'T DO, and the row was the bug.** Hoisting it would have broken the
-  Valet import: the apply loop creates sites one at a time through that validation, so
-  two scanned projects where one nests inside the other are refused only because the
-  second call reads the row the first one wrote. A pre-batch snapshot cannot contain it
-  and both would be created — two sites serving one tree, one under the other's domain.
-  `enrich` already holds a hoisted `existing` slice two lines from the call, so this was
-  a one-line change that looked free.
-  **A snapshot is what a hoist IS**, which makes "cache this read" and "turn this
-  lifetime guard into a one-time check" the same edit in two vocabularies — and only one
-  of them sounds dangerous. Recorded as a second form of the §3.2 class in
-  `docs/TESTING.md`, because the disguise is the durable part.
-  The per-call read is now documented as load-bearing at the call site and held by
-  `each_link_validation_sees_the_site_the_previous_one_created` (ledger #379),
-  plant-proven by making the row's own suggestion. The pre-existing overlap test could
-  not have caught it: it calls the function once, so it passes identically whether the
-  read is fresh or cached.
-  The cost was never there either — one SELECT per candidate, beside a `detect_project`
-  doing strictly more filesystem I/O in the same function.
+- [x] **An override site has never served through a REAL tunnel end to end** ✓ 24 Aug 2026
+  — leg 9 of `tunnel_exposure_check`, ledger #393, RUN live: `origin_port(fpshare.test) = 8200`
+  against nginx's 18088, the public URL served the override site, and a cross-Host attempt did
+  not reach the shared nginx site.
+  Built the cheap way the narrowing suggested — a second tunnel on the existing fixture, not a
+  second fixture — and it asserts `origin_port` BEFORE starting anything, so a leg that read
+  nginx's port could not pass while proving the opposite.
+  **Two defects came out of running it, and neither was in the product:**
+  - **The tunnel guard reaped only the LAST tunnel** (ledger #394). Its registry was a single
+    `AtomicU32`, so leg 9's second tunnel orphaned the first — which survived the run with a
+    LIVE PUBLIC URL, and leg 7 failed pointing at it. The guard whose whole promise is "no
+    tunnel outlives this run" reported the exact damage it had just done. It drains a `Vec`
+    now; the re-run reaped both.
+  - **The leg used `await_listening` where it needed answering.** FrankenPHP is Caddy
+    underneath and binds before routes load, so the socket accepted and the next request came
+    back EMPTY. The local control caught it and refused to conclude anything about the tunnel —
+    the control working exactly as designed, on a fixture fault rather than a product one. That
+    lesson was already written in `frankenphp_edge_serve`'s own comments, and I re-learned it.
 - [ ] **Plugin-update progress: the TIMING half** (ledger #249) — **the row's own premise
   was wrong and is corrected here, 24 Aug 2026.** It said "the wiring half landed, this did
   not", which reads as the CODE being missing. It is not: `settleAfterUpdate` has cancelled

@@ -51,7 +51,7 @@
 mod common;
 
 use rexenv_lib::core::service_manager::{Ports, ServiceManager};
-use rexenv_lib::core::{binaries, db as coredb, php as corephp, ports as coreports, services, sites, ssl, tunnels, wordpress, wp_login, wp_tunnel};
+use rexenv_lib::core::{binaries, db as coredb, frankenphp, php as corephp, ports as coreports, services, sites, ssl, tunnels, wordpress, wp_login, wp_tunnel};
 use rexenv_lib::platform;
 use rexenv_lib::state::models::{NewSite, SiteDbEngine, SiteType, WebServer};
 use std::path::{Path, PathBuf};
@@ -61,6 +61,9 @@ use std::time::Duration;
 const HTTPS: u16 = 8443;
 const SHARED: &str = "share.test";
 const OTHER: &str = "other.test";
+/// The OVERRIDE-backed site (leg 9): FrankenPHP, served from its own loopback
+/// port rather than the shared nginx.
+const OVERRIDE: &str = "fpshare.test";
 /// Echoes the headers PHP actually saw. Legs 1–3 are this file, fetched twice.
 const ECHO_PHP: &str = r#"<?php
 header('Content-Type: text/plain');
@@ -70,6 +73,7 @@ foreach (['HTTP_CF_RAY','HTTP_CF_CONNECTING_IP','HTTP_HOST','HTTP_X_FORWARDED_FO
 "#;
 const HELLO: &str = "<!doctype html><title>shared</title><p>REXENV-SHARED-SITE</p>";
 const HELLO_OTHER: &str = "<!doctype html><title>other</title><p>REXENV-OTHER-SITE</p>";
+const HELLO_OVERRIDE: &str = "<!doctype html><title>fp</title><p>REXENV-OVERRIDE-SITE</p>";
 
 /// The STACK this example started. Reaching it from `fail` is what the first
 /// version got wrong: the tunnel was reaped from every path and the services
@@ -498,6 +502,186 @@ async fn main() {
         );
     }
     println!("6 ok — the other site is not reachable through this tunnel");
+
+    // ── 9 · an OVERRIDE site is shared from ITS OWN backend port ────────────
+    //
+    // The claim (`tunnels::origin_port`, ledger row in docs/TODO.md): a tunnel
+    // for a site rexenv does not serve through nginx must point at that site's
+    // OWN backend, never at nginx's default. `commands/tunnels.rs` calls
+    // `origin_port` and hands the result to `tunnels::start`, and L0 covers
+    // every `WebServer` variant — but nothing had ever put a real cloudflared in
+    // front of an override backend, which is the one part neither can check.
+    //
+    // Built as a SECOND tunnel on the same fixture rather than a second fixture:
+    // standing up cloudflared is the expensive part, and this needs nothing the
+    // first one has except the machine.
+    let fp_site = sites::provision(
+        &conn,
+        &*plat,
+        &ca,
+        NewSite {
+            name: "FrankenPHP share".into(),
+            domain: OVERRIDE.into(),
+            site_type: SiteType::Php,
+            php_version: "8.3".into(),
+            web_server: WebServer::Frankenphp,
+            path: String::new(),
+            db_engine: SiteDbEngine::Mysql,
+            git_url: String::new(),
+            git_ref: None,
+            git_migrate: false,
+            git_build_assets: false,
+        },
+    )
+    .expect("provision the override site");
+    std::fs::write(Path::new(&fp_site.path).join("hello.html"), HELLO_OVERRIDE)
+        .expect("override hello");
+
+    // The port under test: resolved the way production resolves it, not a
+    // literal. If this returned nginx's port the leg would still pass while
+    // proving the opposite of the claim, so it is asserted BEFORE anything is
+    // started.
+    let fp_port = tunnels::origin_port(&fp_site).expect("origin port for the override site");
+    if fp_port == services::NGINX_HTTP_PORT {
+        fail(
+            "9 — origin_port handed back NGINX's port for an override site",
+            "that is the defect the claim is about: the tunnel would publish whatever \
+             nginx serves on that port instead of this site's own backend",
+        );
+    }
+    println!("9 · origin_port({OVERRIDE}) = {fp_port} (nginx is {})", services::NGINX_HTTP_PORT);
+
+    let fp_bin = binaries::resolve(&*plat, "frankenphp", binaries::FRANKENPHP_VERSION)
+        .await
+        .expect("frankenphp binary");
+    let fp_conf = frankenphp::write_config(
+        &*plat,
+        &fp_site.domain,
+        Path::new(&fp_site.path),
+        fp_port,
+        rexenv_lib::core::services::RewriteMode::Single,
+        &[],
+    )
+    .expect("frankenphp config");
+    let _fp = common::OwnedService::new(
+        frankenphp::start(&*plat, &fp_bin, &fp_site.domain, &fp_conf, &[]).expect("start frankenphp"),
+        "frankenphp",
+    );
+    common::await_listening(fp_port, "the frankenphp override backend", None);
+    // …and then wait for it to ANSWER, which is a different fact — the lesson
+    // `frankenphp_edge_serve` already carries and this leg re-learned on its
+    // first run. FrankenPHP is Caddy underneath: it binds the listener before
+    // routes and certificates are loaded, so `await_listening` was satisfied and
+    // the very next request came back EMPTY. The control below caught it and
+    // refused to conclude anything about the tunnel, which is the control doing
+    // exactly its job — but the fixture was the thing at fault, not the backend.
+    common::await_ready("the frankenphp override backend to ANSWER", None, || {
+        common::http_get(fp_port, OVERRIDE, "/hello.html").contains("REXENV-OVERRIDE-SITE")
+    });
+
+    // The LOCAL origin first, for the reason leg 1 does it: if the backend does
+    // not serve the page, a public failure and a broken fixture look identical.
+    let local_fp = reqwest::Client::new()
+        .get(format!("http://127.0.0.1:{fp_port}/hello.html"))
+        .header("Host", OVERRIDE)
+        .send()
+        .await
+        .expect("local override request")
+        .text()
+        .await
+        .unwrap_or_default();
+    if !local_fp.contains("REXENV-OVERRIDE-SITE") {
+        fail(
+            "9 — the override backend does not serve its own page locally",
+            &format!("nothing about the tunnel can be concluded. got: {local_fp:.200}"),
+        );
+    }
+
+    #[allow(clippy::zombie_processes)]
+    let fp_child = tunnels::start(&*plat, &bin, OVERRIDE, fp_port).expect("start the second tunnel");
+    let fp_pid = fp_child.id();
+    let _fp_tunnel = common::adopt_public_tunnel(fp_pid, "(second tunnel — URL not captured yet)");
+    let mut fp_public = None;
+    let fp_deadline = std::time::Instant::now() + Duration::from_secs(45);
+    while std::time::Instant::now() < fp_deadline {
+        if let Some(u) = tunnels::read_url(&*plat, OVERRIDE) {
+            fp_public = Some(u);
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(300));
+    }
+    let Some(fp_public) = fp_public else {
+        fail(
+            "FIXTURE — the second tunnel never printed a URL",
+            &format!("cloudflared pid {fp_pid} started for {OVERRIDE} but no trycloudflare URL appeared"),
+        )
+    };
+    common::note_public_tunnel_url(&fp_public);
+    println!("9 · second PUBLIC URL {fp_public} (pid {fp_pid})");
+
+    // Same 1.1.1.1 pin as the first tunnel, and for the same reason: one system
+    // lookup before propagation negative-caches the name on the LAN for up to
+    // thirty minutes.
+    let fp_host = fp_public.trim_start_matches("https://").trim_end_matches('/').to_string();
+    let mut fp_ip = None;
+    for _ in 0..30 {
+        if let Some(ips) = tunnels::resolve_at_1111(&fp_host).await {
+            if let Some(ip) = ips.first().copied() {
+                fp_ip = Some(ip);
+                break;
+            }
+        }
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
+    let Some(fp_ip) = fp_ip else {
+        fail(
+            "FIXTURE — the second tunnel hostname never appeared at 1.1.1.1",
+            &format!("{fp_host} did not resolve within 60s; nothing downstream can be concluded"),
+        )
+    };
+    let fp_net = reqwest::Client::builder()
+        .resolve(&fp_host, std::net::SocketAddr::from((fp_ip, 443)))
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(Duration::from_secs(20))
+        .build()
+        .expect("second client");
+
+    let via_tunnel = fp_net
+        .get(format!("{fp_public}/hello.html"))
+        .send()
+        .await
+        .expect("override site through the tunnel")
+        .text()
+        .await
+        .unwrap_or_default();
+    if !via_tunnel.contains("REXENV-OVERRIDE-SITE") {
+        fail(
+            "9 — the public URL did not serve the override site",
+            &format!(
+                "the tunnel was started on port {fp_port}, which `origin_port` resolved from \
+                 the site's recorded backend. got: {via_tunnel:.200}"
+            ),
+        );
+    }
+    // …and it must NOT be reaching nginx: the shared site's page must not come
+    // back from this tunnel. Without this the leg would pass if `origin_port`
+    // were wrong AND nginx happened to serve something containing the marker.
+    let fp_cross = fp_net
+        .get(format!("{fp_public}/hello.html"))
+        .header("Host", SHARED)
+        .send()
+        .await
+        .expect("cross attempt on the override tunnel")
+        .text()
+        .await
+        .unwrap_or_default();
+    if fp_cross.contains("REXENV-SHARED-SITE") {
+        fail(
+            "9 — the override tunnel reached the SHARED nginx site",
+            "the tunnel is not pinned to the override backend",
+        );
+    }
+    println!("9 ok — an override site is published from its OWN backend port, through a real tunnel");
 
     // ── 8 · a magic-link token cannot be replayed through the public URL ───
     //

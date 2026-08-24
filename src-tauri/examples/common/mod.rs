@@ -1080,9 +1080,19 @@ fn command_of(pid: u32) -> String {
 
 /// The live tunnel's pid, reachable from every teardown path (a static, because
 /// `fail()` and a panic hook cannot be handed a value).
-static TUNNEL_PID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-/// Its public URL, printed if the reap cannot prove the process died.
-static TUNNEL_URL: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+/// Every adopted tunnel, not just the last one.
+///
+/// **This was a single `AtomicU32`, and the second tunnel silently orphaned the
+/// first** (24 Aug 2026). `tunnel_exposure_check` gained a leg that starts a
+/// SECOND quick tunnel — for an override site's own backend port — and the new
+/// adoption overwrote the slot. The teardown then reaped only the newer pid; the
+/// first tunnel survived the run with a LIVE PUBLIC URL, and the leg that checks
+/// "stopping the share really unpublishes it" failed pointing at its own URL,
+/// which is the guard reporting the exact damage it had just done.
+///
+/// A guard whose whole promise is "no tunnel outlives this run" cannot hold that
+/// promise with room for one. Both are tracked now, and both are reaped.
+static TUNNELS: std::sync::Mutex<Vec<(u32, String)>> = std::sync::Mutex::new(Vec::new());
 static HOOK_INSTALLED: std::sync::Once = std::sync::Once::new();
 
 /// Guard for a tunnel that is PUBLIC while it runs.
@@ -1113,9 +1123,8 @@ pub struct PublicTunnel(());
 /// Register a live tunnel and install the panic hook. Hold the returned guard
 /// for the rest of the run.
 pub fn adopt_public_tunnel(pid: u32, public_url: &str) -> PublicTunnel {
-    TUNNEL_PID.store(pid, std::sync::atomic::Ordering::SeqCst);
-    if let Ok(mut u) = TUNNEL_URL.lock() {
-        *u = public_url.to_string();
+    if let Ok(mut t) = TUNNELS.lock() {
+        t.push((pid, public_url.to_string()));
     }
     HOOK_INSTALLED.call_once(|| {
         let prev = std::panic::take_hook();
@@ -1133,8 +1142,14 @@ pub fn adopt_public_tunnel(pid: u32, public_url: &str) -> PublicTunnel {
 /// is the thing that must be reachable from the teardown paths, and a tunnel
 /// with an unknown URL still has to die.
 pub fn note_public_tunnel_url(url: &str) {
-    if let Ok(mut u) = TUNNEL_URL.lock() {
-        *u = url.to_string();
+    // Fills in the MOST RECENTLY adopted tunnel's URL — the one whose URL was
+    // unknown when it was adopted. With more than one in flight, naming which is
+    // the difference between a teardown message that identifies the leak and one
+    // that names somebody else's URL.
+    if let Ok(mut t) = TUNNELS.lock() {
+        if let Some(last) = t.last_mut() {
+            last.1 = url.to_string();
+        }
     }
 }
 
@@ -1213,11 +1228,20 @@ fn record_tunnel_stop_evidence(pid: u32, outcome: &str, elapsed_ms: u64) {
 /// Stop the registered tunnel and PROVE it stopped. Idempotent; safe from
 /// `Drop`, from `fail()`, and from the panic hook.
 pub fn reap_public_tunnel() {
-    let pid = TUNNEL_PID.swap(0, std::sync::atomic::Ordering::SeqCst);
-    if pid == 0 {
-        return;
+    // DRAIN: every adopted tunnel, newest first, so a run that started two does
+    // not leave one public. Draining under the lock means a panic hook and a
+    // Drop racing to tear down cannot both take the same pid.
+    let adopted: Vec<(u32, String)> = match TUNNELS.lock() {
+        Ok(mut t) => t.drain(..).rev().collect(),
+        Err(_) => return,
+    };
+    for (pid, url) in adopted {
+        reap_one_public_tunnel(pid, &url);
     }
-    let url = TUNNEL_URL.lock().map(|u| u.clone()).unwrap_or_default();
+}
+
+fn reap_one_public_tunnel(pid: u32, url: &str) {
+    let url = url.to_string();
     let plat = rexenv_lib::platform::current();
 
     let start = Instant::now();
