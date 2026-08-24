@@ -169,6 +169,12 @@ paying for anyway: **the tick belongs in the commit that does the work.**
   `react/promise` 3.3.0 carries the fix and wp-cli's source already depends on it
   transitively via composer ^2.9.5, so the NEXT wp-cli release should clear it —
   nothing to bump yet.
+  **Re-checked 24 Aug 2026:** still nothing. `wp-cli/wp-cli` latest release is v2.12.0,
+  published 2025-05-07 — over fifteen months old, so this is not a release that is about
+  to land. Keep the containment; re-check when a release appears, not on a schedule.
+  *(Not doing: forcing `display_errors=stderr` into the rexenv terminal too. That terminal
+  is deliberately the user's own environment (#228) and the flag would have to arrive as an
+  injected env var, which is a bigger promise broken than a deprecation line shown.)*
 - [ ] **Private-window flags for Arc, ChatGPT Atlas, Orion.** Left `None` in the
   `BROWSERS` table because no one has run the flag on a real install, and a fork
   that swallows the flag it inherited opens an ordinary window under a control
@@ -870,8 +876,26 @@ place to keep unfinished things.
   read is fresh or cached.
   The cost was never there either — one SELECT per candidate, beside a `detect_project`
   doing strictly more filesystem I/O in the same function.
-- [ ] **Plugin-update progress: the TIMING half** (ledger #249) — cancel-then-settle beats
-  an in-flight check; the wiring half landed, this did not.
+- [ ] **Plugin-update progress: the TIMING half** (ledger #249) — **the row's own premise
+  was wrong and is corrected here, 24 Aug 2026.** It said "the wiring half landed, this did
+  not", which reads as the CODE being missing. It is not: `settleAfterUpdate` has cancelled
+  before settling since 9 Aug (`c489b92`), and the same commit added `verdict()`/
+  `isNewerVersion`. The row was written on 13 Aug — four days AFTER the fix — and its
+  original wording said what it actually meant: *"needs a real site"*. The 21 Aug reconcile
+  flattened a proof gap into an implementation gap. (Same shape as the PHP 7.4 "recorded
+  nowhere" premise, and the second time a reconcile has done this.)
+  **What is genuinely unproven is narrower than the row implied**, because two mechanisms
+  cover this and each catches what the other cannot:
+  - `verdict()` makes a stale VERSIONED claim unrenderable — a late check offering `3.2.1`
+    over a row already at `3.2.1` renders as no update. That half IS tested and
+    plant-proven (`wk-checks/wpverdict.js`, ledger #250).
+  - `cancelQueries` covers the one claim `verdict()` deliberately lets through: `available`
+    with an EMPTY target, which cannot be ordered and so shows a badge with no arrow. A
+    late in-flight check of that shape is the only way the badge can still come back.
+  - [ ] So the remaining proof is exactly that: a late check landing AFTER a settle with an
+    empty `updateVersion` must not restore the badge. Not reachable from `wpverdict.js`
+    (it renders fixture rows; this is react-query ordering), so it is a live observation on
+    the #249 wiring run, or an L2 case that can script a delayed query resolution.
 - [ ] **Radicle-hosted repos are unverified** — same code path as the Bedrock clone that
   was verified and found broken, no live project to hand.
 - [ ] **Why that `rex` instance went deaf was never diagnosed** — the evidence died with
