@@ -48,6 +48,7 @@ base64 = "0.22"
 tauri-plugin-dialog = "2"
 # Read-only parsing of our own issued certs (Settings tab cert info); also used by tests.
 x509-parser = "0.16"
+mysql_async = { version = "0.37.0", default-features = false, features = ["minimal-rust"] }
 
 # Native JS dialog panels for the webview (platform/macos/webview_dialogs.rs) —
 # wry implements no WKUIDelegate JS dialogs on macOS. Versions match wry's own

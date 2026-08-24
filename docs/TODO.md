@@ -1695,11 +1695,16 @@ first:
       live cross-site over-grant once (#196), so a second copy is a second place
       for it to come back. Ledger #399 (◐ — the SQL is L0-proven; what MySQL does
       with it is 🔨 L1 and arrives with stage 3). Plant-proved three ways.
-    - [ ] Stage 2b — the native MySQL driver itself (`mysql_async`/`sqlx`, single
-      statement, multi-statements and `local_infile` off). This is the new
-      protocol dependency, and it is deliberately the LAST piece before the tool:
-      nothing provisions a principal or opens a connection until the thing that
-      would use one exists.
+    - [x] **Stage 2b — the native driver.** ✓ `core/agent_query.rs` +
+      `mysql_async` (`default-features = false`, `minimal-rust`: 22 crates, no TLS
+      stack — loopback-passwordless needs none). Multi-statements never enabled,
+      no LOCAL INFILE handler, a 500-row cap that distinguishes a full result
+      from a clipped one, and a 15s bound. **Deliberately not a SQL parser** —
+      the privilege is the check; a "starts with SELECT" test is a thing that
+      can be wrong sitting in front of a server that already answers correctly.
+      Ledger #400 (◐). Plant-proved three ways, including a SOURCE guard that
+      the module can never reach `client_base_args`, which is the mistake §3.6
+      hole 1 describes and the obvious way to have built this.
     - [ ] Stage 3 — `db_query`: scratch sites read-write, a real site SELECT-only and
       only behind a live grant from stage 1.
     - [ ] Stage 4 — the T1 consent dialog (`PLAN-mcp-server.md` §529-540) plus the
