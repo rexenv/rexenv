@@ -180,6 +180,10 @@ paying for anyway: **the tick belongs in the commit that does the work.**
   that swallows the flag it inherited opens an ordinary window under a control
   that said private. One-line each once tested; the rows simply show no private
   icon until then.
+  **Checked 24 Aug 2026: none of the three is installed on this machine** (Chrome,
+  Firefox, Brave and Safari are). So this is not "nobody got round to it" — it cannot be
+  tested here at all, and the honest `None` stands until someone with one of those
+  browsers runs the flag.
 - [ ] **Windows/Linux: `detect_browsers`/`open_in_browser` are the default empty
   stubs** (Phase 4, same shape as `detect_editors`). Until they are filled, those
   platforms open every link in the OS handler and show no chevron — honest, but
@@ -850,6 +854,22 @@ place to keep unfinished things.
   `tunnels::origin_port` resolves the recorded override port and the L0 proof is
   plant-proven; SMOKE §Public sharing gained the step, and a network-tier leg would need
   a FrankenPHP fixture on `tunnel_exposure_check`.
+  **Narrowed 24 Aug 2026 by reading the production path, which the row had not.** The
+  resolution is not merely unit-tested and hoping: `commands/tunnels.rs:512` calls
+  `tunnels::origin_port(&site)?` and hands the result to `tunnels::start` (:623), so the
+  shipped share path uses it, and L0 covers every `WebServer` variant plus the
+  no-recorded-port error. What is left untested is narrower than "an override site has
+  never served": it is **whether cloudflared proxies to a FrankenPHP loopback port**, which
+  has no rexenv-specific logic in it and which legs 1–3 already exercise for nginx's port
+  on the same tunnel type.
+  So this is a low-risk gap, not a live hole — worth closing when a tunnel session happens
+  anyway, and NOT worth its own stack-down run. The cheap form is also cheaper than the row
+  says: point the existing fixture's tunnel at a recorded override port via `origin_port`,
+  rather than standing up a whole FrankenPHP site.
+  - [ ] Deliberately NOT built unrun. `tunnel_exposure_check`'s own header records two legs
+    that were deleted for passing without testing anything ("on a fixture this expensive,
+    'we saw it work' is the default failure mode"), so adding a leg nobody has run would be
+    the exact mistake that file already paid for.
 - [x] **No wk-check asserts the FrankenPHP PHP picker is disabled** ✓ 21 Aug 2026 —
   `scripts/wk-checks/phppicker.js`, in `run-all`. Asserts the DISABLED attribute, that the
   option names FrankenPHP's embedded build, that it does NOT show the stored 8.1 (which is
