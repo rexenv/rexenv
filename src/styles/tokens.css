@@ -64,8 +64,17 @@
   --rex-link: #9cc4e8; /* mono URL links (e.g. tunnel public URL) */
 
   /* ── Brand (royal violet — used sparingly) ── */
-  --rex-brand: #7c5cff;
-  --rex-brand-hover: #8e72ff;
+  /* Darkened 24 Aug 2026 so white ON it clears AA. `wk-checks/contrast.js`
+     measured white-on-brand at 4.35:1 — the PRIMARY button (New site, Magic
+     Login, Add blueprint) and the mail count badge — which L0 cannot see,
+     because brand is not a surface token and no text/surface pairing covers it.
+     The value is the LIGHT theme's own --rex-brand, so both themes now share one
+     brand hex instead of two; white on it is 5.57:1. The old #7c5cff becomes the
+     hover, and the hover was the worse half all along: white on #8e72ff was
+     3.50:1, a state the render check cannot reach and nothing else was
+     measuring. */
+  --rex-brand: #6b4ae8;
+  --rex-brand-hover: #7456ef;
   --rex-brand-strong: #6b4ae8;
   --rex-brand-light: #9277ff;
   --rex-brand-tint: #c9bcff; /* crown highlight / on-violet text accents */
@@ -242,7 +251,13 @@
   --rex-brand: #6b4ae8;
   --rex-brand-hover: #7c5cff;
   --rex-brand-strong: #5a38d6;
-  --rex-brand-light: #7c5cff;
+  /* "light" names the ROLE (the brand as text/accent), not a lighter hue — and in
+     this theme the two point opposite ways. It was #7c5cff, a LIGHTER violet than
+     this theme's own --rex-brand, which reads 4.35:1 on white: the "Update to
+     6.0.1" action label, found by `wk-checks/contrast.js` 24 Aug 2026 as the last
+     pair standing after the others were repaid. On a light background the
+     accent has to go DARKER, not lighter. 5.57:1 on white now. */
+  --rex-brand-light: #6b4ae8;
   --rex-brand-tint: #5a3fd0; /* on-tint text accents (was pale lavender) */
 
   /* ── Status (darkened for AA text on light surfaces) ── */
@@ -255,8 +270,8 @@
   --rex-warning-bright: #8a5d00;
 
   /* ── Accent hues (darkened for AA chip/badge text on light) ── */
-  --rex-accent-blue: #2e6e93; /* 1% darker than the comp: #2e6f94 read 4.49:1 on surface-3, one hundredth under AA (#337) */
-  --rex-accent-red: #b63d37; /* 4.41:1 on surface-3 before — the same one-hundredths miss as accent-blue below (#372) */
+  --rex-accent-blue: #2c698d; /* darkened AGAIN 24 Aug 2026: #2e6e93 was tuned on surface-3 and read 4.36:1 on the letter TILE, a lighter background nobody had computed. 4.68:1 there now (#337) */
+  --rex-accent-red: #ae3a34; /* darkened AGAIN 24 Aug 2026: #b63d37 read 4.48:1 on the letter TILE — tuned on surface-3, measured on a background two hundredths lighter. 4.82:1 there now (#372) */
   --rex-accent-periwinkle: #5a5fae;
   --rex-accent-teal: #167562; /* 4.27:1 before, and it was NOT icon-only: Mail avatars and the Services group title read it as text */
 

@@ -763,7 +763,7 @@ export function Sites() {
       {!isLoading && sites.length > 0 && (
         <div className="flex flex-none items-center justify-between px-[22px] pb-[9px] pt-[14px]">
           <FilterTabs value={filter} onChange={setFilter} counts={counts} />
-          <div className="flex items-center gap-[18px] pr-2 font-mono text-[0.625rem] uppercase tracking-[0.1em] text-[var(--rex-placeholder)]">
+          <div className="flex items-center gap-[18px] pr-2 font-mono text-[0.625rem] uppercase tracking-[0.1em] text-rex-text-muted">
             <span className="w-[118px]">Stack</span>
             <span className="w-[88px]">Status</span>
           </div>
@@ -937,7 +937,7 @@ export function ScratchGroupHeading({ count, tight }: { count: number; tight?: b
   return (
     <div className={cn("flex items-center gap-2 px-3 pb-1 pt-5", tight && "pt-1")}>
       <Bot className="h-3.5 w-3.5 flex-none text-rex-text-dim" strokeWidth={1.8} />
-      <span className="font-mono text-[0.625rem] uppercase tracking-[0.1em] text-[var(--rex-placeholder)]">
+      <span className="font-mono text-[0.625rem] uppercase tracking-[0.1em] text-rex-text-muted">
         Agent scratch
       </span>
       <span className="font-mono text-[0.625rem] text-rex-text-muted">{count}</span>

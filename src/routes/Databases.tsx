@@ -211,7 +211,7 @@ export function AdminerVersionCard() {
             disabled={update.isPending}
             onClick={() => update.mutate(st.updatable!)}
             title={`Download Adminer ${st.updatable}, check it still binds to rexenv's login gate and frame protections, and restage the console onto it.`}
-            className="text-brand hover:text-brand"
+            className="text-brand-light hover:text-brand-light"
           >
             {update.isPending ? "…" : `Update to ${st.updatable}`}
           </Button>

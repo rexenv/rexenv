@@ -38,30 +38,22 @@ const THEMES = ["light", "dark"];
 // the debt was repaid and the entry outlived it, which is how an allow-list
 // quietly becomes permanent.
 const KNOWN = [
-  {
-    theme: "dark", fg: "rgb(255, 255, 255)", bg: "rgb(124, 92, 255)", ratio: 4.35,
-    why: "white on --rex-brand: the PRIMARY button (New site, Magic Login, Add blueprint) and the mail count badge. Brand is not a surface token, so no L0 pairing covers it. Fixing it means moving the brand colour, which is a design decision and not a check's to make.",
-  },
-  {
-    theme: "dark", fg: "rgb(124, 92, 255)", bg: "rgb(21, 23, 29)", ratio: 4.12,
-    why: "--rex-brand as TEXT on surface-2 (the 'Update to 6.0.1' action). Same token, other direction.",
-  },
-  {
-    theme: "light", fg: "rgb(166, 172, 184)", bg: "rgb(245, 246, 248)", ratio: 2.11,
-    why: "--rex-placeholder on the Sites list COLUMN HEADERS ('Stack', 'Status'). The token is documented as 'unbuilt-screen placeholder icon/label' and is doing duty as real UI text; the spans carry no colour class of their own, so the colour is inherited and invisible to a class-pair scan. The worst pair on screen, and the one most likely to be a mistake rather than a trade.",
-  },
-  {
-    theme: "dark", fg: "rgb(79, 86, 99)", bg: "rgb(13, 14, 18)", ratio: 2.61,
-    why: "the same column headers in dark.",
-  },
-  {
-    theme: "light", fg: "rgb(46, 110, 147)", bg: "rgb(219, 229, 236)", ratio: 4.37,
-    why: "--rex-accent-blue on the WordPress letter TILE. The token was darkened on 16 Aug for exactly this reason — but against surface-3, and the tile is a tinted background L0 never computed.",
-  },
-  {
-    theme: "light", fg: "rgb(182, 61, 55)", bg: "rgb(242, 225, 226)", ratio: 4.48,
-    why: "--rex-accent-red on the Laravel letter tile: the same one-hundredths miss on the same uncomputed background.",
-  },
+  // EMPTY, and that is the point: all six pairs recorded on 21 Aug were repaid on
+  // 24 Aug, and this list is what made the repayment visible. A recorded pair that
+  // starts passing FAILS this check — so each fix arrived with the ratchet
+  // demanding its entry be deleted, one line at a time, instead of the list
+  // quietly becoming permanent.
+  //
+  // What they were, so the next reader knows what this cost:
+  //   white on --rex-brand 4.35 and brand-as-text 4.12 (dark) — the brand hex is
+  //     now the light theme's, so both themes share one, and action labels moved
+  //     to --rex-brand-light;
+  //   --rex-placeholder on the Sites column headers 2.11 / 2.61 — a token
+  //     documented for decorative unbuilt-screen text, doing duty as real UI
+  //     labels; the headers use --rex-text-muted now and the token keeps its job;
+  //   --rex-accent-blue 4.37 and --rex-accent-red 4.48 on the letter tiles — both
+  //     had been darkened once already, against surface-3, and measured here on a
+  //     lighter background nobody had computed.
 ];
 const key = (t, fg, bg) => `${t}|${fg}|${bg}`;
 

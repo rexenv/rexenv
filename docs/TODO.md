@@ -821,6 +821,14 @@ visible before the verdict contract landed this morning.
 
 ### Promoted out of ticked rows (21 Aug 2026)
 
+**All three were fixed 24 Aug 2026 — ledger #395, `contrast.js`'s `KNOWN` list is EMPTY.**
+Four of the six pairs turned out to be the wrong TOKEN rather than a wrong colour: the
+column headers were using a token documented for decorative placeholder text, and
+`--rex-brand-light` names a ROLE that pointed the wrong way in the light theme. Both themes
+share one brand hex now. The ratchet is what made it finishable — a repaid pair FAILS the
+check, so each fix arrived with the tool demanding its entry be deleted, and it caught the
+regression the brand change caused (brand-as-text 4.12 → 3.22) before it shipped.
+
 Open work that was living inside `[x]` blocks. It is here because the archive is not a
 place to keep unfinished things.
 
@@ -834,16 +842,16 @@ place to keep unfinished things.
   **It found six failing pairs on its first run, and every one is a pair L0 cannot see** —
   `every_text_on_surface_pairing_meets_wcag_aa` computes text tokens against SURFACE
   tokens, and none of these is text-on-surface:
-  - [ ] **`--rex-placeholder` on the Sites list column headers — 2.11:1 light, 2.61:1
+  - [x] **`--rex-placeholder` on the Sites list column headers — 2.11:1 light, 2.61:1
     dark.** The worst on screen by a distance, and the likeliest to be a mistake rather
     than a trade: the token is documented as "unbuilt-screen placeholder icon/label" and
     is doing duty as real UI text. The spans carry no colour class of their own, so the
     colour is inherited — invisible to any class-pair scan.
-  - [ ] **White on `--rex-brand` — 4.35:1.** The PRIMARY button (New site, Magic Login,
+  - [x] **White on `--rex-brand` — 4.35:1.** The PRIMARY button (New site, Magic Login,
     Add blueprint) and the mail count badge; plus brand-as-text on surface-2 at 4.12:1.
     Fixing it moves the brand colour, which is a design decision and explicitly not a
     check's to make.
-  - [ ] **`--rex-accent-blue` 4.37:1 and `--rex-accent-red` 4.48:1 on the letter TILES.**
+  - [x] **`--rex-accent-blue` 4.37:1 and `--rex-accent-red` 4.48:1 on the letter TILES.**
     Both tokens were darkened on 16 Aug for exactly this reason — but computed against
     surface-3, and a tile is a tinted background nobody computed.
   Recorded as a ratchet rather than fixed, the same lifecycle the 16 Aug sweep used: the

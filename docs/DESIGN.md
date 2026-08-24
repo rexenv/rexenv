@@ -57,6 +57,21 @@ the shipped UI toward one.
   variant reads at 4.1–4.4:1 there. `text-white`/`bg-black/50` stay allowed: the brand
   button's label, the toggle knob and the dialog scrim are deliberately the same colour
   in both themes.
+  **A token name states a ROLE, and a role can point opposite ways per theme** (24 Aug
+  2026, ledger #395). `--rex-brand-light` is the brand AS TEXT, not a lighter violet: in
+  the dark theme that means lighter than the brand, in the light theme DARKER, and it had
+  the light-theme value pointing the wrong way at 4.35:1 on white. The same shape cost
+  more elsewhere the same day — `--rex-placeholder` is documented for decorative
+  unbuilt-screen text and was colouring the Sites list's real column headers at 2.11:1.
+  **Four of the six AA failures found that week were the wrong token doing a job it was
+  not for, not a wrong colour**, and the fix in each case was to use the right token
+  rather than to darken the one in the way, which would have dragged its real consumers
+  with it.
+  **A background that is not a surface token has nobody computing it.** The two letter-tile
+  accents had each been darkened once already, against `surface-3`, and still failed on the
+  tile: a tinted background composited from an `-bg` token, which no text/surface pairing
+  covers. `wk-checks/contrast.js` reads what a pixel actually is — painted ancestor, alpha,
+  the AA size threshold — which is why it sees these and L0 cannot.
 - **An embedded surface follows the app's theme, not the OS's.** The Adminer console
   renders in its own process off its own stylesheet, so it defaulted to
   `prefers-color-scheme` — and a rexenv set to Light framed a dark console, which reads

@@ -431,7 +431,7 @@ function PhpVersionRow({
                 disabled={busy}
                 onClick={onUpdate}
                 title={`Download PHP ${v.updatable}, restart the ${v.minor} pool onto it, and put it back on ${v.patch} if it does not come up. Your sites keep their ${v.minor} setting either way.`}
-                className="text-brand hover:text-brand"
+                className="text-brand-light hover:text-brand-light"
               >
                 {busy ? "…" : `Update to ${v.updatable}`}
               </Button>
