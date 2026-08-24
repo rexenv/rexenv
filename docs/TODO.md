@@ -755,7 +755,12 @@ cause: a commit did the work and the surrounding claim stayed as it was.
       Read-only: `adminer_version`, `php_upstream_check`, `db_version_*`.
       Denied: the signed manifest, its signature, its rollback **serial**, and the MCP
       toggles — each refusal saying why, since "denied" alone teaches nothing.
-      ◐ In-app verify owed: the running app predates the arms.
+      ✓ **VERIFIED live 24 Aug 2026**, all four classes: the serial/manifest/signature/MCP
+      refusals each with their reason, `adminer_version` readable but not writable, an
+      invented key denied in both directions, and `preferred_editor` round-tripped.
+      **The one that proves the design**: `config set default_tld com` was refused by
+      `set_default_tld`'s own policy, not by the allow-list — so writes really do go through
+      the validating setter instead of a re-implementation. Every value restored.
   - [x] **Protocol-version handshake** 🟡 ✓ 23 Aug 2026 — **answered differently**, ledger
     #386, plant-proven both ways.
     A protocol integer answers "is the wire contract compatible", which is not the question:
