@@ -1011,6 +1011,11 @@ pub fn run() {
             commands::mcp::agent_activity,
             #[cfg(unix)]
             commands::mcp::agent_activity_clear,
+            commands::mcp::agent_db_requests,
+            commands::mcp::agent_db_grants,
+            commands::mcp::agent_db_grant,
+            commands::mcp::agent_db_deny,
+            commands::mcp::agent_db_revoke,
             commands::tunnels::start_tunnel,
             commands::tunnels::stop_tunnel,
             commands::tunnels::tunnels_status,

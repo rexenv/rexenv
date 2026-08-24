@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { cn } from "@/lib/utils";
 import { AgentActivityFeed } from "./AgentActivityFeed";
+import { AgentDbGrants } from "./AgentDbGrants";
 
 /** The connect stanza for editors that read an MCP JSON config (Cursor, VS Code
  *  Copilot). `rex mcp` is the same dumb pipe `claude mcp add` uses. */
@@ -131,7 +132,9 @@ export function AgentsMcpCard() {
         enabled. It can look at your sites — their status and their logs — and it can create
         disposable &ldquo;scratch&rdquo; sites of its own, put code into them and run it. It cannot
         change or delete the sites you made yourself: that refusal lives in rexenv, not in the
-        agent's good behaviour. But code running in a scratch site runs as you, with your files and
+        agent's good behaviour. It can ask to read one of your sites' databases,
+        and only you can say yes — each site separately, expiring on its own, revocable here. But code running in a
+        scratch site runs as you, with your files and
         your permissions — the same power over this machine as code you run yourself. rexenv never
         asks for your administrator password on an agent's behalf, and every call an agent makes is
         listed below. Turn this off when you're not using it.
@@ -219,6 +222,8 @@ export function AgentsMcpCard() {
           </p>
         </details>
       </div>
+
+      <AgentDbGrants />
 
       {/* Activity — every agent action, none silent. */}
       <div className="mt-3.5 border-t border-rex-border-subtle pt-3.5">

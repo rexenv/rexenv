@@ -253,3 +253,132 @@ pub fn agent_activity_clear(state: State<'_, AppState>) -> Result<usize> {
     let conn = db(&state)?;
     feed::clear(&conn)
 }
+
+// ── Agent database grants (M3 stage 4) ───────────────────────────────────────
+//
+// The consent surface. `db_query`'s refusal records the ask; these four
+// commands are how a human answers it and how they see, later, what they
+// answered. Everything here is USER-driven — there is no IPC an agent can
+// reach, and no command that grants without a site id and a client name the
+// user was actually shown.
+
+/// The asks an agent has made and nobody has answered yet.
+#[tauri::command]
+pub fn agent_db_requests(
+    state: State<'_, AppState>,
+) -> Result<Vec<crate::core::agent_db::GrantRequest>> {
+    let reqs = state
+        .agent_db_requests
+        .lock()
+        .map_err(|_| crate::error::Error::Other("the agent request list is poisoned".into()))?;
+    Ok(reqs.list().to_vec())
+}
+
+/// Every grant, live and dead, newest first — the answer to "what could that
+/// agent see, and until when".
+#[tauri::command]
+pub fn agent_db_grants(
+    state: State<'_, AppState>,
+) -> Result<Vec<crate::state::store::AgentDbGrant>> {
+    let conn = db(&state)?;
+    crate::state::store::list_agent_db_grants(&conn)
+}
+
+/// Approve one ask: create the read-only principal on the engine and record the
+/// grant with its expiry.
+///
+/// **The principal is created HERE, not on first use.** A grant row whose
+/// database account does not exist would be a UI saying access is live while
+/// every query fails, and the user would have no way to tell which half is
+/// wrong. Provisioning first also means the failure the user sees is "the
+/// database engine is not running" at the moment they clicked, which is the
+/// moment they can do something about it.
+#[tauri::command]
+pub async fn agent_db_grant(
+    state: State<'_, AppState>,
+    site_id: String,
+    client: String,
+) -> Result<crate::state::store::AgentDbGrant> {
+    use crate::core::agent_db::{self, Principal, GRANT_DAYS};
+
+    let site = {
+        let conn = db(&state)?;
+        crate::state::store::get_site(&conn, &site_id)?
+            .ok_or_else(|| crate::error::Error::Other(format!("no site with id {site_id:?}")))?
+    };
+    let engine = crate::core::db::DbEngine::from_site(site.db_engine);
+    let version = super::database::effective_db_version(&state, engine)?;
+    let client_bin = engine
+        .cached_sql_client(state.platform.as_ref(), &version)
+        .ok_or_else(|| {
+            crate::error::Error::Other(format!(
+                "{}'s client is not installed, so the read-only account cannot be created",
+                engine.label()
+            ))
+        })?;
+    let user = agent_db::principal_name(Principal::ReadOnly, &site.domain);
+    agent_db::provision(&client_bin, engine.port(), Principal::ReadOnly, &site.db_name, &user)?;
+
+    let conn = db(&state)?;
+    let grant = crate::state::store::grant_agent_db(
+        &conn,
+        &uuid::Uuid::new_v4().to_string(),
+        &site_id,
+        &client,
+        &user,
+        GRANT_DAYS,
+    )?;
+    drop(conn);
+    if let Ok(mut reqs) = state.agent_db_requests.lock() {
+        reqs.answer(&site_id, &client);
+    }
+    Ok(grant)
+}
+
+/// Deny one ask without granting anything. Separate from `agent_db_grant`
+/// because a denial is an answer the user gave, and leaving the prompt up until
+/// it happens to be granted would make "no" the one response the UI cannot
+/// express.
+#[tauri::command]
+pub fn agent_db_deny(state: State<'_, AppState>, site_id: String, client: String) -> Result<()> {
+    let mut reqs = state
+        .agent_db_requests
+        .lock()
+        .map_err(|_| crate::error::Error::Other("the agent request list is poisoned".into()))?;
+    reqs.answer(&site_id, &client);
+    Ok(())
+}
+
+/// Revoke a live grant: stop the access, then record when it stopped.
+///
+/// **In that order, and it matters.** Dropping the account first means a
+/// revocation that fails halfway leaves access already closed and a row that
+/// still says live — visibly wrong, and safe. Recording first would leave a row
+/// saying "revoked" over an account that can still read, which is the same
+/// wrongness pointed the other way: a user told they are safe when they are
+/// not.
+#[tauri::command]
+pub async fn agent_db_revoke(state: State<'_, AppState>, id: String) -> Result<()> {
+    let grant = {
+        let conn = db(&state)?;
+        crate::state::store::get_agent_db_grant(&conn, &id)?
+            .ok_or_else(|| crate::error::Error::Other(format!("no grant with id {id:?}")))?
+    };
+    let site = {
+        let conn = db(&state)?;
+        crate::state::store::get_site(&conn, &grant.site_id)?
+    };
+    // A grant whose site is already gone has nothing to drop — the site delete
+    // took the database and its accounts with it. Recording the revocation is
+    // still right: the row is evidence, and evidence should say it ended.
+    if let Some(site) = site {
+        let engine = crate::core::db::DbEngine::from_site(site.db_engine);
+        let version = super::database::effective_db_version(&state, engine)?;
+        if let Some(client_bin) = engine.cached_sql_client(state.platform.as_ref(), &version) {
+            crate::core::agent_db::deprovision(&client_bin, engine.port(), &grant.db_user)?;
+        }
+    }
+    let conn = db(&state)?;
+    crate::state::store::revoke_agent_db_grant(&conn, &id)?;
+    Ok(())
+}

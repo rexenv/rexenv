@@ -158,6 +158,66 @@ pub fn drop_sql(user: &str) -> String {
     sql
 }
 
+/// One agent's outstanding ASK to read a real site's database.
+///
+/// **Session-scoped and in memory on purpose.** A request is about a
+/// conversation happening now: an agent asked, the user sees it, the user
+/// answers. Persisting it would mean a request from last Tuesday could be
+/// approved today, granting something nobody remembers being asked — a consent
+/// prompt whose context is gone is not consent. Losing these on quit is the
+/// correct behaviour, not a limitation: the agent asks again, and the user is
+/// asked again while they can still see why.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GrantRequest {
+    pub site_id: String,
+    pub domain: String,
+    pub client: String,
+}
+
+/// The outstanding asks, newest first, deduplicated by (site, client).
+///
+/// A retry loop must not become a list of a hundred identical prompts — the
+/// same agent asking for the same site twice is one question, and answering it
+/// answers both.
+#[derive(Debug, Default)]
+pub struct GrantRequests(Vec<GrantRequest>);
+
+impl GrantRequests {
+    /// Record an ask. Returns whether it was NEW, so a caller can decide
+    /// whether anything needs surfacing.
+    pub fn ask(&mut self, req: GrantRequest) -> bool {
+        if self.0.iter().any(|r| r.site_id == req.site_id && r.client == req.client) {
+            return false;
+        }
+        self.0.insert(0, req);
+        // A cap, because the list is driven by whatever an agent sends. Without
+        // one, an agent asking about invented site ids is a way to grow this
+        // without bound in the app's memory, and to bury a real ask under noise.
+        self.0.truncate(MAX_REQUESTS);
+        true
+    }
+
+    pub fn list(&self) -> &[GrantRequest] {
+        &self.0
+    }
+
+    /// Clear one ask — what answering it (either way) does. Denying and
+    /// granting both remove it, because both are answers.
+    pub fn answer(&mut self, site_id: &str, client: &str) {
+        self.0.retain(|r| !(r.site_id == site_id && r.client == client));
+    }
+}
+
+/// The most outstanding asks kept. Small on purpose: this is a prompt list a
+/// human reads, not a log.
+pub const MAX_REQUESTS: usize = 20;
+
+/// How long a granted read lasts. The number in the consent dialog's own words
+/// — "This access expires in 7 days" — so it lives beside nothing else that
+/// could disagree with it.
+pub const GRANT_DAYS: u32 = 7;
+
 /// Who an agent may connect AS for one `db_query` call, decided from recorded
 /// facts alone.
 ///
@@ -229,6 +289,50 @@ pub fn deprovision(client: &crate::core::db::SqlClient, port: u16, user: &str) -
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **An agent's retry loop is one prompt, not a hundred — and both answers
+    /// clear it.**
+    ///
+    /// The ask is recorded on the REFUSAL path, so an agent that keeps trying
+    /// keeps hitting the same question. If each attempt appended, a user would
+    /// come back to a wall of identical rows and the real ask underneath
+    /// somebody else's noise; and since the list is driven entirely by what an
+    /// agent sends, an unbounded one is also a way to grow the app's memory
+    /// from outside.
+    #[test]
+    fn repeated_asks_are_one_prompt_and_answering_either_way_clears_it() {
+        let mut reqs = GrantRequests::default();
+        let ask = |site: &str, client: &str| GrantRequest {
+            site_id: site.into(),
+            domain: format!("{site}.rex"),
+            client: client.into(),
+        };
+
+        assert!(reqs.ask(ask("s1", "Claude Code")), "the first ask is new");
+        assert!(!reqs.ask(ask("s1", "Claude Code")), "a retry is the same question");
+        assert_eq!(reqs.list().len(), 1);
+
+        // A different client asking about the same site IS a different
+        // question — that is the re-consent rule, seen from the prompt side.
+        assert!(reqs.ask(ask("s1", "Another Agent")));
+        // …and so is the same client asking about a different site.
+        assert!(reqs.ask(ask("s2", "Claude Code")));
+        assert_eq!(reqs.list().len(), 3);
+        assert_eq!(reqs.list()[0].site_id, "s2", "newest first");
+
+        // Denying clears it, exactly as granting does: a denial is an answer,
+        // and a prompt that only disappears on approval makes "no" the one
+        // response the UI cannot express.
+        reqs.answer("s1", "Another Agent");
+        assert_eq!(reqs.list().len(), 2);
+        assert!(!reqs.list().iter().any(|r| r.client == "Another Agent"));
+
+        // The cap holds against an agent inventing site ids.
+        for i in 0..100 {
+            reqs.ask(ask(&format!("bulk{i}"), "Noisy Agent"));
+        }
+        assert_eq!(reqs.list().len(), MAX_REQUESTS, "the prompt list grew without bound");
+    }
 
     /// **A real site is unreadable without a live grant, and a scratch site
     /// never needs one — decided from the RECORDED ownership fact.**

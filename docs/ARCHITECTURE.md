@@ -759,8 +759,11 @@ IPC surface — which is how a reader ends up designing against a system with on
   native MySQL driver (`core::agent_query`) and never the bundled client — that client
   interprets `system`/`\!`/`source`/`tee` before the server sees a statement, so feeding
   a `GRANT SELECT` principal through it would be shell-exec and file-write on a real
-  site. A source guard holds that apart. **Nothing creates a grant yet**: the consent
-  dialog is M3 stage 4, so today every real site refuses and only scratch sites answer.
+  site. A source guard holds that apart. The grant is created by the USER, in
+  Settings → AI agents: `db_query`'s refusal records the ask (there is no tool that asks
+  without being refused first), the prompt names what is actually in reach — password
+  hashes, tokens in `wp_options` — and the grant expires in 7 days and is revocable
+  there. Requests live in memory only: a prompt whose context is gone is not consent.
 - **The read-only boundary is a TYPE, and its scope is the handler.** A read handler
   receives a `ReadCtx` (`mcp_server/readctx.rs`) — one private `&AppState`, five read
   methods, no mutating method to reach. A source scan over both `tools.rs` and

@@ -1716,8 +1716,19 @@ first:
       confirm a running engine REFUSES `INSERT`, `system` and `INTO OUTFILE`.
       Blocked on stage 4, because until a grant can exist no real site is
       reachable to try it against.
-    - [ ] Stage 4 — the T1 consent dialog (`PLAN-mcp-server.md` §529-540) plus the
-      grant list/revoke UI the ledger was built to feed.
+    - [x] **Stage 4 — the consent surface.** ✓ `agent_db::GrantRequests` (in
+      memory, session-scoped: a prompt whose context is gone is not consent) +
+      five `commands/mcp.rs` commands + `components/mcp/AgentDbGrants.tsx`. The
+      ask is recorded on `db_query`'s REFUSAL path, so no call can ask without
+      being told no first. Retries are one prompt; denying is a real answer;
+      approval provisions the account before recording the grant and revocation
+      drops it before recording — both orders leave a half-failure claiming MORE
+      access than exists, never less. Ledger #402. The consent copy is guarded
+      like the enable-moment copy and plant-proved. **The enable-moment
+      paragraph also gained the database sentence** — its "cannot change or
+      delete your own sites" claim stayed TRUE, which is why this had to be
+      noticed rather than caught: a paragraph that is not false can still leave
+      a user unaware their database is reachable.
   - [ ] **The MCP human gates have never been recorded as run, and MCP has shipped in
     four releases.** `docs/SMOKE-TEST.md` §M2a/§M2b carry 14 unticked steps and FOUR
     HOLDs — step 4 (disabling really tears the socket down), step 8 (the tier boundary in

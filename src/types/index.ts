@@ -1421,6 +1421,31 @@ export type AgentOutcome = "ok" | "error" | "denied" | "unknown-tool" | "bad-req
  *  but labelled as ours — and excluded from the header's agent status line. */
 export type FeedActor = "agent" | "rexenv";
 
+/** An agent's outstanding ask to read one real site's database (mirrors
+ *  `core::agent_db::GrantRequest`). Session-scoped in the backend: a prompt
+ *  whose context is gone is not consent, so these do not survive a quit. */
+export interface AgentDbRequest {
+  siteId: string;
+  domain: string;
+  /** The MCP client's self-reported name — the "who" in the consent question. */
+  client: string;
+}
+
+/** One recorded database grant (mirrors `state::store::AgentDbGrant`). Rows are
+ *  KEPT after expiry and revocation: the list answers "what could that agent
+ *  see, and until when", which a deleted row cannot. */
+export interface AgentDbGrant {
+  id: string;
+  siteId: string;
+  client: string;
+  /** The database account the grant created, so a revoke drops exactly it. */
+  dbUser: string;
+  grantedAt: string;
+  /** Stored, never a duration added at read time — the dialog promised a date. */
+  expiresAt: string;
+  revokedAt: string | null;
+}
+
 export interface AgentAction {
   id: number;
   at: string;

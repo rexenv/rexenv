@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AdminerStatus, AppInfo, AgentAction, Blueprint, BrowserApp, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoGitOp, RepoJobState, RepoKind, RepoPullRef, RepoStashEntry, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpUpdateOutcome, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteProvisionState, SiteRepoInfo, SiteResources, SiteServing, ResolverPlan, ScratchPackage, TeardownReport, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser } from "@/types";
+import type { AdminerStatus, AppInfo, AgentAction, AgentDbGrant, AgentDbRequest, Blueprint, BrowserApp, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoGitOp, RepoJobState, RepoKind, RepoPullRef, RepoStashEntry, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpUpdateOutcome, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteProvisionState, SiteRepoInfo, SiteResources, SiteServing, ResolverPlan, ScratchPackage, TeardownReport, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser } from "@/types";
 import {
   mockAppInfo,
   mockDatabases,
@@ -2011,6 +2011,35 @@ export async function mcpSetEnabled(enable: boolean): Promise<McpStatus> {
 export async function agentActivity(siteId: string | null, limit: number): Promise<AgentAction[]> {
   if (!isTauri()) return [];
   return invoke<AgentAction[]>("agent_activity", { siteId, limit });
+}
+
+/** The asks an agent has made to read a real site's database that nobody has
+ *  answered yet. Recorded on `db_query`'s REFUSAL path, so there is no way for
+ *  an agent to ask without first being told no. */
+export async function agentDbRequests(): Promise<AgentDbRequest[]> {
+  if (!isTauri()) return [];
+  return invoke<AgentDbRequest[]>("agent_db_requests");
+}
+
+/** Every database grant, live and dead, newest first. */
+export async function agentDbGrants(): Promise<AgentDbGrant[]> {
+  if (!isTauri()) return [];
+  return invoke<AgentDbGrant[]>("agent_db_grants");
+}
+
+/** Approve one ask: create the read-only account and record the grant. */
+export async function agentDbGrant(siteId: string, client: string): Promise<AgentDbGrant> {
+  return invoke<AgentDbGrant>("agent_db_grant", { siteId, client });
+}
+
+/** Answer one ask with "no". Grants nothing and clears the prompt. */
+export async function agentDbDeny(siteId: string, client: string): Promise<void> {
+  return invoke<void>("agent_db_deny", { siteId, client });
+}
+
+/** Revoke a live grant — drops the account first, then records when it stopped. */
+export async function agentDbRevoke(id: string): Promise<void> {
+  return invoke<void>("agent_db_revoke", { id });
 }
 
 /** Clear the feed — the user's own record, theirs to wipe. Returns rows removed. */

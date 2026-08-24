@@ -939,9 +939,30 @@ fn db_query<'a>(
         acted.set(&site);
 
         let engine = crate::core::db::DbEngine::from_site(site.db_engine);
-        let (principal, user) = {
+        let decision = {
             let conn = ctx.db()?;
-            crate::core::agent_db::authorize(&conn, &site.id, &site.domain, is_scratch, ctx.client)?
+            crate::core::agent_db::authorize(&conn, &site.id, &site.domain, is_scratch, ctx.client)
+        };
+        let (principal, user) = match decision {
+            Ok(v) => v,
+            Err(e) => {
+                // The refusal is also the ASK. Recording it here — on the
+                // refusal path, not on some separate "request access" tool — is
+                // what makes consent impossible to route around: there is no
+                // call an agent can make that asks WITHOUT being refused first,
+                // so the user is never prompted about access that was already
+                // granted by something else.
+                if !is_scratch {
+                    if let Ok(mut reqs) = ctx.state.agent_db_requests.lock() {
+                        reqs.ask(crate::core::agent_db::GrantRequest {
+                            site_id: site.id.clone(),
+                            domain: site.domain.clone(),
+                            client: ctx.client.to_string(),
+                        });
+                    }
+                }
+                return Err(e);
+            }
         };
 
         // Provisioning is root work and happens per call: the principal may

@@ -1407,6 +1407,22 @@ mod tests {
                 "misses its own mail, never that it sees yours",
                 "WHICH WAY mail fails when the stamp is overridden (fail-closed, in plain words)",
             ),
+            // M3. `db_query` makes a REAL site's data reachable for the first
+            // time — read-only, per-site, and only with the user's consent. The
+            // sentence above about what an agent cannot do stayed TRUE (reading
+            // is not changing or deleting), which is exactly why this had to be
+            // added rather than caught: a paragraph that is not false can still
+            // leave the user unaware that their database is reachable at all,
+            // and "still true" is the state in which nobody rewrites anything.
+            (
+                "ask to read one of your sites' databases",
+                "that a REAL site's data is reachable at all (M3) — the paragraph stayed true \
+                 while becoming incomplete, which is the harder drift to notice",
+            ),
+            (
+                "only you can say yes",
+                "WHO decides — the access exists only through a consent the agent cannot give itself",
+            ),
         ];
         if scratch::registry().is_empty() {
             return; // unreachable in practice — see the note above
@@ -1418,6 +1434,31 @@ mod tests {
                  \"{phrase}\" — a sentence that is now FALSE, sitting where the user decides. \
                  Rewrite it to say what an agent can actually do.",
                 scratch::registry().len()
+            );
+        }
+        // The consent DIALOG's own copy (M3), pinned for the reason the two
+        // above are: it is the moment a user hands over a real site's data, and
+        // the obvious edit to a long prompt is to shorten it. The plan drafted
+        // this wording deliberately unflattering — naming password hashes and
+        // API keys rather than saying "read access" — because a prompt that
+        // undersells what it is asking for produces a decision the user
+        // believes they understood. Trimming it back to "Allow X to read Y?"
+        // would pass every other check in this file.
+        const CONSENT: &str = include_str!("../../src/components/mcp/AgentDbGrants.tsx");
+        const CONSENT_MUST_SAY: &[(&str, &str)] = &[
+            ("password hashes", "WHAT is actually in reach, in the words that make it concrete"),
+            ("API keys or tokens", "the second concrete thing — a trim usually keeps one and drops this"),
+            ("cannot modify or delete", "the bound that makes this a read, and the reason it is grantable"),
+            ("expires in 7 days", "that the access ENDS on its own — the promise the stored expiry keeps"),
+            ("revoke it", "that the decision is reversible, at the place they are deciding"),
+            ("Don't allow", "that NO is an available answer, not just closing the prompt"),
+        ];
+        for (phrase, why) in CONSENT_MUST_SAY {
+            assert!(
+                CONSENT.contains(phrase),
+                "the database-consent prompt no longer tells the user {why} (looked for \
+                 \"{phrase}\"). This is the moment a real site's data is handed over; the \
+                 wording is deliberately concrete, and shortening it is the drift to expect."
             );
         }
         for (phrase, why) in MUST_SAY_WHEN_EXECUTING {
