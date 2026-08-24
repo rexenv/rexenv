@@ -744,11 +744,23 @@ IPC surface — which is how a reader ends up designing against a system with on
   test pins that binding needs no ambient runtime.
 - **Two registries, and the registry IS the capability.** `mcp_server/tools.rs` holds the
   three read-only tools (`list_sites`, `site_status`, `tail_log`); `mcp_server/scratch.rs`
-  holds the eight executing ones (`scratch_create_site`, `scratch_delete_site`,
-  `scratch_add_package`, `scratch_sync_package`, `wp_run`, `set_php_version`, `mail_list`,
-  `mail_get`). What a tool may do is decided by **which registry its name came from** —
+  holds the nine executing ones (`scratch_create_site`, `scratch_delete_site`,
+  `scratch_add_package`, `scratch_sync_package`, `wp_run`, `set_php_version`, `db_query`,
+  `mail_list`, `mail_get`). What a tool may do is decided by **which registry its name came from** —
   never by a field the tool sets about itself. A guard proves the two are disjoint and, on
   a collision, names the offender and the file it belongs in.
+- **`db_query` is the one tool that reads a site the agent does not own, and it is the
+  only one behind a recorded grant** (M3). Ownership decides the principal, not the
+  domain: a scratch site the agent created gets `rex_agent_*` with `ALL` on its own
+  disposable schema, and the USER's own site gets `rex_ro_*` with `SELECT`, only while
+  `agent_db_grants` holds a live, unrevoked, unexpired grant for THIS client. The
+  decision is one pure function (`core::agent_db::authorize`) that runs before anything
+  is opened, so a refusal never touches the engine. The query itself goes through a
+  native MySQL driver (`core::agent_query`) and never the bundled client — that client
+  interprets `system`/`\!`/`source`/`tee` before the server sees a statement, so feeding
+  a `GRANT SELECT` principal through it would be shell-exec and file-write on a real
+  site. A source guard holds that apart. **Nothing creates a grant yet**: the consent
+  dialog is M3 stage 4, so today every real site refuses and only scratch sites answer.
 - **The read-only boundary is a TYPE, and its scope is the handler.** A read handler
   receives a `ReadCtx` (`mcp_server/readctx.rs`) — one private `&AppState`, five read
   methods, no mutating method to reach. A source scan over both `tools.rs` and

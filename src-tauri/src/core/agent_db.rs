@@ -158,9 +158,136 @@ pub fn drop_sql(user: &str) -> String {
     sql
 }
 
+/// Who an agent may connect AS for one `db_query` call, decided from recorded
+/// facts alone.
+///
+/// **This is the gate, and it is a pure function on purpose.** The decision
+/// "may this agent read this database" is the whole security value of M3, and a
+/// decision spread across a handler that also resolves paths, opens
+/// connections and formats rows is a decision nobody can read in one sitting.
+/// Everything it needs is passed in; the only way to widen it is to edit it.
+///
+/// `is_scratch` is the RECORDED ownership fact (`core::scratch::claim`), never
+/// a domain-suffix guess — a user's own site called `foo.scratch.rex` must not
+/// become writable because its name reads like one.
+pub fn authorize(
+    conn: &rusqlite::Connection,
+    site_id: &str,
+    domain: &str,
+    is_scratch: bool,
+    client: &str,
+) -> Result<(Principal, String)> {
+    if is_scratch {
+        // The agent created it, it is disposable, and it holds nothing the user
+        // put there. No consent to ask for — there is no one to ask about.
+        return Ok((Principal::Scratch, principal_name(Principal::Scratch, domain)));
+    }
+    match crate::state::store::active_agent_db_grant(conn, site_id, client)? {
+        Some(_) => Ok((Principal::ReadOnly, principal_name(Principal::ReadOnly, domain))),
+        // The message is the ONLY thing an agent sees, so it says what is
+        // missing, who has to do it, and where — a bare "denied" teaches an
+        // agent to retry, which is the worst possible response to a consent
+        // boundary. It deliberately does not say "ask the user to approve",
+        // because an agent that relays that becomes the thing doing the asking.
+        None => Err(Error::Other(format!(
+            "reading the database of `{domain}` needs the user's approval, which has not been given (or has expired). rexenv asks for it in the app — Settings → MCP lists every database grant and when it expires. This is not something the agent can grant itself."
+        ))),
+    }
+}
+
+/// Create (or re-grant) one agent principal on a running engine.
+///
+/// Runs as root through the bundled client, because only root can `CREATE
+/// USER` — that is an ADMIN operation and it is meant to use the admin path.
+/// The agent's own queries do not come through here; they go through
+/// `core::agent_query`, which is source-guarded against ever reaching this
+/// client. Keeping the two apart in different modules is the point: the
+/// privileged path and the agent path should not be one function with a flag.
+pub fn provision(
+    client: &crate::core::db::SqlClient,
+    port: u16,
+    kind: Principal,
+    db: &str,
+    user: &str,
+) -> Result<()> {
+    let sql = provision_sql(kind, db, user)?;
+    crate::core::dbmirror::run_sql(client, port, &sql, "agent principal provisioning")
+}
+
+/// Drop one agent principal — what revocation and site deletion run.
+pub fn deprovision(client: &crate::core::db::SqlClient, port: u16, user: &str) -> Result<()> {
+    if RESERVED_USERS.iter().any(|r| r.eq_ignore_ascii_case(user)) {
+        // A drop must be unable to take root out even from a corrupt record —
+        // the same rule `dbmirror::drop_mirrored` states, for the same reason.
+        return Err(Error::Other(format!(
+            "refusing to drop reserved database account {user:?}"
+        )));
+    }
+    crate::core::dbmirror::run_sql(client, port, &drop_sql(user), "agent principal cleanup")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **A real site is unreadable without a live grant, and a scratch site
+    /// never needs one — decided from the RECORDED ownership fact.**
+    ///
+    /// The gate is one function precisely so this test is the whole story. Note
+    /// what it does not test: nothing about the domain. A user's own site named
+    /// `looks-like.scratch.rex` is a real site here, because `is_scratch` comes
+    /// from `core::scratch::claim` reading the ownership row — the same
+    /// distinction `scratch_delete_site` refuses on, for the same reason.
+    #[test]
+    fn a_real_site_needs_a_live_grant_and_a_scratch_site_never_does() {
+        use crate::state::{db, store};
+        let conn = db::open_in_memory().unwrap();
+        conn.execute(
+            "INSERT INTO sites (id, name, domain, type, status, php_version, web_server, ssl,
+                                path, db_name, db_engine)
+             VALUES ('s1','S','shop.rex','wordpress','stopped','8.3','nginx',1,'/tmp/s','wp_shop','mysql')",
+            [],
+        )
+        .unwrap();
+
+        // No grant: refused, and the refusal NAMES the site and where approval
+        // lives. An agent told only "denied" retries; an agent told what is
+        // missing reports it.
+        let err = authorize(&conn, "s1", "shop.rex", false, "Claude Code").unwrap_err().to_string();
+        assert!(err.contains("shop.rex"), "{err}");
+        assert!(err.contains("Settings"), "{err}");
+        assert!(err.contains("not something the agent can grant itself"), "{err}");
+
+        // A scratch site is readable and WRITABLE with no grant at all — there
+        // is no user data in it and nobody to ask.
+        let (p, user) = authorize(&conn, "s2", "tmp.scratch.rex", true, "Claude Code").unwrap();
+        assert_eq!(p, Principal::Scratch);
+        assert_eq!(user, "rex_agent_tmp_scratch_rex");
+
+        // With a live grant the real site opens — READ-ONLY, never Scratch.
+        store::grant_agent_db(&conn, "g1", "s1", "Claude Code", "rex_ro_shop_rex", 7).unwrap();
+        let (p, user) = authorize(&conn, "s1", "shop.rex", false, "Claude Code").unwrap();
+        assert_eq!(p, Principal::ReadOnly, "a granted real site must never get a writing principal");
+        assert_eq!(user, "rex_ro_shop_rex");
+
+        // A DIFFERENT client is not covered by it. This is the re-consent rule.
+        assert!(authorize(&conn, "s1", "shop.rex", false, "Another Agent").is_err());
+
+        // Revoking closes it again, without deleting the evidence.
+        store::revoke_agent_db_grant(&conn, "g1").unwrap();
+        assert!(authorize(&conn, "s1", "shop.rex", false, "Claude Code").is_err());
+        assert_eq!(store::list_agent_db_grants(&conn).unwrap().len(), 1);
+
+        // …and so does expiry, which is the same gate reading the same column.
+        store::grant_agent_db(&conn, "g2", "s1", "Claude Code", "rex_ro_shop_rex", 7).unwrap();
+        assert!(authorize(&conn, "s1", "shop.rex", false, "Claude Code").is_ok());
+        conn.execute(
+            "UPDATE agent_db_grants SET expires_at = datetime('now','-1 hour') WHERE id='g2'",
+            [],
+        )
+        .unwrap();
+        assert!(authorize(&conn, "s1", "shop.rex", false, "Claude Code").is_err(), "an expired grant still opened the database");
+    }
 
     /// **A real site's agent principal can read and can do nothing else, and it
     /// can reach exactly one database.**

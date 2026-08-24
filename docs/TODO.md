@@ -1705,8 +1705,17 @@ first:
       Ledger #400 (◐). Plant-proved three ways, including a SOURCE guard that
       the module can never reach `client_base_args`, which is the mistake §3.6
       hole 1 describes and the obvious way to have built this.
-    - [ ] Stage 3 — `db_query`: scratch sites read-write, a real site SELECT-only and
-      only behind a live grant from stage 1.
+    - [x] **Stage 3 — the `db_query` tool and its gate.** ✓ `agent_db::authorize`
+      (one pure function over recorded facts, run BEFORE anything opens, so a
+      refusal never touches the engine) + `agent_db::{provision, deprovision}` +
+      the `db_query` scratch-registry tool. Ownership is the recorded row, never
+      a domain suffix. Ledger #401 (◐). **Nothing can grant yet** — the consent
+      dialog is stage 4, so today every real site refuses and only scratch sites
+      answer, which is the safe direction to be incomplete in.
+    - [ ] Stage 3b — the L1 live leg the plan names: connect as `rex_ro_*` and
+      confirm a running engine REFUSES `INSERT`, `system` and `INTO OUTFILE`.
+      Blocked on stage 4, because until a grant can exist no real site is
+      reachable to try it against.
     - [ ] Stage 4 — the T1 consent dialog (`PLAN-mcp-server.md` §529-540) plus the
       grant list/revoke UI the ledger was built to feed.
   - [ ] **The MCP human gates have never been recorded as run, and MCP has shipped in

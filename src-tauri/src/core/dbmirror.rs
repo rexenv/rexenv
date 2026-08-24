@@ -177,7 +177,7 @@ pub fn drop_mirrored(client: &SqlClient, port: u16, user: &str) -> Result<()> {
 /// Feed SQL to the bundled client over stdin (never argv), as passwordless
 /// root via the pinned [`client_base_args`]. Shared by mirror and drop so the
 /// no-argv rule has one implementation.
-fn run_sql(client: &SqlClient, port: u16, sql: &str, what: &str) -> Result<()> {
+pub(crate) fn run_sql(client: &SqlClient, port: u16, sql: &str, what: &str) -> Result<()> {
     let mut child = std::process::Command::new(client.path())
         .args(client_base_args(port))
         .stdin(std::process::Stdio::piped())

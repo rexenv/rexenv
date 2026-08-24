@@ -193,6 +193,41 @@ static REGISTRY: &[ScratchTool] = &[ScratchTool {
     summarise: |args| args.get("version").and_then(Value::as_str).map(str::to_string),
     handler: set_php_version,
 }, ScratchTool {
+    name: "db_query",
+    description: "Run ONE read query against a site's database and get the rows back. On a \
+                  scratch site the agent created, this works immediately and may also write. On \
+                  the USER's own site it is READ-ONLY and needs the user's approval first, given \
+                  in the rexenv app and expiring on its own — the agent cannot grant it. Takes \
+                  `site_id` and `sql`. One statement per call. At most 500 rows come back, and \
+                  the reply says so when there were more.",
+    input_schema: || json!({
+        "type": "object",
+        "properties": {
+            "site_id": { "type": "string", "description": "The site whose database to read." },
+            "sql": { "type": "string", "description": "One SQL statement." }
+        },
+        "required": ["site_id", "sql"],
+        "additionalProperties": false
+    }),
+    // The sweep runs against a SCRATCH site, which is the arm that needs no
+    // consent — so the secret-leak sweep can exercise this tool without a
+    // grant existing, and without the sweep being a way to get one.
+    sweep_args: |id| json!({ "site_id": id, "sql": "SELECT 1" }),
+    // The SQL is what this call was about, and the feed is where a user goes to
+    // see what an agent actually read. Truncated, because a query can be long
+    // and the feed line is one line.
+    summarise: |args| {
+        args.get("sql").and_then(Value::as_str).map(|sql| {
+            let one_line = sql.split_whitespace().collect::<Vec<_>>().join(" ");
+            if one_line.chars().count() > 120 {
+                format!("{}…", one_line.chars().take(120).collect::<String>())
+            } else {
+                one_line
+            }
+        })
+    },
+    handler: db_query,
+}, ScratchTool {
     name: "mail_list",
     description: "List the mail a scratch site has SENT — password resets, notifications, anything \
                   its code mailed — so you can trigger something and then read it. Takes `site_id` \
@@ -685,7 +720,7 @@ impl<'a> ScratchCtx<'a> {
         Ok((php_bin, wp_phar))
     }
 
-    fn db(&self) -> Result<std::sync::MutexGuard<'_, rusqlite::Connection>> {
+    pub(crate) fn db(&self) -> Result<std::sync::MutexGuard<'_, rusqlite::Connection>> {
         self.state
             .db
             .lock()
@@ -693,9 +728,17 @@ impl<'a> ScratchCtx<'a> {
     }
 
     /// Prove a site is the agent's, or refuse with the policy statement
-    /// (`core::scratch::claim`, #208). **The only way a scratch handler obtains
-    /// a site**: there is no `site_by_id` here, so "I'll just read the row and
-    /// check it myself" is not an available shortcut.
+    /// (`core::scratch::claim`, #208). **The only way a MUTATING handler obtains
+    /// a site**: "I'll just read the row and check it myself" is not an
+    /// available shortcut for anything that changes a site.
+    ///
+    /// **Amended for `db_query` (M3 stage 3), and the amendment is the honest
+    /// part.** This used to say there was no `site_by_id` at all. There is one
+    /// now — [`ScratchCtx::site`] — because `db_query` is the first tool that
+    /// legitimately acts on a site the agent does NOT own, under a different
+    /// authority: the user's recorded grant. Leaving the sentence standing while
+    /// adding the method would have been a doc asserting a guard that no longer
+    /// existed, which this repo has already paid for twice.
     pub fn claim(&self, id: &str) -> Result<ScratchSite> {
         let conn = self
             .state
@@ -704,6 +747,21 @@ impl<'a> ScratchCtx<'a> {
             .map_err(|_| crate::error::Error::Other("the app database lock is poisoned".into()))?;
         crate::core::scratch::claim(&conn, id)
     }
+
+    /// Any site by id, WITHOUT an ownership claim — for `db_query` only.
+    ///
+    /// Reading a user's own site is the one thing an agent may do to a site it
+    /// does not own, and it is gated by `agent_db::authorize` reading a recorded
+    /// grant instead. This method therefore grants nothing on its own: it
+    /// resolves a row. Every caller must reach a decision function before it
+    /// acts, and a MUTATING tool must still use [`ScratchCtx::claim`] — the
+    /// ownership rule is unchanged for everything that writes.
+    pub fn site(&self, id: &str) -> Result<Site> {
+        let conn = self.db()?;
+        crate::state::store::get_site(&conn, id)?
+            .ok_or_else(|| crate::error::Error::Other(format!("no site with id {id:?}")))
+    }
+
 }
 
 /// This registry's tools as MCP descriptors, for the union `tools/list`.
@@ -848,6 +906,59 @@ fn delete_site<'a>(
             "domain": domain,
             "detail": format!("`{domain}` and its database are gone."),
         }))
+    })
+}
+
+/// `db_query` — the one tool that reads a real site's data, and the only one
+/// behind a T1 consent grant.
+///
+/// The shape is deliberate: **decide, then connect.** `agent_db::authorize` is
+/// a pure function over recorded facts and it runs before anything is opened,
+/// so the refusal path never touches the engine and the authorization decision
+/// is readable in one place instead of being spread through this handler.
+fn db_query<'a>(
+    ctx: ScratchCtx<'a>,
+    args: &'a Value,
+    acted: &'a super::feed::ActedTarget,
+) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let id = args
+            .get("site_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| Error::Other("db_query needs a `site_id`.".into()))?;
+        let sql = args
+            .get("sql")
+            .and_then(Value::as_str)
+            .ok_or_else(|| Error::Other("db_query needs a `sql` statement.".into()))?;
+
+        // Ownership is the RECORDED fact, not the domain: `claim` succeeds only
+        // for a site the agent itself created. A user's own site whose name
+        // happens to read like a scratch one is a real site here.
+        let is_scratch = ctx.claim(id).is_ok();
+        let site = ctx.site(id)?;
+        acted.set(&site);
+
+        let engine = crate::core::db::DbEngine::from_site(site.db_engine);
+        let (principal, user) = {
+            let conn = ctx.db()?;
+            crate::core::agent_db::authorize(&conn, &site.id, &site.domain, is_scratch, ctx.client)?
+        };
+
+        // Provisioning is root work and happens per call: the principal may
+        // have been dropped by a revoke since the last one, and re-stating the
+        // grant is cheaper than a liveness check that could be wrong.
+        let version = crate::commands::database::effective_db_version(ctx.state, engine)?;
+        let client = engine
+            .cached_sql_client(ctx.state.platform.as_ref(), &version)
+            .ok_or_else(|| Error::Other(format!(
+                "the {} client is not installed, so the agent principal cannot be created",
+                engine.label()
+            )))?;
+        let port = engine.port();
+        crate::core::agent_db::provision(&client, port, principal, &site.db_name, &user)?;
+
+        let result = crate::core::agent_query::run_query(port, &user, &site.db_name, sql).await?;
+        serde_json::to_value(result).map_err(|e| Error::Other(e.to_string()))
     })
 }
 
@@ -1364,9 +1475,9 @@ mod tests {
         // `summarise` is REQUIRED on both registries for the same reason
         // `sweep_args` is: a tool must SAY that its name and target describe it,
         // rather than be assumed to have nothing to add because nobody looked.
-        // Seven of eight legitimately answer None — that is the answer, not a
-        // gap — and this asserts the ONE that doesn't, so a future edit that
-        // silently drops wp_run's summariser fails here.
+        // Five of nine legitimately answer None — that is the answer, not a
+        // gap — and this asserts the four that don't, so a future edit that
+        // silently drops one fails here.
         // The probe must carry every field ANY summariser reads. That is not
         // hygiene: `set_php_version` was added with a summariser and this test
         // still passed, because the probe had no `version` key — so the tool
@@ -1377,6 +1488,7 @@ mod tests {
             "args": ["plugin", "list"],
             "source": "/tmp/acme",
             "version": "8.3",
+            "sql": "SELECT ID FROM wp_posts",
         });
         let scratch_summarised: Vec<&str> = super::registry()
             .iter()
@@ -1391,7 +1503,7 @@ mod tests {
         // Registry order, not alphabetical — the list reads as the registry does.
         assert_eq!(
             scratch_summarised,
-            vec!["scratch_add_package", "wp_run", "set_php_version"],
+            vec!["scratch_add_package", "wp_run", "set_php_version", "db_query"],
             "exactly the executing tools whose name and target under-describe them"
         );
         assert!(read_summarised.is_empty(), "a READ tool's name and target always describe it");
