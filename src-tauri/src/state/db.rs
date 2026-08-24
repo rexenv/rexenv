@@ -550,6 +550,36 @@ const MIGRATIONS: &[&str] = &[
     // minor forward, so a stale selection can never hold a user below the patch
     // their app ships.
     "ALTER TABLE php_versions ADD COLUMN selected_patch TEXT;",
+    // v38 — an agent's permission to READ one site's database, recorded with
+    // the clock it dies on (MCP M3, `docs/PLAN-mcp-server.md` §3.6).
+    //
+    // A grant is RECORDED, never re-derived. There is no rule that could
+    // reconstruct "this user allowed Claude Code to read mysite.rex at 14:02 on
+    // Tuesday for seven days" — it is a decision, and the only honest source for
+    // a decision is the row it was written into. The same reasoning as v17's
+    // `docroot_managed` and v24's `content_dir`, on a surface where guessing
+    // wrong hands an agent a site's `wp_users` hashes.
+    //
+    // `expires_at` is stored, not a duration to add at read time: a grant the
+    // user made on a Tuesday must die on the Tuesday they were told about, not
+    // seven days after whenever the code next looks. `client` is part of the
+    // identity because the plan re-prompts when `clientInfo` changes — a grant
+    // to one agent is not a grant to the next one that connects.
+    //
+    // `revoked_at` rather than DELETE: a revoked grant is evidence about what
+    // was allowed and when it stopped, and the feed is the place a user goes to
+    // find out what an agent could see. Deleting the row deletes the answer.
+    "CREATE TABLE IF NOT EXISTS agent_db_grants (
+        id          TEXT PRIMARY KEY,
+        site_id     TEXT NOT NULL,
+        client      TEXT NOT NULL,
+        db_user     TEXT NOT NULL,
+        granted_at  TEXT NOT NULL,
+        expires_at  TEXT NOT NULL,
+        revoked_at  TEXT,
+        FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE
+    );",
+    "CREATE INDEX IF NOT EXISTS idx_agent_db_grants_site ON agent_db_grants(site_id);",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.

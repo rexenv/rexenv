@@ -1661,12 +1661,35 @@ first:
       passing filter. It also refuses to run beside a live Mailpit — found by
       running it with the stack up, where `mail::start` cannot bind, exits, and
       `mail::running()` sees the USER'S catcher on the fixed port.
-  - [ ] **M3 — database access, and it has never had a checkbox of its own.** A fully
-    specified stage in `PLAN-mcp-server.md` §1058-1062 with NOTHING in the tree: the
-    native-driver query path, agent principals with escaped + expiring grants, `db_query`,
-    and the first T1 consent dialog. A grep for `db_query`/`agent_db_grants` across
-    `src-tauri/src` finds one comment. It is the largest single piece of unbuilt work
-    tracked in this file and it was living as a fragment at the end of another row.
+  - [ ] **M3 — database access. Stage 1 of 4 is IN; the query path is not.** A fully
+    specified stage in `PLAN-mcp-server.md` §1058-1062 that had NOTHING in the tree —
+    the native-driver query path, agent principals with escaped + expiring grants,
+    `db_query`, and the first T1 consent dialog. It is the largest single piece of
+    unbuilt work tracked in this file and it was living as a fragment at the end of
+    another row. **Built in stages because the query path needs a native MySQL driver
+    rexenv does not have** — every DB call today shells out through
+    `database::client_base_args`, which the plan explicitly forbids for this path, so
+    M3 adds a new protocol dependency on a security surface and that is not a thing to
+    land in one pass with everything else.
+    - [x] **Stage 1 — the grant ledger.** ✓ Migration v38 `agent_db_grants` +
+      `store::{grant_agent_db, active_agent_db_grant, list_agent_db_grants,
+      revoke_agent_db_grant, get_agent_db_grant}`. The expiry is a STORED timestamp
+      written by the database's own clock, not a duration added when something next
+      looks — the T1 dialog promises "expires in 7 days" and that sentence is only
+      true if the deadline is a fact rather than a recomputation. Revocation sets
+      `revoked_at` instead of deleting, because a revoked grant is the answer to
+      "what could that agent see, and until when". Held by
+      `a_db_grant_expires_on_its_own_clock_and_revocation_is_not_reversible`, which
+      covers the expiry boundary, per-client and per-site scoping, the
+      revoke-is-idempotent rule, and cascade-on-site-delete. **Plant-proved twice:**
+      dropping the `expires_at > datetime('now')` clause from the gate fails it by
+      name, and letting a second revoke rewrite the timestamp fails it by name.
+    - [ ] Stage 2 — native MySQL driver + agent principals (`rex_agent_*`, escaped
+      GRANTs, passwordless loopback, never `client_base_args`).
+    - [ ] Stage 3 — `db_query`: scratch sites read-write, a real site SELECT-only and
+      only behind a live grant from stage 1.
+    - [ ] Stage 4 — the T1 consent dialog (`PLAN-mcp-server.md` §529-540) plus the
+      grant list/revoke UI the ledger was built to feed.
   - [ ] **The MCP human gates have never been recorded as run, and MCP has shipped in
     four releases.** `docs/SMOKE-TEST.md` §M2a/§M2b carry 14 unticked steps and FOUR
     HOLDs — step 4 (disabling really tears the socket down), step 8 (the tier boundary in

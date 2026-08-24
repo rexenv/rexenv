@@ -440,7 +440,7 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
 
 ## 8. Data & app state
 
-- **SQLite for all app state** (`state/db.rs`), `user_version` migrations, currently 37:
+- **SQLite for all app state** (`state/db.rs`), `user_version` migrations, currently 38:
   v1 `sites` + `settings` · v2 `php_versions` registry · v3 `sites.multisite` ·
   v4 `blueprints` (JSON `spec`) · v5 `php_settings` · v6 `sites.db_name` (stored, never
   re-derived) · v7 `site_env` · v8/v9 `default_tld` seed + `.rex` flip ·
@@ -468,7 +468,14 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   could clone into a docroot before it — `docs/PLAN-git-site-clone.md`) ·
   v34 `sites.git_migrate` (NULL = ON; recorded because Retry rebuilds the phase
   list from the row) · v35 `sites.git_build_assets` (NULL = OFF — the opposite
-  default, and equally exact: no provisioning ever ran a package manager before it).
+  default, and equally exact: no provisioning ever ran a package manager before it). ·
+  v36 DROPS `php_versions.patch` (it MIRRORED the compile-time pin — #339/#340) ·
+  v37 `php_versions.selected_patch` (NULL = follow the pin; the user's choice, which
+  is why it is stored where v36's mirror could not be) · v38 `agent_db_grants` (one
+  agent's permission to read one site's DB — `site_id`/`client`/`db_user` scoped,
+  with `expires_at` STORED rather than a duration added at read time, and
+  `revoked_at` instead of DELETE so a revoked grant stays as evidence of what an
+  agent could see and until when).
   Per-engine DB versions are settings-KV rows (`db_version_<engine>`), not a migration.
   *(This list read "currently 25" for eight migrations — restored 11 Aug 2026.
   A count is the one part of a list that goes wrong silently, so check it

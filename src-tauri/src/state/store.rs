@@ -1404,6 +1404,131 @@ fn row_to_blueprint(row: &Row) -> Result<Blueprint> {
 }
 
 /// All blueprints, newest first.
+/// One agent's recorded permission to READ one site's database (v38).
+///
+/// Every field is recorded rather than derived, and `expires_at` is the reason:
+/// a grant the user made on a Tuesday must die on the Tuesday they were told
+/// about, not seven days after whenever the code next looks at it.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentDbGrant {
+    pub id: String,
+    pub site_id: String,
+    /// The MCP `clientInfo` name the grant was given TO. A grant to one agent is
+    /// not a grant to the next one that connects — the plan re-prompts on a
+    /// client change, and that is only possible because this is stored.
+    pub client: String,
+    /// The database principal created for it (`rex_agent_*`), so revocation can
+    /// drop exactly the user the grant created and nothing else.
+    pub db_user: String,
+    pub granted_at: String,
+    pub expires_at: String,
+    /// Set when the user revoked it. The row is KEPT: a revoked grant is
+    /// evidence about what an agent could see and until when, and the feed is
+    /// where a user goes to find that out. Deleting it deletes the answer.
+    pub revoked_at: Option<String>,
+}
+
+/// Record a grant. `days` is added by the DATABASE, from the database's own
+/// clock, so the stored expiry and the stored `granted_at` cannot disagree by a
+/// process clock skew or a timezone.
+pub fn grant_agent_db(
+    conn: &Connection,
+    id: &str,
+    site_id: &str,
+    client: &str,
+    db_user: &str,
+    days: u32,
+) -> Result<AgentDbGrant> {
+    conn.execute(
+        "INSERT INTO agent_db_grants (id, site_id, client, db_user, granted_at, expires_at)
+         VALUES (?1, ?2, ?3, ?4, datetime('now'), datetime('now', ?5))",
+        rusqlite::params![id, site_id, client, db_user, format!("+{days} days")],
+    )?;
+    get_agent_db_grant(conn, id)?
+        .ok_or_else(|| crate::error::Error::Other("grant vanished after insert".into()))
+}
+
+pub fn get_agent_db_grant(conn: &Connection, id: &str) -> Result<Option<AgentDbGrant>> {
+    let mut st = conn.prepare(
+        "SELECT id, site_id, client, db_user, granted_at, expires_at, revoked_at
+         FROM agent_db_grants WHERE id = ?1",
+    )?;
+    let mut rows = st.query([id])?;
+    match rows.next()? {
+        Some(r) => Ok(Some(AgentDbGrant {
+            id: r.get(0)?,
+            site_id: r.get(1)?,
+            client: r.get(2)?,
+            db_user: r.get(3)?,
+            granted_at: r.get(4)?,
+            expires_at: r.get(5)?,
+            revoked_at: r.get(6)?,
+        })),
+        None => Ok(None),
+    }
+}
+
+/// The grant that lets `client` read `site_id` RIGHT NOW, if there is one.
+///
+/// "Now" is the DATABASE's clock, compared in SQL, for the reason the expiry is
+/// stored at all: a check that read the row and compared in Rust would be one
+/// more place for a clock to disagree with the one that wrote it. Revoked and
+/// expired are both simply absent — a caller cannot accidentally treat either as
+/// live, because neither is ever returned.
+pub fn active_agent_db_grant(
+    conn: &Connection,
+    site_id: &str,
+    client: &str,
+) -> Result<Option<AgentDbGrant>> {
+    let mut st = conn.prepare(
+        "SELECT id FROM agent_db_grants
+         WHERE site_id = ?1 AND client = ?2
+           AND revoked_at IS NULL
+           AND expires_at > datetime('now')
+         ORDER BY granted_at DESC LIMIT 1",
+    )?;
+    let mut rows = st.query(rusqlite::params![site_id, client])?;
+    match rows.next()? {
+        Some(r) => {
+            let id: String = r.get(0)?;
+            drop(rows);
+            get_agent_db_grant(conn, &id)
+        }
+        None => Ok(None),
+    }
+}
+
+/// Every grant for the UI: live, expired and revoked alike, newest first. The
+/// screen that lists them is also the screen a user checks after the fact, so it
+/// must show what WAS allowed, not only what still is.
+pub fn list_agent_db_grants(conn: &Connection) -> Result<Vec<AgentDbGrant>> {
+    let mut st = conn.prepare(
+        "SELECT id FROM agent_db_grants ORDER BY granted_at DESC",
+    )?;
+    let ids: Vec<String> =
+        st.query_map([], |r| r.get::<_, String>(0))?.collect::<rusqlite::Result<_>>()?;
+    let mut out = Vec::with_capacity(ids.len());
+    for id in ids {
+        if let Some(g) = get_agent_db_grant(conn, &id)? {
+            out.push(g);
+        }
+    }
+    Ok(out)
+}
+
+/// Revoke a grant. Idempotent and never un-revokes: a second call leaves the
+/// FIRST revocation time standing, because that is when the access actually
+/// stopped.
+pub fn revoke_agent_db_grant(conn: &Connection, id: &str) -> Result<bool> {
+    let n = conn.execute(
+        "UPDATE agent_db_grants SET revoked_at = datetime('now')
+         WHERE id = ?1 AND revoked_at IS NULL",
+        [id],
+    )?;
+    Ok(n > 0)
+}
+
 pub fn list_blueprints(conn: &Connection) -> Result<Vec<Blueprint>> {
     let mut stmt =
         conn.prepare("SELECT id, name, spec FROM blueprints ORDER BY created_at DESC, name")?;
@@ -1453,6 +1578,77 @@ pub fn delete_blueprint(conn: &Connection, id: &str) -> Result<bool> {
 mod tests {
     use super::*;
     use crate::state::db;
+
+    /// **A grant dies on the clock it was written with, and neither expiry nor
+    /// revocation can be mistaken for live access.**
+    ///
+    /// This is the ledger the whole M3 consent story rests on: the dialog
+    /// promises "this access expires in 7 days", and that promise is only true
+    /// if the expiry is a stored fact compared against the same clock that wrote
+    /// it. A duration added at read time would make the promise "seven days from
+    /// whenever something next looked", which is a different sentence.
+    #[test]
+    fn a_db_grant_expires_on_its_own_clock_and_revocation_is_not_reversible() {
+        let conn = db::open_in_memory().unwrap();
+        conn.execute(
+            "INSERT INTO sites (id, name, domain, type, status, php_version, web_server, ssl,
+                                path, db_name, db_engine)
+             VALUES ('s1','S','s.rex','php','stopped','8.3','nginx',1,'/tmp/s','wp_s','mysql')",
+            [],
+        )
+        .unwrap();
+
+        let live = grant_agent_db(&conn, "g1", "s1", "Claude Code", "rex_agent_s1", 7).unwrap();
+        assert!(live.expires_at > live.granted_at, "expiry must be after the grant");
+        assert!(live.revoked_at.is_none());
+
+        // The lookup is what every caller will use, so it is what must be right.
+        let found = active_agent_db_grant(&conn, "s1", "Claude Code").unwrap();
+        assert_eq!(found.map(|g| g.id), Some("g1".to_string()));
+
+        // A grant to ONE client is not a grant to the next agent that connects —
+        // the re-consent-on-client-change rule is only possible because `client`
+        // is part of the identity rather than a label on the row.
+        assert!(active_agent_db_grant(&conn, "s1", "Some Other Agent").unwrap().is_none());
+        // …nor to another site.
+        assert!(active_agent_db_grant(&conn, "s2", "Claude Code").unwrap().is_none());
+
+        // EXPIRED: written in the past, so the row exists and the lookup refuses
+        // it. Both halves matter — the UI must still show it, the gate must not.
+        grant_agent_db(&conn, "g2", "s1", "Old Agent", "rex_agent_s1_old", 7).unwrap();
+        conn.execute(
+            "UPDATE agent_db_grants SET expires_at = datetime('now','-1 day') WHERE id='g2'",
+            [],
+        )
+        .unwrap();
+        assert!(active_agent_db_grant(&conn, "s1", "Old Agent").unwrap().is_none());
+        assert!(get_agent_db_grant(&conn, "g2").unwrap().is_some(), "the row is evidence, kept");
+
+        // REVOKED: gone from the gate immediately, kept in the list.
+        assert!(revoke_agent_db_grant(&conn, "g1").unwrap());
+        assert!(active_agent_db_grant(&conn, "s1", "Claude Code").unwrap().is_none());
+        let revoked = get_agent_db_grant(&conn, "g1").unwrap().unwrap();
+        let first_time = revoked.revoked_at.clone().expect("revoked_at recorded");
+
+        // Revoking again must NOT move the timestamp: when access actually
+        // stopped is the fact, and a second click is not a second stopping.
+        assert!(!revoke_agent_db_grant(&conn, "g1").unwrap(), "second revoke is a no-op");
+        assert_eq!(
+            get_agent_db_grant(&conn, "g1").unwrap().unwrap().revoked_at,
+            Some(first_time),
+            "a second revoke rewrote when the access stopped"
+        );
+
+        // The list shows everything — live, expired and revoked — because it is
+        // also the screen a user checks AFTER the fact.
+        assert_eq!(list_agent_db_grants(&conn).unwrap().len(), 2);
+
+        // And a deleted site takes its grants with it: leaving them would let a
+        // re-created site inherit permission nobody granted it.
+        conn.execute("PRAGMA foreign_keys = ON", []).unwrap();
+        conn.execute("DELETE FROM sites WHERE id='s1'", []).unwrap();
+        assert!(list_agent_db_grants(&conn).unwrap().is_empty(), "grants outlived their site");
+    }
 
     /// Every column an upsert may write in its `DO UPDATE SET` list, per table.
     ///
