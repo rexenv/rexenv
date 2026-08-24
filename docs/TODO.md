@@ -868,6 +868,18 @@ place to keep unfinished things.
     back EMPTY. The local control caught it and refused to conclude anything about the tunnel —
     the control working exactly as designed, on a fixture fault rather than a product one. That
     lesson was already written in `frankenphp_edge_serve`'s own comments, and I re-learned it.
+  - [x] **And the leg leaked its own backend, twice, before anyone noticed** ✓ fixed 24 Aug
+    2026. `fail()` ends in `process::exit`, which runs no destructors, so the leg's local
+    `OwnedService` was never stopped when a leg died — two orphaned FrankenPHP processes were
+    still holding the fixture's override port 35 minutes later, found by checking for leaks
+    after an unrelated interrupted run rather than by anything reporting them. The backend is
+    registered in a static `reap_all` drains now, exactly as `STACK` already was.
+    **This is the rule written into `delete_site_serve` the same morning** — "after the first
+    spawn, exiting is the unsafe option" — walked into by the next thing I wrote.
+    - [ ] ◐ The new slot's drain is not planted directly; it needs a stack-down. What IS
+      observed: `reap_all` runs on the fail path (both failed runs printed `stack stopped`)
+      and the identical `STACK` drain worked in those same runs. Plant it next time the
+      stack is down.
 - [ ] **Plugin-update progress: the TIMING half** (ledger #249) — **the row's own premise
   was wrong and is corrected here, 24 Aug 2026.** It said "the wiring half landed, this did
   not", which reads as the CODE being missing. It is not: `settleAfterUpdate` has cancelled

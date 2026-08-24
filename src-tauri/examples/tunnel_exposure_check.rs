@@ -81,6 +81,16 @@ const HELLO_OVERRIDE: &str = "<!doctype html><title>fp</title><p>REXENV-OVERRIDE
 /// ports — sandbox CONFIG, real PORTS, and the next run refused because of it.
 /// Services outliving the app is production's rule; here it is litter.
 static STACK: std::sync::Mutex<Option<ServiceManager>> = std::sync::Mutex::new(None);
+/// Leg 9's FrankenPHP override backend, reachable from every teardown path.
+///
+/// **A local `OwnedService` was not enough, and the leak proved it.** `fail()`
+/// ends in `process::exit`, which runs NO destructors, so a leg that died after
+/// starting the backend left it running — two orphaned FrankenPHP processes on
+/// the fixture's override port, found 24 Aug 2026 after two failed runs of this
+/// very leg. `reap_all` already drains the tunnel and the stack for exactly this
+/// reason; the backend had to join them rather than trust `Drop`.
+static OVERRIDE_BACKEND: std::sync::Mutex<Option<common::OwnedService>> =
+    std::sync::Mutex::new(None);
 
 /// The tunnel half lives in `common::reap_public_tunnel` now — shared, because a
 /// second copy of the thing that stops a public tunnel leaking is a second thing
@@ -97,6 +107,12 @@ fn reap_tunnel() {
 fn reap_all() {
     let plat = platform::current();
     reap_tunnel();
+    // Before the stack: this backend is the fixture's own, and stopping it first
+    // means a failure inside `stop_all` cannot strand it.
+    if let Some(mut fp) = OVERRIDE_BACKEND.lock().ok().and_then(|mut b| b.take()) {
+        fp.stop();
+        eprintln!("tunnel_exposure_check: override backend stopped");
+    }
     if let Some(mut mgr) = STACK.lock().ok().and_then(|mut m| m.take()) {
         let _ = mgr.stop_all(&*plat);
         eprintln!("tunnel_exposure_check: stack stopped");
@@ -563,10 +579,12 @@ async fn main() {
         &[],
     )
     .expect("frankenphp config");
-    let _fp = common::OwnedService::new(
+    // Handed to the teardown registry rather than held as a local: `fail()` exits
+    // the process and `Drop` never runs, which is how two of these leaked.
+    *OVERRIDE_BACKEND.lock().expect("override slot") = Some(common::OwnedService::new(
         frankenphp::start(&*plat, &fp_bin, &fp_site.domain, &fp_conf, &[]).expect("start frankenphp"),
         "frankenphp",
-    );
+    ));
     common::await_listening(fp_port, "the frankenphp override backend", None);
     // …and then wait for it to ANSWER, which is a different fact — the lesson
     // `frankenphp_edge_serve` already carries and this leg re-learned on its
