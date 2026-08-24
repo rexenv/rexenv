@@ -574,6 +574,29 @@ cause: a commit did the work and the surrounding claim stayed as it was.
   what else the rule says about a codebase that has never run it), or delete them and
   stop implying a gate. Measured, not guessed, 21 Aug 2026 — the Rust half of this row is
   closed above.
+  **24 Aug 2026 — the rule was RUN, in a throwaway directory outside the repo, so the
+  decision has numbers instead of a guess. Nothing was added to `package.json`.**
+  eslint 9 + `eslint-plugin-react-hooks` 5 over all 72 `src/**/*.{ts,tsx}` files:
+  - **3 `exhaustive-deps` warnings, and all three are DELIBERATE.** `Tunnels.tsx:50`
+    already carries the reasoning inline ("`byDomain` is rebuilt from `tunnels` on every
+    render, so the dependency that matters is the data behind it"); `Sites.tsx:676` is the
+    same shape; `RepoPanel.tsx:185` re-runs an effect every render, which is idempotent by
+    construction — a module-level `toastedArchives` Set makes the announcement once even
+    across a remount. **The rule finds nothing broken in this codebase.**
+  - **3 of the 17 suppressions are provably UNUSED** — `GitAddPanel.tsx:81`,
+    `RepoPanel.tsx:276`, `SiteDetail.tsx:1069` — i.e. they suppress a problem that no
+    longer exists. So 13 of 16 are load-bearing: the comments are mostly honest, and three
+    of them are the inert-gate this row is about.
+  - **And the decisive one: `rules-of-hooks` WOULD have caught the crash of 21 Aug.**
+    Reverting `e9fc144` in the worktree makes it fail by name — *"React Hook \"useQuery\"
+    is called conditionally … Did you accidentally call a React Hook after an early
+    return?"* That bug reached a user-visible crash on `/sites/:id` and was found by a
+    WebKit render check written for something else entirely. A linter would have caught it
+    statically, before it ever rendered. (The fix was restored immediately; the tree was
+    left clean.)
+  So the cost of adopting is: 3 warnings to suppress with a reason, 3 stale comments to
+  delete, one dependency. Still the owner's call — it buys a dependency — but the "find
+  out what else it says" half is answered.
 - [x] **`PHP_DEBUG_XDEBUG_VERSION = 3.4.5` had no row in `docs/PORTS.md`** ✓ 21 Aug
   2026 — the only pinned constant in `core/binaries.rs` missing from the file that holds
   the pins, now recorded beside the Xdebug row with why it is deliberately not 3.5.3 (the
