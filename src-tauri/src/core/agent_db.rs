@@ -290,6 +290,40 @@ pub fn deprovision(client: &crate::core::db::SqlClient, port: u16, user: &str) -
 mod tests {
     use super::*;
 
+    /// **The delete path finds a SCRATCH principal, which no grant row names.**
+    ///
+    /// The first version of the delete cleanup collected accounts from
+    /// `agent_db_grants` alone. A scratch site needs no consent and therefore
+    /// has no grant row, so its `rex_agent_<slug>` was never found and stayed on
+    /// the engine after the site and its database were gone — **measured
+    /// 25 Aug 2026 against the packaged app**, running the §M3 gate: the
+    /// database was dropped, the account was not.
+    ///
+    /// The fix is to derive BOTH arms' names from the site's domain and union
+    /// them with whatever the grants recorded. Neither source is redundant: the
+    /// derived names are the only way to reach a scratch principal, and the
+    /// recorded ones are the only way to reach an account created before a
+    /// site was RENAMED, since it carries the old domain's slug.
+    #[test]
+    fn the_delete_path_covers_the_scratch_arm_that_no_grant_row_can_name() {
+        let src = include_str!("../commands/sites.rs");
+        let block_start = src.find("let (agent_users, had_grant)").expect("the collection");
+        let block = &src[block_start..block_start + 1800];
+        for arm in ["Principal::Scratch", "Principal::ReadOnly"] {
+            assert!(
+                block.contains(arm),
+                "the delete path no longer derives {arm}'s account name. If this went back to \
+                 reading grant rows only, a scratch principal has no row to be found by and \
+                 survives its own site — measured, not theorised."
+            );
+        }
+        assert!(
+            block.contains("list_agent_db_grants"),
+            "the recorded names are gone — an account created before the site was RENAMED \
+             carries the OLD domain's slug and cannot be derived from today's"
+        );
+    }
+
     /// **A deleted site's agent accounts are read while the site still exists.**
     ///
     /// `agent_db_grants` cascades on the sites row, so a delete path that reads
@@ -317,7 +351,7 @@ mod tests {
     #[test]
     fn a_sites_agent_accounts_are_collected_before_the_row_that_cascades_them() {
         let src = include_str!("../commands/sites.rs");
-        let collect = src.find("let agent_users: Vec<String> =").expect("the collection");
+        let collect = src.find("let (agent_users, had_grant)").expect("the collection");
         let drop_users = src.find("core::agent_db::deprovision(").expect("the drop");
         assert!(collect < drop_users, "the accounts are dropped before they are known");
         // The row deletion is what cascades the grants away. Located by the

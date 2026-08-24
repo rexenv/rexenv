@@ -822,7 +822,8 @@ modal that steals focus.
   ```sh
   "$HOME/Library/Application Support/dev.rexenv.rexenv/bin/mysql-8.4.6/bin/mysql" \
     --no-defaults --protocol=TCP -h 127.0.0.1 -P 13306 -u root -N \
-    -e "SELECT user,host FROM mysql.user WHERE user LIKE 'rex\_ro\_%';"
+    -e "SELECT user,host FROM mysql.user WHERE user LIKE 'rex\_ro\_%' \
+           OR user LIKE 'rex\_agent\_%';"
   ```
   → **no row for the deleted site.** (Adjust the version in the path if the
   engine has moved on.)
@@ -830,6 +831,11 @@ modal that steals focus.
   `root`, and a `rex_<slug>` per imported site. An empty result and a BROKEN
   query look identical, and "no leftover account" is exactly the answer a typo
   gives you. Verified working 25 Aug 2026 on the dev machine: 15 rows.
+  **Do the same with a SCRATCH site**, not only a granted one: ask the agent to
+  create one, `db_query` it once (that is what provisions the account), delete
+  it, and confirm no `rex_agent_%` row survives. That half is where this step
+  first earned its keep — on 25 Aug 2026 it found the account leaking, because
+  the cleanup read grant rows and a scratch site has none.
   **⚠ A step-21 failure is a HOLD, and this is the one step here that no
   automated layer covers at all.** The L1 check proves `DROP USER` works; nothing
   proves the delete PATH runs it (ledger #403 says so in as many words). It

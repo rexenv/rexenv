@@ -1203,16 +1203,44 @@ pub(crate) async fn delete_site_owned(
     // still holds SELECT on a database name that also collides by construction.
     // A grant the user gave once, to a site that no longer exists, would come
     // back attached to a different one.
-    let agent_users: Vec<String> = {
+    let (agent_users, had_grant): (Vec<String>, bool) = {
         let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
-        let mut users: Vec<String> = crate::state::store::list_agent_db_grants(&conn)?
+        // BOTH sources, unioned, and neither is redundant:
+        //
+        //  - DERIVED from the site's current domain, both arms. This is the only
+        //    way a SCRATCH principal is ever found: a scratch site needs no
+        //    consent, so it has no grant row, and a delete that read only the
+        //    grants left `rex_agent_<slug>` on the engine forever. Found by
+        //    running the §M3 gate against the packaged app on 25 Aug 2026 — the
+        //    site's database was dropped and its account was not.
+        //  - RECORDED on the grants, because a site can be RENAMED: the account
+        //    was created from the domain the site had at grant time, and
+        //    deriving from today's domain would miss it. The recorded name is
+        //    what actually exists on the engine.
+        //
+        // Dropping a name that does not exist is a no-op (`DROP USER IF
+        // EXISTS`), so the union costs nothing and each source covers the other's
+        // blind spot.
+        let mut users: Vec<String> = vec![
+            crate::core::agent_db::principal_name(
+                crate::core::agent_db::Principal::Scratch,
+                &site.domain,
+            ),
+            crate::core::agent_db::principal_name(
+                crate::core::agent_db::Principal::ReadOnly,
+                &site.domain,
+            ),
+        ];
+        let recorded: Vec<String> = crate::state::store::list_agent_db_grants(&conn)?
             .into_iter()
             .filter(|g| g.site_id == id)
             .map(|g| g.db_user)
             .collect();
+        let had_grant = !recorded.is_empty();
+        users.extend(recorded);
         users.sort();
         users.dedup();
-        users
+        (users, had_grant)
     };
     let engine = DbEngine::from_site(site.db_engine);
     let engine_version = super::database::effective_db_version(state, engine)?;
@@ -1225,7 +1253,12 @@ pub(crate) async fn delete_site_owned(
     // inherit a stale account with an old password over it.
     // `datadir_initialized` already skips fresh installs, where neither the
     // database nor the user can exist.
-    if (want_db_drop || mirrored_user.is_some() || !agent_users.is_empty())
+    // `agent_users` is never empty now (the two derived names are always there),
+    // so it cannot gate this branch — `had_grant` does, and it is a separate
+    // flag rather than `!agent_users.is_empty()` for exactly that reason. It
+    // matters for a site with a grant but no database of ours to drop (a linked
+    // site): without it the branch would not run and the account would stay.
+    if (want_db_drop || mirrored_user.is_some() || had_grant)
         && engine.datadir_initialized(state.platform.as_ref(), &engine_version)
     {
         // Engine binaries cached before the locked spawn below (an initialized
