@@ -745,7 +745,17 @@ cause: a commit did the work and the surrounding claim stayed as it was.
       byte-identical afterwards, so the retry's "re-ensures artifacts, never clobbers user
       files" held on a LINKED docroot — the case where clobbering would destroy something
       rexenv does not own. Site and folder deleted; 17 sites, 0 half-provisioned.
-    - [ ] `config get|set` — the owner's, parked on the key allow-list.
+    - [x] **`config get|set`** ✓ 24 Aug 2026 — ledger #397, plant-proven both ways.
+      The allow-list was the parked decision and it is now a POLICY FILE in core
+      (`settings_access.rs`), not a list in the CLI, because the guard reads the same
+      thing. **Deny by default**: a key nobody has ruled on is refused, so one added next
+      month is refused until somebody decides rather than becoming silently writable.
+      Writable: `default_tld`, `sites_dir` (both already validated by `set_setting`),
+      `preferred_editor`, `preferred_browser`, `start_services_on_launch`.
+      Read-only: `adminer_version`, `php_upstream_check`, `db_version_*`.
+      Denied: the signed manifest, its signature, its rollback **serial**, and the MCP
+      toggles — each refusal saying why, since "denied" alone teaches nothing.
+      ◐ In-app verify owed: the running app predates the arms.
   - [x] **Protocol-version handshake** 🟡 ✓ 23 Aug 2026 — **answered differently**, ledger
     #386, plant-proven both ways.
     A protocol integer answers "is the wire contract compatible", which is not the question:

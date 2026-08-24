@@ -121,6 +121,7 @@ COMMANDS:
   repo tools [--refresh]               Detected git/node (login-shell resolution)
   service start|stop <mysql|mariadb|postgres|redis|mailpit>
                 Start/stop one optional service (web tier stays via rex start/stop)
+  config get|set <key> [value]       Settings the CLI may touch (refusals say why)
   mail          List caught messages (Mailpit) · mail list --unread [query] filters
   mail open     Open the Mailpit web UI · mail mark-read marks every message read
   mail clear    Delete ALL caught messages (--yes to skip the prompt)
@@ -474,6 +475,7 @@ fn main() {
         Some("wp") => cmd_wp(&words[1..], json_output),
         Some("repo") => cmd_repo(&words[1..], json_output),
         Some("service") => cmd_service(&words[1..], json_output),
+        Some("config") => cmd_config(&words[1..], json_output),
         Some("mail") => cmd_mail(&words[1..], json_output),
         Some("tunnel") => cmd_tunnel(&words[1..], json_output),
         Some("tld") => cmd_tld(&words[1..], json_output),
@@ -1406,7 +1408,7 @@ fn cmd_repo(words: &[String], json_output: bool) {
 /// zsh:  rex completions zsh  > ~/.zfunc/_rex   (with ~/.zfunc in $fpath)
 /// bash: rex completions bash > /usr/local/etc/bash_completion.d/rex
 fn cmd_completions(shell: Option<&str>) {
-    const TOP: &str = "status start stop restart site wp repo php db service logs doctor mail tunnel tld blueprints version completions help";
+    const TOP: &str = "status start stop restart site wp repo php db service logs doctor mail tunnel tld blueprints config version completions help";
     const SITE: &str = "list create delete info open login logs php xdebug server rename domain move relink retry env cert";
     const DB: &str = "export import reset versions browse";
     const PHP: &str = "list default install uninstall settings";
@@ -1741,6 +1743,53 @@ fn cmd_service(words: &[String], json_output: bool) {
         return print_json(&r);
     }
     println!("✓ {name} {}", if running { "started" } else { "stopped" });
+}
+
+/// `rex config get|set` — the settings the CLI is allowed to touch.
+///
+/// The allow-list is NOT here. `core::settings_access` rules on each key and the
+/// server enforces it, because the same list is read by the guard that checks a
+/// writable key is either validated or explicitly justified. A copy in the CLI
+/// would be a second opinion about a security boundary.
+///
+/// So this command deliberately does no filtering of its own: it sends the key
+/// and prints what comes back, refusal included. The refusals say WHY — the
+/// signed update chain, a version pin, the agent socket's consent toggle — and
+/// that sentence is the useful half.
+fn cmd_config(words: &[String], json_output: bool) {
+    match words.first().map(String::as_str) {
+        Some("get") => {
+            let Some(key) = words.get(1) else {
+                eprintln!("rex: usage: rex config get <key>");
+                exit(1);
+            };
+            let r = request("config.get", json!({ "key": key }));
+            if json_output {
+                return print_json(&r);
+            }
+            match r["value"].as_str() {
+                // An unset key is not an error: `sites_dir` empty means "the
+                // default", and printing nothing says that better than a fake.
+                Some(v) => println!("{v}"),
+                None => eprintln!("rex: {key} is not set"),
+            }
+        }
+        Some("set") => {
+            let (Some(key), Some(value)) = (words.get(1), words.get(2)) else {
+                eprintln!("rex: usage: rex config set <key> <value>");
+                exit(1);
+            };
+            let r = request("config.set", json!({ "key": key, "value": value }));
+            if json_output {
+                return print_json(&r);
+            }
+            println!("✓ {key} = {value}");
+        }
+        _ => {
+            eprintln!("rex: usage: rex config get <key> | rex config set <key> <value>");
+            exit(1);
+        }
+    }
 }
 
 fn cmd_mail(words: &[String], json_output: bool) {

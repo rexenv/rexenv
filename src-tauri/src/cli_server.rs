@@ -331,6 +331,47 @@ where
             Ok(Value::Null)
         }
         // Sites — the Sites screen's data, merged client-side for display.
+        // Settings, through `core::settings_access`'s ruling — never the raw
+        // key/value door. The policy lives in core because the guard in
+        // `core::sites` reads the same list: a boundary with two copies is the
+        // defect this tree keeps finding.
+        "config.get" => {
+            let state = app_state(app)?;
+            let key = need_str(&args, "key", cmd)?;
+            match crate::core::settings_access::cli_access(&key) {
+                crate::core::settings_access::CliAccess::Denied(why) => {
+                    Err(Error::Other(format!("`{key}` cannot be read from the CLI: {why}")))
+                }
+                _ => {
+                    let conn = state
+                        .db
+                        .lock()
+                        .map_err(|_| Error::Other("database lock poisoned".into()))?;
+                    let value = crate::state::store::get_setting(&conn, &key)?;
+                    Ok(json!({ "key": key, "value": value }))
+                }
+            }
+        }
+        "config.set" => {
+            let state = app_state(app)?;
+            let key = need_str(&args, "key", cmd)?;
+            let value = need_str(&args, "value", cmd)?;
+            match crate::core::settings_access::cli_access(&key) {
+                crate::core::settings_access::CliAccess::ReadWrite => {
+                    // THROUGH the app's own command, so a key with a validating
+                    // setter still gets it. Re-implementing the write here would
+                    // be the way round the validation this guards.
+                    commands::settings::set_setting(state.clone(), key.clone(), value.clone())?;
+                    Ok(json!({ "key": key, "value": value }))
+                }
+                crate::core::settings_access::CliAccess::ReadOnly(why) => {
+                    Err(Error::Other(format!("`{key}` is read-only from the CLI: {why}")))
+                }
+                crate::core::settings_access::CliAccess::Denied(why) => {
+                    Err(Error::Other(format!("`{key}` cannot be set from the CLI: {why}")))
+                }
+            }
+        }
         "site.list" => {
             let state = app_state(app)?;
             let sites = commands::sites::list_sites(state.clone())?;

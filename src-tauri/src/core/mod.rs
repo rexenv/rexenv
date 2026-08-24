@@ -53,6 +53,7 @@ pub mod repo;
 pub mod scratch;
 pub mod service_manager;
 pub mod services;
+pub mod settings_access;
 pub mod setup;
 pub mod site_env;
 pub mod site_metrics;

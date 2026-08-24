@@ -3380,6 +3380,65 @@ mod tests {
                  routing exists"
             );
         }
+
+        // **The half the hardcoded pair above cannot give**, and the reason this
+        // test's own doc comment called itself out (`commands/settings.rs`): a
+        // THIRD gated key would sail past a list of two. Now that `rex config
+        // set` exists, "writable from a shell" is a bigger claim than "writable
+        // from the Settings screen", so the check is derived instead.
+        //
+        // The rule: a key may be CLI-writable only if `set_setting` routes it to
+        // a validating setter, OR it is named in `UNVALIDATED_BUT_SAFE` with the
+        // reason that is acceptable. Adding a writable key with neither is
+        // exactly the drift this catches.
+        let routed: Vec<&str> = ["default_tld", "sites_dir"]
+            .into_iter()
+            .filter(|k| {
+                let konst = if *k == "default_tld" { "DEFAULT_TLD_KEY" } else { "SITES_DIR_KEY" };
+                body.contains(konst)
+            })
+            .collect();
+        let safe: Vec<&str> =
+            crate::core::settings_access::UNVALIDATED_BUT_SAFE.iter().map(|(k, _)| *k).collect();
+        // Every key this build knows about, so a new one cannot be silently
+        // writable: the domain is the union of what the policy rules on.
+        for key in [
+            "default_tld",
+            "sites_dir",
+            "preferred_editor",
+            "preferred_browser",
+            "start_services_on_launch",
+            "adminer_version",
+            "php_upstream_check",
+            "php_update_manifest",
+            "php_update_manifest_sig",
+            "php_update_manifest_serial",
+            "mcp_enabled",
+            "mcp_mail_enabled",
+            "db_version_mysql",
+            "db_version_mariadb",
+        ] {
+            if crate::core::settings_access::cli_access(key)
+                == crate::core::settings_access::CliAccess::ReadWrite
+            {
+                assert!(
+                    routed.contains(&key) || safe.contains(&key),
+                    "`{key}` is CLI-WRITABLE but is neither routed through a validating \
+                     setter in `set_setting` nor listed in `UNVALIDATED_BUT_SAFE` with a \
+                     reason. `rex config set` would write it raw."
+                );
+            }
+        }
+        // …and an unknown key is DENIED, which is the default the whole policy
+        // rests on. If this ever passes as writable, the match has grown a
+        // catch-all in the wrong direction.
+        assert!(
+            matches!(
+                crate::core::settings_access::cli_access("something_nobody_ruled_on"),
+                crate::core::settings_access::CliAccess::Denied(_)
+            ),
+            "an unknown settings key must be DENIED, not writable"
+        );
     }
 
     #[test]

@@ -117,7 +117,7 @@ convention) — see "Infrastructure" for progress streaming.
 | Command | Backing IPC | Tag | Notes |
 |---|---|---|---|
 | `tld [--set <tld>]` | `default_tld` / `set_default_tld` | ✓ | shipped 16 Jul — policy errors stay backend-side |
-| `config get\|set <key> [value]` | `get_setting` / `set_setting` | 🟡 | raw KV — allow-list the keys the UI exposes, don't open the whole table |
+| `config get\|set <key> [value]` | `get_setting` / `set_setting` | ✓ | **shipped 24 Aug 2026** (ledger #397). NOT raw KV: `core::settings_access` rules per key and DENIES by default. The list lives in core because the L0 guard reads it too — a security boundary with two copies is the defect this tree keeps finding. Writes go through `set_setting`, so a validated key still gets its setter |
 
 ## Misc
 
