@@ -47,6 +47,7 @@ export function Tunnels() {
     };
     // `byDomain` is rebuilt from `tunnels` on every render, so the dependency
     // that matters is the data behind it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, tunnels]);
 
   // Default-credentials state per WP site, lifted HERE so the page can warn

@@ -76,6 +76,21 @@ TREE_BEFORE="$(./scripts/verify-receipt.sh fingerprint 2>/dev/null || true)"
 (cd src-tauri && cargo clippy --all-targets -- -D warnings)
 (cd cli && cargo clippy --all-targets -- -D warnings)
 npx tsc --noEmit
+# The frontend's OTHER half. `tsc` proves types; it says nothing about the rule
+# that decides whether a component renders at all.
+#
+# Adopted 24 Aug 2026 (ledger #396) after the rule was measured rather than
+# argued about: run over all 72 `src` files it found three deliberate
+# dependency lists and three suppressions that suppressed nothing — and,
+# decisively, `rules-of-hooks` catches the crash fixed in `e9fc144` (a `useQuery`
+# after an early return) which reached a user-visible failure on `/sites/:id` and
+# was found by a WebKit render check written for something else. Proven by
+# reverting that commit and watching this line go red.
+#
+# Two rules, not a style linter. A general ruleset over a codebase that has never
+# run one produces hundreds of findings, and a gate nobody can get to zero
+# becomes `--max-warnings 999`. See `eslint.config.js` for why each rule is on.
+npx eslint "src/**/*.{ts,tsx}"
 # The ledger's tally is a claim about the ledger, so it is checked like one.
 # It went stale within a day of being typed (4 Aug 2026) while every ROW obeyed
 # the same-commit rule — this project's own finding is that unguarded prose rots

@@ -182,7 +182,15 @@ export function RepoPanel({
   const opLogRef = useRef<HTMLDivElement | null>(null);
   const adoptedRef = useRef(false);
   const jobsKey = ["repo-jobs", siteId, kind] as const;
-  const statusKey = ["repo-status", siteId, kind, asset.dirName] as const;
+  // Memoised because it is a DEPENDENCY, not just a query key: react-query
+  // compares queryKeys structurally, but the effect at ~430 has this in its dep
+  // array, and a fresh array each render re-ran it on every render. Harmless —
+  // that effect is idempotent by construction — but it is churn the linter was
+  // right about, and memoising is smaller than explaining why not to.
+  const statusKey = useMemo(
+    () => ["repo-status", siteId, kind, asset.dirName] as const,
+    [siteId, kind, asset.dirName],
+  );
   const branchesKey = ["repo-branches", siteId, kind, asset.dirName] as const;
   const stashKey = ["repo-stashes", siteId, kind, asset.dirName] as const;
 
@@ -273,7 +281,6 @@ export function RepoPanel({
     void tailLog(candidate.logKey, 300)
       .then((tail) => setOpLines((streamed) => mergeTailAndStreamed(tail, streamed)))
       .catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [siteJobs.data, opJob, asset.dirName]);
 
   // Live subscriptions for the op job.

@@ -673,6 +673,10 @@ export function Sites() {
       }
       return a.name.localeCompare(b.name);
     });
+    // `statusOf` is recreated every render and reads only `servingMap`, which is
+    // already a dependency — depending on the FUNCTION would rebuild this list on
+    // every render and defeat the memo. The data is the dependency that matters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sites, filter, query, sort, servingMap]);
 
   // The render split, on the RECORDED fact only (`isScratch`). Counts and the

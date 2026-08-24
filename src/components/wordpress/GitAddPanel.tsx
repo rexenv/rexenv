@@ -78,7 +78,6 @@ export function GitAddPanel({
     void tailLog(candidate.logKey, 300)
       .then((tail) => setLines((streamed) => mergeTailAndStreamed(tail, streamed)))
       .catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [siteJobs.data, job]);
 
   // git/node availability — resolved from the LOGIN-SHELL env (nvm-aware).

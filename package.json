@@ -12,7 +12,8 @@
     "release:mac": "bash scripts/release-mac.sh",
     "typecheck": "tsc --noEmit",
     "verify": "bash scripts/verify.sh",
-    "verify:full": "bash scripts/verify-full.sh"
+    "verify:full": "bash scripts/verify-full.sh",
+    "lint": "eslint \"src/**/*.{ts,tsx}\""
   },
   "dependencies": {
     "@fontsource/inter": "^5.1.0",
@@ -42,9 +43,12 @@
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
+    "eslint": "^10.9.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.2",
+    "typescript-eslint": "^8.67.0",
     "vite": "^6.0.3"
   }
 }

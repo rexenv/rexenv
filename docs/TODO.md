@@ -564,8 +564,16 @@ cause: a commit did the work and the surrounding claim stayed as it was.
   WCAG guard had a `why` field on every EXEMPT row that nothing ever read, so a failing
   run now prints the pairings it did NOT check and the reason each rests on — an
   exemption that is wrong is invisible until something makes you read it.
-- [ ] **The frontend has no linter at all, and 17 `eslint-disable` comments say
-  otherwise.** No eslint/biome/oxlint in `package.json`, no config file, and `verify.sh`
+- [x] **The frontend has no linter at all, and 17 `eslint-disable` comments say
+  otherwise** ✓ 24 Aug 2026 — ADOPTED and wired into `verify.sh`, ledger #396,
+  plant-proven both halves. Two react-hooks rules plus `no-control-regex`; not a style
+  linter, and the reason is in `eslint.config.js`. The three stale directives are gone
+  (one of them was NOT stale — `no-control-regex` was simply a rule nobody had enabled,
+  so enabling it made an honest comment load-bearing rather than deleting it), the three
+  real findings were each dealt with on their merits (`RepoPanel`'s `statusKey` memoised —
+  a real fix; `Sites`/`Tunnels` suppressed WITH the reason at the line), and the whole
+  thing was measured before it was argued about. **The original row's text follows, since
+  the measurement is the part worth keeping.** No eslint/biome/oxlint in `package.json`, no config file, and `verify.sh`
   runs `tsc --noEmit` for the frontend — while `src/` carries 16
   `react-hooks/exhaustive-deps` suppressions and one `no-control-regex` across 10 files.
   They are honest intent-markers ("this dep list is deliberate") and completely inert.

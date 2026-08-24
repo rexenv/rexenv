@@ -734,7 +734,18 @@ load-bearing, green only from its own line). It grows tiers by composition, not 
 bloating the fast path:
 
 - **`scripts/verify.sh`** (fast, pre-commit, minutes): lib tests + **`cli` crate tests**
-  + examples build + clippy -D warnings + tsc.
+  + examples build + clippy -D warnings + tsc + **eslint (two react-hooks rules)**.
+  **The lint half landed 24 Aug 2026 and is deliberately not a style linter** (ledger
+  #396). `tsc` proves types and says nothing about the rule that decides whether a
+  component renders at all: `rules-of-hooks` catches the crash fixed in `e9fc144` — a
+  `useQuery` after an early return, which reached a user-visible failure on `/sites/:id`
+  and was found by a WebKit render check written for something else entirely.
+  Scope is two rules plus `no-control-regex`, and widening it is a separate decision with
+  a separate cost: a general ruleset over a codebase that has never run one produces
+  hundreds of findings, and a gate nobody can get to zero becomes `--max-warnings 999`.
+  `reportUnusedDisableDirectives` is the half that keeps the suppressions honest — three
+  of the seventeen that existed suppressed problems that no longer did, and nothing could
+  say which three.
   **Grew the `cli` step 12 Aug 2026, and the gap is worth remembering:** the bar ran
   `cargo test --lib` in `src-tauri` only, so the `cli` crate — a SHIPPED binary, linked
   onto every user's PATH by the cask — was never entered. It also had no tests to run.

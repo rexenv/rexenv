@@ -62,7 +62,8 @@ The system mental model lives in `docs/ARCHITECTURE.md` — read it for any feat
 - `src/routes/` map 1:1 to screens (Sites, SiteDetail, Services, Databases, Mail,
   Tunnels, Settings, Onboarding).
 - Verification: **`scripts/verify.sh` is the pre-commit bar** (lib tests + `cli` tests +
-  example builds + clippy `--all-targets` at zero in BOTH crates + tsc + the two
+  example builds + clippy `--all-targets` at zero in BOTH crates + tsc + eslint (two
+  react-hooks rules, NOT a style linter — see `eslint.config.js`) + the two
   generated-doc gates, `ledger-tally.sh` and `doc-counts.sh` — the latter also fails
   on any `docs/*.md` path the tree cites that does not exist). A green verdict comes ONLY from the script's own
   `verify: all green` line — an ad-hoc `cargo test`/`tsc` invocation is never a gate:
