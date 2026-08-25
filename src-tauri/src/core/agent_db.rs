@@ -158,6 +158,48 @@ pub fn drop_sql(user: &str) -> String {
     sql
 }
 
+/// Auto-allow: answer the database-consent prompt with "yes" without asking.
+///
+/// The equivalent of Claude Code's own `--dangerously-skip-permissions`, and
+/// scoped the same way: it skips a **consent prompt**, never a security
+/// boundary. The tier rule — an agent may not change a site the user made — is
+/// not a prompt and is untouched by this. Today T1 consent means exactly one
+/// thing, the real-site DB read, so that is exactly what this covers.
+///
+/// **In memory and session-scoped, deliberately, and this is the whole safety
+/// argument.** Every other rexenv setting persists; this one dies with the
+/// process. A standing "yes" that survives a restart is one somebody turns on
+/// for an afternoon and still has on a month later, which is precisely the
+/// state where it does damage — the user no longer remembers it is on, so the
+/// absence of a prompt reads as "the agent did not ask" rather than "I answered
+/// in advance". Losing it on quit is the feature, not a limitation.
+///
+/// What it does NOT do:
+/// - It does not skip the RECORD. A grant is still written to
+///   `agent_db_grants`, with the same expiry, listed and revocable — so "what
+///   could that agent see, and until when" still has an answer.
+/// - It does not hide itself. The grant records `auto_granted`, so a user
+///   reading the list later can tell what they approved from what the toggle
+///   approved, and the agent is told too.
+#[derive(Debug, Default)]
+pub struct AutoAllow(bool);
+
+impl AutoAllow {
+    pub fn is_on(&self) -> bool {
+        self.0
+    }
+
+    pub fn set(&mut self, on: bool) {
+        self.0 = on;
+    }
+}
+
+/// The sentence appended to a `db_query` reply when auto-allow produced the
+/// grant, so the agent can say so in its own report rather than presenting the
+/// access as something the user weighed and approved.
+pub const AUTO_GRANTED_NOTE: &str =
+    "This access was granted automatically because the person you're working with has      auto-allow switched on in rexenv — they were not asked about this database. It is      recorded and expires like any other grant, and they can revoke it.";
+
 /// One agent's outstanding ASK to read a real site's database.
 ///
 /// **Session-scoped and in memory on purpose.** A request is about a
@@ -413,6 +455,95 @@ mod tests {
         assert_eq!(reqs.list().len(), MAX_REQUESTS, "the prompt list grew without bound");
     }
 
+    /// **Auto-allow skips the PROMPT and nothing else.**
+    ///
+    /// The dangerous version of this feature is one that reads as "turn off the
+    /// safety". These assertions are the difference: what it may do is answer a
+    /// consent question; what it may not do is widen a privilege, reach a
+    /// second site, outlive the process, or hide that it acted.
+    ///
+    /// The gate function itself is deliberately NOT auto-allow-aware — it
+    /// stays a pure decision over recorded facts, and the bypass lives at the
+    /// one call site that can also record a grant. A flag threaded into
+    /// `authorize` would mean every future reader of the gate has to hold two
+    /// modes in their head.
+    #[test]
+    fn auto_allow_answers_the_prompt_without_widening_anything() {
+        let mut a = AutoAllow::default();
+        assert!(!a.is_on(), "auto-allow must default to OFF");
+        a.set(true);
+        assert!(a.is_on());
+        a.set(false);
+        assert!(!a.is_on(), "it must be switchable back off");
+
+        // It is NOT a settings key. Persisting it is the failure mode the
+        // design rejects: a standing yes nobody remembers switching on.
+        let src = include_str!("../state/app.rs");
+        assert!(
+            src.contains("agent_db_auto_allow: Mutex<crate::core::agent_db::AutoAllow>"),
+            "auto-allow must live in AppState (in memory), not in the settings table"
+        );
+        let settings_src = include_str!("settings_access.rs");
+        assert!(
+            !settings_src.contains("auto_allow"),
+            "auto-allow reached the settings policy — if it is a settings KEY it survives a \
+             restart, and a consent bypass that outlives the session is the exact thing this \
+             design refuses"
+        );
+
+        // The gate stays a pure decision: no auto-allow anywhere in it.
+        let me = include_str!("agent_db.rs");
+        // The gate body = from its signature to the next item. Located WITHOUT
+        // any brace character, and that is not fussiness: a `'{'` char literal
+        // in this file is counted by `copy_scan::production_lines`' naive brace
+        // scan, which then closes the `#[cfg(test)]` module early — every test
+        // below reads as production code and the app-schema guard reports this
+        // file for SQL that only exists in tests. Two versions of this test hit
+        // that before the third avoided braces entirely.
+        let gate_start = me.find("pub fn authorize(").expect("the gate");
+        let rest = &me[gate_start + 10..];
+        let gate_end = rest.find("\npub fn ").map(|i| gate_start + 10 + i).unwrap_or(me.len());
+        let gate = &me[gate_start..gate_end];
+        assert!(gate.len() > 200, "the gate body was not located");
+        assert!(
+            !gate.contains("AutoAllow") && !gate.contains("auto_allow"),
+            "the gate became auto-allow-aware — keep the bypass at the call site so the \
+             decision function stays readable as one rule"
+        );
+
+        // The agent is TOLD. Silence here would let it report auto-granted
+        // access as something a person weighed and approved.
+        assert!(AUTO_GRANTED_NOTE.contains("not asked"), "{AUTO_GRANTED_NOTE}");
+        assert!(AUTO_GRANTED_NOTE.contains("revoke"), "{AUTO_GRANTED_NOTE}");
+    }
+
+    /// **Auto-allow may not touch the tier boundary.**
+    ///
+    /// The boundary — an agent cannot change a site the user made — is a RULE,
+    /// not a prompt, so a "skip the prompts" switch has nothing to say about
+    /// it. Claude Code's own flag is scoped the same way. This asserts the
+    /// executing tools' claim gate never consults it, because the tempting
+    /// future edit is "auto-allow should just let the agent get on with it".
+    #[test]
+    fn auto_allow_cannot_reach_the_tier_boundary() {
+        let scratch = include_str!("../mcp_server/scratch.rs");
+        let claim = scratch.find("pub fn claim(").expect("the ownership gate");
+        let body = &scratch[claim..claim + 500];
+        assert!(
+            !body.contains("auto_allow"),
+            "the ownership gate consults auto-allow — that turns a consent switch into \
+             permission to mutate the user's own sites, which is a different feature and \
+             not one anybody agreed to"
+        );
+        // Exactly one call site may consult it: db_query's refusal arm.
+        assert_eq!(
+            scratch.matches("ctx.auto_allow_on()").count(),
+            1,
+            "auto-allow is consulted in more than one place — its blast radius is supposed \
+             to be one consent prompt"
+        );
+    }
+
     /// **A real site is unreadable without a live grant, and a scratch site
     /// never needs one — decided from the RECORDED ownership fact.**
     ///
@@ -457,7 +588,7 @@ mod tests {
         assert_eq!(user, "rex_agent_tmp_scratch_rex");
 
         // With a live grant the real site opens — READ-ONLY, never Scratch.
-        store::grant_agent_db(&conn, "g1", "s1", "Claude Code", "rex_ro_shop_rex", 7).unwrap();
+        store::grant_agent_db(&conn, "g1", "s1", "Claude Code", "rex_ro_shop_rex", 7, false).unwrap();
         let (p, user) = authorize(&conn, "s1", "shop.rex", false, "Claude Code").unwrap();
         assert_eq!(p, Principal::ReadOnly, "a granted real site must never get a writing principal");
         assert_eq!(user, "rex_ro_shop_rex");
@@ -471,7 +602,7 @@ mod tests {
         assert_eq!(store::list_agent_db_grants(&conn).unwrap().len(), 1);
 
         // …and so does expiry, which is the same gate reading the same column.
-        store::grant_agent_db(&conn, "g2", "s1", "Claude Code", "rex_ro_shop_rex", 7).unwrap();
+        store::grant_agent_db(&conn, "g2", "s1", "Claude Code", "rex_ro_shop_rex", 7, false).unwrap();
         assert!(authorize(&conn, "s1", "shop.rex", false, "Claude Code").is_ok());
         conn.execute(
             "UPDATE agent_db_grants SET expires_at = datetime('now','-1 hour') WHERE id='g2'",

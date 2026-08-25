@@ -96,6 +96,10 @@ pub struct AppState {
     /// In memory and session-scoped by design — see `core::agent_db::GrantRequests`:
     /// a consent prompt whose context is gone is not consent.
     pub agent_db_requests: Mutex<crate::core::agent_db::GrantRequests>,
+    /// Auto-allow for database consent (session-scoped — see
+    /// `core::agent_db::AutoAllow`). Deliberately NOT a settings row: it must
+    /// not survive a restart.
+    pub agent_db_auto_allow: Mutex<crate::core::agent_db::AutoAllow>,
 }
 
 impl AppState {
@@ -144,6 +148,7 @@ impl AppState {
             #[cfg(unix)]
             mcp: Mutex::new(crate::mcp_server::McpControl::default()),
             agent_db_requests: Mutex::new(Default::default()),
+            agent_db_auto_allow: Mutex::new(Default::default()),
         }
     }
 }

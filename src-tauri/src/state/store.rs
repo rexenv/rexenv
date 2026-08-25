@@ -1423,6 +1423,11 @@ pub struct AgentDbGrant {
     pub db_user: String,
     pub granted_at: String,
     pub expires_at: String,
+    /// True when auto-allow produced this grant instead of a human clicking
+    /// Allow. Recorded, never re-derived: the toggle is session-scoped, so by
+    /// the time anyone reads the list it will usually be off, and "was this
+    /// approved by a person?" would then answer wrongly for every past row.
+    pub auto_granted: bool,
     /// Set when the user revoked it. The row is KEPT: a revoked grant is
     /// evidence about what an agent could see and until when, and the feed is
     /// where a user goes to find that out. Deleting it deletes the answer.
@@ -1439,11 +1444,13 @@ pub fn grant_agent_db(
     client: &str,
     db_user: &str,
     days: u32,
+    auto_granted: bool,
 ) -> Result<AgentDbGrant> {
     conn.execute(
-        "INSERT INTO agent_db_grants (id, site_id, client, db_user, granted_at, expires_at)
-         VALUES (?1, ?2, ?3, ?4, datetime('now'), datetime('now', ?5))",
-        rusqlite::params![id, site_id, client, db_user, format!("+{days} days")],
+        "INSERT INTO agent_db_grants
+             (id, site_id, client, db_user, granted_at, expires_at, auto_granted)
+         VALUES (?1, ?2, ?3, ?4, datetime('now'), datetime('now', ?5), ?6)",
+        rusqlite::params![id, site_id, client, db_user, format!("+{days} days"), auto_granted],
     )?;
     get_agent_db_grant(conn, id)?
         .ok_or_else(|| crate::error::Error::Other("grant vanished after insert".into()))
@@ -1451,7 +1458,7 @@ pub fn grant_agent_db(
 
 pub fn get_agent_db_grant(conn: &Connection, id: &str) -> Result<Option<AgentDbGrant>> {
     let mut st = conn.prepare(
-        "SELECT id, site_id, client, db_user, granted_at, expires_at, revoked_at
+        "SELECT id, site_id, client, db_user, granted_at, expires_at, revoked_at, auto_granted
          FROM agent_db_grants WHERE id = ?1",
     )?;
     let mut rows = st.query([id])?;
@@ -1464,6 +1471,7 @@ pub fn get_agent_db_grant(conn: &Connection, id: &str) -> Result<Option<AgentDbG
             granted_at: r.get(4)?,
             expires_at: r.get(5)?,
             revoked_at: r.get(6)?,
+            auto_granted: r.get::<_, i64>(7)? != 0,
         })),
         None => Ok(None),
     }
@@ -1598,7 +1606,7 @@ mod tests {
         )
         .unwrap();
 
-        let live = grant_agent_db(&conn, "g1", "s1", "Claude Code", "rex_agent_s1", 7).unwrap();
+        let live = grant_agent_db(&conn, "g1", "s1", "Claude Code", "rex_agent_s1", 7, false).unwrap();
         assert!(live.expires_at > live.granted_at, "expiry must be after the grant");
         assert!(live.revoked_at.is_none());
 
@@ -1615,7 +1623,7 @@ mod tests {
 
         // EXPIRED: written in the past, so the row exists and the lookup refuses
         // it. Both halves matter — the UI must still show it, the gate must not.
-        grant_agent_db(&conn, "g2", "s1", "Old Agent", "rex_agent_s1_old", 7).unwrap();
+        grant_agent_db(&conn, "g2", "s1", "Old Agent", "rex_agent_s1_old", 7, false).unwrap();
         conn.execute(
             "UPDATE agent_db_grants SET expires_at = datetime('now','-1 day') WHERE id='g2'",
             [],

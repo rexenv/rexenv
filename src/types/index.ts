@@ -1444,6 +1444,11 @@ export interface AgentDbGrant {
   /** Stored, never a duration added at read time — the dialog promised a date. */
   expiresAt: string;
   revokedAt: string | null;
+  /** True when auto-allow produced this grant instead of a person clicking
+   *  Allow. Recorded at grant time — auto-allow is session-scoped, so by the
+   *  time anyone reads this list it is usually off, and asking "is it on now?"
+   *  would answer wrongly for every past row. */
+  autoGranted: boolean;
 }
 
 export interface AgentAction {

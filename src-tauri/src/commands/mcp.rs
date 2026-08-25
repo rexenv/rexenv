@@ -327,6 +327,7 @@ pub async fn agent_db_grant(
         &client,
         &user,
         GRANT_DAYS,
+        false, // a human clicked Allow — this is the command the button calls
     )?;
     drop(conn);
     if let Ok(mut reqs) = state.agent_db_requests.lock() {
@@ -381,4 +382,36 @@ pub async fn agent_db_revoke(state: State<'_, AppState>, id: String) -> Result<(
     let conn = db(&state)?;
     crate::state::store::revoke_agent_db_grant(&conn, &id)?;
     Ok(())
+}
+
+/// Is auto-allow on for this session? (`core::agent_db::AutoAllow`.)
+///
+/// Session state, so the UI must ASK rather than remember: a fresh launch is
+/// always off, and a toggle left visually on across a restart would be the
+/// worst possible lie for this particular switch.
+#[tauri::command]
+pub fn agent_db_auto_allow(state: State<'_, AppState>) -> Result<bool> {
+    Ok(state
+        .agent_db_auto_allow
+        .lock()
+        .map(|a| a.is_on())
+        .unwrap_or(false))
+}
+
+/// Turn auto-allow on or off for this session.
+///
+/// Switching it OFF does not revoke what it already granted — those are real
+/// grants with real expiries, listed and revocable individually, exactly like
+/// ones a person clicked. Silently revoking them here would make this switch
+/// mean two things at once, and the user would have no way to tell which
+/// access ended because of the toggle and which they ended themselves.
+#[tauri::command]
+pub fn agent_db_set_auto_allow(state: State<'_, AppState>, on: bool) -> Result<bool> {
+    let mut a = state
+        .agent_db_auto_allow
+        .lock()
+        .map_err(|_| crate::error::Error::Other("the auto-allow lock is poisoned".into()))?;
+    a.set(on);
+    log::info!("mcp: database auto-allow {} for this session", if on { "ON" } else { "off" });
+    Ok(a.is_on())
 }

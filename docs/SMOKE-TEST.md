@@ -838,6 +838,22 @@ modal that steals focus.
   expiry shows a real countdown, not "Expires in 0 days" or a blank.
   **Tell:** any one of (a) or (b) succeeding is a blanket grant wearing a
   per-site label.
+- [ ] **22. Auto-allow: it answers the prompt, and it dies with the app.** In
+  **Database access**, read the "Allow database reads without asking" copy — it
+  must say you are **not asked**, that it **switches itself off when you quit
+  rexenv**, and that a grant still cannot modify or delete. Turn it ON, ask the
+  agent to read a site it has no grant for → it succeeds with **no prompt**, the
+  grant appears in the list marked **auto**, and the agent's own reply says the
+  access was granted automatically. Now **quit and relaunch** → the toggle is
+  **OFF**, and the same request prompts again.
+  **Tells:** the toggle is still on after a relaunch (it is a settings row, and a
+  consent bypass that outlives the session is the thing this design refuses); the
+  grant is not marked `auto` (then "did I approve this?" has no answer once the
+  toggle is off); the agent's reply presents auto-granted access as approved; or —
+  the serious one — with it ON the agent can now MUTATE one of your own sites.
+  Auto-allow skips a consent PROMPT, never the tier rule, and that failure is a
+  HOLD.
+
 - [ ] **21. ⚠ Deleting the site takes the account with it.** With a live grant on
   a site, delete that site in rexenv. Then check the engine directly:
   ```sh

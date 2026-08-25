@@ -384,7 +384,7 @@ The consequence for the rest of §3: the fences below are drawn to serve (a) and
 | Tier | Meaning | Examples |
 |---|---|---|
 | **T0 — unattended** | Agent calls it, it runs, the activity feed records it | Everything scoped to **scratch sites** (create, delete, WP ops, raw wp-cli per D1, DB rw on own schema, PHP switch, link plugin); read-only diagnostics (list sites redacted, site status, log tail *scrubbed*); scratch mail; real-site DB **SELECT** only after a scoped, expiring T1 grant |
-| **T1 — consent in the rexenv UI** | Native dialog in the app, per operation; deny on timeout, deny when no window | First read-only DB grant on a **real** site (§3.6); real-site mail/log exposure (§3.5); mutating a **real** site — M4, may ship never (§9 D3) |
+| **T1 — consent in the rexenv UI** | Native dialog in the app, per operation; deny on timeout, deny when no window. **Auto-allow (25 Aug 2026)** may answer T1 with yes for the DB read — session-scoped, in `AppState` not `settings`, still recording a flagged grant, and scoped to the PROMPT only: the tier rule is not a prompt (#408) | First read-only DB grant on a **real** site (§3.6); real-site mail/log exposure (§3.5); mutating a **real** site — M4, may ship never (§9 D3) |
 | **T2 — never a tool** | Not in the registry; no MCP tool offers it | Everything in §3.3. NB: "not a tool" is (a)+(b), not containment — scratch code can still reach some of these via the CLI socket (§3.1); that is the D7 residual, stated not hidden |
 
 The tier boundary is **ownership, recorded**: `sites.origin = 'agent'` (§4.1) is

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Database } from "lucide-react";
-import { agentDbRequests, agentDbGrants, agentDbGrant, agentDbDeny, agentDbRevoke } from "@/lib/ipc";
+import { agentDbRequests, agentDbGrants, agentDbGrant, agentDbDeny, agentDbRevoke, agentDbAutoAllow, agentDbSetAutoAllow } from "@/lib/ipc";
+import { StartStopToggle } from "@/components/common/StartStopToggle";
 import type { AgentDbGrant as Grant } from "@/types";
 import { toastBackendError } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
@@ -58,8 +59,16 @@ export function AgentDbGrants() {
     onError: (e) => toastBackendError(e),
   });
 
+  const autoAllow = useQuery({ queryKey: ["agentDbAutoAllow"], queryFn: agentDbAutoAllow });
+  const setAuto = useMutation({
+    mutationFn: (on: boolean) => agentDbSetAutoAllow(on),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["agentDbAutoAllow"] }),
+    onError: (e) => toastBackendError(e),
+  });
+
   const asks = requests.data ?? [];
   const rows = grants.data ?? [];
+  const auto = autoAllow.data ?? false;
 
   return (
     <div className="mt-3.5 border-t border-rex-border-subtle pt-3.5">
@@ -126,6 +135,42 @@ export function AgentDbGrants() {
         </p>
       )}
 
+      {/* Auto-allow. The copy is deliberately unflattering, for the same reason
+          the prompt's is: a switch that undersells what it hands over produces
+          a decision the user believes they understood. It names what stops
+          being asked, and it says the one thing that makes this survivable —
+          that it turns itself off when rexenv quits. */}
+      <div className="mt-3 flex items-start gap-[14px] rounded-md border border-rex-border-subtle px-3 py-2.5">
+        <div className="min-w-0 flex-1">
+          <div className="text-[0.78125rem] font-medium text-rex-text">
+            Allow database reads without asking
+          </div>
+          <div className="mt-1 space-y-1.5 text-[0.71875rem] leading-[1.55] text-rex-text-muted">
+            <p>
+              With this on, an agent that asks to read one of your sites&rsquo; databases gets a
+              yes immediately — you are{" "}
+              <strong className="font-medium text-rex-text">not asked</strong>, for any site. It
+              still cannot modify or delete anything, and it still cannot touch your sites in any
+              other way.
+            </p>
+            <p>
+              <strong className="font-medium text-rex-text">
+                This switches itself off when you quit rexenv
+              </strong>{" "}
+              — it is for a working session, not a setting you leave on. Every grant it makes is
+              listed below, marked <em>auto</em>, expires like any other, and can be revoked.
+            </p>
+          </div>
+        </div>
+        <StartStopToggle
+          running={auto}
+          busy={setAuto.isPending}
+          variant="setting"
+          onToggle={() => setAuto.mutate(!auto)}
+          label="Allow database reads without asking"
+        />
+      </div>
+
       {rows.length > 0 && (
         <ul className="mt-2 space-y-1">
           {rows.map((g) => {
@@ -138,6 +183,14 @@ export function AgentDbGrants() {
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-[0.75rem] text-rex-text">
                     {g.client} · <span className="font-mono text-[0.6875rem]">{g.dbUser}</span>
+                    {g.autoGranted && (
+                      <span
+                        className="ml-1.5 rounded border border-rex-border-subtle px-1 py-px text-[0.625rem] uppercase tracking-wide text-rex-text-muted"
+                        title="Granted by auto-allow — you were not asked about this one"
+                      >
+                        auto
+                      </span>
+                    )}
                   </div>
                   <div className={`text-[0.6875rem] ${s.tone}`}>{s.label}</div>
                 </div>

@@ -440,7 +440,7 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
 
 ## 8. Data & app state
 
-- **SQLite for all app state** (`state/db.rs`), `user_version` migrations, currently 38:
+- **SQLite for all app state** (`state/db.rs`), `user_version` migrations, currently 39:
   v1 `sites` + `settings` · v2 `php_versions` registry · v3 `sites.multisite` ·
   v4 `blueprints` (JSON `spec`) · v5 `php_settings` · v6 `sites.db_name` (stored, never
   re-derived) · v7 `site_env` · v8/v9 `default_tld` seed + `.rex` flip ·
@@ -475,7 +475,9 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   agent's permission to read one site's DB — `site_id`/`client`/`db_user` scoped,
   with `expires_at` STORED rather than a duration added at read time, and
   `revoked_at` instead of DELETE so a revoked grant stays as evidence of what an
-  agent could see and until when).
+  agent could see and until when) · v39 `agent_db_grants.auto_granted` (did a PERSON click
+  Allow, or did auto-allow answer? Recorded, because auto-allow is session-scoped and will
+  usually be off by the time anyone reads the list).
   Per-engine DB versions are settings-KV rows (`db_version_<engine>`), not a migration.
   *(This list read "currently 25" for eight migrations — restored 11 Aug 2026.
   A count is the one part of a list that goes wrong silently, so check it
@@ -764,6 +766,18 @@ IPC surface — which is how a reader ends up designing against a system with on
   without being refused first), the prompt names what is actually in reach — password
   hashes, tokens in `wp_options` — and the grant expires in 7 days and is revocable
   there. Requests live in memory only: a prompt whose context is gone is not consent.
+- **Auto-allow answers the database prompt, and nothing else** (`core::agent_db::AutoAllow`).
+  The equivalent of Claude Code's `--dangerously-skip-permissions`, scoped the same way: it
+  skips a **consent prompt**, never a security boundary — the tier rule (an agent cannot
+  change a site the user made) is a rule, not a prompt, and is untouched. **It lives in
+  `AppState`, not in `settings`, so it dies with the process**: a standing "yes" that
+  survives a restart is one somebody enables for an afternoon and still has on a month
+  later, which is exactly when the absence of a prompt reads as "the agent never asked".
+  It does not skip the RECORD — a grant is still written with the same expiry, listed and
+  revocable, flagged `auto_granted` so a user can tell what they approved from what the
+  toggle approved — and the agent is told in the reply, so it can report the access
+  honestly rather than as something a person weighed. Guarded: the gate stays
+  auto-allow-unaware, the ownership gate may not consult it, and exactly ONE call site may.
 - **The read-only boundary is a TYPE, and its scope is the handler.** A read handler
   receives a `ReadCtx` (`mcp_server/readctx.rs`) — one private `&AppState`, five read
   methods, no mutating method to reach. A source scan over both `tools.rs` and

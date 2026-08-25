@@ -779,6 +779,14 @@ impl<'a> ScratchCtx<'a> {
         }
     }
 
+    /// Is auto-allow on for this session? (`core::agent_db::AutoAllow`.)
+    ///
+    /// A poisoned lock answers NO. The safe direction for a consent bypass is
+    /// off: a broken lock must not become a standing yes.
+    pub fn auto_allow_on(&self) -> bool {
+        self.state.agent_db_auto_allow.lock().map(|a| a.is_on()).unwrap_or(false)
+    }
+
     /// Any site by id, WITHOUT an ownership claim — for `db_query` only.
     ///
     /// Reading a user's own site is the one thing an agent may do to a site it
@@ -992,8 +1000,36 @@ fn db_query<'a>(
             let conn = ctx.db()?;
             crate::core::agent_db::authorize(&conn, &site.id, &site.domain, is_scratch, ctx.client)
         };
+        let mut auto_granted = false;
         let (principal, user) = match decision {
             Ok(v) => v,
+            Err(e) if !is_scratch && ctx.auto_allow_on() => {
+                // AUTO-ALLOW. It answers the prompt; it does not skip the
+                // record. A grant row is written exactly as the button writes
+                // one — same principal, same expiry, listed and revocable —
+                // with `auto_granted` set so the list can tell a click from a
+                // toggle. Nothing here widens WHAT is granted: still
+                // `Principal::ReadOnly`, still one database.
+                let _ = e;
+                auto_granted = true;
+                let user = crate::core::agent_db::principal_name(
+                    crate::core::agent_db::Principal::ReadOnly,
+                    &site.domain,
+                );
+                {
+                    let conn = ctx.db()?;
+                    crate::state::store::grant_agent_db(
+                        &conn,
+                        &uuid::Uuid::new_v4().to_string(),
+                        &site.id,
+                        ctx.client,
+                        &user,
+                        crate::core::agent_db::GRANT_DAYS,
+                        true,
+                    )?;
+                }
+                (crate::core::agent_db::Principal::ReadOnly, user)
+            }
             Err(e) => {
                 // The refusal is also the ASK. Recording it here — on the
                 // refusal path, not on some separate "request access" tool — is
@@ -1028,7 +1064,18 @@ fn db_query<'a>(
         crate::core::agent_db::provision(&client, port, principal, &site.db_name, &user)?;
 
         let result = crate::core::agent_query::run_query(port, &user, &site.db_name, sql).await?;
-        serde_json::to_value(result).map_err(|e| Error::Other(e.to_string()))
+        let mut value = serde_json::to_value(result).map_err(|e| Error::Other(e.to_string()))?;
+        // Tell the agent the access was not weighed by a person, so it can say
+        // so in its own report instead of presenting it as approved.
+        if auto_granted {
+            if let Some(obj) = value.as_object_mut() {
+                obj.insert(
+                    "consent".into(),
+                    Value::String(crate::core::agent_db::AUTO_GRANTED_NOTE.to_string()),
+                );
+            }
+        }
+        Ok(value)
     })
 }
 

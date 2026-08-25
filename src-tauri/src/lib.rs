@@ -1016,6 +1016,8 @@ pub fn run() {
             commands::mcp::agent_db_grant,
             commands::mcp::agent_db_deny,
             commands::mcp::agent_db_revoke,
+            commands::mcp::agent_db_auto_allow,
+            commands::mcp::agent_db_set_auto_allow,
             commands::tunnels::start_tunnel,
             commands::tunnels::stop_tunnel,
             commands::tunnels::tunnels_status,

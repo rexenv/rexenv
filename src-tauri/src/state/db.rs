@@ -580,6 +580,18 @@ const MIGRATIONS: &[&str] = &[
         FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE
     );",
     "CREATE INDEX IF NOT EXISTS idx_agent_db_grants_site ON agent_db_grants(site_id);",
+    // v39 — was this grant CLICKED by a human, or produced by auto-allow?
+    //
+    // The two are not the same fact and the row must not conflate them. A user
+    // reading the grant list after the event is asking "did I approve this?",
+    // and with auto-allow that answer can be no while the access was real. So
+    // it is recorded at grant time rather than inferred later from whether the
+    // toggle happens to be on now — the toggle is session-scoped and will be
+    // off by the time anyone looks.
+    //
+    // Existing rows default to 0: every grant written before this column
+    // existed came from a click, because auto-allow did not exist.
+    "ALTER TABLE agent_db_grants ADD COLUMN auto_granted INTEGER NOT NULL DEFAULT 0;",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.

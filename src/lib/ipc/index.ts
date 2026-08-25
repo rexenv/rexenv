@@ -2037,6 +2037,19 @@ export async function agentDbDeny(siteId: string, client: string): Promise<void>
   return invoke<void>("agent_db_deny", { siteId, client });
 }
 
+/** Is database auto-allow on for THIS session? Session state, so the UI must ask
+ *  rather than remember — a fresh launch is always off. */
+export async function agentDbAutoAllow(): Promise<boolean> {
+  if (!isTauri()) return false;
+  return invoke<boolean>("agent_db_auto_allow");
+}
+
+/** Turn auto-allow on/off for this session. Switching it off does not revoke
+ *  what it already granted — those are ordinary grants, revocable one by one. */
+export async function agentDbSetAutoAllow(on: boolean): Promise<boolean> {
+  return invoke<boolean>("agent_db_set_auto_allow", { on });
+}
+
 /** Revoke a live grant — drops the account first, then records when it stopped. */
 export async function agentDbRevoke(id: string): Promise<void> {
   return invoke<void>("agent_db_revoke", { id });

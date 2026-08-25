@@ -1462,6 +1462,24 @@ mod tests {
                 "that a pending request does not survive a quit — the reason an expected \
                  Allow button is not there",
             ),
+            // AUTO-ALLOW. Its whole safety case is two sentences, and a trim
+            // that keeps the feature while dropping either of them leaves a
+            // switch that reads as a convenience and behaves as a standing yes.
+            (
+                "not asked",
+                "that auto-allow means the user is NOT ASKED — the thing being given up",
+            ),
+            (
+                "switches itself off when you quit rexenv",
+                "that auto-allow is session-scoped. Without this the user has no reason to \
+                 think it ends, and a consent bypass believed to be permanent is one nobody \
+                 turns off",
+            ),
+            (
+                "cannot modify or delete anything",
+                "that auto-allow does NOT widen what a grant permits — it answers the prompt, \
+                 it does not turn a read into a write",
+            ),
         ];
         // The REFUSAL points a human at a place; these are the strings that
         // place is actually called. Pinned together because the refusal lives in
