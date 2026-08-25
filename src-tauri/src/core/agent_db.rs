@@ -198,7 +198,9 @@ impl AutoAllow {
 /// grant, so the agent can say so in its own report rather than presenting the
 /// access as something the user weighed and approved.
 pub const AUTO_GRANTED_NOTE: &str =
-    "This access was granted automatically because the person you're working with has      auto-allow switched on in rexenv — they were not asked about this database. It is      recorded and expires like any other grant, and they can revoke it.";
+    "This access was granted automatically because the person you're working with has \
+     auto-allow switched on in rexenv \u{2014} they were not asked about this database. It \
+     is recorded and expires like any other grant, and they can revoke it.";
 
 /// One agent's outstanding ASK to read a real site's database.
 ///
@@ -453,6 +455,30 @@ mod tests {
             reqs.ask(ask(&format!("bulk{i}"), "Noisy Agent"));
         }
         assert_eq!(reqs.list().len(), MAX_REQUESTS, "the prompt list grew without bound");
+    }
+
+    /// **No user-facing message in this module contains a run of spaces.**
+    ///
+    /// Rust's `\` line-continuation strips the newline and the following
+    /// indentation — but only when the backslash is actually there. Write the
+    /// same paragraph as adjacent string literals and forget it, and every line
+    /// break becomes a run of spaces in the text the user (or the agent) reads.
+    /// It happened to the consent refusal, was fixed by hand, and then happened
+    /// again to `AUTO_GRANTED_NOTE` — twice is a guard.
+    #[test]
+    fn the_user_facing_messages_carry_no_accidental_run_of_spaces() {
+        // One constant today; add the next user-facing one here rather than
+        // writing a second test, so the rule stays in one place.
+        assert!(
+            !AUTO_GRANTED_NOTE.contains("  "),
+            "AUTO_GRANTED_NOTE contains a run of spaces — a `\\` continuation is missing, or \
+             adjacent literals were joined without one:\n{AUTO_GRANTED_NOTE}"
+        );
+        // The refusal is built by `format!`, so it is checked through the gate
+        // that produces it rather than as a constant.
+        let conn = crate::state::db::open_in_memory().unwrap();
+        let err = authorize(&conn, "s1", "shop.rex", false, "c").unwrap_err().to_string();
+        assert!(!err.contains("  "), "the consent refusal contains a run of spaces:\n{err}");
     }
 
     /// **Auto-allow skips the PROMPT and nothing else.**
