@@ -1369,8 +1369,14 @@ first:
 
 ## Decisions pending (owner)
 
-- [ ] **`rex config get|set`** — parked on which settings keys to allow-list
-  (never the whole KV table).
+- [x] **`rex config get|set`** — ✓ SHIPPED 24 Aug 2026, ledger #397. The parked
+  question ("which keys") was the decision, and the answer is deny-by-default
+  with the policy in CORE (`core/settings_access.rs`) so the CLI and its guard
+  read ONE list. Writes route through `set_setting`, so a key with a validating
+  setter still gets it. Live-verified against a running app in all four classes
+  (denied / read-only / deny-by-default / writable), including the load-bearing
+  one: `config set default_tld com` was refused by `set_default_tld`'s own
+  policy rather than by the allow-list.
 - [ ] Stage-3 leftovers awaiting a ruling only if they resurface: none — the
   collision-rename tell-only and pdo_mysql exclusions are SETTLED (pinned by
   tests; do not reopen).
@@ -1661,7 +1667,7 @@ first:
       passing filter. It also refuses to run beside a live Mailpit — found by
       running it with the stack up, where `mail::start` cannot bind, exits, and
       `mail::running()` sees the USER'S catcher on the fixed port.
-  - [ ] **M3 — database access. Stage 1 of 4 is IN; the query path is not.** A fully
+  - [x] **M3 — database access. ALL FOUR STAGES IN, 24–25 Aug 2026, and the §M3 gate run.** A fully
     specified stage in `PLAN-mcp-server.md` §1058-1062 that had NOTHING in the tree —
     the native-driver query path, agent principals with escaped + expiring grants,
     `db_query`, and the first T1 consent dialog. It is the largest single piece of
@@ -1778,8 +1784,12 @@ first:
       delete your own sites" claim stayed TRUE, which is why this had to be
       noticed rather than caught: a paragraph that is not false can still leave
       a user unaware their database is reachable.
-  - [ ] **The MCP human gates have never been recorded as run, and MCP has shipped in
-    four releases.** `docs/SMOKE-TEST.md` §M2a/§M2b/§M3 carry 21 unticked steps and SEVEN
+  - [ ] **The M1/M2a/M2b human gates have still never been recorded as run, and MCP has
+    shipped in four releases.** ✓ **§M3 is the exception — run 25 Aug 2026**, all three of
+    its HOLDs cleared, and it found three real defects on the way (#404, the scratch-account
+    leak `7129b3e`, and the invisible clearing of a pending ask). That is the argument for
+    running the rest, not a reason to consider them covered.
+    `docs/SMOKE-TEST.md` §M2a/§M2b carry 14 unticked steps and FOUR
     HOLDs — step 4 (disabling really tears the socket down), step 8 (the tier boundary in
     front of a human), step 11 (no admin prompt), step 14 (the mail scope that bounds D4's
     credential-harvest pivot) — under a heading that says "ships only if this passes".
