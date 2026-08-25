@@ -712,8 +712,21 @@ cause: a commit did the work and the surrounding claim stayed as it was.
     `composer create-project` because it costs a network install of a whole Laravel
     skeleton per run; the honest home for it is a SMOKE step that stages the file once,
     not a check that pays that on every tier run.
-- [ ] **Three small CLI gaps, all with the backend already built.** Partly done, and the
-  row's framing was off in a way worth keeping.
+- [x] **Three small CLI gaps, all with the backend already built.** ✓ ALL SHIPPED —
+  `mail.mark_read` (+ the second instance the row did not know about: `mail.list`'s
+  search and unread filter), `site relink`, `site retry`, `config get|set`. Each was
+  live-verified against a running app, and three of the four found something the row
+  did not predict (#385 the CLI had no reachability guard at all, #386 version-skew
+  could not see a stale DEV build, #387 `site delete` claimed to remove a linked
+  site's files). **Closed 25 Aug 2026 after re-checking rather than on the sub-items'
+  say-so**, which turned up two stale numbers: `docs/CLI-ROADMAP.md` still read
+  "Status (16 Jul 2026) — 42 commands shipped … what remains: `config get|set`" with
+  53 in the tree and that command shipped. The count is GENERATED now
+  (`scripts/doc-counts.sh`, enforced by `verify.sh`) and the heading carries no date —
+  a status line nobody re-counts is a status line that is wrong, and dating it only
+  says how long it has been so. Plant-proven: adding a dispatch arm without updating
+  the roadmap fails the gate naming the new number.
+  Original framing, kept because it was off in a way worth keeping:
   - [x] **`mail.mark_read` — the unreachable arm** ✓ 23 Aug 2026, ledger #385.
     `rex mail mark-read` sends it, and the fix that matters is the GUARD:
     `every_command_this_server_answers_is_reachable_from_the_cli` fails on the next one.

@@ -188,14 +188,22 @@ line streaming is the same 🔴 "progress streaming" infra item as always.
 - **`--json` everywhere** — v1 rule, keep it: every new command returns the
   raw IPC payload under `--json`.
 
-## Status (16 Jul 2026) — cheap tier COMPLETE
+## Status — every 🟢/🟡/⚪ command is SHIPPED
 
-42 commands shipped (every 🟢/🟡/⚪ except `config get/set`). What remains:
+53 commands shipped. **That number is now GENERATED** (`scripts/doc-counts.sh`,
+enforced by `verify.sh`) and this heading no longer carries a date: it read
+"Status (16 Jul 2026) — 42 commands shipped" while the tree had 53, in the one
+file a reader consults to learn what exists. A status line nobody re-counts is a
+status line that is wrong, and dating it only tells you how long it has been so.
 
-1. `config get|set` (🟡) — parked on a decision: which settings keys to
-   allow-list (never the whole KV table).
-1a. ~~`site retry`~~ — **shipped 24 Aug 2026.** Whether `site.create`'s failure
-   message actually names it is a separate, unverified claim (see the row above).
+~~`config get|set`~~ — **shipped 24 Aug 2026** (ledger #397). The parked question
+was which keys to allow-list; the answer is deny-by-default with the policy in
+CORE (`core/settings_access.rs`), so the CLI and its guard read ONE list, and
+writes route through `set_setting` so a key with a validating setter still gets
+it. ~~`site retry`~~ — **shipped 24 Aug 2026.** Whether `site.create`'s failure
+message actually names it is a separate, unverified claim (see the row above).
+
+What remains:
 2. Design-first 🔴 set: single-site restart (manager seam), web-tier
    single-service control (topology invariant), raw wp passthrough (security
    decision), `wp_user_delete` (no IPC exists), progress streaming for long ops.

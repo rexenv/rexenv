@@ -50,12 +50,19 @@ CMD_REPO=$(cmds_in repo)
 # The IPC bridge's exported functions — the UI's only invoke path.
 IPC_EXPORTS=$(grep -cE '^export (async )?function ' src/lib/ipc/index.ts)
 
+# `rex` commands: the dispatch arms in `cli_server.rs`, which is what decides
+# what the CLI can ask for. `docs/CLI-ROADMAP.md` said "42 commands shipped"
+# from 16 Jul while the tree had 53 — a status line nobody re-counts, in the one
+# file a reader consults to know what exists.
+CLI_CMDS=$(grep -cE '^\s+"[a-z_]+\.[a-z_]+" =>' src-tauri/src/cli_server.rs)
+
 if [ "${1:-}" != "--check" ]; then
   echo "doc-counts (computed from the code):"
   note "SQLite schema version" "v$SCHEMA"
   note "commands/wordpress.rs commands" "$CMD_WORDPRESS"
   note "commands/repo.rs commands" "$CMD_REPO"
   note "src/lib/ipc/index.ts exports" "$IPC_EXPORTS"
+  note "rex commands (cli_server arms)" "$CLI_CMDS"
   exit 0
 fi
 
@@ -88,6 +95,7 @@ expect README.md "SQLite + migrations (v1–v$SCHEMA)" "the schema version"
 expect docs/MAP.md "\`commands/wordpress.rs\` ($CMD_WORDPRESS cmds)" "the wordpress command count"
 expect docs/MAP.md "\`commands/repo.rs\` ($CMD_REPO cmds" "the repo command count"
 expect docs/MAP.md "the ONLY invoke path; $IPC_EXPORTS exports" "the IPC export count"
+expect docs/CLI-ROADMAP.md "$CLI_CMDS commands shipped" "the rex command count"
 
 # ── every docs/*.md path the tree cites must EXIST ────────────────────────────
 #
@@ -171,4 +179,4 @@ if [ "$fail" -ne 0 ]; then
   exit 1
 fi
 
-echo "doc-counts: schema v$SCHEMA · wordpress $CMD_WORDPRESS cmds · repo $CMD_REPO cmds · ipc $IPC_EXPORTS exports · $DOC_REF_COUNT doc paths cited (all match, all exist)"
+echo "doc-counts: schema v$SCHEMA · wordpress $CMD_WORDPRESS cmds · repo $CMD_REPO cmds · ipc $IPC_EXPORTS exports · rex $CLI_CMDS cmds · $DOC_REF_COUNT doc paths cited (all match, all exist)"
