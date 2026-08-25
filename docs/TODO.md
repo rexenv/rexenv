@@ -1740,7 +1740,24 @@ first:
       in their rows. **The lesson worth keeping: two guarantees were read off a
       library's flag names and both were wrong, and every L0 test passed —
       because they asserted the code's INTENT faithfully. Only the engine knew.**
-    - [ ] **The M3 human gate — WRITTEN 25 Aug 2026, unrun.** ✓
+    - [x] **The M3 human gate — WRITTEN AND RUN 25 Aug 2026.** ✓ Steps 15, 18,
+      19, 20a/b/c and 21 all pass against the packaged app, driven over the real
+      socket as an MCP client (evidence in ledger #402). **All three HOLDs
+      cleared**: read-only enforced in front of a human (`UPDATE` refused, the
+      site's title unchanged), revoke closing an ALREADY-RUNNING session with
+      the account genuinely dropped from `mysql.user` rather than merely marked,
+      and the delete taking the agent account with it. **The gate earned itself
+      three times over** — it found #404 (the refusal pointed at a place that did
+      not exist under that name, so the only door to consent was unfollowable),
+      the scratch-account leak on delete (`7129b3e` — the arm with no grant row,
+      which was the arm holding `ALL`), and a UX hole where a restart silently
+      cleared a pending ask while a user hunted for the button. **Two steps are
+      eyes-only and still unrun: 16** (read the prompt's six facts) **and 17**
+      (Don't allow). **One arm of 21 is unproven**: deleting a REAL site that
+      holds a grant, which would mean deleting one of the user's own sites — the
+      code path is shared with the scratch arm that passed, and the RECORDED
+      name (a site renamed after its grant) is the only leg neither covers.
+      Original entry: ✓
       `docs/SMOKE-TEST.md` §M3 steps 15–21, with three HOLDs. It states what the
       automated layers already prove (so a human does not re-check `INSERT` being
       refused) and confines itself to what only a human can see: whether a model
