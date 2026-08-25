@@ -1889,6 +1889,15 @@ first:
     unconfirmed: the BANNER** naming the reaped domain, and the `scratch_reap` feed row
     reading "rexenv · automatic". The banner is the point of the step (a silent sweep is
     indistinguishable from data loss), and nothing I can check reaches it.
+    ✓ **Step 13's agent half PASSES.** With `mcp_mail_enabled=false`, BOTH `mail_list` and
+    `mail_get` refuse, and the refusal names the setting in full ("Let agents read
+    scratch-site mail"), where it lives (Settings → AI agents (MCP)), and whose call it is
+    ("That is their decision, not something an agent can change"). **It also proves the
+    ORDER of the two checks**: the setting is tested before the per-site stamp, so a user
+    with the toggle off is sent to the toggle rather than to a stamp they cannot see. An
+    earlier attempt at this step ran with the toggle ON and got the STAMP refusal instead —
+    recorded as a mis-run rather than a finding, and checking that precondition is what
+    exposed #406. The three-paragraph copy above the toggle is eyes-only and still unread.
     Still unrun: **1** literally (a fresh launch that has NEVER been enabled — the
     toggle-off state is proven, the never-enabled one is not),
     **9** (Keep), **10** (reap banner), **11 ⚠HOLD** (no admin prompt — nothing the agent
