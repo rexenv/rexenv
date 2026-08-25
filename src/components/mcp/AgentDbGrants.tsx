@@ -107,10 +107,22 @@ export function AgentDbGrants() {
         </div>
       ))}
 
+      {/* The empty state carries the one fact that is NOT discoverable from the
+          screen: a request only lives while rexenv is running. Two people —
+          well, the same person twice — went looking for an Allow button that
+          had been cleared by a restart, with nothing here to explain it. The
+          expiry of an ASK is deliberate (a prompt whose context is gone is not
+          consent) and it is invisible, which is the worst combination for
+          something a user is hunting for. Saying so costs a sentence. */}
       {rows.length === 0 && asks.length === 0 && (
         <p className="mt-1.5 text-[0.71875rem] leading-[1.55] text-rex-text-muted">
           No agent can read your sites' databases. Scratch sites an agent creates are its own and
-          need no permission; your own sites need one, asked for here when an agent tries.
+          need no permission; your own sites need one, asked for here when an agent tries.{" "}
+          <strong className="font-medium text-rex-text">
+            A request only lasts while rexenv is running
+          </strong>{" "}
+          — if an agent asked before you last quit, nothing is waiting here now and you'll need to
+          ask it to try again.
         </p>
       )}
 

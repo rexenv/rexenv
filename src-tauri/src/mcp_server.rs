@@ -1452,6 +1452,16 @@ mod tests {
             ("expires in 7 days", "that the access ENDS on its own — the promise the stored expiry keeps"),
             ("revoke it", "that the decision is reversible, at the place they are deciding"),
             ("Don't allow", "that NO is an available answer, not just closing the prompt"),
+            // The empty state, not the prompt — pinned in the same list because
+            // it answers the question the prompt's ABSENCE raises. A user hunted
+            // for an Allow button twice after restarts had cleared the ask, with
+            // nothing on screen to say that could happen. The behaviour is
+            // correct and invisible; the sentence is what makes it survivable.
+            (
+                "only lasts while rexenv is running",
+                "that a pending request does not survive a quit — the reason an expected \
+                 Allow button is not there",
+            ),
         ];
         // The REFUSAL points a human at a place; these are the strings that
         // place is actually called. Pinned together because the refusal lives in
