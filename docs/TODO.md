@@ -1278,9 +1278,12 @@ first:
   tag's message to say what it really contains) and write the rule down in
   `docs/RELEASING.md`, because the next release will do the same thing by default.
 - [x] ⚠ **The shipped cask lets macOS 11–14 install an app that needs macOS 15.**
-  ✓ FIXED 25 Aug 2026 — `depends_on macos: :sequoia` in `rexenv/homebrew-tap`
-  (committed there; **not yet pushed/released**, so the SHIPPED 0.3.0 cask is
-  still wrong until the tap is pushed). **The bare symbol is the correct form and
+  ✓ FIXED **and PUSHED** 25 Aug 2026 — `depends_on macos: :sequoia` in
+  `rexenv/homebrew-tap` (`50b7d54`, `a8ffee6..50b7d54` on `main`). Live for the
+  next `brew install`/`brew upgrade` without a new release: the `update-cask`
+  workflow rewrites only `version`/`sha256` and leaves this line alone. A
+  macOS 11–14 user is now refused at INSTALL time rather than landing on an app
+  whose web server cannot start. **The bare symbol is the correct form and
   the "explicit" one is the trap**: `MacOSRequirement.parse` gives a Symbol the
   default `>=` comparator, while the `">= :sequoia"` string form is DEPRECATED —
   Homebrew matches it, calls `odeprecated`, and names the bare symbol as its
