@@ -82,15 +82,45 @@ count in **each** slice separately. A zero on either side is a HOLD — do not r
 is only as complete as its list of payloads, and a payload nobody added is the
 one that ships in one slice.
 
-## A) ✅ 0.2.0 — PUBLISHED (§A0 ✅, §A ✅ on the second run)
+## A) ◐ 0.3.0 — PUBLISHED, artefact verified, §A0/§A NOT RUN
 
-> ⚠ **0.3.0 shipped on 20 Aug 2026 and is NOT recorded below.** The tap has it
-> (`Casks/rexenv.rb` = 0.3.0 / `381952fa…`, bumped by CI at 13:31Z) and the GitHub
-> release is published with both assets, but this file still certifies 0.2.0's dmg and
-> nothing here says whether §A0/§A ran on the 0.3.0 artefact. **An unrecorded gate is
-> indistinguishable from a skipped one**, which is the whole reason this file exists —
-> so the next release must either add its §A row or state that the check was skipped and
-> why. Tracked in `docs/TODO.md` (Release gates).
+**0.3.0 PUBLISHED 20 Aug 2026** at `homebrew-tap/releases/tag/v0.3.0`, cask bumped by
+`update-cask.yml` (`5c7bdca`, `github-actions[bot]`, 13:31:42Z).
+
+`rexenv_0.3.0_universal.dmg`, sha256
+`381952fa338a70c3b9fc09ad17106dd1276db9cad323fe0e150a371f50d14354`, 23,927,123 bytes.
+
+**Four-way hash match, verified 25 Aug 2026** — the check that caught 0.1.0's
+placeholder hash. The published asset downloads **anonymously** (no token, as `brew`
+does: HTTP 200, 23,927,123 bytes) and hashes to exactly what the cask pins, what the
+release API reports as the asset digest, and what the `.sha256` sidecar says. So what a
+user installs is what is published, not something built beside it.
+
+**Source: `bd0648c`**, the commit `v0.3.0` points at (20 Aug 12:19:42Z).
+`.github/workflows/release.yml` triggers on `tags: ["v*"]` and builds the ref it was
+triggered by, and the timing is tight and consistent: tag 12:19Z → the binary's own
+embedded `builtAt` **2026-08-20T13:03:53Z** → asset uploaded 13:18:23Z → release
+published 13:25:43Z → cask bumped 13:31:42Z.
+
+> **Inference, not measurement, and the difference matters here.** The commit above comes
+> from the workflow's trigger plus that timeline — **not** from the artefact. The dmg does
+> not self-report it: `build.rs` stamps `REXENV_GIT_COMMIT` and did so at `bd0648c`, yet
+> `bd0648c` and `5cb295e` are both absent from the shipped binary, and `rex version` is no
+> help because it asks the RUNNING app over the socket and prints ITS commit — point the
+> dmg's own `rex` at it and you get whatever is running locally. So a downloaded rexenv
+> cannot be asked what built it. Tracked in `docs/TODO.md`; until it is fixed, every
+> release row's commit rests on the tag rather than on the bytes.
+
+**§A0 and §A were NOT run on this artefact, and no record says they were.** Stated rather
+than implied: an unrecorded gate is indistinguishable from a skipped one, which is the
+whole reason this section exists. The dmg has **6 downloads**, so it is in use. What is
+outstanding is the quarantined → Gatekeeper → launch pass on the SHIPPED bytes (§A) and
+the payload check (§A0) — neither is closed by the hash match above, which proves the
+bytes are the published ones and says nothing about whether they launch on a clean Mac.
+
+## A-prev) ✅ 0.2.0 — PUBLISHED (§A0 ✅, §A ✅ on the second run)
+
+
 
 **0.2.0 PUBLISHED 16 Aug 2026** at `homebrew-tap/releases/tag/v0.2.0`, and the cask
 bumped to it by `update-cask.yml` (commit `449b576`, `github-actions[bot]`).

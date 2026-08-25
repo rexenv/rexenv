@@ -1279,11 +1279,29 @@ first:
   and certifies `bd019d8d…`. **0.2.0 has a full row precisely because a shipped artefact
   needs its commit, its hash and its §A verdict tied together**; for 0.3.0 nobody can now
   tell whether §A ran on `381952fa…` or was skipped. Two things to close it:
-  - [ ] Record the release the way 0.2.0's row does — dmg sha, source commit, and the
-    verify-full → §A0 → §A → draft → publish → cask-bump chain that actually happened.
-  - [ ] Run §A on the SHIPPED 0.3.0 dmg (quarantined → Gatekeeper → launch), or state in
-    the row that it was not run and why. An unrecorded gate is indistinguishable from a
-    skipped one six weeks later, which is the whole reason the section exists.
+  - [x] **Record the release the way 0.2.0's row does** ✓ 25 Aug 2026 —
+    `docs/PUBLISH-TESTING.md` §A now heads 0.3.0 (0.2.0 moved to §A-prev). **Four-way hash
+    match verified, not just written down**: the asset downloads anonymously (HTTP 200,
+    23,927,123 bytes) and hashes to what the cask pins, what the release API reports as the
+    asset digest, and what the `.sha256` sidecar says. Chain: tag `bd0648c` 12:19:42Z → the
+    binary's embedded `builtAt` 13:03:53Z → upload 13:18:23Z → publish 13:25:43Z → cask
+    bump `5c7bdca` 13:31:42Z. **The commit is INFERENCE and the row says so** — see the
+    next item.
+  - [ ] Run §A on the SHIPPED 0.3.0 dmg (quarantined → Gatekeeper → launch). ✓ The row now
+    STATES it was not run, which was the alternative this item allowed — the hash match
+    proves the bytes are the published ones and says nothing about whether they launch on a
+    clean Mac. The dmg has **6 downloads**, so it is in use. §A0 is outstanding too.
+  - [ ] **A downloaded rexenv cannot be asked what built it — found closing the row above.**
+    `build.rs` stamps `REXENV_GIT_COMMIT` and did so at `bd0648c`, yet neither `bd0648c` nor
+    `5cb295e` appears anywhere in the shipped binary, and `rex version` is no help: it does
+    `soft_request("version")` and prints the RUNNING app's commit, so pointing the dmg's own
+    `rex` at it reports whatever is running locally (it said `b559d2f`, today's dev build).
+    **So every release row's source commit rests on the tag and the build timeline rather
+    than on the bytes** — which is exactly the "unrecorded gate" shape this section exists to
+    prevent, one level down. **Recommended:** make `rex --version` print the CLI's OWN
+    `REXENV_GIT_COMMIT` (it has one now, from `cli/build.rs`) and label the socket-fetched
+    one as the app's, so an artefact can answer for itself. Small, and it makes the next
+    release row a measurement instead of an inference.
 - [ ] **The v0.3.0 TAG does not point at the 0.3.0 release commit.** `v0.3.0` → `bd0648c`
   (20 Aug 18:19); the version bump is `5cb295e` (17 Aug 19:38). Fifteen commits of later
   work — the Adminer-updates family, the release-key/logging fixes, the WP install-card
