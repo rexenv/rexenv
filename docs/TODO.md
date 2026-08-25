@@ -1848,11 +1848,20 @@ first:
     mcp`, and not by a model choosing tools. So the PROTOCOL and the SERVER are exercised;
     the `rex mcp` pipe and any client integration are NOT, and neither is a model's
     judgement.
-    ⚠ **Step 3 is therefore NOT passed, and an earlier version of this row wrongly said it
-    was.** Step 3 asks for a real client added with `claude mcp add`, a question put to
-    Claude Code, feed rows appearing AND the status line flipping to "Working" — of which
-    only "the M1 read tools answer" was shown. The `rex mcp` pipe was bypassed entirely,
-    which makes it an untested surface that every real user depends on.
+    ✓ **Step 3 PASSES — but the OWNER ran it, not me, and that distinction is the point.**
+    An earlier version of this row claimed it on my evidence and was wrong: I had shown
+    only "the M1 read tools answer", with the `rex mcp` pipe bypassed entirely. The real
+    run (25 Aug 2026) went through `claude mcp add rexenv -- rex mcp` and a question put to
+    Claude Code, and the feed recorded `list_sites` → `site_status` → `tail_log` against
+    the named site within 90 seconds — the diagnostic order the question implies — with the
+    status line flipping to "Working". **That also proves the `rex mcp` pipe**, which
+    nothing else in this session touched.
+    **It exposed a fact worth keeping: the client NAME differs.** A real Claude Code
+    reports `claude-code`; my hand-rolled client sent `Claude Code`. They are separate
+    principals, so the live DB grant did NOT carry over to the owner's client — the
+    re-consent-on-client-change rule (#402), observed rather than tested. I had warned the
+    opposite a minute earlier and it was wrong. The feed also shows this client connecting
+    as far back as 31 Jul, so it has been recording real use since M1 shipped.
     ✓ **Passed**, driven as described above: **6** (create), **7** (the dev loop —
     copy-not-link proven by VALUE: the site kept running `'edited'` while the source said
     `'second-edit'`, and changed only on sync), **8 ⚠HOLD — the mechanical half only** (all four executing tools
