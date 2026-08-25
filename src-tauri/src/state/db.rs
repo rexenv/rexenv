@@ -579,8 +579,16 @@ const MIGRATIONS: &[&str] = &[
         revoked_at  TEXT,
         FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE
     );",
+    // v39 — the grants index.
+    //
+    // A SEPARATE array element, therefore a separate schema version: the engine
+    // numbers by INDEX, not by comment. v38 above is the table alone. Written
+    // out because the two arrived in one commit under one `// v38` heading, and
+    // that made `user_version` 39 while every doc said 38 — see the count check
+    // in `scripts/doc-counts.sh`, which now derives from this array rather than
+    // from these comments for exactly that reason.
     "CREATE INDEX IF NOT EXISTS idx_agent_db_grants_site ON agent_db_grants(site_id);",
-    // v39 — was this grant CLICKED by a human, or produced by auto-allow?
+    // v40 — was this grant CLICKED by a human, or produced by auto-allow?
     //
     // The two are not the same fact and the row must not conflate them. A user
     // reading the grant list after the event is asking "did I approve this?",

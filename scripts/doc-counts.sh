@@ -30,9 +30,17 @@ note() { printf '  %-34s %s\n' "$1" "$2"; }
 
 # ── computed from the code ────────────────────────────────────────────────────
 
-# The schema version: the highest `// vNN —` migration comment in db.rs, which is
-# the same marker the migration list itself is written from.
-SCHEMA=$(grep -oE '// v[0-9]+ —' src-tauri/src/state/db.rs | grep -oE '[0-9]+' | sort -n | tail -1)
+# The schema version: the NUMBER OF ENTRIES in `MIGRATIONS`, because that is what
+# decides it — `migrate_with` numbers each element by its INDEX and writes that
+# to `user_version`. It used to be read off the highest `// vNN —` comment, which
+# is prose, and prose drifted: the v38 grants work landed as TWO array elements
+# under ONE `// v38` heading, so every doc said 38 while a real database was at
+# 39, and this check could never see it — it was comparing prose to prose.
+#
+# The comments are still checked, against this count, below. A number derived
+# from the thing that decides it beats a number derived from a description of it.
+SCHEMA=$(awk '/^const MIGRATIONS/,/^\];/' src-tauri/src/state/db.rs | grep -cE '^    "')
+SCHEMA_COMMENT=$(grep -oE '// v[0-9]+ —' src-tauri/src/state/db.rs | grep -oE '[0-9]+' | sort -n | tail -1)
 
 # Tauri commands, per file and in total. `#[tauri::command]` is the one way in.
 cmds_in() { grep -c '#\[tauri::command\]' "src-tauri/src/commands/$1.rs"; }
@@ -63,6 +71,16 @@ expect() { # <file> <literal the file must contain> <what it is>
     fail=1
   fi
 }
+
+if [ "$SCHEMA_COMMENT" != "$SCHEMA" ]; then
+  echo "doc-counts: MIGRATIONS has $SCHEMA entries but the highest '// vNN —' comment is v$SCHEMA_COMMENT." >&2
+  echo "  The ENGINE numbers migrations by array index, so the real version is $SCHEMA." >&2
+  echo "  A comment heading two array entries is the way this drifts — give each" >&2
+  echo "  element its own '// vNN —' line, or merge them into one element (only safe" >&2
+  echo "  BEFORE any database has run them: merging after the fact leaves existing" >&2
+  echo "  installs ahead of fresh ones, and a later migration never runs on them)." >&2
+  fail=1
+fi
 
 expect docs/ARCHITECTURE.md "\`user_version\` migrations, currently $SCHEMA" "the schema version"
 expect docs/MAP.md "App state (SQLite v1–v$SCHEMA, store)" "the schema version"

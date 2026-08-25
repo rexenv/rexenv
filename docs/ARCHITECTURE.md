@@ -440,7 +440,7 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
 
 ## 8. Data & app state
 
-- **SQLite for all app state** (`state/db.rs`), `user_version` migrations, currently 39:
+- **SQLite for all app state** (`state/db.rs`), `user_version` migrations, currently 40:
   v1 `sites` + `settings` · v2 `php_versions` registry · v3 `sites.multisite` ·
   v4 `blueprints` (JSON `spec`) · v5 `php_settings` · v6 `sites.db_name` (stored, never
   re-derived) · v7 `site_env` · v8/v9 `default_tld` seed + `.rex` flip ·
@@ -475,7 +475,7 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   agent's permission to read one site's DB — `site_id`/`client`/`db_user` scoped,
   with `expires_at` STORED rather than a duration added at read time, and
   `revoked_at` instead of DELETE so a revoked grant stays as evidence of what an
-  agent could see and until when) · v39 `agent_db_grants.auto_granted` (did a PERSON click
+  agent could see and until when) · v39 the grants index · v40 `agent_db_grants.auto_granted` (did a PERSON click
   Allow, or did auto-allow answer? Recorded, because auto-allow is session-scoped and will
   usually be off by the time anyone reads the list).
   Per-engine DB versions are settings-KV rows (`db_version_<engine>`), not a migration.
