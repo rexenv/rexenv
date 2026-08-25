@@ -1851,15 +1851,24 @@ first:
     name, listing what exists), **14 ⚠HOLD** (the agent reads its own scratch mail; a real
     Mailpit id of the USER's mail is refused by OWNERSHIP — *"that message did not come
     from …"* — not by existence).
-    ✓ **Step 4's first half and step 1's core assertion**: toggling off UNLINKS the socket
-    (file gone, not merely unbound) with the app still running and `mcp_enabled=false`
-    recorded, and a new client is refused. So the toggle is not a label over an always-on
-    socket, which is step 1's tell.
-    **Step 4's second half is the one still open, and it is the HOLD**: a socket
-    disappearing is not the same as a LIVE session dying — an already-connected client
-    could keep working on an established fd. Two attempts to catch it failed on timing,
-    not on behaviour, and BOTH are recorded as proving nothing rather than as failures.
-    Still unrun: **1, 2, 5** (the toggle/restart matrix), **4**'s live-session half,
+    ✓ **Step 4 ⚠HOLD — PASSES, both halves.** Toggling off UNLINKS the socket (file gone,
+    not merely unbound) with the app still running and `mcp_enabled=false` recorded, and a
+    new client is refused — so the toggle is not a label over an always-on socket, which is
+    step 1's tell. And the half that actually matters: a session **proven live before the
+    toggle** died the instant the socket went (`BrokenPipeError`, +0s after the unlink), so
+    disabling drops ESTABLISHED connections and not merely new ones. A socket disappearing
+    is not the same as a live session dying — an already-connected client could have kept
+    working on an established fd, which is why this is the HOLD.
+    It took three attempts, and the first two are recorded as **proving nothing** rather
+    than as failures: one toggled before the client connected, the other never toggled
+    inside the window while a watch script printed a conditional "HOLD FAILURE" line that
+    did not apply. The run that worked waits on the socket APPEARING and then VANISHING as
+    its signals, so no human timing can race it.
+    ✓ **Step 2's bind** is covered by the same run (the socket appears on enable; `0600`
+    confirmed separately).
+    Still unrun: **1** literally (a fresh launch that has NEVER been enabled — the
+    toggle-off state is proven, the never-enabled one is not), **5** (persistence across a
+    restart in each state),
     **9** (Keep), **10** (reap banner), **11 ⚠HOLD** (no admin prompt — nothing the agent
     did triggered one, but that is an observation across a session, not a check),
     and **13** with the toggle actually OFF.
