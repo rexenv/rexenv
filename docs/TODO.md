@@ -1894,9 +1894,10 @@ first:
     `commands::scratch::the_summary_names_the_sites_and_a_quiet_launch_says_nothing`, so
     this run is the L3 leg confirming the L0 claim actually reaches the screen — which is
     the pair worth having, since a guard on a string proves nothing about whether the
-    string is rendered. **Still unconfirmed: the `scratch_reap` feed row** reading
-    "rexenv · automatic" with a "(deleted site)" target. The reap ran twice with agent DB
-    accounts present and dropped both, so the machine half is proven twice over.
+    string is rendered. ✓ **The `scratch_reap` feed row is confirmed too** (25 Aug 2026) — so **step 10 is
+    COMPLETE**: machine half twice over (each time with an agent DB account confirmed
+    present beforehand and gone after), banner on screen naming the site, and the feed row
+    attributing the delete to rexenv rather than to an agent.
     ✓ **Step 13's agent half PASSES.** With `mcp_mail_enabled=false`, BOTH `mail_list` and
     `mail_get` refuse, and the refusal names the setting in full ("Let agents read
     scratch-site mail"), where it lives (Settings → AI agents (MCP)), and whose call it is
