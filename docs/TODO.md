@@ -1302,13 +1302,25 @@ first:
     `REXENV_GIT_COMMIT` (it has one now, from `cli/build.rs`) and label the socket-fetched
     one as the app's, so an artefact can answer for itself. Small, and it makes the next
     release row a measurement instead of an inference.
-- [ ] **The v0.3.0 TAG does not point at the 0.3.0 release commit.** `v0.3.0` → `bd0648c`
-  (20 Aug 18:19); the version bump is `5cb295e` (17 Aug 19:38). Fifteen commits of later
-  work — the Adminer-updates family, the release-key/logging fixes, the WP install-card
-  work and two thirds of the readiness-gate sweep — are inside a tag whose message
-  describes only what shipped as of 17 Aug. Decide which is true (re-tag, or amend the
-  tag's message to say what it really contains) and write the rule down in
-  `docs/RELEASING.md`, because the next release will do the same thing by default.
+- [x] **~~The v0.3.0 TAG does not point at the 0.3.0 release commit.~~ RE-CHECKED
+  25 Aug 2026 — the premise was wrong, in both halves.** ✓
+  **(a) The tag IS the release commit.** `release.yml` triggers on `tags: ["v*"]` and
+  builds the ref it fired on, so `bd0648c` is what produced the shipped dmg. `5cb295e`
+  is where the version NUMBER changed, which is a different thing — work continues after
+  a bump, and what ships is HEAD at release time. Fifteen later commits being inside the
+  tag is correct, not a defect.
+  **(b) The tag's message does not "describe what shipped as of 17 Aug".** It is bare —
+  `rexenv 0.3.0`, one line, no body. The row appears to have assumed the tag carried the
+  bump commit's message; `git cat-file -t` and `git tag -n` say otherwise.
+  **What was actually wrong was the third thing the row asked for, and it is now done:**
+  `docs/RELEASING.md` step 2 said `git tag v<X.Y.Z>` — lightweight, implicitly at the
+  bump commit — while both real releases used an ANNOTATED tag at a later commit. The
+  documented flow disagreed with the practised one, which is what made a correct tag look
+  misplaced. Step 2 now describes the real flow, says the tag IS the release commit by
+  definition, and asks for a `-m` body: `v0.2.0`'s explains that the minor was forced by
+  the macOS floor rise, and six weeks on that is the only place the reason survives.
+  `v0.3.0`'s says nothing. **Not re-tagged or re-worded**: CI built from it and the tap's
+  release references it, so a published tag stays put.
 - [x] ⚠ **The shipped cask lets macOS 11–14 install an app that needs macOS 15.**
   ✓ FIXED **and PUSHED** 25 Aug 2026 — `depends_on macos: :sequoia` in
   `rexenv/homebrew-tap` (`50b7d54`, `a8ffee6..50b7d54` on `main`). Live for the

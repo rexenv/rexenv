@@ -146,8 +146,20 @@ leave them — the cask only names the current version), and this section goes a
 1. Bump the version in **all four** manifests (the workflow refuses a mismatch):
    `src-tauri/tauri.conf.json`, `package.json`, `src-tauri/Cargo.toml`,
    `cli/Cargo.toml`. Commit.
-2. Either:
-   - `git tag v<X.Y.Z> && git push origin v<X.Y.Z>`, or
+2. **Tag the commit you are SHIPPING — annotated, with a message that says what the
+   release means.** Not necessarily the bump commit: work continues after a version
+   bump, and what ships is HEAD at release time. Both real releases did this and the
+   step used to imply otherwise, which made `v0.3.0` look misplaced when it was not —
+   the workflow triggers on the tag and builds THAT ref, so **the tag is the release
+   commit, by definition**. The bump commit is only where the number changed.
+   `-a` matters: `v0.2.0`'s body explains that the minor was forced by a macOS floor
+   rise, and six weeks later that is the only place the reason survives. `v0.3.0`'s
+   message is bare `rexenv 0.3.0` and says nothing — don't repeat it. A published tag
+   is not re-pointed or re-worded afterwards; CI built from it and the tap's release
+   references it.
+   Either:
+   - `git tag -a v<X.Y.Z> -m "rexenv <X.Y.Z>" -m "<what this release means>" <commit>`
+     then `git push origin v<X.Y.Z>`, or
    - GitHub → Actions → **Release** → *Run workflow* → enter `<X.Y.Z>` (creates the
      tag for you; token-pushed tags don't re-trigger the workflow).
 3. Wait for the draft release. Download the attached dmg and run
