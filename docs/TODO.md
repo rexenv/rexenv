@@ -195,11 +195,23 @@ paying for anyway: **the tick belongs in the commit that does the work.**
   fix for #251 — the mu-plugin covers the WordPress HTTP API, not raw `curl_init()` in
   a plugin, and not non-WordPress PHP apps rexenv hosts). Needs a self-built
   static-php (`--enable-threaded-resolver` instead of `--enable-ares`) for 7 minors ×
-  cli/fpm × 2 arches. **That path is no longer blocked** — it was "the same
-  self-hosted-artifact path the Xdebug debug build is blocked on", and as of
-  14 Aug 2026 `rexenv/runtimes` builds, gates, signs and publishes exactly this
-  shape of artifact (`docs/PLAN-php-74-support.md`). **RULED 15 Aug 2026: not
-  now.** Rebuilding seven minors self-hosted is a maintenance burden carried
+  cli/fpm × 2 arches. **The hosting path is no longer blocked** — as of 14 Aug 2026
+  `rexenv/runtimes` gates, signs and publishes this shape of artifact
+  (`docs/PLAN-php-74-support.md`).
+  ⚠ **COSTED 25 Aug 2026, and the line above used to over-state it — "builds …
+  exactly this shape" is true of 7.4's shape and misleading about 8.x.** Measured:
+  `scripts/build-php74.sh` is 452 lines of which ~25 are 7.4-SPECIFIC reasoning
+  (K&R definitions C23 removed, a source that is not php.net's because 7.4.33
+  fails on OpenSSL 3.6, an extension set that drops swoole/event because modern
+  releases dropped 7.4) — its complexity IS 7.4, so it is not a builder you point
+  at 8.1–8.5. And `scripts/publish-manifest.sh` is built the OTHER way round:
+  `[ "$minor" = "7.4" ] && continue`, because 8.x are DISCOVERED from
+  static-php.dev. Self-building 8.x means a new build script, inverting the
+  publish logic, and — the part missing from this row entirely — **24 artifacts
+  per PATCH release, forever**, since rexenv ships in-app PHP patch updates
+  (`docs/PLAN-binary-updates.md`), so every upstream 8.3.32 → 8.3.33 becomes a
+  self-build. **RULED 15 Aug 2026: not now**, and this measurement supports the
+  ruling rather than weakening it. Rebuilding seven minors self-hosted is a maintenance burden carried
   forever, for a dependency nobody has complained about — a commitment, not a
   fix. The option stays recorded here with the runtimes-repo note so it is
   known when there is a reason.
