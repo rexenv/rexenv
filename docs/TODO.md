@@ -1866,9 +1866,17 @@ first:
     its signals, so no human timing can race it.
     ✓ **Step 2's bind** is covered by the same run (the socket appears on enable; `0600`
     confirmed separately).
+    ✓ **Step 5 — PASSES, both directions.** Relaunched with the toggle OFF: no socket at
+    launch nor for 20s after, and a client refused. Toggled ON and relaunched: the setting
+    persisted `true`, the socket was back at `0600`, and `list_sites` ANSWERED — a
+    bound-but-dead socket would still `stat` fine, so serving is what is asserted. Both
+    phases compare the app's PID against a recorded baseline (7456 → 82358 → 83961),
+    because without that "no socket" reads identically whether a restart happened or not —
+    the exact way the first two step-4 attempts went wrong. The socket's ctime (17s) was
+    older than the check against a 25s-old process, which is what rules out a later CLICK
+    having bound it rather than startup.
     Still unrun: **1** literally (a fresh launch that has NEVER been enabled — the
-    toggle-off state is proven, the never-enabled one is not), **5** (persistence across a
-    restart in each state),
+    toggle-off state is proven, the never-enabled one is not),
     **9** (Keep), **10** (reap banner), **11 ⚠HOLD** (no admin prompt — nothing the agent
     did triggered one, but that is an observation across a session, not a check),
     and **13** with the toggle actually OFF.
