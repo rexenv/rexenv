@@ -382,8 +382,8 @@ fn mail_preconditions(ctx: &ScratchCtx<'_>, scratch: &ScratchSite) -> Result<()>
     if !crate::core::wp_mailtag::is_installed(docroot, site.content_dir_rel()) {
         return Err(Error::Other(format!(
             "`{}` is not stamping its mail, so rexenv cannot tell its messages from anyone \
-             else's — and it will not guess. This normally means mail was switched on after this \
-             site was made; switching it off and on again in rexenv restamps every scratch site.",
+             else's — and it will not guess. Switching \"Let agents read scratch-site mail\" off \
+             and on again in rexenv restamps every scratch site, which fixes it.",
             scratch.domain()
         )));
     }
@@ -748,6 +748,37 @@ impl<'a> ScratchCtx<'a> {
         crate::core::scratch::claim(&conn, id)
     }
 
+    /// Install the mail stamp on a freshly-created scratch site when the sub-
+    /// toggle is on, so it is readable by the agent that just made it.
+    ///
+    /// The ONE place this happens for new sites; `mcp_set_mail_enabled` is the
+    /// one place it happens for existing ones. Two call sites for one fact is
+    /// how the gap appeared, so each names the other.
+    fn stamp_mail_if_enabled(&self, site: &Site) {
+        let conn = match self.db() {
+            Ok(c) => c,
+            Err(e) => {
+                log::warn!("mcp: could not check the mail setting for {}: {e}", site.domain);
+                return;
+            }
+        };
+        if !crate::mcp_server::mail_enabled(&conn) {
+            return;
+        }
+        let docroot = std::path::Path::new(&site.path);
+        match crate::core::wp_mailtag::enable(docroot, site.content_dir_rel(), &site.domain) {
+            Ok(created_dir) => {
+                // v25: record ownership of a dir WE made, so teardown removes
+                // it — never inferred later from emptiness. Same rule the
+                // toggle's loop follows.
+                if created_dir {
+                    let _ = crate::state::store::set_site_mu_dir_created(&conn, &site.id);
+                }
+            }
+            Err(e) => log::warn!("mcp: mail stamp for {} could not be written: {e}", site.domain),
+        }
+    }
+
     /// Any site by id, WITHOUT an ownership claim — for `db_query` only.
     ///
     /// Reading a user's own site is the one thing an agent may do to a site it
@@ -869,6 +900,24 @@ fn create_site<'a>(
             git_build_assets: false,
         };
         let site = ctx.create(new, Ownership::Agent { client, ttl_hours: crate::core::sites::SCRATCH_TTL_HOURS }, acted).await?;
+        // Stamp the new site's mail NOW if the sub-toggle is on.
+        //
+        // `mcp_set_mail_enabled` stamps every EXISTING scratch site when the
+        // toggle flips, and its doc says that "eliminates 'this site predates
+        // the feature' as a category". It does — and nothing covered the
+        // reverse, so the category it removed came back as a worse one: a site
+        // created AFTER the toggle was never stamped at all, which is every new
+        // scratch site on a machine with mail enabled, i.e. the common case.
+        //
+        // The symptom was a refusal that blamed the user for the opposite of
+        // what happened: `mail_list` said "this normally means mail was
+        // switched on after this site was made" when the site had been made
+        // after mail was switched on. Found by running SMOKE §M2a step 13.
+        //
+        // Best-effort, matching the toggle's own policy: a stamp that cannot be
+        // written must not fail a site that is otherwise built, and read time
+        // answers the truth by a live stat rather than trusting this.
+        ctx.stamp_mail_if_enabled(&site);
         let status = ctx.status_of(&site).await;
         let view = AgentScratchSite {
             url: format!("https://{}", site.domain),

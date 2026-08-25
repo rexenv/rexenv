@@ -142,6 +142,55 @@ pub fn is_installed(docroot: &Path, content_rel: &str) -> bool {
 mod tests {
     use super::*;
 
+    /// **Both ways a scratch site can come to exist must stamp it.**
+    ///
+    /// The stamp has exactly two moments: the toggle flipping ON (which
+    /// retro-stamps every existing scratch site) and a site being CREATED while
+    /// it is already on. Only the first was implemented. Its own doc claimed the
+    /// retro-stamp "eliminates 'this site predates the feature' as a category" —
+    /// true, and it replaced that category with a strictly worse one, because a
+    /// site created after the toggle is EVERY new scratch site on a machine
+    /// with mail enabled.
+    ///
+    /// The symptom was a refusal that blamed the user for the opposite of what
+    /// happened: `mail_list` said "this normally means mail was switched on
+    /// after this site was made" about a site made after mail was switched on.
+    /// Found by running SMOKE §M2a step 13 against the packaged app, 25 Aug
+    /// 2026 — no unit test could see it, because each half was correct alone.
+    ///
+    /// A source guard: the property is "these two call sites both exist", and
+    /// the thing that went wrong was one of them never being written.
+    #[test]
+    fn a_scratch_site_is_stamped_both_when_the_toggle_flips_and_when_it_is_created() {
+        let toggle = include_str!("../commands/mcp.rs");
+        let create = include_str!("../mcp_server/scratch.rs");
+        assert!(
+            toggle.contains("wp_mailtag::enable"),
+            "the toggle stopped retro-stamping existing scratch sites — sites made BEFORE mail \
+             was switched on become permanently unreadable to the agent"
+        );
+        // The CALL, not the definition. The first version of this assertion
+        // looked for the bare name and a plant that deleted the call while
+        // leaving the helper behind PASSED — a guard that proves a function
+        // exists rather than that anything invokes it. Dead code satisfies the
+        // weak form; only a call site satisfies this one.
+        assert!(
+            create.contains("ctx.stamp_mail_if_enabled(&site)"),
+            "scratch creation stopped stamping — every site made WHILE mail is on becomes \
+             unreadable, and `mail_list` blames the user for the opposite of what happened"
+        );
+        // Both must also record a mu-dir they created, or teardown leaves it.
+        for (what, src) in [("the toggle", toggle), ("scratch creation", create)] {
+            assert!(
+                src.contains("set_site_mu_dir_created"),
+                "{what} writes the stamp without recording that it may have created the \
+                 mu-plugins directory — teardown infers nothing from emptiness (v25), so the \
+                 directory would be left behind"
+            );
+        }
+    }
+
+
     fn tmp(tag: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!("rexenv-mailtag-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
