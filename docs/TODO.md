@@ -1885,10 +1885,18 @@ first:
     gone, with the `'r%'` landmark at 17 rows so the empty result is real. **The
     selectivity control is the better half:** `rex_ro_photocontest_test`, a live grant on
     one of the user's OWN sites, was untouched. This closes #403's open leg — the delete
-    path really does run the drop — for the REAPER's route at least. **Eyes-only and still
-    unconfirmed: the BANNER** naming the reaped domain, and the `scratch_reap` feed row
-    reading "rexenv · automatic". The banner is the point of the step (a silent sweep is
-    indistinguishable from data loss), and nothing I can check reaches it.
+    path really does run the drop — for the REAPER's route at least. ✓ **The BANNER is confirmed on screen, 25 Aug 2026** (screenshot): dismissible, and it
+    NAMES `reapme.scratch.rex` rather than only counting — which is the whole point of the
+    step, since a silent bulk delete is indistinguishable from data loss to someone
+    returning after a week. It also states the scope ("Nothing of yours was touched") and
+    how to prevent it ("open it and press Keep"), pointing at step 9's feature. **That
+    naming was already guarded at L0** by
+    `commands::scratch::the_summary_names_the_sites_and_a_quiet_launch_says_nothing`, so
+    this run is the L3 leg confirming the L0 claim actually reaches the screen — which is
+    the pair worth having, since a guard on a string proves nothing about whether the
+    string is rendered. **Still unconfirmed: the `scratch_reap` feed row** reading
+    "rexenv · automatic" with a "(deleted site)" target. The reap ran twice with agent DB
+    accounts present and dropped both, so the machine half is proven twice over.
     ✓ **Step 13's agent half PASSES.** With `mcp_mail_enabled=false`, BOTH `mail_list` and
     `mail_get` refuse, and the refusal names the setting in full ("Let agents read
     scratch-site mail"), where it lives (Settings → AI agents (MCP)), and whose call it is
