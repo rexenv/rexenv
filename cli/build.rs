@@ -33,5 +33,16 @@ fn main() {
         None => "unknown".to_string(),
     };
     println!("cargo:rustc-env=REX_GIT_COMMIT={commit}");
+
+    // Build time, same shape as `src-tauri/build.rs`, so `rex version` can print
+    // the app's stamp and the CLI's side by side and they read as one pair.
+    let built = std::process::Command::new("date")
+        .args(["-u", "+%Y-%m-%dT%H:%M:%SZ"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+    println!("cargo:rustc-env=REX_BUILT_AT={built}");
     println!("cargo:rerun-if-changed=.git/HEAD");
 }

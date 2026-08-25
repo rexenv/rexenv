@@ -1291,7 +1291,7 @@ first:
     STATES it was not run, which was the alternative this item allowed — the hash match
     proves the bytes are the published ones and says nothing about whether they launch on a
     clean Mac. The dmg has **6 downloads**, so it is in use. §A0 is outstanding too.
-  - [ ] **A downloaded rexenv cannot be asked what built it — found closing the row above.**
+  - [x] **A downloaded rexenv cannot be asked what built it — found closing the row above.** ✓ FIXED 25 Aug 2026: `rex --version` prints the CLI's OWN commit unconditionally, BEFORE the socket call, and labels the app's half (`rex 0.3.0 (a1b2c3d) · app rexenv 0.3.0 (e4f5f6a)`); `rex version` prints both stamps on labelled lines. Guarded by `the_native_version_prints_its_own_commit_before_it_asks_the_app` — plant-proven three ways (drop the own-commit, ask the app first, drop the label). **0.3.0's row stays an inference** because the artefact predates this; the next release's will not.
     `build.rs` stamps `REXENV_GIT_COMMIT` and did so at `bd0648c`, yet neither `bd0648c` nor
     `5cb295e` appears anywhere in the shipped binary, and `rex version` is no help: it does
     `soft_request("version")` and prints the RUNNING app's commit, so pointing the dmg's own

@@ -432,10 +432,28 @@ fn main() {
             }
             // Native version: must work WITHOUT the app (unlike `rex version`,
             // the app round-trip) — CLI version always, app version best-effort.
+            //
+            // **The CLI's own commit prints unconditionally, and that is the
+            // point of this arm.** A DOWNLOADED rexenv could not previously be
+            // asked what built it: nothing here carried a commit, and
+            // `rex version` asks the running APP over the socket — so pointing a
+            // dmg's own `rex` at it reported whatever was running locally. That
+            // made every release row's source commit an inference from the tag
+            // and the build timeline rather than a fact read off the bytes
+            // (`docs/PUBLISH-TESTING.md` §A, 0.3.0).
+            //
+            // Both halves are LABELLED, because the failure this replaces was
+            // ambiguity, not absence: two version numbers side by side with one
+            // commit under them invites reading the commit as belonging to
+            // either.
             "-v" | "-V" | "--version" => {
-                print!("rex {}", env!("CARGO_PKG_VERSION"));
+                print!("rex {} ({})", env!("CARGO_PKG_VERSION"), env!("REX_GIT_COMMIT"));
                 if let Some(app) = soft_request("version") {
-                    print!(" · rexenv {}", app["version"].as_str().unwrap_or("?"));
+                    print!(
+                        " · app rexenv {} ({})",
+                        app["version"].as_str().unwrap_or("?"),
+                        app["commit"].as_str().unwrap_or("?"),
+                    );
                 }
                 println!();
                 return;
@@ -1952,12 +1970,14 @@ fn cmd_version(json_output: bool) {
     // The commit is the point: "is the running app the code I just changed?"
     // should be one command, not a forensic exercise.
     println!(
-        "rexenv {} ({}) · rex {}\n  built {} from {}",
+        "rexenv {} ({}) · rex {}\n  app built {} from {}\n  cli built {} from {}",
         data["version"].as_str().unwrap_or("?"),
         data["platform"].as_str().unwrap_or("?"),
         env!("CARGO_PKG_VERSION"),
         data["builtAt"].as_str().unwrap_or("?"),
         data["commit"].as_str().unwrap_or("?"),
+        env!("REX_BUILT_AT"),
+        env!("REX_GIT_COMMIT"),
     );
     // Printed HERE rather than left for the reader to spot: this command
     // already shows both numbers, and two builds side by side are only
@@ -2737,6 +2757,57 @@ fn cmd_status(json_output: bool) {
 
 #[cfg(test)]
 mod tests {
+
+    /// **`rex --version` answers for ITSELF, with no app running.**
+    ///
+    /// The gap this closes: a downloaded rexenv could not be asked what built
+    /// it. `--version` carried no commit, and `rex version` asks the running APP
+    /// over the socket — so pointing a dmg's own `rex` at a machine reported
+    /// whatever was running there, not the dmg. That made every release row's
+    /// source commit an inference from the tag and the build timeline rather
+    /// than a fact read off the bytes (`docs/PUBLISH-TESTING.md` §A, 0.3.0).
+    ///
+    /// A source guard, because the property is "this prints before, and without,
+    /// the socket call" — and a test that runs the arm would need a live app to
+    /// distinguish the two halves, which is the thing being removed.
+    #[test]
+    fn the_native_version_prints_its_own_commit_before_it_asks_the_app() {
+        let src = include_str!("main.rs");
+        let arm = src
+            .find(r#""-v" | "-V" | "--version" =>"#)
+            .expect("the --version arm");
+        let body = &src[arm..arm + 700];
+
+        let own = body.find("REX_GIT_COMMIT").expect(
+            "`rex --version` no longer prints the CLI's OWN commit — a downloaded artefact \
+             cannot then say what built it, which is the whole reason this exists",
+        );
+        if let Some(ask) = body.find("soft_request") {
+            assert!(
+                own < ask,
+                "the CLI's own commit is printed only after asking the app — with no app \
+                 running, the artefact answers with nothing"
+            );
+        }
+        assert!(
+            body.contains("app rexenv"),
+            "the app half is no longer LABELLED as the app's. Two version numbers side by \
+             side with one commit under them invites reading the commit as either's, which \
+             is the ambiguity this replaced"
+        );
+
+        // The stamp itself must be real: a short sha, optionally -dirty, or the
+        // documented `unknown` fallback. An empty value would print `rex 0.3.0 ()`
+        // and read as "no commit" rather than as a broken build script.
+        let c = env!("REX_GIT_COMMIT");
+        assert!(!c.is_empty(), "REX_GIT_COMMIT is empty — cli/build.rs did not stamp");
+        assert!(
+            c == "unknown"
+                || c.trim_end_matches("-dirty").chars().all(|ch| ch.is_ascii_hexdigit()),
+            "REX_GIT_COMMIT is not a short sha, -dirty sha, or `unknown`: {c:?}"
+        );
+        assert!(!env!("REX_BUILT_AT").is_empty(), "REX_BUILT_AT is empty");
+    }
     use super::*;
     use std::io::Read;
     use std::os::unix::net::UnixListener;

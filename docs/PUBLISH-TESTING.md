@@ -110,6 +110,13 @@ published 13:25:43Z → cask bumped 13:31:42Z.
 > dmg's own `rex` at it and you get whatever is running locally. So a downloaded rexenv
 > cannot be asked what built it. Tracked in `docs/TODO.md`; until it is fixed, every
 > release row's commit rests on the tag rather than on the bytes.
+>
+> ✓ **Fixed for the NEXT release, 25 Aug 2026.** `rex --version` now prints the CLI's own
+> `REX_GIT_COMMIT` before it asks anything, and labels the app's half as the app's:
+> `rex 0.3.0 (a1b2c3d) · app rexenv 0.3.0 (e4f5f6a)`. So an artefact can be asked what
+> built it with nothing running — mount the dmg, run its `rex --version`, read the commit
+> off the bytes. `rex version` prints both stamps on their own labelled lines too. This
+> row stays an inference because 0.3.0 predates the fix; the next one should not.
 
 **§A0 and §A were NOT run on this artefact, and no record says they were.** Stated rather
 than implied: an unrecorded gate is indistinguishable from a skipped one, which is the
