@@ -1840,8 +1840,33 @@ first:
       delete your own sites" claim stayed TRUE, which is why this had to be
       noticed rather than caught: a paragraph that is not false can still leave
       a user unaware their database is reachable.
-  - [ ] **The M1/M2a/M2b human gates have still never been recorded as run, and MCP has
-    shipped in four releases.** ✓ **§M3 is the exception — run 25 Aug 2026**, all three of
+  - [ ] **The M1/M2a/M2b human gates: PARTLY RUN 25 Aug 2026, and the socket-drive-able
+    steps are done.** ✓ **Passed**, driven over the real socket as an MCP client against
+    the packaged app: **3** (M1 read tools answer), **6** (create), **7** (the dev loop —
+    copy-not-link proven by VALUE: the site kept running `'edited'` while the source said
+    `'second-edit'`, and changed only on sync), **8 ⚠HOLD** (all four executing tools
+    refused on a real site, and the refusal says *"is one of your own sites"* rather than
+    *"no such site"*, which is the tell the step names; all three `--path` forms refused
+    including the space-separated one a prefix check would miss), **12** (PHP refused by
+    name, listing what exists), **14 ⚠HOLD** (the agent reads its own scratch mail; a real
+    Mailpit id of the USER's mail is refused by OWNERSHIP — *"that message did not come
+    from …"* — not by existence).
+    ✓ **Step 4's first half and step 1's core assertion**: toggling off UNLINKS the socket
+    (file gone, not merely unbound) with the app still running and `mcp_enabled=false`
+    recorded, and a new client is refused. So the toggle is not a label over an always-on
+    socket, which is step 1's tell.
+    **Step 4's second half is the one still open, and it is the HOLD**: a socket
+    disappearing is not the same as a LIVE session dying — an already-connected client
+    could keep working on an established fd. Two attempts to catch it failed on timing,
+    not on behaviour, and BOTH are recorded as proving nothing rather than as failures.
+    Still unrun: **1, 2, 5** (the toggle/restart matrix), **4**'s live-session half,
+    **9** (Keep), **10** (reap banner), **11 ⚠HOLD** (no admin prompt — nothing the agent
+    did triggered one, but that is an observation across a session, not a check),
+    and **13** with the toggle actually OFF.
+    **Two real defects came out of the part that did run** — the scratch mail stamp never
+    applied at creation (#406) and wp-cli's mail silently dropped (#407) — which is the
+    argument for finishing the rest.
+    Original row: **never recorded as run, and MCP has shipped in four releases.** ✓ **§M3 is the exception — run 25 Aug 2026**, all three of
     its HOLDs cleared, and it found three real defects on the way (#404, the scratch-account
     leak `7129b3e`, and the invisible clearing of a pending ask). That is the argument for
     running the rest, not a reason to consider them covered.
