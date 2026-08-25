@@ -1254,7 +1254,25 @@ first:
   describes only what shipped as of 17 Aug. Decide which is true (re-tag, or amend the
   tag's message to say what it really contains) and write the rule down in
   `docs/RELEASING.md`, because the next release will do the same thing by default.
-- [ ] ⚠ **The shipped cask lets macOS 11–14 install an app that needs macOS 15.**
+- [x] ⚠ **The shipped cask lets macOS 11–14 install an app that needs macOS 15.**
+  ✓ FIXED 25 Aug 2026 — `depends_on macos: :sequoia` in `rexenv/homebrew-tap`
+  (committed there; **not yet pushed/released**, so the SHIPPED 0.3.0 cask is
+  still wrong until the tap is pushed). **The bare symbol is the correct form and
+  the "explicit" one is the trap**: `MacOSRequirement.parse` gives a Symbol the
+  default `>=` comparator, while the `">= :sequoia"` string form is DEPRECATED —
+  Homebrew matches it, calls `odeprecated`, and names the bare symbol as its
+  replacement. Read out of Homebrew's source rather than assumed, which is the
+  only reason the first attempt (the string form) did not ship.
+  **The drift itself is fixed separately, and that is the durable half:**
+  `core::macho::the_macos_floor_matches_the_shipped_cask` fails in THIS repo —
+  the one that moves the floor, at the moment it moves — naming the Homebrew
+  symbol to use and the constant to update. The floor is not our code's choice
+  but the highest deployment target among the default stack's binaries
+  (`docs/PORTS.md`), so it moves on a routine binary bump, which is why a
+  convention was never going to hold it. Plant-proven three ways: raising the
+  floor to 26.0 fails naming `:tahoe`, removing the key fails saying the guard
+  is watching nothing, and renaming it cannot even build (Tauri's own schema
+  rejects it first). Original row:
   `Casks/rexenv.rb` carries `depends_on macos: :big_sur # minimumSystemVersion 11.0`
   while `tauri.conf.json` has said `"minimumSystemVersion": "15.0"` since the floor sweep
   (nginx 1.30.3 and cloudflared 2026.6.1 are both `minos 15.0` — `docs/PORTS.md`). So a

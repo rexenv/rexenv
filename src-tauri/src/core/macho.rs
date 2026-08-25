@@ -131,6 +131,85 @@ pub fn parse_version(s: &str) -> Option<(u32, u32, u32)> {
 
 #[cfg(test)]
 mod tests {
+    /// **The app's macOS floor and the Homebrew cask's floor are ONE decision,
+    /// and this is the only thing that connects them.**
+    ///
+    /// They live in different REPOSITORIES — `tauri.conf.json` here,
+    /// `Casks/rexenv.rb` in `rexenv/homebrew-tap` — so nothing links them but a
+    /// person remembering. Nobody did: the cask said `:big_sur` (11.0) through
+    /// four releases while this app required 15.0, and a macOS 11–14 user could
+    /// `brew install --cask rexenv`, get no refusal, and land on an app whose
+    /// web server binary cannot start. The failure looks like a bug in rexenv
+    /// rather than an unmet requirement, which is the worst shape it could take.
+    ///
+    /// **What made it invisible was a comment restating the number.** The cask
+    /// carried `# minimumSystemVersion 11.0` beside the line — a NUMBER this
+    /// repo is free to change without telling that file, and a reader who
+    /// checks the line against its own comment finds them agreeing. So the fix
+    /// is not "update the comment": it is this test, which fails HERE, in the
+    /// repo that moves the floor, at the moment it moves.
+    ///
+    /// The floor is not set by our code — it is the highest deployment target
+    /// among the binaries the default stack needs (nginx and cloudflared are
+    /// both 15.0 today; `docs/PORTS.md`). So raising it is a routine
+    /// consequence of a binary bump, which is exactly why it needs a tripwire
+    /// rather than a convention.
+    #[test]
+    fn the_macos_floor_matches_the_shipped_cask() {
+        // Homebrew's version symbols, so the failure can name the one to use
+        // instead of leaving the reader to look it up (`macos_version.rb`).
+        const HOMEBREW_SYMBOLS: &[(&str, &str)] = &[
+            ("11", ":big_sur"),
+            ("12", ":monterey"),
+            ("13", ":ventura"),
+            ("14", ":sonoma"),
+            ("15", ":sequoia"),
+            ("26", ":tahoe"),
+        ];
+        /// The major version the CASK currently demands, as a bare Homebrew
+        /// symbol. Update BOTH this and `Casks/rexenv.rb` in the same change —
+        /// that pairing is the whole point of the test.
+        const CASK_FLOOR_MAJOR: &str = "15";
+
+        let conf = include_str!("../../tauri.conf.json");
+        let key = "\"minimumSystemVersion\"";
+        let at = conf.find(key).expect(
+            "tauri.conf.json has no minimumSystemVersion — if the key was renamed or removed, \
+             this guard is no longer watching anything and the cask can drift again",
+        );
+        let value: String = conf[at + key.len()..]
+            .trim_start()
+            .trim_start_matches(':')
+            .trim_start()
+            .trim_start_matches('"')
+            .chars()
+            .take_while(|c| *c != '"')
+            .collect();
+        let major = value.split('.').next().unwrap_or_default().to_string();
+
+        let symbol = HOMEBREW_SYMBOLS
+            .iter()
+            .find(|(m, _)| *m == major)
+            .map(|(_, s)| *s)
+            .unwrap_or("(no Homebrew symbol known for this major — check macos_version.rb)");
+
+        assert_eq!(
+            major, CASK_FLOOR_MAJOR,
+            "\n\nThe app's macOS floor moved to {value} and the Homebrew cask still demands \
+             macOS {CASK_FLOOR_MAJOR}.\n\nA user below the new floor installs with NO refusal \
+             and lands on an app whose stack cannot start — it reads as a bug in rexenv.\n\n\
+             Fix BOTH, in the same change:\n  \
+             1. rexenv/homebrew-tap → Casks/rexenv.rb → `depends_on macos: {symbol}`\n     \
+                (a bare symbol means \">= that version\"; the `\">= :sym\"` string form is \
+                DEPRECATED in Homebrew and must not be used)\n  \
+             2. this file → CASK_FLOOR_MAJOR = \"{major}\"\n\n\
+             The floor follows the default stack's binaries (docs/PORTS.md), so it moves \
+             whenever one of them is bumped. That is why this is a test and not a comment: \
+             the cask carried `# minimumSystemVersion 11.0` beside `:big_sur` for four \
+             releases, agreeing with itself and with nothing else."
+        );
+    }
+
     use super::*;
 
     #[test]
