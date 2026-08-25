@@ -675,6 +675,27 @@ editor" → `open -a <editor> <site folder>`, so the folder lands as a PROJECT) 
   `browser_detect_check` (L1) proves detection, the default-handler read, the
   URL guard, and that the icons really decode as PNGs.
 
+### macOS app menu → the app's OWN About (`lib.rs`, `App.tsx`, `Settings.tsx`)
+
+- **"About rexenv" opens Settings → About, not the native panel.** The native
+  macOS panel can show a name, a version and a copyright line — no commit, no
+  build date, no bundled licences, no links. Settings → About already answers
+  "which build is this?" (`app_info`: version · commit · built-at · platform ·
+  Tauri), which is the question a stale install once turned into a whole
+  misdiagnosis. Two About surfaces where one is strictly poorer is a screen that
+  lies by omission, so there is one.
+- **The default menu is EDITED, not replaced** (`install_about_menu_item`:
+  remove index 0 of the app submenu, insert ours). Rebuilding a menu from
+  scratch is how an app loses the Edit menu it never wrote — Cmd-C/V/Z come from
+  the default menu, and nothing else in the app provides them. macOS-only, since
+  the app submenu is macOS's; other platforms keep the default menu untouched.
+- **The click emits `menu://about`, after `show()` + `set_focus()`.** The window
+  may be hidden or behind another app; an About that opens out of sight reads as
+  a dead menu item. `AboutMenuWatch` (app root, so it works from any screen)
+  routes to `/settings?section=about` — a deep link Settings honours on mount
+  and on change, falling back to General for an unknown value rather than
+  rendering an empty pane.
+
 ## 8.1 `rex` CLI (`cli/`, `src-tauri/src/cli_server.rs`)
 
 - **Remote control ONLY — the app stays the single brain.** The `cli/` crate (bin

@@ -658,6 +658,16 @@ export async function onServiceHealth(
   return listen<HealthEvent[]>("service-health", (e) => cb(e.payload));
 }
 
+/** Subscribe to the macOS app menu's "About rexenv" item, which opens the
+ *  app's own About screen instead of the native panel (the native one cannot
+ *  show the commit, the build date or the licences). Returns an unlisten
+ *  function. No-op outside Tauri. */
+export async function onAboutMenu(cb: () => void): Promise<() => void> {
+  if (!isTauri()) return () => {};
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen("menu://about", () => cb());
+}
+
 /** Current download-manager state (seed on mount; live updates arrive via
  *  `onDownloadProgress` with the same snapshot shape). Empty outside Tauri. */
 export async function downloadsState(): Promise<DownloadsSnapshot> {

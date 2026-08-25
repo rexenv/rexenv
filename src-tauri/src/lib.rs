@@ -134,6 +134,21 @@ pub fn run() {
                 )?;
             }
 
+            // The macOS app menu's "About rexenv" opens the app's OWN About
+            // screen, not the native panel. The native panel can show a name,
+            // a version and a copyright line and nothing else — no commit, no
+            // build date, no licences, no links — while Settings → About
+            // already answers "which build is this?" (commit + built-at), the
+            // question that once cost a whole misdiagnosis. Two About surfaces
+            // where one is strictly poorer is a doc that lies by omission.
+            //
+            // Built by EDITING the default menu, not replacing it: everything
+            // else in the app menu (Services, Hide, Quit) and the Edit menu's
+            // Cmd-C/V/Z keep working. macOS-only because that submenu is
+            // macOS's; other platforms get the default menu untouched.
+            #[cfg(target_os = "macos")]
+            install_about_menu_item(app.handle())?;
+
             // JS dialog panels (alert/confirm/prompt): wry implements none on
             // macOS, so confirm() silently returned false in-app — Adminer's
             // confirm-gated delete/drop buttons no-oped. Installed on the raw
@@ -1116,6 +1131,48 @@ fn log_sinks(log_dir: Option<std::path::PathBuf>, debug: bool) -> Vec<LogSink> {
         sinks.push(LogSink::Stdout);
     }
     sinks
+}
+
+/// Event the frontend listens for to open Settings → About.
+#[cfg(target_os = "macos")]
+pub const ABOUT_MENU_EVENT: &str = "menu://about";
+
+/// Swap the macOS app menu's predefined About item for one that opens the
+/// app's own About screen.
+///
+/// Edits the DEFAULT menu in place (remove index 0, insert ours) so the rest of
+/// it — Services/Hide/Quit and the whole Edit menu with Cmd-C/V/Z — survives;
+/// rebuilding a menu from scratch is how apps lose the clipboard shortcuts they
+/// never wrote.
+#[cfg(target_os = "macos")]
+fn install_about_menu_item(app: &tauri::AppHandle) -> tauri::Result<()> {
+    use tauri::menu::{Menu, MenuItem, MenuItemKind};
+    use tauri::Emitter;
+
+    let menu = Menu::default(app)?;
+    let Some(MenuItemKind::Submenu(app_menu)) = menu.items()?.into_iter().next() else {
+        // No app submenu (should not happen on macOS) — leave the default menu
+        // alone rather than shipping a half-edited one.
+        log::warn!("menu: no app submenu — keeping the default About item");
+        return Ok(());
+    };
+    let about = MenuItem::with_id(app, "rex-about", "About rexenv", true, None::<&str>)?;
+    app_menu.remove_at(0)?;
+    app_menu.insert(&about, 0)?;
+    app.set_menu(menu)?;
+
+    app.on_menu_event(|app, event| {
+        if event.id() == "rex-about" {
+            if let Some(win) = app.get_webview_window("main") {
+                // The window may be hidden or behind: an About that opens
+                // out of sight reads as a dead menu item.
+                let _ = win.show();
+                let _ = win.set_focus();
+                let _ = win.emit(ABOUT_MENU_EVENT, ());
+            }
+        }
+    });
+    Ok(())
 }
 
 #[cfg(test)]

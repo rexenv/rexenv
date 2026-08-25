@@ -1,5 +1,5 @@
-import { useState, useSyncExternalStore } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast, toastBackendError } from "@/lib/toast";
 import { confirm, Overlay } from "@/components/ui/dialog";
 // Bundled verbatim at build time (`?raw`) so the app can show its own legal
@@ -15,6 +15,7 @@ import { CHECK_INPUT, cn, TECH_INPUT } from "@/lib/utils";
 import { eolNote, eolWhen } from "@/lib/php";
 import { TopBar } from "@/components/shell/TopBar";
 import { Button } from "@/components/ui/button";
+import { CopyButton } from "@/components/ui/copy-button";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { RexLogo } from "@/components/common/RexLogo";
 import { AgentsMcpCard } from "@/components/mcp/AgentsMcpCard";
@@ -54,7 +55,7 @@ import {
   dbImportDeleteLeftover,
   uninstallSystem, phpUpdateApply, phpUpdateCheck } from "@/lib/ipc";
 import { getStoredTheme, setTheme, subscribeTheme, type Theme } from "@/lib/theme";
-import type { Blueprint, MultisiteMode, PhpSetting, PhpVersion } from "@/types";
+import type { AppInfo, Blueprint, MultisiteMode, PhpSetting, PhpVersion } from "@/types";
 
 const SITES_DIR_KEY = "sites_dir";
 // Mirrors commands::services::AUTO_START_SETTING — the opt-in "run Start all
@@ -1400,6 +1401,47 @@ function LicensesDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
+/** The identity of THIS binary, as a copyable block. Facts only — every row is
+ *  read from `app_info`, never composed from what the UI hopes shipped.
+ *
+ *  The commit + build date are not trivia: a stale install once looked exactly
+ *  like a logic bug, and "is the app running the code I just changed?" has to
+ *  be answerable without a terminal. They used to be one cramped line under the
+ *  version; here they are legible AND copyable into a bug report. */
+function BuildFactsCard({ info }: { info: AppInfo }) {
+  const rows: [string, string][] = [
+    ["Version", `v${info.version}`],
+    ["Commit", info.commit],
+    ["Built", info.builtAt.replace("T", " ").replace("Z", " UTC")],
+    ["Platform", info.platform],
+    ["Tauri", `v${info.tauriVersion}`],
+  ];
+  return (
+    <div className="rounded-[13px] border border-rex-border-subtle bg-rex-surface-1 px-5 py-3">
+      <div className="flex items-center justify-between py-1">
+        <div className="text-[0.78125rem] font-medium text-rex-text">Build</div>
+        <CopyButton
+          value={rows.map(([k, v]) => `${k}: ${v}`).join("\n")}
+          title="Copy build info"
+        />
+      </div>
+      <dl className="mt-1">
+        {rows.map(([k, v]) => (
+          <div
+            key={k}
+            className="flex items-baseline justify-between gap-4 border-t border-rex-border-subtle py-[9px]"
+          >
+            <dt className="text-[0.78125rem] text-rex-text-muted">{k}</dt>
+            <dd className="truncate font-mono text-[0.6875rem] text-rex-text" title={v}>
+              {v}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
 /** The About section — identity, version, links, credits. */
 function AboutSetting() {
   const { data: info } = useQuery({ queryKey: ["app-info"], queryFn: getAppInfo });
@@ -1446,22 +1488,17 @@ function AboutSetting() {
           <div className="mt-1 font-mono text-[0.71875rem] text-rex-text-muted">
             {info && `v${info.version} · ${info.platform}`}
           </div>
-          {/* Which SOURCE this binary came from. Not decoration: a stale install
-              once looked exactly like a logic bug, and "is the app running the
-              code I just changed?" should be answerable at a glance. */}
-          {info && (
-            <div
-              className="mt-0.5 font-mono text-[0.6875rem] text-rex-text-muted"
-              title={`Built ${info.builtAt} from commit ${info.commit}`}
-            >
-              {info.commit} · built {info.builtAt.replace("T", " ").replace("Z", " UTC")}
-            </div>
-          )}
         </div>
         <div className="max-w-[380px] text-[0.78125rem] leading-[1.55] text-rex-text-muted">
           A calm, fast command room for your local kingdom — every server, site, and database in one place.
         </div>
       </div>
+
+      {/* The build, spelled out and COPYABLE. The header line is for a glance;
+          this is for a bug report, where "v0.3.0" alone is not enough to tell
+          two builds apart and retyping a commit from a screenshot is how the
+          wrong build gets diagnosed. */}
+      {info && <BuildFactsCard info={info} />}
 
       <div className="rounded-[13px] border border-rex-border-subtle bg-rex-surface-1 px-5">
         {linkRow(
@@ -1506,7 +1543,16 @@ const SECTIONS: { key: Section; label: string; icon: LucideIcon }[] = [
 ];
 
 export function Settings() {
-  const [section, setSection] = useState<Section>("general");
+  // `?section=` is a deep link, not decoration: the macOS app menu's "About
+  // rexenv" lands here (see App.tsx), and it must land on About from whatever
+  // screen the user was on. Unknown values fall back to General rather than
+  // rendering an empty pane.
+  const [params] = useSearchParams();
+  const wanted = SECTIONS.find((s) => s.key === params.get("section"))?.key;
+  const [section, setSection] = useState<Section>(wanted ?? "general");
+  useEffect(() => {
+    if (wanted) setSection(wanted);
+  }, [wanted]);
   const current = SECTIONS.find((s) => s.key === section)!;
 
   return (

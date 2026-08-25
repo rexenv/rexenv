@@ -11,6 +11,15 @@ Environment: macOS ____  ·  Intel / Apple Silicon ____  ·  rexenv version ____
 - [ ] First launch via **right-click → Open** (or Privacy & Security → Open Anyway); app opens, no "damaged".
 - [ ] Subsequent launches open with a normal double-click.
 
+## App menu → About
+- [ ] **rexenv menu → "About rexenv" lands on Settings → About**, from whatever
+      screen was open — not the native macOS panel. The Build card shows version,
+      commit, built-at, platform and Tauri, and its copy button yields all five.
+- [ ] Do it with the window **hidden** (Cmd-H first): the window comes back
+      focused. A menu item that opens something out of sight reads as dead.
+- [ ] **Cmd-C / Cmd-V / Cmd-Z still work** in a text field (the Edit menu comes
+      from the default menu the About item edits, not from anything we wrote).
+
 ## Onboarding — the :443 notice, and the silence that matters more
 Onboarding runs BEFORE any service starts, so "is what answers :443 ours?" is
 false on every clean first run. The rule is: **Foreign warns, NoAnswer says

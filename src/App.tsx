@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle } from "lucide-react";
 import { AppShell } from "@/components/shell/AppShell";
@@ -14,7 +14,7 @@ import { Settings } from "@/routes/Settings";
 import { Onboarding } from "@/routes/Onboarding";
 import { DevGitPanel } from "@/routes/DevGitPanel";
 import { DevUiReview } from "@/routes/DevUiReview";
-import { dnsStatus, initError, onServiceHealth } from "@/lib/ipc";
+import { dnsStatus, initError, onAboutMenu, onServiceHealth } from "@/lib/ipc";
 import { toast, toastBackendError } from "@/lib/toast";
 import { Toaster } from "@/components/ui/toaster";
 import { DialogHost } from "@/components/ui/dialog";
@@ -63,6 +63,27 @@ function HealthWatch() {
       unlisten?.();
     };
   }, [qc]);
+  return null;
+}
+
+/** The macOS app menu's "About rexenv" routes to Settings → About — the app's
+ *  own About screen, which (unlike the native panel) carries the commit, the
+ *  build date and the bundled licences. Lives at the app root so the item works
+ *  from any screen. */
+function AboutMenuWatch() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let disposed = false;
+    onAboutMenu(() => navigate("/settings?section=about")).then((f) => {
+      if (disposed) f();
+      else unlisten = f;
+    });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [navigate]);
   return null;
 }
 
@@ -122,6 +143,7 @@ export function App() {
       <DialogHost />
       <Toaster />
       <HealthWatch />
+      <AboutMenuWatch />
     </>
   );
 }

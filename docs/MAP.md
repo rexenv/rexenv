@@ -68,13 +68,14 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
 | Settings | `/settings` | `src/routes/Settings.tsx` |
 | Onboarding | `/onboarding` | `src/routes/Onboarding.tsx` |
 | Dev-only harnesses (tree-shaken from prod) | `/dev/git-panel`, `/dev/ui-review` | `src/routes/DevGitPanel.tsx`, `src/routes/DevUiReview.tsx` |
-| IPC bridge (the ONLY invoke path; 240 exports) | — | `src/lib/ipc/index.ts` |
+| IPC bridge (the ONLY invoke path; 241 exports) | — | `src/lib/ipc/index.ts` |
 | Add a plugin/theme — the four sources behind `SourceTabs` | — | `components/wordpress/WordPressManager.tsx` (wp.org search + the shared `WpInstallCard`), `ZipAddPanel.tsx` (Upload zip), `GitAddPanel.tsx` (From Git), `LinkFolderPanel.tsx` (Link folder); probes `wk-checks/{zipinstall,wptoast,check,linkpanel}.js` |
 | Shared UI hooks (editor pick + open, downloads) | — | `src/lib/useEditor.ts`, `src/lib/useDownloads.ts` |
 | "Which app opens this" (browser/editor pick, icons, chevron, private window) | `commands/system.rs` (`list_browsers`, `open_in_browser` incl. its `private` arg, `open_external`'s preference route), `platform/macos/mod.rs` (bundle table + per-browser private flag, icon extraction, LaunchServices default) | `src/lib/useBrowser.ts`, `src/components/ui/{app-icon,app-picker,split-button,open-in,menu}.tsx` (`MenuItem`'s `action` = the row's second target) + `src/components/common/IncognitoIcon.tsx` (the private glyph); consumers `routes/{SiteDetail,Sites,Settings}.tsx` · example `browser_detect_check` · wk-check `openin.js` · ARCHITECTURE §8.2 |
 | Freshness: "the user came back" (native window focus → query refetch) | — | `src/lib/window-focus.ts` (wired in `src/main.tsx`); consumers: `components/wordpress/{WordPressManager,RepoPanel}.tsx`; probe `wk-checks/focusrefresh.js` |
 | PHP version presentation (EOL tell) | `core/php.rs` decides; the client only formats | `src/lib/php.ts` (`eolWhen`/`eolTag`/`eolNote`); consumers `routes/Settings.tsx` (row badge), `components/sites/NewSiteDialog.tsx` (create note), `routes/SiteDetail.tsx` (Environment note + the version select) · ledger #322 · DESIGN.md |
 | Self-hosted runtime builds (the artifacts nobody else publishes) | — | `rexenv/runtimes` — build workflow + immutable release assets, pinned by SHA-256 in `core/binaries.rs`; see `docs/PLAN-php-74-support.md` §6 |
+| macOS app menu "About rexenv" → in-app About | `lib.rs` (`install_about_menu_item`, emits `menu://about`) | `src/lib/ipc/index.ts` (`onAboutMenu`), `src/App.tsx` (`AboutMenuWatch` → `/settings?section=about`), `routes/Settings.tsx` (`?section=` deep link, `AboutSetting`, `BuildFactsCard`) · ARCHITECTURE §8 "macOS app menu" |
 | Shell / theme / state | — | `src/components/shell/*`, `src/lib/theme.ts`, Zustand UI state, TanStack Query server state |
 
 ## Where do I…?
