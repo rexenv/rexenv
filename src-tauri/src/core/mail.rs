@@ -74,6 +74,50 @@ pub fn sendmail_path(mailpit_bin: &Path) -> String {
     )
 }
 
+/// The same shim for the PHP **CLI**'s `-d sendmail_path=…`, where the quoting
+/// above does not survive.
+///
+/// **Two forms for one command, and the difference is measured, not stylistic.**
+/// php-fpm reads `php_admin_value[sendmail_path]` out of a config file and keeps
+/// the single quotes, so the pool's shell sees a quoted path. The CLI's `-d`
+/// parser STRIPS them: with [`sendmail_path`]'s value, `ini_get` returns the
+/// path with its quotes gone, `/bin/sh -c` then splits it on the space in
+/// `Application Support`, and the result is
+/// `sh: /Users/…/Library/Application: Permission denied` with `mail()` returning
+/// false. Measured against the real binaries on 25 Aug 2026 — the first attempt
+/// at routing wp-cli's mail shipped `sendmail_path`'s quoting and did not work.
+///
+/// So this escapes for `sh` instead of quoting: every byte outside a
+/// conservative safe set gets a backslash, which survives `-d`'s unquoting
+/// because there are no quotes to remove.
+pub fn sendmail_path_cli(mailpit_bin: &Path) -> String {
+    format!(
+        "{} sendmail -t -S 127.0.0.1:{MAILPIT_SMTP_PORT}",
+        sh_escape(&mailpit_bin.display().to_string())
+    )
+}
+
+/// Backslash-escape everything `/bin/sh` could treat as special.
+///
+/// An allow-list, not a deny-list: the characters a path may contain unescaped
+/// are enumerated, and everything else — spaces, quotes, `$`, backticks,
+/// `;`, `&`, `|`, newlines — is escaped. A deny-list would need to be complete
+/// to be correct, and the one character it forgot would be the one that
+/// mattered.
+fn sh_escape(s: &str) -> String {
+    s.chars()
+        .flat_map(|c| {
+            let safe = c.is_ascii_alphanumeric() || matches!(c, '/' | '.' | '_' | '-' | '+' | ':' | '=' | ',' | '@' | '%');
+            let mut out = Vec::new();
+            if !safe && c.is_ascii() {
+                out.push('\\');
+            }
+            out.push(c);
+            out
+        })
+        .collect()
+}
+
 /// Start the Mailpit server (loopback SMTP + HTTP, persistent DB) via
 /// `ProcessSupervisor`; stdout/stderr go to a per-service log.
 pub fn start(platform: &dyn Platform, mailpit_bin: &Path) -> Result<Child> {
@@ -432,6 +476,43 @@ mod tests {
         assert_eq!(search_query(Some("  "), true).as_deref(), Some("is:unread"));
         // Whitespace around real text is trimmed, not carried into the query.
         assert_eq!(search_query(Some(" hi "), true).as_deref(), Some("hi is:unread"));
+    }
+
+    /// **The CLI shim survives `-d`'s unquoting; the fpm one does not.**
+    ///
+    /// `sendmail_path` single-quotes the binary, which php-fpm's config parser
+    /// keeps. The CLI's `-d` STRIPS quotes, so that form reaches `/bin/sh` as an
+    /// unquoted path and splits on the space in `Application Support` —
+    /// `sh: /Users/…/Library/Application: Permission denied`, `mail()` false,
+    /// message gone. Measured on the real binaries 25 Aug 2026; the first
+    /// attempt at routing wp-cli's mail shipped the quoted form and did not work.
+    #[test]
+    fn the_cli_shim_escapes_instead_of_quoting_because_minus_d_strips_quotes() {
+        let bin = std::path::Path::new("/Users/x/Library/Application Support/rexenv/bin/mailpit");
+        let cli = sendmail_path_cli(bin);
+        assert!(!cli.contains('\''), "a quote here is removed by `-d` and the path then splits: {cli}");
+        assert!(
+            cli.contains("Application\\ Support"),
+            "the space must be backslash-escaped, or sh splits the path: {cli}"
+        );
+        assert!(cli.ends_with(&format!("sendmail -t -S 127.0.0.1:{MAILPIT_SMTP_PORT}")), "{cli}");
+
+        // The fpm form keeps its quotes — the two are deliberately different,
+        // and asserting both here is what stops someone "unifying" them.
+        let fpm = sendmail_path(bin);
+        assert!(fpm.starts_with('\''), "the fpm form is quoted for the config parser: {fpm}");
+
+        // Shell metacharacters in a path are escaped, not just spaces: a
+        // deny-list would have to be complete to be right.
+        let nasty = std::path::Path::new("/tmp/a b;c$d`e'f\"g/mailpit");
+        let esc = sendmail_path_cli(nasty);
+        for ch in [' ', ';', '$', '`', '\'', '"'] {
+            let at = esc.find(ch).unwrap_or_else(|| panic!("{ch:?} vanished from {esc}"));
+            assert_eq!(
+                esc.as_bytes()[at - 1], b'\\',
+                "{ch:?} reached the shell unescaped in {esc}"
+            );
+        }
     }
 
     #[test]

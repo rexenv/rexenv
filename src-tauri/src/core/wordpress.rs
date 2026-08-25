@@ -232,13 +232,56 @@ pub fn core_path_arg(docroot: &Path) -> Option<String> {
 /// (`Utils\wp_debug_mode`, verified in the pinned phar) — this covers the window
 /// BEFORE that, which is exactly where the 8.5 deprecation lands.
 pub fn wp_argv_prefix(wp_phar: &Path) -> Vec<String> {
-    vec![
+    let argv = vec![
         "-d".into(),
         "memory_limit=512M".into(),
         "-d".into(),
         "display_errors=stderr".into(),
-        wp_phar.display().to_string(),
-    ]
+    ];
+    // Route wp-cli's `mail()` into Mailpit, the same sink php-fpm's pools use.
+    //
+    // **Without this, `wp_mail()` returns `true` and the message is gone.**
+    // `sendmail_path` was set on the POOL only (`service_manager`), so mail
+    // triggered by a page request was caught and mail triggered by a wp-cli
+    // command was handed to the system sendmail and dropped. Measured 25 Aug
+    // 2026 running the M2b gate: a `wp-login.php` lostpassword POST arrived in
+    // Mailpit; `wp eval "wp_mail(...)"` on the same site produced nothing, with
+    // `true` returned both times. Silent success is the shape this tree treats
+    // as a defect, and a developer testing email that way concludes their own
+    // code is broken.
+    //
+    // Here rather than at each call site because this is the ONE wp-cli argv
+    // builder (there is a guard that says so), and the rule it now carries —
+    // "every site's mail is CAUGHT, never delivered" — has to hold for the app,
+    // the `rex` CLI and MCP alike. An agent feels it most: `wp_run` is the only
+    // way it can make a site send mail at all.
+    //
+    // `cached_bin` never downloads: if Mailpit was never fetched the flag is
+    // omitted, which is right, because there is no sink to aim at either.
+    // Resolving the platform here keeps the signature — and so the guard's
+    // "build yours from wp_argv_prefix" instruction — unchanged.
+    let mailpit = super::binaries::cached_bin(
+        &*crate::platform::current(),
+        "mailpit",
+        super::binaries::MAILPIT_VERSION,
+    );
+    finish_wp_argv(argv, wp_phar, mailpit.as_deref())
+}
+
+/// [`wp_argv_prefix`] minus the platform lookup — split out so BOTH branches
+/// are unit-testable, since whether the flag appears otherwise depends on
+/// whether the machine running the test happens to have Mailpit downloaded.
+/// The same split `dbmirror::mirror_sql` uses, for the same reason.
+fn finish_wp_argv(mut argv: Vec<String>, wp_phar: &Path, mailpit_bin: Option<&Path>) -> Vec<String> {
+    if let Some(bin) = mailpit_bin {
+        argv.push("-d".into());
+        argv.push(format!("sendmail_path={}", super::mail::sendmail_path_cli(bin)));
+    }
+    // The phar stays LAST: everything before it is a PHP flag, everything after
+    // it is a wp-cli argument, and a caller appends its subcommand to what this
+    // returns. A flag added after the phar would be read by wp-cli as a command.
+    argv.push(wp_phar.display().to_string());
+    argv
 }
 
 /// The literal that separates wp-cli's own output from whatever a plugin writes
@@ -3378,6 +3421,49 @@ pub fn wp_config_path(docroot: &Path) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+    /// **wp-cli's `mail()` goes to Mailpit, and the phar stays last.**
+    ///
+    /// `sendmail_path` was set on the php-fpm POOL only, so mail from a page
+    /// request was caught and mail from a wp-cli command was handed to the
+    /// system sendmail and dropped — with `wp_mail()` returning `true` both
+    /// times. Measured 25 Aug 2026 while running the M2b gate: a lostpassword
+    /// POST arrived in Mailpit, `wp eval "wp_mail(...)"` on the same site
+    /// produced nothing.
+    ///
+    /// Both branches are asserted through `finish_wp_argv`, because through the
+    /// public function the answer depends on whether the machine happens to
+    /// have Mailpit downloaded — a test that passes for a reason unrelated to
+    /// the code is the vacuous shape this repo keeps finding.
+    #[test]
+    fn wp_cli_mail_is_caught_by_mailpit_and_the_phar_stays_last() {
+        let phar = std::path::Path::new("/tmp/wp-cli.phar");
+        let mailpit = std::path::Path::new("/tmp/bin/mailpit");
+
+        let with = finish_wp_argv(vec!["-d".into(), "memory_limit=512M".into()], phar, Some(mailpit));
+        let flag = with
+            .iter()
+            .position(|a| a.starts_with("sendmail_path="))
+            .expect("wp-cli mail is delivered by the system sendmail again — it vanishes silently");
+        assert_eq!(with[flag - 1], "-d", "the value is not attached to a -d flag");
+        assert!(
+            with[flag].contains("sendmail -t -S 127.0.0.1:"),
+            "the shim must aim at Mailpit's SMTP port: {}",
+            with[flag]
+        );
+        assert_eq!(
+            with.last().map(String::as_str),
+            Some("/tmp/wp-cli.phar"),
+            "the phar must stay LAST — a PHP flag after it is read by wp-cli as a command"
+        );
+
+        // No Mailpit cached: no flag, and nothing else changes. Correct rather
+        // than degraded — with no binary there is no sink to aim at either.
+        let without = finish_wp_argv(vec!["-d".into(), "memory_limit=512M".into()], phar, None);
+        assert!(!without.iter().any(|a| a.starts_with("sendmail_path=")));
+        assert_eq!(without.last().map(String::as_str), Some("/tmp/wp-cli.phar"));
+        assert_eq!(without.len() + 2, with.len(), "the flag is the only difference");
+    }
+
     use super::*;
 
     /// The line the Replace offer rests on. wp-cli's wording is a THIRD

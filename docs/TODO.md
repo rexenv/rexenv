@@ -977,7 +977,7 @@ place to keep unfinished things.
 - [ ] **Why that `rex` instance went deaf was never diagnosed** — the evidence died with
   the pid. Reproduce before blaming App Translocation.
 
-- [ ] **Mail sent from `wp-cli` goes NOWHERE, silently — `wp_mail()` returns `true`.**
+- [x] **Mail sent from `wp-cli` goes NOWHERE, silently — `wp_mail()` returns `true`.** ✓ FIXED 25 Aug 2026, ledger #407 — `-d sendmail_path=` in `wp_argv_prefix`, with CLI-specific escaping (`-d` strips quotes; the pool's quoted form reached `/bin/sh` split on `Application Support`). Proven by `wp_mail_sink_check` reading MAILPIT's total, not wp-cli's exit code — which is what caught the first, wrong fix.
   Found running SMOKE §M2a/§M2b, 25 Aug 2026. `sendmail_path` is set on the **php-fpm
   pool only** (`service_manager.rs:505`, `1453` → `pools.set_sendmail_path`), so mail
   triggered through a page request reaches Mailpit — verified: a `wp-login.php`
