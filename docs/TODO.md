@@ -1398,15 +1398,19 @@ first:
 - [ ] Stage-3 leftovers awaiting a ruling only if they resurface: none — the
   collision-rename tell-only and pdo_mysql exclusions are SETTLED (pinned by
   tests; do not reopen).
-- [ ] **MCP server — M1 + M2a + M2b are SHIPPED and code-complete (13 Aug 2026); M3 is
-  the only milestone left.** Header corrected 21 Aug 2026: it had read "building M2a →
-  M2b → M3" for eight days after both were done, and "D2/D5 open" when D5 (no SDK,
-  hand-rolled — PLAN §9.5) was settled and D2 (`wp_login_url`, scratch-only) is the one
-  open decision, non-blocking. All 8 executing tools are registered
-  (`mcp_server/scratch.rs`) beside M1's three (`mcp_server/tools.rs`), and the schema
-  work v27–v30 is in `state/db.rs` with the DB now at v37. **What is genuinely left is
-  M3 and the human gates** — both below, and the gates were invisible from this file
-  until the reconcile.
+- [ ] **MCP server — EVERY PLANNED MILESTONE IS SHIPPED (M1, M2a, M2b, M3).** Header
+  corrected twice, and the second time is the instructive one. 21 Aug 2026: it had read
+  "building M2a → M2b → M3" for eight days after both were done. 25 Aug 2026: it read
+  "M3 is the only milestone left" while M3 had shipped in seven commits the day before
+  and its gate had been run — **a header restating a milestone list is stale the moment
+  the list moves, which is every time this feature progresses**. What remains is not a
+  milestone: 9 executing tools are registered (`mcp_server/scratch.rs`) beside M1's three
+  (`mcp_server/tools.rs`), and the schema work v27–v30 + v38 is in `state/db.rs`.
+  **What is genuinely left:** the M1/M2a/M2b human gates (below — §M3's is run), D2
+  (`wp_login_url`, scratch-only) which is the one open decision and non-blocking, and the
+  post-M3 surface the plan calls the old "M4" (general T1 real-site vetted-WP ops, PHP
+  switch on real sites, DB export) which is **explicitly may-ship-never** (§9 D3) and is
+  not a commitment.
   (`docs/PLAN-mcp-server.md`): expose an MCP server so a dev's AI agent can drive
   rexenv — disposable WordPress "scratch" sites (new `origin='agent'` column,
   TTL+cap+reaper), real-site DB SELECT-only via a native driver, read-only
@@ -1764,7 +1768,18 @@ first:
       in their rows. **The lesson worth keeping: two guarantees were read off a
       library's flag names and both were wrong, and every L0 test passed —
       because they asserted the code's INTENT faithfully. Only the engine knew.**
-    - [x] **The M3 human gate — WRITTEN AND RUN 25 Aug 2026.** ✓ Steps 15, 18,
+    - [x] **The M3 human gate — WRITTEN, and RUN on a DEV BUILD 25 Aug 2026.**
+      **Not the release pass, and the difference is stated because a recorded
+      gate run differently from its own instructions is worse than an unrun
+      one.** `docs/SMOKE-TEST.md` says clean Mac, fresh account, from the
+      distributed `.dmg`; this ran against a locally-built app on a populated
+      machine, and its 145 boxes stay blank (0 are ticked, by convention — the
+      file is a per-release template, not a log). For §M3 specifically that
+      cuts BOTH ways and neither is a wash: the data-dependent steps are
+      STRONGER for having run against 13 real sites and 1,715 real rows than
+      they would be on an empty clean Mac, and §M3 contains no install-path
+      step, which is what clean-Mac exists to protect. What is genuinely
+      untested is §M3 on a machine that has never run rexenv. ✓ Steps 15, 18,
       19, 20a/b/c and 21 all pass against the packaged app, driven over the real
       socket as an MCP client (evidence in ledger #402). **All three HOLDs
       cleared**: read-only enforced in front of a human (`UPDATE` refused, the
