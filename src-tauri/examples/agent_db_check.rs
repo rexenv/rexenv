@@ -21,6 +21,9 @@
 //! `cargo run --example agent_db_check` — service tier (needs the DB engine; it
 //! starts one if none is running and stops it again).
 
+#[path = "common/mod.rs"]
+mod common;
+
 use rexenv_lib::core::agent_db::{self, Principal};
 use rexenv_lib::core::{agent_query, binaries, database};
 use rexenv_lib::platform;
@@ -68,6 +71,10 @@ async fn must_refuse(port: u16, user: &str, db: &str, sql: &str, expect: &str, w
 
 #[tokio::main]
 async fn main() {
+    // Refuse beside a live stack: these services would JOIN it, not collide
+    // with it, and a connect-based readiness gate is satisfied by the user's
+    // server. FIRST statement — after anything is spawned, exiting leaks it.
+    common::require_stack_stopped();
     let plat = platform::current();
     let port = database::MYSQL_PORT;
 

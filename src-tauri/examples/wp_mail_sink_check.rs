@@ -11,6 +11,9 @@
 //! rather than skipping, so a green run cannot mean "nothing was checked".
 //! `cargo run --example wp_mail_sink_check`
 
+#[path = "common/mod.rs"]
+mod common;
+
 use rexenv_lib::core::{binaries, mail, wordpress};
 use rexenv_lib::platform;
 use std::process::Command;
@@ -32,6 +35,10 @@ fn mailpit_total() -> u64 {
 }
 
 fn main() {
+    // Refuse beside a live stack: these services would JOIN it, not collide
+    // with it, and a connect-based readiness gate is satisfied by the user's
+    // server. FIRST statement — after anything is spawned, exiting leaks it.
+    common::require_stack_stopped();
     let plat = platform::current();
 
     // The FLAG must be in the argv the app actually builds. Asserted first: if

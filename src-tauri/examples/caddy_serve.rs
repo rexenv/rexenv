@@ -17,6 +17,10 @@ mod common;
 
 #[tokio::main]
 async fn main() {
+    // Refuse beside a live stack: these services would JOIN it, not collide
+    // with it, and a connect-based readiness gate is satisfied by the user's
+    // server. FIRST statement — after anything is spawned, exiting leaks it.
+    common::require_stack_stopped();
     let plat = platform::current();
     let host = "proxytest.test";
 

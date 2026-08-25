@@ -10,12 +10,19 @@
 //!   - a second `spawn_db` is a no-op (`None`) while the engine is managed;
 //!   - `stop_db` brings it back down. Cleans up at the end.
 
+#[path = "common/mod.rs"]
+mod common;
+
 use rexenv_lib::core::db::DbEngine;
 use rexenv_lib::core::service_manager::{self, ServiceManager};
 use rexenv_lib::platform;
 
 #[tokio::main]
 async fn main() {
+    // Refuse beside a live stack: these services would JOIN it, not collide
+    // with it, and a connect-based readiness gate is satisfied by the user's
+    // server. FIRST statement — after anything is spawned, exiting leaks it.
+    common::require_stack_stopped();
     let plat = platform::current();
     let mut mgr = ServiceManager::default();
     let engine = DbEngine::Postgres;

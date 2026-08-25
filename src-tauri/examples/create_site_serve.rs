@@ -19,6 +19,10 @@ const CADDY_HTTPS: u16 = 8443;
 
 #[tokio::main]
 async fn main() {
+    // Refuse beside a live stack: these services would JOIN it, not collide
+    // with it, and a connect-based readiness gate is satisfied by the user's
+    // server. FIRST statement — after anything is spawned, exiting leaks it.
+    common::require_stack_stopped();
     // Sandboxed: every path the app derives (config dir, nginx PREFIX and
     // therefore nginx.pid, run/, certs) lands in a throwaway root, so this
     // example cannot touch the running stack. See examples/common.

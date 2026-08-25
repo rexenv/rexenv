@@ -7,6 +7,9 @@
 //! (Postgres) `psql 'SELECT version();'` → stop. MariaDB is deferred and returns
 //! the same-shaped error; Redis has its own check (`redis_bundle_check`).
 
+#[path = "common/mod.rs"]
+mod common;
+
 use rexenv_lib::core::db::DbEngine;
 use rexenv_lib::core::{binaries, ports, postgres};
 use rexenv_lib::platform;
@@ -36,6 +39,10 @@ async fn bring_up(
 
 #[tokio::main]
 async fn main() {
+    // Refuse beside a live stack: these services would JOIN it, not collide
+    // with it, and a connect-based readiness gate is satisfied by the user's
+    // server. FIRST statement — after anything is spawned, exiting leaks it.
+    common::require_stack_stopped();
     let plat = platform::current();
 
     println!("=== registered DB engines ===");

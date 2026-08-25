@@ -41,6 +41,10 @@ fn fetch(ca_pem: &str) -> (String, String) {
 
 #[tokio::main]
 async fn main() -> std::process::ExitCode {
+    // Refuse beside a live stack: these services would JOIN it, not collide
+    // with it, and a connect-based readiness gate is satisfied by the user's
+    // server. FIRST statement — after anything is spawned, exiting leaks it.
+    common::require_stack_stopped();
     let plat = platform::current();
     let db_path = std::env::temp_dir().join("rexenv-4_1.db");
     let _ = std::fs::remove_file(&db_path);

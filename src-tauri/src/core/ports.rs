@@ -174,6 +174,96 @@ pub fn conflicts(reqs: &[PortReq]) -> Vec<PortStatus> {
 
 #[cfg(test)]
 mod tests {
+    /// **Every service-tier example refuses beside a live stack, and the two
+    /// lists of rexenv's ports agree.**
+    ///
+    /// Two failures this closes, both measured rather than imagined.
+    ///
+    /// 1. **The per-example guard was never going to be remembered.** After the
+    ///    rule was agreed, 20 of 24 service-tier examples still had none —
+    ///    including two written the same day, by the person who agreed it. So it
+    ///    is enforced here rather than trusted.
+    ///
+    /// 2. **The runner's port list is shell, the examples' is Rust.** Two
+    ///    hand-written copies of the same numbers drift; this asserts they are
+    ///    the same set, and `common::rexenv_service_ports` DERIVES its half from
+    ///    the constants that decide the ports rather than repeating them.
+    ///
+    /// What this does NOT check: that the guard is called before anything is
+    /// spawned. `process::exit` after an `OwnedService` exists leaks it (a panic
+    /// unwinds and reaps; a tidy exit does not), so the call site matters — but
+    /// "first statement in main" is a shape a grep cannot judge, and claiming
+    /// otherwise would be worse than saying so.
+    #[test]
+    fn every_service_tier_example_refuses_beside_a_live_stack() {
+        let tiers = include_str!("../../../scripts/live-checks.sh");
+
+        // The tier table: `<example> <tier>` lines.
+        let service: Vec<&str> = tiers
+            .lines()
+            .filter_map(|l| {
+                let mut it = l.split_whitespace();
+                let name = it.next()?;
+                let tier = it.next()?;
+                (tier == "service" && !name.starts_with('#')).then_some(name)
+            })
+            .collect();
+        assert!(
+            service.len() >= 20,
+            "only {} service-tier examples found — the tier table's shape changed and this \
+             guard is now reading nothing",
+            service.len()
+        );
+
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples");
+        let mut missing = Vec::new();
+        for name in &service {
+            let path = dir.join(format!("{name}.rs"));
+            let Ok(src) = std::fs::read_to_string(&path) else { continue };
+            if !src.contains("require_stack_stopped") && !src.contains("require_ports_free") {
+                missing.push(*name);
+            }
+        }
+        assert!(
+            missing.is_empty(),
+            "these service-tier examples do not refuse beside a live stack: {missing:?}\n  \
+             Add `common::require_stack_stopped();` as the FIRST statement of main().\n  \
+             Beside a running stack these do not collide with it, they JOIN it — a\n  \
+             readiness gate that connects is satisfied by the user's server, and the\n  \
+             example then reports on services it does not own."
+        );
+
+        // The runner's list and the examples' list must be the same set.
+        let shell: std::collections::BTreeSet<u16> = tiers
+            .lines()
+            .find(|l| l.contains("for p in") && l.contains("18088"))
+            .expect("the runner's port loop")
+            .split_whitespace()
+            .filter_map(|w| w.trim_end_matches(';').parse::<u16>().ok())
+            .collect();
+        let mut derived: std::collections::BTreeSet<u16> = [
+            crate::core::services::NGINX_HTTP_PORT,
+            crate::core::mail::MAILPIT_HTTP_PORT,
+            crate::core::database::MYSQL_PORT,
+            crate::core::db::MARIADB_PORT,
+        ]
+        .into_iter()
+        .collect();
+        for full in crate::core::binaries::PHP_VERSIONS {
+            let minor = full.rsplit_once('.').map(|(m, _)| m).unwrap_or(full);
+            if let Some(p) = crate::core::php::fpm_port(minor) {
+                derived.insert(p);
+            }
+        }
+        assert_eq!(
+            shell, derived,
+            "\nscripts/live-checks.sh probes a different set of ports than the code says \
+             rexenv uses.\n  shell:   {shell:?}\n  derived: {derived:?}\n  \
+             A shipped PHP minor gains a pool port, or a service moves, and one of the two \
+             lists is updated — this is the other one."
+        );
+    }
+
     use super::*;
 
     #[test]

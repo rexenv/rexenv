@@ -379,6 +379,73 @@ fn real_sites_snapshot() -> Vec<String> {
 /// Exits the process rather than returning an error: there is nothing sensible
 /// to do with the failure, and a caller that could ignore it is the shape this
 /// exists to prevent.
+/// rexenv's OWN fixed service ports, DERIVED from the constants that decide
+/// them — never a literal list.
+///
+/// The tier runner (`scripts/live-checks.sh`) probes the same set before it
+/// starts, and a second hand-written copy of these numbers is how the two would
+/// drift apart. A test asserts the shell list and this one agree.
+///
+/// `:443` is deliberately absent: the edge is designed to outlive the app,
+/// other tools shadow-bind it (Herd does), and "some Caddy is up" is not the
+/// claim "rexenv's stack is running". Ports belonging to somebody else are
+/// [`require_ports_free`]'s job.
+pub fn rexenv_service_ports() -> Vec<(u16, &'static str)> {
+    let mut ports = vec![
+        (rexenv_lib::core::services::NGINX_HTTP_PORT, "rexenv's shared nginx"),
+        (rexenv_lib::core::mail::MAILPIT_HTTP_PORT, "rexenv's Mailpit"),
+        (rexenv_lib::core::database::MYSQL_PORT, "rexenv's MySQL"),
+        (rexenv_lib::core::db::MARIADB_PORT, "rexenv's MariaDB"),
+    ];
+    for full in rexenv_lib::core::binaries::PHP_VERSIONS {
+        let minor = full.rsplit_once('.').map(|(m, _)| m).unwrap_or(full);
+        if let Some(p) = rexenv_lib::core::php::fpm_port(minor) {
+            ports.push((p, "a rexenv php-fpm pool"));
+        }
+    }
+    ports
+}
+
+/// Refuse to run if rexenv's stack is up — the precondition EVERY service-tier
+/// example has and almost none used to state.
+///
+/// **Why a blanket check rather than each example naming its ports.** The tier
+/// runner already refuses, so this is for the example someone runs BY HAND —
+/// and the failure it prevents is not a bind collision but the opposite: a
+/// readiness gate that CONNECTS is satisfied by the user's server, so the
+/// example joins the live stack instead of colliding with it and then reports
+/// on services it does not own. `delete_site_serve` printed two false `HTTP 200`
+/// preconditions that way before anything failed.
+///
+/// Per-example port lists were tried first and 20 of 24 examples simply never
+/// got one — including two written the same day the rule was agreed. A guard
+/// that has to be remembered per file is a guard that will be missing from the
+/// next file, so this needs no arguments and the same call fits everywhere.
+///
+/// Safe to `process::exit` for the reason [`require_ports_free`] is: it runs
+/// BEFORE anything is spawned. After the first `OwnedService` exists, exiting
+/// leaks it — a panic unwinds and reaps, a tidy exit does not.
+pub fn require_stack_stopped() {
+    let busy: Vec<(u16, &str)> = rexenv_service_ports()
+        .into_iter()
+        .filter(|(p, _)| rexenv_lib::core::ports::is_listening(*p))
+        .collect();
+    if busy.is_empty() {
+        return;
+    }
+    eprintln!("\n✗ REFUSING TO RUN — rexenv's stack is RUNNING.");
+    for (p, what) in &busy {
+        eprintln!("  127.0.0.1:{p} is answering ({what}).");
+    }
+    eprintln!(
+        "\n  This example brings up its OWN services on these exact ports. Beside a live\n  \
+         stack they do not collide, they JOIN: a readiness gate that connects is satisfied\n  \
+         by YOUR server, and the example then reports on a stack it does not own.\n\n  \
+         Fix: `rex stop` (or quit rexenv and stop its services), then re-run.\n"
+    );
+    std::process::exit(1);
+}
+
 pub fn require_ports_free(ports: &[(u16, &str)]) {
     for (port, what) in ports {
         if rexenv_lib::core::ports::is_listening(*port) {

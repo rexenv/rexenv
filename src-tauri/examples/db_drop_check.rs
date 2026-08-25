@@ -3,6 +3,9 @@
 //! verify it's gone. Uses (or starts) the shared loopback MySQL.
 //! `cargo run --example db_drop_check`.
 
+#[path = "common/mod.rs"]
+mod common;
+
 use rexenv_lib::core::{binaries, database, wordpress};
 use rexenv_lib::state::models::SiteType;
 use rexenv_lib::platform;
@@ -32,6 +35,10 @@ fn db_exists(client: &std::path::Path, port: u16, name: &str) -> bool {
 
 #[tokio::main]
 async fn main() {
+    // Refuse beside a live stack: these services would JOIN it, not collide
+    // with it, and a connect-based readiness gate is satisfied by the user's
+    // server. FIRST statement — after anything is spawned, exiting leaks it.
+    common::require_stack_stopped();
     let plat = platform::current();
     let port = database::MYSQL_PORT;
 

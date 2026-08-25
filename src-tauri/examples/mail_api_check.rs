@@ -10,6 +10,9 @@
 //!
 //! Run (ports 11025/18025 free): `cargo run --example mail_api_check`
 
+#[path = "common/mod.rs"]
+mod common;
+
 use rexenv_lib::core::{binaries, mail};
 use rexenv_lib::platform;
 use std::io::Write;
@@ -18,6 +21,10 @@ use std::time::Duration;
 
 #[tokio::main]
 async fn main() {
+    // Refuse beside a live stack: these services would JOIN it, not collide
+    // with it, and a connect-based readiness gate is satisfied by the user's
+    // server. FIRST statement — after anything is spawned, exiting leaks it.
+    common::require_stack_stopped();
     let plat = platform::current();
     let bin = binaries::resolve(&*plat, "mailpit", binaries::MAILPIT_VERSION)
         .await

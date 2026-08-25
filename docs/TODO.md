@@ -377,7 +377,7 @@ paying for anyway: **the tick belongs in the commit that does the work.**
     the boolean does.
 ### Opened by the 23 Aug 2026 service-tier run (stack UP)
 
-- [ ] **`delete_site_serve` read the USER's nginx and called it its own.** Found by running
+- [x] **`delete_site_serve` read the USER's nginx and called it its own.** ✓ CLOSED 25 Aug 2026 — the last sub-item (per-example guards) is done, and the whole tier is covered rather than the one example that failed. Found by running
   the service tier against a live stack — which is not how that tier is meant to run, and is
   exactly why it was worth watching what each failure DID.
   Eleven of the thirteen failures were loud and correct: production's own `ports::ensure_free`
@@ -415,9 +415,23 @@ paying for anyway: **the tick belongs in the commit that does the work.**
     assert against absence and could only pass vacuously.
     Verified live both ways: service refused with the stack up; stack proceeded with the
     stack up; and the stack-down branch fires when pointed at ports nothing answers.
-    Per-example `require_ports_free` is still worth adding — the runner protects the tier,
-    not a single example run by hand — but it is no longer the only thing standing between
-    a live stack and a fixture reading it.
+    ✓ **DONE 25 Aug 2026, and not the way it was scoped.** Per-example port LISTS were the
+    plan; measuring first killed that: **20 of 24 service-tier examples had no guard at
+    all**, including two written the same day by the person who agreed the rule. A guard
+    that must be remembered per file will be missing from the next file. So it is
+    `common::require_stack_stopped()` — no arguments, the same call everywhere, probing
+    rexenv's own fixed ports DERIVED from the constants that decide them (`NGINX_HTTP_PORT`,
+    `MAILPIT_HTTP_PORT`, `MYSQL_PORT`, `MARIADB_PORT`, and each shipped minor's
+    `php::fpm_port`) rather than a second literal list beside the runner's.
+    Enforced by `core::ports::every_service_tier_example_refuses_beside_a_live_stack`, which
+    also asserts the runner's shell list and the derived list are the SAME SET — two
+    hand-written copies of the same numbers is how they drift. Plant-proven both ways.
+    ✓ Verified live with the stack UP: `mysql_serve` refuses naming all eleven answering
+    ports, `delete_site_serve` refuses through its own earlier list. **Stated limit:** the
+    guard must run BEFORE anything is spawned (after an `OwnedService` exists, `exit` leaks
+    it — a panic unwinds and reaps, a tidy exit does not). It is the first statement of
+    every `main()` here, but "first statement" is a shape a grep cannot judge, so that half
+    rests on review rather than on the test, and the test says so.
   - [x] **Replace the `unwrap`? NO — closed as won't do** ✓ 24 Aug 2026, and the reason is
     worth more than the change would have been. The obvious replacement leaks: `fpm`,
     `nginx` and `caddy` are live `OwnedService` guards that reap in `Drop`, and
