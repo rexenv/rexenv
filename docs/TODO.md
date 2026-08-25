@@ -1841,13 +1841,27 @@ first:
       noticed rather than caught: a paragraph that is not false can still leave
       a user unaware their database is reachable.
   - [ ] **The M1/M2a/M2b human gates: PARTLY RUN 25 Aug 2026, and the socket-drive-able
-    steps are done.** ✓ **Passed**, driven over the real socket as an MCP client against
-    the packaged app: **3** (M1 read tools answer), **6** (create), **7** (the dev loop —
+    steps are done.** **How these were driven, stated because it bounds every one of them:** by a
+    hand-rolled JSON-RPC client speaking the wire protocol to the unix socket directly
+    (`initialize` → `notifications/initialized` → `tools/call`, the shape
+    `examples/mcp_socket_check.rs` uses) — **not** through `claude mcp add rexenv -- rex
+    mcp`, and not by a model choosing tools. So the PROTOCOL and the SERVER are exercised;
+    the `rex mcp` pipe and any client integration are NOT, and neither is a model's
+    judgement.
+    ⚠ **Step 3 is therefore NOT passed, and an earlier version of this row wrongly said it
+    was.** Step 3 asks for a real client added with `claude mcp add`, a question put to
+    Claude Code, feed rows appearing AND the status line flipping to "Working" — of which
+    only "the M1 read tools answer" was shown. The `rex mcp` pipe was bypassed entirely,
+    which makes it an untested surface that every real user depends on.
+    ✓ **Passed**, driven as described above: **6** (create), **7** (the dev loop —
     copy-not-link proven by VALUE: the site kept running `'edited'` while the source said
-    `'second-edit'`, and changed only on sync), **8 ⚠HOLD** (all four executing tools
+    `'second-edit'`, and changed only on sync), **8 ⚠HOLD — the mechanical half only** (all four executing tools
     refused on a real site, and the refusal says *"is one of your own sites"* rather than
     *"no such site"*, which is the tell the step names; all three `--path` forms refused
-    including the space-separated one a prefix check would miss), **12** (PHP refused by
+    including the space-separated one a prefix check would miss; but the step's own
+    framing — *"only this proves the refusal survives contact with a model that wants to
+    help"* — is NOT met, because no model was involved: I sent the calls a model might
+    send, which is a different claim), **12** (PHP refused by
     name, listing what exists), **14 ⚠HOLD** (the agent reads its own scratch mail; a real
     Mailpit id of the USER's mail is refused by OWNERSHIP — *"that message did not come
     from …"* — not by existence).
