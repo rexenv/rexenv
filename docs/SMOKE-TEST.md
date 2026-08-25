@@ -845,7 +845,12 @@ modal that steals focus.
   agent to read a site it has no grant for → it succeeds with **no prompt**, the
   grant appears in the list marked **auto**, and the agent's own reply says the
   access was granted automatically. Now **quit and relaunch** → the toggle is
-  **OFF**, and the same request prompts again.
+  **OFF**, and a request for **a site with NO existing grant** prompts again.
+  **Not "the same request".** Auto-allow deliberately leaves its grants behind
+  when it switches off, so re-asking about the site it just granted succeeds for
+  THAT reason and proves nothing about the toggle — it looks exactly like the
+  toggle having survived. Walked into on 25 Aug 2026 and briefly read as a
+  design failure; pick a third site.
   **Tells:** the toggle is still on after a relaunch (it is a settings row, and a
   consent bypass that outlives the session is the thing this design refuses); the
   grant is not marked `auto` (then "did I approve this?" has no answer once the
