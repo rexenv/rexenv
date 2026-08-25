@@ -977,6 +977,29 @@ place to keep unfinished things.
 - [ ] **Why that `rex` instance went deaf was never diagnosed** — the evidence died with
   the pid. Reproduce before blaming App Translocation.
 
+- [ ] **Mail sent from `wp-cli` goes NOWHERE, silently — `wp_mail()` returns `true`.**
+  Found running SMOKE §M2a/§M2b, 25 Aug 2026. `sendmail_path` is set on the **php-fpm
+  pool only** (`service_manager.rs:505`, `1453` → `pools.set_sendmail_path`), so mail
+  triggered through a page request reaches Mailpit — verified: a `wp-login.php`
+  lostpassword POST landed as `rexenv-scratch@mailfix.scratch.rex`. Mail triggered by
+  `wp eval "wp_mail(...)"` does not: the PHP **CLI** never gets the shim, PHP's `mail()`
+  hands off to the system sendmail, and the message is dropped. `wp_mail` returns `true`
+  either way, which is the silent-success shape this tree treats as a defect class.
+  **Why it matters beyond the agent:** `wp_argv_prefix` is the ONE place wp-cli's PHP
+  flags are set (`core/wordpress.rs:234`) and it is shared by the app, the `rex` CLI and
+  MCP — so `wp user create --send-email`, notification-sending cron runs, and anything
+  else a user does through wp-cli are all affected, not just agents. For an AGENT it is
+  worse than for a person, because `wp_run` is the ONLY way an agent can make a site
+  send mail, so M2b's dev loop ("make the plugin send mail, then read it") has no working
+  first step — and the second step now works, which is what exposed this.
+  **Recommended fix, but it is a behaviour decision and therefore yours:** add
+  `-d sendmail_path=<mail::sendmail_path(mailpit_bin)>` to `wp_argv_prefix`. One place,
+  and it makes wp-cli agree with the pool that every site's `mail()` is caught rather
+  than delivered. It needs the mailpit binary path threaded into that function, so it
+  touches every caller. **The alternative — document it as a limit — is worse:** a
+  developer testing email through `wp` gets `true` and an empty inbox, and concludes
+  their code is broken.
+
 ## Ledger-driven proof backlog
 
 The test metric is `docs/CLAIM-LEDGER.md`. **Do not copy the tally here** — this line
