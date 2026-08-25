@@ -676,9 +676,20 @@ YOUR OWN sites in the list. Keep the Sites page visible.
   becomes an ordinary site: no badge, no TTL, no Keep item. **Tell:** if it keeps
   any agent styling, the UI is reading something other than the recorded origin —
   and the dialog just promised otherwise.
-- [ ] **10. Reap + the banner.** Set a scratch site's expiry into the past
-  (`sqlite3 <app-data>/rexenv.sqlite3 "UPDATE sites SET expires_at =
-  datetime('now','-1 hours') WHERE domain='<scratch domain>'"`), then relaunch →
+- [ ] **10. Reap + the banner.** Set a scratch site's expiry into the past, then
+  relaunch →
+  ```sh
+  DB=~/Library/"Application Support"/dev.rexenv.rexenv/rexenv.db
+  sqlite3 "$DB" "UPDATE sites SET expires_at = datetime('now','-1 hours')
+                 WHERE domain='<scratch domain>'; SELECT changes();"
+  ```
+  **`SELECT changes()` must print `1`.** This step named `rexenv.sqlite3` until
+  25 Aug 2026; the file is `rexenv.db`, and `sqlite3` CREATES the name it is
+  given — so the command left an empty decoy database beside the real one,
+  matched no rows, and the relaunch showed no banner. That reads as a broken
+  reaper when nothing was ever expired, which is the worst way for a gate to be
+  wrong: it manufactures a defect. **Expire ONE site and leave another scratch
+  site live**, so the reap has to be selective rather than a bulk wipe →
   a dismissible banner NAMES the domain it removed, the site is gone from the list,
   and the feed carries a `scratch_reap` row reading **"rexenv · automatic"** with a
   **"(deleted site)"** target. **Tell:** a silent sweep — a bulk delete with no
