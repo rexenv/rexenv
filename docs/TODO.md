@@ -1875,6 +1875,20 @@ first:
     the exact way the first two step-4 attempts went wrong. The socket's ctime (17s) was
     older than the check against a 25s-old process, which is what rules out a later CLICK
     having bound it rather than startup.
+    ✓ **Step 10's machine half PASSES, twice, and the second run is the one that counts.**
+    First run: one scratch site expired and another left live — the expired one's row,
+    docroot and database went, the live one's stayed, so the reap is selective and not a
+    bulk wipe wearing a TTL. That run proved NOTHING about agent DB accounts and was
+    recorded that way: neither site had been `db_query`'d, so none existed to drop. Second
+    run closed it — a site was `db_query`'d first, its `rex_agent_*` confirmed PRESENT (2
+    loopback rows), and after the relaunch the row, docroot, database and ACCOUNT were all
+    gone, with the `'r%'` landmark at 17 rows so the empty result is real. **The
+    selectivity control is the better half:** `rex_ro_photocontest_test`, a live grant on
+    one of the user's OWN sites, was untouched. This closes #403's open leg — the delete
+    path really does run the drop — for the REAPER's route at least. **Eyes-only and still
+    unconfirmed: the BANNER** naming the reaped domain, and the `scratch_reap` feed row
+    reading "rexenv · automatic". The banner is the point of the step (a silent sweep is
+    indistinguishable from data loss), and nothing I can check reaches it.
     Still unrun: **1** literally (a fresh launch that has NEVER been enabled — the
     toggle-off state is proven, the never-enabled one is not),
     **9** (Keep), **10** (reap banner), **11 ⚠HOLD** (no admin prompt — nothing the agent
