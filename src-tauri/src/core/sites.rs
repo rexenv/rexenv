@@ -4060,6 +4060,93 @@ mod tests {
     /// The sweep pinned all 17 remaining provisioners, and this is the half a
     /// sweep cannot give: the eighteenth example, written next month, cannot
     /// forget. A check the fixture does not have to remember to write.
+    /// Examples that provision WITHOUT pinning `sites_dir`, each with the reason
+    /// it is safe. An allow-list, not a convention: the list is what a new
+    /// example has to argue its way onto.
+    ///
+    /// Everything else must call `common::sandbox_db` (pin included, cannot be
+    /// used without it) or `common::pin_sites_dir` / `pin_fixture_sites_dir`.
+    const UNPINNED_PROVISIONERS: &[(&str, &str)] = &[
+        (
+            "sites_folder_check",
+            "its SUBJECT is a custom sites_dir: it sets SITES_DIR_KEY to a temp path by              hand and asserts the docroot lands there. Pinning would remove the thing it              checks — the same exception `download_progress_check` has for the shared              binary cache.",
+        ),
+        (
+            "seed_and_list",
+            "a seeding DEMO, not a check: its stated purpose is to put real sites in the              real app DB so the desktop app's Sites screen shows them. Writing to the              user's folder is what it is for.",
+        ),
+    ];
+
+    /// **Every example that provisions either PINS `sites_dir` or is on the
+    /// exception list with a reason.**
+    ///
+    /// `sites::provision` reads the `sites_dir` SETTING, whose fallback is
+    /// derived from the HOME directory — a path no sandboxed `Platform` can
+    /// redirect. So an example that forgets the pin creates docroots in the
+    /// user's real `~/rexenv/Sites`, and one of them used to `remove_dir_all`
+    /// there. **Measured on this machine 24 Aug 2026: 19 orphaned directories,
+    /// 437 MB**, five of them whole WordPress installs.
+    ///
+    /// `refuse_unpinned_sandbox_sites_dir_for` (#392) catches the SANDBOXED
+    /// case at runtime. This catches the rest, and it catches them at build
+    /// time: a sweep pins the examples that exist, and this is the half a sweep
+    /// cannot give — the next example, written next month, cannot forget.
+    ///
+    /// The same shape as the service-tier guard (#410), and for the same reason:
+    /// 20 of 24 examples there had no guard because remembering per file does
+    /// not work.
+    #[test]
+    fn every_provisioning_example_pins_the_sites_dir_or_says_why_not() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples");
+        let mut unpinned = Vec::new();
+        let mut seen = 0usize;
+        for entry in std::fs::read_dir(&dir).expect("examples dir") {
+            let path = entry.expect("dir entry").path();
+            if path.extension().is_none_or(|e| e != "rs") {
+                continue;
+            }
+            let Ok(src) = std::fs::read_to_string(&path) else { continue };
+            if !src.contains("sites::provision") {
+                continue;
+            }
+            seen += 1;
+            let pinned = src.contains("sandbox_db")
+                || src.contains("pin_sites_dir")
+                || src.contains("pin_fixture_sites_dir");
+            if !pinned {
+                let name = path.file_stem().unwrap().to_string_lossy().to_string();
+                if !UNPINNED_PROVISIONERS.iter().any(|(n, _)| *n == name) {
+                    unpinned.push(name);
+                }
+            }
+        }
+        assert!(
+            seen >= 30,
+            "only {seen} provisioning examples found — the scan matched almost nothing and \
+             would report a clean tree either way"
+        );
+        assert!(
+            unpinned.is_empty(),
+            "these examples provision without pinning `sites_dir`: {unpinned:?}\n  \
+             They will create docroots in the USER's real ~/rexenv/Sites, and anything they \
+             delete afterwards deletes there.\n  \
+             Use `common::sandbox_db` (pin included) or `common::pin_fixture_sites_dir` — \
+             or add the example to UNPINNED_PROVISIONERS with the reason it is safe."
+        );
+        // The exception list may only SHRINK by being right: an entry naming an
+        // example that no longer provisions is a reason nobody is checking.
+        for (name, _) in UNPINNED_PROVISIONERS {
+            let path = dir.join(format!("{name}.rs"));
+            let src = std::fs::read_to_string(&path)
+                .unwrap_or_else(|_| panic!("UNPINNED_PROVISIONERS names {name}, which is gone"));
+            assert!(
+                src.contains("sites::provision"),
+                "UNPINNED_PROVISIONERS still excuses {name}, which no longer provisions — \
+                 delete the entry rather than leaving a standing exception nobody needs"
+            );
+        }
+    }
+
     #[test]
     fn a_sandboxed_platform_may_not_provision_into_the_users_real_sites_folder() {
         let real = crate::platform::current();

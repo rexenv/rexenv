@@ -1087,8 +1087,22 @@ first:
   (`common::OwnedService`) so the panic cannot manufacture the corpse-mysqld condition
   the first sighting was tangled with. Nothing new was ruled in or out — still filed
   as unexplained.
-- [ ] **Provisioning examples that do not PIN `sites_dir` write into the user's REAL
-  Sites folder — and one of them deletes there.** `sites::provision` reads the `sites_dir`
+- [x] **Provisioning examples that do not PIN `sites_dir` write into the user's REAL
+  Sites folder — and one of them deletes there.** ✓ CLOSED 26 Aug 2026, ledger #411.
+  **Re-measured first, and the row's named instance is already fixed**:
+  `adminer_deeplink_check` pins now. Of the 40 examples that call `sites::provision`,
+  **38 pin and 2 deliberately do not** — `sites_folder_check`, whose SUBJECT is a custom
+  `sites_dir` (pinning would remove what it checks, the same exception
+  `download_progress_check` has for the shared binary cache), and `seed_and_list`, a
+  seeding DEMO whose stated purpose is to put real sites in the real app DB.
+  So there was no defect left — but nothing stopped the 41st example forgetting, which is
+  what a sweep cannot fix. `every_provisioning_example_pins_the_sites_dir_or_says_why_not`
+  requires a pin or an entry in `UNPINNED_PROVISIONERS` **with its reason**, carries a
+  landmark so a scan matching nothing fails loudly, and refuses a stale exception (an
+  entry naming an example that no longer provisions is a reason nobody is checking).
+  Plant-proven both ways. Same shape as the service-tier guard (#410) and for the same
+  reason: remembering per file does not work.
+  Original row: `sites::provision` reads the `sites_dir`
   SETTING, which falls back to `~/rexenv/Sites`: a path derived from the home directory,
   not from `Paths`, so a sandboxed `Platform` cannot redirect it. The door that closes it
   is `common::sandbox_db` (pin included, cannot be used without it) or
