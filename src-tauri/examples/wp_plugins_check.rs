@@ -78,18 +78,7 @@ async fn main() {
     )
     .unwrap();
     let docroot = std::path::PathBuf::from(&site.path);
-    wordpress::install_for_site(
-        &php,
-        &wp,
-        &docroot,
-        domain,
-        "WP Plugins",
-        &wordpress::db_name_for(SiteType::Wordpress, domain),
-        &format!("127.0.0.1:{}", database::MYSQL_PORT),
-        &db_client,
-        &Default::default(),
-    )
-    .expect("install wordpress");
+    common::install_wp(&php, &wp, &docroot, domain, "WP Plugins", &db_client);
 
     let has = |list: &[wordpress::WpPlugin], name: &str| list.iter().any(|p| p.name == name);
     let status = |list: &[wordpress::WpPlugin], name: &str| {

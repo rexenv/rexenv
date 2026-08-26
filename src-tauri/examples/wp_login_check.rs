@@ -111,23 +111,7 @@ async fn main() -> std::process::ExitCode {
         .sql_client_bins(&*plat, rexenv_lib::core::binaries::MYSQL_VERSION)
         .await
         .expect("bundled MySQL client");
-    wordpress::install_for_site(
-        &php,
-        &wp,
-        &docroot,
-        domain,
-        "WP Login",
-        &wordpress::db_name_for(SiteType::Wordpress, domain),
-        &format!("127.0.0.1:{}", rexenv_lib::core::db::DbEngine::Mysql.port()),
-        // The bundled mysql CLIENT, not the basedir: `install_for_site` execs this
-        // to CREATE the database. Handing it the extracted tree exec'd a directory
-        // → `PermissionDenied` (EACCES), which reads like a filesystem-permissions
-        // problem and is really a wrong-argument one. Same shape as the
-        // create_database slip on 13 Aug 2026.
-        &db_client,
-        &Default::default(),
-    )
-    .expect("install wordpress");
+    common::install_wp(&php, &wp, &docroot, domain, "WP Login", &db_client);
 
     let ca_cert = reqwest::Certificate::from_pem(&std::fs::read(&ca.cert_path).unwrap()).unwrap();
     let addr: SocketAddr = format!("127.0.0.1:{HTTPS}").parse().unwrap();

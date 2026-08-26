@@ -119,18 +119,7 @@ async fn main() {
     )
     .unwrap();
     let docroot = std::path::PathBuf::from(&site.path);
-    wordpress::install_for_site(
-        &php,
-        &wp,
-        &docroot,
-        domain,
-        "WP Premium",
-        &wordpress::db_name_for(SiteType::Wordpress, domain),
-        &format!("127.0.0.1:{}", database::MYSQL_PORT),
-        &db_client,
-        &Default::default(),
-    )
-    .expect("install wordpress");
+    common::install_wp(&php, &wp, &docroot, domain, "WP Premium", &db_client);
 
     // ── Plant: two plugins, one mu-plugin, one of the two updates gated ──────
     // Everything written here is inside the docroot THIS example provisioned.

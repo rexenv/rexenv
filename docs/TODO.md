@@ -1039,6 +1039,29 @@ place to keep unfinished things.
   developer testing email through `wp` gets `true` and an empty inbox, and concludes
   their code is broken.
 
+- [ ] ⚠ **An example whose `start_all` fails PARTWAY leaks whatever already started, and
+  the next example then refuses — one leak takes out the tier.** Found 26 Aug 2026 by
+  running the network tier: `blueprint_check` started MySQL, then `dl.static-php.dev` went
+  unreachable so php-fpm could not download, so it printed `start_all failed` and returned
+  `ExitCode::FAILURE` — with **mysqld 69456 still running on the REAL app datadir**. Every
+  example after it refused, and **rexenv's own error named the pid**: *"port 13306 is still
+  held by a leftover rexenv process (pid 69456) … run `kill 69456`"*. 20+ of the tier's
+  examples failed for that one cause.
+  **The shape is not a missing `stop_all`** — 16 of the 17 `start_all` examples call it.
+  It is that `stop_all` sits on the SUCCESS path while the error branch returns before
+  reaching it: `blueprint_check` is `start_all` at line 97, `return FAILURE` at 102,
+  `stop_all` at 156. A rough scan finds the same early-return-before-`stop_all` window in
+  **14 examples**. The comment at the return shows the author thought carefully about the
+  exit CODE ("never a bare `return` — that exits 0 and the tier records a run that
+  asserted nothing as green") and not about the services already up.
+  Same FAMILY as the `process::exit` leak class (#393/#394) and a different mechanism:
+  there it was destructors skipped, here it is a cleanup line the error path jumps over.
+  **Not fixed here, deliberately** — the choice is between `stop_all` on each error branch
+  (14 files, easy to forget on the 15th) and a Drop-owning guard around the manager (which
+  is what `OwnedService` does for single services, and would be the structural answer). A
+  guard could then enforce it. That is a design call, and this was found in the middle of
+  verifying something else.
+
 ## Ledger-driven proof backlog
 
 The test metric is `docs/CLAIM-LEDGER.md`. **Do not copy the tally here** — this line
@@ -1271,7 +1294,13 @@ first:
 - [ ] Then: ~~Apache/FrankenPHP dotfile legs (#103)~~ (closed 15 Aug 2026 — all three backends live, plant-proven per template), ~~fpm candidate
   isolation (#104/#191)~~ (closed 15 Aug 2026, `fpm_candidate_check`, plant-proven), ~~manifest HEAD+digest sweep~~ (closed 15 Aug 2026, `manifest_sweep_check` #335 — 88 URLs answer, 78 re-hashed incl. every Intel digest), ~~Bedrock live provision (#35)~~ (the PREMISE is proven live 24 Aug 2026 — a real Bedrock WordPress, two planted mu-plugins, only the recorded content dir's one loaded; ledger #35 carries the method. A committed example is still open, and deliberately: it would download core, create a database and install WordPress on every network-tier run),
   sandbox-adoption cohorts + `wp_fixture()` — incl. scoping.
-  **COSTED 26 Aug 2026, and deliberately not done blind.** The duplication is real: **16
+  ✓ **DONE 26 Aug 2026 — and only once it could be RUN.** `common::install_wp` derives the
+  db name and engine address; **11 examples converted, all 11 verified live** against a real
+  MySQL, each installing a real WordPress. Four callers deliberately keep the direct call
+  because their differences ARE their subjects, and **no guard forbids it** — measuring
+  first is what stopped one being written. Ledger #412.
+  The costing below is why it waited a day rather than shipping on `cargo build`:
+  **COSTED 25 Aug 2026, and deliberately not done blind.** The duplication is real: **16
   examples call `wordpress::install_for_site`** with nine arguments of which eight are
   the same values every time — `wp_plugins_check` and `wp_themes_check` are byte-identical
   bar the site title. And it drifts: `db_name_for` gained a type parameter on 13 Aug and

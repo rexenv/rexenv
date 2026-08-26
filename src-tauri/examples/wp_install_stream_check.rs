@@ -99,20 +99,7 @@ async fn main() {
     )
     .unwrap();
     let docroot = std::path::PathBuf::from(&site.path);
-    wordpress::install_for_site(
-        &php,
-        &wp,
-        &docroot,
-        &domain,
-        "WP Install Stream",
-        &wordpress::db_name_for(SiteType::Wordpress, &domain),
-        &format!("127.0.0.1:{}", database::MYSQL_PORT),
-        // db_client is a typed SqlClient now (ledger #329) — the base-dir
-        // mixup this note used to warn about no longer compiles.
-        &db_client,
-        &Default::default(),
-    )
-    .expect("install wordpress");
+    common::install_wp(&php, &wp, &docroot, &domain, "WP Install Stream", &db_client);
 
     let app = tauri::test::mock_app();
     app.manage(commands::repo::RepoJobs::default());

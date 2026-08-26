@@ -88,14 +88,7 @@ async fn main() -> std::process::ExitCode {
         std::fs::create_dir_all(&docroot).unwrap();
     }
 
-    wordpress::install_for_site(
-        &php, &wp, &docroot, domain, "Network",
-        &wordpress::db_name_for(SiteType::Wordpress, domain),
-        &format!("127.0.0.1:{}", rexenv_lib::core::db::DbEngine::Mysql.port()),
-        &db_client,
-        &Default::default(),
-    )
-    .expect("install wordpress");
+    common::install_wp(&php, &wp, &docroot, domain, "Network", &db_client);
 
     // Convert to SUBDOMAIN multisite + persist the mode, then reload the edge so the
     // wildcard nginx server_name + Caddy host route are regenerated.

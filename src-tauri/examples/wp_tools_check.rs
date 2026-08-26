@@ -97,18 +97,7 @@ async fn main() {
     )
     .unwrap();
     let docroot = std::path::PathBuf::from(&site.path);
-    wordpress::install_for_site(
-        &php,
-        &wp,
-        &docroot,
-        domain,
-        "WP Tools",
-        &wordpress::db_name_for(SiteType::Wordpress, domain),
-        &format!("127.0.0.1:{}", database::MYSQL_PORT),
-        &db_client,
-        &Default::default(),
-    )
-    .expect("install wordpress");
+    common::install_wp(&php, &wp, &docroot, domain, "WP Tools", &db_client);
 
     // WP_DEBUG toggle.
     let before = wordpress::wp_debug_get(&php, &wp, &docroot).unwrap();

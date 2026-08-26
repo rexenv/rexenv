@@ -81,18 +81,7 @@ async fn main() {
     .unwrap();
     let site_id = site.id.clone();
     let docroot = std::path::PathBuf::from(&site.path);
-    wordpress::install_for_site(
-        &php,
-        &wp,
-        &docroot,
-        &domain,
-        "CLI WP Install",
-        &wordpress::db_name_for(SiteType::Wordpress, &domain),
-        &format!("127.0.0.1:{}", database::MYSQL_PORT),
-        &db_client,
-        &Default::default(),
-    )
-    .expect("install wordpress");
+    common::install_wp(&php, &wp, &docroot, &domain, "CLI WP Install", &db_client);
 
     let app = tauri::test::mock_app();
     app.manage(rexenv_lib::commands::repo::RepoJobs::default());

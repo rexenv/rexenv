@@ -99,18 +99,7 @@ async fn main() {
     assert_eq!(db_name, "wp_wpthemes_test", "the fixture database name drifted — refusing to drop");
     database::drop_database(&db_client, database::MYSQL_PORT, &db_name).expect("drop fixture db");
 
-    wordpress::install_for_site(
-        &php,
-        &wp,
-        &docroot,
-        domain,
-        "WP Themes",
-        &wordpress::db_name_for(SiteType::Wordpress, domain),
-        &format!("127.0.0.1:{}", database::MYSQL_PORT),
-        &db_client,
-        &Default::default(),
-    )
-    .expect("install wordpress");
+    common::install_wp(&php, &wp, &docroot, domain, "WP Themes", &db_client);
 
     let status = |list: &[wordpress::WpTheme], name: &str| {
         list.iter().find(|t| t.name == name).map(|t| t.status.clone())

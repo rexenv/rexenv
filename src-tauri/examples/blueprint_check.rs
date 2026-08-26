@@ -123,14 +123,7 @@ async fn main() -> std::process::ExitCode {
         let _ = std::fs::remove_dir_all(&docroot);
         std::fs::create_dir_all(&docroot).unwrap();
     }
-    wordpress::install_for_site(
-        &php, &wp, &docroot, domain, "BP Site",
-        &wordpress::db_name_for(SiteType::Wordpress, domain),
-        &format!("127.0.0.1:{}", rexenv_lib::core::db::DbEngine::Mysql.port()),
-        &db_client,
-        &Default::default(),
-    )
-    .expect("install wordpress");
+    common::install_wp(&php, &wp, &docroot, domain, "BP Site", &db_client);
 
     // Apply the WP parts (plugins/themes/WP_DEBUG), then multisite (create_site
     // order) — STREAMED, the same runner the provision job's blueprint phase uses.

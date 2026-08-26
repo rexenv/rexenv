@@ -379,6 +379,54 @@ fn real_sites_snapshot() -> Vec<String> {
 /// Exits the process rather than returning an error: there is nothing sensible
 /// to do with the failure, and a caller that could ignore it is the shape this
 /// exists to prevent.
+/// Install WordPress into a fixture site the ordinary way: a `wp_<slug>` database
+/// on rexenv's MySQL, default admin, default language.
+///
+/// **What this removes.** `wordpress::install_for_site` takes nine arguments and
+/// twelve examples passed the same eight every time — only the site title
+/// differed. `wp_plugins_check` and `wp_themes_check` were byte-identical bar
+/// that string. Worse, the repetition DRIFTS: `db_name_for` gained a type
+/// parameter on 13 Aug 2026 and every one of those sites had to be edited. The
+/// db name and the engine address are derived here now, so the next change to
+/// either is one edit.
+///
+/// **Who should NOT use this, and why that is not a gap.** Four examples pass
+/// something genuinely different, and the difference IS their subject:
+/// `mariadb_site_check` (a MariaDB host and a captured `Result`, because the
+/// install failing is a thing it reports), `wp_create_serve` (custom
+/// `InstallOptions` — it checks the admin user rexenv creates),
+/// `adminer_deeplink_check` (a RECORDED db name, not one derived from the
+/// domain), `tunnel_exposure_check` (a `fail()` path rather than `expect`).
+/// They call `install_for_site` directly and should keep doing so.
+///
+/// So there is deliberately **no guard forbidding a direct call** — measuring
+/// first is what stopped one being written, and a guard that forced these four
+/// through a helper would erase the thing each of them checks.
+pub fn install_wp(
+    php: &Path,
+    wp: &Path,
+    docroot: &Path,
+    domain: &str,
+    title: &str,
+    db_client: &rexenv_lib::core::db::SqlClient,
+) {
+    rexenv_lib::core::wordpress::install_for_site(
+        php,
+        wp,
+        docroot,
+        domain,
+        title,
+        &rexenv_lib::core::wordpress::db_name_for(
+            rexenv_lib::state::models::SiteType::Wordpress,
+            domain,
+        ),
+        &format!("127.0.0.1:{}", rexenv_lib::core::database::MYSQL_PORT),
+        db_client,
+        &Default::default(),
+    )
+    .unwrap_or_else(|e| panic!("install wordpress into {domain}: {e}"));
+}
+
 /// rexenv's OWN fixed service ports, DERIVED from the constants that decide
 /// them — never a literal list.
 ///
