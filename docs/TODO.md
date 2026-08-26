@@ -1274,8 +1274,28 @@ first:
   note demanded; its first run found the claim already false — feed.rs owns
   `agent_actions` SQL — and a live violation in `commands/mcp.rs`, both handled).
 
-- [ ] **Live-check transients — a known-unknown, written down so the third one
-  isn't a third undocumented data point.** Two unexplained failures on 3 Aug
+- [x] **Live-check transients — a known-unknown, written down so the third one
+  isn't a third undocumented data point.** ✓ **The mechanism worked and the row is a
+  standing policy now, ticked 26 Aug 2026.** It did what it was written to do: the third
+  occurrence WAS captured with a name (`port_bound_true_when_held_false_when_free`),
+  explained and fixed; `apache_site_check` was explained and fixed on the second capture;
+  and that investigation found a second, unrelated defect (`linked_site_check` asserting
+  a `404` that belonged to the user's real 8.3 pool). What remains is not a task —
+  "diagnose the next one when it is captured" cannot be ticked, and an item that never
+  can makes the backlog lie about its size, the same reason the `tunnels::stop` row above
+  was closed.
+  **Re-verified rather than assumed, 26 Aug 2026** (this row asserts a guard, and a doc
+  asserting a guard that no longer exists is the dangerous staleness): `live-checks.sh`
+  still tees every example to `$logdir/$name.log`, still replays the failing one's last
+  40 lines, and still keeps the directory on failure — `rm -rf "$logdir"` is on the
+  all-green path only, and `pipefail` makes the pipeline carry cargo's exit code rather
+  than `tee`'s. The replay loop iterates `$failed` unquoted, which is correct **because
+  the script is `#!/bin/bash`** — checked, not assumed, since the same construct
+  silently iterates ONCE under zsh and would swallow every failure after the first.
+  **Honest residual:** the un-named 3 Aug lib-test transient was never attributed. The
+  `port_bound` shape fits and the row says so, but "fits" is not "is", and it stays
+  unclaimed.
+  Original entry: Two unexplained failures on 3 Aug
   2026, both during full-suite runs, both passing standalone immediately after
   and on a clean re-run of the whole tier:
   - one lib test during `verify.sh` (name NOT captured — it passed before it
