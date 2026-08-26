@@ -59,3 +59,7 @@ src-tauri/binaries/
 scripts/wk-checks/*.png
 scripts/wk-checks/shots-uireview/
 scripts/wk-checks/package-lock.json
+
+# Live-check evidence that must survive `cargo clean` — see
+# examples/common/mod.rs::record_tunnel_stop_evidence.
+/.evidence/

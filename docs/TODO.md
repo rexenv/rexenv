@@ -1165,7 +1165,23 @@ first:
     is at `~/rexenv/orphans-removed-2026-08-24.txt`. The six remaining directories all have
     site rows; all 17 sites still serve.
 
-- [ ] ❓ **Does `tunnels::stop` routinely need SIGTERM?** Observed once, 14 Aug 2026, on
+- [x] ❓ **Does `tunnels::stop` routinely need SIGTERM?** ✓ **ANSWERED — no.** 14
+  observations, 0 escalations, every stop in single-digit milliseconds. Ticked 26 Aug
+  2026: the QUESTION is settled, and what remains is not a task. The 14 Aug sighting
+  stays **unexplained rather than refuted** (it predates the evidence file, and the
+  3ms-vs-3s gap is itself unexplained), and the recording is a standing policy, not
+  something anyone can complete — an item that can never be ticked makes the backlog
+  lie about its size.
+  ⚠ **Fixed on the way out, 26 Aug 2026: the evidence lived somewhere `cargo clean`
+  deletes.** The log was `src-tauri/target/tunnel-stop-evidence.log`. The whole value of
+  it is ACCUMULATION — a single sighting nobody can compare is what this question started
+  as, and 14 lines of `outcome=stop` are what answered it — so keeping the only record of
+  a rare event in the directory a developer wipes routinely would put the next recurrence
+  back to being one observation, undone by a housekeeping command nobody would think to
+  mention. It is `.evidence/` at the repo root now (gitignored, outside `target/`), the
+  14 existing lines were migrated rather than lost, and the reason is recorded at the
+  write site.
+  Original question and its answer:
   the first run of `common::adopt_public_tunnel`: cloudflared was still alive 3s after
   `tunnels::stop`, and the guard's escalation stopped it. **One sighting is not a
   finding** — it may be a defect in the stop path or simply a graceful shutdown slower

@@ -1271,12 +1271,22 @@ fn wait_dead(pid: u32, ms: u64) -> Option<u64> {
 /// path included — the base rate ("N runs, all dead under a second") is itself
 /// evidence, and it is exactly what a one-sighting question needs.
 ///
-/// Lives under `target/` (compile-time manifest dir): machine-local,
-/// gitignored, survives across runs, and an example writing there is not
-/// touching anything real.
+/// Lives in `.evidence/` at the repo root: machine-local, gitignored, and — the
+/// part that matters — OUTSIDE `target/`.
+///
+/// **It used to live under `target/`, which `cargo clean` deletes.** The whole
+/// value of this file is accumulation: a single sighting nobody can compare is
+/// what the question started as, and 14 lines of `outcome=stop` are what
+/// answered it. Putting the only record of a rare event in the directory a
+/// developer wipes routinely means the next recurrence is a single observation
+/// again — the exact state the recording exists to prevent, restored by a
+/// housekeeping command nobody would think to mention. Found 26 Aug 2026 while
+/// closing the row this file feeds.
 fn record_tunnel_stop_evidence(pid: u32, outcome: &str, elapsed_ms: u64) {
     use std::io::Write;
-    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/target/tunnel-stop-evidence.log");
+    let dir = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../.evidence"));
+    let _ = std::fs::create_dir_all(dir);
+    let path = dir.join("tunnel-stop-evidence.log");
     let epoch = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
