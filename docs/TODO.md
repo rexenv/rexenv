@@ -1256,7 +1256,24 @@ first:
   at all — which is a better description of its state than "watching".
 - [ ] Then: ~~Apache/FrankenPHP dotfile legs (#103)~~ (closed 15 Aug 2026 — all three backends live, plant-proven per template), ~~fpm candidate
   isolation (#104/#191)~~ (closed 15 Aug 2026, `fpm_candidate_check`, plant-proven), ~~manifest HEAD+digest sweep~~ (closed 15 Aug 2026, `manifest_sweep_check` #335 — 88 URLs answer, 78 re-hashed incl. every Intel digest), ~~Bedrock live provision (#35)~~ (the PREMISE is proven live 24 Aug 2026 — a real Bedrock WordPress, two planted mu-plugins, only the recorded content dir's one loaded; ledger #35 carries the method. A committed example is still open, and deliberately: it would download core, create a database and install WordPress on every network-tier run),
-  sandbox-adoption cohorts + `wp_fixture()` — incl. scoping
+  sandbox-adoption cohorts + `wp_fixture()` — incl. scoping.
+  **COSTED 26 Aug 2026, and deliberately not done blind.** The duplication is real: **16
+  examples call `wordpress::install_for_site`** with nine arguments of which eight are
+  the same values every time — `wp_plugins_check` and `wp_themes_check` are byte-identical
+  bar the site title. And it drifts: `db_name_for` gained a type parameter on 13 Aug and
+  every one of those sites had to change. So a `common::install_wp` that DERIVES the db
+  name, the engine address and the options internally — leaving only docroot, domain and
+  title — is justified, and a guard could then refuse a direct `install_for_site` in an
+  example.
+  **What stopped me building it:** the call sites are not textually identical (some pass a
+  local `&db_name`, some inline `db_name_for(...)`; some `database::MYSQL_PORT`, some
+  `DbEngine::Mysql.port()`), so the extraction is a judgement per site rather than a
+  substitution — and **most of the nine arguments are `&str`, so a transposition COMPILES**
+  and silently installs under the wrong database name. These are 16 live checks whose whole
+  job is to be trustworthy, they are network/service tier, and they cannot be run beside a
+  live stack — so the change would ship verified by compilation alone, which is exactly the
+  evidence that cannot see the failure mode it creates. Worth doing in a sitting where the
+  tiers can actually be run afterwards; not worth doing in one where they cannot.
   ~~`download_progress_check`'s bin-cache delete off the REAL shared cache~~
   (closed 24 Aug 2026 — **not by sandboxing it, which would have removed its
   subject**: the shared binary cache is a deliberate exception and a private
