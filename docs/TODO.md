@@ -1087,6 +1087,20 @@ first:
   (`common::OwnedService`) so the panic cannot manufacture the corpse-mysqld condition
   the first sighting was tangled with. Nothing new was ruled in or out — still filed
   as unexplained.
+  ✓ **26 Aug 2026 — the capture is PLANT-PROVEN, which it had never been.** It exists to
+  catch a rare unexplained failure and had never fired, so whether it WORKED was itself
+  unknown — and that is not a hypothetical worry: the original 14 Aug sighting produced no
+  evidence precisely because the instrumentation was not there yet. Forced by inverting the
+  assertion so it fires on a SUCCESSFUL deactivate, it printed all three things it
+  promises — deactivate's own stdout (`Success: Deactivated 1 of 1 plugins.`), the parsed
+  list, and the raw `wp plugin list` re-read with its exit code, stdout and stderr — before
+  panicking.
+  **The same run proved the second half**: the panic unwound and reaped everything (no
+  stack port left answering, no service process, no docroot in the user's real Sites
+  folder), so a recurrence can no longer manufacture the corpse-mysqld condition the
+  original sighting was tangled with.
+  **Still unexplained, and unchanged by this.** A working instrument is not an explanation;
+  it only means the next occurrence will leave evidence. The row stays open for that.
 - [x] **Provisioning examples that do not PIN `sites_dir` write into the user's REAL
   Sites folder — and one of them deletes there.** ✓ CLOSED 26 Aug 2026, ledger #411.
   **Re-measured first, and the row's named instance is already fixed**:
