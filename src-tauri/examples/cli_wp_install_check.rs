@@ -49,9 +49,17 @@ async fn main() {
         let socket = database::socket_path(&*plat).unwrap();
         std::fs::create_dir_all(socket.parent().unwrap()).unwrap();
         database::initialize(&*plat, &mysql_base, &datadir).unwrap();
-        own_mysqld = Some(
+        // OwnedService, not a bare `Child`: `Child::drop` does NOT kill the
+        // process, so the explicit stop at the end of main is reachable only on
+        // the happy path. On 26 Aug 2026 a panic here — `api.wordpress.org`
+        // unresolvable mid-run — left mysqld on the REAL app datadir, and the
+        // 20+ examples after it in the tier all refused, with rexenv's own
+        // message naming the pid. A guard that reaps in `Drop` survives the
+        // panic; only `process::exit` skips it, which is the documented limit.
+        own_mysqld = Some(common::OwnedService::new(
             database::start(&*plat, &mysql_base, &datadir, database::MYSQL_PORT, &socket).unwrap(),
-        );
+            "mysqld",
+        ));
         for _ in 0..30 {
             if database::mysql_running(database::MYSQL_PORT) {
                 break;
@@ -159,9 +167,10 @@ async fn main() {
         database::MYSQL_PORT,
         &wordpress::db_name_for(SiteType::Wordpress, &domain),
     );
+    // Explicit stop on the happy path so teardown is ordered and visible; `Drop`
+    // is the backstop for every other path, and `stop` is idempotent.
     if let Some(mut m) = own_mysqld {
-        let _ = database::stop(&*rexenv_lib::platform::current(), m.id());
-        let _ = m.wait();
+        m.stop();
     }
     println!();
     if failures.is_empty() {
