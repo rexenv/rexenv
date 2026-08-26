@@ -86,8 +86,17 @@ call_user_func(static function () {
 
     // Programmatic URLs: home/siteurl are the root nearly everything derives from
     // (permalinks, admin_url, rest_url, wp_safe_redirect's allowed hosts).
-    $to_origin = static function () use ($origin) {
-        return $origin;
+    // The blog's PATH is part of the value in a subdirectory multisite network
+    // (a sub-site's siteurl is https://<local>/sub1): swap the ORIGIN, keep the
+    // path. Returning the bare origin cost exactly that path — observed
+    // 26 Aug 2026 on a subdirectory network over a quick tunnel: the sub-site's
+    // front page 404'd, and logging in at /sub1/wp-login.php landed on the MAIN
+    // site's dashboard because admin_url() had lost the /sub1.
+    $to_origin = static function ($url) use ($origin) {
+        if (!is_string($url) || $url === '') {
+            return $origin;
+        }
+        return $origin . rtrim((string) parse_url($url, PHP_URL_PATH), '/');
     };
     add_filter('option_siteurl', $to_origin, 1000);
     add_filter('option_home', $to_origin, 1000);

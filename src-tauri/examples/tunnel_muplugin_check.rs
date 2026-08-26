@@ -5,7 +5,8 @@
 //!      buffer, `$_SERVER` untouched);
 //!   2. `tunnel` — CF-marked request → `HTTP_HOST`/`HTTPS` overridden and the
 //!      `option_siteurl`/`option_home`/`content_url`/`upload_dir` filters return
-//!      the public origin (lookalike hosts untouched);
+//!      the public origin (lookalike hosts untouched), keeping any blog PATH so
+//!      a subdirectory-multisite sub-site still resolves;
 //!   3. `buffer` — the shutdown flush rewrites plain, JSON-escaped, and
 //!      %-encoded local URLs in the output, leaving `mysite.tester.com` and
 //!      `sub.mysite.test` alone.
@@ -52,6 +53,12 @@ ok($_SERVER['HTTPS'] === 'on', 'HTTPS forced on');
 ok(ob_get_level() === $level + 1, 'output buffer installed');
 ok(apply_rex('option_siteurl', 'https://mysite.test') === $origin, 'siteurl -> origin');
 ok(apply_rex('option_home', 'https://mysite.test') === $origin, 'home -> origin');
+// Subdirectory multisite: a sub-site's siteurl/home carry the blog PATH. Losing
+// it sent /sub1/wp-login.php to the MAIN site's dashboard (26 Aug 2026).
+ok(apply_rex('option_siteurl', 'https://mysite.test/sub1') === "$origin/sub1",
+    'sub-site siteurl keeps the blog path');
+ok(apply_rex('option_home', 'https://mysite.test/sub1/') === "$origin/sub1",
+    'sub-site home keeps the blog path (trailing slash trimmed)');
 ok(apply_rex('content_url', 'https://mysite.test/wp-content/x.css') === "$origin/wp-content/x.css",
     'content_url host swapped');
 ok(apply_rex('content_url', 'https://mysite.tester.com/x') === 'https://mysite.tester.com/x',

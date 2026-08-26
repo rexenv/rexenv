@@ -53,7 +53,7 @@ L3 = scripted manual.
 | 6 | wp_tunnel.rs:134 | Content dir read from record, never derived at write time | ✅ `bedrock_layout_writes_where_wp_loads…` |
 | 7 | wp_tunnel.rs:139 | Origin validation: nothing escapes the PHP string | ✅ `validate_origin_rejects_php_string_escapes` |
 | 8 | wp_tunnel.rs:189 | Removing from a layout that never had them changes nothing | ✅ same test as #6 |
-| 9 | wp_tunnel.rs:32 | Subdomain multisite shares main site only; subdirectory whole-network | 🔨 L1 (combine multisite + tunnel examples) |
+| 9 | wp_tunnel.rs:32 | Subdomain multisite shares main site only; subdirectory whole-network | ◐ **the subdirectory half was FALSE until 26 Aug 2026** — written as a scope note, never checked. The `option_siteurl`/`option_home` filters returned the BARE public origin, so a sub-site lost its `/sub1`: its front page 404'd, and a login at `/sub1/wp-login.php` landed on the MAIN site's dashboard (measured live through a quick tunnel, real browser, subdirectory network). Fixed by swapping the origin and KEEPING the path; `tunnel_muplugin_check` now asserts a sub-site's siteurl/home keep the blog path, under the REAL bundled PHP. Still ◐, not ✅: the probe proves the FILTERS, and the live subdirectory run is one dated observation, not a gate. The subdomain half stays unproven — one pinned Host cannot reach a subdomain sub-site anyway |
 
 ## core/tunnels.rs + commands/tunnels.rs
 
@@ -597,7 +597,7 @@ import-graph lint #163 closed; the FrankenPHP read-only picker #333; the
 mid-dump-kill server-side leg #116 closed; the resolver-drift banner #334; the
 delete-kill ordering #190 closed; #103's Apache/FrankenPHP legs; the fpm
 candidate isolation #104/#191; the manifest sweep #335):
-**✅ 329 · ◐ 55 · 🔨 25 · 🚫 5** of 414 rows, plus 12 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365).
+**✅ 329 · ◐ 56 · 🔨 24 · 🚫 5** of 414 rows, plus 12 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365).
 Recomputed mechanically with the one-liner above. The working backlog = every 🔨
 row + the noted half of every ◐ row, ranked below.
 

@@ -35,6 +35,24 @@ paying for anyway: **the tick belongs in the commit that does the work.**
 
 ## Now — actionable code/test work
 
+- [x] **A subdirectory multisite was BROKEN through a tunnel, and the scope note said it
+  worked** ✓ 26 Aug 2026 — ledger #9, `core/wp_tunnel.rs`. The mu-plugin's
+  `option_siteurl`/`option_home` filters returned the BARE public origin, throwing away
+  the value's path. A network's main site was fine (path is `/`), so nothing local ever
+  showed it; a sub-site lost its `/sub1` and paid twice — front page **404**, and a login
+  at `/sub1/wp-login.php` landed on the **MAIN** site's dashboard, because `admin_url()`
+  had lost the path too. Found by doing the whole user flow, live: create subdirectory
+  multisite → quick tunnel → log in from the public URL in a real browser. Fix swaps the
+  origin and keeps the path; re-run of the same flow: `/sub1/` 200 with `/sub1/`-scoped
+  feed links, and the sub-site login lands on **`/sub1/wp-admin/` — "Dashboard ‹ Sub One"**.
+  `tunnel_muplugin_check` gained the two path assertions under the real bundled PHP.
+  **What it cost**: the wrong half of that scope note had been sitting in the module doc
+  since the feature shipped, as a claim nobody had run — the row it now carries in the
+  ledger says FALSE-until-dated rather than "unproven", because that is what it was.
+  - [ ] The SUBDOMAIN half of the same note is still unrun. One pinned `--http-host-header`
+    cannot reach a subdomain sub-site, so "main site only" is probably true by
+    construction — but it is written as a fact and has never been measured.
+
 - [x] **`frankenphp_edge_serve`: the edge it starts has never been PROVEN to answer —
   DIAGNOSED AND CLOSED 21 Aug 2026, and the cause was not the edge.** Four leaked
   FrankenPHP backends from earlier runs of this same example were found alive (started
