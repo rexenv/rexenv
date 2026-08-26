@@ -1039,28 +1039,29 @@ place to keep unfinished things.
   developer testing email through `wp` gets `true` and an empty inbox, and concludes
   their code is broken.
 
-- [ ] ⚠ **An example whose `start_all` fails PARTWAY leaks whatever already started, and
-  the next example then refuses — one leak takes out the tier.** Found 26 Aug 2026 by
-  running the network tier: `blueprint_check` started MySQL, then `dl.static-php.dev` went
-  unreachable so php-fpm could not download, so it printed `start_all failed` and returned
-  `ExitCode::FAILURE` — with **mysqld 69456 still running on the REAL app datadir**. Every
-  example after it refused, and **rexenv's own error named the pid**: *"port 13306 is still
-  held by a leftover rexenv process (pid 69456) … run `kill 69456`"*. 20+ of the tier's
-  examples failed for that one cause.
-  **The shape is not a missing `stop_all`** — 16 of the 17 `start_all` examples call it.
-  It is that `stop_all` sits on the SUCCESS path while the error branch returns before
-  reaching it: `blueprint_check` is `start_all` at line 97, `return FAILURE` at 102,
-  `stop_all` at 156. A rough scan finds the same early-return-before-`stop_all` window in
-  **14 examples**. The comment at the return shows the author thought carefully about the
-  exit CODE ("never a bare `return` — that exits 0 and the tier records a run that
-  asserted nothing as green") and not about the services already up.
-  Same FAMILY as the `process::exit` leak class (#393/#394) and a different mechanism:
-  there it was destructors skipped, here it is a cleanup line the error path jumps over.
-  **Not fixed here, deliberately** — the choice is between `stop_all` on each error branch
-  (14 files, easy to forget on the 15th) and a Drop-owning guard around the manager (which
-  is what `OwnedService` does for single services, and would be the structural answer). A
-  guard could then enforce it. That is a design call, and this was found in the middle of
-  verifying something else.
+- [ ] ⚠ **An example that owns a service as a raw `Child` leaks it on ANY early exit —
+  and one leak takes out the whole tier.** Found 26 Aug 2026 running the network tier:
+  **20+ examples failed for one cause**, and rexenv's own error named it — *"port 13306 is
+  still held by a leftover rexenv process (pid 69456) … run `kill 69456`"*.
+  **The mechanism, after two wrong guesses of mine.** `cli_wp_install_check` spawns mysqld
+  into `own_mysqld: Option<Child>` and stops it explicitly at the END of `main`
+  (line 162). `std::process::Child::drop` does **not** kill the process, so any path that
+  skips that line leaks it — here a panic, because `api.wordpress.org` could not be
+  resolved mid-run. The mysqld was on the **real app datadir**, so every later example
+  refused.
+  **What it is NOT, recorded because I filed both and both were wrong:** (a) not
+  "`stop_all` sits on the success path" — `ServiceManager` already has a `Drop` that
+  terminates its children, so an early `return` is safe there; (b) not `blueprint_check`,
+  which the timestamps clear — its log closed 16:43:10 and mysqld started 16:43:39. I
+  built an `OwnedStack` guard for (a) before checking whether `ServiceManager` had a
+  `Drop`. It does. The guard was reverted.
+  **The fix is the one this repo already has**: `common::OwnedService`, which reaps in
+  `Drop` — a panic unwinds and stops the service, and only `process::exit` skips it (the
+  documented limit). **13 examples hold a raw `Child` for a service without it**:
+  `agent_db_check`, `cli_wp_install_check`, `config_rewrite_check`, `db_drop_check`,
+  `db_dump_check`, `db_restore_check`, `mail_api_check`, `mailpit_check`, `mcp_mail_check`,
+  `mysql_serve`, `wp_info_check`, `wp_install_stream_check`, `wp_real443_setup`. Two of
+  them are mine from this session, which is the usual argument for a guard over a sweep.
 
 ## Ledger-driven proof backlog
 
