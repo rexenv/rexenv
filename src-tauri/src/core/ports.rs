@@ -174,6 +174,121 @@ pub fn conflicts(reqs: &[PortReq]) -> Vec<PortStatus> {
 
 #[cfg(test)]
 mod tests {
+    /// Examples that spawn a service and hold it as a bare `Child`, each with
+    /// the reason it is safe. Empty is the goal; an entry is an argument.
+    const RAW_CHILD_OK: &[(&str, &str)] = &[
+        (
+            "mcp_mail_check",
+            "owns its mailpit through a static + `MailpitGuard` rather than a local, because \
+             the child has to be reachable from a signal path — the same deliberate shape \
+             `tunnel_exposure_check` uses for its STACK. Wrapping the local as well would \
+             give it two owners.",
+        ),
+        (
+            "wp_real443_setup",
+            "HOLDS its services alive on purpose. It is part A of a two-step check and a \
+             separate foreground step binds Caddy on :443 against them, so reaping on exit \
+             would destroy the thing the next step verifies. `let _mysqld` is the correct \
+             shape here — the one entry in this list that must NEVER be wrapped.",
+        ),
+    ];
+
+    /// **No example holds a spawned service as a bare `std::process::Child`.**
+    ///
+    /// `Child::drop` does NOT kill the process. An example that stops its
+    /// service with a line at the end of `main` therefore leaks it on every
+    /// other path — and one did: `cli_wp_install_check` panicked mid-run when
+    /// `api.wordpress.org` became unresolvable, left mysqld on the **real app
+    /// datadir**, and the 20+ examples after it in the network tier all refused
+    /// (#413). One example's leak cost the tier.
+    ///
+    /// `common::OwnedService` reaps in `Drop`, so a panic unwinds and stops the
+    /// service. Only `process::exit` skips it, which is the documented limit and
+    /// the reason `require_stack_stopped` may exit only BEFORE anything spawns.
+    ///
+    /// A guard rather than a sweep, for the usual reason: a sweep fixes the
+    /// twelve that exist and the thirteenth is written next month. **Two of the
+    /// twelve were written the same week, by me, after fixing the first one.**
+    #[test]
+    fn no_example_holds_a_spawned_service_as_a_bare_child() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples");
+        // The spawn helpers that hand back a `Child`.
+        const SPAWNERS: &[&str] = &["database::start(", "mail::start(", "proxy::start("];
+        let mut raw = Vec::new();
+        let mut scanned = 0usize;
+        for entry in std::fs::read_dir(&dir).expect("examples dir") {
+            let path = entry.expect("entry").path();
+            if path.extension().is_none_or(|e| e != "rs") {
+                continue;
+            }
+            let Ok(src) = std::fs::read_to_string(&path) else { continue };
+            let name = path.file_stem().unwrap().to_string_lossy().to_string();
+            for spawner in SPAWNERS {
+                let mut from = 0;
+                while let Some(at) = src[from..].find(spawner) {
+                    let at = from + at;
+                    scanned += 1;
+                    // Owned iff an owner appears in the WINDOW around the spawn —
+                    // before it (wrapped inline) or just after (spawned into a
+                    // local, then wrapped on the next line, which several
+                    // examples do for readability).
+                    //
+                    // **Both owners count.** `Reaped` is the stronger one — it
+                    // also sweeps the port for orphaned workers — and an earlier
+                    // version of this test looked only for `OwnedService`, so it
+                    // named ten examples that were already correct. A guard that
+                    // demands a rewrite of working code is worse than no guard;
+                    // measuring the hits before trusting them is what caught it.
+                    // A LINE window, not a character one: an explanatory
+                    // comment between the spawn and its wrapper pushed the
+                    // owner past a 300-char window in `wp_plugins_check`, and
+                    // the test named a file whose very next statement wraps it.
+                    let line_no = src[..at].lines().count();
+                    let lines: Vec<&str> = src.lines().collect();
+                    let lo = line_no.saturating_sub(4);
+                    let hi = (line_no + 8).min(lines.len());
+                    let owned = lines[lo..hi]
+                        .iter()
+                        .any(|l| l.contains("OwnedService::new(") || l.contains("Reaped::new("));
+                    if !owned && !RAW_CHILD_OK.iter().any(|(n, _)| *n == name) {
+                        raw.push(format!("{name} ({})", spawner.trim_end_matches('(')));
+                    }
+                    from = at + spawner.len();
+                }
+            }
+        }
+        assert!(
+            scanned >= 10,
+            "only {scanned} service spawns found in examples/ — the scan matched almost \
+             nothing and would report a clean tree either way"
+        );
+        raw.sort();
+        raw.dedup();
+        assert!(
+            raw.is_empty(),
+            "these examples hold a spawned service as a bare `Child`, which `Drop` does not \
+             kill — a panic or early return leaks it onto a FIXED port and every later \
+             example refuses (#413):\n  {}\n  \
+             Wrap it: `common::OwnedService::new(database::start(…), \"mysqld\")`.",
+            raw.join("\n  ")
+        );
+
+        // The exception list may only shrink by being RIGHT. An entry naming an
+        // example that no longer spawns anything is a standing excuse nobody is
+        // checking — the same hole the `sites_dir` guard closed (#411), and it
+        // passed here until it was planted.
+        for (name, _) in RAW_CHILD_OK {
+            let path = dir.join(format!("{name}.rs"));
+            let src = std::fs::read_to_string(&path)
+                .unwrap_or_else(|_| panic!("RAW_CHILD_OK names {name}, which is gone"));
+            assert!(
+                SPAWNERS.iter().any(|s| src.contains(s)),
+                "RAW_CHILD_OK still excuses {name}, which no longer spawns a service — delete \
+                 the entry rather than leaving an exception nobody needs"
+            );
+        }
+    }
+
     /// **Every service-tier example refuses beside a live stack, and the two
     /// lists of rexenv's ports agree.**
     ///

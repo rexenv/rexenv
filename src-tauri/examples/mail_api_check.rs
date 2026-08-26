@@ -29,7 +29,7 @@ async fn main() {
     let bin = binaries::resolve(&*plat, "mailpit", binaries::MAILPIT_VERSION)
         .await
         .expect("resolve mailpit");
-    let mut server = mail::start(&*plat, &bin).expect("start mailpit");
+    let mut server = common::OwnedService::new(mail::start(&*plat, &bin).expect("start mailpit"), "mailpit");
     for _ in 0..40 {
         if mail::running() {
             break;
@@ -121,8 +121,7 @@ async fn main() {
     assert_eq!(mail::list(None).await.unwrap().total, 0, "inbox not empty after final clear");
     println!("✓ clear: inbox emptied");
 
-    let _ = mail::stop(&*plat, server.id());
-    let _ = server.wait();
+    server.stop();
     println!("\nALL GOOD — Mailpit API client lists, searches, previews, and clears.");
 }
 

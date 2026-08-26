@@ -34,7 +34,10 @@ async fn main() {
     proxy::recover_stale_edge(&*plat, &caddy).expect("pre-clean");
 
     // 1) Start a "stale" leftover edge (holds the admin socket).
-    let mut stale = proxy::start(&*plat, &caddy, &caddyfile).expect("start stale edge");
+    let mut stale = common::OwnedService::new(
+        proxy::start(&*plat, &caddy, &caddyfile).expect("start stale edge"),
+        "caddy (stale edge)",
+    );
     // The subject is the admin UNIX SOCKET, not a port — `await_ready` exists
     // for exactly this. A flat second also had to cover a freshly
     // de-quarantined caddy's first exec, which Gatekeeper can stall.
@@ -44,19 +47,21 @@ async fn main() {
 
     // 2) Recover: stop the stale edge via the admin socket (no privilege).
     proxy::recover_stale_edge(&*plat, &caddy).expect("recover");
-    let _ = stale.wait(); // reap the stopped process
+    stale.stop(); // idempotent: `recover_stale_edge` already stopped it
     let freed = !proxy::admin_alive(&*plat);
     println!("after recover_stale_edge → admin socket free = {freed}");
 
     // 3) A fresh edge now starts cleanly (previously: bind: address already in use).
-    let mut fresh = proxy::start(&*plat, &caddy, &caddyfile).expect("start fresh edge");
+    let mut fresh = common::OwnedService::new(
+        proxy::start(&*plat, &caddy, &caddyfile).expect("start fresh edge"),
+        "caddy (fresh edge)",
+    );
     common::await_ready("the fresh edge's admin socket", None, || proxy::admin_alive(&*plat));
     let fresh_up = proxy::admin_alive(&*plat);
     println!("fresh edge started, admin socket alive = {fresh_up}");
 
     // Cleanup.
-    let _ = proxy::stop(&*plat, fresh.id());
-    let _ = fresh.wait();
+    fresh.stop();
     proxy::recover_stale_edge(&*plat, &caddy).ok();
 
     if stale_up && freed && fresh_up {

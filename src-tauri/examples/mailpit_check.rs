@@ -34,7 +34,7 @@ async fn main() {
     println!("✓ {}", String::from_utf8_lossy(&out.stdout).trim());
 
     // Start it (loopback SMTP + HTTP, persistent DB).
-    let mut child = mail::start(&*plat, &bin).expect("start mailpit");
+    let mut child = common::OwnedService::new(mail::start(&*plat, &bin).expect("start mailpit"), "mailpit");
     let mut up = false;
     for _ in 0..40 {
         if mail::running() {
@@ -59,7 +59,6 @@ async fn main() {
     let body = resp.text().await.unwrap();
     println!("✓ GET /api/v1/messages → {} ({} bytes)", 200, body.len());
 
-    let _ = mail::stop(&*plat, child.id());
-    let _ = child.wait();
+    child.stop();
     println!("\nALL GOOD — Mailpit resolves, runs, and serves SMTP + HTTP API.");
 }

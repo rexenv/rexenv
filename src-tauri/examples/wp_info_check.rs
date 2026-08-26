@@ -55,8 +55,10 @@ async fn main() {
     let socket = database::socket_path(&*plat).unwrap();
     std::fs::create_dir_all(socket.parent().unwrap()).unwrap();
     database::initialize(&*plat, &mysql_base, &datadir).unwrap();
-    let mut mysqld =
-        database::start(&*plat, &mysql_base, &datadir, database::MYSQL_PORT, &socket).unwrap();
+    let mut mysqld = common::OwnedService::new(
+        database::start(&*plat, &mysql_base, &datadir, database::MYSQL_PORT, &socket).unwrap(),
+        "mysqld",
+    );
     for _ in 0..30 {
         if database::mysql_running(database::MYSQL_PORT) {
             break;
@@ -127,8 +129,7 @@ async fn main() {
     let blank_info = wordpress::wp_info(&php, &wp, &blank).expect("wp_info blank");
     println!("wp_info(Blank-PHP) = {blank_info:?}");
 
-    let _ = database::stop(&*plat, mysqld.id());
-    let _ = mysqld.wait();
+    mysqld.stop();
 
     let ok = info.is_wordpress
         && info.version.is_some()

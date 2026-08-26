@@ -1039,7 +1039,7 @@ place to keep unfinished things.
   developer testing email through `wp` gets `true` and an empty inbox, and concludes
   their code is broken.
 
-- [ ] ⚠ **An example that owns a service as a raw `Child` leaks it on ANY early exit —
+- [x] ⚠ **An example that owns a service as a raw `Child` leaks it on ANY early exit —
   and one leak takes out the whole tier.** Found 26 Aug 2026 running the network tier:
   **20+ examples failed for one cause**, and rexenv's own error named it — *"port 13306 is
   still held by a leftover rexenv process (pid 69456) … run `kill 69456`"*.
@@ -1062,6 +1062,20 @@ place to keep unfinished things.
   `db_dump_check`, `db_restore_check`, `mail_api_check`, `mailpit_check`, `mcp_mail_check`,
   `mysql_serve`, `wp_info_check`, `wp_install_stream_check`, `wp_real443_setup`. Two of
   them are mine from this session, which is the usual argument for a guard over a sweep.
+  ✓ **DONE 26 Aug 2026 — fixed AND guarded, ledger #413 + #414.** `cli_wp_install_check`
+  first (the proven culprit, plant-proven with a control), then the rest behind
+  `no_example_holds_a_spawned_service_as_a_bare_child`.
+  **The guard corrected the count and then corrected itself, twice.** My `grep -l` said
+  12; the per-call-site scan said 15, because a file that owns ONE service properly and
+  another raw was counted clean. Then the guard's own first version named 10 examples that
+  were already correct via `Reaped` — a guard demanding a rewrite of working code is worse
+  than no guard — and its second used a 300-character window that missed a wrapper sitting
+  one comment below the spawn. It scans a LINE window and accepts both owners now.
+  **Two allow-list entries, and they are opposites**: `mcp_mail_check` owns its mailpit
+  through a static + `MailpitGuard` (the child must be reachable from a signal path);
+  `wp_real443_setup` HOLDS its services alive on purpose, as part A of a two-step check —
+  reaping on exit would destroy what part B verifies. **A guard without reasons could not
+  have told those two apart**, and would have broken the second.
 
 ## Ledger-driven proof backlog
 

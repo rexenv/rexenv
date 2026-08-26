@@ -33,7 +33,10 @@ async fn main() {
     database::initialize(&*plat, &basedir, &datadir).expect("initialize");
     println!("ok");
 
-    let mut mysqld = database::start(&*plat, &basedir, &datadir, port, &socket).expect("start mysqld");
+    let mut mysqld = common::OwnedService::new(
+        database::start(&*plat, &basedir, &datadir, port, &socket).expect("start mysqld"),
+        "mysqld",
+    );
     println!("mysqld pid={}", mysqld.id());
 
     // Wait for it to accept connections (startup takes a few seconds).
@@ -76,8 +79,7 @@ async fn main() {
         eprintln!("client stderr:\n{}", String::from_utf8_lossy(&out.stderr));
     }
 
-    let _ = database::stop(&*plat, mysqld.id());
-    let _ = mysqld.wait();
+    mysqld.stop();
     thread::sleep(Duration::from_millis(500));
     println!("stopped; running={}", database::mysql_running(port));
 }

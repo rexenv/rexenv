@@ -86,13 +86,16 @@ async fn main() {
         .await
         .expect("bundled MySQL client");
 
-    let mut started: Option<std::process::Child> = None;
+    let mut started: Option<common::OwnedService> = None;
     if !database::mysql_running(port) {
         let datadir = database::data_dir(&*plat).unwrap();
         let socket = database::socket_path(&*plat).unwrap();
         std::fs::create_dir_all(socket.parent().unwrap()).unwrap();
         database::initialize(&*plat, &basedir, &datadir).expect("initialize");
-        started = Some(database::start(&*plat, &basedir, &datadir, port, &socket).expect("start"));
+        started = Some(common::OwnedService::new(
+            database::start(&*plat, &basedir, &datadir, port, &socket).expect("start"),
+            "mysqld",
+        ));
         for _ in 0..30 {
             if database::mysql_running(port) {
                 break;
