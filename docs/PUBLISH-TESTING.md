@@ -82,7 +82,37 @@ count in **each** slice separately. A zero on either side is a HOLD — do not r
 is only as complete as its list of payloads, and a payload nobody added is the
 one that ships in one slice.
 
-## A) ◐ 0.3.0 — PUBLISHED, artefact verified, §A0/§A NOT RUN
+## A) ◐ 0.4.0 — BUILT and TAGGED, §A0 ✅, §A + SMOKE-TEST OUTSTANDING (not published)
+
+**0.4.0 built locally 27 Aug 2026** per `docs/RELEASING.md`'s interim flow (`pnpm
+release:mac`). **Not released anywhere yet** — no draft on the tap, no cask bump. What
+follows is the state at build time, written now so the gate cannot later be confused
+with a skipped one.
+
+`rexenv_0.4.0_universal.dmg`, sha256
+`a7aecee7f59738c2803e6a0c7697b82c36ebda5186e60b9fefee85e1bf1e555d`, 26,275,202 bytes.
+
+**Source: `d363e24` — MEASURED, not inferred, and that is new.** The dmg was mounted and
+asked: `rex --version` off the mounted volume prints `rex 0.4.0 (d363e24)`, which is the
+commit `v0.4.0` (annotated) points at. Every earlier row's commit rested on the tag plus
+a build timeline because the artefact could not answer; this is the first release where
+the bytes say it themselves (the fix landed 25 Aug in `3e19b83`, and this is it working).
+
+**§A0 ✅ run by hand 27 Aug 2026** — the release workflow's own script, copied as
+`docs/RELEASING.md` step 4 says, because the interim flow builds locally and CI never
+saw this artefact. All green: exactly one dmg in the bundle dir; `rexenv` and `rex` both
+`x86_64 arm64`; `Dist_Archive_Command` present in EACH thinned slice (×5 in arm64, ×5 in
+x86_64 — a half-populated fat binary is invisible to `lipo -archs`, which is why the
+check thins first); `codesign --verify --deep --strict` passes on the `.app`.
+
+**🚧 OUTSTANDING before this can be published**, and both are human-only:
+- **`docs/SMOKE-TEST.md` end-to-end on a clean Mac from THIS dmg** — the other half of
+  the gate (see that file's header). New this release and never smoke-tested: the blank
+  PHP starter database, the built-in terminal, multisite through a tunnel, MCP M3.
+- **§A on these exact bytes** — quarantine → Gatekeeper blocks → `xattr -rd` → launches.
+  Publishing IS the §A sign-off; the hash above proves nothing about launching.
+
+## A-prev) ◐ 0.3.0 — PUBLISHED, artefact verified, §A0/§A NOT RUN
 
 **0.3.0 PUBLISHED 20 Aug 2026** at `homebrew-tap/releases/tag/v0.3.0`, cask bumped by
 `update-cask.yml` (`5c7bdca`, `github-actions[bot]`, 13:31:42Z).
