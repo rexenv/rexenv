@@ -615,6 +615,21 @@ no SMOKE step today and is covered by `repo_*` examples only.*
   upstream line is the string a user pastes into a search box; a friendlier message
   that swallowed it would cost them the one thing that finds an answer.
 
+## Site terminal — the PATH and the session that must survive a tab switch
+
+- [ ] **The developer's own tools resolve.** In a site's Terminal tab run `which code`,
+  `which rex` and `which git`. Each must answer with the same path Terminal.app gives.
+  **Tell:** `command not found` — that is a non-login shell, so the app is back to
+  launchd's bare `/usr/bin:/bin:/usr/sbin:/sbin` and none of `/etc/zprofile`'s or
+  `~/.zprofile`'s PATH exists (#423). `php -v` must STILL report the bundled patch:
+  the prepend runs after the rc files, and a login shell must not cost that.
+- [ ] **A session survives leaving the tab.** Run something with visible output
+  (`ls -la`, or better a slow `composer install`), switch to Overview or another site,
+  come back. The earlier output and the shell's history must still be there — a
+  long-running command must still be running, not restarted. **Tell:** an empty
+  terminal and a fresh prompt (#424). **Restart** is the one control that is allowed
+  to wipe it, and must.
+
 ## AI agents (MCP) — opt-in endpoint (ships only if this passes)
 **Covers M1 (1–5), M2a (6–11), M2b (12–14) and M3 (15–21).** HOLDs: 4, 8, 11, 14, 18, 19, 21.
 Socket: `~/Library/Application Support/dev.rexenv.rexenv/config/rexenv-mcp.sock`.

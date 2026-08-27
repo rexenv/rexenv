@@ -1482,6 +1482,19 @@ latency — a real `~/.zshrc` (prompt frameworks, nvm) takes seconds, which is w
 The wrapper stays AMBIENT on purpose (#228): this is the user's own command line, so
 `WP_CLI_PACKAGES_DIR` is theirs here and pinned everywhere else.
 
+**The session outlives its React component** (`SiteTerminal.tsx`) — the same rule the
+services follow. A tab switch unmounts the component, and the first version killed the
+PTY and disposed the xterm in its cleanup, so a `composer install` died on an alt-tab
+and its output was gone on the way back. The shell, its scrollback and its xterm now
+live in a module-level map keyed by site; the component borrows them. The container DOM
+node is MOVED between the tab and an offscreen parking bay — xterm renders into the
+element it was opened with and cannot be `open()`ed twice, and a node removed from the
+document measures 0×0, which is what the renderer sizes itself from. At most
+`MAX_LIVE` (4) shells are kept: each is a real login shell with a full rc behind it, and
+an evicted one simply reopens on the next visit — the behaviour every session had before
+the store existed. **Restart** is the one control that disposes: it closes the PTY, drops
+the entry and builds a fresh one.
+
 ## 10. Verification pattern
 
 Layer model + gate tiers: `docs/TESTING.md`. Claim inventory (the test metric):
