@@ -624,7 +624,10 @@ function Overview({
               iconColor="text-rex-text-muted"
               label="Open project folder"
               onClick={() => void openExternal(site.path).catch(toastBackendError)}
-              span2
+              // Keeps the 2-col grid full: WordPress adds Magic Login (odd tile
+              // count), so the folder tile fills the trailing slot instead of
+              // spanning and leaving a hole beside Terminal.
+              span2={!isWordpress}
             />
           </div>
         </div>
