@@ -1049,29 +1049,38 @@ IPC surface — which is how a reader ends up designing against a system with on
   siteurl is `https://<local>/sub1`, and returning the bare origin dropped that
   path — the sub-site's front page 404'd and logging in at `/sub1/wp-login.php`
   landed on the MAIN site's dashboard, because `admin_url()` had lost the `/sub1`
-  (found and fixed 26 Aug 2026, live through a quick tunnel). A **subdomain** network needs one
-  thing the mu-plugin structurally cannot give it: WP pins `COOKIE_DOMAIN` to
+  (found and fixed 26 Aug 2026, live through a quick tunnel). A **subdomain** network needs two more
+  things, and neither can live in the mu-plugin. First, WP pins `COOKIE_DOMAIN` to
   `.<network domain>` in `ms_cookie_constants()`, inside wp-settings.php and therefore
   BEFORE mu-plugins load, so through a tunnel every auth cookie is cross-domain, the
   browser drops it, and wp-login answers "Cookies are blocked or not supported by your
-  browser" — the share serves pages and refuses every login (measured 27 Aug 2026). So
-  tunnel start also writes a small **wp-config block** (`ensure_subdomain_cookie_scope`),
-  the only seat early enough, which empties `COOKIE_DOMAIN` — but only when BOTH the
-  Cloudflare header set is present AND the tunnel mu-plugin file exists, i.e. only for a
-  request through a share that is live and rexenv's. The second condition is the
-  load-bearing one: on the header alone, a wp-config copied to a Cloudflare-fronted
-  production network would break cross-subdomain SSO there. The block is written once and
-  never removed — inert without a live share, and a half-applied removal from wp-config
-  would take the site down. A subdirectory network never needed it: there `COOKIE_DOMAIN`
-  is simply never defined, so cookies are host-only already. What a subdomain network
-  still does NOT get is its sub-sites: the siteurl/home filters rewrite a value only when
-  its HOST is the pinned one, because a sub-site lives on `s1.<network>` and one tunnel
-  carries one Host. Rewriting those would not make them reachable — it would point every
-  sub-site's Visit/Dashboard link at the MAIN site, which is what they did until
-  27 Aug 2026 (on My Sites both entries read the same public URL). Left alone they are
-  honest: an outside browser gets `ERR_NAME_NOT_RESOLVED`, which is the truth. Reaching
-  sub-sites publicly needs a wildcard hostname a quick tunnel cannot issue — a subdirectory
-  network is the shape that shares whole.
+  browser" — the share served pages and refused every login (measured 27 Aug 2026).
+  Second, a tunnel issues ONE hostname and pins ONE Host, so the network's sub-sites are
+  simply unreachable as subdomains — an outside browser gets `ERR_NAME_NOT_RESOLVED`.
+  So while shared, a subdomain network is served as a **subdirectory** network, in three
+  auto-managed pieces that are one feature and move together:
+  - **`sunrise.php`** (tunnel lifetime, next to the mu-plugin) — the REQUEST half.
+    `ms-settings.php` includes it BEFORE it resolves the blog, and `$wpdb` is already
+    live, so `/s1/…` is looked up in `wp_blogs` and, if a sub-site owns that label, the
+    request's `HTTP_HOST` becomes `s1.<network>`. Only the Host: `REQUEST_URI` keeps its
+    prefix, because `WP::parse_request()` strips `home_url()`'s path itself and everything
+    WP builds from `REQUEST_URI` needs the prefix still there — stripping it sent an
+    unauthenticated `/s1/wp-admin/` to the login with `redirect_to` pointing at the MAIN
+    site.
+  - **the URL rewriter** (`rexenv-tunnel.php`) — the URL half: `<network>` → `<origin>`
+    and `<label>.<network>` → `<origin>/<label>`, applied to siteurl/home, the `*_url`
+    filters and the output buffer from ONE mapping.
+  - **the wp-config block** — the cookie scope above, plus the `SUNRISE` declaration
+    (`ms-settings.php` only looks for the drop-in when that constant exists, and by then
+    wp-config has already run). Both guarded on a file that exists only while a share is
+    live, so the block is inert otherwise.
+  BOTH network modes' nginx vhosts carry WordPress's network rewrite rules. A subdomain
+  network does not need them locally — every sub-site's `/wp-admin/` exists on disk, so
+  the `!-e` guard never opens — but through a tunnel `/s1/wp-admin/` has no file behind
+  it. `REQUEST_URI` stays `$request_uri`, the ORIGINAL, which is exactly what sunrise
+  reads. Locally nothing changes: the network stays a real subdomain network, which is the
+  point of developing on one. Real subdomain sharing needs a wildcard hostname a quick
+  tunnel cannot issue — that is a named-tunnel-plus-own-domain feature, not this one.
   - **Tunnels DIE WITH THE APP** (ruled 28 Jul 2026 — the deliberate opposite of
     services-outlive-the-app: a public share must not outlive the thing supervising
     it). The v23 `tunnels` row is claimed atomically BEFORE spawn (the row IS the

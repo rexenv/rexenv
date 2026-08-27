@@ -359,16 +359,26 @@ pub struct NginxConfig {
 /// try_files; subdirectory multisite adds WordPress's network rewrite rules.
 fn rewrite_block(mode: RewriteMode) -> String {
     match mode {
-        // Subdomain multisite: each subdomain is its own WP host, so the routing
-        // is the same as single — the difference is in wp-config + DNS/SSL.
-        RewriteMode::Single | RewriteMode::SubdomainMultisite => {
+        RewriteMode::Single => {
             "\t\tlocation / {\n\
              \t\t\ttry_files $uri $uri/ /index.php?$args;\n\
              \t\t}\n"
                 .to_string()
         }
-        // Subdirectory multisite: WordPress's official network rewrite rules.
-        RewriteMode::SubdirectoryMultisite => {
+        // BOTH network modes get WordPress's official network rewrite rules.
+        //
+        // Subdirectory multisite needs them to find the script at all. Subdomain
+        // multisite does NOT need them locally — each subdomain is its own WP
+        // host, so `/wp-admin/` already exists on disk and the `!-e` guard keeps
+        // the whole block inert. It needs them through a TUNNEL: one tunnel pins
+        // one Host and issues no wildcard, so a subdomain network's sub-sites are
+        // served as SUBDIRECTORIES while shared (`core/wp_tunnel`'s sunrise
+        // drop-in), and `/s1/wp-admin/` is a path with no file behind it. The
+        // rules point nginx at the real `/wp-admin/`, while `REQUEST_URI` stays
+        // `$request_uri` — the ORIGINAL, prefix and all — which is exactly what
+        // sunrise reads to decide which blog the request belongs to. Take either
+        // half away and the sub-site admin 404s (measured 27 Aug 2026).
+        RewriteMode::SubdomainMultisite | RewriteMode::SubdirectoryMultisite => {
             "\t\tlocation / {\n\
              \t\t\ttry_files $uri $uri/ /index.php?$args;\n\
              \t\t}\n\
@@ -1021,10 +1031,14 @@ mod tests {
         assert!(!generate_nginx_config(&nginx_cfg(RewriteMode::Single)).contains("rewrite /wp-admin$"));
         assert!(generate_nginx_config(&nginx_cfg(RewriteMode::SubdirectoryMultisite))
             .contains("rewrite /wp-admin$"));
-        // Subdomain multisite routes like single (try_files), no path stripping.
+        // Subdomain multisite gets them TOO — inert locally (every sub-site's
+        // /wp-admin/ exists on disk, so the `!-e` guard never opens), and
+        // load-bearing through a tunnel, where the network is served as
+        // subdirectories and /s1/wp-admin/ has no file behind it.
         let sub = generate_nginx_config(&nginx_cfg(RewriteMode::SubdomainMultisite));
         assert!(sub.contains("try_files $uri $uri/ /index.php?$args;"));
-        assert!(!sub.contains("rewrite /wp-admin$"));
+        assert!(sub.contains("rewrite /wp-admin$"));
+        assert!(sub.contains("if (!-e $request_filename) {"), "the guard, not a bare rewrite: {sub}");
     }
 
     #[test]

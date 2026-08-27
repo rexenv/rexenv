@@ -86,52 +86,70 @@ call_user_func(static function () {
 
     // Programmatic URLs: home/siteurl are the root nearly everything derives from
     // (permalinks, admin_url, rest_url, wp_safe_redirect's allowed hosts).
-    // The blog's PATH is part of the value in a subdirectory multisite network
-    // (a sub-site's siteurl is https://<local>/sub1): swap the ORIGIN, keep the
-    // path. Returning the bare origin cost exactly that path — observed
-    // 26 Aug 2026 on a subdirectory network over a quick tunnel: the sub-site's
-    // front page 404'd, and logging in at /sub1/wp-login.php landed on the MAIN
-    // site's dashboard because admin_url() had lost the /sub1.
-    // ...and the HOST decides whether the value is ours to rewrite at all. A
-    // SUBDOMAIN network's sub-sites live on other hosts (s1.msd.rex), and the
-    // tunnel pins exactly ONE Host — so rewriting them to the public origin
-    // does not make them reachable, it points every one of them at the MAIN
-    // site. Observed 27 Aug 2026: on My Sites, "MSD" and "Sub Domain One" both
-    // read Visit -> <origin>/ and Dashboard -> <origin>/wp-admin/, which is a
-    // link that silently lands on the wrong site. Left alone they still cannot
-    // be reached from outside, but they say so.
-    $to_origin = static function ($url) use ($origin, $local_host, $public_host) {
-        if (!is_string($url) || $url === '') {
-            return $origin;
-        }
-        $parts = parse_url($url);
-        $host  = strtolower((string) ($parts['host'] ?? ''));
-        if ($host !== '' && $host !== $local_host && $host !== $public_host) {
-            return $url;
-        }
-        return $origin . rtrim((string) ($parts['path'] ?? ''), '/');
-    };
-    add_filter('option_siteurl', $to_origin, 1000);
-    add_filter('option_home', $to_origin, 1000);
-
-    if ($local_host === '' || $local_host === $public_host) {
+    //
+    // Everything below keys off the NETWORK domain, never the request's Host. A
+    // sub-site request arrives with its own Host — sunrise.php remapped it — and
+    // the question each rewrite answers is "where does this host live under the
+    // public origin", which only the network domain can answer.
+    $net = defined('DOMAIN_CURRENT_SITE') ? strtolower(DOMAIN_CURRENT_SITE) : $local_host;
+    $subdomain_network = defined('SUBDOMAIN_INSTALL') && SUBDOMAIN_INSTALL;
+    if ($net === '') {
         return;
     }
     // Host is anchored by the scheme prefix and bounded on the right so a
     // lookalike domain ("mysite.tester.com") is never rewritten.
-    $host_re  = preg_quote($local_host, '~');
+    $net_re   = preg_quote($net, '~');
     $boundary = '(?![A-Za-z0-9.-])';
+
+    // ONE rewrite, used for the option filters, the *_url filters and the
+    // output buffer, because three copies of this mapping is how they drift.
+    // Two shapes can be served through one tunnel:
+    //   <network>            -> <origin>
+    //   <label>.<network>    -> <origin>/<label>   (subdomain network only)
+    // The second is the whole trick: a tunnel pins ONE Host, so a subdomain
+    // network's sub-sites are served as SUBDIRECTORIES while shared —
+    // sunrise.php does the request half, this does the URL half. Anything else
+    // is left alone: rewriting a host we cannot serve produces a link that
+    // lands on the wrong site, which is worse than a link that visibly fails
+    // (27 Aug 2026 — "MSD" and "Sub Domain One" both read <origin>/ on My Sites).
+    // Paths survive because only the scheme+host prefix is replaced, which is
+    // also what keeps a subdirectory network's /sub1 and any ?ver= query intact.
+    $styles = [
+        ['~https?://', $origin, '/'],
+        ['~https?:\\\\/\\\\/', str_replace('/', '\\/', $origin), '\\/'],
+        ['~https?%3A%2F%2F', str_replace([':', '/'], ['%3A', '%2F'], $origin), '%2F'],
+    ];
+    $rewrite = static function ($text) use ($styles, $net_re, $boundary, $subdomain_network) {
+        foreach ($styles as [$scheme, $rep, $sep]) {
+            if ($subdomain_network) {
+                $text = preg_replace_callback(
+                    $scheme . '([A-Za-z0-9-]+)\.' . $net_re . $boundary . '~i',
+                    static fn ($m) => $rep . $sep . strtolower($m[1]),
+                    $text
+                );
+            }
+            $text = preg_replace_callback(
+                $scheme . $net_re . $boundary . '~i',
+                static fn () => $rep,
+                $text
+            );
+        }
+        return $text;
+    };
+
+    $filter_url = static function ($url) use ($rewrite, $origin) {
+        if (!is_string($url) || $url === '') {
+            return $origin;
+        }
+        return $rewrite($url);
+    };
+    add_filter('option_siteurl', $filter_url, 1000);
+    add_filter('option_home', $filter_url, 1000);
 
     // WP_CONTENT_URL / WP_PLUGIN_URL were baked from the LOCAL siteurl before
     // mu-plugins load — swap the origin wherever they resurface.
-    $swap = static function ($url) use ($origin, $host_re, $boundary) {
-        return is_string($url)
-            ? preg_replace_callback(
-                '~https?://' . $host_re . $boundary . '~i',
-                static fn () => $origin,
-                $url
-            )
-            : $url;
+    $swap = static function ($url) use ($rewrite) {
+        return is_string($url) ? $rewrite($url) : $url;
     };
     add_filter('content_url', $swap, 1000);
     add_filter('plugins_url', $swap, 1000);
@@ -148,21 +166,81 @@ call_user_func(static function () {
     // JSON-escaped URLs in REST responses and inline script settings, %-encoded
     // redirect params — is rewritten in the final output. Location headers are
     // not part of the buffer; the option filters above cover redirects.
-    ob_start(static function ($out) use ($origin, $host_re, $boundary) {
-        $pairs = [
-            ['~https?://' . $host_re . $boundary . '~i', $origin],
-            ['~https?:\\\\/\\\\/' . $host_re . $boundary . '~i', str_replace('/', '\/', $origin)],
-            ['~https?%3A%2F%2F' . $host_re . $boundary . '~i', str_replace([':', '/'], ['%3A', '%2F'], $origin)],
-        ];
-        foreach ($pairs as [$re, $rep]) {
-            $out = preg_replace_callback($re, static fn () => $rep, $out);
-        }
-        return $out;
+    ob_start(static function ($out) use ($rewrite) {
+        return $rewrite($out);
     });
 });
 "#;
 
 use crate::core::sites::CONTENT_DIR_LAYOUTS;
+
+/// The sunrise drop-in: the REQUEST half of serving a subdomain network's
+/// sub-sites as subdirectories while shared. `wp-settings.php` requires
+/// `ms-settings.php` (line 161) after `require_wp_db()` (136), and
+/// `ms-settings.php` includes this file (52) BEFORE it reads `HTTP_HOST` /
+/// `REQUEST_URI` to resolve the blog (62–77). That ordering is the whole reason
+/// this file exists: it is the last place a rewrite still counts, and `$wpdb` is
+/// already live so the blog list can be asked rather than guessed.
+///
+/// Written and removed with the tunnel, like the URL mu-plugin.
+const SUNRISE_TEMPLATE: &str = r#"<?php
+/* rexenv — auto-managed while this site is shared over a public tunnel. Safe to delete. */
+// A quick tunnel gets ONE hostname and pins ONE Host, so a SUBDOMAIN network's
+// sub-sites (s1.<network>) are unreachable through it — measured 27 Aug 2026, an
+// outside browser gets ERR_NAME_NOT_RESOLVED, and there is no wildcard to ask for.
+// While shared, they are served as SUBDIRECTORIES instead: /s1/... is turned back
+// into a request for s1.<network>. The URL half lives in rexenv-tunnel.php; the two
+// are one feature and must move together.
+call_user_func(static function () {
+    // Only through the tunnel. Locally the network stays a real subdomain network,
+    // which is the point of developing on one.
+    if (empty($_SERVER['HTTP_CF_RAY']) && empty($_SERVER['HTTP_CF_CONNECTING_IP'])) {
+        return;
+    }
+    if (!defined('SUBDOMAIN_INSTALL') || !SUBDOMAIN_INSTALL || !defined('DOMAIN_CURRENT_SITE')) {
+        return;
+    }
+    $net = strtolower((string) DOMAIN_CURRENT_SITE);
+    $uri = (string) ($_SERVER['REQUEST_URI'] ?? '/');
+    $path = (string) (parse_url($uri, PHP_URL_PATH) ?? '/');
+    if (!preg_match('~^/([A-Za-z0-9][A-Za-z0-9-]*)(/|$)~', $path, $m)) {
+        return;
+    }
+    $label = strtolower($m[1]);
+    // WP's own reserved names, plus the two directories every request for an
+    // asset starts with. A network cannot have a site called these, so a lookup
+    // would miss anyway — this just skips a query on the hot path for assets.
+    if (in_array($label, ['wp-admin', 'wp-content', 'wp-includes', 'wp-json'], true)) {
+        return;
+    }
+    global $wpdb;
+    if (!isset($wpdb) || empty($wpdb->blogs)) {
+        return;
+    }
+    $domain = $label . '.' . $net;
+    $blog_id = $wpdb->get_var(
+        $wpdb->prepare("SELECT blog_id FROM {$wpdb->blogs} WHERE domain = %s AND path = %s LIMIT 1", $domain, '/')
+    );
+    if (!$blog_id) {
+        // Not a sub-site: leave the request alone so the MAIN site can serve
+        // /whatever itself. A page on the main site only loses to a sub-site
+        // that genuinely owns that label.
+        return;
+    }
+    // ONLY the Host. REQUEST_URI keeps its /s1 prefix, deliberately:
+    //   - ms_load_current_site_and_network() resolves by DOMAIN here (the network
+    //     domain is defined in wp-config), and get_site_by_path() falls back to
+    //     '/' after trying '/s1/', so the prefix costs it nothing;
+    //   - WP::parse_request() strips home_url()'s path itself, and home_url() is
+    //     already <origin>/s1 thanks to the URL rewriter, so routing lands right;
+    //   - anything WP builds from REQUEST_URI keeps working. Stripping it here
+    //     cost exactly that (27 Aug 2026): an unauthenticated hit on
+    //     /s1/wp-admin/ bounced to the sub-site's login with
+    //     redirect_to=<origin>/wp-admin/ — the MAIN site's dashboard.
+    $_SERVER['HTTP_HOST']   = $domain;
+    $_SERVER['SERVER_NAME'] = $domain;
+});
+"#;
 
 /// Marker pair around the wp-config block below. The BEGIN line is also how a
 /// second write recognises its own work — the block is written once and never
@@ -195,6 +273,16 @@ const COOKIE_SCOPE_TEMPLATE: &str = r#"// BEGIN rexenv: tunnel cookie scope — 
 if ( ( ! empty( $_SERVER['HTTP_CF_RAY'] ) || ! empty( $_SERVER['HTTP_CF_CONNECTING_IP'] ) )
 	&& file_exists( __DIR__ . '/__REXENV_MU_REL__' ) ) {
 	define( 'COOKIE_DOMAIN', '' );
+}
+// A tunnel gets ONE hostname and pins ONE Host, so this network's sub-sites are
+// unreachable through it as subdomains — an outside browser gets
+// ERR_NAME_NOT_RESOLVED, and there is no wildcard to ask for. While shared they
+// are served as SUBDIRECTORIES instead, and the drop-in that does it must be
+// declared HERE: ms-settings.php only looks for it when SUNRISE is defined, and
+// by then wp-config has already run. Guarded on the file existing so this line
+// is inert — and silent — whenever no share is live.
+if ( file_exists( __DIR__ . '/__REXENV_SUNRISE_REL__' ) ) {
+	define( 'SUNRISE', 'on' );
 }
 // END rexenv: tunnel cookie scope
 "#;
@@ -231,7 +319,7 @@ pub fn ensure_subdomain_cookie_scope(docroot: &Path, content_rel: &str) -> Resul
         // WP docroot at all): nothing this function can safely edit.
         return Ok(false);
     };
-    if !is_subdomain_network(&src) || src.contains(COOKIE_SCOPE_BEGIN) {
+    if !is_subdomain_network(&src) {
         return Ok(false);
     }
     if !CONTENT_DIR_LAYOUTS.contains(&content_rel) {
@@ -240,13 +328,42 @@ pub fn ensure_subdomain_cookie_scope(docroot: &Path, content_rel: &str) -> Resul
         )));
     }
     let mu_rel = format!("{content_rel}/mu-plugins/rexenv-tunnel.php");
-    let block = COOKIE_SCOPE_TEMPLATE.replace("__REXENV_MU_REL__", &mu_rel);
+    let block = COOKIE_SCOPE_TEMPLATE
+        .replace("__REXENV_MU_REL__", &mu_rel)
+        .replace("__REXENV_SUNRISE_REL__", &format!("{content_rel}/sunrise.php"));
     // The delimiters are the block's only bounds. Nothing removes it today, and
     // this check is why: whoever writes that remover will be deleting a range
     // out of the file that decides whether the site boots, so an unterminated
     // block must never reach the disk in the first place.
     if !block.contains(COOKIE_SCOPE_BEGIN) || !block.contains(COOKIE_SCOPE_END) {
         return Err(Error::Other("cookie-scope block lost a delimiter — refusing to write".into()));
+    }
+
+    // An EXISTING block is replaced in place rather than skipped. "Write once"
+    // was right about not appending a second copy and wrong about never
+    // touching it again: the block grew a second job (the sunrise declaration)
+    // on 27 Aug 2026, and a site shared before that date would have kept the
+    // older, half-working version forever. The delimiters are what make this
+    // safe — the range replaced is exactly ours, and a file whose END marker is
+    // missing is left alone rather than guessed at.
+    if let Some(begin) = src.find(COOKIE_SCOPE_BEGIN) {
+        let Some(end) = src[begin..].find(COOKIE_SCOPE_END).map(|i| begin + i) else {
+            return Err(Error::Other(
+                "wp-config.php has a rexenv cookie-scope block with no END marker — \
+                 refusing to guess where it stops; remove it by hand and share again"
+                    .into(),
+            ));
+        };
+        let end = src[end..].find('\n').map_or(src.len(), |i| end + i + 1);
+        if src[begin..end] == *block.as_str() {
+            return Ok(false);
+        }
+        let mut out = String::with_capacity(src.len() + block.len());
+        out.push_str(&src[..begin]);
+        out.push_str(&block);
+        out.push_str(&src[end..]);
+        std::fs::write(&path, out)?;
+        return Ok(true);
     }
 
     let at = COOKIE_SCOPE_ANCHORS.iter().find_map(|a| src.find(a)).ok_or_else(|| {
@@ -273,6 +390,12 @@ pub fn ensure_subdomain_cookie_scope(docroot: &Path, content_rel: &str) -> Resul
 /// here at write time.
 fn mu_plugin_path(docroot: &Path, content_rel: &str) -> PathBuf {
     docroot.join(content_rel).join("mu-plugins").join("rexenv-tunnel.php")
+}
+
+/// The sunrise drop-in lives at the content dir's ROOT — `ms-settings.php`
+/// includes exactly `WP_CONTENT_DIR . '/sunrise.php'` and nowhere else.
+fn sunrise_path(docroot: &Path, content_rel: &str) -> PathBuf {
+    docroot.join(content_rel).join("sunrise.php")
 }
 
 /// The public origin is baked into single-quoted PHP source — reject anything
@@ -317,6 +440,17 @@ pub fn enable(docroot: &Path, content_rel: &str, origin: &str) -> Result<bool> {
         }
         std::fs::write(&path, rendered)?;
     }
+    // The sunrise drop-in ships with the mu-plugin because they are two halves
+    // of ONE behaviour (request rewrite + URL rewrite). Splitting their
+    // lifetimes would give a share that resolves sub-sites but links to hosts
+    // nobody can reach, or the reverse — both worse than neither.
+    let sunrise = sunrise_path(docroot, content_rel);
+    if std::fs::read_to_string(&sunrise).ok().as_deref() != Some(SUNRISE_TEMPLATE) {
+        if let Some(parent) = sunrise.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&sunrise, SUNRISE_TEMPLATE)?;
+    }
     Ok(created_dir)
 }
 
@@ -327,10 +461,12 @@ pub fn enable(docroot: &Path, content_rel: &str, origin: &str) -> Result<bool> {
 /// a layout dir that never had them changes nothing.
 pub fn disable(docroot: &Path) -> Result<()> {
     for layout in CONTENT_DIR_LAYOUTS {
-        match std::fs::remove_file(mu_plugin_path(docroot, layout)) {
-            Ok(()) => {}
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => return Err(e.into()),
+        for path in [mu_plugin_path(docroot, layout), sunrise_path(docroot, layout)] {
+            match std::fs::remove_file(path) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(e.into()),
+            }
         }
     }
     Ok(())
@@ -398,6 +534,34 @@ define( 'SUBDOMAIN_INSTALL', true );\n\
         // Second call is a no-op — the file stays byte-identical.
         assert!(!ensure_subdomain_cookie_scope(&dir, "wp-content").unwrap());
         assert_eq!(std::fs::read_to_string(&cfg).unwrap(), after);
+        // Both jobs are declared: the cookie scope and the sunrise drop-in.
+        assert!(after.contains("'COOKIE_DOMAIN', ''"));
+        assert!(after.contains("wp-content/sunrise.php"));
+    }
+
+    #[test]
+    fn an_older_block_is_upgraded_in_place_not_duplicated() {
+        let dir = scratch("upgrade");
+        // A site shared before the block grew its second job. Written-once
+        // would have left this one half-working forever.
+        let stale = SUBDOMAIN_CONFIG.replace(
+            "/* That's all, stop editing! */",
+            "// BEGIN rexenv: tunnel cookie scope\n             define( 'COOKIE_DOMAIN', '' );\n             // END rexenv: tunnel cookie scope\n             /* That's all, stop editing! */",
+        );
+        let cfg = write_config(&dir, &stale);
+        assert!(ensure_subdomain_cookie_scope(&dir, "wp-content").unwrap(), "upgraded");
+        let after = std::fs::read_to_string(&cfg).unwrap();
+        assert_eq!(after.matches(COOKIE_SCOPE_BEGIN).count(), 1, "one block, not two:\n{after}");
+        assert!(after.contains("wp-content/sunrise.php"), "gained the sunrise line:\n{after}");
+        assert!(
+            after.find(COOKIE_SCOPE_END).unwrap()
+                < after.find("require_once ABSPATH . 'wp-settings.php'").unwrap(),
+            "still ahead of wp-settings:\n{after}"
+        );
+
+        // A block whose END marker was hand-deleted is never guessed at.
+        write_config(&dir, &stale.replace("// END rexenv: tunnel cookie scope\n", ""));
+        assert!(ensure_subdomain_cookie_scope(&dir, "wp-content").is_err());
     }
 
     #[test]

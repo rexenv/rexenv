@@ -35,15 +35,29 @@ paying for anyway: **the tick belongs in the commit that does the work.**
 
 ## Now — actionable code/test work
 
-- [ ] **A subdomain network's sub-sites still cannot be reached through a share, and that
-  is a shape limit, not a bug** — recorded 27 Aug 2026 so the next person does not go
-  hunting. A quick tunnel gets ONE random `trycloudflare.com` hostname and pins ONE Host;
-  a sub-site needs its own hostname. The sub-site links are now honest rather than
-  misdirecting (ledger #418), but honest still means unreachable: an outside browser gets
-  `ERR_NAME_NOT_RESOLVED`. **The shape that shares whole is a subdirectory network.**
-  If this is ever wanted for real it needs a NAMED Cloudflare tunnel against a domain the
-  user owns, with wildcard DNS and per-hostname ingress — an account, a domain, and a
-  second tunnel model, none of which the quick-tunnel path has.
+- [x] **A subdomain network's sub-sites are now testable through a share** ✓ 27 Aug 2026 —
+  ledger #419–#422. They still cannot be reached AS SUBDOMAINS (a quick tunnel issues one
+  hostname and pins one Host; there is no wildcard to ask for), so while shared the network
+  is served as a **subdirectory** network instead: `<origin>/s1/…` is turned back into a
+  request for `s1.<network>`. Three auto-managed pieces plus the vhost:
+  `sunrise.php` (request half — the last seat before ms-settings resolves the blog, and the
+  only one where `$wpdb` is already live), the URL rewriter (`<label>.<network>` →
+  `<origin>/<label>`), the wp-config block (cookie scope + the `SUNRISE` declaration), and
+  WordPress's network rewrite rules now on BOTH network modes' vhosts.
+  - **Verified live, Chrome via the devtools MCP**: logged in at `/s1/wp-login.php`, landed
+    on `/s1/wp-admin/` — **"Dashboard ‹ Sub Domain One"** — with every asset 200 and no
+    console errors; My Sites reads `<origin>/` for MSD and `<origin>/s1` for the sub-site.
+  - **Local is untouched, and that was re-measured rather than assumed**: `s1.msd.rex/` 200
+    native, `msd.rex/s1/` **404** (locally it is NOT a subdirectory network — sunrise is
+    inert without the CF headers), cookie still `domain=.msd.rex`, and the subdirectory
+    network and a single site next door both still 200.
+  - **What it cost to find**: stripping the `/s1` prefix from `REQUEST_URI` in sunrise
+    looked obviously right and broke `redirect_to`; and without the vhost rules the
+    sub-site admin 404s no matter how well the PHP behaves.
+  - [ ] Real subdomain sharing — sub-sites on their own public hostnames — is the NEXT
+    step and needs a named Cloudflare tunnel against a domain the user owns, with wildcard
+    DNS and per-hostname ingress. An account, a domain, and a second tunnel model, none of
+    which the quick-tunnel path has.
 
 - [x] **A subdirectory multisite was BROKEN through a tunnel, and the scope note said it
   worked** ✓ 26 Aug 2026 — ledger #9, `core/wp_tunnel.rs`. The mu-plugin's

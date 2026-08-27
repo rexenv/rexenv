@@ -57,8 +57,12 @@ ok(apply_rex('option_home', 'https://mysite.test') === $origin, 'home -> origin'
 // it sent /sub1/wp-login.php to the MAIN site's dashboard (26 Aug 2026).
 ok(apply_rex('option_siteurl', 'https://mysite.test/sub1') === "$origin/sub1",
     'sub-site siteurl keeps the blog path');
-ok(apply_rex('option_home', 'https://mysite.test/sub1/') === "$origin/sub1",
-    'sub-site home keeps the blog path (trailing slash trimmed)');
+// Only the scheme+host prefix is replaced, so the tail survives verbatim —
+// that is what keeps a ?ver= query on an asset URL intact too.
+ok(apply_rex('option_home', 'https://mysite.test/sub1/') === "$origin/sub1/",
+    'sub-site home keeps the blog path, tail verbatim');
+ok(apply_rex('content_url', 'https://mysite.test/wp-content/x.css?ver=6.9') === "$origin/wp-content/x.css?ver=6.9",
+    'a query string on an asset URL survives');
 // A SUBDOMAIN network's sub-site lives on another host. The tunnel pins ONE
 // Host, so rewriting it would not make it reachable — it would point at the
 // MAIN site while looking like the sub-site.
@@ -109,6 +113,29 @@ echo defined('COOKIE_DOMAIN') ? "COOKIE_DOMAIN=[" . COOKIE_DOMAIN . "]\n" : "COO
 const SUBDOMAIN_CONFIG: &str = "<?php\ndefine( 'MULTISITE', true );\n\
 define( 'SUBDOMAIN_INSTALL', true );\n\
 /* That's all, stop editing! */\n";
+
+/// Harness for the sunrise drop-in. Stubs the two things it touches — the CF
+/// headers and `$wpdb` — and prints what the request looked like afterwards.
+const SUNRISE_HARNESS: &str = r#"<?php
+define('SUBDOMAIN_INSTALL', true);
+define('DOMAIN_CURRENT_SITE', 'mysite.test');
+class RexWpdbStub {
+    public $blogs = 'wp_blogs';
+    public $asked = [];
+    public function prepare($q, ...$a) { return [$q, $a]; }
+    public function get_var($q) {
+        $this->asked[] = $q[1][0];
+        return $q[1][0] === 's1.mysite.test' ? 2 : null;
+    }
+}
+$GLOBALS['wpdb'] = new RexWpdbStub();
+$mode = $argv[1];
+$_SERVER['REQUEST_URI'] = $argv[3];
+$_SERVER['HTTP_HOST'] = 'mysite.test';
+if ($mode === 'tunnel') { $_SERVER['HTTP_CF_RAY'] = '8f0000000000-EWR'; }
+require $argv[2];
+echo "HOST={$_SERVER['HTTP_HOST']} URI={$_SERVER['REQUEST_URI']}\n";
+"#;
 
 #[tokio::main]
 async fn main() {
@@ -176,7 +203,42 @@ async fn main() {
     assert!(!out.contains("://mysite.test/"), "a local URL survived:\n{out}");
     println!("✓ output buffer: plain / JSON-escaped / %-encoded rewritten; lookalikes kept");
 
-    // 4) The wp-config block: a SUBDOMAIN network's auth cookies survive the
+    // 4) The sunrise drop-in: the REQUEST half. A tunnel pins one Host, so a
+    //    subdomain network's sub-sites are reachable only as subdirectories —
+    //    /s1/... has to become a request for s1.<network>, and it has to happen
+    //    before ms-settings resolves the blog.
+    let sunrise = dir.join("wp-content/sunrise.php");
+    assert!(sunrise.is_file(), "sunrise written next to the mu-plugin");
+    let lint = std::process::Command::new(&php).arg("-l").arg(&sunrise).output().unwrap();
+    assert!(lint.status.success(), "sunrise php -l failed: {}", String::from_utf8_lossy(&lint.stderr));
+    let sun_harness = dir.join("sunrise-harness.php");
+    std::fs::write(&sun_harness, SUNRISE_HARNESS).unwrap();
+    let run_sun = |mode: &str, uri: &str| {
+        let out = std::process::Command::new(&php)
+            .arg(&sun_harness)
+            .arg(mode)
+            .arg(&sunrise)
+            .arg(uri)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "sunrise harness failed: {}", String::from_utf8_lossy(&out.stderr));
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    };
+    // The Host moves; the URI does NOT. WP strips home_url()'s /s1 itself, and
+    // everything it builds from REQUEST_URI needs the prefix still there.
+    assert_eq!(run_sun("tunnel", "/s1/wp-admin/"), "HOST=s1.mysite.test URI=/s1/wp-admin/");
+    assert_eq!(run_sun("tunnel", "/s1"), "HOST=s1.mysite.test URI=/s1");
+    assert_eq!(run_sun("tunnel", "/s1/?p=7"), "HOST=s1.mysite.test URI=/s1/?p=7");
+    // A label no blog owns belongs to the MAIN site — a page called /about must
+    // not be swallowed by this.
+    assert_eq!(run_sun("tunnel", "/about/"), "HOST=mysite.test URI=/about/");
+    // Assets never even reach the lookup.
+    assert_eq!(run_sun("tunnel", "/wp-content/x.css"), "HOST=mysite.test URI=/wp-content/x.css");
+    // Local requests keep the network a real subdomain network.
+    assert_eq!(run_sun("local", "/s1/wp-admin/"), "HOST=mysite.test URI=/s1/wp-admin/");
+    println!("✓ sunrise: /s1/… -> s1.<network> through the tunnel only; main site and assets untouched");
+
+    // 5) The wp-config block: a SUBDOMAIN network's auth cookies survive the
     //    tunnel only if COOKIE_DOMAIN is emptied BEFORE wp-settings runs, and
     //    only while the share is rexenv's and live. Four combinations, because
     //    the second condition is the one a reviewer would be tempted to drop.
@@ -215,6 +277,13 @@ async fn main() {
     assert!(run_cfg("local").contains("COOKIE_DOMAIN=undefined"), "local request fired it");
     assert!(run_cfg("cf").contains("COOKIE_DOMAIN=[]"), "tunnel request did NOT empty COOKIE_DOMAIN");
     println!("✓ wp-config cookie scope: empty ONLY for a CF request with a live share");
+
+    // 6) Stopping the share takes BOTH halves away — a sunrise left behind would
+    //    keep remapping requests with no rewriter to match.
+    wp_tunnel::disable(&dir).expect("disable");
+    assert!(!plugin.exists(), "mu-plugin removed");
+    assert!(!sunrise.exists(), "sunrise removed");
+    println!("✓ disable removes both halves");
 
     let _ = std::fs::remove_dir_all(&dir);
     println!("\nALL GOOD — tunnel requests get public URLs, local requests stay untouched.");
