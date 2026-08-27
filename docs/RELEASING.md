@@ -121,6 +121,19 @@ release** — which is the property that makes a stolen key survivable. Ledger
    gh release create "v$V" --repo rexenv/homebrew-tap --draft \
      --title "rexenv $V" "$DMG" "rexenv_${V}_universal.dmg.sha256"
    ```
+   **If the create is interrupted while the dmg is uploading, delete the half-asset
+   before retrying** (27 Aug 2026, 0.4.0): the draft is created first and the 26 MB
+   upload follows, so a killed command leaves an asset in state `starter` holding the
+   name, and every later `gh release upload` — `--clobber` included — answers
+   **`HTTP 400: Bad Request`** naming only the upload URL. Nothing says "partial".
+   ```sh
+   gh api repos/rexenv/homebrew-tap/releases/<id>/assets --jq '.[] | "\(.id) \(.name) \(.state)"'
+   gh api -X DELETE repos/rexenv/homebrew-tap/releases/assets/<asset-id>
+   ```
+   Then verify the upload rather than trusting exit 0: the asset's `digest` from the
+   API must equal the local `shasum -a 256` and the sidecar's text. That is the same
+   hash match §A records, done one step earlier, and it is what proves the bytes
+   survived the wire.
    Tag the same `v<X.Y.Z>` **here** too, so a shipped dmg maps to a commit. Careful:
    **pushing a `v*` tag triggers `release.yml`**, which would spend tens of 10×-billed
    macOS minutes building a second dmg nobody can download. Keep the tag local

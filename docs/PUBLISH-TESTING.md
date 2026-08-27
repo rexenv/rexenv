@@ -105,6 +105,12 @@ saw this artefact. All green: exactly one dmg in the bundle dir; `rexenv` and `r
 x86_64 — a half-populated fat binary is invisible to `lipo -archs`, which is why the
 check thins first); `codesign --verify --deep --strict` passes on the `.app`.
 
+**Draft created on the tap 27 Aug 2026** — `rexenv/homebrew-tap` releases, `v0.4.0`,
+draft, both assets attached. **Hash matched on the wire, not assumed**: the release
+API reports the asset digest as `sha256:a7aecee7…`, equal to the local file's
+`shasum -a 256` and to the sidecar's text. (The upload needed a retry — see
+`docs/RELEASING.md` step 5 for the `starter`-state asset that answers HTTP 400.)
+
 **🚧 OUTSTANDING before this can be published**, and both are human-only:
 - **`docs/SMOKE-TEST.md` end-to-end on a clean Mac from THIS dmg** — the other half of
   the gate (see that file's header). New this release and never smoke-tested: the blank
