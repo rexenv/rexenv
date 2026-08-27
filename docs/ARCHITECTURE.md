@@ -1306,6 +1306,16 @@ IPC surface — which is how a reader ends up designing against a system with on
   - **Seeding is idempotent** — `CREATE TABLE IF NOT EXISTS` plus a seed guarded by
     `WHERE NOT EXISTS`. DROP-and-recreate would delete whatever the developer had put in
     the table by the time they pressed Retry.
+  - **The dialog's Database field became a CHOICE for Blank PHP** (`NewSiteDialog`,
+    `NewSite.starter_db`): MySQL / MariaDB / **None**, defaulting to MySQL, and offered
+    only for a folder rexenv creates. It was a dead "None" — a field the user could see
+    and not use. None is the option that skips the ~600 MB engine download, which is why
+    this is a choice rather than always-on: a scratch PHP file should not cost a database
+    engine. The note under the field says which of the two the click will do.
+  - **Two places stopped saying "Blank PHP sites have no database"** — the site row's
+    database button and the Database tab's placeholder. Half of them now do, and both
+    read the recorded `starterDb`, so a seeded site opens Adminer on its own database
+    like every other type.
 - **A SITE from Git** (v33 · `core/sites.rs::{validate_git_source, clone_into_docroot}` +
   the `clone`/`deps`/`finalize` phases in `commands/site_provision.rs` ·
   `docs/PLAN-git-site-clone.md`): a repository is the **third source for a docroot**,

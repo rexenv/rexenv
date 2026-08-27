@@ -103,6 +103,12 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
   const [phpVersion, setPhpVersion] = useState(initial?.phpVersion ?? defaultVersion);
   const [webServer, setWebServer] = useState<WebServer>(initial?.webServer ?? "nginx");
   const [dbEngine, setDbEngine] = useState<SiteDbEngine>("mysql");
+  // A Blank PHP site gets a starter database by DEFAULT: the generated page
+  // then opens on real rows out of a real engine, which is the difference
+  // between "PHP works" and "your stack works". Turned off by picking None,
+  // and only offered for a folder rexenv creates — a linked folder is the
+  // user's, and a clone brings its own code and its own connection.
+  const [starterDb, setStarterDb] = useState(true);
   const [domainEdited, setDomainEdited] = useState(false);
   const [blueprintId, setBlueprintId] = useState("");
   const [wpTitle, setWpTitle] = useState("");
@@ -230,6 +236,10 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
       onClose();
     })();
   });
+  // The Database field is a CHOICE only for a Blank PHP site in a folder rexenv
+  // creates. Everywhere else it is either required (WordPress, Laravel) or
+  // absent, and this one expression decides both what renders and what is sent.
+  const starterDbOffered = siteType === "php" && source === "new";
   const create = useMutation({
     mutationFn: () =>
       siteProvisionJob(
@@ -243,6 +253,11 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
           // for a framework is the docroot subfolder, not the project root.
           path: useExisting ? (link?.servePath ?? "") : "",
           dbEngine,
+          // Sent only where the field was OFFERED. The backend records the same
+          // rule on the row, so the two cannot disagree about a site that was
+          // linked or cloned — but a payload that says "yes" for a shape that
+          // ignores it is a lie the log would carry.
+          starterDb: starterDbOffered && starterDb,
           // The URL the PROBE returned, not the raw paste: it is the one the
           // branch list above actually came from. (The backend re-parses it
           // anyway — the UI's copy is display state, never a trust boundary.)
@@ -347,6 +362,9 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
               dbEngine={dbEngine}
               setDbEngine={setDbEngine}
               needsDb={siteType !== "php" && !adopting}
+              starterDbOffered={starterDbOffered}
+              starterDb={starterDb}
+              setStarterDb={setStarterDb}
               source={source}
               setSource={(v) => {
                 setSource(v);
@@ -684,6 +702,11 @@ function Step2(p: {
   dbEngine: SiteDbEngine;
   setDbEngine: (v: SiteDbEngine) => void;
   needsDb: boolean;
+  /** Blank PHP in a folder rexenv creates: the Database field is a choice,
+   *  MySQL / MariaDB / None, rather than a fixed engine or a dead "None". */
+  starterDbOffered: boolean;
+  starterDb: boolean;
+  setStarterDb: (v: boolean) => void;
   source: DocrootSource;
   setSource: (v: DocrootSource) => void;
   gitAllowed: boolean;
@@ -882,16 +905,23 @@ function Step2(p: {
           </select>
         </Field>
         {/* Engine is chosen at create and immutable after — the database
-            lives in that engine's datadir. */}
+            lives in that engine's datadir. For a Blank PHP site the same field
+            also answers WHETHER: None is a real option there, and the only one
+            that skips the database engine download entirely. */}
         <Field label="Database">
-          {p.needsDb ? (
+          {p.needsDb || p.starterDbOffered ? (
             <select
-              value={p.dbEngine}
-              onChange={(e) => p.setDbEngine(e.target.value as SiteDbEngine)}
+              value={p.starterDbOffered && !p.starterDb ? "none" : p.dbEngine}
+              onChange={(e) => {
+                const v = e.target.value;
+                p.setStarterDb(v !== "none");
+                if (v !== "none") p.setDbEngine(v as SiteDbEngine);
+              }}
               className={FIELD_SELECT}
             >
               <option value="mysql">MySQL</option>
               <option value="mariadb">MariaDB</option>
+              {p.starterDbOffered && <option value="none">None</option>}
             </select>
           ) : (
             <div className={cn(FIELD_INPUT, "flex items-center text-[0.78125rem] text-rex-text-muted")}>
@@ -900,6 +930,29 @@ function Step2(p: {
           )}
         </Field>
       </div>
+
+      {/* What "MySQL" in that field actually buys, said before the click rather
+          than discovered after it — the site's first page is not a phpinfo dump
+          but real rows out of this database, and the engine is a download the
+          None option skips. */}
+      {p.starterDbOffered && (
+        <div className="-mt-1 text-[0.6875rem] leading-[1.5] text-rex-text-muted">
+          {p.starterDb ? (
+            <>
+              rexenv creates the database, seeds a sample table and writes{" "}
+              <span className="font-mono text-rex-text-bright">db.php</span> — the generated{" "}
+              <span className="font-mono text-rex-text-bright">index.php</span> opens on those rows.
+              The engine is downloaded on first use.
+            </>
+          ) : (
+            <>
+              No database, and no engine download. The generated{" "}
+              <span className="font-mono text-rex-text-bright">index.php</span> still shows what this
+              site is running.
+            </>
+          )}
+        </div>
+      )}
 
       {/* The sentence in front of the button that starts it. An EOL runtime is
           a legitimate choice — legacy projects are why it is offered — but it

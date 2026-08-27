@@ -25,12 +25,12 @@ export function DatabaseTab({ site }: { site: Site }) {
           <DbImportCard site={site} />
         </div>
       )}
-      {site.type === "php" ? (
+      {site.type === "php" && !site.starterDb ? (
         <div className="flex min-h-0 flex-1 flex-col">
           <Placeholder
             icon={<Database className="h-[22px] w-[22px]" strokeWidth={1.6} />}
             label="No database"
-            hint="Blank PHP sites have no database. WordPress / Laravel sites embed Adminer here."
+            hint="This Blank PHP site was created without one. Pick MySQL or MariaDB in the Database field when you create a Blank PHP site to get one, seeded and wired."
           />
         </div>
       ) : (

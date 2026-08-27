@@ -307,8 +307,12 @@ export function SiteRow({
           variant="ghost"
           size="icon"
           aria-label="Open database"
-          title={site.type === "php" ? "Blank PHP sites have no database" : "Open database"}
-          disabled={site.type === "php"}
+          title={
+            site.type === "php" && !site.starterDb
+              ? "This Blank PHP site has no database"
+              : "Open database"
+          }
+          disabled={site.type === "php" && !site.starterDb}
           onClick={onOpenDatabase}
         >
           <Database className="h-4 w-4" />

@@ -75,6 +75,13 @@ export interface Site {
    *  `null`/absent means no — exact, since nothing ran a package manager during
    *  provisioning before the column existed. */
   gitBuildAssets?: boolean | null;
+  /** Did this Blank-PHP site ask for a starter database (v41)? `null`/absent
+   *  means the question did not apply (WordPress and Laravel always have one, a
+   *  linked or cloned docroot is never seeded) or the row predates the column —
+   *  either way, no starter database. Drives the Database tab and the row's
+   *  database button, which used to read "Blank PHP sites have no database" and
+   *  would now be lying to half of them. */
+  starterDb?: boolean | null;
 }
 
 /** A plugin or theme an agent cloned into a scratch site (v29), as the Sites
@@ -473,6 +480,10 @@ export interface NewSiteInput {
    *  caller that never heard of this field cannot make rexenv run a package
    *  manager's install scripts. */
   gitBuildAssets?: boolean;
+  /** Create a starter database + seeded table for a Blank PHP site and generate
+   *  its `db.php` (v41). Omitted → false, so a caller that never heard of this
+   *  field cannot make rexenv download and boot a database engine. */
+  starterDb?: boolean;
 }
 
 /** WordPress one-click install fields (type=wordpress). Empty fields default

@@ -165,6 +165,16 @@ the shipped UI toward one.
   it". `composer install` deliberately has no opt-out: `vendor/` is gitignored, so
   offering to skip it would be offering to create a site that 500s — an option that can
   only produce a broken site is not a choice, it is a trap.
+- **A field the user can see and cannot use is either a choice or nothing.** The New
+  Site dialog's Database field rendered a flat, unclickable "None" for Blank PHP — a
+  control that looked like the other two beside it and answered nothing. It is now a
+  real choice for that type (MySQL / MariaDB / None, MySQL default), and the answer is
+  load-bearing: picking an engine gets the site a database, a seeded table and a
+  generated `db.php`; picking None skips the ~600 MB engine download. The note under it
+  says which of the two the click will do, because "MySQL" alone does not tell a first
+  user that a download is about to start. **The stale sentence is part of the change**:
+  two other surfaces read "Blank PHP sites have no database", which was true of all of
+  them and is now true of half.
 - **A control whose only outcome is an error is not rendered.** The New Site dialog
   offers "From Git" for Laravel and Blank PHP and omits it for WordPress, because a
   WordPress checkout without its database is not a site and the backend refuses it. The
