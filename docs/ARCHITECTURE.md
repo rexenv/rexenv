@@ -1286,6 +1286,26 @@ IPC surface — which is how a reader ends up designing against a system with on
   cursor instead of parking it at "item 1 of N", and the bar runs on the
   unpack/install/activate milestones alone (`InstallProgress` may run BEHIND
   the work, never ahead). The `rex` CLI keeps slugs only.
+- **A Blank-PHP site starts as a PAGE, not a `phpinfo()` dump** (`core/starter.rs` +
+  `src-tauri/templates/starter/`): the generated `index.php` says what is running (PHP
+  version, web server, scheme), where the files are, and — when the site asked for a
+  starter database — renders four seeded rows out of `starter_items` through the
+  `db.php` beside it. phpinfo answered a question nobody asked on their first page load
+  and none of the ones they did.
+  - **Two files, generated once, never overwritten.** `write_files` skips a file that
+    already exists, per file. Retry re-enters the same code with the developer's edited
+    page on disk, and "provisioning finished" must never mean "provisioning reverted my
+    work". A user who deleted `db.php` and kept their page gets neither back.
+  - **The page is written at `prepare`; `db.php` at `configure`.** The database name is
+    allocated with the row (`unique_db_name` needs the connection) and the database
+    itself does not exist until the job's `configure` phase — so a connection file
+    written any earlier would name a database that is not there for the length of a
+    provision. One template, no substitution: `index.php` decides what to render by
+    looking for `db.php` beside it, so the with-database and without-database pages
+    cannot drift apart.
+  - **Seeding is idempotent** — `CREATE TABLE IF NOT EXISTS` plus a seed guarded by
+    `WHERE NOT EXISTS`. DROP-and-recreate would delete whatever the developer had put in
+    the table by the time they pressed Retry.
 - **A SITE from Git** (v33 · `core/sites.rs::{validate_git_source, clone_into_docroot}` +
   the `clone`/`deps`/`finalize` phases in `commands/site_provision.rs` ·
   `docs/PLAN-git-site-clone.md`): a repository is the **third source for a docroot**,

@@ -181,6 +181,7 @@ rexenv/
         │   ├── confedit.rs · confverify.rs · confrewrite.rs  # connection rewrite (Stage 3)
         │   ├── repo.rs · devtools.rs · dist_archive.rs    # add-from-Git, toolchain, `wp dist-archive`
         │   ├── laravel.rs · dotenv.rs                     # Laravel create/install, `.env` read+write
+        │   ├── starter.rs      # Blank-PHP starter page + seeded table (templates/starter/)
         │   ├── scratch.rs · wp_mailtag.rs                 # agent scratch sites (TTL, cap, reaper) + their mail stamp
         │   ├── updates.rs · php_upstream.rs               # signed update manifests; "a newer patch exists"
         │   ├── wp_packages.rs · copy_scan.rs · proc.rs    # WP-CLI package pin; UI-copy guards; process ownership

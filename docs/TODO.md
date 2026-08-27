@@ -1166,6 +1166,13 @@ in one place drifts, and a stale one reads as progress that did not happen. Run
 row + the noted half of every ◐ row, worked by the ledger's blast-radius tiers, top
 first:
 
+- [ ] **Ledger #429 — prove the starter seed is idempotent against a REAL engine (L1).**
+  An example that runs `core::starter::seed` twice against the bundled MySQL and asserts
+  four rows, then inserts a fifth and re-seeds to prove the `WHERE NOT EXISTS` guard
+  protects the developer's own data on a Retry. L0 cannot settle it: the guard is SQL,
+  and only a real server can say whether it agrees (the library-flags lesson — a
+  guarantee read off syntax is unproven until a server answers it).
+
 - [ ] **`wp_plugins_check` failed its deactivate assertion once and has not reproduced —
   the product-bug flag raised 14 Aug 2026 is RETRACTED, mechanism refuted.** The suspicion
   was that `plugin_verb` returns WP-CLI's stdout as a String and so reports success from

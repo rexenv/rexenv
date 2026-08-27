@@ -682,19 +682,18 @@ pub async fn site_provision_retry<R: tauri::Runtime>(
     )?;
     let docroot = PathBuf::from(&site.path);
     // Re-ensure prepare's artifacts — but ONLY for a docroot we own. A linked
-    // site's folder is the user's: creating it, or dropping our phpinfo probe
+    // site's folder is the user's: creating it, or dropping our starter page
     // into an empty one, would write into their project on a retry. The cert
     // below is ours either way.
     if site.docroot_managed != Some(false) {
         std::fs::create_dir_all(&docroot)?;
         // Same reason as at create: a clone needs the docroot EMPTY, so the
-        // probe page must not be the thing that blocks the retried clone.
+        // starter page must not be the thing that blocks the retried clone.
+        // `write_files` skips a file that already exists, so a retry after the
+        // user has edited the page leaves their edit alone.
         let cloning = site.git_url.is_some();
-        if matches!(site.site_type, SiteType::Php)
-            && !cloning
-            && !docroot.join("index.php").exists()
-        {
-            std::fs::write(docroot.join("index.php"), "<?php phpinfo();\n")?;
+        if matches!(site.site_type, SiteType::Php) && !cloning {
+            core::starter::write_files(&docroot, None)?;
         }
     } else if !docroot.is_dir() {
         return Err(Error::Other(format!(

@@ -124,7 +124,7 @@ pub fn client_base_args(port: u16) -> [String; 6] {
 /// loopback server, root/no password — the local-dev setup). `client` is the
 /// client BINARY (`bin/mysql` from the MySQL tree, or `bin/mariadb` from the
 /// mariadb bundle — same protocol, same flags); `what` labels the error.
-fn mysql_exec(client: &SqlClient, port: u16, sql: &str, what: &str) -> Result<()> {
+pub(crate) fn mysql_exec(client: &SqlClient, port: u16, sql: &str, what: &str) -> Result<()> {
     let out = std::process::Command::new(client.path())
         .args(client_base_args(port))
         .args(["-e", sql])

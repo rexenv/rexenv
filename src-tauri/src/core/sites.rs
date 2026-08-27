@@ -1794,7 +1794,8 @@ pub fn ensure_sites_dir(conn: &Connection, platform: &dyn Platform) -> Result<Pa
 ///
 /// Two shapes, decided by whether the caller supplied a path:
 /// - **empty path — we create the site**: docroot is `<sites_dir>/<domain>`, and
-///   for Blank PHP a `phpinfo()` `index.php` is dropped in. Ours to delete.
+///   for Blank PHP the generated starter `index.php` is dropped in. Ours to
+///   delete.
 /// - **non-empty path — LINK an existing folder**: it is validated
 ///   ([`validate_linked_docroot`]) and served in place. We never create it,
 ///   never write into it here, and record that we don't own it, so deleting the
@@ -1881,12 +1882,18 @@ pub fn provision_with(
         refuse_unpinned_sandbox_sites_dir(&root, platform)?;
         let docroot = root.join(&new.domain);
         std::fs::create_dir_all(&docroot)?;
-        // The Blank-PHP probe page, but NOT when a clone is about to fill this
+        // The Blank-PHP starter page, but NOT when a clone is about to fill this
         // folder: `clone_into_docroot` requires an empty docroot, so writing a
         // placeholder here would make the site's own prepare phase the thing
         // that blocks its clone phase.
+        //
+        // The PAGE only. Its `db.php` is written by the provision job's
+        // `configure` phase, next to the `CREATE DATABASE` it describes — the
+        // database name is allocated below (`unique_db_name`, which needs the
+        // connection), and a connection file naming a database that does not
+        // exist yet is a file that lies for the length of a provision.
         if matches!(new.site_type, SiteType::Php) && new.git_url.trim().is_empty() {
-            std::fs::write(docroot.join("index.php"), "<?php phpinfo();\n")?;
+            super::starter::write_files(&docroot, None)?;
         }
         docroot
     };
@@ -3995,7 +4002,7 @@ mod tests {
     #[test]
     fn a_linked_docroot_is_never_created_or_populated_by_us() {
         // Retry re-ensures prepare's artifacts, and for a Blank-PHP site that
-        // means writing a phpinfo() index.php. For a LINKED site that folder is
+        // means writing the starter index.php. For a LINKED site that folder is
         // the user's, so the retry path branches on `docroot_managed !=
         // Some(false)` — this pins the predicate it relies on.
         let conn = db::open_in_memory().unwrap();
