@@ -1458,6 +1458,30 @@ IPC surface — which is how a reader ends up designing against a system with on
   `~/Library/LaunchAgents/dev.rexenv.rexenv.plist`, `RunAtLoad` — launches the app at
   login (not headless services; the edge still needs its `:443` prompt).
 
+### Built-in terminal — a LOGIN shell (`core/terminal.rs`)
+
+The site Terminal tab is a `portable-pty` session running the user's `$SHELL` in the
+docroot, with the site's PHP dir and the generated `wp` wrapper prepended to `PATH`
+twice: once in the child's env, and again as an injected `export` AFTER the rc files
+run (macOS `path_helper` reorders PATH, which would otherwise shadow the bundled PHP).
+
+It spawns the shell with `-l` — a **login** shell — and that flag is the whole
+difference between a usable terminal and a decorative one. rexenv is launched by
+launchd/Finder, so the app process inherits the bare `/usr/bin:/bin:/usr/sbin:/sbin`,
+and a non-login zsh reads only `~/.zshrc`: never `/etc/zprofile` (path_helper →
+`/etc/paths`, `/etc/paths.d`) and never `~/.zprofile` (`brew shellenv`). Without it,
+`code`, `rex`, brew-installed git and every version-manager shim answered
+`command not found` inside rexenv while working in Terminal.app — reported from the
+app's own terminal, and invisible to any developer who tests by running the example
+from a terminal that already had a full PATH. Terminal.app itself gets this for free
+(`login -pf`). Shells rexenv does not recognise get no flag at all: a bad flag fails
+the spawn, and a short PATH beats a terminal that will not open. The cost is startup
+latency — a real `~/.zshrc` (prompt frameworks, nvm) takes seconds, which is why
+`terminal_check`'s deadlines are seconds and not milliseconds.
+
+The wrapper stays AMBIENT on purpose (#228): this is the user's own command line, so
+`WP_CLI_PACKAGES_DIR` is theirs here and pinned everywhere else.
+
 ## 10. Verification pattern
 
 Layer model + gate tiers: `docs/TESTING.md`. Claim inventory (the test metric):

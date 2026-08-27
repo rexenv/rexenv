@@ -426,6 +426,7 @@ L3 = scripted manual.
 |---|---|---|---|
 | 132 | valet.rs:3 | Scan writes nothing, anywhere | ◐ surfaced-not-dropped ✅; absolute write-nothing ✅ live (`valet_scan_check` fingerprints) |
 | 133 | valet.rs:14 | No site silently dropped | ✅ lib test + `valet_scan_check` |
+| 423 | core/terminal.rs (`login_args`, the spawn) + examples/terminal_check.rs | **The built-in terminal spawns a LOGIN shell — otherwise it is a terminal that cannot run the developer's tools.** rexenv is launched by launchd, so its PATH is the bare `/usr/bin:/bin:/usr/sbin:/sbin`, and a non-login zsh reads only `~/.zshrc`: never `/etc/zprofile` (path_helper → `/etc/paths`) nor `~/.zprofile` (`brew shellenv`). `code`, `rex`, brew git and every version-manager shim answered `command not found` inside rexenv while working in Terminal.app (which runs `login -pf`) — **reported from the app's own terminal 27 Aug 2026, not found by review**. Unknown shells get NO flag: a bad flag fails the spawn, and a short PATH beats a terminal that will not open. The bundled-PHP prepend still wins, because the injected `export` runs AFTER rc | ✅ `known_shells_are_launched_as_login_shells` (L0) + `terminal_check` (L1, sandbox tier). **The example's own PATH was the fixture that hid this**: it inherited a developer shell's PATH, under which a non-login shell passes every assertion. It now shrinks PATH to the launchd four BEFORE opening the session and requires the shell to echo back a PATH containing `/usr/local/bin` — a dir only path_helper, i.e. only a login shell, can restore. **Not covered:** shells outside the recognised list, and the startup COST — a real `~/.zshrc` takes seconds, which is why the deadlines are 30s and a slow rc will look like a slow terminal |
 | 134 | repo.rs:11 | No frozen spinner; prompts fail fast; argv validated at parse | ✅ 4 lib tests + `repo_clone_check` |
 | 135 | repo.rs:756 | Clone refuses existing dir; submodules never processed | ✅ lib test |
 | 136 | repo.rs:1157 | Never merge/rebase/force for the user; `--prune-tags` never | ✅ 2 lib tests + `repo_git_ops_check` |
@@ -605,7 +606,7 @@ import-graph lint #163 closed; the FrankenPHP read-only picker #333; the
 mid-dump-kill server-side leg #116 closed; the resolver-drift banner #334; the
 delete-kill ordering #190 closed; #103's Apache/FrankenPHP legs; the fpm
 candidate isolation #104/#191; the manifest sweep #335):
-**✅ 337 · ◐ 56 · 🔨 24 · 🚫 5** of 422 rows, plus 12 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365).
+**✅ 338 · ◐ 56 · 🔨 24 · 🚫 5** of 423 rows, plus 12 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365).
 Recomputed mechanically with the one-liner above. The working backlog = every 🔨
 row + the noted half of every ◐ row, ranked below.
 

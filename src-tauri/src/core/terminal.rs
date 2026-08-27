@@ -48,6 +48,17 @@ impl TerminalSession {
 
         let new_path = prepend_path(&cfg.path_prepend);
         let mut cmd = CommandBuilder::new(&cfg.shell);
+        // LOGIN shell. A GUI app is launched by launchd, so its PATH is the bare
+        // `/usr/bin:/bin:/usr/sbin:/sbin` — and a non-login zsh reads only
+        // ~/.zshrc, never /etc/zprofile (path_helper → /etc/paths, /etc/paths.d)
+        // nor ~/.zprofile (`brew shellenv`). That is where /usr/local/bin and
+        // /opt/homebrew/bin come from, so without `-l` everything the developer
+        // installed — `code`, `rex`, `git` from brew, nvm shims — is "command not
+        // found" in our terminal while working fine in Terminal.app (which runs
+        // `login -pf`). Unknown shells get no flag: a bad flag fails the spawn.
+        for a in login_args(&cfg.shell) {
+            cmd.arg(a);
+        }
         cmd.cwd(&cfg.cwd);
         // Inherit the full parent environment, then override PATH + TERM.
         for (k, v) in std::env::vars() {
@@ -128,6 +139,18 @@ impl Drop for TerminalSession {
     }
 }
 
+/// Flags that make `shell` a LOGIN shell, by shell family. Empty for anything we
+/// do not recognise — an unknown shell handed an unknown flag would fail to spawn
+/// (or worse, treat it as a script), and a terminal that opens with a short PATH
+/// beats a terminal that does not open.
+fn login_args(shell: &str) -> &'static [&'static str] {
+    let name = Path::new(shell).file_name().and_then(|n| n.to_str()).unwrap_or("");
+    match name {
+        "zsh" | "bash" | "sh" | "ksh" | "dash" | "fish" | "csh" | "tcsh" => &["-l"],
+        _ => &[],
+    }
+}
+
 /// Build the `PATH` env value with our dirs prepended to the current `PATH`.
 fn prepend_path(dirs: &[PathBuf]) -> String {
     let current = std::env::var("PATH").unwrap_or_default();
@@ -189,6 +212,19 @@ mod tests {
         // The four chars active inside "…" are neutralized so a crafted dir
         // couldn't break the export (B16).
         assert_eq!(dq_escape(r#"/x/a"b$c`d\e"#), r#"/x/a\"b\$c\`d\\e"#);
+    }
+
+    #[test]
+    fn known_shells_are_launched_as_login_shells() {
+        // The whole point: without `-l` the shell never reads /etc/zprofile
+        // (path_helper) or ~/.zprofile (brew shellenv), so a GUI-launched app's
+        // bare launchd PATH is all the terminal ever sees.
+        for s in ["/bin/zsh", "/bin/bash", "/opt/homebrew/bin/fish", "/bin/sh"] {
+            assert_eq!(login_args(s), &["-l"], "{s} must be a login shell");
+        }
+        // Unrecognised shells get no flag rather than a guessed one.
+        assert!(login_args("/usr/local/bin/nu").is_empty());
+        assert!(login_args("").is_empty());
     }
 
     #[test]
