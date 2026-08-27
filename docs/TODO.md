@@ -49,9 +49,45 @@ paying for anyway: **the tick belongs in the commit that does the work.**
   **What it cost**: the wrong half of that scope note had been sitting in the module doc
   since the feature shipped, as a claim nobody had run — the row it now carries in the
   ledger says FALSE-until-dated rather than "unproven", because that is what it was.
-  - [ ] The SUBDOMAIN half of the same note is still unrun. One pinned `--http-host-header`
-    cannot reach a subdomain sub-site, so "main site only" is probably true by
-    construction — but it is written as a fact and has never been measured.
+  - [x] The SUBDOMAIN half of the same note — RUN 27 Aug 2026, and it found a second bug.
+    "Main site only" is TRUE and now measured: through the tunnel the network's sites list
+    renders the sub-site as `s1.msd.rex`, a host no public visitor can resolve and the one
+    pinned `--http-host-header` can never carry. The rewrite correctly leaves it alone (the
+    `(?![A-Za-z0-9.-])` boundary means `https://msd.rex` never matches inside
+    `https://s1.msd.rex`). What was NOT true is that the main site is usable.
+
+- [ ] **A SUBDOMAIN multisite cannot be logged into through a tunnel at all** — found
+  27 Aug 2026, NOT fixed. Pages serve fine logged-out (200, no local-host leaks), but every
+  auth cookie comes back `domain=.msd.rex` while the visitor is on `*.trycloudflare.com`,
+  so the browser drops all of them and wp-login answers **"Cookies are blocked or not
+  supported by your browser."** Cause: WP core's `ms_cookie_constants()` pins
+  `COOKIE_DOMAIN` to `.<network domain>` on a subdomain install, and it runs in
+  wp-settings.php long BEFORE mu-plugins load — so `rexenv-tunnel.php` structurally cannot
+  reach it. This is the difference between the two network types, and it is why the
+  subdirectory network worked: there `COOKIE_DOMAIN` is never defined, so cookies are
+  host-only and follow the visitor's host for free.
+  - **Cause and cure both verified on a scratch site** (`msd.rex`, hand-edited wp-config,
+    reverted state noted below): gating `define('COOKIE_DOMAIN', '')` on the same CF header
+    set the tunnel mu-plugin uses turned the login from "Cookies are blocked" into
+    302 → `/wp-admin/` → **"Dashboard ‹ MSD"**. Local requests were re-checked in the same
+    run and are untouched: cookie still `domain=.msd.rex`, local login 200, and
+    cross-subdomain SSO to `s1.msd.rex/wp-admin/` still 200.
+  - **Open question is WHERE it belongs, and that is a design call, not a typo fix.**
+    The constant must be defined before wp-settings, so wp-config is the only seat — which
+    means the generated wp-config gains a request-time conditional, for every subdomain
+    network, whether or not it is ever shared. The alternative (rewrite wp-config on tunnel
+    start/stop) keeps the file inert but adds a second thing that edits wp-config and can
+    be left behind by a crash — the exact failure the mu-plugin's lifetime rule already
+    exists to bound.
+
+- [ ] **A public tunnel for `mstest.rex` was running that this session never started**
+  (observed 27 Aug 2026, ~07:20). Two `rex tunnel list` calls ~15 min apart: the first said
+  "no public tunnels running" after an explicit stop, the second showed `mstest.rex` on a
+  URL nothing in this session had printed. Stopped it; `tunnels` table is empty and no
+  cloudflared survives, so there is nothing to inspect. `rexenv.log` has no tunnel line
+  since 21 Aug, which is itself the finding worth keeping: **a share starting is not
+  logged, so a stray share leaves no trail to read.** No repro — recorded because a public
+  share appearing unbidden is the one class of bug that must not be smoothed over.
 
 - [x] **`frankenphp_edge_serve`: the edge it starts has never been PROVEN to answer —
   DIAGNOSED AND CLOSED 21 Aug 2026, and the cause was not the edge.** Four leaked

@@ -1049,7 +1049,12 @@ IPC surface — which is how a reader ends up designing against a system with on
   siteurl is `https://<local>/sub1`, and returning the bare origin dropped that
   path — the sub-site's front page 404'd and logging in at `/sub1/wp-login.php`
   landed on the MAIN site's dashboard, because `admin_url()` had lost the `/sub1`
-  (found and fixed 26 Aug 2026, live through a quick tunnel).
+  (found and fixed 26 Aug 2026, live through a quick tunnel). A **subdomain** network is a
+  different story and the scope note above understates it: sharing one serves pages but
+  cannot be LOGGED INTO, because WP pins `COOKIE_DOMAIN` to `.<network domain>` in
+  `ms_cookie_constants()` — before mu-plugins load, so nothing here can reach it — and the
+  browser drops every auth cookie as cross-domain (measured 27 Aug 2026; open row in
+  `docs/TODO.md`).
   - **Tunnels DIE WITH THE APP** (ruled 28 Jul 2026 — the deliberate opposite of
     services-outlive-the-app: a public share must not outlive the thing supervising
     it). The v23 `tunnels` row is claimed atomically BEFORE spawn (the row IS the
