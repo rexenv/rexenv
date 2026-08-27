@@ -2849,6 +2849,7 @@ mod tests {
             git_ref: None,
             git_migrate: None,
             git_build_assets: None,
+            starter_db: None,
         };
 
         let sites = vec![

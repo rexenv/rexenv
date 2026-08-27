@@ -600,6 +600,19 @@ const MIGRATIONS: &[&str] = &[
     // Existing rows default to 0: every grant written before this column
     // existed came from a click, because auto-allow did not exist.
     "ALTER TABLE agent_db_grants ADD COLUMN auto_granted INTEGER NOT NULL DEFAULT 0;",
+    // v41 — did the user ask a Blank-PHP site for a starter database?
+    //
+    // A USER INTENT, recorded at the insert, and deliberately NOT folded into
+    // `db_created`: that column is provenance ("we made this database, so we
+    // may drop it"), written by the job AFTER the fact. Intent has to survive
+    // a job that died before the database existed, because Retry reads the row
+    // and nothing else remembers what the dialog was asked for — the same
+    // reason `git_migrate` (v34) is a column rather than a runtime argument.
+    //
+    // NULL = the question does not apply (WordPress, Laravel, a linked or
+    // cloned docroot) or predates the column — read as NO via
+    // `Site::has_starter_db`.
+    "ALTER TABLE sites ADD COLUMN starter_db INTEGER;",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.

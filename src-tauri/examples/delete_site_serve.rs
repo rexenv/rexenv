@@ -28,6 +28,7 @@ fn new_site(name: &str, domain: &str) -> NewSite {
             git_ref: None,
             git_migrate: true,
             git_build_assets: false,
+            starter_db: false,
     }
 }
 

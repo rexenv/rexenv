@@ -266,6 +266,20 @@ pub struct Site {
     /// Read through [`Site::builds_assets`].
     #[serde(default)]
     pub git_build_assets: Option<bool>,
+    /// Did the user ask this Blank-PHP site for a starter database (v41)?
+    ///
+    /// Intent, not provenance — [`Site::db_created`] answers "may we drop it",
+    /// this answers "was one asked for". They are written at different times by
+    /// different actors (this at the insert, by the dialog's answer; that by
+    /// the job, after `CREATE DATABASE`), so one column could not carry both
+    /// without lying during the window between them — which is exactly the
+    /// window a failed job leaves a user sitting in, holding Retry.
+    ///
+    /// `None` = the question does not apply (WordPress and Laravel always need
+    /// one; a linked or cloned docroot is never seeded) or the row predates the
+    /// column. Read through [`Site::has_starter_db`], never directly.
+    #[serde(default)]
+    pub starter_db: Option<bool>,
 }
 
 impl Site {
@@ -302,6 +316,13 @@ impl Site {
     /// nobody has to remember which way each one falls.
     pub fn builds_assets(&self) -> bool {
         self.git_build_assets.unwrap_or(false)
+    }
+
+    /// Does provisioning create this site's starter database + seeded table
+    /// (v41)? NULL means NO — exact: before the column, a Blank-PHP site got a
+    /// `phpinfo()` page and no database at all.
+    pub fn has_starter_db(&self) -> bool {
+        self.starter_db.unwrap_or(false)
     }
 
     /// The recorded content dir relative to the docroot, defaulting to WP's
@@ -382,6 +403,7 @@ pub(crate) fn test_site(id: &str, domain: &str, origin: SiteOrigin) -> Site {
         git_ref: None,
         git_migrate: None,
         git_build_assets: None,
+        starter_db: None,
     }
 }
 
@@ -610,6 +632,15 @@ pub struct NewSite {
     /// rexenv run a package manager's install scripts.
     #[serde(default)]
     pub git_build_assets: bool,
+    /// Create a starter database + seeded table for a Blank-PHP site, and point
+    /// its generated page at them (v41). Only meaningful for a Php site whose
+    /// docroot rexenv creates and does not clone into — a linked folder is the
+    /// user's, and a clone brings its own code.
+    ///
+    /// Defaults FALSE so a caller that never heard of this field (the CLI, an
+    /// agent, an older blueprint) cannot make rexenv boot a database engine.
+    #[serde(default)]
+    pub starter_db: bool,
 }
 
 fn db_engine_mysql() -> SiteDbEngine {
@@ -653,6 +684,7 @@ mod tests {
             git_ref: None,
             git_migrate: None,
             git_build_assets: None,
+            starter_db: None,
         }
     }
 

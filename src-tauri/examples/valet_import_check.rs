@@ -132,6 +132,7 @@ async fn main() {
             git_ref: None,
             git_migrate: true,
             git_build_assets: false,
+            starter_db: false,
         },
     )
     .expect("provision the linked site");

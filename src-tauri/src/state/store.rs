@@ -28,7 +28,7 @@ use rusqlite::{params, Connection, Row};
 const SITE_COLUMNS: &str = "id, name, domain, type, status, php_version, web_server, ssl, path, \
      created_at, multisite, db_name, db_engine, xdebug, override_port, provisioned, \
      docroot_managed, db_created, content_dir, mu_dir_created, origin, agent_client, expires_at, \
-     docroot_subdir, git_url, git_ref, git_migrate, git_build_assets";
+     docroot_subdir, git_url, git_ref, git_migrate, git_build_assets, starter_db";
 
 /// Bound on the AGENT-controlled `agent_client` (v27). It arrives from MCP
 /// `initialize`'s `clientInfo.name`, bounded only by the session's 4 MB line
@@ -105,6 +105,9 @@ fn row_to_site(row: &Row) -> rusqlite::Result<Site> {
         // v35: NULL = NO — exact, since nothing ran a package manager during
         // provisioning before this column. Read via `Site::builds_assets`.
         git_build_assets: row.get::<_, Option<i64>>(27)?.map(|v| v != 0),
+        // v41: NULL = NO — exact, since a Blank-PHP site got a `phpinfo()` page
+        // and no database before this column. Read via `Site::has_starter_db`.
+        starter_db: row.get::<_, Option<i64>>(28)?.map(|v| v != 0),
     })
 }
 
@@ -118,8 +121,8 @@ fn to_sqlite_err(e: crate::error::Error) -> rusqlite::Error {
 pub fn insert_site(conn: &Connection, site: &Site) -> Result<()> {
     conn.execute(
         "INSERT INTO sites
-            (id, name, domain, type, status, php_version, web_server, ssl, path, created_at, multisite, db_name, db_engine, xdebug, override_port, provisioned, docroot_managed, db_created, content_dir, mu_dir_created, origin, agent_client, expires_at, docroot_subdir, git_url, git_ref, git_migrate, git_build_assets)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28)",
+            (id, name, domain, type, status, php_version, web_server, ssl, path, created_at, multisite, db_name, db_engine, xdebug, override_port, provisioned, docroot_managed, db_created, content_dir, mu_dir_created, origin, agent_client, expires_at, docroot_subdir, git_url, git_ref, git_migrate, git_build_assets, starter_db)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29)",
         params![
             site.id,
             site.name,
@@ -151,6 +154,7 @@ pub fn insert_site(conn: &Connection, site: &Site) -> Result<()> {
             site.git_ref,
             site.git_migrate.map(|m| m as i64),
             site.git_build_assets.map(|b| b as i64),
+            site.starter_db.map(|b| b as i64),
         ],
     )?;
     Ok(())
@@ -1907,6 +1911,7 @@ has never heard of cannot pass unread.";
             git_ref: None,
             git_migrate: None,
             git_build_assets: None,
+            starter_db: None,
         }
     }
 
@@ -1927,6 +1932,34 @@ has never heard of cannot pass unread.";
         assert_eq!(back.domain, "probe.scratch.rex");
         assert_eq!(back.docroot_managed, Some(true));
         assert_eq!(back.mu_dir_created, None);
+    }
+
+    /// v41 is now the LAST column of the three coupled lists (SITE_COLUMNS,
+    /// row_to_site's indices, insert_site's params), so the off-by-one that
+    /// used to land on `git_build_assets` now lands here. Round-tripped in all
+    /// three states because they are three DIFFERENT answers: yes, no, and
+    /// "the question does not apply to this site".
+    #[test]
+    fn v41_starter_db_round_trips_through_the_row_mapping() {
+        let conn = db::open_in_memory().unwrap();
+        for (id, want) in
+            [("s-yes", Some(true)), ("s-no", Some(false)), ("s-na", None)]
+        {
+            let site = Site {
+                id: id.into(),
+                domain: format!("{id}.rex"),
+                site_type: SiteType::Php,
+                starter_db: want,
+                ..scratch(None)
+            };
+            insert_site(&conn, &site).unwrap();
+            let back = get_site(&conn, id).unwrap().unwrap();
+            assert_eq!(back.starter_db, want, "{id}");
+            assert_eq!(back.has_starter_db(), want.unwrap_or(false), "{id}");
+            // The neighbour: an index slip past the end of the row would take
+            // this column's value from the one before it.
+            assert_eq!(back.git_build_assets, None, "{id}");
+        }
     }
 
     /// v33 is the SECOND pair appended to the three coupled lists (SITE_COLUMNS,

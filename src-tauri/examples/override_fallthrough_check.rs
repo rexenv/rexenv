@@ -66,6 +66,7 @@ async fn main() {
                 git_ref: None,
                 git_migrate: false,
                 git_build_assets: false,
+                starter_db: false,
             },
         )
         .unwrap_or_else(|e| panic!("provision {domain}: {e}"));

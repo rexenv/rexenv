@@ -524,6 +524,12 @@ fn create_recording_ownership(
         // unconditional yes those paths have always had.
         git_migrate: git.as_ref().map(|_| new.git_migrate),
         git_build_assets: git.as_ref().map(|_| new.git_build_assets),
+        // Recorded only where the question was ASKED (v41): a Blank-PHP site
+        // whose docroot rexenv creates and does not clone into. Everywhere else
+        // NULL is the honest "nobody was asked" — a linked folder is the user's
+        // to fill and a clone brings its own code, so neither is ever seeded.
+        starter_db: (new.site_type == SiteType::Php && docroot_managed && git.is_none())
+            .then_some(new.starter_db),
     };
     store::insert_site(conn, &site)?;
     Ok(site)
@@ -2283,6 +2289,7 @@ mod tests {
             git_ref: None,
             git_migrate: true,
             git_build_assets: false,
+            starter_db: false,
         }
     }
 
@@ -2789,6 +2796,7 @@ mod tests {
             git_ref: None,
             git_migrate: None,
             git_build_assets: None,
+            starter_db: None,
         }
     }
 
@@ -3044,6 +3052,7 @@ mod tests {
             git_ref: None,
             git_migrate: None,
             git_build_assets: None,
+            starter_db: None,
         }
     }
 
@@ -3102,6 +3111,7 @@ mod tests {
                 git_ref: None,
                 git_migrate: true,
                 git_build_assets: false,
+                starter_db: false,
             },
         )
         .unwrap();

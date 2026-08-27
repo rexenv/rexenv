@@ -66,6 +66,7 @@ async fn main() -> std::process::ExitCode {
             git_ref: None,
             git_migrate: true,
             git_build_assets: false,
+            starter_db: false,
     }).expect("provision");
 
     let mut mgr = ServiceManager::with_ports(Ports { http: 8080, https: CADDY_HTTPS, nginx: services::NGINX_HTTP_PORT });

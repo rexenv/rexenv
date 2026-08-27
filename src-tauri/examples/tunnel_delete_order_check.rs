@@ -79,6 +79,7 @@ async fn main() -> std::process::ExitCode {
             git_ref: None,
             git_migrate: true,
             git_build_assets: false,
+            starter_db: false,
         },
     )
     .expect("provision the fixture site");

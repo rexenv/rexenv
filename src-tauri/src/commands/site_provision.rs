@@ -2360,6 +2360,7 @@ mod tests {
             git_ref: None,
             git_migrate: true,
             git_build_assets: false,
+            starter_db: false,
         };
         let out = start(&app.handle().clone(), &state, &jobs, new, None, None, ownership);
         let calls = recorder.calls.lock().unwrap().clone();

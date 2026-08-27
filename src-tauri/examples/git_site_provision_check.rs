@@ -158,6 +158,7 @@ async fn main() -> std::process::ExitCode {
         // design — proving that needs a machine WITHOUT node, which is a
         // SMOKE-TEST item, not something to make every run of this depend on.
         git_build_assets: false,
+        starter_db: false,
     };
 
     let collect = |id: &str| {

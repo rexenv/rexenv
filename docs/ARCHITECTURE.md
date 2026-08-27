@@ -440,7 +440,7 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
 
 ## 8. Data & app state
 
-- **SQLite for all app state** (`state/db.rs`), `user_version` migrations, currently 40:
+- **SQLite for all app state** (`state/db.rs`), `user_version` migrations, currently 41:
   v1 `sites` + `settings` · v2 `php_versions` registry · v3 `sites.multisite` ·
   v4 `blueprints` (JSON `spec`) · v5 `php_settings` · v6 `sites.db_name` (stored, never
   re-derived) · v7 `site_env` · v8/v9 `default_tld` seed + `.rex` flip ·
@@ -477,7 +477,11 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   `revoked_at` instead of DELETE so a revoked grant stays as evidence of what an
   agent could see and until when) · v39 the grants index · v40 `agent_db_grants.auto_granted` (did a PERSON click
   Allow, or did auto-allow answer? Recorded, because auto-allow is session-scoped and will
-  usually be off by the time anyone reads the list).
+  usually be off by the time anyone reads the list). · v41 `sites.starter_db` (did a
+  Blank-PHP site ask for a starter database? INTENT, written at the insert, beside
+  v19's `db_created` PROVENANCE, written by the job after `CREATE DATABASE` — one
+  column could not hold both without lying in the window a failed job leaves the
+  user sitting in, holding Retry).
   Per-engine DB versions are settings-KV rows (`db_version_<engine>`), not a migration.
   *(This list read "currently 25" for eight migrations — restored 11 Aug 2026.
   A count is the one part of a list that goes wrong silently, so check it

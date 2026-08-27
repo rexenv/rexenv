@@ -906,6 +906,10 @@ fn create_site<'a>(
             git_ref: None,
             git_migrate: true,
             git_build_assets: false,
+            // Scratch sites are WordPress; the field is Blank-PHP's and would
+            // be recorded NULL anyway. Stated rather than defaulted so the
+            // agent path never acquires one by someone flipping the default.
+            starter_db: false,
         };
         let site = ctx.create(new, Ownership::Agent { client, ttl_hours: crate::core::sites::SCRATCH_TTL_HOURS }, acted).await?;
         // Stamp the new site's mail NOW if the sub-toggle is on.

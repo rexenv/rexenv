@@ -94,6 +94,7 @@ async fn main() {
             git_ref: None,
             git_migrate: true,
             git_build_assets: false,
+            starter_db: false,
     }).expect("provision ng");
     let fp = sites::provision(&conn, &*plat, &ca, NewSite {
         name: "FP".into(), domain: "fp.test".into(), site_type: SiteType::Php,
@@ -103,6 +104,7 @@ async fn main() {
             git_ref: None,
             git_migrate: true,
             git_build_assets: false,
+            starter_db: false,
     }).expect("provision fp");
     let _ = &ng;
 

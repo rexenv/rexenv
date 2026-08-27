@@ -873,6 +873,9 @@ async fn import_one<R: tauri::Runtime>(
         git_ref: None,
         git_migrate: true,
         git_build_assets: false,
+        // An import LINKS the developer's own folder; writing a starter page
+        // and a database into it is the one thing import must never do.
+        starter_db: false,
     };
     let snap = match crate::commands::site_provision::start(
         app,

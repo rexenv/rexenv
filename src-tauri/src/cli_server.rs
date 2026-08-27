@@ -420,6 +420,10 @@ where
                 git_ref: None,
                 git_migrate: true,
                 git_build_assets: false,
+                // `rex site create` has no starter-database flag yet — the
+                // dialog is the only caller that asks. False keeps the CLI's
+                // blank site exactly what it has always been: files, no engine.
+                starter_db: false,
             };
             let blueprint_id = match &a.blueprint {
                 None => None,
