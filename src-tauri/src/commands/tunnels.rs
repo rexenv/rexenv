@@ -690,6 +690,22 @@ pub async fn start_tunnel<R: tauri::Runtime>(
     // any device through the tunnel — not just on this machine (§9.2). Sharing
     // without it is broken enough that a write failure fails the start.
     if site.site_type == SiteType::Wordpress {
+        // A SUBDOMAIN network needs one more thing, and it cannot live in the
+        // mu-plugin: COOKIE_DOMAIN is pinned before mu-plugins load, so without
+        // this the share serves pages and refuses every login. No-op for every
+        // other site, and written once (see `ensure_subdomain_cookie_scope`).
+        if let Err(e) = wp_tunnel::ensure_subdomain_cookie_scope(
+            Path::new(&site.path),
+            site.content_dir_rel(),
+        ) {
+            let _ = tunnels::stop(state.platform.as_ref(), child.id());
+            let mut c = child;
+            let _ = c.wait();
+            delete_tunnel_row(&state, &domain);
+            return Err(Error::Other(format!(
+                "tunnel started but this subdomain network could not be made loginable: {e}"
+            )));
+        }
         match wp_tunnel::enable(Path::new(&site.path), site.content_dir_rel(), &url) {
             Ok(created_dir) => {
                 if created_dir {

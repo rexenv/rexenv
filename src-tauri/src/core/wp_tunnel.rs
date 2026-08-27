@@ -151,6 +151,110 @@ call_user_func(static function () {
 
 use crate::core::sites::CONTENT_DIR_LAYOUTS;
 
+/// Marker pair around the wp-config block below. The BEGIN line is also how a
+/// second write recognises its own work — the block is written once and never
+/// rewritten.
+const COOKIE_SCOPE_BEGIN: &str = "// BEGIN rexenv: tunnel cookie scope";
+const COOKIE_SCOPE_END: &str = "// END rexenv: tunnel cookie scope";
+
+/// The wp-config block. `__REXENV_MU_REL__` is the mu-plugin's path relative to
+/// the wp-config file.
+const COOKIE_SCOPE_TEMPLATE: &str = r#"// BEGIN rexenv: tunnel cookie scope — auto-added by rexenv, safe to keep.
+// On a SUBDOMAIN network WP core pins COOKIE_DOMAIN to '.<network domain>' in
+// ms_cookie_constants(), and that runs inside wp-settings.php — BEFORE mu-plugins
+// load. So rexenv-tunnel.php structurally cannot reach it, and THIS FILE is the
+// only seat there is. What it cost when nothing sat here (measured 27 Aug 2026,
+// real quick tunnel): the shared network served pages fine logged-out, and could
+// not be logged into AT ALL — every auth cookie came back `domain=.<network>`
+// while the visitor was on <random>.trycloudflare.com, the browser dropped all of
+// them, and wp-login answered "Cookies are blocked or not supported by your
+// browser." An empty COOKIE_DOMAIN makes those cookies host-only: scoped to
+// whatever host the visitor actually typed. A subdirectory network never needed
+// this — there COOKIE_DOMAIN is simply never defined.
+//
+// TWO conditions, deliberately, and the second is the load-bearing one: the
+// Cloudflare header set says the request came through a tunnel, and the
+// mu-plugin's presence says the share is LIVE and is rexenv's (that file exists
+// only while a tunnel runs). On the header alone, this block copied to a real
+// Cloudflare-fronted production network would silently break cross-subdomain SSO
+// there — the failure would look like "users get logged out on subsites", miles
+// from anything mentioning rexenv.
+if ( ( ! empty( $_SERVER['HTTP_CF_RAY'] ) || ! empty( $_SERVER['HTTP_CF_CONNECTING_IP'] ) )
+	&& file_exists( __DIR__ . '/__REXENV_MU_REL__' ) ) {
+	define( 'COOKIE_DOMAIN', '' );
+}
+// END rexenv: tunnel cookie scope
+"#;
+
+/// Anchors we may insert the block before, best first. Every one of them sits
+/// ahead of the `wp-settings.php` require, which is the only property that
+/// matters: after that line the constant is too late to define.
+const COOKIE_SCOPE_ANCHORS: [&str; 2] =
+    ["/* That's all, stop editing!", "require_once ABSPATH . 'wp-settings.php'"];
+
+/// Is this wp-config a SUBDOMAIN multisite? Read from the file WP-CLI wrote,
+/// never inferred from the site record — `wp core multisite-convert` owns these
+/// constants, and a record that drifted from them would send the block to a
+/// network that does not need it (or worse, skip one that does).
+fn is_subdomain_network(src: &str) -> bool {
+    let squeezed: String = src.chars().filter(|c| !c.is_whitespace()).collect();
+    squeezed.contains("define('MULTISITE',true)")
+        && squeezed.contains("define('SUBDOMAIN_INSTALL',true)")
+}
+
+/// Give a SUBDOMAIN network's auth cookies a chance to survive the tunnel.
+///
+/// Idempotent and **permanent**: written once at tunnel start, never removed.
+/// Removal is the dangerous direction — a half-applied edit to wp-config takes
+/// the whole site down, while a leftover block is inert (its second condition
+/// is a file that exists only while a share is live). Non-subdomain sites and
+/// files that already carry the block are left byte-identical.
+///
+/// Returns whether the file was written.
+pub fn ensure_subdomain_cookie_scope(docroot: &Path, content_rel: &str) -> Result<bool> {
+    let path = docroot.join("wp-config.php");
+    let Ok(src) = std::fs::read_to_string(&path) else {
+        // No wp-config (Bedrock keeps its config elsewhere, or this is not a
+        // WP docroot at all): nothing this function can safely edit.
+        return Ok(false);
+    };
+    if !is_subdomain_network(&src) || src.contains(COOKIE_SCOPE_BEGIN) {
+        return Ok(false);
+    }
+    if !CONTENT_DIR_LAYOUTS.contains(&content_rel) {
+        return Err(Error::Other(format!(
+            "refusing to write a cookie-scope block for an unknown content dir: {content_rel}"
+        )));
+    }
+    let mu_rel = format!("{content_rel}/mu-plugins/rexenv-tunnel.php");
+    let block = COOKIE_SCOPE_TEMPLATE.replace("__REXENV_MU_REL__", &mu_rel);
+    // The delimiters are the block's only bounds. Nothing removes it today, and
+    // this check is why: whoever writes that remover will be deleting a range
+    // out of the file that decides whether the site boots, so an unterminated
+    // block must never reach the disk in the first place.
+    if !block.contains(COOKIE_SCOPE_BEGIN) || !block.contains(COOKIE_SCOPE_END) {
+        return Err(Error::Other("cookie-scope block lost a delimiter — refusing to write".into()));
+    }
+
+    let at = COOKIE_SCOPE_ANCHORS.iter().find_map(|a| src.find(a)).ok_or_else(|| {
+        // Loud, not silent: without the block a subdomain share cannot be
+        // logged into, so "shared anyway" would be the worse outcome.
+        Error::Other(format!(
+            "wp-config.php has no anchor to insert the tunnel cookie-scope block before \
+             (looked for {:?}); a subdomain network cannot be logged into through a tunnel \
+             without it — add the block by hand or share a subdirectory network instead",
+            COOKIE_SCOPE_ANCHORS
+        ))
+    })?;
+    let mut out = String::with_capacity(src.len() + block.len() + 1);
+    out.push_str(&src[..at]);
+    out.push_str(&block);
+    out.push('\n');
+    out.push_str(&src[at..]);
+    std::fs::write(&path, out)?;
+    Ok(true)
+}
+
 /// Path of the auto-managed mu-plugin within a docroot. `content_rel` is the
 /// site's RECORDED content dir (`Site::content_dir_rel`, v24) — never derived
 /// here at write time.
@@ -239,6 +343,86 @@ mod tests {
         for needle in ["HTTP_CF_RAY", "HTTP_CF_CONNECTING_IP", "(?![A-Za-z0-9.-])"] {
             assert!(php.contains(needle), "mu-plugin missing guard tripwire: {needle}");
         }
+    }
+
+    const SUBDOMAIN_CONFIG: &str = "<?php\ndefine( 'MULTISITE', true );\n\
+define( 'SUBDOMAIN_INSTALL', true );\n\
+/* That's all, stop editing! */\nrequire_once ABSPATH . 'wp-settings.php';\n";
+
+    /// Throwaway dir, named per test + pid so parallel tests never collide.
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir()
+            .join(format!("rexenv-cookiescope-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn write_config(dir: &std::path::Path, src: &str) -> PathBuf {
+        let p = dir.join("wp-config.php");
+        std::fs::write(&p, src).unwrap();
+        p
+    }
+
+    #[test]
+    fn cookie_scope_lands_before_wp_settings_and_only_once() {
+        let dir = scratch("once");
+        let cfg = write_config(&dir, SUBDOMAIN_CONFIG);
+
+        assert!(ensure_subdomain_cookie_scope(&dir, "wp-content").unwrap());
+        let after = std::fs::read_to_string(&cfg).unwrap();
+        // The ONE property that matters: defined before wp-settings runs.
+        let block = after.find(COOKIE_SCOPE_BEGIN).expect("block written");
+        let end = after.find(COOKIE_SCOPE_END).expect("block closed");
+        // The REQUIRE, not the first mention — the block's own comment names
+        // wp-settings.php, and matching that would pass no matter where the
+        // block landed.
+        let settings =
+            after.find("require_once ABSPATH . 'wp-settings.php'").expect("require kept");
+        assert!(block < end && end < settings, "block must close before wp-settings:\n{after}");
+        assert!(after.contains("wp-content/mu-plugins/rexenv-tunnel.php"));
+
+        // Second call is a no-op — the file stays byte-identical.
+        assert!(!ensure_subdomain_cookie_scope(&dir, "wp-content").unwrap());
+        assert_eq!(std::fs::read_to_string(&cfg).unwrap(), after);
+    }
+
+    #[test]
+    fn cookie_scope_skips_every_config_that_does_not_need_it() {
+        let dir = scratch("skip");
+        // Subdirectory network: COOKIE_DOMAIN is never defined there, so the
+        // block would be noise pretending to be a fix.
+        let subdir =
+            SUBDOMAIN_CONFIG.replace("'SUBDOMAIN_INSTALL', true", "'SUBDOMAIN_INSTALL', false");
+        let cfg = write_config(&dir, &subdir);
+        assert!(!ensure_subdomain_cookie_scope(&dir, "wp-content").unwrap());
+        assert_eq!(std::fs::read_to_string(&cfg).unwrap(), subdir);
+
+        // Single site.
+        write_config(&dir, "<?php\n/* That's all, stop editing! */\n");
+        assert!(!ensure_subdomain_cookie_scope(&dir, "wp-content").unwrap());
+
+        // No wp-config at all (Bedrock keeps its config elsewhere).
+        let empty = scratch("noconfig");
+        assert!(!ensure_subdomain_cookie_scope(&empty, "wp-content").unwrap());
+    }
+
+    #[test]
+    fn cookie_scope_refuses_loudly_rather_than_sharing_a_network_nobody_can_log_into() {
+        let dir = scratch("loud");
+        // A wp-config with no anchor ahead of wp-settings: writing the block
+        // anywhere else would be too late, so the start must FAIL instead of
+        // handing out a public URL that refuses every login.
+        write_config(
+            &dir,
+            "<?php\ndefine( 'MULTISITE', true );\ndefine( 'SUBDOMAIN_INSTALL', true );\n",
+        );
+        let err = ensure_subdomain_cookie_scope(&dir, "wp-content").unwrap_err();
+        assert!(format!("{err}").contains("cannot be logged into"), "{err}");
+
+        // An unrecorded content dir is never interpolated into PHP.
+        write_config(&dir, SUBDOMAIN_CONFIG);
+        assert!(ensure_subdomain_cookie_scope(&dir, "../etc").is_err());
     }
 
     #[test]

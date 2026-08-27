@@ -56,29 +56,30 @@ paying for anyway: **the tick belongs in the commit that does the work.**
     `(?![A-Za-z0-9.-])` boundary means `https://msd.rex` never matches inside
     `https://s1.msd.rex`). What was NOT true is that the main site is usable.
 
-- [ ] **A SUBDOMAIN multisite cannot be logged into through a tunnel at all** — found
-  27 Aug 2026, NOT fixed. Pages serve fine logged-out (200, no local-host leaks), but every
-  auth cookie comes back `domain=.msd.rex` while the visitor is on `*.trycloudflare.com`,
-  so the browser drops all of them and wp-login answers **"Cookies are blocked or not
-  supported by your browser."** Cause: WP core's `ms_cookie_constants()` pins
-  `COOKIE_DOMAIN` to `.<network domain>` on a subdomain install, and it runs in
-  wp-settings.php long BEFORE mu-plugins load — so `rexenv-tunnel.php` structurally cannot
-  reach it. This is the difference between the two network types, and it is why the
-  subdirectory network worked: there `COOKIE_DOMAIN` is never defined, so cookies are
-  host-only and follow the visitor's host for free.
-  - **Cause and cure both verified on a scratch site** (`msd.rex`, hand-edited wp-config,
-    reverted state noted below): gating `define('COOKIE_DOMAIN', '')` on the same CF header
-    set the tunnel mu-plugin uses turned the login from "Cookies are blocked" into
-    302 → `/wp-admin/` → **"Dashboard ‹ MSD"**. Local requests were re-checked in the same
-    run and are untouched: cookie still `domain=.msd.rex`, local login 200, and
-    cross-subdomain SSO to `s1.msd.rex/wp-admin/` still 200.
-  - **Open question is WHERE it belongs, and that is a design call, not a typo fix.**
-    The constant must be defined before wp-settings, so wp-config is the only seat — which
-    means the generated wp-config gains a request-time conditional, for every subdomain
-    network, whether or not it is ever shared. The alternative (rewrite wp-config on tunnel
-    start/stop) keeps the file inert but adds a second thing that edits wp-config and can
-    be left behind by a crash — the exact failure the mu-plugin's lifetime rule already
-    exists to bound.
+- [x] **A SUBDOMAIN multisite could not be logged into through a tunnel at all** ✓ found
+  AND fixed 27 Aug 2026 — ledger #415–#417, `core/wp_tunnel.rs`. Pages served fine
+  logged-out, but every auth cookie came back `domain=.msd.rex` while the visitor was on
+  `*.trycloudflare.com`, so the browser dropped all of them and wp-login answered
+  **"Cookies are blocked or not supported by your browser."** WP core pins `COOKIE_DOMAIN`
+  in `ms_cookie_constants()`, inside wp-settings.php — BEFORE mu-plugins load, so
+  `rexenv-tunnel.php` structurally could not reach it. This is exactly why the
+  subdirectory network worked: there the constant is never defined and cookies are
+  host-only for free.
+  - **Seat: wp-config, written at tunnel start, never removed.** It is the only file early
+    enough. Two conditions guard it — the CF header set AND the presence of the tunnel
+    mu-plugin, a file that exists only while a share is live. The second one is not
+    belt-and-braces: on the header alone, a wp-config copied to a Cloudflare-fronted
+    production network would empty the constant THERE and break cross-subdomain SSO, and
+    the symptom ("users get logged out on subsites") points nowhere near rexenv.
+    Permanence is the safe direction too — a leftover block is inert, a half-applied
+    removal from wp-config takes the whole site down.
+  - **Evidence**: all four CF×live-share combinations under the REAL bundled PHP
+    (`tunnel_muplugin_check` leg 4); three unit tests for placement, idempotence, the
+    skip set, and the loud refusal when no anchor exists; and a live run through a real
+    quick tunnel — host-only cookies, 302 → `/wp-admin/`, **"Dashboard ‹ MSD"** in curl
+    and in real Chrome. The same run re-checked the local network and it was untouched
+    (cookie still `domain=.msd.rex`, local login 200, `s1.msd.rex` SSO 200), and after the
+    share stopped the block was still there and still inert.
 
 - [ ] **A public tunnel for `mstest.rex` was running that this session never started**
   (observed 27 Aug 2026, ~07:20). Two `rex tunnel list` calls ~15 min apart: the first said

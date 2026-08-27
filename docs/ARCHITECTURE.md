@@ -1049,12 +1049,21 @@ IPC surface — which is how a reader ends up designing against a system with on
   siteurl is `https://<local>/sub1`, and returning the bare origin dropped that
   path — the sub-site's front page 404'd and logging in at `/sub1/wp-login.php`
   landed on the MAIN site's dashboard, because `admin_url()` had lost the `/sub1`
-  (found and fixed 26 Aug 2026, live through a quick tunnel). A **subdomain** network is a
-  different story and the scope note above understates it: sharing one serves pages but
-  cannot be LOGGED INTO, because WP pins `COOKIE_DOMAIN` to `.<network domain>` in
-  `ms_cookie_constants()` — before mu-plugins load, so nothing here can reach it — and the
-  browser drops every auth cookie as cross-domain (measured 27 Aug 2026; open row in
-  `docs/TODO.md`).
+  (found and fixed 26 Aug 2026, live through a quick tunnel). A **subdomain** network needs one
+  thing the mu-plugin structurally cannot give it: WP pins `COOKIE_DOMAIN` to
+  `.<network domain>` in `ms_cookie_constants()`, inside wp-settings.php and therefore
+  BEFORE mu-plugins load, so through a tunnel every auth cookie is cross-domain, the
+  browser drops it, and wp-login answers "Cookies are blocked or not supported by your
+  browser" — the share serves pages and refuses every login (measured 27 Aug 2026). So
+  tunnel start also writes a small **wp-config block** (`ensure_subdomain_cookie_scope`),
+  the only seat early enough, which empties `COOKIE_DOMAIN` — but only when BOTH the
+  Cloudflare header set is present AND the tunnel mu-plugin file exists, i.e. only for a
+  request through a share that is live and rexenv's. The second condition is the
+  load-bearing one: on the header alone, a wp-config copied to a Cloudflare-fronted
+  production network would break cross-subdomain SSO there. The block is written once and
+  never removed — inert without a live share, and a half-applied removal from wp-config
+  would take the site down. A subdirectory network never needed it: there `COOKIE_DOMAIN`
+  is simply never defined, so cookies are host-only already.
   - **Tunnels DIE WITH THE APP** (ruled 28 Jul 2026 — the deliberate opposite of
     services-outlive-the-app: a public share must not outlive the thing supervising
     it). The v23 `tunnels` row is claimed atomically BEFORE spawn (the row IS the

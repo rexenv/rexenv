@@ -85,6 +85,24 @@ if ($mode === 'buffer') {
 exit(0);
 "#;
 
+/// Harness for the wp-config cookie-scope block. Includes the generated config
+/// exactly as PHP would and reports what COOKIE_DOMAIN ended up as — the block
+/// is only worth anything if it fires under the real interpreter, in the real
+/// four combinations.
+const CONFIG_HARNESS: &str = r#"<?php
+if (($argv[1] ?? '') === 'cf') {
+    $_SERVER['HTTP_CF_RAY'] = '8f0000000000-EWR';
+}
+require $argv[2];
+echo defined('COOKIE_DOMAIN') ? "COOKIE_DOMAIN=[" . COOKIE_DOMAIN . "]\n" : "COOKIE_DOMAIN=undefined\n";
+"#;
+
+/// The wp-config a subdomain network carries when `ensure_subdomain_cookie_scope`
+/// meets it — the constants WP-CLI writes plus the anchor comment it leaves.
+const SUBDOMAIN_CONFIG: &str = "<?php\ndefine( 'MULTISITE', true );\n\
+define( 'SUBDOMAIN_INSTALL', true );\n\
+/* That's all, stop editing! */\n";
+
 #[tokio::main]
 async fn main() {
     let plat = platform::current();
@@ -150,6 +168,46 @@ async fn main() {
     assert!(out.contains("subhost https://sub.mysite.test/y"), "subhost rewritten!\n{out}");
     assert!(!out.contains("://mysite.test/"), "a local URL survived:\n{out}");
     println!("✓ output buffer: plain / JSON-escaped / %-encoded rewritten; lookalikes kept");
+
+    // 4) The wp-config block: a SUBDOMAIN network's auth cookies survive the
+    //    tunnel only if COOKIE_DOMAIN is emptied BEFORE wp-settings runs, and
+    //    only while the share is rexenv's and live. Four combinations, because
+    //    the second condition is the one a reviewer would be tempted to drop.
+    let cfg_dir = dir.join("subdomain-network");
+    std::fs::create_dir_all(&cfg_dir).unwrap();
+    std::fs::write(cfg_dir.join("wp-config.php"), SUBDOMAIN_CONFIG).unwrap();
+    assert!(
+        wp_tunnel::ensure_subdomain_cookie_scope(&cfg_dir, "wp-content").expect("cookie scope"),
+        "block written"
+    );
+    let config = cfg_dir.join("wp-config.php");
+    let cfg_harness = dir.join("config-harness.php");
+    std::fs::write(&cfg_harness, CONFIG_HARNESS).unwrap();
+    let lint = std::process::Command::new(&php).arg("-l").arg(&config).output().unwrap();
+    assert!(lint.status.success(), "wp-config php -l failed: {}", String::from_utf8_lossy(&lint.stderr));
+
+    let mu = cfg_dir.join("wp-content/mu-plugins/rexenv-tunnel.php");
+    let run_cfg = |mode: &str| {
+        let out = std::process::Command::new(&php)
+            .arg(&cfg_harness)
+            .arg(mode)
+            .arg(&config)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "config harness failed: {}", String::from_utf8_lossy(&out.stderr));
+        String::from_utf8_lossy(&out.stdout).to_string()
+    };
+    // No share live yet: a CF-marked request must NOT empty the constant, or a
+    // wp-config copied to a Cloudflare-fronted production network would break
+    // cross-subdomain SSO there.
+    assert!(run_cfg("cf").contains("COOKIE_DOMAIN=undefined"), "no live share, yet it fired");
+    assert!(run_cfg("local").contains("COOKIE_DOMAIN=undefined"), "local request fired it");
+    // Share live.
+    std::fs::create_dir_all(mu.parent().unwrap()).unwrap();
+    std::fs::write(&mu, "<?php // stand-in for a live share\n").unwrap();
+    assert!(run_cfg("local").contains("COOKIE_DOMAIN=undefined"), "local request fired it");
+    assert!(run_cfg("cf").contains("COOKIE_DOMAIN=[]"), "tunnel request did NOT empty COOKIE_DOMAIN");
+    println!("✓ wp-config cookie scope: empty ONLY for a CF request with a live share");
 
     let _ = std::fs::remove_dir_all(&dir);
     println!("\nALL GOOD — tunnel requests get public URLs, local requests stay untouched.");
