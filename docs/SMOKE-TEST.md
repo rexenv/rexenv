@@ -76,6 +76,29 @@ nothing.** The silent case is the one that ships to everybody.
 - [ ] New Site → Laravel / Blank PHP show **no** "Start from blueprint" field
       (blueprints are WordPress-only); WordPress still shows it.
 
+## Core: a Blank PHP site with a starter database (`core/starter.rs`)
+
+`starter_seed_check` proves the seed and the generated files against a real
+engine; what only the packaged app can prove is the DIALOG and the page as a
+browser renders it.
+
+- [ ] **New site → Blank PHP → Database: MySQL** (the default) → Create. The card
+      shows a `db` and a `configure` phase; the first create on a clean Mac
+      downloads the engine, which is exactly what the "None" option avoids.
+- [ ] The site opens on the **rexenv starter page**, not a `phpinfo()` dump: it names
+      the PHP version and web server, and the Sample data card reads **connected**
+      with four seeded rows.
+- [ ] The site folder holds `index.php` **and** `db.php`. Edit `index.php`, reload,
+      and the edit is what you see.
+- [ ] Site → **Database** tab embeds Adminer on that database (it used to say "Blank
+      PHP sites have no database"), and the row's database button is enabled.
+- [ ] **Stop MySQL from Services, reload the page:** the card reads **not connected**
+      and names the engine to start — not a PHP fatal, not a blank page.
+- [ ] **Delete the site** → its database is gone from the Databases screen. A
+      starter database rexenv created is rexenv's to remove.
+- [ ] **New site → Blank PHP → Database: None** → the page loads with the "No
+      database" panel and NO engine download happened.
+
 ## Core: a Laravel site FROM a git repository (`docs/PLAN-git-site-clone.md`)
 
 Only the packaged app can prove this end to end: real event streaming into the
