@@ -59,6 +59,13 @@ ok(apply_rex('option_siteurl', 'https://mysite.test/sub1') === "$origin/sub1",
     'sub-site siteurl keeps the blog path');
 ok(apply_rex('option_home', 'https://mysite.test/sub1/') === "$origin/sub1",
     'sub-site home keeps the blog path (trailing slash trimmed)');
+// A SUBDOMAIN network's sub-site lives on another host. The tunnel pins ONE
+// Host, so rewriting it would not make it reachable — it would point at the
+// MAIN site while looking like the sub-site.
+ok(apply_rex('option_home', 'http://s1.mysite.test/') === 'http://s1.mysite.test/',
+    'another blog on another host is left alone');
+ok(apply_rex('option_siteurl', 'https://mysite.tester.com/') === 'https://mysite.tester.com/',
+    'lookalike host is left alone here too');
 ok(apply_rex('content_url', 'https://mysite.test/wp-content/x.css') === "$origin/wp-content/x.css",
     'content_url host swapped');
 ok(apply_rex('content_url', 'https://mysite.tester.com/x') === 'https://mysite.tester.com/x',

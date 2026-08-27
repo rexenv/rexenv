@@ -92,11 +92,24 @@ call_user_func(static function () {
     // 26 Aug 2026 on a subdirectory network over a quick tunnel: the sub-site's
     // front page 404'd, and logging in at /sub1/wp-login.php landed on the MAIN
     // site's dashboard because admin_url() had lost the /sub1.
-    $to_origin = static function ($url) use ($origin) {
+    // ...and the HOST decides whether the value is ours to rewrite at all. A
+    // SUBDOMAIN network's sub-sites live on other hosts (s1.msd.rex), and the
+    // tunnel pins exactly ONE Host — so rewriting them to the public origin
+    // does not make them reachable, it points every one of them at the MAIN
+    // site. Observed 27 Aug 2026: on My Sites, "MSD" and "Sub Domain One" both
+    // read Visit -> <origin>/ and Dashboard -> <origin>/wp-admin/, which is a
+    // link that silently lands on the wrong site. Left alone they still cannot
+    // be reached from outside, but they say so.
+    $to_origin = static function ($url) use ($origin, $local_host, $public_host) {
         if (!is_string($url) || $url === '') {
             return $origin;
         }
-        return $origin . rtrim((string) parse_url($url, PHP_URL_PATH), '/');
+        $parts = parse_url($url);
+        $host  = strtolower((string) ($parts['host'] ?? ''));
+        if ($host !== '' && $host !== $local_host && $host !== $public_host) {
+            return $url;
+        }
+        return $origin . rtrim((string) ($parts['path'] ?? ''), '/');
     };
     add_filter('option_siteurl', $to_origin, 1000);
     add_filter('option_home', $to_origin, 1000);

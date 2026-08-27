@@ -35,6 +35,16 @@ paying for anyway: **the tick belongs in the commit that does the work.**
 
 ## Now — actionable code/test work
 
+- [ ] **A subdomain network's sub-sites still cannot be reached through a share, and that
+  is a shape limit, not a bug** — recorded 27 Aug 2026 so the next person does not go
+  hunting. A quick tunnel gets ONE random `trycloudflare.com` hostname and pins ONE Host;
+  a sub-site needs its own hostname. The sub-site links are now honest rather than
+  misdirecting (ledger #418), but honest still means unreachable: an outside browser gets
+  `ERR_NAME_NOT_RESOLVED`. **The shape that shares whole is a subdirectory network.**
+  If this is ever wanted for real it needs a NAMED Cloudflare tunnel against a domain the
+  user owns, with wildcard DNS and per-hostname ingress — an account, a domain, and a
+  second tunnel model, none of which the quick-tunnel path has.
+
 - [x] **A subdirectory multisite was BROKEN through a tunnel, and the scope note said it
   worked** ✓ 26 Aug 2026 — ledger #9, `core/wp_tunnel.rs`. The mu-plugin's
   `option_siteurl`/`option_home` filters returned the BARE public origin, throwing away

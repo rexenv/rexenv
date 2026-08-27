@@ -1063,7 +1063,15 @@ IPC surface — which is how a reader ends up designing against a system with on
   production network would break cross-subdomain SSO there. The block is written once and
   never removed — inert without a live share, and a half-applied removal from wp-config
   would take the site down. A subdirectory network never needed it: there `COOKIE_DOMAIN`
-  is simply never defined, so cookies are host-only already.
+  is simply never defined, so cookies are host-only already. What a subdomain network
+  still does NOT get is its sub-sites: the siteurl/home filters rewrite a value only when
+  its HOST is the pinned one, because a sub-site lives on `s1.<network>` and one tunnel
+  carries one Host. Rewriting those would not make them reachable — it would point every
+  sub-site's Visit/Dashboard link at the MAIN site, which is what they did until
+  27 Aug 2026 (on My Sites both entries read the same public URL). Left alone they are
+  honest: an outside browser gets `ERR_NAME_NOT_RESOLVED`, which is the truth. Reaching
+  sub-sites publicly needs a wildcard hostname a quick tunnel cannot issue — a subdirectory
+  network is the shape that shares whole.
   - **Tunnels DIE WITH THE APP** (ruled 28 Jul 2026 — the deliberate opposite of
     services-outlive-the-app: a public share must not outlive the thing supervising
     it). The v23 `tunnels` row is claimed atomically BEFORE spawn (the row IS the
