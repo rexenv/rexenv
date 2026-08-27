@@ -238,6 +238,8 @@ struct PhasePlan {
     migrate: bool,
     /// The repo's front-end assets were asked for (`Site::builds_assets`).
     build_assets: bool,
+    /// A Blank-PHP site asked for a starter database (`Site::has_starter_db`).
+    starter_db: bool,
 }
 
 impl PhasePlan {
@@ -249,12 +251,14 @@ impl PhasePlan {
             from_git: site.git_url.is_some(),
             migrate: site.runs_migrations(),
             build_assets: site.builds_assets(),
+            starter_db: site.has_starter_db(),
         }
     }
 }
 
 fn phase_defs(plan: PhasePlan) -> Vec<(&'static str, &'static str)> {
-    let PhasePlan { site_type, has_blueprint, linked, from_git, migrate, build_assets } = plan;
+    let PhasePlan { site_type, has_blueprint, linked, from_git, migrate, build_assets, starter_db } =
+        plan;
     let mut v = vec![("prepare", "preparing site (domain, certificate)"), ("fetch", "downloading binaries")];
     // The code arrives before anything can be done to it. A cloned site's
     // remaining phases are the SAME ones a created one runs — a repo is a third
@@ -324,6 +328,15 @@ fn phase_defs(plan: PhasePlan) -> Vec<(&'static str, &'static str)> {
             v.push(("finalize", "running migrations"));
         }
     }
+    // A Blank-PHP site the user asked a database for: the same two phases
+    // WordPress and Laravel run, doing less. `starter_db` is recorded NULL for a
+    // linked or cloned docroot (`create_recording_ownership`), so those cases
+    // cannot reach here — the row states where the question applied, and this
+    // reads the row rather than re-deriving the rule a second time.
+    if matches!(site_type, SiteType::Php) && starter_db {
+        v.push(("db", "starting database"));
+        v.push(("configure", "creating database + sample data"));
+    }
     // A cloned Blank-PHP site is ANY repository — Symfony, Craft, Statamic,
     // Magento, or plain PHP. `vendor/` is gitignored in every one of them, so
     // the checkout on its own is a 500 rather than a site. Present whenever a
@@ -387,10 +400,16 @@ fn build_plan(
         plan.extend(downloads::plan_for_engine(state.platform.as_ref(), engine, engine_version));
         plan.extend(downloads::plan_for_composer_tooling_with(state.platform.as_ref(), minor, patches));
     }
+    // A Blank-PHP site that asked for a starter database needs the engine, and
+    // ONLY then — this is why the field is a choice in the dialog rather than
+    // always-on: a scratch PHP file must not cost a ~600 MB MySQL download.
+    if matches!(site.site_type, SiteType::Php) && site.has_starter_db() && !linked {
+        plan.extend(downloads::plan_for_engine(state.platform.as_ref(), engine, engine_version));
+    }
     // A cloned Blank-PHP site needs Composer and the PHP CLI to run it — but
-    // NOT a database engine: `needs_database` says a Php site has none, and
-    // fetching ~600 MB of MySQL for a phase that will never run is the exact
-    // waste the linked-site carve-out above exists to avoid.
+    // NOT a database engine unless it asked for one (above): fetching ~600 MB
+    // of MySQL for a phase that will never run is the exact waste the
+    // linked-site carve-out above exists to avoid.
     if matches!(site.site_type, SiteType::Php) && site.git_url.is_some() && !linked {
         plan.extend(downloads::plan_for_composer_tooling_with(state.platform.as_ref(), minor, patches));
     }
@@ -1624,6 +1643,94 @@ async fn drive<R: tauri::Runtime>(
         bail_if_cancelled!();
     }
 
+    // ── db + configure (a Blank-PHP site with a starter database) ────────
+    //
+    // The smallest version of what WordPress and Laravel do above: start the
+    // engine, create the database, seed one table, and write the `db.php` the
+    // generated page reads. The page itself was written at `prepare`; the
+    // connection file waits until HERE, because until `CREATE DATABASE` returns
+    // it would name a database that does not exist.
+    if matches!(site.site_type, SiteType::Php) && site.has_starter_db() && !linked {
+        let ix = phase_index(entry, "db");
+        enter_phase(app, entry, ix);
+        let engine = DbEngine::from_site(site.db_engine);
+        let check = {
+            let mut mgr = state.services.lock().await;
+            match mgr.spawn_db(state.platform.as_ref(), engine).await {
+                Ok(c) => c,
+                Err(e) => return JobEnd::Failed(format!("database start failed: {e}")),
+            }
+        };
+        if let Err(e) = service_manager::await_ready(check.into_iter().collect()).await {
+            return JobEnd::Failed(format!("database not ready: {e}"));
+        }
+        finish_phase(app, entry, progress, ix, "ok", None);
+        bail_if_cancelled!();
+
+        let ix = phase_index(entry, "configure");
+        enter_phase(app, entry, ix);
+        let engine_version = match super::database::effective_db_version(&state, engine) {
+            Ok(v) => v,
+            Err(e) => return JobEnd::Failed(e.to_string()),
+        };
+        let (db_client, _) =
+            match engine.sql_client_bins(state.platform.as_ref(), &engine_version).await {
+                Ok(c) => c,
+                Err(e) => return JobEnd::Failed(e.to_string()),
+            };
+        let port = engine.port();
+        let (dbc, dbn) = (db_client.clone(), site.db_name.clone());
+        // Create then seed in ONE blocking hop: both are short client
+        // invocations, and splitting them would only add a window in which the
+        // database exists with no table for the page to read.
+        match tauri::async_runtime::spawn_blocking(move || {
+            database::create_database(&dbc, port, &dbn)?;
+            core::starter::seed(&dbc, port, &dbn)
+        })
+        .await
+        {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => return JobEnd::Failed(format!("database create failed: {e}")),
+            Err(e) => return JobEnd::Failed(format!("db worker died: {e}")),
+        }
+        append_line(
+            app,
+            entry,
+            &format!(
+                "created database `{}` and seeded `{}`",
+                site.db_name,
+                core::starter::TABLE
+            ),
+        );
+        // The PROVENANCE, for the same reason Laravel records it: without this
+        // line `should_drop_database` reads NULL as "provisioning never made
+        // one" for a non-WordPress site, and deleting the site would leave its
+        // database behind forever.
+        {
+            let (a2, sid) = (app.clone(), site.id.clone());
+            let recorded = tauri::async_runtime::spawn_blocking(move || {
+                let st = a2.state::<AppState>();
+                let conn = lock_db(&st)?;
+                crate::state::store::set_site_db_created(&conn, &sid, true)
+            })
+            .await;
+            match recorded {
+                Ok(Ok(_)) => {}
+                Ok(Err(e)) => return JobEnd::Failed(format!("recording the database failed: {e}")),
+                Err(e) => return JobEnd::Failed(format!("db-record worker died: {e}")),
+            }
+        }
+        // Written LAST, and skipped if it already exists: on a Retry the
+        // developer may have edited it, and this file is theirs from the moment
+        // it lands.
+        let db_settings = core::starter::StarterDb::for_engine(engine, &site.db_name);
+        if let Err(e) = core::starter::write_files(&site.served_root(), Some(&db_settings)) {
+            return JobEnd::Failed(format!("writing the starter connection failed: {e}"));
+        }
+        finish_phase(app, entry, progress, ix, "ok", None);
+        bail_if_cancelled!();
+    }
+
     // ── deps (a CLONED Blank-PHP site) ───────────────────────────────────
     //
     // The half of "any PHP repository" that the clone alone does not give you.
@@ -2009,6 +2116,7 @@ mod tests {
                         from_git,
                         migrate: true,
                         build_assets: false,
+                        starter_db: false,
                     })
                     .iter()
                     .any(|(k, _)| *k == "blueprint");
@@ -2027,6 +2135,7 @@ mod tests {
             from_git,
             migrate,
             build_assets: false,
+            starter_db: false,
         }
     }
 
@@ -2071,6 +2180,14 @@ mod tests {
         assert_eq!(
             phase_defs(blank).iter().map(|(k, _)| *k).collect::<Vec<_>>(),
             vec!["prepare", "fetch", "serve"]
+        );
+        // The same site with a starter database gains exactly two phases, in
+        // the order the job runs them: the engine must answer before anything
+        // can be created in it.
+        let seeded = PhasePlan { starter_db: true, ..blank };
+        assert_eq!(
+            phase_defs(seeded).iter().map(|(k, _)| *k).collect::<Vec<_>>(),
+            vec!["prepare", "fetch", "db", "configure", "serve"]
         );
 
         assert!(
@@ -2133,6 +2250,7 @@ mod tests {
                 from_git: false,
                 migrate: true,
                 build_assets: false,
+                starter_db: false,
             })
             .iter()
             .map(|(k, _)| *k)

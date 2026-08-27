@@ -38,6 +38,7 @@ convention) — see "Infrastructure" for progress streaming.
 | Command | Backing IPC | Tag | Notes |
 |---|---|---|---|
 | `site create --multisite subdomain\|subdirectory` | `wp_multisite_convert` after `create_site` | ✓ | shipped 16 Jul — full live run: create → multisite subdirectory in info → 200 → deleted |
+| `site create --starter-db` (Blank PHP) | `create_site` (`NewSite.starter_db`) | 🟢 | the dialog's Database field for a Blank-PHP site — creates the database, seeds `starter_items`, writes `db.php`. The IPC field EXISTS (v41); the CLI sends `false`, so `rex site create --type php` stays what it has always been: files, no engine |
 | `site create --blueprint <name>` | `list_blueprints` (name→id) + `create_site(blueprint_id)` | ✓ | shipped 16 Jul — miss errors naming saved blueprints; `rex blueprints` lists them |
 | `site info <domain>` | `list_sites` + `sites_serving` + `sites_resources` + `site_cert_info` (+ `wp_info` for WP) | ✓ | shipped 16 Jul — live-verified on a real WP site (real core version) + a FrankenPHP php site (resources) |
 | `site open <domain>` | — (`open https://<domain>`) | ✓ | shipped 16 Jul — domain validated via `site.list`; missing-domain exit 1 |
