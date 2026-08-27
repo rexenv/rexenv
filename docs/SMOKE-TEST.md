@@ -6,6 +6,12 @@ first-launch step. Check every box; note anything that isn't a clean pass.
 
 Environment: macOS ____  ·  Intel / Apple Silicon ____  ·  rexenv version ____
 
+**This file is half the release gate.** The other half is `docs/PUBLISH-TESTING.md`
+(§A0 artefact integrity, §A quarantine → Gatekeeper → launch, and the install/uninstall
+sections); its outstanding rows are tracked under "Release gates" in `docs/TODO.md`.
+Order on release day: this file against the built dmg, then PUBLISH-TESTING §A0/§A —
+publishing IS the §A sign-off.
+
 ## Install & first launch
 - [ ] .dmg mounts; drag rexenv → Applications works.
 - [ ] First launch via **right-click → Open** (or Privacy & Security → Open Anyway); app opens, no "damaged".

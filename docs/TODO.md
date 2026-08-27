@@ -1507,6 +1507,16 @@ first:
 
 ## Release gates (human, scripted — see the docs named)
 
+**This section is HALF the set.** The rows below are `docs/PUBLISH-TESTING.md`'s
+outstanding gates; the other half is `docs/SMOKE-TEST.md`, run end-to-end on a clean
+Mac from the distributed dmg, and it grew steps that are visible from nowhere here
+(cold-path 7.4 licences, the PHP update button + its revert, the Adminer update, the
+PHP ini revert, the "exists" row and the serving-vs-pinned line, the blank-PHP starter
+database, and the MCP HOLDs). **A release-day reader works both files, in this order:
+SMOKE-TEST on the built dmg, then PUBLISH-TESTING §A0/§A before publishing.** The rule
+this note exists for: silence in a gate list reads as "this is the set", and a gate
+nobody can see from the list is indistinguishable from a gate nobody ran.
+
 - [ ] **0.3.0 SHIPPED on 20 Aug 2026 and NOTHING in this repo records it.** The tap has
   it (`Casks/rexenv.rb` = 0.3.0 / `381952fa…`, bumped by CI at 13:31Z), the GitHub
   release is published with both assets, and `package.json` / `tauri.conf.json` /
@@ -1597,12 +1607,11 @@ first:
   once the dmg is released" four releases after that happened, and now reads `--zap`
   ONLY. `docs/RELEASING.md`'s "the flow in effect today (2026-08-12)" now says it is the
   only flow that has ever cut a release.
-- [ ] **The release gates are not all in this section.** `docs/SMOKE-TEST.md` grew five
-  steps FOR 0.3.0 (cold-path 7.4 licences, the PHP update button + revert, the Adminer
-  update, the PHP ini revert, the "exists" row and the serving-vs-pinned line) and carries
-  the MCP HOLDs, and none of them is visible from the section a release-day reader works
-  from. Either list them here or make this section say plainly that SMOKE-TEST is the
-  other half — silence reads as "this is the set".
+- [x] **The release gates are not all in this section** ✓ 27 Aug 2026 — the section
+  header now says plainly that SMOKE-TEST is the other half, names the steps that were
+  invisible from here, and fixes the order a release-day reader works them in. Chose the
+  "say it" arm over "list them here" deliberately: a copied list of another file's steps
+  is a second place to drift, and this file has already paid for that twice.
 - [ ] **PUBLISH-TESTING §B** — uninstall removes the root :443 daemon (live launchd).
 - [ ] **PUBLISH-TESTING §D** — `--zap` ONLY; everything else has now run four times.
   **Re-scoped 21 Aug 2026**: the row below pins the v0.1.0 cask hash, but the cask has
