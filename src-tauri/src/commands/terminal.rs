@@ -10,6 +10,7 @@ use crate::core::{binaries, php, sites, terminal};
 use crate::error::{Error, Result};
 use crate::state::app::AppState;
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, State};
 
@@ -22,8 +23,23 @@ pub fn output_event(id: &str) -> String {
     format!("terminal://output/{id}")
 }
 
+/// Which plugin/theme folder a session should start in, when it was opened from
+/// a WordPress asset row instead of the site's Terminal tab. The PATH never
+/// crosses IPC — only the kind + slug, resolved against the site's RECORDED
+/// content dir on this side, so the frontend cannot name a directory.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetRef {
+    /// "plugin" | "theme" — validated by `repo::asset_dest`.
+    pub kind: String,
+    /// The asset's folder name (`wp plugin list`'s `name`).
+    pub name: String,
+}
+
 /// Open a shell in a site's docroot with bundled PHP + a `wp` wrapper on PATH.
-/// Returns the new session id; output streams via [`output_event`].
+/// `asset` starts it in that plugin/theme's folder instead (the terminal button
+/// on a WordPress row). Returns the new session id; output streams via
+/// [`output_event`].
 #[tauri::command]
 pub async fn terminal_open(
     app: AppHandle,
@@ -32,6 +48,7 @@ pub async fn terminal_open(
     site_id: String,
     rows: u16,
     cols: u16,
+    asset: Option<AssetRef>,
 ) -> Result<String> {
     // Resolve the site + its PHP version (lock the DB briefly, never across await).
     let site = {
@@ -61,6 +78,16 @@ pub async fn terminal_open(
         .ok_or_else(|| Error::Other("php binary has no parent dir".into()))?
         .to_path_buf();
 
+    let cwd = match &asset {
+        Some(a) => terminal::asset_cwd(
+            Path::new(&site.path),
+            site.content_dir_rel(),
+            &a.kind,
+            &a.name,
+        )?,
+        None => PathBuf::from(&site.path),
+    };
+
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
     let id = uuid::Uuid::new_v4().to_string();
     let app_handle = app.clone();
@@ -68,7 +95,7 @@ pub async fn terminal_open(
 
     let session = TerminalSession::open(
         PtyConfig {
-            cwd: site.path.clone().into(),
+            cwd,
             shell,
             path_prepend: vec![php_dir, wp_dir],
             rows,

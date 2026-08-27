@@ -11,6 +11,7 @@ import {
   openTerminal,
   resizeTerminal,
   writeTerminal,
+  type TerminalAsset,
 } from "@/lib/ipc";
 
 /** Read a design token (CSS var) at runtime so the terminal theme tracks tokens.css. */
@@ -37,6 +38,10 @@ function xtermTheme() {
  * shell, its scrollback and its xterm live in this module keyed by site, and the
  * component only borrows them.
  *
+ * Sessions are keyed by site AND by the folder they opened in, so the terminal
+ * button on a plugin/theme row gets its own shell in that folder instead of
+ * typing a `cd` into a site shell that may be mid-`composer install`.
+ *
  * The DOM node is MOVED, never re-created: xterm renders into the element it was
  * opened with and cannot be `open()`ed twice, so the container is parked in an
  * offscreen holder while nothing shows it. Parked, not detached — a node removed
@@ -58,6 +63,11 @@ type Live = {
 };
 
 const live = new Map<string, Live>();
+
+/** Session key: one shell per site, plus one per asset folder opened from a row. */
+function sessionKey(siteId: string, asset?: TerminalAsset): string {
+  return asset ? `${siteId}|${asset.kind}:${asset.name}` : siteId;
+}
 
 /**
  * How many shells may be kept alive at once. Each one is a real login shell with
@@ -93,7 +103,11 @@ function evictIdle(keep: string) {
   }
 }
 
-function createLive(siteId: string, onError: (e: string) => void): Live {
+function createLive(
+  siteId: string,
+  asset: TerminalAsset | undefined,
+  onError: (e: string) => void,
+): Live {
   const container = document.createElement("div");
   container.style.cssText = "width:100%;height:100%;";
   parkingBay().appendChild(container);
@@ -139,7 +153,7 @@ function createLive(siteId: string, onError: (e: string) => void): Live {
 
   void (async () => {
     try {
-      const id = await openTerminal(siteId, term.rows, term.cols);
+      const id = await openTerminal(siteId, term.rows, term.cols, asset);
       // The component may be long gone; the session is not tied to it. Only a
       // dispose (Restart / eviction) makes this id unwanted, and dispose sets
       // `disposed` so the fresh id is closed instead of leaked.
@@ -163,11 +177,13 @@ function createLive(siteId: string, onError: (e: string) => void): Live {
   return entry;
 }
 
-/** An interactive xterm.js terminal bound to a site's PTY session (§4.2). */
-export function SiteTerminal({ siteId }: { siteId: string }) {
+/** An interactive xterm.js terminal bound to a site's PTY session (§4.2).
+ *  `asset` opens the shell in that plugin/theme's folder instead of the docroot. */
+export function SiteTerminal({ siteId, asset }: { siteId: string; asset?: TerminalAsset }) {
   const mountRef = useRef<HTMLDivElement>(null);
   const [restartN, setRestartN] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const key = sessionKey(siteId, asset);
 
   useEffect(() => {
     if (!isTauri()) {
@@ -177,11 +193,11 @@ export function SiteTerminal({ siteId }: { siteId: string }) {
     const mount = mountRef.current;
     if (!mount) return;
 
-    let entry = live.get(siteId);
+    let entry = live.get(key);
     if (!entry) {
-      entry = createLive(siteId, setError);
-      live.set(siteId, entry);
-      evictIdle(siteId);
+      entry = createLive(siteId, asset, setError);
+      live.set(key, entry);
+      evictIdle(key);
     }
     const session = entry;
     session.lastUsed = Date.now();
@@ -218,13 +234,16 @@ export function SiteTerminal({ siteId }: { siteId: string }) {
       // Park it — the shell keeps running and the scrollback comes back with it.
       parkingBay().appendChild(session.container);
     };
-  }, [siteId, restartN]);
+    // `asset` is a fresh object each render — the key is what identifies the
+    // session, so re-running on it would tear a healthy shell down every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, restartN]);
 
   const restart = () => {
-    const entry = live.get(siteId);
+    const entry = live.get(key);
     if (entry) {
       entry.dispose();
-      live.delete(siteId);
+      live.delete(key);
     }
     setError(null);
     setRestartN((n) => n + 1);
@@ -243,10 +262,12 @@ export function SiteTerminal({ siteId }: { siteId: string }) {
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-rex-border bg-rex-bg">
       <div className="flex items-center justify-between border-b border-rex-border bg-rex-surface-1 px-3 py-2">
-        <span className="font-mono text-[0.71875rem] text-rex-text-muted">bundled php + wp on PATH</span>
+        <span className="truncate font-mono text-[0.71875rem] text-rex-text-muted">
+          {asset ? `${asset.kind}: ${asset.name} · bundled php + wp on PATH` : "bundled php + wp on PATH"}
+        </span>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => live.get(siteId)?.term.clear()}
+            onClick={() => live.get(key)?.term.clear()}
             className="flex items-center gap-1.5 rounded-lg border border-rex-border bg-rex-surface-2 px-2.5 py-1.5 text-[0.75rem] text-rex-text transition-colors hover:border-brand"
           >
             <Eraser className="h-3.5 w-3.5" />

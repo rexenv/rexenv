@@ -595,11 +595,26 @@ export async function revealPath(path: string): Promise<void> {
   await invoke("reveal_path", { path });
 }
 
-/** Open a PTY shell in a site's docroot (bundled PHP + `wp` on PATH). Returns the
- *  session id; output streams via {@link onTerminalOutput}. Desktop-app only. */
-export async function openTerminal(siteId: string, rows: number, cols: number): Promise<string> {
+/** Which plugin/theme folder a terminal should open in. Only the kind + slug
+ *  cross IPC — the backend resolves the directory against the site's recorded
+ *  content dir, so no path is ever named from here. */
+export interface TerminalAsset {
+  kind: "plugin" | "theme";
+  /** The asset's folder name (`wp plugin list`'s `name`). */
+  name: string;
+}
+
+/** Open a PTY shell in a site's docroot (bundled PHP + `wp` on PATH), or in
+ *  `asset`'s own folder when one is given. Returns the session id; output
+ *  streams via {@link onTerminalOutput}. Desktop-app only. */
+export async function openTerminal(
+  siteId: string,
+  rows: number,
+  cols: number,
+  asset?: TerminalAsset,
+): Promise<string> {
   if (!isTauri()) throw new Error("The terminal requires the rexenv desktop app.");
-  return invoke<string>("terminal_open", { siteId, rows, cols });
+  return invoke<string>("terminal_open", { siteId, rows, cols, asset: asset ?? null });
 }
 
 /** Write input (keystrokes / paste) to a terminal session. */

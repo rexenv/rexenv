@@ -1,9 +1,10 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { toast, toastBackendError } from "@/lib/toast";
 import { confirm, PromptDialog } from "@/components/ui/dialog";
 import { confirmPhraseMatches, TypeToConfirm } from "@/components/ui/type-to-confirm";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowUpCircle, Check, Download, ExternalLink, FileUp, Globe, Loader2, Lock, LogIn, Network, Palette, Plus, RefreshCw, Replace, RotateCcw, Eye, EyeOff, KeyRound, Search, Shield, Star, Trash2, UserPlus, X } from "lucide-react";
+import { AlertTriangle, ArrowUpCircle, Check, Download, ExternalLink, FileUp, Globe, Loader2, Lock, LogIn, Network, Palette, Plus, RefreshCw, Replace, RotateCcw, Eye, EyeOff, KeyRound, Search, Shield, Star, TerminalSquare, Trash2, UserPlus, X } from "lucide-react";
 import { CHECK_INPUT, cn, TECH_INPUT } from "@/lib/utils";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import {
@@ -2490,6 +2491,7 @@ function WpOrgThemeHit({ t, onPick }: { t: WpOrgTheme; onPick: () => void }) {
 }
 
 export function ThemesPanel({ siteId }: { siteId: string }) {
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const [slug, setSlug] = useState("");
   const [activateOnAdd, setActivateOnAdd] = useState(false);
@@ -2823,6 +2825,7 @@ export function ThemesPanel({ siteId }: { siteId: string }) {
               onActivate={() => run.mutate({ fn: () => wpThemeActivate(siteId, t.name), done: `Activated ${t.name}` })}
               onUpdate={() => upd.start([t.name])}
               updating={upd.rowUpdate(t.name)}
+              onTerminal={() => navigate(`/sites/${siteId}/terminal?theme=${encodeURIComponent(t.name)}`)}
               onDelete={async () => {
                 if (await confirmDelete(`Delete theme "${t.name}"?`, t.name))
                   run.mutate({ fn: () => wpThemeDelete(siteId, [t.name]), done: `Deleted ${t.name}` });
@@ -2850,6 +2853,7 @@ function ThemeCard({
   onActivate,
   onUpdate,
   updating,
+  onTerminal,
   onDelete,
 }: {
   t: WpTheme;
@@ -2861,6 +2865,8 @@ function ThemeCard({
   onUpdate: () => void;
   /** Live position in a running update, or null when this card isn't in one. */
   updating?: { fraction: number; phase: string } | null;
+  /** Open a shell in this theme's own folder. */
+  onTerminal: () => void;
   onDelete: () => void;
 }) {
   const active = t.status === "active";
@@ -2963,6 +2969,14 @@ function ThemeCard({
               <ArrowUpCircle className="h-3.5 w-3.5" />
             </button>
           )}
+          <button
+            className={BTN}
+            onClick={onTerminal}
+            title={`Open a terminal in ${t.name}'s folder`}
+            aria-label={`Open a terminal in ${t.name}'s folder`}
+          >
+            <TerminalSquare className="h-3.5 w-3.5" />
+          </button>
           <button
             className={BTN + " hover:border-status-error-border hover:text-status-error-bright disabled:hover:border-rex-border disabled:hover:text-rex-text"}
             disabled={busy || active}
@@ -3077,6 +3091,7 @@ function WpOrgHit({ p, onPick }: { p: WpOrgPlugin; onPick: () => void }) {
 
 // Exported for the DEV WebKit harness (DevGitPanel `?panel=wp-add`) only.
 export function PluginsPanel({ siteId }: { siteId: string }) {
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [slug, setSlug] = useState("");
@@ -3563,6 +3578,7 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
               onDeactivate={() => run.mutate({ fn: () => wpPluginDeactivate(siteId, [p.name]), done: `Deactivated ${p.name}` })}
               onUpdate={() => upd.start([p.name])}
               updating={upd.rowUpdate(p.name)}
+              onTerminal={() => navigate(`/sites/${siteId}/terminal?plugin=${encodeURIComponent(p.name)}`)}
               onDelete={async () => {
                 if (await confirmDelete(`Delete plugin "${p.name}"?`, [p.name]))
                   run.mutate({ fn: () => wpPluginDelete(siteId, [p.name]), done: `Deleted ${p.name}` });
@@ -3759,6 +3775,7 @@ function PluginRow({
   onDeactivate,
   onUpdate,
   updating,
+  onTerminal,
   onDelete,
 }: {
   p: WpPlugin;
@@ -3774,6 +3791,8 @@ function PluginRow({
   onUpdate: () => void;
   /** Live position in a running update, or null when this row isn't in one. */
   updating?: { fraction: number; phase: string } | null;
+  /** Open a shell in this plugin's own folder. */
+  onTerminal: () => void;
   onDelete: () => void;
 }) {
   const active = p.status === "active" || p.status === "active-network";
@@ -3890,6 +3909,19 @@ function PluginRow({
             : `${active ? "Deactivate" : "Activate"} ${p.name}`
         }
       />
+      {/* Must-use plugins and drop-ins load from a FILE in the content dir and
+          have no folder of their own — offering a terminal "in this plugin"
+          would land somewhere that isn't it. */}
+      {!immutable && (
+        <button
+          className={BTN}
+          onClick={onTerminal}
+          title={`Open a terminal in ${p.name}'s folder`}
+          aria-label={`Open a terminal in ${p.name}'s folder`}
+        >
+          <TerminalSquare className="h-3.5 w-3.5" />
+        </button>
+      )}
       <button
         className={cn(
           BTN,

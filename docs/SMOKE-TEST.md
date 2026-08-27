@@ -629,6 +629,13 @@ no SMOKE step today and is covered by `repo_*` examples only.*
   long-running command must still be running, not restarted. **Tell:** an empty
   terminal and a fresh prompt (#424). **Restart** is the one control that is allowed
   to wipe it, and must.
+- [ ] **A plugin/theme row opens a terminal in its own folder.** WordPress tab →
+  Plugins → the terminal button on a row. `pwd` must be that plugin's directory and
+  the site's own shell must be untouched (leave a `# marker` in it first, come back,
+  it is still there — a `cd` typed into a busy shell is exactly what this must not
+  be). Repeat from a theme card. **Tell:** landing in the docroot instead, which on a
+  Bedrock/Radicle site would mean the content dir was guessed rather than read (#425).
+  Hello Dolly / an mu-plugin / a drop-in have no folder: those rows show no button.
 
 ## AI agents (MCP) — opt-in endpoint (ships only if this passes)
 **Covers M1 (1–5), M2a (6–11), M2b (12–14) and M3 (15–21).** HOLDs: 4, 8, 11, 14, 18, 19, 21.

@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toastBackendError } from "@/lib/toast";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
@@ -68,6 +68,7 @@ import {
   tldPolicy,
   wpAdminLoginUrl,
   wpInfo,
+  type TerminalAsset,
 } from "@/lib/ipc";
 import { toast } from "@/lib/toast";
 import type { DomainChange, EnvVar, Site, WebServer } from "@/types";
@@ -109,6 +110,7 @@ type TabKey = "overview" | "wordpress" | "repository" | "database" | "logs" | "t
 export function SiteDetail() {
   const { id, tab } = useParams<{ id: string; tab?: TabKey }>();
   const navigate = useNavigate();
+  const [search] = useSearchParams();
   const qc = useQueryClient();
 
   const { data: sites = [] } = useQuery({ queryKey: ["sites"], queryFn: listSites });
@@ -160,6 +162,19 @@ export function SiteDetail() {
   // /sites/:id does not. Found 21 Aug 2026 by the wk-check written for the
   // FrankenPHP picker, which loads this route cold — which is the whole reason
   // an L2 check earns its keep.
+  // `/sites/:id/terminal?plugin=acme` (the terminal button on a WordPress
+  // plugin/theme row) opens a shell in THAT folder. Memoized because the value
+  // identifies a live PTY session downstream — a fresh object every render
+  // would look like a different terminal. Above the `!site` return with the
+  // other hooks, for the reason spelled out below.
+  const termAsset = useMemo((): TerminalAsset | undefined => {
+    const plugin = search.get("plugin");
+    if (plugin) return { kind: "plugin", name: plugin };
+    const theme = search.get("theme");
+    if (theme) return { kind: "theme", name: theme };
+    return undefined;
+  }, [search]);
+
   const { data: repoInfo } = useQuery({
     queryKey: ["repo-site-info", site?.id],
     queryFn: () => repoSiteInfo(site!.id),
@@ -314,7 +329,7 @@ export function SiteDetail() {
           {active === "logs" && (
             <SiteLogs site={site} isWordpress={isWordpress} wpResolved={wpResolved} />
           )}
-          {active === "terminal" && <SiteTerminal siteId={site.id} />}
+          {active === "terminal" && <SiteTerminal siteId={site.id} asset={termAsset} />}
           {active === "settings" && <SettingsTab site={site} />}
         </div>
       </div>

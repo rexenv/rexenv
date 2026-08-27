@@ -16,7 +16,8 @@ use std::sync::Mutex;
 
 /// How to launch a terminal session.
 pub struct PtyConfig {
-    /// Working directory the shell starts in (the site's docroot).
+    /// Working directory the shell starts in (the site's docroot, or a
+    /// plugin/theme folder inside it — see `asset_cwd`).
     pub cwd: PathBuf,
     /// The shell to run (e.g. the user's `$SHELL`).
     pub shell: String,
@@ -180,6 +181,32 @@ fn join_paths(dirs: &[PathBuf]) -> String {
     dirs.iter().map(|d| d.display().to_string()).collect::<Vec<_>>().join(":")
 }
 
+/// Where a terminal opened FROM a plugin/theme row starts: that asset's own
+/// folder under the site's recorded content dir.
+///
+/// Reuses `repo::asset_dest` rather than joining `wp-content/plugins/<name>`
+/// here — that is the ONE place the content-dir layout (`app` for Bedrock,
+/// `content` for Radicle) and the folder-name validation live, and a second
+/// copy of either is how a Bedrock site would get a shell in a directory that
+/// does not exist.
+///
+/// A missing folder is an ERROR, not a silent fall back to the docroot: a
+/// single-file plugin (`hello.php`) and a drop-in have no folder of their own,
+/// and a shell that quietly opened somewhere else would read as "this IS the
+/// plugin's directory".
+pub fn asset_cwd(docroot: &Path, content_rel: &str, kind: &str, name: &str) -> Result<PathBuf> {
+    let dir = crate::core::repo::asset_dest(docroot, content_rel, kind, name)?;
+    if !dir.is_dir() {
+        return Err(Error::Other(format!(
+            "\"{name}\" has no folder of its own at {} — a single-file plugin or a \
+             drop-in lives directly in the content dir, so there is nothing to open a \
+             terminal in.",
+            dir.display()
+        )));
+    }
+    Ok(dir)
+}
+
 /// Ensure a `wp` wrapper exists under app-data so the terminal exposes WP-CLI as
 /// `wp` (runs the bundled PHP against `wp-cli.phar`, matching the Phase-1 512M
 /// limit). Returns the directory holding it (to put on `PATH`). macOS/Linux only;
@@ -212,6 +239,35 @@ mod tests {
         // The four chars active inside "…" are neutralized so a crafted dir
         // couldn't break the export (B16).
         assert_eq!(dq_escape(r#"/x/a"b$c`d\e"#), r#"/x/a\"b\$c\`d\\e"#);
+    }
+
+    #[test]
+    fn asset_cwd_follows_the_recorded_content_dir_and_refuses_a_folderless_asset() {
+        let root = std::env::temp_dir().join(format!("rexenv-term-cwd-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        // A Bedrock layout: the content dir is `app`, NOT wp-content. Joining a
+        // hardcoded wp-content here would open a shell in a dead path.
+        std::fs::create_dir_all(root.join("app/plugins/acme")).unwrap();
+        std::fs::create_dir_all(root.join("app/themes/twenty")).unwrap();
+        std::fs::write(root.join("app/plugins/hello.php"), "x").unwrap();
+
+        assert_eq!(
+            asset_cwd(&root, "app", "plugin", "acme").unwrap(),
+            root.join("app/plugins/acme")
+        );
+        assert_eq!(
+            asset_cwd(&root, "app", "theme", "twenty").unwrap(),
+            root.join("app/themes/twenty")
+        );
+        // A single-file plugin has no folder: an error, never a silent shell in
+        // the docroot that reads as the plugin's own directory.
+        let err = asset_cwd(&root, "app", "plugin", "hello").unwrap_err().to_string();
+        assert!(err.contains("no folder of its own"), "{err}");
+        // The kind and the name are still validated by `asset_dest` (M7 class).
+        assert!(asset_cwd(&root, "app", "mu-plugin", "acme").is_err());
+        assert!(asset_cwd(&root, "app", "plugin", "../../etc").is_err());
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

@@ -1482,11 +1482,25 @@ latency — a real `~/.zshrc` (prompt frameworks, nvm) takes seconds, which is w
 The wrapper stays AMBIENT on purpose (#228): this is the user's own command line, so
 `WP_CLI_PACKAGES_DIR` is theirs here and pinned everywhere else.
 
+A terminal can also open **in one plugin's or theme's own folder** — the terminal
+button on a WordPress row (`/sites/:id/terminal?plugin=<slug>`). Only the kind and the
+slug cross IPC; `core::terminal::asset_cwd` resolves the directory through
+`repo::asset_dest`, the same place the recorded content dir (`app` for Bedrock,
+`content` for Radicle) and the folder-name validation already live, so the frontend
+never names a path and a Bedrock site does not get a shell in a dead `wp-content/`.
+An asset with no folder of its own — a single-file plugin, a must-use plugin, a
+drop-in — is an ERROR rather than a quiet shell in the docroot that would read as the
+plugin's directory; the rows that can only be folderless (must-use, drop-in) do not
+show the button at all. It is a SEPARATE session from the site's own shell, not a `cd`
+typed into it: that shell may be mid-`composer install`, and the keystrokes would have
+gone to composer.
+
 **The session outlives its React component** (`SiteTerminal.tsx`) — the same rule the
 services follow. A tab switch unmounts the component, and the first version killed the
 PTY and disposed the xterm in its cleanup, so a `composer install` died on an alt-tab
 and its output was gone on the way back. The shell, its scrollback and its xterm now
-live in a module-level map keyed by site; the component borrows them. The container DOM
+live in a module-level map keyed by site AND by the folder the shell opened in; the
+component borrows them. The container DOM
 node is MOVED between the tab and an offscreen parking bay — xterm renders into the
 element it was opened with and cannot be `open()`ed twice, and a node removed from the
 document measures 0×0, which is what the renderer sizes itself from. At most
