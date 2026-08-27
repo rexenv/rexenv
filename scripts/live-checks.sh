@@ -172,6 +172,7 @@ site_cert_gen system
 site_provision_check network
 site_resources_check stack
 sites_folder_check sandbox
+starter_seed_check sandbox
 stack_guard_check stack
 stack_stop system
 system_setup system

@@ -135,6 +135,14 @@ it can:
   the bug class was eliminated — a line in a log nobody reads, on a run that passed. **This layer caught
   the most bugs this month.** Discipline: `common::sandbox` + `common::Reaped` +
   fixture ports (`examples/common/mod.rs` — read its invariant first).
+  **`starter_seed_check` (sandbox tier, 27 Aug 2026, ledger #429) is the smallest case
+  for why this layer exists at all.** The Blank-PHP starter's seed is idempotent because
+  of one SQL clause — `WHERE NOT EXISTS` — and whether a server agrees with a piece of
+  SQL is not a question a string comparison in Rust can answer. L0 proves the page and
+  the DDL name the same columns; only its own mysqld can prove a re-seed leaves four
+  rows and that the developer's own row survives a third one. The same run `php -l`s
+  both generated files under the bundled PHP: a generated page with a syntax error
+  cannot report itself, because PHP never reaches the code that renders the error card.
   **`relink_tree_check` (sandbox tier, 14 Aug 2026) is this layer aimed at the tool
   chain itself.** `prepare_binary_tree`'s bug was never arithmetic — it was WHAT the
   chain was asked to look at: `needs_tree_relink` treated any `@loader_path/` prefix
