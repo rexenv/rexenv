@@ -1750,6 +1750,29 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
 - [ ] **Intel spot-run**: x86_64 bottle digests + MySQL 8.0.44 x86_64 were hashed
   from real downloads but never RUN (PORTS.md caveat) — run-verify on the next
   Intel machine.
+- [ ] 🔴 **nginx x86_64 declares `minos 26.0` while the app states 15.0 — Intel users below
+  macOS 26 cannot run the web server** (found 30 Aug 2026 by `macos_floor_check` on its
+  FIRST run, which is what the check was built for). Measured twice, independently:
+  `nginx-1.30.3-x86_64-darwin` is **26.0**, `nginx-1.30.3-arm64-darwin` is **15.0**, same
+  pinned bytes both times. Apple Silicon is unaffected; every Intel user between 15 and 26
+  installs an app whose shared web server may refuse to load — and nginx is not an optional
+  engine, it is the request path for every default site.
+  - **The survey says this gets worse, not better.** jirutka rebuilt on macOS-26 runners:
+    x86_64 is 26.0 for **every** version from 1.26.3 up, and 1.28.3 / 1.30.4 / 1.31.4 are
+    26.0 on **arm64 too**. Only ≤1.25.5 x86_64 is 12.0. So the next routine nginx bump
+    raises the floor for Apple Silicon as well — today's exposure is half the users, the
+    next pin's is all of them.
+  - **`docs/PORTS.md` said the opposite and was measured on one arch**: "jirutka publishes
+    NO darwin nginx below minos 14 … everything current is 15.0" (15 Aug 2026). Both halves
+    are now false, and the reason they were believed is the reason this row's parent exists
+    — the numbers came from this machine's cache, which only ever holds arm64.
+  - **Options, none free:** pin ≤1.25.5 for x86_64 only (mixed versions per arch, and 1.25.x
+    is old mainline); self-build nginx (the option already recorded below — this is the
+    "reason" that row was waiting for, and it fixes both arches at once); or state the floor
+    honestly per arch, which Tauri's single `minimumSystemVersion` cannot express.
+  - **Until it is decided, `macos_floor_check` FAILS, and that is the check working.** It
+    is not to be silenced: the red is the shipping defect, not the checker.
+
 - [ ] ⚠ **The macOS floor is a claim about BOTH slices, and most of it has still never
   been measured** (narrowed 30 Aug 2026 — it used to say "half", and one row of the table
   is now genuinely both-slice). PORTS.md's `minos` table is measured from this machine's
@@ -1771,18 +1794,23 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   showed the table can simply be WRONG where nothing depends on it: PHP 8.0.30
   is 14.0 and had been recorded as 12.0 since the table was written.)
   **What it would take, cheapest first:**
-  1. **No Intel Mac needed for the measurement** — `minos` is metadata. Fetch the
-     x86_64 artifact for every pin and read `otool -l`/`vtool -show` on it. The
-     download URLs are already enumerated by `manifest_sweep_check`, which walks
-     BOTH arches; a `minos` column is a few lines in an example that already
-     fetches these bytes, and the sweep is the natural home because it is the one
-     check that already refuses to be arch-blind.
-  2. Assert the *derived* rule rather than the numbers: `max(minos)` over the
-     default-stack binaries, per arch, must equal `tauri.conf.json`'s
-     `minimumSystemVersion`. That fails on a pin bump that raises a floor, which
-     is the event the current table can only be updated by hand for.
-  3. Only then does an actual Intel machine matter, and for the OTHER half — the
-     run-verify above, which metadata cannot stand in for.
+  1. [x] **No Intel Mac needed for the measurement** ✓ 30 Aug 2026 — `minos` is metadata,
+     so the x86_64 artifact is fetched and read here. Landed as its own example rather than
+     a column on `manifest_sweep_check`: the sweep enumerates ~70 targets including the
+     multi-hundred-MB trees, and this needs the small default-stack set with an assertion
+     attached, so bolting it on would have made one check answer two questions and fail for
+     either reason.
+  2. [x] **Assert the DERIVED rule** ✓ 30 Aug 2026 — `macos_floor_check`, ledger #433:
+     `max(minos)` per arch must equal `tauri.conf.json`'s `minimumSystemVersion`, in both
+     directions. **It failed on its first run, on a real defect** — see the 🔴 nginx row
+     above. The row asked for a check that fires on a pin bump that raises a floor; the
+     first thing it found was a floor that had already been raised, on the slice nobody
+     could see.
+  3. [ ] Only now does an actual Intel machine matter, and for the OTHER half — the
+     run-verify, which metadata cannot stand in for. It has a sharper question to answer
+     than before: whether a `minos 26.0` nginx actually refuses to load on an Intel Mac
+     running macOS 15, which is the same unsettled dyld-enforcement question PostgreSQL
+     raised, now aimed at a binary that is not optional.
 - [ ] **In-app verifies owed** (CLI passthroughs whose service-touching half the
   example harness guard-blocks; fold into the next deep test): `php
   install/uninstall`, `php settings set`, `db versions --set`, `site

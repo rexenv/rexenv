@@ -125,6 +125,7 @@ mail_adopt_settings_check system
 mail_api_check service
 mail_route_check service
 mailpit_check service
+macos_floor_check network
 manifest_sweep_check network
 mariadb_bundle_check network
 mariadb_site_check network

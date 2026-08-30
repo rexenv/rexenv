@@ -60,9 +60,16 @@ number nobody records drifts again. **The app's stated floor
 (`tauri.conf.json` `minimumSystemVersion`, INSTALL.md) must equal the MAX across the
 binaries the default stack requires** — today that is nginx/cloudflared at 15.0.
 **PostgreSQL sat ABOVE that floor at 26.0 from 15 Aug to 30 Aug 2026** and the stated
-floor did not move with it: the rule above is maintained by hand, so a pin that raises a
-floor is caught only when somebody re-reads this table. That is the argument for the
-derived assertion tracked in `docs/TODO.md`, not a reason to trust the number here.
+floor did not move with it, because the rule was maintained by hand and nothing was
+comparing. **It is now asserted rather than remembered** (30 Aug 2026,
+`examples/macos_floor_check.rs`, network tier, ledger #433): the check fetches every
+`binaries::DEFAULT_STACK` artifact for BOTH arches, verifies each against its pin before
+believing anything it reads, and fails unless `max(minos)` per arch equals
+`tauri.conf.json`'s `minimumSystemVersion` — in either direction, since a floor set too
+high refuses users the app would have run for. It also reports any binary whose two slices
+declare DIFFERENT floors, which is the case this table's arch caveat exists for and the one
+a host-arch-only measurement can never see. The table below stays as the human-readable
+record; the check is what keeps it from being the only one.
 Re-measure and update this table whenever a pin changes.
 
 **Re-measured 15 Aug 2026 after PHP 7.4.33 landed** (every Mach-O in the cache, not
@@ -88,10 +95,16 @@ PostgreSQL's row covers both slices because the 30 Aug re-pin downloaded them: t
 x86_64 tarballs were fetched and swept here, and the old x86_64 18.4.0 measured **26.0**
 just like its arm64 twin, so the two slices moved together in both directions.
 
-jirutka publishes NO darwin nginx below minos 14 (checked 1.24.0→1.31.3, 15 Aug
-2026: only the stale 1.24.0/1.26.1/1.26.2 are 14.0; everything current is 15.0), so
-lowering the floor below 15 means a self-built nginx — recorded as an option in
-TODO, not a commitment.
+~~jirutka publishes NO darwin nginx below minos 14 (checked 1.24.0→1.31.3, 15 Aug
+2026: only the stale 1.24.0/1.26.1/1.26.2 are 14.0; everything current is 15.0)~~ —
+**both halves FALSE, and measured on one arch only** (30 Aug 2026, `macos_floor_check`).
+The 15 Aug sweep read this machine's cache, which only ever holds arm64. Across both
+slices now: **x86_64 is `minos 26.0` for every version from 1.26.3 up**, including the
+pinned 1.30.3, whose arm64 slice is 15.0 — so the stated floor is a fiction for Intel
+users today. 1.28.3 / 1.30.4 / 1.31.4 are 26.0 on **arm64 too**, so the next routine bump
+takes Apple Silicon with it. Only ≤1.25.5 x86_64 is still 12.0. Lowering the floor — or
+now merely KEEPING it — points at a self-built nginx; tracked as a 🔴 row in
+`docs/TODO.md`.
 
 **What `minos` does and does not prove (measured 15 Aug 2026).** On THIS machine
 (macOS 26), dyld enforces minos for neither main executables nor dylibs: a copy of

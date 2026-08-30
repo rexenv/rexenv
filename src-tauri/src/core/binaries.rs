@@ -104,6 +104,34 @@ pub const CLOUDFLARED_VERSION: &str = "2026.6.1";
 /// two dylibs, relinked to `@loader_path` by `prepare_binary_tree` (the shipped
 /// "Deferred services" plan — docs/archive/SHIPPED-2026-07.md). Resolved via
 /// [`resolve_bundle`].
+/// The binaries a DEFAULT install actually runs, and therefore the set the app's
+/// stated macOS floor (`tauri.conf.json` `minimumSystemVersion`) is a claim about.
+///
+/// **Why this is a list in production code and not in the check that reads it.**
+/// `docs/PORTS.md` maintains the floor by hand — "the MAX across the binaries the
+/// default stack requires" — and a hand-maintained rule is only as good as the
+/// last person to re-read it. PostgreSQL sat ABOVE the stated floor at `minos
+/// 26.0` for a fortnight (15–30 Aug 2026) and nothing moved, because nothing was
+/// comparing. `macos_floor_check` does the comparing; this is the list it
+/// compares over, kept beside the version constants so a pin bump and the floor
+/// question stay in the same file.
+///
+/// **Deliberately NOT here: the optional engines.** MySQL/MariaDB/PostgreSQL/Redis
+/// are user-chosen, so their floors bind the user who enables them rather than
+/// the app's minimum, and they are the multi-hundred-MB trees a check would have
+/// to download in both arches to read 32 bytes. Their floors live in PORTS.md's
+/// table with the arch caveat that table carries.
+pub const DEFAULT_STACK: &[(&str, &str)] = &[
+    ("caddy", CADDY_VERSION),
+    ("nginx", NGINX_VERSION),
+    ("php", PHP_VERSION),
+    ("php-fpm", PHP_VERSION),
+    ("mailpit", MAILPIT_VERSION),
+    // Not started by a default launch, but shipped and run on the user's first
+    // share — a floor it raised would be discovered by a user, not by us.
+    ("cloudflared", CLOUDFLARED_VERSION),
+];
+
 pub const REDIS_VERSION: &str = "8.8.0";
 /// Offered Redis versions (single — homebrew-core keeps no versioned redis
 /// formula worth pinning; the picker hides for a one-entry set).
@@ -4547,6 +4575,35 @@ mod tests {
         let amd = manifest("mysql", MYSQL_VERSION, "macos", Arch::X86_64).unwrap();
         assert!(amd.url.ends_with("mysql-8.4.6-macos15-x86_64.tar.gz"));
         assert_ne!(checksum_hex(&arm.checksum), checksum_hex(&amd.checksum));
+    }
+
+    /// #433 — the floor check's SUBJECT must exist before its measurement means
+    /// anything. Every default-stack entry has to resolve to a manifest for
+    /// BOTH arches, because the failure the check exists for is precisely a pin
+    /// whose two slices disagree — an entry that silently resolves for one arch
+    /// would drop half the comparison and still report a max.
+    #[test]
+    fn every_default_stack_entry_is_pinned_for_both_arches() {
+        assert!(!DEFAULT_STACK.is_empty(), "an empty stack makes the floor check vacuous");
+        for (name, version) in DEFAULT_STACK {
+            for arch in [Arch::Arm64, Arch::X86_64] {
+                assert!(
+                    manifest(name, version, "macos", arch).is_some(),
+                    "{name} {version} has no macOS manifest for {arch:?} — the floor check would \
+                     compare one slice against nothing and call it a match"
+                );
+            }
+        }
+        // The engines are deliberately absent: user-chosen, and PORTS.md's table
+        // owns their floors. A future edit that adds one here would quietly
+        // change what the app's stated minimum CLAIMS to cover.
+        for engine in ["mysql", "mariadb", "postgres", "redis"] {
+            assert!(
+                !DEFAULT_STACK.iter().any(|(n, _)| *n == engine),
+                "{engine} joined DEFAULT_STACK — an optional engine's floor binds the user who \
+                 enables it, not the app's minimum. Decide that deliberately, in PORTS.md too"
+            );
+        }
     }
 
     #[test]

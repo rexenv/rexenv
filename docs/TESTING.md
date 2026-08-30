@@ -143,6 +143,18 @@ it can:
   rows and that the developer's own row survives a third one. The same run `php -l`s
   both generated files under the bundled PHP: a generated page with a syntax error
   cannot report itself, because PHP never reaches the code that renders the error card.
+  **`macos_floor_check` (network tier, 30 Aug 2026, ledger #433) is what a DERIVED
+  assertion buys over a recorded table, and it paid on the first run.** PORTS.md carried a
+  `minos` table and a hand-maintained rule — the stated floor equals the max across the
+  default stack — and the table was read from this machine's binary cache, which only ever
+  holds the host arch. So the x86_64 half of a universal app's floor had never been measured
+  at all. The check fetches both slices, verifies each against its pin before believing a
+  number read off it, and compares. It failed immediately, on a real defect: nginx's x86_64
+  slice declares `minos 26.0` against a stated floor of 15.0, so Intel users below macOS 26
+  install an app whose web server may not load. **Two lessons this layer keeps re-teaching**:
+  a number nobody compares to anything drifts silently (the same rule caught PostgreSQL
+  sitting 11 majors above the floor for a fortnight), and a measurement taken only on the
+  machine doing the measuring is an assumption wearing a number's clothes.
   **`tunnel_parent_death_check` (sandbox tier, 30 Aug 2026, ledger #432) is the layer
   aimed at a KERNEL mechanism, and it carries this month's sharpest lesson about how an
   example can be green and empty.** What it proves cannot be proved lower: that kqueue
