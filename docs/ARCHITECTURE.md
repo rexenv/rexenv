@@ -1092,6 +1092,13 @@ IPC surface — which is how a reader ends up designing against a system with on
     from rows, and the launch sweep kills only on positive argv identity — plus a
     rowless backstop for cloudflared processes carrying our argv identity with no
     row (app-data reset class), which stops them with a loud WARN.
+  - **And a share rexenv stops FOR you now reaches the screen** (30 Aug 2026, ledger #431).
+    The launch sweeps run inside `setup()`, before any window exists, so an emitted event
+    went to nobody: "rexenv stopped a public share you had no record of" lived only in the
+    log. Notices are queued in the always-managed `StartupNotices` and DRAINED by the
+    frontend on mount — once, so a reload cannot re-toast a share stopped hours ago. There
+    is no warning toast kind and `error` would misname a correct action, so the notice
+    takes the ACTION form ("Open Tunnels"), which also buys 10s of screen time instead of 4.
   - **Every share leaves a trail in `rexenv.log`** (30 Aug 2026, ledger #430): a loud
     INFO naming the site, the public URL and the pid when one starts, and a closing line
     on every way it ends — user stop, the in-flight kill, quit, crash. Before this the

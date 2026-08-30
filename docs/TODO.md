@@ -2358,9 +2358,14 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   single-service control (topology invariant), raw `wp` passthrough (security
   decision), `wp_user_delete` (no IPC exists), progress streaming over the CLI
   socket (design once, benefits every long op).
-- [ ] **Rowless-orphan launch NOTICE**: the sweep runs before the webview mounts,
-  so a plain event would be lost — needs a queued-notices channel; WARN log is
-  the honest surface today.
+- [x] **Rowless-orphan launch NOTICE** ✓ 30 Aug 2026 — ledger #431. The queued-notices
+  channel this row asked for: `StartupNotices` (always managed, like `InitError`) is filled by
+  BOTH tunnel sweeps — the crash-orphan one and the rowless backstop — and drained by
+  `StartupNoticeHost` on mount. Draining is the rule the L0 test holds, plant-proven: a notice
+  survives until something reads it, and a second read is empty, so a reload cannot re-toast a
+  share stopped hours ago. No warning toast kind exists and `error` would misname a correct
+  action, so the notice takes the ACTION form ("Open Tunnels") — which also buys 10s of screen
+  time instead of 4. The live leg (a real sweep raising a real toast) is 🔨.
 - [ ] **Parent-death watcher helper** (kqueue `NOTE_EXIT`) to close the tunnel
   crash→relaunch gap entirely — revisit only if crash reports show the bounded
   gap mattering.

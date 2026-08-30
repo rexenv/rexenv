@@ -69,7 +69,7 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
 | Settings | `/settings` | `src/routes/Settings.tsx` |
 | Onboarding | `/onboarding` | `src/routes/Onboarding.tsx` |
 | Dev-only harnesses (tree-shaken from prod) | `/dev/git-panel`, `/dev/ui-review` | `src/routes/DevGitPanel.tsx`, `src/routes/DevUiReview.tsx` |
-| IPC bridge (the ONLY invoke path; 241 exports) | — | `src/lib/ipc/index.ts` |
+| IPC bridge (the ONLY invoke path; 242 exports) | — | `src/lib/ipc/index.ts` |
 | Add a plugin/theme — the four sources behind `SourceTabs` | — | `components/wordpress/WordPressManager.tsx` (wp.org search + the shared `WpInstallCard`), `ZipAddPanel.tsx` (Upload zip), `GitAddPanel.tsx` (From Git), `LinkFolderPanel.tsx` (Link folder); probes `wk-checks/{zipinstall,wptoast,check,linkpanel}.js` |
 | Shared UI hooks (editor pick + open, downloads) | — | `src/lib/useEditor.ts`, `src/lib/useDownloads.ts` |
 | "Which app opens this" (browser/editor pick, icons, chevron, private window) | `commands/system.rs` (`list_browsers`, `open_in_browser` incl. its `private` arg, `open_external`'s preference route), `platform/macos/mod.rs` (bundle table + per-browser private flag, icon extraction, LaunchServices default) | `src/lib/useBrowser.ts`, `src/components/ui/{app-icon,app-picker,split-button,open-in,menu}.tsx` (`MenuItem`'s `action` = the row's second target) + `src/components/common/IncognitoIcon.tsx` (the private glyph); consumers `routes/{SiteDetail,Sites,Settings}.tsx` · example `browser_detect_check` · wk-check `openin.js` · ARCHITECTURE §8.2 |

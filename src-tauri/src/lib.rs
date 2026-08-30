@@ -243,6 +243,10 @@ pub fn run() {
 
             // Open the app SQLite database (creating it + running migrations) and
             // hold it in app state for the IPC commands.
+            // Notices the launch sweeps raise. They run BELOW, before any window
+            // exists, so an emitted event would go to nobody — the queue is
+            // drained by the frontend on mount (`startup_notices`).
+            let notices = commands::system::StartupNotices::default();
             // Fatal init: open the DB + load/create the CA. On failure `AppState` can't
             // be built — so we do NOT leave it unmanaged (every AppState command would
             // then panic with a cryptic "state not managed"). Instead we record a
@@ -346,6 +350,14 @@ pub fn run() {
                         log::warn!(
                             "tunnels: killed {orphaned} tunnel(s) still sharing after a crash"
                         );
+                        notices.push(
+                            "warn",
+                            format!(
+                                "Stopped {orphaned} public share(s) left running by a crashed \
+                                 session — their links are dead now. Share again from the \
+                                 Tunnels page if you still need them."
+                            ),
+                        );
                     }
                     // Backstop for the class "DB and process table disagree"
                     // (rowless but provably ours — pre-v23 fossils, app-data
@@ -356,6 +368,14 @@ pub fn run() {
                     if rowless > 0 {
                         log::warn!(
                             "tunnels: stopped {rowless} PUBLIC share(s) this app had no record of"
+                        );
+                        notices.push(
+                            "warn",
+                            format!(
+                                "Stopped {rowless} public share(s) this app had no record of — \
+                                 they were serving a site to the internet. Nothing else on this \
+                                 Mac could see them; check the Tunnels page if that is a surprise."
+                            ),
                         );
                     }
                     // First run: create the sites root (~/rexenv/Sites, or the
@@ -664,6 +684,7 @@ pub fn run() {
                 }
             };
             app.manage(commands::system::InitError(init_error));
+            app.manage(notices);
 
             // `rex` CLI socket (see `cli_server`): requests execute in THIS
             // process through the same command fns the UI calls. Spawned even
@@ -847,6 +868,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::system::app_info,
             commands::system::init_error,
+            commands::system::startup_notices,
             commands::system::global_status,
             commands::system::open_external,
             commands::system::reveal_path,

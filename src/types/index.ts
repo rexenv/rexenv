@@ -733,6 +733,15 @@ export interface WpUpdateProgress {
   line: string; // the raw wp-cli line
 }
 
+/** A notice raised during startup, before a window existed to show it
+ *  (mirrors the Rust `StartupNotice`). `warn` is reserved for something rexenv
+ *  DID on the user's behalf — a public share it stopped — never for something
+ *  it merely observed. */
+export interface StartupNotice {
+  level: "info" | "warn";
+  message: string;
+}
+
 /** A core language row (mirrors the Rust WpLanguage DTO / `wp language core list`). */
 export interface WpLanguage {
   language: string; // locale code, e.g. fr_FR

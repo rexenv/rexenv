@@ -53,7 +53,12 @@ export const toast = {
     useToastStore.getState().push(message, "error", command, action),
   success: (message: string, action?: ToastAction) =>
     useToastStore.getState().push(message, "success", undefined, action),
-  info: (message: string) => useToastStore.getState().push(message, "info"),
+  /** `action` is the honest form for "rexenv did something on your behalf":
+   *  there is no warning kind, `error` would misname a correct action, and a
+   *  4-second info toast about a share that was just stopped is telling nobody.
+   *  With an action it names where to look and stays up 10s. */
+  info: (message: string, action?: ToastAction) =>
+    useToastStore.getState().push(message, "info", undefined, action),
 };
 
 /**

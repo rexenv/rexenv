@@ -113,6 +113,54 @@ pub fn init_error(state: State<'_, InitError>) -> Option<String> {
     state.0.clone()
 }
 
+/// Notices raised during startup, held until a webview exists to show them.
+///
+/// **Why a queue and not an event** (30 Aug 2026): the launch sweeps run in
+/// `setup()`, BEFORE the window mounts, so anything emitted there is emitted to
+/// nobody — which is why "rexenv stopped a public share you didn't know about"
+/// had never reached the user's screen, only `rexenv.log`. A share the app kills
+/// on the user's behalf is exactly the fact they must not have to go looking
+/// for: the link they gave someone stopped working, and nothing said so.
+///
+/// ALWAYS managed, like [`InitError`], so reading it can never panic.
+#[derive(Default)]
+pub struct StartupNotices(pub std::sync::Mutex<Vec<StartupNotice>>);
+
+/// One queued startup notice. `level` maps to the toast kind the frontend uses.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StartupNotice {
+    /// "info" | "warn" — warn is reserved for something the app DID on the
+    /// user's behalf, never for something it merely noticed.
+    pub level: &'static str,
+    pub message: String,
+}
+
+impl StartupNotices {
+    /// Queue a notice. Best-effort: a poisoned lock loses the notice rather
+    /// than taking the app down over a toast, and the same fact is already in
+    /// `rexenv.log` — the log is the record, this is the courtesy.
+    pub fn push(&self, level: &'static str, message: String) {
+        if let Ok(mut q) = self.0.lock() {
+            q.push(StartupNotice { level, message });
+        }
+    }
+
+    /// Take everything queued, leaving the queue empty. Separate from the
+    /// command so the once-only rule is testable without a Tauri app.
+    pub fn drain(&self) -> Vec<StartupNotice> {
+        self.0.lock().map(|mut q| std::mem::take(&mut *q)).unwrap_or_default()
+    }
+}
+
+/// Drain the startup notices. DRAINING is the point: the frontend calls this
+/// once on mount, and a second caller (a reload, a second window) must not
+/// re-toast what the user has already been told.
+#[tauri::command]
+pub fn startup_notices(state: State<'_, StartupNotices>) -> Vec<StartupNotice> {
+    state.drain()
+}
+
 /// The sidebar status footer's global block. Mirrors the frontend `GlobalStatus`
 /// type. CPU/RAM are REXENV'S OWN totals — the sum of every supervised process
 /// tree (masters + workers, incl. the root edge) from the same enriched rows the
@@ -496,7 +544,7 @@ pub async fn uninstall_system(
 
 #[cfg(test)]
 mod tests {
-    use super::summarize;
+    use super::{summarize, StartupNotices};
 
     /// Pins the fix: `global_status` running/total/summary come from RUNNING
     /// SERVICES, never site DB rows — so the footer (global_status) and the
@@ -530,5 +578,29 @@ mod tests {
         assert_eq!(summarize(&[req(false), req(true), opt(true)]), (2, 3, "partial"));
         // Only an idle optional engine listed → stopped (not divide-by-zero "all").
         assert_eq!(summarize(&[opt(false)]), (0, 0, "stopped"));
+    }
+    /// A share rexenv stopped on the user's behalf must be TOLD ONCE — not
+    /// zero times (an event emitted before any window exists) and not on every
+    /// reload (a toast that keeps reappearing reads as a fault that keeps
+    /// happening).
+    #[test]
+    fn startup_notices_survive_until_read_and_are_read_once() {
+        let q = StartupNotices::default();
+        q.push("warn", "Stopped 1 public share(s) left running by a crashed session".into());
+        q.push("info", "swept something dull".into());
+
+        let first = q.drain();
+        assert_eq!(first.len(), 2, "a queued notice was lost before anything could show it");
+        assert_eq!(first[0].level, "warn");
+        assert!(
+            first[0].message.contains("public share"),
+            "the notice no longer says WHAT was stopped: {}",
+            first[0].message
+        );
+        assert!(
+            q.drain().is_empty(),
+            "a second read re-delivered notices the user has already been shown — a reload \
+             would re-toast a share that was stopped once"
+        );
     }
 }
