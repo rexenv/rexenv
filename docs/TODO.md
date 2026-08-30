@@ -308,7 +308,27 @@ paying for anyway: **the tick belongs in the commit that does the work.**
   show no private target rather than a dead one.
 
 - [ ] **Eliminate the bug class: bundled PHP with curl's THREADED resolver** (the real
-  fix for #251 — the mu-plugin covers the WordPress HTTP API, not raw `curl_init()` in
+  fix for #251
+  — **and as of 31 Aug 2026 the exposure is MEASURED rather than described, which is new**.
+  Under the bundled 8.3/8.5: `gethostbyname("abc.rex")` → `127.0.0.1` and PHP streams fetch
+  the page, while `curl_init("https://abc.rex/")` fails outright — *"Could not resolve host:
+  abc.rex"*. Under 7.4 (ours, no c-ares) the same call is HTTP 200. So the row's
+  "raw `curl_init()` and non-WordPress apps" is exactly right and now demonstrable in three
+  lines of PHP. **Also measured: c-ares DOES read `/etc/hosts`** — `kubernetes.docker.internal`
+  and `multi.local` both resolve through it under 8.3, only `.rex` fails, because ours is a
+  wildcard resolver file and `/etc/hosts` has no wildcards. That prices a second option that
+  was never on the list: a rexenv-managed `/etc/hosts` block would fix raw curl for KNOWN
+  hostnames, at the cost of a root write per site lifecycle event, and it still could not
+  cover subdomain multisite or any host a user invents — which is precisely why the resolver
+  file was chosen over `/etc/hosts` in the first place. **The ruling stands; the ladder is now
+  priced at every rung.**
+  **Made LEGIBLE meanwhile** (ledger #435): `rex doctor` prints the limitation as a NOTE —
+  which builds have it, how many sites sit on them, what is covered (WordPress, via the
+  mu-plugin) and what is not, plus the workarounds a developer can use today (the WP HTTP
+  API, or `CURLOPT_RESOLVE`). Deliberately not a ✗ or a ⚠ and deliberately not counted in the
+  exit code: every normal install has this, and a doctor that goes red for everyone teaches
+  people to ignore it. The alternative it replaces is an unexplained DNS error inside
+  somebody's plugin with nothing on the machine willing to say why — the mu-plugin covers the WordPress HTTP API, not raw `curl_init()` in
   a plugin, and not non-WordPress PHP apps rexenv hosts). Needs a self-built
   static-php (`--enable-threaded-resolver` instead of `--enable-ares`) for 7 minors ×
   cli/fpm × 2 arches. **The hosting path is no longer blocked** — as of 14 Aug 2026

@@ -2500,6 +2500,31 @@ fn cmd_doctor(json_output: bool) {
     let (ok, warn, msg) = resolver_verdict(data.get("resolverDrift"));
     line(ok, warn, "Resolvers", msg);
 
+    // A NOTE, not a finding. The bundled 8.x builds link c-ares, whose curl
+    // cannot resolve a `.rex` host — WordPress is covered (the mu-plugin patches
+    // the HTTP API), a plugin's raw `curl_init()` and any non-WordPress PHP app
+    // are not. Nothing here is broken or fixable by the user, so it must not
+    // colour the verdict or the exit code: `rex doctor` going red on every
+    // normal install would teach people to ignore it. It is printed because the
+    // alternative is an unexplained "Could not resolve host" inside somebody's
+    // plugin, with nothing on this machine willing to say why.
+    if !json_output {
+        let cr = &data["curlResolver"];
+        let minors: Vec<String> = cr["aresMinors"]
+            .as_array()
+            .map(|a| a.iter().filter_map(|m| m.as_str().map(String::from)).collect())
+            .unwrap_or_default();
+        if !minors.is_empty() {
+            let n = cr["sites"].as_u64().unwrap_or(0);
+            println!(
+                "· {:<9} PHP {} bundle curl with c-ares, which cannot resolve .rex hosts \n                             ({n} site{} on them). WordPress is patched; a plugin's raw curl_init() and \n                             non-WordPress PHP are not — use the WP HTTP API, or CURLOPT_RESOLVE.",
+                "PHP curl",
+                minors.join(", "),
+                if n == 1 { "" } else { "s" },
+            );
+        }
+    }
+
     let edge = &data["edge"];
     if edge["running"] == json!(true) {
         if edge["wireOurs"] == json!(true) {

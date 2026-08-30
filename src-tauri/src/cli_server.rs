@@ -1427,6 +1427,22 @@ where
             }
             // Borrowed resolver files another tool reclaimed — invisible to
             // every other probe, because our resolver keeps answering.
+            // Which PHP builds in USE carry the c-ares bug class (measured per
+            // minor in `core::wp_dns`), and how many sites sit on them.
+            let (ares_minors, ares_sites) = {
+                let sites = state
+                    .db
+                    .lock()
+                    .ok()
+                    .and_then(|c| crate::core::sites::list(&c).ok())
+                    .unwrap_or_default();
+                let minors = crate::core::wp_dns::ares_minors_in_use(&sites);
+                let count = sites
+                    .iter()
+                    .filter(|s| minors.contains(&crate::core::php::minor_of(&s.php_version)))
+                    .count();
+                (minors, count)
+            };
             let resolver_drift = {
                 let conn = state
                     .db
@@ -1455,6 +1471,17 @@ where
                 // Borrowed resolver files another tool reclaimed — invisible to
                 // every other probe, because our resolver keeps answering.
                 "resolverDrift": to_value(&resolver_drift)?,
+                // A LIMITATION, not a fault: the bundled 8.x builds link c-ares,
+                // whose curl cannot resolve a `.rex` host at all. WordPress is
+                // covered by the mu-plugin; a plugin's raw `curl_init()` and any
+                // non-WordPress PHP app are not, and today that arrives as an
+                // unexplained "Could not resolve host" inside somebody's code.
+                // Reported so it can be READ somewhere, never counted as a
+                // finding — nothing here is broken or fixable by the user.
+                "curlResolver": {
+                    "aresMinors": ares_minors,
+                    "sites": ares_sites,
+                },
             }))
         }
         // A typo never reaches here — `rex`'s own match rejects an unknown

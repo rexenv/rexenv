@@ -1022,7 +1022,18 @@ IPC surface — which is how a reader ends up designing against a system with on
   the measurement per minor; the L0 half refuses to let a pinned minor go unrecorded, and
   `wp_dns_check` FAILS on any disagreement between the record and the build in front of
   it — in either direction, because a minor that turned threaded means the mu-plugin is
-  dead weight for it. Site Health loopbacks, REST self-calls and
+  dead weight for it.
+  **What the mu-plugin does NOT cover, measured 31 Aug 2026 and now SAID rather than
+  implied** (ledger #435): it patches the WordPress HTTP API, so a plugin calling
+  `curl_init()` directly — and any non-WordPress PHP app rexenv hosts — still gets
+  *"Could not resolve host"* on an 8.x build, while `gethostbyname` and PHP streams work
+  on the same request. `rex doctor` prints that as a NOTE (which builds, how many sites,
+  what is covered, and the two workarounds: the WP HTTP API, or `CURLOPT_RESOLVE`) —
+  never as a ✗ and never counted in the exit code, because every normal install has it and
+  a doctor that goes red for everyone is a doctor people stop reading. The same run
+  measured that c-ares DOES read `/etc/hosts`, which prices the one non-build option and
+  shows why it cannot serve a WILDCARD TLD: `/etc/hosts` has no wildcards, so subdomain
+  multisite and any invented host would still fail. Site Health loopbacks, REST self-calls and
   sibling-site requests failed the same way; WP-CLI hid it (cron events run in-process,
   no HTTP). The fix is an auto-managed mu-plugin (`rexenv-dns.php`) that, on
   `http_api_curl`, hands cURL the address the SYSTEM resolver already has

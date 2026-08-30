@@ -86,6 +86,33 @@ pub fn resolver_for(minor: &str) -> Option<CurlResolver> {
     }
 }
 
+/// Which of `sites`' PHP minors carry the c-ares resolver, and how many sites sit
+/// on them — the EXPOSURE the mu-plugin does not cover.
+///
+/// **Measured 31 Aug 2026, and the gap is not theoretical.** Under a bundled
+/// 8.3/8.5, `gethostbyname("abc.rex")` returns `127.0.0.1` and PHP streams fetch
+/// the page, while `curl_init("https://abc.rex/")` fails outright with
+/// *"Could not resolve host: abc.rex"* — c-ares reads `/etc/resolv.conf` and
+/// `/etc/hosts` and never macOS's `/etc/resolver/<tld>`. On 7.4 (ours, no c-ares)
+/// the same call returns HTTP 200. The mu-plugin patches the WordPress HTTP API,
+/// so WordPress itself is fine; a plugin calling curl directly, or any
+/// non-WordPress PHP app rexenv hosts, is not.
+///
+/// This exists so the failure can be NAMED where a user meets it (`rex doctor`)
+/// instead of arriving as an unexplained DNS error inside somebody's plugin. It
+/// is not a fix — the fix is a self-built 8.x, priced and ruled out in
+/// `docs/TODO.md` — and it must never be dressed up as one.
+pub fn ares_minors_in_use(sites: &[Site]) -> Vec<String> {
+    let mut minors: Vec<String> = sites
+        .iter()
+        .map(|s| crate::core::php::minor_of(&s.php_version))
+        .filter(|m| resolver_for(m) == Some(CurlResolver::Ares))
+        .collect();
+    minors.sort();
+    minors.dedup();
+    minors
+}
+
 /// The auto-managed mu-plugin. No placeholders: it is byte-identical for every
 /// site, which is why nothing here needs re-writing on a domain or TLD change.
 const MU_PLUGIN: &str = r#"<?php
@@ -277,6 +304,43 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    /// #435 — the exposure is per SITE, and 7.4 must never be counted into it.
+    ///
+    /// The bug class is "this build's curl cannot resolve a `.rex` host", and
+    /// 7.4 is the one build rexenv makes itself, against its own curl, with no
+    /// c-ares at all. A summary that lumped every site together would tell a
+    /// 7.4 user their site has a problem it structurally cannot have — the same
+    /// mistake `xdebug_supported` was split apart to stop making.
+    #[test]
+    fn the_ares_exposure_counts_only_the_builds_that_have_the_bug() {
+        let site = |php: &str| {
+            // The SHARED production-shape fixture, not a hand-rolled struct —
+            // a friendly fixture is how this project has hidden real bugs before.
+            let mut s = crate::state::models::test_site(
+                "3f2b1c94-0a5e-4d77-9b31-6c0f2d8a1e44",
+                "abc.rex",
+                crate::state::models::SiteOrigin::User,
+            );
+            s.php_version = php.into();
+            s
+        };
+        assert_eq!(ares_minors_in_use(&[site("7.4")]), Vec::<String>::new());
+        assert_eq!(ares_minors_in_use(&[site("8.3")]), vec!["8.3".to_string()]);
+        // Deduped and sorted, so the doctor line reads as a set of builds
+        // rather than a list of sites.
+        assert_eq!(
+            ares_minors_in_use(&[site("8.3"), site("8.1"), site("8.3"), site("7.4")]),
+            vec!["8.1".to_string(), "8.3".to_string()]
+        );
+        // A patch-level version still answers, because a site records a minor
+        // but nothing stops a fuller string reaching here.
+        assert_eq!(ares_minors_in_use(&[site("8.4.23")]), vec!["8.4".to_string()]);
+        // An unpinned minor is NOT exposure: `resolver_for` returns None, which
+        // means "not measured", and inventing a verdict for it is how a table
+        // starts lying about builds it has never seen.
+        assert_eq!(ares_minors_in_use(&[site("9.9")]), Vec::<String>::new());
     }
 
     /// **Every PHP rexenv pins has a MEASURED curl resolver, and the set is not
