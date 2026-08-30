@@ -1446,8 +1446,16 @@ first:
   **What would settle it:** entries from `tunnel_exposure_check` / the network tier, where
   the pid IS cloudflared. Until one of those runs appends a line, this row has no evidence
   at all — which is a better description of its state than "watching".
-- [ ] Then: ~~Apache/FrankenPHP dotfile legs (#103)~~ (closed 15 Aug 2026 — all three backends live, plant-proven per template), ~~fpm candidate
-  isolation (#104/#191)~~ (closed 15 Aug 2026, `fpm_candidate_check`, plant-proven), ~~manifest HEAD+digest sweep~~ (closed 15 Aug 2026, `manifest_sweep_check` #335 — 88 URLs answer, 78 re-hashed incl. every Intel digest), ~~Bedrock live provision (#35)~~ (the PREMISE is proven live 24 Aug 2026 — a real Bedrock WordPress, two planted mu-plugins, only the recorded content dir's one loaded; ledger #35 carries the method. A committed example is still open, and deliberately: it would download core, create a database and install WordPress on every network-tier run),
+- [ ] **Bedrock live provision — the committed example (#35), deliberately not built.**
+  Split out of the compound row below on 30 Aug 2026, because that row's every other item
+  is struck through and its box could never close while this sat inside it. The PREMISE is
+  proven live (24 Aug 2026: a real Bedrock WordPress, two planted mu-plugins, only the
+  recorded content dir's one loaded; ledger #35 carries the method). What is open is a
+  COMMITTED example, and the reason it is open is a cost, not an oversight: it would
+  download core, create a database and install WordPress on every network-tier run.
+
+- [x] Then: ~~Apache/FrankenPHP dotfile legs (#103)~~ (closed 15 Aug 2026 — all three backends live, plant-proven per template), ~~fpm candidate
+  isolation (#104/#191)~~ (closed 15 Aug 2026, `fpm_candidate_check`, plant-proven), ~~manifest HEAD+digest sweep~~ (closed 15 Aug 2026, `manifest_sweep_check` #335 — 88 URLs answer, 78 re-hashed incl. every Intel digest), ~~Bedrock live provision (#35)~~ (premise proven live 24 Aug 2026; the committed example is its OWN row above),
   sandbox-adoption cohorts + `wp_fixture()` — incl. scoping.
   ✓ **DONE 26 Aug 2026 — and only once it could be RUN.** `common::install_wp` derives the
   db name and engine address; **11 examples converted, all 11 verified live** against a real
@@ -1742,12 +1750,20 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
 - [ ] **Intel spot-run**: x86_64 bottle digests + MySQL 8.0.44 x86_64 were hashed
   from real downloads but never RUN (PORTS.md caveat) — run-verify on the next
   Intel machine.
-- [ ] ⚠ **The macOS floor is a claim about BOTH slices and half of it has never
-  been measured.** PORTS.md's `minos` table is measured from this machine's
-  binary cache, which only ever downloads the host arch — so every number in it
-  is an **arm64** number, and `minimumSystemVersion: 15.0` is asserted for x86_64
-  on the assumption that upstream builds both slices to the same deployment
-  target. Nothing checks that. **This is the arm64-DMG mistake's shape**: a
+- [ ] ⚠ **The macOS floor is a claim about BOTH slices, and most of it has still never
+  been measured** (narrowed 30 Aug 2026 — it used to say "half", and one row of the table
+  is now genuinely both-slice). PORTS.md's `minos` table is measured from this machine's
+  binary cache, which only ever downloads the host arch, so every number in it is an
+  **arm64** number **except PostgreSQL**, and `minimumSystemVersion: 15.0` is asserted for
+  x86_64 on the assumption that upstream builds both slices to the same deployment target.
+  Nothing checks that.
+  **The one measured exception is also the evidence that the assumption is worth checking.**
+  The 30 Aug PostgreSQL re-pin fetched the x86_64 tarballs and swept every Mach-O in them:
+  the new pins are 15.0 on both slices, and the OLD 18.4.0 was 26.0 on both. The two slices
+  did move together, twice — which is a data point FOR the assumption and not a substitute
+  for checking it, since the failure mode is precisely a pin where they do not. It also
+  proves step 1 below is cheap: that was one `curl` and one `vtool` per artifact, done from
+  this arm64 Mac. **This is the arm64-DMG mistake's shape**: a
   universal artifact whose two halves differ, working perfectly on the machine
   that made it and wrong for everyone on the other chip — except the failure
   here is worse than a thin binary, because it is invisible until an Intel user
@@ -1791,9 +1807,11 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   (denied / read-only / deny-by-default / writable), including the load-bearing
   one: `config set default_tld com` was refused by `set_default_tld`'s own
   policy rather than by the allow-list.
-- [ ] Stage-3 leftovers awaiting a ruling only if they resurface: none — the
+- [x] Stage-3 leftovers awaiting a ruling only if they resurface: none — the
   collision-rename tell-only and pdo_mysql exclusions are SETTLED (pinned by
-  tests; do not reopen).
+  tests; do not reopen). ✓ ticked 30 Aug 2026: the body had said "none" for weeks
+  while the box stayed open, which is a row that can never be closed by doing
+  anything — exactly the shape that makes the backlog lie about its size.
 - [ ] **MCP server — EVERY PLANNED MILESTONE IS SHIPPED (M1, M2a, M2b, M3).** Header
   corrected twice, and the second time is the instructive one. 21 Aug 2026: it had read
   "building M2a → M2b → M3" for eight days after both were done. 25 Aug 2026: it read

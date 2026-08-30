@@ -59,6 +59,10 @@ this drifted silently: the app claimed macOS 11 while shipping binaries below, a
 number nobody records drifts again. **The app's stated floor
 (`tauri.conf.json` `minimumSystemVersion`, INSTALL.md) must equal the MAX across the
 binaries the default stack requires** — today that is nginx/cloudflared at 15.0.
+**PostgreSQL sat ABOVE that floor at 26.0 from 15 Aug to 30 Aug 2026** and the stated
+floor did not move with it: the rule above is maintained by hand, so a pin that raises a
+floor is caught only when somebody re-reads this table. That is the argument for the
+derived assertion tracked in `docs/TODO.md`, not a reason to trust the number here.
 Re-measure and update this table whenever a pin changes.
 
 **Re-measured 15 Aug 2026 after PHP 7.4.33 landed** (every Mach-O in the cache, not
