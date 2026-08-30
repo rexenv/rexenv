@@ -1776,9 +1776,16 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     `licenses_spec` REFUSED to resolve the new pin because a self-hosted artifact owes its
     licence texts. Build 1 shipped without them, build 2 carries `licenses-<arch>.tar.gz`
     (nginx BSD-2-Clause, PCRE2 BSD-3-Clause), and the guard was right both times.
-  - [ ] **Not yet done: run the app on it.** The bytes are pinned and checksum-verified, but
-    `prepare_binary` (de-quarantine → relink → codesign) and a real site served through this
-    nginx have not run on this machine — the stack is still up on the cached 1.30.3.
+  - [x] **Run the app on it** ✓ 31 Aug 2026, measured rather than reported: the app fetched
+    `nginx-1.30.4`, `prepare_binary` ran (ad-hoc signature present, quarantine attribute gone),
+    `licenses/` sits beside the binary in the cache dir, and the RUNNING master is that binary
+    (`nginx: master process …/bin/nginx-1.30.4/nginx`) at `minos 12.0` with a `libSystem`-only
+    closure. Sites answer through it — `abc.rex` 200 at the edge AND 200 direct on `:18088`,
+    `bl.rex` 200 at the edge. Whole chain proven end to end: build → publish → pin → resolve →
+    prepare → serve.
+  - **Leftover, harmless:** the old `bin/nginx-1.30.3/` cache dir is still on disk. The binary
+    GC clears outdated caches on a version bump, so this settles itself; noted so nobody reads
+    it as two nginxes being live.
 
 - [ ] ⚠ **The macOS floor is a claim about BOTH slices, and most of it has still never
   been measured** (narrowed 30 Aug 2026 — it used to say "half", and one row of the table
