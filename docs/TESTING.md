@@ -143,6 +143,22 @@ it can:
   rows and that the developer's own row survives a third one. The same run `php -l`s
   both generated files under the bundled PHP: a generated page with a syntax error
   cannot report itself, because PHP never reaches the code that renders the error card.
+  **`tunnel_parent_death_check` (sandbox tier, 30 Aug 2026, ledger #432) is the layer
+  aimed at a KERNEL mechanism, and it carries this month's sharpest lesson about how an
+  example can be green and empty.** What it proves cannot be proved lower: that kqueue
+  `EVFILT_PROC`/`NOTE_EXIT` fires for a pid we did not fork, that it fires on a SIGKILL —
+  which runs no code in the dying process, the entire reason the guard exists — and that
+  the guard then signals the right process and exits. Three real processes, a real kernel.
+  **Both of its plants first came back ALL PASS**: `cargo run --example` builds the example
+  and links the library, and leaves the `rexenv` BIN target — which is what the guard runs
+  from — exactly as it was, so the example was agreeing with a change it had never
+  executed. It now REFUSES when the binary predates the guard's source. Same family as
+  `cli_socket_check`'s stale-server trap, and the general rule this layer keeps re-learning:
+  **an example that re-executes the app must prove the app is the one you just edited.**
+  Its second lesson is the fixture one: the first stand-in cloudflared was
+  `sh -c 'sleep 300' <argv…>`, which EXECS sleep, so `ps` reported `sleep 300` — no marker,
+  no program name — and the guard correctly refused it. A positive leg written that way
+  would have "passed" while testing nothing.
   **`relink_tree_check` (sandbox tier, 14 Aug 2026) is this layer aimed at the tool
   chain itself.** `prepare_binary_tree`'s bug was never arithmetic — it was WHAT the
   chain was asked to look at: `needs_tree_relink` treated any `@loader_path/` prefix

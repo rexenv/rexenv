@@ -538,6 +538,50 @@ pub fn sweep_rowless(conn: &rusqlite::Connection, platform: &dyn Platform) -> u3
     killed
 }
 
+/// The argv a tunnel guard is spawned with, and the parse of it — one pair, so
+/// the two can never drift into a guard that starts and watches the wrong pid.
+///
+/// **Why a guard process exists at all.** Tunnels die with the app (ruled 28 Jul
+/// 2026): a public share must not outlive the thing supervising it. A CLEAN quit
+/// kills them in `RunEvent::Exit`, and a crash is caught by the launch sweep —
+/// but only at the NEXT launch, which may be days away, and until then a site is
+/// public with nothing watching it. macOS has no `PR_SET_PDEATHSIG`, so closing
+/// that window needs a separate process watching the parent die.
+#[derive(Debug, PartialEq, Eq)]
+pub struct GuardArgs {
+    /// The rexenv process whose death ends the share.
+    pub parent: u32,
+    /// The cloudflared child to stop when it does.
+    pub child: u32,
+    /// The site host the child must still be serving — the guard kills on argv
+    /// IDENTITY, never on a bare pid (the pid may have been recycled between
+    /// the parent's death and ours noticing).
+    pub domain: String,
+}
+
+/// The flag the guard mode is dispatched on (`main.rs`, before Tauri boots).
+pub const GUARD_FLAG: &str = "--tunnel-guard";
+
+/// Build the guard's argv. Kept beside the parser so a change to one fails the
+/// round-trip test rather than producing a guard that silently never fires.
+pub fn guard_argv(parent: u32, child: u32, domain: &str) -> Vec<String> {
+    vec![GUARD_FLAG.to_string(), parent.to_string(), child.to_string(), domain.to_string()]
+}
+
+/// Parse a guard invocation. `None` = not a guard invocation, or a malformed
+/// one — and malformed must NEVER degrade into a guard with a default pid: pid
+/// 0 or 1 would make the watcher wait on init and the killer aim at it.
+pub fn parse_guard_args(args: &[String]) -> Option<GuardArgs> {
+    let i = args.iter().position(|a| a == GUARD_FLAG)?;
+    let parent: u32 = args.get(i + 1)?.parse().ok()?;
+    let child: u32 = args.get(i + 2)?.parse().ok()?;
+    let domain = args.get(i + 3)?.trim().to_string();
+    if parent <= 1 || child <= 1 || domain.is_empty() {
+        return None;
+    }
+    Some(GuardArgs { parent, child, domain })
+}
+
 /// The `rexenv.log` line a share leaves BEHIND IT when it starts (ledger #430).
 ///
 /// A public share is the only thing rexenv does that is visible from outside
@@ -627,6 +671,42 @@ mod tests {
         assert_eq!(humanize(Duration::from_secs(3599)), "59m 59s");
         assert_eq!(humanize(Duration::from_secs(3600)), "1h 00m");
         assert_eq!(humanize(Duration::from_secs(9000)), "2h 30m");
+    }
+
+    /// #432 — the guard's argv is a CONTRACT between two processes, and the
+    /// only failure mode that matters is a guard that starts and watches the
+    /// wrong thing. Round-trip, then every malformed shape that must refuse
+    /// rather than default: a defaulted pid here is a watcher waiting on init
+    /// and a killer aiming at it.
+    #[test]
+    fn a_guard_is_started_with_exactly_what_it_parses_back() {
+        let argv = guard_argv(4242, 78716, "mstest.rex");
+        assert_eq!(argv[0], GUARD_FLAG);
+        let parsed = parse_guard_args(&argv).expect("its own argv must parse");
+        assert_eq!(parsed, GuardArgs { parent: 4242, child: 78716, domain: "mstest.rex".into() });
+
+        // The app's OWN launch must never be read as a guard invocation.
+        let normal: Vec<String> = ["/Applications/rexenv.app/Contents/MacOS/rexenv".to_string()].into();
+        assert!(parse_guard_args(&normal).is_none());
+        assert!(parse_guard_args(&["--dns-agent".to_string()]).is_none());
+
+        // Malformed: refuse, never default.
+        for bad in [
+            vec![GUARD_FLAG.into()],                                     // no pids at all
+            vec![GUARD_FLAG.into(), "4242".into()],                      // no child
+            vec![GUARD_FLAG.into(), "4242".into(), "78716".into()],      // no domain
+            vec![GUARD_FLAG.into(), "x".into(), "78716".into(), "a.rex".into()], // parent NaN
+            vec![GUARD_FLAG.into(), "4242".into(), "y".into(), "a.rex".into()],  // child NaN
+            vec![GUARD_FLAG.into(), "1".into(), "78716".into(), "a.rex".into()], // parent = init
+            vec![GUARD_FLAG.into(), "4242".into(), "0".into(), "a.rex".into()],  // child = 0
+            vec![GUARD_FLAG.into(), "4242".into(), "78716".into(), "  ".into()], // blank domain
+        ] {
+            assert!(
+                parse_guard_args(&bad).is_none(),
+                "a malformed guard invocation parsed anyway: {bad:?} — a guard with a defaulted \
+                 pid watches init and signals init"
+            );
+        }
     }
 
     #[test]

@@ -22,6 +22,14 @@ use traits::Platform;
 #[cfg(target_os = "macos")]
 pub use macos::webview_dialogs::install_js_dialog_panels;
 
+/// Run the tunnel guard (`main.rs`, before Tauri boots): a detached watcher that
+/// ends ONE public share when the app that started it dies, SIGKILL included.
+/// Re-exported by NAME rather than making the OS module public — same shape as
+/// the dialog shim above, and the reason is the architecture rule: nothing
+/// outside `platform/` may name a concrete OS type.
+#[cfg(target_os = "macos")]
+pub use macos::parent_death_guard::run as run_tunnel_guard;
+
 /// Construct the platform implementation for the current OS.
 pub fn current() -> Box<dyn Platform> {
     #[cfg(target_os = "macos")]

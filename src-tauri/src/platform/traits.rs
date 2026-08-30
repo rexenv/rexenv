@@ -208,6 +208,23 @@ pub trait ProcessSupervisor: Send + Sync {
         Err(crate::error::Error::Unsupported("stop_group"))
     }
 
+    /// Spawn a detached watcher that stops `child` as soon as THIS process
+    /// dies — including a SIGKILL, which runs none of our own shutdown code.
+    ///
+    /// The third leg of "tunnels die with the app": `RunEvent::Exit` covers a
+    /// clean quit and the launch sweep covers a crash *at the next launch*,
+    /// which leaves a site public for however long the user takes to come
+    /// back. macOS has no `PR_SET_PDEATHSIG`, so the watcher cannot live
+    /// inside a dead process — hence a separate one, per share.
+    ///
+    /// The implementation must kill on positive argv IDENTITY (`domain`), never
+    /// on the bare pid: the number may belong to somebody else by the time the
+    /// watcher wakes. Default: unsupported — a platform without it still has
+    /// both other legs.
+    fn guard_child_against_our_death(&self, _child: u32, _domain: &str) -> Result<()> {
+        Err(crate::error::Error::Unsupported("guard_child_against_our_death"))
+    }
+
     /// PIDs currently listening on TCP `port` whose process command line contains
     /// `owner_marker` — so callers only ever touch their OWN services. Lets the
     /// service manager stop orphaned processes still holding our known ports that

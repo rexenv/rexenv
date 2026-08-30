@@ -196,7 +196,7 @@ rexenv/
         │   │                   #   ProcessSupervisor, AutostartManager, PermissionManager,
         │   │                   #   ShellRunner, Paths, BinaryProvider, EdgeSupervisor,
         │   │                   #   DnsAgentManager
-        │   ├── macos/          # all 11 impls real (+ webview_dialogs.rs)
+        │   ├── macos/          # all 11 impls real (+ webview_dialogs.rs, parent_death_guard.rs)
         │   └── windows/ · linux/   # todo!() stubs (fill later, no restructuring)
         │
         └── state/              # app state

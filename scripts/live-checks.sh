@@ -185,6 +185,7 @@ tunnel_delete_order_check network
 tunnel_exposure_check network
 tunnel_guard_check sandbox
 tunnel_muplugin_check sandbox
+tunnel_parent_death_check sandbox
 tunnel_sweep sandbox
 valet_import_check sandbox
 valet_scan_check sandbox

@@ -5,6 +5,7 @@
 //! CA trust, privileged port binding, autostart, binary download) are wired up
 //! as `todo!()` so the architecture is complete and `cargo check` passes.
 
+pub mod parent_death_guard;
 pub mod webview_dialogs;
 
 use crate::error::{Error, Result};
@@ -309,6 +310,24 @@ impl ProcessSupervisor for MacosSupervisor {
     fn spawn(&self, program: &Path, args: &[String]) -> Result<Child> {
         Ok(std::process::Command::new(program).args(args).spawn()?)
     }
+    fn guard_child_against_our_death(&self, child: u32, domain: &str) -> Result<()> {
+        // Our own binary, re-executed in guard mode — the same self-exec shape
+        // the DNS agent uses, and for the same reason: no second artifact to
+        // ship, sign and keep in step with the app.
+        let exe = std::env::current_exe()?;
+        let args = crate::core::tunnels::guard_argv(std::process::id(), child, domain);
+        // Detached and silent: it must outlive us (that is its whole job), and
+        // it has nothing to say — it either signals a still-identified child or
+        // exits. Anything worth reading is already in the child's own log.
+        std::process::Command::new(exe)
+            .args(&args)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()?;
+        Ok(())
+    }
+
     fn spawn_logged(&self, program: &Path, args: &[String], log_path: &Path) -> Result<Child> {
         self.spawn_logged_env(program, args, log_path, &[])
     }

@@ -1099,6 +1099,18 @@ IPC surface — which is how a reader ends up designing against a system with on
     frontend on mount — once, so a reload cannot re-toast a share stopped hours ago. There
     is no warning toast kind and `error` would misname a correct action, so the notice
     takes the ACTION form ("Open Tunnels"), which also buys 10s of screen time instead of 4.
+  - **A share dies with the app even when the app is KILLED** (30 Aug 2026, ledger #432).
+    "Tunnels die with the app" had two legs and a hole between them: `RunEvent::Exit`
+    covers a clean quit, the launch sweep covers a crash — *at the next launch*, which may
+    be days away, and until then the site is public with nothing supervising it. macOS has
+    no `PR_SET_PDEATHSIG`, so the third leg is a detached watcher per share: the app
+    binary re-executed as `--tunnel-guard <parent> <child> <domain>`, blocking on kqueue
+    `EVFILT_PROC`/`NOTE_EXIT` for BOTH pids. Parent dies → it re-reads the child's argv and
+    signals only on the same positive identity the sweeps use (a recycled pid must never be
+    killed); child dies first → the guard exits, so the ordinary stop leaves nothing behind.
+    Best-effort at the call site: a share that could not get a guard still has the other two
+    legs, and refusing to share over a missing watcher would trade worse than the window it
+    closes.
   - **Every share leaves a trail in `rexenv.log`** (30 Aug 2026, ledger #430): a loud
     INFO naming the site, the public URL and the pid when one starts, and a closing line
     on every way it ends — user stop, the in-flight kill, quit, crash. Before this the

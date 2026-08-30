@@ -2366,9 +2366,26 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   share stopped hours ago. No warning toast kind exists and `error` would misname a correct
   action, so the notice takes the ACTION form ("Open Tunnels") — which also buys 10s of screen
   time instead of 4. The live leg (a real sweep raising a real toast) is 🔨.
-- [ ] **Parent-death watcher helper** (kqueue `NOTE_EXIT`) to close the tunnel
-  crash→relaunch gap entirely — revisit only if crash reports show the bounded
-  gap mattering.
+- [x] **Parent-death watcher helper** (kqueue `NOTE_EXIT`) ✓ 30 Aug 2026 — ledger #432,
+  `platform/macos/parent_death_guard.rs` + `--tunnel-guard`. Built despite this row's own
+  "revisit only if crash reports show the gap mattering", and the measuring changed the
+  premise: the gap is NOT bounded. `RunEvent::Exit` covers a clean quit and the launch
+  sweep covers a crash *at the next launch* — however long the user takes to come back —
+  and the rowless sweep's row already records shares that were public for WEEKS. So the
+  thing to revisit-if-it-matters had already mattered, in this repo's own evidence.
+  - Guard = the app binary re-executed, blocking on `EVFILT_PROC`/`NOTE_EXIT` for BOTH
+    pids. Parent dies → re-read the child's argv and signal only on the same positive
+    identity the sweeps use; child dies first → the guard exits, so a normal stop leaves
+    nothing behind. Best-effort at the call site: a share without a guard still has the
+    other two legs.
+  - Proofs: L0 on the two-process argv contract (round-trip + eight malformed shapes that
+    must refuse rather than default), L1 `tunnel_parent_death_check` (sandbox tier) with
+    three legs against real processes, plant-proven both directions.
+  - **Both plants first came back ALL PASS.** `cargo run --example` does not rebuild the
+    app BIN the guard runs from, so the example was agreeing with a change it had never
+    executed — the `cli_socket_check` stale-server trap, one layer over. It now REFUSES
+    when the binary predates the guard's source, which is the difference between a note
+    and a control.
 
 ## Blocked on external work
 

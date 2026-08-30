@@ -646,6 +646,7 @@ pub async fn start_tunnel<R: tauri::Runtime>(
     // The child's real pid lands on the claim; if it can't be written the
     // crash story is broken for this tunnel — fail the start rather than run
     // a public tunnel the exit hook couldn't kill.
+    let pid_for_guard = child.id();
     {
         let recorded = state
             .db
@@ -673,6 +674,21 @@ pub async fn start_tunnel<R: tauri::Runtime>(
                 )));
             }
         }
+    }
+
+    // Third leg of "tunnels die with the app" (ledger #432): a detached guard
+    // that ends THIS share when rexenv dies without running any of its own
+    // shutdown code. Spawned as soon as the pid is recorded — before the URL
+    // exists, because a crash during the 30s URL poll leaves exactly the same
+    // orphan. Best-effort by design: a share that could not get a guard is
+    // still covered by the exit hook and the launch sweep, and refusing to
+    // share over a missing watcher would be a worse trade than the window it
+    // closes.
+    if let Err(e) = platform.supervisor().guard_child_against_our_death(pid_for_guard, &domain) {
+        log::warn!(
+            "tunnels: {domain} is sharing WITHOUT a parent-death guard ({e}) — a crash will \
+             leave it public until the next launch"
+        );
     }
 
     // Poll the log for the public URL (async sleeps — don't block the executor).

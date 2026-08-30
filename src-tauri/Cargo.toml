@@ -54,6 +54,12 @@ mysql_async = { version = "0.37.0", default-features = false, features = ["minim
 # wry implements no WKUIDelegate JS dialogs on macOS. Versions match wry's own
 # transitive deps, so nothing new enters the tree.
 [target.'cfg(target_os = "macos")'.dependencies]
+# kqueue `EVFILT_PROC`/`NOTE_EXIT` for the tunnel guard (platform/macos/tunnel_guard.rs):
+# macOS has no PR_SET_PDEATHSIG, so "the share dies with the app even when the app is
+# SIGKILLed" needs a watcher process, and a watcher that POLLS is a timer pretending to
+# be an event. ALREADY in the tree transitively (sysinfo, tokio, ring …) — this is a
+# direct declaration of a crate that was going to be compiled anyway.
+libc = "0.2"
 objc2 = "0.6"
 block2 = "0.6"
 objc2-foundation = { version = "0.3", features = ["NSString", "NSGeometry", "objc2-core-foundation"] }

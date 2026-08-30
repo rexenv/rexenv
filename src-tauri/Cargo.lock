@@ -3401,6 +3401,7 @@ dependencies = [
  "flate2",
  "hickory-proto",
  "hickory-server",
+ "libc",
  "log",
  "mysql_async",
  "objc2",
