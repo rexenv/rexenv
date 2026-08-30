@@ -19,11 +19,14 @@ not part of WP-CLI, so rexenv carries it rather than resolving it from a machine
 it does not control — the tree is compiled into the app binary and written out on
 first use. It is listed in its own section below.
 
-**2. PHP 7.4.33 — rexenv builds it, hosts it, and is therefore its distributor
-(15 Aug 2026).** static-php.dev publishes no PHP 7.4 and never did, so rexenv
-builds it (`rexenv/runtimes`, static-php-cli, from
-`shivammathur/php-src-backports`) and hosts the four artifacts as immutable
-GitHub Release assets that the app then downloads. Every other row in
+**2. PHP 7.4.33 (15 Aug 2026) and nginx 1.30.4 (31 Aug 2026) — rexenv builds
+them, hosts them, and is therefore their distributor.** static-php.dev publishes
+no PHP 7.4 and never did, so rexenv builds it (`rexenv/runtimes`,
+static-php-cli, from `shivammathur/php-src-backports`) and hosts the four
+artifacts as immutable GitHub Release assets that the app then downloads. nginx
+joined for a different reason — upstream's darwin builds moved to a macOS 26
+deployment target, which would have locked out every Intel user below macOS 26 —
+and it carries the same obligations. Every other row in
 `docs/PORTS.md` names somebody else's build; this one names ours. The PHP
 License 3.01 §2/§6 obligation attaches to us for it, and so do the licences of
 every dependency statically linked into the binary — they travel inside the
@@ -102,6 +105,35 @@ they disagree, so these rows cannot silently describe a different version than
 the one that ships. Note that dist-archive's version is coupled to the pinned
 WP-CLI: v3.1.0 needs `wp-cli/wp-cli ^2` (our 2.12.0), while v3.2.0 requires
 `^2.13` and will not resolve until WP-CLI is bumped first.
+
+## nginx 1.30.4 — rexenv's own build (downloaded at runtime, distributed BY US)
+
+The SECOND artifact rexenv builds and hosts, since 31 Aug 2026. Same standing as
+PHP 7.4 below, and it arrived for a concrete reason rather than a preference:
+upstream's darwin binaries declare `minos 26.0` on x86_64 (and, from 1.28.3, on
+arm64), eleven majors above the floor this app states, so an Intel user below
+macOS 26 was installing an app whose shared web server may refuse to load.
+
+| | |
+|---|---|
+| Artifacts | `nginx-1.30.4-macos-{aarch64,x86_64}` (raw per-arch binaries) |
+| Built by | `rexenv/runtimes` (public), `scripts/build-nginx.sh`, GitHub Actions |
+| Source | nginx 1.30.4 (nginx.org) + PCRE2 10.47 — both tarballs mirrored as assets in the same release, so the build is reproducible from URLs alone |
+| Release | `nginx-1.30.4-2` — immutable, never re-uploaded; a rebuild is the next build number |
+| Pinned in | `core/binaries.rs` (`NGINX_1_30_4_*_SHA256`, `NGINX_VERSION`) |
+| Licence | **BSD-2-Clause** (`licenses/nginx.LICENSE`) |
+
+**PCRE2 is compiled INTO the binary**, so its licence travels with it:
+`licenses-<arch>.tar.gz` carries `pcre2.LICENCE.md` and `pcre2.COPYING`
+(**BSD-3-Clause**) beside nginx's own. There is nothing else in the closure —
+this build asks for no ssl module and no gzip, so neither OpenSSL nor zlib is
+present, and `otool -L` shows `/usr/lib/libSystem.B.dylib` alone. That is
+asserted in the build, not assumed.
+
+**The licence archive is load-bearing, not paperwork.** `core::binaries`
+refuses to resolve an artifact served from rexenv's own infrastructure unless a
+licence archive is pinned beside it — build 1 of this release shipped without
+one and the app would not load it, which is how the rule proved itself.
 
 ## PHP 7.4.33 — rexenv's own build (downloaded at runtime, distributed BY US)
 

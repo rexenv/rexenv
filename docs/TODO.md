@@ -1750,28 +1750,35 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
 - [ ] **Intel spot-run**: x86_64 bottle digests + MySQL 8.0.44 x86_64 were hashed
   from real downloads but never RUN (PORTS.md caveat) — run-verify on the next
   Intel machine.
-- [ ] 🔴 **nginx x86_64 declares `minos 26.0` while the app states 15.0 — Intel users below
-  macOS 26 cannot run the web server** (found 30 Aug 2026 by `macos_floor_check` on its
-  FIRST run, which is what the check was built for). Measured twice, independently:
-  `nginx-1.30.3-x86_64-darwin` is **26.0**, `nginx-1.30.3-arm64-darwin` is **15.0**, same
-  pinned bytes both times. Apple Silicon is unaffected; every Intel user between 15 and 26
-  installs an app whose shared web server may refuse to load — and nginx is not an optional
-  engine, it is the request path for every default site.
-  - **The survey says this gets worse, not better.** jirutka rebuilt on macOS-26 runners:
-    x86_64 is 26.0 for **every** version from 1.26.3 up, and 1.28.3 / 1.30.4 / 1.31.4 are
-    26.0 on **arm64 too**. Only ≤1.25.5 x86_64 is 12.0. So the next routine nginx bump
-    raises the floor for Apple Silicon as well — today's exposure is half the users, the
-    next pin's is all of them.
-  - **`docs/PORTS.md` said the opposite and was measured on one arch**: "jirutka publishes
-    NO darwin nginx below minos 14 … everything current is 15.0" (15 Aug 2026). Both halves
-    are now false, and the reason they were believed is the reason this row's parent exists
-    — the numbers came from this machine's cache, which only ever holds arm64.
-  - **Options, none free:** pin ≤1.25.5 for x86_64 only (mixed versions per arch, and 1.25.x
-    is old mainline); self-build nginx (the option already recorded below — this is the
-    "reason" that row was waiting for, and it fixes both arches at once); or state the floor
-    honestly per arch, which Tauri's single `minimumSystemVersion` cannot express.
-  - **Until it is decided, `macos_floor_check` FAILS, and that is the check working.** It
-    is not to be silenced: the red is the shipping defect, not the checker.
+- [x] 🔴 **nginx x86_64 declared `minos 26.0` while the app states 15.0** ✓ FIXED 31 Aug 2026
+  by building our own — `rexenv/runtimes` release `nginx-1.30.4-2` (immutable), pinned in
+  `core/binaries.rs`, ledger #434. Found 30 Aug by `macos_floor_check` on its first run.
+  **Ours declares `minos 12.0` on BOTH slices** (asserted per artifact in the build), so the
+  check now passes and the default stack's floor is cloudflared's 15.0 — matching what the
+  app states, for the first time on the Intel slice.
+  - **Why building beat re-pinning:** upstream is 26.0 for x86_64 from 1.26.3 up and for
+    arm64 from 1.28.3, so every escape route was a 2024 mainline release, and the next
+    routine bump would have moved the floor again. `docs/TODO.md`'s own "self-built nginx"
+    option row had been waiting for a reason; this was it.
+  - **It cost less than PHP 7.4 by an order of magnitude**: rexenv's config needs rewrite +
+    map, fastcgi, log_format, types, sendfile and the temp paths — no TLS (the edge owns it),
+    no gzip — so PCRE2 is the only dependency and it compiles in from source. 44s on the
+    arm64 runner, 2m20s on Intel, and the dylib closure is `libSystem` alone, so
+    `prepare_binary`'s relink has nothing to do.
+  - **Seven gates**, each with a way of being wrong: version, deployment target (per
+    artifact — a target that silently reverts to the SDK default IS the defect), arch, dylib
+    closure, absence of the ssl module, a REXENV-SHAPED config rather than `-t` on the
+    default one, and a served request (static 200, `/.env` 404, wildcard 200, access log in
+    rexenv's own format).
+  - **Two things the tree taught me while landing it**, both recorded where they bit:
+    the attestation subject-path is NEWLINE-separated (a quoted scalar folded two globs into
+    one filename and failed before the release was created — luck about step order); and
+    `licenses_spec` REFUSED to resolve the new pin because a self-hosted artifact owes its
+    licence texts. Build 1 shipped without them, build 2 carries `licenses-<arch>.tar.gz`
+    (nginx BSD-2-Clause, PCRE2 BSD-3-Clause), and the guard was right both times.
+  - [ ] **Not yet done: run the app on it.** The bytes are pinned and checksum-verified, but
+    `prepare_binary` (de-quarantine → relink → codesign) and a real site served through this
+    nginx have not run on this machine — the stack is still up on the cached 1.30.3.
 
 - [ ] ⚠ **The macOS floor is a claim about BOTH slices, and most of it has still never
   been measured** (narrowed 30 Aug 2026 — it used to say "half", and one row of the table

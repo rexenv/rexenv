@@ -57,8 +57,9 @@ pub const PHP_DEBUG_XDEBUG_VERSION: &str = "3.4.5";
 /// (`php-8.3.31-xdebug-1`, then `-2` for a rebuild), never a stable base, so a
 /// pin here can 404 but can never resolve to different bytes.
 const PHP_DEBUG_TAG: &str = "";
-/// Pinned nginx version (jirutka/nginx-binaries static build).
-pub const NGINX_VERSION: &str = "1.30.3";
+/// Pinned nginx version — rexenv's OWN macOS build (`rexenv/runtimes`), not a
+/// third party's, since 30 Aug 2026. See the SHA-256 constants for why.
+pub const NGINX_VERSION: &str = "1.30.4";
 /// Default MySQL version (official macOS tarball — a full bin/lib/share tree).
 /// Must be in [`MYSQL_VERSIONS`].
 pub const MYSQL_VERSION: &str = "8.4.6";
@@ -295,10 +296,25 @@ const PHP_8_5_8_CLI_MAC_AMD64_SHA256: &str = "d5a9a505ebce66c7f6b4f4e16629c36f38
 const PHP_8_5_8_FPM_MAC_ARM64_SHA256: &str = "1d994fbc4e49015a7cd4ad4fcb7c03e7e219f65fdb14e5e33ef1c44d928368e9";
 const PHP_8_5_8_FPM_MAC_AMD64_SHA256: &str = "57cdce953a8392e655a800908eb5e8fa61e2b7d795b8e7d3f354b3d81939563d";
 
-// jirutka/nginx-binaries SHA-256 (computed at pin time; cross-checked vs the
-// project's published SHA-1).
-const NGINX_1_30_3_MAC_ARM64_SHA256: &str = "b6c4e80357977457b9395a43497f5709dc989ff8fce9102bb558ed5d2e066b15";
-const NGINX_1_30_3_MAC_AMD64_SHA256: &str = "fe1df1fdf5de7c5b778a16b1c73aa73d0c22d48219bd712e51094c0e8655a641";
+// nginx — OURS since 30 Aug 2026 (`rexenv/runtimes`, release `nginx-1.30.4-1`,
+// immutable), and the reason is the macOS FLOOR, not the version.
+//
+// The old pin was jirutka/nginx-binaries. `macos_floor_check` measured what its
+// two slices actually DECLARE: arm64 `minos 15.0`, x86_64 **`minos 26.0`** —
+// eleven majors above the floor this app states, on the one binary every default
+// site's requests go through. Upstream had rebuilt on macOS-26 runners, so x86_64
+// is 26.0 for every version from 1.26.3 up and arm64 followed from 1.28.3: the
+// next routine bump would have taken Apple Silicon too, and the only escape
+// upstream offered was pinning a 2024 mainline release.
+//
+// Ours declares **12.0 on BOTH slices** (asserted per artifact in the build) and
+// links nothing but `/usr/lib/libSystem.B.dylib`, because PCRE2 — its only
+// dependency — is compiled in from source, and it is built with no ssl module at
+// all (the edge owns TLS). So `prepare_binary`'s relink step has nothing to do
+// for it. Being the builder makes rexenv the DISTRIBUTOR, the same standing PHP
+// 7.4 already put us in.
+const NGINX_1_30_4_MAC_ARM64_SHA256: &str = "f95252a853a6a295da3b87bf389ff85df43dfd92b0c7980667a61ab89e12622e";
+const NGINX_1_30_4_MAC_AMD64_SHA256: &str = "490a2646a3ea911fb061ff4f6f7f89794f4bc0b56e8e3f323ad1fe0850933fae";
 
 // Official MySQL macOS tarball SHA-256 (computed at pin time from dev.mysql.com).
 const MYSQL_8_4_6_MAC_ARM64_SHA256: &str = "56ac9150b9d8fc757a36a2661a1214f5b09e5352d0a220e7a6c302685a5fca10";
@@ -625,9 +641,14 @@ fn php_arch(arch: Arch) -> &'static str {
         Arch::X86_64 => "x86_64",
     }
 }
+/// `aarch64`/`x86_64` — the spelling OUR OWN nginx release uses, matching the
+/// PHP 7.4 artifacts from the same repo. The previous third-party pin spelled it
+/// `arm64`, and this function still returning that is what failed
+/// `manifest_pins_nginx_as_raw_binary` the moment the pin moved: an arch name is
+/// part of a URL, so it belongs to whoever publishes the file.
 fn nginx_arch(arch: Arch) -> &'static str {
     match arch {
-        Arch::Arm64 => "arm64",
+        Arch::Arm64 => "aarch64",
         Arch::X86_64 => "x86_64",
     }
 }
@@ -904,6 +925,12 @@ const PHP_7_4_33_FPM_MAC_AMD64_SHA256: &str = "fc75852c08304d5c92ccb5c6f0e13f707
 // downloaded over the real `releases/download` URL rexenv itself uses, hashed
 // locally, and cross-checked against the release's own SHA256SUMS (16 entries
 // per arch, identical file lists, `PHP-3.01.txt` among them).
+// nginx's, from the same release as the binaries (build 2 — build 1 shipped
+// without them, which rexenv's own resolve refused, and refusing was correct).
+// nginx is BSD-2-Clause and PCRE2 BSD-3-Clause: both require the notice to
+// travel with a redistribution, and we are the redistributor.
+const NGINX_1_30_4_LICENSES_MAC_ARM64_SHA256: &str = "517f6656ae4bae3f1aa29e64ce379abbcd4f27166284fd1b984920a89300ffd2";
+const NGINX_1_30_4_LICENSES_MAC_AMD64_SHA256: &str = "cbf546b81a7b02bd9e71e50f0ef1a1da549e527c7e528e346514b511bc1f9d2b";
 const PHP_7_4_33_LICENSES_MAC_ARM64_SHA256: &str = "d8fd80a258f1d8e6609d3e0e95a3b62e5c30820a3dba8e0390c78e4494491478";
 const PHP_7_4_33_LICENSES_MAC_AMD64_SHA256: &str = "fa1ae808cb2febdb01e2df2975b0618dba4c0caff39f51161328ee97c2b60ba2";
 
@@ -998,10 +1025,17 @@ fn licenses_spec(url: &str, name: &str, version: &str, arch: Arch) -> Result<Opt
     if !is_self_distributed(url) {
         return Ok(None);
     }
-    let (arm, amd) = match version {
-        "7.4.33" => (
+    // Keyed on (name, version): two different artifacts are now self-built, and
+    // keying on the version alone would have made "1.30.4" answer for whatever
+    // else ever carries that number.
+    let (arm, amd) = match (name, version) {
+        ("php", "7.4.33") | ("php-fpm", "7.4.33") => (
             PHP_7_4_33_LICENSES_MAC_ARM64_SHA256,
             PHP_7_4_33_LICENSES_MAC_AMD64_SHA256,
+        ),
+        ("nginx", "1.30.4") => (
+            NGINX_1_30_4_LICENSES_MAC_ARM64_SHA256,
+            NGINX_1_30_4_LICENSES_MAC_AMD64_SHA256,
         ),
         _ => ("", ""),
     };
@@ -1012,9 +1046,11 @@ fn licenses_spec(url: &str, name: &str, version: &str, arch: Arch) -> Result<Opt
     let missing = || {
         Error::Other(format!(
             "{name} {version} is served from rexenv's own infrastructure ({url}) — rexenv is \
-             its distributor and PHP License 3.01 §2 attaches — but no licence archive is \
-             pinned for it. Pin `licenses-{}.tar.gz` from the same release, or serve the \
-             artifact from whoever built it.",
+             its distributor, and every licence in this tree's self-built artifacts requires \
+             the notice to travel with the bytes (PHP License 3.01 §2; nginx BSD-2-Clause; \
+             PCRE2 BSD-3-Clause) — but no licence archive is pinned for it. Pin \
+             `licenses-{}.tar.gz` from the same release, or serve the artifact from whoever \
+             built it.",
             php_arch(arch)
         ))
     };
@@ -1267,16 +1303,18 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
         // here so the two conditions cannot be satisfied one at a time.
         ("php-debug", "macos", v) if v == PHP_DEBUG_VERSION => php_debug_spec("cli", arch),
         ("php-fpm-debug", "macos", v) if v == PHP_DEBUG_VERSION => php_debug_spec("fpm", arch),
-        ("nginx", "macos", "1.30.3") => Some(BinarySpec {
-            // jirutka/nginx-binaries ships a single static binary (not an archive).
+        ("nginx", "macos", "1.30.4") => Some(BinarySpec {
+            // Our own build: a single binary per arch (not an archive), the same
+            // shape the previous third-party pin had. Immutable release tag, so
+            // this URL can 404 but can never resolve to different bytes.
             url: format!(
-                "https://jirutka.github.io/nginx-binaries/nginx-{version}-{}-darwin",
+                "https://github.com/rexenv/runtimes/releases/download/nginx-{version}-2/nginx-{version}-macos-{}",
                 nginx_arch(arch)
             ),
             checksum: Checksum::Sha256(pick(
                 arch,
-                NGINX_1_30_3_MAC_ARM64_SHA256,
-                NGINX_1_30_3_MAC_AMD64_SHA256,
+                NGINX_1_30_4_MAC_ARM64_SHA256,
+                NGINX_1_30_4_MAC_AMD64_SHA256,
             )),
             archive: Archive::Raw,
             member: "nginx",
@@ -4520,13 +4558,36 @@ mod tests {
     #[test]
     fn manifest_pins_nginx_as_raw_binary() {
         let arm = manifest("nginx", NGINX_VERSION, "macos", Arch::Arm64).unwrap();
-        assert!(arm.url.ends_with("nginx-1.30.3-arm64-darwin"));
+        assert!(arm.url.ends_with("nginx-1.30.4-macos-aarch64"), "{}", arm.url);
         assert_eq!(arm.archive, Archive::Raw);
         assert!(matches!(arm.checksum, Checksum::Sha256(_)));
 
         let amd = manifest("nginx", NGINX_VERSION, "macos", Arch::X86_64).unwrap();
-        assert!(amd.url.ends_with("nginx-1.30.3-x86_64-darwin"));
+        assert!(amd.url.ends_with("nginx-1.30.4-macos-x86_64"), "{}", amd.url);
         assert_ne!(checksum_hex(&arm.checksum), checksum_hex(&amd.checksum));
+    }
+
+    /// #434 — nginx is OURS now, so the licence obligation must follow the
+    /// bytes. This is the guard that fired the moment the pin moved and refused
+    /// to resolve: a self-hosted artifact with no licence archive beside it is a
+    /// redistribution without its notice, and both licences here (nginx
+    /// BSD-2-Clause, PCRE2 BSD-3-Clause) require one.
+    #[test]
+    fn the_self_built_nginx_carries_its_licences() {
+        for arch in [Arch::Arm64, Arch::X86_64] {
+            let spec = manifest("nginx", NGINX_VERSION, "macos", arch).unwrap();
+            assert!(
+                is_self_distributed(&spec.url),
+                "nginx moved off rexenv's infrastructure; if that is deliberate, the licence \
+                 rule below stops applying — decide it, don't drift into it"
+            );
+            let lic = licenses_spec(&spec.url, "nginx", NGINX_VERSION, arch)
+                .expect("licences must be pinned for an artifact we distribute")
+                .expect("self-distributed ⇒ Some");
+            // Same release as the binary, by construction — not a URL typed twice.
+            let dir = |u: &str| u.rsplit_once('/').map(|(d, _)| d.to_string()).unwrap();
+            assert_eq!(dir(&lic.url), dir(&spec.url));
+        }
     }
 
     #[test]
