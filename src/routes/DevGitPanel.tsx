@@ -5,7 +5,7 @@
  *  (Playwright WebKit ≈ the packaged WKWebView engine) without an app
  *  backend and WITHOUT touching the real app — the no-synthetic-clicks rule.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { GitAddPanel } from "@/components/wordpress/GitAddPanel";
 import { RepoPanel } from "@/components/wordpress/RepoPanel";
@@ -175,6 +175,25 @@ const WP_PLUGIN_ROWS = [
   //    offer — the direction a naive fix breaks first.
   { name: "numeric-order", status: "inactive", version: "1.1.3.8", update: "available", updateVersion: "1.1.11", title: "Numeric Order" },
 ];
+
+/** `?wpupdate=…` (wk-checks/wpupdate.js) — the two halves of ledger #249/#250
+ *  that no layer could reach until the harness could deliver EVENTS.
+ *
+ *  `late-check` exists because the timing claim needs a row whose honest
+ *  post-update answer is "no update": asserting on `wordpress-seo` would fail
+ *  for the wrong reason, since a fresh fixture read still offers 22.4. It
+ *  starts updatable, so a run can be started on it at all.
+ */
+const WP_UPDATE_ROW_BEFORE = {
+  name: "late-check", status: "active", version: "4.0", update: "available", updateVersion: "4.1", title: "Late Check",
+};
+/** What an honest read says once the update has run. */
+const WP_UPDATE_ROW_AFTER = { ...WP_UPDATE_ROW_BEFORE, version: "4.1", update: "none", updateVersion: "" };
+/** The claim a LATE in-flight check makes: `available` with an EMPTY target —
+ *  the one shape `verdict` deliberately lets through (it cannot be ordered), so
+ *  it renders a badge with no arrow. This is the only way a finished update's
+ *  badge can still come back, and `cancelQueries` is what stops it. */
+const WP_UPDATE_ROW_STALE = { ...WP_UPDATE_ROW_AFTER, update: "available", updateVersion: "" };
 
 const ASSET_STATUS = {
   branch: "feat/x",
@@ -548,6 +567,14 @@ export function DevGitPanel() {
   const detached = params.get("detached") === "1";
   const cleanTree = params.get("clean") === "1";
   const opFails = params.get("op") === "fail"; // `repotoast.js`: the failure path
+  // `?wpupdate=hold` / `?wpupdate=late` — see the fixtures above and
+  // `wk-checks/wpupdate.js`. The refs live outside the mock closure so the
+  // check script can drive them from `window`.
+  const wpUpdate = params.get("wpupdate"); // "hold" | "late"
+  const updateGate = useRef<(() => void) | null>(null);
+  const updateRan = useRef(false);
+  const lateArmed = useRef(0); // armed responses left; > 0 = stale + delayed
+  const listFrozen = useRef(false); // after the armed ones: never resolve
   useEffect(() => {
     mockIPC(async (cmd, args) => {
       // Call tally for the focus-refresh probe (`wk-checks/focusrefresh.js`):
@@ -700,8 +727,26 @@ export function DevGitPanel() {
         // `?panel=wp-add` (chips-above-input layout check) mocks:
         // `?plugins=list` gives the panel real rows so `wptoast.js` can act on
         // one; the default stays empty (the chips-above-input layout check).
-        case "wp_plugins":
-          return params.get("plugins") === "list" ? WP_PLUGIN_ROWS : [];
+        case "wp_plugins": {
+          if (params.get("plugins") !== "list") return [];
+          if (!wpUpdate) return WP_PLUGIN_ROWS;
+          const row = updateRan.current ? WP_UPDATE_ROW_AFTER : WP_UPDATE_ROW_BEFORE;
+          // An ARMED response is the late in-flight check: it resolves slowly,
+          // and it resolves STALE. `settleAfterUpdate` cancels it in between.
+          if (lateArmed.current > 0) {
+            lateArmed.current -= 1;
+            if (lateArmed.current === 0) listFrozen.current = true;
+            return new Promise((resolve) =>
+              setTimeout(() => resolve([...WP_PLUGIN_ROWS, WP_UPDATE_ROW_STALE]), 1200),
+            );
+          }
+          // After the armed pair, the list never answers again. That is
+          // deliberate: it leaves the late response as the ONLY thing that
+          // could write the badge back, so the assertion cannot pass because a
+          // fresh honest read happened to arrive first.
+          if (listFrozen.current) return new Promise<never>(() => {});
+          return [...WP_PLUGIN_ROWS, row];
+        }
         // The list actions themselves: they resolve, and what the panel SAYS
         // about them is the thing under test.
         case "wp_plugin_activate":
@@ -713,6 +758,14 @@ export function DevGitPanel() {
         case "wp_plugin_update":
           if (params.get("update") === "fail") {
             throw new Error("Error: Only updated 0 of 1 plugins.");
+          }
+          // `?wpupdate=…` HOLDS the run open, which is the only way a check can
+          // observe a bar that only exists while wp-cli is running.
+          if (wpUpdate) {
+            updateRan.current = true;
+            return new Promise<null>((resolve) => {
+              updateGate.current = () => resolve(null);
+            });
           }
           return null;
         case "wp_org_plugin_icons":
@@ -781,7 +834,23 @@ export function DevGitPanel() {
           // plugin:event|listen etc. — accept quietly.
           return 1;
       }
-    });
+    }, { shouldMockEvents: true });
+    // The event half of the harness. Without it `plugin:event|listen` fell to
+    // the default above and returned a bare 1: every `listen()` in the app
+    // RESOLVED and could never fire, so no streamed UI — update progress, repo
+    // jobs, installs — had ever rendered under WebKit. With events mocked, a
+    // check drives them exactly as the backend does:
+    //   window.__TAURI_INTERNALS__.invoke("plugin:event|emit", { event, payload })
+    // Controls the check script drives (dev route only; nothing ships).
+    const w = window as unknown as {
+      __rexDevFinishUpdate?: () => void;
+      __rexDevArmLateList?: () => void;
+    };
+    w.__rexDevFinishUpdate = () => updateGate.current?.();
+    w.__rexDevArmLateList = () => {
+      lateArmed.current = 2; // the fast pass and the updates pass
+      listFrozen.current = false;
+    };
     setReady(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

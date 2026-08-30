@@ -365,6 +365,24 @@ it can:
   see it, no lib test reaches it, and navigating from the Sites list HIDES it because the
   query is already cached. What exposed it was loading the route cold, which is what a
   browser check does by construction.
+  **Since 30 Aug 2026 this layer can also drive STREAMS**, which changes what "needs a real
+  site" means. The harness used to answer `plugin:event|listen` with a bare `1`: every
+  `listen()` in the app resolved and could never fire, so no streamed UI — update progress,
+  repo jobs, installs, provision — had ever rendered here. `mockIPC(…, { shouldMockEvents:
+  true })` turns events on, and `wpupdate.js` emits `wp-update://plugins/dev` exactly as the
+  backend does, then reads the rendered bar (0 → 25 → 60, phase, `n of m`, and the bar
+  CLEARING at the end). Two claims (#249 wiring, #250 timing) had been queued for a live run
+  for three weeks; what they needed was a listener that could fire and a query that could
+  resolve late. **When a row says "needs a real site", check first whether it needs an
+  EVENT** — that is the cheaper half, and it was unavailable for a year without anyone
+  writing it down.
+  **The same check also shows how an L2 case fails to prove things**: its first version passed
+  the plant it was written for. `settleAfterUpdate`'s cancel and its invalidate turn out to be
+  redundant — either alone keeps a stale badge off — so a plant that removed only the cancel
+  changed nothing observable. The check now holds the composite claim and says in its own
+  comments that it cannot attribute further, which is the honest shape when a guard is
+  redundant: measure the truth table, keep the user-visible assertion, and refuse the
+  attribution the layer cannot make.
 - **Cannot prove:** backend truth (IPC is mocked BY DESIGN) — **it proves a card RENDERS,
   never that its command WORKS.** The MCP toggle rendered correctly across 10 harness
   scenarios while `mcp_set_enabled` *aborted the packaged app* on click (the mock returned

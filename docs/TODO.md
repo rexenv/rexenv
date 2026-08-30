@@ -1129,26 +1129,21 @@ place to keep unfinished things.
       printed `override backend stopped` on the `fail()` path, no FrankenPHP survived, and
       port 8200 was free afterwards. (It leaves a sandbox ROOT behind: documented
       `process::exit` behaviour that the next run's self-healing sweep clears, not a leak.)
-- [ ] **Plugin-update progress: the TIMING half** (ledger #249) — **the row's own premise
-  was wrong and is corrected here, 24 Aug 2026.** It said "the wiring half landed, this did
-  not", which reads as the CODE being missing. It is not: `settleAfterUpdate` has cancelled
-  before settling since 9 Aug (`c489b92`), and the same commit added `verdict()`/
-  `isNewerVersion`. The row was written on 13 Aug — four days AFTER the fix — and its
-  original wording said what it actually meant: *"needs a real site"*. The 21 Aug reconcile
-  flattened a proof gap into an implementation gap. (Same shape as the PHP 7.4 "recorded
-  nowhere" premise, and the second time a reconcile has done this.)
-  **What is genuinely unproven is narrower than the row implied**, because two mechanisms
-  cover this and each catches what the other cannot:
-  - `verdict()` makes a stale VERSIONED claim unrenderable — a late check offering `3.2.1`
-    over a row already at `3.2.1` renders as no update. That half IS tested and
-    plant-proven (`wk-checks/wpverdict.js`, ledger #250).
-  - `cancelQueries` covers the one claim `verdict()` deliberately lets through: `available`
-    with an EMPTY target, which cannot be ordered and so shows a badge with no arrow. A
-    late in-flight check of that shape is the only way the badge can still come back.
-  - [ ] So the remaining proof is exactly that: a late check landing AFTER a settle with an
-    empty `updateVersion` must not restore the badge. Not reachable from `wpverdict.js`
-    (it renders fixture rows; this is react-query ordering), so it is a live observation on
-    the #249 wiring run, or an L2 case that can script a delayed query resolution.
+- [x] **Plugin-update progress: the TIMING half** ✓ 30 Aug 2026 — `wk-checks/wpupdate.js` (B),
+  ledger #250. A late, STALE list response (`available` with an EMPTY target — the shape
+  `verdict` lets through by design) is armed, put in flight, and a real update on that row is
+  finished underneath it; the badge must not come back, and a neighbouring row that should
+  still offer 22.4 is the anti-vacuity guard. It needed react-query ordering, which
+  `wpverdict.js` cannot reach — so it went to the harness, not to a live site.
+  - **The first version of this check PASSED A PLANT and therefore proved nothing**, and
+    finding that out corrected the row: `cancelQueries` is NOT "the one thing standing in
+    front of it". Measured, all four combinations: cancel-only keeps the badge off,
+    invalidate-only keeps it off (react-query discards a resolution superseded by a newer
+    fetch), and only removing BOTH brings the badge back. `settleAfterUpdate` is redundant by
+    two, the redundancy is load-bearing in one direction (the invalidate refetches only while
+    something observes the query; the cancel is what holds when nothing does), and the
+    measurement now sits in a comment beside the code rather than in a memory.
+
 - [ ] **Radicle-hosted repos are unverified** — same code path as the Bedrock clone that
   was verified and found broken, no live project to hand.
 - [ ] **Why that `rex` instance went deaf was never diagnosed** — the evidence died with
@@ -1723,12 +1718,19 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   that `detail` really is the child job's own label and that the bar FREEZES rather
   than rolls back on a mid-batch failure are 🔨 L2 (ledger #243) and only this pass
   covers them today.
-- [ ] **Plugin-update progress — the WIRING half** (ledger #249, 9 Aug 2026): the
-  tracker is L0-proven against WP core's own strings and the pinned phar (plugins,
-  themes and core), but that the emit reaches the WordPress tab and the bar really
-  advances during a live WooCommerce/Elementor/core download is unproven at any
-  layer. Needs one run against a real site (a plugin held one version back), or an
-  L2 case rendering the panel with a scripted event stream.
+- [x] **Plugin-update progress — the WIRING half** ✓ 30 Aug 2026 — `wk-checks/wpupdate.js` (A),
+  ledger #249. A real two-plugin run is started through `PluginsPanel`, `wp-update://plugins/dev`
+  payloads are emitted the way the backend emits them, and the RENDERED bar is read: 0 → 25 → 60,
+  with the phase word, the `n of m` counter and the plugin wp-cli is sitting on following the
+  stream, and the bar clearing when the run ends. Plant-proven by severing the listener — five
+  assertions fail and the bar sits at 0 on "Starting".
+  - **What unlocked it was the harness, not the claim.** `DevGitPanel` answered
+    `plugin:event|listen` with a bare `1`, so every `listen()` in the app resolved and could
+    never fire: no streamed UI had EVER rendered under WebKit. `mockIPC(…, { shouldMockEvents:
+    true })` turns events on, and the same door now opens for repo jobs, installs and provision
+    streams. This row asked for "one run against a real site" for three weeks; what it needed
+    was a listener that could fire.
+
 - [ ] **Release 5.4 — clean-Mac smoke test** (`docs/SMOKE-TEST.md`): first pass
   10 Jul 2026 green except multisite-convert (UI didn't exist yet — since built);
   re-verify converted-multisite + onboarding fixes + the TLD v1 Done-when list

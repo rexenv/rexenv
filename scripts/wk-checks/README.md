@@ -16,6 +16,25 @@ browser with **zero backend and zero contact with the real app** (the
 no-synthetic-clicks-on-the-live-machine rule). The route is mounted only
 when `import.meta.env.DEV` and is tree-shaken out of production bundles.
 
+**Events are mocked too, since 30 Aug 2026** (`mockIPC(…, { shouldMockEvents:
+true })`). Before that the harness answered `plugin:event|listen` with a bare
+`1`: every `listen()` in the app resolved and could never fire, so no streamed
+UI — update progress, repo jobs, installs, provision — had ever rendered under
+WebKit, and two claims sat open for weeks as "needs a real site" when what they
+needed was a listener that could fire. A check emits exactly as the backend
+does, with no imports:
+
+```js
+await page.evaluate(() => window.__TAURI_INTERNALS__.invoke("plugin:event|emit", {
+  event: "wp-update://plugins/dev",
+  payload: { total: 2, done: 0, current: "wordpress-seo", phase: "Downloading", fraction: 0.25, line: "…" },
+}));
+```
+
+`emitTo` is not supported by the mock, and with events on, `plugin:event|*`
+no longer reaches the harness's own switch (which only ever returned `1` for
+them).
+
 ## One-time setup
 
 ```

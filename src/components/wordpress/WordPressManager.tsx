@@ -3619,6 +3619,13 @@ function settleAfterUpdate<T extends { name: string; update: string; updateVersi
     rows?.map((row) =>
       names.includes(row.name) ? { ...row, update: "none", updateVersion: "" } : row,
     );
+  // MEASURED 30 Aug 2026 (wk-checks/wpupdate.js, ledger #250): these two are
+  // REDUNDANT, and either alone keeps the badge off — the cancel discards the
+  // in-flight result, and the invalidate's newer fetch supersedes it inside
+  // react-query. With BOTH gone, a late "available"-with-empty-target check
+  // does write the cache and the badge comes back with no arrow. The
+  // redundancy is deliberate: the invalidate only refetches while something is
+  // observing the query, so the cancel is what holds when nothing is.
   void qc.cancelQueries({ queryKey: key }).then(() => {
     qc.setQueryData<T[]>([...key, "updates"], (old) => old?.filter((r) => !names.includes(r.name)));
     qc.setQueryData<T[]>(key, forget);
