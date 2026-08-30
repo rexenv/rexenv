@@ -1092,6 +1092,15 @@ IPC surface — which is how a reader ends up designing against a system with on
     from rows, and the launch sweep kills only on positive argv identity — plus a
     rowless backstop for cloudflared processes carrying our argv identity with no
     row (app-data reset class), which stops them with a loud WARN.
+  - **Every share leaves a trail in `rexenv.log`** (30 Aug 2026, ledger #430): a loud
+    INFO naming the site, the public URL and the pid when one starts, and a closing line
+    on every way it ends — user stop, the in-flight kill, quit, crash. Before this the
+    app-wide log recorded only failures and sweeps, so a LIVE share was invisible there:
+    a share for `mstest.rex` found running that nobody remembered starting (27 Aug 2026)
+    had its whole record in `logs/tunnel-mstest.rex.log`, a per-domain file you can only
+    think to open once you already know which domain to suspect — which is the question.
+    The start line goes AFTER the registry insert, so the log never claims an exposure a
+    failed start never created.
   - **Share health is its own tri-state** (Live / Unverified / Broken) probed via
     bounded HEADs of the public URL: any non-530 answer proves the path, 530×3 =
     Broken (sticky — only an HTTP answer clears it), transport errors are

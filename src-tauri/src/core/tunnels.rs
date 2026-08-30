@@ -538,11 +538,96 @@ pub fn sweep_rowless(conn: &rusqlite::Connection, platform: &dyn Platform) -> u3
     killed
 }
 
+/// The `rexenv.log` line a share leaves BEHIND IT when it starts (ledger #430).
+///
+/// A public share is the only thing rexenv does that is visible from outside
+/// this machine, and until 30 Aug 2026 starting one wrote NOTHING to the
+/// app-wide log — only failures, crashes and sweeps did. So when a share for
+/// `mstest.rex` was found running that nobody remembered starting (27 Aug
+/// 2026), `rexenv.log` had no line for it: the evidence was in
+/// `logs/tunnel-mstest.rex.log`, a file you only think to open once you
+/// already know which domain to suspect, which is the thing you are trying to
+/// find out. The line therefore carries the three facts that IDENTIFY an
+/// exposure — the site, the public URL, the pid — plus the origin it points
+/// at, so `grep tunnels: rexenv.log` answers "what was public, when, and
+/// which process" from nothing.
+pub fn share_started_line(domain: &str, url: &str, pid: u32, origin_port: u16) -> String {
+    format!(
+        "tunnels: SHARING {domain} PUBLICLY at {url} (pid {pid}, origin 127.0.0.1:{origin_port}) \
+         — public until stopped"
+    )
+}
+
+/// The closing half of [`share_started_line`]: a start line with no stop line
+/// after it means the share was still up when the log ends. That only reads
+/// as evidence if EVERY stop writes one, which is why the exit hook and the
+/// in-flight branch log too.
+pub fn share_stopped_line(domain: &str, pid: u32, ran_for: Duration) -> String {
+    format!(
+        "tunnels: stopped sharing {domain} (pid {pid}, was public for {}) — no longer reachable \
+         from outside this machine",
+        humanize(ran_for)
+    )
+}
+
+/// Coarse, human-readable duration for the log ("47s", "3m 12s", "2h 05m").
+/// Sub-second precision would be noise in a line about how long something was
+/// exposed to the internet.
+pub fn humanize(d: Duration) -> String {
+    let secs = d.as_secs();
+    match secs {
+        0..=59 => format!("{secs}s"),
+        60..=3599 => format!("{}m {:02}s", secs / 60, secs % 60),
+        _ => format!("{}h {:02}m", secs / 3600, (secs % 3600) / 60),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     const MARKER: &str = "/Users/dev/Library/Application Support/dev.rexenv.rexenv";
+
+    /// #430 — a share's log line identifies the exposure on its own.
+    ///
+    /// The test is about CONTENT, not wording: the reason the `mstest.rex`
+    /// share could not be traced is that no line named it, so what has to hold
+    /// is that the line names the site, the public URL and the pid — the three
+    /// facts you need to go from "something is public" to "this process, this
+    /// site, this link". A prettier sentence missing any of them is the bug.
+    #[test]
+    fn a_share_line_names_the_site_the_url_and_the_pid() {
+        let line = share_started_line("mstest.rex", "https://odd-cat-42.trycloudflare.com", 78716, 18088);
+        for fact in ["mstest.rex", "https://odd-cat-42.trycloudflare.com", "78716", "18088"] {
+            assert!(
+                line.contains(fact),
+                "the start line drops {fact}, so a share found running cannot be traced from \
+                 rexenv.log alone — the exact gap that left the 27 Aug 2026 mstest.rex share \
+                 with no trail: {line}"
+            );
+        }
+        // Loud, because a public exposure is not a routine INFO event.
+        assert!(line.contains("PUBLICLY"), "the line no longer reads as an exposure: {line}");
+
+        let stop = share_stopped_line("mstest.rex", 78716, Duration::from_secs(192));
+        for fact in ["mstest.rex", "78716", "3m 12s"] {
+            assert!(
+                stop.contains(fact),
+                "the stop line drops {fact}; a start with no matching stop is how the log says \
+                 \"still public\", and that reading needs both halves to be identifiable: {stop}"
+            );
+        }
+    }
+
+    #[test]
+    fn humanize_is_coarse_and_never_sub_second() {
+        assert_eq!(humanize(Duration::from_millis(900)), "0s");
+        assert_eq!(humanize(Duration::from_secs(59)), "59s");
+        assert_eq!(humanize(Duration::from_secs(60)), "1m 00s");
+        assert_eq!(humanize(Duration::from_secs(3599)), "59m 59s");
+        assert_eq!(humanize(Duration::from_secs(3600)), "1h 00m");
+        assert_eq!(humanize(Duration::from_secs(9000)), "2h 30m");
+    }
 
     #[test]
     fn is_our_tunnel_accepts_only_the_full_identity() {

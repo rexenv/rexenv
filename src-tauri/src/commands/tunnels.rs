@@ -58,8 +58,13 @@ impl Tunnels {
         let entry = self.0.lock().ok().and_then(|mut m| m.remove(domain));
         let stopped = match entry {
             Some(mut e) => {
-                let _ = tunnels::stop(state.platform.as_ref(), e.child.id());
+                let pid = e.child.id();
+                let _ = tunnels::stop(state.platform.as_ref(), pid);
                 let _ = e.child.wait();
+                // The closing half of the start line (ledger #430): a share
+                // that started and never stopped is only readable as such if
+                // every stop writes one.
+                log::info!("{}", tunnels::share_stopped_line(domain, pid, e.started.elapsed()));
                 true
             }
             None => false,
@@ -94,6 +99,11 @@ impl Tunnels {
                         .unwrap_or(false);
                     if ours {
                         let _ = tunnels::stop(state.platform.as_ref(), row.pid);
+                        log::info!(
+                            "tunnels: stopped an IN-FLIGHT share of {domain} (pid {}) — it was \
+                             starting when the stop arrived, so it may never have been public",
+                            row.pid
+                        );
                     }
                 }
             }
@@ -430,10 +440,16 @@ pub fn kill_all_on_exit<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     };
     let mut reaped: std::collections::HashSet<u32> = std::collections::HashSet::new();
     if let Ok(mut map) = registry.0.lock() {
-        for (_, mut e) in map.drain() {
+        for (domain, mut e) in map.drain() {
             let pid = e.child.id();
             let _ = tunnels::stop(state.platform.as_ref(), pid);
             let _ = e.child.wait();
+            // Quitting is the commonest way a share ends, so it is the
+            // commonest missing stop line if this one is skipped (#430).
+            log::info!(
+                "{} (rexenv quit)",
+                tunnels::share_stopped_line(&domain, pid, e.started.elapsed())
+            );
             reaped.insert(pid);
         }
     }
@@ -724,6 +740,9 @@ pub async fn start_tunnel<R: tauri::Runtime>(
         }
     }
 
+    // The pid, read before the child moves into the registry: it is one of the
+    // three facts that identify an exposure in the log (ledger #430).
+    let pid = child.id();
     tunnels.0.lock().map_err(|_| Error::Other("tunnel registry poisoned".into()))?.insert(
         domain.clone(),
         TunnelEntry {
@@ -740,6 +759,11 @@ pub async fn start_tunnel<R: tauri::Runtime>(
             started: Instant::now(),
         },
     );
+    // The app-wide audit line for a public exposure, written AFTER the share is
+    // live and registered so the log never claims one that failed to start
+    // (every failure path above returns before here). Until 30 Aug 2026 the
+    // success path logged nothing at all — see `share_started_line`.
+    log::info!("{}", tunnels::share_started_line(&domain, &url, pid, origin_port));
     // First verdict promptly instead of waiting out a full prober tick —
     // "Unverified" right after a successful start should be seconds, not 30.
     let probe_domain = domain.clone();
@@ -886,6 +910,83 @@ mod adminer_can_never_be_shared {
             lookup.contains("ok_or_else"),
             "`tunnel_site` no longer ERRORS on a missing site — a fallback here is how a \
              non-site becomes a tunnel origin (#37)"
+        );
+    }
+}
+
+/// #430 — a public share is never invisible in `rexenv.log`.
+///
+/// The claim is about CALL SITES, which no value can carry: the formatters are
+/// unit-tested in `core/tunnels.rs`, and what regresses is somebody adding a
+/// fourth way for a share to start or stop without a line. So each path is
+/// asserted where it lives. The one path deliberately absent from this list is
+/// `settle_dead` — a cloudflared that died on its own already logs its own
+/// WARN, and it is checked here too so a "tidy-up" cannot silence it.
+#[cfg(test)]
+mod every_share_leaves_a_trail {
+    #[test]
+    fn every_start_and_every_stop_writes_a_line() {
+        let src = crate::core::copy_scan::production_source(include_str!("tunnels.rs"));
+
+        let start = src
+            .split("pub async fn start_tunnel<R: tauri::Runtime>(")
+            .nth(1)
+            .and_then(|b| b.split("\n/// Stop a site's tunnel").next())
+            .expect("start_tunnel");
+        assert!(
+            start.contains("tunnels::share_started_line(&domain, &url, pid, origin_port)"),
+            "a share can now start without a line in rexenv.log. That is exactly how the \
+             27 Aug 2026 mstest.rex share left no trail: its only record was \
+             logs/tunnel-mstest.rex.log, a file you can only open once you already know which \
+             domain to suspect (#430)"
+        );
+        // Position matters: the line must follow the registry insert, or a
+        // start that fails after logging would claim an exposure that never
+        // existed — the opposite lie, and worse (it sends someone hunting a
+        // process that was never public).
+        // The LAST registry lock in the function is the insert; the first is
+        // the "already sharing" read at the top.
+        let after_insert = start.rsplit("tunnels.0.lock()").next().expect("registry insert");
+        assert!(
+            after_insert.contains("share_started_line"),
+            "the start line moved BEFORE the registry insert, so a start that fails afterwards \
+             logs a public share that never happened (#430)"
+        );
+
+        let stop = src
+            .split("pub fn stop_for_domain(")
+            .nth(1)
+            .and_then(|b| b.split("\n    /// Whether").next())
+            .expect("stop_for_domain");
+        assert!(
+            stop.contains("tunnels::share_stopped_line(domain, pid, e.started.elapsed())"),
+            "stopping a share no longer logs. A start line with no stop after it is how the log \
+             says \"this was still public\" — a reading that only works if EVERY stop writes \
+             one (#430)"
+        );
+        assert!(
+            stop.contains("IN-FLIGHT"),
+            "the in-flight kill (claim taken, child spawned, registry entry not yet inserted) \
+             stopped logging — the one stop path whose share may never have been public, which \
+             is worth saying rather than omitting (#430)"
+        );
+
+        let exit = src
+            .split("pub fn kill_all_on_exit<R: tauri::Runtime>(")
+            .nth(1)
+            .and_then(|b| b.split("\n/// May the exit hook").next())
+            .expect("kill_all_on_exit");
+        assert!(
+            exit.contains("share_stopped_line") && exit.contains("rexenv quit"),
+            "quitting the app is the commonest way a share ends, and it stopped writing a stop \
+             line — so the log would show starts that never close (#430)"
+        );
+
+        let settle = src.split("fn settle_dead(").nth(1).expect("settle_dead");
+        assert!(
+            settle.contains("exited on its own"),
+            "a crashed cloudflared no longer logs; the share's start line would never close \
+             (#430)"
         );
     }
 }

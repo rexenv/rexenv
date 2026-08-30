@@ -109,10 +109,28 @@ paying for anyway: **the tick belongs in the commit that does the work.**
   (observed 27 Aug 2026, ~07:20). Two `rex tunnel list` calls ~15 min apart: the first said
   "no public tunnels running" after an explicit stop, the second showed `mstest.rex` on a
   URL nothing in this session had printed. Stopped it; `tunnels` table is empty and no
-  cloudflared survives, so there is nothing to inspect. `rexenv.log` has no tunnel line
-  since 21 Aug, which is itself the finding worth keeping: **a share starting is not
-  logged, so a stray share leaves no trail to read.** No repro — recorded because a public
-  share appearing unbidden is the one class of bug that must not be smoothed over.
+  cloudflared survives. No repro — kept open because a public share appearing unbidden is
+  the one class of bug that must not be smoothed over.
+  - [x] **The logging half — FIXED 30 Aug 2026, ledger #430.** Every share now writes an
+    identifying INFO line to `rexenv.log` when it starts (site · public URL · pid · origin)
+    and a closing line on every way it ends (user stop, in-flight kill, quit, crash).
+    Plant-proven twice over: content (`a_share_line_names_the_site_the_url_and_the_pid`)
+    and call sites (`every_start_and_every_stop_writes_a_line`; dropping the start, stop or
+    quit line each fails it). Live leg — reading a real share's line back out of a real
+    `rexenv.log` — is 🔨 and rides the tunnel example.
+  - **The row's own premise was HALF WRONG, found while fixing it.** It said "`rexenv.log`
+    has no tunnel line since 21 Aug"; it does — 27 Aug 21:26 local, `tunnels: killing the
+    orphaned tunnel for mstest.rex (pid 78716) — a prior session crashed while sharing`.
+    And `logs/tunnel-mstest.rex.log` holds the whole run: quick tunnel requested
+    `2026-08-27T14:12:18Z`, URL `https://reflections-jets-ethernet-sewing.trycloudflare.com`,
+    traffic to `/sub1/…` — i.e. the multisite-through-a-tunnel session's OWN share,
+    surviving a crash. So the trail existed, in the two places you look last: a WARN at
+    cleanup time, and a per-domain file you must already suspect. What was missing is the
+    line at START, which is the one a reader finds without knowing anything — hence the fix
+    above rather than the "no trail at all" the row asserted.
+  - [ ] The diagnosis itself stays open: nothing yet explains a share running that no
+    session started. With the start line in place, a recurrence is answerable from
+    `rexenv.log` alone — which is what makes waiting for one reasonable instead of guessing.
 
 - [x] **`frankenphp_edge_serve`: the edge it starts has never been PROVEN to answer —
   DIAGNOSED AND CLOSED 21 Aug 2026, and the cause was not the edge.** Four leaked
