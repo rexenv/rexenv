@@ -134,6 +134,7 @@ Two rules with teeth, learned the hard way:
 | PHP 7.4 — SHIPPED 15 Aug 2026; where the binary comes from, self-build + hosting, EOL honesty | `docs/PLAN-php-74-support.md` |
 | MCP server — M1/M2a/M2b SHIPPED, M3 (DB access) unbuilt; agents drive rexenv, scratch sites, capability tiers | `docs/PLAN-mcp-server.md` |
 | `wp dist-archive` — SHIPPED 5 Aug 2026; distributable zip from a repo asset | `docs/PLAN-dist-archive.md` |
+| Menu-bar app (tray) — why the CLI/MCP sockets die with the window, the no-dock-icon ruling and what Accessory costs | `docs/PLAN-menubar-tray.md` |
 | In-app PHP/engine patch updates — SHIPPED 17–18 Aug 2026; signed manifest, trust model | `docs/PLAN-binary-updates.md` |
 | Adminer in-app updates — SHIPPED 18 Aug 2026; the SECOND manifest family, `updates::Family`, the binding probe | `docs/PLAN-adminer-updates.md` |
 | Preferred browser + real app icons — shipped 11 Aug 2026, kept as the design record | `docs/PLAN-browser-preference.md` |

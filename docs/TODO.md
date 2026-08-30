@@ -2472,6 +2472,79 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     when the binary predates the guard's source, which is the difference between a note
     and a control.
 
+## Menu-bar app — the control plane stops dying with the window
+
+Plan: `docs/PLAN-menubar-tray.md` (approved shape 31 Aug 2026: **menu-bar only, no dock
+icon**). Why it is here at all: `rex` and the MCP server are remote controls for a
+RUNNING app — both sockets open in `lib.rs` setup and both die with the process — and
+today closing the window quits the app (`lib.rs:29-38`). Services and DNS already
+outlive a quit; the control plane is the one plane that does not. A daemon is not the
+answer (second-writer bug class, `cli_server.rs:8-10`) — the answer is that closing the
+window stops being a quit.
+
+### Phase A — the process survives the window (closes the goal on its own)
+
+- [ ] **A1** `Cargo.toml`: `tauri` features `tray-icon` + `image-png`.
+- [ ] **A2** Menu-bar template icon `icons/menubar.png` (+`@2x`), monochrome 22pt,
+  `set_icon_as_template(true)` — verified in BOTH a light and a dark menu bar.
+- [ ] **A3** Build the tray in `lib.rs` setup: **Open rexenv** + **Quit rexenv**;
+  left-click shows the window.
+- [ ] **A4** `ActivationPolicy::Accessory` — no dock icon, no app-switcher entry.
+- [ ] **A5** `CloseRequested` → `hide()` + `prevent_close()`, and **no tunnel prompt on
+  close** (nothing dies there any more). Done when `rex status` and `rex mcp` still work
+  with the window closed — the whole point of the phase.
+- [ ] **A6** Real quit = the tray's Quit only, keeping `confirm_quit_or_prompt` (tunnels
+  DO die on quit). The dialog moves to where it is actually true.
+- [ ] **A7** First run must not be invisible — incomplete onboarding shows the window.
+- [ ] **A8** `activate(ignoringOtherApps:)` before every native prompt (resolver, CA
+  trust, quit confirm). An Accessory app's modal can otherwise open behind everything,
+  and the privileged prompt already has a hard foreground requirement.
+- [ ] **A9** **Measure what Accessory costs**: Cmd+C / Cmd+V in the site Terminal tab and
+  in Adminer. Accessory removes the app menu, and on macOS the webview's clipboard
+  shortcuts come from the Edit menu — the same menu the About item was built by *editing*
+  rather than replacing, exactly so those survived. Works → ship always-Accessory.
+  Broken → switch to Accessory-while-hidden / Regular-while-visible and record which one
+  is in the binary, in the plan.
+
+### Phase B — the quick menu
+
+- [ ] **B1** `core/tray.rs`: `TrayModel { services, sites, mcp_on } -> MenuSpec`, pure,
+  no Tauri types — the rules are testable and rendering is not where rules live.
+- [ ] **B2** Status line from the **ServiceManager snapshot**, never a port-listen —
+  a tray that probes ports is a second answer to "is it running" beside the UI's.
+- [ ] **B3** Start all / Stop all through the same commands the UI calls.
+- [ ] **B4** Sites › recent N → `open_in_browser` (honours the browser preference).
+- [ ] **B5** New site… / Mail / Databases / Services / Tunnels → show window + route.
+- [ ] **B6** MCP on/off checkmark bound to `mcp_enabled`.
+- [ ] **B7** Rebuild on service-state change + a coalesced ~5s tick, `try_lock` snapshot
+  only — never hold the services lock across a wait; a stale labelled menu beats a menu
+  that blocks the menu bar.
+
+### Phase C — always-on
+
+- [ ] **C1** "Start hidden in the menu bar" — login opens no window (A7 still wins).
+  `AutostartManager` already exists; this phase makes it QUIET, it does not build it.
+- [ ] **C2** Login rules unchanged: never download, never prompt (ledger #175 guards
+  must still pass untouched).
+- [ ] **C3** `rex` with no socket *offers* `open -a rexenv` — a suggestion, never an
+  autostart (`CLI-ROADMAP.md`).
+
+### Phase D — docs and proof, in the same commits
+
+- [ ] **D1** `ARCHITECTURE.md` — app lifetime: what dies with the app (tunnels, repo
+  jobs), what outlives it (services, DNS), what the tray now KEEPS alive (CLI + MCP).
+- [ ] **D2** `MAP.md` + README tree — `core/tray.rs` + the platform wiring.
+- [ ] **D3** `CLAIM-LEDGER.md` rows + verdicts, same commit as the code: closing the
+  window stops no service and keeps both sockets; tray status is a snapshot, never a
+  probe; the menu build never holds the services lock.
+- [ ] **D4** `DESIGN.md` — template-icon rule, honest status copy.
+- [ ] **D5** `TESTING.md` + `scripts/live-checks.sh` — L0 menu-model tests; L1
+  `tray_lifetime_check` (sandbox): hide the window, assert the CLI socket still answers.
+- [ ] **D6** `SMOKE-TEST.md` — the manual legs: tray click, webview clipboard,
+  login-hidden start, quit with a share up. **Tray clicks are not L1-provable here** (no
+  synthetic clicks on a live desktop), and that is stated as a limit, not automated away.
+- [ ] **D7** `INSTALL.md` — first-run wording now that nothing appears in the dock.
+
 ## Blocked on external work
 
 - [ ] **Xdebug on PHP 8.0** — the Nov 2024 static-php 8.0.30 build exports zero
