@@ -328,7 +328,12 @@ paying for anyway: **the tick belongs in the commit that does the work.**
   API, or `CURLOPT_RESOLVE`). Deliberately not a ✗ or a ⚠ and deliberately not counted in the
   exit code: every normal install has this, and a doctor that goes red for everyone teaches
   people to ignore it. The alternative it replaces is an unexplained DNS error inside
-  somebody's plugin with nothing on the machine willing to say why — the mu-plugin covers the WordPress HTTP API, not raw `curl_init()` in
+  somebody's plugin with nothing on the machine willing to say why.
+  **Live 31 Aug 2026**: `· PHP curl  PHP 8.3, 8.4 bundle curl with c-ares … (17 sites on
+  them)`, finding count unchanged at 1. The first run printed nothing because the `rex` on
+  PATH is the packaged 0.4.0 CLI, not the one built from this tree — doctor's own ⚠ CLI line
+  had already said so. Worth remembering when a new doctor line "doesn't appear": check which
+  `rex` answered before checking the code — the mu-plugin covers the WordPress HTTP API, not raw `curl_init()` in
   a plugin, and not non-WordPress PHP apps rexenv hosts). Needs a self-built
   static-php (`--enable-threaded-resolver` instead of `--enable-ares`) for 7 minors ×
   cli/fpm × 2 arches. **The hosting path is no longer blocked** — as of 14 Aug 2026

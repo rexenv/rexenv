@@ -2516,8 +2516,14 @@ fn cmd_doctor(json_output: bool) {
             .unwrap_or_default();
         if !minors.is_empty() {
             let n = cr["sites"].as_u64().unwrap_or(0);
+            let pad = " ".repeat(12);
             println!(
-                "· {:<9} PHP {} bundle curl with c-ares, which cannot resolve .rex hosts \n                             ({n} site{} on them). WordPress is patched; a plugin's raw curl_init() and \n                             non-WordPress PHP are not — use the WP HTTP API, or CURLOPT_RESOLVE.",
+                // Continuation lines align under the MESSAGE column (2 for the
+                // mark + 9 for the label + 1 space), so the note reads as one
+                // block rather than a stray paragraph.
+                "· {:<9} PHP {} bundle curl with c-ares, which cannot resolve .rex hosts\n\
+                 {pad}({n} site{} on them). WordPress is patched; a plugin's raw curl_init()\n\
+                 {pad}and non-WordPress PHP are not — use the WP HTTP API, or CURLOPT_RESOLVE.",
                 "PHP curl",
                 minors.join(", "),
                 if n == 1 { "" } else { "s" },
