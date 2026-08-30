@@ -87,11 +87,11 @@ pub const FRANKENPHP_VERSION: &str = "1.12.4";
 pub const FRANKENPHP_EMBEDDED_PHP: &str = "8.5.8";
 /// Default PostgreSQL version (theseus-rs portable build — a full bin/lib/share
 /// tree, like MySQL). Phase 2 §5.3. Must be in [`POSTGRES_VERSIONS`].
-pub const POSTGRES_VERSION: &str = "18.4.0";
+pub const POSTGRES_VERSION: &str = "18.6.0";
 /// All PostgreSQL versions with pinned builds (per-engine version switch).
 /// PG major datadirs are mutually INCOMPATIBLE — per-series datadirs are load-
 /// bearing here, not just tidy.
-pub const POSTGRES_VERSIONS: &[&str] = &["18.4.0", "17.10.0", "16.14.0"];
+pub const POSTGRES_VERSIONS: &[&str] = &["18.6.0", "17.11.0", "16.15.0"];
 /// Pinned Mailpit version (one static Go binary: SMTP sink + web UI/API). Phase 3 §2.1.
 pub const MAILPIT_VERSION: &str = "1.30.3";
 /// Pinned Adminer version (a single `adminer.php`, all drivers, run via the bundled
@@ -306,9 +306,9 @@ fn mysql_series(version: &str) -> String {
 /// Pinned SHA-256 for a theseus-rs PostgreSQL build, or `None` if unpinned.
 fn postgres_sha256(version: &str, arch: Arch) -> Option<&'static str> {
     let (arm, amd) = match version {
-        "18.4.0" => (POSTGRES_18_4_0_MAC_ARM64_SHA256, POSTGRES_18_4_0_MAC_AMD64_SHA256),
-        "17.10.0" => (POSTGRES_17_10_0_MAC_ARM64_SHA256, POSTGRES_17_10_0_MAC_AMD64_SHA256),
-        "16.14.0" => (POSTGRES_16_14_0_MAC_ARM64_SHA256, POSTGRES_16_14_0_MAC_AMD64_SHA256),
+        "18.6.0" => (POSTGRES_18_6_0_MAC_ARM64_SHA256, POSTGRES_18_6_0_MAC_AMD64_SHA256),
+        "17.11.0" => (POSTGRES_17_11_0_MAC_ARM64_SHA256, POSTGRES_17_11_0_MAC_AMD64_SHA256),
+        "16.15.0" => (POSTGRES_16_15_0_MAC_ARM64_SHA256, POSTGRES_16_15_0_MAC_AMD64_SHA256),
         _ => return None,
     };
     Some(match arch {
@@ -356,14 +356,24 @@ const FRANKENPHP_1_12_4_MAC_AMD64_SHA256: &str = "9aa5ea729ec9aee6fda6facfb7f874
 // PostgreSQL portable build SHA-256 (theseus-rs/postgresql-binaries — the project
 // PUBLISHES these `.sha256` files; cross-checked against a fresh download). A
 // relocatable bin/lib/share tree (unsigned Mach-O that runs as-is on Apple Silicon).
-const POSTGRES_18_4_0_MAC_ARM64_SHA256: &str = "1b68828f524b638a24918e258b173d0f16773547a0d3b83d9ba74473b61649f2";
-const POSTGRES_18_4_0_MAC_AMD64_SHA256: &str = "cbc38067a795d10bbddc730e61c835df0b351c36a7bd2544d388790fcf50aa4d";
-// 17/16 series (per-engine version switch) — same published-.sha256 source,
-// fetched 2026-07-15.
-const POSTGRES_17_10_0_MAC_ARM64_SHA256: &str = "e15b5d3b86363d51fe06c9f26ee1d35d09b13951be82641b8f4b2d0e06e2c51e";
-const POSTGRES_17_10_0_MAC_AMD64_SHA256: &str = "737c0e14bd2f1546aaf728153851cfee2d93e682520eb87ba0576a08ec6d9789";
-const POSTGRES_16_14_0_MAC_ARM64_SHA256: &str = "a7a4846456df26d27f815267dfe725b4ad4f46312c032e7b5939468250a4891c";
-const POSTGRES_16_14_0_MAC_AMD64_SHA256: &str = "c5ecdea2528e29503140e259c043002f6f8f2e9d1ee2f1decb44e8b394254820";
+//
+// RE-PINNED 30 Aug 2026 — 18.4.0/17.10.0/16.14.0 → 18.6.0/17.11.0/16.15.0, and the
+// reason is the macOS FLOOR rather than the patch level. The June builds were made on
+// macOS-26 runners and every Mach-O in them carries `minos 26.0`, which presumed the
+// whole engine dead below macOS 26 and could not be tested from a machine that runs
+// 26 (dyld there enforces minos for nothing). The 15 Aug upstream builds went back to
+// `minos 15.0` — measured across EVERY executable and dylib in all six tarballs, not
+// just `bin/postgres` — so the question the old pins raised is answered by not asking
+// it: 15.0 is the app's own floor. A newer patch level came along for free; the floor
+// is what the bump is for.
+const POSTGRES_18_6_0_MAC_ARM64_SHA256: &str = "a257bcdb8aa3301a13d6a5bcec48f8c9517045b7cbae71e50788b2615539e95b";
+const POSTGRES_18_6_0_MAC_AMD64_SHA256: &str = "f8918fbe747e0d79bda58ad8f8afcf23ac384b847ff3af18856f0825ba54b031";
+// 17/16 series (per-engine version switch) — same published-.sha256 source, each
+// cross-checked against a fresh download 30 Aug 2026.
+const POSTGRES_17_11_0_MAC_ARM64_SHA256: &str = "fd4b62794b160e26973a768a1eef3248aef9d2ff23ebd6d884a4299485e28e57";
+const POSTGRES_17_11_0_MAC_AMD64_SHA256: &str = "e43a81b15e1cfe7f9d8fd79c6d4d0366e9001a5f690e322224dca704656602f7";
+const POSTGRES_16_15_0_MAC_ARM64_SHA256: &str = "46f6382024d9b633d1f4b4903ffef8c2404e00ae83098d628c00591048cb0512";
+const POSTGRES_16_15_0_MAC_AMD64_SHA256: &str = "dfae21b2b931f1d8d1103afb6e8e108fdd94c6f407ce24d35b6cd0ad34f286d1";
 
 // Mailpit static binary SHA-256 (computed at pin time — the project publishes no
 // checksums file; each darwin tarball downloaded and hashed). A static Go Mach-O
@@ -4542,12 +4552,12 @@ mod tests {
     #[test]
     fn manifest_pins_postgres_as_tree() {
         let arm = manifest("postgres", POSTGRES_VERSION, "macos", Arch::Arm64).unwrap();
-        assert!(arm.url.ends_with("postgresql-18.4.0-aarch64-apple-darwin.tar.gz"));
+        assert!(arm.url.ends_with("postgresql-18.6.0-aarch64-apple-darwin.tar.gz"));
         assert_eq!(arm.archive, Archive::TarGzTree);
         assert_eq!(arm.member, "bin/postgres");
         assert!(matches!(arm.checksum, Checksum::Sha256(_)));
         let amd = manifest("postgres", POSTGRES_VERSION, "macos", Arch::X86_64).unwrap();
-        assert!(amd.url.ends_with("postgresql-18.4.0-x86_64-apple-darwin.tar.gz"));
+        assert!(amd.url.ends_with("postgresql-18.6.0-x86_64-apple-darwin.tar.gz"));
         assert_ne!(checksum_hex(&arm.checksum), checksum_hex(&amd.checksum));
     }
 

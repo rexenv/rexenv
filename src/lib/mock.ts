@@ -83,7 +83,7 @@ export const mockServices: ServiceInfo[] = [
   { name: "PHP-FPM 8.3", running: true, pid: 1235, port: 9783, cpuPercent: 0.1, ramMb: 28, kind: "php", version: "8.3.4", isDefault: true },
   { name: "PHP-FPM 8.2", running: false, pid: null, port: 9782, cpuPercent: 0.0, ramMb: 0, kind: "php", version: "8.2.18" },
   { name: "MySQL", running: true, pid: 1234, port: 13306, cpuPercent: 0.4, ramMb: 480, kind: "database", version: "8.4.6" },
-  { name: "PostgreSQL", running: false, pid: null, port: 15432, cpuPercent: 0.0, ramMb: 0, kind: "database", version: "18.4.0" },
+  { name: "PostgreSQL", running: false, pid: null, port: 15432, cpuPercent: 0.0, ramMb: 0, kind: "database", version: "18.6.0" },
   { name: "Mailpit", running: true, pid: 1240, port: 11025, cpuPercent: 0.0, ramMb: 12, kind: "mail", version: "1.20.0" },
   { name: "Nginx", running: true, pid: 1236, port: 18088, cpuPercent: 0.0, ramMb: 7, kind: "web", version: "1.30.3", isRouter: false },
   { name: "Caddy", running: false, pid: null, port: 443, cpuPercent: 0.0, ramMb: 0, kind: "web", version: "2.11.4", isRouter: true },
@@ -144,7 +144,7 @@ export const mockPhpSettings: PhpSetting[] = [
 
 export const mockDatabases: DbStatus[] = [
   { key: "mysql", label: "MySQL", port: 13306, version: "8.4.6", running: true, pid: 1234, cpuPercent: 0.4, ramMb: 480 },
-  { key: "postgres", label: "PostgreSQL", port: 15432, version: "18.4.0", running: false, pid: null, cpuPercent: 0.0, ramMb: 0 },
+  { key: "postgres", label: "PostgreSQL", port: 15432, version: "18.6.0", running: false, pid: null, cpuPercent: 0.0, ramMb: 0 },
 ];
 
 // Derived from mockServices so the browser mock mirrors the backend's single

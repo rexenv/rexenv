@@ -410,8 +410,8 @@ mod tests {
     fn version_series_and_datadirs_are_per_series() {
         // Series keys: PG by major (its datadirs are major-incompatible),
         // the MySQL-protocol engines by major.minor.
-        assert_eq!(DbEngine::Postgres.series_of("18.4.0"), "18");
-        assert_eq!(DbEngine::Postgres.series_of("17.10.0"), "17");
+        assert_eq!(DbEngine::Postgres.series_of("18.6.0"), "18");
+        assert_eq!(DbEngine::Postgres.series_of("17.11.0"), "17");
         assert_eq!(DbEngine::Mysql.series_of("8.0.44"), "8.0");
         assert_eq!(DbEngine::Mysql.series_of("8.4.6"), "8.4");
         assert_eq!(DbEngine::Mariadb.series_of("11.4.12"), "11.4");
@@ -426,7 +426,7 @@ mod tests {
         let lts = DbEngine::Mysql.data_dir(&*plat, "8.0.44").unwrap();
         assert!(lts.ends_with("mysql/8.0/data"), "{}", lts.display());
         assert_ne!(default_dir, lts);
-        let pg17 = DbEngine::Postgres.data_dir(&*plat, "17.10.0").unwrap();
+        let pg17 = DbEngine::Postgres.data_dir(&*plat, "17.11.0").unwrap();
         assert!(pg17.ends_with("postgres/17/data"), "{}", pg17.display());
     }
 
@@ -439,8 +439,8 @@ mod tests {
             DbEngine::Postgres.default_version()
         );
         // Stored + offered → the selection.
-        DbEngine::Postgres.set_version(&conn, "17.10.0").unwrap();
-        assert_eq!(DbEngine::Postgres.effective_version(&conn), "17.10.0");
+        DbEngine::Postgres.set_version(&conn, "17.11.0").unwrap();
+        assert_eq!(DbEngine::Postgres.effective_version(&conn), "17.11.0");
         // Not offered → refused at write.
         assert!(DbEngine::Postgres.set_version(&conn, "15.0.0").is_err());
         // A selection orphaned by a future pin bump falls back to the default

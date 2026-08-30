@@ -407,27 +407,31 @@ paying for anyway: **the tick belongs in the commit that does the work.**
     showing `[]`. Plant-proven both ways — removing the column reproduces the original
     defect verbatim ("the two rows render IDENTICALLY"), and rendering `[]` for empty args
     fails the readability half. Registered in `run-all.js`, so it is in the wk-checks bar.
-- [ ] ⚠ **PostgreSQL's pinned builds carry `minos 26.0` — presumed dead below
-  macOS 26, and the presumption cannot be tested from this machine** (found
-  15 Aug 2026 during the floor sweep; MEASURED as far as this host allows the
-  same day). What the measurement showed: dyld on macOS 26 enforces minos for
-  NEITHER main executables NOR dylibs — postgres patched to `minos 99.0`
-  (binary and libssl, re-signed) runs clean — while deterministic dyld crashes
-  of minos-15 binaries on macOS 14 are documented in the wild. So enforcement
-  is a property of the OLDER host's dyld, and only a macOS 14/15 VM can settle
-  whether postgres actually fails there (PUBLISH-TESTING clean-VM shape).
-  **The failure surface IS traced, labelled as prediction:** if dyld kills the
-  child at spawn, the user gets "PostgreSQL did not start within Ns — see
-  postgres-stdout.log" (`await_ready` names the log; `spawn_logged` captures
-  BOTH streams, so dyld's real reason lands in that log) — a timeout pointing
-  at a log that holds the truth, not a silent no-op, but the top-level line
-  says nothing about macOS versions. The VM check has TWO questions, not one
-  (ruled 15 Aug 2026): whether it fails, AND whether the message leads anywhere —
-  a user reading "didn't start in Ns" looks at Postgres, not at their macOS
-  version, so if the refusal is real the top-level line needs the version fact,
-  not just the log pointer. If the VM confirms the refusal: re-pin to
-  lower-target theseus-rs releases (or another source), and consider a
-  version-aware tell on the Databases screen.
+- [x] ⚠ **PostgreSQL's pinned builds carried `minos 26.0` — CLOSED 30 Aug 2026 by
+  re-pinning, not by testing the presumption** (found 15 Aug 2026 during the floor sweep).
+  The item asked two things: does dyld actually refuse these builds below macOS 26, and
+  should we re-pin to lower-target releases? The second dissolves the first — an
+  untestable prediction stops mattering when the artifact it predicts about is no longer
+  shipped. theseus-rs' **15 Aug 2026** builds went back to `minos 15.0`, so 18.4.0 /
+  17.10.0 / 16.14.0 → **18.6.0 / 17.11.0 / 16.15.0**, and PostgreSQL stops being the one
+  engine presumed dead on every Mac below 26.
+  - **Measured, not sampled**: `vtool -show-build` over EVERY executable and dylib in all
+    six new tarballs — 15.0 throughout, both slices. The x86_64 18.4.0 was fetched and
+    measured too (26.0, like its arm64 twin), so the old pins were 26.0 on both slices and
+    the new ones are 15.0 on both. That also closes half of PORTS' standing arch caveat
+    for this row.
+  - **The bump is FREE of the usual risk**: same majors, so the per-series datadirs
+    (`postgres/<major>/data`) are untouched and a minor upgrade is in-place-compatible;
+    and `effective_version` already falls back to the default when a stored selection is
+    orphaned by a pin bump — a case its test names explicitly.
+  - **Checksums**: all six published `.sha256` files cross-checked against fresh
+    downloads (MATCH ×6). 18.6.0 was then RUN — `initdb`, TCP-only start on a scratch
+    port, `SELECT version()` → *PostgreSQL 18.6 on aarch64-apple-darwin24.6.0*, a
+    create/insert/select round-trip, clean stop.
+  - **What stays open is a prediction about nothing we ship**: whether dyld on macOS
+    14/15 truly refuses a `minos 26.0` binary is still unverified, and no longer blocks
+    anything. `core::macho`'s runtime diagnosis (#383) remains the guard if a future pin
+    regresses.
   - [x] **The message half is DONE** ✓ 23 Aug 2026 — ledger #383. This was ruled as the
     second of the VM's two questions, and it did not need the VM: whether the top-level
     line leads anywhere is answerable here, and the answer was no. A start failure now
@@ -442,9 +446,9 @@ paying for anyway: **the tick belongs in the commit that does the work.**
     would block builds that may run perfectly, on a prediction this tree cannot test —
     dyld on macOS 26 enforces it for nothing. Running only after a failure makes a wrong
     prediction free: the sentence simply never appears.
-  - [ ] **Still open, and still needs the VM:** whether dyld actually refuses these builds
-    below macOS 26, and therefore whether to re-pin to lower-target releases. Nothing
-    above changes that — it makes the failure legible if it is real, not less likely.
+  - [x] **The re-pin half — DONE 30 Aug 2026**, which was the other of the two questions
+    and the one that did not need the VM either. The dyld question itself is still
+    unverified and now applies to nothing rexenv ships.
 - [ ] **Option, not a commitment: a self-built nginx (deployment target 12)
   would drop the app floor from 15 to 14** (MySQL's floor). Same
   `rexenv/runtimes` path that built PHP 7.4; recorded like the c-ares ruling -

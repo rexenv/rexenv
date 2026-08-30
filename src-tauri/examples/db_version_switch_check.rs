@@ -74,11 +74,11 @@ async fn main() {
     }
     let mut mgr = ServiceManager::default();
 
-    println!("=== 17.10.0 into its own fresh datadir ===");
-    let dir17 = engine.data_dir(&*plat, "17.10.0").unwrap();
+    println!("=== 17.11.0 into its own fresh datadir ===");
+    let dir17 = engine.data_dir(&*plat, "17.11.0").unwrap();
     println!("  datadir {} (fresh={})", dir17.display(), !postgres::is_initialized(&dir17));
-    up(&mut mgr, &*plat, "17.10.0").await;
-    let base17 = binaries::resolve_dir(&*plat, "postgres", "17.10.0").await.unwrap();
+    up(&mut mgr, &*plat, "17.11.0").await;
+    let base17 = binaries::resolve_dir(&*plat, "postgres", "17.11.0").await.unwrap();
     let (_, ver) = psql(&base17, engine.port(), "SELECT version()");
     println!("  version → {}", ver.split(" on ").next().unwrap_or(&ver));
     ok &= ver.starts_with("PostgreSQL 17.");
@@ -87,9 +87,9 @@ async fn main() {
     ok &= cok;
     down(&mut mgr, &*plat);
 
-    println!("\n=== switch to 16.14.0 — per-series isolation ===");
-    up(&mut mgr, &*plat, "16.14.0").await;
-    let base16 = binaries::resolve_dir(&*plat, "postgres", "16.14.0").await.unwrap();
+    println!("\n=== switch to 16.15.0 — per-series isolation ===");
+    up(&mut mgr, &*plat, "16.15.0").await;
+    let base16 = binaries::resolve_dir(&*plat, "postgres", "16.15.0").await.unwrap();
     let (_, ver) = psql(&base16, engine.port(), "SELECT version()");
     println!("  version → {}", ver.split(" on ").next().unwrap_or(&ver));
     ok &= ver.starts_with("PostgreSQL 16.");
@@ -102,8 +102,8 @@ async fn main() {
     ok &= seen == "0";
     down(&mut mgr, &*plat);
 
-    println!("\n=== back to 17.10.0 — data survives the round-trip ===");
-    up(&mut mgr, &*plat, "17.10.0").await;
+    println!("\n=== back to 17.11.0 — data survives the round-trip ===");
+    up(&mut mgr, &*plat, "17.11.0").await;
     let (_, seen) = psql(
         &base17,
         engine.port(),

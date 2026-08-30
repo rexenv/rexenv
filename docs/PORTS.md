@@ -44,7 +44,7 @@ binary, update THIS file in the same commit.
 | WP-CLI | 2.12.0 | `.phar`, `resolve_file`, no chmod/codesign |
 | Composer | 2.10.2 | `.phar`, `resolve_file` — ALWAYS run via the SITE's bundled PHP (add-from-Git composer step; platform checks match the PHP the plugin runs on; a system composer is never executed — non-phar wrappers exist, e.g. Herd's). Sha verified against getcomposer.org's published `.sha256sum`, run-tested on static PHP 8.3.31 at pin time |
 | FrankenPHP | 1.12.4 | embeds its OWN PHP (not the pools) |
-| PostgreSQL | 18.4.0 (default) / 17.10.0 / 16.14.0 | theseus-rs portable, TCP-only; project-published `.sha256` pins. PG major datadirs are mutually incompatible — the per-series datadir rule is load-bearing (`postgres/<major>/data`) |
+| PostgreSQL | 18.6.0 (default) / 17.11.0 / 16.15.0 | theseus-rs portable, TCP-only; project-published `.sha256` pins, each cross-checked against a fresh download. **Re-pinned 30 Aug 2026 for the FLOOR, not the patch level**: the June builds carried `minos 26.0` (macOS-26 runners), the 15 Aug ones carry `minos 15.0` — measured across every Mach-O in all six tarballs. PG major datadirs are mutually incompatible — the per-series datadir rule is load-bearing (`postgres/<major>/data`) |
 | Redis | 8.8.0 | **bottle BUNDLE** (`resolve_bundle`): Homebrew redis + openssl@3 3.6.3 bottles (arm64_sonoma / sonoma), merged + relinked to `@loader_path` + re-signed by `prepare_binary_tree`. ghcr blobs are content-addressed — the URL embeds the pinned digest, so pins can 404 (formula GC) but never drift |
 | MariaDB | 12.3.2 (default) / 11.4.12 LTS (`mariadb@11.4` bottle, identical layout+closure) | bottle BUNDLE: mariadb (server + client + dump + bootstrap SQL/errmsg/charsets ONLY — plugins/scripts excluded) + openssl@3 3.6.3 + pcre2 10.47. groonga/lz4/lzo/xz/zstd are plugin-only deps, not bundled. Init = `mariadbd --bootstrap` fed the bundled SQL over stdin (`core/mariadb.rs`) |
 | Apache httpd | 2.4.68 | bottle BUNDLE: httpd (`bin/httpd` + ONLY the 10 modules the generated conf loads + `.bottle/etc/httpd/mime.types`) + apr 1.7.6 + apr-util 1.6.3 + pcre2 10.47. mod_ssl/mod_http2/mod_brotli excluded ⇒ openssl/nghttp2/brotli never bundled. Per-site loopback override backend; `.php` → the site's shared php-fpm pool via mod_proxy_fcgi (`core/apache.rs`) |
@@ -74,12 +74,15 @@ wrong number survives — it is only load-bearing on the day something else move
 | Caddy 2.11.4, Mailpit 1.30.3, FrankenPHP 1.12.4, **PHP 7.4.33 / 8.1.34 / 8.2.31 / 8.3.31 / 8.4.23 / 8.5.8** | 12.0 |
 | **PHP 8.0.30** (cli + fpm — the one PHP row that is NOT 12.0), MySQL 8.0.44 / 8.4.6, MariaDB 11.4.12 / 12.3.2, Redis 8.8.0, Apache httpd 2.4.68, Xdebug 3.5.3 bottles | 14.0 |
 | **nginx 1.30.3, cloudflared 2026.6.1** | **15.0** — the default stack's floor |
-| **PostgreSQL 16.14.0 / 17.10.0 / 18.4.0** | **26.0** — presumed refused by dyld below macOS 26 (the documented enforcement class), UNVERIFIED: see the TODO item and the 15 Aug measurement note below |
+| **PostgreSQL 16.15.0 / 17.11.0 / 18.6.0** | **15.0** — measured 30 Aug 2026 on EVERY executable and dylib in all six shipped tarballs (`vtool -show-build`), so PostgreSQL no longer sets the app floor. The previous pins (16.14.0 / 17.10.0 / 18.4.0, June builds off macOS-26 runners) carried **26.0**, presumed-but-untestable death below macOS 26; re-pinning answered that question instead of waiting for a VM to ask it |
 
-**Arch caveat on every number above: these are the arm64 slices.** The cache holds
-only what this machine downloaded, so the x86_64 artifacts' `minos` has never been
-measured — same standing gap as the un-run Intel digests at the foot of this file.
-An Intel pass should re-run the sweep, not just the smoke test.
+**Arch caveat: every number above is the arm64 slice — EXCEPT PostgreSQL.** The cache
+holds only what this machine downloaded, so the rest of the x86_64 artifacts' `minos`
+has never been measured — the same standing gap as the un-run Intel digests at the foot
+of this file. An Intel pass should re-run the sweep, not just the smoke test.
+PostgreSQL's row covers both slices because the 30 Aug re-pin downloaded them: the
+x86_64 tarballs were fetched and swept here, and the old x86_64 18.4.0 measured **26.0**
+just like its arm64 twin, so the two slices moved together in both directions.
 
 jirutka publishes NO darwin nginx below minos 14 (checked 1.24.0→1.31.3, 15 Aug
 2026: only the stale 1.24.0/1.26.1/1.26.2 are 14.0; everything current is 15.0), so
@@ -95,6 +98,14 @@ the HOST's dyld, and a machine on the newest macOS can never observe it. The flo
 above therefore rests on measured metadata + the documented enforcement class, not
 on a refusal reproduced here; confirming what actually happens on macOS 14/15 needs
 an older-macOS VM (PUBLISH-TESTING's clean-VM shape).
+
+**PostgreSQL's 26.0 pins are gone, and the VM question with them** (30 Aug 2026). The
+open item was "does dyld actually refuse these below macOS 26, and do we re-pin?" — two
+questions where the second dissolves the first. Upstream's 15 Aug builds are `minos 15.0`,
+so re-pinning removes the presumed-dead artifact rather than testing it: an untestable
+prediction stops mattering when the thing it predicts about is no longer shipped. The
+prediction itself stays UNSETTLED and that is fine — it now applies to nothing rexenv
+ships, and the `core::macho` diagnosis (#383) still fires for anything that regresses.
 
 **If it IS real, the user is told which fact explains it** (23 Aug 2026, ledger #383).
 A readiness timeout now reads the binary's own `minos` (`core::macho`, cross-checked

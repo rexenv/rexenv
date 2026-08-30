@@ -1453,7 +1453,7 @@ export async function stopMail(): Promise<void> {
 /** Start a database engine by key (e.g. "postgres"). No-op outside Tauri. */
 /** Offered versions per engine key (default first) for the Databases picker. */
 export async function dbEngineVersions(): Promise<Record<string, string[]>> {
-  if (!isTauri()) return { mysql: ["8.4.6"], mariadb: ["12.3.2"], postgres: ["18.4.0"], redis: ["8.8.0"] };
+  if (!isTauri()) return { mysql: ["8.4.6"], mariadb: ["12.3.2"], postgres: ["18.6.0"], redis: ["8.8.0"] };
   return invoke<Record<string, string[]>>("db_engine_versions");
 }
 
