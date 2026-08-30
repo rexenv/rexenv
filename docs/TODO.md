@@ -452,21 +452,39 @@ paying for anyway: **the tick belongs in the commit that does the work.**
 - [ ] **PHP 7.4 — the five residuals of a shipped feature** (`docs/PLAN-php-74-support.md`;
   the stage log is in `docs/archive/SHIPPED-2026-08.md`). Kept as open rows because they
   were living inside a ticked block, which is where open work goes to be forgotten.
-  - [ ] **`rexenv/runtimes`' release notes for `php-7.4.33-6` describe `-4`.** Two
-    lines are stale on the release page users and auditors read: it says
-    `MACOSX_DEPLOYMENT_TARGET=11.0` was "asserted per artifact" (the artifacts
-    measure `minos 12.0` — spc's macOS default; PLAN §10b corrected 11.0→12.0 and
-    the workflow followed, the prose did not), and it says "the extension set is
-    narrower than the 8.x builds … widening is in progress" when `-6` IS the
-    parity build (60 modules, five documented absences). Fix in the runtimes repo;
-    nothing in rexenv depends on it, but a release page is a claim surface.
+  **Four of the five are now closed** (30 Aug 2026); what is left is the ONE with a date
+  on it rather than a fix — GitHub's x86_64 runners ending August 2027.
+  - [x] **`rexenv/runtimes`' release notes for `php-7.4.33-6` described `-4`** ✓ 30 Aug 2026
+    — `runtimes` `c86129d` + `ba58c8e`, and the PUBLISHED build-6 page re-edited to match
+    (the tag is immutable for ASSETS; the body is not, and the assets were untouched).
+    Both stale lines were measured before they were rewritten, not just reworded:
+    - **The floor.** Both shipped slices carry `LC_BUILD_VERSION minos 12.0` (`vtool
+      -show-build`; arm64 from the local cache, x86_64 downloaded from the release), so
+      the prose's `11.0` was a build behind. **The "asserted per artifact" half was TRUE,
+      and this session briefly published that it was not** — the first pass grepped
+      `.github/workflows/php-74.yml`, which is where the guard is NOT:
+      `scripts/build-php74.sh` gate 4 has always failed the build unless every artifact's
+      minos equals `MACOSX_DEPLOYMENT_TARGET` (set to 12.0). The gates live in the script
+      the workflow calls — read that next time a claim about this build is checked.
+    - **The extension set.** "Narrower … widening is in progress" is false as of build 6:
+      57 modules against a static 8.3.32's 62, the difference **exactly** the five
+      documented absences (`Zend OPcache`, `random`, `opentelemetry`, `protobuf`,
+      `swoole`), with nothing else missing. The "60 modules" this row used to quote was a
+      raw `php -m | wc -l` — section headers and blank lines included, which is the number
+      a pipe gives you and not the number of extensions.
+    - The notes now also state PCRE JIT is compiled out, which the artifacts have done
+      since build 1 and the page had never mentioned.
 
-  - [ ] **PCRE JIT is compiled OUT of 7.4** — PHP 7.4 bundles PCRE2 10.35 (May
-    2020), too old for Apple Silicon JIT, so Composer died on `Allocation of JIT
-    memory failed`. `--without-pcre-jit` removes the capability. Regex throughput
-    on 7.4 is therefore lower than on the 8.x rows. Worth revisiting ONLY if
-    someone builds 7.4 against a newer external PCRE2; not worth it for an EOL
-    version nobody runs for speed.
+  - [x] **PCRE JIT is compiled OUT of 7.4 — an ACCEPTED POSTURE, not an open task**
+    ✓ 30 Aug 2026. 7.4 bundles PCRE2 10.35 (May 2020), too old for Apple Silicon JIT, so
+    Composer died on `Allocation of JIT memory failed`; `--without-pcre-jit` removes the
+    capability, and regex throughput on 7.4 is lower than on the 8.x rows because of it.
+    Undoing it means building 7.4 against a NEWER EXTERNAL PCRE2 — a dependency change to
+    an EOL runtime nobody runs for speed. The box was an unticked description of a
+    decision already taken, which is how a settled trade-off reads as owed work.
+    Recorded where both audiences look: `docs/PORTS.md`'s PHP row, and now the release
+    page itself.
+
   - [x] **The upstream source commit is recorded nowhere in rexenv** ✓ 23 Aug 2026 —
     `PHP_7_4_33_SOURCE_COMMIT`, ledger #377, plant-proven three ways.
     **The row's premise was wrong and that is the useful part.** The commit was NOT

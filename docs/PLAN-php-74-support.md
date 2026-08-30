@@ -487,7 +487,7 @@ steps:
   - spc download --with-php=7.4 --custom-url "php-src:file://…" --for-extensions "$EXTS" --prefer-pre-built
   - spc build "$EXTS" --build-cli --build-fpm
   - gate: nm -gU buildroot/bin/php-fpm | grep _OnUpdateBool          # §4.6 — Xdebug viability
-  - gate: otool -l buildroot/bin/php | grep -A3 LC_BUILD_VERSION     # minos == 11.0, on deps too
+  - gate: otool -l buildroot/bin/php | grep -A3 LC_BUILD_VERSION     # minos == 12.0 (§10b), on deps too — the shipped gate 4 compares against $MACOSX_DEPLOYMENT_TARGET rather than a literal, which is why it never carried this line's stale 11.0
   - gate: otool -L → only /usr/lib + /System (+ libz)                # §2B, rexenv's real gate
   - gate: ./buildroot/bin/php -m | grep -x mysqli                    # the WP-critical set
   - tar -C buildroot/bin -czf php-7.4.33-{cli,fpm}-macos-<arch>.tar.gz {php,php-fpm}
