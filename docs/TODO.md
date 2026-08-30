@@ -269,6 +269,25 @@ paying for anyway: **the tick belongs in the commit that does the work.**
   **Re-checked 24 Aug 2026:** still nothing. `wp-cli/wp-cli` latest release is v2.12.0,
   published 2025-05-07 — over fifteen months old, so this is not a release that is about
   to land. Keep the containment; re-check when a release appears, not on a schedule.
+  **Re-checked 30 Aug 2026 — and this time MEASURED rather than read off a constraint.**
+  Latest release is still v2.12.0 (2025-05-07), so there is still nothing to bump. What is
+  new is that the fix is confirmed to EXIST, run against the real bundled PHP 8.5.8:
+  - The pinned phar still raises it, and the containment still contains it. Bare:
+    `Deprecated: Case statements followed by a semicolon (;) … react/promise/src/functions.php
+    on line 369` lands on **stdout**, in front of `WP-CLI 2.12.0`. With rexenv's
+    `-d display_errors=stderr` (#317): stdout is `WP-CLI 2.12.0` alone, the deprecation on
+    stderr. That is the ledger #317 claim re-observed on 8.5.8, not re-asserted.
+  - **wp-cli master is CLEAN.** The nightly phar (`3.0.0-alpha-6a3afd3`) under the same PHP
+    prints its version with no deprecation at all; its vendored `react/promise` has zero
+    `case …;` occurrences where the pinned phar's has one. Upstream issue wp-cli/wp-cli#6271
+    is **closed (13 Mar 2026)**. So "the next release should clear it" is now a measurement
+    of master, not an inference from `composer ^2.9.5` — the earlier re-checks read the
+    constraint and believed it, which is the shape this project has been burned by
+    (a guarantee read off a dependency's flag names).
+  - **Not pinning the nightly**, and that is the point of the pin: it is a moving,
+    checksum-less target, and 3.0.0-alpha is a major-version alpha. The bump waits for a
+    release. **What must NOT happen when it lands** is deleting the `-d display_errors=stderr`
+    flag because the deprecation went away — see the ledger #317 note.
   *(Not doing: forcing `display_errors=stderr` into the rexenv terminal too. That terminal
   is deliberately the user's own environment (#228) and the flag would have to arrive as an
   injected env var, which is a bigger promise broken than a deprecation line shown.)*
