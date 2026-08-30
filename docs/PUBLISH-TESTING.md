@@ -82,12 +82,12 @@ count in **each** slice separately. A zero on either side is a HOLD — do not r
 is only as complete as its list of payloads, and a payload nobody added is the
 one that ships in one slice.
 
-## A) ◐ 0.4.0 — BUILT and TAGGED, §A0 ✅, §A + SMOKE-TEST OUTSTANDING (not published)
+## A) ✅ 0.4.0 — PUBLISHED (§A0 ✅, §A ✅, SMOKE-TEST ✅)
 
-**0.4.0 built locally 27 Aug 2026** per `docs/RELEASING.md`'s interim flow (`pnpm
-release:mac`). **Not released anywhere yet** — no draft on the tap, no cask bump. What
-follows is the state at build time, written now so the gate cannot later be confused
-with a skipped one.
+**0.4.0 PUBLISHED 27 Aug 2026, 16:37:03Z** at `homebrew-tap/releases/tag/v0.4.0`, cask
+bumped by `update-cask.yml` (`66b262d`, 17:43:44Z) to version 0.4.0 / sha256
+`a7aecee7…`. Built locally 27 Aug per `docs/RELEASING.md`'s interim flow (`pnpm
+release:mac`), because the repo is private and CI never saw this artefact.
 
 `rexenv_0.4.0_universal.dmg`, sha256
 `a7aecee7f59738c2803e6a0c7697b82c36ebda5186e60b9fefee85e1bf1e555d`, 26,275,202 bytes.
@@ -97,26 +97,38 @@ asked: `rex --version` off the mounted volume prints `rex 0.4.0 (d363e24)`, whic
 commit `v0.4.0` (annotated) points at. Every earlier row's commit rested on the tag plus
 a build timeline because the artefact could not answer; this is the first release where
 the bytes say it themselves (the fix landed 25 Aug in `3e19b83`, and this is it working).
+The tag itself stays LOCAL — `scripts/git-hooks/pre-push` refuses a `v*` push while
+`rexenv/rexenv` is private, and `git ls-remote --tags origin` is empty for every release
+so far, which is the expected state and not a missing step.
 
 **§A0 ✅ run by hand 27 Aug 2026** — the release workflow's own script, copied as
-`docs/RELEASING.md` step 4 says, because the interim flow builds locally and CI never
-saw this artefact. All green: exactly one dmg in the bundle dir; `rexenv` and `rex` both
-`x86_64 arm64`; `Dist_Archive_Command` present in EACH thinned slice (×5 in arm64, ×5 in
-x86_64 — a half-populated fat binary is invisible to `lipo -archs`, which is why the
-check thins first); `codesign --verify --deep --strict` passes on the `.app`.
+`docs/RELEASING.md` step 4 says. All green: exactly one dmg in the bundle dir; `rexenv`
+and `rex` both `x86_64 arm64`; `Dist_Archive_Command` present in EACH thinned slice (×5
+in arm64, ×5 in x86_64 — a half-populated fat binary is invisible to `lipo -archs`,
+which is why the check thins first); `codesign --verify --deep --strict` passes on the
+`.app`.
 
-**Draft created on the tap 27 Aug 2026** — `rexenv/homebrew-tap` releases, `v0.4.0`,
-draft, both assets attached. **Hash matched on the wire, not assumed**: the release
-API reports the asset digest as `sha256:a7aecee7…`, equal to the local file's
-`shasum -a 256` and to the sidecar's text. (The upload needed a retry — see
-`docs/RELEASING.md` step 5 for the `starter`-state asset that answers HTTP 400.)
+**§A ✅ and `docs/SMOKE-TEST.md` ✅ — both run on THESE bytes before publishing**, which
+is the rule working as written: the release was created as a draft on the tap, the two
+human-only gates ran against the dmg attached to it, and publishing was the §A sign-off.
+New this release and covered by that smoke pass: the blank-PHP starter database, the
+built-in terminal, multisite through a tunnel, MCP M3.
 
-**🚧 OUTSTANDING before this can be published**, and both are human-only:
-- **`docs/SMOKE-TEST.md` end-to-end on a clean Mac from THIS dmg** — the other half of
-  the gate (see that file's header). New this release and never smoke-tested: the blank
-  PHP starter database, the built-in terminal, multisite through a tunnel, MCP M3.
-- **§A on these exact bytes** — quarantine → Gatekeeper blocks → `xattr -rd` → launches.
-  Publishing IS the §A sign-off; the hash above proves nothing about launching.
+**Four-way hash match, verified 30 Aug 2026** — the check that caught 0.1.0's
+placeholder hash, and the one 0.3.0's row had to be reopened for. The published asset
+downloads **anonymously** (no token, as `brew` does: HTTP 200, 26,275,202 bytes) and
+hashes to `a7aecee7…` — equal to what the cask pins, what the release API reports as the
+asset `digest`, and what the `.sha256` sidecar says. So what a user installs is what was
+gated. Downloads at that check: 5.
+
+> **What this row cost, and why it is dated three days after the release.** 0.4.0 was
+> published on 27 Aug and this file went on saying "BUILT and TAGGED … not published, no
+> draft on the tap, no cask bump" until 30 Aug — the SAME failure 0.3.0's row exists to
+> record, repeated one release later, with the added twist that the doc was now
+> ACTIVELY WRONG rather than merely absent: a reader would have concluded the artefact
+> was unpublished while five people had already downloaded it. The rule that failed is
+> again "write the row afterwards". The release row belongs in the commit that publishes,
+> the way the tick belongs in the commit that does the work.
 
 ## A-prev) ◐ 0.3.0 — PUBLISHED, artefact verified, §A0/§A NOT RUN
 
@@ -1026,11 +1038,12 @@ Result: ____ (date, reqwest version).
 
 | # | Check | Status |
 |---|---|---|
-| A0 | Artefact integrity, per slice — **0.2.0 `bd019d8d…`** | ✅ passed 16 Aug 2026 (by hand; CI does not run while the repo is private) |
-| A | Apple-Silicon ad-hoc launch (de-quarantine → launches) — **on the 0.2.0 dmg `bd019d8d…`** | ✅ **passed 16 Aug 2026, second run** — blocked while quarantined, launched after `xattr -rd`. The first run that day was VOID (dev login already trusted the app); see §A for why that distinction is kept. **0.2.0 published; cask bumped and the anonymous download three-way-matched** |
+| A0 | Artefact integrity, per slice — **0.4.0 `a7aecee7…`** | ✅ passed 27 Aug 2026 (by hand; CI does not run while the repo is private). 0.3.0 was NEVER run — see §A-prev |
+| A | Apple-Silicon ad-hoc launch (de-quarantine → launches) — **on the 0.4.0 dmg `a7aecee7…`** | ✅ **passed 27 Aug 2026**, with `docs/SMOKE-TEST.md` (row S) on the same bytes; publishing was the sign-off. **0.4.0 published 16:37Z; cask bumped 17:43Z and the anonymous download four-way-matched 30 Aug.** 0.3.0 shipped WITHOUT this gate |
+| S | `docs/SMOKE-TEST.md` end-to-end on a clean Mac from the built dmg — **the OTHER half of the gate, and it had no row here until 30 Aug 2026** | ✅ passed 27 Aug 2026 on 0.4.0 `a7aecee7…`. Re-run per release: it is the only place the packaged app proves its own flows |
 | B | Uninstall removes the root :443 daemon | 🚧 do when convenient (tears down your edge) |
 | C | B31 CSP packaged smoke test | ✅ done |
-| D | Full tap install dry-run (after Release + tap push) | 🚧 **`--zap` ONLY** — the install half passed 12 Aug 2026 and the cask has bumped cleanly through 0.1.1 / 0.2.0 / 0.3.0 since. The trigger used to read "do once the dmg is released", an event that happened four releases ago |
+| D | Full tap install dry-run (after Release + tap push) | 🚧 **`--zap` ONLY** — the install half passed 12 Aug 2026 and the cask has bumped cleanly through 0.1.1 / 0.2.0 / 0.3.0 / 0.4.0 since. The trigger used to read "do once the dmg is released", an event that happened four releases ago |
 | E | Clean-Mac QA + example live-checks + deferred-pass wiring (B28/B29/B7/B20) + (deferred) signing | 🟢 nice-to-have |
 | I | Database import: live DBngin source + packaged GUI pass (user starts DBngin) | ✅ passed 27 Jul 2026 |
 | J | Connection rewrite (Stage 3): packaged GUI pass on <site>.test | ✅ passed 28 Jul 2026 |

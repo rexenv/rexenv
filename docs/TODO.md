@@ -1517,21 +1517,25 @@ SMOKE-TEST on the built dmg, then PUBLISH-TESTING §A0/§A before publishing.** 
 this note exists for: silence in a gate list reads as "this is the set", and a gate
 nobody can see from the list is indistinguishable from a gate nobody ran.
 
-- [ ] **0.4.0 is BUILT and TAGGED, and not yet released** (27 Aug 2026). `v0.4.0`
-  annotated at `d363e24`, dmg built locally per the interim flow, sha256
-  `a7aecee7…`, 26,275,202 bytes; `docs/PUBLISH-TESTING.md` §A now heads 0.4.0 (0.3.0
-  moved to §A-prev). **§A0 ✅ run by hand** — per-slice `lipo`, the `Dist_Archive_Command`
-  payload in BOTH thinned slices, `codesign --verify --deep --strict`. **The commit is a
-  MEASUREMENT this time**: the mounted dmg's own `rex --version` says `rex 0.4.0
-  (d363e24)`, so the row does not rest on the build timeline the way every earlier one did.
-  What is left, both human-only and both publish-blocking:
-  - [ ] `docs/SMOKE-TEST.md` end-to-end on a clean Mac from THIS dmg — never run for the
-    blank-PHP starter database, the built-in terminal, multisite through a tunnel, or MCP M3.
-  - [ ] §A on these exact bytes (quarantine → Gatekeeper → `xattr -rd` → launch), then
-    draft on the tap and publish — publishing IS the §A sign-off.
-  - [ ] The tag stays LOCAL until then: `scripts/git-hooks/pre-push` refuses a `v*` push
-    while `rexenv/rexenv` is private, and a push would spend 10×-billed macOS minutes
-    building a second dmg nobody can download.
+- [x] **0.4.0 SHIPPED** ✓ published 27 Aug 2026 16:37:03Z, recorded here 30 Aug.
+  `v0.4.0` annotated at `d363e24` (tag stays LOCAL — `scripts/git-hooks/pre-push` refuses
+  a `v*` push while `rexenv/rexenv` is private; `git ls-remote --tags origin` is empty for
+  every release so far). dmg built locally per the interim flow, sha256 `a7aecee7…`,
+  26,275,202 bytes, released on `rexenv/homebrew-tap` and cask-bumped by CI 17:43:44Z
+  (`66b262d`). **All three gates ✅ on these bytes**: §A0 by hand (per-slice `lipo`, the
+  `Dist_Archive_Command` payload in BOTH thinned slices, `codesign --verify --deep
+  --strict`), `docs/SMOKE-TEST.md` end-to-end, then §A — publishing was the sign-off.
+  **The commit is a MEASUREMENT this time**: the mounted dmg's own `rex --version` says
+  `rex 0.4.0 (d363e24)`. **Four-way hash match verified 30 Aug** — anonymous download
+  (HTTP 200, 26,275,202 bytes) hashes to what the cask pins, what the release API reports
+  as the asset `digest`, and what the `.sha256` sidecar says. Full row:
+  `docs/PUBLISH-TESTING.md` §A.
+  - **What it cost anyway**: for three days after publishing, this row and §A both said
+    "BUILT and TAGGED … not released, no draft on the tap, no cask bump" — the SAME
+    failure the 0.3.0 row below exists to record, one release later, and worse than
+    0.3.0's because the doc was actively WRONG rather than merely silent: a reader would
+    have concluded the artefact was unpublished while five people had downloaded it. The
+    release row belongs in the commit that publishes.
 
 - [ ] **0.3.0 SHIPPED on 20 Aug 2026 and NOTHING in this repo records it.** The tap has
   it (`Casks/rexenv.rb` = 0.3.0 / `381952fa…`, bumped by CI at 13:31Z), the GitHub

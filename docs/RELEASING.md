@@ -190,8 +190,8 @@ leave them — the cask only names the current version), and this section goes a
   tap's poller reads this repo's releases cross-repo. While it is private the poller
   finds nothing here and the dmg ships from the tap instead — see the interim section
   at the top, which is the flow in effect today — and, as of 21 Aug 2026, the ONLY flow that has ever
-cut a release: 0.1.0, 0.1.1, 0.2.0 and 0.3.0 all shipped through it. It was written as a
-provisional note dated 2026-08-12; four releases in, "interim" describes the intention
+cut a release: 0.1.0, 0.1.1, 0.2.0, 0.3.0 and 0.4.0 all shipped through it. It was written as a
+provisional note dated 2026-08-12; five releases in, "interim" describes the intention
 rather than the practice.
 - **No secrets to create.** That is the design — see the note above. It holds in the
   interim flow too, which is why the dmg goes to the tap rather than to a third repo
