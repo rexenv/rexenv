@@ -97,7 +97,7 @@ Three rules inherited from the code it will display:
 | # | Task | Done when |
 |---|---|---|
 | A1 | `Cargo.toml`: `tauri` features `tray-icon` + `image-png` | `cargo build` green, no other change |
-| A2 | Menu-bar template icon, **derived from the app icon** by `scripts/make-menubar-icon.py` (alpha only, `icon_as_template(true)`) | icon correct in BOTH light and dark menu bars, on a real machine |
+| A2 | Menu-bar template icon, **derived from the app icon** by `scripts/make-menubar-icon.py` (alpha only, `icon_as_template(true)`) | ✅ **seen 31 Aug 2026 on a real machine, BOTH bars**: dark glyph on a light bar, white on a dark one |
 | A3 | Build the tray in `lib.rs` setup: icon + a menu with **Open rexenv** and **Quit rexenv** | tray visible; both items work |
 | A4 | `ActivationPolicy::Accessory` at startup (A1 of §2) | no dock icon, no app-switcher entry |
 | A5 | `CloseRequested` → `window.hide()` + `prevent_close()`; **no tunnel prompt on close** (nothing dies) | closing the window leaves `rex status` and `rex mcp` working — the whole point |
@@ -122,8 +122,11 @@ Three rules inherited from the code it will display:
   a toolchain this machine does not have (no PIL, no ImageMagick, no rsvg) is a
   generator that gets replaced by a hand-drawn PNG the first time someone runs it.
 
-**Phase A verdict:** window closed, dock empty, tray present, `rex status` answers,
-`rex mcp` pipes.
+**Phase A verdict — SHIPPED 31 Aug 2026, verified on the owner's machine:** window
+closed, dock empty (`lsappinfo` reports `type="UIElement"`), tray present in both a
+light and a dark menu bar, **Open rexenv** brings the window to the front, `rex status`
+answers with the window closed, and the clipboard survives the missing app menu (A9).
+The only box left open is A7, deliberately — see its row.
 
 ### Phase B — the quick menu
 

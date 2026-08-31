@@ -2507,7 +2507,9 @@ window stops being a quit.
   only crispness and the canvas is only the margin (20pt canvas, 18pt mark → drawn ~16pt,
   Apple's own status-item size). **Seen live 31 Aug 2026** — screenshot of the real menu
   bar: the crowned R renders as a dark glyph on a light bar, beside the other status
-  items. *A dark menu bar is still unseen — rides A9.*
+  items — and **white on a dark bar**, checked by switching Appearance on the same
+  machine 31 Aug 2026. Both bars seen, so `icon_as_template(true)` is doing exactly what
+  it promises and the derived-from-the-app-icon alpha is the whole icon.
 - [x] **A3** Tray installed in `lib.rs` setup ✓ 31 Aug 2026 — **Open rexenv** +
   **Quit rexenv**, `icon_as_template(true)` so macOS tints it for either bar. **Clicking
   the icon opens the MENU, not the window** — the plan said window, but that is not the
@@ -2552,9 +2554,8 @@ window stops being a quit.
   (Accessory-while-hidden / Regular-while-visible) is NOT needed, and **pure Accessory
   is what ships**. Recorded rather than assumed: the plan had written that fallback
   precisely because the opposite was plausible.
-  - [ ] The DARK menu bar is still unseen — the last unverified pixel of A2. A template
-    icon is tinted by macOS, so the expected answer is "it inverts", but "expected" is
-    not "seen".
+  - [x] Dark menu bar ✓ 31 Aug 2026 — the icon renders white. Expected (macOS tints a
+    template image), but expected is not seen, and now it is seen.
 
 ### Phase B — the quick menu
 
