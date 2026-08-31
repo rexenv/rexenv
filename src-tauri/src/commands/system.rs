@@ -208,7 +208,10 @@ pub fn global_status(state: State<'_, AppState>) -> Result<GlobalStatus> {
 /// OPTIONAL service (a user-toggled engine like Postgres, which Start-all
 /// never starts) counts only WHILE RUNNING — otherwise a never-used engine
 /// pins the footer at "Partial" forever.
-fn summarize(flags: &[(bool, bool)]) -> (u32, u32, &'static str) {
+/// Also the TRAY's status line (`core::tray`), which is why this is
+/// `pub(crate)` rather than private: two summaries of the same services, a
+/// centimetre apart in the same app, would be free to disagree.
+pub(crate) fn summarize(flags: &[(bool, bool)]) -> (u32, u32, &'static str) {
     let counted: Vec<bool> = flags
         .iter()
         .filter(|(running, optional)| *running || !*optional)

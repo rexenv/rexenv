@@ -247,6 +247,14 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   every path that draws our OWN UI — the tray's Open, the quit confirm — calls
   `platform::activate_app()` first. Prompts drawn by `osascript` are excluded on
   purpose: SecurityAgent is a separate process and fronts itself.
+  The MENU itself is data: `core/tray.rs` is a pure `TrayModel -> MenuSpec` with no
+  Tauri types, and `lib.rs` only renders it — status line, Start/Stop all, a capped
+  Sites submenu, the five routes, the MCP checkmark, Open, Quit. It measures nothing:
+  the verdict and count come from `commands::system::summarize` (the sidebar footer's
+  own function) over a `try_lock` snapshot, and every click goes through the command the
+  UI uses, so the tray can never be a second answer or a second path. Rebuilt on a ~5s
+  tick, and ONLY when the spec actually differs — macOS closes an open menu when its
+  items are replaced.
   `docs/PLAN-menubar-tray.md`.
 - **Services OUTLIVE the app.** Closing rexenv stops nothing. On launch,
   `adopt_startup()` ADOPTS rexenv-owned survivors as pid-based `Proc::Adopted` handles —

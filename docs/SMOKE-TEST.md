@@ -598,6 +598,32 @@ no SMOKE step today and is covered by `repo_*` examples only.*
   orphan ("STOPPED A PUBLIC SHARE THIS APP HAD NO RECORD OF"). On a clean machine its
   ABSENCE is correct — do not read a missing line as the backstop not running.
 
+## The menu bar (no dock icon)
+*The behavioural half of #437/#438 — the L0 tests prove the menu's RULES, and only a
+hand can prove a spec entry became the item it describes.*
+- [ ] The R icon is visible and legible in **both** a light and a dark menu bar
+  (System Settings → Appearance). There is **no dock icon and no app-switcher entry**.
+- [ ] Clicking the icon opens the MENU (not the window). **Open rexenv** brings the
+  window to the FRONT — in front of a full-screen browser, not behind it.
+- [ ] **Close the window** (red button) → the app stays alive: `rex status` still
+  answers and an MCP client keeps working. This is the whole point of the feature.
+- [ ] The status line matches the sidebar footer for the same moment — same verdict,
+  same count. Stop a service from the UI; within ~5s the menu says the same thing.
+- [ ] **Start all** is greyed when everything runs, **Stop all** when nothing does.
+  Clicking either does exactly what the footer's button does.
+- [ ] **Sites ›** lists your most recent sites and opens one in your **preferred**
+  browser (Settings → the browser you chose), not the OS default. With more than 8
+  sites, the submenu says how many it hid.
+- [ ] Each of **All sites… / Services / Databases / Mail / Tunnels** shows the window
+  on that screen, including from a window that was hidden.
+- [ ] **MCP server** carries a checkmark that matches Settings, and toggling from the
+  tray flips it in Settings too — with a share of the socket to prove it (an MCP client
+  connects after ON, fails after OFF). A checkmark reading "on" while nothing listens is
+  the failure this item exists for.
+- [ ] Hold the menu OPEN for 15+ seconds with the stack idle: it must NOT close by
+  itself. (The rebuild is conditional for exactly this reason.)
+- [ ] **Quit rexenv** with a public share up still pauses once and names the count.
+
 ## Which app opens a link
 - [ ] Site header → chevron beside **Open in browser**: every browser you have is
   listed, the one a plain click uses is marked `default`, and picking one opens

@@ -109,6 +109,16 @@ impl AppState {
     /// stack is up. Non-blocking: if a long start/stop holds `services`, return the
     /// last cached snapshot so status polls never freeze the UI.
     pub fn service_infos(&self) -> Vec<ServiceInfo> {
+        self.service_infos_fresh().0
+    }
+
+    /// The same snapshot, plus whether it is FRESH. The bool is what the tray
+    /// menu needs and the UI does not: the Services screen re-polls a second
+    /// later and corrects itself, while a menu built from a cached snapshot may
+    /// sit on screen unchanged for as long as the user holds it open. `false`
+    /// means the services lock was busy and these rows are the previous
+    /// snapshot — the caller must label them rather than present them as now.
+    pub fn service_infos_fresh(&self) -> (Vec<ServiceInfo>, bool) {
         // Installed PHP minors from the registry, so every installed pool is listed
         // (idle) even before Start all. Brief DB lock, released before the manager
         // try_lock — never held across it.
@@ -124,13 +134,12 @@ impl AppState {
                 if let Ok(mut cache) = self.service_status_cache.lock() {
                     *cache = infos.clone();
                 }
-                infos
+                (infos, true)
             }
-            Err(_) => self
-                .service_status_cache
-                .lock()
-                .map(|c| c.clone())
-                .unwrap_or_default(),
+            Err(_) => (
+                self.service_status_cache.lock().map(|c| c.clone()).unwrap_or_default(),
+                false,
+            ),
         }
     }
 

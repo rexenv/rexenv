@@ -53,7 +53,7 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
 | Setup / teardown (system changes) | `core/setup.rs` | `commands/system.rs` | PrivilegeManager, CertTrustManager, DnsManager | `system_setup`, `system_teardown` |
 | rex CLI (remote control, never a second brain) | `cli/src/main.rs` (own crate) + `cli_server.rs` (app side), `core/cli.rs` (PATH install) | dispatches to the SAME commands::* fns | Paths | #54–58; `cli_socket_check`; surface: `CLI-ROADMAP.md` |
 | App state (SQLite v1–v41, store) | `state/db.rs` (migrations), `state/store.rs`, `state/models.rs`, `state/app.rs` (AppState, locks) | — | — | #167–174 |
-| Menu-bar app (tray, no dock icon) | `core/tray.rs` (the menu as data: `TrayModel` → `MenuSpec`, `TrayAction` ids) | `lib.rs` (`install_tray`, `show_main_window`, the `Accessory` policy, the `CloseRequested` hide), `platform/macos/activation.rs` (`activate_app`), `scripts/make-menubar-icon.py` → `icons/menubar.png` | — | #436, #437; plan: `PLAN-menubar-tray.md`; ARCHITECTURE "the APP outlives the window" |
+| Menu-bar app (tray, no dock icon) | `core/tray.rs` (the menu as data: `TrayModel` → `MenuSpec`, `TrayAction` ids) | `lib.rs` (`install_tray`, `tray_model`, `render_menu`, `refresh_tray`, `on_tray_click`, `show_main_window`, the `Accessory` policy, the `CloseRequested` hide), `platform/macos/activation.rs` (`activate_app`), `scripts/make-menubar-icon.py` → `icons/menubar.png`, `App.tsx` `TrayRouteWatch` ← `tray://route` | — | #436, #437, #438; plan: `PLAN-menubar-tray.md`; ARCHITECTURE "the APP outlives the window" |
 | App entry / wiring | `lib.rs` (builder, launch adopt, watchdog, exit hooks, `StartupNotices`), `main.rs` (`--dns-agent` and `--tunnel-guard` modes), `error.rs` | — | — | #59–61, #431 |
 
 ## Frontend
@@ -70,7 +70,7 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
 | Settings | `/settings` | `src/routes/Settings.tsx` |
 | Onboarding | `/onboarding` | `src/routes/Onboarding.tsx` |
 | Dev-only harnesses (tree-shaken from prod) | `/dev/git-panel`, `/dev/ui-review` | `src/routes/DevGitPanel.tsx`, `src/routes/DevUiReview.tsx` |
-| IPC bridge (the ONLY invoke path; 242 exports) | — | `src/lib/ipc/index.ts` |
+| IPC bridge (the ONLY invoke path; 243 exports) | — | `src/lib/ipc/index.ts` |
 | Add a plugin/theme — the four sources behind `SourceTabs` | — | `components/wordpress/WordPressManager.tsx` (wp.org search + the shared `WpInstallCard`), `ZipAddPanel.tsx` (Upload zip), `GitAddPanel.tsx` (From Git), `LinkFolderPanel.tsx` (Link folder); probes `wk-checks/{zipinstall,wptoast,check,linkpanel}.js` |
 | Shared UI hooks (editor pick + open, downloads) | — | `src/lib/useEditor.ts`, `src/lib/useDownloads.ts` |
 | "Which app opens this" (browser/editor pick, icons, chevron, private window) | `commands/system.rs` (`list_browsers`, `open_in_browser` incl. its `private` arg, `open_external`'s preference route), `platform/macos/mod.rs` (bundle table + per-browser private flag, icon extraction, LaunchServices default) | `src/lib/useBrowser.ts`, `src/components/ui/{app-icon,app-picker,split-button,open-in,menu}.tsx` (`MenuItem`'s `action` = the row's second target) + `src/components/common/IncognitoIcon.tsx` (the private glyph); consumers `routes/{SiteDetail,Sites,Settings}.tsx` · example `browser_detect_check` · wk-check `openin.js` · ARCHITECTURE §8.2 |

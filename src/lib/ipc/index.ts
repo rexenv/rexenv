@@ -691,6 +691,15 @@ export async function onAboutMenu(cb: () => void): Promise<() => void> {
   return listen("menu://about", () => cb());
 }
 
+/** Subscribe to the tray menu's routing items (Services, Databases, Mail…).
+ *  The payload is the route path; the window is already shown and fronted by
+ *  the time this fires. Returns an unlisten function. No-op outside Tauri. */
+export async function onTrayRoute(cb: (path: string) => void): Promise<() => void> {
+  if (!isTauri()) return () => {};
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen<string>("tray://route", (e) => cb(e.payload));
+}
+
 /** Current download-manager state (seed on mount; live updates arrive via
  *  `onDownloadProgress` with the same snapshot shape). Empty outside Tauri. */
 export async function downloadsState(): Promise<DownloadsSnapshot> {

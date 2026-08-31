@@ -35,6 +35,12 @@ the shipped UI toward one.
 - Progress moves only on real completions; 100% only when settled; failure/cancel
   FREEZE the bar in place, never roll it back.
 - Refusals name the consequence ("a tunnel would publish X"), never "busy".
+- **The menu-bar menu says when its numbers are old.** The tray never blocks the menu
+  bar waiting for the services lock, so a busy lock means the menu shows the PREVIOUS
+  snapshot — labelled `· updating…`, never presented as now. Same family as the rule
+  above it: a number whose freshness the user cannot see is a claim, and the claim is
+  part of the copy. It also caps the Sites submenu and SAYS what it hid ("…and 5 more"),
+  because a truncated list that looks complete is how someone concludes a site is gone.
 - **"Saved" and "now running" are different sentences, and a toast may only write the
   one the backend measured.** The PHP Update toast said "PHP 8.2 is now on 8.2.32" from
   a bare `Ok(())` — true when a pool was running, a claim about a process that does not

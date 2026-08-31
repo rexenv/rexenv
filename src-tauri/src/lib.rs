@@ -1186,12 +1186,6 @@ fn log_sinks(log_dir: Option<std::path::PathBuf>, debug: bool) -> Vec<LogSink> {
     sinks
 }
 
-/// Menu ids for the tray. Strings because that is what `MenuItem::with_id`
-/// carries back in the event; constants because a typo in either half is a
-/// menu item that silently does nothing.
-const TRAY_OPEN: &str = "tray://open";
-const TRAY_QUIT: &str = "tray://quit";
-
 /// The menu-bar template icon, embedded rather than read from disk — a bundled
 /// app has no `icons/` directory beside the binary. Derived from the app icon
 /// by `scripts/make-menubar-icon.py`, never hand-drawn: a second mark drifts
@@ -1207,32 +1201,272 @@ const MENUBAR_ICON: &[u8] = include_bytes!("../icons/menubar.png");
 /// invisible against one of the two.
 fn install_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     use tauri::image::Image;
-    use tauri::menu::{Menu, MenuItem};
     use tauri::tray::TrayIconBuilder;
 
-    let open = MenuItem::with_id(app, TRAY_OPEN, "Open rexenv", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, TRAY_QUIT, "Quit rexenv", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&open, &quit])?;
+    let spec = core::tray::build(&tray_model(app));
+    let menu = render_menu(app, &spec)?;
+    *last_spec().lock().unwrap_or_else(|e| e.into_inner()) = Some(spec);
 
-    TrayIconBuilder::with_id("main")
+    TrayIconBuilder::with_id(TRAY_ID)
         .icon(Image::from_bytes(MENUBAR_ICON)?)
         .icon_as_template(true)
         .tooltip("rexenv")
         .menu(&menu)
-        .on_menu_event(|app, event| match event.id().as_ref() {
-            TRAY_OPEN => show_main_window(app),
-            // The ONLY way out of the app now that closing the window hides
-            // it. Deliberately just `exit`: the share confirm lives on
-            // `RunEvent::ExitRequested`, which `exit` raises, so quitting
-            // passes through ONE gate no matter who asked — the tray, Cmd+Q,
-            // or a `rex` command. Calling the gate here as well would be a
-            // second copy of a rule that must not be able to differ.
-            TRAY_QUIT => app.exit(0),
-            other => log::warn!("tray: unknown menu id {other}"),
-        })
+        .on_menu_event(|app, event| on_tray_click(app, event.id().as_ref()))
         .build(app)?;
+
+    // Keep it current. ~5s, coalesced, and a rebuild only happens when the menu
+    // would actually READ differently (`refresh_tray` compares specs) — macOS
+    // closes an open menu when its items are replaced, so an unconditional
+    // rebuild every tick would slam the menu shut under the user's cursor once
+    // every five seconds. The tick is also the ONLY trigger: hooking every
+    // path that can change a service state means every one of them must
+    // remember, which is the "whole-surface claim that checks one place"
+    // failure this project keeps a ledger about. Five seconds of staleness in
+    // a menu nobody is looking at costs nothing; a missed hook costs a menu
+    // that is wrong for as long as it is open.
+    let handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            refresh_tray(&handle);
+        }
+    });
     Ok(())
 }
+
+/// The tray icon's id — also how `refresh_tray` finds it again.
+const TRAY_ID: &str = "main";
+
+/// The last spec rendered, so a tick that changes nothing does not rebuild the
+/// menu (and close it in the user's face). `Mutex` rather than app state: the
+/// tray is installed before anything can ask for it, and this is the only
+/// reader.
+fn last_spec() -> &'static std::sync::Mutex<Option<core::tray::MenuSpec>> {
+    static LAST: std::sync::OnceLock<std::sync::Mutex<Option<core::tray::MenuSpec>>> =
+        std::sync::OnceLock::new();
+    LAST.get_or_init(|| std::sync::Mutex::new(None))
+}
+
+/// Read the app's state into the menu's model.
+///
+/// Everything here is READ from where the UI reads it — the same
+/// `service_infos` snapshot the Services screen and the footer use, the same
+/// `summarize`, the same sites table, the same settings row. The tray measures
+/// nothing of its own (`docs/PLAN-menubar-tray.md` §3 rule 1).
+fn tray_model(app: &tauri::AppHandle) -> core::tray::TrayModel {
+    use tauri::Manager;
+    let state = app.state::<state::app::AppState>();
+
+    // try_lock snapshot + freshness — never blocks on the services lock (rule
+    // 2). A busy lock yields the previous rows, and `stale` makes the menu say
+    // so instead of presenting them as current.
+    let (infos, fresh) = state.service_infos_fresh();
+    let (running, total, summary) =
+        commands::system::summarize(
+            &infos.iter().map(|i| (i.running, i.optional)).collect::<Vec<(bool, bool)>>(),
+        );
+
+    // Sites and the MCP flag share ONE brief DB lock, released here — nothing
+    // below spawns or waits while it is held.
+    let (sites, mcp_on) = {
+        match state.db.lock() {
+            Ok(conn) => {
+                let sites = core::sites::list(&conn)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|s| core::tray::TraySite { domain: s.domain })
+                    .collect();
+                let mcp_on = matches!(
+                    state::store::get_setting(&conn, mcp_server::MCP_ENABLED_KEY),
+                    Ok(Some(v)) if v == "true"
+                );
+                (sites, mcp_on)
+            }
+            // A poisoned DB lock is not a reason to lose the menu bar: the
+            // menu still opens the window and still quits, which are the two
+            // items that must never depend on anything.
+            Err(_) => (Vec::new(), false),
+        }
+    };
+
+    core::tray::TrayModel { summary, running, total, sites, mcp_on, stale: !fresh }
+}
+
+/// Turn a `MenuSpec` into a real menu. The ONLY place Tauri menu types meet the
+/// tray's rules — walking a tree, nothing decided here.
+fn render_menu(
+    app: &tauri::AppHandle,
+    spec: &core::tray::MenuSpec,
+) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
+    use tauri::menu::{CheckMenuItem, IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
+
+    fn items(
+        app: &tauri::AppHandle,
+        entries: &[core::tray::MenuEntry],
+    ) -> tauri::Result<Vec<Box<dyn IsMenuItem<tauri::Wry>>>> {
+        let mut out: Vec<Box<dyn IsMenuItem<tauri::Wry>>> = Vec::new();
+        for e in entries {
+            match e {
+                // A label is a disabled item: information, not something
+                // broken. It carries no id, so it can never be clicked into a
+                // stale action.
+                core::tray::MenuEntry::Label(text) => {
+                    out.push(Box::new(MenuItem::new(app, text, false, None::<&str>)?))
+                }
+                core::tray::MenuEntry::Separator => {
+                    out.push(Box::new(PredefinedMenuItem::separator(app)?))
+                }
+                core::tray::MenuEntry::Item { title, action, enabled, checked } => match checked {
+                    Some(on) => out.push(Box::new(CheckMenuItem::with_id(
+                        app,
+                        action.id(),
+                        title,
+                        *enabled,
+                        *on,
+                        None::<&str>,
+                    )?)),
+                    None => out.push(Box::new(MenuItem::with_id(
+                        app,
+                        action.id(),
+                        title,
+                        *enabled,
+                        None::<&str>,
+                    )?)),
+                },
+                core::tray::MenuEntry::Submenu { title, entries } => {
+                    let kids = items(app, entries)?;
+                    let refs: Vec<&dyn IsMenuItem<tauri::Wry>> =
+                        kids.iter().map(|b| b.as_ref()).collect();
+                    out.push(Box::new(Submenu::with_items(app, title, true, &refs)?));
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    let built = items(app, &spec.entries)?;
+    let refs: Vec<&dyn IsMenuItem<tauri::Wry>> = built.iter().map(|b| b.as_ref()).collect();
+    Menu::with_items(app, &refs)
+}
+
+/// Rebuild the tray menu if — and only if — it would read differently.
+///
+/// The comparison is the point. macOS closes an open menu when its items are
+/// replaced, so a rebuild on every tick would shut the menu under the cursor of
+/// anyone who held it open for more than five seconds.
+fn refresh_tray(app: &tauri::AppHandle) {
+    let spec = core::tray::build(&tray_model(app));
+    {
+        let mut last = last_spec().lock().unwrap_or_else(|e| e.into_inner());
+        if last.as_ref() == Some(&spec) {
+            return;
+        }
+        *last = Some(spec.clone());
+    }
+    let Some(tray) = app.tray_by_id(TRAY_ID) else {
+        return;
+    };
+    match render_menu(app, &spec) {
+        // A failed rebuild leaves the PREVIOUS menu in place — the item keeps
+        // working with older numbers, which is strictly better than a status
+        // item with no menu at all.
+        Ok(menu) => {
+            if let Err(e) = tray.set_menu(Some(menu)) {
+                log::warn!("tray: could not swap the menu: {e}");
+            }
+        }
+        Err(e) => log::warn!("tray: could not rebuild the menu: {e}"),
+    }
+}
+
+/// Dispatch a click. Every arm goes through the SAME entry point the UI uses —
+/// `start_services`/`stop_services`, `open_external`, the settings row — so the
+/// tray can never become a second way of doing something with different rules.
+fn on_tray_click(app: &tauri::AppHandle, id: &str) {
+    use tauri::{Emitter, Manager};
+    let Some(action) = core::tray::TrayAction::parse(id) else {
+        // Unknown id does NOTHING (never a default action): the menu is rebuilt
+        // on a timer, so a click can land on an item that no longer exists.
+        log::warn!("tray: unknown menu id {id}");
+        return;
+    };
+    match action {
+        core::tray::TrayAction::Open => show_main_window(app),
+        // The ONLY way out of the app now that closing the window hides it.
+        // Deliberately just `exit`: the share confirm lives on
+        // `RunEvent::ExitRequested`, which `exit` raises, so quitting passes
+        // through ONE gate no matter who asked — the tray, Cmd+Q, or a `rex`
+        // command. Calling the gate here as well would be a second copy of a
+        // rule that must not be able to differ.
+        core::tray::TrayAction::Quit => app.exit(0),
+        core::tray::TrayAction::StartAll | core::tray::TrayAction::StopAll => {
+            let start = matches!(action, core::tray::TrayAction::StartAll);
+            let handle = app.clone();
+            // Off the menu thread: start_all can download binaries and stop_all
+            // can sit on a privileged prompt. A menu click that blocks is a
+            // beachball on the menu bar itself.
+            tauri::async_runtime::spawn(async move {
+                let state = handle.state::<state::app::AppState>();
+                let result = if start {
+                    commands::services::start_services(state).await
+                } else {
+                    commands::services::stop_services(state).await
+                };
+                if let Err(e) = result {
+                    // No window may exist to show a toast in, so the log is the
+                    // surface — and the menu's own status line is the other
+                    // half of the answer, since it will show what actually came
+                    // up within the next tick.
+                    log::warn!("tray: {} all failed: {e}", if start { "start" } else { "stop" });
+                }
+                refresh_tray(&handle);
+            });
+        }
+        core::tray::TrayAction::OpenSite(domain) => {
+            let state = app.state::<state::app::AppState>();
+            // `open_external`, not a raw shell open: the browser preference is
+            // applied in ONE place for all dozen call sites, and a tray that
+            // opened LaunchServices directly would be the thirteenth that
+            // forgot.
+            if let Err(e) = commands::system::open_external(state, format!("https://{domain}")) {
+                log::warn!("tray: could not open {domain}: {e}");
+            }
+        }
+        core::tray::TrayAction::Route(route) => {
+            // Show the window FIRST, then ask the frontend to navigate: the
+            // event needs a webview to arrive in.
+            show_main_window(app);
+            if let Err(e) = app.emit(TRAY_ROUTE_EVENT, route.path()) {
+                log::warn!("tray: could not route to {}: {e}", route.path());
+            }
+        }
+        core::tray::TrayAction::ToggleMcp => {
+            let handle = app.clone();
+            tauri::async_runtime::spawn(async move {
+                let state = handle.state::<state::app::AppState>();
+                // The command, not a raw settings write: turning MCP on BINDS a
+                // socket and turning it off UNBINDS one. A tray that only
+                // flipped the row would leave the checkmark and the listener
+                // disagreeing — the exact shape `MCP_ENABLED_KEY`'s own doc
+                // warns about ("the toggle can never read on while nothing
+                // listens").
+                // Read the CURRENT value rather than the rendered checkmark:
+                // the menu may have been built seconds ago, and toggling from
+                // a stale checkmark writes the state the user already has.
+                let on = tray_model(&handle).mcp_on;
+                if let Err(e) = commands::mcp::mcp_set_enabled(handle.clone(), state, !on) {
+                    log::warn!("tray: could not toggle the MCP server: {e}");
+                }
+                refresh_tray(&handle);
+            });
+        }
+    }
+}
+
+/// Event the frontend listens for to navigate from a tray menu item. The
+/// payload is the route path.
+pub const TRAY_ROUTE_EVENT: &str = "tray://route";
 
 /// Bring the main window back: activate the app, then show, un-minimise and
 /// focus. All four, because a window can be hidden AND minimised, and an
@@ -1317,5 +1551,48 @@ mod tests {
         // An unresolvable log dir must not silently become stdout-only in a
         // release build: there is no terminal, so that is "no logging" again.
         assert!(log_sinks(None, false).is_empty());
+    }
+
+    /// **The tray is never a SECOND way to do something.** Every menu action
+    /// goes through the entry point the UI already uses — `start_services`,
+    /// `stop_services`, `open_external`, `mcp_set_enabled` — so a rule that
+    /// lives in one of them (the browser preference, the share confirm, the
+    /// socket bind that must accompany the MCP flag) cannot be missing from the
+    /// menu-bar path.
+    ///
+    /// **This proves TEXT, not behaviour** — the same honest bound as #175's
+    /// order guard. It cannot see that a click reaches the command; it sees
+    /// that the dispatcher names the commands and does not name the shortcuts
+    /// around them. That is worth having anyway, because the drift it catches
+    /// is a tidy one-liner: `shell().open(url)` instead of `open_external` is
+    /// shorter, works on the developer's machine, and silently ignores the
+    /// preferred browser — the exact failure `open_external`'s own doc calls
+    /// "the thirteenth call site that forgot".
+    #[test]
+    fn the_tray_acts_only_through_the_commands_the_ui_uses() {
+        let src = crate::core::copy_scan::production_source(include_str!("lib.rs"));
+        let start = src.find("fn on_tray_click").expect("dispatcher exists");
+        let body = &src[start..];
+        // A landmark first: an empty or mis-sliced body makes every `contains`
+        // below pass (the copy_scan rule).
+        assert!(body.contains("TrayAction::Quit"), "sliced the wrong function");
+
+        for must in [
+            "commands::services::start_services",
+            "commands::services::stop_services",
+            "commands::system::open_external",
+            "commands::mcp::mcp_set_enabled",
+        ] {
+            assert!(body.contains(must), "the tray must act through {must}");
+        }
+        for must_not in [
+            // The browser preference lives in open_external, once.
+            "shell().open",
+            // The MCP flag without the bind: the toggle would read "on" while
+            // nothing listens, which its own key doc forbids.
+            "set_setting",
+        ] {
+            assert!(!body.contains(must_not), "the tray must not reach for {must_not} directly");
+        }
     }
 }

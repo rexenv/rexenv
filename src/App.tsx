@@ -14,7 +14,14 @@ import { Settings } from "@/routes/Settings";
 import { Onboarding } from "@/routes/Onboarding";
 import { DevGitPanel } from "@/routes/DevGitPanel";
 import { DevUiReview } from "@/routes/DevUiReview";
-import { dnsStatus, initError, onAboutMenu, onServiceHealth, startupNotices } from "@/lib/ipc";
+import {
+  dnsStatus,
+  initError,
+  onAboutMenu,
+  onServiceHealth,
+  onTrayRoute,
+  startupNotices,
+} from "@/lib/ipc";
 import { toast, toastBackendError } from "@/lib/toast";
 import { Toaster } from "@/components/ui/toaster";
 import { DialogHost } from "@/components/ui/dialog";
@@ -76,6 +83,27 @@ function AboutMenuWatch() {
     let unlisten: (() => void) | undefined;
     let disposed = false;
     onAboutMenu(() => navigate("/settings?section=about")).then((f) => {
+      if (disposed) f();
+      else unlisten = f;
+    });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [navigate]);
+  return null;
+}
+
+/** The tray menu's Services / Databases / Mail / Tunnels items. Same shape as
+ *  `AboutMenuWatch` and for the same reason: mounted at the app root so a menu
+ *  item works from whatever screen the window was left on — including a window
+ *  that was hidden for hours, since closing it now hides rather than quits. */
+function TrayRouteWatch() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let disposed = false;
+    onTrayRoute((path) => navigate(path)).then((f) => {
       if (disposed) f();
       else unlisten = f;
     });
@@ -182,6 +210,7 @@ export function App() {
       <HealthWatch />
       <StartupNoticeHost />
       <AboutMenuWatch />
+      <TrayRouteWatch />
     </>
   );
 }

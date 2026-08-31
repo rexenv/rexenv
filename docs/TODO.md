@@ -2566,15 +2566,43 @@ window stops being a quit.
   `total` rather than deriving them — see B2. Site domains ride IN the action id, not an
   index: a list rebuilt every few seconds means an index opens whatever site slid into
   position 3 between the render and the click. Rendering the spec is B2–B7.
-- [ ] **B2** Status line from the **ServiceManager snapshot**, never a port-listen —
-  a tray that probes ports is a second answer to "is it running" beside the UI's.
-- [ ] **B3** Start all / Stop all through the same commands the UI calls.
-- [ ] **B4** Sites › recent N → `open_in_browser` (honours the browser preference).
-- [ ] **B5** New site… / Mail / Databases / Services / Tunnels → show window + route.
-- [ ] **B6** MCP on/off checkmark bound to `mcp_enabled`.
-- [ ] **B7** Rebuild on service-state change + a coalesced ~5s tick, `try_lock` snapshot
-  only — never hold the services lock across a wait; a stale labelled menu beats a menu
-  that blocks the menu bar.
+- [x] **B2** Status line from the ServiceManager snapshot ✓ 31 Aug 2026, ledger #438 —
+  and it does not merely avoid probing ports, it does not COUNT: the verdict and the
+  numbers come from `commands::system::summarize`, the sidebar footer's own function
+  (made `pub(crate)` for exactly this), over the same `service_infos` snapshot. Two
+  summaries of the same services, a centimetre apart in one app, would be free to
+  disagree. `service_infos_fresh` is new: it returns the snapshot AND whether the lock
+  was busy, which the UI does not need (it re-polls a second later) and a menu does (it
+  can sit open, unchanged, for minutes).
+- [x] **B3** Start all / Stop all through the same commands the UI calls ✓ 31 Aug 2026 —
+  spawned off the menu thread, because `start_all` can download binaries and `stop_all`
+  can sit on a privileged prompt, and a menu click that blocks is a beachball on the
+  menu bar itself.
+- [x] **B4** Sites › recent N → `open_external` ✓ 31 Aug 2026 — the choke point where
+  the browser preference is applied, not a raw shell open. Capped at 8 with the
+  remainder ANNOUNCED; the domain rides in the action id rather than an index (#437).
+- [x] **B5** All sites… / Services / Databases / Mail / Tunnels → show window + route ✓
+  31 Aug 2026 — `tray://route` carrying the path, `App.tsx`'s `TrayRouteWatch` navigates;
+  the window is shown and fronted FIRST, because the event needs a webview to arrive in.
+  **"New site…" was dropped on purpose**: creating a site is a form with choices in it,
+  not a menu item — the tray opens the Sites screen where that form lives, which is one
+  click more and zero new surface to keep in step with the real one.
+- [x] **B6** MCP on/off checkmark bound to `mcp_enabled` ✓ 31 Aug 2026 — through
+  `mcp_set_enabled`, never a raw settings write: turning it on BINDS a socket and off
+  UNBINDS one, so a tray that only flipped the row would leave the checkmark reading
+  "on" while nothing listens — which `MCP_ENABLED_KEY`'s own doc forbids. The toggle
+  reads the CURRENT value, not the rendered checkmark, which may be seconds old.
+- [x] **B7** Coalesced ~5s tick, `try_lock` snapshot only ✓ 31 Aug 2026 — never holds
+  the services lock across a wait; a stale LABELLED menu beats a menu that blocks the
+  menu bar. Two deliberate departures from the plan's wording:
+  - **The rebuild is conditional.** It happens only when the spec would actually read
+    differently, because macOS closes an open menu when its items are replaced — an
+    unconditional tick would slam the menu shut under the cursor every five seconds.
+  - **The tick is the ONLY trigger**; there is no per-state-change hook. Hooking every
+    path that can change a service state means every one of them must remember, which is
+    the whole-surface-claim-that-checks-one-place failure this ledger records five times.
+    Five seconds of staleness in a menu nobody is looking at costs nothing; a missed hook
+    costs a menu that is wrong for as long as it is open.
 
 ### Phase C — always-on
 
