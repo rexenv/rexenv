@@ -94,6 +94,28 @@ pub fn run() {
         .setup(|app| {
             let platform = platform::current();
 
+            // NO DOCK ICON: rexenv is an ACCESSORY app — the menu-bar item is
+            // its whole presence when no window is up. It is a background
+            // service with a control panel, not a document app, and a dock
+            // tile for something that is running all day is a tile nobody
+            // clicks. What this costs is real and is written down where it can
+            // be measured (`docs/PLAN-menubar-tray.md` §2): an accessory app
+            // has no application menu, so the app menu's About item and the
+            // Edit menu's Cmd-C/V/Z are not shown, and nothing activates the
+            // app on the user's behalf — hence `platform::activate_app` on
+            // every path that draws our own UI.
+            //
+            // **FIRST, before any window is shown**, and that ordering is
+            // measured rather than reasoned (31 Aug 2026, three launches of the
+            // real app): with this call left where it used to sit — after the
+            // window is shown — the launch produced a menu-bar icon and NO
+            // window, every time. Switching Regular → Accessory hides the app's
+            // windows, so a window shown before the switch is a window the
+            // switch takes away. Moving the call back reproduced the empty
+            // launch; moving it here brought the window back.
+            #[cfg(target_os = "macos")]
+            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+
             // THE WINDOW IS NOW HIDDEN BY DEFAULT (`tauri.conf.json`
             // `visible: false`), so somebody has to decide to show it.
             //
@@ -106,9 +128,6 @@ pub fn run() {
             // whether first-run setup is done, and a login is nobody's foreground
             // task so the extra seconds cost nothing.
             let hidden_launch = std::env::args().any(|a| a == HIDDEN_LAUNCH_FLAG);
-            if !hidden_launch {
-                show_main_window(app.handle());
-            }
 
             // THE APP'S OWN LOG, in every build — this used to be
             // `if cfg!(debug_assertions)`, which meant the installed app wrote
@@ -154,6 +173,23 @@ pub fn run() {
                 )?;
             }
 
+            // Show the window for a launch the USER asked for. Everything
+            // below (database, adoption) takes seconds, and a launch that
+            // paints nothing for three seconds reads as one that failed — so
+            // this is as early as it can honestly go, but NOT earlier:
+            //
+            // The first version called this at the very top of `setup`, beside
+            // `platform::current()`, and produced a tray icon with no window.
+            // Two things are true up there and both are silent: the window may
+            // not exist yet (`show_main_window` warns, but the log plugin is
+            // installed a few lines BELOW, so the warning goes nowhere), and the
+            // activation policy has not been set. Here, both are settled — the
+            // logger exists to record a miss, and the policy is already
+            // Accessory.
+            if !hidden_launch {
+                show_main_window(app.handle());
+            }
+
             // The macOS app menu's "About rexenv" opens the app's OWN About
             // screen, not the native panel. The native panel can show a name,
             // a version and a copyright line and nothing else — no commit, no
@@ -181,18 +217,6 @@ pub fn run() {
                 log::warn!("tray: could not install the menu-bar item: {e}");
             }
 
-            // NO DOCK ICON: rexenv is an ACCESSORY app — the menu-bar item is
-            // its whole presence when no window is up. It is a background
-            // service with a control panel, not a document app, and a dock
-            // tile for something that is running all day is a tile nobody
-            // clicks. What this costs is real and is written down where it can
-            // be measured (`docs/PLAN-menubar-tray.md` §2): an accessory app
-            // has no application menu, so the app menu's About item and the
-            // Edit menu's Cmd-C/V/Z are not shown, and nothing activates the
-            // app on the user's behalf — hence `platform::activate_app` on
-            // every path that draws our own UI.
-            #[cfg(target_os = "macos")]
-            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
             // JS dialog panels (alert/confirm/prompt): wry implements none on
             // macOS, so confirm() silently returned false in-app — Adminer's

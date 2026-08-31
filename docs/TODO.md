@@ -2626,6 +2626,12 @@ window stops being a quit.
   older binary and has no `--hidden`, so the plist is now rewritten on every launch while
   autostart is on — the same treatment the DNS agent's plist already gets. Nothing else
   would ever have repaired it.
+  **Two ordering bugs were found by RUNNING it, both shipping a tray icon and no window**
+  (ledger #439): `Accessory` must be set before the window is shown (Regular → Accessory
+  hides windows — moving the call back reproduced the empty launch), and the show cannot
+  sit at the top of `setup`, where the window may not exist yet and the log plugin is not
+  installed, so the "no main window" warning goes nowhere. Both are invisible to every
+  layer below L3.
 - [x] **C2** Login rules unchanged ✓ 31 Aug 2026 — `auto_start_services` was not
   touched and #175's order guard passes untouched in `verify.sh`. What changed is only
   WHERE the window is, not what a login launch is allowed to do.
