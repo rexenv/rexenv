@@ -1363,6 +1363,17 @@ where
             Ok(json!({ "tld": tld }))
         }
         "version" => Ok(to_value(&commands::system::app_info())?),
+        // Bring the app's window up. Two callers, and the SECOND is why this
+        // exists: `rex open` (a window is one command away from a terminal, now
+        // that the app has no dock icon to click), and a second rexenv launch
+        // handing itself off to the one already running — see
+        // `hand_off_to_running_instance`. Deliberately NOT state-dependent: it
+        // must work while the app is still starting, which is exactly when an
+        // impatient second launch happens.
+        "app.open" => {
+            crate::show_main_window(app.app_handle());
+            Ok(Value::Null)
+        }
         // Doctor: one honest diagnosis pass composing the app's own probes —
         // nothing here invents a new check, it reuses the exact machinery the
         // watchdog/Start-all/Settings already trust.
@@ -1496,6 +1507,61 @@ where
     }
 }
 
+/// **Is another rexenv already running? Then hand this launch to it.**
+///
+/// The menu-bar app made a second instance INVISIBLE. Before it, a second
+/// launch announced itself with a second window and a second dock tile, and
+/// closing a window ended it; now an app with no dock icon, no window and a
+/// `--hidden` login mode can sit there adopting services, opening the database
+/// as a SECOND WRITER and fighting for these very sockets. Two of them ran on
+/// the developer's machine during Phase C and the only symptom was two icons in
+/// the menu bar.
+///
+/// **The socket IS the lock, and that is the point.** A pid file records a
+/// claim that outlives the process that made it — after a crash it lies, and
+/// every user of one eventually writes the "is this pid still ours" code that
+/// gets it wrong. A listening unix socket cannot lie: the listener dies with
+/// the process, so a stale socket FILE refuses connections (`ECONNREFUSED`)
+/// while a live one accepts. So `connect` SUCCEEDING is the whole test —
+/// proof that a process is listening right now, needing no reply and no
+/// timeout to interpret. The activate is best-effort on top of that: a wedged
+/// app that accepts and never answers still owns the stack, and starting a
+/// second copy of it would be strictly worse than making the user wait.
+///
+/// Returns true when the caller must exit. Never returns true on an error it
+/// cannot interpret: if anything about this is unclear, the app starts, because
+/// refusing to launch is the worse failure of the two.
+#[cfg(unix)]
+pub fn hand_off_to_running_instance() -> bool {
+    use std::io::{Read, Write};
+    use std::os::unix::net::UnixStream;
+
+    let Ok(dir) = crate::platform::current().paths().config_dir() else {
+        return false;
+    };
+    let path = dir.join(SOCKET_FILE);
+    // ENOENT (never bound) and ECONNREFUSED (stale file after a crash) both
+    // mean nobody is home — the exact treatment `rex` gives the same two.
+    let Ok(mut sock) = UnixStream::connect(&path) else {
+        return false;
+    };
+    // Best-effort from here: the answer to "should I exit" is already yes.
+    let _ = sock.set_write_timeout(Some(std::time::Duration::from_millis(500)));
+    let _ = sock.set_read_timeout(Some(std::time::Duration::from_millis(1500)));
+    let _ = sock.write_all(b"{\"cmd\":\"app.open\",\"args\":{}}\n");
+    let _ = sock.flush();
+    let mut buf = [0u8; 64];
+    let _ = sock.read(&mut buf);
+    // stderr, not `log`: the logger belongs to the instance that owns the app
+    // data, and this process is about to stop existing. A launch that vanishes
+    // silently is indistinguishable from one that crashed.
+    eprintln!(
+        "rexenv is already running — brought its window to the front. \n\
+         (Its menu-bar icon is the one to use; this second copy has exited.)"
+    );
+    true
+}
+
 /// Spawn the listener at app startup. Failure is logged, never fatal — the
 /// app works without its CLI.
 pub fn spawn(app: tauri::AppHandle) {
@@ -1612,6 +1678,15 @@ mod tests {
         // file (the watch subcommands) cannot leak in.
         let mut arms: Vec<&str> = Vec::new();
         let mut inside = false;
+        // The block ENDS at its catch-all, and the terminator is asserted below.
+        // It was `_ =>` only, and `dispatch`'s catch-all is `other =>`, so the
+        // scan never stopped: it read past the function to the end of the file
+        // and reported the first 8-space-indented string literal it met as an
+        // unreachable command (a message inside `hand_off_to_running_instance`,
+        // 31 Aug 2026). The guard's own comment claimed the second `match cmd`
+        // in this file could not leak in; it could, and everything after it too.
+        // A scan that cannot find its end is a scan reading the wrong text.
+        let mut terminated = false;
         for line in THIS.lines() {
             if line.trim_start().starts_with("match cmd {") {
                 inside = true;
@@ -1620,7 +1695,8 @@ mod tests {
             if !inside {
                 continue;
             }
-            if line.starts_with("        _ =>") {
+            if line.starts_with("        _ =>") || line.starts_with("        other =>") {
+                terminated = true;
                 break;
             }
             if let Some(rest) = line.strip_prefix("        \"") {
@@ -1631,6 +1707,11 @@ mod tests {
                 }
             }
         }
+        assert!(
+            terminated,
+            "the arm scan never met `dispatch`'s catch-all — it read to the end of the \
+             file, so anything below the function is being reported as a command"
+        );
         assert!(
             arms.len() > 50,
             "only {} dispatch arms parsed — the scan is broken, not the table small",

@@ -2677,7 +2677,17 @@ window stops being a quit.
 
 ### Found while building the tray — open
 
-- [ ] **A second rexenv instance is now INVISIBLE.** Seen 31 Aug 2026 during Phase C: two
+- [x] **A second rexenv instance is now INVISIBLE** ✓ fixed 31 Aug 2026, ledger #441 —
+  `hand_off_to_running_instance` runs before Tauri boots: if something accepts on the CLI
+  socket, this launch sends `app.open` and exits. The socket is the lock because a
+  listener dies with its process (a stale FILE refuses connections), so `connect`
+  succeeding is proof of life — a pid file outlives the process that wrote it and starts
+  lying after a crash. `rex open` is the same command, and exists on its own merit now
+  that the app has no dock icon. **Proven live**: with the installed app running, a
+  `target/debug/rexenv` launch exited immediately and left one process — and the
+  installed build is OLDER and answered "unknown command", which is the case worth
+  having: the decision is the connect, not the reply. Original report below.
+- [ ] ~~**A second rexenv instance is now INVISIBLE.**~~ Seen 31 Aug 2026 during Phase C: two
   `target/debug/rexenv` processes ran at once, and the only symptom was TWO R icons in the
   menu bar. Before the tray, a second instance was obvious (a second window, a dock tile)
   and closing a window ended it; now an app with no dock icon, no window and a hidden

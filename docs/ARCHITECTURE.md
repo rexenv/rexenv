@@ -1563,6 +1563,13 @@ IPC surface — which is how a reader ends up designing against a system with on
   The plist is REWRITTEN on every launch while autostart is on, like the DNS agent's —
   a plist written by an older build names an older binary and lacks the flag, and
   nothing else would ever repair it.
+- **One rexenv per app-data dir.** `run()` tries to connect to the CLI socket before
+  Tauri boots; if something accepts, a live instance owns this app data, so the launch
+  sends `app.open` (best-effort) and EXITS. The socket is the lock precisely because a
+  listener dies with its process — a stale socket file refuses connections, so `connect`
+  succeeding is proof of life, unlike a pid file that outlives the process that wrote it.
+  Same reason the check runs before Tauri: a process that must not exist should not first
+  open a window, adopt services and bind sockets. `rex open` sends the same command.
 - **The window starts hidden** (`tauri.conf.json` `visible: false`) and somebody has to
   decide to show it. A launch the USER asked for shows it immediately, BEFORE the
   database opens and services are adopted: that work takes seconds, and a launch that

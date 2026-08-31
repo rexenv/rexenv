@@ -632,6 +632,12 @@ hand can prove a spec entry became the item it describes.*
   there would hide the only screen that fixes it.
 - [ ] `rex status` with the app closed prints the reason **and** `open -a rexenv` — and
   does NOT start the app.
+- [ ] `rex open` with the app running brings the window to the front.
+- [ ] **Launch rexenv a second time while it is running**: the second copy exits with
+  "rexenv is already running", the first one's window comes forward, and there is still
+  exactly ONE rexenv process. Then **SIGKILL** the app and launch it again — a stale
+  socket file must not block the launch (that is the half no test can hold: asserting it
+  means deleting a live socket).
 
 ## Which app opens a link
 - [ ] Site header → chevron beside **Open in browser**: every browser you have is

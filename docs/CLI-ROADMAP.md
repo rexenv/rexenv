@@ -31,6 +31,7 @@ convention) — see "Infrastructure" for progress streaming.
 | `rex site info <domain>` | `list_sites`+`sites_serving`+`sites_resources`+`site_cert_info`+`wp_info` |
 | `rex site open <domain>` | CLI-only (`open https://…`, domain validated via `site.list`) |
 | `rex site login <domain> [--print]` | `wp_admin_login_url` |
+| `rex open` | `app.open` — brings the app window to the front |
 | `rex help`, exit codes 0/1/2 | — |
 
 **When the app isn't running**, every command exits 2 with the reason AND the command
@@ -200,7 +201,7 @@ line streaming is the same 🔴 "progress streaming" infra item as always.
 
 ## Status — every 🟢/🟡/⚪ command is SHIPPED
 
-53 commands shipped. **That number is now GENERATED** (`scripts/doc-counts.sh`,
+54 commands shipped. **That number is now GENERATED** (`scripts/doc-counts.sh`,
 enforced by `verify.sh`) and this heading no longer carries a date: it read
 "Status (16 Jul 2026) — 42 commands shipped" while the tree had 53, in the one
 file a reader consults to learn what exists. A status line nobody re-counts is a

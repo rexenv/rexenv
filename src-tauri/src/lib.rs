@@ -18,6 +18,16 @@ use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // ONE rexenv per app-data directory. Checked before Tauri boots, for the
+    // same reason `--dns-agent` and the tunnel guard are: a process that must
+    // not exist should not first open a window, adopt services and bind
+    // sockets. See `cli_server::hand_off_to_running_instance` for why the
+    // socket is the lock and a pid file is not.
+    #[cfg(unix)]
+    if cli_server::hand_off_to_running_instance() {
+        return;
+    }
+
     // The interactive app may stop ADOPTED services (Stop-all after a relaunch);
     // any other process linking this lib (live-check examples) may stop only
     // what it spawned. See core::stack_guard.
@@ -1603,7 +1613,7 @@ pub const TRAY_ROUTE_EVENT: &str = "tray://route";
 /// Bring the main window back: activate the app, then show, un-minimise and
 /// focus. All four, because a window can be hidden AND minimised, and an
 /// accessory app that merely shows one has not come to the front.
-fn show_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+pub(crate) fn show_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     let Some(window) = app.get_webview_window("main") else {
         log::warn!("tray: no main window to show");
         return;

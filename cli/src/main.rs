@@ -60,6 +60,7 @@ USAGE:
 
 COMMANDS:
   status        Services + DNS state (the app's ownership-and-liveness truth)
+  open          Bring the rexenv window to the front (it has no dock icon)
   start         Start the shared stack (same as the app's Start all)
   stop          Stop the shared stack (same as Stop all)
   restart       stop, then start
@@ -504,6 +505,7 @@ fn main() {
     match words.first().map(String::as_str) {
         None => println!("{USAGE}"),
         Some("status") => cmd_status(json_output),
+        Some("open") => cmd_open_app(json_output),
         Some("start") => cmd_lifecycle(&["start"], json_output),
         Some("stop") => cmd_lifecycle(&["stop"], json_output),
         Some("restart") => cmd_lifecycle(&["stop", "start"], json_output),
@@ -582,6 +584,23 @@ fn print_json(data: &Value) {
 // ── start / stop / restart ───────────────────────────────────────────────────
 
 /// Runs each lifecycle step as its own request; `request` exits on the first
+/// Bring the app's window up.
+///
+/// Worth a verb of its own because rexenv has no dock icon: the window is
+/// reached from the menu bar or from here, and a developer already in a
+/// terminal should not have to go looking for a status item. It is the same
+/// command a SECOND rexenv launch sends before exiting
+/// (`cli_server::hand_off_to_running_instance`), so "another instance brought
+/// the window forward" and `rex open` are one code path, not two.
+fn cmd_open_app(json_output: bool) {
+    request("app.open", Value::Null);
+    if json_output {
+        println!("{}", json!({ "opened": true }));
+    } else {
+        println!("✓ rexenv window opened");
+    }
+}
+
 /// failure, so a failed stop never chains into a start. A start can run for a
 /// while on a cold cache (the app downloads binaries) — say so up front.
 fn cmd_lifecycle(steps: &[&str], json_output: bool) {
