@@ -25,16 +25,20 @@ pub fn run() {
     tauri::Builder::default()
         // Native open/save dialogs (Settings → Sites folder picker).
         .plugin(tauri_plugin_dialog::init())
-        // Closing the window quits the app, which stops live public shares —
-        // same pause-and-confirm as Cmd+Q (RunEvent::ExitRequested below).
-        // Held HERE too because a closed-then-cancelled window can't come
-        // back; preventing the close keeps it alive under the dialog.
+        // Closing the window HIDES it — it never quits. rexenv is a menu-bar
+        // app, and the reason is the control plane: `rex` and the MCP server
+        // are remote controls for a running app, their sockets are opened by
+        // this process and die with it, so a quit used to take the CLI and
+        // every agent session with it while the services it manages carried on
+        // running. Closing the window now stops NOTHING — no service, no
+        // tunnel, no job — so there is nothing to confirm here either; the
+        // pause-and-confirm moved to the one place it is true, a real quit
+        // (RunEvent::ExitRequested below). The window comes back through the
+        // tray's "Open rexenv". See `docs/PLAN-menubar-tray.md`.
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                use tauri::Manager;
-                if !commands::tunnels::confirm_quit_or_prompt(window.app_handle()) {
-                    api.prevent_close();
-                }
+                api.prevent_close();
+                let _ = window.hide();
             }
         })
         // Database Browser: `rexdb://localhost/…` proxies the embedded Adminer
@@ -1111,8 +1115,10 @@ pub fn run() {
                 // Quitting stops live public shares (tunnels die with the
                 // app), so a quit with shares up pauses ONCE for a native
                 // confirm naming the count — inform, don't obstruct: no
-                // shares means no dialog, ever. Covers Cmd+Q; window close
-                // routes through on_window_event above.
+                // shares means no dialog, ever. THE gate for every quit:
+                // `AppHandle::exit` raises this event, so the tray's Quit
+                // arrives here too. Closing the window does not — it hides,
+                // and hiding stops nothing worth confirming.
                 tauri::RunEvent::ExitRequested { api, .. } => {
                     if !commands::tunnels::confirm_quit_or_prompt(app) {
                         api.prevent_exit();
@@ -1202,15 +1208,13 @@ fn install_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
         .menu(&menu)
         .on_menu_event(|app, event| match event.id().as_ref() {
             TRAY_OPEN => show_main_window(app),
-            TRAY_QUIT => {
-                // The SAME gate Cmd+Q and the window close go through: quitting
-                // stops live public shares, so it pauses once and names the
-                // count. When a dialog is needed this returns false and the
-                // dialog's own thread calls `exit` after the answer.
-                if commands::tunnels::confirm_quit_or_prompt(app) {
-                    app.exit(0);
-                }
-            }
+            // The ONLY way out of the app now that closing the window hides
+            // it. Deliberately just `exit`: the share confirm lives on
+            // `RunEvent::ExitRequested`, which `exit` raises, so quitting
+            // passes through ONE gate no matter who asked — the tray, Cmd+Q,
+            // or a `rex` command. Calling the gate here as well would be a
+            // second copy of a rule that must not be able to differ.
+            TRAY_QUIT => app.exit(0),
             other => log::warn!("tray: unknown menu id {other}"),
         })
         .build(app)?;

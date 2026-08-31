@@ -233,6 +233,14 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   for all three): `set_php_settings`, `set_site_env`, and `set_db_versions` (the
   per-engine SELECTED version — so the watchdog respawns a crashed engine on the
   selected version, not the default pin).
+- **The APP outlives the window (menu-bar app).** Closing the window hides it —
+  `prevent_close` + `hide`, confirming nothing, because it stops nothing. The process
+  is what the CONTROL plane lives in: `rex` and the MCP server are remote controls for
+  a running app, their `0600` sockets are opened in `setup()` and die with it, so a
+  quit used to end every agent session and every CLI command while the services below
+  carried on. A quit is now reached only through the tray's **Quit rexenv**, which is a
+  bare `app.exit(0)` — the share confirm lives on `RunEvent::ExitRequested`, the one
+  gate every quit raises. `docs/PLAN-menubar-tray.md`.
 - **Services OUTLIVE the app.** Closing rexenv stops nothing. On launch,
   `adopt_startup()` ADOPTS rexenv-owned survivors as pid-based `Proc::Adopted` handles —
   status/Start all/Stop all treat them like spawned children. Ownership gate = process

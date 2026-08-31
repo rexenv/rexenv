@@ -269,6 +269,7 @@ L3 = scripted manual.
 | 59 | main.rs:6 | `--dns-agent` never opens a window / touches SQLite / starts services | ◐ `the_dns_agent_can_reach_nothing_that_belongs_to_the_app` — `main.rs` routes `--dns-agent` straight to `run_agent`, and the loop may not mention `rusqlite`, `store::`, `ServiceManager` or `WebviewWindow`, each with the reason it would be wrong for a headless LaunchAgent that OUTLIVES the app (two SQLite writers, state it would then depend on, an unsupervised service, a window nobody asked for). Plant-proven. **Scope stated rather than implied**: it reads the dispatch and `run_agent`'s own body — NOT transitive reachability. The honest bound is that the agent's entry point and serving loop are one screen of code, and this keeps them that way |
 | 60 | lib.rs:121 | In-process resolver fallback means DNS never regresses | 🔨 L1 (agent-death fallback) |
 | 61 | lib.rs:410 | Locks never held across .await; polls never block the UI | 🔨 L0/lint (today a reading discipline) |
+| 436 | lib.rs (`on_window_event` → `hide`, `install_tray`'s `TRAY_QUIT`, `RunEvent::ExitRequested`) | **Closing the window stops NOTHING, and every quit passes through ONE gate.** The reason rexenv is a menu-bar app at all: `rex` and the MCP server are remote controls for a RUNNING app — both sockets are opened by this process (`cli_server::spawn`, `mcp_server::spawn_if_enabled`) and die with it — so a window close used to take the whole control plane with it while the services it manages carried on running. A daemon is not the alternative (second-writer bug class, `cli_server.rs:8-10`): the alternative is that closing the window is not a quit. Two consequences the code has to hold rather than merely intend: the close path now runs `prevent_close` + `hide` and confirms NOTHING, because there is nothing left to confirm — the share confirm moved to the one place it is true; and the tray's Quit is a bare `app.exit(0)` rather than its own call to `confirm_quit_or_prompt`, since `exit` raises `ExitRequested` where the gate already lives. A second copy of that gate is a rule that can differ from itself, which is how a quit-with-shares ends up prompting twice or not at all | 🔨 L1 — `tray_lifetime_check` (planned, `docs/PLAN-menubar-tray.md` D5): hide the main window, then assert the CLI socket still answers. **Stated limit, deliberate:** that proves the socket survives a PROGRAMMATIC `hide()`, not that a human clicking the red button reaches the same path — the gap `CloseRequested` has always had, and a SMOKE-TEST leg rather than a claim |
 
 ## core/proxy.rs (edge)
 
@@ -623,7 +624,7 @@ import-graph lint #163 closed; the FrankenPHP read-only picker #333; the
 mid-dump-kill server-side leg #116 closed; the resolver-drift banner #334; the
 delete-kill ordering #190 closed; #103's Apache/FrankenPHP legs; the fpm
 candidate isolation #104/#191; the manifest sweep #335):
-**✅ 343 · ◐ 62 · 🔨 25 · 🚫 5** of 435 rows, plus 13 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432).
+**✅ 343 · ◐ 62 · 🔨 26 · 🚫 5** of 436 rows, plus 13 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432).
 Recomputed mechanically with the one-liner above. The working backlog = every 🔨
 row + the noted half of every ◐ row, ranked below.
 

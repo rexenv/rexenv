@@ -2515,11 +2515,13 @@ window stops being a quit.
   A failed install is logged, never fatal: an app with no status item still works, and
   refusing to launch over an icon would be worse.
 - [ ] **A4** `ActivationPolicy::Accessory` — no dock icon, no app-switcher entry.
-- [ ] **A5** `CloseRequested` → `hide()` + `prevent_close()`, and **no tunnel prompt on
-  close** (nothing dies there any more). Done when `rex status` and `rex mcp` still work
-  with the window closed — the whole point of the phase.
-- [ ] **A6** Real quit = the tray's Quit only, keeping `confirm_quit_or_prompt` (tunnels
-  DO die on quit). The dialog moves to where it is actually true.
+- [x] **A5** `CloseRequested` → `prevent_close()` + `hide()` ✓ 31 Aug 2026, ledger #436 —
+  and the close path confirms NOTHING, because there is nothing left to confirm.
+  *Verified programmatically only so far; the human-clicks-the-red-button leg is A9/D6.*
+- [x] **A6** Quit goes through ONE gate ✓ 31 Aug 2026, ledger #436 — the tray's Quit is a
+  bare `app.exit(0)`, NOT its own `confirm_quit_or_prompt` call: `exit` raises
+  `ExitRequested`, where the gate already lives. A second copy of that rule is a rule
+  that can differ from itself (prompt twice, or not at all).
 - [ ] **A7** First run must not be invisible — incomplete onboarding shows the window.
 - [ ] **A8** `activate(ignoringOtherApps:)` before every native prompt (resolver, CA
   trust, quit confirm). An Accessory app's modal can otherwise open behind everything,
