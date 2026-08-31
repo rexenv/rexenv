@@ -2592,6 +2592,16 @@ window stops being a quit.
   UNBINDS one, so a tray that only flipped the row would leave the checkmark reading
   "on" while nothing listens — which `MCP_ENABLED_KEY`'s own doc forbids. The toggle
   reads the CURRENT value, not the rendered checkmark, which may be seconds old.
+- [x] **B0** The tray is installed BEFORE the app has state ✓ 31 Aug 2026 — found by
+  running the app, not by a test: `app.state::<AppState>()` in the model builder aborted
+  the process on launch (`state() called before manage()`, a NON-unwinding panic, so not
+  even a catchable error). The status item goes up early on purpose — a menu bar showing
+  nothing while the app opens databases and adopts services looks like a launch that
+  failed — so the fix is `try_state` plus `core::tray::bootstrap()`: Open and Quit, and
+  **no label**, because the tempting alternative (a zeroed model) would put
+  "Stopped · 0 of 0 running" in the menu bar of an app whose services are running and
+  being adopted at that exact moment. `refresh_tray` right after `manage` swaps in the
+  real menu instead of waiting for the first tick.
 - [x] **B7** Coalesced ~5s tick, `try_lock` snapshot only ✓ 31 Aug 2026 — never holds
   the services lock across a wait; a stale LABELLED menu beats a menu that blocks the
   menu bar. Two deliberate departures from the plan's wording:

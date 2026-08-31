@@ -233,6 +233,34 @@ fn status_line(m: &TrayModel) -> String {
     }
 }
 
+/// The menu before the app has state: **Open rexenv** and **Quit rexenv**, and
+/// nothing that would be a claim.
+///
+/// The status item is installed early — it is the app's only presence, and an
+/// app that shows nothing in the menu bar while it opens databases and adopts
+/// services looks like an app that failed to start. But everything else in the
+/// menu describes state that does not exist yet, so this menu OMITS it rather
+/// than showing zeros: "Stopped · 0 of 0" would be a measurement nobody took.
+/// The first tick replaces this with the real menu.
+pub fn bootstrap() -> MenuSpec {
+    MenuSpec {
+        entries: vec![
+            MenuEntry::Item {
+                title: "Open rexenv".into(),
+                action: TrayAction::Open,
+                enabled: true,
+                checked: None,
+            },
+            MenuEntry::Item {
+                title: "Quit rexenv".into(),
+                action: TrayAction::Quit,
+                enabled: true,
+                checked: None,
+            },
+        ],
+    }
+}
+
 /// Build the menu for a model. Pure: same model in, same menu out.
 pub fn build(m: &TrayModel) -> MenuSpec {
     let mut entries = vec![MenuEntry::Label(status_line(m)), MenuEntry::Separator];
@@ -536,6 +564,24 @@ mod tests {
         assert_eq!(item(&build(&m), &TrayAction::ToggleMcp).2, Some(false));
         m.mcp_on = true;
         assert_eq!(item(&build(&m), &TrayAction::ToggleMcp).2, Some(true));
+    }
+
+    /// The startup menu must not MEASURE anything. It exists because the status
+    /// item is installed before the app has state (the panic that taught this:
+    /// `state() called before manage()`), and the tempting fix — a model full of
+    /// zeros — would put "Stopped · 0 of 0 running" in the menu bar of an app
+    /// whose services are, in fact, running and being adopted at that moment.
+    #[test]
+    fn the_startup_menu_offers_only_what_it_can_honestly_offer() {
+        let spec = bootstrap();
+        assert_eq!(spec.ids(), vec!["tray:open".to_string(), "tray:quit".to_string()]);
+        // No labels at all: every label in this menu would be a claim about
+        // state nobody has read yet.
+        assert!(
+            !spec.entries.iter().any(|e| matches!(e, MenuEntry::Label(_))),
+            "the startup menu states nothing: {:?}",
+            spec.entries
+        );
     }
 
     /// Open and Quit are the two items Phase A shipped and the two the menu can

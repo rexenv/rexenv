@@ -422,6 +422,11 @@ pub fn run() {
                         }
                     }
                     app.manage(state);
+                    // The tray went up before any of this existed, holding a
+                    // menu that claims nothing (`core::tray::bootstrap`). Now
+                    // there is something to say — fill it in immediately rather
+                    // than leaving the first tick to do it five seconds later.
+                    refresh_tray(app.handle());
 
                     // PHP patch bump (pins ride app releases — Option A, no
                     // in-app updater): adopted pools still serve the OLD patch
@@ -1203,7 +1208,14 @@ fn install_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     use tauri::image::Image;
     use tauri::tray::TrayIconBuilder;
 
-    let spec = core::tray::build(&tray_model(app));
+    // The status item goes up EARLY — it is the app's whole presence, and a menu
+    // bar showing nothing while the app opens databases and adopts services
+    // looks like a launch that failed. State does not exist yet at this point
+    // (`app.manage` is much further down `setup`, and asking for it here
+    // aborted the process: "state() called before manage()"), so the first menu
+    // is the bootstrap one: Open and Quit, and no claim about anything else.
+    // `refresh_tray` right after `manage` swaps in the real menu.
+    let spec = tray_model(app).map_or_else(core::tray::bootstrap, |m| core::tray::build(&m));
     let menu = render_menu(app, &spec)?;
     *last_spec().lock().unwrap_or_else(|e| e.into_inner()) = Some(spec);
 
@@ -1254,9 +1266,13 @@ fn last_spec() -> &'static std::sync::Mutex<Option<core::tray::MenuSpec>> {
 /// `service_infos` snapshot the Services screen and the footer use, the same
 /// `summarize`, the same sites table, the same settings row. The tray measures
 /// nothing of its own (`docs/PLAN-menubar-tray.md` §3 rule 1).
-fn tray_model(app: &tauri::AppHandle) -> core::tray::TrayModel {
+fn tray_model(app: &tauri::AppHandle) -> Option<core::tray::TrayModel> {
     use tauri::Manager;
-    let state = app.state::<state::app::AppState>();
+    // `try_state`, never `state`: the tray is installed before `setup` manages
+    // the app state, and `state()` does not return an error there — it ABORTS
+    // the process (non-unwinding panic). `None` means "not yet", and the caller
+    // shows a menu that claims nothing.
+    let state = app.try_state::<state::app::AppState>()?;
 
     // try_lock snapshot + freshness — never blocks on the services lock (rule
     // 2). A busy lock yields the previous rows, and `stale` makes the menu say
@@ -1290,7 +1306,7 @@ fn tray_model(app: &tauri::AppHandle) -> core::tray::TrayModel {
         }
     };
 
-    core::tray::TrayModel { summary, running, total, sites, mcp_on, stale: !fresh }
+    Some(core::tray::TrayModel { summary, running, total, sites, mcp_on, stale: !fresh })
 }
 
 /// Turn a `MenuSpec` into a real menu. The ONLY place Tauri menu types meet the
@@ -1356,7 +1372,12 @@ fn render_menu(
 /// replaced, so a rebuild on every tick would shut the menu under the cursor of
 /// anyone who held it open for more than five seconds.
 fn refresh_tray(app: &tauri::AppHandle) {
-    let spec = core::tray::build(&tray_model(app));
+    // No state yet: leave whatever is up. Replacing a menu with the bootstrap
+    // one would be a menu going BACKWARDS in front of the user.
+    let Some(model) = tray_model(app) else {
+        return;
+    };
+    let spec = core::tray::build(&model);
     {
         let mut last = last_spec().lock().unwrap_or_else(|e| e.into_inner());
         if last.as_ref() == Some(&spec) {
@@ -1454,7 +1475,9 @@ fn on_tray_click(app: &tauri::AppHandle, id: &str) {
                 // Read the CURRENT value rather than the rendered checkmark:
                 // the menu may have been built seconds ago, and toggling from
                 // a stale checkmark writes the state the user already has.
-                let on = tray_model(&handle).mcp_on;
+                let Some(on) = tray_model(&handle).map(|m| m.mcp_on) else {
+                    return;
+                };
                 if let Err(e) = commands::mcp::mcp_set_enabled(handle.clone(), state, !on) {
                     log::warn!("tray: could not toggle the MCP server: {e}");
                 }
