@@ -94,6 +94,22 @@ pub fn run() {
         .setup(|app| {
             let platform = platform::current();
 
+            // THE WINDOW IS NOW HIDDEN BY DEFAULT (`tauri.conf.json`
+            // `visible: false`), so somebody has to decide to show it.
+            //
+            // A launch the USER asked for shows it immediately — before the
+            // database opens, before services are adopted — because that work
+            // takes seconds and a launch that paints nothing for three seconds
+            // reads as a launch that failed. A LOGIN launch (the LaunchAgent
+            // passes `--hidden`) shows nothing here; the decision moves to
+            // `first_window_decision` below, once there is enough state to ask
+            // whether first-run setup is done, and a login is nobody's foreground
+            // task so the extra seconds cost nothing.
+            let hidden_launch = std::env::args().any(|a| a == HIDDEN_LAUNCH_FLAG);
+            if !hidden_launch {
+                show_main_window(app.handle());
+            }
+
             // THE APP'S OWN LOG, in every build — this used to be
             // `if cfg!(debug_assertions)`, which meant the installed app wrote
             // `log::info!`/`log::warn!` NOWHERE. Every diagnostic this codebase
@@ -422,6 +438,30 @@ pub fn run() {
                         }
                     }
                     app.manage(state);
+                    // REFRESH the login plist if autostart is on. Same
+                    // reason the DNS agent's plist is rewritten on every
+                    // launch: a plist written by an older build names an older
+                    // binary and, here, LACKS `--hidden` — so a user who
+                    // enabled autostart before this change would keep getting a
+                    // window at every login and nothing would ever fix it.
+                    // Rewriting also re-points the entry after the app moves
+                    // (dev build ↔ /Applications).
+                    {
+                        let autostart = app.state::<state::app::AppState>();
+                        let autostart = autostart.platform.autostart();
+                        if autostart.is_enabled().unwrap_or(false) {
+                            if let Err(e) = autostart.enable() {
+                                log::warn!("autostart: could not refresh the login item: {e}");
+                            }
+                        }
+                    }
+
+                    // A LOGIN launch stays hidden — unless first-run setup is
+                    // unfinished, in which case the window is the only thing
+                    // that can fix it (A7).
+                    if hidden_launch {
+                        first_window_decision(app.handle());
+                    }
                     // The tray went up before any of this existed, holding a
                     // menu that claims nothing (`core::tray::bootstrap`). Now
                     // there is something to say — fill it in immediately rather
@@ -717,6 +757,13 @@ pub fn run() {
                     ))
                 }
             };
+            // An init failure is a screen, not a log line: if the database or
+            // the CA could not be opened, the app shows an error page — and a
+            // hidden window would leave a menu-bar icon whose every action
+            // fails for reasons nobody can read. Shown even at login.
+            if hidden_launch && init_error.is_some() {
+                show_main_window(app.handle());
+            }
             app.manage(commands::system::InitError(init_error));
             app.manage(notices);
 
@@ -1246,6 +1293,44 @@ fn install_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     });
     Ok(())
 }
+
+/// Should a LOGIN launch open its window anyway?
+///
+/// `--hidden` is a request, not a command. rexenv starting quietly in the menu
+/// bar is the point of the flag — but a machine where first-run setup is
+/// unfinished cannot resolve `.rex` or trust the local CA, so every site is
+/// broken, and a silent tray icon on that machine is an app that looks dead
+/// while hiding the one screen that fixes it. Onboarding is judged on exactly
+/// the two facts `FirstRunGate` routes on — the OS resolver file and per-user
+/// CA trust — so the tray and the frontend cannot disagree about whether this
+/// machine is set up.
+fn first_window_decision(app: &tauri::AppHandle) {
+    use tauri::Manager;
+    let Some(state) = app.try_state::<state::app::AppState>() else {
+        // No state means init failed; that path shows the window itself.
+        return;
+    };
+    let resolver_installed =
+        state.platform.dns().resolver_path(core::tld::BACKBONE_TLD).exists();
+    let ca_trusted = state.platform.cert_trust().is_trusted(&state.ca.cert_path);
+    if resolver_installed && ca_trusted {
+        log::info!("launched at login — staying in the menu bar");
+        return;
+    }
+    log::info!(
+        "launched at login with setup incomplete (resolver: {resolver_installed}, \
+         CA trusted: {ca_trusted}) — showing the window"
+    );
+    show_main_window(app);
+}
+
+/// The flag the login LaunchAgent passes (`platform::macos` writes it into the
+/// plist, `setup` reads it here). One constant because it is a contract between
+/// a file on disk and a process: a typo in either half is an app that opens a
+/// window at every login, which is the entire thing this flag exists to stop.
+///
+/// It is a REQUEST, not a command — see `first_window_decision`.
+pub const HIDDEN_LAUNCH_FLAG: &str = "--hidden";
 
 /// The tray icon's id — also how `refresh_tray` finds it again.
 const TRAY_ID: &str = "main";

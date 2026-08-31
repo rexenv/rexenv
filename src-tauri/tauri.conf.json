@@ -13,6 +13,7 @@
     "windows": [
       {
         "title": "rexenv",
+        "visible": false,
         "width": 1180,
         "height": 760,
         "minWidth": 980,

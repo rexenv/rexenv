@@ -23,12 +23,32 @@ const SOFT_DEADLINE: Duration = Duration::from_secs(2);
 /// How long `request` stays silent before telling the user it is still waiting.
 const STALL_NOTICE_AFTER: Duration = Duration::from_secs(10);
 
+/// **The CLI never starts the app.** It NAMES the command and stops there.
+///
+/// `rex` is a remote control for a RUNNING app, so auto-spawning would launch a
+/// second process behind the user's back — one that adopts services, opens the
+/// database as a second writer and takes over both sockets — as a side effect
+/// of something as innocent as `rex status` inside a shell script. Naming the
+/// command costs one paste and leaves the decision where it belongs.
+///
+/// macOS resolves `-a rexenv` through LaunchServices, so it finds the app
+/// wherever it is installed — but only if it IS installed. A dev build run out
+/// of `target/` is not registered, which is why the line says "the installed
+/// app" rather than promising the command works everywhere.
+#[cfg(target_os = "macos")]
+const NOT_RUNNING: &str = "rexenv isn't running — open the app first (the CLI controls the \
+running app).\n  Start it with:  open -a rexenv    (the installed app)";
+#[cfg(not(target_os = "macos"))]
 const NOT_RUNNING: &str =
     "rexenv isn't running — open the app first (the CLI controls the running app).";
 
 // A SPECIFIC reason for `rex mcp`, not a generic transport error: an MCP client
 // surfaces this on stderr when the bridge can't reach the app, so the agent
 // learns WHY rather than guessing at an opaque failure.
+#[cfg(target_os = "macos")]
+const MCP_NOT_RUNNING: &str =
+    "rexenv isn't running — open the rexenv app (open -a rexenv), then reconnect. No MCP server is available until rexenv is running.";
+#[cfg(not(target_os = "macos"))]
 const MCP_NOT_RUNNING: &str =
     "rexenv isn't running — open the rexenv app, then reconnect. No MCP server is available until rexenv is running.";
 
@@ -2946,6 +2966,51 @@ mod tests {
         assert_eq!(version_skew_between("0.3.0", "0.3.0", "unknown", "abc1234"), None);
         assert_eq!(version_skew_between("0.3.0", "0.3.0", "abc1234", "unknown"), None);
         assert_eq!(version_skew_between("0.3.0", "0.3.0", "abc1234", ""), None);
+    }
+
+    /// **`rex` offers to start the app; it never starts it.**
+    ///
+    /// The message names the command (C3), and the binary must contain no way
+    /// to run it itself. Auto-spawning would launch a second rexenv behind the
+    /// user's back — adopting services, opening the database as a second
+    /// writer, taking over both sockets — as a side effect of `rex status` in a
+    /// shell script. The one `open` this CLI does run is `open_url`, which
+    /// opens a SITE in a browser at the user's explicit request.
+    ///
+    /// Text-level, and honest about it: it reads the source for a spawn that
+    /// names the app. It cannot prove no spawn exists — it can keep the obvious
+    /// one from being added, which is the drift worth catching, because
+    /// "helpfully" launching the app is a two-line change that looks kind.
+    #[test]
+    fn the_cli_names_the_start_command_and_never_runs_it() {
+        let src = include_str!("main.rs");
+        assert!(
+            NOT_RUNNING.contains("rexenv isn't running"),
+            "the reason must survive whatever else the line says: {NOT_RUNNING}"
+        );
+        #[cfg(target_os = "macos")]
+        assert!(
+            NOT_RUNNING.contains("open -a rexenv"),
+            "the user must be told what to run: {NOT_RUNNING}"
+        );
+        // Every spawn in the file, with its argument — none may launch rexenv.
+        for (i, line) in src.lines().enumerate() {
+            if !line.contains("Command::new") {
+                continue;
+            }
+            assert!(
+                !line.contains("rexenv") && !line.contains("-a "),
+                "line {}: the CLI must not launch the app — it names the command instead: {}",
+                i + 1,
+                line.trim()
+            );
+        }
+        // And nothing may pass the app to `open` a line or two later, which is
+        // how the spawn above would actually be written.
+        assert!(
+            !src.contains("\"-a\""),
+            "an `-a` argument in this binary is an app launch"
+        );
     }
 
     #[test]

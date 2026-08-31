@@ -1552,7 +1552,21 @@ IPC surface — which is how a reader ends up designing against a system with on
     with the app, Restart-never-auto.
 - **Autostart** (`AutostartManager`, macOS): per-user LaunchAgent
   `~/Library/LaunchAgents/dev.rexenv.rexenv.plist`, `RunAtLoad` — launches the app at
-  login (not headless services; the edge still needs its `:443` prompt).
+  login (not headless services; the edge still needs its `:443` prompt). The plist
+  passes **`--hidden`**: a login launch goes to the menu bar and opens NO window, which
+  is what makes autostart tolerable — an app that throws a window at every login is one
+  that has to be closed before work starts. The flag is a REQUEST: `first_window_decision`
+  still shows the window when first-run setup is unfinished (no OS resolver file, or the
+  CA untrusted for this user — the same two facts `FirstRunGate` routes on), because a
+  silent tray on a machine that cannot resolve `.rex` hides the only screen that fixes
+  it. An init failure shows the window too: an error screen nobody can see is a log line.
+  The plist is REWRITTEN on every launch while autostart is on, like the DNS agent's —
+  a plist written by an older build names an older binary and lacks the flag, and
+  nothing else would ever repair it.
+- **The window starts hidden** (`tauri.conf.json` `visible: false`) and somebody has to
+  decide to show it. A launch the USER asked for shows it immediately, BEFORE the
+  database opens and services are adopted: that work takes seconds, and a launch that
+  paints nothing for three seconds reads as a launch that failed.
 
 ### Built-in terminal — a LOGIN shell (`core/terminal.rs`)
 

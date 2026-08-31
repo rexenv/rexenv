@@ -33,6 +33,15 @@ convention) — see "Infrastructure" for progress streaming.
 | `rex site login <domain> [--print]` | `wp_admin_login_url` |
 | `rex help`, exit codes 0/1/2 | — |
 
+**When the app isn't running**, every command exits 2 with the reason AND the command
+to fix it (`open -a rexenv`, macOS) — an OFFER, never an autostart. `rex` is a remote
+control for a RUNNING app, so spawning one itself would start a second process behind
+the user's back — adopting services, opening the database as a second writer, taking
+over both sockets — as a side effect of `rex status` inside a shell script. The line
+says "the installed app" because `open -a` resolves through LaunchServices, which does
+not know about a dev build run out of `target/`. Guarded by
+`the_cli_names_the_start_command_and_never_runs_it` (text-level, and it says so).
+
 ## Sites
 
 | Command | Backing IPC | Tag | Notes |

@@ -68,6 +68,22 @@ next to the rexenv message, then **Open**.
 
 After you do this **once**, rexenv opens normally (double-click) from then on.
 
+## Where rexenv lives once it's open
+
+rexenv is a **menu-bar app**: the crowned-R icon in your menu bar is its home, and it
+has **no dock icon**. Click the icon for the menu — the stack's status, Start/Stop all,
+your recent sites, and **Open rexenv** for the window.
+
+**Closing the window does not quit rexenv**, and that is deliberate: `rex` on the
+command line and the AI-agent (MCP) endpoint are remote controls for the running app, so
+closing a window used to take them down while your sites kept serving. Quit with
+**Quit rexenv** in the menu.
+
+If you turn on **Start on login** (Settings), rexenv starts straight into the menu bar
+with no window — except when first-run setup isn't finished, where it shows the window,
+because there is nothing useful it could do quietly on a machine that can't resolve
+`.rex` yet.
+
 ## First-run setup prompts (expected)
 
 The first time you use rexenv it sets up local networking + HTTPS, so macOS will

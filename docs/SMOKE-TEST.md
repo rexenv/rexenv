@@ -623,6 +623,15 @@ hand can prove a spec entry became the item it describes.*
 - [ ] Hold the menu OPEN for 15+ seconds with the stack idle: it must NOT close by
   itself. (The rebuild is conditional for exactly this reason.)
 - [ ] **Quit rexenv** with a public share up still pauses once and names the count.
+- [ ] **Start on login** (Settings) → log out and back in: rexenv comes up in the MENU
+  BAR with **no window**, and the services it manages are up. Enable it, log out and in
+  once BEFORE this build too if you can: the plist is rewritten on every launch, so an
+  old one (no `--hidden`) must repair itself rather than keep opening a window forever.
+- [ ] On a machine where first-run setup is NOT finished (no `/etc/resolver/rex`, or the
+  CA untrusted for this user), a LOGIN launch **does** show the window. A silent tray
+  there would hide the only screen that fixes it.
+- [ ] `rex status` with the app closed prints the reason **and** `open -a rexenv` — and
+  does NOT start the app.
 
 ## Which app opens a link
 - [ ] Site header → chevron beside **Open in browser**: every browser you have is

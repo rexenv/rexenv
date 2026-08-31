@@ -102,7 +102,7 @@ Three rules inherited from the code it will display:
 | A4 | `ActivationPolicy::Accessory` at startup (A1 of §2) | no dock icon, no app-switcher entry |
 | A5 | `CloseRequested` → `window.hide()` + `prevent_close()`; **no tunnel prompt on close** (nothing dies) | closing the window leaves `rex status` and `rex mcp` working — the whole point |
 | A6 | Real quit = tray **Quit rexenv** only → keeps `confirm_quit_or_prompt` (tunnels DO die there) | quit with a share up still pauses once and names the count |
-| A7 | First run must not be invisible: if onboarding is incomplete, show the window on launch. **Closes with C1, not before** — today it is true only because the window config carries no `visible: false`, which is exactly what C1 changes | fresh profile launch shows the window, not a silent tray, WITH C1 in |
+| A7 | First run must not be invisible: if onboarding is incomplete, show the window on launch | ✅ **closed WITH C1, as promised** (31 Aug 2026): `first_window_decision` — resolver file + per-user CA trust, the two facts `FirstRunGate` routes on, plus the init-failure case |
 | A8 | Activate before any native prompt (`activate(ignoringOtherApps:)`) — resolver, CA trust, quit confirm | privileged prompt appears in front, from a hidden-window app |
 | A9 | **Measure the Accessory cost**: Cmd+C / Cmd+V in the Terminal tab and in Adminer | ✅ **measured 31 Aug 2026 — the clipboard survives, so A1 stands and A2 is not needed** |
 
@@ -152,9 +152,16 @@ autostart *quiet*.
 
 | # | Task | Done when |
 |---|---|---|
-| C1 | **Start hidden in the menu bar** — login launch opens no window (unless A7 applies) | login → tray only |
-| C2 | Login rules unchanged: never download, never prompt at login (ledger #175) | the existing L0 guards still pass untouched |
-| C3 | `rex`: when the socket is missing, *offer* `open -a rexenv` — never auto-spawn | the honest-failure line grows a suggestion, not an autostart (`CLI-ROADMAP.md`) |
+| C1 | **Start hidden in the menu bar** — login launch opens no window (unless A7 applies) | ✅ 31 Aug 2026, #439 — `visible: false` + `--hidden` in the plist; a USER launch shows the window at once, a login launch asks `first_window_decision` |
+| C2 | Login rules unchanged: never download, never prompt at login (ledger #175) | ✅ 31 Aug 2026 — `auto_start_services` untouched, #175's guard passes |
+| C3 | `rex`: when the socket is missing, *offer* `open -a rexenv` — never auto-spawn | ✅ 31 Aug 2026, #440 — plant-proven |
+
+**What C1 cost, recorded because it is not obvious:** the flag is the easy half; DELIVERING
+it is not. A user who enabled autostart before this change has a plist naming an older
+binary with no `--hidden` in it, and nothing in the app would ever have looked at it
+again — so the plist is now rewritten on every launch while autostart is on, exactly as
+the DNS agent's already was. A feature that only works for people who toggle the setting
+again after upgrading is a feature that does not work.
 
 ### Phase D — docs and proof, in the same commits
 

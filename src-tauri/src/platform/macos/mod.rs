@@ -733,6 +733,14 @@ impl MacosAutostart {
 
     /// The on-login plist that launches the rexenv app at GUI login. Quotes the
     /// program path (app paths contain spaces).
+    ///
+    /// **`--hidden` is the whole point of an on-login launch.** rexenv starts
+    /// its services and lives in the menu bar; a window thrown at the user
+    /// every time they log in is an app that has to be closed before work can
+    /// start. The flag is a REQUEST, not a command — `lib.rs` still shows the
+    /// window when first-run setup is incomplete, because a silent tray on a
+    /// machine that cannot resolve `.rex` is an app that looks broken and hides
+    /// the fix.
     fn plist_contents(program: &Path) -> String {
         format!(
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
@@ -745,6 +753,7 @@ impl MacosAutostart {
              \t<key>ProgramArguments</key>\n\
              \t<array>\n\
              \t\t<string>{program}</string>\n\
+             \t\t<string>{HIDDEN_LAUNCH_FLAG}</string>\n\
              \t</array>\n\
              \t<key>RunAtLoad</key>\n\
              \t<true/>\n\
@@ -752,7 +761,8 @@ impl MacosAutostart {
              \t<string>Interactive</string>\n\
              </dict>\n\
              </plist>\n",
-            program = program.display()
+            program = program.display(),
+            HIDDEN_LAUNCH_FLAG = crate::HIDDEN_LAUNCH_FLAG,
         )
     }
 }

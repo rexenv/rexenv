@@ -2531,12 +2531,13 @@ window stops being a quit.
   bare `app.exit(0)`, NOT its own `confirm_quit_or_prompt` call: `exit` raises
   `ExitRequested`, where the gate already lives. A second copy of that rule is a rule
   that can differ from itself (prompt twice, or not at all).
-- [ ] **A7** First run must not be invisible — incomplete onboarding shows the window.
-  **Deliberately still open, though it is true today**: the config window has no
-  `"visible": false`, so every launch shows a window and there is nothing to fix — but
-  it is true for a reason **C1 removes**, and a box ticked on a condition that another
-  task deletes is how a guard goes missing without any commit appearing to remove it.
-  This closes WITH C1, or not at all.
+- [x] **A7** First run must not be invisible ✓ 31 Aug 2026, WITH C1 — as promised. It
+  was held open precisely because it was true for a reason C1 deletes (`visible: false`
+  is exactly what C1 added), and it is now true for a reason of its own:
+  `first_window_decision` shows the window at login when the OS resolver file is missing
+  or the CA is untrusted for this user — the two facts `FirstRunGate` routes on — and
+  when init failed. A silent tray on a machine that cannot resolve `.rex` is an app that
+  looks dead while hiding the screen that fixes it.
 - [x] **A8** `platform::activate_app()` before every path that draws OUR OWN UI ✓
   31 Aug 2026 — the tray's Open (a shown window would otherwise come up behind the
   browser, reading as a menu item that did nothing) and the quit confirm (a prompt nobody
@@ -2616,12 +2617,24 @@ window stops being a quit.
 
 ### Phase C — always-on
 
-- [ ] **C1** "Start hidden in the menu bar" — login opens no window (A7 still wins).
-  `AutostartManager` already exists; this phase makes it QUIET, it does not build it.
-- [ ] **C2** Login rules unchanged: never download, never prompt (ledger #175 guards
-  must still pass untouched).
-- [ ] **C3** `rex` with no socket *offers* `open -a rexenv` — a suggestion, never an
-  autostart (`CLI-ROADMAP.md`).
+- [x] **C1** Start hidden in the menu bar ✓ 31 Aug 2026, ledger #439 — the window is
+  `visible: false` and somebody must decide to show it. A launch the USER asked for shows
+  it IMMEDIATELY (before the DB opens and services are adopted — that takes seconds, and
+  a launch painting nothing for three seconds reads as one that failed); a login launch
+  defers to `first_window_decision`, which keeps it hidden only when setup is complete.
+  **The delivery was the interesting half**: an existing autostart user's plist names an
+  older binary and has no `--hidden`, so the plist is now rewritten on every launch while
+  autostart is on — the same treatment the DNS agent's plist already gets. Nothing else
+  would ever have repaired it.
+- [x] **C2** Login rules unchanged ✓ 31 Aug 2026 — `auto_start_services` was not
+  touched and #175's order guard passes untouched in `verify.sh`. What changed is only
+  WHERE the window is, not what a login launch is allowed to do.
+- [x] **C3** `rex` names `open -a rexenv` and never runs it ✓ 31 Aug 2026, ledger #440 —
+  plant-proven (`the_cli_names_the_start_command_and_never_runs_it`). Auto-spawning would
+  start a second rexenv behind the user's back — services adopted, DB opened as a second
+  writer, both sockets taken — from something as innocent as `rex status` in a script.
+  The line says "the installed app": `open -a` resolves through LaunchServices, which
+  knows nothing about a dev build in `target/`.
 
 ### Phase D — docs and proof, in the same commits
 
