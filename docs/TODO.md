@@ -2526,6 +2526,11 @@ window stops being a quit.
   `ExitRequested`, where the gate already lives. A second copy of that rule is a rule
   that can differ from itself (prompt twice, or not at all).
 - [ ] **A7** First run must not be invisible — incomplete onboarding shows the window.
+  **Deliberately still open, though it is true today**: the config window has no
+  `"visible": false`, so every launch shows a window and there is nothing to fix — but
+  it is true for a reason **C1 removes**, and a box ticked on a condition that another
+  task deletes is how a guard goes missing without any commit appearing to remove it.
+  This closes WITH C1, or not at all.
 - [x] **A8** `platform::activate_app()` before every path that draws OUR OWN UI ✓
   31 Aug 2026 — the tray's Open (a shown window would otherwise come up behind the
   browser, reading as a menu item that did nothing) and the quit confirm (a prompt nobody

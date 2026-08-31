@@ -93,7 +93,7 @@ Three rules inherited from the code it will display:
 | A4 | `ActivationPolicy::Accessory` at startup (A1 of §2) | no dock icon, no app-switcher entry |
 | A5 | `CloseRequested` → `window.hide()` + `prevent_close()`; **no tunnel prompt on close** (nothing dies) | closing the window leaves `rex status` and `rex mcp` working — the whole point |
 | A6 | Real quit = tray **Quit rexenv** only → keeps `confirm_quit_or_prompt` (tunnels DO die there) | quit with a share up still pauses once and names the count |
-| A7 | First run must not be invisible: if onboarding is incomplete, show the window on launch | fresh profile launch shows the window, not a silent tray |
+| A7 | First run must not be invisible: if onboarding is incomplete, show the window on launch. **Closes with C1, not before** — today it is true only because the window config carries no `visible: false`, which is exactly what C1 changes | fresh profile launch shows the window, not a silent tray, WITH C1 in |
 | A8 | Activate before any native prompt (`activate(ignoringOtherApps:)`) — resolver, CA trust, quit confirm | privileged prompt appears in front, from a hidden-window app |
 | A9 | **Measure the Accessory cost**: Cmd+C / Cmd+V in the Terminal tab and in Adminer | works → A1 stands. Broken → switch to A2 (§2) and say so here |
 
