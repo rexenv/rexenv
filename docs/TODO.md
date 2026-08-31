@@ -2505,8 +2505,9 @@ window stops being a quit.
   one that gets replaced by a hand-drawn PNG). ONE file at 2x, not a `@2x` pair, because
   `tray-icon` normalises any icon to an 18pt height before NSImage sees it — so pixels are
   only crispness and the canvas is only the margin (20pt canvas, 18pt mark → drawn ~16pt,
-  Apple's own status-item size). *Light/dark bar still to be seen on a real machine —
-  rides A9.*
+  Apple's own status-item size). **Seen live 31 Aug 2026** — screenshot of the real menu
+  bar: the crowned R renders as a dark glyph on a light bar, beside the other status
+  items. *A dark menu bar is still unseen — rides A9.*
 - [x] **A3** Tray installed in `lib.rs` setup ✓ 31 Aug 2026 — **Open rexenv** +
   **Quit rexenv**, `icon_as_template(true)` so macOS tints it for either bar. **Clicking
   the icon opens the MENU, not the window** — the plan said window, but that is not the
@@ -2517,7 +2518,10 @@ window stops being a quit.
 - [x] **A4** `ActivationPolicy::Accessory` ✓ 31 Aug 2026 — no dock icon, no app-switcher
   entry. **What it costs is now real, not hypothetical**: there is no application menu,
   so `install_about_menu_item`'s item and the Edit menu's Cmd-C/V/Z are not shown. A9
-  measures whether the webview keeps its clipboard without that menu.
+  measures whether the webview keeps its clipboard without that menu. **Proven live
+  31 Aug 2026, mechanically rather than by eye**: `lsappinfo` reports the running app as
+  `type="UIElement"`, which IS the accessory policy — a screenshot could only show the
+  absence of a dock tile, and an absence is what every failure also looks like.
 - [x] **A5** `CloseRequested` → `prevent_close()` + `hide()` ✓ 31 Aug 2026, ledger #436 —
   and the close path confirms NOTHING, because there is nothing left to confirm.
   *Verified programmatically only so far; the human-clicks-the-red-button leg is A9/D6.*
