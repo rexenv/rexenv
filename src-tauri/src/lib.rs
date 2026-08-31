@@ -165,6 +165,19 @@ pub fn run() {
                 log::warn!("tray: could not install the menu-bar item: {e}");
             }
 
+            // NO DOCK ICON: rexenv is an ACCESSORY app — the menu-bar item is
+            // its whole presence when no window is up. It is a background
+            // service with a control panel, not a document app, and a dock
+            // tile for something that is running all day is a tile nobody
+            // clicks. What this costs is real and is written down where it can
+            // be measured (`docs/PLAN-menubar-tray.md` §2): an accessory app
+            // has no application menu, so the app menu's About item and the
+            // Edit menu's Cmd-C/V/Z are not shown, and nothing activates the
+            // app on the user's behalf — hence `platform::activate_app` on
+            // every path that draws our own UI.
+            #[cfg(target_os = "macos")]
+            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+
             // JS dialog panels (alert/confirm/prompt): wry implements none on
             // macOS, so confirm() silently returned false in-app — Adminer's
             // confirm-gated delete/drop buttons no-oped. Installed on the raw
@@ -1221,14 +1234,19 @@ fn install_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-/// Bring the main window back: show it, un-minimise it, focus it. All three,
-/// because a window can be hidden AND minimised, and a shown-but-unfocused
-/// window behind a browser reads as a menu item that did nothing.
+/// Bring the main window back: activate the app, then show, un-minimise and
+/// focus. All four, because a window can be hidden AND minimised, and an
+/// accessory app that merely shows one has not come to the front.
 fn show_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     let Some(window) = app.get_webview_window("main") else {
         log::warn!("tray: no main window to show");
         return;
     };
+    // Activate FIRST: an accessory app is not made active by showing a window,
+    // so without this the window comes up behind whatever the developer was
+    // reading — which reads as a menu item that did nothing.
+    #[cfg(target_os = "macos")]
+    platform::activate_app();
     let _ = window.show();
     let _ = window.unminimize();
     let _ = window.set_focus();

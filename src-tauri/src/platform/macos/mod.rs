@@ -5,6 +5,7 @@
 //! CA trust, privileged port binding, autostart, binary download) are wired up
 //! as `todo!()` so the architecture is complete and `cargo check` passes.
 
+pub mod activation;
 pub mod parent_death_guard;
 pub mod webview_dialogs;
 

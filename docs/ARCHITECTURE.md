@@ -240,7 +240,14 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   quit used to end every agent session and every CLI command while the services below
   carried on. A quit is now reached only through the tray's **Quit rexenv**, which is a
   bare `app.exit(0)` — the share confirm lives on `RunEvent::ExitRequested`, the one
-  gate every quit raises. `docs/PLAN-menubar-tray.md`.
+  gate every quit raises. **No dock icon** (`ActivationPolicy::Accessory`) — the
+  status item is the whole presence when no window is up. The cost is real and
+  deliberate: an accessory app has no application menu (so the About item and the Edit
+  menu's Cmd-C/V/Z are not shown) and nothing activates it on the user's behalf, so
+  every path that draws our OWN UI — the tray's Open, the quit confirm — calls
+  `platform::activate_app()` first. Prompts drawn by `osascript` are excluded on
+  purpose: SecurityAgent is a separate process and fronts itself.
+  `docs/PLAN-menubar-tray.md`.
 - **Services OUTLIVE the app.** Closing rexenv stops nothing. On launch,
   `adopt_startup()` ADOPTS rexenv-owned survivors as pid-based `Proc::Adopted` handles —
   status/Start all/Stop all treat them like spawned children. Ownership gate = process

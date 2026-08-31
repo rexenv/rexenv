@@ -385,6 +385,13 @@ pub fn confirm_quit_or_prompt<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> b
     if QUIT_DIALOG_OPEN.swap(true, Ordering::SeqCst) {
         return false; // dialog already up — keep holding the quit
     }
+    // Come to the front before asking. rexenv has no dock icon, so a quit
+    // triggered from the menu bar can open its confirm behind the browser the
+    // developer is reading — and a prompt nobody sees is worse than no prompt:
+    // the quit appears to have hung. Done HERE, on the caller's thread, because
+    // AppKit activation is main-thread-only and the dialog runs on its own.
+    #[cfg(target_os = "macos")]
+    crate::platform::activate_app();
     let app = app.clone();
     std::thread::spawn(move || {
         use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};

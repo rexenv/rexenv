@@ -2514,7 +2514,10 @@ window stops being a quit.
   behind a right-click. Quit goes through the SAME `confirm_quit_or_prompt` gate as Cmd+Q.
   A failed install is logged, never fatal: an app with no status item still works, and
   refusing to launch over an icon would be worse.
-- [ ] **A4** `ActivationPolicy::Accessory` — no dock icon, no app-switcher entry.
+- [x] **A4** `ActivationPolicy::Accessory` ✓ 31 Aug 2026 — no dock icon, no app-switcher
+  entry. **What it costs is now real, not hypothetical**: there is no application menu,
+  so `install_about_menu_item`'s item and the Edit menu's Cmd-C/V/Z are not shown. A9
+  measures whether the webview keeps its clipboard without that menu.
 - [x] **A5** `CloseRequested` → `prevent_close()` + `hide()` ✓ 31 Aug 2026, ledger #436 —
   and the close path confirms NOTHING, because there is nothing left to confirm.
   *Verified programmatically only so far; the human-clicks-the-red-button leg is A9/D6.*
@@ -2523,9 +2526,13 @@ window stops being a quit.
   `ExitRequested`, where the gate already lives. A second copy of that rule is a rule
   that can differ from itself (prompt twice, or not at all).
 - [ ] **A7** First run must not be invisible — incomplete onboarding shows the window.
-- [ ] **A8** `activate(ignoringOtherApps:)` before every native prompt (resolver, CA
-  trust, quit confirm). An Accessory app's modal can otherwise open behind everything,
-  and the privileged prompt already has a hard foreground requirement.
+- [x] **A8** `platform::activate_app()` before every path that draws OUR OWN UI ✓
+  31 Aug 2026 — the tray's Open (a shown window would otherwise come up behind the
+  browser, reading as a menu item that did nothing) and the quit confirm (a prompt nobody
+  sees is worse than no prompt: the quit looks hung). Uses `activate`, not the deprecated
+  `activateIgnoringOtherApps:` — the app's floor is macOS 15, so the newer call exists
+  everywhere rexenv runs and the old one warns. **`osascript` prompts are deliberately
+  NOT in the set**: SecurityAgent is a separate process and fronts itself.
 - [ ] **A9** **Measure what Accessory costs**: Cmd+C / Cmd+V in the site Terminal tab and
   in Adminer. Accessory removes the app menu, and on macOS the webview's clipboard
   shortcuts come from the Edit menu — the same menu the About item was built by *editing*

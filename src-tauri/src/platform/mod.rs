@@ -30,6 +30,13 @@ pub use macos::webview_dialogs::install_js_dialog_panels;
 #[cfg(target_os = "macos")]
 pub use macos::parent_death_guard::run as run_tunnel_guard;
 
+/// Bring rexenv to the front. Needed because it is an ACCESSORY app (menu bar,
+/// no dock tile): nothing activates it on the user's behalf, so a window it
+/// shows — or a modal it opens — can come up behind whatever the developer was
+/// reading. Same re-export shape as the two above, same reason.
+#[cfg(target_os = "macos")]
+pub use macos::activation::activate_app;
+
 /// Construct the platform implementation for the current OS.
 pub fn current() -> Box<dyn Platform> {
     #[cfg(target_os = "macos")]
