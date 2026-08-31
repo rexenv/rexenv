@@ -171,7 +171,7 @@ again after upgrading is a feature that does not work.
 | D2 | `MAP.md` + README structure tree: `core/tray.rs` and the platform wiring |
 | D3 | `CLAIM-LEDGER.md` rows + verdicts, same commit as the code: (i) closing the window stops no service and keeps both sockets; (ii) tray status is a ServiceManager snapshot, never a port probe; (iii) the menu build never holds the services lock |
 | D4 | `DESIGN.md`: template-icon rule (monochrome, both menu-bar themes), honest status copy |
-| D5 | `TESTING.md` + `scripts/live-checks.sh`: L0 menu-model tests; L1 `tray_lifetime_check` (sandbox tier) — hide the window, then assert the CLI socket still answers |
+| D5 | `TESTING.md`: the L0 menu-model tests — and **the L1 example measured away, not written**. `tray_lifetime_check` needed a way to hide the window from outside the app; the only one would be a `rex` verb invented for the test. See TESTING §5 and #436 |
 | D6 | `SMOKE-TEST.md`: the manual legs — tray click, Cmd+C in the webview, login-hidden start, quit-with-a-share |
 | D7 | `INSTALL.md`: first-run wording now that there is no dock icon |
 | D8 | `TODO.md` ticks with ✓ evidence, per task |

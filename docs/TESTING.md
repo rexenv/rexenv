@@ -780,6 +780,26 @@ written procedure; "manual" means scripted-for-a-human, never remembered.
 | Visual design / theme correctness | SMOKE-TEST settings + uireview screenshot sweep (human eyeballs the shots) |
 | Radicle layout reality (#95) | flagged in code; first real project confirms |
 | Phase-A-never-resolves wire spot-check (#19) | PUBLISH-TESTING §L (added, T13) |
+| **The tray: every click, and closing the window** (#436–#439) | SMOKE-TEST "The menu bar" |
+
+**Why the tray's L1 example was planned and then NOT written** (measured before building
+it, the standing first step of §2). `PLAN-menubar-tray.md` D5 proposed
+`tray_lifetime_check`: hide the window, then assert the CLI socket still answers. Nothing
+in the app can hide the window except a human clicking the red button — an example talks
+to the app over the CLI socket, and there is no hide command there. Writing one would
+mean adding a `rex` verb that exists only so a test can call it: new public surface, in
+the CLI's own vocabulary, for a claim the SMOKE list already covers in one line. The
+example would also have to be pointed at the developer's REAL running app, since a second
+instance is the second-writer bug this whole feature avoids.
+
+So the tray's proof splits honestly: the menu's RULES are L0 and thorough (`core/tray.rs`,
+11 tests, plant-proven three ways; `the_tray_acts_only_through_the_commands_the_ui_uses`
+for the no-second-path claim; `the_cli_names_the_start_command_and_never_runs_it` for the
+never-autostart one), and everything that needs a click, a login, or an eye is L3. The two
+launch-ordering bugs found the day it shipped (#439 — a window shown before the Accessory
+switch is a window the switch takes away; a show at the top of `setup` whose warning has
+no logger yet) are exactly that class: a call that silently does nothing, visible only by
+launching the app and looking.
 
 ## 6. The gate
 

@@ -2644,19 +2644,36 @@ window stops being a quit.
 
 ### Phase D — docs and proof, in the same commits
 
-- [ ] **D1** `ARCHITECTURE.md` — app lifetime: what dies with the app (tunnels, repo
-  jobs), what outlives it (services, DNS), what the tray now KEEPS alive (CLI + MCP).
-- [ ] **D2** `MAP.md` + README tree — `core/tray.rs` + the platform wiring.
-- [ ] **D3** `CLAIM-LEDGER.md` rows + verdicts, same commit as the code: closing the
-  window stops no service and keeps both sockets; tray status is a snapshot, never a
-  probe; the menu build never holds the services lock.
-- [ ] **D4** `DESIGN.md` — template-icon rule, honest status copy.
-- [ ] **D5** `TESTING.md` + `scripts/live-checks.sh` — L0 menu-model tests; L1
-  `tray_lifetime_check` (sandbox): hide the window, assert the CLI socket still answers.
-- [ ] **D6** `SMOKE-TEST.md` — the manual legs: tray click, webview clipboard,
-  login-hidden start, quit with a share up. **Tray clicks are not L1-provable here** (no
-  synthetic clicks on a live desktop), and that is stated as a limit, not automated away.
-- [ ] **D7** `INSTALL.md` — first-run wording now that nothing appears in the dock.
+- [x] **D1** `ARCHITECTURE.md` ✓ 31 Aug 2026 — "the APP outlives the window" beside
+  "services outlive the app", the menu-as-data paragraph, and the autostart/`--hidden`
+  rules. Shipped in the same commits as the code, per the rule.
+- [x] **D2** `MAP.md` + README tree ✓ 31 Aug 2026 — the tray row (core + entry points
+  + `TrayRouteWatch` + the login-launch anchors), `activation.rs` in the README tree.
+- [x] **D3** `CLAIM-LEDGER.md` ✓ 31 Aug 2026 — #436 (close hides, one quit gate),
+  #437 (the menu's rules, ✅ L0, plant-proven ×3), #438 (never a second answer or a second
+  path, ◐ L0), #439 (the login launch + the two ordering bugs), #440 (`rex` never starts
+  the app, ✅ L0). Each landed in the commit with its code.
+- [x] **D4** `DESIGN.md` ✓ 31 Aug 2026 — the honest-UI rule for the menu: a stale
+  snapshot says `· updating…`, and a capped Sites list says what it hid.
+- [x] **D5** `TESTING.md` ✓ 31 Aug 2026 — the L0 menu-model tests are listed, and the
+  planned L1 example is **measured away rather than written**: nothing can hide the
+  window except a human clicking the red button, an example reaches the app only through
+  the CLI socket, and that socket has no hide verb. Writing one means inventing a `rex`
+  command whose only caller is a test — new public surface, in the CLI's own vocabulary,
+  for a claim one SMOKE line already covers. `live-checks.sh` is unchanged: no example,
+  no tier. #436's verdict corrected from "🔨 L1 planned" to 🔨 L3, because a queued proof
+  at a layer that cannot see the subject is a plan wearing a test's clothes (the #40/#166
+  lesson).
+- [x] **D6** `SMOKE-TEST.md` ✓ 31 Aug 2026 — "The menu bar": both bar themes, click →
+  menu, Open fronts the window, close leaves `rex status` answering, the status line
+  matching the footer, Start/Stop greying, the preferred browser, every route, the MCP
+  toggle proven by a client connecting, a menu held open 15s that must not close itself,
+  quit with a share up, the login legs, and `rex` offering `open -a rexenv` without
+  running it. Tray clicks stay L3 — no synthetic clicks on a live desktop — stated as a
+  limit, not automated away.
+- [x] **D7** `INSTALL.md` ✓ 31 Aug 2026 — "Where rexenv lives once it's open": the
+  menu bar, no dock icon, closing the window is not quitting, and what Start on login
+  does now.
 
 ## Blocked on external work
 
