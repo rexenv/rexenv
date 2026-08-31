@@ -2675,6 +2675,20 @@ window stops being a quit.
   menu bar, no dock icon, closing the window is not quitting, and what Start on login
   does now.
 
+### Found while building the tray — open
+
+- [ ] **A second rexenv instance is now INVISIBLE.** Seen 31 Aug 2026 during Phase C: two
+  `target/debug/rexenv` processes ran at once, and the only symptom was TWO R icons in the
+  menu bar. Before the tray, a second instance was obvious (a second window, a dock tile)
+  and closing a window ended it; now an app with no dock icon, no window and a hidden
+  launch mode can sit there adopting services, opening the database as a second writer and
+  fighting for the CLI/MCP sockets. LaunchServices covers the ordinary case — launching an
+  installed `.app` twice just activates the first — so this is not a shipping bug today;
+  the exposure is a dev build, a `--hidden` login launch racing a manual one, and any path
+  that starts the binary directly. Fix is a single-instance guard: the CLI socket is
+  already a natural lock (bind fails if someone holds it), so the second process can
+  activate the first through it and exit, rather than a pid file that outlives a crash.
+
 ## Blocked on external work
 
 - [ ] **Xdebug on PHP 8.0** — the Nov 2024 static-php 8.0.30 build exports zero
