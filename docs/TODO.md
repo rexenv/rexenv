@@ -1624,7 +1624,7 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     have concluded the artefact was unpublished while five people had downloaded it. The
     release row belongs in the commit that publishes.
 
-- [ ] **0.3.0 SHIPPED on 20 Aug 2026 and NOTHING in this repo records it.** The tap has
+- [x] **0.3.0 SHIPPED on 20 Aug 2026 and NOTHING in this repo recorded it** ✓ closed 31 Aug 2026 — the release record landed 25 Aug, §A0 ran on the shipped bytes 31 Aug, and §A's launch half is closed by ruling (sub-items below). The tap has
   it (`Casks/rexenv.rb` = 0.3.0 / `381952fa…`, bumped by CI at 13:31Z), the GitHub
   release is published with both assets, and `package.json` / `tauri.conf.json` /
   `Cargo.toml` all say 0.3.0 — but there is no release row here, no §A0/§A verdict
@@ -1640,10 +1640,23 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     binary's embedded `builtAt` 13:03:53Z → upload 13:18:23Z → publish 13:25:43Z → cask
     bump `5c7bdca` 13:31:42Z. **The commit is INFERENCE and the row says so** — see the
     next item.
-  - [ ] Run §A on the SHIPPED 0.3.0 dmg (quarantined → Gatekeeper → launch). ✓ The row now
-    STATES it was not run, which was the alternative this item allowed — the hash match
-    proves the bytes are the published ones and says nothing about whether they launch on a
-    clean Mac. The dmg has **6 downloads**, so it is in use. §A0 is outstanding too.
+  - [x] **§A0 RUN and §A ruled** ✓ 31 Aug 2026. §A0 ran on the SHIPPED bytes — downloaded
+    anonymously, hashed to `381952fa…` (cask, release digest and sidecar all agree), mounted,
+    checked in place: both binaries `x86_64 arm64`, `Dist_Archive_Command` ×5 in EACH thinned
+    slice, `codesign --verify --deep --strict` valid on disk and satisfying its DR. **§A's
+    Gatekeeper half answered without launching anything** — `spctl -a -t exec` **rejects** it
+    (ad-hoc signature, `TeamIdentifier=not set`), which is the "quarantined → blocked" leg on
+    the real bytes. **§A's LAUNCH half is closed by RULING**: the artefact is superseded (the
+    cask serves 0.4.0, gated on its own bytes), and the only Mac here carries 17 sites on a
+    live stack with app data at schema v41 that 0.3.0's migration loop would silently no-op
+    past. What that costs is stated in `docs/PUBLISH-TESTING.md` §A-prev rather than buried:
+    whether these exact bytes launch on a clean Mac is now permanently unknown, and its 6
+    downloads stay unaccounted for. Nothing relaxes for the next release — §A runs BEFORE
+    publishing, on the bytes being published.
+    - **The dmg answered a question it could not answer in August**: `rex --version` off the
+      mounted volume prints `rex 0.3.0 · rexenv 0.4.0` — its own version with NO commit, then
+      the RUNNING app's. The defect the next item describes, observed on the shipped artefact
+      instead of inferred.
   - [x] **A downloaded rexenv cannot be asked what built it — found closing the row above.** ✓ FIXED 25 Aug 2026: `rex --version` prints the CLI's OWN commit unconditionally, BEFORE the socket call, and labels the app's half (`rex 0.3.0 (a1b2c3d) · app rexenv 0.3.0 (e4f5f6a)`); `rex version` prints both stamps on labelled lines. Guarded by `the_native_version_prints_its_own_commit_before_it_asks_the_app` — plant-proven three ways (drop the own-commit, ask the app first, drop the label). **0.3.0's row stays an inference** because the artefact predates this; the next release's will not.
     `build.rs` stamps `REXENV_GIT_COMMIT` and did so at `bd0648c`, yet neither `bd0648c` nor
     `5cb295e` appears anywhere in the shipped binary, and `rex version` is no help: it does

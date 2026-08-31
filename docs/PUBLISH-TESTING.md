@@ -130,7 +130,7 @@ gated. Downloads at that check: 5.
 > again "write the row afterwards". The release row belongs in the commit that publishes,
 > the way the tick belongs in the commit that does the work.
 
-## A-prev) ◐ 0.3.0 — PUBLISHED, artefact verified, §A0/§A NOT RUN
+## A-prev) ✅ 0.3.0 — PUBLISHED, §A0 ✅ (31 Aug 2026), §A CLOSED BY RULING
 
 **0.3.0 PUBLISHED 20 Aug 2026** at `homebrew-tap/releases/tag/v0.3.0`, cask bumped by
 `update-cask.yml` (`5c7bdca`, `github-actions[bot]`, 13:31:42Z).
@@ -166,12 +166,47 @@ published 13:25:43Z → cask bumped 13:31:42Z.
 > off the bytes. `rex version` prints both stamps on their own labelled lines too. This
 > row stays an inference because 0.3.0 predates the fix; the next one should not.
 
-**§A0 and §A were NOT run on this artefact, and no record says they were.** Stated rather
-than implied: an unrecorded gate is indistinguishable from a skipped one, which is the
-whole reason this section exists. The dmg has **6 downloads**, so it is in use. What is
-outstanding is the quarantined → Gatekeeper → launch pass on the SHIPPED bytes (§A) and
-the payload check (§A0) — neither is closed by the hash match above, which proves the
-bytes are the published ones and says nothing about whether they launch on a clean Mac.
+**§A0 ✅ RUN 31 Aug 2026 — on the SHIPPED bytes, eleven days after publishing.** Not the
+local build tree the §A0 block is written against: the published dmg was downloaded
+anonymously, hashed (`381952fa…`, matching the cask, the release digest and the sidecar),
+mounted, and checked in place. All green:
+
+- `rexenv` and `rex` both `x86_64 arm64`;
+- `Dist_Archive_Command` **×5 in the arm64 slice and ×5 in the x86_64 slice**, thinned
+  separately — the check exists because a half-populated fat binary is invisible to
+  `lipo -archs`;
+- `codesign --verify --deep --strict` → *valid on disk*, *satisfies its Designated
+  Requirement*.
+
+**§A's first half is answered too, and without launching anything**: `spctl -a -t exec`
+— Gatekeeper's own assessment — **rejects** the app (ad-hoc signature, `TeamIdentifier=not
+set`), which is the "quarantined → blocked" leg on the real shipped bytes.
+
+**§A's launch half is CLOSED BY RULING, not by running it** (31 Aug 2026). Three reasons,
+and the first alone is enough:
+
+1. **The artefact is superseded.** The cask points at 0.4.0, which passed §A and SMOKE-TEST
+   on its own bytes. Nobody reaches 0.3.0 now except by pinning an old URL deliberately.
+2. **Running it here would mean launching a downgrade against a live machine.** The only
+   Mac available carries 17 sites and a running stack; 0.3.0 would adopt those services and
+   could rewrite the shared nginx config with its older generator.
+3. **App data is schema v41 and 0.3.0 knows 38.** Its migration loop no-ops on a newer
+   database rather than refusing, so it would run on a store whose shape it does not know —
+   which is a way to learn something about downgrades, and not the thing §A is asking.
+
+**What that costs, stated rather than buried:** whether these exact bytes LAUNCH on a clean
+Mac is now permanently unknown, and the 6 downloads it had are unaccounted for. The reason
+that is acceptable is (1) — the gate's purpose is to stop a broken artefact reaching users,
+and this one has already been replaced by a gated one. **A superseded release's launch gate
+is worth closing with a reason; it is not worth a clean-VM booking.** For the next release
+the rule does not relax: §A runs BEFORE publishing, on the bytes being published.
+
+> **The dmg answers a question it could not answer in August, and the answer is the bug.**
+> `rex --version` off the mounted 0.3.0 volume prints `rex 0.3.0 · rexenv 0.4.0` — its own
+> version with NO commit, then the RUNNING app's. That is exactly the defect the row below
+> describes, now observed on the shipped artefact rather than inferred: a downloaded 0.3.0
+> cannot say what built it, and pointing its `rex` at a live machine reports whatever is
+> running there. Fixed 25 Aug, after this release; 0.4.0's row shows it working.
 
 ## A-prev) ✅ 0.2.0 — PUBLISHED (§A0 ✅, §A ✅ on the second run)
 
@@ -1038,8 +1073,8 @@ Result: ____ (date, reqwest version).
 
 | # | Check | Status |
 |---|---|---|
-| A0 | Artefact integrity, per slice — **0.4.0 `a7aecee7…`** | ✅ passed 27 Aug 2026 (by hand; CI does not run while the repo is private). 0.3.0 was NEVER run — see §A-prev |
-| A | Apple-Silicon ad-hoc launch (de-quarantine → launches) — **on the 0.4.0 dmg `a7aecee7…`** | ✅ **passed 27 Aug 2026**, with `docs/SMOKE-TEST.md` (row S) on the same bytes; publishing was the sign-off. **0.4.0 published 16:37Z; cask bumped 17:43Z and the anonymous download four-way-matched 30 Aug.** 0.3.0 shipped WITHOUT this gate |
+| A0 | Artefact integrity, per slice — **0.4.0 `a7aecee7…`** | ✅ passed 27 Aug 2026 (by hand; CI does not run while the repo is private). **0.3.0 `381952fa…` ✅ too, run 31 Aug on the SHIPPED bytes** — downloaded, mounted, checked in place |
+| A | Apple-Silicon ad-hoc launch (de-quarantine → launches) — **on the 0.4.0 dmg `a7aecee7…`** | ✅ **passed 27 Aug 2026**, with `docs/SMOKE-TEST.md` (row S) on the same bytes; publishing was the sign-off. **0.4.0 published 16:37Z; cask bumped 17:43Z and the anonymous download four-way-matched 30 Aug.** 0.3.0's launch half is CLOSED BY RULING (superseded artefact; §A-prev has the reasoning and what it costs), with Gatekeeper's own `spctl` rejection recorded on its shipped bytes |
 | S | `docs/SMOKE-TEST.md` end-to-end on a clean Mac from the built dmg — **the OTHER half of the gate, and it had no row here until 30 Aug 2026** | ✅ passed 27 Aug 2026 on 0.4.0 `a7aecee7…`. Re-run per release: it is the only place the packaged app proves its own flows |
 | B | Uninstall removes the root :443 daemon | 🚧 do when convenient (tears down your edge) |
 | C | B31 CSP packaged smoke test | ✅ done |
