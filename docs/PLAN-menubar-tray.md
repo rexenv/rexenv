@@ -67,6 +67,15 @@ and not a redesign. **Whichever one ships, the doc records which, and why** — 
 that lists two options and never says which one is in the binary is the staleness this
 project has already paid for twice.
 
+> **Measured 31 Aug 2026 — A1 SHIPS.** On a dev build of this branch, on the owner's
+> machine: Cmd+C and Cmd+V still work in the site Terminal tab and in Adminer with no
+> application menu present. So the Edit menu is not what the webview's clipboard depends
+> on, the cost this section feared is not real, and **A2 was not taken**. It stays
+> written down as the fallback if a future macOS changes that. The rest of the ladder
+> held too: the tray menu opens, **Open rexenv** brings the window to the FRONT (the
+> `activate_app` leg — an accessory app that merely `show`s a window comes up behind
+> whatever was in front), and closing the window leaves `rex status` answering.
+
 ## 3. What the tray must never do
 
 Three rules inherited from the code it will display:
@@ -95,7 +104,7 @@ Three rules inherited from the code it will display:
 | A6 | Real quit = tray **Quit rexenv** only → keeps `confirm_quit_or_prompt` (tunnels DO die there) | quit with a share up still pauses once and names the count |
 | A7 | First run must not be invisible: if onboarding is incomplete, show the window on launch. **Closes with C1, not before** — today it is true only because the window config carries no `visible: false`, which is exactly what C1 changes | fresh profile launch shows the window, not a silent tray, WITH C1 in |
 | A8 | Activate before any native prompt (`activate(ignoringOtherApps:)`) — resolver, CA trust, quit confirm | privileged prompt appears in front, from a hidden-window app |
-| A9 | **Measure the Accessory cost**: Cmd+C / Cmd+V in the Terminal tab and in Adminer | works → A1 stands. Broken → switch to A2 (§2) and say so here |
+| A9 | **Measure the Accessory cost**: Cmd+C / Cmd+V in the Terminal tab and in Adminer | ✅ **measured 31 Aug 2026 — the clipboard survives, so A1 stands and A2 is not needed** |
 
 **Two things the build settled, recorded here because the plan had said otherwise:**
 

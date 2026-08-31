@@ -2542,12 +2542,19 @@ window stops being a quit.
   `activateIgnoringOtherApps:` — the app's floor is macOS 15, so the newer call exists
   everywhere rexenv runs and the old one warns. **`osascript` prompts are deliberately
   NOT in the set**: SecurityAgent is a separate process and fronts itself.
-- [ ] **A9** **Measure what Accessory costs**: Cmd+C / Cmd+V in the site Terminal tab and
-  in Adminer. Accessory removes the app menu, and on macOS the webview's clipboard
-  shortcuts come from the Edit menu — the same menu the About item was built by *editing*
-  rather than replacing, exactly so those survived. Works → ship always-Accessory.
-  Broken → switch to Accessory-while-hidden / Regular-while-visible and record which one
-  is in the binary, in the plan.
+- [x] **A9** **Measured, and Accessory is CHEAPER than the plan feared** ✓ 31 Aug 2026,
+  by the owner on his own machine, against a dev build of this branch. All four legs
+  pass: the icon opens the menu; **Open rexenv** brings the window to the FRONT (the
+  `activate_app` leg — an accessory app that only `show`s comes up behind the browser);
+  closing the window leaves `rex status` answering, which is the whole point of the
+  phase; and **Cmd+C / Cmd+V still work in the site Terminal tab and in Adminer**.
+  So the webview keeps its clipboard without an application menu, the fallback
+  (Accessory-while-hidden / Regular-while-visible) is NOT needed, and **pure Accessory
+  is what ships**. Recorded rather than assumed: the plan had written that fallback
+  precisely because the opposite was plausible.
+  - [ ] The DARK menu bar is still unseen — the last unverified pixel of A2. A template
+    icon is tinted by macOS, so the expected answer is "it inverts", but "expected" is
+    not "seen".
 
 ### Phase B — the quick menu
 
