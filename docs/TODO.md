@@ -2497,11 +2497,23 @@ window stops being a quit.
 
 ### Phase A — the process survives the window (closes the goal on its own)
 
-- [ ] **A1** `Cargo.toml`: `tauri` features `tray-icon` + `image-png`.
-- [ ] **A2** Menu-bar template icon `icons/menubar.png` (+`@2x`), monochrome 22pt,
-  `set_icon_as_template(true)` — verified in BOTH a light and a dark menu bar.
-- [ ] **A3** Build the tray in `lib.rs` setup: **Open rexenv** + **Quit rexenv**;
-  left-click shows the window.
+- [x] **A1** `Cargo.toml`: `tauri` features `tray-icon` + `image-png`. ✓ 31 Aug 2026 —
+  `image-png` is what `Image::from_bytes` needs to decode the embedded template icon.
+- [x] **A2** Menu-bar template icon ✓ 31 Aug 2026 — `icons/menubar.png`, **derived from
+  `icons/icon.png`'s alpha** by `scripts/make-menubar-icon.py` (stdlib only: this machine
+  has no PIL, no ImageMagick, no rsvg, and a generator needing a toolchain nobody has is
+  one that gets replaced by a hand-drawn PNG). ONE file at 2x, not a `@2x` pair, because
+  `tray-icon` normalises any icon to an 18pt height before NSImage sees it — so pixels are
+  only crispness and the canvas is only the margin (20pt canvas, 18pt mark → drawn ~16pt,
+  Apple's own status-item size). *Light/dark bar still to be seen on a real machine —
+  rides A9.*
+- [x] **A3** Tray installed in `lib.rs` setup ✓ 31 Aug 2026 — **Open rexenv** +
+  **Quit rexenv**, `icon_as_template(true)` so macOS tints it for either bar. **Clicking
+  the icon opens the MENU, not the window** — the plan said window, but that is not the
+  shape asked for (Herd's icon opens a quick menu) and it would leave Phase B's menu
+  behind a right-click. Quit goes through the SAME `confirm_quit_or_prompt` gate as Cmd+Q.
+  A failed install is logged, never fatal: an app with no status item still works, and
+  refusing to launch over an icon would be worse.
 - [ ] **A4** `ActivationPolicy::Accessory` — no dock icon, no app-switcher entry.
 - [ ] **A5** `CloseRequested` → `hide()` + `prevent_close()`, and **no tunnel prompt on
   close** (nothing dies there any more). Done when `rex status` and `rex mcp` still work

@@ -149,6 +149,18 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             install_about_menu_item(app.handle())?;
 
+            // The menu-bar status item. rexenv is a menu-bar app because the
+            // CLI and the MCP server are remote controls for a RUNNING app:
+            // both sockets are opened by THIS process a few lines below and
+            // both die with it, so a quit takes the whole control plane with
+            // it while the services it manages carry on. See
+            // `docs/PLAN-menubar-tray.md`. Failure to build it is logged, not
+            // fatal — an app with no status item is still a working app, and
+            // refusing to launch over a missing icon would be worse.
+            if let Err(e) = install_tray(app.handle()) {
+                log::warn!("tray: could not install the menu-bar item: {e}");
+            }
+
             // JS dialog panels (alert/confirm/prompt): wry implements none on
             // macOS, so confirm() silently returned false in-app — Adminer's
             // confirm-gated delete/drop buttons no-oped. Installed on the raw
@@ -1153,6 +1165,69 @@ fn log_sinks(log_dir: Option<std::path::PathBuf>, debug: bool) -> Vec<LogSink> {
         sinks.push(LogSink::Stdout);
     }
     sinks
+}
+
+/// Menu ids for the tray. Strings because that is what `MenuItem::with_id`
+/// carries back in the event; constants because a typo in either half is a
+/// menu item that silently does nothing.
+const TRAY_OPEN: &str = "tray://open";
+const TRAY_QUIT: &str = "tray://quit";
+
+/// The menu-bar template icon, embedded rather than read from disk — a bundled
+/// app has no `icons/` directory beside the binary. Derived from the app icon
+/// by `scripts/make-menubar-icon.py`, never hand-drawn: a second mark drifts
+/// from the first the day the brand changes.
+const MENUBAR_ICON: &[u8] = include_bytes!("../icons/menubar.png");
+
+/// Install the menu-bar status item.
+///
+/// Clicking it opens the menu (Herd's shape, and the one this feature was asked
+/// for) — the window is reached through the menu's "Open rexenv", not by
+/// clicking the icon. `icon_as_template` is what lets macOS tint the glyph for
+/// a light or a dark menu bar; without it the icon is drawn as-is and is
+/// invisible against one of the two.
+fn install_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
+    use tauri::image::Image;
+    use tauri::menu::{Menu, MenuItem};
+    use tauri::tray::TrayIconBuilder;
+
+    let open = MenuItem::with_id(app, TRAY_OPEN, "Open rexenv", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, TRAY_QUIT, "Quit rexenv", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&open, &quit])?;
+
+    TrayIconBuilder::with_id("main")
+        .icon(Image::from_bytes(MENUBAR_ICON)?)
+        .icon_as_template(true)
+        .tooltip("rexenv")
+        .menu(&menu)
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            TRAY_OPEN => show_main_window(app),
+            TRAY_QUIT => {
+                // The SAME gate Cmd+Q and the window close go through: quitting
+                // stops live public shares, so it pauses once and names the
+                // count. When a dialog is needed this returns false and the
+                // dialog's own thread calls `exit` after the answer.
+                if commands::tunnels::confirm_quit_or_prompt(app) {
+                    app.exit(0);
+                }
+            }
+            other => log::warn!("tray: unknown menu id {other}"),
+        })
+        .build(app)?;
+    Ok(())
+}
+
+/// Bring the main window back: show it, un-minimise it, focus it. All three,
+/// because a window can be hidden AND minimised, and a shown-but-unfocused
+/// window behind a browser reads as a menu item that did nothing.
+fn show_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    let Some(window) = app.get_webview_window("main") else {
+        log::warn!("tray: no main window to show");
+        return;
+    };
+    let _ = window.show();
+    let _ = window.unminimize();
+    let _ = window.set_focus();
 }
 
 /// Event the frontend listens for to open Settings → About.

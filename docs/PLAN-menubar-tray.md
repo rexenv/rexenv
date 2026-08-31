@@ -88,14 +88,30 @@ Three rules inherited from the code it will display:
 | # | Task | Done when |
 |---|---|---|
 | A1 | `Cargo.toml`: `tauri` features `tray-icon` + `image-png` | `cargo build` green, no other change |
-| A2 | Menu-bar template icon: `icons/menubar.png` + `@2x` (monochrome, 22pt), `set_icon_as_template(true)` | icon correct in BOTH light and dark menu bars, on a real machine |
-| A3 | Build the tray in `lib.rs` setup: icon + a menu with **Open rexenv** and **Quit rexenv**; left-click shows the window | tray visible; both items work |
+| A2 | Menu-bar template icon, **derived from the app icon** by `scripts/make-menubar-icon.py` (alpha only, `icon_as_template(true)`) | icon correct in BOTH light and dark menu bars, on a real machine |
+| A3 | Build the tray in `lib.rs` setup: icon + a menu with **Open rexenv** and **Quit rexenv** | tray visible; both items work |
 | A4 | `ActivationPolicy::Accessory` at startup (A1 of §2) | no dock icon, no app-switcher entry |
 | A5 | `CloseRequested` → `window.hide()` + `prevent_close()`; **no tunnel prompt on close** (nothing dies) | closing the window leaves `rex status` and `rex mcp` working — the whole point |
 | A6 | Real quit = tray **Quit rexenv** only → keeps `confirm_quit_or_prompt` (tunnels DO die there) | quit with a share up still pauses once and names the count |
 | A7 | First run must not be invisible: if onboarding is incomplete, show the window on launch | fresh profile launch shows the window, not a silent tray |
 | A8 | Activate before any native prompt (`activate(ignoringOtherApps:)`) — resolver, CA trust, quit confirm | privileged prompt appears in front, from a hidden-window app |
 | A9 | **Measure the Accessory cost**: Cmd+C / Cmd+V in the Terminal tab and in Adminer | works → A1 stands. Broken → switch to A2 (§2) and say so here |
+
+**Two things the build settled, recorded here because the plan had said otherwise:**
+
+- **Clicking the icon opens the MENU, not the window.** The plan said left-click shows
+  the window; that is not the shape this feature was asked for (Herd's icon opens a
+  quick menu) and it would leave Phase B's menu reachable only by right-click. The
+  window is reached through the menu's **Open rexenv**.
+- **One icon file, at 2x, not a `@2x` pair.** `tray-icon` normalises whatever it is
+  given to an 18pt height (`tray-icon-0.24.1` macos/mod.rs: `let icon_height: f64 =
+  18.0`) before handing it to `NSImage`, so the pixel size is only about crispness and
+  the canvas only decides the margin — a 20pt canvas holding an 18pt mark draws at
+  ~16pt, the size Apple's own status items use. And the icon is **derived from
+  `icons/icon.png`'s alpha**, by a stdlib-only generator, rather than hand-drawn: a
+  second mark drifts from the first the day the brand changes, and a generator needing
+  a toolchain this machine does not have (no PIL, no ImageMagick, no rsvg) is a
+  generator that gets replaced by a hand-drawn PNG the first time someone runs it.
 
 **Phase A verdict:** window closed, dock empty, tray present, `rex status` answers,
 `rex mcp` pipes.
