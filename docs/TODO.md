@@ -2559,8 +2559,13 @@ window stops being a quit.
 
 ### Phase B — the quick menu
 
-- [ ] **B1** `core/tray.rs`: `TrayModel { services, sites, mcp_on } -> MenuSpec`, pure,
-  no Tauri types — the rules are testable and rendering is not where rules live.
+- [x] **B1** `core/tray.rs`: `TrayModel -> MenuSpec`, pure, no Tauri types ✓ 31 Aug 2026,
+  ledger #437 — 11 L0 tests over the state matrix, **plant-proven three ways in one run**
+  (drop the empty-domain rejection, the site cap, or the stale suffix and exactly the
+  three tests claiming them fail). The model carries the footer's `summary`/`running`/
+  `total` rather than deriving them — see B2. Site domains ride IN the action id, not an
+  index: a list rebuilt every few seconds means an index opens whatever site slid into
+  position 3 between the render and the click. Rendering the spec is B2–B7.
 - [ ] **B2** Status line from the **ServiceManager snapshot**, never a port-listen —
   a tray that probes ports is a second answer to "is it running" beside the UI's.
 - [ ] **B3** Start all / Stop all through the same commands the UI calls.

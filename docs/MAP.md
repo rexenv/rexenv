@@ -53,7 +53,7 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
 | Setup / teardown (system changes) | `core/setup.rs` | `commands/system.rs` | PrivilegeManager, CertTrustManager, DnsManager | `system_setup`, `system_teardown` |
 | rex CLI (remote control, never a second brain) | `cli/src/main.rs` (own crate) + `cli_server.rs` (app side), `core/cli.rs` (PATH install) | dispatches to the SAME commands::* fns | Paths | #54–58; `cli_socket_check`; surface: `CLI-ROADMAP.md` |
 | App state (SQLite v1–v41, store) | `state/db.rs` (migrations), `state/store.rs`, `state/models.rs`, `state/app.rs` (AppState, locks) | — | — | #167–174 |
-| Menu-bar app (tray, no dock icon) | — | `lib.rs` (`install_tray`, `TRAY_OPEN`/`TRAY_QUIT`, `show_main_window`, the `Accessory` policy, the `CloseRequested` hide), `platform/macos/activation.rs` (`activate_app`), `scripts/make-menubar-icon.py` → `icons/menubar.png` | — | #436; plan: `PLAN-menubar-tray.md`; ARCHITECTURE "the APP outlives the window" |
+| Menu-bar app (tray, no dock icon) | `core/tray.rs` (the menu as data: `TrayModel` → `MenuSpec`, `TrayAction` ids) | `lib.rs` (`install_tray`, `show_main_window`, the `Accessory` policy, the `CloseRequested` hide), `platform/macos/activation.rs` (`activate_app`), `scripts/make-menubar-icon.py` → `icons/menubar.png` | — | #436, #437; plan: `PLAN-menubar-tray.md`; ARCHITECTURE "the APP outlives the window" |
 | App entry / wiring | `lib.rs` (builder, launch adopt, watchdog, exit hooks, `StartupNotices`), `main.rs` (`--dns-agent` and `--tunnel-guard` modes), `error.rs` | — | — | #59–61, #431 |
 
 ## Frontend

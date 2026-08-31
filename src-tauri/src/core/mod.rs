@@ -66,6 +66,7 @@ pub mod stack_guard;
 pub mod terminal;
 pub mod tld;
 pub mod valet;
+pub mod tray;
 pub mod tunnels;
 pub mod updates;
 pub mod wp_dns;
