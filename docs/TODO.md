@@ -2532,7 +2532,11 @@ window stops being a quit.
 - [x] **A6** Quit goes through ONE gate ✓ 31 Aug 2026, ledger #436 — the tray's Quit is a
   bare `app.exit(0)`, NOT its own `confirm_quit_or_prompt` call: `exit` raises
   `ExitRequested`, where the gate already lives. A second copy of that rule is a rule
-  that can differ from itself (prompt twice, or not at all).
+  that can differ from itself (prompt twice, or not at all). **Run live 1 Sep 2026 with a
+  real share up**: ONE dialog — "Quitting stops 1 public share — its link goes dead
+  immediately" — count and consequence named. Cancel left app and share alive (URL 200);
+  confirm quit the app and took the share with it (URL 530, cloudflared gone) while
+  mysqld/php-fpm/nginx kept serving `https://mstest.rex` at 200.
 - [x] **A7** First run must not be invisible ✓ 31 Aug 2026, WITH C1 — as promised. It
   was held open precisely because it was true for a reason C1 deletes (`visible: false`
   is exactly what C1 added), and it is now true for a reason of its own:
