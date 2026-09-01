@@ -2583,16 +2583,21 @@ window stops being a quit.
 - [x] **B3** Start all / Stop all through the same commands the UI calls ✓ 31 Aug 2026 —
   spawned off the menu thread, because `start_all` can download binaries and `stop_all`
   can sit on a privileged prompt, and a menu click that blocks is a beachball on the
-  menu bar itself.
+  menu bar itself. **Walked live 1 Sep 2026**: Start all greyed while everything ran,
+  live once Mailpit was down.
 - [x] **B4** Sites › recent N → `open_external` ✓ 31 Aug 2026 — the choke point where
   the browser preference is applied, not a raw shell open. Capped at 8 with the
   remainder ANNOUNCED; the domain rides in the action id rather than an index (#437).
+  **Walked live 1 Sep 2026**: 8 of 21 sites listed, "…and 13 more" under them, and a
+  site opened in the preferred browser rather than the OS default.
 - [x] **B5** All sites… / Services / Databases / Mail / Tunnels → show window + route ✓
   31 Aug 2026 — `tray://route` carrying the path, `App.tsx`'s `TrayRouteWatch` navigates;
   the window is shown and fronted FIRST, because the event needs a webview to arrive in.
   **"New site…" was dropped on purpose**: creating a site is a form with choices in it,
   not a menu item — the tray opens the Sites screen where that form lives, which is one
-  click more and zero new surface to keep in step with the real one.
+  click more and zero new surface to keep in step with the real one. **Walked live
+  1 Sep 2026**: all five routes land on their screen, and Open rexenv brings the window
+  to the front.
 - [x] **B6** MCP on/off checkmark bound to `mcp_enabled` ✓ 31 Aug 2026 — through
   `mcp_set_enabled`, never a raw settings write: turning it on BINDS a socket and off
   UNBINDS one, so a tray that only flipped the row would leave the checkmark reading
@@ -2614,6 +2619,8 @@ window stops being a quit.
   - **The rebuild is conditional.** It happens only when the spec would actually read
     differently, because macOS closes an open menu when its items are replaced — an
     unconditional tick would slam the menu shut under the cursor every five seconds.
+    **Held open past 15 seconds live 1 Sep 2026 — it stayed open**, which is the only way
+    that claim can be settled.
   - **The tick is the ONLY trigger**; there is no per-state-change hook. Hooking every
     path that can change a service state means every one of them must remember, which is
     the whole-surface-claim-that-checks-one-place failure this ledger records five times.
