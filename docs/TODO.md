@@ -2526,7 +2526,9 @@ window stops being a quit.
   absence of a dock tile, and an absence is what every failure also looks like.
 - [x] **A5** `CloseRequested` → `prevent_close()` + `hide()` ✓ 31 Aug 2026, ledger #436 —
   and the close path confirms NOTHING, because there is nothing left to confirm.
-  *Verified programmatically only so far; the human-clicks-the-red-button leg is A9/D6.*
+  **The red button itself was run 1 Sep 2026**: with the window closed, `rex status`
+  answered and the MCP endpoint completed a real `initialize` handshake — both control
+  planes alive with no window, which is the sentence this feature exists to make true.
 - [x] **A6** Quit goes through ONE gate ✓ 31 Aug 2026, ledger #436 — the tray's Quit is a
   bare `app.exit(0)`, NOT its own `confirm_quit_or_prompt` call: `exit` raises
   `ExitRequested`, where the gate already lives. A second copy of that rule is a rule
