@@ -633,6 +633,11 @@ hand can prove a spec entry became the item it describes.*
 - [ ] `rex status` with the app closed prints the reason **and** `open -a rexenv` — and
   does NOT start the app.
 - [ ] `rex open` with the app running brings the window to the front.
+- [ ] **Exactly one `rexenv.app` on the machine before testing any of this.** With a
+  built bundle still in `target/release/bundle/` and the same build in `/Applications`,
+  `open -a rexenv` started the one under `target/` (1 Sep 2026) — LaunchServices resolves
+  by bundle id and nothing warns. A leg run against the copy you did not mean proves
+  nothing, the same trap as relaunching an unguarded build above.
 - [ ] **Launch rexenv a second time while it is running**: the second copy exits with
   "rexenv is already running", the first one's window comes forward, and there is still
   exactly ONE rexenv process. Then **SIGKILL** the app (`kill -9`) and launch it again —

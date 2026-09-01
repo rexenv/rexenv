@@ -40,7 +40,16 @@ control for a RUNNING app, so spawning one itself would start a second process b
 the user's back — adopting services, opening the database as a second writer, taking
 over both sockets — as a side effect of `rex status` inside a shell script. The line
 says "the installed app" because `open -a` resolves through LaunchServices, which does
-not know about a dev build run out of `target/`. Guarded by
+not know about a dev build run out of `target/`.
+
+**`open -a rexenv` is ambiguous whenever two copies of the bundle exist**, and this bit
+on 1 Sep 2026: with a freshly built `target/release/bundle/macos/rexenv.app` on disk and
+the same build installed in `/Applications`, `open -a rexenv` launched the one under
+`target/` — LaunchServices resolves by bundle id, and the copy it knows most recently can
+win. Nothing warns; the app simply comes up, and whichever copy won is the one that
+owns the stack. The hint is still right for users (one copy) and still the honest answer;
+the fix on a DEVELOPER's machine is to delete the built bundle after installing it, and
+to launch a specific copy with `open /Applications/rexenv.app` when it matters. Guarded by
 `the_cli_names_the_start_command_and_never_runs_it` (text-level, and it says so).
 
 ## Sites

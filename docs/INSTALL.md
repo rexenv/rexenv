@@ -84,6 +84,13 @@ with no window — except when first-run setup isn't finished, where it shows th
 because there is nothing useful it could do quietly on a machine that can't resolve
 `.rex` yet.
 
+> **Keep exactly one copy of rexenv.app.** macOS finds an app by its bundle id, not by
+> where it sits, so a second copy — an old one in Downloads, a build left in a project
+> folder — means `open -a rexenv`, Spotlight and the login item can all start the copy
+> you did not mean. Both copies share the same data folder and the same services, so the
+> symptom is not two apps: it is one app that is the wrong version. Drag the old copy to
+> the Trash after updating.
+
 ## First-run setup prompts (expected)
 
 The first time you use rexenv it sets up local networking + HTTPS, so macOS will
