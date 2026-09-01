@@ -240,12 +240,16 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   quit used to end every agent session and every CLI command while the services below
   carried on. A quit is now reached only through the tray's **Quit rexenv**, which is a
   bare `app.exit(0)` — the share confirm lives on `RunEvent::ExitRequested`, the one
-  gate every quit raises. **No dock icon** (`ActivationPolicy::Accessory`) — the
-  status item is the whole presence when no window is up. The cost is real and
-  deliberate: an accessory app has no application menu (so the About item and the Edit
-  menu's Cmd-C/V/Z are not shown) and nothing activates it on the user's behalf, so
-  every path that draws our OWN UI — the tray's Open, the quit confirm — calls
-  `platform::activate_app()` first. Prompts drawn by `osascript` are excluded on
+  gate every quit raises. **The dock follows the window** (`dock_follows_window`):
+  `ActivationPolicy::Regular` while a window is up, `Accessory` the moment it closes, so
+  the status item is the whole presence when no window is — and a visible window still
+  has a tile to Cmd-Tab to. Ordering is load-bearing on both edges (Regular → Accessory
+  hides windows): hide first then switch, switch first then show. While Accessory there is no application
+  menu (no About item, no Edit menu) and nothing activates the app on the user's behalf —
+  which is why every path that draws our OWN UI (the tray's Open, the quit confirm) calls
+  `platform::activate_app()` first, and why A9's measurement still matters: the webview
+  keeps Cmd-C/V without that menu, so a window shown from a hidden app is usable before
+  the Regular switch has settled. Prompts drawn by `osascript` are excluded on
   purpose: SecurityAgent is a separate process and fronts itself.
   The MENU itself is data: `core/tray.rs` is a pure `TrayModel -> MenuSpec` with no
   Tauri types, and `lib.rs` only renders it — status line, Start/Stop all, a capped

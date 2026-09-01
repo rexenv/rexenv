@@ -53,7 +53,8 @@ a status item and nothing else. This is what Herd does and what was asked for.
 
 **Decision ladder, in order — do not skip the measurement:**
 
-- **A1 (build this):** always Accessory. Tray icon only, no dock icon, ever.
+- **A1 (built first, then narrowed — see the two notes below):** always Accessory. Tray
+  icon only, no dock icon, ever.
 - **Then measure** (Phase A verification, below): open the window, focus the site
   Terminal tab and Adminer, and try Cmd+C / Cmd+V. If the clipboard still works,
   A1 ships.
@@ -75,6 +76,20 @@ project has already paid for twice.
 > held too: the tray menu opens, **Open rexenv** brings the window to the FRONT (the
 > `activate_app` leg — an accessory app that merely `show`s a window comes up behind
 > whatever was in front), and closing the window leaves `rex status` answering.
+
+> **A2 SHIPS AFTER ALL — 1 Sep 2026, and for a reason this section did not anticipate.**
+> The ladder above only ever asked whether Accessory costs the clipboard. It does not.
+> What it costs is the DOCK: with the window open and no tile, the window cannot be
+> Cmd-Tabbed to and reads as a window belonging to no app — the owner hit it the first
+> day of use. So the policy now follows the window (`dock_follows_window`): Regular while
+> a window is up, Accessory the moment it closes. "No dock icon" still holds in the state
+> the ruling is about — idle, menu-bar-resident — and A1's measurement stays true and
+> stays here, because it is why the switch is a two-line function instead of the whole
+> design. **Ordering is load-bearing on both edges**: show the window BEFORE the switch
+> to Accessory and the switch takes it away (measured three times, 31 Aug), so hiding
+> sets the policy after the hide and showing sets it before the show. Verified live on
+> one process (pid 5602): `lsappinfo` read `Foreground` with the window open and
+> `UIElement` after closing it, with the CLI socket answering throughout.
 
 ## 3. What the tray must never do
 

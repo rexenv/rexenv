@@ -49,6 +49,12 @@ pub fn run() {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 let _ = window.hide();
+                // The tile goes with the window: nothing is on screen any more,
+                // so nothing in the dock should suggest there is. AFTER the
+                // hide, never before — Regular → Accessory hides windows, and
+                // doing it first would race the hide it is meant to follow.
+                #[cfg(target_os = "macos")]
+                dock_follows_window(window.app_handle(), false);
             }
         })
         // Database Browser: `rexdb://localhost/…` proxies the embedded Adminer
@@ -104,25 +110,25 @@ pub fn run() {
         .setup(|app| {
             let platform = platform::current();
 
-            // NO DOCK ICON: rexenv is an ACCESSORY app — the menu-bar item is
-            // its whole presence when no window is up. It is a background
-            // service with a control panel, not a document app, and a dock
-            // tile for something that is running all day is a tile nobody
-            // clicks. What this costs is real and is written down where it can
-            // be measured (`docs/PLAN-menubar-tray.md` §2): an accessory app
-            // has no application menu, so the app menu's About item and the
-            // Edit menu's Cmd-C/V/Z are not shown, and nothing activates the
-            // app on the user's behalf — hence `platform::activate_app` on
-            // every path that draws our own UI.
+            // THE DOCK FOLLOWS THE WINDOW. Start as an accessory app — no dock
+            // tile, no app-switcher entry — because with no window up the
+            // menu-bar item is rexenv's whole presence, and a tile for
+            // something that runs all day is a tile nobody clicks. While a
+            // window IS up the app is Regular and takes its tile back: a
+            // visible window with nothing in the dock cannot be Cmd-Tabbed to,
+            // reads as a window belonging to nobody, and leaves the developer
+            // hunting the menu bar for a window already on screen.
+            // `dock_follows_window` is the ONE place that switch happens; see
+            // `docs/PLAN-menubar-tray.md` §2.
             //
-            // **FIRST, before any window is shown**, and that ordering is
-            // measured rather than reasoned (31 Aug 2026, three launches of the
-            // real app): with this call left where it used to sit — after the
-            // window is shown — the launch produced a menu-bar icon and NO
-            // window, every time. Switching Regular → Accessory hides the app's
-            // windows, so a window shown before the switch is a window the
-            // switch takes away. Moving the call back reproduced the empty
-            // launch; moving it here brought the window back.
+            // **The policy is set BEFORE any window is shown**, and that
+            // ordering is measured rather than reasoned (31 Aug 2026, three
+            // launches of the real app): with this call left where it used to
+            // sit — after the window is shown — the launch produced a menu-bar
+            // icon and NO window, every time. Switching Regular → Accessory
+            // hides the app's windows, so a window shown before the switch is a
+            // window the switch takes away. That is also why hiding sets the
+            // policy AFTER the hide, and showing sets it BEFORE the show.
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
@@ -1610,6 +1616,34 @@ fn on_tray_click(app: &tauri::AppHandle, id: &str) {
 /// payload is the route path.
 pub const TRAY_ROUTE_EVENT: &str = "tray://route";
 
+/// Dock tile on while a window is up, off while it is not.
+///
+/// Two different apps live in one process: with a window on screen rexenv is an
+/// ordinary Mac app (dock tile, Cmd-Tab, an application menu), and with the
+/// window closed it is a background service whose whole presence is the
+/// menu-bar item. The activation policy is what says which, and it is switched
+/// on exactly two edges — showing the window and closing it.
+///
+/// The plan wrote this down as the FALLBACK if an accessory app cost the
+/// webview its clipboard. It did not (A9 measured that), so pure Accessory
+/// shipped first; this arrived for a different reason — a visible window with
+/// nothing in the dock cannot be Cmd-Tabbed to and reads as a window belonging
+/// to no app.
+///
+/// A failure is logged, never fatal: the wrong dock state is a cosmetic fault,
+/// and refusing to show a window over it would not be.
+#[cfg(target_os = "macos")]
+fn dock_follows_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>, window_up: bool) {
+    let policy = if window_up {
+        tauri::ActivationPolicy::Regular
+    } else {
+        tauri::ActivationPolicy::Accessory
+    };
+    if let Err(e) = app.set_activation_policy(policy) {
+        log::warn!("tray: could not set the activation policy: {e}");
+    }
+}
+
 /// Bring the main window back: activate the app, then show, un-minimise and
 /// focus. All four, because a window can be hidden AND minimised, and an
 /// accessory app that merely shows one has not come to the front.
@@ -1618,6 +1652,12 @@ pub(crate) fn show_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
         log::warn!("tray: no main window to show");
         return;
     };
+    // Take the dock tile back BEFORE the window appears: a window shown while
+    // the app is still Accessory would be a window the Regular switch then
+    // hides (measured — see the policy call in `setup`), and a visible window
+    // with no tile cannot be Cmd-Tabbed to.
+    #[cfg(target_os = "macos")]
+    dock_follows_window(app, true);
     // Activate FIRST: an accessory app is not made active by showing a window,
     // so without this the window comes up behind whatever the developer was
     // reading — which reads as a menu item that did nothing.
