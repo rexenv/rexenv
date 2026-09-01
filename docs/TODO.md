@@ -2642,6 +2642,24 @@ window stops being a quit.
     Five seconds of staleness in a menu nobody is looking at costs nothing; a missed hook
     costs a menu that is wrong for as long as it is open.
 
+### Found by the login leg — open
+
+- [ ] **At login the app WINS the DNS port and the resolver ends up in-process**, so DNS
+  dies with the app — the exact regression the LaunchAgent exists to prevent. Measured
+  1 Sep 2026, first real logout/login: the agent job was `state = running` (pid 9744)
+  while UDP 15353 was held by the APP (pid 9735), and the app's own log says it:
+  `dns: resolver agent unavailable — running IN-PROCESS (sites will stop resolving
+  shortly after the app quits)`. **Phase C is what made this reachable**: the app used to
+  be launched by hand, long after login, when the agent already held the port and
+  `answers_as_ours` was true, so the fallback never fired. Now both start together and
+  `lib.rs` waits only 10 × 200 ms for the agent — less than a cold agent needs at login,
+  since it is the whole app binary booting into `--dns-agent`. It never repairs itself:
+  the agent retries every 10s and can never win while the app holds the port. Fix is a
+  HANDOFF, not a longer guess at the timeout — while running in-process, periodically
+  drop the listener, give the agent a moment, and probe: if it answers, stay off; if not,
+  rebind. A bigger wait at startup only moves the race and costs every launch.
+  *Workaround today: quit rexenv, wait ~15s for the agent to take the port, reopen.*
+
 ### Phase C ✅ — always-on
 
 - [x] **C1** Start hidden in the menu bar ✓ 31 Aug 2026, ledger #439 — the window is
