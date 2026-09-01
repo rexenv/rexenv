@@ -2652,7 +2652,12 @@ window stops being a quit.
   **The delivery was the interesting half**: an existing autostart user's plist names an
   older binary and has no `--hidden`, so the plist is now rewritten on every launch while
   autostart is on — the same treatment the DNS agent's plist already gets. Nothing else
-  would ever have repaired it.
+  would ever have repaired it. **Measured 1 Sep 2026**: the launch rewrote the plist, which
+  now names `/Applications/rexenv.app/…` and carries `--hidden`. **With a limit worth
+  knowing**: `enable()` uses `launchctl load -w`, which does not update an already-loaded
+  job, so the RUNNING session's registration still shows no `--hidden` — the repair is to
+  the file, and launchd re-reads it when the next login session builds, which is the only
+  moment the flag matters.
   **Two ordering bugs were found by RUNNING it, both shipping a tray icon and no window**
   (ledger #439): `Accessory` must be set before the window is shown (Regular → Accessory
   hides windows — moving the call back reproduced the empty launch), and the show cannot
