@@ -2576,7 +2576,10 @@ window stops being a quit.
   summaries of the same services, a centimetre apart in one app, would be free to
   disagree. `service_infos_fresh` is new: it returns the snapshot AND whether the lock
   was busy, which the UI does not need (it re-polls a second later) and a menu does (it
-  can sit open, unchanged, for minutes).
+  can sit open, unchanged, for minutes). **Checked live 1 Sep 2026 against a real state
+  change**: Mailpit stopped from the UI, and within the tick the menu read
+  `Partial · 11 of 12 running` — the exact line `summarize` produces. Matching at rest
+  proves little; matching after a change is where a second counter would have drifted.
 - [x] **B3** Start all / Stop all through the same commands the UI calls ✓ 31 Aug 2026 —
   spawned off the menu thread, because `start_all` can download binaries and `stop_all`
   can sit on a privileged prompt, and a menu click that blocks is a beachball on the
