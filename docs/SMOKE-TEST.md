@@ -628,7 +628,13 @@ hand can prove a spec entry became the item it describes.*
   `~/Library/LaunchAgents/dev.rexenv.rexenv.plist` must name the app you are testing and
   contain `--hidden` — but do NOT check `launchctl print`: an already-loaded job keeps
   the arguments it was loaded with, so the running session shows the old ones until the
-  next login. The file is the thing that carries into the next login. Enable it, log out and in
+  next login. The file is the thing that carries into the next login.
+  After logging back in, run **`scripts/login-leg-check.sh`** BEFORE opening the window:
+  it collects the whole leg in one output — the process and its `--hidden`, the accessory
+  policy (no dock tile), the app's own "launched at login — staying in the menu bar" log
+  line, both sockets answering with no window, and the plist that produced it. Written
+  because this leg is checked once per release, by a human who has just logged in and has
+  no interest in remembering five commands. Enable it, log out and in
   once BEFORE this build too if you can: the plist is rewritten on every launch, so an
   old one (no `--hidden`) must repair itself rather than keep opening a window forever.
 - [ ] On a machine where first-run setup is NOT finished (no `/etc/resolver/rex`, or the
