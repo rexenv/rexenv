@@ -2524,6 +2524,17 @@ window stops being a quit.
   31 Aug 2026, mechanically rather than by eye**: `lsappinfo` reports the running app as
   `type="UIElement"`, which IS the accessory policy — a screenshot could only show the
   absence of a dock tile, and an absence is what every failure also looks like.
+  **NARROWED 1 Sep 2026 — the dock now follows the window** (`dock_follows_window`,
+  the plan's A2): Regular while a window is up, Accessory the moment it closes. Reported
+  on the first day of use, and for a cost the ruling never priced — a window with no tile
+  cannot be Cmd-Tabbed to and reads as belonging to no app. Measured on ONE process
+  (pid 5602): `Foreground` with the window open, `UIElement` after closing it,
+  `Foreground` again after the tray's Open, CLI socket answering throughout. Ordering is
+  load-bearing on both edges (Regular → Accessory hides windows): hide then switch, switch
+  then show. **The dock ICON itself was checked on a real bundle** — `pnpm tauri build`,
+  then launched: the crowned R appears in the dock with its running dot. A dev run shows
+  a generic icon because `target/debug/rexenv` is a bare binary with no
+  `Contents/Resources/icon.icns`; that is the harness, not the app.
 - [x] **A5** `CloseRequested` → `prevent_close()` + `hide()` ✓ 31 Aug 2026, ledger #436 —
   and the close path confirms NOTHING, because there is nothing left to confirm.
   **The red button itself was run 1 Sep 2026**: with the window closed, `rex status`
