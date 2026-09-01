@@ -636,10 +636,11 @@ hand can prove a spec entry became the item it describes.*
 - [ ] **Launch rexenv a second time while it is running**: the second copy exits with
   "rexenv is already running", the first one's window comes forward, and there is still
   exactly ONE rexenv process. Then **SIGKILL** the app (`kill -9`) and launch it again —
-  a stale socket file must not block the launch, and the launched build must be one that
-  HAS the guard, or the leg proves nothing (measured 1 Sep 2026: the kill leaves the
-  socket file on disk and `connect` is refused, which is the premise; the relaunch that
-  day was an older build and so could not have been blocked).
+  a stale socket file must not block the launch. **The launched build must be one that
+  HAS the guard, or this leg proves nothing** — measured 1 Sep 2026, where the first
+  attempt relaunched the older installed app, which could not have been blocked by a
+  guard it does not contain. The rerun with a guarded build came up normally on the stale
+  socket, and a second guarded launch on top of it handed off and exited.
 
 ## Which app opens a link
 - [ ] Site header → chevron beside **Open in browser**: every browser you have is

@@ -2686,7 +2686,12 @@ window stops being a quit.
   that the app has no dock icon. **Proven live**: with the installed app running, a
   `target/debug/rexenv` launch exited immediately and left one process — and the
   installed build is OLDER and answered "unknown command", which is the case worth
-  having: the decision is the connect, not the reply. Original report below.
+  having: the decision is the connect, not the reply. **Crash case measured 1 Sep 2026**:
+  after `kill -9` the socket file stays on disk and `connect` is refused, and a guarded
+  launch then starts NORMALLY on it — with a second guarded launch on top handing off and
+  exiting. The first attempt at that leg proved nothing because it relaunched the older
+  installed app, which contains no guard to be blocked by; that near-miss is written into
+  the SMOKE step so the next person cannot repeat it. Original report below.
 - [ ] ~~**A second rexenv instance is now INVISIBLE.**~~ Seen 31 Aug 2026 during Phase C: two
   `target/debug/rexenv` processes ran at once, and the only symptom was TWO R icons in the
   menu bar. Before the tray, a second instance was obvious (a second window, a dock tile)
