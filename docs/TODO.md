@@ -2648,7 +2648,13 @@ window stops being a quit.
   1 Sep 2026, ledger #442 — `spawn_dns_handoff` gives the port back: release, kickstart
   the agent, probe, rebind if it did not take; bounded at 5 attempts and loud on giving
   up. Two L0 tests (the ORDER, plant-proven; and that the state tells the truth while the
-  handoff is in flight). The live leg is a login race and rides SMOKE. Original report:, so DNS
+  handoff is in flight). **Run live 2 Sep 2026 and it worked first attempt**: the race
+  reproduced by booting the agent out and launching into the gap (the login state — app
+  holding the port, agent loaded and retrying), then twenty seconds later
+  `handed the resolver back to the agent (attempt 1)`, the port held by
+  `rexenv --dns-agent` (a different process), `rex status` reading `answering (agent…)`,
+  and `https://mstest.rex` still 200. The real-login timing still rides SMOKE.
+  Original report:, so DNS
   dies with the app — the exact regression the LaunchAgent exists to prevent. Measured
   1 Sep 2026, first real logout/login: the agent job was `state = running` (pid 9744)
   while UDP 15353 was held by the APP (pid 9735), and the app's own log says it:
