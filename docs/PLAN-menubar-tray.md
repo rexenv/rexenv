@@ -107,7 +107,17 @@ Three rules inherited from the code it will display:
 
 ## 4. Phases
 
-### Phase A — the process survives the window (this alone closes the user's goal)
+> **STATUS — all four phases shipped (31 Aug – 1 Sep 2026).** A1–A9, B1–B7, C1–C3 and
+> D1–D7 are done, with A7 closed alongside C1 as promised. Ledger rows #436–#441 carry
+> the verdicts. Two things arrived after the plan was written and are recorded where they
+> happened rather than smoothed away: **the dock now follows the window** (§2's A2, taken
+> for a reason the ladder never considered — a tile-less window cannot be Cmd-Tabbed to),
+> and **a single-instance guard** (#441), because a menu-bar app made a second copy of
+> itself invisible. What is still unrun is named, not assumed: the login-launch legs need
+> a logout, and they live in `SMOKE-TEST.md` under "The menu bar".
+
+
+### Phase A — the process survives the window (this alone closes the user's goal) — ✅ SHIPPED 31 Aug 2026
 
 | # | Task | Done when |
 |---|---|---|
@@ -143,7 +153,7 @@ light and a dark menu bar, **Open rexenv** brings the window to the front, `rex 
 answers with the window closed, and the clipboard survives the missing app menu (A9).
 The only box left open is A7, deliberately — see its row.
 
-### Phase B — the quick menu
+### Phase B — the quick menu — ✅ SHIPPED 31 Aug 2026
 
 The menu is a **pure function** `TrayModel { services, sites, mcp_on } -> MenuSpec` in
 `core/tray.rs`; the Tauri half only renders it. That is what makes it L0-testable —
@@ -159,7 +169,7 @@ the menu is the part with rules in it, and rendering is not.
 | B6 | **MCP: on/off** checkmark bound to `mcp_enabled` | toggling from the tray flips the same setting the Settings screen shows |
 | B7 | Rebuild triggers: service-state change + a coalesced ~5s tick, snapshot only | no lock held across a wait (rule 2, §3) |
 
-### Phase C — always-on
+### Phase C — always-on — ✅ SHIPPED 31 Aug 2026 (the login legs are walked at release)
 
 `AutostartManager` already exists (per-user LaunchAgent `dev.rexenv.rexenv.plist`,
 `RunAtLoad`, ARCHITECTURE §Autostart) — this phase does not build autostart, it makes
@@ -178,7 +188,7 @@ again — so the plist is now rewritten on every launch while autostart is on, e
 the DNS agent's already was. A feature that only works for people who toggle the setting
 again after upgrading is a feature that does not work.
 
-### Phase D — docs and proof, in the same commits
+### Phase D — docs and proof, in the same commits — ✅ SHIPPED 31 Aug–1 Sep 2026
 
 | # | Task |
 |---|---|

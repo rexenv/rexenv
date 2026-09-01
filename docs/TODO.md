@@ -2495,7 +2495,7 @@ outlive a quit; the control plane is the one plane that does not. A daemon is no
 answer (second-writer bug class, `cli_server.rs:8-10`) — the answer is that closing the
 window stops being a quit.
 
-### Phase A — the process survives the window (closes the goal on its own)
+### Phase A ✅ — the process survives the window (closes the goal on its own)
 
 - [x] **A1** `Cargo.toml`: `tauri` features `tray-icon` + `image-png`. ✓ 31 Aug 2026 —
   `image-png` is what `Image::from_bytes` needs to decode the embedded template icon.
@@ -2564,7 +2564,7 @@ window stops being a quit.
   - [x] Dark menu bar ✓ 31 Aug 2026 — the icon renders white. Expected (macOS tints a
     template image), but expected is not seen, and now it is seen.
 
-### Phase B — the quick menu
+### Phase B ✅ — the quick menu
 
 - [x] **B1** `core/tray.rs`: `TrayModel -> MenuSpec`, pure, no Tauri types ✓ 31 Aug 2026,
   ledger #437 — 11 L0 tests over the state matrix, **plant-proven three ways in one run**
@@ -2631,7 +2631,7 @@ window stops being a quit.
     Five seconds of staleness in a menu nobody is looking at costs nothing; a missed hook
     costs a menu that is wrong for as long as it is open.
 
-### Phase C — always-on
+### Phase C ✅ — always-on
 
 - [x] **C1** Start hidden in the menu bar ✓ 31 Aug 2026, ledger #439 — the window is
   `visible: false` and somebody must decide to show it. A launch the USER asked for shows
@@ -2658,7 +2658,7 @@ window stops being a quit.
   The line says "the installed app": `open -a` resolves through LaunchServices, which
   knows nothing about a dev build in `target/`.
 
-### Phase D — docs and proof, in the same commits
+### Phase D ✅ — docs and proof, in the same commits
 
 - [x] **D1** `ARCHITECTURE.md` ✓ 31 Aug 2026 — "the APP outlives the window" beside
   "services outlive the app", the menu-as-data paragraph, and the autostart/`--hidden`
