@@ -634,7 +634,13 @@ hand can prove a spec entry became the item it describes.*
   policy (no dock tile), the app's own "launched at login — staying in the menu bar" log
   line, both sockets answering with no window, and the plist that produced it. Written
   because this leg is checked once per release, by a human who has just logged in and has
-  no interest in remembering five commands. Enable it, log out and in
+  no interest in remembering five commands.
+- [ ] **A couple of minutes after that login, `rex status` must read
+  `answering (agent, udp 15353)`, not `(in-process…)`.** At login the app and the agent
+  race for the port; in-process means DNS dies with the app, and the handoff (#442) has
+  up to ~2 minutes to take it back. If it still says in-process after that, the app is
+  serving DNS it should have given away — the log will say whether the agent was ever
+  kickstarted. Enable it, log out and in
   once BEFORE this build too if you can: the plist is rewritten on every launch, so an
   old one (no `--hidden`) must repair itself rather than keep opening a window forever.
 - [ ] On a machine where first-run setup is NOT finished (no `/etc/resolver/rex`, or the

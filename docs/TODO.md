@@ -2644,7 +2644,11 @@ window stops being a quit.
 
 ### Found by the login leg — open
 
-- [ ] **At login the app WINS the DNS port and the resolver ends up in-process**, so DNS
+- [x] **At login the app WINS the DNS port and the resolver ends up in-process** ✓ fixed
+  1 Sep 2026, ledger #442 — `spawn_dns_handoff` gives the port back: release, kickstart
+  the agent, probe, rebind if it did not take; bounded at 5 attempts and loud on giving
+  up. Two L0 tests (the ORDER, plant-proven; and that the state tells the truth while the
+  handoff is in flight). The live leg is a login race and rides SMOKE. Original report:, so DNS
   dies with the app — the exact regression the LaunchAgent exists to prevent. Measured
   1 Sep 2026, first real logout/login: the agent job was `state = running` (pid 9744)
   while UDP 15353 was held by the APP (pid 9735), and the app's own log says it:
@@ -2658,7 +2662,8 @@ window stops being a quit.
   HANDOFF, not a longer guess at the timeout — while running in-process, periodically
   drop the listener, give the agent a moment, and probe: if it answers, stay off; if not,
   rebind. A bigger wait at startup only moves the race and costs every launch.
-  *Workaround today: quit rexenv, wait ~15s for the agent to take the port, reopen.*
+  *Workaround on a build without the fix: quit rexenv, wait ~15s for the agent to take
+  the port, reopen.*
 
 ### Phase C ✅ — always-on
 

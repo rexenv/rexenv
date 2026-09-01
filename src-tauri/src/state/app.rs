@@ -51,6 +51,18 @@ impl DnsState {
         self.mode.lock().map(|g| *g).unwrap_or(DnsMode::Down)
     }
 
+    /// Take the in-process resolver OUT, leaving the state saying it is not
+    /// running — because it is not. Used by the agent handoff, which must
+    /// release the port before the agent can bind it; dropping the returned
+    /// service is what closes the socket.
+    ///
+    /// Deliberately not `stop()`-in-place: a stopped-but-present service reads
+    /// as `running() == false` with a `Some` in the slot, which is a state
+    /// nothing else in the app knows how to interpret.
+    pub fn take_service(&self) -> Option<crate::core::dns::DnsService> {
+        self.service.lock().ok().and_then(|mut g| g.take())
+    }
+
     pub fn set(&self, service: Option<crate::core::dns::DnsService>, mode: DnsMode) {
         if let Ok(mut g) = self.service.lock() {
             *g = service;
@@ -159,5 +171,31 @@ impl AppState {
             agent_db_requests: Mutex::new(Default::default()),
             agent_db_auto_allow: Mutex::new(Default::default()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The handoff's first move is to RELEASE the port, and the state has to
+    /// tell the truth about that for the seconds it is in flight: no service,
+    /// and `running()` false. A `stop()`-in-place would leave a `Some` that
+    /// reads as not-running — a state the status command, the watchdog and the
+    /// tray would each have to learn to interpret, which is three chances to
+    /// interpret it differently.
+    #[tokio::test]
+    async fn taking_the_resolver_out_leaves_the_state_saying_nothing_is_running() {
+        // Ephemeral port: this test binds a real socket, and must never reach
+        // for the fixed one the developer's own resolver is on.
+        let svc = crate::core::dns::DnsService::start(0).await.expect("bind an ephemeral port");
+        let state = DnsState::new(Some(svc), DnsMode::InProcess);
+        assert!(state.running(), "fixture must start with a live resolver");
+
+        let taken = state.take_service();
+        assert!(taken.is_some(), "the caller gets the service, and dropping it frees the port");
+        assert!(!state.running(), "with the service taken, nothing is running and it says so");
+        // A second take is empty rather than a panic: the handoff can run twice.
+        assert!(state.take_service().is_none());
     }
 }

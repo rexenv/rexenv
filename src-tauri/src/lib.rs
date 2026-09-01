@@ -310,7 +310,15 @@ pub fn run() {
             };
             // ALWAYS managed so status + the health watchdog can read/repair it
             // without a missing-state panic.
+            let in_process = matches!(dns_state.mode(), state::app::DnsMode::InProcess);
             app.manage(dns_state);
+            // Losing the startup race to the agent must not be permanent — see
+            // `spawn_dns_handoff`. Only when we ARE the in-process holder: in
+            // agent mode there is nothing to hand over, and in `Down` mode there
+            // is nothing to hand.
+            if in_process {
+                spawn_dns_handoff(app.handle().clone(), dns_port);
+            }
 
             // Registry of live PTY terminal sessions (§4.1).
             app.manage(commands::terminal::Terminals::default());
@@ -1364,6 +1372,108 @@ fn first_window_decision(app: &tauri::AppHandle) {
     show_main_window(app);
 }
 
+/// Give the DNS port back to the agent when we only hold it because we won a
+/// race at login.
+///
+/// **The bug this exists for, measured 1 Sep 2026 on a real logout/login.** The
+/// resolver is meant to OUTLIVE the app: it lives in a per-user LaunchAgent, and
+/// the in-process resolver is a fallback that dies with the process. That
+/// fallback used to be unreachable in practice, because the app was launched by
+/// hand long after login, by which time the agent already answered. "Start on
+/// login" made both start together — and the startup probe waits 2s, less than a
+/// cold agent needs (it is this entire binary booting into `--dns-agent`). So the
+/// app bound the port itself, and the agent — which retries every 10s — could
+/// never win it back. The result was DNS dying with the app on every machine
+/// that uses the feature Phase C shipped.
+///
+/// **Why a handoff and not a longer wait.** A bigger startup timeout is a guess
+/// that taxes every launch and still loses on a slow one; the race is not
+/// something to win, it is something to undo afterwards. So: stop our resolver,
+/// KICKSTART the agent so its bind happens now rather than on its own 10s
+/// cadence, and probe. If it answers, we are done for good. If it does not,
+/// rebind in-process and try again later.
+///
+/// **The cost is a short gap** with nobody serving `.rex` — bounded by the probe
+/// window, and paid at most `ATTEMPTS` times. That is the honest trade: a few
+/// seconds of no resolution shortly after login, against DNS that otherwise dies
+/// with the app for the rest of the session. It gives up loudly rather than
+/// looping forever, because a machine where the agent cannot bind at all has a
+/// different problem and should say so once.
+fn spawn_dns_handoff(app: tauri::AppHandle, port: u16) {
+    use tauri::Manager;
+    const ATTEMPTS: u32 = 5;
+    const BETWEEN: std::time::Duration = std::time::Duration::from_secs(20);
+    const PROBE_EVERY: std::time::Duration = std::time::Duration::from_millis(250);
+    const PROBE_TRIES: u32 = 24; // ~6s, comfortably past a cold agent's bind
+
+    tauri::async_runtime::spawn(async move {
+        for attempt in 1..=ATTEMPTS {
+            tokio::time::sleep(BETWEEN).await;
+
+            let Some(dns) = app.try_state::<state::app::DnsState>() else {
+                return;
+            };
+            // Someone else already settled it (the watchdog, a later probe).
+            if !matches!(dns.mode(), state::app::DnsMode::InProcess) {
+                return;
+            }
+            let Some(state) = app.try_state::<state::app::AppState>() else {
+                return;
+            };
+            let agent = state.platform.dns_agent();
+            if !agent.is_installed() {
+                log::warn!("dns: no resolver agent installed — staying in-process");
+                return;
+            }
+
+            // Release the port. Taking the service OUT of the state (rather than
+            // stopping it in place) is what makes the failure path honest: while
+            // the handoff is in flight, `DnsState` says the in-process resolver
+            // is not running, because it is not.
+            let service = dns.take_service();
+            drop(service); // Drop aborts the task and closes the socket.
+
+            // Kickstart rather than wait for the agent's own 10s retry: it turns
+            // a gap measured in cadence into one measured in startup.
+            if let Err(e) = agent.kickstart() {
+                log::warn!("dns: could not kickstart the resolver agent: {e}");
+            }
+
+            let mut handed_off = false;
+            for _ in 0..PROBE_TRIES {
+                tokio::time::sleep(PROBE_EVERY).await;
+                if core::dns::answers_as_ours(port) {
+                    handed_off = true;
+                    break;
+                }
+            }
+            if handed_off {
+                dns.set(None, state::app::DnsMode::Agent);
+                log::info!(
+                    "dns: handed the resolver back to the agent (attempt {attempt}) — \
+                     name resolution now survives app quits"
+                );
+                return;
+            }
+
+            // The agent did not take it. Serve again ourselves rather than leave
+            // the machine with no resolver at all.
+            match core::dns::DnsService::start(port).await {
+                Ok(svc) => dns.set(Some(svc), state::app::DnsMode::InProcess),
+                Err(e) => {
+                    dns.set(None, state::app::DnsMode::Down);
+                    log::error!("dns: could not rebind in-process after a handoff attempt: {e}");
+                    return;
+                }
+            }
+        }
+        log::warn!(
+            "dns: the resolver agent never took the port after {ATTEMPTS} handoff attempts — \
+             staying in-process (sites will stop resolving shortly after the app quits)"
+        );
+    });
+}
+
 /// The flag the login LaunchAgent passes (`platform::macos` writes it into the
 /// plist, `setup` reads it here). One constant because it is a contract between
 /// a file on disk and a process: a typo in either half is an app that opens a
@@ -1733,6 +1843,43 @@ mod tests {
         // An unresolvable log dir must not silently become stdout-only in a
         // release build: there is no terminal, so that is "no logging" again.
         assert!(log_sinks(None, false).is_empty());
+    }
+
+    /// **The DNS handoff's ORDER is the whole of it.** Release the port, then
+    /// kickstart the agent, then probe, and rebind if the agent did not take
+    /// it. Any other order is a different bug: kickstarting before releasing
+    /// gives the agent a port we still hold (it retries and fails); probing
+    /// before kickstarting measures the cadence we are trying to skip; and
+    /// skipping the rebind leaves a machine with no resolver at all — strictly
+    /// worse than the in-process one it started with.
+    ///
+    /// **TEXT, not behaviour** (the #175 bound): it reads the function and
+    /// checks the four steps appear in that order. It cannot see a real agent
+    /// take a real port — that needs a login race on a real machine, and it is
+    /// a SMOKE leg. What it catches is the reordering a later refactor makes
+    /// while "tidying", which is silent: the handoff simply never succeeds and
+    /// the app keeps serving DNS it should have given away.
+    #[test]
+    fn the_dns_handoff_releases_the_port_before_it_asks_the_agent_to_take_it() {
+        let src = crate::core::copy_scan::production_source(include_str!("lib.rs"));
+        let start = src.find("fn spawn_dns_handoff").expect("the handoff exists");
+        let body = &src[start..];
+        let end = body.find("\nfn ").map(|i| i + 1).unwrap_or(body.len());
+        let body = &body[..end];
+        // Landmark first: a mis-sliced body makes every position check below
+        // pass on an empty string (the copy_scan rule).
+        assert!(body.contains("ATTEMPTS"), "sliced the wrong function");
+
+        let step = |needle: &str| {
+            body.find(needle).unwrap_or_else(|| panic!("the handoff must {needle}"))
+        };
+        let release = step("take_service");
+        let kickstart = step("kickstart");
+        let probe = step("answers_as_ours");
+        let rebind = step("DnsService::start");
+        assert!(release < kickstart, "release the port BEFORE asking the agent to take it");
+        assert!(kickstart < probe, "kickstart BEFORE probing, or the probe measures the wait");
+        assert!(probe < rebind, "rebind only AFTER the probe says the agent did not take it");
     }
 
     /// **The tray is never a SECOND way to do something.** Every menu action

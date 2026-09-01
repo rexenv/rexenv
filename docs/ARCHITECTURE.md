@@ -213,6 +213,18 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   the current binary (dev ↔ installed hand off); if the agent can't come up, fall back
   to the legacy IN-PROCESS task (`DnsState { service, mode: Agent | InProcess | Down }`)
   so DNS never regresses — Settings surfaces the degraded mode (`dns_status.mode`).
+- **A lost startup race is undone afterwards** (`spawn_dns_handoff`, ledger #442). The
+  fallback above used to be unreachable in practice: the app was launched by hand long
+  after login, when the agent already answered. **Start on login made both start
+  together**, the 2s probe is less than a cold agent needs (it is the whole binary
+  booting into `--dns-agent`), and once the app holds the port the agent — retrying every
+  10s — can never win it back, so DNS dies with the app for the whole session. Measured
+  on a real login, 1 Sep 2026. While in-process, the app therefore tries to GIVE the port
+  back: release it, `kickstart` the agent so its bind happens now rather than on its own
+  cadence, probe, and rebind in-process if it did not take. Bounded (5 attempts) and loud
+  on giving up. A longer startup wait was rejected: it is a guess that taxes every launch
+  and still loses on a slow one — the race is not something to win, it is something to
+  undo.
 - Health watchdog (`lib.rs`), mode-aware and **bounded to 3 attempts**: Agent → wire
   probe, dead agent gets a `launchctl` kickstart, and after 3 failed kicks ONE in-process
   fallback (sites resolve now, mode says it won't survive quits); InProcess → restart the
