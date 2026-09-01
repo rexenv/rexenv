@@ -602,7 +602,12 @@ no SMOKE step today and is covered by `repo_*` examples only.*
 *The behavioural half of #437/#438 — the L0 tests prove the menu's RULES, and only a
 hand can prove a spec entry became the item it describes.*
 - [ ] The R icon is visible and legible in **both** a light and a dark menu bar
-  (System Settings → Appearance). There is **no dock icon and no app-switcher entry**.
+  (System Settings → Appearance).
+- [ ] **The dock tile follows the window, and both directions need looking at.** A normal
+  launch shows the window AND a dock tile; closing the window removes the tile and leaves
+  the menu-bar icon; the tray's **Open rexenv** brings both back. Look at the DOCK — do
+  not trust `lsappinfo`: it reported `Foreground` for an app whose tile macOS had never
+  added (2 Sep 2026), so the policy and the tile are two different facts.
 - [ ] Clicking the icon opens the MENU (not the window). **Open rexenv** brings the
   window to the FRONT — in front of a full-screen browser, not behind it.
 - [ ] **Close the window** (red button) → the app stays alive: `rex status` still

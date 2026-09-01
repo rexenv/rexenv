@@ -256,7 +256,14 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   `ActivationPolicy::Regular` while a window is up, `Accessory` the moment it closes, so
   the status item is the whole presence when no window is — and a visible window still
   has a tile to Cmd-Tab to. Ordering is load-bearing on both edges (Regular → Accessory
-  hides windows): hide first then switch, switch first then show. While Accessory there is no application
+  hides windows): hide first then switch, switch first then show. And the policy is set
+  ONCE at launch, to the state that launch is actually in — a hidden launch is Accessory,
+  a normal launch is Regular from the start. Flipping it twice inside the same
+  millisecond (Accessory in `setup`, Regular from `show_main_window` a few lines later)
+  produced an app with its menu in the menu bar, `lsappinfo` reporting `Foreground`, and
+  NO DOCK TILE: macOS does not reliably add the tile for a switch made while the app is
+  still launching. The runtime transition later — tray Open from a hidden app — DOES add
+  it; measured both ways 2 Sep 2026. While Accessory there is no application
   menu (no About item, no Edit menu) and nothing activates the app on the user's behalf —
   which is why every path that draws our OWN UI (the tray's Open, the quit confirm) calls
   `platform::activate_app()` first, and why A9's measurement still matters: the webview

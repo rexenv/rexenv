@@ -110,6 +110,8 @@ pub fn run() {
         .setup(|app| {
             let platform = platform::current();
 
+            let hidden_launch = std::env::args().any(|a| a == HIDDEN_LAUNCH_FLAG);
+
             // THE DOCK FOLLOWS THE WINDOW. Start as an accessory app — no dock
             // tile, no app-switcher entry — because with no window up the
             // menu-bar item is rexenv's whole presence, and a tile for
@@ -129,8 +131,20 @@ pub fn run() {
             // hides the app's windows, so a window shown before the switch is a
             // window the switch takes away. That is also why hiding sets the
             // policy AFTER the hide, and showing sets it BEFORE the show.
+            //
+            // Set ONCE, to the state this launch is actually in — not flipped
+            // twice in the same millisecond. It used to be an unconditional
+            // Accessory here, with `show_main_window` switching to Regular a few
+            // lines later, and that produced an app with its menu in the menu
+            // bar, `lsappinfo` reporting `Foreground` — and NO DOCK TILE. macOS
+            // does not reliably add the tile for an Accessory → Regular switch
+            // made while the app is still launching. A hidden launch has no
+            // window and stays Accessory; a normal launch is Regular from the
+            // start and never asks the Dock for anything mid-flight.
             #[cfg(target_os = "macos")]
-            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+            if hidden_launch {
+                app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+            }
 
             // THE WINDOW IS NOW HIDDEN BY DEFAULT (`tauri.conf.json`
             // `visible: false`), so somebody has to decide to show it.
@@ -143,7 +157,6 @@ pub fn run() {
             // `first_window_decision` below, once there is enough state to ask
             // whether first-run setup is done, and a login is nobody's foreground
             // task so the extra seconds cost nothing.
-            let hidden_launch = std::env::args().any(|a| a == HIDDEN_LAUNCH_FLAG);
 
             // THE APP'S OWN LOG, in every build — this used to be
             // `if cfg!(debug_assertions)`, which meant the installed app wrote

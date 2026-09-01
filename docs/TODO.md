@@ -2531,7 +2531,14 @@ window stops being a quit.
   (pid 5602): `Foreground` with the window open, `UIElement` after closing it,
   `Foreground` again after the tray's Open, CLI socket answering throughout. Ordering is
   load-bearing on both edges (Regular → Accessory hides windows): hide then switch, switch
-  then show. **The dock ICON itself was checked on a real bundle** — `pnpm tauri build`,
+  then show. **And the policy is set ONCE at launch** — reported 2 Sep 2026: with the old
+  double flip (Accessory in `setup`, Regular from `show_main_window` milliseconds later)
+  a normal launch had its menu in the menu bar and `lsappinfo` said `Foreground`, but the
+  Dock had NO TILE. macOS does not reliably add one for a switch made while the app is
+  still launching. Now a hidden launch is Accessory and a normal launch is Regular from
+  the start. Measured both ways: manual launch → tile present; `--hidden` then `rex open`
+  (the runtime transition) → tile present too, so it is the launch-time flip that was the
+  problem, not the transition. **The dock ICON itself was checked on a real bundle** — `pnpm tauri build`,
   then launched: the crowned R appears in the dock with its running dot. A dev run shows
   a generic icon because `target/debug/rexenv` is a bare binary with no
   `Contents/Resources/icon.icns`; that is the harness, not the app.
