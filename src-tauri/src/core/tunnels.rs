@@ -398,11 +398,38 @@ pub enum ProbePlan {
     System,
 }
 
-/// The plan for a tick, from the gate flag the registry carries. The flag
-/// only ever flips open (via [`gate_opens`]) — a share never re-enters
+/// A share's phase gate: closed (Phase A) until [`gate_opens`] says the record
+/// is provably in public DNS, then open FOREVER.
+///
+/// **A type with no way back, rather than a `bool` and a rule.** Re-entering
+/// Phase A is not a cosmetic regression: the point of Phase A is that we make
+/// no system-resolver query for a name that may not exist yet, because ONE
+/// early query negative-caches the whole LAN for up to thirty minutes
+/// (`trycloudflare.com`'s SOA MINIMUM is 1800s — measured 28 Jul 2026, and it
+/// is why a phone could only reach a share on cellular). A gate that reopens
+/// would put a WORKING share back into a window whose only purpose is to
+/// protect a share that does not resolve yet. So there is no `close`, and
+/// `open` is idempotent: the only reachable transition is closed → open.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PhaseGate(bool);
+
+impl PhaseGate {
+    /// Open it. Idempotent, and the ONLY mutation this type has.
+    pub fn open(&mut self) {
+        self.0 = true;
+    }
+
+    /// Has it opened?
+    pub fn is_open(self) -> bool {
+        self.0
+    }
+}
+
+/// The plan for a tick, from the gate the registry carries. The gate only ever
+/// flips open ([`PhaseGate`] has no other transition) — a share never re-enters
 /// Phase A.
-pub fn probe_plan(gate_open: bool) -> ProbePlan {
-    if gate_open {
+pub fn probe_plan(gate: PhaseGate) -> ProbePlan {
+    if gate.is_open() {
         ProbePlan::System
     } else {
         ProbePlan::EdgeOnly
@@ -755,6 +782,88 @@ mod tests {
     /// (or renaming the flag on one side only) leaves a live public tunnel that
     /// `sweep_startup`, the rowless backstop and the parent-death guard all
     /// decline to touch — the exact failure this pair exists to prevent.
+    /// **The gate has no way back, and that is the claim** — not that today's
+    /// code happens never to write `false`. Re-entering Phase A would put a
+    /// WORKING share back into a window whose only purpose is protecting a
+    /// share that does not resolve yet, and the cost of the window is real:
+    /// one early system query negative-caches the LAN for up to thirty minutes.
+    /// Held two ways, because a behavioural test alone would pass on a type
+    /// that grew a `close()` nobody had called yet.
+    #[test]
+    fn the_phase_gate_only_ever_opens() {
+        let mut gate = PhaseGate::default();
+        assert!(!gate.is_open(), "a share must START in Phase A — the default is the closed one");
+        gate.open();
+        assert!(gate.is_open());
+        // Idempotent, and no sequence of the operations this type HAS can
+        // close it again.
+        for _ in 0..3 {
+            gate.open();
+            assert!(gate.is_open(), "the gate came back closed — the share re-entered Phase A");
+            assert_eq!(probe_plan(gate), ProbePlan::System);
+        }
+
+        // The type surface itself: exactly one mutation, and the only write to
+        // the inner flag is the one that opens it. A `close`/`set(false)` added
+        // later fails here rather than the first time a share loses its verdict.
+        let src = crate::core::copy_scan::production_source(include_str!("tunnels.rs"));
+        let imp = src
+            .split("impl PhaseGate {")
+            .nth(1)
+            .and_then(|b| b.split("\n}").next())
+            .expect("impl PhaseGate");
+        assert_eq!(
+            imp.matches("self.0 =").count(),
+            1,
+            "`PhaseGate` has more than one write to its flag — the second one is the way back \
+             into Phase A that this type exists to make unreachable:\n{imp}"
+        );
+        assert!(
+            !imp.contains("self.0 = false"),
+            "`PhaseGate` can be closed again — a share whose gate reopens starts making the \
+             early system queries that poison the LAN's resolver for 30 minutes"
+        );
+    }
+
+    /// The edge check's address must come from a LIVE lookup, never a literal.
+    /// A pinned Cloudflare IP rots silently: the check keeps passing against an
+    /// address that stopped being an edge, and "the edge answered" then measures
+    /// nothing while reading as positive evidence in the UI.
+    #[test]
+    fn no_edge_ip_is_ever_hardcoded() {
+        let src = crate::core::copy_scan::production_source(include_str!("tunnels.rs"));
+        // Deliberate, non-edge addresses: the loopback origin a tunnel points
+        // at, the wildcard bind for our own ephemeral UDP socket, and the
+        // resolver we query ON PURPOSE (asking 1.1.1.1 is the measurement —
+        // it is not an answer we pinned).
+        let allowed = ["127.0.0.1", "0.0.0.0", "1.1.1.1"];
+        for line in src.lines() {
+            let code = line.trim_start();
+            if code.starts_with("//") {
+                continue;
+            }
+            let mut rest = code;
+            while let Some(pos) = rest.find(|c: char| c.is_ascii_digit()) {
+                let tail = &rest[pos..];
+                let end = tail
+                    .find(|c: char| !(c.is_ascii_digit() || c == '.'))
+                    .unwrap_or(tail.len());
+                let tok = tail[..end].trim_end_matches('.');
+                let quads: Vec<&str> = tok.split('.').collect();
+                if quads.len() == 4 && quads.iter().all(|q| !q.is_empty() && q.parse::<u8>().is_ok())
+                {
+                    assert!(
+                        allowed.contains(&tok),
+                        "`{tok}` is a hardcoded IP in tunnels.rs ({code}). The edge address must \
+                         come from the live 1.1.1.1 answer (or the live apex lookup) — a pinned \
+                         edge IP rots silently and the check that uses it measures nothing"
+                    );
+                }
+                rest = &tail[end..];
+            }
+        }
+    }
+
     #[test]
     fn what_we_spawn_is_what_the_sweeps_can_identify() {
         let args = spawn_args("acme.rex", 18088);
@@ -1005,8 +1114,10 @@ mod tests {
         // Gate closed ⇒ EdgeOnly, unconditionally. There is no age, health,
         // or diagnosis input that may produce a system probe before the gate
         // opens — the plan takes ONLY the gate flag, by design.
-        assert_eq!(probe_plan(false), ProbePlan::EdgeOnly);
-        assert_eq!(probe_plan(true), ProbePlan::System);
+        let mut gate = PhaseGate::default();
+        assert_eq!(probe_plan(gate), ProbePlan::EdgeOnly, "a fresh share starts in Phase A");
+        gate.open();
+        assert_eq!(probe_plan(gate), ProbePlan::System);
 
         // And the gate itself opens ONLY on proof-of-record or the cap:
         use std::time::Duration as D;

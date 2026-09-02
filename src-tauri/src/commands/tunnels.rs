@@ -37,11 +37,12 @@ struct TunnelEntry {
     /// Failure-gated diagnosis (why the primary probe couldn't reach the
     /// URL); cleared whenever the primary probe gets an HTTP answer.
     diagnosis: Option<crate::core::tunnels::TunnelDiagnosis>,
-    /// Phase gate (ruled 28 Jul): false = Phase A, the prober may not touch
+    /// Phase gate (ruled 28 Jul): closed = Phase A, the prober may not touch
     /// the system resolver for this hostname yet — our own too-early query
     /// was negative-caching the LAN for 30 minutes. Flips open once (never
-    /// back) via `gate_opens`.
-    system_probing: bool,
+    /// back) via `gate_opens`, and `PhaseGate` is the type that makes "never
+    /// back" a fact rather than a comment: it has no closing transition.
+    system_probing: crate::core::tunnels::PhaseGate,
     /// Share age, for the gate's escape-hatch cap.
     started: Instant,
 }
@@ -278,7 +279,9 @@ async fn probe_and_record<R: tauri::Runtime>(
                 e.health = health;
                 e.strikes = strikes;
                 e.diagnosis = diagnosis;
-                e.system_probing |= open_gate;
+                if open_gate {
+                    e.system_probing.open();
+                }
             }
         }
     };
@@ -778,7 +781,7 @@ pub async fn start_tunnel<R: tauri::Runtime>(
             // Phase A: the system resolver stays untouched until the record
             // is provably in public DNS (gate_opens) — our own immediate
             // probe was the poisoning query.
-            system_probing: false,
+            system_probing: crate::core::tunnels::PhaseGate::default(),
             started: Instant::now(),
         },
     );
@@ -857,7 +860,7 @@ mod tests {
             health: crate::core::tunnels::TunnelHealth::Unverified,
             strikes: 0,
             diagnosis: None,
-            system_probing: false,
+            system_probing: crate::core::tunnels::PhaseGate::default(),
             started: Instant::now(),
         }
     }
