@@ -424,9 +424,9 @@ fn create_recording_ownership(
     validate_docroot_path(&new.path)?;
     ensure_server_available(new.web_server)?;
     ensure_server_runs_php(new.web_server, &new.php_version)?;
-    if store::domain_exists(conn, &new.domain)? {
+    if let Some(owner) = domain_taken_by(conn, &new.domain)? {
         return Err(Error::Other(format!(
-            "domain already in use: {}",
+            "{} already reaches the site \"{owner}\" — one hostname can only reach one site",
             new.domain
         )));
     }
@@ -589,10 +589,35 @@ pub fn check_domain_change(conn: &Connection, site: &Site, new_domain: &str) -> 
         return Err(Error::Other(format!("site already uses {new_domain}")));
     }
     validate_domain(new_domain)?;
-    if store::domain_exists(conn, new_domain)? {
-        return Err(Error::Other(format!("domain already in use: {new_domain}")));
+    // BOTH tables. `domain_exists` alone answers half the question, and half an
+    // answer means renaming a site onto another site's EXTRA domain (v42) —
+    // two server blocks for one hostname, served by whichever nginx matched
+    // first, with both sites looking correct on screen.
+    if let Some(owner) = domain_taken_by(conn, new_domain)? {
+        return Err(Error::Other(format!(
+            "{new_domain} already reaches the site \"{owner}\" — one hostname can only reach \
+             one site"
+        )));
     }
     Ok(())
+}
+
+/// Is `domain` taken by ANY site — as its own domain or as an extra domain
+/// (v42)? Returns the owning site's name.
+///
+/// One function because there are three callers that must agree: create, the
+/// domain change, and the alias validator. `store::domain_exists` answers only
+/// half the question, and half an answer here means two server blocks for one
+/// hostname — nginx serves whichever it matched first while both sites look
+/// correct in the UI.
+pub fn domain_taken_by(conn: &Connection, domain: &str) -> Result<Option<String>> {
+    if let Some(site) = store::site_by_domain(conn, domain)? {
+        return Ok(Some(site.name));
+    }
+    match store::site_id_for_alias(conn, domain)? {
+        Some(owner) => Ok(Some(get(conn, &owner)?.map(|s| s.name).unwrap_or(owner))),
+        None => Ok(None),
+    }
 }
 
 /// Change ONLY the `domain` column (after re-running [`check_domain_change`]).
@@ -1922,9 +1947,9 @@ pub fn provision_with(
     ownership: Ownership,
 ) -> Result<Site> {
     validate_domain(&new.domain)?; // before any docroot/cert/DB use of the domain
-    if store::domain_exists(conn, &new.domain)? {
+    if let Some(owner) = domain_taken_by(conn, &new.domain)? {
         return Err(Error::Other(format!(
-            "domain already in use: {}",
+            "{} already reaches the site \"{owner}\" — one hostname can only reach one site",
             new.domain
         )));
     }
@@ -2698,6 +2723,45 @@ mod tests {
         assert_eq!(pool_port_for_site(&site), pool_port_for("8.0"));
     }
 
+    /// The collision the v42 table opened up, from the OTHER two directions:
+    /// creating a site on a name that is already an extra domain, and RENAMING
+    /// one onto it.
+    ///
+    /// `validate_alias` checked both tables from the start; `create` and
+    /// `check_domain_change` did not — they asked `domain_exists`, which reads
+    /// `sites.domain` alone. So the day extra domains shipped, `shop.test`
+    /// could be an alias of A and the primary of a brand-new B at the same
+    /// time: two nginx server blocks for one hostname, served by whichever
+    /// matched first, with both sites looking correct on screen. Found the next
+    /// morning by asking what else answers this question.
+    #[test]
+    fn a_name_that_is_already_an_extra_domain_cannot_be_created_or_renamed_onto() {
+        let conn = db::open_in_memory().unwrap();
+        let a = create(&conn, sample("A", "a.test")).unwrap();
+        add_alias(&conn, &a.id, "shop.test").unwrap();
+
+        // CREATE on the alias.
+        let err = create(&conn, sample("B", "shop.test")).unwrap_err().to_string();
+        assert!(
+            err.contains("\"A\""),
+            "creating a site on another site's extra domain must refuse, naming the owner: {err}"
+        );
+
+        // RENAME onto the alias.
+        let b = create(&conn, sample("B", "b.test")).unwrap();
+        let err = set_domain(&conn, &b.id, "shop.test").unwrap_err().to_string();
+        assert!(
+            err.contains("\"A\""),
+            "renaming a site onto another site's extra domain must refuse, naming the owner: {err}"
+        );
+
+        // …and the ordinary cases still work: a free name renames, and the
+        // freed one becomes available.
+        assert!(set_domain(&conn, &b.id, "b2.test").unwrap().is_some());
+        assert!(remove_alias(&conn, &a.id, "shop.test").unwrap());
+        assert!(set_domain(&conn, &b.id, "shop.test").unwrap().is_some());
+    }
+
     /// An extra domain must be free across the WHOLE hostname space — both
     /// tables — and the schema can only see one of them.
     ///
@@ -3183,7 +3247,7 @@ mod tests {
         create(&conn, sample("B", "b.test")).unwrap();
 
         assert!(set_domain(&conn, &a.id, "../evil.test").is_err());
-        assert!(set_domain(&conn, &a.id, "b.test").unwrap_err().to_string().contains("already in use"));
+        assert!(set_domain(&conn, &a.id, "b.test").unwrap_err().to_string().contains("already reaches"));
         assert!(set_domain(&conn, &a.id, "a.test").unwrap_err().to_string().contains("already uses"));
         assert!(set_domain(&conn, "nope", "c.test").unwrap().is_none());
 
@@ -3346,8 +3410,11 @@ mod tests {
     fn duplicate_domain_is_rejected() {
         let conn = db::open_in_memory().unwrap();
         create(&conn, sample("One", "dup.test")).unwrap();
-        let err = create(&conn, sample("Two", "dup.test")).unwrap_err();
-        assert!(err.to_string().contains("domain already in use"));
+        let err = create(&conn, sample("Two", "dup.test")).unwrap_err().to_string();
+        // The refusal NAMES the site that already has the hostname (3 Sep 2026,
+        // when the check learned about extra domains): "already in use" sends
+        // the user looking through their list, "already reaches One" ends it.
+        assert!(err.contains("already reaches") && err.contains("\"One\""), "{err}");
         assert_eq!(list(&conn).unwrap().len(), 1);
     }
 
