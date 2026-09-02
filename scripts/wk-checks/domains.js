@@ -79,6 +79,34 @@ const card = async (page) =>
   if (!/shop\.acme\.rex/.test(removed.text))
     fails.push("CONTROL FAILED: the untouched extra domain vanished too, so 'gone' means nothing here");
 
+  // The Sites LIST marks a multi-name site by count, not by listing — a row is
+  // 188px wide and three hostnames would push the site's name out, the defect
+  // the provision label already caused once (#248). The names are in the title
+  // attribute, one hover away.
+  await page.goto(`${BASE}/sites`, { waitUntil: "networkidle" });
+  await page.waitForTimeout(600);
+  const marker = await page.evaluate(() => {
+    const el = document.querySelector('[data-probe="extra-domains"]');
+    return el ? { text: el.textContent ?? "", title: el.getAttribute("title") ?? "" } : null;
+  });
+  if (!marker) {
+    fails.push("the Sites list never marks a site that answers on more than one name");
+  } else {
+    if (!/\+\d/.test(marker.text)) fails.push(`the marker is not a count: ${marker.text}`);
+    if (!marker.title.includes("shop.acme.rex"))
+      fails.push("the marker's tooltip does not name the extra domains — the count alone says nothing about WHICH");
+  }
+  // CONTROL: a site with no extra domain gets no marker, or the mark means
+  // nothing — every row would wear it.
+  const markers = await page.evaluate(
+    () => document.querySelectorAll('[data-probe="extra-domains"]').length,
+  );
+  // The mock has four sites and exactly one with an extra domain, so more than
+  // one marker means the row is wearing it unconditionally — a mark every row
+  // carries marks nothing.
+  if (markers !== 1)
+    fails.push(`expected exactly one extra-domains marker on the Sites list, found ${markers}`);
+
   await page.screenshot({ path: "shot-domains.png" });
   await browser.close();
 

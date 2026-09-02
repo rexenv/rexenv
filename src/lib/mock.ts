@@ -283,3 +283,16 @@ export function mockRemoveSiteDomain(id: string, domain: string): string[] {
   mockDomains[id] = mockSiteDomains(id).filter((d) => d !== domain);
   return mockDomains[id];
 }
+
+/** The dev shell's extra-domain map, mirroring `all_site_domains`: keyed by site
+ *  id, sites with none absent. Site 1 has one, so the Sites row's `+N` marker
+ *  renders — a fixture where every site had none would leave that marker
+ *  unexercised, which is how the PHP-avatar contrast bug hid for months. */
+export function mockAllSiteDomains(): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const [id, list] of Object.entries(mockDomains)) {
+    const extras = list.slice(1);
+    if (extras.length > 0) out[id] = extras;
+  }
+  return out;
+}

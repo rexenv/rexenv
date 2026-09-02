@@ -15,7 +15,7 @@ import { StatusPill } from "@/components/common/StatusPill";
 import { Placeholder } from "@/components/common/Placeholder";
 import { NewSiteDialog } from "@/components/sites/NewSiteDialog";
 import { Button } from "@/components/ui/button";
-import { defaultTld, listSites, resolverDrift, deleteSite, renameSite, openExternal, getSitesServing, sitesResources, siteProvisionCancel, siteProvisionRetry , scanValetImport, dbImportRecords, rewriteRevert, keepSite, scratchPackages, onScratchReaped, agentActivity } from "@/lib/ipc";
+import { allSiteDomains, defaultTld, listSites, resolverDrift, deleteSite, renameSite, openExternal, getSitesServing, sitesResources, siteProvisionCancel, siteProvisionRetry , scanValetImport, dbImportRecords, rewriteRevert, keepSite, scratchPackages, onScratchReaped, agentActivity } from "@/lib/ipc";
 import { openSiteInEditor, usePreferredEditor } from "@/lib/useEditor";
 import { usePreferredBrowser } from "@/lib/useBrowser";
 import { AppIcon } from "@/components/ui/app-icon";
@@ -214,6 +214,7 @@ export function SiteRow({
   onKeep,
   packages,
   reapFailure,
+  extraDomains,
 }: {
   site: Site;
   status: Site["status"];
@@ -221,6 +222,9 @@ export function SiteRow({
   /** This site's database-import state (the ONE serialized DbImportRecord
    *  fact — see the badge comment). Undefined = no import. */
   dbState?: DbImportRecord["state"];
+  /** The site's EXTRA domains (v42). Undefined/empty = it answers on its own
+   *  domain only, which is most sites. */
+  extraDomains?: string[];
   onOpen: () => void;
   onDelete: () => void;
   onOpenDatabase: () => void;
@@ -270,8 +274,24 @@ export function SiteRow({
         <div className="truncate text-[0.84375rem] font-semibold text-rex-text">
           {site.name}
         </div>
-        <div className="truncate font-mono text-[0.6875rem] text-rex-text-muted">
-          {site.domain}
+        <div className="flex items-baseline gap-1 truncate font-mono text-[0.6875rem] text-rex-text-muted">
+          <span className="truncate">{site.domain}</span>
+          {/* A site can answer on more than one hostname (v42). The row shows
+              the PRIMARY — the name its files, database and certificate folder
+              are keyed to — and marks the rest by COUNT rather than listing
+              them: a row is 188px wide and three hostnames would push the name
+              out, which is the defect the provision label already caused once
+              (#248). The names themselves are one hover away, and on the site's
+              own page. */}
+          {extraDomains && extraDomains.length > 0 && (
+            <span
+              data-probe="extra-domains"
+              title={`Also answers on ${extraDomains.join(", ")}`}
+              className="flex-none text-rex-text-muted opacity-70"
+            >
+              +{extraDomains.length}
+            </span>
+          )}
         </div>
       </div>
       {/* Quick actions reserve ~140px even while invisible (opacity). Below
@@ -539,6 +559,13 @@ export function SiteRow({
 
 export function Sites() {
   const qc = useQueryClient();
+  // One read for the whole page (v42), the same shape as the serving map: a
+  // list of twenty sites must not become twenty round trips to answer "does
+  // this one answer on more than one name".
+  const { data: extraDomains = {} } = useQuery({
+    queryKey: ["site-domains", "all"],
+    queryFn: allSiteDomains,
+  });
   const navigate = useNavigate();
   const [showNew, setShowNew] = useState(false);
   const [query, setQuery] = useState("");
@@ -840,6 +867,7 @@ export function Sites() {
                 status={statusOf(site)}
                 resources={resourcesMap.get(site.id)}
                 dbState={dbStates.get(site.id)}
+                extraDomains={extraDomains[site.id]}
                 packages={packagesBySite.get(site.id)}
                 reapFailure={reapFailures.get(site.id) || undefined}
                 onOpen={() => navigate(`/sites/${site.id}`)}

@@ -12,6 +12,7 @@ import {
   mockDatabases,
   mockGlobalStatus,
   mockAddSiteDomain,
+  mockAllSiteDomains,
   mockMailDetail,
   mockMailList,
   mockRemoveSiteDomain,
@@ -321,6 +322,14 @@ export async function listSiteEnv(id: string): Promise<EnvVar[]> {
 export async function setSiteEnv(id: string, vars: EnvVar[]): Promise<void> {
   if (!isTauri()) return;
   await invoke("set_site_env", { id, vars });
+}
+
+/** Every site's EXTRA domains, keyed by site id — one read for the Sites page.
+ *  Sites with none are ABSENT from the map (missing means none; an empty array
+ *  would be a second way to say it). Empty outside Tauri. */
+export async function allSiteDomains(): Promise<Record<string, string[]>> {
+  if (!isTauri()) return mockAllSiteDomains();
+  return invoke<Record<string, string[]>>("all_site_domains");
 }
 
 /** Every hostname a site answers on — its own domain FIRST, then its extra

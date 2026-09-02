@@ -1071,6 +1071,7 @@ pub fn run() {
             commands::sites::add_site_domain,
             commands::sites::remove_site_domain,
             commands::sites::site_domains,
+            commands::sites::all_site_domains,
             commands::sites::set_site_xdebug,
             commands::sites::delete_site,
             commands::sites::keep_site,

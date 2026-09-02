@@ -96,6 +96,23 @@ pub fn sites_serving(state: State<'_, AppState>) -> Result<Vec<SiteServing>> {
     Ok(core::service_manager::site_serving(&sites, &state.service_infos()))
 }
 
+/// Every site's EXTRA domains, keyed by site id — one read for the whole Sites
+/// page (v42).
+///
+/// A page-wide map rather than a per-row call, the same shape `sites_serving`
+/// uses: a list of twenty sites would otherwise make twenty round trips to
+/// answer a question the database answers once. Sites with no extra domain are
+/// absent from the map rather than present with an empty list — the caller
+/// treats missing as none, and an empty vector would be a second way to say the
+/// same thing.
+#[tauri::command]
+pub fn all_site_domains(
+    state: State<'_, AppState>,
+) -> Result<std::collections::HashMap<String, Vec<String>>> {
+    let conn = lock(&state)?;
+    crate::state::store::all_site_aliases(&conn)
+}
+
 /// Honest per-site resource attribution (Sites page). A site is NOT a process
 /// here — default sites share nginx + a per-version php-fpm pool — so the shape
 /// is explicit about what each number IS:
