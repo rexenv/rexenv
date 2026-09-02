@@ -257,6 +257,18 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   pool would stop every other site on that minor, so it is opt-in (`rex site restart
   <domain> --pool`) and the report carries how many sites that covers whether or not
   the flag was passed — the number is what makes the flag a choice instead of a dare.
+- **The CLI socket streams progress, but only to a client that asked**
+  (`Progress`, `stream: true`, 2 Sep 2026). The framing is: one request line in,
+  zero or more `{"progress": …}` lines, then EXACTLY ONE `{"ok": …}` envelope,
+  always last. Opt-in is the compatibility hinge — an older `rex` reads one line
+  and treats it as the reply, so a server that streamed unasked would hand it a
+  progress record as the result of the command. Records are identified by KEY,
+  not by position, so a client can skip ones it does not understand and still
+  know which line ends the exchange. Commands report progress unconditionally
+  (`Progress::none()` discards), so no command has to know who is asking. The
+  first consumers are `site.create` and `site.retry`, which poll the SAME
+  provisioning state the app's card renders rather than inventing a second
+  progress channel that could disagree with the first.
 - **The web tier has no single-service STOP, only restart** (`WebTarget`,
   `restart_web_service`, 2 Sep 2026). One nginx serves every default site, one pool
   every site on a PHP minor, one edge everything — so "stop nginx" is every default

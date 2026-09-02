@@ -76,9 +76,9 @@ async fn main() {
     let mode = std::fs::metadata(&sock).expect("sock meta").permissions().mode();
     assert_eq!(mode & 0o777, 0o600, "socket must be 0600");
     let handle = app.handle().clone();
-    tokio::spawn(cli_server::serve(listener, move |line| {
+    tokio::spawn(cli_server::serve(listener, move |line, progress| {
         let handle = handle.clone();
-        async move { cli_server::handle_request(&handle, line).await }
+        async move { cli_server::handle_request(&handle, line, progress).await }
     }));
 
     // 1) status round-trip — real dispatch, real ServiceManager snapshot.

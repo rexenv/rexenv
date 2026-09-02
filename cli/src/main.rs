@@ -246,21 +246,59 @@ fn run_mcp_bridge() -> ! {
 
 /// One request line out, one reply line back. Exits the process on transport
 /// or command errors — callers only ever see successful data.
+/// `request`, but asking the app to STREAM progress while it works.
+///
+/// The protocol is one request line in, zero or more `{"progress": …}` lines,
+/// then exactly one `{"ok": …}` envelope. Progress goes to stderr so `--json`
+/// and pipes keep getting only the result on stdout; the envelope is handled
+/// exactly as `request` handles it.
+///
+/// Streaming is REQUESTED, never assumed: an app that streamed unasked would
+/// hand an older `rex` — which reads one line and stops — a progress record as
+/// the reply.
+/// Print one streamed provisioning record as a terminal line.
+///
+/// stderr, always: the result of the command belongs on stdout, and a `--json`
+/// caller or a pipe must not have progress mixed into the value it is parsing.
+fn print_provision_progress(p: &Value) {
+    let pct = p["pct"].as_u64().unwrap_or(0);
+    match p["phase"]["label"].as_str() {
+        Some(label) => eprintln!("  [{pct:>3}%] {label}"),
+        // A record with no phase is a status change (the job finished, failed
+        // or was cancelled between polls) — still worth a line, because the
+        // alternative is a terminal that goes quiet with no explanation.
+        None => eprintln!("  [{pct:>3}%] {}", p["status"].as_str().unwrap_or("working")),
+    }
+}
+
+fn request_streaming(cmd: &str, args: Value, mut on_progress: impl FnMut(&Value)) -> Value {
+    request_inner(cmd, args, true, &mut on_progress)
+}
+
 fn request(cmd: &str, args: Value) -> Value {
+    request_inner(cmd, args, false, &mut |_| {})
+}
+
+fn request_inner(
+    cmd: &str,
+    args: Value,
+    stream: bool,
+    on_progress: &mut dyn FnMut(&Value),
+) -> Value {
     let path = socket_path();
     // ENOENT (app never bound) and ECONNREFUSED (stale file after a crash)
     // mean the same thing to the user: the app isn't there to take commands.
-    let mut stream = match UnixStream::connect(&path) {
+    let mut sock = match UnixStream::connect(&path) {
         Ok(s) => s,
         Err(_) => {
             eprintln!("{NOT_RUNNING}");
             exit(2);
         }
     };
-    let line = json!({ "cmd": cmd, "args": args }).to_string();
-    if stream
+    let line = json!({ "cmd": cmd, "args": args, "stream": stream }).to_string();
+    if sock
         .write_all(format!("{line}\n").as_bytes())
-        .and_then(|_| stream.flush())
+        .and_then(|_| sock.flush())
         .is_err()
     {
         eprintln!("{NOT_RUNNING}");
@@ -278,7 +316,24 @@ fn request(cmd: &str, args: Value) -> Value {
             STALL_NOTICE_AFTER.as_secs()
         );
     });
-    let read = BufReader::new(stream).read_line(&mut reply);
+    // Read until the ENVELOPE. Progress records are identified by their key,
+    // not by position, so a client can join a stream it does not understand and
+    // still know which line ends it.
+    let mut reader = BufReader::new(sock);
+    let read = loop {
+        reply.clear();
+        match reader.read_line(&mut reply) {
+            Err(e) => break Err(e),
+            Ok(0) => break Ok(0),
+            Ok(n) => {
+                let Ok(v) = serde_json::from_str::<Value>(reply.trim()) else { break Ok(n) };
+                match v.get("progress") {
+                    Some(p) => on_progress(p),
+                    None => break Ok(n),
+                }
+            }
+        }
+    };
     waiting.store(true, Ordering::Relaxed);
     if read.is_err() || reply.trim().is_empty() {
         eprintln!("rex: the app closed the connection without replying");
@@ -708,7 +763,11 @@ fn cmd_site_create(words: &[String], json_output: bool) {
     if !json_output {
         println!("creating {domain}… (WordPress sites install on first create — this can take a minute)");
     }
-    let created = request("site.create", Value::Object(args));
+    let created = if json_output {
+        request("site.create", Value::Object(args))
+    } else {
+        request_streaming("site.create", Value::Object(args), print_provision_progress)
+    };
     if json_output {
         return print_json(&created);
     }
@@ -1703,7 +1762,11 @@ fn cmd_site_retry(words: &[String], json_output: bool) {
     let site = find_site(words, "rex site retry <domain>");
     let domain = site["domain"].as_str().unwrap_or("?").to_string();
     eprintln!("retrying {domain}… (downloads and installs may take a minute)");
-    let r = request("site.retry", json!({ "id": site["id"] }));
+    let r = if json_output {
+        request("site.retry", json!({ "id": site["id"] }))
+    } else {
+        request_streaming("site.retry", json!({ "id": site["id"] }), print_provision_progress)
+    };
     if json_output {
         return print_json(&r);
     }

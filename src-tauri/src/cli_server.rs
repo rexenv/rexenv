@@ -13,9 +13,15 @@
 //! a same-user process can already drive our SQLite and kill our processes;
 //! other users are locked out by fs perms). Never TCP.
 //!
-//! Protocol: one connection = one request = one reply, newline-delimited JSON.
-//! Request `{"cmd":"status","args":{…}}` → reply `{"ok":true,"data":…}` or
+//! Protocol: one connection = one request = one exchange, newline-delimited
+//! JSON. Request `{"cmd":"status","args":{…}}` → reply `{"ok":true,"data":…}` or
 //! `{"ok":false,"error":"…"}`. Long commands hold the connection until done.
+//!
+//! A client may add `"stream":true`, and then the app writes zero or more
+//! `{"progress":…}` lines BEFORE that single envelope, which is always the last
+//! line. Opt-in because the client already installed reads exactly one line and
+//! treats it as the reply: streaming unasked would hand an older `rex` a
+//! progress record as the result of its command.
 
 use crate::commands;
 use crate::error::{Error, Result};
@@ -49,6 +55,16 @@ pub struct Request {
     pub cmd: String,
     #[serde(default)]
     pub args: Value,
+    /// Opt-in progress streaming. When true, the server may write
+    /// `{"progress": …}` lines BEFORE the single `{"ok": …}` envelope that ends
+    /// every request.
+    ///
+    /// Negotiated rather than always-on, and that is the whole design: an older
+    /// `rex` reads exactly one line and treats it as the reply, so a server that
+    /// streamed unasked would hand it a progress line as the result. The flag is
+    /// the client saying "I know how to read more than one line".
+    #[serde(default)]
+    pub stream: bool,
 }
 
 /// `site.create` args — only `domain` is required; everything else falls back
@@ -96,11 +112,39 @@ pub fn bind(path: &Path) -> Result<UnixListener> {
     Ok(listener)
 }
 
-/// Accept loop: one JSON line in, one JSON line out, close. Generic over the
-/// handler so framing is testable without an app.
+/// Where a long command writes progress. Cloneable and cheap; dropping it is
+/// fine, and sending on it when the client did not ask for streaming is a
+/// deliberate no-op — see [`Progress`].
+#[derive(Clone)]
+pub struct Progress(Option<tokio::sync::mpsc::UnboundedSender<String>>);
+
+impl Progress {
+    /// A sink that discards — what every non-streaming request gets, so a
+    /// command can report progress unconditionally and the protocol decides
+    /// whether anyone hears it.
+    pub fn none() -> Progress {
+        Progress(None)
+    }
+
+    /// Send one progress record. Serialised as `{"progress": <value>}` so a
+    /// reader can tell it from the terminating `{"ok": …}` envelope by KEY
+    /// rather than by counting lines.
+    pub fn send(&self, value: Value) {
+        if let Some(tx) = &self.0 {
+            let _ = tx.send(json!({ "progress": value }).to_string());
+        }
+    }
+}
+
+/// Accept loop: one JSON line in, zero or more `{"progress": …}` lines, then
+/// exactly ONE `{"ok": …}` envelope, close. Generic over the handler so framing
+/// is testable without an app.
+///
+/// The envelope is always last and always exactly one, which is what lets a
+/// reader that knows nothing about a given command still know when it is done.
 pub async fn serve<F, Fut>(listener: UnixListener, handler: F)
 where
-    F: Fn(String) -> Fut + Clone + Send + 'static,
+    F: Fn(String, Progress) -> Fut + Clone + Send + 'static,
     Fut: std::future::Future<Output = String> + Send,
 {
     loop {
@@ -113,7 +157,34 @@ where
             if let Some(line) =
                 read_request_line(read, MAX_REQUEST_BYTES, REQUEST_READ_TIMEOUT).await
             {
-                let response = handler(line).await;
+                let streaming = parse_request(&line).map(|r| r.stream).unwrap_or(false);
+                let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+                let progress = if streaming { Progress(Some(tx)) } else { Progress::none() };
+                let fut = handler(line, progress);
+                tokio::pin!(fut);
+                let response = loop {
+                    tokio::select! {
+                        // Progress first when both are ready: a record produced
+                        // before the result must reach the client before the
+                        // envelope that ends the exchange.
+                        biased;
+                        Some(p) = rx.recv() => {
+                            if write.write_all(p.as_bytes()).await.is_err()
+                                || write.write_all(b"\n").await.is_err()
+                            {
+                                return; // client hung up mid-stream
+                            }
+                        }
+                        done = &mut fut => break done,
+                    }
+                };
+                // Anything queued between the last poll and the handler
+                // returning — dropped otherwise, which would lose the final
+                // phase of every job that reports one just before finishing.
+                while let Ok(p) = rx.try_recv() {
+                    let _ = write.write_all(p.as_bytes()).await;
+                    let _ = write.write_all(b"\n").await;
+                }
                 let _ = write.write_all(response.as_bytes()).await;
                 let _ = write.write_all(b"\n").await;
             }
@@ -140,19 +211,40 @@ async fn read_request_line(
 }
 
 /// Parse + dispatch one request line, encode the reply envelope.
-pub async fn handle_request<R, M>(app: &M, line: String) -> String
+pub async fn handle_request<R, M>(app: &M, line: String, progress: Progress) -> String
 where
     R: tauri::Runtime,
     M: Manager<R>,
 {
     let result = match parse_request(&line) {
-        Ok(req) => dispatch(app, &req.cmd, req.args).await,
+        Ok(req) => dispatch(app, &req.cmd, req.args, &progress).await,
         Err(e) => Err(e),
     };
     match result {
         Ok(data) => json!({"ok": true, "data": data}).to_string(),
         Err(e) => json!({"ok": false, "error": e.to_string()}).to_string(),
     }
+}
+
+
+/// One progress record from a provisioning job, for a streaming client.
+///
+/// A SNAPSHOT rather than a delta: the client may join late (it does — the first
+/// poll happens after the job starts), and a stream of deltas is only readable
+/// by someone who saw the first one. `pct` and the phase are what a terminal
+/// line needs; everything else stays in the final envelope.
+fn provision_progress(state: &commands::site_provision::SiteProvisionState) -> Value {
+    let phase = state
+        .phases
+        .get(state.phase_cursor)
+        .map(|p| json!({ "key": p.key, "label": p.label, "status": p.status }));
+    json!({
+        "kind": "provision",
+        "domain": state.domain,
+        "pct": state.pct,
+        "status": state.status,
+        "phase": phase,
+    })
 }
 
 fn to_value<T: serde::Serialize>(v: &T) -> Result<Value> {
@@ -306,7 +398,7 @@ where
 
 /// Route a command to the SAME `commands::*` fn the UI calls — never a
 /// parallel implementation.
-async fn dispatch<R, M>(app: &M, cmd: &str, args: Value) -> Result<Value>
+async fn dispatch<R, M>(app: &M, cmd: &str, args: Value, progress: &Progress) -> Result<Value>
 where
     R: tauri::Runtime,
     M: Manager<R>,
@@ -446,15 +538,43 @@ where
             if multisite.is_some() && !is_wp {
                 return Err(Error::Other("--multisite needs a WordPress site".into()));
             }
-            let created = commands::sites::create_site(
-                app.app_handle().clone(),
-                state.clone(),
-                provision_jobs_state(app)?,
-                site,
-                None,
-                blueprint_id,
-            )
-            .await?;
+            // Progress while it runs, for a client that asked for it. Polled
+            // beside the call rather than plumbed through it: the provisioning
+            // job already publishes its own state for the app's card, so the
+            // CLI reads the SAME source the UI does instead of inventing a
+            // second progress channel that can disagree with the first.
+            let domain_for_progress = site.domain.clone();
+            let created = {
+                let fut = commands::sites::create_site(
+                    app.app_handle().clone(),
+                    state.clone(),
+                    provision_jobs_state(app)?,
+                    site,
+                    None,
+                    blueprint_id,
+                );
+                tokio::pin!(fut);
+                let mut sent_phase = usize::MAX;
+                loop {
+                    tokio::select! {
+                        biased;
+                        done = &mut fut => break done?,
+                        _ = tokio::time::sleep(std::time::Duration::from_millis(400)) => {
+                            if let Ok(Some(snap)) = commands::site_provision::site_provision_active(
+                                provision_jobs_state(app)?,
+                                Some(domain_for_progress.clone()),
+                            )
+                            .await
+                            {
+                                if snap.phase_cursor != sent_phase {
+                                    sent_phase = snap.phase_cursor;
+                                    progress.send(provision_progress(&snap));
+                                }
+                            }
+                        }
+                    }
+                }
+            };
             // Convert-after-install — the blueprint flow's seam, reused.
             let created = match multisite {
                 Some(mode) => commands::wordpress::wp_multisite_convert(
@@ -549,6 +669,8 @@ where
             // caller gets the last snapshot and can read the log it names.
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(900);
             let mut last = started;
+            progress.send(provision_progress(&last));
+            let mut sent_phase = last.phase_cursor;
             while last.status == "running" && std::time::Instant::now() < deadline {
                 tokio::time::sleep(std::time::Duration::from_millis(400)).await;
                 match commands::site_provision::site_provision_active(
@@ -557,7 +679,17 @@ where
                 )
                 .await?
                 {
-                    Some(snap) => last = snap,
+                    Some(snap) => {
+                        // One record per PHASE, not per poll: at 400ms a
+                        // fifteen-minute provision is 2 250 lines of the same
+                        // sentence, which is noise a reader has to filter to
+                        // find the one thing that changed.
+                        if snap.phase_cursor != sent_phase || snap.status != last.status {
+                            sent_phase = snap.phase_cursor;
+                            progress.send(provision_progress(&snap));
+                        }
+                        last = snap;
+                    }
                     None => break,
                 }
             }
@@ -1618,9 +1750,9 @@ pub fn spawn(app: tauri::AppHandle) {
             }
         };
         log::info!("cli: listening on {}", path.display());
-        serve(listener, move |line| {
+        serve(listener, move |line, progress| {
             let app = app.clone();
-            async move { handle_request(&app, line).await }
+            async move { handle_request(&app, line, progress).await }
         })
         .await;
     });
@@ -1907,7 +2039,7 @@ mod tests {
     async fn serve_round_trips_one_line_per_connection() {
         let path = scratch_sock("echo");
         let listener = bind(&path).expect("bind");
-        tokio::spawn(serve(listener, |line: String| async move {
+        tokio::spawn(serve(listener, |line: String, _p: Progress| async move {
             format!("echo:{}", line.trim())
         }));
         let mut stream = tokio::net::UnixStream::connect(&path).await.expect("connect");
@@ -1916,6 +2048,73 @@ mod tests {
         let mut line = String::new();
         BufReader::new(read).read_line(&mut line).await.expect("read");
         assert_eq!(line.trim(), "echo:{\"cmd\":\"x\"}");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// **Streaming is opt-in, and the envelope is always the last line.**
+    ///
+    /// The compatibility half is the point: an older `rex` reads exactly ONE
+    /// line and treats it as the reply, so a server that streamed unasked would
+    /// hand it a progress record as the result of the command. The flag is the
+    /// client saying it can read more than one line, and a request without it
+    /// must get the old framing byte for byte.
+    #[tokio::test]
+    async fn progress_lines_only_go_to_a_client_that_asked_for_them() {
+        let path = scratch_sock("stream");
+        let listener = bind(&path).expect("bind");
+        tokio::spawn(serve(listener, |line: String, p: Progress| async move {
+            // Every request reports progress unconditionally; the PROTOCOL
+            // decides whether anyone hears it, which is what keeps a command
+            // from having to know who is asking.
+            p.send(json!({ "step": 1 }));
+            p.send(json!({ "step": 2 }));
+            json!({ "ok": true, "data": line.trim() }).to_string()
+        }));
+
+        async fn exchange(path: &std::path::Path, request: &str) -> Vec<String> {
+            let mut stream = tokio::net::UnixStream::connect(path).await.expect("connect");
+            stream.write_all(format!("{request}\n").as_bytes()).await.expect("write");
+            let (read, _w) = stream.into_split();
+            let mut lines = Vec::new();
+            let mut reader = BufReader::new(read);
+            loop {
+                let mut line = String::new();
+                match reader.read_line(&mut line).await {
+                    Ok(0) | Err(_) => break,
+                    Ok(_) => lines.push(line.trim().to_string()),
+                }
+            }
+            lines
+        }
+
+        // No flag: exactly one line, and it is the envelope — the old contract.
+        let plain = exchange(&path, "{\"cmd\":\"x\"}").await;
+        assert_eq!(
+            plain.len(),
+            1,
+            "a client that did not ask for streaming got {} lines — an older `rex` reads the \
+             first one as the reply, so this hands it a progress record as the result: {plain:?}",
+            plain.len()
+        );
+        assert!(plain[0].contains("\"ok\":true"), "the single line must be the envelope");
+
+        // With the flag: the progress records IN ORDER, then the envelope LAST.
+        let streamed = exchange(&path, "{\"cmd\":\"x\",\"stream\":true}").await;
+        assert_eq!(streamed.len(), 3, "expected two progress lines and one envelope: {streamed:?}");
+        assert!(streamed[0].contains("\"step\":1"), "first record out of order: {streamed:?}");
+        assert!(streamed[1].contains("\"step\":2"), "second record out of order: {streamed:?}");
+        assert!(
+            streamed[2].contains("\"ok\":true"),
+            "the envelope must be LAST — it is how a reader that understands none of the \
+             progress records still knows the exchange is over: {streamed:?}"
+        );
+        // …and progress is identifiable by KEY, not by position: that is what
+        // lets a client skip records it does not understand.
+        for record in &streamed[..2] {
+            let v: Value = serde_json::from_str(record).expect("progress is JSON");
+            assert!(v.get("progress").is_some(), "a progress line must be keyed `progress`");
+            assert!(v.get("ok").is_none(), "a progress line must never look like an envelope");
+        }
         let _ = std::fs::remove_file(&path);
     }
 
@@ -1956,15 +2155,15 @@ mod tests {
             "repo.run",
         ] {
             let reply =
-                handle_request(app.handle(), format!("{{\"cmd\":\"{cmd}\"}}")).await;
+                handle_request(app.handle(), format!("{{\"cmd\":\"{cmd}\"}}"), Progress::none()).await;
             let v: Value = serde_json::from_str(&reply).expect("valid envelope");
             assert_eq!(v["ok"], false);
             assert!(v["error"].as_str().unwrap().contains("starting"), "{cmd}: {v}");
         }
-        let reply = handle_request(app.handle(), "{\"cmd\":\"bogus\"}".into()).await;
+        let reply = handle_request(app.handle(), "{\"cmd\":\"bogus\"}".into(), Progress::none()).await;
         let v: Value = serde_json::from_str(&reply).expect("valid envelope");
         assert!(v["error"].as_str().unwrap().contains("unknown command"));
-        let reply = handle_request(app.handle(), "not json at all".into()).await;
+        let reply = handle_request(app.handle(), "not json at all".into(), Progress::none()).await;
         let v: Value = serde_json::from_str(&reply).expect("valid envelope");
         assert_eq!(v["ok"], false);
         assert!(v["error"].as_str().unwrap().contains("bad request"));

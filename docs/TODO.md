@@ -2479,9 +2479,11 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   refused by name; the edge is reloaded, not restarted; a stopped service is reported, not
   started. ~~`wp_user_delete` (no IPC exists)~~ ✓ 2 Sep 2026
   (ledger #446) — the posts fork is a required argument, and the primary admin,
-  self-reassignment and multisite are refused. Still open: raw `wp` passthrough (security
-  decision), progress streaming over the CLI
-  socket (design once, benefits every long op).
+  self-reassignment and multisite are refused. ~~progress streaming over the CLI socket~~ ✓ 2 Sep 2026
+  (ledger #447) — opt-in `stream: true`, `{"progress": …}` records keyed so they can be
+  skipped, one `{"ok": …}` envelope always last; `site create` and `site retry` print
+  phases live. Still open: raw `wp` passthrough (security decision) — a ruling about what
+  the CLI may execute, deliberately not gap-filled.
 - [x] **Rowless-orphan launch NOTICE** ✓ 30 Aug 2026 — ledger #431. The queued-notices
   channel this row asked for: `StartupNotices` (always managed, like `InitError`) is filled by
   BOTH tunnel sweeps — the crash-orphan one and the rowless backstop — and drained by

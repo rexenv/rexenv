@@ -233,8 +233,10 @@ message actually names it is a separate, unverified claim (see the row above).
 What remains:
 2. Design-first 🔴 set: ~~single-site restart~~ (shipped 2 Sep 2026, #444),
    ~~web-tier single-service control~~ (shipped 2 Sep 2026, #445),
-   ~~`wp_user_delete`~~ (shipped 2 Sep 2026, #446). Still open: raw wp
-   passthrough (security decision), progress streaming for long ops.
+   ~~`wp_user_delete`~~ (shipped 2 Sep 2026, #446),
+   ~~progress streaming for long ops~~ (shipped 2 Sep 2026, #447). Still open:
+   raw wp passthrough (security decision) — the one left is the one that is a
+   ruling about what the CLI may execute, not a gap.
 3. **In-app verifies owed** (passthroughs whose restart/exposure half is
    guard-blocked in the example harness — exercise each once against the
    running app): `php install/uninstall`, `php settings set`, `db versions

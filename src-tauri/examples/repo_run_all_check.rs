@@ -137,7 +137,7 @@ async fn main() {
         let line = json!({ "cmd": cmd, "args": args }).to_string();
         let handle = app.handle().clone();
         async move {
-            let reply = cli_server::handle_request(&handle, line).await;
+            let reply = cli_server::handle_request(&handle, line, cli_server::Progress::none()).await;
             serde_json::from_str::<Value>(&reply).expect("valid envelope")
         }
     };
