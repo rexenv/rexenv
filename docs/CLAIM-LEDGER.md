@@ -418,7 +418,7 @@ L3 = scripted manual.
 | # | Anchor | Claim | Verdict |
 |---|---|---|---|
 | 112 | confverify.rs:5 | connected ⇐ witness ⇐ proof ⇐ real sign-in; probe can never gate | ✅ 4 lib tests + `config_rewrite_check` |
-| 113 | confverify.rs:20 | Password never touches argv or logs | ◐ file path ✅; argv-absence 🔨 L0 |
+| 113 | core/confverify.rs (the re-read + sign-in path) | **The password out of a site's own config never touches argv or a log.** It comes from the file as RE-READ, travels through the `0600` defaults file (deleted on Drop) and is used to actually sign in — the proof `Verified` is minted from | ✅ L0 `no_password_reaches_argv_an_env_var_or_a_log_line` (2 Sep 2026) — the owed argv half, held across every module that handles a password rather than in the one place somebody remembers. See #123 for what the scan checks and why each sink is permanent |
 | 114 | dbdump.rs:4 | Refusable pairing can't reach a connection attempt | ✅ witness-type test |
 | 115 | dbdump.rs:14 | Partial dump unrepresentable as an artifact | ✅ lib test + `db_dump_check` |
 | 116 | dbdump.rs:23 | ⚠ Cancelled dump changes nothing server-side — `--single-transaction` takes only locks that ordinary dead-session teardown releases | ✅ `db_dump_check` §8 (15 Aug 2026): the REAL mysqldump with the production flag set is parked MID-TABLE deterministically (its stdout pipe is never read — no timing race, no giant fixture), the CONTROL proves a metadata lock is genuinely held while it runs (a DDL under `lock_wait_timeout=1` times out, with the timeout string required in stderr), then SIGKILL — the kill a cancel performs — and the SAME DDL succeeds within seconds, with the row count unchanged. The control's broken-fixture path fired for real during construction (§7's discarded-tablespace plant made the dump exit before parking, and the leg said CONTROL BROKEN, this proves NOTHING — then failed). **Scoped like #228: measured with the bundled mysqldump 8.4 against MySQL 8.4 on this machine.** The MariaDB pairing rests on the same teardown mechanism but was not measured |
@@ -431,7 +431,7 @@ L3 = scripted manual.
 | 120 | dbrestore.rs:18 | Retry is drop-and-refeed; pre-existing DB never dropped | ✅ 2 lib tests + 2 examples |
 | 121 | dbrestore.rs:27 | "Some tables exist" can never read as success | ✅ lib test |
 | 122 | dbmirror.rs:7 | Never our root; loopback-scoped; idempotent | ✅ 4 lib tests |
-| 123 | dbmirror.rs:21 | Password over stdin, never argv/env/logs | ◐ SQL shape ✅ + live restore; never-logged 🔨 L0 |
+| 123 | core/dbmirror.rs + dbdump.rs + dbimport.rs + confverify.rs | **A site's real database password reaches the engine over stdin or a `0600` defaults file — never argv, never an environment variable, never a log.** The three sinks fail differently and all three are permanent: argv is world-readable on a multi-user machine (`ps`, which is why MySQL warns about `--password` itself); an env var is inherited by every child the process spawns, so one `Command` hands it to wp-cli, git or a build script; a log line lands in a file that outlives the session, gets attached to bug reports, and is what a developer pastes into an issue | ✅ L0 `no_password_reaches_argv_an_env_var_or_a_log_line` (2 Sep 2026) — a SURFACE scan of the four handling modules' production lines: any password-shaped line reaching a log macro, `--password`, or `.env(`/`set_var(` fails by file, line and text. Even a redacted-looking log is refused — the next edit that makes it a real value has no reviewer and the line already looks harmless. Canaried both ways: the scan must SEE at least eight password-shaped lines (or it is a green light for four files it never read) and the safe channel itself must still be visible in the mirror. **Plant-proven ×3**: a debug log, a `--password` argv, and the scan pointed at a module that handles none |
 | 196 | dbmirror.rs (grant_db_object) | GRANT `ON db.*` names exactly ONE database — `_`/`%` are pattern wildcards even inside backticks, so a bare `wp_shop` grant also covers `wpashop`; escaping them stops a mirrored user reaching a sibling site's schema (Tier-1 cross-site; was a live bug, `wp_<slug>` names carry `_`) | ✅ `grant_names_exactly_one_database_escaping_wildcard_metachars` |
 | 124 | dbsource.rs:6 | Plists label, listeners decide | ✅ 2 lib tests |
 | 125 | dbsource.rs:13 | Identification never authenticates; declarations can't override the wire | ✅ 3 lib tests + `db_source_check` |
@@ -641,7 +641,7 @@ import-graph lint #163 closed; the FrankenPHP read-only picker #333; the
 mid-dump-kill server-side leg #116 closed; the resolver-drift banner #334; the
 delete-kill ordering #190 closed; #103's Apache/FrankenPHP legs; the fpm
 candidate isolation #104/#191; the manifest sweep #335):
-**✅ 373 · ◐ 64 · 🔨 11 · 🚫 5** of 453 rows, plus 13 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432).
+**✅ 375 · ◐ 62 · 🔨 11 · 🚫 5** of 453 rows, plus 13 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432).
 Recomputed mechanically with the one-liner above. The working backlog = every 🔨
 row + the noted half of every ◐ row, ranked below.
 

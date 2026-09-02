@@ -269,6 +269,101 @@ pub(crate) fn sql_str(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+
+    /// #113/#123 — **a password never reaches argv, an environment variable, or
+    /// a log line**, across every module that handles one.
+    ///
+    /// The three sinks fail differently and all three are permanent. Argv is
+    /// world-readable on a multi-user machine (`ps` shows it to anyone) and is
+    /// why MySQL prints its own warning about `--password`. An env var is
+    /// inherited by every child the process spawns, so one careless `Command`
+    /// hands a site's real database password to wp-cli, git, or a build script.
+    /// A log line writes it to a file that lives for months, gets attached to
+    /// bug reports, and is exactly what a developer pastes into an issue.
+    ///
+    /// So the password travels through a `0600` defaults file (deleted on drop)
+    /// or over the client's stdin inside the SQL text — and this scan holds
+    /// that shape across the modules that touch one, rather than in the one
+    /// place somebody remembers.
+    #[test]
+    fn no_password_reaches_argv_an_env_var_or_a_log_line() {
+        // Modules that HANDLE a password: the mirror, the connection verifier,
+        // the dump/restore pair they share, and the config rewriter that reads
+        // one out of a site's own file. Adding a fifth is the moment to add it
+        // here — which is what the landmark assertions below are for.
+        const HANDLERS: &[(&str, &str)] = &[
+            ("dbmirror.rs", include_str!("dbmirror.rs")),
+            ("confverify.rs", include_str!("confverify.rs")),
+            ("dbdump.rs", include_str!("dbdump.rs")),
+            ("dbimport.rs", include_str!("dbimport.rs")),
+        ];
+        let mentions_secret = |line: &str| {
+            let low = line.to_ascii_lowercase();
+            ["password", "passwd", "secret"].iter().any(|w| low.contains(w))
+        };
+
+        let mut scanned = 0usize;
+        for (name, raw) in HANDLERS {
+            let src = crate::core::copy_scan::production_source(raw);
+            for (n, line) in src.lines().enumerate() {
+                let code = line.split("//").next().unwrap_or("");
+                if !mentions_secret(code) {
+                    continue;
+                }
+                scanned += 1;
+                // A LOG of anything password-shaped. Even "password: ***" is
+                // refused: the next edit that makes it a real value has no
+                // reviewer, and the line already looks harmless.
+                for sink in ["log::trace!", "log::debug!", "log::info!", "log::warn!", "log::error!", "println!", "eprintln!", "dbg!"] {
+                    assert!(
+                        !code.contains(sink),
+                        "{name}:{} logs something password-shaped through `{sink}` — a log file \
+                         outlives the session, gets attached to bug reports, and is what a \
+                         developer pastes into an issue:\n    {}",
+                        n + 1,
+                        code.trim()
+                    );
+                }
+                // ARGV: `--password`/`-p<value>` on a client command line is
+                // readable by every process on the machine (`ps`), which is why
+                // MySQL warns about it itself.
+                assert!(
+                    !code.contains("--password") && !code.contains("-ppassword"),
+                    "{name}:{} puts a password on ARGV — `ps` shows it to every user on the \
+                     machine. It goes through the 0600 defaults file or over stdin:\n    {}",
+                    n + 1,
+                    code.trim()
+                );
+                // ENV: inherited by every child this process spawns, so one
+                // `Command` hands it to wp-cli, git, or a build script.
+                for sink in [".env(", ".envs(", "set_var("] {
+                    assert!(
+                        !code.contains(sink),
+                        "{name}:{} puts a password in the ENVIRONMENT ({sink}) — every child \
+                         process inherits it:\n    {}",
+                        n + 1,
+                        code.trim()
+                    );
+                }
+            }
+        }
+        // The scan must have SEEN password-handling code, or it is a green
+        // light for four files it never read (the stripper's own canary rule).
+        assert!(
+            scanned >= 8,
+            "only {scanned} password-shaped production lines found across the handlers — the \
+             scan is broken, or the password handling moved somewhere this guard does not look"
+        );
+        // …and the mechanism it exists to protect is still the mechanism: one
+        // of the two safe channels must still be visible in the module that
+        // creates the mirrored account.
+        let mirror = crate::core::copy_scan::production_source(include_str!("dbmirror.rs"));
+        assert!(
+            mirror.contains("write_all") || mirror.contains("stdin"),
+            "the mirror no longer writes its SQL over stdin — if the channel changed, re-read \
+             what stops the password reaching argv now"
+        );
+    }
     use super::*;
 
     #[test]
