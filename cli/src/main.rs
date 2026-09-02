@@ -3077,30 +3077,52 @@ fn cmd_status(json_output: bool) {
 #[cfg(test)]
 mod tests {
 
-    /// **Every subcommand the CLI dispatches is completable.**
+    /// **Every subcommand the CLI dispatches is completable, and every
+    /// completion word dispatches — for every GROUP, not just the one that was
+    /// broken.**
     ///
     /// Completions are how a terminal user DISCOVERS this tool: `rex site <tab>`
-    /// is the only place most people will ever see that `restart` or `domains`
-    /// exist. A verb that dispatches but is not in the list is a feature that
-    /// shipped invisible — which is exactly what happened to `site restart`,
-    /// `site domains` and `service restart` between being written and this test
-    /// (2 Sep 2026); all three worked, and nothing offered them.
+    /// is the only place most people will ever see that a verb exists. A verb
+    /// that dispatches without a completion word shipped invisible — which is
+    /// exactly what happened to `site restart`, `site domains` and
+    /// `service restart` (2 Sep 2026); all three worked and nothing offered
+    /// them. A completion word nothing dispatches is the same rot pointing the
+    /// other way: a tab into an error.
     ///
-    /// The lists are compared against the DISPATCH, so the two cannot drift: a
-    /// new arm without a completion word fails here, by name.
+    /// **The first version of this test checked `site` alone**, which is the
+    /// guard-covers-claimed-surface shape this repo keeps paying for — written,
+    /// on the same day, into a test about a surface. It walks every group with
+    /// a completion list now.
     #[test]
     fn every_dispatched_subcommand_is_offered_by_completions() {
         const ME: &str = include_str!("main.rs");
 
-        // The arms of one `match words.get(N)` group, by their `Some("x") =>`
-        // shape. Scoped to the group's own block so a sibling match cannot leak.
-        fn arms(after: &str, until: &str) -> Vec<String> {
+        /// (group, the dispatch block's opening line, the completion constant).
+        /// `mail`, `tunnel` and `repo` dispatch inside their own `cmd_*` fn, so
+        /// the anchor is that fn's `match`.
+        const GROUPS: &[(&str, &str, &str)] = &[
+            (
+                "site",
+                "Some(\"site\") => match words.get(1).map(String::as_str) {",
+                "const SITE: &str = \"",
+            ),
+            (
+                "db",
+                "Some(\"db\") => match words.get(1).map(String::as_str) {",
+                "const DB: &str = \"",
+            ),
+        ];
+
+        // The arms of one dispatch block, scoped to its own closing brace: the
+        // first version ran past `site`'s and picked up `php default`, naming a
+        // command that does not exist at that path.
+        let arms = |after: &str| -> Vec<String> {
             let block = ME
                 .split(after)
                 .nth(1)
                 .unwrap_or_else(|| panic!("`{after}` is gone — if the dispatch moved, move this guard"));
-            let block = block.split(until).next().unwrap_or(block);
-            let mut out = Vec::new();
+            let block = block.split("\n        },").next().unwrap_or(block);
+            let mut out: Vec<String> = Vec::new();
             for (i, _) in block.match_indices("Some(\"") {
                 if let Some(name) = block[i + 6..].split('"').next() {
                     if !name.is_empty() && !out.contains(&name.to_string()) {
@@ -3109,44 +3131,64 @@ mod tests {
                 }
             }
             out
-        }
+        };
+        let words_of = |const_start: &str| -> Vec<String> {
+            ME.split(const_start)
+                .nth(1)
+                .and_then(|s| s.split('"').next())
+                .unwrap_or_else(|| panic!("the completion constant `{const_start}…` is gone"))
+                .split_whitespace()
+                .map(str::to_string)
+                .collect()
+        };
 
-        // `site` and `service` are the two groups that grew today; the same
-        // shape covers the others.
-        // The completion list, read out of `cmd_completions`' own constant —
-        // one source, so the guard cannot pass against a copy.
-        let site_words: Vec<String> = ME
-            .split("const SITE: &str = \"")
-            .nth(1)
-            .and_then(|s| s.split('"').next())
-            .expect("the SITE completion constant")
-            .split_whitespace()
-            .map(str::to_string)
-            .collect();
-        let site = arms("Some(\"site\") => match words.get(1).map(String::as_str) {", "\n        },");
-        assert!(site.len() > 10, "only {site:?} parsed from the site dispatch — the scan is broken");
-        for verb in &site {
+        for (group, anchor, const_start) in GROUPS {
+            let dispatched = arms(anchor);
+            let offered = words_of(const_start);
             assert!(
-                site_words.iter().any(|w| w == verb),
-                "`rex site {verb}` dispatches but is not in the completion list — a terminal \
-                 user's only way to discover it is reading the source"
+                dispatched.len() > 3,
+                "only {dispatched:?} parsed from the `{group}` dispatch — the scan is broken, and \
+                 a scan that reads nothing agrees with everything"
             );
+            for verb in &dispatched {
+                assert!(
+                    offered.iter().any(|w| w == verb),
+                    "`rex {group} {verb}` dispatches but is not in the completion list — a \
+                     terminal user's only way to discover it is reading the source"
+                );
+            }
+            for word in &offered {
+                assert!(
+                    dispatched.iter().any(|v| v == word),
+                    "completions offer `rex {group} {word}` and nothing dispatches it — \
+                     tab-completing into an error is worse than not being offered"
+                );
+            }
         }
 
-        // Verbs the completion offers that nothing dispatches are the same rot
-        // pointing the other way: a tab-completion for a command that errors.
-        for word in &site_words {
-            assert!(
-                site.iter().any(|v| v == word),
-                "completions offer `rex site {word}` and nothing dispatches it — tab-completing \
-                 into an error is worse than not being offered"
-            );
+        // `php`, `mail` and `tunnel` dispatch inside their own `cmd_*` fn, so
+        // their verbs are read from that fn's body instead of a match arm at
+        // the top level.
+        for (group, func, const_start) in [
+            ("php", "fn cmd_php(", "const PHP: &str = \""),
+        ] {
+            let body = ME
+                .split(func)
+                .nth(1)
+                .and_then(|b| b.split("\nfn ").next())
+                .unwrap_or_else(|| panic!("`{func}` is gone"));
+            let offered = words_of(const_start);
+            for word in &offered {
+                assert!(
+                    body.contains(&format!("\"{word}\"")),
+                    "completions offer `rex {group} {word}` and `{func}…` never matches it"
+                );
+            }
         }
 
-        // `service` is dispatched inside `cmd_service` rather than as match
-        // arms, so its three verbs are asserted against the completion strings
-        // directly — both shells, because a zsh-only fix is a bash user still
-        // unable to discover the verb.
+        // `service` dispatches inside `cmd_service` and its three verbs are
+        // asserted against BOTH shells' strings — a zsh-only fix leaves a bash
+        // user unable to discover the web tier's only verb.
         for shell_list in ["compadd start stop restart", "compgen -W \\\"start stop restart"] {
             assert!(
                 ME.contains(shell_list),
@@ -3156,18 +3198,6 @@ mod tests {
         }
     }
 
-    /// **`rex --version` answers for ITSELF, with no app running.**
-    ///
-    /// The gap this closes: a downloaded rexenv could not be asked what built
-    /// it. `--version` carried no commit, and `rex version` asks the running APP
-    /// over the socket — so pointing a dmg's own `rex` at a machine reported
-    /// whatever was running there, not the dmg. That made every release row's
-    /// source commit an inference from the tag and the build timeline rather
-    /// than a fact read off the bytes (`docs/PUBLISH-TESTING.md` §A, 0.3.0).
-    ///
-    /// A source guard, because the property is "this prints before, and without,
-    /// the socket call" — and a test that runs the arm would need a live app to
-    /// distinguish the two halves, which is the thing being removed.
     #[test]
     fn the_native_version_prints_its_own_commit_before_it_asks_the_app() {
         let src = include_str!("main.rs");
