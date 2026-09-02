@@ -2468,7 +2468,10 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   - [x] The `default` catch-all-site key ✓ 2 Sep 2026, ledger #448 — REPORTED by the
     scan, not imported: rexenv has no catch-all, and a behaviour that silently stops
     after a migration is the shape nobody can connect back to the move.
-  - [ ] A Valet-named port-conflict attribution branch doesn't exist (Herd's does).
+  - [x] A Valet-named port-conflict attribution branch ✓ 2 Sep 2026, ledger #449 —
+    positive ID via the include Valet appends to the Homebrew nginx.conf (never "Valet
+    is installed"), and the offered fix is `valet stop` rather than
+    `brew services stop nginx`, which leaves their Valet half-stopped.
   - [ ] Serving one site under two domains needs multi-domain support
     (`sites.domain` is UNIQUE).
 - [ ] **`rex` design-first set**: ~~single-site restart (manager seam)~~ ✓ 2 Sep 2026

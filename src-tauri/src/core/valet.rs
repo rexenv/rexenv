@@ -124,6 +124,37 @@ pub fn herd_home(home: &Path) -> PathBuf {
     home.join("Library/Application Support/Herd/config/valet")
 }
 
+/// The nginx config a Homebrew nginx at `exe_path` would load, if that path is
+/// in a brew prefix. Pure — the caller reads the file.
+///
+/// Valet does not ship a server: it drives the Homebrew nginx, so a port
+/// conflict caused by Valet looks like a conflict caused by "some nginx". The
+/// prefix is what tells us WHICH config that binary reads, and the config is
+/// where Valet leaves its mark.
+pub fn brew_nginx_conf(exe_path: &str) -> Option<PathBuf> {
+    for prefix in ["/opt/homebrew", "/usr/local"] {
+        if exe_path.starts_with(&format!("{prefix}/")) {
+            return Some(PathBuf::from(prefix).join("etc/nginx/nginx.conf"));
+        }
+    }
+    None
+}
+
+/// Does this nginx config belong to Valet? Its installer appends an include of
+/// its own `valet/valet.conf` to the Homebrew nginx.conf, which is a POSITIVE
+/// mark: a user's own nginx does not have it.
+///
+/// Deliberately not "is Valet installed on this machine" — that would attribute
+/// a developer's own nginx to Valet because Valet happens to exist, which is a
+/// confident sentence pointing at the wrong program. Attribution has to be
+/// positive or it should stay generic.
+pub fn conf_is_valets(conf: &str) -> bool {
+    conf.lines()
+        .map(str::trim)
+        .filter(|l| !l.starts_with('#'))
+        .any(|l| l.contains("valet.conf") || l.contains("/valet/"))
+}
+
 /// Read both environments. Herd wins a domain collision: it auto-migrates Valet
 /// on first launch, so its copy is the superset — the Valet row is folded in as
 /// an `also_in` note rather than shown twice.
@@ -535,6 +566,42 @@ mod tests {
         // Missing keys fall back rather than failing.
         let bare = parse_config("{}").unwrap();
         assert_eq!((bare.tld.as_str(), bare.loopback.as_str()), ("test", "127.0.0.1"));
+    }
+
+    /// Identifying VALET'S nginx, positively — the mark in the config it loads,
+    /// never the mere presence of a Valet install.
+    ///
+    /// The distinction is the whole value: a developer who has Valet installed
+    /// and also runs their own Homebrew nginx must not be told "quit Valet"
+    /// about a process Valet never started. A confident sentence naming the
+    /// wrong program is worse than the generic one it replaces, because the
+    /// user acts on it.
+    #[test]
+    fn valets_nginx_is_recognised_by_the_config_it_loads() {
+        // The prefix decides WHICH config that binary reads.
+        assert_eq!(
+            brew_nginx_conf("/opt/homebrew/opt/nginx/bin/nginx"),
+            Some(PathBuf::from("/opt/homebrew/etc/nginx/nginx.conf"))
+        );
+        assert_eq!(
+            brew_nginx_conf("/usr/local/Cellar/nginx/1.29.1/bin/nginx"),
+            Some(PathBuf::from("/usr/local/etc/nginx/nginx.conf"))
+        );
+        // Not a brew binary: no claim to make.
+        assert_eq!(brew_nginx_conf("/Applications/Herd.app/Contents/Resources/nginx"), None);
+        assert_eq!(brew_nginx_conf("/usr/sbin/nginx"), None);
+
+        // Valet's installer appends its own include; that is the mark.
+        assert!(conf_is_valets(
+            "http {\n    include servers/*;\n    include /opt/homebrew/etc/nginx/valet/valet.conf;\n}"
+        ));
+        assert!(conf_is_valets("include \"/Users/dev/.config/valet/Nginx/*\";"));
+        // A plain nginx.conf is NOT Valet's, and neither is one that merely
+        // mentions it in a comment — a commented-out include is a config that
+        // does not load Valet, and attributing on prose is how a scan starts
+        // reading its own explanation (the lesson `copy_scan` exists for).
+        assert!(!conf_is_valets("http {\n    include servers/*;\n}"));
+        assert!(!conf_is_valets("# include /opt/homebrew/etc/nginx/valet/valet.conf;"));
     }
 
     /// Valet's `default` (catch-all) is the one part of their setup rexenv will

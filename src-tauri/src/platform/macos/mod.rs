@@ -573,7 +573,7 @@ impl ProcessSupervisor for MacosSupervisor {
         let (holder, app, free_command) = match master_pid {
             Some(pid) => {
                 let exe = executable_path(pid);
-                let (h, a) = attribute_holder(&exe, pid);
+                let (h, a) = attribute_holder(&exe, pid, holder_is_valets_nginx(&exe));
                 let cmd = free_port_command(a.as_deref(), &exe, pid);
                 (Some(h), a, Some(cmd))
             }
@@ -608,6 +608,13 @@ impl ProcessSupervisor for MacosSupervisor {
 /// 3. Anything else (incl. our own orphans): direct `sudo kill <master-pid>` —
 ///    the last resort, aimed at the master we resolved, never a worker.
 fn free_port_command(app: Option<&str>, exe_path: &str, pid: u32) -> String {
+    // Valet is not an .app to quit and not a formula to stop: `brew services
+    // stop nginx` frees the port but leaves the user's Valet half-running, and
+    // the next `valet` command puts it back. Their own CLI is the action that
+    // matches how the thing is managed — the same rule as the Herd tier.
+    if app == Some("Valet") {
+        return "valet stop".into();
+    }
     match app {
         // Only build the "quit app" osascript when the name is a safe literal.
         // The name is derived from the holder's OWN path segments (a same-user
@@ -679,6 +686,23 @@ fn executable_path(pid: u32) -> String {
     })
 }
 
+/// Is this port holder Valet's nginx? Valet ships no server of its own — it
+/// drives the Homebrew nginx — so without this the message says
+/// `nginx (pid 1234, /opt/homebrew/…)` and suggests `brew services stop nginx`,
+/// which is true, unhelpful, and (for a Valet user) the wrong tool: their own
+/// `valet stop` is the command they know and the one that also stops the php-fpm
+/// and dnsmasq that came with it.
+///
+/// POSITIVE identification only: the config that binary loads must carry Valet's
+/// own include. "Valet is installed on this machine" would attribute a
+/// developer's own nginx to Valet, which is a confident sentence about the wrong
+/// program — worse than the generic answer it replaced.
+fn holder_is_valets_nginx(exe_path: &str) -> bool {
+    crate::core::valet::brew_nginx_conf(exe_path)
+        .and_then(|conf| std::fs::read_to_string(conf).ok())
+        .is_some_and(|conf| crate::core::valet::conf_is_valets(&conf))
+}
+
 /// Attribute a port holder to its OWNING APPLICATION — the actionable name.
 /// "quit nginx: worker process" tells a user nothing; "quit Herd" is the whole
 /// point of the message (Herd users ARE the target audience). Returns the
@@ -691,7 +715,18 @@ fn executable_path(pid: u32) -> String {
 ///    our own reverse-DNS dir maps back to "rexenv";
 /// 3. no app identified: degrade HONESTLY to what we do know — process name,
 ///    pid, and the full executable path so an unknown holder stays actionable.
-fn attribute_holder(exe_path: &str, pid: u32) -> (String, Option<String>) {
+///
+/// **`valet` is passed IN rather than probed here**, and that is not a style
+/// preference: the probe reads a file on the developer's own machine, so a
+/// self-probing `attribute_holder` gives a different answer depending on
+/// whether the person running the tests has Valet installed. That is exactly
+/// what happened — the existing brew-nginx case started returning "Valet" on
+/// this machine the moment the probe went inside.
+fn attribute_holder(exe_path: &str, pid: u32, valet: bool) -> (String, Option<String>) {
+    if valet {
+        let exe = exe_path.rsplit('/').next().unwrap_or(exe_path).trim();
+        return (format!("Valet ({exe}, pid {pid})"), Some("Valet".into()));
+    }
     let exe = exe_path.rsplit('/').next().unwrap_or(exe_path).trim();
     let segs: Vec<&str> = exe_path.split('/').collect();
     let app = segs
@@ -2054,7 +2089,7 @@ mod tests {
         // Herd's bundled nginx must be attributed to HERD — "quit nginx: worker
         // process" tells a user nothing; a real user burned a session on this.
         assert_eq!(
-            attribute_holder("/Applications/Herd.app/Contents/Resources/nginx", 1234),
+            attribute_holder("/Applications/Herd.app/Contents/Resources/nginx", 1234, false),
             ("Herd (nginx, pid 1234)".into(), Some("Herd".into()))
         );
         // App-managed helper binaries under Application Support (Herd's actual
@@ -2063,7 +2098,7 @@ mod tests {
             attribute_holder(
                 "/Users/x/Library/Application Support/Herd/bin/nginx-arm",
                 52766
-            ),
+            , false),
             ("Herd (nginx-arm, pid 52766)".into(), Some("Herd".into()))
         );
         // Our own reverse-DNS app-data dir reads as rexenv, not dev.rexenv.rexenv.
@@ -2071,24 +2106,67 @@ mod tests {
             attribute_holder(
                 "/Library/Application Support/dev.rexenv.rexenv/bin/caddy",
                 5
-            ),
+            , false),
             ("rexenv (caddy, pid 5)".into(), Some("rexenv".into()))
         );
         // An app whose process IS the bundle name doesn't repeat itself.
         assert_eq!(
-            attribute_holder("/Applications/OrbStack.app/Contents/MacOS/OrbStack", 9),
+            attribute_holder("/Applications/OrbStack.app/Contents/MacOS/OrbStack", 9, false),
             ("OrbStack (pid 9)".into(), Some("OrbStack".into()))
         );
         // Unknown ownership degrades HONESTLY: name + pid + full path (still
         // actionable), never a bare rewritten process title.
         assert_eq!(
-            attribute_holder("/opt/homebrew/bin/nginx", 7),
+            attribute_holder("/opt/homebrew/bin/nginx", 7, false),
             ("nginx (pid 7, /opt/homebrew/bin/nginx)".into(), None)
         );
         // No path at all (ps fallback returned a title): keep what we have.
         assert_eq!(
-            attribute_holder("nginx: worker process", 8),
+            attribute_holder("nginx: worker process", 8, false),
             ("nginx: worker process (pid 8)".into(), None)
+        );
+    }
+
+    /// The Valet ATTRIBUTION itself, with the flag passed in — because the
+    /// probe behind it reads a real file and would make this test say different
+    /// things on different machines. (It already did: with the probe inside
+    /// `attribute_holder`, the plain-brew-nginx case below started answering
+    /// "Valet" on the developer's machine, which has Valet's include in its
+    /// Homebrew nginx.conf. A test whose result depends on who runs it is not a
+    /// test.)
+    #[test]
+    fn a_valet_held_port_names_valet() {
+        assert_eq!(
+            attribute_holder("/opt/homebrew/opt/nginx/bin/nginx", 4242, true),
+            ("Valet (nginx, pid 4242)".into(), Some("Valet".into()))
+        );
+        // The same binary, not identified as Valet's: the generic answer, with
+        // the path — never a guess dressed as a name.
+        assert_eq!(
+            attribute_holder("/opt/homebrew/opt/nginx/bin/nginx", 4242, false),
+            ("nginx (pid 4242, /opt/homebrew/opt/nginx/bin/nginx)".into(), None)
+        );
+    }
+
+    /// Valet's tier of the free-the-port advice: their own CLI, not brew.
+    ///
+    /// `brew services stop nginx` DOES free the port and is what this used to
+    /// suggest, via the generic Homebrew tier. It is still the wrong answer for
+    /// a Valet user: it leaves their Valet half-stopped, the next `valet`
+    /// command puts nginx back, and it is not the command they know. Same rule
+    /// as the Herd tier — match the advice to how the thing is MANAGED.
+    #[test]
+    fn valets_nginx_is_freed_by_valets_own_command() {
+        assert_eq!(
+            free_port_command(Some("Valet"), "/opt/homebrew/opt/nginx/bin/nginx", 4242),
+            "valet stop"
+        );
+        // A Homebrew nginx that is NOT Valet's keeps the brew tier — the
+        // attribution decides this, and when it says nothing the advice must
+        // not start guessing.
+        assert_eq!(
+            free_port_command(None, "/opt/homebrew/opt/nginx/bin/nginx", 4242),
+            "brew services stop nginx || sudo brew services stop nginx"
         );
     }
 
