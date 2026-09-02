@@ -1196,3 +1196,106 @@ mod deleting_a_user_is_always_a_decision_about_their_posts {
         );
     }
 }
+
+
+/// #193 — the scope every WordPress command runs in.
+#[cfg(test)]
+mod every_wp_command_is_scoped_to_a_site_we_know {
+    /// Commands that legitimately have NO site, each with the reason. They talk
+    /// to wordpress.org or to the bundled wp-cli itself, and inventing a site
+    /// argument for them would be a parameter with nothing to validate.
+    const SITE_LESS: &[(&str, &str)] = &[
+        ("wp_org_search_plugins", "searches wordpress.org; no local install involved"),
+        ("wp_org_search_themes", "same, for themes"),
+        ("wp_org_plugin_icons", "fetches icon URLs from wordpress.org by slug"),
+        ("wp_core_versions", "lists WordPress releases from wordpress.org"),
+        ("wp_cli_packages", "lists wp-cli's own installed packages — a property of the tool"),
+    ];
+
+    /// **Every WordPress command runs against a site row in OUR database.**
+    ///
+    /// wp-cli is a shell on a directory: whoever names the directory decides
+    /// which WordPress gets its plugins deleted, its database dropped, its
+    /// users rewritten. So no command takes a PATH — they take a site id and
+    /// resolve it here, and a miss is an error rather than a default. That is
+    /// what keeps the blast radius equal to "sites rexenv created or was asked
+    /// to adopt", and it is the reason `rex wp … -- <raw args>` is still an
+    /// open design question rather than a gap.
+    ///
+    /// A surface guard, because the way this breaks is a NEW command taking a
+    /// docroot "just for this one case" — which no test of the existing 60
+    /// would notice.
+    #[test]
+    fn no_command_takes_a_docroot_and_every_site_command_resolves_it() {
+        let src = crate::core::copy_scan::production_source(include_str!("wordpress.rs"));
+        let mut checked = 0usize;
+        for chunk in src.split("#[tauri::command]").skip(1) {
+            let Some(rest) = chunk.split_once("pub ") else { continue };
+            let sig_and_body = rest.1;
+            // Generic commands are written `pub async fn wp_x<R: tauri::Runtime>(`,
+            // so the name ends at the FIRST of `(` or `<` — taking it from the
+            // paren alone yields "tauri::Runtime>" and the guard then reports a
+            // command that does not exist.
+            let head = sig_and_body.split('(').next().unwrap_or_default();
+            let head = head.split('<').next().unwrap_or(head);
+            let Some(name) = head.split_whitespace().last().map(str::to_string) else {
+                continue;
+            };
+            let body = sig_and_body.split("\n#[").next().unwrap_or(sig_and_body);
+            let sig = body.split('{').next().unwrap_or(body);
+            checked += 1;
+
+            // No command may take a filesystem path as its TARGET. (`wp_db_import`
+            // takes a `path`, and that is a FILE to read, not the site — it still
+            // resolves the site by id, which the check below holds.)
+            assert!(
+                !sig.contains("docroot: String") && !sig.contains("docroot: PathBuf"),
+                "`{name}` takes a docroot. wp-cli is a shell on a directory, so whoever names \
+                 the directory decides which WordPress gets its plugins deleted and its \
+                 database dropped — the target must be a site id we look up"
+            );
+
+            let site_less = SITE_LESS.iter().any(|(n, _)| *n == name);
+            let takes_id = sig.contains("id: String") || sig.contains("site_id: String");
+            if site_less {
+                assert!(
+                    !takes_id,
+                    "`{name}` is excused as site-less but takes a site id — delete the \
+                     exception rather than leaving a list that has stopped being true"
+                );
+                continue;
+            }
+            assert!(
+                takes_id,
+                "`{name}` takes no site id and is not in `SITE_LESS`. Either it acts on a site \
+                 (take the id) or it does not (say so, with the reason)"
+            );
+            // Directly, or through one of this module's own helpers whose
+            // FIRST act is the lookup (`run_update_streamed`, `wp_blocking_for`
+            // …). Naming the helpers rather than inlining the check keeps the
+            // guard about the RULE — the id becomes a site row before anything
+            // touches a directory — instead of about one call shape.
+            assert!(
+                body.contains("site_tools(")
+                    || body.contains("get_site(")
+                    || body.contains("core::sites::get(")
+                    || body.contains("site_content_rel(")
+                    || body.contains("run_update_streamed("),
+                "`{name}` takes a site id and never resolves it through our own database. An \
+                 unresolved id is a path someone else chose"
+            );
+        }
+        assert!(
+            checked > 40,
+            "only {checked} commands scanned — the split is broken, and a guard that reads \
+             nothing passes for the wrong reason"
+        );
+        for (name, _) in SITE_LESS {
+            assert!(
+                src.contains(&format!("pub async fn {name}(")) || src.contains(&format!("pub fn {name}(")),
+                "`{name}` is excused as site-less and no longer exists — a stale exception is \
+                 a hole waiting for a command to be given that name"
+            );
+        }
+    }
+}

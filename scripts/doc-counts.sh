@@ -43,7 +43,12 @@ SCHEMA=$(awk '/^const MIGRATIONS/,/^\];/' src-tauri/src/state/db.rs | grep -cE '
 SCHEMA_COMMENT=$(grep -oE '// v[0-9]+ —' src-tauri/src/state/db.rs | grep -oE '[0-9]+' | sort -n | tail -1)
 
 # Tauri commands, per file and in total. `#[tauri::command]` is the one way in.
-cmds_in() { grep -c '#\[tauri::command\]' "src-tauri/src/commands/$1.rs"; }
+# Anchored to column 0: `#[tauri::command]` also appears INDENTED, inside a
+# string literal, in the guard that scans this very module for unscoped commands
+# (#193) — and a loose grep counted that, reporting 64 commands where 63 exist.
+# Second time this file has measured a superset of what it names (see CLI_CMDS
+# below); the shape is a number derived from text that also DISCUSSES the thing.
+cmds_in() { grep -c '^#\[tauri::command\]$' "src-tauri/src/commands/$1.rs"; }
 CMD_WORDPRESS=$(cmds_in wordpress)
 CMD_REPO=$(cmds_in repo)
 
