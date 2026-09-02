@@ -316,11 +316,11 @@ fn owner_of(path: &std::path::Path, signature: &str) -> ResolverOwner {
     }
 }
 
-/// Whether `tld`'s OS resolver file is installed with our expected content.
-/// Used to skip the privileged prompt when there's nothing to do.
-pub fn resolver_installed(platform: &dyn Platform, tld: &str, port: u16) -> bool {
-    resolver_owner(platform, tld, port) == ResolverOwner::Ours
-}
+// `resolver_installed` lived here until 3 Sep 2026 and is DELETED. It answered
+// "is this TLD's file installed with our content", which `resolver_owner` already
+// answers with more: Ours / Foreign / Absent. The boolean lost the Foreign case —
+// a resolver file somebody ELSE owns reads as "not installed", and the caller
+// that trusts it installs over a tool the user is still using.
 
 /// The refusal when another tool already owns a TLD's resolver file.
 fn foreign_resolver_error(path: &std::path::Path) -> Error {

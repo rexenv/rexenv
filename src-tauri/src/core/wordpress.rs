@@ -1250,10 +1250,12 @@ pub fn plugin_activate(php_bin: &Path, wp_phar: &Path, docroot: &Path, names: &[
 pub fn plugin_deactivate(php_bin: &Path, wp_phar: &Path, docroot: &Path, names: &[String]) -> Result<String> {
     plugin_verb(php_bin, wp_phar, docroot, "deactivate", names)
 }
-/// Update one or more plugins (`wp plugin update …`).
-pub fn plugin_update(php_bin: &Path, wp_phar: &Path, docroot: &Path, names: &[String]) -> Result<String> {
-    plugin_verb(php_bin, wp_phar, docroot, "update", names)
-}
+// `plugin_update` lived here until 3 Sep 2026 and is DELETED. It ran
+// `wp plugin update …` and returned the output; every caller moved to the
+// STREAMED path (`UpdateKind::Plugin` through `run_update_streamed`), which
+// emits progress and settles the row afterwards. A leftover one-shot beside it
+// is a trap: the next caller gets an update with no events and no settle, and
+// the UI's badge keeps claiming the old version.
 
 /// Silence bound for a STREAMED update. Deliberately larger than
 /// [`crate::core::repo::STEP_IDLE_LIMIT`] (300s) and than WP's own 300s
@@ -1689,10 +1691,9 @@ pub fn theme_list(
 pub fn theme_activate(php_bin: &Path, wp_phar: &Path, docroot: &Path, name: &str) -> Result<String> {
     wp_run(php_bin, wp_phar, docroot, &["theme", "activate", name])
 }
-/// Update one or more themes (`wp theme update …`).
-pub fn theme_update(php_bin: &Path, wp_phar: &Path, docroot: &Path, names: &[String]) -> Result<String> {
-    item_verb(php_bin, wp_phar, docroot, "theme", "update", names)
-}
+// `theme_update` lived here until 3 Sep 2026 and is DELETED, for the same
+// reason as `plugin_update` above: `UpdateKind::Theme` through
+// `run_update_streamed` is the path that reports progress and settles.
 /// Delete one or more themes (`wp theme delete …`) — the active theme can't be deleted.
 pub fn theme_delete(php_bin: &Path, wp_phar: &Path, docroot: &Path, names: &[String]) -> Result<String> {
     item_verb(php_bin, wp_phar, docroot, "theme", "delete", names)
@@ -2597,10 +2598,10 @@ pub fn rewrite_flush(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<S
     wp_run(php_bin, wp_phar, docroot, &["rewrite", "flush"])
 }
 
-/// Update WordPress core to the latest release (`wp core update`).
-pub fn core_update(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<String> {
-    wp_run_timed(php_bin, wp_phar, docroot, &["core", "update"], download_timeout(1))
-}
+// `core_update` lived here until 3 Sep 2026 and is DELETED, for the same reason
+// as `plugin_update`: `UpdateKind::Core` through `run_update_streamed` is the
+// path with progress and settle. Core is the one where it matters most — the
+// update takes minutes, and a silent one reads as a hang.
 
 /// Re-download core files of the current version (`wp core download --force`) —
 /// repairs a corrupt/modified core without touching the DB or wp-content.
