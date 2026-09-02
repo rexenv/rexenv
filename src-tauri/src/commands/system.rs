@@ -526,21 +526,25 @@ pub(crate) async fn reload_edge_for_new_certs(
 /// if a cert is stale.
 #[tauri::command]
 pub async fn regenerate_certs(state: State<'_, AppState>) -> Result<u32> {
-    let sites = {
+    let (sites, aliases) = {
         let conn = state
             .db
             .lock()
             .map_err(|_| Error::Other("database lock poisoned".into()))?;
-        core::sites::list(&conn)?
+        (core::sites::list(&conn)?, crate::state::store::all_site_aliases(&conn)?)
     };
     let paths = state.platform.paths();
     let perms = state.platform.permissions();
     let mut count = 0u32;
     for s in &sites {
-        core::ssl::reissue_site_cert(paths, perms, &state.ca, &s.domain)?;
+        // Each site's cert is reissued for EVERY name it answers on — the
+        // sidecar beside it is rewritten from the same list, so the next
+        // rebuild cannot mistake a primary-only cert for a covering one.
+        let extra = aliases.get(&s.id).cloned().unwrap_or_default();
+        core::ssl::reissue_site_cert(paths, perms, &state.ca, &s.domain, &extra)?;
         count += 1;
     }
-    core::ssl::reissue_site_cert(paths, perms, &state.ca, core::adminer::ADMINER_HOST)?;
+    core::ssl::reissue_site_cert(paths, perms, &state.ca, core::adminer::ADMINER_HOST, &[])?;
 
     reload_edge_for_new_certs(&state, &sites).await?;
     Ok(count)

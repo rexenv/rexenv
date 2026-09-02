@@ -325,14 +325,24 @@ pub fn ensure_site_cert_with(
 /// A failure at any point leaves the previous cert/key fully intact — NEVER
 /// delete-first (a failed issuance after a delete leaves the site cert-less and
 /// the Caddyfile pointing at missing files, which breaks the next edge start).
+///
+/// `extra` is the site's alias list, and it is NOT optional: a reissue that
+/// covered the primary alone would ALSO leave the [`SITE_SANS_FILE`] sidecar
+/// describing the old, wider set, so every later [`ensure_site_cert_at_for`]
+/// would judge the narrow cert "covered" and serve it forever — the alias meets
+/// an interstitial with no recovery short of deleting the file. That was the
+/// shipped behaviour of "Regenerate certificate" for a week (found in review,
+/// 3 Sep 2026). So the sidecar is rewritten here, on the same path, from the
+/// same list the cert was issued from.
 pub fn reissue_site_cert_at(
     cert_path: &Path,
     key_path: &Path,
     ca: &LocalCa,
     domain: &str,
+    extra: &[String],
     perms: Option<&dyn PermissionManager>,
 ) -> Result<SiteCert> {
-    let (cert_pem, key_pem) = generate_site_cert(ca, domain)?;
+    let (cert_pem, key_pem) = generate_site_cert_for(ca, domain, extra)?;
     if let Some(parent) = cert_path.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -353,6 +363,11 @@ pub fn reissue_site_cert_at(
         let _ = fs::remove_file(&key_tmp);
         return Err(e);
     }
+    // The sidecar follows the cert it describes. Best-effort, and written
+    // AFTER the renames: a sidecar that outran a failed issuance would describe
+    // a cert that does not exist, while a missing one costs at most one extra
+    // reissue on the next rebuild.
+    let _ = fs::write(cert_path.with_file_name(SITE_SANS_FILE), sans_record(domain, extra));
     Ok(SiteCert {
         cert_pem,
         key_pem,
@@ -363,12 +378,14 @@ pub fn reissue_site_cert_at(
 
 /// Always re-issue a site's cert under app-data (atomic — see
 /// [`reissue_site_cert_at`]); the key file is hardened 0600. Use for the
-/// Regenerate actions; first-time issue stays [`ensure_site_cert`].
+/// Regenerate actions; first-time issue stays [`ensure_site_cert`]. `extra` is
+/// the site's alias list — pass `&[]` only for a host that HAS none (Adminer).
 pub fn reissue_site_cert(
     paths: &dyn Paths,
     perms: &dyn PermissionManager,
     ca: &LocalCa,
     domain: &str,
+    extra: &[String],
 ) -> Result<SiteCert> {
     let dir = site_cert_dir(paths, domain)?;
     let cert = reissue_site_cert_at(
@@ -376,6 +393,7 @@ pub fn reissue_site_cert(
         &dir.join(SITE_KEY_FILE),
         ca,
         domain,
+        extra,
         Some(perms),
     )?;
     perms.set_private(&cert.key_path)?;
@@ -608,7 +626,7 @@ mod tests {
         ensure_site_cert_at(&cert, &key, &ca, "re.test", Some(perms)).unwrap();
         assert_eq!(mode_of(&key), 0o600, "precondition: hardened key");
 
-        reissue_site_cert_at(&cert, &key, &ca, "re.test", Some(perms)).unwrap();
+        reissue_site_cert_at(&cert, &key, &ca, "re.test", &[], Some(perms)).unwrap();
         assert_eq!(mode_of(&key), 0o600, "reissued key stays owner-only after the rename");
 
         let _ = std::fs::remove_dir_all(&dir);
@@ -800,8 +818,12 @@ mod tests {
             );
         }
 
-        // Order is not identity.
-        let reordered = vec!["shop.test".to_string()];
+        // Order is not identity — two extras, handed over in both orders. (The
+        // first version of this assertion compared a one-element list with
+        // itself and could not fail; the sort in `sans_record` was unproven.)
+        let extra = vec!["shop.test".to_string(), "blog.test".to_string()];
+        let two = ensure_site_cert_at_for(&cert, &key, &ca, "mysite.test", &extra, None).unwrap();
+        let reordered = vec!["blog.test".to_string(), "shop.test".to_string()];
         let three =
             ensure_site_cert_at_for(&cert, &key, &ca, "mysite.test", &reordered, None).unwrap();
         assert_eq!(two.cert_pem, three.cert_pem, "the same SET must not reissue");
@@ -829,10 +851,10 @@ mod tests {
         let key = dir.join(SITE_KEY_FILE);
 
         // Works with no pre-existing files (deleted/corrupted-cert recovery)…
-        let a = reissue_site_cert_at(&cert, &key, &ca, "mysite.test", None).unwrap();
+        let a = reissue_site_cert_at(&cert, &key, &ca, "mysite.test", &[], None).unwrap();
         assert!(cert.exists() && key.exists());
         // …and ALWAYS re-issues over an existing pair (unlike ensure_site_cert).
-        let b = reissue_site_cert_at(&cert, &key, &ca, "mysite.test", None).unwrap();
+        let b = reissue_site_cert_at(&cert, &key, &ca, "mysite.test", &[], None).unwrap();
         assert_ne!(a.cert_pem, b.cert_pem);
         assert_ne!(a.key_pem, b.key_pem);
         // On-disk pair is the NEW material (rename landed), still a valid signed leaf.
@@ -847,6 +869,52 @@ mod tests {
             .filter(|e| e.path().extension().is_some_and(|x| x == "tmp"))
             .collect();
         assert!(leftovers.is_empty(), "temp files left: {leftovers:?}");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The shipped "Regenerate certificate" reissued for the primary ALONE and
+    /// left the sans sidecar describing the wider set, so every later rebuild
+    /// judged the narrow cert "covered" and the alias met an interstitial with
+    /// no way out. A reissue must (a) cover the extras and (b) leave a sidecar
+    /// the cache agrees with, so the next `ensure` is a reuse, not a reissue —
+    /// and a reissue that DROPS the extras must leave a sidecar that makes the
+    /// next `ensure` reissue again.
+    #[test]
+    fn a_reissue_covers_the_extras_and_keeps_the_sidecar_honest() {
+        let (ca_cert, ca_key) = generate_ca().unwrap();
+        let ca = LocalCa {
+            cert_pem: ca_cert,
+            key_pem: ca_key,
+            cert_path: PathBuf::new(),
+            key_path: PathBuf::new(),
+        };
+        let dir = std::env::temp_dir().join(format!("rexenv-reissue-sans-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let cert = dir.join(SITE_CERT_FILE);
+        let key = dir.join(SITE_KEY_FILE);
+        let extra = vec!["shop.test".to_string()];
+
+        let issued = ensure_site_cert_at_for(&cert, &key, &ca, "mysite.test", &extra, None).unwrap();
+        let re = reissue_site_cert_at(&cert, &key, &ca, "mysite.test", &extra, None).unwrap();
+        assert_ne!(issued.cert_pem, re.cert_pem, "a reissue must issue");
+        assert!(
+            dns_sans(&re.cert_pem).contains(&"shop.test".to_string()),
+            "the reissued cert dropped the extra: {:?}",
+            dns_sans(&re.cert_pem)
+        );
+        let kept = ensure_site_cert_at_for(&cert, &key, &ca, "mysite.test", &extra, None).unwrap();
+        assert_eq!(re.cert_pem, kept.cert_pem, "the sidecar disagreed with the cert just reissued");
+
+        // The other direction: a reissue for the primary alone (the old bug's
+        // shape, now only reachable by passing `&[]` on purpose) must NOT be
+        // mistaken for a covering cert by the next rebuild.
+        let narrow = reissue_site_cert_at(&cert, &key, &ca, "mysite.test", &[], None).unwrap();
+        let healed = ensure_site_cert_at_for(&cert, &key, &ca, "mysite.test", &extra, None).unwrap();
+        assert_ne!(
+            narrow.cert_pem, healed.cert_pem,
+            "a narrow reissue was served as covering — the sidecar lied"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }

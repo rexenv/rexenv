@@ -237,17 +237,22 @@ pub fn site_cert_info(
 /// deleted/corrupted cert or one nearing the 398-day Safari cap.
 #[tauri::command]
 pub async fn regenerate_site_cert(state: State<'_, AppState>, id: String) -> Result<()> {
-    let (site, sites) = {
+    let (site, extra, sites) = {
         let conn = lock(&state)?;
         let site = core::sites::get(&conn, &id)?
             .ok_or_else(|| Error::Other(format!("site not found: {id}")))?;
-        (site, core::sites::list(&conn)?)
+        // The alias list rides along: a reissue for the primary alone would
+        // leave the extra names uncovered AND the sans sidecar stale, so the
+        // narrow cert would be judged "covered" on every later rebuild.
+        let extra = crate::state::store::get_site_aliases(&conn, &site.id)?;
+        (site, extra, core::sites::list(&conn)?)
     };
     core::ssl::reissue_site_cert(
         state.platform.paths(),
         state.platform.permissions(),
         &state.ca,
         &site.domain,
+        &extra,
     )?;
     super::system::reload_edge_for_new_certs(&state, &sites).await
 }
