@@ -523,7 +523,7 @@ L3 = scripted manual.
 | 171 | db.rs:205 | Pre-existing DB never dropped by any path | ✅ 4 lib tests |
 | 172 | db.rs:301 | Every writer reads the content-dir record, never re-derives | ✅ 2 lib tests |
 | 173 | db.rs:919 | Failing migration rolls back atomically, reruns clean | ✅ 2 lib tests |
-| 174 | app.rs:92 | Snapshot is the single liveness truth; views can never disagree | ◐ shared source ✅; footer-vs-tab agreement 🔨 L2 |
+| 174 | state/app.rs (the snapshot) + Sidebar footer + routes/Services.tsx | **ONE snapshot is the liveness truth, and the views RENDER it rather than each deciding.** Two views that count independently drift the moment one learns a new rule — a service running but not yet answering, an adopted process, a debug pool — and the user is left with a footer saying 4/7 beside a list showing five green dots, with no way to know which is lying | ✅ shared source (the snapshot is the only reader) **+ ✅ L2 `scripts/wk-checks/statusagree.js` (2 Sep 2026, the owed agreement half)**: the footer and the Services page must show the same running/total AND the summary word must match its own arithmetic, so the badge cannot be a third opinion. The CONTROL is the fixture being MIXED — with everything running, both views could be printing the total and the check would pass on nothing. **Plant-proven ×2**: the footer counting something of its own, and an all-running fixture (which fails on the control, by name). **Stated limit**: whether the snapshot is RIGHT is `ServiceManager`'s answer and L1's job — a browser only sees what it was handed |
 
 ## core/laravel.rs + the served-root record (v32)
 
@@ -641,7 +641,7 @@ import-graph lint #163 closed; the FrankenPHP read-only picker #333; the
 mid-dump-kill server-side leg #116 closed; the resolver-drift banner #334; the
 delete-kill ordering #190 closed; #103's Apache/FrankenPHP legs; the fpm
 candidate isolation #104/#191; the manifest sweep #335):
-**✅ 380 · ◐ 57 · 🔨 11 · 🚫 5** of 453 rows, plus 13 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432).
+**✅ 381 · ◐ 56 · 🔨 11 · 🚫 5** of 453 rows, plus 13 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432).
 Recomputed mechanically with the one-liner above. The working backlog = every 🔨
 row + the noted half of every ◐ row, ranked below.
 

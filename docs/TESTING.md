@@ -389,6 +389,11 @@ it can:
 
 ### L2 — Render (`scripts/wk-checks/`, Playwright WebKit + mockIPC dev routes)
 
+- **Probes (2 Sep 2026): `statusagree.js`** — the sidebar footer and the Services
+  page must agree on running/total, and the summary word must match its own
+  arithmetic. Its control is the FIXTURE being mixed: with everything running,
+  two views that count separately would still agree, and the check would pass on
+  nothing.
 - **Probes (2 Sep 2026): `tunnelhealth.js`** — "Live" is earned by a reachable
   probe, never painted on anything running. The mock ships one tunnel per health
   so the two non-reachable cards are the CONTROL; without them the check is
