@@ -547,6 +547,97 @@ pub async fn uninstall_system(
 
 #[cfg(test)]
 mod tests {
+
+    /// #178 — **the state a failed startup still has to answer from is ALWAYS
+    /// managed, so reading it can never panic.**
+    ///
+    /// Tauri's `State<'_, T>` is a runtime lookup: a command taking one whose
+    /// type was never `manage`d aborts the process with "state not managed".
+    /// `AppState` is deliberately absent when init fails — that is the whole
+    /// design of the error screen — so the two things the frontend calls on that
+    /// path (`init_error`, `startup_notices`) must be managed on EVERY path,
+    /// including the one where the database or the CA could not be opened. If
+    /// either slipped inside the success branch, the error screen would kill the
+    /// app while trying to explain why the app cannot start: the worst possible
+    /// place for this bug, and invisible until a real init failure.
+    ///
+    /// Derived rather than spot-checked: every `State<'_, T>` type the command
+    /// layer takes must be managed somewhere, and the two always-managed ones
+    /// must be managed UNCONDITIONALLY — asserted as "at the shallowest
+    /// indentation any `app.manage(` sits at", which is setup's own statement
+    /// level, so nesting one inside an `if` or a `match` arm fails here.
+    #[test]
+    fn the_state_a_failed_startup_answers_from_is_always_managed() {
+        let lib = include_str!("../lib.rs");
+        let manages: Vec<(usize, &str)> = lib
+            .lines()
+            // `starts_with` on the TRIMMED line, not `contains`: a comment
+            // mentioning `app.manage(notices)` is not a manage call, and a real
+            // one written `app.manage::<T>(…)` is — matching on the paren form
+            // alone silently missed the only turbofish call in the file.
+            .filter(|l| l.trim_start().starts_with("app.manage"))
+            .map(|l| (l.len() - l.trim_start().len(), l.trim()))
+            .collect();
+        assert!(
+            manages.len() > 5,
+            "only {} `app.manage(` lines found in lib.rs — the scan is broken, and a guard \
+             that reads nothing passes for the wrong reason",
+            manages.len()
+        );
+        let top = manages.iter().map(|(indent, _)| *indent).min().expect("a manage call");
+
+        // Every state type a command takes must be managed at all — a missing
+        // one is an abort the first time that command is invoked.
+        let mut types: Vec<String> = Vec::new();
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/commands");
+        for entry in std::fs::read_dir(&dir).expect("commands/").flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+                continue;
+            }
+            let Ok(raw) = std::fs::read_to_string(&path) else { continue };
+            // PRODUCTION lines only: this guard's own source says `State<'_, `
+            // inside a string literal, and scanning itself made it report a
+            // fragment of its own message as a missing state type.
+            let text = crate::core::copy_scan::production_source(&raw);
+            for (_, after) in text.match_indices("State<'_, ").map(|(i, m)| (i, &text[i + m.len()..]))
+            {
+                let Some(ty) = after.split('>').next() else { continue };
+                let short = ty.rsplit("::").next().unwrap_or(ty).trim().to_string();
+                if short.is_empty() || short.starts_with('…') || types.contains(&short) {
+                    continue;
+                }
+                types.push(short);
+            }
+        }
+        assert!(types.len() > 5, "only {types:?} parsed — the state scan is broken");
+        for ty in &types {
+            if ty == "AppState" {
+                continue; // deliberately absent when init fails — the error screen's premise
+            }
+            assert!(
+                manages.iter().any(|(_, line)| line.contains(ty.as_str())),
+                "`{ty}` is taken as `State` by a command but nothing in lib.rs manages it — the \
+                 first invocation aborts the process with \"state not managed\""
+            );
+        }
+
+        // …and the two the ERROR SCREEN itself calls must be unconditional.
+        for always in ["InitError", "StartupNotices"] {
+            let line = manages
+                .iter()
+                .find(|(_, l)| l.contains(always))
+                .unwrap_or_else(|| panic!("`{always}` is not managed in lib.rs at all"));
+            assert_eq!(
+                line.0, top,
+                "`{always}` is managed at indentation {} while setup's unconditional statements \
+                 sit at {top} — it has moved inside a branch. When that branch is the \
+                 init-SUCCESS one, the error screen aborts the app while trying to explain why \
+                 the app could not start",
+                line.0
+            );
+        }
+    }
     use super::{summarize, StartupNotices};
 
     /// Pins the fix: `global_status` running/total/summary come from RUNNING

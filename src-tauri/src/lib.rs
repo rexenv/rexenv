@@ -324,7 +324,7 @@ pub fn run() {
             // ALWAYS managed so status + the health watchdog can read/repair it
             // without a missing-state panic.
             let in_process = matches!(dns_state.mode(), state::app::DnsMode::InProcess);
-            app.manage(dns_state);
+            app.manage::<state::app::DnsState>(dns_state);
             // Losing the startup race to the agent must not be permanent — see
             // `spawn_dns_handoff`. Only when we ARE the in-process holder: in
             // agent mode there is nothing to hand over, and in `Down` mode there
@@ -826,7 +826,11 @@ pub fn run() {
                 show_main_window(app.handle());
             }
             app.manage(commands::system::InitError(init_error));
-            app.manage(notices);
+            // Named by TYPE, not just by binding: the guard in `commands::system`
+            // reads this file to prove every `State<'_, T>` a command takes is
+            // managed, and a bare `app.manage(notices)` tells it nothing about
+            // which state that is.
+            app.manage::<commands::system::StartupNotices>(notices);
 
             // `rex` CLI socket (see `cli_server`): requests execute in THIS
             // process through the same command fns the UI calls. Spawned even
