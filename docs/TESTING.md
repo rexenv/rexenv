@@ -389,6 +389,14 @@ it can:
 
 ### L2 — Render (`scripts/wk-checks/`, Playwright WebKit + mockIPC dev routes)
 
+- **Probes (2 Sep 2026): `frameancestors.js`** — proves the ENGINE enforces the
+  `frame-ancestors` we emit for the Adminer console, using a fixture served
+  through Playwright's routing rather than the app. Its first version read
+  `iframe.contentDocument`, which is null for any cross-origin frame, so it
+  passed with the header deleted: a probe measuring the same-origin policy and
+  reporting it as CSP. The lesson generalises — when a check's subject is a
+  browser RULE, the plant that removes the rule must go red, or the check is
+  watching something else.
 - **Probes (2 Sep 2026): `wpfocus.js`** — the WordPress panel re-reads its list
   on focus while the costly update pass does NOT ride along. Its control needed
   a harness change: list and update check are the same command with a flag, so
