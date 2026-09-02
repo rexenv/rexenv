@@ -590,10 +590,16 @@ impl<'a> ScratchCtx<'a> {
         crate::core::scratch::ensure_capacity(&conn)?;
         let tld = crate::core::sites::default_tld(&conn)?;
         let domain = crate::core::scratch::scratch_domain(name, &tld)?;
-        if crate::state::store::domain_exists(&conn, &domain)? {
+        // BOTH tables (v42): a user site may ANSWER on this hostname as an extra
+        // domain without it being that site's own. `create` refuses either way,
+        // so this is about WHEN and with what words: an agent that hears the
+        // refusal here can pick another name, while one that hears it four
+        // phases later gets a half-built site and a message about a collision
+        // it was never told to avoid.
+        if let Some(owner) = crate::core::sites::domain_taken_by(&conn, &domain)? {
             return Err(Error::Other(format!(
-                "`{domain}` already exists. Pick a different name, or use the site that is \
-                 already there (list_sites shows it)."
+                "`{domain}` already reaches the site \"{owner}\". Pick a different name, or use \
+                 the site that is already there (list_sites shows it)."
             )));
         }
         let php_version = match php {

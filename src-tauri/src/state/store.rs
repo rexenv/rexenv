@@ -702,15 +702,17 @@ pub fn site_by_domain(conn: &Connection, domain: &str) -> Result<Option<Site>> {
     }
 }
 
-/// True if a site already uses `domain` (domains are unique).
-pub fn domain_exists(conn: &Connection, domain: &str) -> Result<bool> {
-    let count: i64 = conn.query_row(
-        "SELECT count(*) FROM sites WHERE domain = ?1",
-        [domain],
-        |r| r.get(0),
-    )?;
-    Ok(count > 0)
-}
+// `domain_exists` lived here until 3 Sep 2026 and is DELETED, not kept.
+//
+// It answered "does a SITE ROW use this domain", which stopped being the
+// question the day extra domains shipped (v42): a hostname can also be reached
+// as another site's alias, and three callers — create, the domain change, and
+// the MCP scratch planner — were each asking the half-question and getting a
+// confident wrong answer. `core::sites::domain_taken_by` answers for both
+// tables and NAMES the owner.
+//
+// Removed rather than left beside its replacement, because the next caller
+// would reach for whichever name reads simpler, and this one reads simplest.
 
 /// True if a site already stores this database name. Backstop for the injective
 /// name derivation at create (`core::sites::unique_db_name`) — `db_name` derives

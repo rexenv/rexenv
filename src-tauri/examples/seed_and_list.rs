@@ -5,7 +5,7 @@
 use rexenv_lib::core::{sites, ssl};
 use rexenv_lib::platform;
 use rexenv_lib::state::models::{NewSite, ServiceStatus, SiteType, WebServer};
-use rexenv_lib::state::{db, store};
+use rexenv_lib::state::db;
 
 #[tokio::main]
 async fn main() {
@@ -18,12 +18,13 @@ async fn main() {
         ("Demo Two", "demo-two.test", SiteType::Wordpress, false),
     ];
     for (name, domain, ty, run) in seeds {
-        let site = if store::domain_exists(&conn, domain).unwrap() {
-            sites::list(&conn)
-                .unwrap()
-                .into_iter()
-                .find(|s| s.domain == domain)
-                .unwrap()
+        // Re-use the seed if it is already there. Reads the LIST rather than
+        // asking whether the domain exists: `store::domain_exists` was deleted
+        // on 3 Sep 2026 for answering half the question (a hostname can also be
+        // another site's extra domain), and this example wants the row anyway.
+        let existing = sites::list(&conn).unwrap().into_iter().find(|s| s.domain == domain);
+        let site = if let Some(site) = existing {
+            site
         } else {
             sites::provision(
                 &conn,
