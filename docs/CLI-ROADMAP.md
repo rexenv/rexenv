@@ -90,7 +90,7 @@ to launch a specific copy with `open /Applications/rexenv.app` when it matters. 
 |---|---|---|---|
 | `service start\|stop <engine>` | `start_database` / `stop_database` | ✓ | shipped 16 Jul — postgres cycled idle→running→idle live |
 | `service start\|stop mailpit` | `start_mail` / `stop_mail` | ✓ | shipped 16 Jul |
-| `service start\|stop nginx\|caddy\|php-<minor>` | — | 🔴 | web tier has no single-service IPC (deliberate — topology invariants); design first |
+| `service restart nginx\|edge\|php-<minor>` | `restart_web_service` | ✓ | **shipped 2 Sep 2026** (ledger #445). The design this row asked for, and the answer is that the verb is RESTART only: the web tier has no useful stopped state — a stopped nginx is every default site 502-ing with nothing on screen to say why — so `start`/`stop` on a web-tier name is REFUSED BY NAME, pointing at `rex service restart` or `rex start`/`rex stop`. Always respawns on a FRESHLY generated config (resurrecting a service on the config it already had is the state a restart is trying to escape). The edge is RELOADED, not restarted, and says so: it is a root KeepAlive daemon whose stop is a privileged `disable` + `bootout` with every site offline at :443 in between, and the live config is what anyone asking for a restart wanted. A service that is not running is REPORTED, never started — `start_all` owns the ORDER (pools → nginx → edge) and a lone service started out of order is a stack that half works. Adopted nginx + a non-app process = refused, like every other stack-guard path. Not live-run yet |
 | `logs [key] [--lines N] [--follow]` | `tail_log` + a `logs.list` dir-listing arm | ✓ | shipped 16 Jul — no key lists every log file with sizes |
 
 ## Database
@@ -210,7 +210,7 @@ line streaming is the same 🔴 "progress streaming" infra item as always.
 
 ## Status — every 🟢/🟡/⚪ command is SHIPPED
 
-55 commands shipped. **That number is now GENERATED** (`scripts/doc-counts.sh`,
+56 commands shipped. **That number is now GENERATED** (`scripts/doc-counts.sh`,
 enforced by `verify.sh`) and this heading no longer carries a date: it read
 "Status (16 Jul 2026) — 42 commands shipped" while the tree had 53, in the one
 file a reader consults to learn what exists. A status line nobody re-counts is a

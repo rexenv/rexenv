@@ -98,6 +98,7 @@ COMMANDS:
   site xdebug <domain> on|off        Toggle the site's Xdebug debug pool
   site server <domain> nginx|frankenphp|apache   Switch the web server
   site restart <domain> [--pool]     Restart the site's own backend (--pool also bounces its shared PHP pool)
+  service restart <nginx|edge|php-8.3>           Bounce one web-tier service on a fresh config
   site rename <domain> <name>        Display name only (domain unchanged)
   site domain <domain> <new-domain>  Change the domain (URL rewrite; asks first)
   site move <domain> <dest-parent>   Move the docroot under a new parent folder
@@ -1834,8 +1835,50 @@ fn cmd_site_cert(words: &[String], json_output: bool) {
 
 fn cmd_service(words: &[String], json_output: bool) {
     let (action, name) = (words.first().map(String::as_str), words.get(1).map(String::as_str));
+    // The web tier takes RESTART only, and start/stop refuse it by name rather
+    // than by silence: a stopped nginx is every default site 502-ing with
+    // nothing on screen to explain it, so stopping the stack is `rex stop`.
+    if let (Some(action @ ("start" | "stop")), Some(name @ ("nginx" | "edge" | "caddy"))) =
+        (action, name)
+    {
+        eprintln!(
+            "rex: the web tier has no single-service {action} — {name} serves every site on it. \
+             Use `rex service restart {name}` to bounce it on a fresh config, or `rex {action}` \
+             for the whole stack."
+        );
+        exit(1);
+    }
+    if action == Some("restart") {
+        let Some(target) = name else {
+            eprintln!("rex: usage: rex service restart <nginx|edge|php-8.3>");
+            exit(1);
+        };
+        let r = request("service.restart", json!({ "target": target }));
+        if json_output {
+            return print_json(&r);
+        }
+        let service = r["service"].as_str().unwrap_or(target);
+        match r["outcome"].as_str().unwrap_or("") {
+            "restarted" => println!("✓ {service} restarted on a freshly generated config"),
+            "reloaded" => println!(
+                "✓ {service} reloaded (new config live). The edge is a supervised root daemon — \
+                 a true restart is Stop all → Start in the app."
+            ),
+            "notRunning" => {
+                eprintln!("rex: {service} is not running — `rex start` brings the stack up in order");
+                exit(1);
+            }
+            other => {
+                eprintln!("rex: {service} was not restarted ({other})");
+                exit(1);
+            }
+        }
+        return;
+    }
     let (Some(action @ ("start" | "stop")), Some(name)) = (action, name) else {
-        eprintln!("rex: usage: rex service start|stop <mysql|mariadb|postgres|redis|mailpit>");
+        eprintln!(
+            "rex: usage: rex service start|stop <mysql|mariadb|postgres|redis|mailpit>\n                    rex service restart <nginx|edge|php-8.3>"
+        );
         exit(1);
     };
     let running = action == "start";

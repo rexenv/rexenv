@@ -282,6 +282,79 @@ pub enum SiteRestartOutcome {
     Refused { server: &'static str },
 }
 
+/// A web-tier service a single-service command may name.
+///
+/// The web tier deliberately had NO per-service IPC for a long time
+/// (`docs/CLI-ROADMAP.md`), because its parts are not independent: every default
+/// site is served by the ONE nginx, every site on a PHP minor by the ONE pool,
+/// and everything by the ONE edge. The ruling that unblocked it is that
+/// **restart is the only safe verb** — there is no useful "stopped" state for a
+/// web-tier service (a stopped nginx is every default site 502-ing with nothing
+/// on screen to say why; the way to stop the stack is to stop the stack), while
+/// restart is what people actually want: pick up a change, clear a wedged
+/// worker.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WebTarget {
+    /// The shared nginx.
+    Nginx,
+    /// The php-fpm pool for one PHP minor (its debug pool too, when running).
+    Pool(String),
+    /// The edge. Reloaded, never restarted — see [`WebRestartOutcome::Reloaded`].
+    Edge,
+}
+
+impl WebTarget {
+    /// Parse a CLI name: `nginx`, `edge`/`caddy`, `php-8.3` (or a bare `8.3`).
+    /// Unknown names are refused rather than guessed — a typo that silently
+    /// restarted the wrong tier would be the worst possible convenience.
+    pub fn parse(name: &str) -> Option<WebTarget> {
+        let n = name.trim().to_ascii_lowercase();
+        match n.as_str() {
+            "nginx" => Some(WebTarget::Nginx),
+            "edge" | "caddy" => Some(WebTarget::Edge),
+            _ => {
+                // A PINNED minor, not merely a well-formed one: `fpm_port`
+                // computes a port for any `x.y` (the offset is arithmetic), so
+                // gating on it would accept `php-9.9` and answer "restarted" for
+                // a pool that has never existed.
+                let minor = n.strip_prefix("php-").unwrap_or(&n);
+                php::all_minors()
+                    .into_iter()
+                    .find(|m| m == minor)
+                    .map(WebTarget::Pool)
+            }
+        }
+    }
+
+    /// The name status/logs use for this target.
+    pub fn label(&self) -> String {
+        match self {
+            WebTarget::Nginx => "Nginx".into(),
+            WebTarget::Pool(minor) => format!("PHP-FPM {minor}"),
+            WebTarget::Edge => "Caddy".into(),
+        }
+    }
+}
+
+/// What a web-tier restart did.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WebRestartOutcome {
+    /// Stopped and started again, on a FRESHLY generated config.
+    Restarted,
+    /// The edge: config regenerated and reloaded, not restarted. The edge is a
+    /// root KeepAlive daemon — stopping it is a privileged `disable` + `bootout`
+    /// with every site offline at :443 in between, and what a reload gives is
+    /// the thing anybody asking for a restart wanted (the new config, live).
+    Reloaded,
+    /// It is not running, so there is nothing to restart. Says so rather than
+    /// starting it: `rex start` brings the stack up in the right ORDER, and a
+    /// single service started out of order is a stack that half works.
+    NotRunning,
+    /// Adopted from another session, and the stack guard forbids this process
+    /// stopping it (a live-check example against the user's real stack).
+    Refused,
+}
+
 impl ServiceManager {
     pub fn with_ports(ports: Ports) -> Self {
         Self {
@@ -943,6 +1016,99 @@ impl ServiceManager {
             )
             .await?;
         Ok((SiteRestartOutcome::Backend { server: kind.label(), port }, vec![check]))
+    }
+
+    /// Restart ONE web-tier service — the seam behind `rex service restart`.
+    ///
+    /// **Always on a freshly generated config.** A restart that reused whatever
+    /// is on disk would resurrect the service on the state of the world at the
+    /// last reload, which is the failure people restart to escape. So nginx is
+    /// respawned from `rebuild_configs_for`, and the edge's reload is a rebuild
+    /// too.
+    ///
+    /// Ordering is not this function's job and must not become it: bringing a
+    /// stopped service up on its own is `start_all`'s (pools → nginx → edge),
+    /// and a service that is not running is reported as such.
+    pub async fn restart_web_service(
+        &mut self,
+        platform: &dyn Platform,
+        ca: &ssl::LocalCa,
+        sites: &[Site],
+        target: &WebTarget,
+    ) -> Result<(WebRestartOutcome, Vec<ReadyCheck>)> {
+        match target {
+            WebTarget::Pool(minor) => {
+                if !self.has_php_pool(minor) {
+                    return Ok((WebRestartOutcome::NotRunning, Vec::new()));
+                }
+                let checks = self.restart_pools_for(platform, std::slice::from_ref(minor)).await?;
+                Ok((WebRestartOutcome::Restarted, checks))
+            }
+            WebTarget::Nginx => {
+                let Some(nginx) = self.nginx.as_ref() else {
+                    return Ok((WebRestartOutcome::NotRunning, Vec::new()));
+                };
+                if nginx.is_adopted() && !stack_guard::may_control_real_stack() {
+                    return Ok((WebRestartOutcome::Refused, Vec::new()));
+                }
+                let nginx_bin = self.bins()?.nginx.clone();
+                let cfg = sites::rebuild_configs_for(
+                    sites,
+                    platform,
+                    ca,
+                    self.ports.nginx,
+                    self.ports.http,
+                    self.ports.https,
+                    &php::nginx_body_limits(&self.php_settings),
+                    &self.site_env,
+                )?;
+                if let Some(mut child) = self.nginx.take() {
+                    child.kill();
+                    child.wait();
+                }
+                // Workers outlive a killed master and keep the port (their title
+                // carries no app-data marker) — the same reap the watchdog does,
+                // or the respawn's port gate fails on our own leftovers.
+                for pid in platform.supervisor().owned_listeners(self.ports.nginx, "nginx") {
+                    let _ = platform.supervisor().stop(pid);
+                }
+                ports::ensure_free(platform, self.ports.nginx, ports::Proto::Tcp, "Nginx")?;
+                self.nginx = Some(
+                    services::start_nginx(platform, &nginx_bin, &cfg.nginx_conf, &cfg.nginx_prefix)?
+                        .into(),
+                );
+                let port = self.ports.nginx;
+                Ok((
+                    WebRestartOutcome::Restarted,
+                    vec![ReadyCheck {
+                        service: "Nginx".into(),
+                        log: platform.paths().log_dir()?.join("nginx-error.log"),
+                        tries: 20,
+                        probe: Box::new(move || services::nginx_running(port)),
+                        bin: None,
+                    }],
+                ))
+            }
+            WebTarget::Edge => {
+                if matches!(self.caddy, CaddyHandle::Stopped) {
+                    return Ok((WebRestartOutcome::NotRunning, Vec::new()));
+                }
+                let bins = self.bins()?;
+                let caddy_bin = bins.caddy.clone();
+                let cfg = sites::rebuild_configs_for(
+                    sites,
+                    platform,
+                    ca,
+                    self.ports.nginx,
+                    self.ports.http,
+                    self.ports.https,
+                    &php::nginx_body_limits(&self.php_settings),
+                    &self.site_env,
+                )?;
+                proxy::reload(platform, &caddy_bin, &cfg.caddyfile, true)?;
+                Ok((WebRestartOutcome::Reloaded, Vec::new()))
+            }
+        }
     }
 
     /// Stop an override backend FOR REAL, honoring the stack guard: a non-app
@@ -2937,6 +3103,73 @@ mod tests {
                 assert!(ports.contains(&p), "managed_ports missing pool port for {minor}");
             }
         }
+    }
+
+    /// The web tier's target names, and the refusal that matters most: an
+    /// unknown one. A typo that fell through to "restart something plausible"
+    /// would bounce a service serving OTHER sites than the one the user meant,
+    /// so the parse has no fuzzy arm — `None` and an error naming the accepted
+    /// forms.
+    #[test]
+    fn a_web_target_is_named_exactly_or_refused() {
+        assert_eq!(WebTarget::parse("nginx"), Some(WebTarget::Nginx));
+        assert_eq!(WebTarget::parse("NGINX"), Some(WebTarget::Nginx));
+        // Both names for the edge: `caddy` is what the process is, `edge` is
+        // what the docs and status call it, and a user should not have to know
+        // which vocabulary this command speaks.
+        assert_eq!(WebTarget::parse("edge"), Some(WebTarget::Edge));
+        assert_eq!(WebTarget::parse("caddy"), Some(WebTarget::Edge));
+        // A pool, with or without the prefix status prints.
+        let minors = php::all_minors();
+        let minor = minors.first().expect("a pinned minor");
+        assert_eq!(WebTarget::parse(minor), Some(WebTarget::Pool(minor.clone())));
+        assert_eq!(WebTarget::parse(&format!("php-{minor}")), Some(WebTarget::Pool(minor.clone())));
+        // Only PINNED minors: a version we ship no pool for has no port, and
+        // "restarted php-9.9" would be a sentence about nothing.
+        assert_eq!(WebTarget::parse("php-9.9"), None);
+        for junk in ["", "  ", "mysql", "mailpit", "ngin", "php-", "edge2"] {
+            assert_eq!(WebTarget::parse(junk), None, "`{junk}` parsed as a web target");
+        }
+        assert_eq!(WebTarget::Pool("8.3".into()).label(), "PHP-FPM 8.3");
+    }
+
+    /// A service that is NOT running is reported, never started.
+    ///
+    /// Starting it here would be the friendly-looking bug: `start_all` brings
+    /// the tier up in ORDER (pools → nginx → edge) because nginx's config names
+    /// pool ports and the edge routes to nginx, so a lone service started out of
+    /// order is a stack that half works and a user who thinks it is up.
+    #[tokio::test]
+    async fn restarting_a_stopped_web_service_reports_it_instead_of_starting_it() {
+        let platform = override_test_platform("web-restart-stopped", None);
+        // The CA is never touched on this path (nothing is generated for a
+        // service that is not running), so a literal is honest here and keeps
+        // the test off the filesystem.
+        let ca = ssl::LocalCa {
+            cert_pem: String::new(),
+            key_pem: String::new(),
+            cert_path: std::path::PathBuf::from("/dev/null"),
+            key_path: std::path::PathBuf::from("/dev/null"),
+        };
+        let mut mgr = ServiceManager::default();
+        for target in [WebTarget::Nginx, WebTarget::Edge] {
+            let (outcome, checks) = mgr
+                .restart_web_service(&platform, &ca, &[], &target)
+                .await
+                .expect("a stopped service is an outcome, not an error");
+            assert_eq!(
+                outcome,
+                WebRestartOutcome::NotRunning,
+                "{} was not running and something other than NotRunning came back",
+                target.label()
+            );
+            assert!(checks.is_empty(), "nothing was spawned, so nothing may be awaited");
+        }
+        assert!(mgr.nginx.is_none(), "a restart of a stopped nginx started one anyway");
+        assert!(
+            matches!(mgr.caddy, CaddyHandle::Stopped),
+            "a restart of a stopped edge started one anyway"
+        );
     }
 
     /// A single-site restart must tell the truth about what it can restart.

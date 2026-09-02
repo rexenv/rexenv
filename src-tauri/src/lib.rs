@@ -1149,6 +1149,7 @@ pub fn run() {
             commands::wordpress::wp_super_admin_add,
             commands::services::start_services,
             commands::services::stop_services,
+            commands::services::restart_web_service,
             commands::services::services_status,
             commands::downloads::downloads_state,
             commands::downloads::retry_download,

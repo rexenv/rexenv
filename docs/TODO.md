@@ -2473,8 +2473,11 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   shares; an ADOPTED backend a non-app process may not stop is a refusal, reported.
   The pool bounce is opt-in because it stops every site on that minor, and the count
   ships in the report whether or not the flag was passed. Live leg still owed (the
-  in-app verify list in `docs/CLI-ROADMAP.md`). Still open: web-tier
-  single-service control (topology invariant), raw `wp` passthrough (security
+  in-app verify list in `docs/CLI-ROADMAP.md`). ~~web-tier single-service control (topology invariant)~~ ✓ 2 Sep
+  2026 (ledger #445, `rex service restart nginx|edge|php-<minor>`) — RESTART is the only
+  verb the tier gets, on a freshly generated config; `start`/`stop` of a web-tier name is
+  refused by name; the edge is reloaded, not restarted; a stopped service is reported, not
+  started. Still open: raw `wp` passthrough (security
   decision), `wp_user_delete` (no IPC exists), progress streaming over the CLI
   socket (design once, benefits every long op).
 - [x] **Rowless-orphan launch NOTICE** ✓ 30 Aug 2026 — ledger #431. The queued-notices

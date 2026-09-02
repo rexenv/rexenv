@@ -1075,6 +1075,19 @@ where
             }
             Ok(Value::Null)
         }
+        // Web tier: RESTART only, one service at a time. There is no
+        // `service.stop nginx` on purpose — a stopped web-tier service is every
+        // site on it failing with nothing to say why, and stopping the stack is
+        // `stop`. See `core::service_manager::WebTarget`.
+        "service.restart" => {
+            let state = app_state(app)?;
+            let report = commands::services::restart_web_service(
+                state.clone(),
+                need_str(&args, "target", cmd)?,
+            )
+            .await?;
+            to_value(&report)
+        }
         "service.mail" => {
             let state = app_state(app)?;
             if args["running"].as_bool().ok_or_else(|| Error::Other("service.mail needs `running`".into()))? {

@@ -438,6 +438,61 @@ pub async fn services_status(state: State<'_, AppState>) -> Result<Vec<ServiceSt
     enriched_status(&state)
 }
 
+/// What `restart_web_service` did — the CLI prints this verbatim-ish.
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WebRestartReport {
+    /// The service as status names it ("Nginx", "PHP-FPM 8.3", "Caddy").
+    pub service: String,
+    /// "restarted" | "reloaded" | "notRunning" | "refused".
+    pub outcome: &'static str,
+}
+
+/// Restart ONE web-tier service: the shared nginx, a PHP minor's pool, or the
+/// edge (which is RELOADED — see `core::service_manager::WebRestartOutcome`).
+///
+/// # Why there is no `stop`
+///
+/// The web tier has no useful stopped state. A stopped nginx is every default
+/// site 502-ing with nothing on screen to explain it, and the honest way to stop
+/// serving is to stop the stack (`stop_services`). Restart is the operation
+/// people actually want, and it always runs on a freshly generated config —
+/// resurrecting a service on the config it already had is the state a restart is
+/// usually trying to escape.
+#[tauri::command]
+pub async fn restart_web_service(
+    state: State<'_, AppState>,
+    target: String,
+) -> Result<WebRestartReport> {
+    let parsed = core::service_manager::WebTarget::parse(&target).ok_or_else(|| {
+        Error::Other(format!(
+            "unknown web service \"{target}\" — expected nginx, edge, or php-<minor> \
+             (e.g. php-8.3)"
+        ))
+    })?;
+    let sites = {
+        let conn = state
+            .db
+            .lock()
+            .map_err(|_| Error::Other("database lock poisoned".into()))?;
+        core::sites::list(&conn)?
+    };
+    let (outcome, checks) = {
+        let mut mgr = state.services.lock().await;
+        mgr.restart_web_service(state.platform.as_ref(), &state.ca, &sites, &parsed).await?
+    };
+    core::service_manager::await_ready(checks).await?;
+    Ok(WebRestartReport {
+        service: parsed.label(),
+        outcome: match outcome {
+            core::service_manager::WebRestartOutcome::Restarted => "restarted",
+            core::service_manager::WebRestartOutcome::Reloaded => "reloaded",
+            core::service_manager::WebRestartOutcome::NotRunning => "notRunning",
+            core::service_manager::WebRestartOutcome::Refused => "refused",
+        },
+    })
+}
+
 #[cfg(test)]
 mod tests {
     /// #175's order guard — and a statement of what it is NOT.

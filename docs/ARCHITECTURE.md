@@ -257,6 +257,16 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   pool would stop every other site on that minor, so it is opt-in (`rex site restart
   <domain> --pool`) and the report carries how many sites that covers whether or not
   the flag was passed — the number is what makes the flag a choice instead of a dare.
+- **The web tier has no single-service STOP, only restart** (`WebTarget`,
+  `restart_web_service`, 2 Sep 2026). One nginx serves every default site, one pool
+  every site on a PHP minor, one edge everything — so "stop nginx" is every default
+  site 502-ing with nothing on screen to explain it, and stopping the stack is the
+  honest way to stop serving. A restart always regenerates the config first (coming
+  back up on the config you already had is the state a restart is meant to escape),
+  a service that is NOT running is reported rather than started (order lives in
+  `start_all`: pools → nginx → edge), and the edge is RELOADED — it is a root
+  KeepAlive daemon whose stop is a privileged `disable` + `bootout` with :443 dark
+  in between.
 - **The APP outlives the window (menu-bar app).** Closing the window hides it —
   `prevent_close` + `hide`, confirming nothing, because it stops nothing. The process
   is what the CONTROL plane lives in: `rex` and the MCP server are remote controls for
