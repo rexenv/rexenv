@@ -2481,9 +2481,10 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     cache reissues when the name SET changes), and `rex site domains <domain>
     [--add N | --remove N]`. **Import mapping landed 2 Sep 2026** (ledger #452):
     a link farm folds into one site with extra domains, on the served folder, with
-    every fold announced. **Still owed**: the Sites screen has no UI for extra domains
-    (CLI + import only), and the live leg — a real link farm imported with both names
-    answering.
+    every fold announced. **UI landed 2 Sep 2026** (ledger #453): a Domains card on
+    the site's Settings tab, rendering the backend's list after every mutation, with an
+    L2 probe. **Still owed**: the live leg — a real link farm imported with both names
+    answering, and an added domain actually served over HTTPS.
 - [ ] **`rex` design-first set**: ~~single-site restart (manager seam)~~ ✓ 2 Sep 2026
   (ledger #444, `rex site restart <domain> [--pool]`) — the ruling the row was waiting
   for is that the operation has THREE honest outcomes, not one: an override site's

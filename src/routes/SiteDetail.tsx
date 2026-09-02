@@ -44,6 +44,7 @@ import { siteTypeMeta } from "@/lib/siteType";
 import { cn, TECH_INPUT } from "@/lib/utils";
 import { eolNote, eolTag } from "@/lib/php";
 import {
+  addSiteDomain,
   changeSiteDomain,
   getSitesServing,
   frankenphpEmbeddedPhp,
@@ -55,10 +56,12 @@ import {
   openExternal,
   pickFolder,
   regenerateSiteCert,
+  removeSiteDomain,
   relinkSiteDocroot,
   renameSite,
   repoSiteInfo,
   setSiteEnv,
+  siteDomains,
   revealPath,
   setSitePhpVersion,
   setSiteWebServer,
@@ -977,6 +980,7 @@ function SettingsTab({ site }: { site: Site }) {
           <XdebugCard site={site} />
         </div>
       </div>
+      <ExtraDomainsCard site={site} />
       <EnvVarsCard siteId={site.id} />
       {domainOpen && <ChangeDomainDialog site={site} onClose={() => setDomainOpen(false)} />}
     </>
@@ -1092,6 +1096,106 @@ function envVarProblem(v: EnvVar): string | null {
 /** Per-site environment variables (§1.6): name/value rows, replace-all save.
  *  Injected per-request into the server config — the shared PHP pools are
  *  untouched. */
+/** Extra domains (v42): the other hostnames this site answers on.
+ *
+ *  The PRIMARY is shown in the same list and is NOT removable here — its files,
+ *  database and certificate folder are named for it, and changing it is a
+ *  different operation with a different blast radius (Change domain, which
+ *  rewrites the database). Showing it anyway is deliberate: the question a user
+ *  has is "which names reach this site", and a list that answered it with only
+ *  the extras would be a half-answer they have to assemble themselves.
+ *
+ *  Honest-UI: the list comes from the backend after every mutation (the reply IS
+ *  the new list), so the screen never renders a name the server did not confirm
+ *  — an added domain is served, or it is not shown.
+ */
+function ExtraDomainsCard({ site }: { site: Site }) {
+  const qc = useQueryClient();
+  const [draft, setDraft] = useState("");
+  const { data: domains, isLoading } = useQuery({
+    queryKey: ["site-domains", site.id],
+    queryFn: () => siteDomains(site.id),
+  });
+
+  const add = useMutation({
+    mutationFn: (domain: string) => addSiteDomain(site.id, domain),
+    onSuccess: (list) => {
+      setDraft("");
+      qc.setQueryData(["site-domains", site.id], list);
+      void qc.invalidateQueries({ queryKey: ["site-cert", site.id] });
+      toast.success("Extra domain added — certificate re-issued and the web server reloaded.");
+    },
+    onError: (e) => toastBackendError(e),
+  });
+  const remove = useMutation({
+    mutationFn: (domain: string) => removeSiteDomain(site.id, domain),
+    onSuccess: (list) => {
+      qc.setQueryData(["site-domains", site.id], list);
+      void qc.invalidateQueries({ queryKey: ["site-cert", site.id] });
+      toast.success("Extra domain removed.");
+    },
+    onError: (e) => toastBackendError(e),
+  });
+
+  const busy = add.isPending || remove.isPending;
+  const shown = domains ?? [site.domain];
+  const extras = shown.slice(1);
+
+  return (
+    <SettingsCard label="Domains">
+      <div className="flex flex-col gap-3">
+        {isLoading ? (
+          <div className="text-[0.78125rem] text-rex-text-muted">Reading domains…</div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-[0.78125rem] text-rex-text">{site.domain}</span>
+              <span className="text-[0.71875rem] text-rex-text-muted">primary</span>
+            </div>
+            {extras.map((d) => (
+              <div key={d} className="flex items-center gap-2">
+                <span className="font-mono text-[0.78125rem] text-rex-text">{d}</span>
+                <Button
+                  variant="ghost"
+                  disabled={busy}
+                  onClick={() => remove.mutate(d)}
+                  aria-label={`Remove ${d}`}
+                >
+                  Remove
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="flex items-center gap-2 border-t border-rex-border-subtle pt-3">
+          <input
+            {...TECH_INPUT}
+            value={draft}
+            placeholder="another.rex"
+            disabled={busy}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && draft.trim()) add.mutate(draft.trim());
+            }}
+            className="h-8 w-[260px] rounded-md border border-rex-border bg-rex-well px-2.5 font-mono text-[0.78125rem] text-rex-text outline-none focus:border-brand"
+          />
+          <Button
+            variant="secondary"
+            disabled={busy || !draft.trim()}
+            onClick={() => add.mutate(draft.trim())}
+          >
+            {add.isPending ? "Adding…" : "Add domain"}
+          </Button>
+        </div>
+        <div className="text-[0.75rem] text-rex-text-muted">
+          The site answers on every name listed here — same files, same database. Adding one
+          re-issues the certificate to cover it and reloads the web server.
+        </div>
+      </div>
+    </SettingsCard>
+  );
+}
+
 function EnvVarsCard({ siteId }: { siteId: string }) {
   const qc = useQueryClient();
   const [rows, setRows] = useState<EnvVar[] | null>(null); // null = not edited yet

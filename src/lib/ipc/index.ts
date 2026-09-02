@@ -11,8 +11,11 @@ import {
   mockAppInfo,
   mockDatabases,
   mockGlobalStatus,
+  mockAddSiteDomain,
   mockMailDetail,
   mockMailList,
+  mockRemoveSiteDomain,
+  mockSiteDomains,
   mockPhpSettings,
   mockAdminerStatus,
   mockPhpVersions,
@@ -318,6 +321,31 @@ export async function listSiteEnv(id: string): Promise<EnvVar[]> {
 export async function setSiteEnv(id: string, vars: EnvVar[]): Promise<void> {
   if (!isTauri()) return;
   await invoke("set_site_env", { id, vars });
+}
+
+/** Every hostname a site answers on — its own domain FIRST, then its extra
+ *  domains (v42). Empty outside Tauri. */
+export async function siteDomains(id: string): Promise<string[]> {
+  if (!isTauri()) return mockSiteDomains(id);
+  return invoke<string[]>("site_domains", { id });
+}
+
+/** Add an extra domain and START SERVING it: the backend validates the name
+ *  against every site's domains AND every other extra domain (one hostname
+ *  reaches one site), records it, re-issues the certificate to cover it, and
+ *  reloads the web tier. Returns the site's full domain list. Throws with the
+ *  colliding site's NAME when the hostname is taken. No-op outside Tauri. */
+export async function addSiteDomain(id: string, domain: string): Promise<string[]> {
+  if (!isTauri()) return mockAddSiteDomain(id, domain);
+  return invoke<string[]>("add_site_domain", { id, domain });
+}
+
+/** Remove an extra domain and stop serving it (config rebuilt, cert re-issued
+ *  without it). The site's own domain is not removable this way — that is
+ *  `changeSiteDomain`. Returns the remaining list. No-op outside Tauri. */
+export async function removeSiteDomain(id: string, domain: string): Promise<string[]> {
+  if (!isTauri()) return mockRemoveSiteDomain(id, domain);
+  return invoke<string[]>("remove_site_domain", { id, domain });
 }
 
 /** Read-only info about a site's HTTPS leaf cert (validity, SANs, cert folder).

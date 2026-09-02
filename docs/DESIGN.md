@@ -352,3 +352,15 @@ The comps predate the real architecture. Correct as shipped:
   dynamic PHP version list** — real features the comps never showed. Keep them.
 - When a designed control's datum doesn't exist yet, build the chrome and wire
   what exists; leave a clear TODO rather than faking the number.
+
+### The Domains card (2 Sep 2026)
+
+A site's extra hostnames live on its Settings tab, and the card follows the
+honest-UI rule the hard way: **it renders the list the backend returned**, not
+the one the user typed. Every mutation replies with the full list, so a name is
+on screen only if the server confirmed it — an added domain is served, or it is
+not shown. The PRIMARY is listed and marked, and has no Remove: its files,
+database and certificate folder are named for it, so removing it is Change
+domain, an operation with a different blast radius and its own confirmation.
+`scripts/wk-checks/domains.js` holds both halves, and its control leg (the
+untouched extra surviving a remove) is what stops "gone" from proving nothing.

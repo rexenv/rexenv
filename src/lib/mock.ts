@@ -232,3 +232,32 @@ export function mockResolverDrift(): string[] {
     .map((t) => t.trim())
     .filter(Boolean);
 }
+
+/** Extra domains per site id, for the dev shell (v42).
+ *
+ *  MUTABLE on purpose: the L2 probe adds and removes through the same wrappers
+ *  the app uses, and a fixture that answered the same list forever would let a
+ *  card that ignores the reply pass — which is precisely the honest-UI claim
+ *  ("the screen never shows a name the server did not confirm") the probe is
+ *  there to hold.
+ */
+const mockDomains: Record<string, string[]> = {
+  "1": ["acme.rex", "shop.acme.rex"],
+};
+
+export function mockSiteDomains(id: string): string[] {
+  const site = mockSites.find((s) => s.id === id);
+  return mockDomains[id] ?? (site ? [site.domain] : []);
+}
+
+export function mockAddSiteDomain(id: string, domain: string): string[] {
+  const list = mockSiteDomains(id);
+  if (list.includes(domain)) throw new Error(`this site already answers on "${domain}"`);
+  mockDomains[id] = [...list, domain];
+  return mockDomains[id];
+}
+
+export function mockRemoveSiteDomain(id: string, domain: string): string[] {
+  mockDomains[id] = mockSiteDomains(id).filter((d) => d !== domain);
+  return mockDomains[id];
+}

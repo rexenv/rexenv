@@ -389,6 +389,14 @@ it can:
 
 ### L2 — Render (`scripts/wk-checks/`, Playwright WebKit + mockIPC dev routes)
 
+- **Probes (2 Sep 2026): `domains.js`** — the Domains card renders the list the
+  BACKEND returned rather than local state, and the primary has no Remove. It is
+  L2 because the difference is only visible in a browser: a card that kept its
+  own state would satisfy every unit test of the wrappers under it. Its mock is
+  deliberately MUTABLE, since a fixture answering the same list forever would let
+  exactly that card pass, and its control leg (an untouched extra surviving a
+  remove) is what stops "the row is gone" from proving nothing.
+
 - **Proves:** layout and copy in the engine family that ships (WKWebView class bugs
   Chrome hides): overflow, collapse, control chrome, dialog flows — via dev-only
   harness routes with mocked IPC, zero backend. Also data-FRESHNESS wiring, by counting
