@@ -719,3 +719,96 @@ fn prune_logs(log_dir: &Path, prefix: &str) {
         let _ = std::fs::remove_file(logs.remove(0));
     }
 }
+
+
+/// #181 — the mutual exclusion between the three long per-site jobs.
+#[cfg(test)]
+mod one_long_job_per_site {
+    /// The three jobs that own a site's database or config file while they run,
+    /// each with its entry point(s) and the marker OTHERS check it by.
+    ///
+    /// They are mutually exclusive because they fight over the same things: a
+    /// provision creates the database, an import DROPS and rebuilds it, a
+    /// rewrite holds the site's config file and the imported-state row. Any two
+    /// at once is a race whose loser leaves a half-built site, and the user sees
+    /// a failure in whichever screen happened to be open.
+    const JOBS: &[(&str, &[&str], &str)] = &[
+        (
+            "provision",
+            &["pub(crate) fn start<R: tauri::Runtime>("],
+            "busy_for(",
+        ),
+        ("db import", &["pub async fn db_import_start"], "db_import_active"),
+        (
+            "rewrite",
+            &["pub async fn rewrite_apply(", "pub async fn rewrite_revert("],
+            "rewrite_active",
+        ),
+    ];
+
+    fn source(file: &str) -> String {
+        crate::core::copy_scan::production_source(match file {
+            "provision" => include_str!("site_provision.rs"),
+            "db import" => include_str!("db_import.rs"),
+            _ => include_str!("rewrite.rs"),
+        })
+    }
+
+    /// **Every job refuses while EITHER of the other two is running for that
+    /// site** — the whole 3×2 matrix, not the pairs somebody remembered.
+    ///
+    /// This is the guard-covers-claimed-surface family: the doc says "both
+    /// directions covered", and the directions are hand-written in three files.
+    /// Adding a fourth long job, or a second entry point to an existing one, is
+    /// where a pair goes missing — and the missing pair is invisible until two
+    /// users' worth of timing produces it.
+    #[test]
+    fn each_long_job_refuses_while_either_other_one_runs() {
+        for (job, entries, _) in JOBS {
+            let src = source(job);
+            for entry in *entries {
+                let body = src
+                    .split(entry)
+                    .nth(1)
+                    .unwrap_or_else(|| panic!("`{job}`'s entry point `{entry}` is gone — if it \
+                                               moved, move this guard with it"))
+                    .split("\npub ")
+                    .next()
+                    .unwrap_or_default();
+                for (other, _, marker) in JOBS {
+                    if other == job {
+                        continue;
+                    }
+                    assert!(
+                        body.contains(marker),
+                        "`{job}` ({entry}) never checks `{marker}` — it can start while a \
+                         {other} job owns this site's database or config file, and the loser \
+                         of that race leaves a half-built site"
+                    );
+                }
+            }
+        }
+    }
+
+    /// A job must also MARK itself, or the other two are checking a flag nobody
+    /// sets — three guards that all pass and exclude nothing.
+    #[test]
+    fn a_job_that_checks_the_others_also_announces_itself() {
+        for (job, entries, marker) in JOBS {
+            let src = source(job);
+            // The provision job's marker is a registry entry rather than a flag
+            // (`busy_for` reads the jobs map), so its "announcement" is the
+            // insert every start does.
+            // The provision job's marker is a registry ENTRY rather than a
+            // flag (`busy_for` reads the jobs map), so its announcement is the
+            // insert every start does — `map.insert(`, on the locked map.
+            let needle = if *job == "provision" { "map.insert(" } else { marker };
+            assert!(
+                src.contains(needle),
+                "`{job}` never sets the marker the other jobs check (`{needle}`) — their \
+                 guards then read a flag nobody writes, which passes and excludes nothing"
+            );
+            assert!(!entries.is_empty());
+        }
+    }
+}
