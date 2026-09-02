@@ -1190,6 +1190,21 @@ function ExtraDomainsCard({ site }: { site: Site }) {
         <div className="text-[0.75rem] text-rex-text-muted">
           The site answers on every name listed here — same files, same database. Adding one
           re-issues the certificate to cover it and reloads the web server.
+          {/* WordPress decides its own canonical URL from `siteurl`, so an extra
+              domain REACHES the site and is then redirected to the primary. Saying
+              that here is the difference between a feature that behaves oddly and
+              one the user was told about: the alternative is somebody adding
+              `staging.acme.rex`, watching the address bar snap back to
+              `acme.rex`, and concluding rexenv ignored them. */}
+          {site.type === "wordpress" && (
+            <>
+              {" "}
+              <span className="text-rex-text">
+                WordPress sends visitors to {site.domain}: the extra names reach this site and
+                then redirect there, because WordPress decides its own canonical address.
+              </span>
+            </>
+          )}
         </div>
       </div>
     </SettingsCard>

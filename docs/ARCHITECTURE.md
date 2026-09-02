@@ -266,6 +266,10 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   cache compares the recorded NAME SET, because "the files exist" leaves a valid
   certificate for yesterday's names while the browser shows an interstitial on the
   one just added. A subdomain network's alias carries the wildcard on both tiers.
+  An extra domain on a WordPress site REACHES it and then redirects to the
+  primary — WordPress owns its canonical address (`siteurl`), and rexenv does not
+  rewrite it. The card and `rex site domains` say so rather than leaving the
+  redirect to be discovered.
 - **The CLI socket streams progress, but only to a client that asked**
   (`Progress`, `stream: true`, 2 Sep 2026). The framing is: one request line in,
   zero or more `{"progress": …}` lines, then EXACTLY ONE `{"ok": …}` envelope,

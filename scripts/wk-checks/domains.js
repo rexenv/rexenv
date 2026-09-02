@@ -79,6 +79,22 @@ const card = async (page) =>
   if (!/shop\.acme\.rex/.test(removed.text))
     fails.push("CONTROL FAILED: the untouched extra domain vanished too, so 'gone' means nothing here");
 
+  // WordPress decides its own canonical address, so an extra domain REACHES the
+  // site and then redirects to the primary. The card says so — the alternative
+  // is a user adding `staging.acme.rex`, watching the address bar snap back,
+  // and concluding rexenv ignored them.
+  const canonical = await page.evaluate(() => {
+    const label = [...document.querySelectorAll("*")].find(
+      (el) => el.children.length === 0 && el.textContent.trim() === "Domains",
+    );
+    return label?.closest("div")?.parentElement?.textContent ?? "";
+  });
+  if (!/redirect/.test(canonical))
+    fails.push(
+      "the card never says WordPress redirects the extra names to the primary — the feature " +
+        "then behaves oddly instead of behaving as described",
+    );
+
   // The Sites LIST marks a multi-name site by count, not by listing — a row is
   // 188px wide and three hostnames would push the site's name out, the defect
   // the provision label already caused once (#248). The names are in the title

@@ -1648,6 +1648,18 @@ fn cmd_site_domains(words: &[String], json_output: bool) {
             _ => println!("https://{name}"),
         }
     }
+    // WordPress decides its own canonical address from `siteurl`, so an extra
+    // domain REACHES the site and is then redirected to the primary. Printed
+    // only when there is an extra name to be redirected, and only for
+    // WordPress: a note about a thing that cannot happen is noise, and noise is
+    // how the useful notes stop being read.
+    if domains.len() > 1 && site["type"] == json!("wordpress") {
+        let primary = domains.first().and_then(Value::as_str).unwrap_or("?");
+        println!(
+            "\nnote: WordPress sends visitors to {primary} — the extra names reach this site \
+             and then redirect there."
+        );
+    }
 }
 
 fn cmd_site_restart(words: &[String], json_output: bool) {
