@@ -3186,6 +3186,35 @@ mod tests {
             }
         }
 
+        // `wp` and `repo` take their verb at a DEEPER position (`rex wp <domain>
+        // plugin …`, `rex repo <domain> status …`), and their dispatches nest —
+        // `repo watch` has its own `start`/`stop` arms, and `repo` matches four
+        // git ops through one `op @ ("pull" | "fetch" | …)` pattern. Reading
+        // "every verb this dispatches" out of that needs a parser, so only the
+        // direction that is unambiguous is checked here: every word the
+        // completion OFFERS must appear in the dispatching function. A stale
+        // list still fails; a new verb missing from the list does not, and
+        // saying so beats a guard that pretends otherwise.
+        for (group, func, const_start) in [
+            ("wp", "fn cmd_wp(", "const WPA: &str = \""),
+            ("repo", "fn cmd_repo(", "const REPO: &str =\n        \""),
+        ] {
+            let body = ME
+                .split(func)
+                .nth(1)
+                .and_then(|b| b.split("\nfn ").next())
+                .unwrap_or_else(|| panic!("`{func}` is gone"));
+            let offered = words_of(const_start);
+            assert!(offered.len() > 5, "the `{group}` completion list parsed as {offered:?}");
+            for word in &offered {
+                assert!(
+                    body.contains(&format!("\"{word}\"")),
+                    "completions offer `rex {group} … {word}` and `{func}…` never matches it — \
+                     tab-completing into an error"
+                );
+            }
+        }
+
         // `service` dispatches inside `cmd_service` and its three verbs are
         // asserted against BOTH shells' strings — a zsh-only fix leaves a bash
         // user unable to discover the web tier's only verb.
