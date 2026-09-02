@@ -152,6 +152,114 @@ const LINK = "https://example.test/a//b";
         assert!(out.contains("https://example.test/a//b"));
     }
 
+    /// **Every test the ledger CITES must exist.**
+    ///
+    /// The ledger's verdict column is the project's evidence index: rows say
+    /// "✅ `some_test_name`" and readers — including the next person deciding
+    /// whether a claim is covered — take that as proof. A citation naming a test
+    /// that was renamed, moved, or never written is worse than an empty verdict,
+    /// because it stops anyone looking further. This repo has already found two
+    /// rows whose 🔨 was stale in the other direction (#24, #333); this is the
+    /// same rot pointing the other way.
+    ///
+    /// Test-shaped means: backticked, lowercase, and three or more underscores —
+    /// this project's tests are sentences. Identifiers that merely look like
+    /// that (database names, WordPress functions, settings keys, PHP hooks) are
+    /// listed below with what they actually are.
+    #[test]
+    fn every_test_the_ledger_cites_exists() {
+        /// Cited names that are NOT tests, each with what it is.
+        const NOT_A_TEST: &[(&str, &str)] = &[
+            ("action_scheduler_run_queue", "a WordPress cron HOOK, quoted as fixture data"),
+            ("wp_set_auth_cookie", "a WordPress core function"),
+            ("wp_set_current_user", "a WordPress core function"),
+            ("php_update_manifest_serial", "a settings KEY"),
+            ("rex_ro_agentprobe_rex", "a database name from a live run"),
+            ("rex_ro_photocontest_test", "a database name from a live run"),
+            ("rex_agent_mailfix_scratch_rex", "a database name from a live run"),
+        ];
+
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let ledger = std::fs::read_to_string(root.join("../docs/CLAIM-LEDGER.md"))
+            .expect("the ledger must exist — this guard is about it");
+
+        // Everything that can BE the evidence: a Rust test fn in either crate,
+        // an example (L1), or a wk-check (L2).
+        let mut known: Vec<String> = Vec::new();
+        fn walk(dir: &std::path::Path, known: &mut Vec<String>) {
+            let Ok(entries) = std::fs::read_dir(dir) else { return };
+            for e in entries.flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    walk(&p, known);
+                    continue;
+                }
+                match p.extension().and_then(|x| x.to_str()) {
+                    Some("rs") => {
+                        if let Ok(src) = std::fs::read_to_string(&p) {
+                            for (i, _) in src.match_indices("fn ") {
+                                let rest = &src[i + 3..];
+                                if let Some(name) = rest.split(['(', '<', ' ']).next() {
+                                    if !name.is_empty() {
+                                        known.push(name.to_string());
+                                    }
+                                }
+                            }
+                        }
+                        if p.components().any(|c| c.as_os_str() == "examples") {
+                            if let Some(stem) = p.file_stem().and_then(|s| s.to_str()) {
+                                known.push(stem.to_string());
+                            }
+                        }
+                    }
+                    Some("js") if p.components().any(|c| c.as_os_str() == "wk-checks") => {
+                        if let Some(stem) = p.file_stem().and_then(|s| s.to_str()) {
+                            known.push(stem.to_string());
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        for dir in ["src", "examples", "../cli/src", "../scripts/wk-checks"] {
+            walk(&root.join(dir), &mut known);
+        }
+        assert!(known.len() > 500, "only {} names found — the walk is broken", known.len());
+
+        let mut missing: Vec<(String, String)> = Vec::new();
+        for line in ledger.lines().filter(|l| l.starts_with("| ")) {
+            let row = line.split('|').nth(1).unwrap_or("?").trim().to_string();
+            let verdict = line.rsplit(" | ").next().unwrap_or_default();
+            for cite in verdict.split('`').skip(1).step_by(2) {
+                let looks_like_a_test = cite.matches('_').count() >= 3
+                    && cite
+                        .chars()
+                        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_');
+                if !looks_like_a_test || NOT_A_TEST.iter().any(|(n, _)| *n == cite) {
+                    continue;
+                }
+                // Prefix match: a row may cite a test by a shortened name when
+                // the full one is a paragraph. It must still be a real prefix of
+                // something that exists.
+                if !known.iter().any(|k| k.starts_with(cite)) {
+                    missing.push((row.clone(), cite.to_string()));
+                }
+            }
+        }
+        assert!(
+            missing.is_empty(),
+            "the ledger cites tests that do not exist:\n{}\nA citation naming a renamed, moved \
+             or never-written test is worse than an empty verdict — it stops the next reader \
+             looking further. Fix the row to name what actually holds the claim, or add the \
+             identifier to NOT_A_TEST saying what it really is.",
+            missing
+                .iter()
+                .map(|(r, c)| format!("  row #{r}: `{c}`"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+    }
+
     /// #262 — **the preferred browser is applied at ONE choke point.**
     ///
     /// rexenv opens links from about a dozen places. The routing — preference,

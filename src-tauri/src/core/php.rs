@@ -1422,6 +1422,48 @@ mod tests {
     /// floor matters most for the case nobody would test by hand: a selection
     /// made months ago, then an app update that ships a NEWER pin. The pin wins,
     /// so a stale choice can never hold someone below what their app ships.
+    /// #342 — **the running patch is read from the executable PATH, never from
+    /// a process title.**
+    ///
+    /// A php-fpm master's title says `php-fpm: master process (…)` and its argv
+    /// carries a MINOR at best — so an argv-derived answer can never name the
+    /// patch actually serving requests, which is the one thing "is my update
+    /// live?" needs. The cache layout (`bin/php-fpm-8.3.31/php-fpm`) is what
+    /// knows, and this parse is where that is turned into an answer.
+    ///
+    /// **This test is a restoration, not a new claim.** The ledger row cited a
+    /// test of this name since 16 Aug 2026; the name existed only in the row
+    /// (found 2 Sep 2026 by the guard that now checks every citation), so the
+    /// claim had been reading as proven for two weeks with nothing behind it.
+    #[test]
+    fn the_patch_is_parsed_from_the_executable_path_not_the_title() {
+        use std::path::Path;
+        // The real cache layout, both spellings the tree has used.
+        assert_eq!(patch_of_exe(Path::new("/x/bin/php-fpm-8.3.31/php-fpm")).as_deref(), Some("8.3.31"));
+        assert_eq!(patch_of_exe(Path::new("/x/bin/php-8.4.2/php-fpm")).as_deref(), Some("8.4.2"));
+
+        // A MINOR is not a patch. This is exactly what an argv- or title-derived
+        // answer would produce, and accepting it would let the UI say "8.3" is
+        // running when the question is which 8.3.x.
+        assert_eq!(patch_of_exe(Path::new("/x/bin/php-fpm-8.3/php-fpm")), None);
+        // Not our directory shape at all: a system php-fpm, or a title mistaken
+        // for a path.
+        for foreign in [
+            "/opt/homebrew/bin/php-fpm",
+            "/x/bin/php-fpm/php-fpm",
+            "php-fpm: master process (/x/etc/php-fpm.conf)",
+            "/x/bin/php-fpm-8.3.31.2/php-fpm",
+            "/x/bin/php-fpm-8.3.x/php-fpm",
+            "/x/bin/php-fpm-/php-fpm",
+        ] {
+            assert_eq!(patch_of_exe(Path::new(foreign)), None, "`{foreign}` parsed as a patch");
+        }
+        // The FILE name is not consulted — only its directory. A binary renamed
+        // in place still reports the cache directory's patch, which is the one
+        // that was staged.
+        assert_eq!(patch_of_exe(Path::new("/x/bin/php-fpm-8.3.31/anything")).as_deref(), Some("8.3.31"));
+    }
+
     #[test]
     fn the_effective_patch_honours_a_selection_but_never_below_the_pin() {
         let conn = db::open_in_memory().unwrap();

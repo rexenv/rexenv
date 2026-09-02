@@ -66,6 +66,15 @@ it can:
   way; #228's scan did it too and failed at 3 by counting its own doc comments) —
   and **carry a canary** that the detection still finds something, or the whole
   scan passes vacuously the day a path changes.
+- **A citation is evidence too, and it rots the same way** (2 Sep 2026):
+  `every_test_the_ledger_cites_exists` reads every test-shaped name in
+  `CLAIM-LEDGER.md`'s verdict column and requires it to exist as a Rust test, an
+  example, or a wk-check. It found TEN wrong citations on its first run,
+  including one written the same day, and two rows whose ✅ rested on names that
+  had never existed — a verdict pointing at a test nobody can find is worse than
+  an empty one, because it stops the next reader looking. Identifiers that only
+  look like tests (a database name from a live run, a WordPress function, a
+  settings key, a cron hook) are listed in the guard with what they actually are.
 - **The scan can also be a LINT — a rule about code shape, not about a value**
   (2 Sep 2026, ledger #61): `the_services_lock_is_never_held_across_an_await` walks
   every `.rs` under `src/` at runtime and tracks each bound `state.services.lock()`
