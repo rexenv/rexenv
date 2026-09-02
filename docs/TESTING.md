@@ -398,6 +398,11 @@ it can:
 
 ### L2 — Render (`scripts/wk-checks/`, Playwright WebKit + mockIPC dev routes)
 
+- **Probes (2 Sep 2026): `importbar.js`** — the import batch bar shows the CHILD
+  job's label and freezes rather than rolling back when a site fails, driven
+  through the real card by a scripted batch on a `?panel=import-bar` harness. Its
+  control is that the bar must actually advance: "it never rolled back" is
+  satisfied by a bar that never moves.
 - **Probes (2 Sep 2026): `frameancestors.js`** — proves the ENGINE enforces the
   `frame-ancestors` we emit for the Adminer console, using a fixture served
   through Playwright's routing rather than the app. Its first version read

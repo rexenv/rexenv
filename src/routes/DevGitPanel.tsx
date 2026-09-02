@@ -13,6 +13,8 @@ import { LinkFolderPanel } from "@/components/wordpress/LinkFolderPanel";
 import { CronCard, PluginsPanel } from "@/components/wordpress/WordPressManager";
 import { SiteProvisionCard, useSiteProvision } from "@/components/sites/SiteProvisionCard";
 import { SiteRow } from "@/routes/Sites";
+import { ImportProgressCard } from "@/routes/Import";
+import type { ImportOutcome, ImportProgress } from "@/types";
 import { useDownloads } from "@/lib/useDownloads";
 import { siteProvisionRetry } from "@/lib/ipc";
 
@@ -556,6 +558,67 @@ const CRON_EVENTS = [
   { hook: "wp_privacy_delete_old_export_files", nextRun: "2026-08-24 11:00:00", nextRunRelative: "1 hour", recurrence: "1 hour", args: "" },
 ];
 
+/** DEV harness for the import batch bar (`?panel=import-bar`, ledger #243).
+ *
+ *  Steps a scripted batch through the REAL card: two sites, the second FAILING
+ *  mid-batch, with the child job's own label carried in `detail`. The script is
+ *  the point — the claims are "the bar freezes rather than rolls back" and "the
+ *  detail line is the child's label, not a sentence this card invented", and
+ *  neither is observable from a single frame.
+ *
+ *  A button advances it rather than a timer: a probe that has to race a
+ *  `setInterval` is a flaky probe, and every step here is a state the user
+ *  really passes through.
+ */
+function ImportBarHost() {
+  const SCRIPT = [
+    {
+      progress: { stage: "site", index: 1, total: 2, done: 0, pct: 12, domain: "one.test", detail: "installing WordPress" },
+      outcomes: {},
+    },
+    {
+      progress: { stage: "site", index: 1, total: 2, done: 0, pct: 44, domain: "one.test", detail: "issuing the certificate" },
+      outcomes: {},
+    },
+    {
+      progress: { stage: "site", index: 2, total: 2, done: 1, pct: 55, domain: "two.test", detail: "linking the folder" },
+      outcomes: {
+        "one.test": { domain: "one.test", status: "imported", reason: null, siteId: "1", logKey: null, db: null },
+      },
+    },
+    // The failure: `done` moves, the percentage must NOT go backwards, and the
+    // label stays the child's own.
+    {
+      progress: { stage: "site", index: 2, total: 2, done: 2, pct: 55, domain: "two.test", detail: "database import failed: connection refused" },
+      outcomes: {
+        "one.test": { domain: "one.test", status: "imported", reason: null, siteId: "1", logKey: null, db: null },
+        "two.test": { domain: "two.test", status: "failed", reason: "database import failed: connection refused", siteId: null, logKey: "import-two.log", db: null },
+      },
+    },
+  ] as const;
+  const [step, setStep] = useState(0);
+  const cur = SCRIPT[Math.min(step, SCRIPT.length - 1)];
+  return (
+    <div className="space-y-3">
+      <button
+        data-probe="import-step"
+        className="rounded-md border border-rex-border px-2 py-1 text-[0.75rem] text-rex-text"
+        onClick={() => setStep((s) => Math.min(s + 1, SCRIPT.length - 1))}
+      >
+        next step
+      </button>
+      <div data-probe="import-bar-host" data-step={String(step)}>
+        <ImportProgressCard
+          progress={cur.progress as unknown as ImportProgress}
+          running={step < SCRIPT.length - 1}
+          outcomes={cur.outcomes as unknown as Record<string, ImportOutcome>}
+          onCancel={() => {}}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function DevGitPanel() {
   const [ready, setReady] = useState(false);
   const params = new URLSearchParams(window.location.search);
@@ -874,7 +937,9 @@ export function DevGitPanel() {
         <h1 className="text-[0.8125rem] font-medium text-rex-text-muted">
           DEV harness — GitAddPanel (mocked IPC)
         </h1>
-        {params.get("panel") === "provision" ? (
+        {params.get("panel") === "import-bar" ? (
+          <ImportBarHost />
+        ) : params.get("panel") === "provision" ? (
           <ProvisionHost />
         ) : params.get("panel") === "wp-add" ? (
           <div className="rounded-lg border border-rex-border bg-rex-surface-1 p-2.5">

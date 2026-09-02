@@ -25,6 +25,7 @@ const CHECKS = [
   "statusagree.js",
   "wpfocus.js",
   "frameancestors.js",
+  "importbar.js",
   "contrast.js",
   "mail.js",
   // The UI-review sweep asserts now (overflow fatal, pageerror listeners,

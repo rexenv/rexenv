@@ -454,7 +454,11 @@ export function Import() {
  * - when the run ends early the bar FREEZES where the work stopped, and the
  *   settled counts below it say what actually came over.
  */
-function ImportProgressCard({
+/** Exported for the DEV harness only (`#/dev/git-panel?panel=import-bar`), so
+ *  `wk-checks/importbar.js` can drive a scripted batch — including a mid-batch
+ *  FAILURE — through the real card. Asserting this against `batch_pct` in Rust
+ *  would test the arithmetic, which is the half this claim is NOT about (#243). */
+export function ImportProgressCard({
   progress: p,
   running,
   outcomes,
