@@ -1198,6 +1198,14 @@ pub async fn change_site_domain(
         core::dns::ResolverPrompt::Allow,
     )?;
 
+    // The site's EXTRA domains (v42) travel with the cert: the new primary's
+    // certificate must still cover every name the site answers on, or the alias
+    // meets a full-page interstitial the moment the edge reloads onto it. The
+    // read happens BEFORE the cert calls so both branches use the same list.
+    let extra_domains = {
+        let conn = lock(&state)?;
+        crate::state::store::get_site_aliases(&conn, &id)?
+    };
     let mut backup_path = None;
     let mut replacements = 0u64;
     if is_wp {
@@ -1228,11 +1236,12 @@ pub async fn change_site_domain(
 
         // 2) Cert for the new domain — purely additive; the old cert keeps
         //    being served until the reload below.
-        core::ssl::ensure_site_cert(
+        core::ssl::ensure_site_cert_with(
             state.platform.paths(),
             state.platform.permissions(),
             &state.ca,
             &domain,
+            &extra_domains,
         )?;
 
         // 3) URL migration. Dry-run first as an environment gate (wp-cli boots,
@@ -1254,11 +1263,12 @@ pub async fn change_site_domain(
         };
     } else {
         // Non-WordPress sites store no URL — cert + configs are the whole change.
-        core::ssl::ensure_site_cert(
+        core::ssl::ensure_site_cert_with(
             state.platform.paths(),
             state.platform.permissions(),
             &state.ca,
             &domain,
+            &extra_domains,
         )?;
     }
 
@@ -1579,6 +1589,48 @@ mod a_site_restart_never_bounces_a_shared_pool_uninvited {
             "the report no longer carries how many sites share the pool, so `--pool` is a \
              flag with no stated cost"
         );
+    }
+}
+
+/// A domain change must not strand the site's other names.
+#[cfg(test)]
+mod a_domain_change_keeps_the_other_names_working {
+    /// **The new primary's certificate covers the site's EXTRA domains too.**
+    ///
+    /// The cert directory is keyed on the PRIMARY, so a domain change issues a
+    /// fresh certificate — and issuing it for the new name alone leaves every
+    /// alias uncovered. The failure is the loudest one this product has: the
+    /// moment the edge reloads, a name the user deliberately added meets a
+    /// full-page interstitial, and nothing connects that to the rename they
+    /// just did.
+    ///
+    /// Both branches are checked because the WordPress path and the
+    /// non-WordPress path issue separately — the kind of split where a fix
+    /// lands on one and not the other.
+    #[test]
+    fn the_new_certificate_covers_the_sites_extra_domains() {
+        let src = crate::core::copy_scan::production_source(include_str!("sites.rs"));
+        let body = src
+            .split("pub async fn change_site_domain(")
+            .nth(1)
+            .and_then(|b| b.split("\n#[tauri::command]").next())
+            .expect("change_site_domain");
+        assert_eq!(
+            body.matches("ensure_site_cert_with(").count(),
+            2,
+            "the domain change issues a certificate on two paths (WordPress and not), and both \
+             must carry the site's extra domains — a fix on one branch only is how the alias \
+             breaks for half the site types"
+        );
+        assert!(
+            !body.contains("ssl::ensure_site_cert("),
+            "a domain-change path still issues a cert for the primary ALONE — every alias is \
+             then uncovered, and the browser says so with a full-page interstitial"
+        );
+        // The list is read BEFORE the branches, so both see the same names.
+        let read = body.find("get_site_aliases(").expect("the alias read");
+        let first_cert = body.find("ensure_site_cert_with(").expect("the first cert call");
+        assert!(read < first_cert, "the aliases are read after a certificate was already issued");
     }
 }
 
