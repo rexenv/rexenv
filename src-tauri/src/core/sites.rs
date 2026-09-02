@@ -3375,10 +3375,23 @@ mod tests {
     }
 
     /// The generic KV setter is a door around every validating setter, so the
-    /// routing is asserted rather than trusted: a third gated key that nobody
-    /// wires into `set_setting` would be settable straight past its rule.
+    /// routing is asserted rather than trusted — and asserted over the WHOLE
+    /// surface, not over a pair of names.
+    ///
+    /// **What this used to be, and why that was the bug.** It named
+    /// `DEFAULT_TLD_KEY` and `SITES_DIR_KEY` and checked that `set_setting`
+    /// mentioned both; the command itself held one `if` per key. A THIRD gated
+    /// key would have been written raw by the generic door with nothing failing
+    /// — a guard checking two places inside the surface it claimed (ledger #344,
+    /// the guard-covers-claimed-surface family). The fix is not another name in
+    /// a list: `GATED_SETTERS` is the registry, `set_setting` DISPATCHES through
+    /// it, and this test holds the shape closed from both ends — no per-key
+    /// branch may come back, and every key this build rules on must be either
+    /// gated or explicitly excused.
     #[test]
     fn every_gated_setting_key_is_routed_through_its_validating_setter() {
+        use crate::core::settings_access as sa;
+
         let body = crate::core::copy_scan::production_source(include_str!(
             "../commands/settings.rs"
         ));
@@ -3387,73 +3400,118 @@ mod tests {
             .nth(1)
             .and_then(|b| b.split("\n#[tauri::command]").next())
             .expect("set_setting");
-        for (key_const, setter) in
-            [("DEFAULT_TLD_KEY", "set_default_tld("), ("SITES_DIR_KEY", "set_sites_dir(")]
-        {
+
+        // 1. The dispatch is the registry, and NOTHING else. A per-key branch is
+        //    refused by shape rather than by review: it is the exact thing that
+        //    grew a hole here, and one branch beside the registry means a key
+        //    can be gated in one place and not the other.
+        assert!(
+            body.contains("gated_setter(&key)"),
+            "`set_setting` no longer dispatches through `settings_access::gated_setter` — the \
+             generic KV command is then a way around every validating setter"
+        );
+        assert!(
+            !body.contains("if key =="),
+            "`set_setting` has grown a per-key branch again. Gate the key by adding it to \
+             `GATED_SETTERS`, beside its setter, so the dispatch, `cli_access` and this guard \
+             all learn about it at once"
+        );
+
+        // 2. Each registered setter really VALIDATES: it refuses a value the raw
+        //    store would have taken. A registry entry pointing at a setter that
+        //    waves everything through would satisfy every structural check above
+        //    and gate nothing, so the refusal is measured against a real DB.
+        //    A gated key with no sample here fails — the sample is part of
+        //    gating, not an optional extra.
+        let refusals: &[(&str, &str)] = &[
+            (DEFAULT_TLD_KEY, "local"),
+            (SITES_DIR_KEY, "relative/not/absolute"),
+        ];
+        let conn = db::open_in_memory().unwrap();
+        for (key, setter) in sa::GATED_SETTERS {
+            let bad = refusals
+                .iter()
+                .find(|(k, _)| k == key)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "`{key}` is in GATED_SETTERS with no refusal sample in this test. Add a \
+                         value its setter must REJECT — otherwise the registry proves only that \
+                         a function was named, not that it gates"
+                    )
+                })
+                .1;
+            // Against whatever the key holds NOW (a fresh DB already seeds
+            // `default_tld`), because the claim is that a refusal changes
+            // nothing — not that the key was empty to begin with.
+            let before = store::get_setting(&conn, key).unwrap();
             assert!(
-                body.contains(key_const) && body.contains(setter),
-                "`set_setting` does not route {key_const} to `{setter}` — the generic KV command \
-                 is then a way around that key's validation, which is the whole reason the \
-                 routing exists"
+                setter(&conn, bad).is_err(),
+                "`{key}`'s registered setter accepted `{bad}` — a validating setter that \
+                 validates nothing is a gate on paper"
+            );
+            assert_eq!(
+                store::get_setting(&conn, key).unwrap(),
+                before,
+                "`{key}` was WRITTEN despite its setter refusing — the refusal must happen \
+                 before the write, or the gate is a message and not a control"
+            );
+            assert_eq!(
+                sa::cli_access(key),
+                sa::CliAccess::ReadWrite,
+                "`{key}` is gated but `cli_access` does not call it writable — the two must \
+                 read the same registry"
             );
         }
 
-        // **The half the hardcoded pair above cannot give**, and the reason this
-        // test's own doc comment called itself out (`commands/settings.rs`): a
-        // THIRD gated key would sail past a list of two. Now that `rex config
-        // set` exists, "writable from a shell" is a bigger claim than "writable
-        // from the Settings screen", so the check is derived instead.
-        //
-        // The rule: a key may be CLI-writable only if `set_setting` routes it to
-        // a validating setter, OR it is named in `UNVALIDATED_BUT_SAFE` with the
-        // reason that is acceptable. Adding a writable key with neither is
-        // exactly the drift this catches.
-        let routed: Vec<&str> = ["default_tld", "sites_dir"]
-            .into_iter()
-            .filter(|k| {
-                let konst = if *k == "default_tld" { "DEFAULT_TLD_KEY" } else { "SITES_DIR_KEY" };
-                body.contains(konst)
+        // 3. The CLI half, over the surface rather than a sample of it. The rule:
+        //    a key may be CLI-writable only if it is GATED, or named in
+        //    `UNVALIDATED_BUT_SAFE` with the reason that is acceptable.
+        //    The DOMAIN is derived from the policy file's own source — every
+        //    key-shaped literal it rules on — so a key added there next month is
+        //    checked without anyone editing this list. That is the half the old
+        //    hardcoded fourteen could not give.
+        let policy_src = include_str!("settings_access.rs");
+        let mut domain: Vec<&str> = policy_src
+            .split('"')
+            .skip(1)
+            .step_by(2)
+            .filter(|lit| {
+                !lit.is_empty()
+                    && lit.len() < 40
+                    && lit.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
             })
             .collect();
-        let safe: Vec<&str> =
-            crate::core::settings_access::UNVALIDATED_BUT_SAFE.iter().map(|(k, _)| *k).collect();
-        // Every key this build knows about, so a new one cannot be silently
-        // writable: the domain is the union of what the policy rules on.
-        for key in [
-            "default_tld",
-            "sites_dir",
-            "preferred_editor",
-            "preferred_browser",
-            "start_services_on_launch",
-            "adminer_version",
-            "php_upstream_check",
-            "php_update_manifest",
-            "php_update_manifest_sig",
-            "php_update_manifest_serial",
-            "mcp_enabled",
-            "mcp_mail_enabled",
-            "db_version_mysql",
-            "db_version_mariadb",
-        ] {
-            if crate::core::settings_access::cli_access(key)
-                == crate::core::settings_access::CliAccess::ReadWrite
-            {
+        domain.extend(sa::GATED_SETTERS.iter().map(|(k, _)| *k));
+        domain.extend(sa::UNVALIDATED_BUT_SAFE.iter().map(|(k, _)| *k));
+        domain.sort_unstable();
+        domain.dedup();
+        // The derivation is itself checked: if it ever stops seeing the keys we
+        // KNOW are ruled on, it has silently narrowed and every assertion below
+        // it becomes vacuous — the "reports green having asserted nothing" shape.
+        for known in ["default_tld", "sites_dir", "preferred_editor", "php_update_manifest_serial"]
+        {
+            assert!(
+                domain.contains(&known),
+                "the derived key domain lost `{known}` — the scan of `settings_access.rs` no \
+                 longer finds the keys it rules on, so this guard is checking an empty set"
+            );
+        }
+        let safe: Vec<&str> = sa::UNVALIDATED_BUT_SAFE.iter().map(|(k, _)| *k).collect();
+        for key in domain {
+            if sa::cli_access(key) == sa::CliAccess::ReadWrite {
                 assert!(
-                    routed.contains(&key) || safe.contains(&key),
-                    "`{key}` is CLI-WRITABLE but is neither routed through a validating \
-                     setter in `set_setting` nor listed in `UNVALIDATED_BUT_SAFE` with a \
-                     reason. `rex config set` would write it raw."
+                    sa::gated_setter(key).is_some() || safe.contains(&key),
+                    "`{key}` is CLI-WRITABLE but is neither in `GATED_SETTERS` nor listed in \
+                     `UNVALIDATED_BUT_SAFE` with a reason. `rex config set` would write it raw"
                 );
             }
         }
-        // …and an unknown key is DENIED, which is the default the whole policy
-        // rests on. If this ever passes as writable, the match has grown a
-        // catch-all in the wrong direction.
+
+        // 4. …and an unknown key is DENIED, which is the default the whole policy
+        //    rests on. If this ever passes as writable, the match has grown a
+        //    catch-all in the wrong direction.
         assert!(
-            matches!(
-                crate::core::settings_access::cli_access("something_nobody_ruled_on"),
-                crate::core::settings_access::CliAccess::Denied(_)
-            ),
+            matches!(sa::cli_access("something_nobody_ruled_on"), sa::CliAccess::Denied(_)),
             "an unknown settings key must be DENIED, not writable"
         );
     }

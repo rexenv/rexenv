@@ -26,23 +26,18 @@ pub fn get_setting(state: State<'_, AppState>, key: String) -> Result<Option<Str
 /// so the generic KV command can't smuggle a value past the backend — a blocked
 /// TLD, or a sites folder that would end a quoted path in a generated config.
 ///
-/// **The guard here is narrower than it used to claim.** This comment said
-/// `every_gated_setting_key_is_routed_here` "fails the build when a third one
-/// appears and this match does not learn about it". No such test exists;
-/// `core::sites`' `every_gated_setting_key_is_routed_through_its_validating_setter`
-/// iterates a HARDCODED pair and asserts only that those two are routed. A third
-/// gated key would sail past it — the guard does not cover the surface the
-/// sentence claimed (`docs/TODO.md`). Corrected rather than deleted, because a
-/// doc asserting a guard that does not exist sends the next reader to rely on it.
+/// **The routing is a REGISTRY lookup, not a per-key `if`.** It used to be two
+/// hardcoded branches, and the guard that watched them named the same two keys,
+/// so a third gated key would have been settable straight past its rule with
+/// nothing failing. `core::settings_access::GATED_SETTERS` declares the gating
+/// beside the setters; adding a row there gates the key everywhere at once —
+/// here, in `cli_access`, and in the guard. Do not re-introduce a branch: the
+/// guard fails the build on one, because a branch is a second place to remember.
 #[tauri::command]
 pub fn set_setting(state: State<'_, AppState>, key: String, value: String) -> Result<()> {
     let conn = lock(&state)?;
-    if key == core::sites::DEFAULT_TLD_KEY {
-        core::sites::set_default_tld(&conn, &value)?;
-        return Ok(());
-    }
-    if key == core::sites::SITES_DIR_KEY {
-        core::sites::set_sites_dir(&conn, &value)?;
+    if let Some(setter) = core::settings_access::gated_setter(&key) {
+        setter(&conn, &value)?;
         return Ok(());
     }
     store::set_setting(&conn, &key, &value)

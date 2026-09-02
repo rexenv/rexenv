@@ -2429,16 +2429,29 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   master on the PRODUCTION port and reverting when it does not come back needs
   the real `ServiceManager` and a deliberately broken tree — `docs/SMOKE-TEST.md`.
 
-- [ ] **`every_gated_setting_key_is_routed_through_its_validating_setter` does
-  not cover its surface.** It iterates a hardcoded `[(DEFAULT_TLD_KEY, …),
-  (SITES_DIR_KEY, …)]` and asserts only that those two are routed, so a THIRD
-  gated key would sail past the generic KV command with no validation and no test
-  failing. `commands/settings.rs` asserted the opposite in prose until 18 Aug 2026
-  ("fails the build when a third one appears"), which is the dangerous half — a
-  doc naming a guard that does not exist. The prose is corrected; the guard is
-  not. Same family as ledger #344 (guard-covers-claimed-surface). Fixing it needs
-  a declared registry of gated keys next to the setters, since nothing derivable
-  distinguishes "has a validating setter" today.
+- [x] **`every_gated_setting_key_is_routed_through_its_validating_setter` now covers
+  its surface** ✓ 2 Sep 2026, ledger #443 — `core::settings_access::GATED_SETTERS`, a
+  declared registry of `(key, validating setter)` beside the setters, is what
+  `set_setting` DISPATCHES through; it holds no per-key `if` any more, and `cli_access`
+  reads gated-⇒-ReadWrite off the same registry instead of restating the pair. Adding a
+  row gates the key in all three places at once, which is the "make the shape impossible"
+  fix rather than another line to remember. The row asked for exactly this registry
+  because nothing derivable distinguishes "has a validating setter" from any other
+  `pub fn`.
+  - **The guard is closed from four sides**, not two names: the dispatch must BE the
+    registry and a returning `if key ==` fails; every registered setter must REFUSE a bad
+    sample against a real DB and leave the stored value untouched, and a gated key with no
+    sample fails by name — because a registry row pointing at a setter that validates
+    nothing passes every structural check and gates nothing; every CLI-writable key must
+    be gated or excused in `UNVALIDATED_BUT_SAFE`, over a domain DERIVED from the policy
+    file's source rather than the fourteen keys the old test listed; and the derivation is
+    canaried against four keys it must keep finding, since a scan that quietly narrows
+    goes green having asserted nothing (the readiness-gate lesson, one layer over).
+  - **Plant-proven ×5**: a new `ReadWrite` arm gated nowhere, an `if key ==` put back, the
+    dispatch deleted, a registry row without a refusal sample, a narrowed derivation.
+  - The old test's hardcoded 14-key list was NOT the bug's whole shape and is worth
+    naming: it had already grown a derived CLI half on 18 Aug, so the row read as untouched
+    work when half of it had landed — the domain was the part still hardcoded.
 
 - [ ] **Install WordPress into an empty LINKED folder** — out of Stage 0 by
   design (`docs/PLAN-linked-sites.md` decision 2): linking is adopt-only. If

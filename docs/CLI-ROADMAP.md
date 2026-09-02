@@ -220,7 +220,9 @@ status line that is wrong, and dating it only tells you how long it has been so.
 was which keys to allow-list; the answer is deny-by-default with the policy in
 CORE (`core/settings_access.rs`), so the CLI and its guard read ONE list, and
 writes route through `set_setting` so a key with a validating setter still gets
-it. ~~`site retry`~~ — **shipped 24 Aug 2026.** Whether `site.create`'s failure
+it — since 2 Sep 2026 (ledger #443) that routing is a REGISTRY lookup
+(`GATED_SETTERS`) rather than a per-key branch, so gating a third key is one row
+and `rex config set` cannot outrun it. ~~`site retry`~~ — **shipped 24 Aug 2026.** Whether `site.create`'s failure
 message actually names it is a separate, unverified claim (see the row above).
 
 What remains:

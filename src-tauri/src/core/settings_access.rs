@@ -3,8 +3,9 @@
 //! # Why this is a policy file and not a list in the CLI
 //!
 //! `commands::settings::set_setting` is a GENERIC key/value writer. It routes
-//! exactly two keys through validating setters (`default_tld` → policy gate,
-//! `sites_dir` → validation) and everything else falls through to a raw write.
+//! the keys in [`GATED_SETTERS`] through their validating setters (`default_tld`
+//! → policy gate, `sites_dir` → validation) and everything else falls through to
+//! a raw write.
 //! That is fine for the app, where the only writers are the controls on the
 //! Settings screen. It is not fine for a shell.
 //!
@@ -23,6 +24,32 @@
 //! the CLI dispatch and the guard that checks the CLI cannot write round a
 //! validating setter. A list in `cli_server.rs` would be a second copy of a
 //! security boundary — the shape this tree keeps finding as the actual defect.
+
+/// A validating setter: the ONE door a gated key's value may come through.
+/// Both of today's have this shape (`&Connection, &str -> stored value`), and a
+/// third one must too — that is what makes the registry below possible.
+pub type ValidatingSetter = fn(&rusqlite::Connection, &str) -> crate::error::Result<String>;
+
+/// **The gated keys, declared beside their setters.** `set_setting` DISPATCHES
+/// through this — it holds no per-key `if` — so adding a row here is the whole
+/// act of gating a key, and there is no second place to remember.
+///
+/// Why a registry and not a match: the match was two hardcoded arms and the
+/// guard that checked it was two hardcoded names, so a THIRD gated key was
+/// settable straight past its rule with nothing failing (`docs/TODO.md`, the
+/// guard-covers-claimed-surface family, ledger #344). Nothing derivable
+/// distinguishes "has a validating setter" from any other `pub fn`, so the
+/// fact is declared once, here, and every consumer reads it: the dispatch,
+/// `cli_access` below, and the guard.
+pub const GATED_SETTERS: &[(&str, ValidatingSetter)] = &[
+    (crate::core::sites::DEFAULT_TLD_KEY, crate::core::sites::set_default_tld),
+    (crate::core::sites::SITES_DIR_KEY, crate::core::sites::set_sites_dir),
+];
+
+/// The validating setter for `key`, if it is gated.
+pub fn gated_setter(key: &str) -> Option<ValidatingSetter> {
+    GATED_SETTERS.iter().find(|(k, _)| *k == key).map(|(_, f)| *f)
+}
 
 /// What `rex config` may do with one key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,9 +97,12 @@ pub fn cli_access(key: &str) -> CliAccess {
              ships",
         );
     }
+    // Gated keys are writable BY DEFINITION of being gated — read off the
+    // registry, not restated here, so the two can never disagree.
+    if gated_setter(key).is_some() {
+        return CliAccess::ReadWrite;
+    }
     match key {
-        // Validated in `set_setting` by a real setter.
-        "default_tld" | "sites_dir" => CliAccess::ReadWrite,
         // Preferences that reach the raw setter; see UNVALIDATED_BUT_SAFE.
         "preferred_editor" | "preferred_browser" | "start_services_on_launch" => {
             CliAccess::ReadWrite
