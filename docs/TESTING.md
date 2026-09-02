@@ -562,6 +562,15 @@ commands/ 9 — commands/ is 1.7% of tests for ~20 files of orchestration):
 ### 1.3 Audit: untested because no layer fit (until now)
 
 - `commands/` orchestration honesty (ledger #175, #181–182, #186, #188–190).
+  **Closed 2 Sep 2026, and what closed it is worth naming**: every one of these is an
+  ORDER or a SURFACE, and both are source-guardable at L0 once you stop trying to
+  observe them at runtime. #188 (share guards over every command that invalidates a
+  live share), #181 (the 3×2 exclusion matrix between provision, import and rewrite),
+  #182 (apply/revert crash ordering — which side of the truth each window lands on),
+  #186 (a cancel lands between sites, never inside one), #189 (the row is deleted
+  before anything on disk). #190 was already live-proven and #175 already three-layered.
+  The layer that "did not fit" was runtime: you cannot watch a crash between two
+  statements, or a command that has not been written yet — but you can read both.
 - `webview_dialogs.rs` — zero tests, three stacked wry/WebKit claims (#166).
   **Closed 15 Aug 2026, and the layer moved during the measuring** — the queued L2
   check would have tested Playwright's own dialog machinery, not wry's (the subject
