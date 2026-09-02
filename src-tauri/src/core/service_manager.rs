@@ -188,6 +188,8 @@ pub struct ServiceManager {
     /// command (mirrors `php_settings`). Source for the per-site nginx
     /// `fastcgi_param` lines and FrankenPHP `env` lines.
     site_env: HashMap<String, Vec<(String, String)>>,
+    /// Extra domains per site id (v42) — mirrored, same reason as `site_env`.
+    site_aliases: HashMap<String, Vec<String>>,
     /// Selected version per DB engine (per-engine version switch) — a mirror
     /// of the `db_version_<engine>` settings, refreshed by commands like
     /// `site_env`. Absent entry = the engine's default pin.
@@ -375,6 +377,7 @@ impl ServiceManager {
             edge_dead_polls: 0,
             php_settings: HashMap::new(),
             site_env: HashMap::new(),
+            site_aliases: HashMap::new(),
             db_versions: HashMap::new(),
         }
     }
@@ -417,6 +420,13 @@ impl ServiceManager {
             .get(&engine)
             .cloned()
             .unwrap_or_else(|| engine.default_version().to_string())
+    }
+
+    /// Mirror the alias table into the manager (v42), like `set_site_env`: a
+    /// config regeneration must not need the database, and the watchdog's
+    /// respawn path has no connection at all.
+    pub fn set_site_aliases(&mut self, aliases: HashMap<String, Vec<String>>) {
+        self.site_aliases = aliases;
     }
 
     pub fn set_site_env(&mut self, env: HashMap<String, Vec<(String, String)>>) {
@@ -640,6 +650,7 @@ impl ServiceManager {
             self.ports.https,
             &php::nginx_body_limits(&self.php_settings),
             &self.site_env,
+            &self.site_aliases,
         )?;
 
         // Shared Nginx.
@@ -1061,6 +1072,7 @@ impl ServiceManager {
                     self.ports.https,
                     &php::nginx_body_limits(&self.php_settings),
                     &self.site_env,
+                    &self.site_aliases,
                 )?;
                 if let Some(mut child) = self.nginx.take() {
                     child.kill();
@@ -1104,6 +1116,7 @@ impl ServiceManager {
                     self.ports.https,
                     &php::nginx_body_limits(&self.php_settings),
                     &self.site_env,
+                    &self.site_aliases,
                 )?;
                 proxy::reload(platform, &caddy_bin, &cfg.caddyfile, true)?;
                 Ok((WebRestartOutcome::Reloaded, Vec::new()))
@@ -1350,6 +1363,7 @@ impl ServiceManager {
             self.ports.https,
             &php::nginx_body_limits(&self.php_settings),
             &self.site_env,
+            &self.site_aliases,
         )?;
         if services::reload_nginx(
             platform,
@@ -1407,6 +1421,7 @@ impl ServiceManager {
             self.ports.https,
             &php::nginx_body_limits(&self.php_settings),
             &self.site_env,
+            &self.site_aliases,
         )?;
         if services::reload_nginx(
             platform,
@@ -2095,6 +2110,7 @@ impl ServiceManager {
                             self.ports.https,
                             &php::nginx_body_limits(&self.php_settings),
                             &self.site_env,
+                            &self.site_aliases,
                         )?;
                         ports::ensure_free(platform, self.ports.nginx, ports::Proto::Tcp, "Nginx")?;
                         self.nginx = Some(

@@ -300,6 +300,93 @@ pub async fn keep_site(state: State<'_, AppState>, id: String) -> Result<bool> {
     crate::state::store::keep_site(&conn, &id)
 }
 
+/// Add an extra domain to a site and make it SERVE on it: validate, record,
+/// then rebuild the configs and reload the web tier.
+///
+/// The reload is not an optimisation — it is the difference between the feature
+/// and a row in a table. An alias that is stored and not served is the worst of
+/// both: the UI says the site answers on it and the browser says it does not.
+#[tauri::command]
+pub async fn add_site_domain(
+    state: State<'_, AppState>,
+    id: String,
+    domain: String,
+) -> Result<Vec<String>> {
+    let (added, site, sites, aliases) = {
+        let conn = lock(&state)?;
+        let added = core::sites::add_alias(&conn, &id, &domain)?;
+        let site = core::sites::get(&conn, &id)?
+            .ok_or_else(|| Error::Other(format!("site not found: {id}")))?;
+        let sites = core::sites::list(&conn)?;
+        let aliases = crate::state::store::all_site_aliases(&conn)?;
+        (added, site, sites, aliases)
+    };
+    let _ = added;
+    reload_for_domains(&state, sites, aliases).await?;
+    let conn = lock(&state)?;
+    core::sites::all_domains(&conn, &site)
+}
+
+/// Remove an extra domain and stop serving on it.
+#[tauri::command]
+pub async fn remove_site_domain(
+    state: State<'_, AppState>,
+    id: String,
+    domain: String,
+) -> Result<Vec<String>> {
+    let (removed, site, sites, aliases) = {
+        let conn = lock(&state)?;
+        let removed = core::sites::remove_alias(&conn, &id, &domain)?;
+        let site = core::sites::get(&conn, &id)?
+            .ok_or_else(|| Error::Other(format!("site not found: {id}")))?;
+        let sites = core::sites::list(&conn)?;
+        let aliases = crate::state::store::all_site_aliases(&conn)?;
+        (removed, site, sites, aliases)
+    };
+    if !removed {
+        return Err(Error::Other(format!(
+            "\"{}\" doesn't serve {domain}",
+            site.domain
+        )));
+    }
+    reload_for_domains(&state, sites, aliases).await?;
+    let conn = lock(&state)?;
+    core::sites::all_domains(&conn, &site)
+}
+
+/// Every hostname a site answers on (primary first).
+#[tauri::command]
+pub async fn site_domains(state: State<'_, AppState>, id: String) -> Result<Vec<String>> {
+    let conn = lock(&state)?;
+    let site = core::sites::get(&conn, &id)?
+        .ok_or_else(|| Error::Other(format!("site not found: {id}")))?;
+    core::sites::all_domains(&conn, &site)
+}
+
+/// Mirror the new alias map into the manager and reload the web tier — the
+/// shared tail of add/remove.
+///
+/// `set_site_aliases` BEFORE `reload`, in the same locked scope: the reload
+/// regenerates configs from the manager's mirror, not the database, so setting
+/// it afterwards would serve the previous name set until something else
+/// happened to reload.
+async fn reload_for_domains(
+    state: &State<'_, AppState>,
+    sites: Vec<Site>,
+    aliases: std::collections::HashMap<String, Vec<String>>,
+) -> Result<()> {
+    let checks = {
+        let mut mgr = state.services.lock().await;
+        mgr.set_site_aliases(aliases);
+        if !mgr.is_running() {
+            // Nothing to reload; the configs are regenerated at the next start.
+            return Ok(());
+        }
+        mgr.reload(state.platform.as_ref(), &state.ca, &sites, false).await?
+    };
+    core::service_manager::await_ready(checks).await
+}
+
 /// What `restart_site` did, in the words the caller reports.
 ///
 /// The shape exists because "restart this site" has no single honest meaning in

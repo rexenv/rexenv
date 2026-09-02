@@ -773,6 +773,28 @@ where
             commands::sites::set_site_env(state.clone(), id, vars).await?;
             Ok(Value::Null)
         }
+        // Extra domains (v42): add/remove/list the hostnames a site answers on.
+        // One arm, because they are one operation from the user's side — "which
+        // names does this site have" — and the reply is always the full list.
+        "site.domains" => {
+            let state = app_state(app)?;
+            let id = need_str(&args, "id", cmd)?;
+            let domains = match (args["add"].as_str(), args["remove"].as_str()) {
+                (Some(d), None) => {
+                    commands::sites::add_site_domain(state.clone(), id, d.to_string()).await?
+                }
+                (None, Some(d)) => {
+                    commands::sites::remove_site_domain(state.clone(), id, d.to_string()).await?
+                }
+                (None, None) => commands::sites::site_domains(state.clone(), id).await?,
+                (Some(_), Some(_)) => {
+                    return Err(Error::Other(
+                        "site.domains takes `add` or `remove`, not both".into(),
+                    ))
+                }
+            };
+            Ok(json!({ "domains": domains }))
+        }
         "site.cert" => {
             let state = app_state(app)?;
             let cert =

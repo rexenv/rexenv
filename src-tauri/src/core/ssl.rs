@@ -150,6 +150,21 @@ pub struct SiteCert {
 /// Generate a per-site leaf cert for `domain`, signed by `ca`, with SANs
 /// `domain` + `*.domain` (the wildcard makes subdomain multisite work). Pure — no fs.
 pub fn generate_site_cert(ca: &LocalCa, domain: &str) -> Result<(String, String)> {
+    generate_site_cert_for(ca, domain, &[])
+}
+
+/// [`generate_site_cert`] plus EXTRA hostnames (a site's alias domains, v42).
+///
+/// One certificate for every name a site answers on, rather than one per name:
+/// the edge serves them all from the same site block, and a browser that got a
+/// cert whose SANs omit the host it asked for shows a full-page interstitial —
+/// the most alarming failure this product can produce, over a name the user
+/// deliberately added.
+pub fn generate_site_cert_for(
+    ca: &LocalCa,
+    domain: &str,
+    extra: &[String],
+) -> Result<(String, String)> {
     // Reconstruct the CA as an issuer from the stored PEM. self_signed rebuilds a
     // Certificate carrying the CA's DN/key-usages; combined with the CA key it
     // signs leaves that chain to the trusted CA (same key ⇒ same SPKI/AKI).
@@ -161,7 +176,11 @@ pub fn generate_site_cert(ca: &LocalCa, domain: &str) -> Result<(String, String)
         .self_signed(&ca_key)
         .map_err(|e| Error::Other(format!("rebuild ca cert: {e}")))?;
 
-    let sans = vec![domain.to_string(), format!("*.{domain}")];
+    let mut sans = vec![domain.to_string(), format!("*.{domain}")];
+    for name in extra {
+        sans.push(name.clone());
+        sans.push(format!("*.{name}"));
+    }
     let mut params =
         CertificateParams::new(sans).map_err(|e| Error::Other(format!("site params: {e}")))?;
     let mut dn = DistinguishedName::new();
@@ -196,7 +215,42 @@ pub fn ensure_site_cert_at(
     domain: &str,
     perms: Option<&dyn PermissionManager>,
 ) -> Result<SiteCert> {
-    if cert_path.exists() && key_path.exists() {
+    ensure_site_cert_at_for(cert_path, key_path, ca, domain, &[], perms)
+}
+
+/// The name of the sidecar recording WHICH hostnames a cached cert covers.
+///
+/// Existence used to be the whole cache test, which was right while a site had
+/// exactly one name. With alias domains it is not: adding one leaves a perfectly
+/// valid certificate on disk for the OLD name set, and the browser meets a
+/// full-page interstitial on the name the user just added. Reading the SANs back
+/// out of the PEM would need a parser; recording what we asked for is one line
+/// and cannot disagree with itself.
+pub const SITE_SANS_FILE: &str = "sans.txt";
+
+/// [`ensure_site_cert_at`] for a site with extra hostnames. Reissues whenever
+/// the covered set differs from what is recorded beside the cert.
+pub fn ensure_site_cert_at_for(
+    cert_path: &Path,
+    key_path: &Path,
+    ca: &LocalCa,
+    domain: &str,
+    extra: &[String],
+    perms: Option<&dyn PermissionManager>,
+) -> Result<SiteCert> {
+    let sans_path = cert_path.with_file_name(SITE_SANS_FILE);
+    let want = sans_record(domain, extra);
+    let covered = || -> bool {
+        match fs::read_to_string(&sans_path) {
+            Ok(have) => have.trim() == want.trim(),
+            // No sidecar: a cert issued before this existed. Trust it ONLY when
+            // there are no extra names to cover — that is exactly the case it
+            // was issued for, and reissuing every single-domain site on upgrade
+            // would replace certs the user has already been prompted to trust.
+            Err(_) => extra.is_empty(),
+        }
+    };
+    if cert_path.exists() && key_path.exists() && covered() {
         return Ok(SiteCert {
             cert_pem: fs::read_to_string(cert_path)?,
             key_pem: fs::read_to_string(key_path)?,
@@ -207,15 +261,29 @@ pub fn ensure_site_cert_at(
     if let Some(parent) = cert_path.parent() {
         fs::create_dir_all(parent)?;
     }
-    let (cert_pem, key_pem) = generate_site_cert(ca, domain)?;
+    let (cert_pem, key_pem) = generate_site_cert_for(ca, domain, extra)?;
     fs::write(cert_path, &cert_pem)?;
     write_key(key_path, &key_pem, perms)?;
+    // Best-effort: a missing sidecar costs one reissue on the next rebuild,
+    // never a wrong cert served.
+    let _ = fs::write(&sans_path, &want);
     Ok(SiteCert {
         cert_pem,
         key_pem,
         cert_path: cert_path.to_path_buf(),
         key_path: key_path.to_path_buf(),
     })
+}
+
+/// The recorded name set: the primary plus its extras, sorted, one per line.
+/// SORTED so a reordering of the alias list is not a reissue — the certificate
+/// covers a SET, and treating it as a sequence would churn certs (and the
+/// browser trust that goes with them) on nothing.
+fn sans_record(domain: &str, extra: &[String]) -> String {
+    let mut names: Vec<&str> = std::iter::once(domain).chain(extra.iter().map(String::as_str)).collect();
+    names.sort_unstable();
+    names.dedup();
+    names.join("\n")
 }
 
 /// Issue (or reuse) a site cert under app-data; the key file is born 0600 at
@@ -226,12 +294,26 @@ pub fn ensure_site_cert(
     ca: &LocalCa,
     domain: &str,
 ) -> Result<SiteCert> {
+    ensure_site_cert_with(paths, perms, ca, domain, &[])
+}
+
+/// [`ensure_site_cert`] covering a site's extra domains too (v42). The cert dir
+/// stays keyed on the PRIMARY domain — one site, one directory, whatever else
+/// it answers to.
+pub fn ensure_site_cert_with(
+    paths: &dyn Paths,
+    perms: &dyn PermissionManager,
+    ca: &LocalCa,
+    domain: &str,
+    extra: &[String],
+) -> Result<SiteCert> {
     let dir = site_cert_dir(paths, domain)?;
-    let cert = ensure_site_cert_at(
+    let cert = ensure_site_cert_at_for(
         &dir.join(SITE_CERT_FILE),
         &dir.join(SITE_KEY_FILE),
         ca,
         domain,
+        extra,
         Some(perms),
     )?;
     perms.set_private(&cert.key_path)?;
@@ -612,6 +694,66 @@ mod tests {
         // Reused, not re-issued.
         assert_eq!(a.cert_pem, b.cert_pem);
         assert_eq!(a.key_pem, b.key_pem);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **Adding an extra domain REISSUES the certificate; reordering does not.**
+    ///
+    /// The cache test used to be "the files exist", which was right while a site
+    /// had exactly one name. With alias domains it is not: a perfectly valid
+    /// certificate for the OLD name set stays on disk, and the browser meets a
+    /// full-page interstitial on the name the user just added — the loudest
+    /// failure this product can produce, over a deliberate action. The recorded
+    /// name set is SORTED, so a reordered alias list is not a reissue: the cert
+    /// covers a set, and churning certs (and the trust the user has already
+    /// granted them) over sequence would be its own bug.
+    #[test]
+    fn a_new_extra_domain_reissues_the_cert_and_a_reorder_does_not() {
+        let (ca_cert, ca_key) = generate_ca().unwrap();
+        let ca = LocalCa {
+            cert_pem: ca_cert,
+            key_pem: ca_key,
+            cert_path: PathBuf::new(),
+            key_path: PathBuf::new(),
+        };
+        let dir = std::env::temp_dir().join(format!("rexenv-sans-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let cert = dir.join(SITE_CERT_FILE);
+        let key = dir.join(SITE_KEY_FILE);
+
+        let one = ensure_site_cert_at_for(&cert, &key, &ca, "mysite.test", &[], None).unwrap();
+        // Same names → reused.
+        let again = ensure_site_cert_at_for(&cert, &key, &ca, "mysite.test", &[], None).unwrap();
+        assert_eq!(one.cert_pem, again.cert_pem, "an unchanged name set must not reissue");
+
+        // A new name → a NEW certificate that actually covers it.
+        let extra = vec!["shop.test".to_string()];
+        let two = ensure_site_cert_at_for(&cert, &key, &ca, "mysite.test", &extra, None).unwrap();
+        assert_ne!(
+            one.cert_pem, two.cert_pem,
+            "the cert was reused after an extra domain was added — the browser gets an \
+             interstitial on the name the user just added"
+        );
+        let info = parse_cert_info(&two.cert_pem, &dir).expect("parse the reissued cert");
+        for name in ["mysite.test", "*.mysite.test", "shop.test", "*.shop.test"] {
+            assert!(
+                info.sans.iter().any(|s| s == name),
+                "the reissued cert does not cover {name}: {:?}",
+                info.sans
+            );
+        }
+
+        // Order is not identity.
+        let reordered = vec!["shop.test".to_string()];
+        let three =
+            ensure_site_cert_at_for(&cert, &key, &ca, "mysite.test", &reordered, None).unwrap();
+        assert_eq!(two.cert_pem, three.cert_pem, "the same SET must not reissue");
+
+        // Removing the extra reissues too — a cert that still advertises a name
+        // the site no longer answers on is a claim we stopped being able to keep.
+        let back = ensure_site_cert_at_for(&cert, &key, &ca, "mysite.test", &[], None).unwrap();
+        assert_ne!(two.cert_pem, back.cert_pem, "dropping a name must reissue");
 
         let _ = std::fs::remove_dir_all(&dir);
     }

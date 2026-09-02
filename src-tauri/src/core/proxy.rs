@@ -231,6 +231,9 @@ pub struct SiteRoute {
     /// hosts share this site's backend + wildcard cert; a more-specific exact
     /// host (any other site) still wins, so it can't overshadow `other.rex`.
     pub wildcard: bool,
+    /// Extra hostnames this site also answers on (v42) — additional addresses
+    /// on the SAME site block, sharing its cert and upstream.
+    pub aliases: Vec<String>,
     /// Upstream `host:port` Caddy proxies to (the shared Nginx).
     pub upstream: String,
     pub cert_path: PathBuf,
@@ -280,11 +283,18 @@ pub fn generate_caddyfile(cfg: &CaddyConfig) -> String {
         // Subdomain multisite serves the apex plus every sub-site host; Caddy
         // matches the most-specific site address first, so the exact hosts of
         // other sites are never shadowed by this `*.host` matcher.
-        let site_addr = if r.wildcard {
-            format!("https://{host}, https://*.{host}", host = r.host)
+        let mut addrs = if r.wildcard {
+            vec![format!("https://{host}", host = r.host), format!("https://*.{host}", host = r.host)]
         } else {
-            format!("https://{}", r.host)
+            vec![format!("https://{}", r.host)]
         };
+        for alias in &r.aliases {
+            addrs.push(format!("https://{alias}"));
+            if r.wildcard {
+                addrs.push(format!("https://*.{alias}"));
+            }
+        }
+        let site_addr = addrs.join(", ");
         s.push_str(&format!("{site_addr} {{\n"));
         // Quote paths: app-data paths contain spaces ("Application Support").
         s.push_str(&format!(
@@ -944,6 +954,7 @@ mod tests {
             http_port: 8080,
             https_port: 8443,
             routes: vec![SiteRoute {
+                aliases: Vec::new(),
                 host: "proxytest.test".into(),
                 wildcard: false,
                 upstream: "127.0.0.1:9999".into(),
@@ -998,11 +1009,43 @@ mod tests {
             upstream: "127.0.0.1:9001".into(),
             cert_path: "/c/2.pem".into(),
             key_path: "/c/2.key".into(),
+            aliases: Vec::new(),
         });
         let f = generate_caddyfile(&cfg);
         assert!(f.contains("https://proxytest.test {"));
         assert!(f.contains("https://two.test {"));
         assert_eq!(f.matches("reverse_proxy").count(), 2);
+    }
+
+    /// Extra domains are ADDRESSES on the site's own block — same cert, same
+    /// upstream — never a second block.
+    ///
+    /// A second block would need its own certificate and its own upstream line,
+    /// which is two places to keep in step for one site, and the failure is
+    /// silent: the alias keeps serving the old backend after a server switch.
+    #[test]
+    fn extra_domains_are_addresses_on_the_same_site_block() {
+        let mut cfg = sample();
+        cfg.routes[0].aliases = vec!["shop.test".into()];
+        let f = generate_caddyfile(&cfg);
+        assert!(
+            f.contains("https://proxytest.test, https://shop.test {"),
+            "the alias must be an address on the same block: {f}"
+        );
+        assert_eq!(f.matches("reverse_proxy").count(), 1, "one site, one upstream: {f}");
+        assert_eq!(f.matches("tls ").count(), 1, "one site, one certificate: {f}");
+
+        // A subdomain network takes the wildcard for every one of its names,
+        // matching what nginx's `server_name` does for the same site.
+        cfg.routes[0].wildcard = true;
+        let f = generate_caddyfile(&cfg);
+        assert!(
+            f.contains(
+                "https://proxytest.test, https://*.proxytest.test, https://shop.test, \
+                 https://*.shop.test {"
+            ),
+            "a network's alias needs its wildcard too: {f}"
+        );
     }
 
     #[test]
@@ -1014,6 +1057,7 @@ mod tests {
             upstream: "127.0.0.1:18088".into(),
             cert_path: "/c/a.pem".into(),
             key_path: "/c/a.key".into(),
+            aliases: Vec::new(),
         });
         let f = generate_caddyfile(&cfg);
         // The probe endpoint is answered at the edge, exactly once, on the
@@ -1041,6 +1085,7 @@ mod tests {
             upstream: "127.0.0.1:18088".into(),
             cert_path: "/c/m.pem".into(),
             key_path: "/c/m.key".into(),
+            aliases: Vec::new(),
         });
         let f = generate_caddyfile(&cfg);
         // The site address carries both the apex and the wildcard sub-site host.

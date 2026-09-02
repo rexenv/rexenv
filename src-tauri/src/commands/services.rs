@@ -70,6 +70,7 @@ fn start_inputs(
     Vec<String>,
     PhpSettingsMap,
     PhpSettingsMap,
+    std::collections::HashMap<String, Vec<String>>,
     std::collections::HashMap<crate::core::db::DbEngine, String>,
     std::collections::HashMap<String, String>,
     String,
@@ -82,6 +83,7 @@ fn start_inputs(
     let minors = core::php::installed_minors(&conn)?;
     let php_settings = crate::state::store::all_php_settings(&conn)?;
     let site_env = crate::state::store::all_site_env(&conn)?;
+    let site_aliases = crate::state::store::all_site_aliases(&conn)?;
     let db_versions = crate::core::db::DbEngine::ALL
         .into_iter()
         .filter(|e| e.available())
@@ -95,14 +97,14 @@ fn start_inputs(
     // planner and the stager must agree, or login-start's offline guard clears a
     // start against a plan for bytes nobody stages (ledger #175).
     let adminer_version = core::adminer::effective_version(state.platform.as_ref(), &conn);
-    Ok((sites, minors, php_settings, site_env, db_versions, php_patches, adminer_version))
+    Ok((sites, minors, php_settings, site_env, site_aliases, db_versions, php_patches, adminer_version))
 }
 
 /// Start the shared stack (MySQL + a php-fpm pool per installed PHP version +
 /// Nginx + Caddy). Downloads binaries on first run; gated on free ports.
 #[tauri::command]
 pub async fn start_services(state: State<'_, AppState>) -> Result<()> {
-    let (sites, php_minors, php_settings, site_env, db_versions, php_patches, adminer_version) =
+    let (sites, php_minors, php_settings, site_env, site_aliases, db_versions, php_patches, adminer_version) =
         start_inputs(&state)?;
     // Phase 0 (UNLOCKED): plan the full binary set, then prefetch every missing
     // one through the download hub — real progress events for the UI, EVERY
@@ -127,6 +129,7 @@ pub async fn start_services(state: State<'_, AppState>) -> Result<()> {
         mgr.set_php_settings(php_settings);
         mgr.set_php_patches(php_patches);
         mgr.set_site_env(site_env);
+        mgr.set_site_aliases(site_aliases);
         mgr.set_db_versions(db_versions);
         mgr.start_core(state.platform.as_ref(), &state.ca, &sites, &php_minors, &adminer_version)
             .await?
@@ -271,7 +274,7 @@ pub async fn auto_start_services(app: tauri::AppHandle) {
 /// `Ok(None)` = everything started; `Ok(Some(note))` = started with a caveat
 /// (edge skipped); `Err` = aborted (nothing/partial started, reason inside).
 async fn auto_start_inner(state: &State<'_, AppState>) -> Result<Option<String>> {
-    let (sites, php_minors, php_settings, site_env, db_versions, php_patches, adminer_version) =
+    let (sites, php_minors, php_settings, site_env, site_aliases, db_versions, php_patches, adminer_version) =
         start_inputs(state)?;
     // Guard 1: strictly offline. Every needed binary must already be cached
     // (the decision fn lives in core::downloads with its own test).
@@ -303,6 +306,7 @@ async fn auto_start_inner(state: &State<'_, AppState>) -> Result<Option<String>>
         mgr.set_php_settings(php_settings);
         mgr.set_php_patches(php_patches);
         mgr.set_site_env(site_env);
+        mgr.set_site_aliases(site_aliases);
         mgr.set_db_versions(db_versions);
         mgr.start_core(state.platform.as_ref(), &state.ca, &sites, &php_minors, &adminer_version).await?
     };

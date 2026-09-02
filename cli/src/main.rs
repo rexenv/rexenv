@@ -98,6 +98,7 @@ COMMANDS:
   site xdebug <domain> on|off        Toggle the site's Xdebug debug pool
   site server <domain> nginx|frankenphp|apache   Switch the web server
   site restart <domain> [--pool]     Restart the site's own backend (--pool also bounces its shared PHP pool)
+  site domains <domain> [--add N | --remove N]   Extra hostnames the site answers on
   service restart <nginx|edge|php-8.3>           Bounce one web-tier service on a fresh config
   site rename <domain> <name>        Display name only (domain unchanged)
   site domain <domain> <new-domain>  Change the domain (URL rewrite; asks first)
@@ -614,6 +615,7 @@ fn main() {
             Some("xdebug") => cmd_site_xdebug(&words[2..], json_output),
             Some("server") => cmd_site_server(&words[2..], json_output),
             Some("restart") => cmd_site_restart(&words[2..], json_output),
+            Some("domains") => cmd_site_domains(&words[2..], json_output),
             Some("rename") => cmd_site_rename(&words[2..], json_output),
             Some("domain") => cmd_site_domain(&words[2..], json_output),
             Some("move") => cmd_site_move(&words[2..], json_output),
@@ -1601,6 +1603,41 @@ fn cmd_site_server(words: &[String], json_output: bool) {
 /// process of their own (shared nginx + a pool shared with every site on that
 /// PHP minor), so the honest report is what was actually done and what a pool
 /// restart would cost — which is why `--pool` exists and is not the default.
+/// `rex site domains <domain> [--add <name> | --remove <name>]`.
+///
+/// One verb for read and write because it is one question from the user's side
+/// — which names does this site answer on — and the reply is always the whole
+/// list, so an add or a remove shows its own result rather than a bare "ok".
+fn cmd_site_domains(words: &[String], json_output: bool) {
+    let site = find_site(words, "rex site domains <domain> [--add <name> | --remove <name>]");
+    let flag = |name: &str| {
+        words.iter().position(|w| w == name).and_then(|i| words.get(i + 1)).cloned()
+    };
+    let (add, remove) = (flag("--add"), flag("--remove"));
+    if add.is_some() && remove.is_some() {
+        eprintln!("rex: pass --add or --remove, not both");
+        exit(1);
+    }
+    let r = request(
+        "site.domains",
+        json!({ "id": site["id"], "add": add, "remove": remove }),
+    );
+    if json_output {
+        return print_json(&r);
+    }
+    let Some(domains) = r["domains"].as_array() else { return };
+    // The primary is first, and saying so is the point: the extras are names
+    // this site ALSO answers on, not equals of the one its files, database and
+    // certificate directory are named for.
+    for (i, d) in domains.iter().enumerate() {
+        let name = d.as_str().unwrap_or("?");
+        match i {
+            0 => println!("https://{name}   (primary)"),
+            _ => println!("https://{name}"),
+        }
+    }
+}
+
 fn cmd_site_restart(words: &[String], json_output: bool) {
     let site = find_site(words, "rex site restart <domain> [--pool]");
     let pool = words.iter().any(|w| w == "--pool");

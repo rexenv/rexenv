@@ -337,6 +337,11 @@ pub struct NginxSite {
     /// OURS ONLY — never user input (unlike `env`, which is validated); the
     /// renderer escapes newlines for nginx and nothing else.
     pub php_value: Option<String>,
+    /// Extra hostnames this site also answers on (v42). They join
+    /// `server_name`, so one server block serves every name — never a second
+    /// block, which would double every future change to this site and let the
+    /// two drift.
+    pub aliases: Vec<String>,
     /// Laravel only: the project's `storage/app/public` directory, served at
     /// `/storage/…` the way Valet's own driver does.
     ///
@@ -495,10 +500,21 @@ fn storage_block(storage_root: Option<&Path>) -> String {
 fn server_block(http_port: u16, site: &NginxSite) -> String {
     // Subdomain multisite serves every sub-site (`a.mysite.test`) from the same
     // block, so the wildcard joins the exact host in `server_name` (§10.2).
-    let server_name = match site.rewrite {
-        RewriteMode::SubdomainMultisite => format!("{d} *.{d}", d = site.domain),
-        _ => site.domain.clone(),
+    let mut names = match site.rewrite {
+        RewriteMode::SubdomainMultisite => vec![site.domain.clone(), format!("*.{}", site.domain)],
+        _ => vec![site.domain.clone()],
     };
+    // Extra domains join the SAME block. A subdomain network's alias gets the
+    // wildcard too, or `a.alias.test` would fall through to nginx's default
+    // server while `a.primary.test` works — a half-migrated network is worse
+    // than one that never accepted the alias.
+    for alias in &site.aliases {
+        names.push(alias.clone());
+        if matches!(site.rewrite, RewriteMode::SubdomainMultisite) {
+            names.push(format!("*.{alias}"));
+        }
+    }
+    let server_name = names.join(" ");
     // `absolute_redirect off` → nginx issues RELATIVE redirects. It listens on an
     // internal loopback port behind the Caddy edge, so an absolute redirect (e.g. the
     // `/wp-admin` → `/wp-admin/` directory redirect) would otherwise leak
@@ -936,6 +952,7 @@ mod tests {
                 read_timeout: None,
                 php_value: None,
                 storage_root: None,
+                aliases: Vec::new(),
                 env: Vec::new(),
             }],
         }
@@ -948,6 +965,45 @@ mod tests {
     /// `^~` beats every regex location in the vhost, so without them a `.php`
     /// or `.env` under an UPLOADS directory would be served — as source, and
     /// past the dotfile guard that covers the rest of the site.
+    /// Extra domains join the SAME server block — one block, every name.
+    ///
+    /// A second block per alias would compile and serve, and then every future
+    /// change to this site would have to be made twice; the first one somebody
+    /// forgets is a site whose alias serves the old docroot, the old body limit
+    /// or the old PHP pool. And a subdomain network's alias needs the wildcard
+    /// too, or `a.alias.test` falls through to nginx's DEFAULT server while
+    /// `a.primary.test` works — a half-migrated network is worse than one that
+    /// refused the alias.
+    #[test]
+    fn extra_domains_share_one_server_block() {
+        let mut cfg = nginx_cfg(RewriteMode::Single);
+        cfg.sites[0].aliases = vec!["shop.test".into(), "old.test".into()];
+        let out = generate_nginx_config(&cfg);
+        // `server_name <names>;` — the DIRECTIVE, not every occurrence of the
+        // word (`fastcgi_param SERVER_NAME $server_name` is one too, and
+        // counting it made this assertion fail for a reason unrelated to its
+        // claim).
+        assert_eq!(
+            out.matches("\t\tserver_name ").count(),
+            1,
+            "one site must still be ONE server block: {out}"
+        );
+        assert!(
+            out.contains("server_name acme.test shop.test old.test;"),
+            "every name must be on the block: {out}"
+        );
+
+        // Subdomain multisite: the primary keeps its wildcard and each alias
+        // gets its own.
+        let mut ms = nginx_cfg(RewriteMode::SubdomainMultisite);
+        ms.sites[0].aliases = vec!["shop.test".into()];
+        let out = generate_nginx_config(&ms);
+        assert!(
+            out.contains("server_name acme.test *.acme.test shop.test *.shop.test;"),
+            "a network's alias needs the wildcard, or its sub-sites hit the default server: {out}"
+        );
+    }
+
     #[test]
     fn the_storage_mapping_serves_uploads_and_refuses_code() {
         let plain = generate_nginx_config(&nginx_cfg(RewriteMode::Single));
@@ -1159,6 +1215,7 @@ mod tests {
             php_value: None,
             env: Vec::new(),
             storage_root: None,
+            aliases: Vec::new(),
         });
         let out = generate_nginx_config(&cfg);
         assert!(out.contains("server_name acme.test;"));

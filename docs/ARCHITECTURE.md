@@ -257,6 +257,15 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   pool would stop every other site on that minor, so it is opt-in (`rex site restart
   <domain> --pool`) and the report carries how many sites that covers whether or not
   the flag was passed — the number is what makes the flag a choice instead of a dare.
+- **A site can answer on more than one hostname** (v42 `site_domains`). The primary
+  stays on the site row and the extras are aliases; a hostname reaches exactly ONE
+  site, and the half SQL cannot express (an alias equal to some site's primary) is
+  refused in `core::sites::validate_alias`. Serving is deliberately singular
+  everywhere: one nginx `server_name` list on one server block, extra addresses on
+  the site's own Caddy block, ONE certificate covering every name — and the cert
+  cache compares the recorded NAME SET, because "the files exist" leaves a valid
+  certificate for yesterday's names while the browser shows an interstitial on the
+  one just added. A subdomain network's alias carries the wildcard on both tiers.
 - **The CLI socket streams progress, but only to a client that asked**
   (`Progress`, `stream: true`, 2 Sep 2026). The framing is: one request line in,
   zero or more `{"progress": …}` lines, then EXACTLY ONE `{"ok": …}` envelope,
