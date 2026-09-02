@@ -609,3 +609,108 @@ pub async fn rewrite_revert(
         }
     }
 }
+
+
+/// #182 — the two orderings that decide what a CRASH leaves behind.
+#[cfg(test)]
+mod crash_ordering {
+    fn body_of(fn_sig: &str) -> String {
+        let src = crate::core::copy_scan::production_source(include_str!("rewrite.rs"));
+        src.split(fn_sig)
+            .nth(1)
+            .unwrap_or_else(|| panic!("`{fn_sig}` is gone — if it moved, move this guard"))
+            .split("\npub ")
+            .next()
+            .unwrap_or_default()
+            .to_string()
+    }
+
+    fn at(body: &str, needle: &str) -> usize {
+        body.find(needle)
+            .unwrap_or_else(|| panic!("`{needle}` is no longer in this function — the step it \
+                                       represents moved, so re-read what the ordering protects"))
+    }
+
+    /// **Apply is ordered so every crash window leaves the ORIGINAL
+    /// recoverable, and `connected` is never claimed before it is true.**
+    ///
+    /// Four windows, each with a different wrong answer if the order slips:
+    /// mirroring after the file points at us leaves a config aimed at an
+    /// account that does not exist yet; recording the mirrored user after
+    /// mirroring leaves an account nothing knows we created; writing before the
+    /// backup file and its row leaves the user's original nowhere; and setting
+    /// `connected` before the sign-in verification is the badge claiming a
+    /// thing nobody checked — the one direction this product refuses to fail
+    /// in.
+    #[test]
+    fn apply_never_leaves_a_crash_in_the_over_claiming_direction() {
+        let b = body_of("pub async fn rewrite_apply(");
+        let record = at(&b, "set_db_import_mirrored_user(");
+        let mirror = at(&b, "dbmirror::mirror");
+        let backup_file = at(&b, "write_backup(");
+        let backup_row = at(&b, "insert_config_rewrite(");
+        let write = at(&b, "atomic_write_preserving_mode(");
+        let verify = at(&b, "confverify::verify_signin");
+        let connected = at(&b, "set_db_import_connected(");
+
+        assert!(
+            record < mirror,
+            "the mirrored user is recorded AFTER the account is created — a crash between them \
+             leaves an account nothing knows we made, so nothing will ever clean it up"
+        );
+        assert!(
+            mirror < write,
+            "the file is pointed at the new account BEFORE that account exists — a crash \
+             between them leaves the site connecting as a user that was never created"
+        );
+        assert!(
+            backup_file < backup_row && backup_row < write,
+            "the backup order (file → row → write) is broken: a crash then leaves the user's \
+             ORIGINAL config nowhere — the one thing revert exists to hand back"
+        );
+        assert!(
+            verify < connected,
+            "`connected` is set before the sign-in verification — the badge would claim a \
+             connection nobody proved, which is the over-claim this whole module is shaped to \
+             avoid"
+        );
+    }
+
+    /// **Revert clears `connected` BEFORE it restores the file**, so a crash
+    /// mid-revert lands in the under-claim direction.
+    ///
+    /// The two failures are not symmetric. Cleared-then-crashed shows a
+    /// pessimistic badge over a site that still works — annoying, and the next
+    /// revert fixes it. Restored-then-crashed shows "connected" over a config
+    /// that no longer points at us: the user believes a thing that is false and
+    /// has no reason to look.
+    #[test]
+    fn revert_clears_the_claim_before_it_changes_the_file() {
+        // The RESTORING arm only. `rewrite_revert` classifies first and has
+        // several outcomes, two of which also clear the flag and drop the row —
+        // scanning the whole function finds the first occurrence in whichever
+        // arm comes first in the file and compares steps that never run
+        // together. (It did: the guard's first version failed on an
+        // already-reverted arm's row delete.)
+        let whole = body_of("pub async fn rewrite_revert(");
+        let b = whole
+            .split("RevertCheck::CleanRestore | RevertCheck::FileEdited { .. } => {")
+            .nth(1)
+            .expect("the restoring arm — if the match changed shape, re-read what it now does")
+            .to_string();
+        let clear = at(&b, "clear_db_import_connected(");
+        let restore = at(&b, "atomic_write_preserving_mode(");
+        let drop_row = at(&b, "delete_config_rewrite(");
+        assert!(
+            clear < restore,
+            "the file is restored BEFORE `connected` is cleared — a crash in between leaves the \
+             badge claiming a connection over a config that no longer points at us, and the \
+             user has no reason to doubt it"
+        );
+        assert!(
+            restore < drop_row,
+            "the rewrite row is dropped before the file is restored — the backup it names is \
+             then unreachable exactly when the restore needs retrying"
+        );
+    }
+}
