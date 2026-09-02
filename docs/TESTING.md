@@ -389,6 +389,12 @@ it can:
 
 ### L2 — Render (`scripts/wk-checks/`, Playwright WebKit + mockIPC dev routes)
 
+- **Probes (2 Sep 2026): `wpfocus.js`** — the WordPress panel re-reads its list
+  on focus while the costly update pass does NOT ride along. Its control needed
+  a harness change: list and update check are the same command with a flag, so
+  the tally had to key them apart (`wp_plugins:updates`) — counting the command
+  alone let the ride-along assertion pass on a number that never moved, and
+  guessing the flag's name kept it decorative for one more run.
 - **Probes (2 Sep 2026): `statusagree.js`** — the sidebar footer and the Services
   page must agree on running/total, and the summary word must match its own
   arithmetic. Its control is the FIXTURE being mixed: with everything running,

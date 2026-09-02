@@ -583,6 +583,19 @@ export function DevGitPanel() {
       const tally = ((window as unknown as { __ipcCalls?: Record<string, number> }).__ipcCalls ??=
         {});
       tally[cmd] = (tally[cmd] ?? 0) + 1;
+      // The plugin/theme list and the UPDATE pass are the same command with a
+      // flag, and they have different refresh rules on purpose (the list is
+      // live, the update check keeps a five-minute window because every call
+      // boots PHP). Counting the command alone cannot tell them apart, so
+      // `wpfocus.js`'s "the costly pass did not ride along" assertion would
+      // pass on a number that never moves either way — it did, until this key
+      // existed.
+      // The flag is `checkUpdates` (see `lib/ipc`'s `wpPlugins`/`wpThemes`);
+      // guessing `updates` made this key never fire, which is the silent way a
+      // control assertion becomes decoration.
+      if ((args as { checkUpdates?: boolean } | undefined)?.checkUpdates) {
+        tally[`${cmd}:updates`] = (tally[`${cmd}:updates`] ?? 0) + 1;
+      }
       switch (cmd) {
         // `?panel=cron` (wk-checks/cronargs.js): WP-CLI addresses cron events by
         // HOOK and has no per-instance id, so a hook scheduled twice renders as

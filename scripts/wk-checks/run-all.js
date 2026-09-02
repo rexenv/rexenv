@@ -23,6 +23,7 @@ const CHECKS = [
   "domains.js",
   "tunnelhealth.js",
   "statusagree.js",
+  "wpfocus.js",
   "contrast.js",
   "mail.js",
   // The UI-review sweep asserts now (overflow fatal, pageerror listeners,
