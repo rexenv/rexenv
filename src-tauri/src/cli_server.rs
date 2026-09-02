@@ -634,12 +634,18 @@ where
             } else {
                 None
             };
+            // The site's EXTRA domains (v42) — `site info` is the "tell me
+            // everything about this site" verb, and a site that answers on
+            // three names showing one is the same half-answer the Sites list
+            // had until this morning.
+            let domains = commands::sites::site_domains(state.clone(), id.clone()).await?;
             Ok(json!({
                 "site": to_value(&site)?,
                 "serving": serving,
                 "resources": to_value(&resources)?,
                 "cert": to_value(&cert)?,
                 "wp": to_value(&wp)?,
+                "domains": to_value(&domains)?,
             }))
         }
         // Magic wp-admin login link — the Sites row action.

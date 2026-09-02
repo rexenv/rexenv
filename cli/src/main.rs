@@ -837,6 +837,18 @@ fn cmd_site_info(words: &[String], json_output: bool) {
     let field = |label: &str, v: String| println!("{label:<12} {v}");
     let str_of = |v: &Value| v.as_str().unwrap_or("?").to_string();
     field("domain", format!("https://{}", str_of(&s["domain"])));
+    // Extra domains (v42) on their own line, and only when there are any: this
+    // verb answers "tell me everything about this site", and a site answering
+    // on three names while `info` shows one is the half-answer the Sites list
+    // carried until this morning.
+    if let Some(extra) = data["domains"].as_array().map(|d| &d[1.min(d.len())..]) {
+        if !extra.is_empty() {
+            field(
+                "also",
+                extra.iter().map(|d| format!("https://{}", str_of(d))).collect::<Vec<_>>().join("  "),
+            );
+        }
+    }
     field("name", str_of(&s["name"]));
     field("state", if data["serving"] == json!(true) { "serving".into() } else { "down".into() });
     field(
@@ -3100,6 +3112,41 @@ fn cmd_status(json_output: bool) {
 
 #[cfg(test)]
 mod tests {
+
+    /// `site info` answers with EVERY name the site has.
+    ///
+    /// It is the "tell me everything about this site" verb. A site answering on
+    /// three hostnames while `info` prints one is the same half-answer the
+    /// Sites list carried until extra domains were marked there — and the CLI
+    /// is where a user checks after adding one.
+    ///
+    /// The line appears only when there ARE extras: an "also:" with nothing
+    /// after it is a field that teaches people to skip fields.
+    #[test]
+    fn site_info_lists_every_name_the_site_answers_on() {
+        const ME: &str = include_str!("main.rs");
+        let body = ME
+            .split("fn cmd_site_info(")
+            .nth(1)
+            .and_then(|b| b.split("\nfn ").next())
+            .expect("cmd_site_info");
+        assert!(
+            body.contains("data[\"domains\"]"),
+            "`site info` no longer reads the domains the server sends — a site that answers on \
+             three names would print one"
+        );
+        assert!(
+            body.contains("if !extra.is_empty()"),
+            "the extra-domains line is printed unconditionally — an empty `also` is a field \
+             that teaches people to skip fields"
+        );
+        // The PRIMARY keeps its own line: it is the name the site's files,
+        // database and certificate folder are keyed to, and folding it into a
+        // list would lose that.
+        let primary = body.find("field(\"domain\"").expect("the domain field");
+        let also = body.find("\"also\"").expect("the also field");
+        assert!(primary < also, "the extras are printed above the primary");
+    }
 
     /// **A site is findable by ANY name it answers on.**
     ///
