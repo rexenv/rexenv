@@ -272,7 +272,7 @@
   /* ── Accent hues (darkened for AA chip/badge text on light) ── */
   --rex-accent-blue: #2c698d; /* darkened AGAIN 24 Aug 2026: #2e6e93 was tuned on surface-3 and read 4.36:1 on the letter TILE, a lighter background nobody had computed. 4.68:1 there now (#337) */
   --rex-accent-red: #ae3a34; /* darkened AGAIN 24 Aug 2026: #b63d37 read 4.48:1 on the letter TILE — tuned on surface-3, measured on a background two hundredths lighter. 4.82:1 there now (#372) */
-  --rex-accent-periwinkle: #5a5fae;
+  --rex-accent-periwinkle: #54589f; /* darkened 2 Sep 2026: #5a5fae read 4.42:1 on the letter TILE, the third accent to fail there after blue (#337) and red (#372) — and the one that survived because NO mock site was Blank-PHP, so the tile it fails on had never rendered in the harness. 4.98:1 now */
   --rex-accent-teal: #167562; /* 4.27:1 before, and it was NOT icon-only: Mail avatars and the Services group title read it as text */
 
   /* ── Toggle tracks ── */

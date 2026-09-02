@@ -364,3 +364,17 @@ database and certificate folder are named for it, so removing it is Change
 domain, an operation with a different blast radius and its own confirmation.
 `scripts/wk-checks/domains.js` holds both halves, and its control leg (the
 untouched extra surviving a remove) is what stops "gone" from proving nothing.
+
+### The third accent to fail the letter tile (2 Sep 2026)
+
+`--rex-accent-periwinkle` read **4.42:1** on the site-type avatar in light mode.
+Blue and red had each been darkened for exactly this background (#337, #372) —
+the tile is lighter than the surface those hues were tuned on — and periwinkle
+survived for one reason: **no mock site was Blank-PHP**, so the tile that fails
+had never rendered in the harness. It was found the day a fixture gained a
+`php`-type site for an unrelated reason.
+
+The lesson is the fixtures one, in its sharpest form yet: a palette is only
+checked where something is DRAWN, and a fixture that omits a whole site type
+omits a whole colour. Periwinkle is `#54589f` now (4.98:1), and the mock keeps
+one site of every type so the next accent cannot hide the same way.
