@@ -1530,7 +1530,7 @@ fn cmd_repo(words: &[String], json_output: bool) {
 /// bash: rex completions bash > /usr/local/etc/bash_completion.d/rex
 fn cmd_completions(shell: Option<&str>) {
     const TOP: &str = "status start stop restart site wp repo php db service logs doctor mail tunnel tld blueprints config version completions help";
-    const SITE: &str = "list create delete info open login logs php xdebug server rename domain move relink retry env cert";
+    const SITE: &str = "list create delete info open login logs php xdebug server restart domains rename domain move relink retry env cert";
     const DB: &str = "export import reset versions browse";
     const PHP: &str = "list default install uninstall settings";
     const WPA: &str = "plugin theme user search-replace cache-flush cron maintenance core";
@@ -1546,7 +1546,7 @@ fn cmd_completions(shell: Option<&str>) {
                 site) compadd {SITE} ;;\n\
                 db) compadd {DB} ;;\n\
                 php) compadd {PHP} ;;\n\
-                service) compadd start stop ;;\n\
+                service) compadd start stop restart ;;\n\
                 mail) compadd list open mark-read clear ;;\n\
                 tunnel) compadd list start stop ;;\n\
                 completions) compadd zsh bash ;;\n\
@@ -1564,7 +1564,7 @@ fn cmd_completions(shell: Option<&str>) {
                 site) COMPREPLY=($(compgen -W \"{SITE}\" -- \"$cur\")) ;;\n\
                 db) COMPREPLY=($(compgen -W \"{DB}\" -- \"$cur\")) ;;\n\
                 php) COMPREPLY=($(compgen -W \"{PHP}\" -- \"$cur\")) ;;\n\
-                service) COMPREPLY=($(compgen -W \"start stop\" -- \"$cur\")) ;;\n\
+                service) COMPREPLY=($(compgen -W \"start stop restart\" -- \"$cur\")) ;;\n\
                 mail) COMPREPLY=($(compgen -W \"list open mark-read clear\" -- \"$cur\")) ;;\n\
                 tunnel) COMPREPLY=($(compgen -W \"list start stop\" -- \"$cur\")) ;;\n\
                 completions) COMPREPLY=($(compgen -W \"zsh bash\" -- \"$cur\")) ;;\n\
@@ -3076,6 +3076,85 @@ fn cmd_status(json_output: bool) {
 
 #[cfg(test)]
 mod tests {
+
+    /// **Every subcommand the CLI dispatches is completable.**
+    ///
+    /// Completions are how a terminal user DISCOVERS this tool: `rex site <tab>`
+    /// is the only place most people will ever see that `restart` or `domains`
+    /// exist. A verb that dispatches but is not in the list is a feature that
+    /// shipped invisible — which is exactly what happened to `site restart`,
+    /// `site domains` and `service restart` between being written and this test
+    /// (2 Sep 2026); all three worked, and nothing offered them.
+    ///
+    /// The lists are compared against the DISPATCH, so the two cannot drift: a
+    /// new arm without a completion word fails here, by name.
+    #[test]
+    fn every_dispatched_subcommand_is_offered_by_completions() {
+        const ME: &str = include_str!("main.rs");
+
+        // The arms of one `match words.get(N)` group, by their `Some("x") =>`
+        // shape. Scoped to the group's own block so a sibling match cannot leak.
+        fn arms(after: &str, until: &str) -> Vec<String> {
+            let block = ME
+                .split(after)
+                .nth(1)
+                .unwrap_or_else(|| panic!("`{after}` is gone — if the dispatch moved, move this guard"));
+            let block = block.split(until).next().unwrap_or(block);
+            let mut out = Vec::new();
+            for (i, _) in block.match_indices("Some(\"") {
+                if let Some(name) = block[i + 6..].split('"').next() {
+                    if !name.is_empty() && !out.contains(&name.to_string()) {
+                        out.push(name.to_string());
+                    }
+                }
+            }
+            out
+        }
+
+        // `site` and `service` are the two groups that grew today; the same
+        // shape covers the others.
+        // The completion list, read out of `cmd_completions`' own constant —
+        // one source, so the guard cannot pass against a copy.
+        let site_words: Vec<String> = ME
+            .split("const SITE: &str = \"")
+            .nth(1)
+            .and_then(|s| s.split('"').next())
+            .expect("the SITE completion constant")
+            .split_whitespace()
+            .map(str::to_string)
+            .collect();
+        let site = arms("Some(\"site\") => match words.get(1).map(String::as_str) {", "\n        },");
+        assert!(site.len() > 10, "only {site:?} parsed from the site dispatch — the scan is broken");
+        for verb in &site {
+            assert!(
+                site_words.iter().any(|w| w == verb),
+                "`rex site {verb}` dispatches but is not in the completion list — a terminal \
+                 user's only way to discover it is reading the source"
+            );
+        }
+
+        // Verbs the completion offers that nothing dispatches are the same rot
+        // pointing the other way: a tab-completion for a command that errors.
+        for word in &site_words {
+            assert!(
+                site.iter().any(|v| v == word),
+                "completions offer `rex site {word}` and nothing dispatches it — tab-completing \
+                 into an error is worse than not being offered"
+            );
+        }
+
+        // `service` is dispatched inside `cmd_service` rather than as match
+        // arms, so its three verbs are asserted against the completion strings
+        // directly — both shells, because a zsh-only fix is a bash user still
+        // unable to discover the verb.
+        for shell_list in ["compadd start stop restart", "compgen -W \\\"start stop restart"] {
+            assert!(
+                ME.contains(shell_list),
+                "`rex service restart` is missing from a completion list ({shell_list}) — the \
+                 web tier's only verb, undiscoverable in that shell"
+            );
+        }
+    }
 
     /// **`rex --version` answers for ITSELF, with no app running.**
     ///

@@ -238,7 +238,12 @@ What remains:
    ~~progress streaming for long ops~~ (shipped 2 Sep 2026, #447). Still open:
    raw wp passthrough (security decision) — the one left is the one that is a
    ruling about what the CLI may execute, not a gap.
-3. **In-app verifies owed** (passthroughs whose restart/exposure half is
+3. **Completions are part of shipping a verb** (2 Sep 2026, ledger #454).
+   `site restart`, `site domains` and `service restart` all shipped working the
+   same day and none was offered by `rex <tab>` — the place most terminal users
+   would ever learn they exist. `every_dispatched_subcommand_is_offered_by_completions`
+   now compares the completion constant against the dispatch in both directions.
+4. **In-app verifies owed** (passthroughs whose restart/exposure half is
    guard-blocked in the example harness — exercise each once against the
    running app): `php install/uninstall`, `php settings set`, `db versions
    --set`, `site server/domain/move`, `mail clear`, `tunnel start`,
