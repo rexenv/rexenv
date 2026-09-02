@@ -111,11 +111,15 @@ pub fn scan_valet_import(state: State<'_, AppState>) -> Result<ImportScan> {
     let (candidates, folded) = fold_same_folder(candidates);
 
     // Every TLD any importable row is served on — including one that appears
-    // only in a stray conf, which the config never mentions.
+    // only in a stray conf, which the config never mentions, and one that only
+    // an EXTRA domain uses: the fold above runs first, so a Herd `.localhost`
+    // row folded under its Valet `.test` twin would otherwise vanish from the
+    // consent screen, get no resolver file, and never resolve.
     let mut tld_names: Vec<String> = candidates
         .iter()
         .filter(|c| !matches!(c.status, SiteStatus::Unsupported(_)))
-        .filter_map(|c| c.domain.rsplit_once('.').map(|(_, t)| t.to_string()))
+        .flat_map(|c| std::iter::once(&c.domain).chain(c.extra_domains.iter()))
+        .filter_map(|d| d.rsplit_once('.').map(|(_, t)| t.to_string()))
         .collect();
     tld_names.sort();
     tld_names.dedup();
@@ -669,7 +673,8 @@ pub async fn valet_import_run<R: tauri::Runtime>(
     // moment instead of surprising the user midway through the batch.
     let mut tlds: Vec<String> = queue
         .iter()
-        .filter_map(|(c, _)| c.domain.rsplit_once('.').map(|(_, t)| t.to_string()))
+        .flat_map(|(c, _)| std::iter::once(&c.domain).chain(c.extra_domains.iter()))
+        .filter_map(|d| d.rsplit_once('.').map(|(_, t)| t.to_string()))
         .collect();
     tlds.sort();
     tlds.dedup();
@@ -728,6 +733,7 @@ pub async fn valet_import_run<R: tauri::Runtime>(
             .await?;
     }
 
+    let queue_had_aliases = queue.iter().any(|(c, _)| !c.extra_domains.is_empty());
     for (i, (c, php)) in queue.into_iter().enumerate() {
         let index = i + 1;
         if jobs.cancel.load(Ordering::SeqCst) {
@@ -758,6 +764,34 @@ pub async fn valet_import_run<R: tauri::Runtime>(
         let _ = app.emit(import_event(), row.clone());
         outcomes.push(row);
         batch.done += 1;
+    }
+
+    // The extra domains were RECORDED after each site's provision settled —
+    // after the reload that provision did — and the web tier regenerates from
+    // the manager's alias mirror, not the table. Without this, a link farm
+    // imported as one site listed its other names everywhere and served none
+    // of them (nginx's default vhost answered), and the stale mirror poisoned
+    // every later reload until Stop all → Start all. ONE refresh + reload for
+    // the batch, not one per site. A failure here is a caveat on the result,
+    // not a failed import: the sites exist and their primaries serve.
+    let alias_reload = if outcomes.iter().any(|o| o.status == "imported")
+        && queue_had_aliases
+    {
+        batch.tick("serving", 0, None, Some("serving the extra domains".into()), 0);
+        let read = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()));
+        match read.and_then(|conn| {
+            Ok((core::sites::list(&conn)?, crate::state::store::all_site_aliases(&conn)?))
+        }) {
+            Ok((sites, aliases)) => {
+                super::sites::reload_for_domains(&state, sites, aliases).await.err()
+            }
+            Err(e) => Some(e),
+        }
+    } else {
+        None
+    };
+    if let Some(e) = alias_reload {
+        log::warn!("import: extra domains recorded but the reload failed: {e}");
     }
 
     batch.tick("checking", 0, None, Some("checking your sites will load".into()), 0);

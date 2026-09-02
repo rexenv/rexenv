@@ -334,6 +334,19 @@ pub async fn add_site_domain(
     id: String,
     domain: String,
 ) -> Result<Vec<String>> {
+    // ONE spelling from here on: the raw string went to `domain_tld` (which
+    // validates, and refuses upper-case) while the core normalised its own copy
+    // — so `Shop.rex` was refused at this boundary for a name the core would
+    // have stored as `shop.rex`.
+    let domain = core::sites::normalize_hostname(&domain);
+    // Refuse a name that cannot be added BEFORE anything privileged happens: a
+    // collision with another site's hostname is a plain error, and raising a
+    // password prompt (and installing a root-owned resolver file for a TLD
+    // nothing will use) on the way to that error is the wrong order.
+    {
+        let conn = lock(&state)?;
+        core::sites::validate_alias(&conn, &id, &domain)?;
+    }
     // The alias may be on a TLD this machine does not resolve yet — `acme.rex`
     // with a `shop.test` alias is an ordinary thing to want — and a name that
     // nginx serves but DNS never reaches is the honest-UI failure this project
@@ -341,7 +354,7 @@ pub async fn add_site_domain(
     // site does not exist. Same call the domain change makes, and BEFORE the
     // record for the same reason: declining the prompt must change nothing.
     {
-        let tld = core::sites::domain_tld(domain.trim().trim_end_matches('.'))?;
+        let tld = core::sites::domain_tld(&domain)?;
         core::dns::ensure_resolver(
             state.platform.as_ref(),
             &tld,
@@ -367,27 +380,29 @@ pub async fn add_site_domain(
 }
 
 /// Remove an extra domain and stop serving on it.
+///
+/// A name the site does not answer on is NOT an error, and the reload still
+/// runs: the row is deleted before the web tier is reloaded, so a reload that
+/// failed leaves the name gone from the table and still served — and the
+/// retry the user then makes is exactly this call with a name that is "not
+/// found". The first version turned that retry into an error and left the
+/// stale server block in place. The reply is the list, and a name the caller
+/// mistyped is simply still on it.
 #[tauri::command]
 pub async fn remove_site_domain(
     state: State<'_, AppState>,
     id: String,
     domain: String,
 ) -> Result<Vec<String>> {
-    let (removed, site, sites, aliases) = {
+    let (site, sites, aliases) = {
         let conn = lock(&state)?;
-        let removed = core::sites::remove_alias(&conn, &id, &domain)?;
+        let _removed = core::sites::remove_alias(&conn, &id, &domain)?;
         let site = core::sites::get(&conn, &id)?
             .ok_or_else(|| Error::Other(format!("site not found: {id}")))?;
         let sites = core::sites::list(&conn)?;
         let aliases = crate::state::store::all_site_aliases(&conn)?;
-        (removed, site, sites, aliases)
+        (site, sites, aliases)
     };
-    if !removed {
-        return Err(Error::Other(format!(
-            "\"{}\" doesn't serve {domain}",
-            site.domain
-        )));
-    }
     reload_for_domains(&state, sites, aliases).await?;
     let conn = lock(&state)?;
     core::sites::all_domains(&conn, &site)
@@ -409,7 +424,7 @@ pub async fn site_domains(state: State<'_, AppState>, id: String) -> Result<Vec<
 /// regenerates configs from the manager's mirror, not the database, so setting
 /// it afterwards would serve the previous name set until something else
 /// happened to reload.
-async fn reload_for_domains(
+pub(crate) async fn reload_for_domains(
     state: &State<'_, AppState>,
     sites: Vec<Site>,
     aliases: std::collections::HashMap<String, Vec<String>>,

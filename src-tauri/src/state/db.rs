@@ -657,6 +657,11 @@ pub fn open_for_platform(paths: &dyn Paths) -> Result<Connection> {
 #[cfg(test)]
 pub(crate) fn open_in_memory() -> Result<Connection> {
     let conn = Connection::open_in_memory()?;
+    // The SAME pragmas production sets (minus WAL, which an in-memory database
+    // cannot use): a cascade test that passed only because the bundled SQLite
+    // happened to default `foreign_keys` on would be proving the vendor's
+    // build flag, not our schema.
+    conn.pragma_update(None, "foreign_keys", "ON")?;
     migrate(&conn)?;
     Ok(conn)
 }

@@ -266,6 +266,13 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   cache compares the recorded NAME SET, because "the files exist" leaves a valid
   certificate for yesterday's names while the browser shows an interstitial on the
   one just added. A subdomain network's alias carries the wildcard on both tiers.
+  Every path that ISSUES a cert carries the alias list — first issue, domain
+  change, and both Regenerate actions (the last two forgot, and a reissue that
+  covered the primary alone left the recorded set describing the wider one, so
+  the narrow cert was judged covered forever; fixed 3 Sep 2026). Anything that
+  RECORDS an alias outside the add command (the Valet import) must refresh the
+  manager's alias mirror and reload, because configs regenerate from the
+  mirror, not the table.
   An extra domain on a WordPress site REACHES it and then redirects to the
   primary — WordPress owns its canonical address (`siteurl`), and rexenv does not
   rewrite it. The card and `rex site domains` say so rather than leaving the

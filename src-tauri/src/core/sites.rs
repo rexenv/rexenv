@@ -1644,7 +1644,7 @@ pub fn all_domains(conn: &Connection, site: &Site) -> Result<Vec<String>> {
 ///
 /// Returns the normalized value to store.
 pub fn validate_alias(conn: &Connection, site_id: &str, domain: &str) -> Result<String> {
-    let domain = domain.trim().trim_end_matches('.').to_ascii_lowercase();
+    let domain = normalize_hostname(domain);
     validate_domain(&domain)?;
     if let Some(other) = store::site_by_domain(conn, &domain)? {
         return Err(Error::Other(if other.id == site_id {
@@ -1679,8 +1679,22 @@ pub fn add_alias(conn: &Connection, site_id: &str, domain: &str) -> Result<Strin
 
 /// Remove an alias. `false` when the site did not answer on that name — never
 /// an error, so a retry after a partial failure is safe.
+///
+/// Normalised exactly as [`validate_alias`] normalises on the way IN — the
+/// first version forgot the trailing dot, so `--add shop.rex.` stored
+/// `shop.rex` and `--remove shop.rex.` could not find it.
 pub fn remove_alias(conn: &Connection, site_id: &str, domain: &str) -> Result<bool> {
-    store::remove_site_alias(conn, site_id, &domain.trim().to_ascii_lowercase())
+    store::remove_site_alias(conn, site_id, &normalize_hostname(domain))
+}
+
+/// The ONE spelling a hostname has inside rexenv: trimmed, no trailing dot,
+/// lower-case. Every boundary that accepts a hostname from a person (the
+/// Domains card, `rex site domains`, an import) normalises through here BEFORE
+/// it validates or compares — `validate_domain` rejects upper-case outright, so
+/// a caller that validated the raw string refused `Shop.rex` while the core
+/// beneath it would have stored `shop.rex`.
+pub fn normalize_hostname(domain: &str) -> String {
+    domain.trim().trim_end_matches('.').to_ascii_lowercase()
 }
 
 /// Settings key for the configurable sites root.
@@ -2807,10 +2821,14 @@ mod tests {
             assert!(add_alias(&conn, &a.id, bad).is_err(), "`{bad}` was accepted as an alias");
         }
 
+        // Removal normalises the SAME way as the add: the spelling `dig`
+        // prints (trailing dot) removes the name the add stored without it.
+        assert!(remove_alias(&conn, &a.id, " SHOP2.TEST. ").unwrap());
+        assert_eq!(all_domains(&conn, &a).unwrap(), vec!["a.test", "shop.test"]);
         // Removal is idempotent — a retry after a partial failure is safe.
         assert!(remove_alias(&conn, &a.id, "shop.test").unwrap());
         assert!(!remove_alias(&conn, &a.id, "shop.test").unwrap());
-        assert_eq!(all_domains(&conn, &a).unwrap(), vec!["a.test", "shop2.test"]);
+        assert_eq!(all_domains(&conn, &a).unwrap(), vec!["a.test"]);
         // Freed for the other site now that it is gone.
         assert_eq!(add_alias(&conn, &b.id, "shop.test").unwrap(), "shop.test");
     }
