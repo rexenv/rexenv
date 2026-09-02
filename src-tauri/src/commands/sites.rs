@@ -1311,6 +1311,90 @@ pub(crate) async fn delete_site_owned(
     Ok(outcome.existed)
 }
 
+/// #188 — **a share guard must hold for the tunnel's LIFETIME, not just at the
+/// moment the share starts.**
+///
+/// "Safe to tunnel" is one fact (step 3: the site has an nginx vhost, at a
+/// docroot, under a domain), and every fact in it is MUTABLE while the share is
+/// live. Switching a shared site's web server removes its nginx vhost while
+/// cloudflared keeps pointing at nginx — the public link then falls through to
+/// nginx's DEFAULT vhost and publishes a DIFFERENT site (#13 measured that
+/// fallthrough live). Moving or re-pointing the docroot changes what the link
+/// serves mid-copy. Renaming or deleting the site leaves a public URL for
+/// something that no longer exists at that name.
+///
+/// A check at start is a SNAPSHOT of a mutable fact — the bug class this repo
+/// has paid for twice in a week — so each of those commands carries the guard
+/// itself: refuse while shared (the user stops the share; we never auto-stop
+/// one to make room), or, where the operation is the end of the site,
+/// deliberately STOP the share as part of it.
+///
+/// This is a surface guard rather than a spot check, because the way it breaks
+/// is a NEW command that mutates one of those facts and simply never learns
+/// about tunnels — which no test of the five existing call sites can see.
+#[cfg(test)]
+mod share_guards_hold_for_the_tunnels_lifetime {
+    /// Core mutations a live share depends on, and what a public visitor gets
+    /// if one happens under it. Keyed by the core call, so the guard is about
+    /// what a command DOES, not what it is called.
+    const TUNNEL_INVALIDATING: &[(&str, &str)] = &[
+        ("core::sites::set_web_server(", "the vhost the tunnel serves from disappears"),
+        ("core::sites::check_docroot_move(", "the link serves a half-moved docroot"),
+        ("core::sites::check_docroot_relink(", "the link starts serving a different folder"),
+        ("core::sites::set_domain(", "the link points at a vhost name that no longer exists"),
+        ("core::sites::teardown(", "the link outlives the site it published"),
+    ];
+    /// The two acceptable answers: refuse while shared, or end the share as
+    /// part of the operation.
+    const GUARDS: &[&str] = &["refuse_if_shared(", "stop_for_domain("];
+
+    /// Every function in this module that performs one of those mutations must
+    /// carry a guard — and each mutation must still be performed SOMEWHERE, so
+    /// a renamed core function fails here instead of quietly emptying the list.
+    #[test]
+    fn every_command_that_invalidates_a_live_share_carries_a_guard() {
+        let src = crate::core::copy_scan::production_source(include_str!("sites.rs"));
+        // Split into function bodies: `pub (async) fn name(` … next top-level fn.
+        let mut bodies: Vec<(String, String)> = Vec::new();
+        for (i, chunk) in src.split("\npub ").enumerate().skip(1) {
+            let Some(sig_end) = chunk.find('(') else { continue };
+            let sig = &chunk[..sig_end];
+            let Some(name) = sig.split_whitespace().last() else { continue };
+            let _ = i;
+            bodies.push((name.to_string(), chunk.to_string()));
+        }
+        assert!(bodies.len() > 10, "the function split found almost nothing — guard is vacuous");
+
+        for (call, cost) in TUNNEL_INVALIDATING {
+            let callers: Vec<&(String, String)> =
+                bodies.iter().filter(|(_, b)| b.contains(call)).collect();
+            assert!(
+                !callers.is_empty(),
+                "nothing in commands/sites.rs calls `{call}` any more. If it was renamed, rename \
+                 it here too — an entry matching nothing turns this guard green while the \
+                 mutation it watches goes unguarded"
+            );
+            for (name, body) in callers {
+                assert!(
+                    GUARDS.iter().any(|g| body.contains(g)),
+                    "`{name}` calls `{call}` with no share guard. Under a live tunnel, {cost} — \
+                     and a check at share START cannot help, because this is the mutation that \
+                     happens afterwards. Add `refuse_if_shared` (never auto-stop someone's \
+                     share to make room), or `stop_for_domain` if the operation ends the site"
+                );
+            }
+        }
+    }
+
+    // **The wiring half is NOT tested here, and that is a measurement rather
+    // than an omission.** A command that guards must take the registry, and the
+    // planted removal of `tunnels: State<'_, …Tunnels>` from `relink_site_docroot`
+    // does not compile (`cannot find value `tunnels``, plus the arity error at
+    // the guard call). A test asserting it could never be the first thing to
+    // fail, and a proof at a layer that cannot see its subject is a plan wearing
+    // a test's clothes (#40/#166).
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
