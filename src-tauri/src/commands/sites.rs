@@ -300,6 +300,114 @@ pub async fn keep_site(state: State<'_, AppState>, id: String) -> Result<bool> {
     crate::state::store::keep_site(&conn, &id)
 }
 
+/// What `restart_site` did, in the words the caller reports.
+///
+/// The shape exists because "restart this site" has no single honest meaning in
+/// rexenv's topology (`docs/ARCHITECTURE.md`): a default site has NO process of
+/// its own — shared nginx, and a php-fpm pool shared with every other site on
+/// its PHP minor — so the truthful answer is what was reloaded and what a pool
+/// bounce would cost, not a cheerful "restarted".
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SiteRestartReport {
+    /// "backend" | "shared" | "refused".
+    pub kind: &'static str,
+    /// The override server that was bounced, when there was one.
+    pub server: Option<String>,
+    /// Its loopback port.
+    pub port: Option<u16>,
+    /// The PHP minor whose pool serves this site.
+    pub php_minor: String,
+    /// That pool's port.
+    pub pool_port: u16,
+    /// How many sites (including this one) that pool serves — the number a
+    /// `--pool` restart affects, and the reason it is opt-in.
+    pub sites_on_pool: usize,
+    /// Whether the pool was actually restarted (only on request).
+    pub pool_restarted: bool,
+}
+
+/// Restart ONE site: its own backend if it has one, otherwise a config rebuild
+/// and a web-tier reload — never a silent pool bounce.
+///
+/// # Why this refuses to do the obvious thing
+///
+/// The default topology gives a site no process to restart. The action a user
+/// means by "restart my site" is usually "make it pick up my change", and for a
+/// default site that IS the config rebuild + nginx/edge reload this does. The
+/// other candidate — restarting the php-fpm pool — is shared by every site on
+/// that PHP minor, so doing it implicitly would stop other people's sites to
+/// satisfy this one. It is therefore `pool: true` only, and the report says how
+/// many sites that number covers whether or not it was asked for.
+#[tauri::command]
+pub async fn restart_site(
+    state: State<'_, AppState>,
+    id: String,
+    pool: bool,
+) -> Result<SiteRestartReport> {
+    let (site, sites) = {
+        let conn = lock(&state)?;
+        let site = core::sites::get(&conn, &id)?
+            .ok_or_else(|| Error::Other(format!("site not found: {id}")))?;
+        (site, core::sites::list(&conn)?)
+    };
+    let pool_port = core::sites::pool_port_for_site(&site);
+    let sites_on_pool =
+        sites.iter().filter(|s| core::sites::pool_port_for_site(s) == pool_port).count();
+
+    // Spawn under the lock, await readiness after dropping it (M4) — a backend
+    // that takes seconds to bind must not park status polls.
+    let (outcome, checks) = {
+        let mut mgr = state.services.lock().await;
+        mgr.restart_site_backend(state.platform.as_ref(), &site).await?
+    };
+    core::service_manager::await_ready(checks).await?;
+
+    let (kind, server, port) = match &outcome {
+        core::service_manager::SiteRestartOutcome::Backend { server, port } => {
+            ("backend", Some((*server).to_string()), Some(*port))
+        }
+        core::service_manager::SiteRestartOutcome::Refused { server } => {
+            ("refused", Some((*server).to_string()), None)
+        }
+        core::service_manager::SiteRestartOutcome::Shared { .. } => {
+            // No per-site process: rebuild the configs and reload the web tier,
+            // which is what actually makes this site pick up a change.
+            let checks = {
+                let mut mgr = state.services.lock().await;
+                mgr.reload(state.platform.as_ref(), &state.ca, &sites, false).await?
+            };
+            core::service_manager::await_ready(checks).await?;
+            ("shared", None, None)
+        }
+    };
+
+    let pool_restarted = if pool {
+        let checks = {
+            let mut mgr = state.services.lock().await;
+            mgr.restart_pools_for(
+                state.platform.as_ref(),
+                std::slice::from_ref(&core::php::minor_of(&site.php_version)),
+            )
+            .await?
+        };
+        core::service_manager::await_ready(checks).await?;
+        true
+    } else {
+        false
+    };
+
+    Ok(SiteRestartReport {
+        kind,
+        server,
+        port,
+        php_minor: core::php::minor_of(&site.php_version),
+        pool_port,
+        sites_on_pool,
+        pool_restarted,
+    })
+}
+
 /// A cloned package as the Sites page reads it — the recorded row plus ONE fact
 /// the row cannot carry.
 ///
@@ -1309,6 +1417,48 @@ pub(crate) async fn delete_site_owned(
     let mut mgr = state.services.lock().await;
     let _ = mgr.reload(state.platform.as_ref(), &state.ca, &sites, false).await;
     Ok(outcome.existed)
+}
+
+/// The pool bounce a single-site restart must never do on its own.
+#[cfg(test)]
+mod a_site_restart_never_bounces_a_shared_pool_uninvited {
+    /// `restart_pools_for` stops the php-fpm pool for a PHP MINOR, which every
+    /// site on that minor is served by. A `rex site restart one.rex` that took
+    /// it would stop other people's sites — on a machine where the whole point
+    /// of the shared pool is that it is shared — and the user who typed one
+    /// domain would have no way to know. So the call must sit behind the opt-in
+    /// flag, and the guard is on the SHAPE, because "we only call it when the
+    /// flag is set" is exactly the kind of claim that stays true until someone
+    /// hoists the call for tidiness.
+    #[test]
+    fn the_pool_restart_is_reachable_only_through_the_opt_in_flag() {
+        let src = crate::core::copy_scan::production_source(include_str!("sites.rs"));
+        let body = src
+            .split("pub async fn restart_site(")
+            .nth(1)
+            .and_then(|b| b.split("\n/// ").next())
+            .expect("restart_site");
+        let call = body
+            .find("restart_pools_for(")
+            .expect("restart_site no longer bounces the pool at all — if the flag was dropped, \
+                     drop this guard with it; if it moved, move the guard");
+        let gate = body
+            .find("if pool {")
+            .expect("`restart_site` no longer gates the pool restart on the caller's flag");
+        assert!(
+            gate < call,
+            "the pool restart is no longer inside the `if pool` branch: a single-site restart \
+             would stop every other site on that PHP minor, and the person who typed one \
+             domain would never know it happened"
+        );
+        // The count must be reported whether or not the flag was passed — the
+        // number is what makes the flag an informed choice rather than a dare.
+        assert!(
+            body.contains("sites_on_pool"),
+            "the report no longer carries how many sites share the pool, so `--pool` is a \
+             flag with no stated cost"
+        );
+    }
 }
 
 /// #188 — **a share guard must hold for the tunnel's LIFETIME, not just at the

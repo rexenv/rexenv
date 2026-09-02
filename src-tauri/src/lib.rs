@@ -1067,6 +1067,7 @@ pub fn run() {
             commands::sites::regenerate_site_cert,
             commands::sites::set_site_php_version,
             commands::sites::set_site_web_server,
+            commands::sites::restart_site,
             commands::sites::set_site_xdebug,
             commands::sites::delete_site,
             commands::sites::keep_site,

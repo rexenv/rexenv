@@ -245,6 +245,18 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   for all three): `set_php_settings`, `set_site_env`, and `set_db_versions` (the
   per-engine SELECTED version — so the watchdog respawns a crashed engine on the
   selected version, not the default pin).
+- **"Restart this site" has no single meaning, and the API says so**
+  (`restart_site_backend` → `SiteRestartOutcome`, 2 Sep 2026). The default topology
+  gives a site NO process of its own: shared Nginx, and one php-fpm pool per PHP
+  MINOR. So only an override site (FrankenPHP/Apache on its loopback port) has
+  something to bounce — it is stopped and respawned on its RECORDED port, so the edge
+  route it already has still points at it. A default site gets its config rebuilt and
+  the web tier reloaded, which is what actually makes it pick up a change, and the
+  answer names the pool it shares. The third outcome is a REFUSAL: an adopted backend
+  a non-app process may not stop is reported, never silently skipped. Restarting the
+  pool would stop every other site on that minor, so it is opt-in (`rex site restart
+  <domain> --pool`) and the report carries how many sites that covers whether or not
+  the flag was passed — the number is what makes the flag a choice instead of a dare.
 - **The APP outlives the window (menu-bar app).** Closing the window hides it —
   `prevent_close` + `hide`, confirming nothing, because it stops nothing. The process
   is what the CONTROL plane lives in: `rex` and the MCP server are remote controls for

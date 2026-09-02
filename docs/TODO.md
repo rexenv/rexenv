@@ -2465,7 +2465,15 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   not handled; a Valet-named port-conflict attribution branch doesn't exist
   (Herd's does); serving one site under two domains needs multi-domain support
   (`sites.domain` is UNIQUE).
-- [ ] **`rex` design-first set**: single-site restart (manager seam), web-tier
+- [ ] **`rex` design-first set**: ~~single-site restart (manager seam)~~ ✓ 2 Sep 2026
+  (ledger #444, `rex site restart <domain> [--pool]`) — the ruling the row was waiting
+  for is that the operation has THREE honest outcomes, not one: an override site's
+  backend is bounced on its recorded port; a default site has no process of its own, so
+  its config is rebuilt and the web tier reloaded and the answer says which pool it
+  shares; an ADOPTED backend a non-app process may not stop is a refusal, reported.
+  The pool bounce is opt-in because it stops every site on that minor, and the count
+  ships in the report whether or not the flag was passed. Live leg still owed (the
+  in-app verify list in `docs/CLI-ROADMAP.md`). Still open: web-tier
   single-service control (topology invariant), raw `wp` passthrough (security
   decision), `wp_user_delete` (no IPC exists), progress streaming over the CLI
   socket (design once, benefits every long op).

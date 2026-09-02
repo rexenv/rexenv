@@ -259,6 +259,29 @@ pub(crate) fn adopted_reap_decision(still_ours: bool, misses: u32, limit: u32) -
     }
 }
 
+/// What restarting ONE site actually means — and it is not the same thing for
+/// every site, which is the whole reason this is a type rather than a `()`.
+///
+/// rexenv's default topology has NO per-site process: browser → Caddy → ONE
+/// shared nginx → one php-fpm pool per PHP VERSION. So "restart this site" has
+/// an honest answer only for a site with an override backend (FrankenPHP or
+/// Apache on its own loopback port). For everything else the truthful answer is
+/// that its config was rewritten and the web tier reloaded, and that the thing
+/// a user might mean — bouncing the pool — would hit every other site on that
+/// minor, so it is opt-in and says how many.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SiteRestartOutcome {
+    /// The site has a backend of its own; it was stopped and respawned.
+    Backend { server: &'static str, port: u16 },
+    /// Nothing site-specific runs: shared nginx + a shared pool.
+    Shared { php_minor: String, pool_port: u16 },
+    /// The site HAS a backend and the stack guard refused to stop it (an
+    /// adopted backend, asked by a non-app process). Never a silent no-op —
+    /// the caller reports it, because the user asked for a restart and did not
+    /// get one.
+    Refused { server: &'static str },
+}
+
 impl ServiceManager {
     pub fn with_ports(ports: Ports) -> Self {
         Self {
@@ -864,6 +887,62 @@ impl ServiceManager {
             );
         }
         Ok(checks)
+    }
+
+    /// Restart the backend of ONE site — the seam a single-site restart needs.
+    ///
+    /// For an override site this is a real stop + respawn on the site's RECORDED
+    /// port, so the edge route it already has keeps pointing at it. For a
+    /// default (nginx-served) site there is deliberately nothing to do here: the
+    /// caller reloads the web tier and reports [`SiteRestartOutcome::Shared`],
+    /// because killing the shared pool to satisfy one site's restart would take
+    /// down every other site on that PHP minor without anybody asking.
+    ///
+    /// Spawn under the lock, `await_ready` after dropping it (M4) — the checks
+    /// come back with the outcome rather than being awaited here.
+    pub async fn restart_site_backend(
+        &mut self,
+        platform: &dyn Platform,
+        site: &Site,
+    ) -> Result<(SiteRestartOutcome, Vec<ReadyCheck>)> {
+        let Some(kind) = OverrideKind::of(site.web_server) else {
+            return Ok((
+                SiteRestartOutcome::Shared {
+                    php_minor: php::minor_of(&site.php_version),
+                    pool_port: sites::pool_port_for_site(site),
+                },
+                Vec::new(),
+            ));
+        };
+        let port = sites::recorded_override_port(site).ok_or_else(|| {
+            Error::Other(format!(
+                "\"{}\" is set to {} but has no recorded backend port — reload the stack first",
+                site.domain,
+                kind.label()
+            ))
+        })?;
+        if let Some(mut backend) = self.overrides.remove(&site.domain) {
+            if !Self::stop_override_backend(platform, &site.domain, &mut backend) {
+                // The guard's refusal is the user's answer, not a shrug: put the
+                // backend back so it stays tracked, and SAY that nothing was
+                // restarted.
+                self.overrides.insert(site.domain.clone(), backend);
+                return Ok((SiteRestartOutcome::Refused { server: kind.label() }, Vec::new()));
+            }
+        }
+        let check = self
+            .spawn_override(
+                platform,
+                kind,
+                &site.domain,
+                &site.served_root(),
+                port,
+                sites::pool_port_for_site(site),
+                sites::rewrite_mode_for(site.multisite),
+                &self.site_env.get(&site.id).cloned().unwrap_or_default(),
+            )
+            .await?;
+        Ok((SiteRestartOutcome::Backend { server: kind.label(), port }, vec![check]))
     }
 
     /// Stop an override backend FOR REAL, honoring the stack guard: a non-app
@@ -2858,6 +2937,73 @@ mod tests {
                 assert!(ports.contains(&p), "managed_ports missing pool port for {minor}");
             }
         }
+    }
+
+    /// A single-site restart must tell the truth about what it can restart.
+    ///
+    /// The default topology gives a site NO process of its own — shared nginx,
+    /// and one php-fpm pool per PHP MINOR — so for a default site the only
+    /// honest outcome is `Shared`, naming the pool it sits on. Returning
+    /// "restarted" there would be a lie in the direction that matters: the user
+    /// would believe a bounce happened, see the same stale behaviour, and go
+    /// looking for a bug in their code. The alternative reading — bounce the
+    /// pool so SOMETHING was restarted — stops every other site on that minor to
+    /// satisfy one, which is why the pool is opt-in one layer up.
+    #[tokio::test]
+    async fn restarting_a_default_site_is_reported_as_shared_not_as_a_restart() {
+        use crate::state::models::{MultisiteMode, ServiceStatus, SiteOrigin, SiteType};
+        let site = |domain: &str, ws: WebServer| Site {
+            id: domain.into(),
+            name: domain.into(),
+            domain: domain.into(),
+            site_type: SiteType::Php,
+            status: ServiceStatus::Stopped,
+            php_version: "8.3".into(),
+            web_server: ws,
+            ssl: true,
+            path: format!("/tmp/{domain}"),
+            created_at: "now".into(),
+            multisite: MultisiteMode::None,
+            db_name: String::new(),
+            db_engine: crate::state::models::SiteDbEngine::Mysql,
+            xdebug: false,
+            override_port: None,
+            provisioned: true,
+            docroot_managed: Some(true),
+            db_created: None,
+            content_dir: None,
+            mu_dir_created: None,
+            origin: SiteOrigin::User,
+            agent_client: None,
+            expires_at: None,
+            docroot_subdir: String::new(),
+            git_url: None,
+            git_ref: None,
+            git_migrate: None,
+            git_build_assets: None,
+            starter_db: None,
+        };
+        let platform = override_test_platform("restart-shared", None);
+        let mut mgr = ServiceManager::default();
+        let (outcome, checks) = mgr
+            .restart_site_backend(&platform, &site("n.test", WebServer::Nginx))
+            .await
+            .expect("a default site restart never errors");
+        assert_eq!(
+            outcome,
+            SiteRestartOutcome::Shared {
+                php_minor: "8.3".into(),
+                pool_port: php::fpm_port("8.3").unwrap(),
+            },
+            "a default site must report the SHARED pool it sits on, not a restart it did not do"
+        );
+        assert!(
+            checks.is_empty(),
+            "nothing was spawned, so there is nothing to wait for — a readiness check here \
+             would make the caller wait on a process that does not exist"
+        );
+        // …and nothing was touched: no backend was tracked before or after.
+        assert!(mgr.override_pids().is_empty(), "a shared-site restart started a backend");
     }
 
     #[test]

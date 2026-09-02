@@ -97,6 +97,7 @@ COMMANDS:
   site php <domain> <minor>          Switch a site's PHP version
   site xdebug <domain> on|off        Toggle the site's Xdebug debug pool
   site server <domain> nginx|frankenphp|apache   Switch the web server
+  site restart <domain> [--pool]     Restart the site's own backend (--pool also bounces its shared PHP pool)
   site rename <domain> <name>        Display name only (domain unchanged)
   site domain <domain> <new-domain>  Change the domain (URL rewrite; asks first)
   site move <domain> <dest-parent>   Move the docroot under a new parent folder
@@ -556,6 +557,7 @@ fn main() {
             Some("php") => cmd_site_php(&words[2..], json_output),
             Some("xdebug") => cmd_site_xdebug(&words[2..], json_output),
             Some("server") => cmd_site_server(&words[2..], json_output),
+            Some("restart") => cmd_site_restart(&words[2..], json_output),
             Some("rename") => cmd_site_rename(&words[2..], json_output),
             Some("domain") => cmd_site_domain(&words[2..], json_output),
             Some("move") => cmd_site_move(&words[2..], json_output),
@@ -1531,6 +1533,52 @@ fn cmd_site_server(words: &[String], json_output: bool) {
         return print_json(&updated);
     }
     print_site_update(&updated);
+}
+
+/// `rex site restart <domain> [--pool]`.
+///
+/// The output is deliberately not a cheerful "restarted": most sites have no
+/// process of their own (shared nginx + a pool shared with every site on that
+/// PHP minor), so the honest report is what was actually done and what a pool
+/// restart would cost — which is why `--pool` exists and is not the default.
+fn cmd_site_restart(words: &[String], json_output: bool) {
+    let site = find_site(words, "rex site restart <domain> [--pool]");
+    let pool = words.iter().any(|w| w == "--pool");
+    let r = request("site.restart", json!({ "id": site["id"], "pool": pool }));
+    if json_output {
+        return print_json(&r);
+    }
+    let str_of = |v: &Value| v.as_str().unwrap_or("?").to_string();
+    let domain = str_of(&site["domain"]);
+    let minor = str_of(&r["phpMinor"]);
+    let on_pool = r["sitesOnPool"].as_u64().unwrap_or(0);
+    match r["kind"].as_str().unwrap_or("") {
+        "backend" => println!(
+            "restarted {} for {domain} on 127.0.0.1:{}",
+            str_of(&r["server"]),
+            r["port"].as_u64().unwrap_or(0)
+        ),
+        "refused" => {
+            eprintln!(
+                "rex: {domain}'s {} backend was adopted from another session and this process \
+                 may not stop it — restart it from the app",
+                str_of(&r["server"])
+            );
+            exit(1);
+        }
+        _ => {
+            println!("reloaded {domain}: config rebuilt, nginx + edge reloaded");
+            println!(
+                "  {domain} has no backend of its own — it is served by the shared nginx and \
+                 the php-{minor} pool, which {on_pool} site(s) share"
+            );
+        }
+    }
+    if r["poolRestarted"].as_bool().unwrap_or(false) {
+        println!("  restarted the php-{minor} pool ({on_pool} site(s) affected)");
+    } else if on_pool > 0 {
+        println!("  add --pool to bounce the php-{minor} pool as well ({on_pool} site(s) affected)");
+    }
 }
 
 fn cmd_site_rename(words: &[String], json_output: bool) {

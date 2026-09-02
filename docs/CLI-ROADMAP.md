@@ -72,7 +72,7 @@ to launch a specific copy with `open /Applications/rexenv.app` when it matters. 
 | `site xdebug <domain> on\|off` | `set_site_xdebug` | ✓ | shipped 16 Jul — on→200→off live; FrankenPHP refusal verbatim, exit 1 |
 | `site env <domain> [set K=V \| unset K]` | `list_site_env` / `set_site_env` | ✓ | shipped 16 Jul — set→list→unset live (client-side merge; backend replaces the set) |
 | `site cert <domain> [--regenerate]` | `site_cert_info` / `regenerate_site_cert` | ✓ | shipped 16 Jul — info live (SANs, days left) |
-| `site restart <domain>` (single-site backend bounce) | — | 🔴 | no single-site restart IPC (UI doesn't have it either); needs a manager seam |
+| `site restart <domain> [--pool]` | `restart_site` | ✓ | **shipped 2 Sep 2026.** The design ruling this row was waiting for is that "restart this site" has NO single meaning here: the default topology gives a site no process of its own (shared nginx → one php-fpm pool per PHP MINOR), so only an override site (FrankenPHP/Apache on its loopback port) has something to bounce. Three honest outcomes, and the reply says which: `backend` (stopped + respawned on the site's RECORDED port, so the edge route still points at it), `shared` (config rebuilt + nginx/edge reloaded — what actually makes a default site pick up a change), `refused` (an ADOPTED backend a non-app process may not stop — reported and exit 1, never a silent no-op). **The pool bounce is opt-in** (`--pool`) because it stops every site on that minor; the report carries `sitesOnPool` either way, so the number is on screen before the flag is used and after. New manager seam `restart_site_backend` — spawn under the lock, `await_ready` after dropping it. Not live-run yet |
 | `site retry <domain>` (finish a "setup incomplete" half-provision) | `site_provision_retry` (domain→id client-side) | ✓ | **shipped 24 Aug 2026.** Polls SERVER-side so the CLI stays request/reply, like `site.create`, which already blocks for a whole provision — a second protocol for the same user-visible operation would be two things to keep in step. Bounded at 15 min so a wedged provision cannot hold the socket forever; the caller gets the last snapshot and the log key it names. ⚠ **The "`site.create` failures … point here" half of this row is UNVERIFIED** — nothing in the tree matches a message naming this command, and reproducing a mid-provision failure to read the text has not been done. Left as this file's claim rather than repeated into a code comment. ✅ **in-app verified 24 Aug 2026**: a fully provisioned site refused, a half-site (`provisioned = 0`) retried to completion with the flag flipping back, and the linked docroot's own `index.php` byte-identical afterwards — the never-clobber guarantee on the case where clobbering would destroy a folder rexenv does not own |
 
 ## PHP
@@ -210,7 +210,7 @@ line streaming is the same 🔴 "progress streaming" infra item as always.
 
 ## Status — every 🟢/🟡/⚪ command is SHIPPED
 
-54 commands shipped. **That number is now GENERATED** (`scripts/doc-counts.sh`,
+55 commands shipped. **That number is now GENERATED** (`scripts/doc-counts.sh`,
 enforced by `verify.sh`) and this heading no longer carries a date: it read
 "Status (16 Jul 2026) — 42 commands shipped" while the tree had 53, in the one
 file a reader consults to learn what exists. A status line nobody re-counts is a
@@ -233,7 +233,10 @@ What remains:
    guard-blocked in the example harness — exercise each once against the
    running app): `php install/uninstall`, `php settings set`, `db versions
    --set`, `site server/domain/move`, `mail clear`, `tunnel start`,
-   `wp core update/switch`.
+   `wp core update/switch`, and **`site restart`** (shipped 2 Sep 2026 with L0
+   only: the backend leg needs a real FrankenPHP/Apache site stopped and
+   respawned, and the refusal leg needs an ADOPTED backend, neither of which a
+   unit test can hold).
    **`site retry` — VERIFIED 24 Aug 2026** (refusal, a real half-provision retried to
    completion, and no clobber of a linked docroot).
    **`mail mark-read`, `mail list --unread` and `mail list <query>` — VERIFIED

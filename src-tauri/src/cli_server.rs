@@ -668,6 +668,23 @@ where
             .await?;
             to_value(&site)
         }
+        // Single-site restart. What it MEANS differs per site and the reply
+        // says which: a site with its own backend gets that process bounced; a
+        // default (shared-nginx) site gets its config rebuilt and the web tier
+        // reloaded, because there is no per-site process to restart and killing
+        // the shared pool would stop every other site on that PHP minor. The
+        // pool bounce is therefore opt-in (`--pool`), and the reply carries how
+        // many sites it covers either way.
+        "site.restart" => {
+            let state = app_state(app)?;
+            let report = commands::sites::restart_site(
+                state.clone(),
+                need_str(&args, "id", cmd)?,
+                args.get("pool").and_then(Value::as_bool).unwrap_or(false),
+            )
+            .await?;
+            to_value(&report)
+        }
         "blueprint.list" => {
             let state = app_state(app)?;
             Ok(json!({ "blueprints": to_value(&commands::blueprints::list_blueprints(state.clone())?)? }))
