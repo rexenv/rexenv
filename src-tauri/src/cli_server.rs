@@ -908,6 +908,20 @@ where
             .await?;
             Ok(Value::Null)
         }
+        "wp.user.delete" => {
+            let state = app_state(app)?;
+            commands::wordpress::wp_user_delete(
+                state.clone(),
+                need_str(&args, "id", cmd)?,
+                args["userId"]
+                    .as_u64()
+                    .ok_or_else(|| Error::Other("wp.user.delete needs `userId`".into()))?,
+                args["reassign"].as_u64(),
+                args["deletePosts"].as_bool().unwrap_or(false),
+            )
+            .await?;
+            Ok(Value::Null)
+        }
         "wp.user.password" | "wp.user.role" => {
             let state = app_state(app)?;
             let id = need_str(&args, "id", cmd)?;
@@ -1937,6 +1951,7 @@ mod tests {
             "db.import", "php.list", "php.default", "php.installed", "site.php", "site.xdebug",
             "wp.plugins", "wp.plugin.install", "wp.plugin.activate", "wp.themes",
             "wp.theme.install", "wp.users", "wp.user.create", "wp.user.password", "wp.user.role",
+            "wp.user.delete",
             "repo.list", "repo.watch.start", "repo.watch.stop", "repo.add", "repo.op",
             "repo.run",
         ] {

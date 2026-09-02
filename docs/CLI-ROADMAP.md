@@ -109,7 +109,7 @@ to launch a specific copy with `open /Applications/rexenv.app` when it matters. 
 |---|---|---|---|
 | `wp <domain> plugin list\|install\|activate\|deactivate\|update\|delete` | `wp_plugins` / `wp_plugin_*` | ✓ | shipped 16 Jul — full install→delete cycle live, zero residue; network variants still unmapped |
 | `wp <domain> theme list\|install\|activate\|update\|delete` | `wp_themes` / `wp_theme_*` | ✓ | shipped 16 Jul |
-| `wp <domain> user list\|create\|set-password\|set-role` | `wp_users` / `wp_user_*` | ✓ | shipped 16 Jul — passwords generated (urandom) + printed once, never argv; login-or-id accepted. NOTE: no `wp_user_delete` IPC exists — a CLI user delete would be new backend |
+| `wp <domain> user list\|create\|set-password\|set-role\|delete` | `wp_users` / `wp_user_*` | ✓ | shipped 16 Jul — passwords generated (urandom) + printed once, never argv; login-or-id accepted. **`user delete` shipped 2 Sep 2026** (ledger #446), the new backend that NOTE described: `wp user delete` also decides what happens to the account's POSTS, and wp-cli's default is to delete them, so the choice is a required argument (`--reassign <login|id>` or `--delete-posts`) and both the CLI and the IPC refuse a caller who gave neither or both. Primary administrator refused (the account one-click login and rexenv's tools resolve to, and unlike a role change it cannot be undone); self-reassignment refused (it is `--delete-posts` under the opposite name); multisite refused outright, because there `wp user delete` removes them from THIS site while the network account survives — "deleted" would be false. Not live-run yet |
 | `wp <domain> search-replace <from> <to> [--dry-run] [--yes]` | `wp_search_replace` | ✓ | shipped 16 Jul — dry_run exposed; live dry-run verified |
 | `wp <domain> cache-flush` / `cron run` | `wp_cache_flush` / `wp_cron_run_due` | ✓ | shipped 16 Jul — 18 due events executed live |
 | `wp <domain> core update\|versions\|switch <v>` | `wp_core_update/versions/switch_version` | ✓ | shipped 16 Jul — versions live (wp.org list); update/switch passthroughs (long, not live-run) |
@@ -210,7 +210,12 @@ line streaming is the same 🔴 "progress streaming" infra item as always.
 
 ## Status — every 🟢/🟡/⚪ command is SHIPPED
 
-56 commands shipped. **That number is now GENERATED** (`scripts/doc-counts.sh`,
+87 commands shipped. **That number is now GENERATED** (`scripts/doc-counts.sh`, and as of 2 Sep 2026 it
+counts what it claims to: the counter matched `"word.word" =>` only, so every
+three-segment name (`wp.user.password`, `wp.plugin.install`, …) and every
+alternation arm went uncounted — 56 where 87 commands answer. A generated number
+measuring a SUBSET is worse than a typed one, because nobody re-derives it. The
+jump from 56 to 87 is that fix, not 31 new commands;
 enforced by `verify.sh`) and this heading no longer carries a date: it read
 "Status (16 Jul 2026) — 42 commands shipped" while the tree had 53, in the one
 file a reader consults to learn what exists. A status line nobody re-counts is a
@@ -226,9 +231,10 @@ and `rex config set` cannot outrun it. ~~`site retry`~~ — **shipped 24 Aug 202
 message actually names it is a separate, unverified claim (see the row above).
 
 What remains:
-2. Design-first 🔴 set: single-site restart (manager seam), web-tier
-   single-service control (topology invariant), raw wp passthrough (security
-   decision), `wp_user_delete` (no IPC exists), progress streaming for long ops.
+2. Design-first 🔴 set: ~~single-site restart~~ (shipped 2 Sep 2026, #444),
+   ~~web-tier single-service control~~ (shipped 2 Sep 2026, #445),
+   ~~`wp_user_delete`~~ (shipped 2 Sep 2026, #446). Still open: raw wp
+   passthrough (security decision), progress streaming for long ops.
 3. **In-app verifies owed** (passthroughs whose restart/exposure half is
    guard-blocked in the example harness — exercise each once against the
    running app): `php install/uninstall`, `php settings set`, `db versions

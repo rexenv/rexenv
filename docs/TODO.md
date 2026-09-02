@@ -2477,8 +2477,10 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   2026 (ledger #445, `rex service restart nginx|edge|php-<minor>`) — RESTART is the only
   verb the tier gets, on a freshly generated config; `start`/`stop` of a web-tier name is
   refused by name; the edge is reloaded, not restarted; a stopped service is reported, not
-  started. Still open: raw `wp` passthrough (security
-  decision), `wp_user_delete` (no IPC exists), progress streaming over the CLI
+  started. ~~`wp_user_delete` (no IPC exists)~~ ✓ 2 Sep 2026
+  (ledger #446) — the posts fork is a required argument, and the primary admin,
+  self-reassignment and multisite are refused. Still open: raw `wp` passthrough (security
+  decision), progress streaming over the CLI
   socket (design once, benefits every long op).
 - [x] **Rowless-orphan launch NOTICE** ✓ 30 Aug 2026 — ledger #431. The queued-notices
   channel this row asked for: `StartupNotices` (always managed, like `InitError`) is filled by

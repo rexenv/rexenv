@@ -54,7 +54,15 @@ IPC_EXPORTS=$(grep -cE '^export (async )?function ' src/lib/ipc/index.ts)
 # what the CLI can ask for. `docs/CLI-ROADMAP.md` said "42 commands shipped"
 # from 16 Jul while the tree had 53 — a status line nobody re-counts, in the one
 # file a reader consults to know what exists.
-CLI_CMDS=$(grep -cE '^\s+"[a-z_]+\.[a-z_]+" =>' src-tauri/src/cli_server.rs)
+# Command NAMES on dispatch arms, not arm LINES — and not the two-segment
+# subset. Until 2 Sep 2026 this counted `^\s+"word.word" =>`, which silently
+# missed every three-segment name (`wp.user.password`, `wp.plugin.install`, …)
+# and every alternation arm (`"a" | "b" =>`): 56 counted where 87 commands
+# answer. A generated number that measures a SUBSET is worse than a typed one,
+# because nobody re-derives it — it was the count that gated the doc, so it
+# read as authoritative for six weeks.
+CLI_CMDS=$(grep -oE '^\s+"[a-z_.]+"( \| "[a-z_.]+")* =>' src-tauri/src/cli_server.rs \
+  | grep -oE '"[a-z_.]+"' | wc -l | tr -d ' ')
 
 if [ "${1:-}" != "--check" ]; then
   echo "doc-counts (computed from the code):"

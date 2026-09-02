@@ -109,7 +109,7 @@ COMMANDS:
   blueprints                         Saved blueprints (for site create --blueprint)
   wp <domain> plugin list|install|activate|deactivate|update|delete [slug…] [--activate]
   wp <domain> theme  list|install|activate|update|delete [slug…] [--activate]
-  wp <domain> user   list|create|set-password|set-role …
+  wp <domain> user   list|create|set-password|set-role|delete …
                 WordPress manager (vetted WP-CLI ops; passwords are
                 auto-generated and printed once — never passed on argv)
   wp <domain> search-replace <from> <to> [--dry-run] [--yes]
@@ -2382,6 +2382,64 @@ fn cmd_wp(words: &[String], json_output: bool) {
                 return print_json(&r);
             }
             println!("✓ {}", r["message"].as_str().unwrap_or("core updated"));
+        }
+        (Some("user"), Some("delete")) => {
+            let Some(who) = rest.first().filter(|w| !w.starts_with("--")) else {
+                eprintln!(
+                    "rex: usage: rex wp <domain> user delete <login|id> --reassign <login|id> \
+                     | --delete-posts"
+                );
+                exit(1);
+            };
+            // Resolving BOTH ids through the app's own list, so a typo in the
+            // reassign target fails here rather than after the account is gone.
+            let users = request("wp.users", json!({ "id": id }));
+            let resolve = |who: &str| -> u64 {
+                who.parse::<u64>().ok().unwrap_or_else(|| {
+                    users["users"]
+                        .as_array()
+                        .and_then(|us| {
+                            us.iter().find(|u| u["login"] == json!(who)).and_then(|u| u["id"].as_u64())
+                        })
+                        .unwrap_or_else(|| {
+                            eprintln!("rex: no user `{who}` on this site (see `rex wp … user list`)");
+                            exit(1);
+                        })
+                })
+            };
+            let user_id = resolve(who);
+            let reassign_to = rest
+                .iter()
+                .position(|w| w == "--reassign")
+                .and_then(|i| rest.get(i + 1))
+                .map(|w| resolve(w));
+            let delete_posts = rest.iter().any(|w| w == "--delete-posts");
+            // The fork is the confirmation: deleting a user decides what happens
+            // to their POSTS, and neither answer is safe to assume. Refusing here
+            // keeps the round trip honest, and the server refuses again anyway.
+            if reassign_to.is_some() == delete_posts {
+                eprintln!(
+                    "rex: say what happens to {who}'s posts: `--reassign <login|id>` to keep \
+                     them under another account, or `--delete-posts` to delete them too"
+                );
+                exit(1);
+            }
+            let r = request(
+                "wp.user.delete",
+                json!({
+                    "id": id,
+                    "userId": user_id,
+                    "reassign": reassign_to,
+                    "deletePosts": delete_posts,
+                }),
+            );
+            if json_output {
+                return print_json(&r);
+            }
+            match reassign_to {
+                Some(to) => println!("✓ deleted {who}; their posts now belong to user {to}"),
+                None => println!("✓ deleted {who} and their posts"),
+            }
         }
         (Some("user"), Some(act @ ("set-password" | "set-role"))) => {
             let Some(who) = rest.first() else {

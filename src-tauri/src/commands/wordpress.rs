@@ -446,6 +446,58 @@ pub async fn wp_user_set_role(
     .await
 }
 
+/// Delete a WordPress user. `reassign` = the user id inheriting their posts;
+/// `None` means DELETE the posts, and the caller must have said so — see
+/// `core::wordpress::DeletedUserPosts`.
+///
+/// The primary administrator is refused in core, like `wp_user_set_role`, and a
+/// multisite network is refused there too (site-scoped deletion would leave the
+/// network account alive under the word "deleted").
+#[tauri::command]
+pub async fn wp_user_delete(
+    state: State<'_, AppState>,
+    id: String,
+    user_id: u64,
+    reassign: Option<u64>,
+    delete_posts: bool,
+) -> Result<()> {
+    // The fork is required, and BOTH answers at once is a caller that has not
+    // decided — refusing beats silently preferring one, because the two
+    // outcomes differ by "the site's content still exists".
+    let posts = match (reassign, delete_posts) {
+        (Some(to), false) => core::wordpress::DeletedUserPosts::Reassign(to),
+        (None, true) => core::wordpress::DeletedUserPosts::Delete,
+        (Some(_), true) => {
+            return Err(Error::Other(
+                "pick one: reassign the user's posts to somebody, or delete them — not both"
+                    .into(),
+            ))
+        }
+        (None, false) => {
+            return Err(Error::Other(
+                "deleting a user also decides what happens to their posts: pass a user to \
+                 reassign them to, or say explicitly that the posts go too"
+                    .into(),
+            ))
+        }
+    };
+    let multisite = {
+        let conn = state
+            .db
+            .lock()
+            .map_err(|_| Error::Other("database lock poisoned".into()))?;
+        core::sites::get(&conn, &id)?
+            .ok_or_else(|| Error::Other(format!("no site {id}")))?
+            .multisite
+            != crate::state::models::MultisiteMode::None
+    };
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    wp_blocking(move || {
+        core::wordpress::user_delete(&php, &wp, &docroot, user_id, posts, multisite).map(|_| ())
+    })
+    .await
+}
+
 /// Issue a one-time "Log in as" URL for `userId`: a single-use, short-TTL,
 /// loopback-only magic link the UI opens in the browser (§7.1).
 #[tauri::command]
@@ -1102,4 +1154,45 @@ pub async fn wp_multisite_convert(
         core::service_manager::await_ready(checks).await?;
     }
     Ok(site)
+}
+
+/// The user-delete fork, guarded at the IPC boundary.
+#[cfg(test)]
+mod deleting_a_user_is_always_a_decision_about_their_posts {
+    /// `reassign` and `delete_posts` encode a fork with two valid answers, and
+    /// the two INVALID pairs must both be refused rather than resolved.
+    ///
+    /// This is a shape guard because the behaviour needs a WordPress install:
+    /// what must never come back is a `match` that grew a catch-all arm picking
+    /// one answer for a caller who gave none. Neither direction is safe to
+    /// guess — "reassign to nobody" silently deletes a site's content, and
+    /// "keep the posts" silently leaves an account's work under a user the
+    /// caller asked to remove.
+    #[test]
+    fn neither_missing_nor_contradictory_answers_are_resolved_for_the_caller() {
+        let src = crate::core::copy_scan::production_source(include_str!("wordpress.rs"));
+        let body = src
+            .split("pub async fn wp_user_delete(")
+            .nth(1)
+            .and_then(|b| b.split("\n/// ").next())
+            .expect("wp_user_delete");
+        for (pattern, why) in [
+            ("(Some(to), false)", "reassign to somebody"),
+            ("(None, true)", "delete the posts too"),
+            ("(Some(_), true)", "both at once — a caller who has not decided"),
+            ("(None, false)", "neither — a caller who has not decided"),
+        ] {
+            assert!(
+                body.contains(pattern),
+                "`wp_user_delete` no longer handles the `{pattern}` case ({why}) EXPLICITLY. \
+                 A catch-all here picks an answer about somebody's content on behalf of a \
+                 caller who never gave one"
+            );
+        }
+        assert!(
+            !body.contains("_ =>"),
+            "`wp_user_delete` has a catch-all arm: the two invalid pairs must be REFUSED by \
+             name, not funnelled into whichever answer sits at the bottom of the match"
+        );
+    }
 }

@@ -1838,6 +1838,87 @@ pub fn user_set_role(
     )
 }
 
+/// What happens to the posts a deleted user owns — a fork with no safe default,
+/// so it is a REQUIRED argument rather than an option with one.
+///
+/// `wp user delete` without `--reassign` deletes that user's posts along with
+/// the account. That is a legitimate thing to want and an appalling default: the
+/// caller who omitted the flag loses content they never mentioned, and WP-CLI's
+/// own confirmation prompt is not reachable through an IPC call. Making the
+/// choice part of the call means it can only happen on purpose.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeletedUserPosts {
+    /// Give them to this user id (`--reassign`).
+    Reassign(u64),
+    /// Delete them with the account. Explicit, never inferred from an omission.
+    Delete,
+}
+
+/// Delete a WordPress user (`wp user delete`), with the two refusals that make
+/// it safe to expose.
+///
+/// 1. **The primary administrator is protected**, for the same reason
+///    [`user_set_role`] protects it: one-click admin login and rexenv's site
+///    tools resolve to that account, so deleting it breaks the app's own hold on
+///    the site — and unlike a role change, it cannot be undone.
+/// 2. **Reassigning to the user being deleted is refused.** WP-CLI accepts it
+///    and the posts go with the account, which is the `Delete` behaviour under
+///    the name that promised the opposite.
+///
+/// Multisite is refused rather than half-supported: on a network `wp user
+/// delete` removes the account from THIS site while it survives network-wide,
+/// so a caller who asked to delete a user and was told "done" would still have
+/// them. `--network` is a different operation and needs its own decision.
+pub fn user_delete(
+    php_bin: &Path,
+    wp_phar: &Path,
+    docroot: &Path,
+    user_id: u64,
+    posts: DeletedUserPosts,
+    multisite: bool,
+) -> Result<String> {
+    if multisite {
+        return Err(Error::Other(
+            "deleting a user on a multisite network isn't supported yet: `wp user delete` would \
+             only remove them from THIS site while the network account survives, which is not \
+             what \"deleted\" says. Use the Network Admin → Users screen."
+                .into(),
+        ));
+    }
+    // The pure refusal comes BEFORE the one that has to ask WordPress: a
+    // caller who passed a nonsense pair gets the reason immediately, on a site
+    // that may not even be installed, instead of an "is this the primary admin"
+    // lookup failing first and reporting something unrelated.
+    if let DeletedUserPosts::Reassign(to) = posts {
+        if to == user_id {
+            return Err(Error::Other(
+                "can't reassign a deleted user's posts to that same user — pick another \
+                 account, or delete the posts explicitly"
+                    .into(),
+            ));
+        }
+    }
+    if user_id == primary_admin_id(php_bin, wp_phar, docroot)? {
+        return Err(Error::Other(
+            "the primary administrator can't be deleted — one-click admin login and rexenv's \
+             site tools depend on it. Make another user the administrator first."
+                .into(),
+        ));
+    }
+    let reassign;
+    let mut args: Vec<&str> = vec!["user", "delete", "--yes"];
+    let id = user_id.to_string();
+    args.insert(2, &id);
+    match posts {
+        DeletedUserPosts::Reassign(to) => {
+            reassign = format!("--reassign={to}");
+            args.push(&reassign);
+        }
+        DeletedUserPosts::Delete => {}
+    }
+    wp_run(php_bin, wp_phar, docroot, &args)
+}
+
 /// Convert a single-site WordPress install to a network (`wp core
 /// multisite-convert [--subdomains]`), writing the network constants into
 /// wp-config. `subdomains` chooses subdomain vs subdirectory install (§10.1).
@@ -3421,6 +3502,70 @@ pub fn wp_config_path(docroot: &Path) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+
+    /// The refusals `user_delete` can make WITHOUT a WordPress install — the
+    /// two that are pure decisions — plus the argv shape, which is where the
+    /// content-destroying mistake would live.
+    ///
+    /// The primary-admin refusal needs a real site (it reads `wp user list`)
+    /// and rides the live leg; these three do not, and they are the ones a
+    /// refactor is most likely to quietly drop.
+    #[test]
+    fn deleting_a_user_refuses_multisite_and_self_reassignment() {
+        let php = std::path::Path::new("/tmp/php");
+        let wp = std::path::Path::new("/tmp/wp-cli.phar");
+        let root = std::path::Path::new("/tmp/site");
+
+        // Multisite: `wp user delete` there removes the user from THIS site
+        // while the network account lives on, so answering "deleted" would be
+        // false. Refused before anything runs — note this is measured on a
+        // docroot that does not exist, which only works BECAUSE the refusal
+        // comes first.
+        let err = super::user_delete(php, wp, root, 7, super::DeletedUserPosts::Delete, true)
+            .expect_err("multisite must refuse");
+        assert!(
+            err.to_string().contains("multisite"),
+            "the multisite refusal stopped naming multisite: {err}"
+        );
+
+        // Reassigning a deleted user's posts TO THAT USER is `Delete` wearing
+        // the name that promised the opposite — wp-cli would accept it.
+        let err = super::user_delete(php, wp, root, 7, super::DeletedUserPosts::Reassign(7), false)
+            .expect_err("self-reassignment must refuse");
+        assert!(
+            err.to_string().contains("reassign"),
+            "the self-reassignment refusal stopped explaining itself: {err}"
+        );
+    }
+
+    /// The posts fork is a TYPE with two constructed answers, so "the caller
+    /// forgot the flag" cannot be one of them. This pins that there is no
+    /// `Default` and no third state — the shape, not the behaviour, because the
+    /// behaviour needs a WordPress install and the shape is what stops the
+    /// dangerous default from being reintroduced.
+    #[test]
+    fn what_happens_to_a_deleted_users_posts_has_no_default() {
+        let src = crate::core::copy_scan::production_source(include_str!("wordpress.rs"));
+        let decl = src
+            .split("pub enum DeletedUserPosts {")
+            .nth(1)
+            .and_then(|b| b.split('}').next())
+            .expect("DeletedUserPosts");
+        assert!(
+            decl.contains("Reassign(u64)") && decl.contains("Delete"),
+            "the two answers are no longer the two answers: {decl}"
+        );
+        let derives = src
+            .split("pub enum DeletedUserPosts")
+            .next()
+            .and_then(|b| b.rsplit("#[derive(").next())
+            .unwrap_or_default();
+        assert!(
+            !derives.contains("Default"),
+            "`DeletedUserPosts` derived Default — whatever that default is, somebody's posts \
+             are deleted or kept because an argument was omitted"
+        );
+    }
     /// **wp-cli's `mail()` goes to Mailpit, and the phar stays last.**
     ///
     /// `sendmail_path` was set on the php-fpm POOL only, so mail from a page
