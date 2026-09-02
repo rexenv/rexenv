@@ -113,6 +113,28 @@ fn is_safe_key(key: &str) -> bool {
         && !key.contains("..")
 }
 
+/// Every log FILE in the log dir, name + size, sorted by name.
+///
+/// Lives here rather than in the caller that wanted it (`rex logs`) because the
+/// log dir's shape — what counts as a log, that entries can be directories, how
+/// a name maps to a `key` the other functions here accept — is this module's
+/// knowledge. A directory walk written at a call site is a second definition of
+/// "a log" that drifts the day one of these files stops being a plain file.
+pub fn list_files(platform: &dyn Platform) -> Result<Vec<(String, u64)>> {
+    let dir = platform.paths().log_dir()?;
+    let mut files: Vec<(String, u64)> = std::fs::read_dir(&dir)
+        .map_err(Error::from)?
+        .flatten()
+        .filter_map(|e| {
+            let name = e.file_name().to_string_lossy().to_string();
+            let meta = e.metadata().ok()?;
+            meta.is_file().then_some((name, meta.len()))
+        })
+        .collect();
+    files.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(files)
+}
+
 /// The last `lines` lines of the log `key`. A missing file ⇒ empty (the service
 /// may not have started yet). Reads only the trailing [`TAIL_CAP_BYTES`].
 pub fn tail(platform: &dyn Platform, key: &str, lines: usize) -> Result<Vec<String>> {

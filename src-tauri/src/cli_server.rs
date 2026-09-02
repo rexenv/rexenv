@@ -343,11 +343,11 @@ where
                     Err(Error::Other(format!("`{key}` cannot be read from the CLI: {why}")))
                 }
                 _ => {
-                    let conn = state
-                        .db
-                        .lock()
-                        .map_err(|_| Error::Other("database lock poisoned".into()))?;
-                    let value = crate::state::store::get_setting(&conn, &key)?;
+                    // THROUGH the app's own command, like `config.set` below —
+                    // one read path for the UI and the shell, so a key that
+                    // later grows a derived or redacted read cannot answer two
+                    // different things depending on who asked.
+                    let value = commands::settings::get_setting(state.clone(), key.clone())?;
                     Ok(json!({ "key": key, "value": value }))
                 }
             }
@@ -715,17 +715,10 @@ where
         }
         "logs.list" => {
             let state = app_state(app)?;
-            let dir = state.platform.paths().log_dir()?;
-            let mut files: Vec<Value> = std::fs::read_dir(&dir)
-                .map_err(Error::from)?
-                .flatten()
-                .filter_map(|e| {
-                    let name = e.file_name().to_string_lossy().to_string();
-                    let meta = e.metadata().ok()?;
-                    meta.is_file().then(|| json!({ "key": name, "bytes": meta.len() }))
-                })
+            let files: Vec<Value> = crate::core::logs::list_files(state.platform.as_ref())?
+                .into_iter()
+                .map(|(key, bytes)| json!({ "key": key, "bytes": bytes }))
                 .collect();
-            files.sort_by(|a, b| a["key"].as_str().cmp(&b["key"].as_str()));
             Ok(json!({ "files": files }))
         }
         // PHP versions — the Settings PHP card + SiteDetail switches. All
@@ -1740,6 +1733,109 @@ mod tests {
              Either add the verb, or delete the arm — an arm nothing can reach is a \
              promise the CLI does not keep."
         );
+    }
+
+    /// #57 — **every command this server answers runs the SAME `commands::*` fn
+    /// the UI invokes.** That is the whole architecture of the CLI: it is remote
+    /// control, not a second implementation. An arm that does the work itself
+    /// gets a second code path for one behaviour — one that skips whatever the
+    /// command does around it (promotion of a scratch site, a share guard, a
+    /// validating setter, an event emit) — and the two drift silently, because
+    /// nothing fails when only one of them learns a new rule.
+    ///
+    /// Deny by default, with a declared table of the exceptions and WHY each is
+    /// one, so a new inline arm is a build failure rather than a review catch.
+    ///
+    /// **What it does NOT catch, measured rather than assumed** (a plant that
+    /// came back green): an arm that calls a command AND does some of the work
+    /// itself. Replacing `site.list`'s `list_sites` with a raw
+    /// `core::sites::list` still passed, because the arm also calls
+    /// `sites_serving`. Eight arms legitimately touch `core::` today (doctor
+    /// composes probes, `config.*` consults the access policy, `site.create`
+    /// builds its argument struct), so a stricter rule would need a second
+    /// exception table earning its keep against one hypothetical defect. This
+    /// catches the shape that has actually appeared: an arm wired to nothing
+    /// the UI runs.
+    #[test]
+    fn every_arm_runs_the_same_command_the_ui_does() {
+        /// Arms with no `commands::*` call, each with the reason that is
+        /// acceptable. Both are CLI-only surface: there is no UI command to
+        /// route to, because the UI does the thing directly.
+        const CLI_ONLY: &[(&str, &str)] = &[
+            (
+                "app.open",
+                "shows the app window — the UI equivalent is the window already being \
+                 there; there is no IPC command for it, and `rex open` exists precisely \
+                 because the menu-bar app has no dock tile",
+            ),
+            (
+                "logs.list",
+                "lists every file in the log dir; the UI lists per-SITE targets instead \
+                 (`log_targets`), so there is no command with this answer. Routed through \
+                 `core::logs::list_files` so the log dir's shape stays defined in one place",
+            ),
+        ];
+
+        const THIS: &str = include_str!("cli_server.rs");
+        // `split_once`, not `split(…).nth(1)`: the pattern is a SUBSTRING of the
+        // deeper-indented `match cmd {` inside the wp-plugin arm, so a plain
+        // split ends the body there and the scan sees 32 of 79 arms — green,
+        // having never looked at two thirds of the table.
+        let body = THIS.split_once("    match cmd {").expect("dispatch's match").1;
+        let mut arms: Vec<(String, String)> = Vec::new();
+        let mut current: Option<(String, String)> = None;
+        for line in body.lines() {
+            if line.starts_with("        _ =>") || line.starts_with("        other =>") {
+                break;
+            }
+            let is_arm = line.starts_with("        \"") && line.contains("=>");
+            if is_arm {
+                if let Some(done) = current.take() {
+                    arms.push(done);
+                }
+                let name = line.trim_start().trim_start_matches('"');
+                let name = name.split('"').next().unwrap_or_default().to_string();
+                current = Some((name, String::new()));
+            }
+            if let Some((_, buf)) = current.as_mut() {
+                buf.push_str(line);
+                buf.push('\n');
+            }
+        }
+        if let Some(done) = current.take() {
+            arms.push(done);
+        }
+        assert!(
+            arms.len() > 50,
+            "only {} arms parsed — the scan is broken, not the table small (a guard that \
+             reads nothing passes for the wrong reason)",
+            arms.len()
+        );
+
+        for (name, arm) in &arms {
+            if arm.contains("commands::") {
+                assert!(
+                    !CLI_ONLY.iter().any(|(n, _)| n == name),
+                    "`{name}` is listed as CLI-only but now calls a `commands::` fn — delete \
+                     the exception, or the next reader trusts a list that has stopped being true"
+                );
+                continue;
+            }
+            assert!(
+                CLI_ONLY.iter().any(|(n, _)| n == name),
+                "`{name}` answers the CLI without calling any `commands::` fn, so `rex` runs \
+                 different code from the UI for it. Route it through the command the UI \
+                 invokes — or, if this is genuinely CLI-only surface, add it to `CLI_ONLY` \
+                 with the reason"
+            );
+        }
+        for (name, _) in CLI_ONLY {
+            assert!(
+                arms.iter().any(|(n, _)| n == name),
+                "`{name}` is excused as CLI-only and is not a dispatch arm any more — a stale \
+                 exception is a hole waiting for a command to be given that name"
+            );
+        }
     }
 
     #[test]
