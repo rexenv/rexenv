@@ -70,6 +70,28 @@ export const mockSites: Site[] = [
     provisioned: true,
     docrootManaged: true,
   },
+  {
+    // A site with NO tunnel, on purpose: the Tunnels page needs an IDLE card or
+    // "this one says Live" is a claim about a screen where nothing else could
+    // have been rendered. It is the control for the tunnel-health probe, and
+    // the state most users' sites are in.
+    id: "4",
+    name: "Docs",
+    domain: "docs.rex",
+    type: "php",
+    status: "running",
+    phpVersion: "8.3",
+    webServer: "nginx",
+    ssl: true,
+    path: "~/Sites/docs",
+    createdAt: "2026-06-04 09:00:00",
+    multisite: "none",
+    dbName: "",
+    dbEngine: "mysql",
+    xdebug: false,
+    provisioned: true,
+    docrootManaged: true,
+  },
 ];
 
 // Mirrors each mock site's own status so the browser preview shows per-site

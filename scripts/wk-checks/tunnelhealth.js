@@ -43,8 +43,8 @@ const cards = async (page) =>
   await page.waitForTimeout(700);
 
   const found = await cards(page);
-  if (found.length < 3) {
-    fails.push(`expected three tunnel cards (one per health), found ${found.length}`);
+  if (found.length < 4) {
+    fails.push(`expected four cards (one per health plus an idle control), found ${found.length}`);
   }
   const by = (d) => found.find((c) => c.domain === d);
 
@@ -62,6 +62,16 @@ const cards = async (page) =>
       fails.push("the unverified tunnel does not say what it is");
     if (unverified.live !== "1")
       fails.push("CONTROL FAILED: the unverified tunnel is not marked running, so 'not Live' proves nothing");
+  }
+
+  // The IDLE control: a site with no tunnel at all must not be Live either —
+  // without it, "Live appears on the reachable card" is a claim about a screen
+  // where every card happened to be a running share.
+  const idle = by("docs.rex");
+  if (!idle) fails.push("no card for the un-shared site — the idle control is missing");
+  else {
+    if (idle.live !== "0") fails.push("the un-shared site is marked live");
+    if (hasLive(idle.text)) fails.push("a site with NO tunnel says Live");
   }
 
   const broken = by("network.rex");
