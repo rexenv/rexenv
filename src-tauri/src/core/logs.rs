@@ -522,6 +522,54 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// #102 — **every function that turns a caller's log KEY into a path gates
+    /// it first**, and the gate comes before the join.
+    ///
+    /// The key arrives from the UI and from `rex logs`, and the functions here
+    /// read, TRUNCATE and copy the file it names. Without the gate, `key` is a
+    /// path: `../../.ssh/id_rsa` reads it, `../../../etc/hosts` truncates it,
+    /// and `log_download` copies whatever it names into the user's Downloads
+    /// folder. The existing test proves `is_safe_key` refuses those strings —
+    /// this one proves nothing can reach a path WITHOUT asking it, which is the
+    /// half that breaks when a fourth function is added and the shape is
+    /// copied from the wrong sibling.
+    #[test]
+    fn every_key_taking_function_gates_before_it_joins() {
+        let src = crate::core::copy_scan::production_source(include_str!("logs.rs"));
+        let mut checked = 0usize;
+        for chunk in src.split("\npub fn ").skip(1) {
+            let sig = chunk.split('{').next().unwrap_or_default();
+            if !sig.contains("key: &str") {
+                continue;
+            }
+            let name = sig.split('(').next().unwrap_or(sig).trim().to_string();
+            let body = chunk.split("\npub fn ").next().unwrap_or(chunk);
+            checked += 1;
+            let gate = body.find("is_safe_key(key)").unwrap_or_else(|| {
+                panic!(
+                    "`{name}` takes a caller's log key and never asks `is_safe_key` — the key \
+                     is then a PATH, and these functions read, TRUNCATE and copy the file it \
+                     names"
+                )
+            });
+            // Order, not mere presence: a gate after the path is built is a
+            // check on a value something has already used.
+            if let Some(join) = body.find("log_dir()?.join(") {
+                assert!(
+                    gate < join,
+                    "`{name}` builds the path BEFORE gating the key — whatever reads or writes \
+                     that path in between is doing it on an unvalidated name"
+                );
+            }
+        }
+        assert_eq!(
+            checked, 3,
+            "expected exactly the three key-taking functions (tail, clear, download); found \
+             {checked}. A NEW one is the case this guard exists for — add it and this number, \
+             or the scan has stopped seeing them"
+        );
+    }
+
     #[test]
     fn safe_key_rejects_traversal_and_non_logs() {
         assert!(is_safe_key("nginx-access.log"));
