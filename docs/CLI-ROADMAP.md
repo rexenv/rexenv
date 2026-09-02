@@ -137,7 +137,7 @@ to launch a specific copy with `open /Applications/rexenv.app` when it matters. 
 
 | Command | Backing IPC | Tag | Notes |
 |---|---|---|---|
-| `tld [--set <tld>]` | `default_tld` / `set_default_tld` | ✓ | shipped 16 Jul — policy errors stay backend-side |
+| `tld [--set <tld>] [--repair <tld>]` | `default_tld` / `set_default_tld` / `repair_resolver` | ✓ | shipped 16 Jul — policy errors stay backend-side. **`--repair` added 3 Sep 2026**: puts back the OS resolver file for a TLD your sites answer on, which is the fix `rex doctor` names when it finds one missing (#457). A SEPARATE flag from `--set` on purpose — that one decides what new sites are called, and conflating them would make "change my default" quietly write a root-owned file. Scoped to TLDs IN USE: `ensure_resolver` writes under `/etc/resolver` behind a privileged prompt, and a verb that took any string would be a way to point arbitrary TLDs at this machine's resolver |
 | `config get\|set <key> [value]` | `get_setting` / `set_setting` | ✓ | **shipped 24 Aug 2026** (ledger #397). NOT raw KV: `core::settings_access` rules per key and DENIES by default. The list lives in core because the L0 guard reads it too — a security boundary with two copies is the defect this tree keeps finding. Writes go through `set_setting`, so a validated key still gets its setter |
 
 ## Misc
@@ -211,7 +211,7 @@ line streaming is the same 🔴 "progress streaming" infra item as always.
 
 ## Status — every 🟢/🟡/⚪ command is SHIPPED
 
-88 commands shipped. **That number is now GENERATED** (`scripts/doc-counts.sh`, and as of 2 Sep 2026 it
+89 commands shipped. **That number is now GENERATED** (`scripts/doc-counts.sh`, and as of 2 Sep 2026 it
 counts what it claims to: the counter matched `"word.word" =>` only, so every
 three-segment name (`wp.user.password`, `wp.plugin.install`, …) and every
 alternation arm went uncounted — 56 where 87 commands answer. A generated number

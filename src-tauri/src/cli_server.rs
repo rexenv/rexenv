@@ -1575,6 +1575,21 @@ where
             commands::settings::set_default_tld(state.clone(), tld.clone())?;
             Ok(json!({ "tld": tld }))
         }
+        // Re-install the OS resolver file for a TLD a site actually answers on.
+        // The fix `doctor` names, because it found the problem: a resolver
+        // rexenv installed and lost leaves a site perfectly served and
+        // unreachable, and until now nothing in the CLI could put it back.
+        //
+        // Scoped to TLDs IN USE on purpose. `ensure_resolver` writes a root-owned
+        // file under `/etc/resolver` behind a privileged prompt; a verb that
+        // installed one for any string a caller passed would be a way to point
+        // arbitrary TLDs at this machine's loopback resolver, which is a bigger
+        // door than "repair what my sites need".
+        "tld.repair" => {
+            let state = app_state(app)?;
+            let tld = commands::system::repair_resolver(state.clone(), need_str(&args, "tld", cmd)?)?;
+            Ok(json!({ "tld": tld }))
+        }
         "version" => Ok(to_value(&commands::system::app_info())?),
         // Bring the app's window up. Two callers, and the SECOND is why this
         // exists: `rex open` (a window is one command away from a terminal, now

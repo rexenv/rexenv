@@ -100,6 +100,47 @@ pub fn app_info() -> AppInfo {
     }
 }
 
+/// Re-install the OS resolver file for a TLD one of this machine's sites
+/// actually answers on — the fix `rex doctor` names when it finds one missing.
+///
+/// **Scoped to TLDs IN USE, and that is the security half.** `ensure_resolver`
+/// writes a root-owned file under `/etc/resolver` behind a privileged prompt; a
+/// command that installed one for any string a caller passed would be a way to
+/// point arbitrary TLDs at this machine's loopback resolver — a bigger door
+/// than "repair what my own sites need", and one an agent or a stray `invoke`
+/// could walk through.
+///
+/// Lives in `commands/` rather than in the CLI's dispatch because every arm
+/// must run the same code the UI would (#57): the Settings screen is the
+/// obvious second caller, and a repair button there must not be a second
+/// implementation of this rule.
+#[tauri::command]
+pub fn repair_resolver(state: State<'_, AppState>, tld: String) -> Result<String> {
+    let tld = tld.trim().trim_start_matches('.').to_ascii_lowercase();
+    let in_use = {
+        let conn = state
+            .db
+            .lock()
+            .map_err(|_| Error::Other("database lock poisoned".into()))?;
+        core::dns::tlds_in_use(&conn)
+    };
+    if !in_use.contains(&tld) {
+        return Err(Error::Other(format!(
+            "no site answers on .{tld} — rexenv only installs resolvers for TLDs its own sites \
+             use. In use here: {}",
+            in_use.iter().map(|t| format!(".{t}")).collect::<Vec<_>>().join(", ")
+        )));
+    }
+    core::dns::ensure_resolver(
+        state.platform.as_ref(),
+        &tld,
+        core::dns::DEFAULT_DNS_PORT,
+        // The user asked for exactly this; prompting is the point.
+        core::dns::ResolverPrompt::Allow,
+    )?;
+    Ok(tld)
+}
+
 /// Startup init outcome, ALWAYS managed — unlike `AppState`, which is absent when
 /// init fails. `Some(msg)` = a fatal DB/CA failure the frontend should surface instead
 /// of driving the app (task 1.2 / H3). Reading it can never panic.

@@ -151,8 +151,9 @@ COMMANDS:
   mail clear    Delete ALL caught messages (--yes to skip the prompt)
   tunnel list | tunnel start|stop <domain>
                 Public cloudflared tunnels (start prints the public URL)
-  tld [--set <tld>]
-                Default TLD for new sites
+  tld [--set <tld>] [--repair <tld>]
+                Default TLD for new sites; --repair puts back the OS resolver
+                file for a TLD your sites answer on (what `doctor` names)
   version       App + CLI versions (needs the app; -v/--version works without)
   mcp           MCP stdio bridge for an AI agent's client — used in the client's
                 config, not run by hand (e.g. `claude mcp add rexenv -- rex mcp`)
@@ -2214,6 +2215,20 @@ fn cmd_tunnel(words: &[String], json_output: bool) {
 }
 
 fn cmd_tld(words: &[String], json_output: bool) {
+    // `--repair` puts back an OS resolver file for a TLD your sites answer on:
+    // the fix `rex doctor` names when it finds one missing. Separate from
+    // `--set`, which only decides what NEW sites are called — conflating them
+    // would make "change my default" quietly install a system file.
+    if let Some(tld) = flag_value(words, "--repair") {
+        let r = request("tld.repair", json!({ "tld": tld }));
+        if json_output {
+            return print_json(&r);
+        }
+        return println!(
+            "✓ .{} resolves here again — sites on it should load now",
+            r["tld"].as_str().unwrap_or(&tld)
+        );
+    }
     if let Some(tld) = flag_value(words, "--set") {
         let r = request("tld.set", json!({ "tld": tld }));
         if json_output {
@@ -2850,8 +2865,11 @@ fn cmd_doctor(json_output: bool) {
             "TLDs in use",
             format!(
                 "{names} — sites on {} do not resolve on this machine, however well they are \
-                 served",
-                if rows.len() == 1 { "it" } else { "them" }
+                 served\n            fix: rex tld --repair {}",
+                if rows.len() == 1 { "it" } else { "them" },
+                rows.first()
+                    .and_then(|r| r["tld"].as_str())
+                    .unwrap_or("<tld>")
             ),
         );
     } else {
@@ -3146,6 +3164,48 @@ fn cmd_status(json_output: bool) {
 
 #[cfg(test)]
 mod tests {
+
+    /// `--repair` is a DIFFERENT verb from `--set`, and doctor names it.
+    ///
+    /// `--set` decides what NEW sites are called; `--repair` writes a
+    /// root-owned file under `/etc/resolver` behind a privileged prompt.
+    /// Conflating them would make "change my default TLD" quietly install a
+    /// system file, which is not what that flag promises.
+    ///
+    /// And the diagnosis has to name its own fix: `doctor` is where a missing
+    /// resolver is FOUND, and a finding with no next step is a finding people
+    /// learn to scroll past.
+    #[test]
+    fn the_resolver_repair_is_its_own_flag_and_doctor_points_at_it() {
+        const ME: &str = include_str!("main.rs");
+        let tld = ME
+            .split("fn cmd_tld(")
+            .nth(1)
+            .and_then(|b| b.split("\nfn ").next())
+            .expect("cmd_tld");
+        let repair = tld.find("\"--repair\"").expect("`rex tld --repair` is gone");
+        let set = tld.find("\"--set\"").expect("`rex tld --set` is gone");
+        assert!(
+            repair < set,
+            "`--set` is matched before `--repair`; if either ever shares a code path the \
+             DEFAULT-TLD flag starts installing system files"
+        );
+        assert!(
+            tld.contains("tld.repair") && tld.contains("tld.set"),
+            "the two flags no longer send different commands"
+        );
+
+        let doctor = ME
+            .split("fn cmd_doctor(")
+            .nth(1)
+            .and_then(|b| b.split("\nfn ").next())
+            .expect("cmd_doctor");
+        assert!(
+            doctor.contains("rex tld --repair"),
+            "the unresolvable-TLD finding does not name the command that fixes it — a finding \
+             with no next step is one people learn to scroll past"
+        );
+    }
 
     /// `site info` answers with EVERY name the site has.
     ///
