@@ -66,6 +66,18 @@ it can:
   way; #228's scan did it too and failed at 3 by counting its own doc comments) —
   and **carry a canary** that the detection still finds something, or the whole
   scan passes vacuously the day a path changes.
+- **The scan can also be a LINT — a rule about code shape, not about a value**
+  (2 Sep 2026, ledger #61): `the_services_lock_is_never_held_across_an_await` walks
+  every `.rs` under `src/` at runtime and tracks each bound `state.services.lock()`
+  guard by brace depth, failing on any `.await` under it that is not on the guard
+  itself. It exists because tokio's Mutex is BUILT to be held across awaits, so the
+  rule ("spawn under the lock, `await_ready` after dropping it") had no enforcement
+  anywhere — the row said so for weeks. **Both defects in the first version were
+  found by plants that came back green**: guards retired on the line that bound them,
+  and multi-line statements joined with spaces so `mgr\n.restart_pools_for(…)\n.await`
+  no longer read as a call on the guard. A lint that inspects nothing fails exactly
+  like the rule it watches — so plant a violation of the rule AND a break in the
+  scan's own reach.
 - **`common::sandbox` covers PATHS and says nothing about PORTS.** Every service- and
   network-tier example inherits that gap, and it fails in the direction that looks like
   success: with the user's stack up, an example that brings up its own services binds —
@@ -627,7 +639,15 @@ Per recurring class: the honest mechanism — lint, test helper, or documented a
 - **Mechanism: documented audit question** at review time: *"does this guard hold for
   the dependent thing's LIFETIME, or is it a snapshot?"* Plus: any new `ensure_*`/
   preflight that reads mutable state gets a test for the state-changed-after case
-  (`commands/sites.rs:311`'s guard family, ledger #188).
+  (`commands/sites.rs`'s share-guard family, ledger #188).
+- **One family IS lint-able, and now is** (2 Sep 2026, ledger #188): the share guards.
+  Every function in `commands/sites.rs` that calls a tunnel-invalidating core mutator
+  (`set_web_server`, `check_docroot_move`, `check_docroot_relink`, `set_domain`,
+  `teardown`) must carry `refuse_if_shared` or `stop_for_domain`
+  (`every_command_that_invalidates_a_live_share_carries_a_guard`). What made it
+  lint-able is that the mutations are NAMED — a surface defined by what a function
+  does, not by what it is called — so the sixth command that grows one is caught
+  without anyone remembering this rule. The general case stays an audit question.
 - **The class also arrives disguised as an optimisation** (23 Aug 2026, ledger #379).
   `docs/TODO.md` carried "`validate_linked_docroot` does a per-call `list(conn)` —
   hoist if imports grow" as a straightforward perf note. Taking it would have broken

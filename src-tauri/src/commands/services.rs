@@ -509,4 +509,114 @@ mod tests {
         );
         assert!(!body.contains("TEXT ORDER violated"), "test module not cut from the scan");
     }
+
+    /// #61 — **the services lock is never held across an `.await`.**
+    ///
+    /// `AppState.services` is the one async Mutex in the app (everything else is
+    /// field-level), and the rule CLAUDE.md states is: spawn under the lock,
+    /// return `ReadyCheck`s, `await_ready` AFTER dropping it. The reason is what
+    /// the user sees. A start holds the lock while a binary downloads or a port
+    /// settles; a status poll then blocks on the same Mutex; the Services screen
+    /// stops repainting and the app reads as hung during exactly the operation
+    /// the user is watching. Nothing in the type system stops it — `tokio`'s
+    /// Mutex is designed to be held across awaits — so the rule was a reading
+    /// discipline, which is what this row has said since it was written.
+    ///
+    /// The check walks the SOURCE rather than a list of call sites: every file
+    /// under `src/` that takes the lock is scanned at runtime, so a new command
+    /// in a new file is covered without anyone remembering to add it here.
+    #[test]
+    fn the_services_lock_is_never_held_across_an_await() {
+        use std::path::Path;
+
+        fn rust_files(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
+            let Ok(entries) = std::fs::read_dir(dir) else { return };
+            for e in entries.flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    rust_files(&p, out);
+                } else if p.extension().and_then(|x| x.to_str()) == Some("rs") {
+                    out.push(p);
+                }
+            }
+        }
+        let mut files = Vec::new();
+        rust_files(&Path::new(env!("CARGO_MANIFEST_DIR")).join("src"), &mut files);
+        files.sort();
+
+        let mut holders_seen = 0usize;
+        for path in &files {
+            let Ok(text) = std::fs::read_to_string(path) else { continue };
+            if !text.contains("services.lock()") {
+                continue;
+            }
+            let src = crate::core::copy_scan::production_source(&text);
+            // (brace depth at the binding, line, variable) for each live guard.
+            let mut holders: Vec<(i32, usize, String)> = Vec::new();
+            let mut depth = 0i32;
+            let mut stmt = String::new();
+            for (n, line) in src.lines().enumerate() {
+                let code = line.split("//").next().unwrap_or("");
+                // Whitespace-stripped concatenation, so a call split across lines
+                // (`match mgr` / `.restart_pools_for(…)` / `.await`) reads as the
+                // one expression it is — with a space it does not, and the guard
+                // then calls the prescribed shape a violation.
+                stmt.push_str(code.trim());
+                let takes_lock = code.contains("services.lock().await");
+                let awaits = code.matches(".await").count() - usize::from(takes_lock);
+                if let Some((_, at, var)) = holders.last() {
+                    // Awaiting the MANAGER'S OWN async methods under the lock is
+                    // the prescribed shape, not a violation: `spawn_*` starts a
+                    // process and returns a `ReadyCheck`, which is precisely the
+                    // work that must happen while we hold it. What must never
+                    // happen is awaiting anything ELSE — a download, a readiness
+                    // wait, another service's command — because that is the wait
+                    // a status poll then queues behind.
+                    // Statement-scoped, not line-scoped: `mgr.start_core(…)` is
+                    // written across several lines with `.await?` alone on the
+                    // last one, and a line-only check calls that a violation.
+                    let on_the_manager = stmt.contains(&format!("{var}."));
+                    assert_eq!(
+                        awaits * usize::from(!on_the_manager),
+                        0,
+                        "{}:{} awaits while the services lock taken at line {at} (`{var}`) is \
+                         still held:\n    {}\nSpawn under the lock, return `ReadyCheck`s, and \
+                         `await_ready` after dropping it — a status poll blocking on this Mutex \
+                         is the Services screen freezing during the very operation the user is \
+                         watching",
+                        path.file_name().unwrap_or_default().to_string_lossy(),
+                        n + 1,
+                        code.trim()
+                    );
+                }
+                if takes_lock {
+                    if let Some(var) = code
+                        .split_once("let ")
+                        .and_then(|(_, rest)| rest.trim_start_matches("mut ").split(' ').next())
+                    {
+                        holders.push((depth, n + 1, var.to_string()));
+                        holders_seen += 1;
+                    }
+                }
+                depth += code.matches('{').count() as i32 - code.matches('}').count() as i32;
+                if code.contains(';') {
+                    stmt.clear();
+                }
+                // The guard lives until its scope CLOSES (depth back below the
+                // depth it was bound at) or it is explicitly dropped. Comparing
+                // with `>` instead of `>=` retires every holder on the line that
+                // binds it, which is a lint that inspects nothing — caught by the
+                // plant that should have gone red and did not.
+                holders.retain(|(d, _, var)| !code.contains(&format!("drop({var})")) && depth >= *d);
+            }
+        }
+        // The scan must actually have found lock-holding scopes, or it is a
+        // green light for a rule it never looked at.
+        assert!(
+            holders_seen >= 5,
+            "the lint found only {holders_seen} bound services-lock guards across the tree — it \
+             used to find more than five. Either the lock moved, or the scan stopped seeing \
+             bodies, and a lint that inspects nothing passes for the wrong reason"
+        );
+    }
 }
