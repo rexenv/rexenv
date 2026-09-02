@@ -606,6 +606,56 @@ pub fn drifted_takeovers(
         .collect()
 }
 
+/// Every TLD any site ANSWERS on — its own domain and its extra domains (v42),
+/// sorted and deduped.
+///
+/// Split out from [`unresolvable_tlds_in_use`] so the SET is testable without a
+/// machine: whether a given TLD resolves depends on `/etc/resolver` on the box
+/// running the test, but which TLDs a site answers on does not. The first
+/// version of this test computed the set itself and asserted on its own copy —
+/// which passed with the alias half of the real function deleted.
+pub fn tlds_in_use(conn: &rusqlite::Connection) -> Vec<String> {
+    let sites = crate::core::sites::list(conn).unwrap_or_default();
+    let aliases = crate::state::store::all_site_aliases(conn).unwrap_or_default();
+    let mut tlds: Vec<String> = sites
+        .iter()
+        .map(|s| s.domain.clone())
+        .chain(aliases.into_values().flatten())
+        .filter_map(|d| d.rsplit_once('.').map(|(_, t)| t.to_string()))
+        .collect();
+    tlds.sort();
+    tlds.dedup();
+    tlds
+}
+
+/// Every TLD any site ANSWERS on that this machine cannot resolve — the site's
+/// own domain and its extra domains (v42), each checked against the OS
+/// resolver.
+///
+/// `drifted_takeovers` above answers a narrower question: which resolver files
+/// we BORROWED has another tool reclaimed. It says nothing about a TLD we
+/// installed ourselves and lost (a cleanup script, an OS update, a user tidying
+/// `/etc/resolver`), and nothing at all about a TLD only an extra domain uses —
+/// the newest way to end up with a hostname nginx serves and DNS never reaches.
+///
+/// Returned as `(tld, foreign)`: absent and taken-over need different sentences
+/// (install one; the other tool owns the other), and a caller that flattened
+/// them would print the wrong fix half the time.
+pub fn unresolvable_tlds_in_use(
+    conn: &rusqlite::Connection,
+    platform: &dyn Platform,
+    port: u16,
+) -> Vec<(String, bool)> {
+    tlds_in_use(conn)
+        .into_iter()
+        .filter_map(|tld| match resolver_owner(platform, &tld, port) {
+            ResolverOwner::Ours => None,
+            ResolverOwner::Foreign { .. } => Some((tld, true)),
+            ResolverOwner::Absent => Some((tld, false)),
+        })
+        .collect()
+}
+
 /// Delete backups no record refers to — the belt for a crash between writing
 /// the backup and inserting its row. Returns how many were swept.
 pub fn sweep_orphan_backups(conn: &rusqlite::Connection, platform: &dyn Platform) -> usize {
@@ -678,6 +728,52 @@ pub fn port_bound(port: u16) -> bool {
 
 #[cfg(test)]
 mod tests {
+
+    /// The set the doctor asks about: every TLD a site ANSWERS on, including
+    /// one only an EXTRA domain uses (v42) — which nothing else in the app
+    /// collects.
+    ///
+    /// Asserted against `tlds_in_use` rather than `unresolvable_tlds_in_use`,
+    /// because whether a TLD resolves depends on `/etc/resolver` on whichever
+    /// machine runs the test. **The first version of this test computed the set
+    /// itself and compared its own copy** — it passed with the alias half of
+    /// the real function deleted, which is the vacuous shape this repo keeps
+    /// finding in scans and had not yet found in a fixture.
+    #[test]
+    fn the_tlds_in_use_include_the_ones_only_an_extra_domain_uses() {
+        use crate::core::sites;
+        use crate::state::db;
+        let conn = db::open_in_memory().unwrap();
+        let new = crate::state::models::NewSite {
+            name: "A".into(),
+            domain: "a.rex".into(),
+            site_type: crate::state::models::SiteType::Php,
+            php_version: "8.3".into(),
+            web_server: crate::state::models::WebServer::Nginx,
+            path: "~/Sites/a".into(),
+            db_engine: crate::state::models::SiteDbEngine::Mysql,
+            git_url: String::new(),
+            git_ref: None,
+            git_migrate: true,
+            git_build_assets: false,
+            starter_db: false,
+        };
+        let a = sites::create(&conn, new).unwrap();
+        assert_eq!(tlds_in_use(&conn), vec!["rex".to_string()]);
+
+        sites::add_alias(&conn, &a.id, "shop.test").unwrap();
+        assert_eq!(
+            tlds_in_use(&conn),
+            vec!["rex".to_string(), "test".to_string()],
+            "an extra domain's TLD is not collected — a hostname nginx serves and DNS never \
+             reaches, with no probe looking at it"
+        );
+
+        // Deduped: two sites on one TLD is one question, not two.
+        sites::add_alias(&conn, &a.id, "other.test").unwrap();
+        assert_eq!(tlds_in_use(&conn), vec!["rex".to_string(), "test".to_string()]);
+    }
+
     use super::*;
 
     /// #59 — the `--dns-agent` process opens no window, touches no SQLite and

@@ -2824,6 +2824,40 @@ fn cmd_doctor(json_output: bool) {
     let (ok, warn, msg) = resolver_verdict(data.get("resolverDrift"));
     line(ok, warn, "Resolvers", msg);
 
+    // A TLD a site ANSWERS on that this machine cannot resolve. Broader than
+    // the drift line above, which only covers files rexenv BORROWED from Valet
+    // or Herd: this catches a resolver we installed ourselves and lost (a
+    // cleanup script, an OS update, a tidied `/etc/resolver`) and a TLD only an
+    // EXTRA domain uses — the newest way to hold a hostname nginx serves and
+    // DNS never reaches. Nothing else notices, because our own resolver keeps
+    // answering for every other TLD.
+    if let Some(rows) = data["unresolvableTlds"].as_array().filter(|r| !r.is_empty()) {
+        let names = rows
+            .iter()
+            .map(|r| {
+                let tld = r["tld"].as_str().unwrap_or("?");
+                match r["foreign"] == json!(true) {
+                    // The two need different fixes, so they get different words.
+                    true => format!(".{tld} (another tool owns its resolver file)"),
+                    false => format!(".{tld} (no resolver file)"),
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        line(
+            false,
+            false,
+            "TLDs in use",
+            format!(
+                "{names} — sites on {} do not resolve on this machine, however well they are \
+                 served",
+                if rows.len() == 1 { "it" } else { "them" }
+            ),
+        );
+    } else {
+        line(true, false, "TLDs in use", "every TLD your sites answer on resolves here".into());
+    }
+
     // A NOTE, not a finding. The bundled 8.x builds link c-ares, whose curl
     // cannot resolve a `.rex` host — WordPress is covered (the mu-plugin patches
     // the HTTP API), a plugin's raw `curl_init()` and any non-WordPress PHP app

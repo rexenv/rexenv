@@ -1678,8 +1678,28 @@ where
                     crate::core::dns::DEFAULT_DNS_PORT,
                 )
             };
+            // Every TLD a site ANSWERS on that this machine cannot resolve —
+            // including one only an extra domain uses. `resolverDrift` below is
+            // narrower on purpose (files we borrowed and lost); this catches a
+            // resolver we installed ourselves and lost, which no other probe
+            // sees because our own DNS keeps answering on the other TLDs.
+            let unresolvable = {
+                let conn = state
+                    .db
+                    .lock()
+                    .map_err(|_| Error::Other("database lock poisoned".into()))?;
+                crate::core::dns::unresolvable_tlds_in_use(
+                    &conn,
+                    state.platform.as_ref(),
+                    crate::core::dns::DEFAULT_DNS_PORT,
+                )
+                .into_iter()
+                .map(|(tld, foreign)| json!({ "tld": tld, "foreign": foreign }))
+                .collect::<Vec<_>>()
+            };
             Ok(json!({
                 "app": to_value(&commands::system::app_info())?,
+                "unresolvableTlds": unresolvable,
                 "dns": to_value(&dns)?,
                 "services": to_value(&services)?,
                 "edge": {
