@@ -2376,6 +2376,58 @@ mod tests {
     use super::*;
     use crate::platform::traits::*;
 
+    /// #80 — **startup adoption is strictly OFFLINE.** `adopt_startup` runs on
+    /// every launch, before the window is usable, and its job is to recognise
+    /// services a previous session left running. A download in that path would
+    /// put the network between the user and their own already-running stack:
+    /// a slow or offline machine would sit there while a binary it does not
+    /// need is fetched, and a launch would fail for want of connectivity that
+    /// adoption never required.
+    ///
+    /// **The load-bearing half is the SIGNATURE**, which is why it is asserted
+    /// first: every download in this tree is `async` (`binaries::resolve*`,
+    /// `http_get`, `downloads::prefetch`), and a synchronous fn cannot await
+    /// one. So the guard is: stay synchronous, never reach for a runtime to
+    /// get round that, and call none of the resolving/fetching entry points —
+    /// only the `cached_*` readers, which are existence checks on disk.
+    #[test]
+    fn startup_adoption_never_reaches_the_network() {
+        let src = crate::core::copy_scan::production_source(include_str!("service_manager.rs"));
+        assert!(
+            src.contains("pub fn adopt_startup(&mut self, platform: &dyn Platform"),
+            "`adopt_startup` is no longer a plain synchronous fn. Its sync signature is what \
+             makes a download structurally impossible — an `async` one can await `resolve()` \
+             and a launch then waits on the network to recognise a process it can already see"
+        );
+        let body = src
+            .split("pub fn adopt_startup(&mut self, platform: &dyn Platform")
+            .nth(1)
+            .and_then(|b| b.split("\n    /// ").next())
+            .expect("adopt_startup body");
+        // `cached_bin` / `cached_path` / `is_cached` are the allowed shape: a
+        // path that must already be on disk, or None.
+        for fetch in [
+            "binaries::resolve",
+            "binaries::http_get",
+            "downloads::prefetch",
+            "block_on",
+            "Handle::current",
+            ".await",
+        ] {
+            assert!(
+                !body.contains(fetch),
+                "`adopt_startup` contains `{fetch}` — adoption must not touch the network, and \
+                 must not reach for a runtime to get round its own synchronous signature. \
+                 Existence checks (`cached_bin`, `cached_path`) are the allowed shape"
+            );
+        }
+        assert!(
+            body.contains("binaries::cached_bin("),
+            "the offline binary wiring is gone from adoption — if it moved, move this guard \
+             with it; a check that matches nothing passes for the wrong reason"
+        );
+    }
+
     /// LOGIN-SAFETY guard 2: an unattended start may adopt or start an
     /// unprivileged edge, but a plan that would prompt is always skipped.
     #[test]

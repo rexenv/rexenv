@@ -3374,6 +3374,66 @@ mod tests {
         );
     }
 
+    /// #189 — **the row is deleted BEFORE anything on disk is, so a crash can
+    /// never leave a site row pointing at a path that is gone.**
+    ///
+    /// Teardown is not atomic: it removes a docroot, a cert dir, override
+    /// configs and logs, and the machine can die at any point in that list. The
+    /// two orders fail very differently. Row-last leaves a LISTED site whose
+    /// files are missing — it renders, it offers Open and Start, and every one
+    /// of those actions fails on a path nobody can restore; the user's only
+    /// route out is deleting a site that is already deleted. Row-first leaves
+    /// orphaned FILES, which nothing shows, nothing acts on, and the user (or a
+    /// later delete of the same domain) can remove.
+    ///
+    /// So the order is the guarantee, and it is asserted as an ORDER rather
+    /// than as "the delete is on line N": a reordering that moves a removal
+    /// above the row delete is exactly what this catches.
+    #[test]
+    fn teardown_deletes_the_row_before_it_touches_the_disk() {
+        let src = crate::core::copy_scan::production_source(include_str!("sites.rs"));
+        let body = src
+            .split("pub fn teardown(")
+            .nth(1)
+            .and_then(|b| b.split("\n/// ").next())
+            .expect("teardown");
+        let row = body
+            .find("store::delete_site(conn, id)")
+            .expect("teardown no longer deletes the site row — if it moved, move this guard");
+        // Every way this function touches the filesystem. A new removal added
+        // ABOVE the row delete fails here; a new KIND of removal that this list
+        // does not name is caught by the count check below.
+        let removals = ["remove_dir_all(", "remove_file("];
+        let mut found = 0;
+        for kind in removals {
+            let mut from = 0;
+            while let Some(at) = body[from..].find(kind) {
+                let at = from + at;
+                assert!(
+                    at > row,
+                    "teardown removes something from disk (`{kind}`) BEFORE deleting the site \
+                     row. A crash in between then leaves a listed site whose files are gone: it \
+                     renders, it offers Open and Start, and every action fails on a path nobody \
+                     can restore. Orphaned files are the survivable direction"
+                );
+                found += 1;
+                from = at + kind.len();
+            }
+        }
+        assert!(
+            found >= 5,
+            "the scan found only {found} filesystem removals in teardown — it used to find \
+             seven (docroot, cert dir, two FrankenPHP paths, two Apache paths, the tunnel log). \
+             Either the removals moved out of this function, or the split stopped seeing its \
+             body, and a guard that scans nothing passes for the wrong reason"
+        );
+        // The docroot removal is the one that matters most and the one most
+        // likely to be "optimised" upward — named explicitly so its message is
+        // about the docroot rather than about a generic call.
+        let docroot = body.find("remove_dir_all(&site.path)").expect("docroot removal");
+        assert!(docroot > row, "the docroot is removed before the row is deleted");
+    }
+
     /// The generic KV setter is a door around every validating setter, so the
     /// routing is asserted rather than trusted — and asserted over the WHOLE
     /// surface, not over a pair of names.
