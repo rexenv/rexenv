@@ -613,6 +613,26 @@ const MIGRATIONS: &[&str] = &[
     // cloned docroot) or predates the column — read as NO via
     // `Site::has_starter_db`.
     "ALTER TABLE sites ADD COLUMN starter_db INTEGER;",
+    // v42 — extra domains a site answers on (Valet compatibility tail: `valet
+    // link` can register the same project under several names, and until now
+    // `sites.domain` being UNIQUE meant one site was one hostname).
+    //
+    // ALIASES ONLY: the primary domain stays in `sites.domain` and nothing in
+    // this table may duplicate it. Moving the primary in here would have
+    // rewritten every read in the tree for a feature most sites never use, and
+    // "which of these rows is the real one" is a question the schema should not
+    // have to answer — the site row already answers it.
+    //
+    // Uniqueness is GLOBAL, not per-site: two sites answering the same hostname
+    // is not a preference, it is nginx serving whichever server block it
+    // matched first while the user reads a UI that shows both. The cross-table
+    // half (an alias equal to some site's own domain) cannot be expressed here
+    // and lives in `core::sites::validate_alias`, with a test that says so.
+    "CREATE TABLE site_domains (
+        site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+        domain  TEXT NOT NULL UNIQUE,
+        PRIMARY KEY (site_id, domain)
+    );",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.

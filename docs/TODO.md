@@ -2472,8 +2472,12 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     positive ID via the include Valet appends to the Homebrew nginx.conf (never "Valet
     is installed"), and the offered fix is `valet stop` rather than
     `brew services stop nginx`, which leaves their Valet half-stopped.
-  - [ ] Serving one site under two domains needs multi-domain support
-    (`sites.domain` is UNIQUE).
+  - [ ] Serving one site under two domains. **Foundation landed 2 Sep 2026** (ledger
+    #450): schema v42 `site_domains` (aliases only — the primary stays on the site
+    row), `core::sites::{all_domains, validate_alias, add_alias, remove_alias}` with
+    the cross-table refusal SQL cannot express. **Still owed before it is a feature**:
+    the serving half (nginx `server_name`, the edge route, certificate SANs), the CLI
+    verbs, and mapping a Valet link-farm's extra names during import.
 - [ ] **`rex` design-first set**: ~~single-site restart (manager seam)~~ ✓ 2 Sep 2026
   (ledger #444, `rex site restart <domain> [--pool]`) — the ruling the row was waiting
   for is that the operation has THREE honest outcomes, not one: an override site's

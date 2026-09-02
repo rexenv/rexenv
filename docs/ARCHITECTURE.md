@@ -520,7 +520,7 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
 
 ## 8. Data & app state
 
-- **SQLite for all app state** (`state/db.rs`), `user_version` migrations, currently 41:
+- **SQLite for all app state** (`state/db.rs`), `user_version` migrations, currently 42:
   v1 `sites` + `settings` · v2 `php_versions` registry · v3 `sites.multisite` ·
   v4 `blueprints` (JSON `spec`) · v5 `php_settings` · v6 `sites.db_name` (stored, never
   re-derived) · v7 `site_env` · v8/v9 `default_tld` seed + `.rex` flip ·

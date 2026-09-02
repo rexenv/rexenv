@@ -688,6 +688,20 @@ pub fn db_time_from_now(conn: &Connection, hours: i64) -> Result<String> {
     })?)
 }
 
+/// The site whose PRIMARY domain is `domain`, if any. Separate from
+/// [`domain_exists`] because the alias validator needs to NAME the site it
+/// collides with — "already taken" sends the user looking, "already the domain
+/// of Acme" ends the question.
+pub fn site_by_domain(conn: &Connection, domain: &str) -> Result<Option<Site>> {
+    let sql = format!("SELECT {SITE_COLUMNS} FROM sites WHERE domain = ?1");
+    let mut stmt = conn.prepare(&sql)?;
+    let mut rows = stmt.query_map([domain], row_to_site)?;
+    match rows.next() {
+        Some(row) => Ok(Some(row?)),
+        None => Ok(None),
+    }
+}
+
 /// True if a site already uses `domain` (domains are unique).
 pub fn domain_exists(conn: &Connection, domain: &str) -> Result<bool> {
     let count: i64 = conn.query_row(
@@ -1279,6 +1293,65 @@ pub fn replace_site_env(
     }
     tx.commit()?;
     Ok(())
+}
+
+// ── Extra domains a site answers on (v42) ─────────────────────────────────────
+
+/// One site's alias domains, sorted (deterministic config emission, like
+/// `get_site_env`). The PRIMARY domain is not in here — it lives on the site
+/// row, and every caller that wants "every hostname this site answers on"
+/// composes the two through `core::sites::all_domains`.
+pub fn get_site_aliases(conn: &Connection, site_id: &str) -> Result<Vec<String>> {
+    let mut stmt =
+        conn.prepare("SELECT domain FROM site_domains WHERE site_id = ?1 ORDER BY domain")?;
+    let rows = stmt.query_map([site_id], |r| r.get::<_, String>(0))?;
+    Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
+/// Every alias grouped by site id — one read for a whole config regeneration,
+/// the same shape as `all_site_env`.
+pub fn all_site_aliases(
+    conn: &Connection,
+) -> Result<std::collections::HashMap<String, Vec<String>>> {
+    let mut stmt =
+        conn.prepare("SELECT site_id, domain FROM site_domains ORDER BY site_id, domain")?;
+    let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+    let mut out: std::collections::HashMap<String, Vec<String>> = Default::default();
+    for row in rows {
+        let (site_id, domain) = row?;
+        out.entry(site_id).or_default().push(domain);
+    }
+    Ok(out)
+}
+
+/// Is `domain` already an alias of some site? Returns that site's id.
+pub fn site_id_for_alias(conn: &Connection, domain: &str) -> Result<Option<String>> {
+    let mut stmt = conn.prepare("SELECT site_id FROM site_domains WHERE domain = ?1")?;
+    let mut rows = stmt.query([domain])?;
+    Ok(match rows.next()? {
+        Some(r) => Some(r.get(0)?),
+        None => None,
+    })
+}
+
+/// Record an alias. The caller has already validated it
+/// (`core::sites::validate_alias`) — the UNIQUE constraint here is the backstop
+/// for a race between two writers, not the check.
+pub fn add_site_alias(conn: &Connection, site_id: &str, domain: &str) -> Result<()> {
+    conn.execute(
+        "INSERT INTO site_domains (site_id, domain) VALUES (?1, ?2)",
+        params![site_id, domain],
+    )?;
+    Ok(())
+}
+
+/// Remove one alias; `false` when the site did not answer on it.
+pub fn remove_site_alias(conn: &Connection, site_id: &str, domain: &str) -> Result<bool> {
+    let n = conn.execute(
+        "DELETE FROM site_domains WHERE site_id = ?1 AND domain = ?2",
+        params![site_id, domain],
+    )?;
+    Ok(n > 0)
 }
 
 // ── Git-sourced plugin/theme provenance (add-from-Git) ─────────────────────────

@@ -1593,6 +1593,71 @@ pub fn domain_tld(domain: &str) -> Result<String> {
         .to_string())
 }
 
+// ── Extra domains a site answers on (v42) ─────────────────────────────────────
+
+/// Every hostname a site answers on: its own domain FIRST, then its aliases in
+/// stored order.
+///
+/// One function, because every consumer needs the same list and each of them
+/// getting it right separately is how a site ends up with a certificate for two
+/// names, an nginx `server_name` for three and an edge route for one.
+pub fn all_domains(conn: &Connection, site: &Site) -> Result<Vec<String>> {
+    let mut out = vec![site.domain.clone()];
+    out.extend(store::get_site_aliases(conn, &site.id)?);
+    Ok(out)
+}
+
+/// Validate an alias against the WHOLE hostname space, not just the alias
+/// table.
+///
+/// The schema can only enforce half of this: `site_domains.domain` is UNIQUE,
+/// so two sites cannot share an alias, but nothing in SQL stops an alias equal
+/// to some site's PRIMARY domain — and that collision is the dangerous one.
+/// Two server blocks answering one hostname means nginx serves whichever it
+/// matched first while both sites look fine in the UI, and the user's own
+/// mental model ("this name belongs to that project") is what breaks.
+///
+/// Returns the normalized value to store.
+pub fn validate_alias(conn: &Connection, site_id: &str, domain: &str) -> Result<String> {
+    let domain = domain.trim().trim_end_matches('.').to_ascii_lowercase();
+    validate_domain(&domain)?;
+    if let Some(other) = store::site_by_domain(conn, &domain)? {
+        return Err(Error::Other(if other.id == site_id {
+            format!("\"{domain}\" is already this site's own domain")
+        } else {
+            format!(
+                "\"{domain}\" is already the domain of the site \"{}\" — one hostname can only \
+                 reach one site, or nginx answers with whichever server block it matched first",
+                other.name
+            )
+        }));
+    }
+    if let Some(owner) = store::site_id_for_alias(conn, &domain)? {
+        return Err(Error::Other(if owner == site_id {
+            format!("this site already answers on \"{domain}\"")
+        } else {
+            let name = get(conn, &owner)?.map(|s| s.name).unwrap_or_else(|| owner.clone());
+            format!("\"{domain}\" is already an extra domain of the site \"{name}\"")
+        }));
+    }
+    Ok(domain)
+}
+
+/// Add an alias to a site (validated). Returns the stored value.
+pub fn add_alias(conn: &Connection, site_id: &str, domain: &str) -> Result<String> {
+    let site = get(conn, site_id)?
+        .ok_or_else(|| Error::Other(format!("site not found: {site_id}")))?;
+    let domain = validate_alias(conn, &site.id, domain)?;
+    store::add_site_alias(conn, &site.id, &domain)?;
+    Ok(domain)
+}
+
+/// Remove an alias. `false` when the site did not answer on that name — never
+/// an error, so a retry after a partial failure is safe.
+pub fn remove_alias(conn: &Connection, site_id: &str, domain: &str) -> Result<bool> {
+    store::remove_site_alias(conn, site_id, &domain.trim().to_ascii_lowercase())
+}
+
 /// Settings key for the configurable sites root.
 pub const SITES_DIR_KEY: &str = "sites_dir";
 
@@ -2610,6 +2675,74 @@ mod tests {
         // never a port nothing will ever listen on.
         site.php_version = "8.0".into();
         assert_eq!(pool_port_for_site(&site), pool_port_for("8.0"));
+    }
+
+    /// An extra domain must be free across the WHOLE hostname space — both
+    /// tables — and the schema can only see one of them.
+    ///
+    /// `site_domains.domain` is UNIQUE, so SQL stops two sites sharing an
+    /// alias. What SQL cannot see is an alias equal to some site's PRIMARY
+    /// domain, and that is the collision that actually hurts: two server blocks
+    /// answer one hostname, nginx serves whichever it matched first, and both
+    /// sites look correct in the UI while the user's own model of which name
+    /// belongs to which project is the thing that broke.
+    #[test]
+    fn an_extra_domain_must_be_free_in_both_tables() {
+        let conn = db::open_in_memory().unwrap();
+        let a = create(&conn, sample("A", "a.test")).unwrap();
+        let b = create(&conn, sample("B", "b.test")).unwrap();
+
+        assert_eq!(add_alias(&conn, &a.id, "shop.test").unwrap(), "shop.test");
+        assert_eq!(all_domains(&conn, &a).unwrap(), vec!["a.test", "shop.test"]);
+        // The primary is FIRST and is not in the alias table — every consumer
+        // reads one list, so this order is the one they all get.
+        assert_eq!(store::get_site_aliases(&conn, &a.id).unwrap(), vec!["shop.test"]);
+
+        // The collision SQL cannot see: another site's own domain.
+        let err = add_alias(&conn, &a.id, "b.test").unwrap_err().to_string();
+        assert!(err.contains("\"B\""), "the refusal must NAME the site it collides with: {err}");
+        // …and this site's own domain, which is a no-op dressed as a request.
+        assert!(add_alias(&conn, &a.id, "a.test").unwrap_err().to_string().contains("own domain"));
+        // The collision SQL can see, refused with the owner's name rather than
+        // a constraint error.
+        let err = add_alias(&conn, &b.id, "shop.test").unwrap_err().to_string();
+        assert!(err.contains("\"A\""), "an alias of another site must name that site: {err}");
+        // Re-adding the same site's own alias says so instead of failing raw.
+        assert!(add_alias(&conn, &a.id, "shop.test").unwrap_err().to_string().contains("already"));
+
+        // Normalised on the way in: trailing dot, case and padding are the same
+        // hostname, and storing two spellings would defeat every uniqueness
+        // check above.
+        assert_eq!(add_alias(&conn, &a.id, "  SHOP2.TEST. ").unwrap(), "shop2.test");
+        assert!(add_alias(&conn, &b.id, "Shop2.Test").unwrap_err().to_string().contains("\"A\""));
+
+        // Invalid hostnames are refused by the SAME validator sites use — an
+        // alias is a hostname nginx and a certificate have to accept.
+        for bad in ["", "no-tld", "bad_underscore.test", "-lead.test", "a..test"] {
+            assert!(add_alias(&conn, &a.id, bad).is_err(), "`{bad}` was accepted as an alias");
+        }
+
+        // Removal is idempotent — a retry after a partial failure is safe.
+        assert!(remove_alias(&conn, &a.id, "shop.test").unwrap());
+        assert!(!remove_alias(&conn, &a.id, "shop.test").unwrap());
+        assert_eq!(all_domains(&conn, &a).unwrap(), vec!["a.test", "shop2.test"]);
+        // Freed for the other site now that it is gone.
+        assert_eq!(add_alias(&conn, &b.id, "shop.test").unwrap(), "shop.test");
+    }
+
+    /// Deleting a site takes its extra domains with it — via the FK cascade,
+    /// not a second delete somebody has to remember. An orphaned alias is a
+    /// hostname reserved against every future site, with no site to explain it.
+    #[test]
+    fn extra_domains_die_with_the_site() {
+        let conn = db::open_in_memory().unwrap();
+        let a = create(&conn, sample("A", "a.test")).unwrap();
+        add_alias(&conn, &a.id, "shop.test").unwrap();
+        assert!(store::delete_site(&conn, &a.id).unwrap());
+        assert_eq!(store::site_id_for_alias(&conn, "shop.test").unwrap(), None);
+        // …and the name is immediately available to another site.
+        let b = create(&conn, sample("B", "b.test")).unwrap();
+        assert_eq!(add_alias(&conn, &b.id, "shop.test").unwrap(), "shop.test");
     }
 
     #[test]
