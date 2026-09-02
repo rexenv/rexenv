@@ -152,6 +152,73 @@ const LINK = "https://example.test/a//b";
         assert!(out.contains("https://example.test/a//b"));
     }
 
+    /// **Every registered Tauri command is reachable from something.**
+    ///
+    /// `generate_handler!` is the app's whole IPC surface. A command listed
+    /// there that nothing calls is not inert: it is an entry point a same-user
+    /// process can invoke through the webview bridge, carrying whatever
+    /// privileges the command has, with no UI, no CLI verb and no reviewer
+    /// watching it. It is also the shape `every_ipc_wrapper_is_actually_called`
+    /// found from the other side — a door built and left shut — which cost a
+    /// user the PHP-update button for weeks.
+    ///
+    /// Reachable means: the UI can invoke it (its name appears in the ipc
+    /// module), `rex` dispatches it, or the MCP server does. Three callers, one
+    /// question — is there any way to get here.
+    #[test]
+    fn every_registered_command_is_reachable_from_a_caller() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let lib = std::fs::read_to_string(root.join("src/lib.rs")).expect("lib.rs");
+        let handler = lib
+            .split("tauri::generate_handler![")
+            .nth(1)
+            .and_then(|b| b.split("])").next())
+            .expect("the invoke_handler list");
+
+        // `commands::<module>::<name>,` — the only form the list uses.
+        let mut registered: Vec<String> = Vec::new();
+        for line in handler.lines() {
+            let t = line.trim().trim_end_matches(',');
+            if let Some(name) = t.strip_prefix("commands::").and_then(|r| r.rsplit("::").next()) {
+                if !name.is_empty() && !name.contains(' ') {
+                    registered.push(name.to_string());
+                }
+            }
+        }
+        assert!(
+            registered.len() > 150,
+            "only {} commands parsed from the handler — the scan is broken",
+            registered.len()
+        );
+
+        let mut callers = String::new();
+        for rel in ["../src/lib/ipc/index.ts", "src/cli_server.rs", "src/mcp_server.rs"] {
+            callers.push_str(&std::fs::read_to_string(root.join(rel)).unwrap_or_default());
+        }
+        // The MCP server's tool modules.
+        if let Ok(entries) = std::fs::read_dir(root.join("src/mcp_server")) {
+            for e in entries.flatten() {
+                callers.push_str(&std::fs::read_to_string(e.path()).unwrap_or_default());
+            }
+        }
+        assert!(callers.len() > 50_000, "the caller corpus is too small — a path is wrong");
+
+        let unreachable: Vec<&String> = registered
+            .iter()
+            .filter(|name| {
+                // The NAME as a string (the UI invokes by name) or as an
+                // identifier (the CLI and MCP call the fn). Either is a way in.
+                !callers.contains(&format!("\"{name}\"")) && !callers.contains(name.as_str())
+            })
+            .collect();
+        assert!(
+            unreachable.is_empty(),
+            "these commands are registered and nothing can reach them: {unreachable:?}\nA command \
+             on the bridge with no caller is an entry point with no UI, no CLI verb and no \
+             reviewer — delete it, or wire the thing that was supposed to use it"
+        );
+    }
+
     /// **Every test the ledger CITES must exist.**
     ///
     /// The ledger's verdict column is the project's evidence index: rows say
