@@ -3186,6 +3186,26 @@ mod tests {
             }
         }
 
+        // …and the HELP text, which is the other half of discovery: `rex` with
+        // no arguments prints it, and a verb absent from it is invisible to
+        // anyone who does not tab-complete. Yesterday's three new verbs made it
+        // into USAGE and not into the completions, which is why both are
+        // checked rather than either standing in for the other.
+        let usage = ME
+            .split("const USAGE: &str =")
+            .nth(1)
+            .and_then(|b| b.split("\";").next())
+            .expect("the USAGE constant");
+        for (group, anchor, _) in GROUPS {
+            for verb in arms(anchor) {
+                assert!(
+                    usage.contains(&format!("{group} {verb}")),
+                    "`rex {group} {verb}` dispatches and the help text never mentions it — a \
+                     user reading `rex` with no arguments cannot know it exists"
+                );
+            }
+        }
+
         // `wp` and `repo` take their verb at a DEEPER position (`rex wp <domain>
         // plugin …`, `rex repo <domain> status …`), and their dispatches nest —
         // `repo watch` has its own `start`/`stop` arms, and `repo` matches four
