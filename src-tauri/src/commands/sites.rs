@@ -312,6 +312,23 @@ pub async fn add_site_domain(
     id: String,
     domain: String,
 ) -> Result<Vec<String>> {
+    // The alias may be on a TLD this machine does not resolve yet — `acme.rex`
+    // with a `shop.test` alias is an ordinary thing to want — and a name that
+    // nginx serves but DNS never reaches is the honest-UI failure this project
+    // exists to avoid: the card would say "added" while the browser says the
+    // site does not exist. Same call the domain change makes, and BEFORE the
+    // record for the same reason: declining the prompt must change nothing.
+    {
+        let tld = core::sites::domain_tld(domain.trim().trim_end_matches('.'))?;
+        core::dns::ensure_resolver(
+            state.platform.as_ref(),
+            &tld,
+            core::dns::DEFAULT_DNS_PORT,
+            // A user typing a hostname into the app or `rex`: prompting is the
+            // point, exactly as it is for a new site or a domain change.
+            core::dns::ResolverPrompt::Allow,
+        )?;
+    }
     let (added, site, sites, aliases) = {
         let conn = lock(&state)?;
         let added = core::sites::add_alias(&conn, &id, &domain)?;
@@ -1544,6 +1561,50 @@ mod a_site_restart_never_bounces_a_shared_pool_uninvited {
             body.contains("sites_on_pool"),
             "the report no longer carries how many sites share the pool, so `--pool` is a \
              flag with no stated cost"
+        );
+    }
+}
+
+/// An extra domain is only "added" if the machine can RESOLVE it.
+#[cfg(test)]
+mod an_extra_domain_needs_its_tld_to_resolve {
+    /// **The resolver check comes BEFORE the record**, and it is the same call
+    /// a new site and a domain change make.
+    ///
+    /// An alias on a TLD this machine does not resolve is nginx serving a name
+    /// DNS never reaches: the card says "added", the browser says the site does
+    /// not exist, and nothing on screen connects the two. `acme.rex` with a
+    /// `shop.test` alias is an ordinary thing to want, so this is the common
+    /// case, not the exotic one.
+    ///
+    /// Order matters as much as presence: the prompt is privileged, and a user
+    /// who declines it must be left exactly where they started — not with a row
+    /// recorded for a hostname that will never answer.
+    #[test]
+    fn the_resolver_is_ensured_before_the_alias_is_recorded() {
+        let src = crate::core::copy_scan::production_source(include_str!("sites.rs"));
+        let body = src
+            .split("pub async fn add_site_domain(")
+            .nth(1)
+            .and_then(|b| b.split("\n#[tauri::command]").next())
+            .expect("add_site_domain");
+        let ensure = body.find("dns::ensure_resolver(").expect(
+            "adding an extra domain no longer ensures its TLD resolves — nginx would serve a \
+             name DNS never reaches, and the card would call it added",
+        );
+        let record = body.find("add_alias(").expect("the record");
+        assert!(
+            ensure < record,
+            "the alias is recorded BEFORE the resolver is ensured — a user who declines the \
+             privileged prompt is left with a row for a hostname that will never answer"
+        );
+        // The same policy the other two callers use: this is a user typing a
+        // hostname, so prompting is the point. `Never` here would refuse every
+        // first use of a TLD instead of asking once.
+        assert!(
+            body.contains("ResolverPrompt::Allow"),
+            "the resolver call no longer prompts — first use of a TLD would be refused rather \
+             than set up, and the user has no other way to grant it"
         );
     }
 }
