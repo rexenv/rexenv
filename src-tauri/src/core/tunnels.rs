@@ -42,15 +42,31 @@ pub fn start(
     }
     // Truncate any stale log so we parse THIS run's URL.
     let _ = std::fs::write(&log, b"");
-    let args = vec![
+    platform.supervisor().spawn_logged(cloudflared_bin, &spawn_args(domain, origin_port), &log)
+}
+
+/// The ONE place a cloudflared command line is built — and the reason it is a
+/// function rather than a `vec!` inside [`start`].
+///
+/// `--http-host-header <domain>` is not only routing. It is the IDENTITY every
+/// later decision reads: [`is_our_tunnel`] refuses to signal a pid whose argv
+/// does not carry this exact token pair, the rowless backstop finds shares by
+/// it, and the parent-death guard re-reads it before signalling. A spawn that
+/// omitted it would produce a live public share that NO sweep can recognise —
+/// unkillable by us, and invisible to the ownership rules — which is the worst
+/// direction for a process that publishes a developer's machine to the
+/// internet. Building the argv here, once, is what lets the guard below assert
+/// the round trip (`spawn_args` → `is_our_tunnel`) instead of asserting that a
+/// literal appears somewhere in a function body.
+pub fn spawn_args(domain: &str, origin_port: u16) -> Vec<String> {
+    vec![
         "tunnel".to_string(),
         "--no-autoupdate".to_string(),
         "--url".to_string(),
         format!("http://127.0.0.1:{origin_port}"),
         "--http-host-header".to_string(),
         domain.to_string(),
-    ];
-    platform.supervisor().spawn_logged(cloudflared_bin, &args, &log)
+    ]
 }
 
 /// Stop a running tunnel by pid.
@@ -428,6 +444,28 @@ pub fn is_our_tunnel(command: &str, app_data_marker: &str, domain: &str) -> bool
     toks.windows(2).any(|w| w[0] == "--http-host-header" && w[1] == domain)
 }
 
+/// **The only predicate that may authorise a signal at a recorded pid.** Two
+/// refusals, in order, because they fail differently:
+///
+/// - [`PID_PENDING`] is refused BEFORE the process table is consulted at all.
+///   A crash between the row claim and the spawn leaves the sentinel and no
+///   process ever existed for it, so there is nothing to look up; the sentinel
+///   is inert by construction (`u32::MAX` can never be a real pid), and the
+///   point of checking first is that the inertness must not be what saves us.
+/// - Everything else must pass [`is_our_tunnel`] on the LIVE command line —
+///   a recycled pid now naming an unrelated process gets file and row cleanup
+///   only, never a signal.
+///
+/// A predicate rather than an `&&` chain at the call site because the sweeps
+/// are where a missed guard costs someone else's process: one decision, one
+/// place, testable without a process table.
+pub fn may_signal(pid: u32, command: Option<&str>, app_data_marker: &str, domain: &str) -> bool {
+    if pid == PID_PENDING {
+        return false;
+    }
+    command.map(|cmd| is_our_tunnel(cmd, app_data_marker, domain)).unwrap_or(false)
+}
+
 /// Launch-time sweep: settle every tunnel row a crashed session left behind
 /// (tunnels DIE WITH THE APP — a clean exit clears the table, so any row here
 /// is a crash survivor). Per row: kill the pid only on [`is_our_tunnel`]
@@ -449,12 +487,12 @@ pub fn sweep_startup(conn: &rusqlite::Connection, platform: &dyn Platform) -> u3
         // A crash between claim and spawn leaves the sentinel — no process
         // ever existed for it; cleanup only (the argv probe would agree, but
         // the sentinel must not even be looked up).
-        let ours = row.pid != PID_PENDING
-            && platform
-                .supervisor()
-                .pid_command(row.pid)
-                .map(|cmd| is_our_tunnel(&cmd, &marker, &row.domain))
-                .unwrap_or(false);
+        let ours = may_signal(
+            row.pid,
+            platform.supervisor().pid_command(row.pid).as_deref(),
+            &marker,
+            &row.domain,
+        );
         if ours {
             log::warn!(
                 "tunnels: killing the orphaned tunnel for {} (pid {}) — a prior session \
@@ -516,7 +554,7 @@ pub fn sweep_rowless(conn: &rusqlite::Connection, platform: &dyn Platform) -> u3
         }
         let Some(cmd) = platform.supervisor().pid_command(pid) else { continue };
         let Some(domain) = host_header_domain(&cmd) else { continue };
-        if !is_our_tunnel(&cmd, &marker, &domain) {
+        if !may_signal(pid, Some(cmd.as_str()), &marker, &domain) {
             continue; // not provably ours — never touched
         }
         log::warn!(
@@ -705,6 +743,105 @@ mod tests {
                 parse_guard_args(&bad).is_none(),
                 "a malformed guard invocation parsed anyway: {bad:?} — a guard with a defaulted \
                  pid watches init and signals init"
+            );
+        }
+    }
+
+    /// **The spawn and the sweeps must agree, or a share becomes unkillable.**
+    /// `--http-host-header <domain>` is what every ownership decision reads, so
+    /// this asserts the ROUND TRIP rather than the presence of a literal: the
+    /// argv `start` actually spawns is fed to the identity functions the sweeps
+    /// use, and they must recognise it. Dropping the pair from `spawn_args`
+    /// (or renaming the flag on one side only) leaves a live public tunnel that
+    /// `sweep_startup`, the rowless backstop and the parent-death guard all
+    /// decline to touch — the exact failure this pair exists to prevent.
+    #[test]
+    fn what_we_spawn_is_what_the_sweeps_can_identify() {
+        let args = spawn_args("acme.rex", 18088);
+        // The command line as a process table would show it: our binary path
+        // (under app-data, the ownership marker) plus the spawned argv.
+        let cmd = format!("{MARKER}/bin/cloudflared-2026.6.1/cloudflared {}", args.join(" "));
+        assert!(
+            is_our_tunnel(&cmd, MARKER, "acme.rex"),
+            "the sweep cannot identify the process we just spawned: {cmd}"
+        );
+        assert_eq!(
+            host_header_domain(&cmd).as_deref(),
+            Some("acme.rex"),
+            "the rowless backstop reads the domain OUT of the argv — with no pair it has no \
+             domain, and a share nobody recorded stays public"
+        );
+        assert!(
+            may_signal(4242, Some(&cmd), MARKER, "acme.rex"),
+            "we could not authorise stopping our own tunnel"
+        );
+
+        // The origin is loopback and the port is the one asked for — a tunnel
+        // is a public door onto ONE local port, and `--url` is the door.
+        assert!(args.contains(&"--url".to_string()));
+        assert!(
+            args.contains(&"http://127.0.0.1:18088".to_string()),
+            "the origin must be loopback on the given port: {args:?}"
+        );
+        assert_ne!(
+            spawn_args("acme.rex", 18088),
+            spawn_args("acme.rex", 8080),
+            "the origin port must reach the argv, or every share serves the same backend"
+        );
+        // Self-update is off: a cloudflared that replaces its own binary mid-
+        // share leaves argv we pinned an ownership decision to.
+        assert!(args.contains(&"--no-autoupdate".to_string()));
+
+        // …and the identity is the ROW's domain, not any tunnel's: the same
+        // live process must not authorise a signal for a different row.
+        assert!(!may_signal(4242, Some(&cmd), MARKER, "other.rex"));
+    }
+
+    /// The sentinel is refused BEFORE the process table is consulted, and that
+    /// ordering is the claim: `PID_PENDING` is inert (`u32::MAX` can never be a
+    /// real pid), but inertness is a property of today's platform, not a rule.
+    /// A row still carrying it crashed between claiming the row and spawning —
+    /// no process ever existed for it — so any argv presented for that pid is
+    /// somebody else's, and a `kill` there is a kill on a stranger.
+    #[test]
+    fn the_pending_sentinel_can_never_authorise_a_signal() {
+        let ours = format!(
+            "{MARKER}/bin/cloudflared/cloudflared tunnel --no-autoupdate \
+             --url http://127.0.0.1:18088 --http-host-header acme.rex"
+        );
+        // Even a command line that satisfies the full identity — which is what
+        // a recycled `u32::MAX` would have to look like — must not pass.
+        assert!(
+            !may_signal(PID_PENDING, Some(&ours), MARKER, "acme.rex"),
+            "the pending sentinel authorised a signal — the sweep would kill whatever the \
+             process table happens to answer for it"
+        );
+        assert!(!may_signal(PID_PENDING, None, MARKER, "acme.rex"));
+        // A real pid with no live process (already gone) is cleanup-only too.
+        assert!(!may_signal(4242, None, MARKER, "acme.rex"));
+        // The sentinel is what the doc says it is: not a pid anything can hold.
+        assert_eq!(PID_PENDING, u32::MAX);
+    }
+
+    /// Every signal in this module goes through [`may_signal`] — a drift guard,
+    /// because the cost of a missed one is asymmetric: it is not our process.
+    /// `stop` (the user pressing Stop on a share they can see, with the live
+    /// `Child`'s own pid) is the one deliberate exception and is named here.
+    #[test]
+    fn every_sweep_signal_is_authorised_by_the_predicate() {
+        let src = crate::core::copy_scan::production_source(include_str!("tunnels.rs"));
+        for (sweep, end) in
+            [("pub fn sweep_startup(", "\n/// "), ("pub fn sweep_rowless(", "\n/// ")]
+        {
+            let body = src
+                .split(sweep)
+                .nth(1)
+                .and_then(|b| b.split(end).next())
+                .unwrap_or_else(|| panic!("{sweep} not found"));
+            assert!(
+                body.contains("may_signal("),
+                "{sweep} signals without going through `may_signal` — the sentinel check and \
+                 the identity check are then two things a reader must remember"
             );
         }
     }
