@@ -152,6 +152,103 @@ const LINK = "https://example.test/a//b";
         assert!(out.contains("https://example.test/a//b"));
     }
 
+    /// #262 — **the preferred browser is applied at ONE choke point.**
+    ///
+    /// rexenv opens links from about a dozen places. The routing — preference,
+    /// still-installed check, fall back to the OS handler — lives in the backend
+    /// behind `open_external`, and the UI's job is to call it. A component that
+    /// reached for `openInBrowser` instead would work, and then the NEXT call
+    /// site anyone adds silently opens in the system default while the setting
+    /// says otherwise: the whole-surface claim that checks one place inside the
+    /// surface, which this ledger already records more than once.
+    ///
+    /// The one legitimate caller is the chevron menu's explicit pick — "open
+    /// this link in THAT browser" is not the default action and must not
+    /// consult the preference — and it is centralised in `lib/useBrowser.ts`
+    /// (`openUrlIn`), which is what this allows.
+    #[test]
+    fn only_the_explicit_browser_pick_bypasses_the_open_choke_point() {
+        /// Files allowed to name `openInBrowser`, with the reason.
+        const ALLOWED: &[(&str, &str)] = &[
+            ("lib/ipc/index.ts", "the wrapper itself"),
+            (
+                "lib/useBrowser.ts",
+                "`openUrlIn` — the chevron menu's EXPLICIT pick, which is not the default \
+                 action and deliberately does not touch the preference",
+            ),
+        ];
+
+        fn walk(dir: &std::path::Path, out: &mut Vec<(String, String)>, root: &std::path::Path) {
+            let Ok(entries) = std::fs::read_dir(dir) else { return };
+            for e in entries.flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    walk(&p, out, root);
+                    continue;
+                }
+                let ext = p.extension().and_then(|x| x.to_str()).unwrap_or("");
+                if ext != "ts" && ext != "tsx" {
+                    continue;
+                }
+                if let Ok(raw) = std::fs::read_to_string(&p) {
+                    let rel = p.strip_prefix(root).unwrap_or(&p).display().to_string();
+                    out.push((rel, strip_ts_comments(&raw)));
+                }
+            }
+        }
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../src");
+        let mut files = Vec::new();
+        walk(&root, &mut files, &root);
+        assert!(files.len() > 20, "only {} frontend files scanned — the walk is broken", files.len());
+
+        // Whole identifier, not a prefix: `openInBrowserMoved` contains
+        // `openInBrowser`, so a plain `contains` reported the allowed file as
+        // still holding the call after it had been renamed away — the
+        // stale-exception half of this guard was passing on nothing.
+        let names_it = |src: &str| {
+            src.match_indices("openInBrowser").any(|(i, _)| {
+                let after = src[i + "openInBrowser".len()..].chars().next().unwrap_or(' ');
+                !after.is_alphanumeric() && after != '_'
+            })
+        };
+        let mut offenders: Vec<String> = Vec::new();
+        let mut allowed_seen = 0usize;
+        for (rel, src) in &files {
+            if !names_it(src) {
+                continue;
+            }
+            match ALLOWED.iter().any(|(f, _)| f == rel) {
+                true => allowed_seen += 1,
+                false => offenders.push(rel.clone()),
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "these files call `openInBrowser` directly: {offenders:?}\nThe default open action \
+             goes through `openExternal` so the preference, the still-installed re-check and the \
+             OS fallback happen in ONE place — a component that routes for itself means the next \
+             call site anyone adds opens somewhere the setting did not choose"
+        );
+        assert_eq!(
+            allowed_seen,
+            ALLOWED.len(),
+            "one of the allowed files no longer mentions `openInBrowser` — if the explicit-pick \
+             path moved, move this exception with it rather than leaving a list that has \
+             stopped being true"
+        );
+        // …and the choke point is still WIDELY used, or the rule above is
+        // satisfied by a UI that opens nothing at all.
+        let external_callers = files
+            .iter()
+            .filter(|(rel, src)| rel.as_str() != "lib/ipc/index.ts" && src.contains("openExternal("))
+            .count();
+        assert!(
+            external_callers >= 4,
+            "only {external_callers} files call `openExternal` — either the UI stopped opening \
+             links, or the routing moved and this guard is now watching an empty rule"
+        );
+    }
+
     /// **Every IPC wrapper is actually CALLED somewhere.**
     ///
     /// `src/lib/ipc/` is the only door between the UI and the backend, and an
