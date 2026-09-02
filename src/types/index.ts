@@ -181,6 +181,10 @@ export interface ImportCandidate {
    *  choose. We never substitute silently. */
   phpTarget: string | null;
   secured: boolean;
+  /** Other names Valet/Herd serves this SAME folder under, folded into this row
+   *  and imported as the site's extra domains (v42). One project — one folder,
+   *  one database — answering to several hostnames. */
+  extraDomains: string[];
   proxyTo: string | null;
   /** The same domain also exists in the other tool. */
   alsoIn: ImportSource | null;

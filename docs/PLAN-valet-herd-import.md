@@ -407,3 +407,15 @@ any "clean up your old environment" affordance.
    watcher deferred to Stage 2. §4.10.
 4. **Sequential import** — yes, and continue-on-failure: each site is independent, so a
    failure on site 3 must not cost sites 4–20. Cancel stops after the current site. §5.
+
+## Link farms fold into one site (2 Sep 2026, ledger #452)
+
+Valet registers one project under several names. The scan now folds rows that
+serve the SAME folder into one candidate carrying the others as `extraDomains`,
+because importing them separately is impossible (the second is refused for
+overlapping the first's docroot) and would be wrong anyway: one folder, one
+database, several hostnames. The primary is the shortest domain (ties
+alphabetical) so the pick is stable across scans, a row that needs attention is
+never folded away — its reason is per-name and is what the user must act on —
+and every fold is announced in the scan's notes, because a row vanishing between
+two scans is how someone concludes the tool lost their site.

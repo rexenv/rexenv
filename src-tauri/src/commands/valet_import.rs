@@ -48,6 +48,16 @@ pub struct ImportCandidate {
     pub proxy_to: Option<String>,
     pub also_in: Option<SourceKind>,
     pub has_custom_valet_driver: bool,
+    /// Other names Valet/Herd serves this SAME folder under, folded into this
+    /// row (v42 extra domains).
+    ///
+    /// A link farm registers one project under several names, and importing
+    /// each as its own site is not possible (the second is refused for
+    /// overlapping the first's docroot) and would be wrong if it were: one
+    /// project, one database, one set of files, several hostnames. They arrive
+    /// as extra domains on the site this row creates.
+    #[serde(default)]
+    pub extra_domains: Vec<String>,
     pub status: SiteStatus,
 }
 
@@ -98,6 +108,7 @@ pub fn scan_valet_import(state: State<'_, AppState>) -> Result<ImportScan> {
         .into_iter()
         .map(|s| enrich(&conn, platform, &existing, &available, s))
         .collect::<Vec<_>>();
+    let (candidates, folded) = fold_same_folder(candidates);
 
     // Every TLD any importable row is served on — including one that appears
     // only in a stray conf, which the config never mentions.
@@ -114,7 +125,89 @@ pub fn scan_valet_import(state: State<'_, AppState>) -> Result<ImportScan> {
         .map(|tld| resolver_status_for(&conn, platform, &existing, &tld))
         .collect();
 
-    Ok(ImportScan { sources: found.sources, candidates, tlds, available_php: available })
+    let mut sources = found.sources;
+    if let Some(first) = sources.first_mut() {
+        first.notes.extend(folded);
+    }
+    Ok(ImportScan { sources, candidates, tlds, available_php: available })
+}
+
+/// Fold rows that serve the SAME folder into one, carrying the others as extra
+/// domains. Returns the folded list plus a note per fold, for the scan's own
+/// report.
+///
+/// **Why folding rather than importing each.** A Valet link farm registers one
+/// project under several names. Importing them as separate sites is impossible
+/// today (the second is refused for overlapping the first's docroot) and would
+/// be wrong if it were possible: it is ONE project — one folder, one database,
+/// one set of files — that answers to several hostnames, which is exactly what
+/// v42's extra domains are for.
+///
+/// **Nothing disappears silently.** The extra names are on the row that
+/// survives (`extra_domains`) and every fold is announced in the scan's notes,
+/// because a row vanishing between one scan and the next is how a user
+/// concludes the tool lost their site.
+///
+/// The PRIMARY is the shortest domain, ties broken alphabetically — so
+/// `acme.test` wins over `www.acme.test`, and the choice is stable across runs
+/// rather than dependent on directory order, which is what a user re-running a
+/// scan compares against.
+fn fold_same_folder(candidates: Vec<ImportCandidate>) -> (Vec<ImportCandidate>, Vec<String>) {
+    use std::collections::HashMap;
+    let mut primary_of: HashMap<String, usize> = HashMap::new();
+    let mut notes: Vec<String> = Vec::new();
+    let mut folded_away: Vec<usize> = Vec::new();
+    let mut candidates = candidates;
+
+    // Stable pick, independent of scan order.
+    let better = |a: &ImportCandidate, b: &ImportCandidate| -> bool {
+        (a.domain.len(), a.domain.as_str()) < (b.domain.len(), b.domain.as_str())
+    };
+    for i in 0..candidates.len() {
+        // Only rows that would actually be created can carry aliases; a row
+        // that needs attention keeps its own reason and its own line.
+        if !matches!(candidates[i].status, SiteStatus::Importable) {
+            continue;
+        }
+        let Some(folder) = candidates[i].serve_path.clone() else { continue };
+        match primary_of.get(&folder).copied() {
+            None => {
+                primary_of.insert(folder, i);
+            }
+            Some(p) => {
+                let (keep, drop) = if better(&candidates[i], &candidates[p]) {
+                    primary_of.insert(folder, i);
+                    (i, p)
+                } else {
+                    (p, i)
+                };
+                let extra = candidates[drop].domain.clone();
+                let primary = candidates[keep].domain.clone();
+                // Move the loser's already-collected extras too, or a
+                // three-name farm would lose one of them.
+                let inherited = std::mem::take(&mut candidates[drop].extra_domains);
+                let target = &mut candidates[keep];
+                target.extra_domains.push(extra.clone());
+                target.extra_domains.extend(inherited);
+                target.extra_domains.sort();
+                target.extra_domains.dedup();
+                folded_away.push(drop);
+                notes.push(format!(
+                    "{extra} serves the same folder as {primary} — importing it as an extra \
+                     domain of that one site rather than a second site (same files, same \
+                     database)"
+                ));
+            }
+        }
+    }
+    folded_away.sort_unstable();
+    let mut out = Vec::with_capacity(candidates.len() - folded_away.len());
+    for (i, c) in candidates.into_iter().enumerate() {
+        if folded_away.binary_search(&i).is_err() {
+            out.push(c);
+        }
+    }
+    (out, notes)
 }
 
 /// Add the judgements that need our own state to one scanned row.
@@ -141,6 +234,7 @@ fn enrich(
         also_in: s.also_in,
         has_custom_valet_driver: false,
         status: s.status,
+        extra_domains: Vec::new(),
     };
 
     // A filesystem-level refusal (missing folder, proxy) already decided this.
@@ -927,11 +1021,37 @@ async fn import_one<R: tauri::Runtime>(
         }
     };
     let ok = settled.status == "ok";
+    // The other names this folder was served under (v42). AFTER provisioning,
+    // and only on success: an alias on a site that failed to come up would be a
+    // hostname reserved by a site nobody can use, and the site row may not even
+    // exist. Best-effort per name — one refusal (a hostname some other site
+    // already answers on) must not fail an import that otherwise worked, and it
+    // is reported rather than swallowed.
+    let mut alias_failures: Vec<String> = Vec::new();
+    if ok {
+        if let Some(site_id) = settled.site_id.as_deref() {
+            for extra in &c.extra_domains {
+                let added = {
+                    match state.db.lock() {
+                        Ok(conn) => crate::core::sites::add_alias(&conn, site_id, extra),
+                        Err(_) => Err(Error::Other("database lock poisoned".into())),
+                    }
+                };
+                if let Err(e) = added {
+                    alias_failures.push(format!("{extra} ({e})"));
+                }
+            }
+        }
+    }
     ImportOutcome {
         domain: c.domain.clone(),
         status: if ok { "imported".into() } else { "failed".into() },
         reason: if ok {
-            None
+            // An import that worked still says what it could NOT do — an extra
+            // domain silently missing is a name the user will try and find dead.
+            (!alias_failures.is_empty()).then(|| {
+                format!("imported, but these extra domains were not added: {}", alias_failures.join("; "))
+            })
         } else {
             Some(settled.error.clone().unwrap_or_else(|| {
                 let phase = settled
@@ -1030,5 +1150,81 @@ mod tests {
         assert_eq!(db_share(0), 60);
         assert_eq!(db_share(100), 100);
         assert_eq!(provision_share(100, false), 100);
+    }
+}
+
+#[cfg(test)]
+mod folding_a_link_farm {
+    use super::*;
+
+    fn candidate(domain: &str, folder: &str, status: SiteStatus) -> ImportCandidate {
+        ImportCandidate {
+            source: SourceKind::Valet,
+            name: domain.split('.').next().unwrap_or(domain).into(),
+            domain: domain.into(),
+            path: Some(folder.into()),
+            serve_path: Some(folder.into()),
+            docroot_rel: None,
+            site_type: None,
+            label: None,
+            php_minor: None,
+            php_target: None,
+            secured: false,
+            proxy_to: None,
+            also_in: None,
+            has_custom_valet_driver: false,
+            extra_domains: Vec::new(),
+            status,
+        }
+    }
+
+    /// Several Valet names for ONE folder become one site with extra domains —
+    /// and the fold is announced.
+    ///
+    /// Importing them as separate sites is impossible today (the second is
+    /// refused for overlapping the first's docroot) and would be wrong if it
+    /// were: one project, one database, one set of files, several hostnames.
+    /// What must NOT happen is a row quietly vanishing between one scan and the
+    /// next, which is how a user concludes the tool lost their site — so every
+    /// fold produces a note and the names live on the surviving row.
+    #[test]
+    fn same_folder_rows_become_one_row_with_extra_domains() {
+        let (out, notes) = fold_same_folder(vec![
+            candidate("www.acme.test", "/p/acme", SiteStatus::Importable),
+            candidate("acme.test", "/p/acme", SiteStatus::Importable),
+            candidate("acme-staging.test", "/p/acme", SiteStatus::Importable),
+            candidate("other.test", "/p/other", SiteStatus::Importable),
+        ]);
+        assert_eq!(out.len(), 2, "one row per FOLDER: {out:?}");
+        let acme = out.iter().find(|c| c.domain == "acme.test").expect(
+            "the shortest domain must be the primary — a stable pick, not directory order",
+        );
+        assert_eq!(acme.extra_domains, vec!["acme-staging.test", "www.acme.test"]);
+        assert_eq!(notes.len(), 2, "every fold is announced: {notes:?}");
+        assert!(notes.iter().all(|n| n.contains("acme.test")));
+        // The unrelated project is untouched and carries no extras.
+        let other = out.iter().find(|c| c.domain == "other.test").expect("other.test");
+        assert!(other.extra_domains.is_empty());
+    }
+
+    /// A row that needs attention keeps its own line and its own reason — it is
+    /// not folded into somebody else's site.
+    ///
+    /// The reasons are per-NAME (an unavailable PHP pin, a custom driver, a
+    /// docroot that failed the link preflight) and they are what the user has
+    /// to act on; folding one away would delete the explanation with it.
+    #[test]
+    fn a_row_that_needs_attention_is_never_folded_away() {
+        let (out, notes) = fold_same_folder(vec![
+            candidate("acme.test", "/p/acme", SiteStatus::Importable),
+            candidate(
+                "old.test",
+                "/p/acme",
+                SiteStatus::NeedsAttention("PHP 7.2 isn't one rexenv ships".into()),
+            ),
+        ]);
+        assert_eq!(out.len(), 2, "the needs-attention row must survive: {out:?}");
+        assert!(notes.is_empty(), "nothing was folded, so nothing is announced");
+        assert!(out.iter().all(|c| c.extra_domains.is_empty()));
     }
 }
