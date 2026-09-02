@@ -792,10 +792,22 @@ fn find_site(words: &[String], usage: &str) -> Value {
         exit(1);
     };
     let data = request("site.list", Value::Null);
-    let site = data["sites"]
-        .as_array()
-        .and_then(|sites| sites.iter().find(|s| s["domain"] == json!(domain)))
-        .cloned();
+    let sites = data["sites"].as_array().cloned().unwrap_or_default();
+    // The site's OWN domain first, then its EXTRA domains (v42): a site that
+    // answers on `shop.rex` should be findable by typing `shop.rex`. Without
+    // this, extra domains were a thing the app served and the CLI could not
+    // name — `rex site info shop.rex` said "no site with domain shop.rex" about
+    // a site that answers on it.
+    let by_primary = sites.iter().find(|s| s["domain"] == json!(domain)).cloned();
+    let site = by_primary.or_else(|| {
+        let owner = data["aliases"].as_object()?.iter().find_map(|(id, list)| {
+            list.as_array()?
+                .iter()
+                .any(|d| d == &json!(domain))
+                .then(|| id.clone())
+        })?;
+        sites.iter().find(|s| s["id"] == json!(owner)).cloned()
+    });
     match site {
         Some(site) => site,
         None => {
@@ -3076,6 +3088,41 @@ fn cmd_status(json_output: bool) {
 
 #[cfg(test)]
 mod tests {
+
+    /// **A site is findable by ANY name it answers on.**
+    ///
+    /// Extra domains (v42) are served by nginx and the edge, so a user who
+    /// types one has every reason to expect `rex` to know it. Resolving only
+    /// the site's OWN domain made them a thing the app served and the CLI could
+    /// not name: `rex site info shop.rex` answered "no site with domain
+    /// shop.rex" about a site that answers on exactly that.
+    ///
+    /// A source guard because `find_site` talks to a running app: what is
+    /// asserted is that the resolution CONSULTS the alias map the server now
+    /// sends, and that the primary is still tried first — an alias shadowing a
+    /// primary would resolve the wrong site for a name that is somebody's
+    /// actual domain.
+    #[test]
+    fn a_site_is_findable_by_any_of_its_domains() {
+        const ME: &str = include_str!("main.rs");
+        let body = ME
+            .split("fn find_site(")
+            .nth(1)
+            .and_then(|b| b.split("\nfn ").next())
+            .expect("find_site");
+        let primary = body
+            .find("s[\"domain\"] == json!(domain)")
+            .expect("`find_site` no longer matches the site's own domain");
+        let alias = body.find("\"aliases\"").expect(
+            "`find_site` never consults the alias map — a site's extra domains are served by \
+             nginx and the edge, and the CLI cannot name them",
+        );
+        assert!(
+            primary < alias,
+            "the alias map is consulted BEFORE the site's own domain — an alias would shadow a \
+             primary, and a name that is somebody's actual domain would resolve to another site"
+        );
+    }
 
     /// **Every subcommand the CLI dispatches is completable, and every
     /// completion word dispatches — for every GROUP, not just the one that was

@@ -468,7 +468,23 @@ where
             let state = app_state(app)?;
             let sites = commands::sites::list_sites(state.clone())?;
             let serving = commands::sites::sites_serving(state.clone())?;
-            Ok(json!({ "sites": to_value(&sites)?, "serving": to_value(&serving)? }))
+            // Extra domains ride along (v42), keyed by site id. `rex` resolves a
+            // site from whatever hostname the user typed, and after extra
+            // domains shipped that stopped being the same thing as the site's
+            // own domain — `rex site info shop.rex` answered "no site with
+            // domain shop.rex" about a site that answers on it.
+            let aliases = {
+                let conn = state
+                    .db
+                    .lock()
+                    .map_err(|_| Error::Other("database lock poisoned".into()))?;
+                crate::state::store::all_site_aliases(&conn)?
+            };
+            Ok(json!({
+                "sites": to_value(&sites)?,
+                "serving": to_value(&serving)?,
+                "aliases": to_value(&aliases)?,
+            }))
         }
         // Site create: exactly what the New Site dialog submits — `path` empty
         // (the backend derives it under the sites folder) or a folder to LINK,
