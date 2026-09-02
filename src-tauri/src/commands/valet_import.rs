@@ -1228,3 +1228,70 @@ mod folding_a_link_farm {
         assert!(out.iter().all(|c| c.extra_domains.is_empty()));
     }
 }
+
+
+/// #186 — where a cancel is allowed to take effect.
+#[cfg(test)]
+mod cancel_lands_between_sites {
+    /// **A cancel stops the batch BETWEEN sites, never inside one.**
+    ///
+    /// Importing one site is a provision: a folder is linked, a database is
+    /// created, WordPress is configured. Abandoning that half-way is how a user
+    /// ends up with a site that exists, does not work, and was not asked for —
+    /// and the batch would have handed them no row explaining it. So the flag is
+    /// read at the TOP of the per-site loop and nowhere inside `import_one`, and
+    /// a site skipped this way still gets a row saying why.
+    ///
+    /// A source guard, because the alternative is a timing test: you would have
+    /// to cancel during a real provision and inspect the wreckage, which is L3
+    /// and destroys a site to prove a sentence.
+    #[test]
+    fn the_cancel_flag_is_read_between_sites_and_never_inside_one() {
+        let src = crate::core::copy_scan::production_source(include_str!("valet_import.rs"));
+        let run = src
+            .split("pub async fn valet_import_run")
+            .nth(1)
+            .and_then(|b| b.split("\nfn ").next())
+            .expect("valet_import_run");
+
+        // The read exists, at the top of the loop, before anything is started.
+        let loop_at = run.find("for (i, (c, php)) in queue").expect("the per-site loop");
+        let read_at = run[loop_at..]
+            .find("jobs.cancel.load(")
+            .map(|i| loop_at + i)
+            .expect("the loop no longer checks the cancel flag — Cancel would then run the \
+                     whole batch and only stop when it ran out of sites");
+        let start_at = run[loop_at..]
+            .find("import_one(")
+            .map(|i| loop_at + i)
+            .expect("the loop no longer starts sites — if the shape changed, re-read this");
+        assert!(
+            read_at < start_at,
+            "the cancel flag is read AFTER the site is started, so a cancel lands mid-provision \
+             — a linked folder, a created database and a half-configured WordPress the user \
+             never asked for"
+        );
+
+        // …and a cancelled site still gets a ROW. Silence would leave the user
+        // counting the list to work out which ones never ran.
+        let between = &run[read_at..start_at];
+        assert!(
+            between.contains("skipped(") && between.contains("outcomes.push("),
+            "a site skipped by cancel produces no outcome row — the report then just has fewer \
+             lines than the list, and nobody can tell which sites were skipped or why"
+        );
+
+        // Nothing inside the single-site import may consult the flag: that is
+        // exactly the mid-site abandonment this rule forbids.
+        let import_one = src
+            .split("async fn import_one")
+            .nth(1)
+            .and_then(|b| b.split("\nfn ").next())
+            .expect("import_one");
+        assert!(
+            !import_one.contains("cancel"),
+            "`import_one` reads the cancel flag — a cancel inside one site abandons a provision \
+             half-way, which is the state this boundary exists to prevent"
+        );
+    }
+}

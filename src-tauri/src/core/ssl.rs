@@ -467,6 +467,62 @@ pub fn untrust_ca(platform: &dyn Platform, ca: &LocalCa) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+
+    /// #154 — **a Firefox failure never fails the trust.**
+    ///
+    /// The trust that matters is the OS one: `cert_trust().trust_ca` shows the
+    /// user a native auth dialog and, when they approve it, every ordinary
+    /// browser on the machine trusts rexenv's CA. The Firefox step is a
+    /// courtesy on top — Firefox keeps its own NSS store and ignores the
+    /// keychain unless a pref is set — and it touches profile directories that
+    /// may be missing, locked by a running Firefox, or shaped in a way this
+    /// build has never seen.
+    ///
+    /// So its failure must not propagate: `?` on that call would turn "your
+    /// Firefox profile is unusual" into "rexenv could not trust its CA", and
+    /// the user would be told HTTPS is broken while every other browser on
+    /// their machine already works. The OS trust, by contrast, uses `?` on
+    /// purpose — if THAT fails there is nothing to be optimistic about.
+    #[test]
+    fn a_firefox_failure_never_fails_the_trust() {
+        let src = crate::core::copy_scan::production_source(include_str!("ssl.rs"));
+        let body = src
+            .split("pub fn trust_ca(")
+            .nth(1)
+            .and_then(|b| b.split("\n/// ").next())
+            .expect("trust_ca");
+
+        // The OS trust is the one that may fail the call.
+        assert!(
+            body.contains("cert_trust().trust_ca(&ca.cert_path)?"),
+            "the OS trust is no longer propagating its error — if the keychain refuses, there \
+             is nothing to be optimistic about and the caller must hear it"
+        );
+        // The Firefox step is handled, not propagated.
+        let firefox = body
+            .find("firefox::enable_in_profiles(")
+            .expect("the Firefox courtesy step is gone — if it moved, move this guard with it");
+        let call_line = body[firefox..].lines().next().unwrap_or_default();
+        assert!(
+            !call_line.contains('?'),
+            "the Firefox step propagates its error: an unusual or locked profile would then be \
+             reported as \"rexenv could not trust its CA\", while every other browser on the \
+             machine already trusts it:\n    {}",
+            call_line.trim()
+        );
+        assert!(
+            body[firefox..].contains("Err(e) => log::warn!"),
+            "the Firefox failure is not even logged — a courtesy that fails silently is one \
+             nobody can debug when Firefox alone shows a warning"
+        );
+        // And the function still returns Ok after it: a `return Err` in that
+        // arm would be the same defect wearing a different shape.
+        let after = &body[firefox..];
+        assert!(
+            !after.contains("return Err("),
+            "the Firefox arm returns an error — same defect as `?`, different spelling"
+        );
+    }
     use super::*;
 
     #[test]
