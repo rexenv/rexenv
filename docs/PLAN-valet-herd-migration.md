@@ -292,8 +292,14 @@ Ordered pure-fs classifier (mirrors the shipped drivers' outcomes without parsin
 Where our detection cannot match Valet's truth — flag these sites, don't guess:
 `LocalValetDriver.php` in the project root or any `~/.config/valet/Drivers/*ValetDriver.
 php` (arbitrary PHP choosing the docroot), and `.valet-env.php` (per-site `$_SERVER`
-injection). Also honest gaps: Valet's `default` config key (catch-all site) and its
-`/storage/*` URI mapping for Laravel.
+injection). ~~Also honest gaps: Valet's `default` config key (catch-all site) and its
+`/storage/*` URI mapping for Laravel.~~ **Both closed 2 Sep 2026** (ledger #448),
+and they closed differently, which is the point: the `/storage/*` mapping is
+REPRODUCED (rexenv emits it for a Laravel site that has the directory, with php
+and dotfiles refused inside the block), while the `default` catch-all is
+REPORTED by the scan — rexenv has no catch-all and is not growing one, so the
+honest move is to say which hostname behaviour stops working rather than let it
+vanish silently after the migration.
 
 ## 5. Databases — discovery and per-site mapping
 

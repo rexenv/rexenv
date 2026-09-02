@@ -2460,11 +2460,17 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   (skips `wp config create` when wp-config.php exists but calls
   `create_database` unconditionally), and `phase_defs` blanket-skips WP phases
   on `docroot_managed == Some(false)` — needs an explicit opt-in flag.
-- [ ] **Valet compatibility tails** (recorded in the migration research, §2):
-  the `default` catch-all-site key and Laravel's `/storage/*` URI mapping are
-  not handled; a Valet-named port-conflict attribution branch doesn't exist
-  (Herd's does); serving one site under two domains needs multi-domain support
-  (`sites.domain` is UNIQUE).
+- [ ] **Valet compatibility tails** (recorded in the migration research, §2).
+  - [x] Laravel's `/storage/*` URI mapping ✓ 2 Sep 2026, ledger #448 — emitted for a
+    Laravel site whose `storage/app/public` exists, with php AND dotfiles refused
+    INSIDE the block (the `^~` prefix that makes the mapping work also beats the
+    vhost's own guards).
+  - [x] The `default` catch-all-site key ✓ 2 Sep 2026, ledger #448 — REPORTED by the
+    scan, not imported: rexenv has no catch-all, and a behaviour that silently stops
+    after a migration is the shape nobody can connect back to the move.
+  - [ ] A Valet-named port-conflict attribution branch doesn't exist (Herd's does).
+  - [ ] Serving one site under two domains needs multi-domain support
+    (`sites.domain` is UNIQUE).
 - [ ] **`rex` design-first set**: ~~single-site restart (manager seam)~~ ✓ 2 Sep 2026
   (ledger #444, `rex site restart <domain> [--pool]`) — the ruling the row was waiting
   for is that the operation has THREE honest outcomes, not one: an override site's

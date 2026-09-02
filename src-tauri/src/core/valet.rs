@@ -169,6 +169,21 @@ pub fn scan_source(kind: SourceKind, dir: &Path) -> (Source, Vec<DiscoveredSite>
         }
     };
 
+    // Report the catch-all before anything else, because it is the one part of
+    // their setup that will NOT be reproduced — every other row here either
+    // imports or says why it cannot, and this one would just quietly stop
+    // happening.
+    if let Some(default_site) = &cfg.default_site {
+        notes.push(format!(
+            "{} serves {default_site} for any unmatched *.{} hostname (its `default` \
+             setting). rexenv has no catch-all: after migrating, a hostname you have not \
+             created will not resolve to it. Import that project as its own site if you \
+             need it.",
+            kind.label(),
+            cfg.tld
+        ));
+    }
+
     let sites_dir = dir.join("Sites");
     let mut sites: Vec<DiscoveredSite> = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
@@ -333,11 +348,23 @@ struct Config {
     tld: String,
     loopback: String,
     parked: Vec<String>,
+    /// Valet's `default` key: the project served for ANY unmatched hostname
+    /// under their TLD. rexenv has no catch-all — an unknown host reaches
+    /// nginx's default server, which is deliberately not a site — so this
+    /// cannot be imported, only REPORTED. Silence would be the bad outcome: a
+    /// user whose `foo.test` typo used to land on a working site would see it
+    /// stop working after migrating and have nothing to connect it to.
+    default_site: Option<String>,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Self { tld: "test".into(), loopback: "127.0.0.1".into(), parked: Vec::new() }
+        Self {
+            tld: "test".into(),
+            loopback: "127.0.0.1".into(),
+            parked: Vec::new(),
+            default_site: None,
+        }
     }
 }
 
@@ -368,7 +395,15 @@ fn parse_config(text: &str) -> Option<Config> {
             }
         }
     }
-    Some(Config { tld, loopback, parked })
+    // Their `default` is a PATH to the project, and an empty string means
+    // "unset" in their own config (Valet writes `""` when you clear it), which
+    // is why this filters rather than just mapping.
+    let default_site = v["default"]
+        .as_str()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+    Some(Config { tld, loopback, parked, default_site })
 }
 
 /// The PHP minor a per-site conf is isolated to, in any of the formats the
@@ -500,6 +535,45 @@ mod tests {
         // Missing keys fall back rather than failing.
         let bare = parse_config("{}").unwrap();
         assert_eq!((bare.tld.as_str(), bare.loopback.as_str()), ("test", "127.0.0.1"));
+    }
+
+    /// Valet's `default` (catch-all) is the one part of their setup rexenv will
+    /// NOT reproduce, so the scan must SAY so.
+    ///
+    /// Everything else in the migration list either imports or carries a reason
+    /// it cannot. A catch-all that simply stops happening is the worst shape of
+    /// all: after migrating, a hostname the user never created used to land on a
+    /// working project and now resolves nowhere, with nothing anywhere
+    /// connecting that to the move.
+    #[test]
+    fn the_catch_all_site_is_reported_because_it_cannot_be_imported() {
+        let fx = Fixture::new("default-key").config(
+            r#"{"tld":"test","loopback":"127.0.0.1","paths":[],"default":"/Users/dev/fallback"}"#,
+        );
+        let (source, _sites) = scan_source(SourceKind::Valet, &fx.0);
+        let note = source
+            .notes
+            .iter()
+            .find(|n| n.contains("/Users/dev/fallback"))
+            .unwrap_or_else(|| panic!("the catch-all was not reported: {:?}", source.notes));
+        assert!(
+            note.contains("unmatched") && note.contains("test"),
+            "the note must say WHAT stops working (unmatched hostnames on their TLD): {note}"
+        );
+
+        // Unset is the normal case and must stay silent — Valet writes an empty
+        // string when the key is cleared, and a note about "no catch-all" would
+        // be a warning about the ordinary state, which teaches people to skip
+        // the notes.
+        for cfg in [r#"{"tld":"test","paths":[]}"#, r#"{"tld":"test","paths":[],"default":""}"#] {
+            let fx = Fixture::new("default-unset").config(cfg);
+            let (source, _) = scan_source(SourceKind::Valet, &fx.0);
+            assert!(
+                !source.notes.iter().any(|n| n.contains("catch-all") || n.contains("unmatched")),
+                "an unset catch-all produced a note: {:?}",
+                source.notes
+            );
+        }
     }
 
     #[test]

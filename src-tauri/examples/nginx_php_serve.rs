@@ -76,6 +76,7 @@ async fn main() -> ExitCode {
         // reach PHP as two ini lines (a literal newline fails to parse).
         php_value: Some(adminer::import_php_value(adminer::MAX_IMPORT_BYTES)),
         env: Vec::new(),
+        storage_root: None,
     };
     // Negative control: the SAME docroot and pool on nginx's own default timeout.
     // Without it, "the slow request survived" proves nothing — it would pass just
@@ -90,6 +91,7 @@ async fn main() -> ExitCode {
         read_timeout: None,
         php_value: None,
         env: Vec::new(),
+        storage_root: None,
     };
     let (conf, prefix) =
         services::write_nginx_config(&*plat, HTTP_PORT, vec![site, control]).unwrap();

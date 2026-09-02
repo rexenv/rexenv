@@ -2041,8 +2041,29 @@ fn nginx_site_for(
         // overrides ini per request.
         read_timeout: None,
         php_value: None,
+        // Valet's `/storage/*` mapping, for Laravel projects that have the
+        // directory. Emitted whether or not `public/storage` exists: when the
+        // symlink IS there both paths resolve to the same files, and when it is
+        // not (every project developed under Valet, where the driver made the
+        // symlink unnecessary) this is the difference between working uploads
+        // and a site that 404s its own images after being imported.
+        storage_root: laravel_storage_root(s),
         env: site_env.get(&s.id).cloned().unwrap_or_default(),
     }
+}
+
+/// The `storage/app/public` directory of a Laravel project, when it exists.
+///
+/// Laravel only, and existence-checked: emitting an `alias` for a directory
+/// that is not there would turn every `/storage/…` request into a 404 from a
+/// location block instead of falling through to the app, which for a
+/// non-Laravel site would swallow a perfectly ordinary route named `/storage`.
+fn laravel_storage_root(s: &Site) -> Option<std::path::PathBuf> {
+    if s.site_type != SiteType::Laravel {
+        return None;
+    }
+    let dir = Path::new(&s.path).join("storage/app/public");
+    dir.is_dir().then_some(dir)
 }
 
 /// The php-fpm pool port a site's PHP `version` routes to. Only versions with a
@@ -2160,6 +2181,8 @@ pub fn rebuild_configs_for(
         body_limit: Some(adminer_cap),
         read_timeout: Some(adminer::IMPORT_TIMEOUT_SECS),
         php_value: Some(adminer::import_php_value(adminer_cap)),
+        // The tooling vhost is not a Laravel project and never gets the mapping.
+        storage_root: None,
         env: Vec::new(),
     });
     let (nginx_conf, nginx_prefix) =

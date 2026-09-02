@@ -337,6 +337,20 @@ pub struct NginxSite {
     /// OURS ONLY — never user input (unlike `env`, which is validated); the
     /// renderer escapes newlines for nginx and nothing else.
     pub php_value: Option<String>,
+    /// Laravel only: the project's `storage/app/public` directory, served at
+    /// `/storage/…` the way Valet's own driver does.
+    ///
+    /// **Why this exists at all.** Laravel's documented setup is `php artisan
+    /// storage:link`, a `public/storage` symlink — but Valet serves `/storage/*`
+    /// from the real directory WITHOUT that symlink, so a project developed
+    /// under Valet can rely on uploads resolving and nobody ever ran the
+    /// artisan command. Imported into rexenv, every one of those URLs 404s, and
+    /// the site looks broken in a way that points at the migration and not at
+    /// the missing symlink.
+    ///
+    /// `None` for every non-Laravel site and for a project with no such
+    /// directory.
+    pub storage_root: Option<PathBuf>,
     /// Per-site user env vars (§1.6), VALIDATED by `site_env::validate` —
     /// emitted as `fastcgi_param` lines so they ride the request (shared pools
     /// untouched; getenv() + $_SERVER, not $_ENV).
@@ -451,6 +465,33 @@ const NGINX_DOTFILE_DENY: &str = "\t\tlocation ~ /\\.(?!well-known(/|$)) {\n\
      \t\t\treturn 404;\n\
      \t\t}\n";
 
+/// Valet's `/storage/*` mapping for a Laravel project, or nothing.
+///
+/// Three things are deliberate here, and each of them is a hole if dropped:
+///
+/// - **`^~`**, so this prefix beats the regex locations below it — that is what
+///   makes the mapping take effect at all.
+/// - **PHP is refused inside it.** Because `^~` wins over `location ~ \.php$`,
+///   a `.php` file under `storage/app/public` would otherwise be served as
+///   SOURCE. That directory holds user uploads; serving one as source is a
+///   disclosure, and executing it would be worse.
+/// - **Dotfiles are refused inside it**, for the same reason: `^~` also beats
+///   the vhost's dotfile deny, so the guard has to be repeated INSIDE rather
+///   than assumed from outside. A `.env` copied into an uploads folder is
+///   exactly the file this project already refuses to serve everywhere else.
+fn storage_block(storage_root: Option<&Path>) -> String {
+    let Some(root) = storage_root else { return String::new() };
+    format!(
+        "\t\tlocation ^~ /storage/ {{\n\
+         \t\t\tlocation ~ /\\.(?!well-known(/|$)) {{ return 404; }}\n\
+         \t\t\tlocation ~ \\.php$ {{ return 404; }}\n\
+         \t\t\talias \"{root}/\";\n\
+         \t\t\ttry_files $uri =404;\n\
+         \t\t}}\n",
+        root = root.display()
+    )
+}
+
 fn server_block(http_port: u16, site: &NginxSite) -> String {
     // Subdomain multisite serves every sub-site (`a.mysite.test`) from the same
     // block, so the wildcard joins the exact host in `server_name` (§10.2).
@@ -488,6 +529,7 @@ fn server_block(http_port: u16, site: &NginxSite) -> String {
          \t\troot \"{root}\";\n\
          \t\tindex index.php index.html;\n\
          {rewrite}\
+         {storage}\
          {dotdeny}\
          \t\tlocation ~ \\.php$ {{\n\
          \t\t\tfastcgi_pass 127.0.0.1:{fpm};\n\
@@ -503,6 +545,7 @@ fn server_block(http_port: u16, site: &NginxSite) -> String {
         root = site.docroot.display(),
         fpm = site.php_fpm_port,
         rewrite = rewrite_block(site.rewrite),
+        storage = storage_block(site.storage_root.as_deref()),
         dotdeny = NGINX_DOTFILE_DENY,
         params = fcgi_params(),
         env = env_params(&site.env),
@@ -892,9 +935,60 @@ mod tests {
                 body_limit: None,
                 read_timeout: None,
                 php_value: None,
+                storage_root: None,
                 env: Vec::new(),
             }],
         }
+    }
+
+    /// Valet's `/storage/*` mapping — emitted only for a Laravel project that
+    /// has the directory, and REFUSING php and dotfiles inside it.
+    ///
+    /// The two nested denies are the whole reason this block is not two lines:
+    /// `^~` beats every regex location in the vhost, so without them a `.php`
+    /// or `.env` under an UPLOADS directory would be served — as source, and
+    /// past the dotfile guard that covers the rest of the site.
+    #[test]
+    fn the_storage_mapping_serves_uploads_and_refuses_code() {
+        let plain = generate_nginx_config(&nginx_cfg(RewriteMode::Single));
+        assert!(
+            !plain.contains("/storage/"),
+            "a site with no storage directory must not get the block — an `alias` for a \
+             directory that is not there turns every /storage request into a 404 instead of \
+             letting the app route it"
+        );
+
+        let mut cfg = nginx_cfg(RewriteMode::Single);
+        cfg.sites[0].storage_root = Some(PathBuf::from("/Sites/acme/storage/app/public"));
+        let out = generate_nginx_config(&cfg);
+        let block = out
+            .split("location ^~ /storage/ {")
+            .nth(1)
+            .and_then(|b| b.split("\n\t\t}").next())
+            .expect("the storage block");
+        assert!(
+            block.contains("alias \"/Sites/acme/storage/app/public/\";"),
+            "the alias must point at the real directory, with the trailing slash `alias` \
+             needs to map the prefix: {block}"
+        );
+        assert!(block.contains("try_files $uri =404;"), "no directory listing / fallthrough");
+        assert!(
+            block.contains("location ~ \\.php$ { return 404; }"),
+            "PHP is not refused inside the storage mapping — `^~` beats the vhost's `.php` \
+             location, so an uploaded script would be served as SOURCE: {block}"
+        );
+        assert!(
+            block.contains("location ~ /\\.(?!well-known(/|$)) { return 404; }"),
+            "dotfiles are not refused inside the storage mapping — `^~` also beats the \
+             vhost's dotfile deny, so a `.env` in an uploads folder would be served: {block}"
+        );
+        // Ordering: the mapping must come before the `.php` location it is
+        // meant to take precedence over — nginx picks the longest prefix and
+        // only falls to regex when none matched, so this is about a reader
+        // finding them in the order they take effect.
+        assert!(
+            out.find("location ^~ /storage/").unwrap() < out.find("location ~ \\.php$").unwrap()
+        );
     }
 
     #[test]
@@ -1064,6 +1158,7 @@ mod tests {
             read_timeout: None,
             php_value: None,
             env: Vec::new(),
+            storage_root: None,
         });
         let out = generate_nginx_config(&cfg);
         assert!(out.contains("server_name acme.test;"));

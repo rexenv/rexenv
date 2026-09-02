@@ -70,6 +70,7 @@ async fn main() -> ExitCode {
         read_timeout: None,
         php_value: None,
         env: Vec::new(),
+        storage_root: None,
     };
     let (conf, prefix) = services::write_nginx_config(&*plat, HTTP_PORT, vec![site]).unwrap();
     let nginx = services::start_nginx(&*plat, &nginx_bin, &conf, &prefix).expect("start nginx");
