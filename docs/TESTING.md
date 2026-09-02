@@ -389,6 +389,12 @@ it can:
 
 ### L2 — Render (`scripts/wk-checks/`, Playwright WebKit + mockIPC dev routes)
 
+- **Probes (2 Sep 2026): `tunnelhealth.js`** — "Live" is earned by a reachable
+  probe, never painted on anything running. The mock ships one tunnel per health
+  so the two non-reachable cards are the CONTROL; without them the check is
+  satisfied by a screen that says Live everywhere. Its backend half (dead
+  children settled before the snapshot) is an L0 source-ORDER guard, because
+  both orders compile and return the same type.
 - **Probes (2 Sep 2026): `domains.js`** — the Domains card renders the list the
   BACKEND returned rather than local state, and the primary has no Remove. It is
   L2 because the difference is only visible in a browser: a card that kept its

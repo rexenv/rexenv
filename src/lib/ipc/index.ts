@@ -1549,12 +1549,27 @@ export async function stopTunnel(id: string): Promise<void> {
 /** All active public tunnels (domain → URL). Mock fallback outside Tauri. */
 export async function tunnelsStatus(): Promise<TunnelInfo[]> {
   if (!isTauri()) {
+    // Three tunnels, one per HEALTH — the dev shell renders every state the
+    // card can be in, and the L2 probe needs the two that are NOT reachable to
+    // prove "Live" is earned rather than painted on anything running.
     return [
       {
         domain: "acme.rex",
         url: "https://blue-cat-runs-fast.trycloudflare.com",
         running: true,
         health: "reachable",
+      },
+      {
+        domain: "portfolio.rex",
+        url: "https://green-fox-waits.trycloudflare.com",
+        running: true,
+        health: "unverified",
+      },
+      {
+        domain: "network.rex",
+        url: "https://red-owl-fell.trycloudflare.com",
+        running: true,
+        health: "broken",
       },
     ];
   }

@@ -21,6 +21,7 @@ const CHECKS = [
   "openin.js",
   "phppicker.js",
   "domains.js",
+  "tunnelhealth.js",
   "contrast.js",
   "mail.js",
   // The UI-review sweep asserts now (overflow fatal, pageerror listeners,

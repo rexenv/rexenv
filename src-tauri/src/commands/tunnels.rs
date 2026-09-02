@@ -865,6 +865,50 @@ mod tests {
         }
     }
 
+    /// #32 — **a dead tunnel is settled BEFORE the snapshot, so it never
+    /// renders as a live share on the poll that discovers it.**
+    ///
+    /// The order is the whole claim. Snapshot first and the reply contains a
+    /// row whose `running` field is a hardcoded `true` — the map's entries are
+    /// live by construction — so the UI paints a public link that stopped
+    /// working, and the user hands it to someone. Settle first and the entry is
+    /// gone before anything reads the map.
+    ///
+    /// A SOURCE-ORDER guard because there is no way to observe it otherwise:
+    /// both orders return the same type, both compile, and the wrong one is
+    /// only wrong for the length of one poll.
+    #[test]
+    fn a_dead_tunnel_is_settled_before_the_status_snapshot() {
+        let src = crate::core::copy_scan::production_source(include_str!("tunnels.rs"));
+        let body = src
+            .split("pub async fn tunnels_status(")
+            .nth(1)
+            .and_then(|b| b.split("\n#[").next())
+            .expect("tunnels_status");
+        let settle = body
+            .find("settle_dead(")
+            .expect("`tunnels_status` no longer settles dead children — a crashed cloudflared \
+                     then stays in the list, rendered as a live public link");
+        let snapshot = body
+            .find("tunnels.0.lock()")
+            .expect("`tunnels_status` no longer reads the registry — if it moved, move this guard");
+        assert!(
+            settle < snapshot,
+            "the registry is snapshotted BEFORE dead children are settled: the reply then \
+             carries a share whose process is gone, with `running: true` — and the user hands \
+             that link to somebody"
+        );
+        // …and the row it builds says running unconditionally, which is only
+        // honest BECAUSE of the order above. If this ever becomes a computed
+        // field, the order stops being the thing that makes it true and this
+        // guard is measuring the wrong fact.
+        assert!(
+            body.contains("running: true"),
+            "`running` is no longer a constant in the snapshot — the settle-first ordering was \
+             what made it honest, so re-read what makes it true now"
+        );
+    }
+
     #[test]
     fn take_dead_removes_only_exited_children() {
         // Fixture-owned children: /usr/bin/true exits immediately (the
