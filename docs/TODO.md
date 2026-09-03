@@ -2432,9 +2432,16 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     exposed #406. The three-paragraph copy above the toggle is eyes-only and still unread.
     Still unrun: **1** literally (a fresh launch that has NEVER been enabled — the
     toggle-off state is proven, the never-enabled one is not),
-    **9** (Keep), **10** (reap banner), **11 ⚠HOLD** (no admin prompt — nothing the agent
-    did triggered one, but that is an observation across a session, not a check),
-    and **13** with the toggle actually OFF.
+    **9** (Keep), and **11 ⚠HOLD** (no admin prompt — nothing the agent did triggered one,
+    but that is an observation across a session, not a check).
+    *(Corrected 3 Sep 2026. This line also listed **10** (reap banner) and **13** with the
+    toggle OFF — both of which the ✓ paragraphs directly above it record as RUN on the same
+    day: step 10 as COMPLETE with the banner screenshotted, step 13's agent half with
+    `mcp_mail_enabled=false`, which IS the toggle off. A summary line under the evidence it
+    summarises, disagreeing with it, is this project's most-repeated defect — the CLI
+    roadmap's table did the same thing to two `mail` verbs for ten days, ledger #461. What
+    genuinely remains of 13 is its eyes-only half: the three-paragraph consent copy above
+    the toggle, still unread.)*
     **Two real defects came out of the part that did run** — the scratch mail stamp never
     applied at creation (#406) and wp-cli's mail silently dropped (#407) — which is the
     argument for finishing the rest.
