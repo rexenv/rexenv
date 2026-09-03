@@ -1139,6 +1139,38 @@ the human legs. Set up: stack up, switch ON, one of your own sites.
   range; `rex config set scratch_cap 2` → the third scratch_create_site names the limit
   as 2 and lists the two.
 
+### Parity P5 — migration and repo under grants. Ships only if 40–42 pass.
+- [ ] **40. A clone under `run`, with progress.** On one of your own sites ask: *"clone
+  `https://github.com/octocat/Hello-World` into it as a plugin"* → a `run` prompt → Allow
+  for this session → Claude Code shows the job's phases arriving while it runs (the
+  progress notifications), then a reply whose log names the plugin folder as
+  `<docroot>/…`, never `/Users/…`. `repo status` on it reads under the same grant.
+- [ ] **41. A rewrite is two steps and a fingerprint.** On an imported site (Valet/Herd):
+  *"preview the connection rewrite"* under `read` → the diff and a fingerprint. *"apply
+  it"* → `destroy` prompt, session only → Allow → applied, backup kept. Edit the config by
+  hand, ask it to apply the OLD fingerprint again → `fileChanged`, nothing written.
+- [ ] **42. A database import destroys.** *"import `<site>`'s database from Herd"* → a
+  `destroy` prompt naming the drop. Don't allow → the database is untouched. Allow →
+  phases stream, the reply names any kept dump by FILE. `db_import leftovers` under
+  `read` on rexenv itself lists it by name only.
+
+### Parity P6 — the protocol, in front of the real clients. Ships only if 43–45 pass.
+- [ ] **43. ⚠ D12: 45 tools, two clients.** `claude mcp add rexenv -- rex mcp` → Claude Code
+  lists every tool (`/mcp` → rexenv) with no schema complaint, and a call works. Then the
+  Cursor stanza from the card → Cursor shows the server connected and its tool list
+  complete (Cursor has historically capped tools per server; if it truncates, THAT is the
+  finding — record the number). **Tell — a HOLD:** either client rejects the list or a
+  descriptor; the grouped design (D12) was chosen on this evidence and has to be re-cut
+  if it fails here.
+- [ ] **44. Destructive hints reach the client.** In Claude Code, ask for `site_delete` on
+  a granted site → the client's confirm-before-destructive UX appears (it reads
+  `destructiveHint`); `list_sites` never prompts (read-only).
+- [ ] **45. ⚠ Quit mid-call.** Ask for a `site_create` (a minute of work), quit rexenv
+  while it runs → the agent reports **"rexenv stopped while this call was in progress …
+  the outcome is unknown"** and does NOT retry the create on its own. Reopen rexenv →
+  the half-built or finished site is in the list; `site_status` says which.
+  **Tell — a HOLD:** the model sees a bare transport error, or retries the create.
+
 ## Robustness (spot-check) — §2
 - [ ] Quit with another app on :443, relaunch → a clear "port in use" message (no crash).
 - [ ] Cancel an admin prompt once → a clear "permission cancelled, try again" state; retry works.

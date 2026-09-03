@@ -270,6 +270,10 @@ packaged run, recorded in `TODO.md` under the existing gates row. L4 as time all
 7. Ledger: re-scope the "no registered tool reaches `run_privileged`" row to the
    first two registries; amend #197's scope sentence; new rows for 1–4.
 *Ships: a user can grant, see and revoke a scope; no tool uses one yet.*
+**P6 SHIPPED 3 Sep 2026** (#492 annotations, #493 the shim's in-band error, #494 progress).
+`job_status`/`job_cancel` deliberately not built (L9 row). What only a human can prove:
+SMOKE §P6 43–45 — D12's real-client `tools/list` at 45 tools, the destructive hint reaching
+Claude Code's confirm, and a quit mid-call reading as a sentence rather than an EOF.
 **P5 SHIPPED 3 Sep 2026** (#489 blueprints / the feed / share status, #490 `repo`, #491
 `valet_import` / `connection_rewrite` / `db_import`). Deviation from §4.4, recorded: `db_import
 start` is `destroy`, not `run` — it drops and rebuilds the site's database behind

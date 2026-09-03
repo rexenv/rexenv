@@ -2072,8 +2072,10 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     says the outcome is unknown and to check before retrying.
     ✓ P6.3 — **progress notifications**, ledger #494 (L9 closed): opt-in by
     `_meta.progressToken`, provision/repo/db-import loops report the card's own labels,
-    every line before the reply. `job_*` NOT built, as a decision (plan L9 row). Remaining:
-    the real-client `tools/list` check at 45 tools (D12) — a SMOKE step, §P6.
+    every line before the reply. `job_*` NOT built, as a decision (plan L9 row).
+    ✓ P6.4 — SMOKE §P5 (40–42) and §P6 (43–45) written; the sandbox L1 re-run at 45
+    tools (PASS). **P6 is shipped.** What only a human can prove: D12's two-client
+    `tools/list`, the destructive hint in Claude Code's confirm, a quit mid-call.
   - [ ] **P7 — Laravel loop**: `php_artisan`, Composer path-repo link (S1 re-run for
     Composer), D13.
 - [ ] **MCP server — EVERY PLANNED MILESTONE IS SHIPPED (M1, M2a, M2b, M3).** Header
