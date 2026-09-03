@@ -698,6 +698,34 @@ struct AppSiteCreator<Rt: tauri::Runtime> {
     app: tauri::AppHandle<Rt>,
 }
 
+impl<Rt: tauri::Runtime> AppSiteCreator<Rt> {
+    /// The app's `State` handles, straight off the handle — so a parity op
+    /// calls the COMMAND the dialog calls, with the same arguments, and no
+    /// second implementation of a site operation exists for agents.
+    fn state(&self) -> crate::error::Result<tauri::State<'_, AppState>> {
+        use tauri::Manager;
+        self.app
+            .try_state::<AppState>()
+            .ok_or_else(|| crate::error::Error::Other("rexenv is still starting — try again in a moment".into()))
+    }
+    fn tunnels(&self) -> crate::error::Result<tauri::State<'_, crate::commands::tunnels::Tunnels>> {
+        use tauri::Manager;
+        self.app.try_state::<crate::commands::tunnels::Tunnels>().ok_or_else(|| {
+            crate::error::Error::Other(
+                "rexenv cannot change sites right now — the person you're working with may need to restart it.".into(),
+            )
+        })
+    }
+    fn jobs(&self) -> crate::error::Result<tauri::State<'_, crate::commands::site_provision::ProvisionJobs>> {
+        use tauri::Manager;
+        self.app.try_state::<crate::commands::site_provision::ProvisionJobs>().ok_or_else(|| {
+            crate::error::Error::Other(
+                "rexenv cannot provision sites right now — its provisioning service is not running.".into(),
+            )
+        })
+    }
+}
+
 impl<Rt: tauri::Runtime> scratch::SiteDeleter for AppSiteCreator<Rt> {
     fn delete<'a>(
         &'a self,
@@ -807,6 +835,51 @@ impl<Rt: tauri::Runtime> user_sites::SiteOps for AppSiteCreator<Rt> {
 
     fn delete<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
         <Self as scratch::SiteDeleter>::delete(self, id)
+    }
+
+    fn rename<'a>(&'a self, id: String, name: String) -> user_sites::OpFuture<'a, crate::error::Result<Option<crate::state::models::Site>>> {
+        Box::pin(async move { crate::commands::sites::rename_site(self.state()?, id, name) })
+    }
+    fn change_domain<'a>(&'a self, id: String, domain: String) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::sites::DomainChange>> {
+        Box::pin(async move { crate::commands::sites::change_site_domain(self.state()?, self.tunnels()?, id, domain).await })
+    }
+    fn add_domain<'a>(&'a self, id: String, domain: String) -> user_sites::OpFuture<'a, crate::error::Result<Vec<String>>> {
+        Box::pin(async move { crate::commands::sites::add_site_domain(self.state()?, id, domain).await })
+    }
+    fn remove_domain<'a>(&'a self, id: String, domain: String) -> user_sites::OpFuture<'a, crate::error::Result<Vec<String>>> {
+        Box::pin(async move { crate::commands::sites::remove_site_domain(self.state()?, id, domain).await })
+    }
+    fn set_php<'a>(&'a self, id: String, version: String) -> user_sites::OpFuture<'a, crate::error::Result<Option<crate::state::models::Site>>> {
+        Box::pin(async move { crate::commands::sites::set_site_php_version(self.state()?, id, version).await })
+    }
+    fn set_server<'a>(&'a self, id: String, server: crate::state::models::WebServer) -> user_sites::OpFuture<'a, crate::error::Result<Option<crate::state::models::Site>>> {
+        Box::pin(async move { crate::commands::sites::set_site_web_server(self.state()?, self.tunnels()?, id, server).await })
+    }
+    fn set_xdebug<'a>(&'a self, id: String, enabled: bool) -> user_sites::OpFuture<'a, crate::error::Result<Option<crate::state::models::Site>>> {
+        Box::pin(async move { crate::commands::sites::set_site_xdebug(self.state()?, id, enabled).await })
+    }
+    fn list_env<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<Vec<crate::commands::sites::EnvVarInput>>> {
+        Box::pin(async move { crate::commands::sites::list_site_env(self.state()?, id) })
+    }
+    fn set_env<'a>(&'a self, id: String, vars: Vec<crate::commands::sites::EnvVarInput>) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::sites::set_site_env(self.state()?, id, vars).await })
+    }
+    fn move_docroot<'a>(&'a self, id: String, dest_parent: String) -> user_sites::OpFuture<'a, crate::error::Result<crate::state::models::Site>> {
+        Box::pin(async move { crate::commands::sites::move_site_docroot(self.state()?, self.tunnels()?, id, dest_parent).await })
+    }
+    fn relink<'a>(&'a self, id: String, path: String) -> user_sites::OpFuture<'a, crate::error::Result<crate::state::models::Site>> {
+        Box::pin(async move { crate::commands::sites::relink_site_docroot(self.state()?, self.tunnels()?, id, path).await })
+    }
+    fn regenerate_cert<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::sites::regenerate_site_cert(self.state()?, id).await })
+    }
+    fn restart<'a>(&'a self, id: String, pool: bool) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::sites::SiteRestartReport>> {
+        Box::pin(async move { crate::commands::sites::restart_site(self.state()?, id, pool).await })
+    }
+    fn retry<'a>(&'a self, site_id: String) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::site_provision::SiteProvisionState>> {
+        Box::pin(async move {
+            crate::commands::site_provision::site_provision_retry(self.app.clone(), self.state()?, self.jobs()?, site_id).await
+        })
     }
 
     fn multisite_convert<'a>(&'a self, id: String, mode: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {

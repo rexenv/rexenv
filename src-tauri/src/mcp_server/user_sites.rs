@@ -118,7 +118,94 @@ static REGISTRY: &[UserTool] = &[
         scope: Scope::Destroy,
         handler: site_delete,
     },
+    UserTool {
+        name: "site_configure",
+        description: "Change how one of the user's own sites is set up — the things the site's \
+                      Settings tab does. Takes `site_id` and `action`, plus the action's field: \
+                      `rename` {name}; `php` {version, a minor like `8.3`}; `server` {server: \
+                      nginx / apache / frankenphp}; `xdebug` {enabled}; `env_set` {key, value} and \
+                      `env_unset` {key} (per-request environment variables — values are never read \
+                      back, only the names); `domain` {domain} (changes the primary hostname; on \
+                      WordPress rexenv backs the database up to the user's Downloads first and \
+                      rewrites URLs); `add_domain` / `remove_domain` {domain} (extra hostnames the \
+                      site also answers on); `move` {dest_parent} (relocate a docroot rexenv \
+                      manages); `relink` {path} (re-point a linked site at a folder the user moved); \
+                      `regenerate_cert`. Needs the user's `manage` permission on that site — asked \
+                      for in the app if missing. Every change is the app's own operation with the \
+                      app's own refusals; the reply is the site as it now is.",
+        input_schema: configure_params,
+        sweep_args: |id| json!({ "site_id": id, "action": "rename", "name": "sweep-probe" }),
+        // The ACTION is the verb; the value (a name, a domain, an env value) is
+        // never summarised — the clamp would refuse most of them anyway.
+        summarise: |args| args.get("action").and_then(Value::as_str).map(str::to_string),
+        scope: Scope::Manage,
+        handler: site_configure,
+    },
+    UserTool {
+        name: "site_restart",
+        description: "Restart one of the user's own sites so it picks up a change. Takes `site_id` \
+                      and optional `pool` (default false). A site on the shared web server has no \
+                      process of its own: rexenv rebuilds its config and reloads the web tier. A site \
+                      with its own backend (FrankenPHP, Apache) gets that backend restarted. `pool: \
+                      true` ALSO restarts the PHP-FPM pool for the site's PHP version — which stops \
+                      every other site on that version for a moment, so the reply says how many; \
+                      leave it false unless the user asked. Needs `manage` on the site.",
+        input_schema: || json!({
+            "type": "object",
+            "properties": {
+                "site_id": { "type": "string" },
+                "pool": { "type": "boolean", "description": "Also restart the shared PHP pool. Affects every site on that PHP version." }
+            },
+            "required": ["site_id"],
+            "additionalProperties": false
+        }),
+        sweep_args: |id| json!({ "site_id": id, "pool": false }),
+        summarise: |_| None,
+        scope: Scope::Manage,
+        handler: site_restart,
+    },
+    UserTool {
+        name: "site_retry",
+        description: "Finish a site whose setup did not complete (listed as \"setup incomplete\" in \
+                      rexenv). Takes `site_id`. Re-runs only the steps that did not finish; a site \
+                      whose setup is complete is refused. Blocks until it settles (up to several \
+                      minutes for a WordPress download). Needs `manage` on the site.",
+        input_schema: || json!({
+            "type": "object",
+            "properties": { "site_id": { "type": "string" } },
+            "required": ["site_id"],
+            "additionalProperties": false
+        }),
+        sweep_args: |id| json!({ "site_id": id }),
+        summarise: |_| None,
+        scope: Scope::Manage,
+        handler: site_retry,
+    },
 ];
+
+fn configure_params() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "site_id": { "type": "string", "description": "The site's id (from list_sites)." },
+            "action": {
+                "type": "string",
+                "enum": ["rename", "php", "server", "xdebug", "env_set", "env_unset", "domain", "add_domain", "remove_domain", "move", "relink", "regenerate_cert"]
+            },
+            "name": { "type": "string", "description": "rename: the new display name." },
+            "version": { "type": "string", "description": "php: a minor like `8.3`." },
+            "server": { "type": "string", "enum": ["nginx", "apache", "frankenphp"], "description": "server: the web server to switch to." },
+            "enabled": { "type": "boolean", "description": "xdebug: on or off." },
+            "key": { "type": "string", "description": "env_set / env_unset: the variable's name." },
+            "value": { "type": "string", "description": "env_set: the value." },
+            "domain": { "type": "string", "description": "domain / add_domain / remove_domain: the hostname." },
+            "dest_parent": { "type": "string", "description": "move: the folder to move the site's docroot INTO." },
+            "path": { "type": "string", "description": "relink: the folder the user moved the site to." }
+        },
+        "required": ["site_id", "action"],
+        "additionalProperties": false
+    })
+}
 
 fn create_params() -> Value {
     json!({
@@ -200,6 +287,21 @@ pub trait SiteOps: Send + Sync {
     fn delete<'a>(&'a self, id: String) -> OpFuture<'a, Result<()>>;
     /// `wp core multisite-convert` through the app's command (share-guarded).
     fn multisite_convert<'a>(&'a self, id: String, mode: String) -> OpFuture<'a, Result<()>>;
+    // ── the site's Settings tab, one method per app command ──
+    fn rename<'a>(&'a self, id: String, name: String) -> OpFuture<'a, Result<Option<Site>>>;
+    fn change_domain<'a>(&'a self, id: String, domain: String) -> OpFuture<'a, Result<crate::commands::sites::DomainChange>>;
+    fn add_domain<'a>(&'a self, id: String, domain: String) -> OpFuture<'a, Result<Vec<String>>>;
+    fn remove_domain<'a>(&'a self, id: String, domain: String) -> OpFuture<'a, Result<Vec<String>>>;
+    fn set_php<'a>(&'a self, id: String, version: String) -> OpFuture<'a, Result<Option<Site>>>;
+    fn set_server<'a>(&'a self, id: String, server: WebServer) -> OpFuture<'a, Result<Option<Site>>>;
+    fn set_xdebug<'a>(&'a self, id: String, enabled: bool) -> OpFuture<'a, Result<Option<Site>>>;
+    fn list_env<'a>(&'a self, id: String) -> OpFuture<'a, Result<Vec<crate::commands::sites::EnvVarInput>>>;
+    fn set_env<'a>(&'a self, id: String, vars: Vec<crate::commands::sites::EnvVarInput>) -> OpFuture<'a, Result<()>>;
+    fn move_docroot<'a>(&'a self, id: String, dest_parent: String) -> OpFuture<'a, Result<Site>>;
+    fn relink<'a>(&'a self, id: String, path: String) -> OpFuture<'a, Result<Site>>;
+    fn regenerate_cert<'a>(&'a self, id: String) -> OpFuture<'a, Result<()>>;
+    fn restart<'a>(&'a self, id: String, pool: bool) -> OpFuture<'a, Result<crate::commands::sites::SiteRestartReport>>;
+    fn retry<'a>(&'a self, site_id: String) -> OpFuture<'a, Result<crate::commands::site_provision::SiteProvisionState>>;
 }
 
 /// What a parity handler can reach: app state, the app's own site operations,
@@ -552,6 +654,243 @@ fn site_delete<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::Ac
     })
 }
 
+
+/// The site after a change, as the agent sees it — M1's view, freshly read, so
+/// the reply is the row as it now is and not what the agent asked for.
+fn site_after(ctx: &UserCtx<'_>, id: &str) -> Result<Value> {
+    // The row under a BRIEF lock, released before `service_infos` — which
+    // takes the same lock itself (a held guard here deadlocked the first run).
+    let site = {
+        let conn = ctx.db()?;
+        crate::state::store::get_site(&conn, id)?
+            .ok_or_else(|| Error::Other(format!("no site with id {id:?} after the change")))?
+    };
+    let serving = crate::core::service_manager::site_serving(std::slice::from_ref(&site), &ctx.state.service_infos())
+        .first()
+        .is_some_and(|s| s.serving);
+    serde_json::to_value(super::view::AgentSiteView::from_site(&site, serving))
+        .map_err(|e| Error::Other(format!("serialising the site: {e}")))
+}
+
+fn str_field<'v>(args: &'v Value, key: &str, action: &str) -> Result<&'v str> {
+    args.get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| Error::Other(format!("site_configure `{action}` needs `{key}`.")))
+}
+
+fn site_configure<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTarget) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let id = args
+            .get("site_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| Error::Other("site_configure needs a `site_id`.".into()))?;
+        let action = args
+            .get("action")
+            .and_then(Value::as_str)
+            .ok_or_else(|| Error::Other("site_configure needs an `action`.".into()))?;
+        // SHAPE first: parse the action and its field before asking anything.
+        enum Change {
+            Rename(String),
+            Php(String),
+            Server(WebServer),
+            Xdebug(bool),
+            EnvSet(String, String),
+            EnvUnset(String),
+            Domain(String),
+            AddDomain(String),
+            RemoveDomain(String),
+            Move(String),
+            Relink(String),
+            RegenerateCert,
+        }
+        let change = match action {
+            "rename" => Change::Rename(str_field(args, "name", action)?.to_string()),
+            "php" => Change::Php(str_field(args, "version", action)?.to_string()),
+            "server" => {
+                let s = str_field(args, "server", action)?;
+                Change::Server(WebServer::parse_db(s).map_err(|_| {
+                    Error::Other(format!("`{s}` is not a web server rexenv runs — use `nginx`, `apache` or `frankenphp`."))
+                })?)
+            }
+            "xdebug" => Change::Xdebug(
+                args.get("enabled")
+                    .and_then(Value::as_bool)
+                    .ok_or_else(|| Error::Other("site_configure `xdebug` needs `enabled` (true or false).".into()))?,
+            ),
+            "env_set" => Change::EnvSet(
+                str_field(args, "key", action)?.to_string(),
+                args.get("value")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| Error::Other("site_configure `env_set` needs `value`.".into()))?
+                    .to_string(),
+            ),
+            "env_unset" => Change::EnvUnset(str_field(args, "key", action)?.to_string()),
+            "domain" => Change::Domain(str_field(args, "domain", action)?.to_ascii_lowercase()),
+            "add_domain" => Change::AddDomain(str_field(args, "domain", action)?.to_ascii_lowercase()),
+            "remove_domain" => Change::RemoveDomain(str_field(args, "domain", action)?.to_ascii_lowercase()),
+            "move" => Change::Move(str_field(args, "dest_parent", action)?.to_string()),
+            "relink" => Change::Relink(str_field(args, "path", action)?.to_string()),
+            "regenerate_cert" => Change::RegenerateCert,
+            other => {
+                return Err(Error::Other(format!(
+                    "`{other}` is not a site_configure action. Use one of: rename, php, server, xdebug, \
+                     env_set, env_unset, domain, add_domain, remove_domain, move, relink, regenerate_cert."
+                )))
+            }
+        };
+        let wanted = match &change {
+            Change::Rename(n) => format!("rename it to `{n}`"),
+            Change::Php(v) => format!("switch it to PHP {v}"),
+            Change::Server(s) => format!("serve it with {}", s.as_db()),
+            Change::Xdebug(on) => format!("turn Xdebug {}", if *on { "on" } else { "off" }),
+            Change::EnvSet(k, _) => format!("set the environment variable `{k}`"),
+            Change::EnvUnset(k) => format!("remove the environment variable `{k}`"),
+            Change::Domain(d) => format!("change its domain to `{d}`"),
+            Change::AddDomain(d) => format!("also answer on `{d}`"),
+            Change::RemoveDomain(d) => format!("stop answering on `{d}`"),
+            Change::Move(_) => "move its folder".to_string(),
+            Change::Relink(_) => "re-point it at a folder the user moved".to_string(),
+            Change::RegenerateCert => "regenerate its certificate".to_string(),
+        };
+        let claimed = ctx.claim::<scope::Manage>(Some(id), &wanted)?;
+        let site = claimed.granted.site().cloned().ok_or_else(|| Error::Other("site_configure needs a site, not the stack.".into()))?;
+        acted.set(&site);
+        let id = site.id.clone();
+        let ops = ctx.ops;
+        let mut extra = serde_json::Map::new();
+        match change {
+            Change::Rename(n) => {
+                ops.rename(id.clone(), n).await?;
+            }
+            Change::Php(v) => {
+                ops.set_php(id.clone(), v).await?;
+            }
+            Change::Server(sv) => {
+                ops.set_server(id.clone(), sv).await?;
+            }
+            Change::Xdebug(on) => {
+                ops.set_xdebug(id.clone(), on).await?;
+            }
+            Change::EnvSet(k, v) => {
+                // The app's command REPLACES the set (like its editor), so one
+                // variable is set by merging into what is there. Values never
+                // leave rexenv: the reply lists NAMES.
+                let mut vars = ops.list_env(id.clone()).await?;
+                vars.retain(|e| e.name != k);
+                vars.push(crate::commands::sites::EnvVarInput { name: k, value: v });
+                ops.set_env(id.clone(), vars.clone()).await?;
+                extra.insert("env".into(), json!(vars.iter().map(|e| e.name.as_str()).collect::<Vec<_>>()));
+            }
+            Change::EnvUnset(k) => {
+                let mut vars = ops.list_env(id.clone()).await?;
+                let before = vars.len();
+                vars.retain(|e| e.name != k);
+                if vars.len() == before {
+                    return Err(Error::Other(format!("`{k}` is not set on `{}` — nothing to remove.", site.domain)));
+                }
+                ops.set_env(id.clone(), vars.clone()).await?;
+                extra.insert("env".into(), json!(vars.iter().map(|e| e.name.as_str()).collect::<Vec<_>>()));
+            }
+            Change::Domain(d) => {
+                let change = ops.change_domain(id.clone(), d).await?;
+                extra.insert("replacements".into(), json!(change.replacements));
+                if change.backup_path.is_some() {
+                    // The path stays inside rexenv; the FACT of a backup is what the
+                    // agent needs to relay.
+                    extra.insert("backup".into(), json!("a copy of the database as it was before the change was saved to the user's Downloads folder"));
+                }
+            }
+            Change::AddDomain(d) => {
+                let names = ops.add_domain(id.clone(), d).await?;
+                extra.insert("domains".into(), json!(names));
+            }
+            Change::RemoveDomain(d) => {
+                let names = ops.remove_domain(id.clone(), d).await?;
+                extra.insert("domains".into(), json!(names));
+            }
+            Change::Move(dest) => {
+                ops.move_docroot(id.clone(), dest).await?;
+            }
+            Change::Relink(path) => {
+                ops.relink(id.clone(), path).await?;
+            }
+            Change::RegenerateCert => {
+                ops.regenerate_cert(id.clone()).await?;
+                extra.insert("certificate".into(), json!("reissued"));
+            }
+        }
+        let mut value = site_after(&ctx, &id)?;
+        if let Some(obj) = value.as_object_mut() {
+            obj.insert("action".into(), json!(action));
+            obj.extend(extra);
+            if claimed.auto_granted {
+                obj.insert("consent".into(), Value::String(agent_grants::AUTO_GRANTED_NOTE.to_string()));
+            }
+        }
+        Ok(value)
+    })
+}
+
+fn site_restart<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTarget) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let id = args
+            .get("site_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| Error::Other("site_restart needs a `site_id`.".into()))?;
+        let pool = args.get("pool").and_then(Value::as_bool).unwrap_or(false);
+        let wanted = if pool { "restart it and the PHP pool it shares" } else { "restart it" };
+        let claimed = ctx.claim::<scope::Manage>(Some(id), wanted)?;
+        let site = claimed.granted.site().cloned().ok_or_else(|| Error::Other("site_restart needs a site.".into()))?;
+        acted.set(&site);
+        let r = ctx.ops.restart(site.id.clone(), pool).await?;
+        // #444's three honest outcomes, in the CLI's words; loopback ports
+        // dropped — an agent has no use for them and the view rule is "only
+        // what the answer needs".
+        let detail = match r.kind {
+            "backend" => format!("`{}`'s own {} backend was stopped and started again.", site.domain, r.server.clone().unwrap_or_default()),
+            "shared" => format!("`{}` has no process of its own: its config was rebuilt and the web tier reloaded, which is what makes a default site pick up a change.", site.domain),
+            _ => format!("`{}`'s backend was adopted from outside rexenv and was not stopped — the person you're working with owns that process.", site.domain),
+        };
+        Ok(json!({
+            "domain": site.domain,
+            "kind": r.kind,
+            "server": r.server,
+            "phpMinor": r.php_minor,
+            "sitesOnPool": r.sites_on_pool,
+            "poolRestarted": r.pool_restarted,
+            "detail": detail,
+        }))
+    })
+}
+
+fn site_retry<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTarget) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let id = args
+            .get("site_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| Error::Other("site_retry needs a `site_id`.".into()))?;
+        let claimed = ctx.claim::<scope::Manage>(Some(id), "finish its setup")?;
+        let site = claimed.granted.site().cloned().ok_or_else(|| Error::Other("site_retry needs a site.".into()))?;
+        acted.set(&site);
+        let st = ctx.ops.retry(site.id.clone()).await?;
+        // The job's own error text can name a local path; through the one
+        // scrubber, like every other door a path leaves by (#201).
+        let known = super::view::KnownPaths::for_site(ctx.state.platform.paths(), &site.path);
+        let scrub = |s: Option<String>| s.map(|t| super::view::scrub_log_line(&t, &known));
+        Ok(json!({
+            "domain": st.domain,
+            "status": st.status,
+            "phases": st.phases.iter().map(|p| json!({ "label": p.label, "status": p.status })).collect::<Vec<_>>(),
+            "summary": scrub(st.summary),
+            "error": scrub(st.error),
+            "servingBlocked": st.serving_blocked,
+            "servingHolder": st.serving_holder,
+        }))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -643,6 +982,8 @@ mod tests {
         created: Mutex<Vec<Created>>,
         deleted: Mutex<Vec<String>>,
         converted: Mutex<Vec<(String, String)>>,
+        calls: Mutex<Vec<String>>,
+        env: Mutex<Vec<crate::commands::sites::EnvVarInput>>,
     }
     impl SiteOps for FakeOps {
         fn create<'a>(
@@ -663,6 +1004,88 @@ mod tests {
         fn multisite_convert<'a>(&'a self, id: String, mode: String) -> OpFuture<'a, Result<()>> {
             self.converted.lock().unwrap().push((id, mode));
             Box::pin(async { Ok(()) })
+        }
+        fn rename<'a>(&'a self, id: String, name: String) -> OpFuture<'a, Result<Option<Site>>> {
+            self.calls.lock().unwrap().push(format!("rename {id} {name}"));
+            Box::pin(async { Ok(None) })
+        }
+        fn change_domain<'a>(&'a self, id: String, domain: String) -> OpFuture<'a, Result<crate::commands::sites::DomainChange>> {
+            self.calls.lock().unwrap().push(format!("domain {id} {domain}"));
+            let site = test_site(&id, &domain, SiteOrigin::User);
+            Box::pin(async move { Ok(crate::commands::sites::DomainChange { site, backup_path: Some("/Users/somebody/Downloads/x.sql".into()), replacements: 12 }) })
+        }
+        fn add_domain<'a>(&'a self, id: String, domain: String) -> OpFuture<'a, Result<Vec<String>>> {
+            self.calls.lock().unwrap().push(format!("add_domain {id} {domain}"));
+            Box::pin(async move { Ok(vec!["mine.rex".into(), domain]) })
+        }
+        fn remove_domain<'a>(&'a self, id: String, domain: String) -> OpFuture<'a, Result<Vec<String>>> {
+            self.calls.lock().unwrap().push(format!("remove_domain {id} {domain}"));
+            Box::pin(async { Ok(vec!["mine.rex".into()]) })
+        }
+        fn set_php<'a>(&'a self, id: String, version: String) -> OpFuture<'a, Result<Option<Site>>> {
+            self.calls.lock().unwrap().push(format!("php {id} {version}"));
+            Box::pin(async { Ok(None) })
+        }
+        fn set_server<'a>(&'a self, id: String, server: WebServer) -> OpFuture<'a, Result<Option<Site>>> {
+            self.calls.lock().unwrap().push(format!("server {id} {}", server.as_db()));
+            Box::pin(async { Ok(None) })
+        }
+        fn set_xdebug<'a>(&'a self, id: String, enabled: bool) -> OpFuture<'a, Result<Option<Site>>> {
+            self.calls.lock().unwrap().push(format!("xdebug {id} {enabled}"));
+            Box::pin(async { Ok(None) })
+        }
+        fn list_env<'a>(&'a self, _id: String) -> OpFuture<'a, Result<Vec<crate::commands::sites::EnvVarInput>>> {
+            let env = self.env.lock().unwrap().clone();
+            Box::pin(async move { Ok(env) })
+        }
+        fn set_env<'a>(&'a self, id: String, vars: Vec<crate::commands::sites::EnvVarInput>) -> OpFuture<'a, Result<()>> {
+            self.calls.lock().unwrap().push(format!("env {id} {}", vars.iter().map(|v| format!("{}={}", v.name, v.value)).collect::<Vec<_>>().join(",")));
+            *self.env.lock().unwrap() = vars;
+            Box::pin(async { Ok(()) })
+        }
+        fn move_docroot<'a>(&'a self, id: String, dest_parent: String) -> OpFuture<'a, Result<Site>> {
+            self.calls.lock().unwrap().push(format!("move {id} {dest_parent}"));
+            let site = test_site(&id, "mine.rex", SiteOrigin::User);
+            Box::pin(async move { Ok(site) })
+        }
+        fn relink<'a>(&'a self, id: String, path: String) -> OpFuture<'a, Result<Site>> {
+            self.calls.lock().unwrap().push(format!("relink {id} {path}"));
+            let site = test_site(&id, "mine.rex", SiteOrigin::User);
+            Box::pin(async move { Ok(site) })
+        }
+        fn regenerate_cert<'a>(&'a self, id: String) -> OpFuture<'a, Result<()>> {
+            self.calls.lock().unwrap().push(format!("cert {id}"));
+            Box::pin(async { Ok(()) })
+        }
+        fn restart<'a>(&'a self, id: String, pool: bool) -> OpFuture<'a, Result<crate::commands::sites::SiteRestartReport>> {
+            self.calls.lock().unwrap().push(format!("restart {id} {pool}"));
+            Box::pin(async move {
+                Ok(crate::commands::sites::SiteRestartReport {
+                    kind: "shared", server: None, port: None, php_minor: "8.3".into(), pool_port: 19083, sites_on_pool: 4, pool_restarted: pool,
+                })
+            })
+        }
+        fn retry<'a>(&'a self, site_id: String) -> OpFuture<'a, Result<crate::commands::site_provision::SiteProvisionState>> {
+            self.calls.lock().unwrap().push(format!("retry {site_id}"));
+            Box::pin(async move {
+                Ok(crate::commands::site_provision::SiteProvisionState {
+                    id: "job".into(),
+                    domain: "mine.rex".into(),
+                    site_id: Some(site_id),
+                    phases: vec![crate::commands::site_provision::PhaseState { key: "core_download".into(), label: "downloading WordPress".into(), status: "ok".into() }],
+                    phase_cursor: 0,
+                    pct: 100,
+                    status: "ok".into(),
+                    summary: Some("done; log at /Users/somebody/Library/Application Support/rexenv/logs/x.log".into()),
+                    error: None,
+                    log_key: "x.log".into(),
+                    download_ids: vec![],
+                    serving_blocked: false,
+                    serving_holder: None,
+                    serving_app: None,
+                    assets_warning: None,
+                })
+            })
         }
     }
 
@@ -828,5 +1251,137 @@ mod tests {
         assert_eq!(v["domain"], "mine.rex");
         assert_eq!(ops.deleted.lock().unwrap().as_slice(), std::slice::from_ref(&mine.id));
         assert_eq!(acted.take().as_deref(), Some(mine.id.as_str()));
+    }
+
+    /// **`site_configure` parses the action on its shape before asking, claims
+    /// `manage` ONCE on the site, runs exactly the app command for that action,
+    /// and answers with the site as it now is — env VALUES never included.**
+    #[tokio::test]
+    async fn site_configure_dispatches_each_action_through_the_app_after_one_manage_claim() {
+        let state = app_state();
+        switch_on(&state);
+        let ops = FakeOps::default();
+        let acted = super::super::feed::ActedTarget::default();
+        let ctx = UserCtx::new(&state, &ops, "claude-code");
+        let mine = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "mine.rex", SiteOrigin::User);
+        {
+            let conn = state.db.lock().unwrap();
+            store::insert_site(&conn, &mine).unwrap();
+        }
+        let run = |args: Value| {
+            let acted = &acted;
+            async move { site_configure(ctx, &args, acted).await }
+        };
+        let with = |action: &str, k: &str, v: Value| {
+            let mut m = serde_json::Map::new();
+            m.insert("site_id".into(), json!(mine.id));
+            m.insert("action".into(), json!(action));
+            m.insert(k.into(), v);
+            Value::Object(m)
+        };
+
+        // Shape: an unknown action and a missing field are answered without a
+        // permission — and record no ask.
+        let err = run(with("paint", "name", json!("x"))).await.unwrap_err().to_string();
+        assert!(err.contains("not a site_configure action") && err.contains("regenerate_cert"), "{err}");
+        let err = run(json!({ "site_id": mine.id, "action": "php" })).await.unwrap_err().to_string();
+        assert!(err.contains("needs `version`"), "{err}");
+        let err = run(with("server", "server", json!("iis"))).await.unwrap_err().to_string();
+        assert!(err.contains("not a web server"), "{err}");
+        assert!(asks(&state).is_empty(), "shape refusals ask for nothing");
+
+        // Good shape, no grant: `manage` asked for on THIS site, with the verb.
+        let err = run(with("php", "version", json!("8.4"))).await.unwrap_err().to_string();
+        assert!(err.contains("Site access"), "{err}");
+        let a = asks(&state);
+        assert_eq!((a[0].site_id.as_deref(), a[0].scope), (Some(mine.id.as_str()), Scope::Manage));
+        assert!(a[0].wanted.contains("PHP 8.4"), "{}", a[0].wanted);
+        assert!(ops.calls.lock().unwrap().is_empty());
+
+        {
+            let conn = state.db.lock().unwrap();
+            store::grant_agent_site(&conn, "g1", Some(&mine.id), "claude-code", "manage", 7, false, false).unwrap();
+        }
+        // Every action reaches exactly its app command.
+        let v = run(with("php", "version", json!("8.4"))).await.unwrap();
+        assert_eq!(v["action"], "php");
+        assert_eq!(v["domain"], "mine.rex", "the reply is the row, re-read");
+        run(with("rename", "name", json!("Mine"))).await.unwrap();
+        run(with("server", "server", json!("frankenphp"))).await.unwrap();
+        run(with("xdebug", "enabled", json!(true))).await.unwrap();
+        let v = run(with("add_domain", "domain", json!("ALSO.rex"))).await.unwrap();
+        assert_eq!(v["domains"], json!(["mine.rex", "also.rex"]), "lower-cased, and the whole list comes back");
+        run(with("remove_domain", "domain", json!("also.rex"))).await.unwrap();
+        let v = run(with("domain", "domain", json!("new.rex"))).await.unwrap();
+        assert_eq!(v["replacements"], 12);
+        assert!(v["backup"].as_str().unwrap().contains("Downloads"), "the FACT of the backup, not its path: {v}");
+        assert!(!v.to_string().contains("/Users/"), "no local path in the reply: {v}");
+        run(with("move", "dest_parent", json!("/Users/somebody/Sites"))).await.unwrap();
+        run(with("relink", "path", json!("/Users/somebody/Projects/mine"))).await.unwrap();
+        let v = run(json!({ "site_id": mine.id, "action": "regenerate_cert" })).await.unwrap();
+        assert_eq!(v["certificate"], "reissued");
+        // env: a merge, and NAMES only in the reply.
+        let mut set = with("env_set", "key", json!("API_KEY"));
+        set["value"] = json!("s3cret");
+        let v = run(set).await.unwrap();
+        assert_eq!(v["env"], json!(["API_KEY"]));
+        assert!(!v.to_string().contains("s3cret"), "an env value left rexenv: {v}");
+        let mut set2 = with("env_set", "key", json!("DEBUG"));
+        set2["value"] = json!("1");
+        let v = run(set2).await.unwrap();
+        assert_eq!(v["env"], json!(["API_KEY", "DEBUG"]), "set is a merge, not a replace");
+        let v = run(with("env_unset", "key", json!("API_KEY"))).await.unwrap();
+        assert_eq!(v["env"], json!(["DEBUG"]));
+        let err = run(with("env_unset", "key", json!("NOPE"))).await.unwrap_err().to_string();
+        assert!(err.contains("not set"), "{err}");
+
+        let calls = ops.calls.lock().unwrap().clone();
+        let id = mine.id.as_str();
+        for expect in [
+            format!("php {id} 8.4"), format!("rename {id} Mine"), format!("server {id} frankenphp"), format!("xdebug {id} true"),
+            format!("add_domain {id} also.rex"), format!("remove_domain {id} also.rex"), format!("domain {id} new.rex"),
+            format!("move {id} /Users/somebody/Sites"), format!("relink {id} /Users/somebody/Projects/mine"), format!("cert {id}"),
+            format!("env {id} API_KEY=s3cret"), format!("env {id} API_KEY=s3cret,DEBUG=1"), format!("env {id} DEBUG=1"),
+        ] {
+            assert!(calls.contains(&expect), "missing app call {expect:?} in {calls:?}");
+        }
+        assert_eq!(acted.take().as_deref(), Some(id));
+    }
+
+    /// **`site_restart` and `site_retry` need `manage` on the site, run the app's
+    /// own operation, and their replies carry the outcome in words — never a
+    /// loopback port the agent has no use for, never a local log path.**
+    #[tokio::test]
+    async fn site_restart_and_retry_need_manage_and_answer_in_words() {
+        let state = app_state();
+        switch_on(&state);
+        let ops = FakeOps::default();
+        let acted = super::super::feed::ActedTarget::default();
+        let ctx = UserCtx::new(&state, &ops, "claude-code");
+        let mine = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "mine.rex", SiteOrigin::User);
+        {
+            let conn = state.db.lock().unwrap();
+            store::insert_site(&conn, &mine).unwrap();
+        }
+        assert!(site_restart(ctx, &json!({ "site_id": mine.id }), &acted).await.is_err());
+        assert!(site_retry(ctx, &json!({ "site_id": mine.id }), &acted).await.is_err());
+        assert_eq!(asks(&state).len(), 1, "one key: same site, same client, same scope — one prompt");
+        {
+            let conn = state.db.lock().unwrap();
+            store::grant_agent_site(&conn, "g1", Some(&mine.id), "claude-code", "manage", 7, false, false).unwrap();
+        }
+        let v = site_restart(ctx, &json!({ "site_id": mine.id, "pool": true }), &acted).await.unwrap();
+        assert_eq!(v["kind"], "shared");
+        assert_eq!(v["sitesOnPool"], 4);
+        assert_eq!(v["poolRestarted"], true);
+        assert!(v.get("poolPort").is_none() && v.get("port").is_none(), "ports dropped: {v}");
+        assert!(v["detail"].as_str().unwrap().contains("reloaded"));
+        let v = site_retry(ctx, &json!({ "site_id": mine.id }), &acted).await.unwrap();
+        assert_eq!(v["status"], "ok");
+        assert_eq!(v["phases"][0]["label"], "downloading WordPress");
+        let text = v.to_string();
+        assert!(!text.contains("/Users/somebody"), "the job's own text is scrubbed: {text}");
+        assert!(text.contains("<"), "the scrubbed path reads as a label: {text}");
+        assert!(ops.calls.lock().unwrap().iter().any(|c| c == &format!("retry {}", mine.id)));
     }
 }

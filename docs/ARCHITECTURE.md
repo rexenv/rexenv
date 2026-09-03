@@ -893,7 +893,11 @@ IPC surface — which is how a reader ends up designing against a system with on
   tools that act on the USER's own sites and the stack — `site_create` (`manage` on rexenv
   itself; a WordPress / blank-PHP / Laravel site through the app's own provision job,
   recorded as the USER's via `Ownership::UserByAgent`, which never prompts) and
-  `site_delete` (`destroy`, session-only; the app's full delete) so far — each through a
+  `site_delete` (`destroy`, session-only; the app's full delete), `site_configure` (`manage`
+  on the site; twelve actions, each exactly one app command — rename, php, server, xdebug,
+  env set/unset as a merge whose VALUES never come back, domain change, extra domains,
+  move, relink, cert), `site_restart` (#444's three outcomes in words, ports dropped) and
+  `site_retry` (the job's own text through the one scrubber) — each through a
   `Granted<S>` scope witness (`core::agent_grants`) minted from a grant the user gave in the
   app, and only while the "Let agents manage my own sites" switch is on. Shape refusals
   (a bad type, a taken domain, `multisite` on a PHP site) come BEFORE the gate and record no

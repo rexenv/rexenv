@@ -1997,8 +1997,12 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     `Ownership::UserByAgent` (the user's site, never prompts, no badge/clock); shape
     refusals before the gate and no ask for them; the app's own provision job and full
     delete through the erased `SiteOps`; multisite as a reported second op; credentials
-    once. A satisfied claim now clears its stale ask. Remaining: `site_configure`,
-    `site_restart`/`site_retry`, `site_info`, the L1, SMOKE §P2.
+    once. A satisfied claim now clears its stale ask.
+    ✓ P2.2 — **`site_configure` + `site_restart` + `site_retry`**, ledger #477/#478: twelve
+    actions, one app command each through `SiteOps`; env as a merge with names only;
+    a domain change's backup as a fact; ports dropped; the retry's text scrubbed. Found
+    and fixed: a db guard held across `service_infos()` deadlocked the reply path.
+    Remaining: `site_info` + `list_sites` widened, `job_*`, the L1, SMOKE §P2.
   - [ ] **P3 — WordPress on real sites** (eight grouped `wp_*` tools + `wp_run`'s `run`
     arm), `tail_log` every source, `mail_inbox`.
   - [ ] **P4 — the stack**: `stack_status`/`stack(...)` incl. privileged start/stop (D10),
