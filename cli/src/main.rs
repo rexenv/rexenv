@@ -760,6 +760,29 @@ fn flag_value(words: &[String], flag: &str) -> Option<String> {
         .cloned()
 }
 
+/// Refuse a flag this command does not know, naming it.
+///
+/// An unrecognised flag is otherwise DROPPED, and the command runs with the
+/// default the flag existed to override. On `site create` that built the wrong
+/// site; on `wp search-replace` it is worse — `--dry-runn --yes` turns a
+/// rehearsal into a real replace across the database, with no prompt, because
+/// the typo removes the dry-run and the `--yes` removes the question.
+///
+/// `known` is the command's own list, passed by the caller that reads those
+/// flags, so the two cannot drift apart in different files.
+fn reject_unknown_flags(words: &[String], command: &str, known: &[&str], usage: &str) {
+    if let Some(bad) = unknown_flag(words, known) {
+        eprintln!("rex: unknown flag `{bad}` for `{command}`\n{usage}");
+        exit(2);
+    }
+}
+
+/// The decision behind [`reject_unknown_flags`], split out so a test can hold
+/// it: the refusal itself ends the process, which no unit test can survive.
+fn unknown_flag<'a>(words: &'a [String], known: &[&str]) -> Option<&'a String> {
+    words.iter().find(|w| w.starts_with("--") && !known.contains(&w.as_str()))
+}
+
 /// `site create`'s value-taking flags, and the socket key each one fills. ONE
 /// list: the loop below sends them and the unknown-flag check measures against
 /// it, so a flag can never be accepted-but-unsent or refused-but-supported.
@@ -802,12 +825,7 @@ fn cmd_site_create(words: &[String], json_output: bool) {
     // gives you a site on the default minor with no word said, and a site is a
     // durable artifact: docroot, database, certificate, config. Refusing costs
     // one retype; the silence costs a delete and a re-create.
-    let known = create_known_flags();
-    if let Some(bad) = words.iter().find(|w| w.starts_with("--") && !known.contains(&w.as_str())) {
-        eprintln!("rex: unknown flag `{bad}` for `site create` — the site would have been created \
-                   without it\n{CREATE_USAGE}");
-        exit(2);
-    }
+    reject_unknown_flags(words, "site create", &create_known_flags(), CREATE_USAGE);
     let mut args = serde_json::Map::new();
     args.insert("domain".into(), json!(domain));
     for (flag, key) in CREATE_FLAGS {
@@ -2534,10 +2552,26 @@ fn cmd_wp(words: &[String], json_output: bool) {
         }
         (Some("search-replace"), from_word) => {
             // Grammar: rex wp <domain> search-replace <from> <to> [--dry-run] [--yes]
+            const SR_USAGE: &str =
+                "rex: usage: rex wp <domain> search-replace <from> <to> [--dry-run] [--yes]";
+            // The most dangerous flag set in the CLI: a typo'd `--dry-runn`
+            // leaves `dry` false, and a `--yes` beside it removes the question,
+            // so a rehearsal becomes a real replace across the database.
+            reject_unknown_flags(words, "wp search-replace", &["--dry-run", "--yes"], SR_USAGE);
             let (Some(from), Some(to)) = (from_word, words.get(3).map(String::as_str)) else {
-                eprintln!("rex: usage: rex wp <domain> search-replace <from> <to> [--dry-run] [--yes]");
+                eprintln!("{SR_USAGE}");
                 exit(1);
             };
+            // …and the positionals must be VALUES. `search-replace old --dry-run new`
+            // otherwise reads `to` as the flag and writes the literal string
+            // `--dry-run` across every row it matches.
+            if from.starts_with("--") || to.starts_with("--") {
+                eprintln!(
+                    "rex: `{from}` → `{to}`: a flag cannot be the text to search for or write. \
+                     Put <from> and <to> before the flags.\n{SR_USAGE}"
+                );
+                exit(2);
+            }
             let dry = words.iter().any(|w| w == "--dry-run");
             if !dry && !words.iter().any(|w| w == "--yes") {
                 eprint!(
@@ -2767,6 +2801,12 @@ fn cmd_db_export(words: &[String], json_output: bool) {
 }
 
 fn cmd_db_import(words: &[String], json_output: bool) {
+    reject_unknown_flags(
+        words,
+        "db import",
+        &["--yes"],
+        "rex: usage: rex db import <domain> <file.sql> [--yes]",
+    );
     let site = find_site(words, "rex db import <domain> <file.sql> [--yes]");
     let domain = site["domain"].as_str().unwrap_or("?").to_string();
     let Some(file) = words.get(1).filter(|w| !w.starts_with("--")) else {
@@ -2808,6 +2848,12 @@ fn cmd_db_import(words: &[String], json_output: bool) {
 // ── db reset / versions ──────────────────────────────────────────────────────
 
 fn cmd_db_reset(words: &[String], json_output: bool) {
+    reject_unknown_flags(
+        words,
+        "db reset",
+        &["--confirm"],
+        "rex: usage: rex db reset <domain> [--confirm <domain>]",
+    );
     let site = find_site(words, "rex db reset <domain>");
     let domain = site["domain"].as_str().unwrap_or("?").to_string();
     // Nuclear: drop + reinstall. Typed confirmation (the UI's model), never
@@ -3193,8 +3239,14 @@ fn cmd_site_logs(words: &[String], json_output: bool) {
 }
 
 fn cmd_site_delete(words: &[String], json_output: bool) {
-    let Some(domain) = words.first().filter(|w| !w.starts_with("--")) else {
-        eprintln!("rex: usage: rex site delete <domain> [--yes]");
+    const DELETE_USAGE: &str = "rex: usage: rex site delete <domain> [--yes]";
+    // Here a typo fails SAFE — a misspelt `--yes` leaves the prompt in place —
+    // so this is defence in depth rather than a fix. It is still worth having:
+    // the failure it prevents is the reverse one, someone who meant a flag this
+    // command does not have (`--force`, `--keep-db`) and got a delete anyway.
+    reject_unknown_flags(words, "site delete", &["--yes"], DELETE_USAGE);
+    let Some(domain) = words.first() else {
+        eprintln!("{DELETE_USAGE}");
         exit(1);
     };
     // Resolve domain → id through the app (same list the UI shows). By the
@@ -4221,6 +4273,80 @@ mod tests {
              or say what part is still owed",
             stale.join("\n  ")
         );
+    }
+
+    /// **`wp search-replace` refuses a flag it does not know, and will not take
+    /// a flag as the text to write.**
+    ///
+    /// The worst flag set in the CLI. `--dry-runn --yes` leaves `dry` false and
+    /// removes the prompt in one stroke, so a rehearsal runs as a real replace
+    /// across every table; and `search-replace old --dry-run new` reads `to` as
+    /// the flag and writes the literal string `--dry-run` into every row it
+    /// matches. Both were silent, and `db export` is the only way back from
+    /// either.
+    #[test]
+    fn search_replace_refuses_an_unknown_flag_and_a_flag_as_a_value() {
+        const ME: &str = include_str!("main.rs");
+        let arm = ME
+            .split("(Some(\"search-replace\"), from_word) => {")
+            .nth(1)
+            .and_then(|b| b.split("\n        (Some(").next())
+            .expect("the search-replace arm");
+
+        // What the arm READS, from the `== \"--x\"` comparisons — a different
+        // syntactic form from the declared list, so deleting one does not
+        // delete the evidence for the other.
+        let reads: Vec<String> = arm
+            .split("== \"--")
+            .skip(1)
+            .filter_map(|p| p.split('"').next())
+            .map(|r| format!("--{r}"))
+            .collect();
+        assert!(!reads.is_empty(), "no flag comparison found in the arm — the scan moved");
+
+        // What it DECLARES, from the call site.
+        let declared: Vec<String> = arm
+            .split("reject_unknown_flags(words, \"wp search-replace\", &[")
+            .nth(1)
+            .and_then(|r| r.split(']').next())
+            .expect("search-replace must call reject_unknown_flags")
+            .split(',')
+            .map(|t| t.trim().trim_matches('"').to_string())
+            .filter(|t| t.starts_with("--"))
+            .collect();
+
+        for r in &reads {
+            assert!(
+                declared.contains(r),
+                "the arm reads `{r}` but does not declare it, so the command would refuse the \
+                 flag it was given the code to handle"
+            );
+        }
+        assert!(
+            declared.iter().any(|d| d == "--dry-run"),
+            "`--dry-run` must be accepted — refusing it would make the rehearsal unreachable"
+        );
+        // The positional guard, which is the other half of the same danger.
+        assert!(
+            arm.contains("from.starts_with(\"--\")") && arm.contains("to.starts_with(\"--\")"),
+            "a flag can still be taken as <from> or <to>, and the replacement WRITES it"
+        );
+    }
+
+    /// The predicate behind every unknown-flag refusal.
+    #[test]
+    fn an_unknown_flag_is_found_and_a_known_one_is_not() {
+        let w = |s: &str| s.split(' ').map(str::to_string).collect::<Vec<_>>();
+        let known = ["--dry-run", "--yes"];
+        assert_eq!(unknown_flag(&w("old new --dry-run --yes"), &known), None);
+        assert_eq!(
+            unknown_flag(&w("old new --dry-runn --yes"), &known).map(String::as_str),
+            Some("--dry-runn"),
+            "a one-letter typo is the whole failure — it must be the thing that is named"
+        );
+        // Values are never flags, however flag-shaped the text is.
+        assert_eq!(unknown_flag(&w("old new"), &known), None);
+        assert_eq!(unknown_flag(&w("-x old"), &known), None, "a single dash is not our shape");
     }
 
 }

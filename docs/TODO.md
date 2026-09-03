@@ -35,16 +35,20 @@ paying for anyway: **the tick belongs in the commit that does the work.**
 
 ## Now — actionable code/test work
 
-- [ ] **The other flag-taking `rex` commands still ignore what they do not
-  recognise** (3 Sep 2026, ledger #463). `site create` refuses an unknown flag
-  now — a misspelt one was silently dropped and the site created with the
-  default the flag existed to override. It was taken first because its artifact
-  is the one a retype cannot undo, but ~20 other commands have the same shape,
-  and two of them (`db reset`, `site delete`) are destructive rather than
-  creative. The pattern to copy is the one that made this safe: the accepted set
-  is a FUNCTION the test calls, never a literal the test re-reads — the first
-  version scanned the same lines the list was written in, so deleting an entry
-  deleted the evidence and the plant came back green.
+- [ ] **~16 flag-taking `rex` commands still ignore what they do not recognise**
+  (3 Sep 2026, ledger #463/#466). Done: `site create`, `wp search-replace`,
+  `site delete`, `db reset`, `db import`.
+  **Pick the rest by what an ignored flag DOES, not by how destructive the verb
+  sounds** — that was the first ordering here and it was wrong. On `db reset` and
+  `site delete` a typo fails SAFE: a misspelt `--yes` leaves the prompt standing.
+  The danger is a flag that SUPPRESSES a question (`--yes`, `--dry-run`) or
+  CHANGES what gets written or built. `wp search-replace` had both at once.
+  Two patterns to copy, each bought by a failure:
+  the accepted set is a FUNCTION or a table the test reads through a DIFFERENT
+  syntactic form than the one the code declares it in — a scan over the same
+  lines deletes its own evidence, and that plant came back green; and check the
+  POSITIONALS too, since `search-replace old --dry-run new` wrote the flag
+  itself into the database.
 
 - [x] **WordPress passwords ride wp-cli argv** ✓ 3 Sep 2026 — live leg run against the bundled
   wp-cli 2.12.0: `--prompt` reads a pipe but ECHOES the command with the secret to stdout;
