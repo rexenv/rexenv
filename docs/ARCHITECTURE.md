@@ -864,7 +864,11 @@ IPC surface — which is how a reader ends up designing against a system with on
 - **What it is.** An opt-in MCP endpoint so a developer's AI agent can drive rexenv:
   read-only diagnosis (M1), and disposable WordPress **scratch sites** the agent owns
   outright (M2a/M2b). In-process beside `cli_server`, second `0600` unix socket, bridged
-  by `rex mcp`. M3 (database access, agent principals, the first consent dialog)
+  by `rex mcp` — a pipe that constructs no request and interprets no method but, since
+  parity P6.2, reads the ids of the requests it forwards so that when the app quits
+  mid-call the pending request is answered in-band with "rexenv stopped … the outcome is
+  unknown … check before retrying" rather than a bare EOF a model would guess past.
+  M3 (database access, agent principals, the first consent dialog)
   SHIPPED 24–25 Aug 2026 (#398–#404) — this bullet said "not built" until 3 Sep 2026,
   nine days after, while the `db_query` bullet below described the shipped thing. The
   next stage is parity — every app function behind a scoped grant — planned in

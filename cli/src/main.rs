@@ -207,13 +207,75 @@ fn mcp_socket_path() -> PathBuf {
     }
 }
 
-/// `rex mcp` — the MCP stdio bridge. A DUMB bidirectional pipe: it copies bytes
-/// between the client's stdio and the app's MCP socket and never parses MCP (the
-/// app is the brain). Newline-delimited JSON-RPC flows through untouched. On a
-/// dead socket it fails with a specific reason and exits 2 — never a generic
-/// transport error the agent papers over with a guess. Either side closing ends
-/// the whole bridge, so the client sees the server go away.
+/// The one sentence the bridge says IN-BAND when the app goes away with a
+/// request still unanswered (PLAN-mcp-server §2.3's deferred-with-a-trigger
+/// item, built with MCP parity P6.2). It reaches the MODEL, as the error of the
+/// call it was waiting on — a bare transport EOF mid-conversation is exactly
+/// where a model starts guessing ("the site must have been created").
+const MCP_STOPPED: &str =
+    "rexenv stopped while this call was in progress — the app quit or was closed. Nothing more \
+     will arrive for it. Whether the operation finished is unknown from here: ask the person \
+     you're working with to open rexenv again, then reconnect and check (list_sites, \
+     site_status) before retrying anything that creates or changes something.";
+
+/// The JSON-RPC `id` of a REQUEST line (has both `method` and `id`); `None`
+/// for a notification, a reply, or anything that is not JSON. The bridge reads
+/// ids and nothing else — it still constructs no request and interprets no
+/// method; the app stays the brain.
+fn request_id(line: &str) -> Option<serde_json::Value> {
+    let v: serde_json::Value = serde_json::from_str(line.trim()).ok()?;
+    v.get("method")?;
+    v.get("id").cloned().filter(|id| !id.is_null())
+}
+
+/// The `id` of a REPLY line (has `id` and `result` or `error`).
+fn reply_id(line: &str) -> Option<serde_json::Value> {
+    let v: serde_json::Value = serde_json::from_str(line.trim()).ok()?;
+    if v.get("result").is_none() && v.get("error").is_none() {
+        return None;
+    }
+    v.get("id").cloned().filter(|id| !id.is_null())
+}
+
+/// The in-band error for one unanswered request — a JSON-RPC error reply the
+/// client routes to the pending call, not a protocol-level failure.
+fn stopped_error(id: &serde_json::Value) -> String {
+    serde_json::json!({ "jsonrpc": "2.0", "id": id, "error": { "code": -32000, "message": MCP_STOPPED } }).to_string()
+}
+
+/// The requests sent and not yet answered, in order. Shared by the two pump
+/// threads; drained by the socket side when the app goes away.
+#[derive(Default)]
+struct PendingIds(std::sync::Mutex<Vec<serde_json::Value>>);
+
+impl PendingIds {
+    fn sent(&self, id: serde_json::Value) {
+        if let Ok(mut v) = self.0.lock() {
+            v.push(id);
+        }
+    }
+    fn answered(&self, id: &serde_json::Value) {
+        if let Ok(mut v) = self.0.lock() {
+            v.retain(|p| p != id);
+        }
+    }
+    fn drain(&self) -> Vec<serde_json::Value> {
+        self.0.lock().map(|mut v| std::mem::take(&mut *v)).unwrap_or_default()
+    }
+}
+
+/// `rex mcp` — the MCP stdio bridge. A bidirectional pipe that copies newline-
+/// delimited JSON-RPC between the client's stdio and the app's MCP socket. It
+/// constructs no request and interprets no method — the app is the brain — but
+/// since MCP parity P6.2 it does READ the ids of the requests it forwards, for
+/// one reason: when the app closes the socket with a request still unanswered,
+/// the bridge answers that request itself with an in-band error saying rexenv
+/// stopped (`MCP_STOPPED`), so the model reads a sentence instead of an EOF.
+/// On a dead socket at startup it fails with a specific reason and exits 2 —
+/// never a generic transport error the agent papers over with a guess. Either
+/// side closing ends the whole bridge, so the client sees the server go away.
 fn run_mcp_bridge() -> ! {
+    use std::io::BufRead;
     let socket = match UnixStream::connect(mcp_socket_path()) {
         Ok(s) => s,
         // ENOENT (never bound) and ECONNREFUSED (stale after a crash) both mean
@@ -230,20 +292,49 @@ fn run_mcp_bridge() -> ! {
             exit(1);
         }
     };
-    let mut sock_read = socket;
-    // socket → stdout. When the app closes the socket the server is gone; end
-    // the whole process so the client observes the server exit (even if our
+    let sock_read = socket;
+    let pending = std::sync::Arc::new(PendingIds::default());
+    // socket → stdout, line by line. When the app closes the socket the server
+    // is gone: every request still pending gets the in-band error, then the
+    // whole process ends so the client observes the server exit (even if our
     // stdin is still open).
-    let pump = std::thread::spawn(move || {
-        let mut out = std::io::stdout().lock();
-        let _ = std::io::copy(&mut sock_read, &mut out);
-        let _ = out.flush();
-        exit(0);
-    });
-    // stdin → socket. Client EOF means the session is done: half-close so the
-    // app sees end-of-input, then let the socket→stdout side finish.
-    let mut stdin = std::io::stdin().lock();
-    let _ = std::io::copy(&mut stdin, &mut sock_write);
+    let pump = {
+        let pending = std::sync::Arc::clone(&pending);
+        std::thread::spawn(move || {
+            let mut out = std::io::stdout().lock();
+            let reader = std::io::BufReader::new(sock_read);
+            for line in reader.lines() {
+                let Ok(line) = line else { break };
+                if let Some(id) = reply_id(&line) {
+                    pending.answered(&id);
+                }
+                if out.write_all(line.as_bytes()).is_err() || out.write_all(b"\n").is_err() {
+                    break;
+                }
+                let _ = out.flush();
+            }
+            for id in pending.drain() {
+                let _ = out.write_all(stopped_error(&id).as_bytes());
+                let _ = out.write_all(b"\n");
+            }
+            let _ = out.flush();
+            exit(0);
+        })
+    };
+    // stdin → socket, line by line, remembering each request's id. Client EOF
+    // means the session is done: half-close so the app sees end-of-input, then
+    // let the socket→stdout side finish.
+    let stdin = std::io::stdin().lock();
+    for line in stdin.lines() {
+        let Ok(line) = line else { break };
+        if let Some(id) = request_id(&line) {
+            pending.sent(id);
+        }
+        if sock_write.write_all(line.as_bytes()).is_err() || sock_write.write_all(b"\n").is_err() {
+            break;
+        }
+        let _ = sock_write.flush();
+    }
     let _ = sock_write.shutdown(std::net::Shutdown::Write);
     let _ = pump.join();
     exit(0);
@@ -3881,6 +3972,54 @@ mod tests {
     /// names the app. It cannot prove no spawn exists — it can keep the obvious
     /// one from being added, which is the drift worth catching, because
     /// "helpfully" launching the app is a two-line change that looks kind.
+    #[test]
+    /// **When rexenv goes away mid-call, the bridge answers the pending request
+    /// itself, in-band, with a sentence the model can act on — and it reads
+    /// ids and nothing else.**
+    fn the_bridge_answers_a_pending_request_in_band_when_rexenv_stops() {
+        const ME: &str = include_str!("main.rs");
+        // What counts as a request (id + method), and what does not.
+        assert_eq!(request_id(r#"{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{}}"#), Some(serde_json::json!(7)));
+        assert_eq!(request_id(r#"{"jsonrpc":"2.0","id":"abc","method":"ping"}"#), Some(serde_json::json!("abc")));
+        assert_eq!(request_id(r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#), None, "a notification has nothing to answer");
+        assert_eq!(request_id(r#"{"jsonrpc":"2.0","id":7,"result":{}}"#), None, "a reply is not a request");
+        assert_eq!(request_id("not json"), None, "garbage passes through untouched, unread");
+        assert_eq!(reply_id(r#"{"jsonrpc":"2.0","id":7,"result":{}}"#), Some(serde_json::json!(7)));
+        assert_eq!(reply_id(r#"{"jsonrpc":"2.0","id":7,"error":{"code":1,"message":"x"}}"#), Some(serde_json::json!(7)));
+        assert_eq!(reply_id(r#"{"jsonrpc":"2.0","method":"notifications/progress","params":{}}"#), None);
+
+        // The ledger of what is unanswered.
+        let p = PendingIds::default();
+        p.sent(serde_json::json!(1));
+        p.sent(serde_json::json!(2));
+        p.answered(&serde_json::json!(1));
+        assert_eq!(p.drain(), vec![serde_json::json!(2)], "only the unanswered one is drained");
+        assert!(p.drain().is_empty(), "drained once");
+
+        // The in-band error: a JSON-RPC error REPLY to the pending id — routed
+        // by the client to the waiting call, not a protocol-level failure —
+        // whose message says what happened, what is unknown, and what to do.
+        let line = stopped_error(&serde_json::json!(2));
+        let v: serde_json::Value = serde_json::from_str(&line).unwrap();
+        assert_eq!(v["jsonrpc"], "2.0");
+        assert_eq!(v["id"], 2);
+        assert_eq!(v["error"]["code"], -32000);
+        let msg = v["error"]["message"].as_str().unwrap();
+        for must in ["rexenv stopped", "unknown", "open rexenv again", "before retrying"] {
+            assert!(msg.contains(must), "the in-band error must say {must:?}: {msg}");
+        }
+        assert!(!line.contains('\n'), "one line — the framing is newline-delimited");
+
+        // The bridge still constructs no request: the only JSON it BUILDS is
+        // the stopped error, and it never sends anything toward the socket
+        // that it did not read from stdin.
+        let prod = ME.split("\n#[cfg(test)]").next().unwrap_or(ME);
+        let bridge = &prod[prod.find("fn run_mcp_bridge()").unwrap()..];
+        let bridge = &bridge[..bridge.find("\n}\n").unwrap()];
+        assert!(!bridge.contains("json!("), "the bridge body builds no JSON of its own");
+        assert_eq!(prod.matches("stopped_error(").count(), 2, "defined once, used once — in the socket-EOF drain");
+    }
+
     #[test]
     fn the_cli_names_the_start_command_and_never_runs_it() {
         let src = include_str!("main.rs");

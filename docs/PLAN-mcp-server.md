@@ -152,8 +152,11 @@ detail our own tests accept and Claude Code rejects.
 - Separate socket rather than reusing `rexenv-cli.sock`: lifecycles differ (CLI
   = one request per connection; MCP = a long-lived JSON-RPC session per client).
 - **Client command is `rex mcp`** — a new subcommand on the existing sidecar
-  binary, which stays a dumb bidirectional byte pipe (stdin→socket,
-  socket→stdout), no MCP parsing, keeping the `cli/` crate's structural
+  binary, which stays a bidirectional pipe (stdin→socket, socket→stdout) that
+  constructs no request and interprets no method — **amended 3 Sep 2026 (parity
+  P6.2, #493): it does READ the ids of the requests it forwards**, for the one
+  reason §2.3 deferred: to answer a request left pending when the app closes the
+  socket with an in-band error the model can read — keeping the `cli/` crate's structural
   never-links-the-app-lib guarantee (`cli/Cargo.toml:9`). Zero-install: `rex` is
   already bundled and symlinked on PATH (`core/cli.rs:64-113`, Homebrew cask).
 - Multiple clients = multiple concurrent connections, one MCP session each; the
@@ -181,7 +184,11 @@ in-band JSON-RPC error (the shim reading the pending request's `id` and returnin
 a legible "rexenv stopped" error the model reads) earns its added complexity. So
 this is not an open nicety: it is **deferred with a trigger** — revisit when the
 first tools land (M2) and a mid-session app-quit becomes a model-facing failure,
-not a human-facing one. Until then the shim stays a dumb pipe.
+not a human-facing one. Until then the shim stays a dumb pipe. **The trigger fired
+at M2 and the item was built with MCP parity P6.2 (3 Sep 2026, #493)**: the bridge
+tracks the ids of forwarded requests and, on socket EOF, replies to each pending one
+with a JSON-RPC error whose message says rexenv stopped, that the outcome is unknown,
+and to check before retrying anything that creates or changes something.
 
 ### 2.4 The registry IS the surface — an allowlist, not the 42
 
