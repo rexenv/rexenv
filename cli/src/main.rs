@@ -4139,4 +4139,88 @@ mod tests {
         );
     }
 
+    /// **No roadmap row says a command is unrun that the same file records as
+    /// run.**
+    ///
+    /// Live-run status has ONE owner — the in-app-verifies list — and the table
+    /// rows kept a second copy. On 3 Sep 2026 four of them ("Not live-run yet")
+    /// were contradicted by a paragraph in that list naming the same commands,
+    /// written the same hour: `site domains`, `site restart`, `service restart`
+    /// and `wp user delete` had all just been driven against a live app.
+    ///
+    /// This is the sibling of
+    /// `no_roadmap_row_calls_unbuilt_a_thing_the_cli_already_dispatches`, and a
+    /// DIFFERENT claim: that gate asks whether the CLI has the verb (answerable
+    /// from `main.rs`); this one asks whether it has been exercised live, which
+    /// only the file's own record can answer. So the two halves are checked
+    /// against each other rather than against the code.
+    #[test]
+    fn no_row_calls_a_command_unrun_that_the_verifies_list_records_as_run() {
+        let doc = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../docs/CLI-ROADMAP.md"),
+        )
+        .expect("docs/CLI-ROADMAP.md");
+        // Only what is INSIDE the markers. The owed list and the run record sit
+        // in the same item and read alike to a scanner — matching the whole
+        // section reported `mail clear` and `tunnel start` as contradictions
+        // when the file had them right, so the boundary is marked, not guessed.
+        // BOTH markers must be present. Taking "everything after the open
+        // marker" when the close is missing silently widens the region to
+        // include the OWED list — which is the exact confusion the markers
+        // exist to end, so a missing close has to be an error, not a default.
+        let after = doc
+            .split("<!-- live-run-record")
+            .nth(1)
+            .expect("the live-run record's opening marker");
+        let end = after
+            .find("<!-- /live-run-record -->")
+            .expect("the live-run record's CLOSING marker — without it the region would run \
+                     on into the owed list and this gate would stop seeing contradictions");
+        let verifies = &after[..end];
+        assert!(
+            verifies.contains("VERIFIED") || verifies.contains("RUN LIVE"),
+            "nothing inside the live-run markers records a run — the markers moved, and a \
+             green here would mean nothing"
+        );
+
+        let mut stale: Vec<String> = Vec::new();
+        for line in doc.lines() {
+            let line = line.trim();
+            if !line.starts_with("| `") || !line.contains("ot live-run") {
+                continue;
+            }
+            let cmd = line
+                .replace("\\|", "\u{1}")
+                .split('`')
+                .nth(1)
+                .unwrap_or("")
+                .to_string();
+            // The bare verb words: placeholders and option groups are not part
+            // of a command's name.
+            let words: Vec<String> = cmd
+                .split_whitespace()
+                .filter(|w| !w.starts_with('<') && !w.starts_with('[') && !w.starts_with("--"))
+                .flat_map(|w| w.split('\u{1}').map(str::to_string).collect::<Vec<_>>())
+                .filter(|w| !w.is_empty())
+                .collect();
+            // Every 2- and 3-word phrase the row's name can make. A row is
+            // stale if the verifies list names any of them.
+            for n in [2usize, 3] {
+                for w in words.windows(n) {
+                    let phrase = w.join(" ");
+                    if verifies.contains(&phrase) {
+                        stale.push(format!("`{cmd}` — the verifies list names `{phrase}`"));
+                    }
+                }
+            }
+        }
+        assert!(
+            stale.is_empty(),
+            "these rows say a command has not been run live, and the in-app-verifies list in \
+             the SAME FILE says it has:\n  {}\nLive-run status has one owner — correct the row, \
+             or say what part is still owed",
+            stale.join("\n  ")
+        );
+    }
+
 }
