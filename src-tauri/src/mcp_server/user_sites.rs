@@ -512,22 +512,46 @@ static REGISTRY: &[UserTool] = &[
                       user's `run` permission on that site given by a PERSON — an auto-allowed \
                       grant is refused, because a public share is not something a toggle should \
                       answer — and the tunnel stops itself when the minutes run out, or when \
-                      rexenv quits; `stop` needs `manage`. The reply carries the public URL. \
-                      Anyone with the URL reaches the site unauthenticated while it is up.",
+                      rexenv quits; `stop` needs `manage`; `status` (every live share, or one \
+                      site's with `site_id`) needs `read` — on the site, or on rexenv itself for \
+                      all. The reply carries the public URL. Anyone with the URL reaches the site \
+                      unauthenticated while it is up.",
         input_schema: || json!({
             "type": "object",
             "properties": {
                 "site_id": { "type": "string" },
-                "action": { "type": "string", "enum": ["start", "stop"] },
+                "action": { "type": "string", "enum": ["start", "stop", "status"] },
                 "minutes": { "type": "integer", "description": "start: how long, 1–60. Default 30." }
             },
-            "required": ["site_id", "action"],
+            "required": ["action"],
             "additionalProperties": false
         }),
         sweep_args: |id| json!({ "site_id": id, "action": "stop" }),
         summarise: |args| args.get("action").and_then(Value::as_str).map(|a| format!("share {a}")),
         scope: Scope::Run,
         handler: share,
+    },
+    UserTool {
+        name: "blueprints",
+        description: "Save or delete a blueprint — a preset site_create's `blueprint` names. `save` \
+                      {name, spec: {siteType, phpVersion, webServer, multisite?, plugins?: [{slug, \
+                      activate}], themes?, wpDebug?, language?}} needs `manage` on rexenv itself \
+                      (saving over an existing name replaces it); `delete` {name} needs `destroy`. \
+                      Listing is blueprints_list.",
+        input_schema: || json!({
+            "type": "object",
+            "properties": {
+                "action": { "type": "string", "enum": ["save", "delete"] },
+                "name": { "type": "string" },
+                "spec": { "type": "object" }
+            },
+            "required": ["action", "name"],
+            "additionalProperties": false
+        }),
+        sweep_args: |_id| json!({ "action": "delete", "name": "sweep-probe" }),
+        summarise: |args| args.get("action").and_then(Value::as_str).map(|a| format!("blueprint {a}")),
+        scope: Scope::Destroy,
+        handler: blueprints,
     },
     UserTool {
         name: "site_configure",
@@ -702,6 +726,10 @@ pub trait SiteOps: Send + Sync {
     /// after `minutes` — the auto-stop D11 made the condition of this tool.
     fn share_start<'a>(&'a self, id: String, minutes: u64) -> OpFuture<'a, Result<crate::commands::tunnels::TunnelInfo>>;
     fn share_stop<'a>(&'a self, id: String) -> OpFuture<'a, Result<()>>;
+    /// Every live tunnel, from the app's registry (`tunnels_status`).
+    fn shares<'a>(&'a self) -> OpFuture<'a, Result<Vec<crate::commands::tunnels::TunnelInfo>>>;
+    fn save_blueprint<'a>(&'a self, bp: crate::state::models::Blueprint) -> OpFuture<'a, Result<()>>;
+    fn delete_blueprint<'a>(&'a self, id: String) -> OpFuture<'a, Result<bool>>;
     // ── the site's Settings tab, one method per app command ──
     fn rename<'a>(&'a self, id: String, name: String) -> OpFuture<'a, Result<Option<Site>>>;
     fn change_domain<'a>(&'a self, id: String, domain: String) -> OpFuture<'a, Result<crate::commands::sites::DomainChange>>;
@@ -2283,8 +2311,27 @@ pub(crate) const SHARE_DEFAULT_MINUTES: u64 = 30;
 /// row is the fact that survives (#408's reason for recording it).
 fn share<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTarget) -> ToolFuture<'a> {
     Box::pin(async move {
+        let action = args.get("action").and_then(Value::as_str).ok_or_else(|| Error::Other("share needs an `action`: start, stop or status.".into()))?;
+        if action == "status" {
+            let site_id = args.get("site_id").and_then(Value::as_str);
+            let (domain, auto) = match site_id {
+                Some(id) => {
+                    let c = ctx.claim::<scope::Read>(Some(id), "see whether it is shared")?;
+                    let site = c.granted.site().cloned().ok_or_else(|| Error::Other("share needs a site.".into()))?;
+                    acted.set(&site);
+                    (Some(site.domain), c.auto_granted)
+                }
+                None => (None, ctx.claim::<scope::Read>(None, "list every public share")?.auto_granted),
+            };
+            let all = ctx.ops.shares().await?;
+            let shares: Vec<Value> = all
+                .into_iter()
+                .filter(|t| domain.as_deref().map_or(true, |d| d == t.domain))
+                .map(|t| json!({ "domain": t.domain, "url": t.url, "running": t.running, "health": t.health }))
+                .collect();
+            return Ok(with_consent(json!({ "shares": shares }), auto));
+        }
         let id = args.get("site_id").and_then(Value::as_str).ok_or_else(|| Error::Other("share needs a `site_id`.".into()))?;
-        let action = args.get("action").and_then(Value::as_str).ok_or_else(|| Error::Other("share needs an `action`: start or stop.".into()))?;
         match action {
             "start" => {
                 let minutes = args.get("minutes").and_then(Value::as_u64).unwrap_or(SHARE_DEFAULT_MINUTES);
@@ -2319,6 +2366,38 @@ fn share<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTar
                 Ok(json!({ "domain": site.domain, "stopped": true }))
             }
             other => Err(Error::Other(format!("`{other}` is not a share action. Use start or stop."))),
+        }
+    })
+}
+
+
+fn blueprints<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::ActedTarget) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let action = args.get("action").and_then(Value::as_str).ok_or_else(|| Error::Other("blueprints needs an `action`: save or delete.".into()))?;
+        let name = str_field(args, "name", action)?.to_string();
+        let existing = {
+            let conn = ctx.db()?;
+            crate::state::store::list_blueprints(&conn)?.into_iter().find(|b| b.name.eq_ignore_ascii_case(&name))
+        };
+        match action {
+            "save" => {
+                // Shape first: the spec must be a blueprint the app would accept.
+                let spec: crate::state::models::BlueprintSpec = serde_json::from_value(args.get("spec").cloned().unwrap_or(Value::Null))
+                    .map_err(|e| Error::Other(format!("blueprints `save` needs a `spec` the app understands: {e}")))?;
+                let auto = ctx.claim::<scope::Manage>(None, &format!("save the blueprint `{name}`"))?.auto_granted;
+                let id = existing.map(|b| b.id).unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+                ctx.ops.save_blueprint(crate::state::models::Blueprint { id, name: name.clone(), spec }).await?;
+                Ok(with_consent(json!({ "saved": name }), auto))
+            }
+            "delete" => {
+                let Some(bp) = existing else {
+                    return Err(Error::Other(format!("there is no blueprint called `{name}` — blueprints_list shows the saved ones.")));
+                };
+                let auto = ctx.claim::<scope::Destroy>(None, &format!("delete the blueprint `{name}`"))?.auto_granted;
+                let gone = ctx.ops.delete_blueprint(bp.id).await?;
+                Ok(with_consent(json!({ "deleted": gone, "name": name }), auto))
+            }
+            other => Err(Error::Other(format!("`{other}` is not a blueprints action. Use save or delete."))),
         }
     })
 }
@@ -2449,6 +2528,22 @@ mod tests {
         fn share_stop<'a>(&'a self, id: String) -> OpFuture<'a, Result<()>> {
             self.calls.lock().unwrap().push(format!("share stop {id}"));
             Box::pin(async { Ok(()) })
+        }
+        fn shares<'a>(&'a self) -> OpFuture<'a, Result<Vec<crate::commands::tunnels::TunnelInfo>>> {
+            Box::pin(async {
+                Ok(vec![
+                    crate::commands::tunnels::TunnelInfo { domain: "mine.rex".into(), url: "https://abc.trycloudflare.com".into(), running: true, health: crate::core::tunnels::TunnelHealth::Reachable, diagnosis: None },
+                    crate::commands::tunnels::TunnelInfo { domain: "other.rex".into(), url: "https://xyz.trycloudflare.com".into(), running: true, health: crate::core::tunnels::TunnelHealth::Unverified, diagnosis: None },
+                ])
+            })
+        }
+        fn save_blueprint<'a>(&'a self, bp: crate::state::models::Blueprint) -> OpFuture<'a, Result<()>> {
+            self.calls.lock().unwrap().push(format!("blueprint save {} {}", bp.name, bp.spec.php_version));
+            Box::pin(async { Ok(()) })
+        }
+        fn delete_blueprint<'a>(&'a self, id: String) -> OpFuture<'a, Result<bool>> {
+            self.calls.lock().unwrap().push(format!("blueprint delete {id}"));
+            Box::pin(async { Ok(true) })
         }
         fn rename<'a>(&'a self, id: String, name: String) -> OpFuture<'a, Result<Option<Site>>> {
             self.calls.lock().unwrap().push(format!("rename {id} {name}"));
@@ -3678,5 +3773,51 @@ mod tests {
         assert_eq!(scratch_cap(&conn), MAX_SCRATCH_SITES);
         // …and both are writable through the CLI's policy because they are gated.
         assert_eq!(crate::core::settings_access::cli_access(crate::core::scratch::SCRATCH_CAP_KEY), crate::core::settings_access::CliAccess::ReadWrite);
+    }
+
+    /// **`share status` reads under `read` (a site's, or all under rexenv
+    /// itself); `blueprints` save is `manage` with the spec validated on shape
+    /// first, delete is `destroy`, both by NAME.**
+    #[tokio::test]
+    async fn share_status_and_blueprints_gate_and_work_by_name() {
+        let state = app_state();
+        switch_on(&state);
+        let ops = FakeOps::default();
+        let acted = super::super::feed::ActedTarget::default();
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, "claude-code");
+        let site = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "mine.rex", SiteOrigin::User);
+        {
+            let conn = state.db.lock().unwrap();
+            store::insert_site(&conn, &site).unwrap();
+            store::grant_agent_site(&conn, "g1", Some(&site.id), "claude-code", "read", 7, false, false).unwrap();
+        }
+        let v = share(ctx, &json!({ "action": "status", "site_id": site.id }), &acted).await.unwrap();
+        assert_eq!(v["shares"].as_array().unwrap().len(), 1, "only this site's share: {v}");
+        assert_eq!(v["shares"][0]["domain"], "mine.rex");
+        assert!(share(ctx, &json!({ "action": "status" }), &acted).await.is_err(), "all shares need read on rexenv itself");
+        {
+            let conn = state.db.lock().unwrap();
+            store::grant_agent_site(&conn, "g2", None, "claude-code", "read", 7, false, false).unwrap();
+        }
+        let v = share(ctx, &json!({ "action": "status" }), &acted).await.unwrap();
+        assert_eq!(v["shares"].as_array().unwrap().len(), 2);
+
+        // blueprints: a bad spec is a shape refusal (no ask); save asks manage; delete destroy.
+        let asks_before = asks(&state).len();
+        let err = blueprints(ctx, &json!({ "action": "save", "name": "Shop", "spec": { "siteType": "drupal" } }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("the app understands"), "{err}");
+        assert_eq!(asks(&state).len(), asks_before);
+        let good = json!({ "action": "save", "name": "Shop", "spec": { "siteType": "wordpress", "phpVersion": "8.3", "webServer": "nginx" } });
+        assert!(blueprints(ctx, &good, &acted).await.is_err());
+        assert!(asks(&state).iter().any(|r| r.site_id.is_none() && r.scope == Scope::Manage && r.wanted.contains("`Shop`")));
+        {
+            let conn = state.db.lock().unwrap();
+            store::grant_agent_site(&conn, "g3", None, "claude-code", "manage", 7, false, false).unwrap();
+        }
+        let v = blueprints(ctx, &good, &acted).await.unwrap();
+        assert_eq!(v["saved"], "Shop");
+        let err = blueprints(ctx, &json!({ "action": "delete", "name": "Nope" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("no blueprint called"), "{err}");
+        assert!(ops.calls.lock().unwrap().iter().any(|c| c == "blueprint save Shop 8.3"));
     }
 }

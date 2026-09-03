@@ -169,6 +169,35 @@ static REGISTRY: &[ReadTool] = &[
         handler: php_settings,
     },
     ReadTool {
+        name: "blueprints_list",
+        description: "The saved blueprints — presets site_create's `blueprint` names: site type, PHP \
+                      version, web server, multisite mode, plugins and themes to install, WP_DEBUG, \
+                      language. Saving or deleting one is the `blueprints` tool.",
+        input_schema: no_params,
+        sweep_args: |_id| json!({}),
+        summarise: |_| None,
+        handler: blueprints_list,
+    },
+    ReadTool {
+        name: "agent_activity",
+        description: "The activity feed rexenv keeps of every agent call — the same list the user \
+                      sees under Settings → AI agents: when, which client, which tool, which site, \
+                      the outcome, and a two-word summary of what it was about. Takes optional \
+                      `site_id` and `limit` (max 200; default 50). Rows written by rexenv itself \
+                      (the scratch reaper) are marked with actor `rexenv`.",
+        input_schema: || json!({
+            "type": "object",
+            "properties": {
+                "site_id": { "type": "string" },
+                "limit": { "type": "integer" }
+            },
+            "additionalProperties": false
+        }),
+        sweep_args: |_id| json!({ "limit": 5 }),
+        summarise: |_| None,
+        handler: agent_activity,
+    },
+    ReadTool {
         name: "wp_org_search",
         description: "Search the WordPress.org directory for plugins or themes — slug, name, \
                       author, rating, active installs. A public network read; no site involved \
@@ -403,6 +432,34 @@ fn php_settings<'a>(
             .map(|(key, value, default)| json!({ "key": key, "value": value, "default": default }))
             .collect();
         Ok(json!({ "minor": minor, "settings": rows }))
+    })
+}
+
+fn blueprints_list<'a>(
+    ctx: ReadCtx<'a>,
+    _args: &'a Value,
+    _acted: &'a super::feed::ActedTarget,
+) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let rows: Vec<Value> = ctx
+            .blueprints()?
+            .into_iter()
+            .map(|b| json!({ "name": b.name, "spec": b.spec }))
+            .collect();
+        Ok(json!({ "blueprints": rows }))
+    })
+}
+
+fn agent_activity<'a>(
+    ctx: ReadCtx<'a>,
+    args: &'a Value,
+    _acted: &'a super::feed::ActedTarget,
+) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let site = args.get("site_id").and_then(Value::as_str);
+        let limit = args.get("limit").and_then(Value::as_u64).map_or(50, |n| (n as usize).clamp(1, 200));
+        let rows = ctx.activity(site, limit)?;
+        serde_json::to_value(rows).map_err(|e| Error::Other(format!("serialising the feed: {e}")))
     })
 }
 

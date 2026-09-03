@@ -201,6 +201,32 @@ impl<'a> ReadCtx<'a> {
             .collect())
     }
 
+    /// The saved blueprints (create-time presets): name and spec, no ids — a
+    /// blueprint is referred to by NAME everywhere on the agent surface.
+    pub fn blueprints(&self) -> Result<Vec<crate::state::models::Blueprint>> {
+        let conn = self
+            .state
+            .db
+            .lock()
+            .map_err(|_| Error::Other("the app database lock is poisoned".into()))?;
+        crate::state::store::list_blueprints(&conn)
+    }
+
+    /// The agent activity feed — the user's own audit view, readable by the
+    /// agent too: "what did I do" is a fair question. Rows are typed and every
+    /// value in them is rexenv's (the summariser records verbs, #222).
+    pub fn activity(&self, site: Option<&str>, limit: usize) -> Result<Vec<super::feed::AgentAction>> {
+        let conn = self
+            .state
+            .db
+            .lock()
+            .map_err(|_| Error::Other("the app database lock is poisoned".into()))?;
+        match site {
+            Some(id) => super::feed::recent_for_site(&conn, id, limit),
+            None => super::feed::recent(&conn, limit),
+        }
+    }
+
     /// Search the WordPress.org directory — a network READ of a public API, no
     /// site involved (the Add-plugin/theme flows' own call).
     pub async fn wporg_search(&self, kind: &str, query: &str) -> Result<serde_json::Value> {

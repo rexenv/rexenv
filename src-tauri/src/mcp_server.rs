@@ -862,6 +862,15 @@ impl<Rt: tauri::Runtime> user_sites::SiteOps for AppSiteCreator<Rt> {
     fn share_stop<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
         Box::pin(async move { crate::commands::tunnels::stop_tunnel(self.state()?, self.tunnels()?, id).await })
     }
+    fn shares<'a>(&'a self) -> user_sites::OpFuture<'a, crate::error::Result<Vec<crate::commands::tunnels::TunnelInfo>>> {
+        Box::pin(async move { crate::commands::tunnels::tunnels_status(self.state()?, self.tunnels()?).await })
+    }
+    fn save_blueprint<'a>(&'a self, bp: crate::state::models::Blueprint) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::blueprints::save_blueprint(self.state()?, bp) })
+    }
+    fn delete_blueprint<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<bool>> {
+        Box::pin(async move { crate::commands::blueprints::delete_blueprint(self.state()?, id) })
+    }
 
     fn rename<'a>(&'a self, id: String, name: String) -> user_sites::OpFuture<'a, crate::error::Result<Option<crate::state::models::Site>>> {
         Box::pin(async move { crate::commands::sites::rename_site(self.state()?, id, name) })

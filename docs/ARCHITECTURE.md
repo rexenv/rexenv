@@ -886,14 +886,15 @@ IPC surface — which is how a reader ends up designing against a system with on
   packaged-build enable crash. The *convention* is shared; the binder is its own, and a
   test pins that binding needs no ambient runtime.
 - **Three registries, and the registry IS the capability.** `mcp_server/tools.rs` holds the
-  nine read-only tools (`list_sites` — widened with parity to carry owner / multisite /
+  eleven read-only tools (`list_sites` — widened with parity to carry owner / multisite /
   xdebug / aliases / setup-complete / linked, `site_status`, `tail_log`, and from parity
   P2.3 `site_info` — cert validity without its directory, packages without their source
   path, the M1 verdict — and `site_inspect_folder`, the New Site dialog's own preflight,
   which classifies a folder and runs nothing, `wp_org_search`, a public network read, and
   `stack_status` — `rex doctor`'s composite with no path, pid or socket in it, `settings_get`
   — one key through the CLI's allow-list, a denied key refused with the reason, and
-  `php_settings` — a pool's ini overrides);
+  `php_settings` — a pool's ini overrides, `blueprints_list` and `agent_activity` — the
+  user's own audit view, readable by the agent too);
   `mcp_server/scratch.rs`
   holds the nine executing ones (`scratch_create_site`, `scratch_delete_site`,
   `scratch_add_package`, `scratch_sync_package`, `wp_run`, `set_php_version`, `db_query`,
@@ -934,8 +935,9 @@ IPC surface — which is how a reader ends up designing against a system with on
   arbitrary URL or path); and `share` (D6's reopening conditions met one by one: the
   owner's demand, `run` on the site given by a PERSON — an auto-granted row is refused on
   the row's own flag, so a grant auto-allow wrote once cannot serve a later claim — and a
-  bounded auto-stop the app runs, ≤60 minutes, dying with the app like every tunnel) — each
-  through a
+  bounded auto-stop the app runs, ≤60 minutes, dying with the app like every tunnel; `status`
+  under `read`), and `blueprints` (save `manage`, delete `destroy`, by NAME, the spec validated
+  on shape first) — each through a
   `Granted<S>` scope witness (`core::agent_grants`) minted from a grant the user gave in the
   app, and only while the "Let agents manage my own sites" switch is on. Shape refusals
   (a bad type, a taken domain, `multisite` on a PHP site) come BEFORE the gate and record no
