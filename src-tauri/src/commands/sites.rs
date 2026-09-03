@@ -638,6 +638,24 @@ pub(crate) async fn create_site_owned<R: tauri::Runtime>(
     blueprint_id: Option<String>,
     ownership: core::sites::Ownership,
 ) -> std::result::Result<Site, CreateFailure> {
+    create_site_owned_with(app, state, jobs, site, wp, blueprint_id, ownership, None).await
+}
+
+/// [`create_site_owned`], reporting each change of phase or percentage to
+/// `on_progress` while it waits — the MCP session forwards those as
+/// `notifications/progress` (parity P6.3). The callback sees the SAME
+/// snapshot the card renders; nothing here computes a second truth.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn create_site_owned_with<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    state: &AppState,
+    jobs: &super::site_provision::ProvisionJobs,
+    site: NewSite,
+    wp: Option<core::wordpress::InstallOptions>,
+    blueprint_id: Option<String>,
+    ownership: core::sites::Ownership,
+    on_progress: Option<&(dyn Fn(&super::site_provision::SiteProvisionState) + Sync)>,
+) -> std::result::Result<Site, CreateFailure> {
     // ONE execution path: this is a thin blocking wrapper over the streamed
     // provision job (`commands::site_provision`) that preserves the old
     // contract exactly — prepare-phase errors (invalid/duplicate domain,
@@ -648,9 +666,16 @@ pub(crate) async fn create_site_owned<R: tauri::Runtime>(
     // running prepare INLINE buys), so its `CreateFailure` carries no site id.
     let snap = super::site_provision::start(&app, state, jobs, site, wp, blueprint_id, ownership)
         .map_err(|error| CreateFailure { site_id: None, error })?;
+    let mut last = (usize::MAX, u8::MAX);
     let settled = loop {
         let st = super::site_provision::state_of(jobs, &snap.id)
             .map_err(|error| CreateFailure { site_id: None, error })?;
+        if let Some(report) = on_progress {
+            if (st.phase_cursor, st.pct) != last {
+                last = (st.phase_cursor, st.pct);
+                report(&st);
+            }
+        }
         if st.status != "running" {
             break st;
         }

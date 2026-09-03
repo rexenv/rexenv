@@ -2070,6 +2070,10 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     ✓ P6.2 — **the shim's in-band "rexenv stopped" error**, ledger #493 (L5 closed): ids
     read, nothing constructed; the pending request answered with a JSON-RPC error that
     says the outcome is unknown and to check before retrying.
+    ✓ P6.3 — **progress notifications**, ledger #494 (L9 closed): opt-in by
+    `_meta.progressToken`, provision/repo/db-import loops report the card's own labels,
+    every line before the reply. `job_*` NOT built, as a decision (plan L9 row). Remaining:
+    the real-client `tools/list` check at 45 tools (D12) — a SMOKE step, §P6.
   - [ ] **P7 — Laravel loop**: `php_artisan`, Composer path-repo link (S1 re-run for
     Composer), D13.
 - [ ] **MCP server — EVERY PLANNED MILESTONE IS SHIPPED (M1, M2a, M2b, M3).** Header

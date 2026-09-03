@@ -867,7 +867,11 @@ IPC surface — which is how a reader ends up designing against a system with on
   by `rex mcp` — a pipe that constructs no request and interprets no method but, since
   parity P6.2, reads the ids of the requests it forwards so that when the app quits
   mid-call the pending request is answered in-band with "rexenv stopped … the outcome is
-  unknown … check before retrying" rather than a bare EOF a model would guess past.
+  unknown … check before retrying" rather than a bare EOF a model would guess past. A call
+  that carries the spec's `_meta.progressToken` gets `notifications/progress` lines while a
+  provision, a repo job or a database import runs — the card's own phase labels and
+  percentages, every one written before the reply — and a call without the token gets
+  exactly what it got before.
   M3 (database access, agent principals, the first consent dialog)
   SHIPPED 24–25 Aug 2026 (#398–#404) — this bullet said "not built" until 3 Sep 2026,
   nine days after, while the `db_query` bullet below described the shipped thing. The

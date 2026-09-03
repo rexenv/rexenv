@@ -85,7 +85,70 @@ use readctx::ReadCtx;
 use serde_json::{json, Value};
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::net::UnixListener;
-use tokio::sync::watch;
+use tokio::sync::{mpsc, watch};
+
+/// Where a long tool call reports progress while it runs (parity P6.3).
+///
+/// Built by the session ONLY when the client asked for it — a `progressToken`
+/// in the call's `_meta`, the MCP spec's own opt-in — and handed to the ops
+/// layer, whose poll loops (a provision, a repo job, a database import) are the
+/// only places rexenv knows a long operation's phases. Each report becomes one
+/// `notifications/progress` line on the session's socket, written BEFORE the
+/// call's reply; a client that never sent a token gets exactly what it got
+/// before. Reporting is best-effort: a dropped receiver is a client that went
+/// away, not a reason to fail the operation.
+#[derive(Clone)]
+pub struct ProgressSink {
+    token: Value,
+    tx: mpsc::UnboundedSender<String>,
+}
+
+impl ProgressSink {
+    pub fn report(&self, progress: f64, total: Option<f64>, message: &str) {
+        let _ = self.tx.send(progress_notification(&self.token, progress, total, message));
+    }
+}
+
+/// One `notifications/progress` line, the spec's shape: the client's token
+/// echoed, `progress` monotonic, `total` when the operation knows its end.
+fn progress_notification(token: &Value, progress: f64, total: Option<f64>, message: &str) -> String {
+    let mut params = json!({ "progressToken": token, "progress": progress, "message": message });
+    if let Some(t) = total {
+        params["total"] = json!(t);
+    }
+    json!({ "jsonrpc": "2.0", "method": "notifications/progress", "params": params }).to_string()
+}
+
+/// Run a tool call while forwarding its progress notifications to the writer
+/// as they arrive, then drain what is left so every notification lands BEFORE
+/// the reply the caller writes next. Generic over the writer so the ordering
+/// is testable without a socket.
+async fn run_with_progress<W, F, T>(write: &mut W, rx: Option<mpsc::UnboundedReceiver<String>>, call: F) -> T
+where
+    W: AsyncWrite + Unpin,
+    F: std::future::Future<Output = T>,
+{
+    let Some(mut rx) = rx else { return call.await };
+    tokio::pin!(call);
+    let result = loop {
+        tokio::select! {
+            r = &mut call => break r,
+            Some(line) = rx.recv() => {
+                if write.write_all(line.as_bytes()).await.is_err() || write.write_all(b"\n").await.is_err() {
+                    // The client is gone; the call still finishes (it is the
+                    // app's own job) and its reply write will fail the same way.
+                }
+                let _ = write.flush().await;
+            }
+        }
+    };
+    while let Ok(line) = rx.try_recv() {
+        let _ = write.write_all(line.as_bytes()).await;
+        let _ = write.write_all(b"\n").await;
+    }
+    let _ = write.flush().await;
+    result
+}
 
 pub const SOCKET_FILE: &str = "rexenv-mcp.sock";
 
@@ -374,7 +437,7 @@ async fn session<R, W, Rt>(
                 log_action(&app, &client, &log);
                 Some(reply)
             }
-            Dispatch::ToolCall { id, name, args } => {
+            Dispatch::ToolCall { id, name, args, progress_token } => {
                 let named = args.get("site_id").and_then(Value::as_str).map(String::from);
                 // The handler may report the site rexenv ACTED on (a create has
                 // no `site_id` to name). It is an out-parameter, so a handler
@@ -389,8 +452,21 @@ async fn session<R, W, Rt>(
                     Tool::Scratch(t) => (t.summarise)(&args),
                     Tool::User(t) => (t.summarise)(&args),
                 });
-                let (reply, outcome, detail) =
-                    fulfill_tool_call(&app, id, &name, &args, &acted, &client).await;
+                // Progress only when asked for (`_meta.progressToken`): the
+                // notifications go out on THIS writer, before the reply.
+                let (sink, rx) = match progress_token {
+                    Some(token) => {
+                        let (tx, rx) = mpsc::unbounded_channel();
+                        (Some(ProgressSink { token, tx }), Some(rx))
+                    }
+                    None => (None, None),
+                };
+                let (reply, outcome, detail) = run_with_progress(
+                    &mut write,
+                    rx,
+                    fulfill_tool_call(&app, id, &name, &args, &acted, &client, sink),
+                )
+                .await;
                 log_action(
                     &app,
                     &client,
@@ -454,7 +530,7 @@ enum Dispatch {
     /// A notification — nothing to send.
     Silent,
     /// A call to a REGISTERED tool; needs app state to fulfil, logged after.
-    ToolCall { id: Value, name: String, args: Value },
+    ToolCall { id: Value, name: String, args: Value, progress_token: Option<Value> },
     /// A tools/call refused before any handler (unknown tool) or a message we
     /// couldn't parse — carries BOTH the reply and the feed entry, so the
     /// non-happy-path is recorded by construction, not by anyone remembering.
@@ -513,7 +589,9 @@ fn dispatch(text: &str) -> Dispatch {
                 }
             } else {
                 let args = msg.pointer("/params/arguments").cloned().unwrap_or_else(|| json!({}));
-                Dispatch::ToolCall { id, name: name.to_string(), args }
+                // The spec's opt-in for progress: a token in the call's `_meta`.
+                let progress_token = msg.pointer("/params/_meta/progressToken").cloned().filter(|t| !t.is_null());
+                Dispatch::ToolCall { id, name: name.to_string(), args, progress_token }
             }
         }
         // Notifications (no id): `initialized` and anything else — no reply.
@@ -665,6 +743,7 @@ async fn fulfill_tool_call<Rt: tauri::Runtime>(
     args: &Value,
     acted: &feed::ActedTarget,
     client: &str,
+    progress: Option<ProgressSink>,
 ) -> (String, feed::Outcome, Option<String>) {
     use tauri::Manager;
     let Some(tool) = find_tool(name) else {
@@ -687,12 +766,12 @@ async fn fulfill_tool_call<Rt: tauri::Runtime>(
     let outcome = match tool {
         Tool::Read(t) => (t.handler)(ReadCtx::new(state.inner()), args, acted).await,
         Tool::Scratch(t) => {
-            let creator = AppSiteCreator { app: app.clone() };
+            let creator = AppSiteCreator { app: app.clone(), progress: progress.clone() };
             let ctx = scratch::ScratchCtx::new(state.inner(), &creator, &creator, client);
             (t.handler)(ctx, args, acted).await
         }
         Tool::User(t) => {
-            let ops = AppSiteCreator { app: app.clone() };
+            let ops = AppSiteCreator { app: app.clone(), progress: progress.clone() };
             (t.handler)(user_sites::UserCtx::new(state.inner(), &ops, &ops, &ops, &ops, &ops, &ops, &ops, client), args, acted).await
         }
     };
@@ -716,6 +795,8 @@ async fn fulfill_tool_call<Rt: tauri::Runtime>(
 /// for, ownership being the only difference.
 struct AppSiteCreator<Rt: tauri::Runtime> {
     app: tauri::AppHandle<Rt>,
+    /// Where the poll loops report, when the client asked (P6.3).
+    progress: Option<ProgressSink>,
 }
 
 impl<Rt: tauri::Runtime> AppSiteCreator<Rt> {
@@ -809,7 +890,13 @@ impl<Rt: tauri::Runtime> scratch::SiteCreator for AppSiteCreator<Rt> {
                             .into(),
                     ),
                 })?;
-            crate::commands::sites::create_site_owned(
+            let sink = self.progress.clone();
+            let report = move |st: &crate::commands::site_provision::SiteProvisionState| {
+                if let Some(s) = &sink {
+                    s.report(f64::from(st.pct), Some(100.0), &provision_message(st));
+                }
+            };
+            crate::commands::sites::create_site_owned_with(
                 self.app.clone(),
                 state.inner(),
                 jobs.inner(),
@@ -817,6 +904,7 @@ impl<Rt: tauri::Runtime> scratch::SiteCreator for AppSiteCreator<Rt> {
                 None,
                 None,
                 ownership,
+                Some(&report),
             )
             .await
         })
@@ -848,7 +936,13 @@ impl<Rt: tauri::Runtime> user_sites::SiteOps for AppSiteCreator<Rt> {
                             .into(),
                     ),
                 })?;
-            crate::commands::sites::create_site_owned(self.app.clone(), state.inner(), jobs.inner(), new, wp, blueprint_id, ownership)
+            let sink = self.progress.clone();
+            let report = move |st: &crate::commands::site_provision::SiteProvisionState| {
+                if let Some(s) = &sink {
+                    s.report(f64::from(st.pct), Some(100.0), &provision_message(st));
+                }
+            };
+            crate::commands::sites::create_site_owned_with(self.app.clone(), state.inner(), jobs.inner(), new, wp, blueprint_id, ownership, Some(&report))
                 .await
         })
     }
@@ -1231,8 +1325,20 @@ impl<Rt: tauri::Runtime> AppSiteCreator<Rt> {
     /// with a ceiling so a wedged job cannot hold an MCP session forever.
     async fn settle(&self, job_id: &str, waiting_for: Option<&str>) -> crate::error::Result<crate::commands::repo::RepoJobState> {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30 * 60);
+        let mut last: Option<String> = None;
         loop {
             let st = crate::commands::repo::repo_job_state(self.repo_jobs()?, job_id.to_string()).await?;
+            if let Some(sink) = &self.progress {
+                // Steps done over steps total, the running step's label as the message.
+                let total = st.steps.len();
+                let done = st.steps.iter().filter(|s| !matches!(s.status.as_str(), "pending" | "running")).count();
+                let running = st.steps.iter().find(|s| s.status == "running").map(|s| s.label.clone()).unwrap_or_else(|| st.op.clone());
+                let key = format!("{done}/{total}:{running}");
+                if last.as_deref() != Some(&key) {
+                    last = Some(key);
+                    sink.report(done as f64, Some(total as f64), &running);
+                }
+            }
             if crate::cli_server::repo_job_settled(&st, waiting_for) {
                 return Ok(st);
             }
@@ -1391,7 +1497,15 @@ impl<Rt: tauri::Runtime> user_sites::ImportOps for AppSiteCreator<Rt> {
             let mut st = crate::commands::db_import::db_import_start(self.app.clone(), self.state()?, db_jobs, self.jobs()?, self.tunnels()?, site_id.clone(), confirm_overwrite).await?;
             // Block until it settles — a tool reply is one message.
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30 * 60);
+            let mut last = (usize::MAX, u8::MAX);
             while st.status == "running" {
+                if let Some(sink) = &self.progress {
+                    if (st.phase_cursor, st.pct) != last {
+                        last = (st.phase_cursor, st.pct);
+                        let phase = st.phases.get(st.phase_cursor).map(|p| p.label.clone()).unwrap_or_default();
+                        sink.report(f64::from(st.pct), Some(100.0), &phase);
+                    }
+                }
                 if std::time::Instant::now() > deadline {
                     return Err(crate::error::Error::Other("the database import has not settled after 30 minutes — it keeps running in rexenv; read it later with db_import `status`.".into()));
                 }
@@ -1433,6 +1547,12 @@ impl<Rt: tauri::Runtime> user_sites::ImportOps for AppSiteCreator<Rt> {
     }
 }
 
+/// The provision job's current phase as a progress message — the card's own
+/// label, never a path (a phase label is rexenv's text).
+fn provision_message(st: &crate::commands::site_provision::SiteProvisionState) -> String {
+    st.phases.get(st.phase_cursor).map(|p| p.label.clone()).unwrap_or_else(|| st.status.clone())
+}
+
 /// Run EVERY registered tool against `app`'s state with the fixture site id, and
 /// return each tool's serialised output (or its error text — errors can leak
 /// too). For the secret-leak sweep (`examples/mcp_secret_sweep`): it plants
@@ -1451,7 +1571,7 @@ pub async fn sweep_tool_outputs<Rt: tauri::Runtime>(
         return Vec::new();
     };
     let ctx = ReadCtx::new(state.inner());
-    let creator = AppSiteCreator { app: app.clone() };
+    let creator = AppSiteCreator { app: app.clone(), progress: None };
     let sctx = scratch::ScratchCtx::new(state.inner(), &creator, &creator, "secret-sweep");
     let uctx = user_sites::UserCtx::new(state.inner(), &creator, &creator, &creator, &creator, &creator, &creator, &creator, "secret-sweep");
     let mut outputs = Vec::new();
@@ -2117,6 +2237,51 @@ mod tests {
                 Tool::User(t) => assert_eq!((ro, de), (t.scope == crate::core::agent_grants::Scope::Read, t.scope == crate::core::agent_grants::Scope::Destroy), "{name}"),
             }
         }
+    }
+
+    /// **Progress is opt-in by the client's token, its notifications are the
+    /// spec's shape, and every one of them lands BEFORE the call's reply.**
+    #[tokio::test]
+    async fn progress_is_opt_in_and_arrives_before_the_reply() {
+        // The token is read from `_meta`, and only from there.
+        match dispatch(r#"{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"list_sites","arguments":{},"_meta":{"progressToken":"p1"}}}"#) {
+            Dispatch::ToolCall { progress_token, .. } => assert_eq!(progress_token, Some(json!("p1"))),
+            other => panic!("expected a ToolCall, got {other:?}"),
+        }
+        match dispatch(r#"{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"list_sites","arguments":{"progressToken":"nope"}}}"#) {
+            Dispatch::ToolCall { progress_token, .. } => assert_eq!(progress_token, None, "an ARGUMENT is not the spec's opt-in"),
+            other => panic!("expected a ToolCall, got {other:?}"),
+        }
+        // The notification's shape.
+        let line = progress_notification(&json!("p1"), 40.0, Some(100.0), "downloading WordPress");
+        let v: Value = serde_json::from_str(&line).unwrap();
+        assert_eq!(v["method"], "notifications/progress");
+        assert_eq!(v["params"]["progressToken"], "p1");
+        assert_eq!(v["params"]["progress"], 40.0);
+        assert_eq!(v["params"]["total"], 100.0);
+        assert_eq!(v["params"]["message"], "downloading WordPress");
+        assert!(v.get("id").is_none(), "a notification has no id");
+        // Ordering: two reports during the call, then the call's value — all
+        // notifications on the writer before the caller writes the reply.
+        let (tx, rx) = mpsc::unbounded_channel::<String>();
+        let sink = ProgressSink { token: json!("p1"), tx };
+        let mut out: Vec<u8> = Vec::new();
+        let value = run_with_progress(&mut out, Some(rx), async move {
+            sink.report(1.0, Some(3.0), "one");
+            tokio::task::yield_now().await;
+            sink.report(2.0, Some(3.0), "two");
+            "reply"
+        })
+        .await;
+        assert_eq!(value, "reply");
+        let written = String::from_utf8(out).unwrap();
+        let lines: Vec<&str> = written.lines().collect();
+        assert_eq!(lines.len(), 2, "both notifications, nothing else: {written:?}");
+        assert!(lines[0].contains("\"one\"") && lines[1].contains("\"two\""), "{written}");
+        // No token: no channel, no lines, the same value.
+        let mut out2: Vec<u8> = Vec::new();
+        let v2 = run_with_progress(&mut out2, None, async { 7 }).await;
+        assert_eq!((v2, out2.len()), (7, 0));
     }
 
     #[test]
