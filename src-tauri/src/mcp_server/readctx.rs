@@ -30,6 +30,44 @@ use std::collections::{HashMap, HashSet};
 /// The edge's HTTPS port — the one place a browser reaches a site.
 const EDGE_HTTPS_PORT: u16 = 443;
 
+/// One service in the stack snapshot — name, liveness (ownership AND liveness,
+/// the manager's own verdict), port. No pid.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StackService {
+    pub name: String,
+    pub running: bool,
+    pub port: u16,
+    pub optional: bool,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StackPhp {
+    pub minor: String,
+    pub installed: bool,
+    pub default: bool,
+}
+
+/// The stack, as `stack_status` reports it. Every field is named; nothing on
+/// disk is.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StackSnapshot {
+    pub services: Vec<StackService>,
+    /// False when the services lock was busy and `services` is the previous
+    /// snapshot — the tray's own honesty rule, carried to the agent.
+    pub services_fresh: bool,
+    pub dns_answers: bool,
+    pub resolver_installed: bool,
+    pub ca_trusted: bool,
+    pub mail_running: bool,
+    pub php: Vec<StackPhp>,
+    pub default_tld: String,
+    pub cli_installed: bool,
+    pub cli_current: bool,
+}
+
 /// What `inspect_folder` learned — the dialog's `LinkedFolderInfo` minus the two
 /// absolute paths (the agent supplied the root, and the served folder is
 /// `docroot_rel` under it).
@@ -95,6 +133,41 @@ impl<'a> ReadCtx<'a> {
             .into_iter()
             .filter(|p| p.site_id == site.id)
             .collect())
+    }
+
+    /// The stack as rexenv itself sees it — `rex doctor`'s composite, read-only:
+    /// the manager's service snapshot, whether OUR edge answers, whether OUR DNS
+    /// answers, whether the backbone resolver file is installed and the CA is
+    /// trusted, the mail catcher, PHP versions, the default TLD, the CLI link.
+    /// No path, no pid, no socket: what an agent needs to say "the stack is
+    /// stopped — press Start in rexenv", never where anything lives.
+    pub fn stack_snapshot(&self) -> Result<StackSnapshot> {
+        let (services, fresh) = self.state.service_infos_fresh();
+        let conn = self
+            .state
+            .db
+            .lock()
+            .map_err(|_| Error::Other("the app database lock is poisoned".into()))?;
+        let php: Vec<StackPhp> = crate::state::store::list_php_versions(&conn)?
+            .into_iter()
+            .map(|v| StackPhp { minor: v.minor, installed: v.installed, default: v.is_default })
+            .collect();
+        let default_tld = core::sites::default_tld(&conn)?;
+        drop(conn);
+        let platform = self.state.platform.as_ref();
+        let cli = core::cli::status(platform).ok();
+        Ok(StackSnapshot {
+            services: services.into_iter().map(|s| StackService { name: s.name, running: s.running, port: s.port, optional: s.optional }).collect(),
+            services_fresh: fresh,
+            dns_answers: core::dns::answers_as_ours(core::dns::DEFAULT_DNS_PORT),
+            resolver_installed: platform.dns().resolver_path(core::tld::BACKBONE_TLD).exists(),
+            ca_trusted: platform.cert_trust().is_trusted(&self.state.ca.cert_path),
+            mail_running: core::mail::running(),
+            php,
+            default_tld,
+            cli_installed: cli.as_ref().is_some_and(|c| c.installed),
+            cli_current: cli.as_ref().is_some_and(|c| c.current),
+        })
     }
 
     /// Search the WordPress.org directory — a network READ of a public API, no

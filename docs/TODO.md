@@ -2036,6 +2036,11 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     runner as the user, the inbox behind two consents.
   - [ ] **P4 — the stack**: `stack_status`/`stack(...)` incl. privileged start/stop (D10),
     `php_*`, `settings`, `tld`, `open`, `share` (D11), TTL/cap as settings.
+    ✓ P4.1 — **`stack_status` (read) + `stack(...)`**, ledger #485 (3 Sep 2026): start/stop
+    under `system` from ONE arm (source-scanned), macOS dialog = second consent stated in
+    the tool; restart/engines/mail under `manage` on rexenv itself. The old "no tool
+    reaches run_privileged" row never landed; #485 is the narrower true claim. Remaining:
+    `php_*`, `settings`, `tld`, `open`, `share`, TTL/cap settings, SMOKE §P4.
   - [ ] **P5 — long tail**: `repo(...)`, `valet_import`, `connection_rewrite`, `db_import`,
     `blueprints`, `wp_org_search`, `agent_activity`.
   - [ ] **P6 — protocol**: annotations, progress notifications riding #447's records,

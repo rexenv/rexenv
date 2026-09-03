@@ -673,7 +673,7 @@ async fn fulfill_tool_call<Rt: tauri::Runtime>(
         }
         Tool::User(t) => {
             let ops = AppSiteCreator { app: app.clone() };
-            (t.handler)(user_sites::UserCtx::new(state.inner(), &ops, &ops, &ops, client), args, acted).await
+            (t.handler)(user_sites::UserCtx::new(state.inner(), &ops, &ops, &ops, &ops, client), args, acted).await
         }
     };
     match outcome {
@@ -1088,6 +1088,34 @@ impl<Rt: tauri::Runtime> user_sites::MailOps for AppSiteCreator<Rt> {
     }
 }
 
+impl<Rt: tauri::Runtime> user_sites::StackOps for AppSiteCreator<Rt> {
+    // The two calls below reach `run_privileged` (the edge daemon). They are
+    // reachable from ONE tool arm, behind the `system` scope, and the macOS
+    // dialog they raise is a consent the agent cannot give — stated in the
+    // tool's description and in ledger #485.
+    fn start_all<'a>(&'a self) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::services::start_services(self.state()?).await })
+    }
+    fn stop_all<'a>(&'a self) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::services::stop_services(self.state()?).await })
+    }
+    fn restart_web<'a>(&'a self, target: String) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::services::WebRestartReport>> {
+        Box::pin(async move { crate::commands::services::restart_web_service(self.state()?, target).await })
+    }
+    fn start_database<'a>(&'a self, key: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::database::start_database(self.state()?, key).await })
+    }
+    fn stop_database<'a>(&'a self, key: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::database::stop_database(self.state()?, key).await })
+    }
+    fn start_mail<'a>(&'a self) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::mail::start_mail(self.state()?).await })
+    }
+    fn stop_mail<'a>(&'a self) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::mail::stop_mail(self.state()?).await })
+    }
+}
+
 /// Run EVERY registered tool against `app`'s state with the fixture site id, and
 /// return each tool's serialised output (or its error text — errors can leak
 /// too). For the secret-leak sweep (`examples/mcp_secret_sweep`): it plants
@@ -1108,7 +1136,7 @@ pub async fn sweep_tool_outputs<Rt: tauri::Runtime>(
     let ctx = ReadCtx::new(state.inner());
     let creator = AppSiteCreator { app: app.clone() };
     let sctx = scratch::ScratchCtx::new(state.inner(), &creator, &creator, "secret-sweep");
-    let uctx = user_sites::UserCtx::new(state.inner(), &creator, &creator, &creator, "secret-sweep");
+    let uctx = user_sites::UserCtx::new(state.inner(), &creator, &creator, &creator, &creator, "secret-sweep");
     let mut outputs = Vec::new();
     // The sweep exercises handlers for their OUTPUT; a target they record is
     // irrelevant here, so each gets a throwaway recorder.

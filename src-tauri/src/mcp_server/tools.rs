@@ -122,6 +122,20 @@ static REGISTRY: &[ReadTool] = &[
         handler: site_inspect_folder,
     },
     ReadTool {
+        name: "stack_status",
+        description: "The whole stack as rexenv sees it, in one read: every service (edge, web \
+                      server, PHP pools, databases, mail) with whether it is running and its port; \
+                      whether rexenv's own edge and DNS are answering; whether the resolver file \
+                      and the local CA are in place; PHP versions installed and the default; the \
+                      default TLD; whether the `rex` CLI is on PATH. Runs nothing, requests no \
+                      site. When something is down, the user's Start button in rexenv (or the \
+                      `stack` tool under their `system` permission) is the way forward.",
+        input_schema: no_params,
+        sweep_args: |_id| json!({}),
+        summarise: |_| None,
+        handler: stack_status,
+    },
+    ReadTool {
         name: "wp_org_search",
         description: "Search the WordPress.org directory for plugins or themes — slug, name, \
                       author, rating, active installs. A public network read; no site involved \
@@ -304,6 +318,29 @@ fn site_inspect_folder<'a>(
                 format!("`{}` under this folder would be served, not the folder itself.", found.docroot_rel)
             },
         }))
+    })
+}
+
+fn stack_status<'a>(
+    ctx: ReadCtx<'a>,
+    _args: &'a Value,
+    _acted: &'a super::feed::ActedTarget,
+) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let snap = ctx.stack_snapshot()?;
+        // The two wire facts `site_status` probes, once, for the stack as a whole.
+        let tcp_443_open = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            tokio::net::TcpStream::connect((std::net::Ipv4Addr::LOCALHOST, 443)),
+        )
+        .await
+        .map(|r| r.is_ok())
+        .unwrap_or(false);
+        let mut value = serde_json::to_value(snap).map_err(|e| Error::Other(format!("serialising the stack: {e}")))?;
+        if let Some(obj) = value.as_object_mut() {
+            obj.insert("tcp443Open".into(), json!(tcp_443_open));
+        }
+        Ok(value)
     })
 }
 

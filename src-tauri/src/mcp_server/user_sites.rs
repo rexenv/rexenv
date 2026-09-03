@@ -392,6 +392,33 @@ static REGISTRY: &[UserTool] = &[
         handler: mail_inbox,
     },
     UserTool {
+        name: "stack",
+        description: "Control rexenv's stack. Takes `action` and, for some, `service`. `start` and \
+                      `stop` bring the WHOLE stack up or down (edge, web server, PHP pools, \
+                      databases, mail) and need the user's `system` permission on rexenv itself — \
+                      AND, because the edge is a root daemon, macOS asks the user for their \
+                      password in a dialog the agent cannot answer; that dialog is a second consent, \
+                      and if they cancel it the call fails. `restart` {service: nginx / edge / \
+                      php-8.3 …} rebuilds that service's config and restarts it (the edge is \
+                      reloaded, never stopped); `start_database` / `stop_database` {service: mysql \
+                      / mariadb / postgres} and `start_mail` / `stop_mail` need `manage` on rexenv \
+                      itself and never prompt. A stopped web tier is every site down: prefer \
+                      `restart` to stopping.",
+        input_schema: || json!({
+            "type": "object",
+            "properties": {
+                "action": { "type": "string", "enum": ["start", "stop", "restart", "start_database", "stop_database", "start_mail", "stop_mail"] },
+                "service": { "type": "string", "description": "restart: nginx / edge / php-<minor>; start_database / stop_database: mysql / mariadb / postgres." }
+            },
+            "required": ["action"],
+            "additionalProperties": false
+        }),
+        sweep_args: |_id| json!({ "action": "restart", "service": "nginx" }),
+        summarise: |args| args.get("action").and_then(Value::as_str).map(str::to_string),
+        scope: Scope::System,
+        handler: stack,
+    },
+    UserTool {
         name: "site_configure",
         description: "Change how one of the user's own sites is set up — the things the site's \
                       Settings tab does. Takes `site_id` and `action`, plus the action's field: \
@@ -647,6 +674,20 @@ pub trait WpOps: Send + Sync {
     fn network_site_delete<'a>(&'a self, id: String, blog_id: String) -> OpFuture<'a, Result<()>>;
 }
 
+/// The app's own stack controls (`commands::services`, `database`, `mail`),
+/// runtime-erased. `start_all`/`stop_all` reach `run_privileged` (the edge is a
+/// root daemon) — the macOS dialog they raise is a SECOND consent on top of the
+/// `system` grant, and the only two methods here that can raise one.
+pub trait StackOps: Send + Sync {
+    fn start_all<'a>(&'a self) -> OpFuture<'a, Result<()>>;
+    fn stop_all<'a>(&'a self) -> OpFuture<'a, Result<()>>;
+    fn restart_web<'a>(&'a self, target: String) -> OpFuture<'a, Result<crate::commands::services::WebRestartReport>>;
+    fn start_database<'a>(&'a self, key: String) -> OpFuture<'a, Result<()>>;
+    fn stop_database<'a>(&'a self, key: String) -> OpFuture<'a, Result<()>>;
+    fn start_mail<'a>(&'a self) -> OpFuture<'a, Result<()>>;
+    fn stop_mail<'a>(&'a self) -> OpFuture<'a, Result<()>>;
+}
+
 /// The app's own Mailpit reads and writes (`commands::mail`), runtime-erased.
 pub trait MailOps: Send + Sync {
     fn list<'a>(&'a self, query: Option<String>, unread_only: bool) -> OpFuture<'a, Result<crate::core::mail::MailList>>;
@@ -671,11 +712,12 @@ pub struct UserCtx<'a> {
     ops: &'a dyn SiteOps,
     wp: &'a dyn WpOps,
     mail: &'a dyn MailOps,
+    stack: &'a dyn StackOps,
 }
 
 impl<'a> UserCtx<'a> {
-    pub fn new(state: &'a AppState, ops: &'a dyn SiteOps, wp: &'a dyn WpOps, mail: &'a dyn MailOps, client: &'a str) -> Self {
-        UserCtx { state, client, ops, wp, mail }
+    pub fn new(state: &'a AppState, ops: &'a dyn SiteOps, wp: &'a dyn WpOps, mail: &'a dyn MailOps, stack: &'a dyn StackOps, client: &'a str) -> Self {
+        UserCtx { state, client, ops, wp, mail, stack }
     }
 
     pub(crate) fn db(&self) -> Result<std::sync::MutexGuard<'_, rusqlite::Connection>> {
@@ -1902,6 +1944,62 @@ fn mail_inbox<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::Ac
     })
 }
 
+
+pub(crate) fn stack_scope(action: &str) -> Option<Scope> {
+    Some(match action {
+        "start" | "stop" => Scope::System,
+        "restart" | "start_database" | "stop_database" | "start_mail" | "stop_mail" => Scope::Manage,
+        _ => return None,
+    })
+}
+
+/// `stack` — the only parity tool whose `system` arm can raise a privileged
+/// prompt, and it says so in its description: the grant is one consent, the
+/// macOS dialog the second, and neither can be given by the agent. The
+/// `manage` arms (a web-tier restart, an engine, the mail catcher) are
+/// user-level and never prompt, exactly as the app's own commands are.
+fn stack<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::ActedTarget) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let action = args.get("action").and_then(Value::as_str).ok_or_else(|| Error::Other("stack needs an `action`.".into()))?;
+        let scope = stack_scope(action).ok_or_else(|| Error::Other(format!("`{action}` is not a stack action. Use start, stop, restart, start_database, stop_database, start_mail or stop_mail.")))?;
+        let service = args.get("service").and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty());
+        let wanted = match action {
+            "start" => "start rexenv's whole stack (macOS will also ask for your password)".to_string(),
+            "stop" => "stop rexenv's whole stack — every site goes offline (macOS will also ask for your password)".to_string(),
+            "restart" => format!("restart the `{}` service", service.ok_or_else(|| Error::Other("stack `restart` needs `service` (nginx, edge or php-<minor>).".into()))?),
+            "start_database" | "stop_database" => {
+                let s = service.ok_or_else(|| Error::Other(format!("stack `{action}` needs `service` (mysql, mariadb or postgres).")))?;
+                if !matches!(s, "mysql" | "mariadb" | "postgres") {
+                    return Err(Error::Other(format!("`{s}` is not a database engine here — use mysql, mariadb or postgres.")));
+                }
+                format!("{} the {s} engine", if action == "start_database" { "start" } else { "stop" })
+            }
+            "start_mail" => "start the mail catcher".to_string(),
+            _ => "stop the mail catcher".to_string(),
+        };
+        let auto = match scope {
+            // `System` has no auto-allow variant (#470): this arm is reached only
+            // by a person's click, and then by a second person's click in macOS.
+            Scope::System => ctx.claim::<scope::System>(None, &wanted)?.auto_granted,
+            _ => ctx.claim::<scope::Manage>(None, &wanted)?.auto_granted,
+        };
+        let st = ctx.stack;
+        let result = match action {
+            "start" => { st.start_all().await?; json!({ "started": true, "detail": "The stack is up. Sites are served again; stack_status shows each service." }) }
+            "stop" => { st.stop_all().await?; json!({ "stopped": true, "detail": "The stack is down: every site is offline until it is started again." }) }
+            "restart" => {
+                let r = st.restart_web(service.unwrap().to_string()).await?;
+                json!({ "service": r.service, "outcome": r.outcome })
+            }
+            "start_database" => { st.start_database(service.unwrap().to_string()).await?; json!({ "started": service }) }
+            "stop_database" => { st.stop_database(service.unwrap().to_string()).await?; json!({ "stopped": service }) }
+            "start_mail" => { st.start_mail().await?; json!({ "started": "mail" }) }
+            _ => { st.stop_mail().await?; json!({ "stopped": "mail" }) }
+        };
+        Ok(with_consent(json!({ "action": action, "result": result }), auto))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2386,6 +2484,19 @@ mod tests {
         }
     }
 
+    impl StackOps for FakeOps {
+        fn start_all<'a>(&'a self) -> OpFuture<'a, Result<()>> { self.calls.lock().unwrap().push("stack start".into()); Box::pin(async { Ok(()) }) }
+        fn stop_all<'a>(&'a self) -> OpFuture<'a, Result<()>> { self.calls.lock().unwrap().push("stack stop".into()); Box::pin(async { Ok(()) }) }
+        fn restart_web<'a>(&'a self, target: String) -> OpFuture<'a, Result<crate::commands::services::WebRestartReport>> {
+            self.calls.lock().unwrap().push(format!("stack restart {target}"));
+            Box::pin(async move { Ok(crate::commands::services::WebRestartReport { service: target, outcome: "restarted" }) })
+        }
+        fn start_database<'a>(&'a self, key: String) -> OpFuture<'a, Result<()>> { self.calls.lock().unwrap().push(format!("db start {key}")); Box::pin(async { Ok(()) }) }
+        fn stop_database<'a>(&'a self, key: String) -> OpFuture<'a, Result<()>> { self.calls.lock().unwrap().push(format!("db stop {key}")); Box::pin(async { Ok(()) }) }
+        fn start_mail<'a>(&'a self) -> OpFuture<'a, Result<()>> { self.calls.lock().unwrap().push("mail start".into()); Box::pin(async { Ok(()) }) }
+        fn stop_mail<'a>(&'a self) -> OpFuture<'a, Result<()>> { self.calls.lock().unwrap().push("mail stop".into()); Box::pin(async { Ok(()) }) }
+    }
+
     fn switch_on(state: &AppState) {
         let conn = state.db.lock().unwrap();
         store::set_setting(&conn, crate::mcp_server::MCP_SITES_ENABLED_KEY, "true").unwrap();
@@ -2416,7 +2527,7 @@ mod tests {
         seed_php(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, "claude-code");
         let run = |args: Value| {
             let acted = &acted;
             async move { site_create(ctx, &args, acted).await }
@@ -2520,7 +2631,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, "claude-code");
         let mine = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "mine.rex", SiteOrigin::User);
         let theirs = test_site("c58e0a41-7d2f-4b19-93a6-6e1c5d8f0a24", "probe.scratch.rex", SiteOrigin::Agent);
         {
@@ -2561,7 +2672,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, "claude-code");
         let mine = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "mine.rex", SiteOrigin::User);
         {
             let conn = state.db.lock().unwrap();
@@ -2656,7 +2767,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, "claude-code");
         let mine = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "mine.rex", SiteOrigin::User);
         {
             let conn = state.db.lock().unwrap();
@@ -2727,7 +2838,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, "claude-code");
         let wp_site = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "blog.rex", SiteOrigin::User);
         let mut php_site = test_site("bbbbbbbb-bbbb-4ccc-8ddd-eeeeeeeeeeee", "plain.rex", SiteOrigin::User);
         php_site.site_type = SiteType::Php;
@@ -2818,7 +2929,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, "claude-code");
         let site = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "blog.rex", SiteOrigin::User);
         {
             let conn = state.db.lock().unwrap();
@@ -2905,7 +3016,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, "claude-code");
         let site = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "blog.rex", SiteOrigin::User);
         {
             let conn = state.db.lock().unwrap();
@@ -2961,7 +3072,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, "claude-code");
         let site = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "blog.rex", SiteOrigin::User);
         let theirs = test_site("c58e0a41-7d2f-4b19-93a6-6e1c5d8f0a24", "probe.scratch.rex", SiteOrigin::Agent);
         {
@@ -3008,5 +3119,64 @@ mod tests {
         let err = mail_inbox(ctx, &json!({ "action": "mark_read" }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("`manage`"), "{err}");
         assert!(ops.calls.lock().unwrap().iter().any(|c| c == "mail list None true"));
+    }
+
+    /// **The stack's start/stop are reachable only through `system` — a scope
+    /// with no auto-allow variant — and the two privileged-reaching app calls
+    /// live in exactly that arm; a restart, an engine or the mail catcher are
+    /// `manage` on rexenv itself and never prompt.**
+    #[tokio::test]
+    async fn stack_start_and_stop_need_system_and_nothing_else_reaches_the_privileged_calls() {
+        assert_eq!(stack_scope("start"), Some(Scope::System));
+        assert_eq!(stack_scope("stop"), Some(Scope::System));
+        assert_eq!(stack_scope("restart"), Some(Scope::Manage));
+        assert_eq!(stack_scope("stop_database"), Some(Scope::Manage));
+        assert!(agent_grants::AutoAllowable::try_from(Scope::System).is_err(), "system cannot be auto-allowed — the type says so");
+        // The source: `start_all(`/`stop_all(` appear ONCE each in production
+        // code, inside `stack`, and the arm that reaches them claims `System`.
+        let me = include_str!("user_sites.rs");
+        let prod = &me[..me.find("#[cfg(test)]").unwrap()];
+        let handler = &prod[prod.find("fn stack<'a>(").unwrap()..];
+        let handler = &handler[..handler.find("\n}\n").unwrap()];
+        for call in ["st.start_all(", "st.stop_all("] {
+            assert_eq!(prod.matches(call).count(), 1, "{call} must be called from exactly one place");
+            assert!(handler.contains(call), "{call} must be inside the stack handler");
+        }
+        assert!(handler.contains("ctx.claim::<scope::System>"), "the privileged arm claims System");
+        assert!(handler.find("ctx.claim::<scope::System>").unwrap() < handler.find("st.start_all(").unwrap());
+
+        let state = app_state();
+        switch_on(&state);
+        let ops = FakeOps::default();
+        let acted = super::super::feed::ActedTarget::default();
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, "claude-code");
+        let err = stack(ctx, &json!({ "action": "start" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("`system`") && err.contains("rexenv itself"), "{err}");
+        let a = asks(&state);
+        assert_eq!((a[0].site_id.as_deref(), a[0].scope), (None, Scope::System));
+        assert!(a[0].wanted.contains("password"), "the ask says macOS will ask too: {}", a[0].wanted);
+        let err = stack(ctx, &json!({ "action": "stop_database", "service": "redis" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("not a database engine"), "{err}");
+        {
+            let conn = state.db.lock().unwrap();
+            store::grant_agent_site(&conn, "g1", None, "claude-code", "manage", 7, false, false).unwrap();
+        }
+        assert!(stack(ctx, &json!({ "action": "start" }), &acted).await.is_err(), "manage does not start the stack");
+        let v = stack(ctx, &json!({ "action": "restart", "service": "nginx" }), &acted).await.unwrap();
+        assert_eq!(v["result"]["outcome"], "restarted");
+        let v = stack(ctx, &json!({ "action": "start_database", "service": "mysql" }), &acted).await.unwrap();
+        assert_eq!(v["result"]["started"], "mysql");
+        stack(ctx, &json!({ "action": "stop_mail" }), &acted).await.unwrap();
+        {
+            let conn = state.db.lock().unwrap();
+            store::grant_agent_site(&conn, "g2", None, "claude-code", "system", 7, false, false).unwrap();
+        }
+        let v = stack(ctx, &json!({ "action": "stop" }), &acted).await.unwrap();
+        assert_eq!(v["result"]["stopped"], true);
+        let calls = ops.calls.lock().unwrap().clone();
+        for c in ["stack restart nginx", "db start mysql", "mail stop", "stack stop"] {
+            assert!(calls.iter().any(|x| x == c), "missing {c} in {calls:?}");
+        }
+        assert!(!calls.iter().any(|x| x == "stack start"), "start never ran without system");
     }
 }
