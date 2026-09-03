@@ -320,12 +320,22 @@ impl ProcessSupervisor for MacosSupervisor {
         // Detached and silent: it must outlive us (that is its whole job), and
         // it has nothing to say — it either signals a still-identified child or
         // exits. Anything worth reading is already in the child's own log.
-        std::process::Command::new(exe)
+        let mut guard = std::process::Command::new(exe)
             .args(&args)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()?;
+        // REAPED. `Child::drop` neither kills nor waits, and nothing installs
+        // a SIGCHLD reaper, so a dropped handle left one zombie per share for
+        // the life of the app. The guard exits when the share ends (or when we
+        // die, at which point launchd reaps it) — a thread parked on `wait`
+        // costs nothing and clears the corpse the moment it appears.
+        std::thread::Builder::new()
+            .name(format!("tunnel-guard-reaper-{child}"))
+            .spawn(move || {
+                let _ = guard.wait();
+            })?;
         Ok(())
     }
 
@@ -573,7 +583,7 @@ impl ProcessSupervisor for MacosSupervisor {
         let (holder, app, free_command) = match master_pid {
             Some(pid) => {
                 let exe = executable_path(pid);
-                let (h, a) = attribute_holder(&exe, pid, holder_is_valets_nginx(&exe));
+                let (h, a) = attribute_holder(&exe, pid, holder_is_valets_nginx(&exe, pid));
                 let cmd = free_port_command(a.as_deref(), &exe, pid);
                 (Some(h), a, Some(cmd))
             }
@@ -697,8 +707,11 @@ fn executable_path(pid: u32) -> String {
 /// own include. "Valet is installed on this machine" would attribute a
 /// developer's own nginx to Valet, which is a confident sentence about the wrong
 /// program — worse than the generic answer it replaced.
-fn holder_is_valets_nginx(exe_path: &str) -> bool {
-    crate::core::valet::brew_nginx_conf(exe_path)
+fn holder_is_valets_nginx(exe_path: &str, pid: u32) -> bool {
+    // The config THIS process loads — `-c` from its argv when it has one —
+    // and only when the executable is nginx at all.
+    let cmdline = MacosSupervisor.pid_command(pid);
+    crate::core::valet::nginx_conf_for(exe_path, cmdline.as_deref())
         .and_then(|conf| std::fs::read_to_string(conf).ok())
         .is_some_and(|conf| crate::core::valet::conf_is_valets(&conf))
 }

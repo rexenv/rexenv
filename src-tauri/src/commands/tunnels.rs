@@ -344,8 +344,19 @@ pub fn spawn_health_prober<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
                 .lock()
                 .map(|m| m.keys().cloned().collect())
                 .unwrap_or_default();
-            for domain in domains {
-                probe_and_record(&app, &client, &domain).await;
+            // CONCURRENT: a failing probe costs up to ~19s (primary, 1.1.1.1,
+            // edge), and running them in sequence stretched the "checked every
+            // 30 s" the Tunnels page promises to minutes with a few broken
+            // shares — every badge as stale as the sum of the others' waits.
+            let probes: Vec<_> = domains
+                .into_iter()
+                .map(|domain| {
+                    let (app, client) = (app.clone(), client.clone());
+                    tokio::spawn(async move { probe_and_record(&app, &client, &domain).await })
+                })
+                .collect();
+            for probe in probes {
+                let _ = probe.await;
             }
         }
     });

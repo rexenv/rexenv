@@ -220,7 +220,7 @@ impl Progress {
 pub async fn serve<F, Fut>(listener: UnixListener, handler: F)
 where
     F: Fn(String, Progress) -> Fut + Clone + Send + 'static,
-    Fut: std::future::Future<Output = String> + Send,
+    Fut: std::future::Future<Output = String> + Send + 'static,
 {
     loop {
         let Ok((stream, _)) = listener.accept().await else {
@@ -235,8 +235,16 @@ where
                 let streaming = parse_request(&line).map(|r| r.stream).unwrap_or(false);
                 let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
                 let progress = if streaming { Progress(Some(tx)) } else { Progress::none() };
-                let fut = handler(line, progress);
-                tokio::pin!(fut);
+                // The handler runs in ITS OWN task, so the command outlives
+                // the client: `rex site create … | head -1` used to hang up
+                // after the first record, the write error returned from this
+                // task, and the handler future was DROPPED mid-command — the
+                // site provisioned (a spawned job) but the multisite convert
+                // that follows the wait never ran, with no error anywhere.
+                // A task also turns a panicking arm into a `JoinError` this
+                // loop can answer, keeping "exactly one envelope, always last".
+                let mut work = tokio::spawn(handler(line, progress));
+                let mut client_gone = false;
                 let response = loop {
                     tokio::select! {
                         // Progress first when both are ready: a record produced
@@ -244,15 +252,28 @@ where
                         // envelope that ends the exchange.
                         biased;
                         Some(p) = rx.recv() => {
-                            if write.write_all(p.as_bytes()).await.is_err()
-                                || write.write_all(b"\n").await.is_err()
+                            if !client_gone
+                                && (write.write_all(p.as_bytes()).await.is_err()
+                                    || write.write_all(b"\n").await.is_err())
                             {
-                                return; // client hung up mid-stream
+                                // Keep draining so the handler never blocks on
+                                // a full channel; the command runs to its end.
+                                client_gone = true;
                             }
                         }
-                        done = &mut fut => break done,
+                        done = &mut work => break match done {
+                            Ok(reply) => reply,
+                            Err(e) => serde_json::json!({
+                                "ok": false,
+                                "error": format!("the command crashed inside the app: {e}"),
+                            })
+                            .to_string(),
+                        },
                     }
                 };
+                if client_gone {
+                    return;
+                }
                 // Anything queued between the last poll and the handler
                 // returning — dropped otherwise, which would lose the final
                 // phase of every job that reports one just before finishing.
@@ -2306,8 +2327,12 @@ mod tests {
         // A mock app with NO managed state = the init-failed / still-starting
         // shape; the reply must be an error envelope, never a panic.
         let app = tauri::test::mock_app();
-        // Every ROUTED command reaches the state check (proving the arm
-        // exists); an unrouted one must say so instead.
+        // A SAMPLE of routed commands reaches the state check (proving those
+        // arms exist); an unrouted one must say so instead. This list is
+        // hand-written and covers a third of the arms — the guard that
+        // enumerates EVERY arm is `every_dispatch_arm_runs_the_command_the_ui_runs`
+        // (9a2108c), which reads the match itself; this one is the
+        // envelope-shape check.
         for cmd in [
             "status", "start", "stop", "site.list", "site.create", "site.delete", "site.info",
             "site.login", "logs.targets", "logs.tail", "logs.list", "doctor", "db.export",

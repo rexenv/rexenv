@@ -489,7 +489,7 @@ fn storage_block(storage_root: Option<&Path>) -> String {
     format!(
         "\t\tlocation ^~ /storage/ {{\n\
          \t\t\tlocation ~ /\\.(?!well-known(/|$)) {{ return 404; }}\n\
-         \t\t\tlocation ~ \\.php$ {{ return 404; }}\n\
+         \t\t\tlocation ~* \\.php$ {{ return 404; }}\n\
          \t\t\talias \"{root}/\";\n\
          \t\t\ttry_files $uri =404;\n\
          \t\t}}\n",
@@ -547,7 +547,7 @@ fn server_block(http_port: u16, site: &NginxSite) -> String {
          {rewrite}\
          {storage}\
          {dotdeny}\
-         \t\tlocation ~ \\.php$ {{\n\
+         \t\tlocation ~* \\.php$ {{\n\
          \t\t\tfastcgi_pass 127.0.0.1:{fpm};\n\
          \t\t\tfastcgi_index index.php;\n\
          {params}\
@@ -1029,7 +1029,7 @@ mod tests {
         );
         assert!(block.contains("try_files $uri =404;"), "no directory listing / fallthrough");
         assert!(
-            block.contains("location ~ \\.php$ { return 404; }"),
+            block.contains("location ~* \\.php$ { return 404; }"),
             "PHP is not refused inside the storage mapping — `^~` beats the vhost's `.php` \
              location, so an uploaded script would be served as SOURCE: {block}"
         );
@@ -1043,7 +1043,7 @@ mod tests {
         // only falls to regex when none matched, so this is about a reader
         // finding them in the order they take effect.
         assert!(
-            out.find("location ^~ /storage/").unwrap() < out.find("location ~ \\.php$").unwrap()
+            out.find("location ^~ /storage/").unwrap() < out.find("location ~* \\.php$").unwrap()
         );
     }
 
@@ -1108,7 +1108,7 @@ mod tests {
         // Send too: a multi-GB body streams UP to the pool, and nginx's default
         // there is the same 60s.
         assert!(out.contains("fastcgi_send_timeout 86400s;"), "got: {out}");
-        assert!(out.find("fastcgi_read_timeout").unwrap() > out.find("location ~ \\.php$").unwrap());
+        assert!(out.find("fastcgi_read_timeout").unwrap() > out.find("location ~* \\.php$").unwrap());
         // None ⇒ nginx's own default, unchanged for every site.
         assert!(!generate_nginx_config(&nginx_cfg(RewriteMode::Single)).contains("timeout"));
     }
@@ -1129,7 +1129,7 @@ mod tests {
         assert_eq!(out.matches("PHP_VALUE").count(), 1);
         assert!(!out.contains("upload_max_filesize=2048M\npost_max_size"), "raw newline emitted");
         // Inside the `.php` location, after the template params.
-        let php_loc = out.find("location ~ \\.php$").unwrap();
+        let php_loc = out.find("location ~* \\.php$").unwrap();
         assert!(out.find("PHP_VALUE").unwrap() > php_loc);
         assert!(out.find("PHP_VALUE").unwrap() > out.find("fastcgi_param HTTPS").unwrap());
         // None ⇒ nothing emitted; the pool's own settings stand.
@@ -1154,7 +1154,7 @@ mod tests {
             assert!(out.contains("return 404;"));
             assert!(
                 out.find("location ~ /\\.").unwrap()
-                    < out.find("location ~ \\.php$").unwrap(),
+                    < out.find("location ~* \\.php$").unwrap(),
                 "deny must precede the php location"
             );
         }

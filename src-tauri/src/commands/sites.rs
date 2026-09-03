@@ -523,7 +523,13 @@ pub async fn restart_site(
         }
     };
 
-    let pool_restarted = if pool {
+    // A refused backend restart short-circuits the pool bounce: "rexenv will
+    // not touch this site's adopted server" and then restarting the pool that
+    // serves everybody else — reported as `poolRestarted: true` beside
+    // `kind: "refused"` — was the opposite of an honest outcome.
+    let pool_restarted = if pool && kind != "refused" {
+        super::services::prefetch_pool_binaries(&state, &core::php::minor_of(&site.php_version))
+            .await?;
         let checks = {
             let mut mgr = state.services.lock().await;
             mgr.restart_pools_for(
@@ -1594,7 +1600,7 @@ mod a_site_restart_never_bounces_a_shared_pool_uninvited {
             .expect("restart_site no longer bounces the pool at all — if the flag was dropped, \
                      drop this guard with it; if it moved, move the guard");
         let gate = body
-            .find("if pool {")
+            .find("if pool ")
             .expect("`restart_site` no longer gates the pool restart on the caller's flag");
         assert!(
             gate < call,

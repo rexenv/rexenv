@@ -139,11 +139,21 @@ fn still_ours(pid: u32, domain: &str) -> bool {
 /// SIGTERM, brief grace, then SIGKILL — the same escalation the app uses, kept
 /// here because the app is by definition gone when this runs.
 fn stop_child(pid: u32) {
-    let _ = std::process::Command::new("kill").arg(pid.to_string()).status();
+    // `libc::kill`, not `/usr/bin/kill` by PATH lookup: this runs when the
+    // app is by definition gone and the share is public — a PATH that does
+    // not resolve `kill` would have left it public, silently.
+    // SAFETY: kill(2) on a pid `still_ours` just identified; SIGTERM then
+    // SIGKILL are the same escalation the app uses.
+    unsafe {
+        libc::kill(pid as libc::pid_t, libc::SIGTERM);
+    }
     std::thread::sleep(TERM_GRACE);
     // SAFETY: kill(2) with signal 0 only probes for existence.
     let alive = unsafe { libc::kill(pid as libc::pid_t, 0) == 0 };
     if alive {
-        let _ = std::process::Command::new("kill").args(["-9", &pid.to_string()]).status();
+        // SAFETY: as above.
+        unsafe {
+            libc::kill(pid as libc::pid_t, libc::SIGKILL);
+        }
     }
 }

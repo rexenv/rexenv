@@ -463,6 +463,25 @@ pub struct WebRestartReport {
 /// people actually want, and it always runs on a freshly generated config —
 /// resurrecting a service on the config it already had is the state a restart is
 /// usually trying to escape.
+/// Download `minor`'s pinned php-fpm BEFORE a pool restart takes the services
+/// lock — the contract `restart_pools_for` states and the patch-update path
+/// honours (`lib.rs`), and which both restart verbs skipped: `stop_one` runs
+/// first and `ensure` then resolves the binary, which on a cold cache is a
+/// download held under the lock — every site on that minor 502s for its
+/// length while the Services screen (a `try_lock` snapshot) still shows the
+/// pool running, and offline the pool is simply left stopped.
+pub(crate) async fn prefetch_pool_binaries(state: &State<'_, AppState>, minor: &str) -> Result<()> {
+    let patches = {
+        let conn = state
+            .db
+            .lock()
+            .map_err(|_| Error::Other("database lock poisoned".into()))?;
+        core::php::effective_patches(&conn)?
+    };
+    let plan = core::downloads::plan_for_php_with(state.platform.as_ref(), minor, &patches);
+    core::downloads::prefetch(state.platform.as_ref(), &format!("Restart PHP {minor}"), &plan).await
+}
+
 #[tauri::command]
 pub async fn restart_web_service(
     state: State<'_, AppState>,
@@ -481,6 +500,9 @@ pub async fn restart_web_service(
             .map_err(|_| Error::Other("database lock poisoned".into()))?;
         core::sites::list(&conn)?
     };
+    if let core::service_manager::WebTarget::Pool(minor) = &parsed {
+        prefetch_pool_binaries(&state, minor).await?;
+    }
     let (outcome, checks) = {
         let mut mgr = state.services.lock().await;
         mgr.restart_web_service(state.platform.as_ref(), &state.ca, &sites, &parsed).await?
@@ -614,14 +636,30 @@ mod tests {
             let mut holders: Vec<(i32, usize, String)> = Vec::new();
             let mut depth = 0i32;
             let mut stmt = String::new();
+            let mut stmt_holds = false; // this statement already yielded a holder
             for (n, line) in src.lines().enumerate() {
-                let code = line.split("//").next().unwrap_or("");
+                // A line comment is `//` at the start or after whitespace —
+                // NOT the `//` inside `http://…`: splitting on the bare pair
+                // truncated any line carrying a URL, so an await after it was
+                // invisible.
+                let code = if line.trim_start().starts_with("//") {
+                    ""
+                } else {
+                    line.split(" //").next().unwrap_or("")
+                };
                 // Whitespace-stripped concatenation, so a call split across lines
                 // (`match mgr` / `.restart_pools_for(…)` / `.await`) reads as the
                 // one expression it is — with a space it does not, and the guard
                 // then calls the prescribed shape a violation.
                 stmt.push_str(code.trim());
-                let takes_lock = code.contains("services.lock().await");
+                // The lock is taken on the line whose `.await` completes
+                // `services.lock()` — which may be five lines below the
+                // `.services` (the multi-line form the first version could not
+                // see, so its holder was never pushed and every await under it
+                // was unchecked).
+                let takes_lock = !stmt_holds
+                    && code.contains(".await")
+                    && stmt.contains("services.lock().await");
                 let awaits = code.matches(".await").count() - usize::from(takes_lock);
                 if let Some((_, at, var)) = holders.last() {
                     // Awaiting the MANAGER'S OWN async methods under the lock is
@@ -634,6 +672,10 @@ mod tests {
                     // Statement-scoped, not line-scoped: `mgr.start_core(…)` is
                     // written across several lines with `.await?` alone on the
                     // last one, and a line-only check calls that a violation.
+                    // KNOWN BLIND SPOT: statement-scoped means a statement that
+                    // mentions the guard anywhere is exempt — `mgr.record(
+                    // download().await)` awaits a download and passes. Closing
+                    // it needs an expression parser, not another substring.
                     let on_the_manager = stmt.contains(&format!("{var}."));
                     assert_eq!(
                         awaits * usize::from(!on_the_manager),
@@ -649,17 +691,29 @@ mod tests {
                     );
                 }
                 if takes_lock {
-                    if let Some(var) = code
-                        .split_once("let ")
-                        .and_then(|(_, rest)| rest.trim_start_matches("mut ").split(' ').next())
-                    {
-                        holders.push((depth, n + 1, var.to_string()));
+                    stmt_holds = true;
+                    // The binding is in the STATEMENT, not necessarily on this
+                    // line (`let pids = state` / `.services` / `.lock()` /
+                    // `.await`). The LAST `let` in the statement is the guard's:
+                    // `let checks = { let mut mgr = state.services.lock().await;`
+                    // binds `mgr`, not `checks`.
+                    let binding = stmt
+                        .rsplit_once("let ")
+                        .map(|(_, rest)| rest.trim_start_matches("mut "))
+                        .and_then(|rest| rest.split([' ', '=', ':', ';']).next())
+                        .map(str::to_string)
+                        .filter(|name| {
+                            !name.is_empty() && name.chars().all(|c| c.is_alphanumeric() || c == '_')
+                        });
+                    if let Some(var) = binding {
+                        holders.push((depth, n + 1, var));
                         holders_seen += 1;
                     }
                 }
                 depth += code.matches('{').count() as i32 - code.matches('}').count() as i32;
                 if code.contains(';') {
                     stmt.clear();
+                    stmt_holds = false;
                 }
                 // The guard lives until its scope CLOSES (depth back below the
                 // depth it was bound at) or it is explicitly dropped. Comparing

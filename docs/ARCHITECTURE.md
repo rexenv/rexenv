@@ -283,7 +283,11 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   rewrite it. The card and `rex site domains` say so rather than leaving the
   redirect to be discovered.
 - **The CLI socket streams progress, but only to a client that asked**
-  (`Progress`, `stream: true`, 2 Sep 2026). The framing is: one request line in,
+  (`Progress`, `stream: true`, 2 Sep 2026). The handler runs in its OWN task, so a
+  client that hangs up mid-stream does not abandon the command half-way (it did,
+  until 3 Sep 2026 — `| head -1` on a multisite create left the convert unrun), and a
+  panicking arm is answered with an error envelope rather than a closed socket. The
+  framing is: one request line in,
   zero or more `{"progress": …}` lines, then EXACTLY ONE `{"ok": …}` envelope,
   always last. Opt-in is the compatibility hinge — an older `rex` reads one line
   and treats it as the reply, so a server that streamed unasked would hand it a

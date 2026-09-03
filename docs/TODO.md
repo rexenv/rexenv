@@ -35,6 +35,16 @@ paying for anyway: **the tick belongs in the commit that does the work.**
 
 ## Now — actionable code/test work
 
+- [ ] **WordPress passwords ride wp-cli argv** — found 3 Sep 2026 while narrowing ledger
+  #123 (which is the DATABASE password, and true). `--user_pass=` in `user_create` /
+  `user_set_password` and `--admin_password=` in `core install` (`core/wordpress.rs`,
+  `commands/site_provision.rs`) are on a command line `ps` shows to every user on the
+  machine. wp-cli's `--prompt=user_pass` reads the value from stdin; the fix is a
+  `wp_run` variant that pipes it — NOT shipped blind: a flag read off a dependency's docs
+  is unproven until a real wp-cli answers over a pipe (the `library-flags-need-live-proof`
+  lesson), so this needs one live leg first. Local-dev blast radius (a throwaway password
+  on a single-user Mac), which is why it is a row and not a hotfix.
+
 - [x] **A subdomain network's sub-sites are now testable through a share** ✓ 27 Aug 2026 —
   ledger #419–#422. They still cannot be reached AS SUBDOMAINS (a quick tunnel issues one
   hostname and pins one Host; there is no wildcard to ask for), so while shared the network

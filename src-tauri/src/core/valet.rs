@@ -140,6 +140,57 @@ pub fn brew_nginx_conf(exe_path: &str) -> Option<PathBuf> {
     None
 }
 
+/// The config the nginx at `exe_path` ACTUALLY loads, given its command line:
+/// an explicit `-c <path>` wins; otherwise the brew default for its prefix.
+/// `None` unless the executable IS nginx — the first version attributed by
+/// prefix alone, so a Homebrew `httpd` or `caddy` on `:443` was called Valet
+/// and the user told to run `valet stop`, which freed nothing. Pure.
+pub fn nginx_conf_for(exe_path: &str, cmdline: Option<&str>) -> Option<PathBuf> {
+    let base = Path::new(exe_path).file_name()?.to_str()?;
+    if !base.starts_with("nginx") {
+        return None;
+    }
+    if let Some(cmd) = cmdline {
+        let words: Vec<&str> = cmd.split_whitespace().collect();
+        if let Some(i) = words.iter().position(|w| *w == "-c") {
+            if let Some(path) = words.get(i + 1) {
+                return Some(PathBuf::from(path));
+            }
+        }
+        if let Some(inline) = words.iter().find_map(|w| w.strip_prefix("-c=")) {
+            return Some(PathBuf::from(inline));
+        }
+    }
+    brew_nginx_conf(exe_path)
+}
+
+#[cfg(test)]
+mod nginx_conf_tests {
+    use super::*;
+
+    /// Attribution is POSITIVE: the executable must be nginx, and the config
+    /// is the one it loads — `-c` first. A brew `httpd` on the port used to
+    /// read as "Valet", and the user was told `valet stop`.
+    #[test]
+    fn only_an_nginx_is_attributed_and_its_own_conf_wins() {
+        assert_eq!(nginx_conf_for("/opt/homebrew/opt/httpd/bin/httpd", None), None);
+        assert_eq!(nginx_conf_for("/opt/homebrew/bin/caddy", Some("caddy run")), None);
+        assert_eq!(
+            nginx_conf_for("/opt/homebrew/bin/nginx", None),
+            Some(PathBuf::from("/opt/homebrew/etc/nginx/nginx.conf"))
+        );
+        assert_eq!(
+            nginx_conf_for("/opt/homebrew/bin/nginx", Some("nginx -c /Users/me/my.conf")),
+            Some(PathBuf::from("/Users/me/my.conf"))
+        );
+        assert_eq!(
+            nginx_conf_for("/usr/local/opt/nginx/bin/nginx", Some("nginx: master process /usr/local/opt/nginx/bin/nginx -g daemon off;")),
+            Some(PathBuf::from("/usr/local/etc/nginx/nginx.conf"))
+        );
+        assert_eq!(nginx_conf_for("/usr/sbin/nginx", None), None, "not a brew prefix, no -c: nothing to read");
+    }
+}
+
 /// Does this nginx config belong to Valet? Its installer appends an include of
 /// its own `valet/valet.conf` to the Homebrew nginx.conf, which is a POSITIVE
 /// mark: a user's own nginx does not have it.
