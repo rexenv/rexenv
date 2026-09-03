@@ -369,8 +369,8 @@ pub fn refuse_wp_target_override(argv: &[String]) -> Result<()> {
             return Err(Error::Other(format!(
                 "`{arg}` is a WP-CLI alias, and rexenv doesn't run commands through aliases: an \
                  alias can point at another install, or another machine, and rexenv decides which \
-                 site a command runs against — the scratch site you named in `site_id`. Drop it \
-                 and the command runs against that site."
+                 site a command runs against — the site you named in `site_id`. Drop it and the \
+                 command runs against that site."
             )));
         }
         let lower = arg.to_ascii_lowercase();
@@ -380,9 +380,9 @@ pub fn refuse_wp_target_override(argv: &[String]) -> Result<()> {
         {
             return Err(Error::Other(format!(
                 "`{param}` isn't allowed here: rexenv decides which site a command runs against, \
-                 from the scratch site you named in `site_id`, and it adds `--path` itself. Drop \
+                 from the site you named in `site_id`, and it adds `--path` itself. Drop \
                  `{param}` and run the command again. To act on a different site, name it in \
-                 `site_id` — it has to be a scratch site the agent created."
+                 `site_id`."
             )));
         }
     }

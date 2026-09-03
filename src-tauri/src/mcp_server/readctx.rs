@@ -221,10 +221,12 @@ impl<'a> ReadCtx<'a> {
             .db
             .lock()
             .map_err(|_| Error::Other("the app database lock is poisoned".into()))?;
-        match site {
+        let mut rows = match site {
             Some(id) => super::feed::recent_for_site(&conn, id, limit),
             None => super::feed::recent(&conn, limit),
-        }
+        }?;
+        super::feed::resolve_target_labels(&conn, &mut rows)?;
+        Ok(rows)
     }
 
     /// Search the WordPress.org directory — a network READ of a public API, no

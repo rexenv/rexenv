@@ -2089,6 +2089,17 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     HEAD via `REXENV_MCP_HOLD_SECS` on `mcp_socket_check` + `claude -p --mcp-config`):
     49/49 tools listed, no schema complaint, `list_sites` round-tripped through `rex mcp`.
     Owed to the owner: SMOKE §P1–§P7's remaining human legs (Cursor, grants, real Laravel).
+    ✓ **Live run 3 Sep 2026 (owner clicking, Claude Code driving, `bl.rex`):** 23–25 seen;
+    27-shape asks recorded for read/manage/run/destroy per site + read on rexenv itself;
+    destroy prompt session-only and denied → live search-replace refused, dry run ran under
+    manage; `wp_plugin list` under read; xdebug honestly refused on 7.4; `wp option get
+    siteurl` under run with `<docroot>` scrub; `--path` refused with no ask; inbox behind the
+    mail switch AND `read` on rexenv itself, no login token in a body; `wp_user create` shows
+    the password once, feed row `user create`; `settings mcp_enabled` refused, no prompt;
+    `stack stop` asks `system`. Four defects found and fixed the same run: feed summaries
+    printed `?` for identifier tokens (`_`/`.` now fold, #222); the agent view's
+    `targetLabel` was never resolved (#489); the `--path` refusal said "scratch site"
+    on the user's tool; the stack-target refusal said "changes" for a read.
 - [ ] **MCP server — EVERY PLANNED MILESTONE IS SHIPPED (M1, M2a, M2b, M3).** Header
   corrected twice, and the second time is the instructive one. 21 Aug 2026: it had read
   "building M2a → M2b → M3" for eight days after both were done. 25 Aug 2026: it read

@@ -324,14 +324,50 @@ pub fn is_summary_token(t: &str) -> bool {
 }
 
 /// Clamp a tool-produced summary to the shape above, or `None` if it is empty.
+///
+/// A token's `_` and `.` fold to `-` BEFORE the check: an action name
+/// (`search_replace`), a setting key (`mcp_enabled`) or a log key
+/// (`rexenv.log`) is a word to a reader, and the live run of 3 Sep 2026 showed
+/// the feed printing `data ?` and `?` for exactly those — the summarisers
+/// passed identifiers through and the rule, which is right to allow only
+/// words, replaced them. Folding keeps the rule (still lowercase words) and
+/// keeps the summary readable.
 pub fn clamp_summary(raw: &str) -> Option<String> {
     let ok = is_summary_token;
-    let out: Vec<&str> = raw
+    let out: Vec<String> = raw
         .split_whitespace()
         .take(SUMMARY_TOKENS)
-        .map(|t| if ok(t) { t } else { "?" })
+        .map(|t| {
+            let folded = t.replace(['_', '.'], "-");
+            if ok(&folded) { folded } else { "?".to_string() }
+        })
         .collect();
     (!out.is_empty()).then(|| out.join(" "))
+}
+
+/// Fill each row's `target_label` with the named site's CURRENT domain. The feed
+/// stores the stable site id (`arguments.site_id`, a UUID); a reader — the card
+/// or an agent's `agent_activity` — needs the domain. A deleted site resolves to
+/// `None` and the reader falls back to the raw id. rexenv-derived here (our own
+/// sites table), never agent content, so the feed's typed-shape discipline is
+/// untouched — this is a READ-time view join, not a stored field. ONE resolver
+/// for both readers: the live run of 3 Sep 2026 found the agent view with a
+/// `targetLabel` that was always null, because only the card resolved it.
+pub fn resolve_target_labels(conn: &rusqlite::Connection, rows: &mut [AgentAction]) -> Result<()> {
+    if rows.iter().all(|r| r.target_site.is_none()) {
+        return Ok(());
+    }
+    // Through the owning module, never a hand-rolled `SELECT … FROM sites` —
+    // the #167 guard flagged the previous inline query on its first run: a
+    // schema change would have broken this read with nothing pointing here.
+    let by_id: std::collections::HashMap<String, String> =
+        crate::state::store::list_sites(conn)?.into_iter().map(|s| (s.id, s.domain)).collect();
+    for r in rows.iter_mut() {
+        if let Some(id) = &r.target_site {
+            r.target_label = by_id.get(id).cloned();
+        }
+    }
+    Ok(())
 }
 
 /// Columns selected for an `AgentAction`, in struct order — shared so `recent`
@@ -579,6 +615,14 @@ mod tests {
         record(&conn, "c", &log("site_status", None, Outcome::Error, Some(&huge))).unwrap();
         let d = recent(&conn, 1).unwrap()[0].detail.clone().unwrap();
         assert!(d.chars().count() <= DETAIL_MAX + 1, "detail not bounded: {}", d.chars().count());
+    }
+
+    #[test]
+    fn identifier_tokens_fold_to_words_instead_of_question_marks() {
+        assert_eq!(clamp_summary("data search_replace").as_deref(), Some("data search-replace"));
+        assert_eq!(clamp_summary("mcp_enabled").as_deref(), Some("mcp-enabled"));
+        assert_eq!(clamp_summary("rexenv.log").as_deref(), Some("rexenv-log"));
+        assert_eq!(clamp_summary("Data /etc/passwd").as_deref(), Some("? ?"), "a case or a slash is still not a word");
     }
 
     #[test]

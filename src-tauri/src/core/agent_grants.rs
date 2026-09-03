@@ -315,7 +315,7 @@ pub fn authorize(conn: &Connection, target: Target<'_>, scope: Scope, client: &s
 fn refusal(target: Target<'_>, scope: Scope) -> String {
     let what = match target {
         Target::Site { domain, .. } => format!("`{domain}` is one of the user's own sites, and this"),
-        Target::Stack => "this changes rexenv itself, and it".to_string(),
+        Target::Stack => "this acts on rexenv itself, and it".to_string(),
     };
     format!(
         "{what} needs the user's `{scope}` permission, which has not been given (or has expired). \
