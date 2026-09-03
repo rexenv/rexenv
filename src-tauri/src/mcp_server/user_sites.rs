@@ -554,6 +554,42 @@ static REGISTRY: &[UserTool] = &[
         handler: blueprints,
     },
     UserTool {
+        name: "repo",
+        description: "Git-backed plugins and themes inside one of the user's own sites — the site's \
+                      Repo tab. Takes `site_id`, `action`, and for most `dir` (the plugin/theme \
+                      folder name) and `kind` (plugin, the default, or theme). Reads under `read` on \
+                      the site: `assets`, `status` {dir}, `branches`, `prs`, `stashes`, `scripts`, \
+                      `info`, `jobs`, `job` {job_id}, `watches`, `unmanaged`, `check` {dir} \
+                      (dependency check, runs nothing). Under `read` on rexenv itself: `tools` \
+                      {refresh}, `probe` {url}. Everything that runs code or writes into the site \
+                      needs `run` on the site: `add` {url, ref?, dir?, install?} (clone a \
+                      repository in), `adopt` {dir}, `link` {path, dir?} (symlink a checkout in), \
+                      `git` {dir, op: fetch/pull/checkout/push/stash/stash-pop/reset/status, ref?, \
+                      install?}, `run_step` {job_id, step}, `run_offered` {job_id} (composer / \
+                      npm install / build, in order), `script` {dir, script}, `dist_archive` \
+                      {dir}, `watch_start` {dir, script}, `watch_stop` {watch_id}, `cancel` \
+                      {job_id}. Job-shaped actions block until the job settles and return its \
+                      steps and log.",
+        input_schema: || json!({
+            "type": "object",
+            "properties": {
+                "site_id": { "type": "string" },
+                "action": { "type": "string", "enum": ["assets", "status", "branches", "prs", "stashes", "scripts", "info", "jobs", "job", "watches", "unmanaged", "check", "tools", "probe", "add", "adopt", "link", "git", "run_step", "run_offered", "script", "dist_archive", "watch_start", "watch_stop", "cancel"] },
+                "kind": { "type": "string", "enum": ["plugin", "theme"] },
+                "dir": { "type": "string" }, "url": { "type": "string" }, "ref": { "type": "string" },
+                "path": { "type": "string" }, "op": { "type": "string" }, "install": { "type": "boolean" },
+                "job_id": { "type": "string" }, "step": { "type": "string" }, "script": { "type": "string" },
+                "watch_id": { "type": "string" }, "refresh": { "type": "boolean" }
+            },
+            "required": ["action"],
+            "additionalProperties": false
+        }),
+        sweep_args: |id| json!({ "site_id": id, "action": "assets" }),
+        summarise: |args| args.get("action").and_then(Value::as_str).map(|a| format!("repo {a}")),
+        scope: Scope::Run,
+        handler: repo,
+    },
+    UserTool {
         name: "site_configure",
         description: "Change how one of the user's own sites is set up — the things the site's \
                       Settings tab does. Takes `site_id` and `action`, plus the action's field: \
@@ -852,6 +888,41 @@ pub trait SystemOps: Send + Sync {
     fn reveal_path<'a>(&'a self, path: String) -> OpFuture<'a, Result<()>>;
 }
 
+/// The app's own git/asset operations (`commands::repo`), runtime-erased.
+/// Job-shaped ops (`add`, `git_op`, `script`, `dist_archive`, the offered
+/// steps) return only once the job has SETTLED — the CLI's shape (`repo_wait_settled`),
+/// because a tool reply is one message and a job id an agent must poll is a
+/// worse one; progress is P6's business.
+pub trait RepoOps: Send + Sync {
+    fn assets<'a>(&'a self, site_id: String) -> OpFuture<'a, Result<Vec<crate::state::models::GitAsset>>>;
+    fn asset_status<'a>(&'a self, site_id: String, kind: String, dir: String) -> OpFuture<'a, Result<crate::commands::repo::AssetStatusResult>>;
+    fn branches<'a>(&'a self, site_id: String, kind: String, dir: String) -> OpFuture<'a, Result<crate::commands::repo::RepoBranches>>;
+    fn pull_refs<'a>(&'a self, site_id: String, kind: String, dir: String) -> OpFuture<'a, Result<Vec<crate::core::repo::PullRef>>>;
+    fn stashes<'a>(&'a self, site_id: String, kind: String, dir: String) -> OpFuture<'a, Result<Vec<crate::core::repo::StashEntry>>>;
+    fn scripts<'a>(&'a self, site_id: String, kind: String, dir: String) -> OpFuture<'a, Result<crate::commands::repo::RepoScriptsInfo>>;
+    fn site_info<'a>(&'a self, site_id: String) -> OpFuture<'a, Result<crate::commands::repo::SiteRepoInfo>>;
+    fn site_jobs<'a>(&'a self, site_id: String, kind: String) -> OpFuture<'a, Result<Vec<crate::commands::repo::RepoJobState>>>;
+    fn job_state<'a>(&'a self, job_id: String) -> OpFuture<'a, Result<crate::commands::repo::RepoJobState>>;
+    fn watches<'a>(&'a self, site_id: String) -> OpFuture<'a, Result<Vec<crate::commands::repo::WatchState>>>;
+    fn unmanaged<'a>(&'a self, site_id: String, kind: String) -> OpFuture<'a, Result<Vec<crate::core::repo::UnmanagedRepo>>>;
+    fn check<'a>(&'a self, site_id: String, kind: String, dir: String) -> OpFuture<'a, Result<crate::commands::repo::RepoJobState>>;
+    fn tools<'a>(&'a self, refresh: bool) -> OpFuture<'a, Result<Vec<crate::commands::repo::ToolStatus>>>;
+    fn probe<'a>(&'a self, url: String) -> OpFuture<'a, Result<crate::commands::repo::RepoProbeResult>>;
+    fn add<'a>(&'a self, site_id: String, kind: String, url: String, git_ref: Option<String>, dir: Option<String>, install: bool) -> OpFuture<'a, Result<crate::commands::repo::RepoJobState>>;
+    fn adopt<'a>(&'a self, site_id: String, kind: String, dir: String) -> OpFuture<'a, Result<()>>;
+    fn link<'a>(&'a self, site_id: String, kind: String, dir: Option<String>, target: String) -> OpFuture<'a, Result<crate::commands::repo::RepoLinkResult>>;
+    fn git_op<'a>(&'a self, site_id: String, kind: String, dir: String, op: String, target_ref: Option<String>, install: bool) -> OpFuture<'a, Result<crate::commands::repo::RepoJobState>>;
+    fn run_step<'a>(&'a self, job_id: String, step: String) -> OpFuture<'a, Result<crate::commands::repo::RepoJobState>>;
+    fn run_offered<'a>(&'a self, job_id: String) -> OpFuture<'a, Result<crate::commands::repo::RepoJobState>>;
+    fn script<'a>(&'a self, site_id: String, kind: String, dir: String, script: String) -> OpFuture<'a, Result<crate::commands::repo::RepoJobState>>;
+    fn dist_archive<'a>(&'a self, site_id: String, kind: String, dir: String) -> OpFuture<'a, Result<crate::commands::repo::RepoJobState>>;
+    fn watch_start<'a>(&'a self, site_id: String, kind: String, dir: String, script: String) -> OpFuture<'a, Result<crate::commands::repo::WatchState>>;
+    fn watch_stop<'a>(&'a self, id: String) -> OpFuture<'a, Result<()>>;
+    fn cancel<'a>(&'a self, job_id: String) -> OpFuture<'a, Result<()>>;
+    /// The job's flat log (through `logs.tail`), for the settled reply.
+    fn job_log<'a>(&'a self, log_key: String) -> OpFuture<'a, Vec<String>>;
+}
+
 /// The app's own Mailpit reads and writes (`commands::mail`), runtime-erased.
 pub trait MailOps: Send + Sync {
     fn list<'a>(&'a self, query: Option<String>, unread_only: bool) -> OpFuture<'a, Result<crate::core::mail::MailList>>;
@@ -878,12 +949,13 @@ pub struct UserCtx<'a> {
     mail: &'a dyn MailOps,
     stack: &'a dyn StackOps,
     sys: &'a dyn SystemOps,
+    repo: &'a dyn RepoOps,
 }
 
 impl<'a> UserCtx<'a> {
     #[allow(clippy::too_many_arguments)]
-    pub fn new(state: &'a AppState, ops: &'a dyn SiteOps, wp: &'a dyn WpOps, mail: &'a dyn MailOps, stack: &'a dyn StackOps, sys: &'a dyn SystemOps, client: &'a str) -> Self {
-        UserCtx { state, client, ops, wp, mail, stack, sys }
+    pub fn new(state: &'a AppState, ops: &'a dyn SiteOps, wp: &'a dyn WpOps, mail: &'a dyn MailOps, stack: &'a dyn StackOps, sys: &'a dyn SystemOps, repo: &'a dyn RepoOps, client: &'a str) -> Self {
+        UserCtx { state, client, ops, wp, mail, stack, sys, repo }
     }
 
     pub(crate) fn db(&self) -> Result<std::sync::MutexGuard<'_, rusqlite::Connection>> {
@@ -2402,6 +2474,121 @@ fn blueprints<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::Ac
     })
 }
 
+
+pub(crate) fn repo_scope(action: &str) -> Option<(Scope, bool)> {
+    // (scope, stack-level?) — the two machine-wide reads take no site.
+    Some(match action {
+        "assets" | "status" | "branches" | "prs" | "stashes" | "scripts" | "info" | "jobs" | "job" | "watches" | "unmanaged" | "check" => (Scope::Read, false),
+        "tools" | "probe" => (Scope::Read, true),
+        "add" | "adopt" | "link" | "git" | "run_step" | "run_offered" | "script" | "dist_archive" | "watch_start" | "watch_stop" | "cancel" => (Scope::Run, false),
+        _ => return None,
+    })
+}
+
+/// A repo job, as the agent sees it: steps and their outcomes, the inspection,
+/// the archive's FILE NAME, and the log through the scrubber. Never the job's
+/// `path` or the archive's path.
+fn job_view(st: &crate::commands::repo::RepoJobState, log: Vec<String>, known: &super::view::KnownPaths) -> Value {
+    let scrub = |s: &str| super::view::scrub_log_line(s, known);
+    json!({
+        "jobId": st.id, "op": st.op, "kind": st.kind, "dir": st.dir_name, "url": st.url, "ref": st.git_ref,
+        "finishedOk": st.finished_ok,
+        "steps": st.steps.iter().map(|s| json!({ "key": s.key, "label": s.label, "status": s.status, "error": s.error.as_deref().map(scrub) })).collect::<Vec<_>>(),
+        "inspection": st.inspection.as_ref().map(|i| json!({ "composer": i.composer, "node": i.node.as_ref().map(|n| json!({ "manager": n.manager, "pinnedBy": n.pinned_by, "hasBuild": n.has_build })), "wp": json!({ "kind": i.wp.kind, "name": i.wp.name }), "nodeWant": i.node_want })),
+        "nodeWarning": st.node_warning.as_deref().map(scrub),
+        "archive": st.archive.as_ref().map(|a| json!({ "fileName": a.file_name, "versionMissing": a.version_missing })),
+        "log": log.iter().map(|l| scrub(l)).collect::<Vec<_>>(),
+    })
+}
+
+fn repo<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTarget) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let action = args.get("action").and_then(Value::as_str).ok_or_else(|| Error::Other("repo needs an `action`.".into()))?;
+        let (scope, stack_level) = repo_scope(action).ok_or_else(|| Error::Other(format!("`{action}` is not a repo action.")))?;
+        let kind = match args.get("kind").and_then(Value::as_str).unwrap_or("plugin") {
+            k @ ("plugin" | "theme") => k.to_string(),
+            other => return Err(Error::Other(format!("`{other}` is not a repo kind — use plugin or theme."))),
+        };
+        let dir = || str_field(args, "dir", action).map(str::to_string);
+        let s = |k: &str| str_field(args, k, action).map(str::to_string);
+        let install = args.get("install").and_then(Value::as_bool).unwrap_or(false);
+        // Shape, per action, BEFORE the gate.
+        let wanted = match action {
+            "add" => format!("clone `{}` into it{}", s("url")?, if install { " and run its install steps" } else { "" }),
+            "adopt" => format!("adopt the checkout `{}`", dir()?),
+            "link" => format!("link the checkout at `{}` into it", basename(&s("path")?)),
+            "git" => {
+                let op = s("op")?;
+                if !matches!(op.as_str(), "fetch" | "pull" | "checkout" | "push" | "stash" | "stash-pop" | "reset" | "status") {
+                    return Err(Error::Other(format!("`{op}` is not a git op — use fetch, pull, checkout, push, stash, stash-pop, reset or status.")));
+                }
+                format!("run git {op} in `{}`{}", dir()?, if install { " and its install steps" } else { "" })
+            }
+            "run_step" => format!("run install step `{}` of job {}", s("step")?, s("job_id")?),
+            "run_offered" => format!("run the install steps of job {}", s("job_id")?),
+            "script" => format!("run the script `{}` in `{}`", s("script")?, dir()?),
+            "dist_archive" => format!("build a distributable zip of `{}`", dir()?),
+            "watch_start" => format!("start watching `{}` with `{}`", dir()?, s("script")?),
+            "watch_stop" => format!("stop watch {}", s("watch_id")?),
+            "cancel" => format!("cancel job {}", s("job_id")?),
+            "status" | "branches" | "prs" | "stashes" | "scripts" | "check" => format!("read the repo state of `{}`", dir()?),
+            "job" => format!("read job {}", s("job_id")?),
+            "probe" => format!("probe the repository `{}`", s("url")?),
+            other => format!("read its repo {other}"),
+        };
+        let site_id = if stack_level { None } else { Some(args.get("site_id").and_then(Value::as_str).ok_or_else(|| Error::Other(format!("repo `{action}` needs a `site_id`.")))?) };
+        let (site, auto) = match (scope, site_id) {
+            (Scope::Read, None) => (None, ctx.claim::<scope::Read>(None, &wanted)?.auto_granted),
+            (Scope::Read, Some(id)) => { let c = ctx.claim::<scope::Read>(Some(id), &wanted)?; (c.granted.site().cloned(), c.auto_granted) }
+            (_, Some(id)) => { let c = ctx.claim::<scope::Run>(Some(id), &wanted)?; (c.granted.site().cloned(), c.auto_granted) }
+            _ => unreachable!("a run action always names a site"),
+        };
+        if let Some(site) = &site {
+            acted.set(site);
+        }
+        let sid = site.as_ref().map(|s| s.id.clone()).unwrap_or_default();
+        let known = super::view::KnownPaths::for_site(ctx.state.platform.paths(), site.as_ref().map(|s| s.path.as_str()).unwrap_or(""));
+        let r = ctx.repo;
+        let known_ref = &known;
+        let job = |st: crate::commands::repo::RepoJobState| async move {
+            let log = r.job_log(st.log_key.clone()).await;
+            job_view(&st, log, known_ref)
+        };
+        let result = match action {
+            "assets" => to_json(r.assets(sid).await?)?,
+            "status" => {
+                let st = r.asset_status(sid, kind, dir()?).await?;
+                // `link_target` is a path into the user's checkout; `log_key` an app-data file name.
+                json!({ "status": st.status, "detachedAt": st.detached_at, "remote": st.remote, "lossWarning": st.loss_warning, "linked": st.link_target.is_some() })
+            }
+            "branches" => to_json(r.branches(sid, kind, dir()?).await?)?,
+            "prs" => to_json(r.pull_refs(sid, kind, dir()?).await?)?,
+            "stashes" => to_json(r.stashes(sid, kind, dir()?).await?)?,
+            "scripts" => to_json(r.scripts(sid, kind, dir()?).await?)?,
+            "info" => { let i = r.site_info(sid).await?; json!({ "present": i.present, "clonedFrom": i.cloned_from }) }
+            "jobs" => { let all = r.site_jobs(sid, kind).await?; json!(all.iter().map(|st| json!({ "jobId": st.id, "op": st.op, "dir": st.dir_name, "finishedOk": st.finished_ok })).collect::<Vec<_>>()) }
+            "job" => job(r.job_state(s("job_id")?).await?).await,
+            "watches" => { let w = r.watches(sid).await?; json!(w.iter().map(|w| json!({ "watchId": w.id, "dir": w.dir_name, "kind": w.kind, "script": w.script, "status": w.status, "exit": w.exit })).collect::<Vec<_>>()) }
+            "unmanaged" => to_json(r.unmanaged(sid, kind).await?)?,
+            "check" => job(r.check(sid, kind, dir()?).await?).await,
+            "tools" => { let t = r.tools(args.get("refresh").and_then(Value::as_bool).unwrap_or(false)).await?; json!(t.iter().map(|t| json!({ "name": t.name, "ok": t.ok, "version": t.version, "error": t.error.as_deref().map(|e| super::view::scrub_log_line(e, &known)) })).collect::<Vec<_>>()) }
+            "probe" => { let p = r.probe(s("url")?).await?; json!({ "url": p.url, "host": p.host, "dir": p.dir_name, "refCandidate": p.ref_candidate, "defaultBranch": p.default_branch, "branches": p.branches }) }
+            "add" => job(r.add(sid, kind, s("url")?, args.get("ref").and_then(Value::as_str).map(String::from), args.get("dir").and_then(Value::as_str).map(String::from), install).await?).await,
+            "adopt" => { r.adopt(sid, kind, dir()?).await?; json!({ "adopted": dir()? }) }
+            "link" => { let l = r.link(sid, kind, args.get("dir").and_then(Value::as_str).map(String::from), s("path")?).await?; json!({ "dir": l.dir_name, "isGit": l.is_git, "wp": json!({ "kind": l.wp.kind, "name": l.wp.name }) }) }
+            "git" => job(r.git_op(sid, kind, dir()?, s("op")?, args.get("ref").and_then(Value::as_str).map(String::from), install).await?).await,
+            "run_step" => job(r.run_step(s("job_id")?, s("step")?).await?).await,
+            "run_offered" => job(r.run_offered(s("job_id")?).await?).await,
+            "script" => job(r.script(sid, kind, dir()?, s("script")?).await?).await,
+            "dist_archive" => job(r.dist_archive(sid, kind, dir()?).await?).await,
+            "watch_start" => { let w = r.watch_start(sid, kind, dir()?, s("script")?).await?; json!({ "watchId": w.id, "status": w.status, "note": "The watcher runs inside rexenv and stops when rexenv quits." }) }
+            "watch_stop" => { r.watch_stop(s("watch_id")?).await?; json!({ "stopped": true }) }
+            _ => { r.cancel(s("job_id")?).await?; json!({ "cancelled": true }) }
+        };
+        Ok(with_consent(json!({ "action": action, "result": result }), auto))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2955,6 +3142,47 @@ mod tests {
         fn reveal_path<'a>(&'a self, path: String) -> OpFuture<'a, Result<()>> { self.calls.lock().unwrap().push(format!("reveal {path}")); Box::pin(async { Ok(()) }) }
     }
 
+    fn fake_job(op: &str) -> crate::commands::repo::RepoJobState {
+        crate::commands::repo::RepoJobState {
+            id: "job-1".into(), site_id: "s".into(), kind: "plugin".into(), dir_name: "acme".into(), url: "https://github.com/acme/acme.git".into(),
+            git_ref: None, op: op.into(), log_key: "repo-acme.log".into(),
+            steps: vec![crate::commands::repo::RepoStepState { key: op.into(), label: op.into(), status: "ok".into(), error: Some("failed at /Users/somebody/Library/Application Support/rexenv/Sites/mine.rex/wp-content/plugins/acme".into()) }],
+            inspection: None, node_warning: None, finished_ok: true,
+            archive: Some(crate::commands::repo::ArchiveResult { path: "/Users/somebody/Downloads/acme.zip".into(), file_name: "acme.zip".into(), version_missing: false }),
+        }
+    }
+    impl RepoOps for FakeOps {
+        fn assets<'a>(&'a self, site_id: String) -> OpFuture<'a, Result<Vec<crate::state::models::GitAsset>>> { self.calls.lock().unwrap().push(format!("repo assets {site_id}")); Box::pin(async { Ok(vec![]) }) }
+        fn asset_status<'a>(&'a self, site_id: String, kind: String, dir: String) -> OpFuture<'a, Result<crate::commands::repo::AssetStatusResult>> {
+            self.calls.lock().unwrap().push(format!("repo status {site_id} {kind} {dir}"));
+            Box::pin(async { Ok(crate::commands::repo::AssetStatusResult { status: Default::default(), detached_at: None, remote: Some("origin".into()), loss_warning: None, log_key: None, link_target: Some("/Users/somebody/Projects/acme".into()), has_distignore: false }) })
+        }
+        fn branches<'a>(&'a self, site_id: String, kind: String, dir: String) -> OpFuture<'a, Result<crate::commands::repo::RepoBranches>> { self.calls.lock().unwrap().push(format!("repo branches {site_id} {kind} {dir}")); Box::pin(async { Ok(crate::commands::repo::RepoBranches { current: Some("main".into()), local: vec!["main".into()], remote: vec![], tags: vec![] }) }) }
+        fn pull_refs<'a>(&'a self, _s: String, _k: String, _d: String) -> OpFuture<'a, Result<Vec<crate::core::repo::PullRef>>> { Box::pin(async { Ok(vec![]) }) }
+        fn stashes<'a>(&'a self, _s: String, _k: String, _d: String) -> OpFuture<'a, Result<Vec<crate::core::repo::StashEntry>>> { Box::pin(async { Ok(vec![]) }) }
+        fn scripts<'a>(&'a self, _s: String, _k: String, _d: String) -> OpFuture<'a, Result<crate::commands::repo::RepoScriptsInfo>> { Box::pin(async { Ok(crate::commands::repo::RepoScriptsInfo { manager: None, scripts: vec![] }) }) }
+        fn site_info<'a>(&'a self, _s: String) -> OpFuture<'a, Result<crate::commands::repo::SiteRepoInfo>> { Box::pin(async { Ok(crate::commands::repo::SiteRepoInfo { present: true, project_root: "/Users/somebody/Sites/mine.rex".into(), cloned_from: None }) }) }
+        fn site_jobs<'a>(&'a self, _s: String, _k: String) -> OpFuture<'a, Result<Vec<crate::commands::repo::RepoJobState>>> { Box::pin(async { Ok(vec![fake_job("add")]) }) }
+        fn job_state<'a>(&'a self, _j: String) -> OpFuture<'a, Result<crate::commands::repo::RepoJobState>> { Box::pin(async { Ok(fake_job("add")) }) }
+        fn watches<'a>(&'a self, _s: String) -> OpFuture<'a, Result<Vec<crate::commands::repo::WatchState>>> { Box::pin(async { Ok(vec![]) }) }
+        fn unmanaged<'a>(&'a self, _s: String, _k: String) -> OpFuture<'a, Result<Vec<crate::core::repo::UnmanagedRepo>>> { Box::pin(async { Ok(vec![]) }) }
+        fn check<'a>(&'a self, _s: String, _k: String, _d: String) -> OpFuture<'a, Result<crate::commands::repo::RepoJobState>> { Box::pin(async { Ok(fake_job("check")) }) }
+        fn tools<'a>(&'a self, refresh: bool) -> OpFuture<'a, Result<Vec<crate::commands::repo::ToolStatus>>> { self.calls.lock().unwrap().push(format!("repo tools {refresh}")); Box::pin(async { Ok(vec![]) }) }
+        fn probe<'a>(&'a self, url: String) -> OpFuture<'a, Result<crate::commands::repo::RepoProbeResult>> { self.calls.lock().unwrap().push(format!("repo probe {url}")); Box::pin(async move { Ok(crate::commands::repo::RepoProbeResult { url, host: "github.com".into(), dir_name: "acme".into(), ref_candidate: None, default_branch: Some("main".into()), branches: vec![], tags: vec![] }) }) }
+        fn add<'a>(&'a self, site_id: String, kind: String, url: String, _r: Option<String>, _d: Option<String>, install: bool) -> OpFuture<'a, Result<crate::commands::repo::RepoJobState>> { self.calls.lock().unwrap().push(format!("repo add {site_id} {kind} {url} {install}")); Box::pin(async { Ok(fake_job("add")) }) }
+        fn adopt<'a>(&'a self, site_id: String, kind: String, dir: String) -> OpFuture<'a, Result<()>> { self.calls.lock().unwrap().push(format!("repo adopt {site_id} {kind} {dir}")); Box::pin(async { Ok(()) }) }
+        fn link<'a>(&'a self, site_id: String, kind: String, _d: Option<String>, target: String) -> OpFuture<'a, Result<crate::commands::repo::RepoLinkResult>> { self.calls.lock().unwrap().push(format!("repo link {site_id} {kind} {target}")); Box::pin(async { Ok(crate::commands::repo::RepoLinkResult { dir_name: "acme".into(), is_git: true, wp: crate::core::repo::WpHeader { kind: "plugin".into(), name: Some("Acme".into()) } }) }) }
+        fn git_op<'a>(&'a self, site_id: String, kind: String, dir: String, op: String, _r: Option<String>, install: bool) -> OpFuture<'a, Result<crate::commands::repo::RepoJobState>> { self.calls.lock().unwrap().push(format!("repo git {site_id} {kind} {dir} {op} {install}")); Box::pin(async move { Ok(fake_job(&op)) }) }
+        fn run_step<'a>(&'a self, _j: String, _s: String) -> OpFuture<'a, Result<crate::commands::repo::RepoJobState>> { Box::pin(async { Ok(fake_job("add")) }) }
+        fn run_offered<'a>(&'a self, _j: String) -> OpFuture<'a, Result<crate::commands::repo::RepoJobState>> { Box::pin(async { Ok(fake_job("add")) }) }
+        fn script<'a>(&'a self, _s: String, _k: String, _d: String, _sc: String) -> OpFuture<'a, Result<crate::commands::repo::RepoJobState>> { Box::pin(async { Ok(fake_job("script")) }) }
+        fn dist_archive<'a>(&'a self, _s: String, _k: String, _d: String) -> OpFuture<'a, Result<crate::commands::repo::RepoJobState>> { Box::pin(async { Ok(fake_job("dist_archive")) }) }
+        fn watch_start<'a>(&'a self, _s: String, _k: String, _d: String, _sc: String) -> OpFuture<'a, Result<crate::commands::repo::WatchState>> { Box::pin(async { Err(Error::Other("no watches in the fake".into())) }) }
+        fn watch_stop<'a>(&'a self, _i: String) -> OpFuture<'a, Result<()>> { Box::pin(async { Ok(()) }) }
+        fn cancel<'a>(&'a self, _j: String) -> OpFuture<'a, Result<()>> { Box::pin(async { Ok(()) }) }
+        fn job_log<'a>(&'a self, _k: String) -> OpFuture<'a, Vec<String>> { Box::pin(async { vec!["Cloning into '/Users/somebody/Library/Application Support/rexenv/Sites/mine.rex/wp-content/plugins/acme'...".into()] }) }
+    }
+
     fn switch_on(state: &AppState) {
         let conn = state.db.lock().unwrap();
         store::set_setting(&conn, crate::mcp_server::MCP_SITES_ENABLED_KEY, "true").unwrap();
@@ -2985,7 +3213,7 @@ mod tests {
         seed_php(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
         let run = |args: Value| {
             let acted = &acted;
             async move { site_create(ctx, &args, acted).await }
@@ -3089,7 +3317,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
         let mine = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "mine.rex", SiteOrigin::User);
         let theirs = test_site("c58e0a41-7d2f-4b19-93a6-6e1c5d8f0a24", "probe.scratch.rex", SiteOrigin::Agent);
         {
@@ -3130,7 +3358,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
         let mine = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "mine.rex", SiteOrigin::User);
         {
             let conn = state.db.lock().unwrap();
@@ -3225,7 +3453,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
         let mine = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "mine.rex", SiteOrigin::User);
         {
             let conn = state.db.lock().unwrap();
@@ -3296,7 +3524,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
         let wp_site = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "blog.rex", SiteOrigin::User);
         let mut php_site = test_site("bbbbbbbb-bbbb-4ccc-8ddd-eeeeeeeeeeee", "plain.rex", SiteOrigin::User);
         php_site.site_type = SiteType::Php;
@@ -3387,7 +3615,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
         let site = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "blog.rex", SiteOrigin::User);
         {
             let conn = state.db.lock().unwrap();
@@ -3474,7 +3702,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
         let site = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "blog.rex", SiteOrigin::User);
         {
             let conn = state.db.lock().unwrap();
@@ -3530,7 +3758,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
         let site = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "blog.rex", SiteOrigin::User);
         let theirs = test_site("c58e0a41-7d2f-4b19-93a6-6e1c5d8f0a24", "probe.scratch.rex", SiteOrigin::Agent);
         {
@@ -3607,7 +3835,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
         let err = stack(ctx, &json!({ "action": "start" }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("`system`") && err.contains("rexenv itself"), "{err}");
         let a = asks(&state);
@@ -3650,7 +3878,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
         let site = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "blog.rex", SiteOrigin::User);
         {
             let conn = state.db.lock().unwrap();
@@ -3715,7 +3943,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
         let site = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "mine.rex", SiteOrigin::User);
         {
             let conn = state.db.lock().unwrap();
@@ -3784,7 +4012,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
         let site = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "mine.rex", SiteOrigin::User);
         {
             let conn = state.db.lock().unwrap();
@@ -3819,5 +4047,59 @@ mod tests {
         let err = blueprints(ctx, &json!({ "action": "delete", "name": "Nope" }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("no blueprint called"), "{err}");
         assert!(ops.calls.lock().unwrap().iter().any(|c| c == "blueprint save Shop 8.3"));
+    }
+
+    /// **`repo`: reads under `read` on the site (two under rexenv itself), every
+    /// write under `run`; a job reply carries steps, the archive's file name and
+    /// the scrubbed log — never a path.**
+    #[tokio::test]
+    async fn repo_reads_under_read_writes_under_run_and_replies_name_no_path() {
+        assert_eq!(repo_scope("assets"), Some((Scope::Read, false)));
+        assert_eq!(repo_scope("tools"), Some((Scope::Read, true)));
+        assert_eq!(repo_scope("add"), Some((Scope::Run, false)));
+        assert_eq!(repo_scope("watch_stop"), Some((Scope::Run, false)));
+        let state = app_state();
+        switch_on(&state);
+        let ops = FakeOps::default();
+        let acted = super::super::feed::ActedTarget::default();
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
+        let site = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "mine.rex", SiteOrigin::User);
+        {
+            let conn = state.db.lock().unwrap();
+            store::insert_site(&conn, &site).unwrap();
+            store::grant_agent_site(&conn, "g1", Some(&site.id), "claude-code", "read", 7, false, false).unwrap();
+        }
+        let err = repo(ctx, &json!({ "site_id": site.id, "action": "git", "dir": "acme", "op": "rebase" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("not a git op"), "{err}");
+        let err = repo(ctx, &json!({ "site_id": site.id, "action": "add", "url": "https://github.com/acme/acme.git" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("`run`"), "a read grant does not clone: {err}");
+        assert!(asks(&state).iter().any(|r| r.scope == Scope::Run && r.wanted.contains("clone `https://github.com/acme/acme.git`")));
+        let v = repo(ctx, &json!({ "site_id": site.id, "action": "status", "dir": "acme" }), &acted).await.unwrap();
+        assert_eq!(v["result"]["linked"], true);
+        assert!(!v.to_string().contains("/Users/"), "the link target is a path: {v}");
+        let v = repo(ctx, &json!({ "site_id": site.id, "action": "info" }), &acted).await.unwrap();
+        assert!(v["result"].get("projectRoot").is_none() && !v.to_string().contains("/Users/"));
+        let v = repo(ctx, &json!({ "site_id": site.id, "action": "job", "job_id": "job-1" }), &acted).await.unwrap();
+        assert_eq!(v["result"]["archive"]["fileName"], "acme.zip");
+        assert!(v["result"].get("path").is_none());
+        let text = v.to_string();
+        assert!(!text.contains("/Users/somebody"), "a path in the job reply or its log: {text}");
+        assert!(text.contains("<"), "scrubbed to a label: {text}");
+        assert!(repo(ctx, &json!({ "action": "tools" }), &acted).await.is_err(), "tools is a read on rexenv itself");
+        {
+            let conn = state.db.lock().unwrap();
+            store::grant_agent_site(&conn, "g2", None, "claude-code", "read", 7, false, false).unwrap();
+            store::grant_agent_site(&conn, "g3", Some(&site.id), "claude-code", "run", 1, false, true).unwrap();
+        }
+        repo(ctx, &json!({ "action": "tools", "refresh": true }), &acted).await.unwrap();
+        let v = repo(ctx, &json!({ "site_id": site.id, "action": "add", "url": "https://github.com/acme/acme.git", "install": true }), &acted).await.unwrap();
+        assert_eq!(v["result"]["finishedOk"], true);
+        let v = repo(ctx, &json!({ "site_id": site.id, "action": "link", "path": "/Users/somebody/Projects/acme", "kind": "theme" }), &acted).await.unwrap();
+        assert_eq!(v["result"]["wp"]["name"], "Acme");
+        repo(ctx, &json!({ "site_id": site.id, "action": "git", "dir": "acme", "op": "pull" }), &acted).await.unwrap();
+        let calls = ops.calls.lock().unwrap().clone();
+        for c in ["repo tools true", &format!("repo add {} plugin https://github.com/acme/acme.git true", site.id), &format!("repo link {} theme /Users/somebody/Projects/acme", site.id), &format!("repo git {} plugin acme pull false", site.id)] {
+            assert!(calls.iter().any(|x| x == c), "missing {c} in {calls:?}");
+        }
     }
 }

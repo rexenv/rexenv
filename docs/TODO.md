@@ -2053,8 +2053,10 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     ✓ P5.1 — **`blueprints_list` + `agent_activity` (read), `blueprints`, `share status`**,
     ledger #489 (3 Sep 2026): blueprints by name, spec validated on shape before the ask;
     the feed readable by the agent; the tunnel-status gap from P4 closed. (`wp_org_search`
-    shipped in P3.3.) Remaining: `repo(...)`, `valet_import`, `connection_rewrite`,
-    `db_import`.
+    shipped in P3.3.)
+    ✓ P5.2 — **`repo(...)`**, ledger #490: 25 actions, reads `read` / writes `run`, the
+    CLI's settle rule shared (`repo_job_settled` pub(crate)), job replies with file names
+    and a scrubbed log. Remaining: `valet_import`, `connection_rewrite`, `db_import`.
   - [ ] **P6 — protocol**: annotations, progress notifications riding #447's records,
     the in-band shim error, `job_*` as the one job pattern, a real Cursor + Claude Code
     `tools/list` check at ~42 tools.

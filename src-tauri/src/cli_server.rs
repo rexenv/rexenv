@@ -392,7 +392,7 @@ where
 /// itself would still run is pending. Offered install steps stay `pending`
 /// until the user asks — they never block settling (`--install` runs them as
 /// their own settled-waits).
-fn repo_job_settled(st: &commands::repo::RepoJobState, waiting_for: Option<&str>) -> bool {
+pub(crate) fn repo_job_settled(st: &commands::repo::RepoJobState, waiting_for: Option<&str>) -> bool {
     let status_of = |k: &str| {
         st.steps.iter().find(|x| x.key == k).map(|x| x.status.clone()).unwrap_or_default()
     };

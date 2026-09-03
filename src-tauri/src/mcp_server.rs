@@ -673,7 +673,7 @@ async fn fulfill_tool_call<Rt: tauri::Runtime>(
         }
         Tool::User(t) => {
             let ops = AppSiteCreator { app: app.clone() };
-            (t.handler)(user_sites::UserCtx::new(state.inner(), &ops, &ops, &ops, &ops, &ops, client), args, acted).await
+            (t.handler)(user_sites::UserCtx::new(state.inner(), &ops, &ops, &ops, &ops, &ops, &ops, client), args, acted).await
         }
     };
     match outcome {
@@ -1198,6 +1198,133 @@ impl<Rt: tauri::Runtime> user_sites::SystemOps for AppSiteCreator<Rt> {
     }
 }
 
+impl<Rt: tauri::Runtime> AppSiteCreator<Rt> {
+    fn repo_jobs(&self) -> crate::error::Result<tauri::State<'_, crate::commands::repo::RepoJobs>> {
+        use tauri::Manager;
+        self.app.try_state::<crate::commands::repo::RepoJobs>().ok_or_else(|| crate::error::Error::Other("rexenv's repo jobs are not ready".into()))
+    }
+    fn repo_watches(&self) -> crate::error::Result<tauri::State<'_, crate::commands::repo::RepoWatches>> {
+        use tauri::Manager;
+        self.app.try_state::<crate::commands::repo::RepoWatches>().ok_or_else(|| crate::error::Error::Other("rexenv's watch registry is not ready".into()))
+    }
+    /// Poll a repo job until it settles — the CLI's own rule (`repo_job_settled`),
+    /// with a ceiling so a wedged job cannot hold an MCP session forever.
+    async fn settle(&self, job_id: &str, waiting_for: Option<&str>) -> crate::error::Result<crate::commands::repo::RepoJobState> {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30 * 60);
+        loop {
+            let st = crate::commands::repo::repo_job_state(self.repo_jobs()?, job_id.to_string()).await?;
+            if crate::cli_server::repo_job_settled(&st, waiting_for) {
+                return Ok(st);
+            }
+            if std::time::Instant::now() > deadline {
+                return Err(crate::error::Error::Other(format!("job {job_id} has not settled after 30 minutes — it keeps running in rexenv; read it later with repo `job`.")));
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        }
+    }
+}
+
+impl<Rt: tauri::Runtime> user_sites::RepoOps for AppSiteCreator<Rt> {
+    fn assets<'a>(&'a self, site_id: String) -> user_sites::OpFuture<'a, crate::error::Result<Vec<crate::state::models::GitAsset>>> {
+        Box::pin(async move { crate::commands::repo::repo_assets(self.state()?, site_id).await })
+    }
+    fn asset_status<'a>(&'a self, site_id: String, kind: String, dir: String) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::repo::AssetStatusResult>> {
+        Box::pin(async move { crate::commands::repo::repo_asset_status(self.app.clone(), site_id, kind, dir).await })
+    }
+    fn branches<'a>(&'a self, site_id: String, kind: String, dir: String) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::repo::RepoBranches>> {
+        Box::pin(async move { crate::commands::repo::repo_branches(self.app.clone(), site_id, kind, dir).await })
+    }
+    fn pull_refs<'a>(&'a self, site_id: String, kind: String, dir: String) -> user_sites::OpFuture<'a, crate::error::Result<Vec<crate::core::repo::PullRef>>> {
+        Box::pin(async move { crate::commands::repo::repo_pull_refs(self.app.clone(), site_id, kind, dir).await })
+    }
+    fn stashes<'a>(&'a self, site_id: String, kind: String, dir: String) -> user_sites::OpFuture<'a, crate::error::Result<Vec<crate::core::repo::StashEntry>>> {
+        Box::pin(async move { crate::commands::repo::repo_stashes(self.app.clone(), site_id, kind, dir).await })
+    }
+    fn scripts<'a>(&'a self, site_id: String, kind: String, dir: String) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::repo::RepoScriptsInfo>> {
+        Box::pin(async move { crate::commands::repo::repo_scripts(self.state()?, site_id, kind, dir).await })
+    }
+    fn site_info<'a>(&'a self, site_id: String) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::repo::SiteRepoInfo>> {
+        Box::pin(async move { crate::commands::repo::repo_site_info(self.state()?, site_id).await })
+    }
+    fn site_jobs<'a>(&'a self, site_id: String, kind: String) -> user_sites::OpFuture<'a, crate::error::Result<Vec<crate::commands::repo::RepoJobState>>> {
+        Box::pin(async move { crate::commands::repo::repo_site_jobs(self.repo_jobs()?, site_id, kind).await })
+    }
+    fn job_state<'a>(&'a self, job_id: String) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::repo::RepoJobState>> {
+        Box::pin(async move { crate::commands::repo::repo_job_state(self.repo_jobs()?, job_id).await })
+    }
+    fn watches<'a>(&'a self, site_id: String) -> user_sites::OpFuture<'a, crate::error::Result<Vec<crate::commands::repo::WatchState>>> {
+        Box::pin(async move { crate::commands::repo::repo_watches(self.repo_watches()?, Some(site_id), None).await })
+    }
+    fn unmanaged<'a>(&'a self, site_id: String, kind: String) -> user_sites::OpFuture<'a, crate::error::Result<Vec<crate::core::repo::UnmanagedRepo>>> {
+        Box::pin(async move { crate::commands::repo::repo_unmanaged(self.state()?, site_id, kind).await })
+    }
+    fn check<'a>(&'a self, site_id: String, kind: String, dir: String) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::repo::RepoJobState>> {
+        Box::pin(async move { crate::commands::repo::repo_check(self.app.clone(), self.state()?, self.repo_jobs()?, site_id, kind, dir).await })
+    }
+    fn tools<'a>(&'a self, refresh: bool) -> user_sites::OpFuture<'a, crate::error::Result<Vec<crate::commands::repo::ToolStatus>>> {
+        Box::pin(async move { crate::commands::repo::repo_tools(self.app.clone(), refresh).await })
+    }
+    fn probe<'a>(&'a self, url: String) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::repo::RepoProbeResult>> {
+        Box::pin(async move { crate::commands::repo::repo_probe(self.app.clone(), url).await })
+    }
+    fn add<'a>(&'a self, site_id: String, kind: String, url: String, git_ref: Option<String>, dir: Option<String>, install: bool) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::repo::RepoJobState>> {
+        Box::pin(async move {
+            let snap = crate::commands::repo::repo_add(self.app.clone(), self.state()?, self.repo_jobs()?, site_id, kind, url, git_ref, dir).await?;
+            if install { crate::commands::repo::run_offered_steps(self.app.clone(), snap.id).await } else { self.settle(&snap.id, None).await }
+        })
+    }
+    fn adopt<'a>(&'a self, site_id: String, kind: String, dir: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::repo::repo_adopt(self.app.clone(), site_id, kind, dir).await })
+    }
+    fn link<'a>(&'a self, site_id: String, kind: String, dir: Option<String>, target: String) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::repo::RepoLinkResult>> {
+        Box::pin(async move { crate::commands::repo::repo_link(self.app.clone(), site_id, kind, dir, target).await })
+    }
+    fn git_op<'a>(&'a self, site_id: String, kind: String, dir: String, op: String, target_ref: Option<String>, install: bool) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::repo::RepoJobState>> {
+        Box::pin(async move {
+            let snap = crate::commands::repo::repo_git_op(self.app.clone(), self.state()?, self.repo_jobs()?, site_id, kind, dir, op, target_ref).await?;
+            if install { crate::commands::repo::run_offered_steps(self.app.clone(), snap.id).await } else { self.settle(&snap.id, None).await }
+        })
+    }
+    fn run_step<'a>(&'a self, job_id: String, step: String) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::repo::RepoJobState>> {
+        Box::pin(async move {
+            crate::commands::repo::repo_run_step(self.app.clone(), self.state()?, self.repo_jobs()?, job_id.clone(), step.clone()).await?;
+            self.settle(&job_id, Some(&step)).await
+        })
+    }
+    fn run_offered<'a>(&'a self, job_id: String) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::repo::RepoJobState>> {
+        Box::pin(async move { crate::commands::repo::run_offered_steps(self.app.clone(), job_id).await })
+    }
+    fn script<'a>(&'a self, site_id: String, kind: String, dir: String, script: String) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::repo::RepoJobState>> {
+        Box::pin(async move {
+            let snap = crate::commands::repo::repo_script_job(self.app.clone(), self.state()?, self.repo_jobs()?, site_id, kind, dir, script).await?;
+            self.settle(&snap.id, None).await
+        })
+    }
+    fn dist_archive<'a>(&'a self, site_id: String, kind: String, dir: String) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::repo::RepoJobState>> {
+        Box::pin(async move {
+            let snap = crate::commands::repo::repo_dist_archive(self.app.clone(), self.state()?, self.repo_jobs()?, site_id, kind, dir).await?;
+            self.settle(&snap.id, None).await
+        })
+    }
+    fn watch_start<'a>(&'a self, site_id: String, kind: String, dir: String, script: String) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::repo::WatchState>> {
+        Box::pin(async move { crate::commands::repo::repo_watch_start(self.app.clone(), self.state()?, self.repo_watches()?, site_id, kind, dir, script).await })
+    }
+    fn watch_stop<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::repo::repo_watch_stop(self.app.clone(), self.state()?, self.repo_watches()?, id).await })
+    }
+    fn cancel<'a>(&'a self, job_id: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::repo::repo_cancel(self.state()?, self.repo_jobs()?, job_id).await })
+    }
+    fn job_log<'a>(&'a self, log_key: String) -> user_sites::OpFuture<'a, Vec<String>> {
+        Box::pin(async move {
+            match self.state() {
+                Ok(state) => crate::core::logs::tail(state.platform.as_ref(), &log_key, 200).unwrap_or_default(),
+                Err(_) => Vec::new(),
+            }
+        })
+    }
+}
+
 /// Run EVERY registered tool against `app`'s state with the fixture site id, and
 /// return each tool's serialised output (or its error text — errors can leak
 /// too). For the secret-leak sweep (`examples/mcp_secret_sweep`): it plants
@@ -1218,7 +1345,7 @@ pub async fn sweep_tool_outputs<Rt: tauri::Runtime>(
     let ctx = ReadCtx::new(state.inner());
     let creator = AppSiteCreator { app: app.clone() };
     let sctx = scratch::ScratchCtx::new(state.inner(), &creator, &creator, "secret-sweep");
-    let uctx = user_sites::UserCtx::new(state.inner(), &creator, &creator, &creator, &creator, &creator, "secret-sweep");
+    let uctx = user_sites::UserCtx::new(state.inner(), &creator, &creator, &creator, &creator, &creator, &creator, "secret-sweep");
     let mut outputs = Vec::new();
     // The sweep exercises handlers for their OUTPUT; a target they record is
     // irrelevant here, so each gets a throwaway recorder.

@@ -937,7 +937,11 @@ IPC surface — which is how a reader ends up designing against a system with on
   the row's own flag, so a grant auto-allow wrote once cannot serve a later claim — and a
   bounded auto-stop the app runs, ≤60 minutes, dying with the app like every tunnel; `status`
   under `read`), and `blueprints` (save `manage`, delete `destroy`, by NAME, the spec validated
-  on shape first) — each through a
+  on shape first), and `repo` (the site's Repo tab — twelve reads under `read` on the site,
+  two under rexenv itself, and everything that clones, links, runs git, scripts, install
+  steps, archives or watches under `run`; job-shaped actions block until the job settles
+  by the CLI's own rule and reply with steps, the archive's FILE NAME and the scrubbed log,
+  never a path) — each through a
   `Granted<S>` scope witness (`core::agent_grants`) minted from a grant the user gave in the
   app, and only while the "Let agents manage my own sites" switch is on. Shape refusals
   (a bad type, a taken domain, `multisite` on a PHP site) come BEFORE the gate and record no
