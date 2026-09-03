@@ -221,7 +221,12 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   10s — can never win it back, so DNS dies with the app for the whole session. Measured
   on a real login, 1 Sep 2026. While in-process, the app therefore tries to GIVE the port
   back: release it, `kickstart` the agent so its bind happens now rather than on its own
-  cadence, probe, and rebind in-process if it did not take. Bounded (5 attempts) and loud
+  cadence, probe, and rebind in-process if it did not take — and a rebind that fails
+  because the agent took the port just after the probe window is read as the late
+  success it is, not latched as `Down`. The watchdog's own fallback into in-process
+  mode spawns the same handoff (it was the second door, and had none until 3 Sep
+  2026). The release AWAITS the aborted task, so the port is free when the agent is
+  kicked, not "soon". Bounded (5 attempts) and loud
   on giving up. A longer startup wait was rejected: it is a guess that taxes every launch
   and still loses on a slow one — the race is not something to win, it is something to
   undo.
@@ -304,9 +309,11 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   is what the CONTROL plane lives in: `rex` and the MCP server are remote controls for
   a running app, their `0600` sockets are opened in `setup()` and die with it, so a
   quit used to end every agent session and every CLI command while the services below
-  carried on. A quit is now reached only through the tray's **Quit rexenv**, which is a
-  bare `app.exit(0)` — the share confirm lives on `RunEvent::ExitRequested`, the one
-  gate every quit raises. **The dock follows the window** (`dock_follows_window`):
+  carried on. A quit is now reached through the tray's **Quit rexenv** or the app
+  menu's Cmd+Q — both a bare `app.exit(0)`, because the share confirm lives on
+  `RunEvent::ExitRequested`, the one gate every quit raises. The Cmd+Q item is CUSTOM
+  for that reason: the predefined one is `terminate:`, which never raises the event
+  (it bypassed the gate until 3 Sep 2026). **The dock follows the window** (`dock_follows_window`):
   `ActivationPolicy::Regular` while a window is up, `Accessory` the moment it closes, so
   the status item is the whole presence when no window is — and a visible window still
   has a tile to Cmd-Tab to. Ordering is load-bearing on both edges (Regular → Accessory
@@ -1637,12 +1644,20 @@ IPC surface — which is how a reader ends up designing against a system with on
   CA untrusted for this user — the same two facts `FirstRunGate` routes on), because a
   silent tray on a machine that cannot resolve `.rex` hides the only screen that fixes
   it. An init failure shows the window too: an error screen nobody can see is a log line.
-  The plist is REWRITTEN on every launch while autostart is on, like the DNS agent's —
-  a plist written by an older build names an older binary and lacks the flag, and
-  nothing else would ever repair it.
-- **One rexenv per app-data dir.** `run()` tries to connect to the CLI socket before
-  Tauri boots; if something accepts, a live instance owns this app data, so the launch
-  sends `app.open` (best-effort) and EXITS. The socket is the lock precisely because a
+  The plist is REFRESHED on every launch while autostart is on (`AutostartManager::
+  refresh`) — a plist written by an older build names an older binary and lacks the
+  flag, and nothing else would ever repair it. Refresh is NOT enable: a byte-identical
+  plist is left alone (no `launchctl load -w` churn, which also clears a `Disabled` the
+  user set), and a launch from OUTSIDE an `.app` bundle keeps the recorded binary while
+  it still exists — one run of a dev build used to re-point the login item at a
+  `target/debug` path the next `cargo clean` deleted, with no symptom until the next
+  reboot (review, 3 Sep 2026).
+- **One rexenv per app-data dir.** `run()` CLAIMS the CLI socket before Tauri boots
+  (`cli_server::claim_at_startup`): if something accepts a connect on it, a live
+  instance owns this app data, so the launch sends `app.open` (best-effort) and EXITS;
+  otherwise the socket is bound right there and `setup` adopts the listener. Claim,
+  not probe: the probe-then-bind-later shape left a seconds-wide window in which a
+  second launch booted fully and then unlinked the first one's socket. The socket is the lock precisely because a
   listener dies with its process — a stale socket file refuses connections, so `connect`
   succeeding is proof of life, unlike a pid file that outlives the process that wrote it.
   Same reason the check runs before Tauri: a process that must not exist should not first

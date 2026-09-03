@@ -831,6 +831,60 @@ impl AutostartManager for MacosAutostart {
     fn is_enabled(&self) -> Result<bool> {
         Ok(Self::plist_path()?.exists())
     }
+    fn refresh(&self) -> Result<()> {
+        let plist = Self::plist_path()?;
+        let program = std::env::current_exe()?;
+        let want = Self::plist_contents(&program);
+        let have = std::fs::read_to_string(&plist).unwrap_or_default();
+        // Byte-identical: nothing to do, and no `launchctl load -w` churn —
+        // `-w` also clears a `Disabled` the user set by hand.
+        if have == want {
+            return Ok(());
+        }
+        let in_bundle = program.to_string_lossy().contains(".app/Contents/MacOS/");
+        if !in_bundle {
+            if let Some(recorded) = login_item_program(&have).filter(|p| p.exists()) {
+                log::info!(
+                    "autostart: this launch is {} (not an .app bundle) — keeping the login item \
+                     on {}",
+                    program.display(),
+                    recorded.display()
+                );
+                return Ok(());
+            }
+        }
+        // An installed build, or a recorded binary that no longer exists (the
+        // app moved, an old build was deleted): re-point, and reload.
+        self.enable()
+    }
+}
+
+/// The program a login-item plist names: the first `<string>` after
+/// `ProgramArguments`. `None` for anything that is not our plist.
+fn login_item_program(plist: &str) -> Option<PathBuf> {
+    let after = plist.split("<key>ProgramArguments</key>").nth(1)?;
+    let start = after.find("<string>")? + "<string>".len();
+    let end = after[start..].find("</string>")? + start;
+    Some(PathBuf::from(after[start..end].trim()))
+}
+
+#[cfg(test)]
+mod login_item_tests {
+    use super::*;
+
+    /// The refresh reads the program back out of the plist it wrote — and
+    /// `Label` comes first in that plist, so a reader that took the FIRST
+    /// `<string>` in the file would return the label, and every "does the
+    /// recorded binary still exist" check would say no.
+    #[test]
+    fn the_recorded_program_is_read_back_from_our_own_plist() {
+        let plist = MacosAutostart::plist_contents(Path::new("/Applications/rexenv.app/Contents/MacOS/rexenv"));
+        assert_eq!(
+            login_item_program(&plist),
+            Some(PathBuf::from("/Applications/rexenv.app/Contents/MacOS/rexenv"))
+        );
+        assert_eq!(login_item_program("<plist></plist>"), None);
+    }
 }
 
 /// Per-user LaunchAgent that keeps the loopback DNS resolver alive across app

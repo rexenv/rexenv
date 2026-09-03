@@ -298,6 +298,16 @@ pub trait AutostartManager: Send + Sync {
     fn disable(&self) -> Result<()>;
     /// Whether rexenv is currently registered to start on login.
     fn is_enabled(&self) -> Result<bool>;
+    /// Bring an ENABLED login item up to date at launch — the binary it names
+    /// and the flags it passes — without doing what `enable` does on a launch
+    /// the user did not mean as "make THIS the login item". `enable` is the
+    /// user's explicit choice and always points at the current binary; a
+    /// refresh from a dev build outside an `.app` bundle must not re-point the
+    /// login item at a `target/debug` path the next `cargo clean` deletes.
+    /// Default: the same as `enable`.
+    fn refresh(&self) -> Result<()> {
+        self.enable()
+    }
 }
 
 /// File permissions. POSIX chmod/chown on Unix; ACLs on Windows.

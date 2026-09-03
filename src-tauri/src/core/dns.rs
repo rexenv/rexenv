@@ -179,6 +179,16 @@ impl DnsService {
     pub fn stop(&self) {
         self.handle.abort();
     }
+
+    /// Abort AND wait for the task to be gone — so the socket it owns is
+    /// closed when this returns, not "soon". `abort` only requests
+    /// cancellation; the `UdpSocket` lives inside the task's future and is
+    /// released when the scheduler drops it. A caller about to hand the port
+    /// to another process needs the release to have HAPPENED.
+    pub async fn shutdown(mut self) {
+        self.handle.abort();
+        let _ = (&mut self.handle).await;
+    }
 }
 
 impl Drop for DnsService {

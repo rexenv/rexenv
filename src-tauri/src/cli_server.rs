@@ -95,21 +95,96 @@ pub fn parse_request(line: &str) -> Result<Request> {
     serde_json::from_str(line.trim()).map_err(|e| Error::Other(format!("bad request: {e}")))
 }
 
-/// Bind the private socket. A stale file is unlinked first (socket files
-/// outlive a crash — same lesson as `admin_alive`: only a connect tells the
-/// truth, and the CLI treats connect-refused as "app not running"). Perms are
-/// locked to `0600` before the first request is served.
-pub fn bind(path: &Path) -> Result<UnixListener> {
+/// What taking the socket path found.
+pub enum Claim {
+    /// Ours: bound, `0600`, nobody else was listening.
+    Bound(std::os::unix::net::UnixListener),
+    /// A live listener answered a connect on the path — another rexenv owns
+    /// this app-data directory. The file was NOT touched.
+    AnotherIsListening,
+}
+
+/// Take the private socket path — the single-instance LOCK (ledger #441).
+///
+/// A stale file is unlinked first (socket files outlive a crash — same lesson
+/// as `admin_alive`: only a connect tells the truth, and the CLI treats
+/// connect-refused as "app not running"). A file something is LISTENING on is
+/// never unlinked: the first version removed whatever was there and bound over
+/// it, so the loser of a launch race — the second copy, seconds behind — stole
+/// the winner's socket, and `rex` then talked to a headless orphan while the
+/// real app kept adopting services. Perms are locked to `0600` before the
+/// first request is served. Plain `std`, no runtime needed: this runs before
+/// Tauri boots, so the lock is held for the whole of startup rather than from
+/// the end of `setup`.
+pub fn claim(path: &Path) -> Result<Claim> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
     if path.exists() {
+        if std::os::unix::net::UnixStream::connect(path).is_ok() {
+            return Ok(Claim::AnotherIsListening);
+        }
         std::fs::remove_file(path)?;
     }
-    let listener = UnixListener::bind(path)?;
+    let listener = std::os::unix::net::UnixListener::bind(path)?;
     use std::os::unix::fs::PermissionsExt;
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
-    Ok(listener)
+    Ok(Claim::Bound(listener))
+}
+
+/// [`claim`] as a tokio listener — for callers already on the runtime (tests,
+/// and the late bind when the startup claim could not be made).
+pub fn bind(path: &Path) -> Result<UnixListener> {
+    match claim(path)? {
+        Claim::Bound(l) => {
+            l.set_nonblocking(true)?;
+            Ok(UnixListener::from_std(l)?)
+        }
+        Claim::AnotherIsListening => Err(Error::Other(format!(
+            "another rexenv is listening on {} — this copy must not bind over it",
+            path.display()
+        ))),
+    }
+}
+
+/// What `run()` does about the socket before Tauri boots.
+pub enum StartupClaim {
+    /// Continue: the socket is ours (`Some`), or could not be claimed at all
+    /// (`None` — `spawn` tries again later, and the app works without its CLI).
+    Ours(Option<std::os::unix::net::UnixListener>),
+    /// Another instance owns this app-data directory; it has been asked to
+    /// show its window, and this process must exit.
+    AnotherInstanceRuns,
+}
+
+/// Claim the socket at process start, or hand off to the instance that has it.
+///
+/// The claim happens HERE, not at the end of `setup`, because everything in
+/// between — the DNS agent probe (up to 2s), migrations, the CA, three
+/// backfills, two process-table sweeps, `adopt_startup` — is seconds during
+/// which a second launch used to find no socket, boot fully as a second
+/// writer, and then take the socket from the first.
+pub fn claim_at_startup() -> StartupClaim {
+    let Ok(dir) = crate::platform::current().paths().config_dir() else {
+        return StartupClaim::Ours(None);
+    };
+    let path = dir.join(SOCKET_FILE);
+    match claim(&path) {
+        Ok(Claim::Bound(l)) => StartupClaim::Ours(Some(l)),
+        Ok(Claim::AnotherIsListening) => {
+            if hand_off_to_running_instance() {
+                StartupClaim::AnotherInstanceRuns
+            } else {
+                // It was listening a moment ago and is not now — it died
+                // between the probe and the hand-off. This copy is the app.
+                StartupClaim::Ours(None)
+            }
+        }
+        Err(e) => {
+            eprintln!("rexenv: could not claim {}: {e} — starting without the lock", path.display());
+            StartupClaim::Ours(None)
+        }
+    }
 }
 
 /// Where a long command writes progress. Cloneable and cheap; dropping it is
@@ -1810,9 +1885,10 @@ pub fn hand_off_to_running_instance() -> bool {
     true
 }
 
-/// Spawn the listener at app startup. Failure is logged, never fatal — the
-/// app works without its CLI.
-pub fn spawn(app: tauri::AppHandle) {
+/// Spawn the listener at app startup, on the socket `claim_at_startup` already
+/// holds (or a late bind when it could not). Failure is logged, never fatal —
+/// the app works without its CLI.
+pub fn spawn(app: tauri::AppHandle, claimed: Option<std::os::unix::net::UnixListener>) {
     let path = match crate::platform::current().paths().config_dir() {
         Ok(dir) => dir.join(SOCKET_FILE),
         Err(e) => {
@@ -1821,7 +1897,11 @@ pub fn spawn(app: tauri::AppHandle) {
         }
     };
     tauri::async_runtime::spawn(async move {
-        let listener = match bind(&path) {
+        let adopted = claimed.map(|l| -> Result<UnixListener> {
+            l.set_nonblocking(true)?;
+            Ok(UnixListener::from_std(l)?)
+        });
+        let listener = match adopted.unwrap_or_else(|| bind(&path)) {
             Ok(l) => l,
             Err(e) => {
                 log::error!("cli: could not bind {}: {e}", path.display());
@@ -2108,6 +2188,11 @@ mod tests {
         let first = bind(&path).expect("first bind");
         let mode = std::fs::metadata(&path).expect("socket exists").permissions().mode();
         assert_eq!(mode & 0o777, 0o600, "socket must be private to the user");
+        // A LIVE listener is never bound over: that is the other instance's
+        // lock, and taking it made `rex` talk to the wrong process.
+        let stolen = bind(&path);
+        assert!(stolen.is_err(), "bound over a socket something was listening on");
+        assert!(first.local_addr().is_ok(), "the first listener must survive the attempt");
         drop(first); // socket FILE stays — the stale-crash shape
         assert!(path.exists(), "dropped listener leaves the file (stale)");
         let _second = bind(&path).expect("rebind over a stale file");

@@ -23,10 +23,14 @@ pub fn run() {
     // not exist should not first open a window, adopt services and bind
     // sockets. See `cli_server::hand_off_to_running_instance` for why the
     // socket is the lock and a pid file is not.
+    // The socket is CLAIMED here too, not merely probed: a probe-then-bind-
+    // later left a seconds-wide window in which a second launch booted fully
+    // and then took the first one's socket (review, 3 Sep 2026).
     #[cfg(unix)]
-    if cli_server::hand_off_to_running_instance() {
-        return;
-    }
+    let cli_socket = match cli_server::claim_at_startup() {
+        cli_server::StartupClaim::Ours(listener) => listener,
+        cli_server::StartupClaim::AnotherInstanceRuns => return,
+    };
 
     // The interactive app may stop ADOPTED services (Stop-all after a relaunch);
     // any other process linking this lib (live-check examples) may stop only
@@ -53,8 +57,12 @@ pub fn run() {
                 // so nothing in the dock should suggest there is. AFTER the
                 // hide, never before — Regular → Accessory hides windows, and
                 // doing it first would race the hide it is meant to follow.
+                // …unless the tray never installed: then the tile is the
+                // only way back, and it stays.
                 #[cfg(target_os = "macos")]
-                dock_follows_window(window.app_handle(), false);
+                if window.app_handle().tray_by_id(TRAY_ID).is_some() {
+                    dock_follows_window(window.app_handle(), false);
+                }
             }
         })
         // Database Browser: `rexdb://localhost/…` proxies the embedded Adminer
@@ -107,7 +115,7 @@ pub fn run() {
                 });
             },
         )
-        .setup(|app| {
+        .setup(move |app| {
             let platform = platform::current();
 
             let hidden_launch = std::env::args().any(|a| a == HIDDEN_LAUNCH_FLAG);
@@ -141,8 +149,15 @@ pub fn run() {
             // made while the app is still launching. A hidden launch has no
             // window and stays Accessory; a normal launch is Regular from the
             // start and never asks the Dock for anything mid-flight.
+            // Decided ONCE, from the facts a login launch will act on below
+            // (`first_window_decision`): a hidden launch with setup incomplete
+            // shows the onboarding window, and doing that as Accessory → Regular
+            // inside `setup` is exactly the mid-launch flip macOS does not
+            // reliably give a dock tile for (7723eb9) — on the one screen a new
+            // user cannot get past.
+            let login_needs_window = hidden_launch && login_launch_needs_window(platform.as_ref());
             #[cfg(target_os = "macos")]
-            if hidden_launch {
+            if hidden_launch && !login_needs_window {
                 app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             }
 
@@ -244,6 +259,12 @@ pub fn run() {
             // refusing to launch over a missing icon would be worse.
             if let Err(e) = install_tray(app.handle()) {
                 log::warn!("tray: could not install the menu-bar item: {e}");
+                // With no status item the dock tile is the only way back to
+                // a hidden window and the app menu the only Cmd+Q — so the
+                // tile stays. Accessory-with-no-tray is an app only `rex
+                // open` can reach.
+                #[cfg(target_os = "macos")]
+                dock_follows_window(app.handle(), true);
             }
 
 
@@ -511,7 +532,10 @@ pub fn run() {
                         let autostart = app.state::<state::app::AppState>();
                         let autostart = autostart.platform.autostart();
                         if autostart.is_enabled().unwrap_or(false) {
-                            if let Err(e) = autostart.enable() {
+                            // `refresh`, not `enable`: a launch of a dev build
+                            // must not re-point the user's login item at a
+                            // target/debug binary the next `cargo clean` deletes.
+                            if let Err(e) = autostart.refresh() {
                                 log::warn!("autostart: could not refresh the login item: {e}");
                             }
                         }
@@ -521,7 +545,7 @@ pub fn run() {
                     // unfinished, in which case the window is the only thing
                     // that can fix it (A7).
                     if hidden_launch {
-                        first_window_decision(app.handle());
+                        first_window_decision(app.handle(), login_needs_window);
                     }
                     // The tray went up before any of this existed, holding a
                     // menu that claims nothing (`core::tray::bootstrap`). Now
@@ -837,7 +861,7 @@ pub fn run() {
             // when init failed — each request then gets the honest
             // still-starting/failed error instead of a dead socket.
             #[cfg(unix)]
-            cli_server::spawn(app.handle().clone());
+            cli_server::spawn(app.handle().clone(), cli_socket);
 
             // MCP server socket (see `mcp_server`): the AI-agent endpoint,
             // driven through the `rex mcp` pipe. Its own `0600` socket beside
@@ -944,12 +968,25 @@ pub fn run() {
                                 {
                                     Ok(new_dns) => {
                                         dns.set(Some(new_dns), state::app::DnsMode::InProcess);
+                                        // The SECOND door into in-process mode
+                                        // gets the same handoff as the first:
+                                        // launchd relaunches the agent (KeepAlive)
+                                        // and it retries its bind every 10s
+                                        // forever — against a port we now hold.
+                                        // Without this, DNS died with the app for
+                                        // the rest of the session by a different
+                                        // route than the startup race.
+                                        spawn_dns_handoff(
+                                            watchdog.clone(),
+                                            core::dns::DEFAULT_DNS_PORT,
+                                        );
                                         events.push(core::service_manager::HealthEvent {
                                             service: "DNS".into(),
                                             action: "restarted",
                                             detail: "resolver agent would not come back — \
                                                      serving in-process instead (sites resolve, \
-                                                     but not after the app quits)"
+                                                     but not after the app quits; handing back \
+                                                     to the agent when it answers)"
                                                 .into(),
                                         });
                                     }
@@ -1377,24 +1414,37 @@ fn install_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
 /// the two facts `FirstRunGate` routes on — the OS resolver file and per-user
 /// CA trust — so the tray and the frontend cannot disagree about whether this
 /// machine is set up.
-fn first_window_decision(app: &tauri::AppHandle) {
+fn first_window_decision(app: &tauri::AppHandle, needs_window: bool) {
     use tauri::Manager;
-    let Some(state) = app.try_state::<state::app::AppState>() else {
+    if app.try_state::<state::app::AppState>().is_none() {
         // No state means init failed; that path shows the window itself.
         return;
-    };
-    let resolver_installed =
-        state.platform.dns().resolver_path(core::tld::BACKBONE_TLD).exists();
-    let ca_trusted = state.platform.cert_trust().is_trusted(&state.ca.cert_path);
-    if resolver_installed && ca_trusted {
+    }
+    if !needs_window {
         log::info!("launched at login — staying in the menu bar");
         return;
     }
-    log::info!(
-        "launched at login with setup incomplete (resolver: {resolver_installed}, \
-         CA trusted: {ca_trusted}) — showing the window"
-    );
+    log::info!("launched at login with setup incomplete — showing the window");
     show_main_window(app);
+}
+
+/// The two facts a login launch needs before it may stay silent in the menu
+/// bar: `.rex` resolves here, and the CA is trusted. Read from the platform,
+/// not from `AppState`, because the activation policy has to be decided
+/// BEFORE state exists — and a login launch on a machine that cannot resolve
+/// `.rex` must show the window rather than look broken and hide the fix (A7).
+fn login_launch_needs_window(platform: &dyn platform::traits::Platform) -> bool {
+    let resolver_installed = platform.dns().resolver_path(core::tld::BACKBONE_TLD).exists();
+    let ca_trusted = core::ssl::ca_dir(platform.paths())
+        .map(|dir| dir.join(core::ssl::CA_CERT_FILE))
+        .is_ok_and(|cert| cert.exists() && platform.cert_trust().is_trusted(&cert));
+    if !(resolver_installed && ca_trusted) {
+        log::info!(
+            "login launch with setup incomplete (resolver: {resolver_installed}, CA trusted: \
+             {ca_trusted}) — the window will be shown"
+        );
+    }
+    !(resolver_installed && ca_trusted)
 }
 
 /// Give the DNS port back to the agent when we only hold it because we won a
@@ -1455,8 +1505,13 @@ fn spawn_dns_handoff(app: tauri::AppHandle, port: u16) {
             // stopping it in place) is what makes the failure path honest: while
             // the handoff is in flight, `DnsState` says the in-process resolver
             // is not running, because it is not.
-            let service = dns.take_service();
-            drop(service); // Drop aborts the task and closes the socket.
+            // `shutdown` AWAITS the aborted task: a plain drop only requests
+            // the abort, and the socket lives until the scheduler gets to the
+            // task — so the agent, once kicked, could still lose its first bind
+            // and sleep 10s, longer than the probe window below.
+            if let Some(service) = dns.take_service() {
+                service.shutdown().await;
+            }
 
             // Kickstart rather than wait for the agent's own 10s retry: it turns
             // a gap measured in cadence into one measured in startup.
@@ -1486,8 +1541,21 @@ fn spawn_dns_handoff(app: tauri::AppHandle, port: u16) {
             match core::dns::DnsService::start(port).await {
                 Ok(svc) => dns.set(Some(svc), state::app::DnsMode::InProcess),
                 Err(e) => {
-                    dns.set(None, state::app::DnsMode::Down);
-                    log::error!("dns: could not rebind in-process after a handoff attempt: {e}");
+                    // "Address in use" here almost always means the agent took
+                    // the port just after the last probe — the handoff
+                    // SUCCEEDED late. Latching `Down` on that (the first
+                    // version did) reported a dead resolver the watchdog then
+                    // never re-examined, while `.rex` resolved fine.
+                    if core::dns::answers_as_ours(port) {
+                        dns.set(None, state::app::DnsMode::Agent);
+                        log::info!(
+                            "dns: the resolver agent took the port after the probe window \
+                             (attempt {attempt}) — handed off"
+                        );
+                    } else {
+                        dns.set(None, state::app::DnsMode::Down);
+                        log::error!("dns: could not rebind in-process after a handoff attempt: {e}");
+                    }
                     return;
                 }
             }
@@ -1815,6 +1883,10 @@ pub const ABOUT_MENU_EVENT: &str = "menu://about";
 /// rebuilding a menu from scratch is how apps lose the clipboard shortcuts they
 /// never wrote.
 #[cfg(target_os = "macos")]
+/// The custom Quit item's id — custom so that Cmd+Q raises `ExitRequested`
+/// like every other quit, instead of `terminate:`-ing straight past the gate.
+const QUIT_MENU_ID: &str = "rex-quit";
+
 fn install_about_menu_item(app: &tauri::AppHandle) -> tauri::Result<()> {
     use tauri::menu::{Menu, MenuItem, MenuItemKind};
     use tauri::Emitter;
@@ -1829,9 +1901,33 @@ fn install_about_menu_item(app: &tauri::AppHandle) -> tauri::Result<()> {
     let about = MenuItem::with_id(app, "rex-about", "About rexenv", true, None::<&str>)?;
     app_menu.remove_at(0)?;
     app_menu.insert(&about, 0)?;
+    // Cmd+Q goes through THE quit gate. The predefined Quit item is
+    // `terminate:` — the app delegate ends the process and `ExitRequested`
+    // is never raised, so the public-share confirm on that event (the "ONE
+    // gate every quit passes through", ledger #436) covered the tray's Quit
+    // and `rex`, and NOT the keyboard: with a share up, Cmd+Q killed the
+    // tunnel with no prompt (review, 3 Sep 2026). A custom item with the
+    // same accelerator calls `exit`, which raises the event.
+    let items = app_menu.items()?;
+    let quit_at = items.iter().position(|item| {
+        matches!(item, MenuItemKind::Predefined(p) if p.text().is_ok_and(|t| t.starts_with("Quit")))
+    });
+    if let Some(pos) = quit_at {
+        let quit = MenuItem::with_id(app, QUIT_MENU_ID, "Quit rexenv", true, Some("CmdOrCtrl+Q"))?;
+        app_menu.remove_at(pos)?;
+        app_menu.insert(&quit, pos)?;
+    } else {
+        log::warn!("menu: no predefined Quit item to replace — Cmd+Q will bypass the share confirm");
+    }
     app.set_menu(menu)?;
 
     app.on_menu_event(|app, event| {
+        if event.id() == QUIT_MENU_ID {
+            // Same call as the tray's Quit: `exit` raises `ExitRequested`,
+            // where the gate lives. Not a second copy of the gate.
+            app.exit(0);
+            return;
+        }
         if event.id() == "rex-about" {
             if let Some(win) = app.get_webview_window("main") {
                 // The window may be hidden or behind: an About that opens
@@ -1905,6 +2001,35 @@ mod tests {
         assert!(release < kickstart, "release the port BEFORE asking the agent to take it");
         assert!(kickstart < probe, "kickstart BEFORE probing, or the probe measures the wait");
         assert!(probe < rebind, "rebind only AFTER the probe says the agent did not take it");
+    }
+
+    /// **Cmd+Q passes through the quit gate.** The predefined Quit item is
+    /// `terminate:`, which never raises `ExitRequested`; so the gate on that
+    /// event covered the tray and `rex` and not the keyboard, and a share
+    /// died silently under Cmd+Q. The app menu must carry a CUSTOM quit that
+    /// calls `exit` (which raises the event), and nothing may put the
+    /// predefined one back.
+    #[test]
+    fn cmd_q_is_a_custom_item_that_raises_exit_requested() {
+        let src = crate::core::copy_scan::production_source(include_str!("lib.rs"));
+        let start = src.find("fn install_about_menu_item").expect("the menu install exists");
+        let body = &src[start..];
+        let end = body.find("\n#[cfg(test)]").unwrap_or(body.len());
+        let body = &body[..end];
+        assert!(body.contains("rex-about"), "sliced the wrong function");
+        assert!(
+            body.contains("QUIT_MENU_ID") && body.contains("CmdOrCtrl+Q"),
+            "the app menu has no custom Quit with the Cmd+Q accelerator — the predefined one \
+             terminates past the share confirm"
+        );
+        assert!(
+            body.contains("event.id() == QUIT_MENU_ID") && body.contains("app.exit(0)"),
+            "the custom Quit must call `exit`, which raises ExitRequested — the ONE gate"
+        );
+        assert!(
+            !src.contains("PredefinedMenuItem::quit"),
+            "a predefined Quit item is back — it bypasses the gate"
+        );
     }
 
     /// **The tray is never a SECOND way to do something.** Every menu action

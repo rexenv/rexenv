@@ -2562,7 +2562,9 @@ window stops being a quit.
   **Quit rexenv**, `icon_as_template(true)` so macOS tints it for either bar. **Clicking
   the icon opens the MENU, not the window** — the plan said window, but that is not the
   shape asked for (Herd's icon opens a quick menu) and it would leave Phase B's menu
-  behind a right-click. Quit goes through the SAME `confirm_quit_or_prompt` gate as Cmd+Q.
+  behind a right-click. Quit goes through the SAME `confirm_quit_or_prompt` gate as Cmd+Q
+  — TRUE only since 3 Sep 2026: the predefined Cmd+Q was `terminate:` and skipped the gate
+  (ledger #436).
   A failed install is logged, never fatal: an app with no status item still works, and
   refusing to launch over an icon would be worse.
 - [x] **A4** `ActivationPolicy::Accessory` ✓ 31 Aug 2026 — no dock icon, no app-switcher
