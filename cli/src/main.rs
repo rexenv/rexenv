@@ -3825,4 +3825,107 @@ mod tests {
             "a finished command must not print a stall notice"
         );
     }
+    /// **The roadmap may not call a verb unbuilt while `rex` dispatches it.**
+    ///
+    /// `docs/CLI-ROADMAP.md` is the file a reader opens to learn what the CLI
+    /// can do, and its TABLE is the part they trust. On 3 Sep 2026 two rows
+    /// there said `mail mark-read` had "no CLI verb yet" and `mail list`'s
+    /// `--unread` was "not wired yet" — while the same file's Infrastructure
+    /// and In-app-verifies sections recorded both shipping on 23 Aug and being
+    /// verified live the same day. The file contradicted itself for ten days,
+    /// and the wrong half is the half that sends someone to build what exists.
+    ///
+    /// So: a row whose Tag is not ✓, or whose Notes still carry a not-yet
+    /// phrase, must not name something the CLI actually has. "Has" is read from
+    /// this file — the completion constants for a subcommand, the literal flag
+    /// string for a flag — never from a second list kept beside the doc.
+    ///
+    /// This proves a row is not FALSE. It cannot prove a row is complete: a
+    /// verb nobody has written a row for is invisible here, and that is what
+    /// `every_dispatched_subcommand_is_offered_by_completions` is for.
+    #[test]
+    fn no_roadmap_row_calls_unbuilt_a_thing_the_cli_already_dispatches() {
+        const ME: &str = include_str!("main.rs");
+        let doc = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../docs/CLI-ROADMAP.md"),
+        )
+        .expect("docs/CLI-ROADMAP.md");
+
+        // Phrases that assert absence. Each one is a sentence some row has
+        // actually carried past its own shipping date.
+        const NOT_YET: [&str; 5] =
+            ["no CLI verb yet", "not wired yet", "unreachable from the CLI", "no `rex` verb", "not built"];
+
+        let mut rows = 0usize;
+        let mut stale: Vec<String> = Vec::new();
+        for line in doc.lines() {
+            let line = line.trim();
+            if !line.starts_with("| `") {
+                continue; // headers, separators, prose
+            }
+            // `\|` is an escaped pipe INSIDE a cell (alternations like
+            // `start\|stop`), not a column break — hide it before splitting.
+            let hidden = line.replace("\\|", "\u{1}");
+            let cells: Vec<&str> = hidden.trim_matches('|').split('|').map(str::trim).collect();
+            if cells.len() < 4 {
+                continue;
+            }
+            rows += 1;
+            let (cmd, tag, notes) = (cells[0], cells[2], cells[3]);
+            let claims_absent =
+                !tag.contains('✓') || NOT_YET.iter().any(|p| notes.contains(p));
+            if !claims_absent {
+                continue;
+            }
+
+            // A row naming FLAGS is a claim about those flags; otherwise it is a
+            // claim about the subcommand path.
+            let flags: Vec<&str> = cmd
+                .split(|c: char| !(c.is_ascii_alphanumeric() || c == '-'))
+                .filter(|w| w.starts_with("--") && w.len() > 3)
+                .collect();
+            if !flags.is_empty() {
+                for f in flags {
+                    if ME.contains(&format!("\"{f}\"")) {
+                        stale.push(format!("{cmd} — the CLI parses `{f}` already"));
+                    }
+                }
+                continue;
+            }
+            // `\`group sub …\`` — the first two bare words of the command cell.
+            let words: Vec<&str> = cmd
+                .trim_start_matches('|')
+                .split('`')
+                .nth(1)
+                .unwrap_or("")
+                .split_whitespace()
+                .map(|w| w.trim_start_matches("rex").trim())
+                .filter(|w| !w.is_empty())
+                .collect();
+            if let (Some(group), Some(sub)) = (words.first(), words.get(1)) {
+                if sub.starts_with('<') || sub.starts_with('[') || sub.starts_with("--") {
+                    continue; // `rex status`-shaped: no subcommand to look up
+                }
+                // The completion constants ARE the built surface — the sibling
+                // test holds them equal to the dispatch in both directions.
+                let offered = ME
+                    .lines()
+                    .filter(|l| l.contains(&format!("{group})")) || l.contains("const "))
+                    .any(|l| l.split_whitespace().any(|w| w.trim_matches('"') == *sub));
+                if offered {
+                    stale.push(format!("{cmd} — `rex {group} {sub}` is offered by completions"));
+                }
+            }
+        }
+
+        assert!(rows > 40, "only {rows} roadmap rows parsed — the table shape moved");
+        assert!(
+            stale.is_empty(),
+            "docs/CLI-ROADMAP.md calls these unbuilt, and the CLI has them:\n  {}\nA table row \
+             that outlived its own shipping date is the half a reader trusts — fix the row in \
+             the commit that ships the thing",
+            stale.join("\n  ")
+        );
+    }
+
 }

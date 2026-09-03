@@ -122,8 +122,8 @@ to launch a specific copy with `open /Applications/rexenv.app` when it matters. 
 
 | Command | Backing IPC | Tag | Notes |
 |---|---|---|---|
-| `mail list` | `mailpit_messages` | ✓ | shipped 16 Jul — 3 real caught messages listed. The socket command now also takes `unread` (bool, absent = whole inbox, so an older `rex` against a newer app is unchanged); the CLI flag itself is not wired yet |
-| `mail mark-read` | `mailpit_mark_all_read` | IPC exists | socket command `mail.mark_read` landed 14 Aug 2026 with the Mail screen's "Mark all read"; no CLI verb yet |
+| `mail list [--unread] [query]` | `mailpit_messages` | ✓ | shipped 16 Jul — 3 real caught messages listed. The socket command also takes `query` and `unread` (bool, absent = whole inbox, so an older `rex` against a newer app is unchanged), and **both reached the CLI on 23 Aug 2026** (ledger #385) — this row said they had not for ten days, while the Infrastructure section below recorded the same day they did |
+| `mail mark-read` | `mailpit_mark_all_read` | ✓ | socket command `mail.mark_read` landed 14 Aug 2026 with the Mail screen's "Mark all read"; **`rex mail mark-read` shipped 23 Aug 2026** (ledger #385) — named `mark-read`, not `read`, because it marks EVERY message. The tag on this row still read "IPC exists" ten days later |
 | `mail clear [--yes]` | `mailpit_clear` | ✓ | shipped 16 Jul (confirm-gated; not live-run — user mail) |
 | `mail open` | `mailpit_status` (uiUrl) + local `open` | ✓ | shipped 16 Jul |
 
@@ -164,7 +164,8 @@ Job-shaped ops (add / fetch / pull / checkout / push / run) return a job id
 and stream via Tauri events, which the CLI socket doesn't carry — the 🟡
 arms below poll `repo_job_state` until terminal, then print the job's flat
 log via the existing `logs.tail` (`log_key` is in every snapshot). LIVE
-line streaming is the same 🔴 "progress streaming" infra item as always.
+line streaming was the same "progress streaming" infra item — which SHIPPED 2 Sep 2026
+(ledger #447), so `repo watch --tail` is now a build, not a blocked design.
 
 | Command | Backing IPC | Tag | Notes |
 |---|---|---|---|
@@ -185,10 +186,10 @@ line streaming is the same 🔴 "progress streaming" infra item as always.
 
 ## Infrastructure (enables the above, not user commands)
 
-- **Progress streaming** 🔴 — long ops (`site create`, `db import`, `wp core
-  update`) currently hold the connection silently; stream progress lines over
-  the same socket (multi-line response before the final envelope). Design
-  once, benefits everything.
+- ~~**Progress streaming** 🔴~~ — **SHIPPED 2 Sep 2026** (ledger #447). Opt-in `stream: true`,
+  `{"progress": …}` records keyed so an older reader can skip them, and exactly one `{"ok": …}`
+  envelope always last; `site create` and `site retry` print their phases live. Long ops used to
+  hold the connection silently, which is indistinguishable from a hang.
 - ~~**Protocol version handshake** 🟡~~ — **answered differently, 23 Aug 2026**
   (ledger #386). A protocol integer answers "is the wire contract compatible",
   which is not the question anyone has: `rex` and the app ship in the SAME cask
@@ -210,7 +211,12 @@ line streaming is the same 🔴 "progress streaming" infra item as always.
 - **`--json` everywhere** — v1 rule, keep it: every new command returns the
   raw IPC payload under `--json`.
 
-## Status — every 🟢/🟡/⚪ command is SHIPPED
+## Status — one 🟢 row left, and it is a FLAG
+
+Every 🟢/🟡/⚪ *command* is shipped; the exception is `site create --starter-db`
+(the 🟢 row above), which is a flag on a shipped verb rather than a missing verb.
+This heading claimed a clean sweep while that row sat three screens up — the same
+shape as the two `mail` rows below it, and the reason those are now gated.
 
 90 commands shipped. **That number is now GENERATED** (`scripts/doc-counts.sh`, and as of 2 Sep 2026 it
 counts what it claims to: the counter matched `"word.word" =>` only, so every
