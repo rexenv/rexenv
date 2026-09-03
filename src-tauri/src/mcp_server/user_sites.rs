@@ -2163,11 +2163,15 @@ fn site_wp_run<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::Ac
         let id = args.get("site_id").and_then(Value::as_str).ok_or_else(|| Error::Other("site_wp_run needs a `site_id`.".into()))?;
         let argv = super::scratch::wp_argv(args)?;
         wp_precheck(&ctx, id, "site_wp_run")?;
+        // The target screen is a SHAPE refusal and sits before the gate: a
+        // `--path` argv is refused whether or not a grant exists, and never
+        // records an ask for a call that could not have run. (Found 3 Sep 2026
+        // in the live run: with the switch off the gate's message hid it.)
+        crate::core::scratch::refuse_wp_target_override(&argv)?;
         let wanted = format!("run `wp {}` in it", argv.iter().take(2).cloned().collect::<Vec<_>>().join(" "));
         let claimed = ctx.claim::<scope::Run>(Some(id), &wanted)?;
         let site = claimed.granted.site().cloned().ok_or_else(|| Error::Other("site_wp_run needs a site.".into()))?;
         acted.set(&site);
-        crate::core::scratch::refuse_wp_target_override(&argv)?;
         let docroot = std::path::PathBuf::from(&site.path);
         let (php_bin, wp_phar) = super::scratch::resolve_wp_tools(ctx.state, &site.php_version).await?;
         if !ctx.still_granted(&claimed.granted)? {
@@ -4306,6 +4310,10 @@ mod tests {
         // The raw runner: `run` is its own scope — manage does not reach it —
         // and the target screen fires BEFORE any binary is resolved (the stub
         // platform would panic on `binaries()`; it is never reached).
+        let asks_before = asks(&state).len();
+        let err = site_wp_run(ctx, &json!({ "site_id": site.id, "args": ["plugin", "list", "--path=/etc"] }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("--path"), "the target screen is a shape refusal: {err}");
+        assert_eq!(asks(&state).len(), asks_before, "a `--path` argv asks for nothing — it could never run");
         let err = site_wp_run(ctx, &json!({ "site_id": site.id, "args": ["plugin", "list"] }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("`run`"), "{err}");
         assert!(asks(&state).iter().any(|r| r.scope == Scope::Run && r.wanted.contains("wp plugin list")));
