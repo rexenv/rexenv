@@ -3803,6 +3803,8 @@ mod tests {
         let refusals: &[(&str, &str)] = &[
             (DEFAULT_TLD_KEY, "local"),
             (SITES_DIR_KEY, "relative/not/absolute"),
+            (crate::core::scratch::SCRATCH_CAP_KEY, "0"),
+            (crate::core::scratch::SCRATCH_TTL_KEY, "999"),
         ];
         let conn = db::open_in_memory().unwrap();
         for (key, setter) in sa::GATED_SETTERS {

@@ -48,7 +48,7 @@ Ordered by what it costs to leave open. Each row says where the evidence is.
 | L4 | **🔨 live legs**: #215 (reaper delete + skip-don't-stop with a live tunnel), #219 (packaged-webview eyeball of the enable-moment paragraph at both widths), #401/#403 ◐ (the `db_query` gate's and the delete-drops-accounts row's unplanted halves). | `CLAIM-LEDGER.md` | 🔨 |
 | L5 | **In-band "rexenv stopped" error in `rex mcp` — deferred WITH A TRIGGER, and the trigger fired at M2.** §2.3 said the dumb pipe is fine while there are no tools, and that a mid-session app quit becomes a *model-facing* failure the day tools land. Nine executing tools have landed; `cli/src/main.rs::run_mcp_bridge` is still the dumb byte pipe. A model whose `scratch_create_site` dies with a bare EOF will guess. | `PLAN-mcp-server.md` §2.3; `cli/src/main.rs:210-230` | ⏳ build — §5 P6 |
 | L6 | **Tool annotations never emitted.** §2.4 says tools carry `readOnlyHint`/`destructiveHint`; `tools_list_result` emits name/description/inputSchema only (grep: no `Hint` in `mcp_server.rs`). Harmless today (12 tools, obvious names); load-bearing at parity, where a client's confirm-before-destructive UX reads exactly these. | `mcp_server/tools.rs::tools_list_result` | ⏳ — §5 P6 |
-| L7 | **TTL and cap are compile-time constants** (`MAX_SCRATCH_SITES = 5`, 24 h) where §4.2/§4.3 said settings. `ARCHITECTURE.md` §8.3 records the divergence. Not a defect; a parity agent that runs a matrix across five PHP minors on five plugins will hit the cap. | `core/scratch.rs:77` | ⏳ — settings via `settings_access` (`GATED_SETTERS`), §5 P4 |
+| L7 | **TTL and cap are compile-time constants** (`MAX_SCRATCH_SITES = 5`, 24 h) where §4.2/§4.3 said settings. `ARCHITECTURE.md` §8.3 records the divergence. Not a defect; a parity agent that runs a matrix across five PHP minors on five plugins will hit the cap. | `core/scratch.rs:77` | ✅ P4.3, 3 Sep 2026 (#488) — `scratch_cap` / `scratch_ttl_hours`, gated setters, the constants as defaults |
 | L8 | **Laravel headline (M-later trio)**: scratch Laravel skeleton, `php_artisan` runner, Composer path-repo link. Ranked in §5.1/§7.3 of the old plan, never started. Parity makes the first one moot in the scratch form (a real Laravel site is creatable, §4) but the runner and the path-repo link are still the Laravel dev loop. | `PLAN-mcp-server.md` §5.1 | ⏳ — §5 P7 |
 | L9 | **Progress for long tool calls.** The CLI got streaming 2 Sep 2026 (#447); MCP still blocks the whole call (`state_of` poll) — fine for a 60 s scratch create, not for a git-cloned Laravel site with `composer install` + asset build. | `PLAN-mcp-server.md` §2.5 | ⏳ — §5 P6 |
 | L10 | Windows/Linux socket path + named pipe. | Phase 4 | out of scope, unchanged |
@@ -270,6 +270,13 @@ packaged run, recorded in `TODO.md` under the existing gates row. L4 as time all
 7. Ledger: re-scope the "no registered tool reaches `run_privileged`" row to the
    first two registries; amend #197's scope sentence; new rows for 1–4.
 *Ships: a user can grant, see and revoke a scope; no tool uses one yet.*
+**P4 SHIPPED 3 Sep 2026** (#485 `stack_status`/`stack`, #486 `php`/`settings`/`tld`/`open` +
+`settings_get`/`php_settings`, #487 `share`, #488 cap/TTL as settings). What moved: the
+old "no tool reaches `run_privileged`" row never existed to re-scope — #485 is the narrower
+true claim; `share`'s never-auto-allowed rule is checked on the grant ROW, not the claim
+path, because an auto-written grant serves a later ordinary claim. SMOKE §P4 (36–39) is the
+human leg. Owed from this phase: a `shares`/tunnel status read (`tunnels_status` needs the
+`Tunnels` state, which `ReadCtx` does not hold) — a P5 item.
 **P3 SHIPPED 3 Sep 2026** (#481 `wp_info`/`wp_plugin`/`wp_theme`, #482 `wp_user`/`wp_option`/
 `wp_maintain`, #483 `wp_data`/`wp_network`/`site_wp_run`/`wp_org_search`, #484 `site_logs`/
 `mail_inbox`). Two things moved: `site_wp_run` is a separate name from the scratch `wp_run`

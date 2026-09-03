@@ -2042,8 +2042,12 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     reaches run_privileged" row never landed; #485 is the narrower true claim.
     ✓ P4.2 — **`php`, `settings`, `tld`, `open` + read `settings_get`/`php_settings`**, ledger
     #486: the CLI's settings policy consulted before the gate; resolver writes `system`
-    naming the dialog; `open` only the site's own URL/folder. Remaining: `share` (D11),
-    TTL/cap as settings, SMOKE §P4.
+    naming the dialog; `open` only the site's own URL/folder.
+    ✓ P4.3 — **`share` + cap/TTL as settings**, ledger #487/#488: `run` by a PERSON (the
+    auto-allowed row refused twice — the second time through the ordinary claim path),
+    ≤60 min, an app-side timer that dies with the app; `scratch_cap`/`scratch_ttl_hours`
+    gated setters with the constants as defaults (L7 closed). SMOKE §P4 (36–39) written.
+    **P4 is shipped** (37 tools). Owed: a tunnel-status read (P5).
   - [ ] **P5 — long tail**: `repo(...)`, `valet_import`, `connection_rewrite`, `db_import`,
     `blueprints`, `wp_org_search`, `agent_activity`.
   - [ ] **P6 — protocol**: annotations, progress notifications riding #447's records,

@@ -917,7 +917,11 @@ fn create_site<'a>(
             // agent path never acquires one by someone flipping the default.
             starter_db: false,
         };
-        let site = ctx.create(new, Ownership::Agent { client, ttl_hours: crate::core::sites::SCRATCH_TTL_HOURS }, acted).await?;
+        let ttl_hours = {
+            let conn = ctx.db()?;
+            crate::core::scratch::scratch_ttl_hours(&conn)
+        };
+        let site = ctx.create(new, Ownership::Agent { client, ttl_hours }, acted).await?;
         // Stamp the new site's mail NOW if the sub-toggle is on.
         //
         // `mcp_set_mail_enabled` stamps every EXISTING scratch site when the

@@ -72,9 +72,60 @@ impl ScratchSite {
 /// `mine.scratch.rex` is a normal site of theirs (`claim` refuses it, tested).
 pub const SCRATCH_LABEL: &str = "scratch";
 
-/// How many scratch sites may exist at once (PLAN §4.2). The answer to "an agent
-/// creates twenty": it can't.
+/// How many scratch sites may exist at once by DEFAULT (PLAN §4.2). The answer
+/// to "an agent creates twenty": it can't. Since MCP parity (L7) the live
+/// number is a setting — [`scratch_cap`] — because a compatibility matrix
+/// across five PHP minors on five plugins is a real workload that hit five.
 pub const MAX_SCRATCH_SITES: usize = 5;
+
+/// Settings keys for the two scratch limits. Gated setters in
+/// `core::settings_access::GATED_SETTERS`, so `rex config set` and the agent's
+/// `settings` tool both go through the range check.
+pub const SCRATCH_CAP_KEY: &str = "scratch_cap";
+pub const SCRATCH_TTL_KEY: &str = "scratch_ttl_hours";
+const CAP_RANGE: std::ops::RangeInclusive<usize> = 1..=20;
+const TTL_RANGE: std::ops::RangeInclusive<i64> = 1..=168;
+
+/// The live cap: the setting, or the default. An unparseable stored value reads
+/// as the DEFAULT — the safe direction for a ceiling is the known one.
+pub fn scratch_cap(conn: &Connection) -> usize {
+    store::get_setting(conn, SCRATCH_CAP_KEY)
+        .ok()
+        .flatten()
+        .and_then(|v| v.parse::<usize>().ok())
+        .filter(|n| CAP_RANGE.contains(n))
+        .unwrap_or(MAX_SCRATCH_SITES)
+}
+
+/// The live TTL in hours: the setting, or `sites::SCRATCH_TTL_HOURS`.
+pub fn scratch_ttl_hours(conn: &Connection) -> i64 {
+    store::get_setting(conn, SCRATCH_TTL_KEY)
+        .ok()
+        .flatten()
+        .and_then(|v| v.parse::<i64>().ok())
+        .filter(|n| TTL_RANGE.contains(n))
+        .unwrap_or(crate::core::sites::SCRATCH_TTL_HOURS)
+}
+
+/// Validating setter for the cap (1–20). Registered in `GATED_SETTERS`.
+pub fn set_scratch_cap(conn: &Connection, value: &str) -> Result<String> {
+    let n: usize = value.trim().parse().map_err(|_| Error::Other(format!("`{value}` is not a whole number")))?;
+    if !CAP_RANGE.contains(&n) {
+        return Err(Error::Other(format!("the scratch cap must be between {} and {}", CAP_RANGE.start(), CAP_RANGE.end())));
+    }
+    store::set_setting(conn, SCRATCH_CAP_KEY, &n.to_string())?;
+    Ok(n.to_string())
+}
+
+/// Validating setter for the TTL in hours (1–168). Registered in `GATED_SETTERS`.
+pub fn set_scratch_ttl_hours(conn: &Connection, value: &str) -> Result<String> {
+    let n: i64 = value.trim().parse().map_err(|_| Error::Other(format!("`{value}` is not a whole number of hours")))?;
+    if !TTL_RANGE.contains(&n) {
+        return Err(Error::Other(format!("the scratch TTL must be between {} and {} hours", TTL_RANGE.start(), TTL_RANGE.end())));
+    }
+    store::set_setting(conn, SCRATCH_TTL_KEY, &n.to_string())?;
+    Ok(n.to_string())
+}
 
 /// Build the domain for a scratch site called `name` under `tld`.
 ///
@@ -117,11 +168,12 @@ pub fn ensure_capacity(conn: &Connection) -> Result<()> {
         .filter(|s| s.is_scratch())
         .map(|s| s.domain)
         .collect();
-    if mine.len() < MAX_SCRATCH_SITES {
+    let cap = scratch_cap(conn);
+    if mine.len() < cap {
         return Ok(());
     }
     Err(Error::Other(format!(
-        "There are already {} scratch sites, which is the limit ({MAX_SCRATCH_SITES}): {}.\n\
+        "There are already {} scratch sites, which is the limit ({cap}): {}.\n\
          Delete one you no longer need with scratch_delete_site, or ask the person you're working \
          with — in rexenv they can remove one, or Keep one, which makes it theirs and frees a slot \
          straight away. Scratch sites also expire on their own once nothing has used them for a \

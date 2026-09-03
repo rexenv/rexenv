@@ -44,6 +44,8 @@ pub type ValidatingSetter = fn(&rusqlite::Connection, &str) -> crate::error::Res
 pub const GATED_SETTERS: &[(&str, ValidatingSetter)] = &[
     (crate::core::sites::DEFAULT_TLD_KEY, crate::core::sites::set_default_tld),
     (crate::core::sites::SITES_DIR_KEY, crate::core::sites::set_sites_dir),
+    (crate::core::scratch::SCRATCH_CAP_KEY, crate::core::scratch::set_scratch_cap),
+    (crate::core::scratch::SCRATCH_TTL_KEY, crate::core::scratch::set_scratch_ttl_hours),
 ];
 
 /// The validating setter for `key`, if it is gated.

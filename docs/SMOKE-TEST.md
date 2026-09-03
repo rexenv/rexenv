@@ -1114,6 +1114,31 @@ your own WordPress sites with real content, mail switch OFF.
   mail's text → the `rexenv_login=` token is gone. **Tell — a HOLD:** the inbox readable
   with the switch off, or a message body carrying a login token.
 
+### Parity P4 — the stack, with the password dialog as the second consent. Ships only if 36–39 pass.
+The sandbox L1 cannot raise a macOS dialog, start a real tunnel or swap a pool. These are
+the human legs. Set up: stack up, switch ON, one of your own sites.
+- [ ] **36. ⚠ Stopping the stack is two consents.** Ask: *"stop rexenv's stack"* → refused; a
+  `system` prompt for **rexenv itself** whose text says macOS will ALSO ask for your
+  password. Allow for this session → the agent's retry raises the macOS dialog. Cancel it
+  → the call fails, the stack is still up. Retry, enter the password → every site is
+  offline; `stack_status` says so. Start it again the same way. **Tells — a HOLD:** no
+  macOS dialog (the privileged path was bypassed); the stack stopped under a `manage`
+  grant; a `system` auto-allow switch exists anywhere in Site access.
+- [ ] **37. A resolver write is the same shape.** Ask it to *"repair the resolver for
+  `.rex`"* → `system` prompt naming the dialog → Allow → the macOS dialog → the file is
+  back. Ask it to set `mcp_enabled` through `settings` → refused with the policy's
+  reason and NO prompt.
+- [ ] **38. ⚠ Share: a person's click, and it stops itself.** Turn ON "Allow running code
+  without asking". Ask it to *"share `<your site>` for 2 minutes"* → REFUSED, naming
+  auto-allow; nothing is public. Turn the switch off, revoke that grant, ask again →
+  a `run` prompt → Allow for this session → the reply has a `trycloudflare` URL that
+  loads from your phone. Wait 2 minutes → the Tunnels page shows it stopped, and the
+  feed shows no second agent call. **Tells — a HOLD:** the share started under the
+  auto-allowed grant; the tunnel outlives its minutes; quitting rexenv leaves it up.
+- [ ] **39. Cap and TTL are settings.** `rex config set scratch_cap 0` → refused with the
+  range; `rex config set scratch_cap 2` → the third scratch_create_site names the limit
+  as 2 and lists the two.
+
 ## Robustness (spot-check) — §2
 - [ ] Quit with another app on :443, relaunch → a clear "port in use" message (no crash).
 - [ ] Cancel an admin prompt once → a clear "permission cancelled, try again" state; retry works.

@@ -931,7 +931,11 @@ IPC surface — which is how a reader ends up designing against a system with on
   reason BEFORE the gate for a read-only or denied key, under `system`); `tld` (set / repair /
   remove — three resolver writes, `system` plus the password dialog); and `open` (the site's
   own URL or folder in the user's browser, editor or Finder, under `manage`; never an
-  arbitrary URL or path) — each through a
+  arbitrary URL or path); and `share` (D6's reopening conditions met one by one: the
+  owner's demand, `run` on the site given by a PERSON — an auto-granted row is refused on
+  the row's own flag, so a grant auto-allow wrote once cannot serve a later claim — and a
+  bounded auto-stop the app runs, ≤60 minutes, dying with the app like every tunnel) — each
+  through a
   `Granted<S>` scope witness (`core::agent_grants`) minted from a grant the user gave in the
   app, and only while the "Let agents manage my own sites" switch is on. Shape refusals
   (a bad type, a taken domain, `multisite` on a PHP site) come BEFORE the gate and record no
@@ -984,8 +988,11 @@ IPC surface — which is how a reader ends up designing against a system with on
   `ScratchSite`, a witness whose field is private and whose only constructor is `claim()`
   — applying an agent tool to a user's site is a **compile error**, not a runtime refusal
   (ledger #208). `still_the_agents` re-reads immediately before each destructive step,
-  because the user may have pressed Keep since. TTL is 24h and the cap is 5, both
-  compile-time constants (the plan proposed settings; the code did not follow it).
+  because the user may have pressed Keep since. TTL is 24h and the cap is 5 BY DEFAULT — since
+  MCP parity P4.3 (3 Sep 2026) both are gated settings (`scratch_ttl_hours` 1–168,
+  `scratch_cap` 1–20, `core::scratch::{scratch_ttl_hours, scratch_cap}`, validating setters
+  in `GATED_SETTERS`, so `rex config set` and the agent's `settings` tool share the range
+  check); a stored nonsense value reads as the default, never as zero.
   A TTL touch can only MOVE an expiry, never start one, and its SQL carries
   `AND origin='agent'`.
 - **The reaper: skip, never stop.** A launch sweep plus an hourly loop deletes expired

@@ -505,6 +505,31 @@ static REGISTRY: &[UserTool] = &[
         handler: open,
     },
     UserTool {
+        name: "share",
+        description: "Publish one of the user's own sites to the public internet through a \
+                      tunnel, for a limited time — webhook testing (Stripe → local Laravel/WP). \
+                      Takes `site_id` and `action`: `start` {minutes, 1–60, default 30} needs the \
+                      user's `run` permission on that site given by a PERSON — an auto-allowed \
+                      grant is refused, because a public share is not something a toggle should \
+                      answer — and the tunnel stops itself when the minutes run out, or when \
+                      rexenv quits; `stop` needs `manage`. The reply carries the public URL. \
+                      Anyone with the URL reaches the site unauthenticated while it is up.",
+        input_schema: || json!({
+            "type": "object",
+            "properties": {
+                "site_id": { "type": "string" },
+                "action": { "type": "string", "enum": ["start", "stop"] },
+                "minutes": { "type": "integer", "description": "start: how long, 1–60. Default 30." }
+            },
+            "required": ["site_id", "action"],
+            "additionalProperties": false
+        }),
+        sweep_args: |id| json!({ "site_id": id, "action": "stop" }),
+        summarise: |args| args.get("action").and_then(Value::as_str).map(|a| format!("share {a}")),
+        scope: Scope::Run,
+        handler: share,
+    },
+    UserTool {
         name: "site_configure",
         description: "Change how one of the user's own sites is set up — the things the site's \
                       Settings tab does. Takes `site_id` and `action`, plus the action's field: \
@@ -673,6 +698,10 @@ pub trait SiteOps: Send + Sync {
     fn delete<'a>(&'a self, id: String) -> OpFuture<'a, Result<()>>;
     /// `wp core multisite-convert` through the app's command (share-guarded).
     fn multisite_convert<'a>(&'a self, id: String, mode: String) -> OpFuture<'a, Result<()>>;
+    /// Start a public tunnel through the app's command, and arrange its stop
+    /// after `minutes` — the auto-stop D11 made the condition of this tool.
+    fn share_start<'a>(&'a self, id: String, minutes: u64) -> OpFuture<'a, Result<crate::commands::tunnels::TunnelInfo>>;
+    fn share_stop<'a>(&'a self, id: String) -> OpFuture<'a, Result<()>>;
     // ── the site's Settings tab, one method per app command ──
     fn rename<'a>(&'a self, id: String, name: String) -> OpFuture<'a, Result<Option<Site>>>;
     fn change_domain<'a>(&'a self, id: String, domain: String) -> OpFuture<'a, Result<crate::commands::sites::DomainChange>>;
@@ -2242,6 +2271,58 @@ fn open<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTarg
     })
 }
 
+
+pub(crate) const SHARE_MAX_MINUTES: u64 = 60;
+pub(crate) const SHARE_DEFAULT_MINUTES: u64 = 30;
+
+/// `share` — D6's reopening conditions, met one by one: real demand (the
+/// owner's brief), a consent (`run` on the site), auto-stop (a bounded timer
+/// the app runs), and — D11 — never auto-allowed. That last one is checked on
+/// the GRANT ROW's `auto_granted`, not on the claim's path: a grant auto-allow
+/// wrote once would satisfy a later claim through the ordinary path, so the
+/// row is the fact that survives (#408's reason for recording it).
+fn share<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTarget) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let id = args.get("site_id").and_then(Value::as_str).ok_or_else(|| Error::Other("share needs a `site_id`.".into()))?;
+        let action = args.get("action").and_then(Value::as_str).ok_or_else(|| Error::Other("share needs an `action`: start or stop.".into()))?;
+        match action {
+            "start" => {
+                let minutes = args.get("minutes").and_then(Value::as_u64).unwrap_or(SHARE_DEFAULT_MINUTES);
+                if !(1..=SHARE_MAX_MINUTES).contains(&minutes) {
+                    return Err(Error::Other(format!("share `minutes` must be between 1 and {SHARE_MAX_MINUTES}.")));
+                }
+                let claimed = ctx.claim::<scope::Run>(Some(id), &format!("publish it to the internet for {minutes} minutes"))?;
+                let site = claimed.granted.site().cloned().ok_or_else(|| Error::Other("share needs a site.".into()))?;
+                acted.set(&site);
+                if claimed.granted.grant().auto_granted {
+                    return Err(Error::Other(format!(
+                        "sharing `{}` publicly needs a `run` permission a PERSON gave — the one in place was \
+                         granted by auto-allow, which does not cover publishing a site. The person you're \
+                         working with can revoke it and allow a fresh one by hand in Site access.",
+                        site.domain
+                    )));
+                }
+                if !ctx.still_granted(&claimed.granted)? {
+                    return Err(Error::Other("the permission was revoked before the share started — nothing is published.".into()));
+                }
+                let info = ctx.ops.share_start(site.id.clone(), minutes).await?;
+                Ok(json!({
+                    "domain": site.domain, "url": info.url, "running": info.running, "minutes": minutes,
+                    "detail": format!("`{}` is public at that URL for {minutes} minutes, then rexenv stops the share on its own (or sooner if rexenv quits). Anyone with the URL reaches it.", site.domain),
+                }))
+            }
+            "stop" => {
+                let claimed = ctx.claim::<scope::Manage>(Some(id), "stop sharing it")?;
+                let site = claimed.granted.site().cloned().ok_or_else(|| Error::Other("share needs a site.".into()))?;
+                acted.set(&site);
+                ctx.ops.share_stop(site.id.clone()).await?;
+                Ok(json!({ "domain": site.domain, "stopped": true }))
+            }
+            other => Err(Error::Other(format!("`{other}` is not a share action. Use start or stop."))),
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2354,6 +2435,19 @@ mod tests {
         }
         fn multisite_convert<'a>(&'a self, id: String, mode: String) -> OpFuture<'a, Result<()>> {
             self.converted.lock().unwrap().push((id, mode));
+            Box::pin(async { Ok(()) })
+        }
+        fn share_start<'a>(&'a self, id: String, minutes: u64) -> OpFuture<'a, Result<crate::commands::tunnels::TunnelInfo>> {
+            self.calls.lock().unwrap().push(format!("share start {id} {minutes}"));
+            Box::pin(async {
+                Ok(crate::commands::tunnels::TunnelInfo {
+                    domain: "mine.rex".into(), url: "https://abc.trycloudflare.com".into(), running: true,
+                    health: crate::core::tunnels::TunnelHealth::Reachable, diagnosis: None,
+                })
+            })
+        }
+        fn share_stop<'a>(&'a self, id: String) -> OpFuture<'a, Result<()>> {
+            self.calls.lock().unwrap().push(format!("share stop {id}"));
             Box::pin(async { Ok(()) })
         }
         fn rename<'a>(&'a self, id: String, name: String) -> OpFuture<'a, Result<Option<Site>>> {
@@ -3515,5 +3609,74 @@ mod tests {
         for c in ["php installed 8.4 true", "php settings 8.3 memory_limit=768M", "open browser chrome https://blog.rex true", &format!("open editor phpstorm {}", site.path), &format!("reveal {}", site.path), "setting preferred_browser=chrome", "tld set dev", "php default 8.4"] {
             assert!(calls.iter().any(|x| x == c), "missing {c} in {calls:?}");
         }
+    }
+
+    /// **`share start` needs `run` given by a PERSON — an auto-granted row is
+    /// refused even when a later claim finds it — is bounded to 60 minutes, and
+    /// `stop` needs only `manage`.**
+    #[tokio::test]
+    async fn share_needs_a_persons_run_grant_and_is_bounded() {
+        let state = app_state();
+        switch_on(&state);
+        let ops = FakeOps::default();
+        let acted = super::super::feed::ActedTarget::default();
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, "claude-code");
+        let site = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "mine.rex", SiteOrigin::User);
+        {
+            let conn = state.db.lock().unwrap();
+            store::insert_site(&conn, &site).unwrap();
+        }
+        let err = share(ctx, &json!({ "site_id": site.id, "action": "start", "minutes": 61 }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("between 1 and 60"), "{err}");
+        assert!(share(ctx, &json!({ "site_id": site.id, "action": "start" }), &acted).await.is_err());
+        assert!(asks(&state).iter().any(|r| r.scope == Scope::Run && r.wanted.contains("30 minutes")));
+        // Auto-allow on for `run`: the claim is answered — and the share is
+        // refused on the ROW's flag, on this call and on the next one, which
+        // finds the auto-written grant through the ordinary path.
+        state.agent_site_auto_allow.lock().unwrap().set(crate::core::agent_grants::AutoAllowable::Run, true);
+        for _ in 0..2 {
+            let err = share(ctx, &json!({ "site_id": site.id, "action": "start" }), &acted).await.unwrap_err().to_string();
+            assert!(err.contains("auto-allow"), "{err}");
+        }
+        assert!(ops.calls.lock().unwrap().iter().all(|c| !c.starts_with("share start")), "nothing was published");
+        {
+            let conn = state.db.lock().unwrap();
+            for g in store::list_agent_site_grants(&conn).unwrap() {
+                store::revoke_agent_site_grant(&conn, &g.id).unwrap();
+            }
+            store::grant_agent_site(&conn, "g-person", Some(&site.id), "claude-code", "run", 1, false, true).unwrap();
+        }
+        let v = share(ctx, &json!({ "site_id": site.id, "action": "start", "minutes": 10 }), &acted).await.unwrap();
+        assert_eq!(v["url"], "https://abc.trycloudflare.com");
+        assert!(v["detail"].as_str().unwrap().contains("10 minutes"));
+        assert!(share(ctx, &json!({ "site_id": site.id, "action": "stop" }), &acted).await.is_err(), "stop needs manage (run does not imply it)");
+        {
+            let conn = state.db.lock().unwrap();
+            store::grant_agent_site(&conn, "g-m", Some(&site.id), "claude-code", "manage", 7, false, false).unwrap();
+        }
+        share(ctx, &json!({ "site_id": site.id, "action": "stop" }), &acted).await.unwrap();
+        let calls = ops.calls.lock().unwrap().clone();
+        assert!(calls.iter().any(|c| c == &format!("share start {} 10", site.id)) && calls.iter().any(|c| c == &format!("share stop {}", site.id)), "{calls:?}");
+    }
+
+    /// **The scratch cap and TTL are settings with a range, read live, and the
+    /// defaults when unset or nonsense.**
+    #[test]
+    fn scratch_cap_and_ttl_are_ranged_settings_with_the_old_constants_as_defaults() {
+        use crate::core::scratch::{scratch_cap, scratch_ttl_hours, set_scratch_cap, set_scratch_ttl_hours, MAX_SCRATCH_SITES};
+        let conn = crate::state::db::open_in_memory().unwrap();
+        assert_eq!(scratch_cap(&conn), MAX_SCRATCH_SITES);
+        assert_eq!(scratch_ttl_hours(&conn), crate::core::sites::SCRATCH_TTL_HOURS);
+        assert!(set_scratch_cap(&conn, "0").is_err() && set_scratch_cap(&conn, "21").is_err() && set_scratch_cap(&conn, "five").is_err());
+        set_scratch_cap(&conn, "12").unwrap();
+        assert_eq!(scratch_cap(&conn), 12);
+        assert!(set_scratch_ttl_hours(&conn, "0").is_err() && set_scratch_ttl_hours(&conn, "169").is_err());
+        set_scratch_ttl_hours(&conn, "72").unwrap();
+        assert_eq!(scratch_ttl_hours(&conn), 72);
+        // A hand-written nonsense value reads as the default, never as zero.
+        store::set_setting(&conn, crate::core::scratch::SCRATCH_CAP_KEY, "lots").unwrap();
+        assert_eq!(scratch_cap(&conn), MAX_SCRATCH_SITES);
+        // …and both are writable through the CLI's policy because they are gated.
+        assert_eq!(crate::core::settings_access::cli_access(crate::core::scratch::SCRATCH_CAP_KEY), crate::core::settings_access::CliAccess::ReadWrite);
     }
 }

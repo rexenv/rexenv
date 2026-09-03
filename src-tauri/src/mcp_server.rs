@@ -837,6 +837,32 @@ impl<Rt: tauri::Runtime> user_sites::SiteOps for AppSiteCreator<Rt> {
         <Self as scratch::SiteDeleter>::delete(self, id)
     }
 
+    fn share_start<'a>(&'a self, id: String, minutes: u64) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::tunnels::TunnelInfo>> {
+        Box::pin(async move {
+            let info = crate::commands::tunnels::start_tunnel(self.app.clone(), self.state()?, self.tunnels()?, self.jobs()?, id.clone()).await?;
+            // The auto-stop: a bounded timer in the app, which also dies with the
+            // app (every tunnel is swept at launch and stopped on quit — #29's
+            // family), so an agent-started share can never become a fossil.
+            let app = self.app.clone();
+            tokio::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_secs(minutes * 60)).await;
+                use tauri::Manager;
+                if let (Some(state), Some(tunnels)) = (app.try_state::<AppState>(), app.try_state::<crate::commands::tunnels::Tunnels>()) {
+                    if let Err(e) = crate::commands::tunnels::stop_tunnel(state, tunnels, id.clone()).await {
+                        log::warn!("mcp: the {minutes}-minute share of {id} could not be stopped on time: {e}");
+                    } else {
+                        log::info!("mcp: stopped the {minutes}-minute share of {id} on time");
+                    }
+                }
+            });
+            Ok(info)
+        })
+    }
+
+    fn share_stop<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::tunnels::stop_tunnel(self.state()?, self.tunnels()?, id).await })
+    }
+
     fn rename<'a>(&'a self, id: String, name: String) -> user_sites::OpFuture<'a, crate::error::Result<Option<crate::state::models::Site>>> {
         Box::pin(async move { crate::commands::sites::rename_site(self.state()?, id, name) })
     }
@@ -1246,7 +1272,7 @@ fn log_action<Rt: tauri::Runtime>(app: &tauri::AppHandle<Rt>, client: &str, log:
 fn refresh_scratch_ttl(conn: &rusqlite::Connection, target: Option<&str>) {
     let Some(id) = target else { return };
     if let Err(e) =
-        crate::state::store::touch_site_expiry(conn, id, crate::core::sites::SCRATCH_TTL_HOURS)
+        crate::state::store::touch_site_expiry(conn, id, crate::core::scratch::scratch_ttl_hours(conn))
     {
         log::warn!("mcp: could not refresh the scratch TTL for {id}: {e}");
     }
