@@ -745,17 +745,24 @@ fn cmd_site_list(json_output: bool) {
 
 // ── site create / delete ─────────────────────────────────────────────────────
 
+/// The value after `flag`, or `None` — including when the next word is itself a
+/// flag. That guard arrived with the first SWITCH on `site create`
+/// (`--starter-db`): before it, `--name --starter-db` bound the name to the
+/// literal string `"--starter-db"` and created a site called that, silently.
+/// A forgotten value reads as an absent flag now, which the callers already
+/// handle, instead of as a value nobody typed.
 fn flag_value(words: &[String], flag: &str) -> Option<String> {
     words
         .iter()
         .position(|w| w == flag)
         .and_then(|i| words.get(i + 1))
+        .filter(|v| !v.starts_with("--"))
         .cloned()
 }
 
 fn cmd_site_create(words: &[String], json_output: bool) {
     let Some(domain) = words.first().filter(|w| !w.starts_with("--")) else {
-        eprintln!("rex: usage: rex site create <domain> [--name N] [--type T] [--php V] [--server S] [--db D] [--path FOLDER]");
+        eprintln!("rex: usage: rex site create <domain> [--name N] [--type T] [--php V] [--server S] [--db D] [--path FOLDER] [--starter-db]");
         exit(1);
     };
     let mut args = serde_json::Map::new();
@@ -773,6 +780,13 @@ fn cmd_site_create(words: &[String], json_output: bool) {
         if let Some(v) = flag_value(words, flag) {
             args.insert(key.into(), json!(v));
         }
+    }
+    // A switch, not a value: the dialog's Database field for a Blank-PHP site,
+    // which creates the database, seeds `starter_items` and writes `db.php`.
+    // Sent only when asked — the server treats it as absent otherwise, and an
+    // older app that has never heard of the key is unchanged by its absence.
+    if words.iter().any(|w| w == "--starter-db") {
+        args.insert("starterDb".into(), json!(true));
     }
     if !json_output {
         println!("creating {domain}… (WordPress sites install on first create — this can take a minute)");
@@ -794,6 +808,12 @@ fn cmd_site_create(words: &[String], json_output: bool) {
         created["dbEngine"].as_str().unwrap_or("?"),
         created["domain"].as_str().unwrap_or(domain),
     );
+    // Reported from the ROW the app wrote back, not from the flag we sent —
+    // core records the starter database only where the question was asked, so
+    // echoing our own argument would claim a seed the site may not have.
+    if created["starterDb"] == json!(true) {
+        println!("  starter database seeded — `starter_items` and a db.php your index.php can require");
+    }
 }
 
 /// One spelling for a hostname typed at the CLI: trimmed, no trailing dot,
@@ -3926,6 +3946,29 @@ mod tests {
              the commit that ships the thing",
             stale.join("\n  ")
         );
+    }
+
+    /// **A forgotten flag value is an ABSENT flag, never the next flag.**
+    ///
+    /// `site create` gained its first switch (`--starter-db`), and until this
+    /// guard `flag_value` took whatever word came next: `--name --starter-db`
+    /// created a site literally named `"--starter-db"`, with no error and
+    /// nothing to undo it by. Absent is a shape every caller already handles.
+    #[test]
+    fn a_flag_never_swallows_the_flag_that_follows_it() {
+        let w = |s: &str| s.split(' ').map(str::to_string).collect::<Vec<_>>();
+        let words = w("app.rex --type php --name --starter-db");
+        assert_eq!(flag_value(&words, "--type").as_deref(), Some("php"));
+        assert_eq!(
+            flag_value(&words, "--name"),
+            None,
+            "a flag with no value took the NEXT FLAG as its value — the site would be named for it"
+        );
+        // The switch is still seen where it is: dropping the value must not
+        // drop the flag that was mistaken for one.
+        assert!(words.iter().any(|x| x == "--starter-db"));
+        // A trailing flag has no next word at all.
+        assert_eq!(flag_value(&w("app.rex --name"), "--name"), None);
     }
 
 }

@@ -535,6 +535,38 @@ fn create_recording_ownership(
     Ok(site)
 }
 
+/// Why a starter database cannot be created for this shape of site, or `None`.
+///
+/// [`create`] records `starter_db` only where the question was ASKED — Blank
+/// PHP, in a docroot rexenv makes, not cloned into — using a `.then_some` that
+/// DROPS the field everywhere else. Silently: ask for it on a WordPress site
+/// and you get a normal WordPress site, no error, no seeded table, and nothing
+/// that says why. The dialog cannot ask wrongly (it only offers the field for
+/// Blank PHP), but `rex site create --starter-db` can, so the reason lives here
+/// next to the rule it explains rather than in the caller that happened to need
+/// it first.
+pub fn starter_db_refusal(site_type: SiteType, linked_path: &str, cloning: bool) -> Option<&'static str> {
+    if site_type != SiteType::Php {
+        return Some(
+            "--starter-db needs --type php: a WordPress site brings its own database and \
+             schema, so there is nothing to seed",
+        );
+    }
+    if !linked_path.is_empty() {
+        return Some(
+            "--starter-db cannot be combined with --path: a linked folder is yours to fill, \
+             and rexenv never writes into one",
+        );
+    }
+    if cloning {
+        return Some(
+            "--starter-db cannot be combined with a git clone: the repository brings its own \
+             code, and seeding beside it would be rexenv writing into your checkout",
+        );
+    }
+    None
+}
+
 /// All sites, newest first.
 pub fn list(conn: &Connection) -> Result<Vec<Site>> {
     store::list_sites(conn)
@@ -4917,6 +4949,41 @@ mod tests {
         // Idempotent, and it never reaches a site that is already the user's.
         assert!(!store::keep_site(&conn, kept).unwrap(), "keeping twice changes nothing");
         assert!(!store::keep_site(&conn, "00000000-0000-4000-8000-000000000000").unwrap());
+    }
+
+    /// **A starter database is refused exactly where `create` would DROP it.**
+    ///
+    /// `create` records the field through
+    /// `(site_type == Php && docroot_managed && git.is_none()).then_some(...)`.
+    /// Every other shape becomes `None` with no error — so a caller who asks
+    /// gets a site that silently is not what they asked for. The refusal has to
+    /// cover the same set: narrower and the silence comes back on the shapes it
+    /// missed, wider and it refuses a site that would have been seeded fine.
+    #[test]
+    fn a_starter_database_is_refused_on_exactly_the_shapes_create_would_drop() {
+        for site_type in [SiteType::Php, SiteType::Wordpress] {
+            for path in ["", "/Users/me/existing"] {
+                for cloning in [false, true] {
+                    let would_record =
+                        site_type == SiteType::Php && path.is_empty() && !cloning;
+                    let refusal = starter_db_refusal(site_type, path, cloning);
+                    assert_eq!(
+                        refusal.is_none(),
+                        would_record,
+                        "type={site_type:?} path={path:?} cloning={cloning} — the refusal and \
+                         the `.then_some` in `create` disagree, so this shape either loses the \
+                         field in silence or is refused when it would have worked"
+                    );
+                    if let Some(why) = refusal {
+                        assert!(
+                            why.contains("--starter-db"),
+                            "a refusal that does not name the flag leaves the user guessing \
+                             which argument to drop: {why}"
+                        );
+                    }
+                }
+            }
+        }
     }
 
 }

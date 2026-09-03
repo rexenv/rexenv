@@ -89,6 +89,11 @@ struct SiteCreateArgs {
     /// sites folder. Adopted as-is: never written into, never deleted with the
     /// site. Validated by core exactly as the dialog's picker is.
     path: Option<String>,
+    /// Blank-PHP only: create the database, seed `starter_items`, write
+    /// `db.php`. Core records this field ONLY where the question was asked
+    /// (`sites::create`'s `.then_some`), so a caller who asks for it anywhere
+    /// else would be silently ignored — which is why the arm refuses instead.
+    starter_db: Option<bool>,
 }
 
 pub fn parse_request(line: &str) -> Result<Request> {
@@ -595,6 +600,17 @@ where
             if a.domain.is_empty() {
                 return Err(Error::Other("site.create needs a domain".into()));
             }
+            // The rule lives in core, next to the `.then_some` that would
+            // otherwise drop this field without a word (`sites::create`).
+            if a.starter_db == Some(true) {
+                if let Some(why) = crate::core::sites::starter_db_refusal(
+                    a.site_type.unwrap_or(crate::state::models::SiteType::Wordpress),
+                    a.path.as_deref().unwrap_or_default(),
+                    false, // `rex site create` has no repo flag yet
+                ) {
+                    return Err(Error::Other(why.into()));
+                }
+            }
             let php_version = match a.php {
                 Some(v) => v,
                 // The dialog preselects the registry's default minor.
@@ -624,10 +640,7 @@ where
                 git_ref: None,
                 git_migrate: true,
                 git_build_assets: false,
-                // `rex site create` has no starter-database flag yet — the
-                // dialog is the only caller that asks. False keeps the CLI's
-                // blank site exactly what it has always been: files, no engine.
-                starter_db: false,
+                starter_db: a.starter_db.unwrap_or(false),
             };
             let blueprint_id = match &a.blueprint {
                 None => None,

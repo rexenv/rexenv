@@ -57,7 +57,7 @@ to launch a specific copy with `open /Applications/rexenv.app` when it matters. 
 | Command | Backing IPC | Tag | Notes |
 |---|---|---|---|
 | `site create --multisite subdomain\|subdirectory` | `wp_multisite_convert` after `create_site` | ✓ | shipped 16 Jul — full live run: create → multisite subdirectory in info → 200 → deleted |
-| `site create --starter-db` (Blank PHP) | `create_site` (`NewSite.starter_db`) | 🟢 | the dialog's Database field for a Blank-PHP site — creates the database, seeds `starter_items`, writes `db.php`. The IPC field EXISTS (v41); the CLI sends `false`, so `rex site create --type php` stays what it has always been: files, no engine |
+| `site create --starter-db` (Blank PHP) | `create_site` (`NewSite.starter_db`) | ✓ | **shipped 3 Sep 2026** (ledger #462) — the dialog's Database field for a Blank-PHP site: creates the database, seeds `starter_items`, writes `db.php`. **The work was the REFUSAL, not the flag.** `sites::create` records the field through a `.then_some` that drops it everywhere else in silence, so asking on a WordPress site or a `--path` link would have produced an ordinary site with no error and nothing to say why; `sites::starter_db_refusal` now owns that rule beside the `.then_some` and the arm reads it. Reported from the row the app wrote back, never from the flag we sent |
 | `site create --blueprint <name>` | `list_blueprints` (name→id) + `create_site(blueprint_id)` | ✓ | shipped 16 Jul — miss errors naming saved blueprints; `rex blueprints` lists them |
 | `site info <domain>` | `list_sites` + `sites_serving` + `sites_resources` + `site_cert_info` (+ `wp_info` for WP) | ✓ | shipped 16 Jul — live-verified on a real WP site (real core version) + a FrankenPHP php site (resources) |
 | `site open <domain>` | — (`open https://<domain>`) | ✓ | shipped 16 Jul — domain validated via `site.list`; missing-domain exit 1 |
@@ -211,12 +211,12 @@ line streaming was the same "progress streaming" infra item — which SHIPPED 2 
 - **`--json` everywhere** — v1 rule, keep it: every new command returns the
   raw IPC payload under `--json`.
 
-## Status — one 🟢 row left, and it is a FLAG
+## Status — every 🟢/🟡/⚪ item is SHIPPED
 
-Every 🟢/🟡/⚪ *command* is shipped; the exception is `site create --starter-db`
-(the 🟢 row above), which is a flag on a shipped verb rather than a missing verb.
-This heading claimed a clean sweep while that row sat three screens up — the same
-shape as the two `mail` rows below it, and the reason those are now gated.
+The last one was `site create --starter-db`, closed 3 Sep 2026 (#462). This heading
+had claimed a clean sweep for as long as that row sat three screens above it —
+the same shape as the two `mail` rows below, and the reason both are now gated by
+`no_roadmap_row_calls_unbuilt_a_thing_the_cli_already_dispatches`.
 
 90 commands shipped. **That number is now GENERATED** (`scripts/doc-counts.sh`, and as of 2 Sep 2026 it
 counts what it claims to: the counter matched `"word.word" =>` only, so every
@@ -254,7 +254,11 @@ What remains:
    guard-blocked in the example harness — exercise each once against the
    running app): `php install/uninstall`, `php settings set`, `db versions
    --set`, `site server/domain/move`, `mail clear`, `tunnel start`,
-   `wp core update/switch`, and **`site restart`** (shipped 2 Sep 2026 with L0
+   `wp core update/switch`, **`site create --starter-db`** (shipped 3 Sep 2026,
+   #462 — the REFUSALS are L0-proven over all eight shapes; that a real
+   `starter_items` table and `db.php` actually land, and that the reply's
+   `starterDb` comes back true, is `create_site`'s live path and unrun),
+   and **`site restart`** (shipped 2 Sep 2026 with L0
    only: the backend leg needs a real FrankenPHP/Apache site stopped and
    respawned, and the refusal leg needs an ADOPTED backend, neither of which a
    unit test can hold).
