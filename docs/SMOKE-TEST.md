@@ -1017,34 +1017,41 @@ modal that steals focus.
   longer exists. That is cross-site exposure, the class this project has already
   been bitten by twice.
 
-### Parity P1 — Site access: the switch and the prompt (3 Sep 2026; no tool uses it yet)
-Steps 15–21 gate ONE resource behind ONE grant. Parity generalises that to five scopes
-on any of your own sites, and this is the first time an agent could be allowed to CHANGE
-or DELETE a site you made. **Nothing can ask yet** — the parity registry is empty until
-P2 — so today these steps are eyes-only: the switch, the copy, and the absence that is
-the point. They become executable the day the first parity tool lands, and P2's own
-section will say which.
-- [ ] **23. Off by default, and the switch alone grants nothing.** Fresh launch → Settings →
-  AI agents: **"Let agents manage my own sites"** is OFF, and its three paragraphs say
-  (a) what it opens (per-site, per-kind-of-access permissions, decided in Site access
-  below), (b) that on its own it **grants nothing**, and (c) the residual — anything an
-  agent runs in a site you granted runs as you, deleting can only be allowed per session,
-  and an administrator password still asks you. **Tell:** copy that keeps (a) and drops
-  (b) or (c) — those are the sentences a trim removes first, and without them the switch
-  reads as the permission rather than the door to one.
-- [ ] **24. Site access renders its empty state.** Below Database access, a **Site access**
-  section with no prompt and no grants says no agent can change your sites, that scratch
-  sites need no permission, and that **a request only lasts while rexenv is running**.
-- [ ] **25. ⚠ The switches that are NOT there.** Under Site access there are exactly THREE
-  "without asking" switches — reads, changes, running code — and a line saying deleting a
-  site and changing rexenv itself **can never be allowed without asking**. **Tell:** a
-  fourth switch, or a greyed-out one for deletion. There is no variant for it in the type
-  (#470), so a switch would mean the type was widened — a HOLD, not a note.
-- [ ] **26. A session grant dies with the app.** Allow something "for this session", quit,
-  relaunch → the grant is listed as **Revoked**, and the agent's next call is refused and
-  asks again. A week-long grant beside it must survive. *Done 3 Sep 2026 (session half):
-  7 session grants Revoked at relaunch (the log says so too), the next read asked again.
-  The week-long half is not yet seen live.*
+### Parity P1 — the Agent access dial (D15, 3 Sep 2026; replaced the switch + per-site prompts the same day)
+The first shape — "Let agents manage my own sites" plus one prompt per site, per scope,
+per client — was honest and cost six clicks for one site's ordinary work (the live run
+that afternoon). What replaced it is ONE dial. These steps are what a person reads and
+turns; the L0/L1/L2 legs (#497, #498) hold the rest.
+- [ ] **23. Read by default, and Read is free.** Fresh launch → Settings → AI agents:
+  **Agent access** shows three levels with **Read** chosen and NO duration row; the copy
+  says Read is on whenever the endpoint is, that publishing a site always asks, that the
+  administrator password still asks, and that code an agent runs in your site runs as you.
+  Ask an agent to list a site's plugins → it works, nothing to click. **Tell:** a prompt
+  for a read, or a "Let agents manage my own sites" switch anywhere.
+- [ ] **24. Changes, for this session.** Pick **Changes** → the duration row appears with
+  **This session** chosen and the line "switches itself off when you quit rexenv". Ask the
+  agent to switch a site's PHP version → it does; ask it to delete a plugin → refused, and
+  the refusal names `Agent access` at **Full**. Quit and relaunch → the dial is back at
+  Read (the log says so), and the same delete is refused again.
+- [ ] **25. Full, for 7 days, and what it says.** Pick **Full**, then **7 days** → the
+  expiry stamp shows. Read the Full sentence: it must say delete/reset, live
+  search-replace, database import, AND "run commands and code of its choosing … as you".
+  Ask for the plugin delete → it runs. Set the stamp in the past (`rex config` cannot —
+  the keys are refused; use the sqlite shell) → the card shows "Your 7-day setting
+  expired", the level reads Read, the delete is refused.
+- [ ] **26. ⚠ What the dial never answers.** At **Full · Always**: ask the agent to share a
+  site → REFUSED, and **Site access** grows a publish prompt with **Allow for this session**
+  and **Don't allow** only. Ask it to set `agent_access_level` through the `settings`
+  tool → refused with the policy's reason, no prompt. Ask it to stop the stack → the
+  macOS password dialog still appears. **Tells — a HOLD:** a share started without the
+  prompt; a 7-day option on the publish prompt; an agent turning the dial; no macOS
+  dialog.
+
+> **D15 note for 27–39:** where a step below says "a prompt for `manage`/`destroy`/`run`
+> → Allow", read: refused naming **Agent access** at Changes/Full → turn the dial (for this
+> session) instead of clicking Allow; "one grant does not cover the other site" legs are
+> moot (the dial is global). The one prompt left is the publish prompt (38). The steps'
+> other tells — what runs, what is refused on shape, what the reply carries — are unchanged.
 
 ### Parity P2 — the site lifecycle on YOUR sites. Ships only if 27–31 pass.
 `mcp_user_site_check` (sandbox tier) proves the switch, the gate, a real rename and a

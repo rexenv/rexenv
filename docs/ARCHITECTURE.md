@@ -947,8 +947,8 @@ IPC surface — which is how a reader ends up designing against a system with on
   remove — three resolver writes, `system` plus the password dialog); and `open` (the site's
   own URL or folder in the user's browser, editor or Finder, under `manage`; never an
   arbitrary URL or path); and `share` (D6's reopening conditions met one by one: the
-  owner's demand, `run` on the site given by a PERSON — an auto-granted row is refused on
-  the row's own flag, so a grant auto-allow wrote once cannot serve a later claim — and a
+  owner's demand, `run` on the site given by a PERSON — after D15 the ONE thing still
+  behind a click: share keeps the grant-row path, session-only — and a
   bounded auto-stop the app runs, ≤60 minutes, dying with the app like every tunnel; `status`
   under `read`), and `blueprints` (save `manage`, delete `destroy`, by NAME, the spec validated
   on shape first), and `repo` (the site's Repo tab — twelve reads under `read` on the site,
@@ -960,8 +960,10 @@ IPC surface — which is how a reader ends up designing against a system with on
   file NAMED, apply and revert `destroy`, the fingerprint binding apply to the previewed
   bytes); and `db_import` (status `read`, start `destroy` — it DROPS the site's database —
   blocking until settled, leftovers deleted by NAME only) — each through a
-  `Granted<S>` scope witness (`core::agent_grants`) minted from a grant the user gave in the
-  app, and only while the "Let agents manage my own sites" switch is on. Shape refusals
+  `Granted<S>` scope witness (`core::agent_grants`) — **minted by the Agent access dial (D15,
+  3 Sep 2026)**: one global level, Read / Changes / Full, with a duration (this session, 7
+  days, always); `manage` and `system` need Changes, `destroy` and `run` need Full, reads are
+  free whenever MCP is on. Per-site grants survive only for `share` (`claim_share`). Shape refusals
   (a bad type, a taken domain, `multisite` on a PHP site) come BEFORE the gate and record no
   ask, so a typo is answered as a typo and never as a permission prompt.
   What a tool may do is decided by **which registry its name came from** —
@@ -1035,14 +1037,17 @@ IPC surface — which is how a reader ends up designing against a system with on
   scratch site — which is what eliminates "this site predates the feature" as a category.
   Mail's fail-closed direction is stated to the user in those words: the agent **misses
   its own mail, never sees yours**, and one predicate both filters the list and gates the
-  fetch because Mailpit ids are global. The third switch (`mcp_sites_enabled`, MCP parity,
-  3 Sep 2026 — "Let agents manage my own sites") is a flag and nothing else: every parity
-  tool checks it BEFORE the grant gate and refuses by name, and on its own it grants
-  NOTHING — each scope grant (`agent_site_grants`, v43) is a separate consent given in the
-  card's **Site access** section, for 7 days or for this session (session grants are ended
-  at the next launch), with per-scope auto-allow that has no switch at all for `destroy`
-  or `system`. The switch's label is one Rust constant the refusal, the status and the
-  card all use.
+  fetch because Mailpit ids are global. The third consent surface (MCP parity, 3 Sep 2026)
+  is the **Agent access dial** (`core::agent_access`, D15): NOT a switch plus per-site
+  prompts — that shape shipped first, and the live run the same day needed six clicks for
+  one site's ordinary work — but one global level with a duration. Read (the default, free),
+  Changes (`manage` + `system`; the macOS dialog stays the second consent), Full (`destroy` +
+  `run`; a shell as the user, which is why it is not in Changes). This session dies at the
+  next launch, 7 days carries an expiry stamp and reads as Read once passed, always is a
+  durable setting; an agent's `settings` tool and the CLI refuse the three keys. The one
+  consent still a click is publishing a site (`share`): the `agent_site_grants` row (v43),
+  session-only, asked for in the card's **Site access** section and revocable there. The
+  dial's label is one Rust constant the refusal and the card both use.
 - **The feed is complete by construction.** Every `tools/call` outcome is recorded at ONE
   place in the session loop — including unknown tools and unparseable messages — before
   the reply is written. Rows are typed (`agent_actions`, v26/v28/v30): an unrecognised

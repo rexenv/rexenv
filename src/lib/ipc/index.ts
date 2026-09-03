@@ -6,7 +6,9 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { StartupNotice, AdminerStatus, AppInfo, AgentAction, AgentDbGrant, AgentDbRequest, AgentScope, AgentSiteAsk, AgentSiteGrant, AgentSiteGrantRow, AutoAllowableScope, Blueprint, BrowserApp, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoGitOp, RepoJobState, RepoKind, RepoPullRef, RepoStashEntry, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpUpdateOutcome, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteProvisionState, SiteRepoInfo, SiteResources, SiteServing, ResolverPlan, ScratchPackage, TeardownReport, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser, UnresolvableTld } from "@/types";
+import type { StartupNotice, AdminerStatus, AppInfo, AgentAction, AgentDbGrant, AgentDbRequest, AgentScope, AgentSiteAsk, AgentSiteGrant, AgentSiteGrantRow, AgentAccess,
+  AgentAccessLevel,
+  AgentAccessMode, Blueprint, BrowserApp, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoGitOp, RepoJobState, RepoKind, RepoPullRef, RepoStashEntry, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpUpdateOutcome, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteProvisionState, SiteRepoInfo, SiteResources, SiteServing, ResolverPlan, ScratchPackage, TeardownReport, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser, UnresolvableTld } from "@/types";
 import {
   mockAppInfo,
   mockDatabases,
@@ -2099,7 +2101,7 @@ export async function repoLink(
  *  status line, and the recent activity feed. Off/empty outside Tauri. */
 export async function mcpStatus(): Promise<McpStatus> {
   if (!isTauri())
-    return { enabled: false, mailEnabled: false, sitesEnabled: false, sitesToggleLabel: "Let agents manage my own sites", connectCommand: "claude mcp add rexenv -- rex mcp", activity: { kind: "off" }, recent: [] };
+    return { enabled: false, mailEnabled: false, access: { level: "read", mode: null, expiresAt: null, expired: false, label: "Agent access", allows: "", levels: [] }, connectCommand: "claude mcp add rexenv -- rex mcp", activity: { kind: "off" }, recent: [] };
   return invoke<McpStatus>("mcp_status");
 }
 
@@ -2165,13 +2167,20 @@ export async function agentDbRevoke(id: string): Promise<void> {
   return invoke<void>("agent_db_revoke", { id });
 }
 
-// ── Site access (MCP parity): scope grants on the user's OWN sites ───────────
+// ── Agent access (D15): the ONE dial for the user's own sites ─────────────────
 
-/** Turn "Let agents manage my own sites" on or off. A flag, checked by every
- *  parity tool BEFORE the grant gate; grants themselves are left as they are. */
-export async function mcpSetSitesEnabled(enable: boolean): Promise<McpStatus> {
-  return invoke<McpStatus>("mcp_set_sites_enabled", { enable });
+/** The dial as it stands: level, duration, expiry, and Rust's copy per level. */
+export async function agentAccess(): Promise<AgentAccess> {
+  if (!isTauri()) return { level: "read", mode: null, expiresAt: null, expired: false, label: "Agent access", allows: "", levels: [] };
+  return invoke<AgentAccess>("agent_access_get");
 }
+
+/** Turn the dial. A level above Read needs a duration; Read takes none. */
+export async function agentAccessSet(level: AgentAccessLevel, mode: AgentAccessMode | null): Promise<AgentAccess> {
+  return invoke<AgentAccess>("agent_access_set", { level, mode });
+}
+
+// ── Site access: the share asks — publishing keeps a person's click (D15) ────
 
 /** The scope asks an agent has made that nobody has answered yet. Recorded on
  *  the refusal path only — an agent cannot ask without first being told no. */
@@ -2206,18 +2215,6 @@ export async function agentSiteDeny(siteId: string | null, client: string, scope
 /** Revoke a scope grant — a timestamp, kept as evidence. */
 export async function agentSiteRevoke(id: string): Promise<void> {
   return invoke<void>("agent_site_revoke", { id });
-}
-
-/** Which auto-allowable scopes are on for THIS session — none after a launch. */
-export async function agentSiteAutoAllow(): Promise<AutoAllowableScope[]> {
-  if (!isTauri()) return [];
-  return invoke<AutoAllowableScope[]>("agent_site_auto_allow");
-}
-
-/** Turn auto-allow on/off for one scope, this session. `destroy`/`system` are
- *  not accepted by the type on either side. Returns the scopes now on. */
-export async function agentSiteSetAutoAllow(scope: AutoAllowableScope, on: boolean): Promise<AutoAllowableScope[]> {
-  return invoke<AutoAllowableScope[]>("agent_site_set_auto_allow", { scope, on });
 }
 
 /** Clear the feed — the user's own record, theirs to wipe. Returns rows removed. */

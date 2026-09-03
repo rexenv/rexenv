@@ -1488,9 +1488,24 @@ export interface AgentDbGrant {
  *  `destroy` ⊃ `manage` ⊃ `read`; `run` and `system` stand alone. */
 export type AgentScope = "read" | "manage" | "destroy" | "run" | "system";
 
-/** The scopes auto-allow CAN answer for — `destroy` and `system` are absent by
- *  type, on both sides of the bridge (mirrors `core::agent_grants::AutoAllowable`). */
-export type AutoAllowableScope = "read" | "manage" | "run";
+/** The Agent access dial (D15, mirrors `core::agent_access`): one global level
+ *  for what an agent may do to the sites the user made, plus how long. */
+export type AgentAccessLevel = "read" | "changes" | "full";
+export type AgentAccessMode = "session" | "days" | "always";
+export interface AgentAccess {
+  level: AgentAccessLevel;
+  /** null at Read — a duration belongs to a level above it. */
+  mode: AgentAccessMode | null;
+  expiresAt: string | null;
+  /** A 7-day setting whose stamp passed: shown as such, not silently Read. */
+  expired: boolean;
+  /** The dial's label — the one Rust constant the refusal text also names. */
+  label: string;
+  /** What the CURRENT level hands over, in Rust's words. */
+  allows: string;
+  /** Every level with its sentence — the card renders the choice from these. */
+  levels: { level: AgentAccessLevel; allows: string }[];
+}
 
 /** An agent's outstanding ask for a scope (mirrors `core::agent_grants::GrantRequest`).
  *  Session-scoped in the backend, like the database asks. */
@@ -1580,11 +1595,6 @@ export interface McpStatus {
    *  turning the endpoint on does not turn mail on. While it is true, every
    *  scratch site carries rexenv's `From` stamp; while false, none does. */
   mailEnabled: boolean;
-  /** The SITES sub-toggle (MCP parity) — "Let agents manage my own sites". Off
-   *  by default, independent of both other toggles, and on its own grants
-   *  NOTHING: it makes per-site scope grants possible, each a separate consent. */
-  sitesEnabled: boolean;
-  /** The toggle's label, from the one Rust constant the refusal text also uses —
-   *  render this, never retype it. */
-  sitesToggleLabel: string;
+  /** The Agent access dial (D15) — level, duration, expiry and Rust's copy. */
+  access: AgentAccess;
 }

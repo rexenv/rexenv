@@ -175,23 +175,6 @@ pub fn mail_enabled(conn: &rusqlite::Connection) -> bool {
     matches!(crate::state::store::get_setting(conn, MCP_MAIL_ENABLED_KEY), Ok(Some(v)) if v == "true")
 }
 
-/// The SITES sub-toggle (MCP parity, `docs/PLAN-mcp-parity.md` §3.3): "Let
-/// agents manage my own sites". A settings row, default OFF, independent of the
-/// master and mail toggles. While it is off, every tool in the `user_sites`
-/// registry refuses BY NAME — the registry stays listed so `tools/list` is
-/// stable and the leak sweep covers it. On its own it grants NOTHING: it makes
-/// scope grants possible, and each grant is a separate consent.
-pub const MCP_SITES_ENABLED_KEY: &str = "mcp_sites_enabled";
-
-/// The toggle's label, as the refusal text names it and as the card must render
-/// it — one constant so the two cannot disagree (#404's three-names-for-one-
-/// place lesson).
-pub const SITES_TOGGLE_LABEL: &str = "Let agents manage my own sites";
-
-/// Is the sites sub-toggle on? Default OFF.
-pub fn sites_enabled(conn: &rusqlite::Connection) -> bool {
-    matches!(crate::state::store::get_setting(conn, MCP_SITES_ENABLED_KEY), Ok(Some(v)) if v == "true")
-}
 
 /// The MCP revision whose stable JSON-RPC core we implement (docs/PLAN §2.1).
 /// Returned when the client requests a version we do not recognise.
@@ -777,12 +760,33 @@ async fn fulfill_tool_call<Rt: tauri::Runtime>(
     };
     match outcome {
         Ok(v) => (result_response(id, tool_success_content(&v)), feed::Outcome::Ok, None),
-        Err(e) => (
-            result_response(id, tool_error_content(&e.to_string())),
-            feed::Outcome::Error,
-            Some(e.to_string()),
-        ),
+        Err(e) => {
+            let text = scrub_error(state.inner(), acted, &e.to_string());
+            (result_response(id, tool_error_content(&text)), feed::Outcome::Error, Some(text))
+        }
     }
+}
+
+/// Every handler's ERROR goes through the one scrubber before an agent or the
+/// feed sees it — with the acted-on site's docroot when a row was reached,
+/// rexenv's own paths and home always. Found by `mcp_secret_sweep` the moment
+/// D15 made reads free: a vetted `wp plugin list` on a docroot that is not a
+/// WordPress install failed with wp-cli's own "The used path is: /…" — a path
+/// every SUCCESS reply had scrubbed and no error reply had, because until then
+/// the gate refused the call before the runner could fail. Success replies are
+/// scrubbed inside each handler (they know their shape); an error is a string,
+/// and one place is enough for a string.
+fn scrub_error(state: &AppState, acted: &feed::ActedTarget, raw: &str) -> String {
+    let docroot = acted
+        .peek()
+        .and_then(|id| state.db.lock().ok().and_then(|c| crate::state::store::get_site(&c, &id).ok().flatten()))
+        .map(|s| s.path);
+    let paths = state.platform.paths();
+    let known = match docroot.as_deref() {
+        Some(d) if !d.is_empty() => view::KnownPaths::for_site(paths, d),
+        _ => view::KnownPaths::for_app(paths),
+    };
+    raw.lines().map(|l| view::scrub_log_line(l, &known)).collect::<Vec<_>>().join("\n")
 }
 
 /// The `SiteCreator` the scratch tools run through: the app's OWN provision job,
@@ -1616,10 +1620,13 @@ pub async fn sweep_tool_outputs<Rt: tauri::Runtime>(
             Tool::Scratch(t) => (t.name, (t.handler)(sctx, &(t.sweep_args)(fixture_site_id), &acted).await),
             Tool::User(t) => (t.name, (t.handler)(uctx, &(t.sweep_args)(fixture_site_id), &acted).await),
         };
+        // The SAME error scrub the live dispatch applies — the sweep judges
+        // what an agent would see, and an agent sees `scrub_error`'s text.
         let text = match result {
             Ok(v) => serde_json::to_string(&v).unwrap_or_default(),
-            Err(e) => e.to_string(),
+            Err(e) => scrub_error(state.inner(), &acted, &e.to_string()),
         };
+        acted.take();
         outputs.push((name, text));
     }
     outputs
@@ -2562,66 +2569,98 @@ mod tests {
         }
     }
 
-    /// **The Site access copy says what a scope grant hands over, and the
-    /// refusal, the switch and the section share their names.** MCP parity's
-    /// consent surface (PLAN-mcp-parity §6) — the THIRD place a user consents,
-    /// and the widest: a grant here lets an agent change or delete the sites
-    /// the user made. Every sentence below is one a trim would cut first.
+    /// **The Agent access copy says what each level hands over, that publishing
+    /// always asks, that the password dialog still asks, and the residual; the
+    /// refusal, the dial and the section share their names.** D15's consent
+    /// surface — the ONE dial that replaced per-site prompts, so its sentences
+    /// are the whole of what a user reads before turning it up.
+    /// **An error reply is scrubbed by the one scrubber: the acted site's
+    /// docroot, rexenv's own paths and home become labels, and a call that
+    /// reached no site still loses rexenv's paths.** The leak `mcp_secret_sweep`
+    /// found on the day reads became free (D15).
     #[test]
-    fn the_site_access_copy_says_what_a_grant_hands_over() {
-        const CARD: &str = include_str!("../../src/components/mcp/AgentsMcpCard.tsx");
-        const CONSENT: &str = include_str!("../../src/components/mcp/AgentSiteGrants.tsx");
-        const REFUSALS: &str = include_str!("core/agent_grants.rs");
-        const TOOL_REFUSAL: &str = include_str!("mcp_server/user_sites.rs");
+    fn a_handlers_error_is_scrubbed_before_an_agent_or_the_feed_sees_it() {
+        let state = crate::mcp_server::user_sites::tests::app_state_for_scrub();
+        let site = crate::state::models::test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "shop.rex", crate::state::models::SiteOrigin::User);
+        {
+            let conn = state.db.lock().unwrap();
+            crate::state::store::insert_site(&conn, &site).unwrap();
+        }
+        let acted = feed::ActedTarget::default();
+        let raw = format!("wp failed: The used path is: {}/wp-content\nsee {}/logs/x.log", site.path, state.platform.paths().app_data_dir().unwrap().display());
+        let before = scrub_error(&state, &acted, &raw);
+        assert!(!before.contains(&state.platform.paths().app_data_dir().unwrap().display().to_string()), "app-data path with no site: {before}");
+        assert!(before.contains(&site.path), "with no acted site the docroot is not known yet: {before}");
+        acted.set(&site);
+        let after = scrub_error(&state, &acted, &raw);
+        assert!(!after.contains(&site.path) && after.contains("<docroot>/wp-content"), "{after}");
+        assert!(after.contains("<rexenv-data>") || after.contains("<rexenv-logs>"), "{after}");
+        assert!(acted.peek().is_some(), "the scrub must not consume the feed's target");
+    }
 
-        // The enable-moment paragraph, now that "cannot change or delete your
-        // own sites" is CONDITIONAL. Each of these is what makes the sentence
-        // true rather than merely softer.
+    #[test]
+    fn the_agent_access_copy_says_what_a_level_hands_over() {
+        const CARD: &str = include_str!("../../src/components/mcp/AgentsMcpCard.tsx");
+        const DIAL: &str = include_str!("../../src/components/mcp/AgentAccessDial.tsx");
+        const CONSENT: &str = include_str!("../../src/components/mcp/AgentSiteGrants.tsx");
+        const REFUSALS: &str = include_str!("core/agent_access.rs");
+
+        // The enable-moment paragraph: the refusal is conditional on the dial.
         const CARD_MUST_SAY: &[(&str, &str)] = &[
-            ("unless you allow that below", "that the refusal is now conditional on a grant the user gives"),
-            ("one site and one kind of change at a time", "the SHAPE of a grant — per site, per scope, never blanket"),
-            ("or in a site you granted", "that the residual (#197) reaches granted sites too, not only scratch"),
-            ("grants nothing", "that the sites switch alone opens nothing — each grant is its own consent"),
-            ("still asks you", "that no grant replaces the administrator-password dialog"),
-            ("only ever be allowed for one session", "D9: deletion is never a standing week-long permission"),
+            ("unless you turn Agent access up below", "that the refusal is conditional on the dial the user turns"),
+            ("for this session, 7 days or always", "the three durations, so a user knows what they are choosing"),
+            ("once you allow changes", "that the residual (#197) reaches the user's own sites once the dial is up"),
+            ("publishing a site to the\n        internet always asks you", "that share stays a click whatever the level"),
+            ("never\n        asks for your administrator password", "that no level replaces the administrator-password dialog"),
         ];
-        // The prompt, the empty state, and the auto-allow rows.
+        // The dial itself.
+        const DIAL_MUST_SAY: &[(&str, &str)] = &[
+            ("Read is on whenever the endpoint is", "that Read is not a choice — it is what MCP on means"),
+            ("publishing a site to the internet always asks you", "that share stays a click whatever the level"),
+            ("still asks you", "that the administrator-password dialog is untouched"),
+            ("runs as\n        you", "the residual, on the dial itself"),
+            ("switches itself off when you quit rexenv", "what 'this session' means"),
+            ("expires on its own after 7 days", "what '7 days' means"),
+            ("An agent can {l.allows}", "that each level's sentence is rendered from Rust, not retyped"),
+            ("agents are back at Read", "what an expired 7-day setting means"),
+        ];
+        // The share prompt and its empty state.
         const CONSENT_MUST_SAY: &[(&str, &str)] = &[
             ("It asked to:", "the concrete thing the agent tried — the question a person actually answers"),
-            ("runs as you", "the residual, in the prompt itself, not only above the master toggle"),
-            ("Allow for this session", "that a session-long yes exists — the answer a dev loop wants"),
+            ("Anyone with the link reaches the site", "what publishing means"),
+            ("runs as you", "the residual, in the prompt itself"),
+            ("Allow for this session", "that a session-long yes exists — and no longer one"),
             ("Don't allow", "that NO is an available answer"),
             ("revoke it", "that the decision is reversible, at the place they are deciding"),
             ("only lasts while rexenv is running", "why an expected Allow button may not be there after a restart"),
-            ("not asked", "what auto-allow gives up"),
-            ("switches itself off when you quit rexenv", "that auto-allow is session-scoped"),
-            ("can never be allowed without asking", "that destroy/system have NO auto-allow — absent, not hidden"),
+            ("always has to\n          ask you", "that publishing is the one thing no dial setting answers"),
         ];
         for (phrase, why) in CARD_MUST_SAY {
             assert!(CARD.contains(phrase), "the card no longer tells the user {why} (looked for \"{phrase}\")");
         }
+        for (phrase, why) in DIAL_MUST_SAY {
+            assert!(DIAL.contains(phrase), "the dial no longer tells the user {why} (looked for \"{phrase}\")");
+        }
         for (phrase, why) in CONSENT_MUST_SAY {
             assert!(CONSENT.contains(phrase), "the Site access copy no longer tells the user {why} (looked for \"{phrase}\")");
         }
+        // No auto-allow switch survived D15 — absent, not hidden.
+        let dial_ui = crate::core::copy_scan::strip_ts_comments(DIAL);
+        let consent_ui = crate::core::copy_scan::strip_ts_comments(CONSENT);
+        assert!(!dial_ui.contains("without asking") && !consent_ui.contains("without asking"), "an auto-allow switch is back");
+        assert!(!consent_ui.contains("7 days"), "a week-long publish grant is not on offer");
 
-        // The refusal an AGENT reads names the card, the section and the switch
-        // by the strings the UI renders — #404's lesson, held on comment-stripped
+        // The refusal an AGENT reads names the card, the dial and the section
+        // by the strings the UI renders — #404's lesson, on comment-stripped
         // source so a doc comment cannot satisfy it.
         let card = crate::core::copy_scan::strip_ts_comments(CARD);
-        let consent_ui = crate::core::copy_scan::strip_ts_comments(CONSENT);
-        assert!(card.contains("StartStopToggle") && consent_ui.contains("AgentSiteGrants"), "a scan came back empty");
+        assert!(dial_ui.contains("role=\"radiogroup\"") && consent_ui.contains("Site access"), "a scan came back empty");
         assert!(REFUSALS.contains("AI agents (MCP)") && card.contains("AI agents (MCP)"), "the card heading");
-        assert!(REFUSALS.contains("Site access") && consent_ui.contains("Site access"), "the section heading");
-        // The switch's label is ONE constant: the tool refusal formats it in,
-        // the status carries it, and the card renders it from the status
-        // rather than retyping it.
-        assert!(TOOL_REFUSAL.contains("crate::mcp_server::SITES_TOGGLE_LABEL"), "the tool refusal must use the constant");
-        assert!(card.contains("{sitesToggleLabel}"), "the card must render the label from the status, not a literal");
-        assert!(card.contains("sitesToggleLabel"), "the card must read the label from the status");
-        // The scope sentences reach the prompt from Rust (`what_it_allows`),
-        // through the ask — so there is no TS copy to drift.
-        assert!(consent_ui.contains("{a.allows}"), "the prompt must render the scope sentence Rust served");
-        assert!(!consent_ui.contains("read its content and settings"), "a TS copy of a scope sentence appeared");
+        assert!(REFUSALS.contains("{DIAL_LABEL}") && REFUSALS.contains("pub const DIAL_LABEL: &str = \"Agent access\""), "the refusal names the dial by its constant");
+        assert!(dial_ui.contains("a?.label") && dial_ui.contains("{label}"), "the dial renders its heading from the status, not a literal");
+        assert!(include_str!("core/agent_grants.rs").contains("Site access"), "share's refusal names the section");
+        // The level sentences reach the card from Rust (`what_it_allows`) —
+        // so there is no TS copy to drift.
+        assert!(!dial_ui.contains("delete or reset a site"), "a TS copy of a level sentence appeared");
     }
-
 }

@@ -131,77 +131,6 @@ impl std::fmt::Display for Scope {
     }
 }
 
-/// The scopes auto-allow is ABLE to answer for. `destroy` and `system` have no
-/// variant: the absence is the rule (a standing yes to losing work or changing
-/// the machine is not a convenience), and a `match` on this type cannot grow
-/// an arm for them without the type growing first.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum AutoAllowable {
-    Read,
-    Manage,
-    Run,
-}
-
-impl AutoAllowable {
-    pub const ALL: [AutoAllowable; 3] = [AutoAllowable::Read, AutoAllowable::Manage, AutoAllowable::Run];
-
-    pub fn scope(self) -> Scope {
-        match self {
-            AutoAllowable::Read => Scope::Read,
-            AutoAllowable::Manage => Scope::Manage,
-            AutoAllowable::Run => Scope::Run,
-        }
-    }
-}
-
-impl TryFrom<Scope> for AutoAllowable {
-    type Error = Scope;
-    /// `Err(scope)` for the two that cannot be auto-allowed — the caller gets
-    /// the scope back to name in its refusal.
-    fn try_from(s: Scope) -> std::result::Result<Self, Scope> {
-        match s {
-            Scope::Read => Ok(AutoAllowable::Read),
-            Scope::Manage => Ok(AutoAllowable::Manage),
-            Scope::Run => Ok(AutoAllowable::Run),
-            Scope::Destroy | Scope::System => Err(s),
-        }
-    }
-}
-
-/// Which auto-allowable scopes are switched on, this session.
-///
-/// In memory and session-scoped, exactly as `core::agent_db::AutoAllow` and for
-/// the same reason: a standing yes that survives a restart is one somebody
-/// switches on for an afternoon and still has on a month later. A poisoned
-/// lock reads as OFF at every call site — the safe direction for a bypass.
-#[derive(Debug, Default)]
-pub struct AutoAllowScopes(Vec<AutoAllowable>);
-
-impl AutoAllowScopes {
-    pub fn is_on(&self, s: AutoAllowable) -> bool {
-        self.0.contains(&s)
-    }
-
-    pub fn set(&mut self, s: AutoAllowable, on: bool) {
-        self.0.retain(|x| *x != s);
-        if on {
-            self.0.push(s);
-        }
-    }
-
-    /// The ones currently on, for the UI.
-    pub fn on(&self) -> Vec<AutoAllowable> {
-        AutoAllowable::ALL.iter().copied().filter(|s| self.is_on(*s)).collect()
-    }
-}
-
-/// The sentence appended to a reply when auto-allow produced the grant, so the
-/// agent reports the access as what it was.
-pub const AUTO_GRANTED_NOTE: &str =
-    "This permission was granted automatically because the person you're working with has \
-     auto-allow switched on for it in rexenv \u{2014} they were not asked. It is recorded and \
-     expires like any other grant, and they can revoke it.";
 
 /// One outstanding ASK: an agent wanted `scope` on a site (or the stack) and was
 /// refused. Session-scoped, in memory — a prompt whose context is gone is not
@@ -375,8 +304,16 @@ pub mod scope {
 #[derive(Debug)]
 pub struct Granted<S: scope::Marker> {
     site: Option<Site>,
-    grant: AgentSiteGrant,
+    proof: Proof,
     _scope: PhantomData<S>,
+}
+
+/// What satisfied the claim: the dial (D15 — everything but publishing), or a
+/// grant row a person clicked (share only).
+#[derive(Debug)]
+enum Proof {
+    Level,
+    Grant(AgentSiteGrant),
 }
 
 impl<S: scope::Marker> Granted<S> {
@@ -386,10 +323,13 @@ impl<S: scope::Marker> Granted<S> {
         self.site.as_ref()
     }
 
-    /// The grant that satisfied the claim (it may be WIDER than `S` — a
-    /// `destroy` grant answering a `manage` claim — and the feed says which).
-    pub fn grant(&self) -> &AgentSiteGrant {
-        &self.grant
+    /// The grant row that satisfied the claim — only for a share, the one
+    /// tool still behind a person's click; `None` when the dial answered.
+    pub fn grant(&self) -> Option<&AgentSiteGrant> {
+        match &self.proof {
+            Proof::Grant(g) => Some(g),
+            Proof::Level => None,
+        }
     }
 
     /// The scope this witness proves, from the type.
@@ -415,7 +355,34 @@ impl<S: scope::Marker> Granted<S> {
 /// "that one is yours, not the user's" because they send an agent to different
 /// next steps.
 pub fn claim<S: scope::Marker>(conn: &Connection, site_id: Option<&str>, client: &str) -> Result<Granted<S>> {
-    let site = match site_id {
+    let site = target_site(conn, site_id)?;
+    let target = match &site {
+        Some(s) => Target::Site { id: &s.id, domain: &s.domain },
+        None => Target::Stack,
+    };
+    let grant = authorize(conn, target, S::SCOPE, client)?;
+    Ok(Granted { site, proof: Proof::Grant(grant), _scope: PhantomData })
+}
+
+/// The D15 door: the same site resolution (a scratch site refused, "no such
+/// site" kept distinct), then the DIAL for `S` — no client, no site, no row.
+/// Everything but `share` comes through here.
+pub fn claim_by_level<S: scope::Marker>(conn: &Connection, site_id: Option<&str>) -> Result<Granted<S>> {
+    let site = target_site(conn, site_id)?;
+    let now = crate::core::agent_access::current(conn)?;
+    if now.level < crate::core::agent_access::AccessLevel::needed_for(S::SCOPE) {
+        let what = match &site {
+            Some(s) => format!("acting on `{}`, one of the user's own sites, this way", s.domain),
+            None => "this, on rexenv itself,".to_string(),
+        };
+        return Err(Error::Other(crate::core::agent_access::refusal(&what, S::SCOPE, &now)));
+    }
+    Ok(Granted { site, proof: Proof::Level, _scope: PhantomData })
+}
+
+/// Read the site row (or none, for the stack), refusing a scratch site.
+fn target_site(conn: &Connection, site_id: Option<&str>) -> Result<Option<Site>> {
+    Ok(match site_id {
         None => None,
         Some(id) => {
             let Some(site) = store::get_site(conn, id)? else {
@@ -433,13 +400,7 @@ pub fn claim<S: scope::Marker>(conn: &Connection, site_id: Option<&str>, client:
             }
             Some(site)
         }
-    };
-    let target = match &site {
-        Some(s) => Target::Site { id: &s.id, domain: &s.domain },
-        None => Target::Stack,
-    };
-    let grant = authorize(conn, target, S::SCOPE, client)?;
-    Ok(Granted { site, grant, _scope: PhantomData })
+    })
 }
 
 /// Is this witness's grant STILL live, right now? The re-read before a
@@ -448,14 +409,16 @@ pub fn claim<S: scope::Marker>(conn: &Connection, site_id: Option<&str>, client:
 /// the one grant id, so a revoke of the found grant with another satisfying
 /// grant still standing reads as what it is: still allowed.
 pub fn still_granted<S: scope::Marker>(conn: &Connection, granted: &Granted<S>) -> Result<bool> {
-    Ok(authorize(conn, granted.target(), S::SCOPE, &granted.grant.client).is_ok())
+    match &granted.proof {
+        Proof::Grant(g) => Ok(authorize(conn, granted.target(), S::SCOPE, &g.client).is_ok()),
+        Proof::Level => crate::core::agent_access::allows(conn, S::SCOPE),
+    }
 }
 
 /// The result of [`claim_or_ask`]: the witness, and whether auto-allow (not a
 /// person) produced the grant that satisfied it — so the reply can say so.
 pub struct Claimed<S: scope::Marker> {
     pub granted: Granted<S>,
-    pub auto_granted: bool,
 }
 
 /// The call-site shape every parity handler uses: claim, and on refusal either
@@ -476,7 +439,6 @@ pub struct Claimed<S: scope::Marker> {
 pub fn claim_or_ask<S: scope::Marker>(
     conn: &Connection,
     requests: &mut GrantRequests,
-    auto_allow: &AutoAllowScopes,
     site_id: Option<&str>,
     client: &str,
     wanted: &str,
@@ -487,7 +449,7 @@ pub fn claim_or_ask<S: scope::Marker>(
             // it stale — a prompt for something already allowed is noise, and
             // the button's own path clears it the same way.
             requests.answer(site_id, client, S::SCOPE);
-            return Ok(Claimed { granted, auto_granted: false });
+            return Ok(Claimed { granted });
         }
         Err(e) => e,
     };
@@ -501,22 +463,6 @@ pub fn claim_or_ask<S: scope::Marker>(
             _ => return Err(refusal),
         },
     };
-    if let Ok(auto) = AutoAllowable::try_from(S::SCOPE) {
-        if auto_allow.is_on(auto) {
-            store::grant_agent_site(
-                conn,
-                &uuid::Uuid::new_v4().to_string(),
-                site.as_ref().map(|s| s.id.as_str()),
-                client,
-                S::SCOPE.as_db(),
-                GRANT_DAYS,
-                true,
-                false,
-            )?;
-            let granted = claim::<S>(conn, site_id, client)?;
-            return Ok(Claimed { granted, auto_granted: true });
-        }
-    }
     requests.ask(GrantRequest {
         site_id: site.as_ref().map(|s| s.id.clone()),
         domain: site.as_ref().map(|s| s.domain.clone()),
@@ -569,48 +515,6 @@ mod tests {
         }
         assert_eq!(Scope::parse("owner"), None, "an unknown scope is no scope");
         assert_eq!(Scope::parse("Read"), None, "the text is the canonical lower-case form");
-    }
-
-    /// **`destroy` and `system` cannot be auto-allowed because the type has no
-    /// place for them** — and auto-allow lives in memory, not in settings.
-    #[test]
-    fn destroy_and_system_cannot_be_auto_allowed_because_no_variant_exists() {
-        assert_eq!(AutoAllowable::try_from(Scope::Destroy), Err(Scope::Destroy));
-        assert_eq!(AutoAllowable::try_from(Scope::System), Err(Scope::System));
-        for a in AutoAllowable::ALL {
-            assert_eq!(AutoAllowable::try_from(a.scope()), Ok(a));
-        }
-        // The source has exactly three variants — a fourth would have to be
-        // added by name, in the enum, past this line.
-        let me = include_str!("agent_grants.rs");
-        let start = me.find("pub enum AutoAllowable {").unwrap();
-        let body = &me[start..start + me[start..].find('}').unwrap()];
-        assert!(!body.contains("Destroy") && !body.contains("System"), "{body}");
-
-        let mut on = AutoAllowScopes::default();
-        assert!(on.on().is_empty(), "auto-allow defaults to nothing");
-        on.set(AutoAllowable::Manage, true);
-        assert!(on.is_on(AutoAllowable::Manage) && !on.is_on(AutoAllowable::Read));
-        on.set(AutoAllowable::Manage, true);
-        assert_eq!(on.on(), vec![AutoAllowable::Manage], "setting twice is once");
-        on.set(AutoAllowable::Manage, false);
-        assert!(on.on().is_empty());
-
-        // In AppState, never in the settings table (a bypass must not survive
-        // a restart — the `agent_db::AutoAllow` rule, re-asserted for this type).
-        let app = include_str!("../state/app.rs");
-        assert!(app.contains("agent_site_auto_allow: Mutex<crate::core::agent_grants::AutoAllowScopes>"));
-        assert!(!include_str!("settings_access.rs").contains("auto_allow"));
-
-        // The gate is auto-allow-unaware: the bypass is at the call site.
-        let gate_start = me.find("pub fn authorize(").expect("the gate");
-        let rest = &me[gate_start + 10..];
-        let gate_end = rest.find("\nfn ").map(|i| gate_start + 10 + i).unwrap_or(me.len());
-        let gate = &me[gate_start..gate_end];
-        assert!(gate.len() > 200, "the gate body was not located");
-        assert!(!gate.contains("AutoAllow") && !gate.contains("auto_allow"), "the gate became auto-allow-aware");
-
-        assert!(AUTO_GRANTED_NOTE.contains("not asked") && AUTO_GRANTED_NOTE.contains("revoke"));
     }
 
     /// **The gate reads recorded grants, honours the implication rule, and its
@@ -728,7 +632,7 @@ mod tests {
         // The witness carries the row and the grant, and its scope is the TYPE.
         let w = claim::<scope::Manage>(&conn, Some("s1"), "claude-code").unwrap();
         assert_eq!(w.site().map(|s| s.domain.as_str()), Some("shop.rex"));
-        assert_eq!(w.grant().id, "g1");
+        assert_eq!(w.grant().map(|g| g.id.as_str()), Some("g1"));
         assert_eq!(Granted::<scope::Manage>::scope(), Scope::Manage);
         // Implication through the witness: a `manage` grant mints a Read
         // witness, never a Destroy one.
@@ -776,63 +680,89 @@ mod tests {
         assert!(!prod.contains(&from_impl), "a From would be a second door");
     }
 
-    /// **`claim_or_ask` is the one call-site shape: refusal records the ask
-    /// (for a real site only), auto-allow answers only the scopes it can, and
-    /// an auto-grant goes through the same gate as a click.**
+    /// **`claim_or_ask` (share's door) records the ask on refusal — for a real
+    /// site only — and answers from a grant row a person made.**
     #[test]
-    fn claim_or_ask_records_the_ask_on_refusal_and_auto_allows_only_what_it_can() {
+    fn claim_or_ask_records_the_ask_on_refusal_for_a_real_site_only() {
         use crate::state::models::{test_site, SiteOrigin};
         use crate::state::store;
         let conn = conn_with_site();
         let theirs = test_site("c58e0a41-7d2f-4b19-93a6-6e1c5d8f0a24", "probe.scratch.rex", SiteOrigin::Agent);
         store::insert_site(&conn, &theirs).unwrap();
         let mut reqs = GrantRequests::default();
-        let mut auto = AutoAllowScopes::default();
 
-        // Refused, and the ask is recorded with what the agent wanted.
-        let err = claim_or_ask::<scope::Manage>(&conn, &mut reqs, &auto, Some("s1"), "claude-code", "switch PHP to 8.4")
+        let err = claim_or_ask::<scope::Run>(&conn, &mut reqs, Some("s1"), "claude-code", "publish it for 5 minutes")
             .err()
             .expect("refused")
             .to_string();
         assert!(err.contains("Site access"), "{err}");
         assert_eq!(reqs.list().len(), 1);
-        assert_eq!(reqs.list()[0].scope, Scope::Manage);
+        assert_eq!(reqs.list()[0].scope, Scope::Run);
         assert_eq!(reqs.list()[0].domain.as_deref(), Some("shop.rex"));
-        assert_eq!(reqs.list()[0].wanted, "switch PHP to 8.4");
+        assert_eq!(reqs.list()[0].wanted, "publish it for 5 minutes");
 
         // A scratch site or a missing site records NOTHING — there is no
         // permission that could apply, so a prompt would be a lie.
-        assert!(claim_or_ask::<scope::Manage>(&conn, &mut reqs, &auto, Some(&theirs.id), "claude-code", "x").is_err());
-        assert!(claim_or_ask::<scope::Manage>(&conn, &mut reqs, &auto, Some("nope"), "claude-code", "x").is_err());
+        assert!(claim_or_ask::<scope::Run>(&conn, &mut reqs, Some(&theirs.id), "claude-code", "x").is_err());
+        assert!(claim_or_ask::<scope::Run>(&conn, &mut reqs, Some("nope"), "claude-code", "x").is_err());
         assert_eq!(reqs.list().len(), 1, "no ask for a scratch or missing site");
 
-        // Auto-allow ON for manage: answered, a grant row written and flagged,
-        // and the witness comes out of the SAME gate.
-        auto.set(AutoAllowable::Manage, true);
-        let c = claim_or_ask::<scope::Manage>(&conn, &mut reqs, &auto, Some("s1"), "claude-code", "switch PHP")
-            .unwrap();
-        assert!(c.auto_granted);
-        assert!(c.granted.grant().auto_granted, "the row says a toggle did this, not a person");
-        assert_eq!(c.granted.grant().scope, "manage");
-        // Implication still applies to what auto-allow wrote: a Read claim
-        // now passes on the auto-granted manage row without another grant.
-        let r = claim_or_ask::<scope::Read>(&conn, &mut reqs, &auto, Some("s1"), "claude-code", "look").unwrap();
-        assert!(!r.auto_granted, "satisfied by the existing row, nothing new written");
-        assert_eq!(store::list_agent_site_grants(&conn).unwrap().len(), 1);
+        // A person's row answers it, and the ask is cleared.
+        store::grant_agent_site(&conn, "g1", Some("s1"), "claude-code", "run", 1, false, true).unwrap();
+        let c = claim_or_ask::<scope::Run>(&conn, &mut reqs, Some("s1"), "claude-code", "publish").unwrap();
+        assert_eq!(c.granted.grant().map(|g| g.id.as_str()), Some("g1"));
+        assert!(reqs.list().is_empty(), "a satisfied ask is cleared");
+    }
 
-        // Auto-allow has no say over destroy — no variant — so it asks.
-        let err = claim_or_ask::<scope::Destroy>(&conn, &mut reqs, &auto, Some("s1"), "claude-code", "delete it")
-            .err()
-            .expect("destroy is never auto-allowed")
-            .to_string();
-        assert!(err.contains("`destroy`"), "{err}");
-        assert!(reqs.list().iter().any(|r| r.scope == Scope::Destroy));
-        // …nor over a scratch site, whatever is switched on.
-        assert!(claim_or_ask::<scope::Manage>(&conn, &mut reqs, &auto, Some(&theirs.id), "claude-code", "x").is_err());
+    /// **`claim_by_level` — the door everything but share uses — resolves the
+    /// site the same way (scratch refused, "no such site" distinct), then
+    /// asks the DIAL and nothing else: no client, no row; the witness carries
+    /// no grant; `still_granted` re-reads the dial; the refusal names the
+    /// scope, the level and the dial.**
+    #[test]
+    fn claim_by_level_asks_the_dial_and_nothing_else() {
+        use crate::core::agent_access::{self, AccessLevel, Mode};
+        use crate::state::models::{test_site, SiteOrigin};
+        use crate::state::store;
+        let conn = conn_with_site();
+        let theirs = test_site("c58e0a41-7d2f-4b19-93a6-6e1c5d8f0a24", "probe.scratch.rex", SiteOrigin::Agent);
+        store::insert_site(&conn, &theirs).unwrap();
 
-        // Exactly one place consults auto-allow — this helper.
-        let me = include_str!("agent_grants.rs");
-        let prod = &me[..me.find("#[cfg(test)]").unwrap()];
-        assert_eq!(prod.matches("auto_allow.is_on(").count(), 1, "auto-allow consulted in more than one place");
+        // Read is free; the rest waits on the dial.
+        let r = claim_by_level::<scope::Read>(&conn, Some("s1")).unwrap();
+        assert_eq!(r.site().map(|s| s.domain.as_str()), Some("shop.rex"));
+        assert!(r.grant().is_none(), "the dial leaves no row");
+        let err = claim_by_level::<scope::Manage>(&conn, Some("s1")).unwrap_err().to_string();
+        for must in ["`manage`", "`Agent access`", "Changes", "it is at Read", "shop.rex"] {
+            assert!(err.contains(must), "missing {must:?}: {err}");
+        }
+        let err = claim_by_level::<scope::Destroy>(&conn, None).unwrap_err().to_string();
+        assert!(err.contains("rexenv itself") && err.contains("Full"), "{err}");
+
+        // Scratch and missing sites are refused BEFORE the dial is consulted.
+        agent_access::set(&conn, AccessLevel::Full, Some(Mode::Always)).unwrap();
+        let err = claim_by_level::<scope::Manage>(&conn, Some(&theirs.id)).unwrap_err().to_string();
+        assert!(err.contains("scratch site the agent created"), "{err}");
+        let err = claim_by_level::<scope::Manage>(&conn, Some("nope")).unwrap_err().to_string();
+        assert!(err.contains("no site with id"), "{err}");
+
+        // Changes covers manage and system; Full covers destroy and run.
+        agent_access::set(&conn, AccessLevel::Changes, Some(Mode::Always)).unwrap();
+        assert!(claim_by_level::<scope::Manage>(&conn, Some("s1")).is_ok());
+        assert!(claim_by_level::<scope::System>(&conn, None).is_ok());
+        assert!(claim_by_level::<scope::Destroy>(&conn, Some("s1")).is_err());
+        assert!(claim_by_level::<scope::Run>(&conn, Some("s1")).is_err());
+        agent_access::set(&conn, AccessLevel::Full, Some(Mode::Always)).unwrap();
+        let d = claim_by_level::<scope::Destroy>(&conn, Some("s1")).unwrap();
+        assert!(claim_by_level::<scope::Run>(&conn, Some("s1")).is_ok());
+
+        // The witness is a snapshot: turning the dial down after the claim is
+        // what `still_granted` exists to see.
+        assert!(still_granted(&conn, &d).unwrap());
+        agent_access::set(&conn, AccessLevel::Read, None).unwrap();
+        assert!(!still_granted(&conn, &d).unwrap());
+
+        // No grant row was written by any of this.
+        assert!(store::list_agent_site_grants(&conn).unwrap().is_empty());
     }
 }

@@ -115,9 +115,6 @@ pub struct AppState {
     /// Agents' outstanding asks for a SCOPE on the user's own sites or the
     /// stack (MCP parity). Same lifetime rule as `agent_db_requests`.
     pub agent_site_requests: Mutex<crate::core::agent_grants::GrantRequests>,
-    /// Which auto-allowable scopes are on, this session. In memory, never a
-    /// settings row — see `core::agent_grants::AutoAllowScopes`.
-    pub agent_site_auto_allow: Mutex<crate::core::agent_grants::AutoAllowScopes>,
 }
 
 impl AppState {
@@ -177,7 +174,6 @@ impl AppState {
             agent_db_requests: Mutex::new(Default::default()),
             agent_db_auto_allow: Mutex::new(Default::default()),
             agent_site_requests: Mutex::new(Default::default()),
-            agent_site_auto_allow: Mutex::new(Default::default()),
         }
     }
 }

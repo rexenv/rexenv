@@ -1137,29 +1137,25 @@ impl<'a> UserCtx<'a> {
     /// `wanted` is this tool's one-line description of what the agent is trying
     /// to do, shown in the prompt so the user answers a concrete question.
     pub fn claim<S: scope::Marker>(&self, site_id: Option<&str>, wanted: &str) -> Result<Claimed<S>> {
+        let _ = wanted;
         let conn = self.db()?;
-        if !crate::mcp_server::sites_enabled(&conn) {
-            return Err(Error::Other(format!(
-                "acting on the user's own sites is turned off. The person you're working with can \
-                 switch it on in rexenv under Settings → AI agents (MCP) → \"{}\", and then allow \
-                 specific permissions per site. That is their decision, not something an agent can \
-                 change.",
-                crate::mcp_server::SITES_TOGGLE_LABEL
-            )));
-        }
-        // Poisoned locks read as the SAFE direction: no requests recorded is a
-        // lost prompt, not a lost boundary; auto-allow unreadable is OFF.
+        let granted = agent_grants::claim_by_level::<S>(&conn, site_id)?;
+        Ok(Claimed { granted })
+    }
+
+    /// The ONE tool still behind a person's click: publishing a site. A `run`
+    /// grant row a person made, session-only, recorded as an ask when missing
+    /// — the P1 machinery, kept for exactly this (D15).
+    pub fn claim_share(&self, site_id: &str, wanted: &str) -> Result<Claimed<scope::Run>> {
+        let conn = self.db()?;
+        // A poisoned lock reads as the SAFE direction: no requests recorded is
+        // a lost prompt, not a lost boundary.
         let mut requests = self
             .state
             .agent_site_requests
             .lock()
             .map_err(|_| Error::Other("the app's request list lock is poisoned".into()))?;
-        let auto = self
-            .state
-            .agent_site_auto_allow
-            .lock()
-            .map_err(|_| Error::Other("the app's auto-allow lock is poisoned".into()))?;
-        agent_grants::claim_or_ask::<S>(&conn, &mut requests, &auto, site_id, self.client, wanted)
+        agent_grants::claim_or_ask::<scope::Run>(&conn, &mut requests, Some(site_id), self.client, wanted)
     }
 
     /// The re-read before a destructive step (#471's `still_granted`): the user
@@ -1416,13 +1412,7 @@ fn site_create<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::Ac
             admin,
             multisite_conversion: multisite,
         };
-        let mut value = serde_json::to_value(view).map_err(|e| Error::Other(format!("serialising the site: {e}")))?;
-        if claimed.auto_granted {
-            if let Some(obj) = value.as_object_mut() {
-                obj.insert("consent".into(), Value::String(agent_grants::AUTO_GRANTED_NOTE.to_string()));
-            }
-        }
-        Ok(value)
+        serde_json::to_value(view).map_err(|e| Error::Other(format!("serialising the site: {e}")))
     })
 }
 
@@ -1628,9 +1618,6 @@ fn site_configure<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed:
         if let Some(obj) = value.as_object_mut() {
             obj.insert("action".into(), json!(action));
             obj.extend(extra);
-            if claimed.auto_granted {
-                obj.insert("consent".into(), Value::String(agent_grants::AUTO_GRANTED_NOTE.to_string()));
-            }
         }
         Ok(value)
     })
@@ -1726,28 +1713,28 @@ fn wp_precheck(ctx: &UserCtx<'_>, site_id: &str, tool: &str) -> Result<()> {
 /// tests hold, and this is the only place that table meets the witness types.
 /// The witness is claimed, its site taken, and the witness dropped: a grouped
 /// tool's handler holds no `Granted<S>` of a scope it did not ask for.
-fn claim_scope(ctx: &UserCtx<'_>, site_id: &str, scope: Scope, wanted: &str) -> Result<(Site, bool)> {
+fn claim_scope(ctx: &UserCtx<'_>, site_id: &str, scope: Scope, wanted: &str) -> Result<Site> {
     let take = |site: Option<&Site>| site.cloned().ok_or_else(|| Error::Other("this tool needs a site, not the stack.".into()));
     Ok(match scope {
         Scope::Read => {
             let c = ctx.claim::<scope::Read>(Some(site_id), wanted)?;
-            (take(c.granted.site())?, c.auto_granted)
+            take(c.granted.site())?
         }
         Scope::Manage => {
             let c = ctx.claim::<scope::Manage>(Some(site_id), wanted)?;
-            (take(c.granted.site())?, c.auto_granted)
+            take(c.granted.site())?
         }
         Scope::Destroy => {
             let c = ctx.claim::<scope::Destroy>(Some(site_id), wanted)?;
-            (take(c.granted.site())?, c.auto_granted)
+            take(c.granted.site())?
         }
         Scope::Run => {
             let c = ctx.claim::<scope::Run>(Some(site_id), wanted)?;
-            (take(c.granted.site())?, c.auto_granted)
+            take(c.granted.site())?
         }
         Scope::System => {
             let c = ctx.claim::<scope::System>(Some(site_id), wanted)?;
-            (take(c.granted.site())?, c.auto_granted)
+            take(c.granted.site())?
         }
     })
 }
@@ -1764,15 +1751,6 @@ fn names_arg(args: &Value, tool: &str, action: &str) -> Result<Vec<String>> {
     Ok(names)
 }
 
-fn with_consent(mut value: Value, auto_granted: bool) -> Value {
-    if auto_granted {
-        if let Some(obj) = value.as_object_mut() {
-            obj.insert("consent".into(), Value::String(agent_grants::AUTO_GRANTED_NOTE.to_string()));
-        }
-    }
-    value
-}
-
 fn to_json<T: Serialize>(v: T) -> Result<Value> {
     serde_json::to_value(v).map_err(|e| Error::Other(format!("serialising the reply: {e}")))
 }
@@ -1786,7 +1764,7 @@ fn wp_info<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedT
             return Err(Error::Other(format!("`{what}` is not something wp_info reads. Use one of: {}.", WHATS.join(", "))));
         }
         wp_precheck(&ctx, id, "wp_info")?;
-        let (site, auto) = claim_scope(&ctx, id, Scope::Read, &format!("read its WordPress {what}"))?;
+        let site = claim_scope(&ctx, id, Scope::Read, &format!("read its WordPress {what}"))?;
         acted.set(&site);
         let sid = site.id.clone();
         let wp = ctx.wp;
@@ -1809,7 +1787,7 @@ fn wp_info<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedT
             }
             _ => json!({ "primaryAdminUserId": wp.primary_admin(sid).await? }),
         };
-        Ok(with_consent(json!({ "domain": site.domain, "what": what, "result": value }), auto))
+        Ok(json!({ "domain": site.domain, "what": what, "result": value }))
     })
 }
 
@@ -1843,7 +1821,7 @@ fn wp_plugin<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::Acte
         let names = if action == "list" { Vec::new() } else { names_arg(args, "wp_plugin", action)? };
         wp_precheck(&ctx, id, "wp_plugin")?;
         let wanted = if action == "list" { "list its plugins".to_string() } else { format!("{} the plugin(s) {}", action.replace('_', " "), names.join(", ")) };
-        let (site, auto) = claim_scope(&ctx, id, scope, &wanted)?;
+        let site = claim_scope(&ctx, id, scope, &wanted)?;
         acted.set(&site);
         let sid = site.id.clone();
         let wp = ctx.wp;
@@ -1856,7 +1834,7 @@ fn wp_plugin<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::Acte
             "activate_network" => { wp.plugin_activate_network(sid, names.clone()).await?; json!({ "networkActivated": names }) }
             _ => { wp.plugin_deactivate_network(sid, names.clone()).await?; json!({ "networkDeactivated": names }) }
         };
-        Ok(with_consent(json!({ "domain": site.domain, "action": action, "result": result }), auto))
+        Ok(json!({ "domain": site.domain, "action": action, "result": result }))
     })
 }
 
@@ -1870,7 +1848,7 @@ fn wp_theme<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::Acted
         let names = if matches!(action, "list" | "network_enabled") { Vec::new() } else { names_arg(args, "wp_theme", action)? };
         wp_precheck(&ctx, id, "wp_theme")?;
         let wanted = if names.is_empty() { format!("{} its themes", action.replace('_', " ")) } else { format!("{} the theme(s) {}", action.replace('_', " "), names.join(", ")) };
-        let (site, auto) = claim_scope(&ctx, id, scope, &wanted)?;
+        let site = claim_scope(&ctx, id, scope, &wanted)?;
         acted.set(&site);
         let sid = site.id.clone();
         let wp = ctx.wp;
@@ -1884,7 +1862,7 @@ fn wp_theme<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::Acted
             "enable_network" => { let n = one(&names); wp.theme_enable_network(sid, n.clone()).await?; json!({ "networkEnabled": n }) }
             _ => { let n = one(&names); wp.theme_disable_network(sid, n.clone()).await?; json!({ "networkDisabled": n }) }
         };
-        Ok(with_consent(json!({ "domain": site.domain, "action": action, "result": result }), auto))
+        Ok(json!({ "domain": site.domain, "action": action, "result": result }))
     })
 }
 
@@ -1941,7 +1919,7 @@ fn wp_user<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedT
             }
         };
         wp_precheck(&ctx, id, "wp_user")?;
-        let (site, auto) = claim_scope(&ctx, id, scope, &wanted)?;
+        let site = claim_scope(&ctx, id, scope, &wanted)?;
         acted.set(&site);
         let sid = site.id.clone();
         let wp = ctx.wp;
@@ -1979,7 +1957,7 @@ fn wp_user<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedT
                 json!({ "deleted": uid, "postsReassignedTo": reassign, "postsDeleted": delete_posts })
             }
         };
-        Ok(with_consent(json!({ "domain": site.domain, "action": action, "result": result }), auto))
+        Ok(json!({ "domain": site.domain, "action": action, "result": result }))
     })
 }
 
@@ -1998,7 +1976,7 @@ fn wp_option<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::Acte
             other => return Err(Error::Other(format!("`{other}` is not a wp_option action. Use update, debug, debug_flag, maintenance, permalinks or language."))),
         };
         wp_precheck(&ctx, id, "wp_option")?;
-        let (site, auto) = claim_scope(&ctx, id, Scope::Manage, &wanted)?;
+        let site = claim_scope(&ctx, id, Scope::Manage, &wanted)?;
         acted.set(&site);
         let sid = site.id.clone();
         let wp = ctx.wp;
@@ -2010,7 +1988,7 @@ fn wp_option<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::Acte
             "permalinks" => wp.permalink_set(sid, str_field(args, "structure", action)?.to_string()).await?,
             _ => wp.switch_language(sid, str_field(args, "locale", action)?.to_string()).await?,
         }
-        Ok(with_consent(json!({ "domain": site.domain, "action": action, "done": true, "detail": wanted }), auto))
+        Ok(json!({ "domain": site.domain, "action": action, "done": true, "detail": wanted }))
     })
 }
 
@@ -2028,7 +2006,7 @@ fn wp_maintain<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::Ac
             other => other.replace('_', " "),
         };
         wp_precheck(&ctx, id, "wp_maintain")?;
-        let (site, auto) = claim_scope(&ctx, id, scope, &wanted)?;
+        let site = claim_scope(&ctx, id, scope, &wanted)?;
         acted.set(&site);
         let sid = site.id.clone();
         let wp = ctx.wp;
@@ -2058,7 +2036,7 @@ fn wp_maintain<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::Ac
                 json!({ "version": r.version, "dbUpdateRequired": r.db_update_required })
             }
         };
-        Ok(with_consent(json!({ "domain": site.domain, "action": action, "result": result }), auto))
+        Ok(json!({ "domain": site.domain, "action": action, "result": result }))
     })
 }
 
@@ -2105,7 +2083,7 @@ fn wp_data<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedT
             _ => "RESET it to a fresh WordPress — everything in it is lost".to_string(),
         };
         wp_precheck(&ctx, id, "wp_data")?;
-        let (site, auto) = claim_scope(&ctx, id, scope, &wanted)?;
+        let site = claim_scope(&ctx, id, scope, &wanted)?;
         acted.set(&site);
         let sid = site.id.clone();
         let wp = ctx.wp;
@@ -2119,7 +2097,7 @@ fn wp_data<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedT
             "db_import" => { wp.db_import(sid, str_field(args, "path", action)?.to_string()).await?; json!({ "imported": true }) }
             _ => { wp.site_reset(sid).await?; json!({ "reset": true }) }
         };
-        Ok(with_consent(json!({ "domain": site.domain, "action": action, "result": result }), auto))
+        Ok(json!({ "domain": site.domain, "action": action, "result": result }))
     })
 }
 
@@ -2141,7 +2119,7 @@ fn wp_network<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::Act
             _ => format!("delete network site {}", str_field(args, "blog_id", action)?),
         };
         wp_precheck(&ctx, id, "wp_network")?;
-        let (site, auto) = claim_scope(&ctx, id, scope, &wanted)?;
+        let site = claim_scope(&ctx, id, scope, &wanted)?;
         acted.set(&site);
         let sid = site.id.clone();
         let result = match action {
@@ -2150,7 +2128,7 @@ fn wp_network<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::Act
             "site_create" => { let slug = str_field(args, "slug", action)?.to_string(); ctx.wp.network_site_create(sid, slug.clone()).await?; json!({ "created": slug }) }
             _ => { let b = str_field(args, "blog_id", action)?.to_string(); ctx.wp.network_site_delete(sid, b.clone()).await?; json!({ "deleted": b }) }
         };
-        Ok(with_consent(json!({ "domain": site.domain, "action": action, "result": result }), auto))
+        Ok(json!({ "domain": site.domain, "action": action, "result": result }))
     })
 }
 
@@ -2201,7 +2179,7 @@ fn site_wp_run<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::Ac
             detail.push_str(&super::view::scrub_log_line(&tell, &known));
         }
         let view = super::scratch::AgentWpRun { succeeded, exit_code, stdout, stderr, truncated: cut_out || cut_err, detail, note: super::scratch::WP_RUN_NOTE };
-        Ok(with_consent(to_json(view)?, claimed.auto_granted))
+        to_json(view)
     })
 }
 
@@ -2301,7 +2279,7 @@ fn site_artisan<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::A
             detail.push_str(&format!(" The output was longer than {} KB and has been cut — run a narrower command if you need the rest.", super::scratch::WP_OUTPUT_CAP / 1024));
         }
         let view = super::scratch::AgentWpRun { succeeded, exit_code, stdout, stderr, truncated: cut_out || cut_err, detail, note: ARTISAN_NOTE };
-        Ok(with_consent(to_json(view)?, claimed.auto_granted))
+        to_json(view)
     })
 }
 
@@ -2379,8 +2357,7 @@ fn composer_link<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::
                 tail.join("\n")
             )));
         }
-        Ok(with_consent(
-            json!({
+        Ok(json!({
                 "ok": true,
                 "package": link.name,
                 "repositoryKey": link.key,
@@ -2391,9 +2368,7 @@ fn composer_link<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::
                     "`{}` is required by `{}` at @dev through a path repository that is a SYMLINK to `{}`: the site runs the checkout live — edits show at once, no sync step — and anything the site writes under vendor/{} lands in the checkout.",
                     link.name, site.domain, basename(&source), link.name
                 ),
-            }),
-            claimed.auto_granted,
-        ))
+            }))
     })
 }
 
@@ -2453,7 +2428,7 @@ fn site_logs<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::Acte
                 json!({ "domain": site.domain, "source": key, "lines": scrub(raw) })
             }
         };
-        Ok(with_consent(json!({ "note": "rexenv-issued login tokens, cookie headers and the paths rexenv knows are removed; the rest is the raw log.", "result": value }), claimed.auto_granted))
+        Ok(json!({ "note": "rexenv-issued login tokens, cookie headers and the paths rexenv knows are removed; the rest is the raw log.", "result": value }))
     })
 }
 
@@ -2495,10 +2470,10 @@ fn mail_inbox<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::Ac
                 ));
             }
         }
-        let (_, auto) = match scope {
-            Scope::Read => { let c = ctx.claim::<scope::Read>(None, &wanted)?; ((), c.auto_granted) }
-            Scope::Manage => { let c = ctx.claim::<scope::Manage>(None, &wanted)?; ((), c.auto_granted) }
-            _ => { let c = ctx.claim::<scope::Destroy>(None, &wanted)?; ((), c.auto_granted) }
+        match scope {
+            Scope::Read => { ctx.claim::<scope::Read>(None, &wanted)?; }
+            Scope::Manage => { ctx.claim::<scope::Manage>(None, &wanted)?; }
+            _ => { ctx.claim::<scope::Destroy>(None, &wanted)?; }
         };
         let mail = ctx.mail;
         let unreachable = |e: Error| Error::Other(format!("rexenv's mail catcher isn't answering ({e}). It starts with the rest of the stack — that is the user's move in rexenv."));
@@ -2536,7 +2511,7 @@ fn mail_inbox<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::Ac
             }
             _ => { mail.clear().await.map_err(unreachable)?; json!({ "cleared": true }) }
         };
-        Ok(with_consent(json!({ "action": action, "result": result }), auto))
+        Ok(json!({ "action": action, "result": result }))
     })
 }
 
@@ -2573,11 +2548,11 @@ fn stack<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::ActedTa
             "start_mail" => "start the mail catcher".to_string(),
             _ => "stop the mail catcher".to_string(),
         };
-        let auto = match scope {
+        match scope {
             // `System` has no auto-allow variant (#470): this arm is reached only
             // by a person's click, and then by a second person's click in macOS.
-            Scope::System => ctx.claim::<scope::System>(None, &wanted)?.auto_granted,
-            _ => ctx.claim::<scope::Manage>(None, &wanted)?.auto_granted,
+            Scope::System => { ctx.claim::<scope::System>(None, &wanted)?; }
+            _ => { ctx.claim::<scope::Manage>(None, &wanted)?; }
         };
         let st = ctx.stack;
         let result = match action {
@@ -2592,7 +2567,7 @@ fn stack<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::ActedTa
             "start_mail" => { st.start_mail().await?; json!({ "started": "mail" }) }
             _ => { st.stop_mail().await?; json!({ "stopped": "mail" }) }
         };
-        Ok(with_consent(json!({ "action": action, "result": result }), auto))
+        Ok(json!({ "action": action, "result": result }))
     })
 }
 
@@ -2618,9 +2593,9 @@ fn php<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::ActedTarg
             "default" => format!("make PHP {} the default for new sites", minor()?),
             _ => format!("update PHP {} to {}", minor()?, str_field(args, "patch", action)?),
         };
-        let auto = match scope {
-            Scope::System => ctx.claim::<scope::System>(None, &wanted)?.auto_granted,
-            _ => ctx.claim::<scope::Manage>(None, &wanted)?.auto_granted,
+        match scope {
+            Scope::System => { ctx.claim::<scope::System>(None, &wanted)?; }
+            _ => { ctx.claim::<scope::Manage>(None, &wanted)?; }
         };
         let sys = ctx.sys;
         let result = match action {
@@ -2642,7 +2617,7 @@ fn php<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::ActedTarg
                 json!({ "minor": minor()?, "patch": o.patch, "restarted": o.restarted })
             }
         };
-        Ok(with_consent(json!({ "action": action, "result": result }), auto))
+        Ok(json!({ "action": action, "result": result }))
     })
 }
 
@@ -2658,9 +2633,9 @@ fn settings<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::Acte
             crate::core::settings_access::CliAccess::ReadOnly(why) => return Err(Error::Other(format!("`{key}` is read-only: {why}."))),
             crate::core::settings_access::CliAccess::Denied(why) => return Err(Error::Other(format!("`{key}` cannot be set through an agent: {why}."))),
         }
-        let auto = ctx.claim::<scope::System>(None, &format!("set the rexenv setting `{key}`"))?.auto_granted;
+        ctx.claim::<scope::System>(None, &format!("set the rexenv setting `{key}`"))?;
         ctx.sys.set_setting(key.clone(), value.clone()).await?;
-        Ok(with_consent(json!({ "key": key, "value": value, "set": true }), auto))
+        Ok(json!({ "key": key, "value": value, "set": true }))
     })
 }
 
@@ -2674,13 +2649,13 @@ fn tld<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::ActedTarg
             "remove" => format!("remove rexenv's resolver file for `.{tld}` (macOS will also ask for your password)"),
             other => return Err(Error::Other(format!("`{other}` is not a tld action. Use set, repair or remove."))),
         };
-        let auto = ctx.claim::<scope::System>(None, &wanted)?.auto_granted;
+        ctx.claim::<scope::System>(None, &wanted)?;
         let result = match action {
             "set" => json!({ "defaultTld": ctx.sys.set_default_tld(tld.clone()).await? }),
             "repair" => json!({ "repaired": tld, "detail": ctx.sys.repair_resolver(tld.clone()).await? }),
             _ => json!({ "removed": ctx.sys.remove_resolver(tld.clone()).await?, "tld": tld }),
         };
-        Ok(with_consent(json!({ "action": action, "result": result }), auto))
+        Ok(json!({ "action": action, "result": result }))
     })
 }
 
@@ -2725,7 +2700,7 @@ fn open<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTarg
             }
             _ => { sys.reveal_path(site.path.clone()).await?; json!({ "revealed": true }) }
         };
-        Ok(with_consent(json!({ "domain": site.domain, "target": target, "result": opened }), claimed.auto_granted))
+        Ok(json!({ "domain": site.domain, "target": target, "result": opened }))
     })
 }
 
@@ -2744,14 +2719,14 @@ fn share<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTar
         let action = args.get("action").and_then(Value::as_str).ok_or_else(|| Error::Other("share needs an `action`: start, stop or status.".into()))?;
         if action == "status" {
             let site_id = args.get("site_id").and_then(Value::as_str);
-            let (domain, auto) = match site_id {
+            let domain = match site_id {
                 Some(id) => {
                     let c = ctx.claim::<scope::Read>(Some(id), "see whether it is shared")?;
                     let site = c.granted.site().cloned().ok_or_else(|| Error::Other("share needs a site.".into()))?;
                     acted.set(&site);
-                    (Some(site.domain), c.auto_granted)
+                    Some(site.domain)
                 }
-                None => (None, ctx.claim::<scope::Read>(None, "list every public share")?.auto_granted),
+                None => { ctx.claim::<scope::Read>(None, "list every public share")?; None }
             };
             let all = ctx.ops.shares().await?;
             let shares: Vec<Value> = all
@@ -2759,7 +2734,7 @@ fn share<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTar
                 .filter(|t| domain.as_deref().map_or(true, |d| d == t.domain))
                 .map(|t| json!({ "domain": t.domain, "url": t.url, "running": t.running, "health": t.health }))
                 .collect();
-            return Ok(with_consent(json!({ "shares": shares }), auto));
+            return Ok(json!({ "shares": shares }));
         }
         let id = args.get("site_id").and_then(Value::as_str).ok_or_else(|| Error::Other("share needs a `site_id`.".into()))?;
         match action {
@@ -2768,17 +2743,9 @@ fn share<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTar
                 if !(1..=SHARE_MAX_MINUTES).contains(&minutes) {
                     return Err(Error::Other(format!("share `minutes` must be between 1 and {SHARE_MAX_MINUTES}.")));
                 }
-                let claimed = ctx.claim::<scope::Run>(Some(id), &format!("publish it to the internet for {minutes} minutes"))?;
+                let claimed = ctx.claim_share(id, &format!("publish it to the internet for {minutes} minutes"))?;
                 let site = claimed.granted.site().cloned().ok_or_else(|| Error::Other("share needs a site.".into()))?;
                 acted.set(&site);
-                if claimed.granted.grant().auto_granted {
-                    return Err(Error::Other(format!(
-                        "sharing `{}` publicly needs a `run` permission a PERSON gave — the one in place was \
-                         granted by auto-allow, which does not cover publishing a site. The person you're \
-                         working with can revoke it and allow a fresh one by hand in Site access.",
-                        site.domain
-                    )));
-                }
                 if !ctx.still_granted(&claimed.granted)? {
                     return Err(Error::Other("the permission was revoked before the share started — nothing is published.".into()));
                 }
@@ -2814,18 +2781,18 @@ fn blueprints<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::Ac
                 // Shape first: the spec must be a blueprint the app would accept.
                 let spec: crate::state::models::BlueprintSpec = serde_json::from_value(args.get("spec").cloned().unwrap_or(Value::Null))
                     .map_err(|e| Error::Other(format!("blueprints `save` needs a `spec` the app understands: {e}")))?;
-                let auto = ctx.claim::<scope::Manage>(None, &format!("save the blueprint `{name}`"))?.auto_granted;
+                ctx.claim::<scope::Manage>(None, &format!("save the blueprint `{name}`"))?;
                 let id = existing.map(|b| b.id).unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
                 ctx.ops.save_blueprint(crate::state::models::Blueprint { id, name: name.clone(), spec }).await?;
-                Ok(with_consent(json!({ "saved": name }), auto))
+                Ok(json!({ "saved": name }))
             }
             "delete" => {
                 let Some(bp) = existing else {
                     return Err(Error::Other(format!("there is no blueprint called `{name}` — blueprints_list shows the saved ones.")));
                 };
-                let auto = ctx.claim::<scope::Destroy>(None, &format!("delete the blueprint `{name}`"))?.auto_granted;
+                ctx.claim::<scope::Destroy>(None, &format!("delete the blueprint `{name}`"))?;
                 let gone = ctx.ops.delete_blueprint(bp.id).await?;
-                Ok(with_consent(json!({ "deleted": gone, "name": name }), auto))
+                Ok(json!({ "deleted": gone, "name": name }))
             }
             other => Err(Error::Other(format!("`{other}` is not a blueprints action. Use save or delete."))),
         }
@@ -2895,10 +2862,10 @@ fn repo<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTarg
             other => format!("read its repo {other}"),
         };
         let site_id = if stack_level { None } else { Some(args.get("site_id").and_then(Value::as_str).ok_or_else(|| Error::Other(format!("repo `{action}` needs a `site_id`.")))?) };
-        let (site, auto) = match (scope, site_id) {
-            (Scope::Read, None) => (None, ctx.claim::<scope::Read>(None, &wanted)?.auto_granted),
-            (Scope::Read, Some(id)) => { let c = ctx.claim::<scope::Read>(Some(id), &wanted)?; (c.granted.site().cloned(), c.auto_granted) }
-            (_, Some(id)) => { let c = ctx.claim::<scope::Run>(Some(id), &wanted)?; (c.granted.site().cloned(), c.auto_granted) }
+        let site = match (scope, site_id) {
+            (Scope::Read, None) => { ctx.claim::<scope::Read>(None, &wanted)?; None }
+            (Scope::Read, Some(id)) => ctx.claim::<scope::Read>(Some(id), &wanted)?.granted.site().cloned(),
+            (_, Some(id)) => ctx.claim::<scope::Run>(Some(id), &wanted)?.granted.site().cloned(),
             _ => unreachable!("a run action always names a site"),
         };
         if let Some(site) = &site {
@@ -2943,7 +2910,7 @@ fn repo<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTarg
             "watch_stop" => { r.watch_stop(s("watch_id")?).await?; json!({ "stopped": true }) }
             _ => { r.cancel(s("job_id")?).await?; json!({ "cancelled": true }) }
         };
-        Ok(with_consent(json!({ "action": action, "result": result }), auto))
+        Ok(json!({ "action": action, "result": result }))
     })
 }
 
@@ -2959,14 +2926,15 @@ pub(crate) fn valet_scope(action: &str) -> Option<Scope> {
 }
 
 /// A stack-level claim by scope value — the grouped stack tools' one place.
-fn claim_stack(ctx: &UserCtx<'_>, scope: Scope, wanted: &str) -> Result<bool> {
-    Ok(match scope {
-        Scope::Read => ctx.claim::<scope::Read>(None, wanted)?.auto_granted,
-        Scope::Manage => ctx.claim::<scope::Manage>(None, wanted)?.auto_granted,
-        Scope::Destroy => ctx.claim::<scope::Destroy>(None, wanted)?.auto_granted,
-        Scope::Run => ctx.claim::<scope::Run>(None, wanted)?.auto_granted,
-        Scope::System => ctx.claim::<scope::System>(None, wanted)?.auto_granted,
-    })
+fn claim_stack(ctx: &UserCtx<'_>, scope: Scope, wanted: &str) -> Result<()> {
+    match scope {
+        Scope::Read => { ctx.claim::<scope::Read>(None, wanted)?; }
+        Scope::Manage => { ctx.claim::<scope::Manage>(None, wanted)?; }
+        Scope::Destroy => { ctx.claim::<scope::Destroy>(None, wanted)?; }
+        Scope::Run => { ctx.claim::<scope::Run>(None, wanted)?; }
+        Scope::System => { ctx.claim::<scope::System>(None, wanted)?; }
+    }
+    Ok(())
 }
 
 fn valet_import<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::ActedTarget) -> ToolFuture<'a> {
@@ -2986,7 +2954,7 @@ fn valet_import<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::
             "cancel" => "cancel the running import".to_string(),
             _ => format!("{} the resolver for `.{}` (macOS will also ask for your password)", action.replace('_', " "), str_field(args, "tld", action)?.trim_start_matches('.')),
         };
-        let auto = claim_stack(&ctx, scope, &wanted)?;
+        claim_stack(&ctx, scope, &wanted)?;
         let known = super::view::KnownPaths::for_site(ctx.state.platform.paths(), "");
         let scrub = |s: &str| super::view::scrub_log_line(s, &known);
         let im = ctx.import;
@@ -3017,7 +2985,7 @@ fn valet_import<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::
                 json!({ "removed": plan.remove, "restored": plan.restore.iter().map(|(t, _)| t).collect::<Vec<_>>(), "dropRecords": plan.drop_records, "backupMissing": plan.backup_missing, "reclaimed": plan.reclaimed })
             }
         };
-        Ok(with_consent(json!({ "action": action, "result": result }), auto))
+        Ok(json!({ "action": action, "result": result }))
     })
 }
 
@@ -3035,7 +3003,7 @@ fn connection_rewrite<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::f
             "apply" => { str_field(args, "fingerprint", action)?; "REWRITE its config to point at rexenv's database".to_string() }
             _ => "put its original config back".to_string(),
         };
-        let (site, auto) = claim_scope(&ctx, id, scope, &wanted)?;
+        let site = claim_scope(&ctx, id, scope, &wanted)?;
         acted.set(&site);
         let known = super::view::KnownPaths::for_site(ctx.state.platform.paths(), &site.path);
         let scrub = |s: &str| super::view::scrub_log_line(s, &known);
@@ -3064,7 +3032,7 @@ fn connection_rewrite<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::f
                 RevertOutcome::NoRewrite { message } => json!({ "status": "noRewrite", "message": scrub(&message) }),
             },
         };
-        Ok(with_consent(json!({ "domain": site.domain, "action": action, "result": result }), auto))
+        Ok(json!({ "domain": site.domain, "action": action, "result": result }))
     })
 }
 
@@ -3085,56 +3053,56 @@ fn db_import<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::Acte
         let scrub = |s: &str| super::view::scrub_log_line(s, &known);
         let im = ctx.import;
         let site_id = || args.get("site_id").and_then(Value::as_str).ok_or_else(|| Error::Other(format!("db_import `{action}` needs a `site_id`.")));
-        let (value, auto) = match action {
+        let value = match action {
             "records" => {
-                let auto = claim_stack(&ctx, Scope::Read, "list the imported databases")?;
+                claim_stack(&ctx, Scope::Read, "list the imported databases")?;
                 let rows = im.db_import_records().await?;
-                (json!(rows.iter().map(|r| json!({ "siteId": r.site_id, "state": r.state, "dbName": r.db_name, "tables": r.table_count, "sizeBytes": r.size_bytes, "source": r.source_label, "importedAt": r.imported_at })).collect::<Vec<_>>()), auto)
+                json!(rows.iter().map(|r| json!({ "siteId": r.site_id, "state": r.state, "dbName": r.db_name, "tables": r.table_count, "sizeBytes": r.size_bytes, "source": r.source_label, "importedAt": r.imported_at })).collect::<Vec<_>>())
             }
             "leftovers" => {
-                let auto = claim_stack(&ctx, Scope::Read, "list the dumps kept after failed imports")?;
+                claim_stack(&ctx, Scope::Read, "list the dumps kept after failed imports")?;
                 let rows = im.db_import_leftovers().await?;
-                (json!(rows.iter().map(|l| json!({ "file": l.file, "sizeBytes": l.size_bytes })).collect::<Vec<_>>()), auto)
+                json!(rows.iter().map(|l| json!({ "file": l.file, "sizeBytes": l.size_bytes })).collect::<Vec<_>>())
             }
             "delete_leftover" => {
                 let file = str_field(args, "file", action)?.to_string();
                 if file.contains('/') {
                     return Err(Error::Other("db_import `delete_leftover` takes a file NAME from `leftovers`, not a path.".into()));
                 }
-                let auto = claim_stack(&ctx, Scope::Destroy, &format!("delete the kept dump `{file}`"))?;
+                claim_stack(&ctx, Scope::Destroy, &format!("delete the kept dump `{file}`"))?;
                 im.db_import_delete_leftover(file.clone()).await?;
-                (json!({ "deleted": file }), auto)
+                json!({ "deleted": file })
             }
             "status" => {
-                let (site, auto) = claim_scope(&ctx, site_id()?, Scope::Read, "read its database import")?;
+                let site = claim_scope(&ctx, site_id()?, Scope::Read, "read its database import")?;
                 acted.set(&site);
                 let job = im.db_import_state(site.id.clone()).await?;
                 let record = im.db_import_record(site.id.clone()).await?;
-                (json!({ "domain": site.domain, "job": job.as_ref().map(|j| db_import_job_view(j, &scrub)), "record": record.as_ref().map(|r| json!({ "state": r.state, "dbName": r.db_name, "tables": r.table_count, "sizeBytes": r.size_bytes, "source": r.source_label, "importedAt": r.imported_at })) }), auto)
+                json!({ "domain": site.domain, "job": job.as_ref().map(|j| db_import_job_view(j, &scrub)), "record": record.as_ref().map(|r| json!({ "state": r.state, "dbName": r.db_name, "tables": r.table_count, "sizeBytes": r.size_bytes, "source": r.source_label, "importedAt": r.imported_at })) })
             }
             "start" => {
-                let (site, auto) = claim_scope(&ctx, site_id()?, Scope::Destroy, "import its database from Valet/Herd, DROPPING the one rexenv has")?;
+                let site = claim_scope(&ctx, site_id()?, Scope::Destroy, "import its database from Valet/Herd, DROPPING the one rexenv has")?;
                 acted.set(&site);
                 let st = im.db_import_start(site.id.clone(), args.get("confirm_overwrite").and_then(Value::as_str).map(String::from)).await?;
-                (json!({ "domain": site.domain, "job": db_import_job_view(&st, &scrub) }), auto)
+                json!({ "domain": site.domain, "job": db_import_job_view(&st, &scrub) })
             }
             "cancel" => {
-                let (site, auto) = claim_scope(&ctx, site_id()?, Scope::Manage, "cancel its database import")?;
+                let site = claim_scope(&ctx, site_id()?, Scope::Manage, "cancel its database import")?;
                 acted.set(&site);
                 let Some(job) = im.db_import_state(site.id.clone()).await? else {
                     return Err(Error::Other(format!("`{}` has no database import running.", site.domain)));
                 };
                 im.db_import_cancel(job.id).await?;
-                (json!({ "domain": site.domain, "cancelled": true }), auto)
+                json!({ "domain": site.domain, "cancelled": true })
             }
             other => return Err(Error::Other(format!("`{other}` is not a db_import action. Use status, records, leftovers, start, cancel or delete_leftover."))),
         };
-        Ok(with_consent(json!({ "action": action, "result": value }), auto))
+        Ok(json!({ "action": action, "result": value }))
     })
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     /// **A parity handler's only door to a site is the scope witness, and the
@@ -3155,13 +3123,11 @@ mod tests {
             assert!(!body.contains(door), "UserCtx grew a second door to sites: {door}");
         }
         assert!(body.contains("pub fn claim<S: scope::Marker>"), "the one door");
-        assert!(body.contains("claim_or_ask::<S>"), "…and it goes through the one call-site shape (#471)");
-        // The toggle is checked FIRST, so a user with it off is sent to the
-        // switch rather than to a grant they cannot give yet.
-        let claim_at = body.find("pub fn claim<").unwrap();
-        let toggle_at = body[claim_at..].find("sites_enabled(").unwrap();
-        let gate_at = body[claim_at..].find("claim_or_ask").unwrap();
-        assert!(toggle_at < gate_at, "the toggle must be refused before the gate runs");
+        assert!(body.contains("claim_by_level::<S>"), "…and it asks the dial (D15)");
+        // The grant machinery survives for ONE tool: `claim_share` is the only
+        // place `claim_or_ask` is reached from, and share is its only caller.
+        assert_eq!(body.matches("agent_grants::claim_or_ask::<").count(), 1, "a second grant-shaped door appeared");
+        assert_eq!(prod.matches("ctx.claim_share(").count(), 1, "claim_share is share's alone");
     }
 
     /// Every parity tool declares its scope, and declares a sweep — the
@@ -3203,6 +3169,11 @@ mod tests {
         fn binaries(&self) -> &dyn crate::platform::traits::BinaryProvider { unimplemented!() }
         fn edge(&self) -> &dyn crate::platform::traits::EdgeSupervisor { unimplemented!() }
         fn dns_agent(&self) -> &dyn crate::platform::traits::DnsAgentManager { unimplemented!() }
+    }
+
+    /// The same stub-platform state, for a sibling test module.
+    pub(crate) fn app_state_for_scrub() -> AppState {
+        app_state()
     }
 
     fn app_state() -> AppState {
@@ -3772,9 +3743,15 @@ mod tests {
         fn db_import_delete_leftover<'a>(&'a self, file: String) -> OpFuture<'a, Result<()>> { self.calls.lock().unwrap().push(format!("dbimport delete_leftover {file}")); Box::pin(async { Ok(()) }) }
     }
 
-    fn switch_on(state: &AppState) {
+    /// The old "switch on": the door is open at Read by default now (D15) —
+    /// kept as a no-op so each test still reads as "the surface is on".
+    fn switch_on(_state: &AppState) {}
+
+    /// Turn the dial (D15) — what a person's grant row used to do, globally.
+    fn dial(state: &AppState, level: crate::core::agent_access::AccessLevel) {
         let conn = state.db.lock().unwrap();
-        store::set_setting(&conn, crate::mcp_server::MCP_SITES_ENABLED_KEY, "true").unwrap();
+        let mode = if level == crate::core::agent_access::AccessLevel::Read { None } else { Some(crate::core::agent_access::Mode::Always) };
+        crate::core::agent_access::set(&conn, level, mode).unwrap();
     }
 
     /// A default PHP version, so a create without `php` can resolve one — the
@@ -3811,8 +3788,7 @@ mod tests {
 
         // The switch is off: refused by name, before anything else.
         let err = run(ok_args.clone()).await.unwrap_err().to_string();
-        assert!(err.contains(crate::mcp_server::SITES_TOGGLE_LABEL), "{err}");
-        assert!(asks(&state).is_empty(), "a switched-off surface records no ask");
+        assert!(err.contains("`Agent access`"), "{err}");
 
         switch_on(&state);
         // SHAPE refusals need no permission and record no ask.
@@ -3827,7 +3803,6 @@ mod tests {
             let err = run(args).await.unwrap_err().to_string();
             assert!(err.contains(expect), "expected {expect:?}: {err}");
         }
-        assert!(asks(&state).is_empty(), "a shape refusal never asks the user for anything");
 
         // A domain some site already answers on: refused, no ask.
         {
@@ -3836,25 +3811,16 @@ mod tests {
         }
         let err = run(json!({ "name": "x", "domain": "taken.rex", "type": "php" })).await.unwrap_err().to_string();
         assert!(err.contains("already reaches"), "{err}");
-        assert!(asks(&state).is_empty());
 
         // Good shape, no grant: refused with the place consent lives, and the
         // ask is recorded — stack-level, `manage`, naming the domain.
         let err = run(ok_args.clone()).await.unwrap_err().to_string();
-        assert!(err.contains("Site access") && err.contains("`manage`"), "{err}");
-        let a = asks(&state);
-        assert_eq!(a.len(), 1);
-        assert_eq!(a[0].site_id, None, "creating a site is a permission on rexenv itself");
-        assert_eq!(a[0].scope, Scope::Manage);
-        assert!(a[0].wanted.contains("shop.rex") && a[0].wanted.contains("wordpress"), "{}", a[0].wanted);
+        assert!(err.contains("`Agent access`") && err.contains("`manage`"), "{err}");
         assert!(ops.created.lock().unwrap().is_empty(), "nothing ran");
 
         // Granted: the app's create runs, as the USER's site, with the shape
         // the agent asked for and nothing it did not.
-        {
-            let conn = state.db.lock().unwrap();
-            store::grant_agent_site(&conn, "g1", None, "claude-code", "manage", 7, false, false).unwrap();
-        }
+        dial(&state, crate::core::agent_access::AccessLevel::Changes);
         let v = run(json!({ "name": "Shop", "domain": "Shop.rex", "type": "wordpress", "php": "8.2", "server": "frankenphp",
                             "wp": { "admin_user": "owner" } })).await.unwrap();
         {
@@ -3883,7 +3849,6 @@ mod tests {
         assert_eq!(v["multisite"], "none", "the view's own mode field");
         assert_eq!(v["owner"], "user");
         assert_eq!(acted.take().as_deref(), Some("11111111-2222-4333-8444-555555555555"), "the feed names what was made");
-        assert!(asks(&state).is_empty(), "the grant answered the ask");
 
         // A blank PHP site: no `wp`, no admin block; `multisite` runs the
         // SECOND operation and reports it in the reply.
@@ -3913,13 +3878,10 @@ mod tests {
             let conn = state.db.lock().unwrap();
             store::insert_site(&conn, &mine).unwrap();
             store::insert_site(&conn, &theirs).unwrap();
-            store::grant_agent_site(&conn, "g1", Some(&mine.id), "claude-code", "manage", 7, false, false).unwrap();
+            crate::core::agent_access::set(&conn, crate::core::agent_access::AccessLevel::Changes, Some(crate::core::agent_access::Mode::Always)).unwrap();
         }
         let err = site_delete(ctx, &json!({ "site_id": mine.id }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("`destroy`"), "a manage grant must not reach a delete: {err}");
-        let a = asks(&state);
-        assert_eq!(a.len(), 1);
-        assert_eq!((a[0].site_id.as_deref(), a[0].scope), (Some(mine.id.as_str()), Scope::Destroy));
         assert!(ops.deleted.lock().unwrap().is_empty());
 
         // The scratch site: refused before the gate, scratch tools named.
@@ -3927,10 +3889,7 @@ mod tests {
         assert!(err.contains("scratch_delete_site"), "{err}");
 
         // A session-long destroy grant: the app's delete runs, the feed names it.
-        {
-            let conn = state.db.lock().unwrap();
-            store::grant_agent_site(&conn, "g2", Some(&mine.id), "claude-code", "destroy", 1, false, true).unwrap();
-        }
+        dial(&state, crate::core::agent_access::AccessLevel::Full);
         let v = site_delete(ctx, &json!({ "site_id": mine.id }), &acted).await.unwrap();
         assert_eq!(v["deleted"], true);
         assert_eq!(v["domain"], "mine.rex");
@@ -3973,20 +3932,13 @@ mod tests {
         assert!(err.contains("needs `version`"), "{err}");
         let err = run(with("server", "server", json!("iis"))).await.unwrap_err().to_string();
         assert!(err.contains("not a web server"), "{err}");
-        assert!(asks(&state).is_empty(), "shape refusals ask for nothing");
 
         // Good shape, no grant: `manage` asked for on THIS site, with the verb.
         let err = run(with("php", "version", json!("8.4"))).await.unwrap_err().to_string();
-        assert!(err.contains("Site access"), "{err}");
-        let a = asks(&state);
-        assert_eq!((a[0].site_id.as_deref(), a[0].scope), (Some(mine.id.as_str()), Scope::Manage));
-        assert!(a[0].wanted.contains("PHP 8.4"), "{}", a[0].wanted);
+        assert!(err.contains("`Agent access`"), "{err}");
         assert!(ops.calls.lock().unwrap().is_empty());
 
-        {
-            let conn = state.db.lock().unwrap();
-            store::grant_agent_site(&conn, "g1", Some(&mine.id), "claude-code", "manage", 7, false, false).unwrap();
-        }
+        dial(&state, crate::core::agent_access::AccessLevel::Changes);
         // Every action reaches exactly its app command.
         let v = run(with("php", "version", json!("8.4"))).await.unwrap();
         assert_eq!(v["action"], "php");
@@ -4050,11 +4002,7 @@ mod tests {
         }
         assert!(site_restart(ctx, &json!({ "site_id": mine.id }), &acted).await.is_err());
         assert!(site_retry(ctx, &json!({ "site_id": mine.id }), &acted).await.is_err());
-        assert_eq!(asks(&state).len(), 1, "one key: same site, same client, same scope — one prompt");
-        {
-            let conn = state.db.lock().unwrap();
-            store::grant_agent_site(&conn, "g1", Some(&mine.id), "claude-code", "manage", 7, false, false).unwrap();
-        }
+        dial(&state, crate::core::agent_access::AccessLevel::Changes);
         let v = site_restart(ctx, &json!({ "site_id": mine.id, "pool": true }), &acted).await.unwrap();
         assert_eq!(v["kind"], "shared");
         assert_eq!(v["sitesOnPool"], 4);
@@ -4133,21 +4081,14 @@ mod tests {
         assert!(err.contains("not WordPress"), "{err}");
         let err = wp_theme(ctx, &json!({ "site_id": theirs.id, "action": "list" }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("wp_run"), "a scratch site is sent to the scratch tools: {err}");
-        assert!(asks(&state).is_empty(), "none of those asks for anything");
 
-        // No grant: each action asks for ITS scope.
-        assert!(wp_plugin(ctx, &json!({ "site_id": wp_site.id, "action": "list" }), &acted).await.is_err());
-        assert!(wp_plugin(ctx, &json!({ "site_id": wp_site.id, "action": "delete", "names": ["akismet"] }), &acted).await.is_err());
-        let a = asks(&state);
-        let scopes: Vec<Scope> = a.iter().map(|r| r.scope).collect();
-        assert!(scopes.contains(&Scope::Read) && scopes.contains(&Scope::Destroy), "{a:?}");
-        assert!(a.iter().any(|r| r.wanted.contains("delete the plugin(s) akismet")), "{a:?}");
+        // Dial at Read: list is free, delete names Full.
+        assert!(wp_plugin(ctx, &json!({ "site_id": wp_site.id, "action": "list" }), &acted).await.is_ok());
+        let err = wp_plugin(ctx, &json!({ "site_id": wp_site.id, "action": "delete", "names": ["akismet"] }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("`destroy`") && err.contains("Full"), "{err}");
 
         // A `manage` grant covers list (implication) and activate, not delete.
-        {
-            let conn = state.db.lock().unwrap();
-            store::grant_agent_site(&conn, "g1", Some(&wp_site.id), "claude-code", "manage", 7, false, false).unwrap();
-        }
+        dial(&state, crate::core::agent_access::AccessLevel::Changes);
         let v = wp_plugin(ctx, &json!({ "site_id": wp_site.id, "action": "list", "check_updates": true }), &acted).await.unwrap();
         assert_eq!(v["action"], "list");
         let v = wp_plugin(ctx, &json!({ "site_id": wp_site.id, "action": "activate", "names": ["akismet", "hello"] }), &acted).await.unwrap();
@@ -4169,10 +4110,7 @@ mod tests {
         assert!(!out.contains("/Users/somebody"), "wp-cli's own text is scrubbed: {out}");
 
         // A session `destroy` grant lets delete through.
-        {
-            let conn = state.db.lock().unwrap();
-            store::grant_agent_site(&conn, "g2", Some(&wp_site.id), "claude-code", "destroy", 1, false, true).unwrap();
-        }
+        dial(&state, crate::core::agent_access::AccessLevel::Full);
         let v = wp_plugin(ctx, &json!({ "site_id": wp_site.id, "action": "delete", "names": ["akismet"] }), &acted).await.unwrap();
         assert_eq!(v["result"]["deleted"], json!(["akismet"]));
         let calls = ops.calls.lock().unwrap().clone();
@@ -4209,18 +4147,16 @@ mod tests {
         {
             let conn = state.db.lock().unwrap();
             store::insert_site(&conn, &site).unwrap();
-            store::grant_agent_site(&conn, "g1", Some(&site.id), "claude-code", "manage", 7, false, false).unwrap();
+            crate::core::agent_access::set(&conn, crate::core::agent_access::AccessLevel::Changes, Some(crate::core::agent_access::Mode::Always)).unwrap();
         }
         // The delete fork is a SHAPE refusal — neither, and both, before any ask.
         for args in [json!({ "site_id": site.id, "action": "delete", "user_id": 5 }), json!({ "site_id": site.id, "action": "delete", "user_id": 5, "reassign": 1, "delete_posts": true })] {
             let err = wp_user(ctx, &args, &acted).await.unwrap_err().to_string();
             assert!(err.contains("EXACTLY ONE"), "{err}");
         }
-        assert!(asks(&state).is_empty());
         // Delete needs destroy: a manage grant asks, with the posts decision in the verb.
         let err = wp_user(ctx, &json!({ "site_id": site.id, "action": "delete", "user_id": 5, "reassign": 1 }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("`destroy`"), "{err}");
-        assert!(asks(&state)[0].wanted.contains("give their posts to user 1"));
 
         // create with no password: generated, returned once, never in the feed summary.
         let v = wp_user(ctx, &json!({ "site_id": site.id, "action": "create", "login": "bob", "email": "b@x.rex", "role": "editor" }), &acted).await.unwrap();
@@ -4262,10 +4198,7 @@ mod tests {
         assert!(err.contains("`destroy`"), "{err}");
         let err = wp_maintain(ctx, &json!({ "site_id": site.id, "action": "checksum_cleanup" }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("needs `paths`"), "{err}");
-        {
-            let conn = state.db.lock().unwrap();
-            store::grant_agent_site(&conn, "g2", Some(&site.id), "claude-code", "destroy", 1, false, true).unwrap();
-        }
+        dial(&state, crate::core::agent_access::AccessLevel::Full);
         let v = wp_maintain(ctx, &json!({ "site_id": site.id, "action": "core_switch", "version": "6.5" }), &acted).await.unwrap();
         assert_eq!(v["result"]["dbUpdateRequired"], true);
         let v = wp_user(ctx, &json!({ "site_id": site.id, "action": "delete", "user_id": 5, "delete_posts": true }), &acted).await.unwrap();
@@ -4296,7 +4229,7 @@ mod tests {
         {
             let conn = state.db.lock().unwrap();
             store::insert_site(&conn, &site).unwrap();
-            store::grant_agent_site(&conn, "g1", Some(&site.id), "claude-code", "manage", 7, false, false).unwrap();
+            crate::core::agent_access::set(&conn, crate::core::agent_access::AccessLevel::Changes, Some(crate::core::agent_access::Mode::Always)).unwrap();
         }
         let v = wp_data(ctx, &json!({ "site_id": site.id, "action": "db_export" }), &acted).await.unwrap();
         assert_eq!(v["result"]["file"], "blog.rex-2026-09-03.sql");
@@ -4305,10 +4238,8 @@ mod tests {
         assert_eq!(v["result"]["replacements"], 7);
         let err = wp_data(ctx, &json!({ "site_id": site.id, "action": "search_replace", "from": "a", "to": "b", "dry_run": false }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("`destroy`"), "a live replace destroys: {err}");
-        assert!(asks(&state).iter().any(|r| r.wanted.contains("REPLACE `a` with `b`")));
         let err = wp_data(ctx, &json!({ "site_id": site.id, "action": "db_import", "path": "/tmp/dump.sql" }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("`destroy`"), "{err}");
-        assert!(asks(&state).iter().any(|r| r.wanted.contains("`dump.sql`") && !r.wanted.contains("/tmp")), "the ask names the file, not the path: {:?}", asks(&state));
 
         let err = wp_network(ctx, &json!({ "site_id": site.id, "action": "convert", "mode": "mesh" }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("not a multisite mode"), "{err}");
@@ -4322,17 +4253,11 @@ mod tests {
         // The raw runner: `run` is its own scope — manage does not reach it —
         // and the target screen fires BEFORE any binary is resolved (the stub
         // platform would panic on `binaries()`; it is never reached).
-        let asks_before = asks(&state).len();
         let err = site_wp_run(ctx, &json!({ "site_id": site.id, "args": ["plugin", "list", "--path=/etc"] }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("--path"), "the target screen is a shape refusal: {err}");
-        assert_eq!(asks(&state).len(), asks_before, "a `--path` argv asks for nothing — it could never run");
         let err = site_wp_run(ctx, &json!({ "site_id": site.id, "args": ["plugin", "list"] }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("`run`"), "{err}");
-        assert!(asks(&state).iter().any(|r| r.scope == Scope::Run && r.wanted.contains("wp plugin list")));
-        {
-            let conn = state.db.lock().unwrap();
-            store::grant_agent_site(&conn, "g2", Some(&site.id), "claude-code", "run", 7, false, false).unwrap();
-        }
+        dial(&state, crate::core::agent_access::AccessLevel::Full);
         let err = site_wp_run(ctx, &json!({ "site_id": site.id, "args": ["plugin", "list", "--path=/etc"] }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("--path"), "the target screen, before resolution: {err}");
         let err = site_wp_run(ctx, &json!({ "site_id": site.id, "args": "plugin list" }), &acted).await.unwrap_err().to_string();
@@ -4361,12 +4286,7 @@ mod tests {
         }
         let err = site_logs(ctx, &json!({ "site_id": theirs.id }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("tail_log"), "{err}");
-        let err = site_logs(ctx, &json!({ "site_id": site.id }), &acted).await.unwrap_err().to_string();
-        assert!(err.contains("`read`"), "{err}");
-        {
-            let conn = state.db.lock().unwrap();
-            store::grant_agent_site(&conn, "g1", Some(&site.id), "claude-code", "read", 7, false, false).unwrap();
-        }
+        // D15: a read is free at the dial's default.
         let v = site_logs(ctx, &json!({ "site_id": site.id }), &acted).await.unwrap();
         let sources = v["result"]["sources"].as_array().unwrap();
         assert!(sources.iter().any(|s| s["key"] == "wp-debug"));
@@ -4381,13 +4301,7 @@ mod tests {
             let conn = state.db.lock().unwrap();
             store::set_setting(&conn, crate::mcp_server::MCP_MAIL_ENABLED_KEY, "true").unwrap();
         }
-        let err = mail_inbox(ctx, &json!({ "action": "list" }), &acted).await.unwrap_err().to_string();
-        assert!(err.contains("`read`") && err.contains("rexenv itself"), "{err}");
-        assert!(asks(&state).iter().any(|r| r.site_id.is_none() && r.scope == Scope::Read));
-        {
-            let conn = state.db.lock().unwrap();
-            store::grant_agent_site(&conn, "g2", None, "claude-code", "read", 7, false, false).unwrap();
-        }
+        // D15: with the mail switch on, the inbox is a read — free.
         let v = mail_inbox(ctx, &json!({ "action": "list", "unread": true }), &acted).await.unwrap();
         let snippet = v["result"]["messages"][0]["snippet"].as_str().unwrap();
         assert!(!snippet.contains("rexenv_login=tok"), "a login token left in a snippet: {snippet}");
@@ -4410,7 +4324,6 @@ mod tests {
         assert_eq!(stack_scope("stop"), Some(Scope::System));
         assert_eq!(stack_scope("restart"), Some(Scope::Manage));
         assert_eq!(stack_scope("stop_database"), Some(Scope::Manage));
-        assert!(agent_grants::AutoAllowable::try_from(Scope::System).is_err(), "system cannot be auto-allowed — the type says so");
         // The source: `start_all(`/`stop_all(` appear ONCE each in production
         // code, inside `stack`, and the arm that reaches them claims `System`.
         let me = include_str!("user_sites.rs");
@@ -4431,32 +4344,24 @@ mod tests {
         let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
         let err = stack(ctx, &json!({ "action": "start" }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("`system`") && err.contains("rexenv itself"), "{err}");
-        let a = asks(&state);
-        assert_eq!((a[0].site_id.as_deref(), a[0].scope), (None, Scope::System));
-        assert!(a[0].wanted.contains("password"), "the ask says macOS will ask too: {}", a[0].wanted);
         let err = stack(ctx, &json!({ "action": "stop_database", "service": "redis" }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("not a database engine"), "{err}");
-        {
-            let conn = state.db.lock().unwrap();
-            store::grant_agent_site(&conn, "g1", None, "claude-code", "manage", 7, false, false).unwrap();
-        }
-        assert!(stack(ctx, &json!({ "action": "start" }), &acted).await.is_err(), "manage does not start the stack");
+        dial(&state, crate::core::agent_access::AccessLevel::Changes);
+        // D15: `system` sits at Changes — the macOS dialog is the second consent.
+        assert!(stack(ctx, &json!({ "action": "start" }), &acted).await.is_ok(), "Changes covers the stack's start");
         let v = stack(ctx, &json!({ "action": "restart", "service": "nginx" }), &acted).await.unwrap();
         assert_eq!(v["result"]["outcome"], "restarted");
         let v = stack(ctx, &json!({ "action": "start_database", "service": "mysql" }), &acted).await.unwrap();
         assert_eq!(v["result"]["started"], "mysql");
         stack(ctx, &json!({ "action": "stop_mail" }), &acted).await.unwrap();
-        {
-            let conn = state.db.lock().unwrap();
-            store::grant_agent_site(&conn, "g2", None, "claude-code", "system", 7, false, false).unwrap();
-        }
+        dial(&state, crate::core::agent_access::AccessLevel::Changes);
         let v = stack(ctx, &json!({ "action": "stop" }), &acted).await.unwrap();
         assert_eq!(v["result"]["stopped"], true);
         let calls = ops.calls.lock().unwrap().clone();
         for c in ["stack restart nginx", "db start mysql", "mail stop", "stack stop"] {
             assert!(calls.iter().any(|x| x == c), "missing {c} in {calls:?}");
         }
-        assert!(!calls.iter().any(|x| x == "stack start"), "start never ran without system");
+        assert_eq!(calls.iter().filter(|x| *x == "stack start").count(), 1, "start ran once, under Changes");
     }
 
     /// **`php`, `settings`, `tld`, `open`: the per-action tables, the CLI's
@@ -4482,24 +4387,23 @@ mod tests {
         assert!(err.contains("cannot be set through an agent"), "{err}");
         let err = settings(ctx, &json!({ "key": "adminer_version", "value": "5" }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("read-only"), "{err}");
-        assert!(asks(&state).is_empty());
         let err = settings(ctx, &json!({ "key": "preferred_browser", "value": "chrome" }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("`system`"), "{err}");
         // tld: every action names the password dialog in its ask.
         assert!(tld(ctx, &json!({ "action": "repair", "tld": ".Test" }), &acted).await.is_err());
-        assert!(asks(&state).iter().any(|r| r.scope == Scope::System && r.wanted.contains("`.test`") && r.wanted.contains("password")));
         // php: manage for install, system for default.
         {
             let conn = state.db.lock().unwrap();
-            store::grant_agent_site(&conn, "g1", None, "claude-code", "manage", 7, false, false).unwrap();
-            store::grant_agent_site(&conn, "g2", Some(&site.id), "claude-code", "manage", 7, false, false).unwrap();
+            crate::core::agent_access::set(&conn, crate::core::agent_access::AccessLevel::Changes, Some(crate::core::agent_access::Mode::Always)).unwrap();
+            crate::core::agent_access::set(&conn, crate::core::agent_access::AccessLevel::Changes, Some(crate::core::agent_access::Mode::Always)).unwrap();
         }
         let v = php(ctx, &json!({ "action": "install", "minor": "8.4" }), &acted).await.unwrap();
         assert_eq!(v["result"]["installed"], "8.4");
         let v = php(ctx, &json!({ "action": "settings_set", "minor": "8.3", "key": "memory_limit", "value": "768M" }), &acted).await.unwrap();
         assert_eq!(v["result"]["key"], "memory_limit");
-        let err = php(ctx, &json!({ "action": "default", "minor": "8.4" }), &acted).await.unwrap_err().to_string();
-        assert!(err.contains("`system`"), "{err}");
+        // D15: `system` is Changes — the default switch runs under it.
+        let v = php(ctx, &json!({ "action": "default", "minor": "8.4" }), &acted).await.unwrap();
+        assert_eq!(v["result"]["default"], "8.4");
         let err = php(ctx, &json!({ "action": "paint" }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("not a php action"), "{err}");
         // open: the site's own URL and folder, the preferred app or the named one.
@@ -4511,10 +4415,7 @@ mod tests {
         open(ctx, &json!({ "site_id": site.id, "target": "finder" }), &acted).await.unwrap();
         let err = open(ctx, &json!({ "site_id": site.id, "target": "terminal" }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("not an open target"), "{err}");
-        {
-            let conn = state.db.lock().unwrap();
-            store::grant_agent_site(&conn, "g3", None, "claude-code", "system", 7, false, false).unwrap();
-        }
+        dial(&state, crate::core::agent_access::AccessLevel::Changes);
         let v = settings(ctx, &json!({ "key": "preferred_browser", "value": "chrome" }), &acted).await.unwrap();
         assert_eq!(v["set"], true);
         let v = tld(ctx, &json!({ "action": "set", "tld": "dev" }), &acted).await.unwrap();
@@ -4546,14 +4447,10 @@ mod tests {
         assert!(err.contains("between 1 and 60"), "{err}");
         assert!(share(ctx, &json!({ "site_id": site.id, "action": "start" }), &acted).await.is_err());
         assert!(asks(&state).iter().any(|r| r.scope == Scope::Run && r.wanted.contains("30 minutes")));
-        // Auto-allow on for `run`: the claim is answered — and the share is
-        // refused on the ROW's flag, on this call and on the next one, which
-        // finds the auto-written grant through the ordinary path.
-        state.agent_site_auto_allow.lock().unwrap().set(crate::core::agent_grants::AutoAllowable::Run, true);
-        for _ in 0..2 {
-            let err = share(ctx, &json!({ "site_id": site.id, "action": "start" }), &acted).await.unwrap_err().to_string();
-            assert!(err.contains("auto-allow"), "{err}");
-        }
+        // D15: the dial at Full does NOT publish — share keeps a person's click.
+        dial(&state, crate::core::agent_access::AccessLevel::Full);
+        let err = share(ctx, &json!({ "site_id": site.id, "action": "start" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("Site access"), "share still asks a person: {err}");
         assert!(ops.calls.lock().unwrap().iter().all(|c| !c.starts_with("share start")), "nothing was published");
         {
             let conn = state.db.lock().unwrap();
@@ -4565,11 +4462,10 @@ mod tests {
         let v = share(ctx, &json!({ "site_id": site.id, "action": "start", "minutes": 10 }), &acted).await.unwrap();
         assert_eq!(v["url"], "https://abc.trycloudflare.com");
         assert!(v["detail"].as_str().unwrap().contains("10 minutes"));
-        assert!(share(ctx, &json!({ "site_id": site.id, "action": "stop" }), &acted).await.is_err(), "stop needs manage (run does not imply it)");
-        {
-            let conn = state.db.lock().unwrap();
-            store::grant_agent_site(&conn, "g-m", Some(&site.id), "claude-code", "manage", 7, false, false).unwrap();
-        }
+        dial(&state, crate::core::agent_access::AccessLevel::Read);
+        let err = share(ctx, &json!({ "site_id": site.id, "action": "stop" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("`manage`"), "stop is a manage action on the dial, not the share grant: {err}");
+        dial(&state, crate::core::agent_access::AccessLevel::Changes);
         share(ctx, &json!({ "site_id": site.id, "action": "stop" }), &acted).await.unwrap();
         let calls = ops.calls.lock().unwrap().clone();
         assert!(calls.iter().any(|c| c == &format!("share start {} 10", site.id)) && calls.iter().any(|c| c == &format!("share stop {}", site.id)), "{calls:?}");
@@ -4610,31 +4506,21 @@ mod tests {
         {
             let conn = state.db.lock().unwrap();
             store::insert_site(&conn, &site).unwrap();
-            store::grant_agent_site(&conn, "g1", Some(&site.id), "claude-code", "read", 7, false, false).unwrap();
         }
         let v = share(ctx, &json!({ "action": "status", "site_id": site.id }), &acted).await.unwrap();
         assert_eq!(v["shares"].as_array().unwrap().len(), 1, "only this site's share: {v}");
         assert_eq!(v["shares"][0]["domain"], "mine.rex");
-        assert!(share(ctx, &json!({ "action": "status" }), &acted).await.is_err(), "all shares need read on rexenv itself");
-        {
-            let conn = state.db.lock().unwrap();
-            store::grant_agent_site(&conn, "g2", None, "claude-code", "read", 7, false, false).unwrap();
-        }
+        // D15: reads on rexenv itself are free too.
         let v = share(ctx, &json!({ "action": "status" }), &acted).await.unwrap();
         assert_eq!(v["shares"].as_array().unwrap().len(), 2);
 
-        // blueprints: a bad spec is a shape refusal (no ask); save asks manage; delete destroy.
-        let asks_before = asks(&state).len();
+        // blueprints: a bad spec is a shape refusal; save needs Changes; delete Full.
         let err = blueprints(ctx, &json!({ "action": "save", "name": "Shop", "spec": { "siteType": "drupal" } }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("the app understands"), "{err}");
-        assert_eq!(asks(&state).len(), asks_before);
         let good = json!({ "action": "save", "name": "Shop", "spec": { "siteType": "wordpress", "phpVersion": "8.3", "webServer": "nginx" } });
-        assert!(blueprints(ctx, &good, &acted).await.is_err());
-        assert!(asks(&state).iter().any(|r| r.site_id.is_none() && r.scope == Scope::Manage && r.wanted.contains("`Shop`")));
-        {
-            let conn = state.db.lock().unwrap();
-            store::grant_agent_site(&conn, "g3", None, "claude-code", "manage", 7, false, false).unwrap();
-        }
+        let err = blueprints(ctx, &good, &acted).await.unwrap_err().to_string();
+        assert!(err.contains("`manage`") && err.contains("Changes"), "{err}");
+        dial(&state, crate::core::agent_access::AccessLevel::Changes);
         let v = blueprints(ctx, &good, &acted).await.unwrap();
         assert_eq!(v["saved"], "Shop");
         let err = blueprints(ctx, &json!({ "action": "delete", "name": "Nope" }), &acted).await.unwrap_err().to_string();
@@ -4660,13 +4546,12 @@ mod tests {
         {
             let conn = state.db.lock().unwrap();
             store::insert_site(&conn, &site).unwrap();
-            store::grant_agent_site(&conn, "g1", Some(&site.id), "claude-code", "read", 7, false, false).unwrap();
+            crate::core::agent_access::set(&conn, crate::core::agent_access::AccessLevel::Read, Some(crate::core::agent_access::Mode::Always)).unwrap();
         }
         let err = repo(ctx, &json!({ "site_id": site.id, "action": "git", "dir": "acme", "op": "rebase" }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("not a git op"), "{err}");
         let err = repo(ctx, &json!({ "site_id": site.id, "action": "add", "url": "https://github.com/acme/acme.git" }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("`run`"), "a read grant does not clone: {err}");
-        assert!(asks(&state).iter().any(|r| r.scope == Scope::Run && r.wanted.contains("clone `https://github.com/acme/acme.git`")));
         let v = repo(ctx, &json!({ "site_id": site.id, "action": "status", "dir": "acme" }), &acted).await.unwrap();
         assert_eq!(v["result"]["linked"], true);
         assert!(!v.to_string().contains("/Users/"), "the link target is a path: {v}");
@@ -4678,11 +4563,11 @@ mod tests {
         let text = v.to_string();
         assert!(!text.contains("/Users/somebody"), "a path in the job reply or its log: {text}");
         assert!(text.contains("<"), "scrubbed to a label: {text}");
-        assert!(repo(ctx, &json!({ "action": "tools" }), &acted).await.is_err(), "tools is a read on rexenv itself");
+        assert!(repo(ctx, &json!({ "action": "tools" }), &acted).await.is_ok(), "tools is a read on rexenv itself — free at the dial's default");
         {
             let conn = state.db.lock().unwrap();
-            store::grant_agent_site(&conn, "g2", None, "claude-code", "read", 7, false, false).unwrap();
-            store::grant_agent_site(&conn, "g3", Some(&site.id), "claude-code", "run", 1, false, true).unwrap();
+            crate::core::agent_access::set(&conn, crate::core::agent_access::AccessLevel::Read, Some(crate::core::agent_access::Mode::Always)).unwrap();
+            crate::core::agent_access::set(&conn, crate::core::agent_access::AccessLevel::Full, Some(crate::core::agent_access::Mode::Always)).unwrap();
         }
         repo(ctx, &json!({ "action": "tools", "refresh": true }), &acted).await.unwrap();
         let v = repo(ctx, &json!({ "site_id": site.id, "action": "add", "url": "https://github.com/acme/acme.git", "install": true }), &acted).await.unwrap();
@@ -4718,22 +4603,16 @@ mod tests {
         }
         let err = valet_import(ctx, &json!({ "action": "run" }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("needs `domains`"), "{err}");
-        assert!(valet_import(ctx, &json!({ "action": "scan" }), &acted).await.is_err());
-        assert!(asks(&state).iter().any(|r| r.site_id.is_none() && r.scope == Scope::Read));
-        assert!(valet_import(ctx, &json!({ "action": "take_over", "tld": ".test" }), &acted).await.is_err());
-        assert!(asks(&state).iter().any(|r| r.scope == Scope::System && r.wanted.contains("`.test`") && r.wanted.contains("password")));
+        assert!(valet_import(ctx, &json!({ "action": "scan" }), &acted).await.is_ok(), "a scan is a read — free");
+        let err = valet_import(ctx, &json!({ "action": "take_over", "tld": ".test" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("`system`") && err.contains("Changes"), "{err}");
         let err = db_import(ctx, &json!({ "action": "delete_leftover", "file": "/etc/passwd" }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("NAME"), "a path is refused on shape: {err}");
-        {
-            let conn = state.db.lock().unwrap();
-            store::grant_agent_site(&conn, "g1", None, "claude-code", "read", 7, false, false).unwrap();
-            store::grant_agent_site(&conn, "g2", None, "claude-code", "run", 7, false, false).unwrap();
-            store::grant_agent_site(&conn, "g3", Some(&site.id), "claude-code", "read", 7, false, false).unwrap();
-        }
+        // Reads are free; the writes name their level BEFORE the dial moves.
         let v = valet_import(ctx, &json!({ "action": "scan" }), &acted).await.unwrap();
         assert_eq!(v["result"]["availablePhp"], json!(["8.3"]));
-        let v = valet_import(ctx, &json!({ "action": "run", "domains": ["Shop.test"], "import_databases": true }), &acted).await.unwrap();
-        assert_eq!(v["result"]["imported"], 1);
+        let err = valet_import(ctx, &json!({ "action": "run", "domains": ["Shop.test"], "import_databases": true }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("`run`") && err.contains("Full"), "{err}");
         let v = connection_rewrite(ctx, &json!({ "site_id": site.id, "action": "preview" }), &acted).await.unwrap();
         assert_eq!(v["result"]["file"], "wp-config.php");
         assert!(!v.to_string().contains("/Users/somebody"), "the diff and file are scrubbed/named: {v}");
@@ -4745,10 +4624,9 @@ mod tests {
         assert_eq!(v["result"][0]["file"], "shop.sql");
         assert!(v["result"][0].get("path").is_none());
         assert!(db_import(ctx, &json!({ "action": "start", "site_id": site.id }), &acted).await.is_err(), "an import destroys");
-        {
-            let conn = state.db.lock().unwrap();
-            store::grant_agent_site(&conn, "g4", Some(&site.id), "claude-code", "destroy", 1, false, true).unwrap();
-        }
+        dial(&state, crate::core::agent_access::AccessLevel::Full);
+        let v = valet_import(ctx, &json!({ "action": "run", "domains": ["Shop.test"], "import_databases": true }), &acted).await.unwrap();
+        assert_eq!(v["result"]["imported"], 1);
         let v = db_import(ctx, &json!({ "action": "start", "site_id": site.id, "confirm_overwrite": "mine.rex" }), &acted).await.unwrap();
         assert_eq!(v["result"]["job"]["status"], "ok");
         assert_eq!(v["result"]["job"]["keptArtifact"], "mine.sql", "named, never located");
@@ -4792,16 +4670,11 @@ mod tests {
         assert!(err.contains("scratch"), "{err}");
         let err = site_artisan(ctx, &json!({ "site_id": lv.id, "args": ["migrate"] }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("not finished installing"), "{err}");
-        assert!(asks(&state).is_empty(), "every refusal so far was on shape — nothing asked");
 
         std::fs::write(dir.join("artisan"), "#!/usr/bin/env php").unwrap();
         std::fs::write(dir.join("public/index.php"), "<?php").unwrap();
         let err = site_artisan(ctx, &json!({ "site_id": lv.id, "args": ["migrate", "--seed"] }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("`run`"), "{err}");
-        let a = asks(&state);
-        assert_eq!(a.len(), 1);
-        assert_eq!((a[0].site_id.as_deref(), a[0].scope), (Some(lv.id.as_str()), Scope::Run));
-        assert!(a[0].wanted.contains("php artisan migrate --seed"), "{}", a[0].wanted);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -4838,20 +4711,13 @@ mod tests {
         let err = composer_link(ctx, &json!({ "site_id": lv.id, "source": src }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("no composer.json at its project root"), "{err}");
         std::fs::write(project.join("composer.json"), r#"{"name": "acme/shop"}"#).unwrap();
-        assert!(asks(&state).is_empty());
 
         // The source has no manifest yet — and is not looked at: the ask comes first.
         let err = composer_link(ctx, &json!({ "site_id": lv.id, "source": src }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("`run`"), "{err}");
         assert!(!err.contains("composer.json"), "the source was not read before the grant: {err}");
-        let a = asks(&state);
-        assert_eq!((a.len(), a[0].scope), (1, Scope::Run));
-        assert!(a[0].wanted.contains("`acme-widgets`"), "{}", a[0].wanted);
 
-        {
-            let conn = state.db.lock().unwrap();
-            store::grant_agent_site(&conn, "g1", Some(&lv.id), "claude-code", "run", 1, false, true).unwrap();
-        }
+        dial(&state, crate::core::agent_access::AccessLevel::Full);
         let home = std::env::var("HOME").unwrap();
         let err = composer_link(ctx, &json!({ "site_id": lv.id, "source": home }), &acted).await.unwrap_err().to_string();
         assert!(!err.contains("`run`"), "granted — the refusal is the blast radius's: {err}");

@@ -307,6 +307,15 @@ impl KnownPaths {
         Self::with_home(paths, docroot, home.as_deref())
     }
 
+    /// The set with NO docroot — for a reply about rexenv itself, or an error
+    /// raised before any site row was reached. An empty docroot must never be
+    /// an entry: an empty prefix matches everywhere.
+    pub fn for_app(paths: &dyn crate::platform::traits::Paths) -> Self {
+        let mut k = Self::for_site(paths, "\u{0}never-a-path\u{0}");
+        k.entries.retain(|(p, _)| !p.contains('\u{0}'));
+        k
+    }
+
     /// Home injected, so the set is testable without depending on whose machine
     /// the test runs on.
     fn with_home(

@@ -36,14 +36,15 @@ the shipped UI toward one.
   FREEZE the bar in place, never roll it back.
 - Refusals name the consequence ("a tunnel would publish X"), never "busy".
 - **A consent prompt's most load-bearing sentence has ONE source, and it is not the
-  TSX.** The Site access prompt (MCP parity) renders "with `manage` it can …" from a
-  string Rust serves with the ask (`Scope::what_it_allows`), so the sentence the user
-  reads is the one that sits beside the rule it describes; a TS copy of it is a guard
-  failure. The same prompt shows the agent's own words for what it tried ("It asked
-  to: switch PHP to 8.4"), because a person answers a concrete question and not an
-  abstract one — and a switch for a scope that must never be auto-allowed is ABSENT,
-  never disabled: a greyed-out "allow deleting without asking" invites the question
-  "how do I enable this", and the honest answer is that there is nothing to enable.
+  TSX.** The Agent access dial (MCP parity, D15) renders "An agent can …" under each
+  level from strings Rust serves (`AccessLevel::what_it_allows`, in `AgentAccess.levels`),
+  so the sentence the user reads is the one that sits beside the rule it describes; a TS
+  copy of it is a guard failure. The share prompt shows the agent's own words for what
+  it tried ("It asked to: publish it for 5 minutes"), because a person answers a
+  concrete question and not an abstract one. **A dial beats a switch plus prompts when
+  the prompts are the product:** the first shape (per site × per scope × per client)
+  was honest about consent and cost six clicks for one site's ordinary work; the
+  dial's "always" is the same standing yes an auto-allow switch was, said plainly.
 - **The menu-bar menu says when its numbers are old.** The tray never blocks the menu
   bar waiting for the services lock, so a busy lock means the menu shows the PREVIOUS
   snapshot — labelled `· updating…`, never presented as now. Same family as the rule

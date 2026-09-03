@@ -2089,6 +2089,13 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     HEAD via `REXENV_MCP_HOLD_SECS` on `mcp_socket_check` + `claude -p --mcp-config`):
     49/49 tools listed, no schema complaint, `list_sites` round-tripped through `rex mcp`.
     Owed to the owner: SMOKE §P1–§P7's remaining human legs (Cursor, grants, real Laravel).
+    ✓ **D15 — the Agent access dial (3 Sep 2026, ledger #497, #498; #468–#474 re-verdicted):**
+    the owner's brief after the live run — per-site × per-scope × per-client prompts were
+    a hassle. ONE global dial (Read / Changes / Full) with a duration (session / 7 days /
+    always) replaces them; reads are free; `share` keeps a person's click (session-only);
+    `system` sits at Changes because the macOS dialog is the second consent; `run` sits at
+    Full because it is a shell as the user. Auto-allow and the sites sub-toggle are gone.
+    SMOKE §P1 23–26 rewritten; the wk harness has `agents-access-read/full/expired`.
     ✓ **Live run 3 Sep 2026 (owner clicking, Claude Code driving, `bl.rex`):** 23–25 seen;
     27-shape asks recorded for read/manage/run/destroy per site + read on rexenv itself;
     destroy prompt session-only and denied → live search-replace refused, dry run ran under

@@ -74,7 +74,7 @@ import { usePreferredEditor } from "@/lib/useEditor";
 import { Code, ExternalLink, Globe } from "lucide-react";
 import { SiteAgentActivity } from "@/components/mcp/SiteAgentActivity";
 import { toast } from "@/lib/toast";
-import type { ActivityStatus, AgentAction, BrowserApp, EditorApp, DbImportRecord, McpStatus, ResolverTldStatus, RewriteApplied, RewritePreview, RewriteRevertOutcome, ScratchPackage, Site, SiteProvisionState } from "@/types";
+import type { ActivityStatus, AgentAction, BrowserApp, EditorApp, DbImportRecord, McpStatus, ResolverTldStatus, RewriteApplied, RewritePreview, RewriteRevertOutcome, ScratchPackage, Site, SiteProvisionState, AgentAccess, AgentAccessLevel, AgentAccessMode } from "@/types";
 
 const params = new URLSearchParams(window.location.search);
 
@@ -672,15 +672,34 @@ function activityStatusMock(): ActivityStatus {
   }
 }
 
+function agentAccessMock(): AgentAccess {
+  const raw = params.get("access");
+  const level: AgentAccessLevel = raw === "changes" || raw === "full" ? raw : "read";
+  const m = params.get("mode");
+  const mode: AgentAccessMode | null = level === "read" ? null : m === "days" || m === "always" ? m : "session";
+  return {
+    level,
+    mode,
+    expiresAt: mode === "days" ? "2026-09-10 12:00:00" : null,
+    expired: params.get("expired") === "1",
+    label: "Agent access",
+    allows: "",
+    levels: [
+      { level: "read", allows: "look at any of your sites — status, content, users, logs, mail — and create disposable sites of its own; it cannot change anything you made" },
+      { level: "changes", allows: "change how any of your sites is served and what is installed in it — PHP version, web server, Xdebug, plugins and themes on or off, options, restarts, dry runs, blueprints — and start or stop rexenv's stack (macOS still asks for your password)" },
+      { level: "full", allows: "do everything Changes allows, and also delete or reset a site and its database, run a live search-replace or a database import, and run commands and code of its choosing in any of your sites, as you" },
+    ],
+  };
+}
+
 function mcpStatusMock(): McpStatus {
   const recent = params.get("feed") === "empty" ? [] : AGENT_ROWS;
   return {
     enabled: params.get("astate") !== "off",
     // `mail=1` shows the sub-toggle ON; default OFF, which is the shipped default.
     mailEnabled: params.get("mail") === "1",
-    // `sites=1` shows the parity sub-toggle ON; default OFF, the shipped default.
-    sitesEnabled: params.get("sites") === "1",
-    sitesToggleLabel: "Let agents manage my own sites",
+    // `access=changes|full` turns the dial; default Read, the shipped default.
+    access: agentAccessMock(),
     connectCommand: "claude mcp add rexenv -- rex mcp",
     activity: activityStatusMock(),
     recent,
@@ -1080,8 +1099,10 @@ export function DevUiReview() {
           return (params.get("drift") ?? "").split(",").map((t) => t.trim()).filter(Boolean);
         case "mcp_status":
         case "mcp_set_enabled":
-        case "mcp_set_sites_enabled":
           return mcpStatusMock();
+        case "agent_access_get":
+        case "agent_access_set":
+          return agentAccessMock();
         case "agent_activity":
           return params.get("feed") === "empty"
             ? []

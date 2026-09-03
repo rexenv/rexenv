@@ -131,9 +131,17 @@ pub fn cli_access(key: &str) -> CliAccess {
         ),
         // Agent control surface: the app's toggle carries the consent copy that
         // explains what enabling it exposes, and a CLI flag would route round it.
-        "mcp_enabled" | "mcp_mail_enabled" | "mcp_sites_enabled" => CliAccess::Denied(
+        "mcp_enabled" | "mcp_mail_enabled" => CliAccess::Denied(
             "the MCP agent socket's enable flag — the app's toggle carries the consent \
              wording that explains what it opens, and a shell write would skip it",
+        ),
+        // The Agent access dial (D15): what an agent may do to the user's own
+        // sites. An agent widening its own access is the thing the dial exists
+        // to prevent, and the card's copy says what each level hands over.
+        "agent_access_level" | "agent_access_mode" | "agent_access_expires_at" => CliAccess::Denied(
+            "the Agent access dial — the card in Settings → AI agents (MCP) carries the \
+             sentence that says what each level hands over, and neither a shell write \
+             nor an agent may turn it",
         ),
         _ => CliAccess::Denied(
             "not on the CLI allow-list. Settings are denied unless somebody has ruled \

@@ -270,7 +270,7 @@ packaged run, recorded in `TODO.md` under the existing gates row. L4 as time all
 7. Ledger: re-scope the "no registered tool reaches `run_privileged`" row to the
    first two registries; amend #197's scope sentence; new rows for 1–4.
 *Ships: a user can grant, see and revoke a scope; no tool uses one yet.*
-**D15 (the dial) — IN PROGRESS 3 Sep 2026:** see §7. The Site access prompt list becomes a share-only list; the P1 foundation is reshaped, not removed.
+**D15 (the dial) — SHIPPED 3 Sep 2026** (ledger #497 the dial, #498 the level door; #468–#474 re-verdicted): see §7. The Site access prompt list is share-only now; the P1 foundation is reshaped, not removed.
 **P7 SHIPPED 3 Sep 2026** (#495 `site_artisan`, #496 `composer_link` — D14 below). **49 tools**
 across the three registries; every phase of §5 is shipped. D13 stays deferred (a scratch
 Laravel site is not built: `site_create` + a `destroy` grant is a Laravel site an agent can

@@ -16,7 +16,7 @@
 //!
 //! Proves, end to end: with the switch OFF every parity tool refuses by the
 //! switch's own name and records no ask (#472/#473); with it ON and no grant,
-//! the refusal names "Site access" and the ask is recorded with the verb
+//! the refusal names the Agent access dial and the level it needs (D15)
 //! (#469/#471); a `manage` grant lets `site_configure` rename the row and set an
 //! env var whose VALUE never comes back (#477); `site_delete` under that same
 //! `manage` grant is refused naming `destroy` (#476); a session `destroy` grant
@@ -173,45 +173,36 @@ async fn main() {
     let asks = |state: &AppState| state.agent_site_requests.lock().unwrap().list().to_vec();
 
 
-    // 2) The switch is OFF (the default): refused by ITS name, and no ask.
-    let switch = mcp_server::SITES_TOGGLE_LABEL;
-    for (tool, args) in [
-        ("site_configure", json!({ "site_id": mine.id, "action": "rename", "name": "Renamed" })),
-        ("site_delete", json!({ "site_id": mine.id })),
-        ("site_restart", json!({ "site_id": mine.id })),
-        ("site_create", json!({ "name": "New", "domain": "new.rex", "type": "php", "php": "8.2" })),
+    // 2) The dial at Read (the default): a read is free, a change is refused
+    //    naming the dial and the level it needs, and NO ask is recorded — asks
+    //    are share's alone now (D15).
+    let dial = |state: &AppState, level: core::agent_access::AccessLevel| {
+        let conn = state.db.lock().unwrap();
+        let mode = if level == core::agent_access::AccessLevel::Read { None } else { Some(core::agent_access::Mode::Always) };
+        core::agent_access::set(&conn, level, mode).unwrap();
+    };
+    for (tool, args, needs) in [
+        ("site_configure", json!({ "site_id": mine.id, "action": "rename", "name": "Renamed" }), "Changes"),
+        ("site_delete", json!({ "site_id": mine.id }), "Full"),
+        ("site_restart", json!({ "site_id": mine.id }), "Changes"),
+        ("site_create", json!({ "name": "New", "domain": "new.rex", "type": "php", "php": "8.2" }), "Changes"),
     ] {
         let (err, text) = c(tool, args);
-        assert!(err && text.contains(switch), "{tool} with the switch off must name it: {text}");
+        assert!(err && text.contains("`Agent access`") && text.contains(needs), "{tool} at Read must name the dial and {needs}: {text}");
     }
-    assert!(asks(&state).is_empty(), "a switched-off surface records no ask");
-    println!("✓ switch off → every parity tool refuses naming \"{switch}\", nothing asked");
+    assert!(asks(&state).is_empty(), "the dial records no ask");
+    let (err, text) = c("site_info", json!({ "site_id": mine.id }));
+    assert!(!err, "a read is free at Read: {text}");
+    println!("✓ dial at Read → reads free; every change refuses naming `Agent access` and its level; nothing asked");
 
-    // 3) Switch ON, no grant: the refusal names Site access; the ask is recorded
-    //    with the verb. A SHAPE refusal (taken domain) still records nothing.
-    {
-        let conn = state.db.lock().unwrap();
-        store::set_setting(&conn, mcp_server::MCP_SITES_ENABLED_KEY, "true").unwrap();
-    }
+    // 3) A SHAPE refusal (taken domain) is refused before the dial is consulted.
     let (err, text) = c("site_create", json!({ "name": "Dup", "domain": "mine.rex", "type": "php", "php": "8.2" }));
-    assert!(err && text.contains("already reaches"), "{text}");
-    assert!(asks(&state).is_empty(), "a shape refusal asks for nothing");
-    let (err, text) = c("site_configure", json!({ "site_id": mine.id, "action": "rename", "name": "Renamed" }));
-    assert!(err && text.contains("Site access") && text.contains("`manage`"), "{text}");
-    let (err, text) = c("site_delete", json!({ "site_id": mine.id }));
-    assert!(err && text.contains("`destroy`"), "{text}");
-    let a = asks(&state);
-    assert_eq!(a.len(), 2, "one ask per (site, client, scope): {a:?}");
-    assert!(a.iter().any(|r| r.wanted.contains("rename it to `Renamed`")), "{a:?}");
-    assert!(a.iter().all(|r| r.site_id.as_deref() == Some(mine.id.as_str()) && r.client == "mcp_user_site_check"));
-    println!("✓ switch on, no grant → refusals name Site access; asks recorded with the verb");
+    assert!(err && text.contains("already reaches") && !text.contains("`Agent access`"), "{text}");
+    println!("✓ a shape refusal comes before the dial");
 
-    // 4) A `manage` grant: the rename really runs the app's command, and the row
-    //    changes. An env var is set; its VALUE is not in the reply.
-    {
-        let conn = state.db.lock().unwrap();
-        store::grant_agent_site(&conn, "g-manage", Some(&mine.id), "mcp_user_site_check", "manage", 7, false, false).unwrap();
-    }
+    // 4) The dial at Changes: the rename really runs the app's command, and the
+    //    row changes. An env var is set; its VALUE is not in the reply.
+    dial(&state, core::agent_access::AccessLevel::Changes);
     let (err, text) = c("site_configure", json!({ "site_id": mine.id, "action": "rename", "name": "Renamed" }));
     assert!(!err, "rename with a manage grant: {text}");
     let reply: Value = serde_json::from_str(&text).unwrap();
@@ -225,18 +216,14 @@ async fn main() {
     let (err, text) = c("site_configure", json!({ "site_id": mine.id, "action": "env_set", "key": "API_KEY", "value": "s3cret-value" }));
     assert!(!err, "{text}");
     assert!(text.contains("API_KEY") && !text.contains("s3cret-value"), "an env VALUE left rexenv: {text}");
-    assert!(asks(&state).iter().all(|r| r.scope != core::agent_grants::Scope::Manage), "the satisfied ask is cleared");
-    println!("✓ manage grant → rename ran the app's command (row renamed); env set, value never returned");
+    println!("✓ dial at Changes → rename ran the app's command (row renamed); env set, value never returned");
 
-    // 5) Delete under `manage` alone: refused naming destroy; docroot intact.
+    // 5) Delete at Changes: refused naming `destroy` and Full; docroot intact.
     let (err, text) = c("site_delete", json!({ "site_id": mine.id }));
-    assert!(err && text.contains("`destroy`"), "{text}");
+    assert!(err && text.contains("`destroy`") && text.contains("Full"), "{text}");
     assert!(docroot.join("index.php").is_file(), "a refused delete touched the docroot");
-    // The scratch site: every parity tool refuses it by name, whatever is granted.
-    {
-        let conn = state.db.lock().unwrap();
-        store::grant_agent_site(&conn, "g-scratch", Some(&theirs.id), "mcp_user_site_check", "destroy", 1, false, true).unwrap();
-    }
+    // The scratch site: every parity tool refuses it by name, whatever the dial says.
+    dial(&state, core::agent_access::AccessLevel::Full);
     for (tool, args) in [
         ("site_configure", json!({ "site_id": theirs.id, "action": "rename", "name": "x" })),
         ("site_delete", json!({ "site_id": theirs.id })),
@@ -244,7 +231,8 @@ async fn main() {
         let (err, text) = c(tool, args);
         assert!(err && text.contains("scratch_delete_site"), "{tool} on a scratch site must name the scratch tools: {text}");
     }
-    println!("✓ delete under manage refused naming `destroy`; a scratch site refused by every parity tool");
+    dial(&state, core::agent_access::AccessLevel::Changes);
+    println!("✓ delete at Changes refused naming `destroy`/Full; a scratch site refused by every parity tool even at Full");
 
     // 6) site_info names no path; site_inspect_folder refuses app-data with the
     //    dialog's reason and classifies a real folder.
@@ -302,11 +290,11 @@ async fn main() {
     assert_eq!(asks(&state).len(), asks_before, "the mail switch refuses before the grant is even asked for");
     println!("✓ wp/artisan/composer tools refuse a PHP/scratch site on the row; site_logs lists keys without paths and refuses a stray key; mail_inbox refuses by the mail switch's name");
 
-    // 7) A session `destroy` grant: the app's full delete runs — the docroot is
-    //    gone from disk and the row is gone.
+    // 7) The dial at Full, for this session: the app's full delete runs — the
+    //    docroot is gone from disk and the row is gone.
     {
         let conn = state.db.lock().unwrap();
-        store::grant_agent_site(&conn, "g-destroy", Some(&mine.id), "mcp_user_site_check", "destroy", 1, false, true).unwrap();
+        core::agent_access::set(&conn, core::agent_access::AccessLevel::Full, Some(core::agent_access::Mode::Session)).unwrap();
     }
     let (err, text) = c("site_delete", json!({ "site_id": mine.id }));
     assert!(!err, "delete with a destroy grant: {text}");
@@ -314,10 +302,8 @@ async fn main() {
     {
         let conn = state.db.lock().unwrap();
         assert!(store::get_site(&conn, &mine.id).unwrap().is_none(), "the row must be gone");
-        let grants = store::list_agent_site_grants(&conn).unwrap();
-        assert!(grants.iter().all(|g| g.site_id.as_deref() != Some(mine.id.as_str())), "the site's grants cascaded");
     }
-    println!("✓ destroy grant (session) → the app's delete removed the docroot and the row; grants cascaded");
+    println!("✓ dial at Full (session) → the app's delete removed the docroot and the row");
 
     // 8) The feed: every call landed, naming the site, with the action as the
     //    summary where there is one.
@@ -335,14 +321,12 @@ async fn main() {
         assert!(rows.iter().any(|(t, _, _, o)| t == "site_delete" && o == "error"), "the refused deletes are recorded too: {rows:?}");
         assert!(rows.iter().all(|(_, _, a, _)| a.as_deref() != Some("s3cret-value")), "a value reached the feed");
     }
-    // 9) The launch sweep ends session grants: the scratch site's destroy grant
-    //    (session) is revoked; the week-long manage one would survive (its site
-    //    is gone here, so only the scratch one remains to check).
+    // 9) The launch sweep ends a "this session" dial: back at Read.
     rexenv_lib::commands::mcp::end_session_grants_at_launch(&state);
     {
         let conn = state.db.lock().unwrap();
-        let g = store::get_agent_site_grant(&conn, "g-scratch").unwrap().unwrap();
-        assert!(g.revoked_at.is_some(), "a session grant survived the launch sweep");
+        let a = core::agent_access::current(&conn).unwrap();
+        assert_eq!(a.level, core::agent_access::AccessLevel::Read, "a session-long dial survived the launch sweep");
     }
     println!("✓ feed complete (targets, verbs, refusals, no values); the launch sweep ended the session grant");
 

@@ -47,12 +47,10 @@ pub struct McpStatus {
     /// The MAIL sub-toggle (M2b) — off by default, and independent of
     /// `enabled`: turning the endpoint on does not turn mail on.
     pub mail_enabled: bool,
-    /// The SITES sub-toggle (MCP parity) — "Let agents manage my own sites".
-    /// Off by default, independent of both above; on its own grants nothing.
-    pub sites_enabled: bool,
-    /// The toggle's label, from the ONE constant the refusal text also uses —
-    /// the card renders this rather than typing it (#404).
-    pub sites_toggle_label: &'static str,
+    /// The Agent access dial (D15): level, duration, expiry, and the copy for
+    /// what the level hands over — served from Rust so the card, the refusal
+    /// and the plan cannot drift (#404).
+    pub access: crate::core::agent_access::AgentAccess,
 }
 
 /// The header line's state — derived from recent call OUTCOMES, never the socket
@@ -95,15 +93,14 @@ fn status_snapshot(state: &AppState, limit: usize) -> Result<McpStatus> {
         }
     };
     let mail_enabled = mcp_server::mail_enabled(&conn);
-    let sites_enabled = mcp_server::sites_enabled(&conn);
+    let access = crate::core::agent_access::current(&conn)?;
     Ok(McpStatus {
         enabled,
         connect_command: CONNECT_COMMAND,
         activity,
         recent,
         mail_enabled,
-        sites_enabled,
-        sites_toggle_label: mcp_server::SITES_TOGGLE_LABEL,
+        access,
     })
 }
 
@@ -411,21 +408,31 @@ pub fn agent_db_set_auto_allow(state: State<'_, AppState>, on: bool) -> Result<b
 // generalised. USER-driven throughout — no IPC an agent can reach, and no
 // command that grants without a client name and a scope the user was shown.
 
-/// Turn the SITES sub-toggle on or off. A flag flip and nothing else — unlike
-/// mail there is no filesystem state to keep in step — but it is the switch
-/// every parity tool checks BEFORE the grant gate, so off means every such tool
-/// refuses by name at once. Grants are left as they are: they are the user's
-/// decisions, listed and revocable individually, and they resume when the
-/// switch does. Silently revoking them here would make one switch mean two
-/// things (the mail toggle's reasoning, the auto-allow toggle's reasoning).
+/// Read the Agent access dial (D15).
 #[tauri::command]
-pub fn mcp_set_sites_enabled(state: State<'_, AppState>, enable: bool) -> Result<McpStatus> {
-    {
-        let conn = db(&state)?;
-        store::set_setting(&conn, mcp_server::MCP_SITES_ENABLED_KEY, if enable { "true" } else { "false" })?;
-        log::info!("mcp: acting on the user's own sites {}", if enable { "enabled" } else { "disabled" });
-    }
-    status_snapshot(&state, CARD_LIMIT)
+pub fn agent_access_get(state: State<'_, AppState>) -> Result<crate::core::agent_access::AgentAccess> {
+    let conn = db(&state)?;
+    crate::core::agent_access::current(&conn)
+}
+
+/// Set the Agent access dial: a level, and for a level above Read a duration.
+/// A user's click in the card and nothing else reaches this — the `settings`
+/// tool and the CLI refuse the three keys (`settings_access`), because the
+/// card carries the sentence that says what each level hands over.
+#[tauri::command]
+pub fn agent_access_set(
+    state: State<'_, AppState>,
+    level: crate::core::agent_access::AccessLevel,
+    mode: Option<crate::core::agent_access::Mode>,
+) -> Result<crate::core::agent_access::AgentAccess> {
+    let conn = db(&state)?;
+    let a = crate::core::agent_access::set(&conn, level, mode)?;
+    log::info!(
+        "mcp: agent access set to {} ({})",
+        a.level.as_db(),
+        a.mode.map_or("no duration", |m| m.as_db())
+    );
+    Ok(a)
 }
 
 /// End every "for this session" grant — run once at launch (`lib.rs`), which is
@@ -434,8 +441,14 @@ pub fn mcp_set_sites_enabled(state: State<'_, AppState>, enable: bool) -> Result
 pub fn end_session_grants_at_launch(state: &AppState) {
     match db(state).and_then(|conn| store::revoke_session_agent_site_grants(&conn)) {
         Ok(0) => {}
-        Ok(n) => log::info!("mcp: ended {n} site-access grant(s) that were for the previous session"),
-        Err(e) => log::warn!("mcp: could not end the previous session's site-access grants: {e}"),
+        Ok(n) => log::info!("mcp: ended {n} share grant(s) that were for the previous session"),
+        Err(e) => log::warn!("mcp: could not end the previous session's share grants: {e}"),
+    }
+    // The dial's "this session" is the same promise (D15).
+    match db(state).and_then(|conn| crate::core::agent_access::end_session_at_launch(&conn)) {
+        Ok(true) => log::info!("mcp: agent access was set for the previous session — back at Read"),
+        Ok(false) => {}
+        Err(e) => log::warn!("mcp: could not end the previous session's agent access: {e}"),
     }
 }
 
@@ -573,33 +586,6 @@ pub fn agent_site_revoke(state: State<'_, AppState>, id: String) -> Result<()> {
 }
 
 /// Which auto-allowable scopes are on for THIS session. Session state, so the
-/// UI asks rather than remembers — a fresh launch is always none.
-#[tauri::command]
-pub fn agent_site_auto_allow(
-    state: State<'_, AppState>,
-) -> Result<Vec<crate::core::agent_grants::AutoAllowable>> {
-    Ok(state.agent_site_auto_allow.lock().map(|a| a.on()).unwrap_or_default())
-}
-
-/// Turn auto-allow on or off for one scope, this session. The argument is
-/// `AutoAllowable`, not `Scope`: a request to auto-allow `destroy` or `system`
-/// does not deserialise, which is the type doing the refusing (#470). Switching
-/// off does not revoke what it granted — those are ordinary grants.
-#[tauri::command]
-pub fn agent_site_set_auto_allow(
-    state: State<'_, AppState>,
-    scope: crate::core::agent_grants::AutoAllowable,
-    on: bool,
-) -> Result<Vec<crate::core::agent_grants::AutoAllowable>> {
-    let mut a = state
-        .agent_site_auto_allow
-        .lock()
-        .map_err(|_| crate::error::Error::Other("the auto-allow lock is poisoned".into()))?;
-    a.set(scope, on);
-    log::info!("mcp: site-access auto-allow for `{}` {} for this session", scope.scope(), if on { "ON" } else { "off" });
-    Ok(a.on())
-}
-
 #[cfg(test)]
 mod site_access_tests {
     /// **The launch ends the previous session's grants, and the wiring is in
@@ -617,7 +603,7 @@ mod site_access_tests {
         // …and the settings key is not writable from the CLI: the toggle's copy
         // is the consent, and a shell write would skip it (the mcp_enabled rule).
         let access = include_str!("../core/settings_access.rs");
-        assert!(access.contains("\"mcp_sites_enabled\""), "mcp_sites_enabled must be ruled on in settings_access (Denied)");
+        assert!(access.contains("\"agent_access_level\""), "the dial keys must be ruled on in settings_access (Denied)");
     }
 }
 

@@ -95,10 +95,12 @@ const SCENARIOS = [
   ["wppackages-unnamed", "view=wppackages&names=none", []],
   ["agents-mail-off", "view=agents&astate=working", []],
   ["agents-mail-on", "view=agents&astate=working&mail=1", []],
-  // The SITES sub-toggle (MCP parity): off by default, on with `sites=1`, and
-  // the Site access section renders either way with its empty state.
-  ["agents-sites-off", "view=agents&astate=working", []],
-  ["agents-sites-on", "view=agents&astate=working&sites=1", []],
+  // The Agent access dial (D15): Read by default; `access=full&mode=days` a
+  // 7-day Full; `expired=1` the expired notice. Site access renders its
+  // share-only empty state either way.
+  ["agents-access-read", "view=agents&astate=working", []],
+  ["agents-access-full", "view=agents&astate=working&access=full&mode=days", []],
+  ["agents-access-expired", "view=agents&astate=working&expired=1", []],
   // The Agent-scratch group: client badge + TTL + last-synced, a moved source,
   // an expired site, an expired one the reaper could not remove — and the two
   // rows that must render as ORDINARY sites (a Kept one, and a user's own site
@@ -466,6 +468,28 @@ const PROBES = {
   // The AI-agents card: the residual copy renders verbatim above the toggle,
   // the concerning rows get the muted-amber accent (or the empty state shows),
   // and the toggle reflects enabled/off.
+  // The dial: three radios, the chosen one checked, the duration row only
+  // above Read, the expired notice only when expired.
+  agentsAccess: async (page) =>
+    page.evaluate(() => {
+      const problems = [];
+      const text = document.body.textContent || "";
+      const p = new URLSearchParams(location.search);
+      const radios = [...document.querySelectorAll('[role="radiogroup"][aria-label="Agent access"] [role="radio"]')];
+      if (radios.length !== 3) problems.push(`expected 3 level radios, got ${radios.length}`);
+      const checked = radios.filter((r) => r.getAttribute("aria-checked") === "true").map((r) => r.textContent || "");
+      const want = p.get("access") === "full" ? "Full" : p.get("access") === "changes" ? "Changes" : "Read";
+      if (!(checked.length === 1 && checked[0].startsWith(want))) problems.push(`checked level ${JSON.stringify(checked)} ≠ ${want}`);
+      const durationShown = text.includes("This session") && text.includes("7 days") && text.includes("Always");
+      if (want === "Read" && durationShown) problems.push("a duration row at Read");
+      if (want !== "Read" && !durationShown) problems.push("no duration row above Read");
+      if (p.get("expired") === "1" && !text.includes("expired")) problems.push("expired notice missing");
+      if (p.get("expired") !== "1" && text.includes("setting expired")) problems.push("expired notice shown while not expired");
+      if (!text.includes("always asks you")) problems.push("the share-always-asks sentence missing");
+      if (!text.includes("Site access")) problems.push("Site access section missing");
+      if (text.includes("without asking")) problems.push("an auto-allow switch survived D15");
+      return problems;
+    }),
   agents: async (page) =>
     page.evaluate(() => {
       const problems = [];
@@ -483,17 +507,18 @@ const PROBES = {
       if (!toggle) problems.push("no toggle rendered");
       else if (toggle.getAttribute("aria-checked") !== (p.get("astate") === "off" ? "false" : "true"))
         problems.push("toggle state does not match astate");
-      // The SITES sub-toggle (parity) reflects `sites=1`, and the Site access
-      // section is always there — with its empty state, since the harness
-      // mocks no asks and no grants.
+      // D15: the Agent access dial replaced the sites sub-toggle. The dial is
+      // always there (three level radios), the old switch never is, and the
+      // Site access section renders its share-only empty state (the harness
+      // mocks no asks and no grants).
       const sitesSwitch = [...document.querySelectorAll('[role="switch"]')].find((el) =>
         (el.getAttribute("aria-label") || "").includes("manage my own sites"),
       );
-      if (!sitesSwitch) problems.push("the sites sub-toggle is missing");
-      else if (sitesSwitch.getAttribute("aria-checked") !== (p.get("sites") === "1" ? "true" : "false"))
-        problems.push("the sites sub-toggle does not match sites=");
+      if (sitesSwitch) problems.push("the retired sites sub-toggle is back");
+      const dialRadios = document.querySelectorAll('[role="radiogroup"][aria-label="Agent access"] [role="radio"]').length;
+      if (dialRadios !== 3) problems.push(`expected the Agent access dial's 3 levels, got ${dialRadios}`);
       if (!text.includes("Site access")) problems.push("the Site access section is missing");
-      if (!text.includes("grants nothing")) problems.push("the sites toggle no longer says it grants nothing on its own");
+      if (!text.includes("always asks you")) problems.push("the dial no longer says publishing always asks");
       if (!text.includes("A request only lasts while rexenv is running"))
         problems.push("the Site access empty state is missing");
       // The feed must show resolved DOMAINS, never a raw UUID site handle (the
@@ -755,6 +780,7 @@ function probeFor(name) {
   if (name.startsWith("tunnels-")) return PROBES.tunnelsFilter;
   if (name === "themes-titles") return PROBES.themeTitles;
   if (name.startsWith("agents-mail")) return PROBES.agents;
+  if (name.startsWith("agents-access")) return PROBES.agentsAccess;
   return null;
 }
 

@@ -186,6 +186,12 @@ impl ActedTarget {
     pub fn take(&self) -> Option<String> {
         self.0.lock().ok().and_then(|mut s| s.take())
     }
+
+    /// The recorded site id without clearing it — for the error scrub, which
+    /// runs before the feed's `take`.
+    pub fn peek(&self) -> Option<String> {
+        self.0.lock().ok().and_then(|s| s.clone())
+    }
 }
 
 /// What the session knows about one action — everything but the client name

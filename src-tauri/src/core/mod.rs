@@ -26,6 +26,7 @@ pub mod dbcompat;
 pub mod dbdump;
 pub mod dbimport;
 pub mod agent_db;
+pub mod agent_access;
 pub mod agent_grants;
 pub mod agent_query;
 pub mod dbmirror;
