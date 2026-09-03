@@ -287,6 +287,12 @@ static REGISTRY: &[ScratchTool] = &[ScratchTool {
 /// (`feed::clamp_summary`), not by anything here: whatever this returns, only
 /// `[a-z][a-z0-9-]{0,19}` survives, so it cannot forge a client name, rexenv's
 /// own rows, or the separators between them.
+/// `summarise_wp_run`, for the parity registry's raw runner — the same two
+/// tokens, the same clamp, one function.
+pub(super) fn summarise_wp_run_public(args: &Value) -> Option<String> {
+    summarise_wp_run(args)
+}
+
 fn summarise_wp_run(args: &Value) -> Option<String> {
     let list = args.get("args")?.as_array()?;
     let words: Vec<&str> = list
@@ -692,27 +698,7 @@ impl<'a> ScratchCtx<'a> {
     /// resolved through the platform trait. Downloads on first use, so the
     /// caller must treat the gap either side of it as a real window.
     async fn wp_tools(&self, php_minor: &str) -> Result<(std::path::PathBuf, std::path::PathBuf)> {
-        // The patch the site's POOL runs (selection floored by the pin), not the
-        // pin — an agent running wp-cli on a different interpreter than the site
-        // serves is a disagreement nobody can see from either side.
-        let patch = {
-            let conn = self.db()?;
-            crate::core::php::patch_to_run(&conn, php_minor).map_err(|_| {
-                Error::Other(format!(
-                    "this site is set to PHP {php_minor}, which rexenv has no build for — the \
-                     person you're working with can change the site's PHP version in rexenv."
-                ))
-            })?
-        };
-        let php_bin = crate::core::binaries::resolve(self.platform(), "php", &patch).await?;
-        // wp-cli is a .phar, not a Mach-O → resolve_file (no chmod/codesign).
-        let wp_phar = crate::core::binaries::resolve_file(
-            self.platform(),
-            "wp-cli",
-            crate::core::binaries::WP_CLI_VERSION,
-        )
-        .await?;
-        Ok((php_bin, wp_phar))
+        resolve_wp_tools(self.state, php_minor).await
     }
 
     pub(crate) fn db(&self) -> Result<std::sync::MutexGuard<'_, rusqlite::Connection>> {
@@ -796,6 +782,31 @@ impl<'a> ScratchCtx<'a> {
             .ok_or_else(|| crate::error::Error::Other(format!("no site with id {id:?}")))
     }
 
+}
+
+/// The bundled PHP CLI for a site's PHP minor + the wp-cli phar — the same
+/// pinned, checksum-locked pair the UI and the CLI run (`BinaryProvider`),
+/// resolved through the platform trait. Downloads on first use, so the caller
+/// must treat the gap either side of it as a real window. Shared with the
+/// parity registry's `site_wp_run`: one resolver, one runner, one scrubber.
+pub(super) async fn resolve_wp_tools(state: &AppState, php_minor: &str) -> Result<(std::path::PathBuf, std::path::PathBuf)> {
+    // The patch the site's POOL runs (selection floored by the pin), not the
+    // pin — an agent running wp-cli on a different interpreter than the site
+    // serves is a disagreement nobody can see from either side.
+    let patch = {
+        let conn = state.db.lock().map_err(|_| Error::Other("the app database lock is poisoned".into()))?;
+        crate::core::php::patch_to_run(&conn, php_minor).map_err(|_| {
+            Error::Other(format!(
+                "this site is set to PHP {php_minor}, which rexenv has no build for — the \
+                 person you're working with can change the site's PHP version in rexenv."
+            ))
+        })?
+    };
+    let platform = state.platform.as_ref();
+    let php_bin = crate::core::binaries::resolve(platform, "php", &patch).await?;
+    // wp-cli is a .phar, not a Mach-O → resolve_file (no chmod/codesign).
+    let wp_phar = crate::core::binaries::resolve_file(platform, "wp-cli", crate::core::binaries::WP_CLI_VERSION).await?;
+    Ok((php_bin, wp_phar))
 }
 
 /// This registry's tools as MCP descriptors, for the union `tools/list`.
@@ -1793,7 +1804,7 @@ fn sync_package<'a>(
 
 /// How much of each stream an agent gets back. A raw runner can emit a database
 /// dump; a tool reply is a model's context window.
-const WP_OUTPUT_CAP: usize = 32 * 1024;
+pub(super) const WP_OUTPUT_CAP: usize = 32 * 1024;
 
 /// What a WP-CLI run looks like to an agent.
 ///
@@ -1802,27 +1813,27 @@ const WP_OUTPUT_CAP: usize = 32 * 1024;
 /// and which one carries the news depends on the command.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct AgentWpRun {
+pub(super) struct AgentWpRun {
     /// Exit 0. Named rather than left to be inferred from `exitCode`, because a
     /// non-zero exit comes back as a normal result (see [`wp_run`]) and the one
     /// thing that must not be skimmed past is whether it worked.
-    succeeded: bool,
-    exit_code: Option<i32>,
-    stdout: String,
-    stderr: String,
+    pub(super) succeeded: bool,
+    pub(super) exit_code: Option<i32>,
+    pub(super) stdout: String,
+    pub(super) stderr: String,
     /// Whether either stream was cut at the cap — stated, never silent.
-    truncated: bool,
-    detail: String,
+    pub(super) truncated: bool,
+    pub(super) detail: String,
     /// What was done to the output before the agent saw it. Present so a
     /// labelled path doesn't send the agent hunting for a directory called
     /// `<docroot>` — and so the limit is stated where it is read.
-    note: &'static str,
+    pub(super) note: &'static str,
 }
 
 /// The scrub's scope, in the reply. Says what was replaced AND what wasn't:
 /// rexenv can only remove the paths it knows, and a raw `wp` command prints
 /// whatever it prints.
-const WP_RUN_NOTE: &str = "Absolute paths rexenv knows — the site's docroot, rexenv's own \
+pub(super) const WP_RUN_NOTE: &str = "Absolute paths rexenv knows — the site's docroot, rexenv's own \
     directories, the home directory — are shown as labels like <docroot>. Paths rexenv doesn't \
     know are printed as WP-CLI wrote them: this is raw command output, not sanitised content.";
 
@@ -1951,7 +1962,7 @@ fn wp_run<'a>(
 /// The `args` array, as strings — refusing the shapes that would silently run
 /// the wrong thing (a bare string an agent meant as a whole command line, a
 /// number, an empty array).
-fn wp_argv(args: &Value) -> Result<Vec<String>> {
+pub(super) fn wp_argv(args: &Value) -> Result<Vec<String>> {
     let Some(list) = args.get("args").and_then(Value::as_array) else {
         return Err(Error::Other(
             "wp_run needs `args`: the command as an array of separate words, without `wp` — \
@@ -1988,7 +1999,7 @@ fn wp_argv(args: &Value) -> Result<Vec<String>> {
 /// The cut keeps the HEAD: wp writes its column headers, its `Success:` line and
 /// its first error at the start, so the front of a long stream is the part with
 /// the answer in it. The cut is always reported (`truncated`), never silent.
-fn agent_stream(raw: &[u8], known: &super::view::KnownPaths) -> (String, bool) {
+pub(super) fn agent_stream(raw: &[u8], known: &super::view::KnownPaths) -> (String, bool) {
     let text = String::from_utf8_lossy(raw);
     let mut end = WP_OUTPUT_CAP.min(text.len());
     while end < text.len() && !text.is_char_boundary(end) {

@@ -886,11 +886,12 @@ IPC surface — which is how a reader ends up designing against a system with on
   packaged-build enable crash. The *convention* is shared; the binder is its own, and a
   test pins that binding needs no ambient runtime.
 - **Three registries, and the registry IS the capability.** `mcp_server/tools.rs` holds the
-  five read-only tools (`list_sites` — widened with parity to carry owner / multisite /
+  six read-only tools (`list_sites` — widened with parity to carry owner / multisite /
   xdebug / aliases / setup-complete / linked, `site_status`, `tail_log`, and from parity
   P2.3 `site_info` — cert validity without its directory, packages without their source
   path, the M1 verdict — and `site_inspect_folder`, the New Site dialog's own preflight,
-  which classifies a folder and runs nothing); `mcp_server/scratch.rs`
+  which classifies a folder and runs nothing, and `wp_org_search`, a public network read);
+  `mcp_server/scratch.rs`
   holds the nine executing ones (`scratch_create_site`, `scratch_delete_site`,
   `scratch_add_package`, `scratch_sync_package`, `wp_run`, `set_php_version`, `db_query`,
   `mail_list`, `mail_get`); `mcp_server/user_sites.rs` (MCP parity, 3 Sep 2026) holds the
@@ -911,7 +912,11 @@ IPC surface — which is how a reader ends up designing against a system with on
   and super-admin manage; a password reset and a delete destroy — the #446 posts fork is
   restated BEFORE any ask), `wp_option` (six vetted writes, all manage) and `wp_maintain`
   (flushes, cron, checksum cleanup, core update/reinstall manage; `core_switch` destroys;
-  every wp-cli reply through the one scrubber) — each through a
+  every wp-cli reply through the one scrubber), `wp_data` (exports named by FILE and
+  located in words; a dry-run search-replace manages, a live one destroys; import and
+  reset destroy), `wp_network`, and `site_wp_run` — the raw runner on the USER's site
+  behind `run`, which is `scratch::wp_run`'s resolver, target screen, runner and scrubber
+  reused rather than copied — each through a
   `Granted<S>` scope witness (`core::agent_grants`) minted from a grant the user gave in the
   app, and only while the "Let agents manage my own sites" switch is on. Shape refusals
   (a bad type, a taken domain, `multisite` on a PHP site) come BEFORE the gate and record no

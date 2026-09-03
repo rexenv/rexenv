@@ -122,6 +122,26 @@ static REGISTRY: &[ReadTool] = &[
         handler: site_inspect_folder,
     },
     ReadTool {
+        name: "wp_org_search",
+        description: "Search the WordPress.org directory for plugins or themes — slug, name, \
+                      author, rating, active installs. A public network read; no site involved \
+                      and nothing installed. Takes `kind` (plugins / themes) and `query`.",
+        input_schema: || json!({
+            "type": "object",
+            "properties": {
+                "kind": { "type": "string", "enum": ["plugins", "themes"] },
+                "query": { "type": "string" }
+            },
+            "required": ["kind", "query"],
+            "additionalProperties": false
+        }),
+        // Not exercised against the network by the sweep: an empty query is
+        // refused before any request, and the refusal is what is swept.
+        sweep_args: |_id| json!({ "kind": "plugins", "query": "" }),
+        summarise: |args| args.get("kind").and_then(Value::as_str).map(str::to_string),
+        handler: wp_org_search,
+    },
+    ReadTool {
         name: "tail_log",
         description: "Read the tail of a WordPress site's OWN debug log — its plugin/theme PHP \
                       errors and warnings — the most recent lines (tail-only, capped at 200, \
@@ -284,6 +304,24 @@ fn site_inspect_folder<'a>(
                 format!("`{}` under this folder would be served, not the folder itself.", found.docroot_rel)
             },
         }))
+    })
+}
+
+fn wp_org_search<'a>(
+    ctx: ReadCtx<'a>,
+    args: &'a Value,
+    _acted: &'a super::feed::ActedTarget,
+) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let kind = args.get("kind").and_then(Value::as_str).unwrap_or("");
+        if !matches!(kind, "plugins" | "themes") {
+            return Err(Error::Other("wp_org_search needs `kind`: `plugins` or `themes`".into()));
+        }
+        let query = args.get("query").and_then(Value::as_str).map(str::trim).unwrap_or("");
+        if query.is_empty() {
+            return Err(Error::Other("wp_org_search needs a non-empty `query`".into()));
+        }
+        ctx.wporg_search(kind, query).await
     })
 }
 

@@ -2020,8 +2020,12 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     Install is a job → P6.
     ✓ P3.2 — **`wp_user` + `wp_option` + `wp_maintain`**, ledger #482: 24 more arms; a
     generated password shown once and summarised as the verb; the #446 fork restated as
-    a shape refusal; wp-cli output scrubbed; `core_switch` under destroy. Remaining:
-    `wp_data`, `wp_network`, `site_wp_run` (run), `wp_org_search`, `site_logs`, `mail_inbox`.
+    a shape refusal; wp-cli output scrubbed; `core_switch` under destroy.
+    ✓ P3.3 — **`wp_data` + `wp_network` + `site_wp_run` + `wp_org_search`**, ledger #483:
+    dry-run manages / live destroys; files named, never located; the raw runner behind
+    `run` reusing the scratch runner's pieces (target screen before resolution, proven by
+    the stub platform not panicking). The eight `wp_*` are complete. Remaining:
+    `site_logs` (every source, `read`), `mail_inbox`; then the L1 (`stack`) + SMOKE §P3.
   - [ ] **P4 — the stack**: `stack_status`/`stack(...)` incl. privileged start/stop (D10),
     `php_*`, `settings`, `tld`, `open`, `share` (D11), TTL/cap as settings.
   - [ ] **P5 — long tail**: `repo(...)`, `valet_import`, `connection_rewrite`, `db_import`,

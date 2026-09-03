@@ -97,6 +97,16 @@ impl<'a> ReadCtx<'a> {
             .collect())
     }
 
+    /// Search the WordPress.org directory — a network READ of a public API, no
+    /// site involved (the Add-plugin/theme flows' own call).
+    pub async fn wporg_search(&self, kind: &str, query: &str) -> Result<serde_json::Value> {
+        match kind {
+            "plugins" => serde_json::to_value(core::wporg::search_plugins(query).await?),
+            _ => serde_json::to_value(core::wporg::search_themes(query).await?),
+        }
+        .map_err(|e| Error::Other(format!("serialising the search: {e}")))
+    }
+
     /// Classify a folder the agent names WITHOUT creating anything — the New
     /// Site dialog's own preflight (`validate_linked_docroot`, which refuses
     /// `/`, the home folder, Desktop/Documents/Downloads, volume roots, app-data

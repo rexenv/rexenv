@@ -1041,6 +1041,30 @@ impl<Rt: tauri::Runtime> user_sites::WpOps for AppSiteCreator<Rt> {
     fn core_switch_version<'a>(&'a self, id: String, version: String) -> user_sites::OpFuture<'a, crate::error::Result<crate::core::wordpress::WpCoreSwitch>> {
         Box::pin(async move { crate::commands::wordpress::wp_core_switch_version(self.state()?, id, version).await })
     }
+    fn db_export<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<String>> {
+        Box::pin(async move { crate::commands::wordpress::wp_db_export(self.state()?, id).await })
+    }
+    fn content_export<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<Vec<String>>> {
+        Box::pin(async move { crate::commands::wordpress::wp_content_export(self.state()?, id).await })
+    }
+    fn search_replace<'a>(&'a self, id: String, from: String, to: String, dry_run: bool) -> user_sites::OpFuture<'a, crate::error::Result<u64>> {
+        Box::pin(async move { crate::commands::wordpress::wp_search_replace(self.state()?, id, from, to, dry_run).await })
+    }
+    fn db_import<'a>(&'a self, id: String, path: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::wordpress::wp_db_import(self.state()?, id, path).await })
+    }
+    fn site_reset<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::wordpress::wp_site_reset(self.state()?, id).await })
+    }
+    fn network_sites<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<Vec<crate::core::wordpress::WpNetworkSite>>> {
+        Box::pin(async move { crate::commands::wordpress::wp_network_sites(self.state()?, id).await })
+    }
+    fn network_site_create<'a>(&'a self, id: String, slug: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::wordpress::wp_network_site_create(self.state()?, id, slug).await })
+    }
+    fn network_site_delete<'a>(&'a self, id: String, blog_id: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::wordpress::wp_network_site_delete(self.state()?, id, blog_id).await })
+    }
 }
 
 /// Run EVERY registered tool against `app`'s state with the fixture site id, and

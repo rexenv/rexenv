@@ -268,6 +268,81 @@ static REGISTRY: &[UserTool] = &[
         handler: wp_maintain,
     },
     UserTool {
+        name: "wp_data",
+        description: "Data on a WordPress site the user owns. Takes `site_id` and `action`: \
+                      `db_export` (a SQL dump into the user's Downloads folder — the reply names the \
+                      file, not the path) and `content_export` (WXR files, same place) need \
+                      `manage`; `search_replace` {from, to, dry_run} — with `dry_run: true` it \
+                      only counts and needs `manage`; with `dry_run: false` it rewrites the \
+                      database in place and needs `destroy`; `db_import` {path — a .sql file on \
+                      this machine, replaces the database} and `reset` (a fresh WordPress over the \
+                      same site — everything in it is lost) need `destroy`.",
+        input_schema: || json!({
+            "type": "object",
+            "properties": {
+                "site_id": { "type": "string" },
+                "action": { "type": "string", "enum": ["db_export", "content_export", "search_replace", "db_import", "reset"] },
+                "from": { "type": "string" }, "to": { "type": "string" }, "dry_run": { "type": "boolean" },
+                "path": { "type": "string", "description": "db_import: absolute path to the .sql file." }
+            },
+            "required": ["site_id", "action"],
+            "additionalProperties": false
+        }),
+        sweep_args: |id| json!({ "site_id": id, "action": "search_replace", "from": "a", "to": "b", "dry_run": true }),
+        summarise: |args| args.get("action").and_then(Value::as_str).map(|a| format!("data {a}")),
+        scope: Scope::Destroy,
+        handler: wp_data,
+    },
+    UserTool {
+        name: "wp_network",
+        description: "Multisite on a WordPress site the user owns. Takes `site_id` and `action`: \
+                      `sites` (the network's sites) needs `read`; `convert` {mode: subdomain / \
+                      subdirectory} (turn a single site into a network — the app refuses it while \
+                      the site is shared publicly) and `site_create` {slug} need `manage`; \
+                      `site_delete` {blog_id} needs `destroy`.",
+        input_schema: || json!({
+            "type": "object",
+            "properties": {
+                "site_id": { "type": "string" },
+                "action": { "type": "string", "enum": ["sites", "convert", "site_create", "site_delete"] },
+                "mode": { "type": "string", "enum": ["subdomain", "subdirectory"] },
+                "slug": { "type": "string" }, "blog_id": { "type": "string" }
+            },
+            "required": ["site_id", "action"],
+            "additionalProperties": false
+        }),
+        sweep_args: |id| json!({ "site_id": id, "action": "sites" }),
+        summarise: |args| args.get("action").and_then(Value::as_str).map(|a| format!("network {a}")),
+        scope: Scope::Destroy,
+        handler: wp_network,
+    },
+    UserTool {
+        name: "site_wp_run",
+        description: "Run a raw WP-CLI command in a WordPress site the user owns — the same shape as \
+                      wp_run on a scratch site, but on THEIR site and as THEM, so it needs the \
+                      user's `run` permission on that site (asked for in the app; it can never be \
+                      auto-allowed away for `destroy`, and `run` is its own decision). Takes \
+                      `site_id` and `args` (the command as an array of words WITHOUT `wp`). rexenv \
+                      decides which site it runs against: `--path`, `--url`, `--ssh`, `--http` and \
+                      `@aliases` are refused. Prefer the vetted tools (wp_plugin, wp_user, …) when \
+                      one fits; this is for a plugin's own commands and `wp eval`. The exit code, \
+                      stdout and stderr come back; a non-zero exit is an answer, not a tool \
+                      failure — check `succeeded`.",
+        input_schema: || json!({
+            "type": "object",
+            "properties": {
+                "site_id": { "type": "string" },
+                "args": { "type": "array", "items": { "type": "string" }, "description": "The WP-CLI command as separate words, without `wp` and without `--path`." }
+            },
+            "required": ["site_id", "args"],
+            "additionalProperties": false
+        }),
+        sweep_args: |id| json!({ "site_id": id, "args": ["option", "get", "home"] }),
+        summarise: super::scratch::summarise_wp_run_public,
+        scope: Scope::Run,
+        handler: site_wp_run,
+    },
+    UserTool {
         name: "site_configure",
         description: "Change how one of the user's own sites is set up — the things the site's \
                       Settings tab does. Takes `site_id` and `action`, plus the action's field: \
@@ -511,6 +586,16 @@ pub trait WpOps: Send + Sync {
     fn core_update<'a>(&'a self, id: String) -> OpFuture<'a, Result<String>>;
     fn core_reinstall<'a>(&'a self, id: String) -> OpFuture<'a, Result<String>>;
     fn core_switch_version<'a>(&'a self, id: String, version: String) -> OpFuture<'a, Result<crate::core::wordpress::WpCoreSwitch>>;
+    // ── wp_data ──
+    fn db_export<'a>(&'a self, id: String) -> OpFuture<'a, Result<String>>;
+    fn content_export<'a>(&'a self, id: String) -> OpFuture<'a, Result<Vec<String>>>;
+    fn search_replace<'a>(&'a self, id: String, from: String, to: String, dry_run: bool) -> OpFuture<'a, Result<u64>>;
+    fn db_import<'a>(&'a self, id: String, path: String) -> OpFuture<'a, Result<()>>;
+    fn site_reset<'a>(&'a self, id: String) -> OpFuture<'a, Result<()>>;
+    // ── wp_network ──
+    fn network_sites<'a>(&'a self, id: String) -> OpFuture<'a, Result<Vec<crate::core::wordpress::WpNetworkSite>>>;
+    fn network_site_create<'a>(&'a self, id: String, slug: String) -> OpFuture<'a, Result<()>>;
+    fn network_site_delete<'a>(&'a self, id: String, blog_id: String) -> OpFuture<'a, Result<()>>;
 }
 
 /// What a parity handler can reach: app state, the app's own site operations,
@@ -1474,6 +1559,145 @@ fn wp_maintain<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::Ac
     })
 }
 
+
+pub(crate) fn wp_data_scope(action: &str, dry_run: bool) -> Option<Scope> {
+    Some(match action {
+        "db_export" | "content_export" => Scope::Manage,
+        "search_replace" => if dry_run { Scope::Manage } else { Scope::Destroy },
+        "db_import" | "reset" => Scope::Destroy,
+        _ => return None,
+    })
+}
+
+pub(crate) fn wp_network_scope(action: &str) -> Option<Scope> {
+    Some(match action {
+        "sites" => Scope::Read,
+        "convert" | "site_create" => Scope::Manage,
+        "site_delete" => Scope::Destroy,
+        _ => return None,
+    })
+}
+
+/// A file the app wrote for the user, as the agent may name it: the file name
+/// alone. The directory is the user's Downloads folder, which the reply states
+/// in words — the absolute path is a location on disk and the view rule keeps
+/// it out (the same rule as the domain change's backup).
+fn basename(path: &str) -> String {
+    std::path::Path::new(path).file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default()
+}
+
+fn wp_data<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTarget) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let id = args.get("site_id").and_then(Value::as_str).ok_or_else(|| Error::Other("wp_data needs a `site_id`.".into()))?;
+        let action = args.get("action").and_then(Value::as_str).ok_or_else(|| Error::Other("wp_data needs an `action`.".into()))?;
+        let dry_run = args.get("dry_run").and_then(Value::as_bool).unwrap_or(true);
+        let scope = wp_data_scope(action, dry_run).ok_or_else(|| {
+            Error::Other(format!("`{action}` is not a wp_data action. Use db_export, content_export, search_replace, db_import or reset."))
+        })?;
+        let wanted = match action {
+            "db_export" => "export its database to Downloads".to_string(),
+            "content_export" => "export its content to Downloads".to_string(),
+            "search_replace" => format!("{} `{}` with `{}` across the database", if dry_run { "count what replacing" } else { "REPLACE" }, str_field(args, "from", action)?, str_field(args, "to", action)?),
+            "db_import" => format!("REPLACE its database with `{}`", basename(str_field(args, "path", action)?)),
+            _ => "RESET it to a fresh WordPress — everything in it is lost".to_string(),
+        };
+        wp_precheck(&ctx, id, "wp_data")?;
+        let (site, auto) = claim_scope(&ctx, id, scope, &wanted)?;
+        acted.set(&site);
+        let sid = site.id.clone();
+        let wp = ctx.wp;
+        let result = match action {
+            "db_export" => json!({ "file": basename(&wp.db_export(sid).await?), "location": "the user's Downloads folder" }),
+            "content_export" => json!({ "files": wp.content_export(sid).await?.iter().map(|p| basename(p)).collect::<Vec<_>>(), "location": "the user's Downloads folder" }),
+            "search_replace" => {
+                let n = wp.search_replace(sid, str_field(args, "from", action)?.to_string(), str_field(args, "to", action)?.to_string(), dry_run).await?;
+                json!({ "replacements": n, "dryRun": dry_run })
+            }
+            "db_import" => { wp.db_import(sid, str_field(args, "path", action)?.to_string()).await?; json!({ "imported": true }) }
+            _ => { wp.site_reset(sid).await?; json!({ "reset": true }) }
+        };
+        Ok(with_consent(json!({ "domain": site.domain, "action": action, "result": result }), auto))
+    })
+}
+
+fn wp_network<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTarget) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let id = args.get("site_id").and_then(Value::as_str).ok_or_else(|| Error::Other("wp_network needs a `site_id`.".into()))?;
+        let action = args.get("action").and_then(Value::as_str).ok_or_else(|| Error::Other("wp_network needs an `action`.".into()))?;
+        let scope = wp_network_scope(action).ok_or_else(|| Error::Other(format!("`{action}` is not a wp_network action. Use sites, convert, site_create or site_delete.")))?;
+        let wanted = match action {
+            "sites" => "list the network's sites".to_string(),
+            "convert" => {
+                let m = str_field(args, "mode", action)?;
+                if !matches!(m, "subdomain" | "subdirectory") {
+                    return Err(Error::Other(format!("`{m}` is not a multisite mode — use `subdomain` or `subdirectory`.")));
+                }
+                format!("convert it to a {m} network")
+            }
+            "site_create" => format!("add the network site `{}`", str_field(args, "slug", action)?),
+            _ => format!("delete network site {}", str_field(args, "blog_id", action)?),
+        };
+        wp_precheck(&ctx, id, "wp_network")?;
+        let (site, auto) = claim_scope(&ctx, id, scope, &wanted)?;
+        acted.set(&site);
+        let sid = site.id.clone();
+        let result = match action {
+            "sites" => to_json(ctx.wp.network_sites(sid).await?)?,
+            "convert" => { let m = str_field(args, "mode", action)?.to_string(); ctx.ops.multisite_convert(sid, m.clone()).await?; json!({ "converted": m }) }
+            "site_create" => { let slug = str_field(args, "slug", action)?.to_string(); ctx.wp.network_site_create(sid, slug.clone()).await?; json!({ "created": slug }) }
+            _ => { let b = str_field(args, "blog_id", action)?.to_string(); ctx.wp.network_site_delete(sid, b.clone()).await?; json!({ "deleted": b }) }
+        };
+        Ok(with_consent(json!({ "domain": site.domain, "action": action, "result": result }), auto))
+    })
+}
+
+/// The raw runner on the USER's site — `scratch::wp_run`'s mechanism (the same
+/// resolver, the same target screen, the same runner, the same scrubber; none
+/// copied) behind the `run` witness instead of the scratch one.
+///
+/// Order matters and is the same as the scratch tool's: gate, then the target
+/// screen BEFORE anything is resolved or spawned, then the resolver (which can
+/// DOWNLOAD on first use — minutes), then the re-assert, then the run.
+fn site_wp_run<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTarget) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let id = args.get("site_id").and_then(Value::as_str).ok_or_else(|| Error::Other("site_wp_run needs a `site_id`.".into()))?;
+        let argv = super::scratch::wp_argv(args)?;
+        wp_precheck(&ctx, id, "site_wp_run")?;
+        let wanted = format!("run `wp {}` in it", argv.iter().take(2).cloned().collect::<Vec<_>>().join(" "));
+        let claimed = ctx.claim::<scope::Run>(Some(id), &wanted)?;
+        let site = claimed.granted.site().cloned().ok_or_else(|| Error::Other("site_wp_run needs a site.".into()))?;
+        acted.set(&site);
+        crate::core::scratch::refuse_wp_target_override(&argv)?;
+        let docroot = std::path::PathBuf::from(&site.path);
+        let (php_bin, wp_phar) = super::scratch::resolve_wp_tools(ctx.state, &site.php_version).await?;
+        if !ctx.still_granted(&claimed.granted)? {
+            return Err(Error::Other(format!("the `run` permission on `{}` was revoked before the command ran — nothing was run.", site.domain)));
+        }
+        let printed = argv.join(" ");
+        let timeout = std::time::Duration::from_secs(crate::core::scratch::WP_RUN_TIMEOUT_SECS);
+        let out = crate::commands::wordpress::wp_blocking(move || crate::core::wordpress::wp_run_raw(&php_bin, &wp_phar, &docroot, &argv, timeout)).await?;
+        let known = super::view::KnownPaths::for_site(ctx.state.platform.paths(), &site.path);
+        let (stdout, cut_out) = super::scratch::agent_stream(&out.stdout, &known);
+        let (stderr, cut_err) = super::scratch::agent_stream(&out.stderr, &known);
+        let succeeded = out.status.success();
+        let exit_code = out.status.code();
+        let mut detail = if succeeded {
+            format!("`wp {printed}` ran in `{}` and succeeded.", site.domain)
+        } else {
+            format!("`wp {printed}` FAILED in `{}` (exit {}). What WP-CLI said is in `stderr`.", site.domain, exit_code.map_or_else(|| "killed by a signal".to_string(), |c| c.to_string()))
+        };
+        if cut_out || cut_err {
+            detail.push_str(&format!(" The output was longer than {} KB and has been cut — run a narrower command if you need the rest.", super::scratch::WP_OUTPUT_CAP / 1024));
+        }
+        if let Some(tell) = crate::core::wp_packages::explain_missing_command_here(&stderr) {
+            detail.push(' ');
+            detail.push_str(&super::view::scrub_log_line(&tell, &known));
+        }
+        let view = super::scratch::AgentWpRun { succeeded, exit_code, stdout, stderr, truncated: cut_out || cut_err, detail, note: super::scratch::WP_RUN_NOTE };
+        Ok(with_consent(to_json(view)?, claimed.auto_granted))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1878,6 +2102,38 @@ mod tests {
         fn core_switch_version<'a>(&'a self, id: String, version: String) -> OpFuture<'a, Result<crate::core::wordpress::WpCoreSwitch>> {
             self.calls.lock().unwrap().push(format!("wp core_switch {id} {version}"));
             Box::pin(async move { Ok(crate::core::wordpress::WpCoreSwitch { version, db_update_required: true }) })
+        }
+        fn db_export<'a>(&'a self, id: String) -> OpFuture<'a, Result<String>> {
+            self.calls.lock().unwrap().push(format!("wp db_export {id}"));
+            Box::pin(async { Ok("/Users/somebody/Downloads/blog.rex-2026-09-03.sql".into()) })
+        }
+        fn content_export<'a>(&'a self, id: String) -> OpFuture<'a, Result<Vec<String>>> {
+            self.calls.lock().unwrap().push(format!("wp content_export {id}"));
+            Box::pin(async { Ok(vec!["/Users/somebody/Downloads/blog.wordpress.2026-09-03.000.xml".into()]) })
+        }
+        fn search_replace<'a>(&'a self, id: String, from: String, to: String, dry_run: bool) -> OpFuture<'a, Result<u64>> {
+            self.calls.lock().unwrap().push(format!("wp search_replace {id} {from} {to} {dry_run}"));
+            Box::pin(async { Ok(7) })
+        }
+        fn db_import<'a>(&'a self, id: String, path: String) -> OpFuture<'a, Result<()>> {
+            self.calls.lock().unwrap().push(format!("wp db_import {id} {path}"));
+            Box::pin(async { Ok(()) })
+        }
+        fn site_reset<'a>(&'a self, id: String) -> OpFuture<'a, Result<()>> {
+            self.calls.lock().unwrap().push(format!("wp site_reset {id}"));
+            Box::pin(async { Ok(()) })
+        }
+        fn network_sites<'a>(&'a self, id: String) -> OpFuture<'a, Result<Vec<crate::core::wordpress::WpNetworkSite>>> {
+            self.calls.lock().unwrap().push(format!("wp network_sites {id}"));
+            Box::pin(async { Ok(vec![]) })
+        }
+        fn network_site_create<'a>(&'a self, id: String, slug: String) -> OpFuture<'a, Result<()>> {
+            self.calls.lock().unwrap().push(format!("wp network_site_create {id} {slug}"));
+            Box::pin(async { Ok(()) })
+        }
+        fn network_site_delete<'a>(&'a self, id: String, blog_id: String) -> OpFuture<'a, Result<()>> {
+            self.calls.lock().unwrap().push(format!("wp network_site_delete {id} {blog_id}"));
+            Box::pin(async { Ok(()) })
         }
     }
 
@@ -2382,5 +2638,65 @@ mod tests {
         let calls = ops.calls.lock().unwrap().clone();
         assert!(calls.iter().any(|c| c == &format!("wp user delete {} 5 None true", site.id)), "{calls:?}");
         assert!(calls.iter().any(|c| c.starts_with(&format!("wp user create {} bob b@x.rex editor ", site.id))), "{calls:?}");
+    }
+
+    /// **`wp_data`, `wp_network` and `site_wp_run`: a dry run manages and a live
+    /// one destroys; exported files are named, never located; the raw runner
+    /// needs `run` and screens the target BEFORE anything is resolved.**
+    #[tokio::test]
+    async fn wp_data_network_and_the_raw_runner_gate_per_action_and_name_no_path() {
+        assert_eq!(wp_data_scope("search_replace", true), Some(Scope::Manage));
+        assert_eq!(wp_data_scope("search_replace", false), Some(Scope::Destroy));
+        assert_eq!(wp_data_scope("db_import", true), Some(Scope::Destroy), "dry_run means nothing to an import");
+        assert_eq!(wp_data_scope("reset", true), Some(Scope::Destroy));
+        assert_eq!(wp_network_scope("sites"), Some(Scope::Read));
+        assert_eq!(wp_network_scope("site_delete"), Some(Scope::Destroy));
+
+        let state = app_state();
+        switch_on(&state);
+        let ops = FakeOps::default();
+        let acted = super::super::feed::ActedTarget::default();
+        let ctx = UserCtx::new(&state, &ops, &ops, "claude-code");
+        let site = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "blog.rex", SiteOrigin::User);
+        {
+            let conn = state.db.lock().unwrap();
+            store::insert_site(&conn, &site).unwrap();
+            store::grant_agent_site(&conn, "g1", Some(&site.id), "claude-code", "manage", 7, false, false).unwrap();
+        }
+        let v = wp_data(ctx, &json!({ "site_id": site.id, "action": "db_export" }), &acted).await.unwrap();
+        assert_eq!(v["result"]["file"], "blog.rex-2026-09-03.sql");
+        assert!(!v.to_string().contains("/Users/"), "the Downloads path stayed inside rexenv: {v}");
+        let v = wp_data(ctx, &json!({ "site_id": site.id, "action": "search_replace", "from": "http://old", "to": "https://new", "dry_run": true }), &acted).await.unwrap();
+        assert_eq!(v["result"]["replacements"], 7);
+        let err = wp_data(ctx, &json!({ "site_id": site.id, "action": "search_replace", "from": "a", "to": "b", "dry_run": false }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("`destroy`"), "a live replace destroys: {err}");
+        assert!(asks(&state).iter().any(|r| r.wanted.contains("REPLACE `a` with `b`")));
+        let err = wp_data(ctx, &json!({ "site_id": site.id, "action": "db_import", "path": "/tmp/dump.sql" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("`destroy`"), "{err}");
+        assert!(asks(&state).iter().any(|r| r.wanted.contains("`dump.sql`") && !r.wanted.contains("/tmp")), "the ask names the file, not the path: {:?}", asks(&state));
+
+        let err = wp_network(ctx, &json!({ "site_id": site.id, "action": "convert", "mode": "mesh" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("not a multisite mode"), "{err}");
+        let v = wp_network(ctx, &json!({ "site_id": site.id, "action": "convert", "mode": "subdomain" }), &acted).await.unwrap();
+        assert_eq!(v["result"]["converted"], "subdomain");
+        assert_eq!(ops.converted.lock().unwrap().len(), 1, "convert goes through the app's SHARE-GUARDED command");
+        let v = wp_network(ctx, &json!({ "site_id": site.id, "action": "sites" }), &acted).await.unwrap();
+        assert_eq!(v["action"], "sites");
+        assert!(wp_network(ctx, &json!({ "site_id": site.id, "action": "site_delete", "blog_id": "3" }), &acted).await.is_err());
+
+        // The raw runner: `run` is its own scope — manage does not reach it —
+        // and the target screen fires BEFORE any binary is resolved (the stub
+        // platform would panic on `binaries()`; it is never reached).
+        let err = site_wp_run(ctx, &json!({ "site_id": site.id, "args": ["plugin", "list"] }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("`run`"), "{err}");
+        assert!(asks(&state).iter().any(|r| r.scope == Scope::Run && r.wanted.contains("wp plugin list")));
+        {
+            let conn = state.db.lock().unwrap();
+            store::grant_agent_site(&conn, "g2", Some(&site.id), "claude-code", "run", 7, false, false).unwrap();
+        }
+        let err = site_wp_run(ctx, &json!({ "site_id": site.id, "args": ["plugin", "list", "--path=/etc"] }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("--path"), "the target screen, before resolution: {err}");
+        let err = site_wp_run(ctx, &json!({ "site_id": site.id, "args": "plugin list" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("array"), "{err}");
     }
 }
