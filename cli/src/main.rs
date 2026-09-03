@@ -2636,7 +2636,7 @@ fn cmd_wp(words: &[String], json_output: bool) {
             println!("✓ {}", r["message"].as_str().unwrap_or("core updated"));
         }
         (Some("user"), Some("delete")) => {
-            let Some(who) = rest.first().filter(|w| !w.starts_with("--")) else {
+            let Some(who) = rest.first() else {
                 eprintln!(
                     "rex: usage: rex wp <domain> user delete <login|id> --reassign <login|id> \
                      | --delete-posts"
@@ -2660,20 +2660,33 @@ fn cmd_wp(words: &[String], json_output: bool) {
                 })
             };
             let user_id = resolve(who);
-            let reassign_to = rest
-                .iter()
-                .position(|w| w == "--reassign")
-                .and_then(|i| rest.get(i + 1))
-                .map(|w| resolve(w));
-            let delete_posts = rest.iter().any(|w| w == "--delete-posts");
+            // From `words`, NOT `rest`: `rest` is built by filtering every `--`
+            // word out (see the top of this fn), so searching it for a flag
+            // matches nothing, ever. That made both forks unreadable — the
+            // refusal below fired on EVERY call and `wp user delete` shipped
+            // uncompletable. The L0 tests held the server's rule and the
+            // resolver; nothing exercised this parse, which is what the live
+            // leg was for.
+            let reassign_to = flag_value(words, "--reassign").map(|w| resolve(&w));
+            let delete_posts = words.iter().any(|w| w == "--delete-posts");
             // The fork is the confirmation: deleting a user decides what happens
             // to their POSTS, and neither answer is safe to assume. Refusing here
             // keeps the round trip honest, and the server refuses again anyway.
             if reassign_to.is_some() == delete_posts {
-                eprintln!(
-                    "rex: say what happens to {who}'s posts: `--reassign <login|id>` to keep \
-                     them under another account, or `--delete-posts` to delete them too"
-                );
+                // BOTH is a different mistake from NEITHER, and one message for
+                // the two sent a user who had over-specified looking for the
+                // flag they had already typed. Found live, 3 Sep 2026.
+                if delete_posts {
+                    eprintln!(
+                        "rex: `--reassign` and `--delete-posts` are the two answers to the same \
+                         question about {who}'s posts — pick one"
+                    );
+                } else {
+                    eprintln!(
+                        "rex: say what happens to {who}'s posts: `--reassign <login|id>` to keep \
+                         them under another account, or `--delete-posts` to delete them too"
+                    );
+                }
                 exit(1);
             }
             let r = request(
@@ -4057,6 +4070,73 @@ mod tests {
         for f in known {
             assert!(read.contains(&f.to_string()), "`{f}` is accepted but nothing reads it");
         }
+    }
+
+    /// **No flag is ever looked for in a list that has flags filtered out.**
+    ///
+    /// `cmd_wp` builds `rest` as the POSITIONAL words —
+    /// `words.iter().skip(3).filter(|w| !w.starts_with("--"))` — so searching
+    /// `rest` for a `--flag` matches nothing, ever. It is not a subtle bug: the
+    /// branch is dead, and whatever it guards takes its default forever.
+    ///
+    /// It shipped. `wp user delete` read BOTH of its forks out of `rest`, so
+    /// `--reassign` and `--delete-posts` were invisible, the "say what happens
+    /// to their posts" refusal fired on every call, and the verb could not be
+    /// completed by any combination of arguments. L0 held the server's rule and
+    /// the login-or-id resolver; nothing exercised the parse. A live run on
+    /// 3 Sep 2026 found it in four commands.
+    ///
+    /// One case would be a regression test. This is the class: a filtered list
+    /// and a flag lookup must never meet, in any command.
+    #[test]
+    fn a_flag_is_never_looked_for_in_the_positional_list() {
+        const ME: &str = include_str!("main.rs");
+
+        // Every name bound to a `--`-filtered collection.
+        let mut filtered: Vec<&str> = Vec::new();
+        for line in ME.lines() {
+            if !line.contains("!w.starts_with(\"--\")") {
+                continue;
+            }
+            if let Some(name) = line.split("let ").nth(1).and_then(|r| {
+                r.split([':', ' ', '=']).next()
+            }) {
+                if !name.is_empty() {
+                    filtered.push(name);
+                }
+            }
+        }
+        assert!(
+            !filtered.is_empty(),
+            "no `--`-filtered list found — the scan is looking at the wrong shape, and a green \
+             here would mean nothing"
+        );
+
+        let mut dead: Vec<String> = Vec::new();
+        for (i, line) in ME.lines().enumerate() {
+            let code = line.split("//").next().unwrap_or("");
+            if !code.contains("\"--") {
+                continue;
+            }
+            for name in &filtered {
+                for probe in [
+                    format!("{name}.iter()"),
+                    format!("{name}.contains("),
+                    format!("{name}.first()"),
+                ] {
+                    if code.contains(&probe) {
+                        dead.push(format!("line {}: {}", i + 1, code.trim()));
+                    }
+                }
+            }
+        }
+        assert!(
+            dead.is_empty(),
+            "a flag is being looked for in a list the `--` words were filtered OUT of, so the \
+             branch is dead and whatever it guards keeps its default forever:\n  {}\nRead the \
+             flag from `words`.",
+            dead.join("\n  ")
+        );
     }
 
 }

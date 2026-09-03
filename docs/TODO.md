@@ -1894,9 +1894,8 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   example harness guard-blocks; fold into the next deep test): `php
   install/uninstall`, `php settings set`, `db versions --set`, `site
   server/domain/move`, `mail clear`, `tunnel start`, `wp core update/switch`,
-  `site create --starter-db` (shipped 3 Sep 2026, ledger #462: the refusals are
-  L0 over all eight shapes; the SEED — a real `starter_items` table, a `db.php`,
-  and `starterDb` true in the reply — is `create_site`'s live path and unrun) —
+  `site create --starter-db` (**RUN 3 Sep 2026** — the seed is real: table
+  `starter_items`, a `db.php`, the page renders "connected" and one row) —
   plus the packaged-GUI walks still noted inside their shipped entries: MariaDB
   site from the dialog, Apache site in-app, DB version switch from the Databases
   row, Settings CLI-install card, ref-picker on a real many-branch repo, wp.org

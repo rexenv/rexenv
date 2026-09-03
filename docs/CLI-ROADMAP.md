@@ -254,11 +254,22 @@ What remains:
    guard-blocked in the example harness — exercise each once against the
    running app): `php install/uninstall`, `php settings set`, `db versions
    --set`, `site server/domain/move`, `mail clear`, `tunnel start`,
-   `wp core update/switch`, **`site create --starter-db`** (shipped 3 Sep 2026,
-   #462 — the REFUSALS are L0-proven over all eight shapes; that a real
-   `starter_items` table and `db.php` actually land, and that the reply's
-   `starterDb` comes back true, is `create_site`'s live path and unrun),
-   and **`site restart`** (shipped 2 Sep 2026 with L0
+   `wp core update/switch`, and — until 3 Sep 2026 — the whole 2 Sep set.
+   **RUN LIVE 3 Sep 2026** against the dev app (`cddf821`) on two scratch sites,
+   deleted after with no residue, and the user's own 11 sites 200 throughout:
+   `site create --starter-db` (#462 — the seed is REAL: `php_livetest_rex`,
+   table `starter_items`, the page renders "connected" and one seeded row),
+   streamed `site create` (#447 — four phases, 36 → 36 → 78 → 89, one envelope
+   last), `site restart` (#444 — the default-site outcome, naming the shared
+   php-8.3 pool and the 18 sites `--pool` would affect; **proven by pid**: fpm
+   stayed 1591, nginx stayed 61496, so nothing was bounced uninvited),
+   `site domains --add/--remove` (the alias served HTTPS 200 and the cert was
+   REISSUED — SAN carried `alias-livetest.rex` — and stopped being served on
+   removal), `service restart nginx|edge` (#445 — nginx pid 61496 → 19165, a
+   true restart; the edge reloaded, not restarted; `start`/`stop` of a web-tier
+   name refused by name), and `wp user delete` (#446/#464 — **which the run
+   found UNCOMPLETABLE**, see the row).
+   Still owed: **`site restart`**'s other two outcomes (shipped 2 Sep 2026 with L0
    only: the backend leg needs a real FrankenPHP/Apache site stopped and
    respawned, and the refusal leg needs an ADOPTED backend, neither of which a
    unit test can hold).
