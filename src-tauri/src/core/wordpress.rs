@@ -670,6 +670,42 @@ pub fn active_stylesheet(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Resu
 
 /// Run a WP-CLI command scoped to a docroot (`--path=<docroot>` is appended for
 /// the caller) and return trimmed stdout, erroring (with stderr) on non-zero exit.
+/// Run a PHP script inside WordPress via `wp eval-file -`, the script arriving
+/// on STDIN. The channel that keeps a SECRET off the command line: `ps` shows
+/// argv to every user on the machine, and `--prompt=<param>` — wp-cli's own
+/// answer — echoes the resolved command, secret included, to STDOUT (measured
+/// 3 Sep 2026 against the bundled 2.12.0 phar), which is a log line waiting to
+/// happen. A script on stdin is read by nobody but the phar.
+pub fn wp_run_script(php_bin: &Path, wp_phar: &Path, docroot: &Path, script: &str) -> Result<String> {
+    use std::io::Write;
+    let path = format!("--path={}", docroot.display());
+    let mut cmd = wp_command(php_bin, wp_phar);
+    cmd.args(["eval-file", "-", &path]);
+    cmd.stdin(std::process::Stdio::piped());
+    cmd.stdout(std::process::Stdio::piped());
+    cmd.stderr(std::process::Stdio::piped());
+    let mut child = cmd.spawn()?;
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(script.as_bytes())?;
+    }
+    let out = cut_post_run_tail(child.wait_with_output()?);
+    if out.status.success() {
+        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    } else {
+        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        Err(Error::Other(format!("wp eval-file failed (exit {:?}): {stderr}", out.status.code())))
+    }
+}
+
+/// The script that sets a user's password. The password travels base64 so no
+/// byte of it can end a PHP string; `wp_set_password` is what wp-cli's own
+/// `user update --user_pass` calls.
+pub fn set_password_script(user_id: u64, password: &str) -> String {
+    use base64::Engine as _;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(password.as_bytes());
+    format!("<?php wp_set_password(base64_decode('{b64}'), {user_id});\n")
+}
+
 pub fn wp_run(php_bin: &Path, wp_phar: &Path, docroot: &Path, args: &[&str]) -> Result<String> {
     let path = format!("--path={}", docroot.display());
     let mut full: Vec<&str> = Vec::with_capacity(args.len() + 1);
@@ -1769,18 +1805,23 @@ pub fn user_create(
     password: &str,
 ) -> Result<String> {
     let role_arg = format!("--role={role}");
-    // Explicit password (local dev default: a known throwaway) instead of
-    // wp-cli's generated one that nobody ever sees. Passed as a single argv
-    // element — no shell, no interpolation.
-    let pass_arg = format!("--user_pass={password}");
-    // Flags first, then `--`, then the positionals: a login/email starting with
-    // `-` is a positional, never a wp-cli flag (e.g. can't smuggle --role=admin).
-    wp_run(
+    // Create with wp-cli's own generated password (never seen, never on argv),
+    // then SET the real one over stdin — `--user_pass=` put the password on a
+    // command line `ps` shows to every user on the machine.
+    // Flags first, then the positionals: a login/email starting with `-` is a
+    // positional, never a wp-cli flag (e.g. can't smuggle --role=admin).
+    let id = wp_run(
         php_bin,
         wp_phar,
         docroot,
-        &["user", "create", &role_arg, &pass_arg, "--porcelain", login, email],
-    )
+        &["user", "create", &role_arg, "--porcelain", login, email],
+    )?;
+    let user_id: u64 = id
+        .trim()
+        .parse()
+        .map_err(|_| Error::Other(format!("wp user create returned no id: {id:?}")))?;
+    wp_run_script(php_bin, wp_phar, docroot, &set_password_script(user_id, password))?;
+    Ok(id)
 }
 
 /// Set an existing user's password (`wp user update --user_pass`). wp-cli
@@ -1795,13 +1836,9 @@ pub fn user_set_password(
     if password.is_empty() {
         return Err(Error::Other("password must not be empty".into()));
     }
-    let pass_arg = format!("--user_pass={password}");
-    wp_run(
-        php_bin,
-        wp_phar,
-        docroot,
-        &["user", "update", &user_id.to_string(), &pass_arg],
-    )
+    // Over stdin, never argv — see `wp_run_script`.
+    wp_run_script(php_bin, wp_phar, docroot, &set_password_script(user_id, password))?;
+    Ok(format!("Success: Updated user {user_id}."))
 }
 
 /// Stock roles assignable from the UI. Whitelisted like [`DEBUG_FLAGS`]: the
@@ -3271,7 +3308,11 @@ pub fn install_wordpress(php_bin: &Path, wp_phar: &Path, opts: &WpInstall) -> Re
         let url = format!("--url={}", opts.url);
         let title = format!("--title={}", opts.title);
         let au = format!("--admin_user={}", opts.admin_user);
-        let ap = format!("--admin_password={}", opts.admin_password);
+        // A THROWAWAY on argv, the real password over stdin right after: `core
+        // install` has no channel but argv (its `--prompt` echoes the resolved
+        // command to stdout), so what `ps` can see is a random string that is
+        // replaced before this function returns.
+        let ap = format!("--admin_password={}", throwaway_password());
         let ae = format!("--admin_email={}", opts.admin_email);
         wp_cli_checked(
             php_bin,
@@ -3281,8 +3322,49 @@ pub fn install_wordpress(php_bin: &Path, wp_phar: &Path, opts: &WpInstall) -> Re
             ],
             None,
         )?;
+        wp_run_script(php_bin, wp_phar, opts.docroot, &set_password_script(1, opts.admin_password))?;
     }
     Ok(())
+}
+
+/// A random password that exists only to be replaced — see `install_wordpress`.
+pub fn throwaway_password() -> String {
+    uuid::Uuid::new_v4().simple().to_string()
+}
+
+#[cfg(test)]
+mod password_channel_tests {
+    use super::*;
+
+    /// The password never appears in the script as itself: base64 means no
+    /// byte of it can close the PHP string, and the script is the ONLY place it
+    /// travels — nothing here builds a `--user_pass=` or `--admin_password=`
+    /// with the real value (the throwaway on argv is a fresh random string).
+    #[test]
+    fn the_password_rides_the_script_encoded_and_nothing_puts_it_on_argv() {
+        let script = set_password_script(7, "p'a\"s$s\\w{o}rd\n");
+        assert!(script.starts_with("<?php wp_set_password(base64_decode('"));
+        assert!(script.contains("), 7);"));
+        assert!(!script.contains("p'a\"s"), "the raw password is in the script: {script}");
+        let src = crate::core::copy_scan::production_source(include_str!("wordpress.rs"));
+        // (Built in two halves: a lone brace inside a string literal would
+        // unbalance the test-module cut every source guard relies on.)
+        let user_pass_argv = format!("--user_pass={}", char::from(123u8));
+        assert!(
+            !src.contains(&user_pass_argv),
+            "a `--user_pass=` with a real value is back on argv — `ps` shows it to every user"
+        );
+        assert_eq!(
+            src.matches("--admin_password={}").count(),
+            1,
+            "core install's argv password must be the throwaway, in exactly one place"
+        );
+        assert!(
+            src.contains("--admin_password={}\", throwaway_password())"),
+            "core install's argv password is not the throwaway"
+        );
+        assert_ne!(throwaway_password(), throwaway_password());
+    }
 }
 
 /// One-click install for a provisioned site (Phase 3 §1.2): fill the install
@@ -5422,9 +5504,10 @@ mod packages_pin_guards {
             );
         }
         assert_eq!(
-            checked, 3,
-            "the scan found {checked} captured spawn sites (expected 3: wp_cli, wp_cli_timed, \
-             wp_run_raw) — either a site was added without a cut, or the scan has stopped working"
+            checked, 4,
+            "the scan found {checked} captured spawn sites (expected 4: wp_cli, wp_cli_timed, \
+             wp_run_raw, wp_run_script) — either a site was added without a cut, or the scan \
+             has stopped working"
         );
     }
 

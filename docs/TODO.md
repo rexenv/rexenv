@@ -35,7 +35,10 @@ paying for anyway: **the tick belongs in the commit that does the work.**
 
 ## Now — actionable code/test work
 
-- [ ] **WordPress passwords ride wp-cli argv** — found 3 Sep 2026 while narrowing ledger
+- [x] **WordPress passwords ride wp-cli argv** ✓ 3 Sep 2026 — live leg run against the bundled
+  wp-cli 2.12.0: `--prompt` reads a pipe but ECHOES the command with the secret to stdout;
+  `wp eval-file -` does not. Shipped on that channel (`wp_run_script`), ledger #123.
+  Original row, kept for the reasoning: found 3 Sep 2026 while narrowing ledger
   #123 (which is the DATABASE password, and true). `--user_pass=` in `user_create` /
   `user_set_password` and `--admin_password=` in `core install` (`core/wordpress.rs`,
   `commands/site_provision.rs`) are on a command line `ps` shows to every user on the

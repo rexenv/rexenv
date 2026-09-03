@@ -847,7 +847,16 @@ pub fn run() {
             // hidden window would leave a menu-bar icon whose every action
             // fails for reasons nobody can read. Shown even at login.
             if hidden_launch && init_error.is_some() {
-                show_main_window(app.handle());
+                // DEFERRED past `setup`: the policy above is Accessory for a
+                // hidden launch, and flipping to Regular from inside `setup`
+                // is the mid-launch switch macOS does not reliably give a dock
+                // tile for (7723eb9). Shown from a task instead, the same
+                // runtime transition `rex open` makes — measured to work.
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+                    show_main_window(&handle);
+                });
             }
             app.manage(commands::system::InitError(init_error));
             // Named by TYPE, not just by binding: the guard in `commands::system`
@@ -1051,6 +1060,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::system::app_info,
             commands::system::repair_resolver,
+            commands::system::remove_resolver,
             commands::system::init_error,
             commands::system::startup_notices,
             commands::system::global_status,

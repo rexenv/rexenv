@@ -21,6 +21,15 @@
 //! [`crate::core::tunnels::GUARD_FLAG`], the same self-exec shape the DNS agent
 //! uses.
 //!
+//! **The registration gap, named.** The parent pid arrives on argv; between
+//! rexenv reading its own pid and this guard's `kevent`, rexenv could die and
+//! the kernel recycle the number. Registration then succeeds against a
+//! STRANGER, and the guard sleeps until that process exits — the share stays
+//! public for however long that is. `still_ours` keeps the eventual kill safe,
+//! not timely. The window is milliseconds and macOS allocates pids sequentially,
+//! so it is recorded here rather than closed (closing it needs the parent's
+//! start time on argv and a re-check at registration).
+//!
 //! **Why kqueue and not a poll.** `EVFILT_PROC`/`NOTE_EXIT` is the kernel telling
 //! us the process is gone; a poll is a timer that pretends to be an event and
 //! leaves a window sized by its own interval. The guard also watches the CHILD, so

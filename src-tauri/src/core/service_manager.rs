@@ -1102,7 +1102,11 @@ impl ServiceManager {
                 ))
             }
             WebTarget::Edge => {
-                if matches!(self.caddy, CaddyHandle::Stopped) {
+                // Ownership AND liveness: a handle whose process has died is
+                // not a running edge, and `proxy::reload` on a corpse would
+                // report the reload's failure as the outcome rather than the
+                // truth ("not running").
+                if matches!(self.caddy, CaddyHandle::Stopped) || !proxy::admin_alive(platform) {
                     return Ok((WebRestartOutcome::NotRunning, Vec::new()));
                 }
                 let bins = self.bins()?;

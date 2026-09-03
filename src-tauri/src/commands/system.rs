@@ -141,6 +141,37 @@ pub fn repair_resolver(state: State<'_, AppState>, tld: String) -> Result<String
     Ok(tld)
 }
 
+/// Remove the OS resolver file for a TLD NO site answers on any more — the
+/// counterpart of `repair_resolver`, and just as scoped: a root-owned file under
+/// `/etc/resolver` is removed only when it is ours (never Valet's or Herd's),
+/// only when nothing here uses the TLD, and never for the backbone `.rex`.
+/// Nothing removes one automatically — deleting a site or dropping an extra
+/// domain must not raise a password prompt for housekeeping — so this is the
+/// explicit verb (`rex tld --remove <tld>`).
+#[tauri::command]
+pub fn remove_resolver(state: State<'_, AppState>, tld: String) -> Result<bool> {
+    let tld = tld.trim().trim_start_matches('.').to_ascii_lowercase();
+    if tld == core::tld::BACKBONE_TLD {
+        return Err(Error::Other(format!(
+            ".{tld} is rexenv's backbone TLD — its resolver is always installed"
+        )));
+    }
+    let in_use = {
+        let conn = state
+            .db
+            .lock()
+            .map_err(|_| Error::Other("database lock poisoned".into()))?;
+        core::dns::tlds_in_use(&conn)
+    };
+    if in_use.contains(&tld) {
+        return Err(Error::Other(format!(
+            "a site still answers on .{tld} — remove or rename that site's names first \
+             (`rex site domains <site>` lists them)"
+        )));
+    }
+    core::dns::remove_resolver(state.platform.as_ref(), &tld, core::dns::DEFAULT_DNS_PORT)
+}
+
 /// Startup init outcome, ALWAYS managed — unlike `AppState`, which is absent when
 /// init fails. `Some(msg)` = a fatal DB/CA failure the frontend should surface instead
 /// of driving the app (task 1.2 / H3). Reading it can never panic.

@@ -1686,6 +1686,12 @@ where
             let tld = commands::system::repair_resolver(state.clone(), need_str(&args, "tld", cmd)?)?;
             Ok(json!({ "tld": tld }))
         }
+        "tld.remove" => {
+            let state = app_state(app)?;
+            let tld = need_str(&args, "tld", cmd)?;
+            let removed = commands::system::remove_resolver(state.clone(), tld.clone())?;
+            Ok(json!({ "tld": tld, "removed": removed }))
+        }
         "version" => Ok(to_value(&commands::system::app_info())?),
         // Bring the app's window up. Two callers, and the SECOND is why this
         // exists: `rex open` (a window is one command away from a terminal, now

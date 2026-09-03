@@ -277,7 +277,9 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   the narrow cert was judged covered forever; fixed 3 Sep 2026). Anything that
   RECORDS an alias outside the add command (the Valet import) must refresh the
   manager's alias mirror and reload, because configs regenerate from the
-  mirror, not the table.
+  mirror, not the table. A resolver file is never removed automatically when the
+  last name on a TLD goes (housekeeping must not prompt for a password); `rex tld
+  --remove <tld>` is the explicit, ours-only, not-in-use-only verb (3 Sep 2026).
   An extra domain on a WordPress site REACHES it and then redirects to the
   primary — WordPress owns its canonical address (`siteurl`), and rexenv does not
   rewrite it. The card and `rex site domains` say so rather than leaving the

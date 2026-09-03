@@ -151,7 +151,7 @@ COMMANDS:
   mail clear    Delete ALL caught messages (--yes to skip the prompt)
   tunnel list | tunnel start|stop <domain>
                 Public cloudflared tunnels (start prints the public URL)
-  tld [--set <tld>] [--repair <tld>]
+  tld [--set <tld>] [--repair <tld>] [--remove <tld>]
                 Default TLD for new sites; --repair puts back the OS resolver
                 file for a TLD your sites answer on (what `doctor` names)
   version       App + CLI versions (needs the app; -v/--version works without)
@@ -2261,6 +2261,21 @@ fn cmd_tld(words: &[String], json_output: bool) {
             r["tld"].as_str().unwrap_or(&tld)
         );
     }
+    // `--remove` takes a resolver file back OUT — ours only, and only for a
+    // TLD no site answers on. Nothing does this automatically (a site delete
+    // must not raise a password prompt for housekeeping), so it is a verb.
+    if let Some(tld) = flag_value(words, "--remove") {
+        let r = request("tld.remove", json!({ "tld": tld }));
+        if json_output {
+            return print_json(&r);
+        }
+        let tld = tld.trim_start_matches('.');
+        return if r["removed"] == json!(true) {
+            println!("✓ removed the resolver file for .{tld} — nothing here answered on it")
+        } else {
+            println!("nothing to remove — there was no resolver file for .{tld}")
+        };
+    }
     if let Some(tld) = flag_value(words, "--set") {
         let r = request("tld.set", json!({ "tld": tld }));
         if json_output {
@@ -3245,6 +3260,11 @@ mod tests {
             .expect("cmd_tld");
         let repair = tld.find("\"--repair\"").expect("`rex tld --repair` is gone");
         let set = tld.find("\"--set\"").expect("`rex tld --set` is gone");
+        assert!(
+            tld.contains("\"--remove\"") && tld.contains("tld.remove"),
+            "`rex tld --remove` is gone — a resolver file for a TLD nothing uses then has no \
+             way out but hand-editing /etc/resolver as root"
+        );
         assert!(
             repair < set,
             "`--set` is matched before `--repair`; if either ever shares a code path the \

@@ -272,7 +272,7 @@ const LINK = "https://example.test/a//b";
             let Ok(entries) = std::fs::read_dir(dir) else { return };
             for e in entries.flatten() {
                 let p = e.path();
-                if p.is_dir() {
+                if p.symlink_metadata().is_ok_and(|m| m.is_dir()) {
                     walk(&p, known);
                     continue;
                 }
@@ -378,7 +378,7 @@ const LINK = "https://example.test/a//b";
             let Ok(entries) = std::fs::read_dir(dir) else { return };
             for e in entries.flatten() {
                 let p = e.path();
-                if p.is_dir() {
+                if p.symlink_metadata().is_ok_and(|m| m.is_dir()) {
                     walk(&p, out, root);
                     continue;
                 }
@@ -544,7 +544,7 @@ const LINK = "https://example.test/a//b";
             let Ok(entries) = std::fs::read_dir(dir) else { return };
             for e in entries.flatten() {
                 let p = e.path();
-                if p.is_dir() {
+                if p.symlink_metadata().is_ok_and(|m| m.is_dir()) {
                     walk(&p, skip, out);
                     continue;
                 }
@@ -620,7 +620,7 @@ const LINK = "https://example.test/a//b";
             let Ok(entries) = std::fs::read_dir(dir) else { return };
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.is_dir() {
+                if path.symlink_metadata().is_ok_and(|m| m.is_dir()) {
                     walk(&path, banned, out);
                     continue;
                 }
@@ -738,7 +738,7 @@ const LINK = "https://example.test/a//b";
             let Ok(entries) = std::fs::read_dir(dir) else { return };
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.is_dir() {
+                if path.symlink_metadata().is_ok_and(|m| m.is_dir()) {
                     walk(&path, out);
                     continue;
                 }
@@ -943,7 +943,7 @@ const LINK = "https://example.test/a//b";
             let Ok(entries) = std::fs::read_dir(dir) else { return };
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.is_dir() {
+                if path.symlink_metadata().is_ok_and(|m| m.is_dir()) {
                     walk(&path, prefix, out);
                     continue;
                 }
@@ -1032,7 +1032,7 @@ const LINK = "https://example.test/a//b";
             let Ok(entries) = std::fs::read_dir(dir) else { return };
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.is_dir() {
+                if path.symlink_metadata().is_ok_and(|m| m.is_dir()) {
                     walk(&path, out);
                     continue;
                 }
@@ -1173,7 +1173,7 @@ const LINK = "https://example.test/a//b";
             let Ok(entries) = std::fs::read_dir(dir) else { return };
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.is_dir() {
+                if path.symlink_metadata().is_ok_and(|m| m.is_dir()) {
                     walk(&path, out);
                     continue;
                 }

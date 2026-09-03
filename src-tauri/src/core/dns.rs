@@ -284,6 +284,25 @@ pub fn configure_resolver(platform: &dyn Platform, tld: &str, port: u16) -> Resu
     Ok(())
 }
 
+/// Remove OUR resolver file for a TLD — a root op behind a privileged prompt,
+/// and only when the file is exactly ours: a foreign file is never touched
+/// (the same rule the teardown sweep keeps), and an absent one is a no-op.
+/// The caller decides whether the TLD may go (nothing answers on it, and it is
+/// not the backbone); this only decides whether the FILE is ours to remove.
+pub fn remove_resolver(platform: &dyn Platform, tld: &str, port: u16) -> Result<bool> {
+    match resolver_owner(platform, tld, port) {
+        ResolverOwner::Absent => Ok(false),
+        ResolverOwner::Foreign { .. } => {
+            Err(foreign_resolver_error(&platform.dns().resolver_path(tld)))
+        }
+        ResolverOwner::Ours => {
+            let cmd = platform.dns().uninstall_command(std::slice::from_ref(&tld.to_string()));
+            platform.privileges().run_privileged(&cmd)?;
+            Ok(true)
+        }
+    }
+}
+
 /// Who owns the OS resolver file for a TLD.
 ///
 /// Ownership across this codebase is CONTENT equality — there is no marker and

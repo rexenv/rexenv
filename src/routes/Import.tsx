@@ -155,7 +155,7 @@ export function Import() {
     ];
     return () => {
       dead = true;
-      subs.forEach((s) => void s.then((f) => f()));
+      subs.forEach((s) => void s.then((f) => f()).catch(() => {}));
     };
   }, []);
 
@@ -285,7 +285,7 @@ export function Import() {
                 progress={progress}
                 running={running}
                 outcomes={outcomes}
-                onCancel={() => void valetImportCancel()}
+                onCancel={() => void valetImportCancel().catch(toastBackendError)}
               />
             )}
 

@@ -197,6 +197,12 @@ it can:
   so its two `initdb`s and its CREATE/DROP DATABASE landed in the REAL
   `<app_data>/postgres/{17,16}/data` on the production port — the exact shape
   `examples/common/mod.rs`'s invariant forbids; it runs in `common::sandbox` now.
+  Also from that review: `scripts/wk-checks/contrast.js` read only an element's OWN
+  `opacity`, so a badge inside a Services row dimmed with `opacity-[0.74]` reported 4.9:1
+  and rendered at 3.1:1 — the gate that certified the periwinkle change was blind one
+  compositing level up. It now multiplies every ancestor's opacity into the text alpha.
+  And `wpfocus.js`'s ride-along control names the FLAG it proves (`refetchOnWindowFocus:
+  false`), not the stale window it fires inside of.
   Its second lesson is the fixture one: the first stand-in cloudflared was
   `sh -c 'sleep 300' <argv…>`, which EXECS sleep, so `ps` reported `sleep 300` — no marker,
   no program name — and the guard correctly refused it. A positive leg written that way

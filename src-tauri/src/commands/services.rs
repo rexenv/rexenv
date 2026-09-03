@@ -610,6 +610,58 @@ mod tests {
     fn the_services_lock_is_never_held_across_an_await() {
         use std::path::Path;
 
+        /// The receiver chain an `.await` completes: everything before it back
+        /// to the first character that is not part of `ident(...)?.ident(...)`.
+        fn awaited_chain(before: &str) -> &str {
+            let b = before.as_bytes();
+            let mut i = b.len();
+            loop {
+                // `?` sits between a call and the next `.`: `mgr.x()?.y()`.
+                while i > 0 && b[i - 1] == b'?' {
+                    i -= 1;
+                }
+                // A call's argument list, balanced.
+                if i > 0 && b[i - 1] == b')' {
+                    let mut depth = 0i32;
+                    let mut j = i;
+                    while j > 0 {
+                        j -= 1;
+                        match b[j] {
+                            b')' => depth += 1,
+                            b'(' => {
+                                depth -= 1;
+                                if depth == 0 {
+                                    break;
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    i = j;
+                }
+                // The identifier (or `?`) before it, then the `.` joining it on.
+                let mut j = i;
+                while j > 0 && (b[j - 1].is_ascii_alphanumeric() || b[j - 1] == b'_' || b[j - 1] == b'?' || b[j - 1] == b':') {
+                    j -= 1;
+                }
+                i = j;
+                if i > 0 && b[i - 1] == b'.' {
+                    i -= 1;
+                    continue;
+                }
+                break;
+            }
+            &before[i..]
+        }
+
+        // The walker itself, on the shapes that matter: the prescribed shape is
+        // exempt, an await buried in the guard's argument list is not.
+        assert_eq!(awaited_chain("let c = mgr.reload(platform, &ca, sites, false)"), "mgr.reload(platform, &ca, sites, false)");
+        assert_eq!(awaited_chain("match mgr.restart_pools_for(p, std::slice::from_ref(m))"), "mgr.restart_pools_for(p, std::slice::from_ref(m))");
+        assert_eq!(awaited_chain("mgr.record(download()"), "download()");
+        assert_eq!(awaited_chain("Ok(mgr.x()?.y()"), "mgr.x()?.y()");
+        assert_eq!(awaited_chain("let x = core::downloads::prefetch(a, b)"), "core::downloads::prefetch(a, b)");
+
         fn rust_files(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
             let Ok(entries) = std::fs::read_dir(dir) else { return };
             for e in entries.flatten() {
@@ -672,11 +724,20 @@ mod tests {
                     // Statement-scoped, not line-scoped: `mgr.start_core(…)` is
                     // written across several lines with `.await?` alone on the
                     // last one, and a line-only check calls that a violation.
-                    // KNOWN BLIND SPOT: statement-scoped means a statement that
-                    // mentions the guard anywhere is exempt — `mgr.record(
-                    // download().await)` awaits a download and passes. Closing
-                    // it needs an expression parser, not another substring.
-                    let on_the_manager = stmt.contains(&format!("{var}."));
+                    // Per AWAIT, not per statement: for each `.await` on this
+                    // line, walk back over the method chain it completes
+                    // (balanced parens, `.ident`, `?`) and require that chain
+                    // to START with the guard. A statement that merely mentions
+                    // the guard — `mgr.record(download().await)` — used to be
+                    // exempt as a whole; the chain under THAT await starts at
+                    // `download()`, and is a violation.
+                    let line_start = stmt.len() - code.trim().len();
+                    let foreign_awaits = stmt
+                        .match_indices(".await")
+                        .filter(|(at, _)| *at >= line_start)
+                        .filter(|(at, _)| !awaited_chain(&stmt[..*at]).starts_with(&format!("{var}.")))
+                        .count();
+                    let on_the_manager = foreign_awaits == 0;
                     assert_eq!(
                         awaits * usize::from(!on_the_manager),
                         0,

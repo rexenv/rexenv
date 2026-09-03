@@ -1317,11 +1317,27 @@ async fn drive<R: tauri::Runtime>(
                 format!("--url={}", resolved.url),
                 format!("--title={}", resolved.title),
                 format!("--admin_user={}", resolved.admin_user),
-                format!("--admin_password={}", resolved.admin_password),
+                // Throwaway on argv; the real one is set over stdin after the
+                // install (`wordpress::install_wordpress` has the reasoning).
+                format!("--admin_password={}", wordpress::throwaway_password()),
                 format!("--admin_email={}", resolved.admin_email),
             ];
             match streamed_step(app, entry, &env, &php_bin, &wp_phar, &docroot, args).await {
-                StepEnd::Ok => finish_phase(app, entry, progress, ix, "ok", None),
+                StepEnd::Ok => {
+                    let (p2, w2, d2) = (php_bin.clone(), wp_phar.clone(), docroot.clone());
+                    let script = wordpress::set_password_script(1, &resolved.admin_password);
+                    let set = tauri::async_runtime::spawn_blocking(move || {
+                        wordpress::wp_run_script(&p2, &w2, &d2, &script)
+                    })
+                    .await;
+                    match set {
+                        Ok(Ok(_)) => finish_phase(app, entry, progress, ix, "ok", None),
+                        Ok(Err(e)) => {
+                            return JobEnd::Failed(format!("wp core install: setting the admin password failed: {e}"))
+                        }
+                        Err(e) => return JobEnd::Failed(format!("password worker died: {e}")),
+                    }
+                }
                 StepEnd::Cancelled => return JobEnd::Cancelled,
                 StepEnd::Failed(e) => return JobEnd::Failed(format!("wp core install failed: {e}")),
             }

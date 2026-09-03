@@ -296,7 +296,7 @@ const PHP_8_5_8_CLI_MAC_AMD64_SHA256: &str = "d5a9a505ebce66c7f6b4f4e16629c36f38
 const PHP_8_5_8_FPM_MAC_ARM64_SHA256: &str = "1d994fbc4e49015a7cd4ad4fcb7c03e7e219f65fdb14e5e33ef1c44d928368e9";
 const PHP_8_5_8_FPM_MAC_AMD64_SHA256: &str = "57cdce953a8392e655a800908eb5e8fa61e2b7d795b8e7d3f354b3d81939563d";
 
-// nginx — OURS since 30 Aug 2026 (`rexenv/runtimes`, release `nginx-1.30.4-1`,
+// nginx — OURS since 30 Aug 2026 (`rexenv/runtimes`, release `nginx-1.30.4-2`,
 // immutable), and the reason is the macOS FLOOR, not the version.
 //
 // The old pin was jirutka/nginx-binaries. `macos_floor_check` measured what its

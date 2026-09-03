@@ -50,12 +50,15 @@ const BASE = process.env.WK_BASE_URL ?? "http://localhost:5199";
         "wp-admin keeps showing its old state, which is the bug this fix exists for",
     );
 
-  // The costly pass must NOT ride along.
+  // The costly pass must NOT ride along. Held back by the FLAG
+  // (`refetchOnWindowFocus: false` on WP_QUERY), not by its stale window: this
+  // probe fires focus ~2s after load, inside any stale window, so it could
+  // not tell the two apart — the sentence has to name the mechanism it tests.
   const updatesAfter = await calls("wp_plugins:updates");
   if (updatesAfter > updatesBefore)
     fails.push(
-      `focus fired the update check (${updatesBefore} → ${updatesAfter}) — it keeps a ` +
-        "five-minute stale window on purpose, and every call boots PHP",
+      `focus fired the update check (${updatesBefore} → ${updatesAfter}) — it is opted out ` +
+        "of focus refetch on purpose (refetchOnWindowFocus: false), and every call boots PHP",
     );
 
   await page.screenshot({ path: "shot-wpfocus.png" });

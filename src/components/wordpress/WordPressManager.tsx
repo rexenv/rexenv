@@ -2510,6 +2510,8 @@ export function ThemesPanel({ siteId }: { siteId: string }) {
     queryFn: () => wpOrgSearchThemes(debouncedSlug),
     enabled: debouncedSlug.length >= 2,
     staleTime: 60_000,
+    // A network read to wordpress.org must never ride an alt-tab (#255).
+    refetchOnWindowFocus: false,
     retry: false,
   });
   const showSearch = slug.trim().length >= 2;
@@ -2550,6 +2552,8 @@ export function ThemesPanel({ siteId }: { siteId: string }) {
     queryKey: ["repo-assets", siteId],
     queryFn: () => repoAssets(siteId),
     staleTime: 30_000,
+    // A git read on focus, like its neighbours repo-unmanaged/repo-jobs: opted out.
+    refetchOnWindowFocus: false,
   });
   const gitDirs = useMemo(
     () => new Set((gitAssets.data ?? []).filter((a) => a.kind === "theme").map((a) => a.dirName)),
@@ -3114,6 +3118,7 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
     queryFn: () => wpOrgSearchPlugins(debouncedSlug),
     enabled: debouncedSlug.length >= 2,
     staleTime: 60_000,
+    refetchOnWindowFocus: false,
     retry: false, // offline → fail fast + honest message, no retry spinner
   });
   const showSearch = slug.trim().length >= 2;
@@ -3141,6 +3146,7 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
     queryFn: () => wpOrgPluginIcons(plugins.map((p) => p.name)),
     enabled: plugins.length > 0,
     staleTime: 3_600_000,
+    refetchOnWindowFocus: false,
     retry: false,
   });
 
@@ -3212,6 +3218,8 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
     queryKey: ["repo-assets", siteId],
     queryFn: () => repoAssets(siteId),
     staleTime: 30_000,
+    // A git read on focus, like its neighbours repo-unmanaged/repo-jobs: opted out.
+    refetchOnWindowFocus: false,
   });
   const gitDirs = useMemo(
     () => new Set((gitAssets.data ?? []).filter((a) => a.kind === "plugin").map((a) => a.dirName)),

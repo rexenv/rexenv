@@ -51,11 +51,12 @@ export function initWindowFocus(): void {
     // Browser fallback: `blur` too, because an alt-tab at the WINDOW level
     // fires blur/focus and never `visibilitychange`, so a focus-only listener
     // could only ever say "true" and the latch never reset.
-    const onDom = () => handleFocus(document.visibilityState !== "hidden" && document.hasFocus());
+    const onDom = () => handleFocus(document.visibilityState !== "hidden");
+    const onBlur = () => handleFocus(false);
     if (!native) {
       window.addEventListener("visibilitychange", onDom, false);
       window.addEventListener("focus", onDom, false);
-      window.addEventListener("blur", onDom, false);
+      window.addEventListener("blur", onBlur, false);
     }
 
     return () => {
@@ -63,7 +64,7 @@ export function initWindowFocus(): void {
       if (!native) {
         window.removeEventListener("visibilitychange", onDom);
         window.removeEventListener("focus", onDom);
-        window.removeEventListener("blur", onDom);
+        window.removeEventListener("blur", onBlur);
       }
       stopNative?.();
     };

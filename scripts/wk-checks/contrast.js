@@ -115,7 +115,18 @@ const AUDIT = `(() => {
     const fg0 = parse(st.color);
     if (!fg0) continue;
     const bg = paintedBg(el);
-    const fg = fg0.a < 1 ? over(fg0, bg) : fg0;
+    // EFFECTIVE opacity — the element's own times every ancestor's. A stopped
+    // Services row is dimmed with `opacity-[0.74]` on the ROW, and reading only
+    // the element's own opacity reported the badge inside it at 4.9:1 while it
+    // rendered at 3.1:1. Group opacity composites the whole subtree over the
+    // page, so the text is drawn at that alpha over the painted background.
+    let eff = 1;
+    for (let a = el; a && a !== document.documentElement; a = a.parentElement) {
+      eff *= parseFloat(getComputedStyle(a).opacity);
+    }
+    if (eff === 0) continue;
+    const fgA = { ...fg0, a: fg0.a * eff };
+    const fg = fgA.a < 1 ? over(fgA, bg) : fgA;
     const size = parseFloat(st.fontSize);
     const weight = parseInt(st.fontWeight, 10) || 400;
     const large = size >= 24 || (size >= 18.66 && weight >= 700);
