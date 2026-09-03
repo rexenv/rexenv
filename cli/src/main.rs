@@ -760,23 +760,57 @@ fn flag_value(words: &[String], flag: &str) -> Option<String> {
         .cloned()
 }
 
+/// `site create`'s value-taking flags, and the socket key each one fills. ONE
+/// list: the loop below sends them and the unknown-flag check measures against
+/// it, so a flag can never be accepted-but-unsent or refused-but-supported.
+const CREATE_FLAGS: [(&str, &str); 8] = [
+    ("--name", "name"),
+    ("--type", "type"),
+    ("--php", "php"),
+    ("--server", "server"),
+    ("--db", "db"),
+    ("--blueprint", "blueprint"),
+    ("--multisite", "multisite"),
+    ("--path", "path"),
+];
+
+/// Every accepted flag appears here — enforced, because two of them
+/// (`--blueprint`, `--multisite`) had worked since they shipped and were in no
+/// usage line, so the only way to find them was to read the source.
+const CREATE_USAGE: &str = "rex: usage: rex site create <domain> [--name N] [--type T] [--php V] \
+                            [--server S] [--db D] [--path FOLDER] [--starter-db] \
+                            [--blueprint NAME] [--multisite subdomain|subdirectory]";
+
+/// The flags `site create` accepts. A function, not a literal inside the
+/// command, so a test can ask the REAL list rather than re-reading the text the
+/// list was written in: the first version of that test scanned the same lines
+/// the list is built from, so deleting an entry deleted the evidence too and
+/// the plant came back green.
+fn create_known_flags() -> Vec<&'static str> {
+    let mut v: Vec<&str> = CREATE_FLAGS.iter().map(|(f, _)| *f).collect();
+    v.push("--starter-db");
+    v
+}
+
 fn cmd_site_create(words: &[String], json_output: bool) {
     let Some(domain) = words.first().filter(|w| !w.starts_with("--")) else {
-        eprintln!("rex: usage: rex site create <domain> [--name N] [--type T] [--php V] [--server S] [--db D] [--path FOLDER] [--starter-db]");
+        eprintln!("{CREATE_USAGE}");
         exit(1);
     };
+    // A misspelt flag here does not fail — it is IGNORED, and the site is
+    // created with the default the flag was there to override. `--phpp 8.4`
+    // gives you a site on the default minor with no word said, and a site is a
+    // durable artifact: docroot, database, certificate, config. Refusing costs
+    // one retype; the silence costs a delete and a re-create.
+    let known = create_known_flags();
+    if let Some(bad) = words.iter().find(|w| w.starts_with("--") && !known.contains(&w.as_str())) {
+        eprintln!("rex: unknown flag `{bad}` for `site create` — the site would have been created \
+                   without it\n{CREATE_USAGE}");
+        exit(2);
+    }
     let mut args = serde_json::Map::new();
     args.insert("domain".into(), json!(domain));
-    for (flag, key) in [
-        ("--name", "name"),
-        ("--type", "type"),
-        ("--php", "php"),
-        ("--server", "server"),
-        ("--db", "db"),
-        ("--blueprint", "blueprint"),
-        ("--multisite", "multisite"),
-        ("--path", "path"),
-    ] {
+    for (flag, key) in CREATE_FLAGS {
         if let Some(v) = flag_value(words, flag) {
             args.insert(key.into(), json!(v));
         }
@@ -3969,6 +4003,60 @@ mod tests {
         assert!(words.iter().any(|x| x == "--starter-db"));
         // A trailing flag has no next word at all.
         assert_eq!(flag_value(&w("app.rex --name"), "--name"), None);
+    }
+
+    /// **`site create` refuses a flag it does not know, and knows every flag it
+    /// reads.**
+    ///
+    /// The refusal is only safe while the known set is COMPLETE: a flag added
+    /// to the body and forgotten in the list would be rejected on the command
+    /// line it was just built for. So the list is not trusted — it is measured
+    /// against the flag literals the function actually reads, and against the
+    /// usage line the refusal prints, which is what a user retypes from.
+    #[test]
+    fn site_create_knows_every_flag_it_reads_and_says_so_in_its_usage() {
+        const ME: &str = include_str!("main.rs");
+        // What the command READS, from a source the known-list is not built
+        // from: the value-taking table, plus every `w == "--x"` switch test in
+        // the body. The first version of this scan collected every quoted
+        // literal in the same window the list is written in, so removing an
+        // entry removed the evidence with it — the plant came back green.
+        let body = ME
+            .split("fn cmd_site_create(")
+            .nth(1)
+            .and_then(|b| b.split("\nfn cmd_site_info").next())
+            .expect("cmd_site_create");
+        let mut read: Vec<String> =
+            CREATE_FLAGS.iter().map(|(f, _)| (*f).to_string()).collect();
+        for part in body.split("== \"--").skip(1) {
+            if let Some(rest) = part.split('"').next() {
+                read.push(format!("--{rest}"));
+            }
+        }
+        assert!(
+            read.len() > CREATE_FLAGS.len(),
+            "no `== \"--flag\"` switch found in the body — the scan sees only the value table, \
+             so a switch could be unknown and this test would not say so"
+        );
+
+        let known = create_known_flags();
+        for f in &read {
+            assert!(
+                known.contains(&f.as_str()),
+                "`site create` reads `{f}` but the unknown-flag check does not know it — the \
+                 command would refuse the flag it was just given the code to handle"
+            );
+            assert!(
+                CREATE_USAGE.contains(f.as_str()),
+                "`{f}` is accepted but missing from the usage line the refusal prints, which \
+                 is the only place a user finds out what IS accepted"
+            );
+        }
+        // And nothing is advertised that the command never reads — a flag
+        // accepted and silently dropped is the failure this file already had.
+        for f in known {
+            assert!(read.contains(&f.to_string()), "`{f}` is accepted but nothing reads it");
+        }
     }
 
 }

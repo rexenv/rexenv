@@ -35,6 +35,17 @@ paying for anyway: **the tick belongs in the commit that does the work.**
 
 ## Now — actionable code/test work
 
+- [ ] **The other flag-taking `rex` commands still ignore what they do not
+  recognise** (3 Sep 2026, ledger #463). `site create` refuses an unknown flag
+  now — a misspelt one was silently dropped and the site created with the
+  default the flag existed to override. It was taken first because its artifact
+  is the one a retype cannot undo, but ~20 other commands have the same shape,
+  and two of them (`db reset`, `site delete`) are destructive rather than
+  creative. The pattern to copy is the one that made this safe: the accepted set
+  is a FUNCTION the test calls, never a literal the test re-reads — the first
+  version scanned the same lines the list was written in, so deleting an entry
+  deleted the evidence and the plant came back green.
+
 - [x] **WordPress passwords ride wp-cli argv** ✓ 3 Sep 2026 — live leg run against the bundled
   wp-cli 2.12.0: `--prompt` reads a pipe but ECHOES the command with the secret to stdout;
   `wp eval-file -` does not. Shipped on that channel (`wp_run_script`), ledger #123.
