@@ -1962,6 +1962,12 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     site), `GrantRequests` keyed on (site, client, scope) with the agent's `wanted`
     text clamped at the writer, and `AutoAllowable` with NO variant for
     `destroy`/`system`. AppState gained the two in-memory fields.
+    ✓ task 3 — **the `Granted<S>` witness**, ledger #471: scope in the TYPE (five sealed
+    markers), private fields plant-proven (E0451 naming all three), `claim` the one
+    door (reads the row, refuses scratch before the gate), `still_granted` the re-assert,
+    and `claim_or_ask` as the one call-site shape — ask on refusal (real sites only),
+    auto-allow only where a variant exists, the auto path re-claimed through the same
+    gate.
   - [ ] **P2 — site lifecycle**: `site_create` (WP/PHP/Laravel, blueprint, multisite,
     starter DB), `site_delete`, `site_configure`, `site_restart`/`site_retry`, `site_info`,
     `job_status`/`job_cancel`; L1 `mcp_user_site_check`; SMOKE §P2.

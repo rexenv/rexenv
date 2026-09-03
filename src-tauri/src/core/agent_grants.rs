@@ -23,8 +23,10 @@
 //! user. The dialog says so.
 
 use crate::error::{Error, Result};
+use crate::state::models::Site;
 use crate::state::store::{self, AgentSiteGrant};
 use rusqlite::Connection;
+use std::marker::PhantomData;
 
 /// The closed set of things a user can allow, ranked by blast radius.
 ///
@@ -330,6 +332,201 @@ fn refusal(target: Target<'_>, scope: Scope) -> String {
     )
 }
 
+
+/// The scope markers — one unit type per [`Scope`], so a handler's signature
+/// SAYS which permission it needs (`Granted<scope::Destroy>`) and the compiler
+/// refuses a call that only claimed a narrower one.
+pub mod scope {
+    use super::Scope;
+
+    mod sealed {
+        pub trait Sealed {}
+    }
+
+    /// A type that stands for exactly one [`Scope`]. Sealed: the five below are
+    /// the whole set, matching `Scope::ALL`.
+    pub trait Marker: sealed::Sealed + Send + Sync + 'static {
+        const SCOPE: Scope;
+    }
+
+    macro_rules! marker {
+        ($name:ident, $scope:expr) => {
+            #[derive(Debug, Clone, Copy)]
+            pub struct $name;
+            impl sealed::Sealed for $name {}
+            impl Marker for $name {
+                const SCOPE: Scope = $scope;
+            }
+        };
+    }
+    marker!(Read, Scope::Read);
+    marker!(Manage, Scope::Manage);
+    marker!(Destroy, Scope::Destroy);
+    marker!(Run, Scope::Run);
+    marker!(System, Scope::System);
+}
+
+/// Proof that `client` holds a live `S` grant on the target — the row for the
+/// site (or none, for the stack) and the grant that was found, read TOGETHER by
+/// [`claim`], which is the only constructor.
+///
+/// The private fields ARE the guarantee, the `ScratchSite` shape (#208): no
+/// `From`, no `new`, nothing outside this module can mint one from a `Site` and
+/// a grant it happens to hold. A parity handler that takes `Granted<S>` cannot
+/// be reached without the gate having run for exactly `S`.
+///
+/// **Not a lock**, as its sibling is not: it proves the gate passed when it was
+/// claimed. The user can press Revoke a moment later, so a handler's
+/// destructive step re-asserts with [`still_granted`] immediately before it.
+#[derive(Debug)]
+pub struct Granted<S: scope::Marker> {
+    site: Option<Site>,
+    grant: AgentSiteGrant,
+    _scope: PhantomData<S>,
+}
+
+impl<S: scope::Marker> Granted<S> {
+    /// The site row this grant is about — `None` for a stack-level grant.
+    /// Handing out `&Site` cannot launder the proof: a `Site` grants nothing.
+    pub fn site(&self) -> Option<&Site> {
+        self.site.as_ref()
+    }
+
+    /// The grant that satisfied the claim (it may be WIDER than `S` — a
+    /// `destroy` grant answering a `manage` claim — and the feed says which).
+    pub fn grant(&self) -> &AgentSiteGrant {
+        &self.grant
+    }
+
+    /// The scope this witness proves, from the type.
+    pub fn scope() -> Scope {
+        S::SCOPE
+    }
+
+    fn target(&self) -> Target<'_> {
+        match &self.site {
+            Some(s) => Target::Site { id: &s.id, domain: &s.domain },
+            None => Target::Stack,
+        }
+    }
+}
+
+/// The ONE conversion: read the site row (or none, for the stack), refuse a
+/// scratch site (it is the agent's — the scratch tools apply and no grant is
+/// needed), run the gate for `S`, and hand back the witness.
+///
+/// Reads the row ITSELF from `site_id`, never a `Site` the caller holds — the
+/// caller cannot pass a value it built or edited. Every failure is a policy
+/// statement an agent can act on, and "no such site" is kept distinct from
+/// "that one is yours, not the user's" because they send an agent to different
+/// next steps.
+pub fn claim<S: scope::Marker>(conn: &Connection, site_id: Option<&str>, client: &str) -> Result<Granted<S>> {
+    let site = match site_id {
+        None => None,
+        Some(id) => {
+            let Some(site) = store::get_site(conn, id)? else {
+                return Err(Error::Other(format!(
+                    "There is no site with id `{id}`. Use list_sites to see the sites that exist."
+                )));
+            };
+            if site.is_scratch() {
+                return Err(Error::Other(format!(
+                    "`{}` is a scratch site the agent created, so no permission is needed for it — \\
+                     use the scratch tools on it (scratch_delete_site, scratch_add_package, wp_run, \\
+                     set_php_version, db_query) rather than the ones for the user's own sites.",
+                    site.domain
+                )));
+            }
+            Some(site)
+        }
+    };
+    let target = match &site {
+        Some(s) => Target::Site { id: &s.id, domain: &s.domain },
+        None => Target::Stack,
+    };
+    let grant = authorize(conn, target, S::SCOPE, client)?;
+    Ok(Granted { site, grant, _scope: PhantomData })
+}
+
+/// Is this witness's grant STILL live, right now? The re-read before a
+/// destructive step, for the case the witness deliberately does not cover —
+/// the user pressing Revoke in between. Re-runs the gate rather than checking
+/// the one grant id, so a revoke of the found grant with another satisfying
+/// grant still standing reads as what it is: still allowed.
+pub fn still_granted<S: scope::Marker>(conn: &Connection, granted: &Granted<S>) -> Result<bool> {
+    Ok(authorize(conn, granted.target(), S::SCOPE, &granted.grant.client).is_ok())
+}
+
+/// The result of [`claim_or_ask`]: the witness, and whether auto-allow (not a
+/// person) produced the grant that satisfied it — so the reply can say so.
+pub struct Claimed<S: scope::Marker> {
+    pub granted: Granted<S>,
+    pub auto_granted: bool,
+}
+
+/// The call-site shape every parity handler uses: claim, and on refusal either
+/// answer with auto-allow (when the scope CAN be and IS auto-allowed) or record
+/// the ask and return the refusal.
+///
+/// **This is the one place auto-allow is consulted** (#408's one-call-site
+/// rule, kept as one function instead of one arm). What it does on the auto
+/// path is exactly what the button does — writes a grant row for `S::SCOPE`,
+/// same expiry, listed and revocable, flagged `auto_granted` — and then claims
+/// again through the same gate, so an auto-granted call is not a second code
+/// path that could widen anything. What it never does: touch a scratch site
+/// (refused before the gate, and auto-allow has no say — the tier boundary is
+/// a rule, not a prompt), or auto-allow `destroy`/`system` (no variant).
+///
+/// `wanted` is the tool's own one-line description of what the agent was
+/// trying to do, shown in the prompt; agent text, clamped at the writer.
+pub fn claim_or_ask<S: scope::Marker>(
+    conn: &Connection,
+    requests: &mut GrantRequests,
+    auto_allow: &AutoAllowScopes,
+    site_id: Option<&str>,
+    client: &str,
+    wanted: &str,
+) -> Result<Claimed<S>> {
+    let refusal = match claim::<S>(conn, site_id, client) {
+        Ok(granted) => return Ok(Claimed { granted, auto_granted: false }),
+        Err(e) => e,
+    };
+    // Only a REAL, EXISTING site (or the stack) can be asked about: a missing
+    // site or a scratch site failed before the gate, and recording an ask for
+    // those would prompt the user about a permission that cannot apply.
+    let site = match site_id {
+        None => None,
+        Some(id) => match store::get_site(conn, id)? {
+            Some(s) if !s.is_scratch() => Some(s),
+            _ => return Err(refusal),
+        },
+    };
+    if let Ok(auto) = AutoAllowable::try_from(S::SCOPE) {
+        if auto_allow.is_on(auto) {
+            store::grant_agent_site(
+                conn,
+                &uuid::Uuid::new_v4().to_string(),
+                site.as_ref().map(|s| s.id.as_str()),
+                client,
+                S::SCOPE.as_db(),
+                GRANT_DAYS,
+                true,
+                false,
+            )?;
+            let granted = claim::<S>(conn, site_id, client)?;
+            return Ok(Claimed { granted, auto_granted: true });
+        }
+    }
+    requests.ask(GrantRequest {
+        site_id: site.as_ref().map(|s| s.id.clone()),
+        domain: site.as_ref().map(|s| s.domain.clone()),
+        client: client.to_string(),
+        scope: S::SCOPE,
+        wanted: wanted.to_string(),
+    });
+    Err(refusal)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -510,5 +707,131 @@ mod tests {
             reqs.ask(ask(Some(&format!("fake-{i}")), Scope::Read, "look"));
         }
         assert_eq!(reqs.list().len(), MAX_REQUESTS);
+    }
+
+    /// **A parity handler reaches a user's site only through `claim`, which
+    /// reads the row itself, refuses the agent's own scratch sites, and proves
+    /// exactly the scope in its type.**
+    #[test]
+    fn a_witness_is_minted_only_by_claim_and_proves_exactly_its_scope() {
+        use crate::state::models::{test_site, SiteOrigin};
+        use crate::state::store;
+        let conn = conn_with_site();
+        let theirs = test_site("c58e0a41-7d2f-4b19-93a6-6e1c5d8f0a24", "probe.scratch.rex", SiteOrigin::Agent);
+        store::insert_site(&conn, &theirs).unwrap();
+
+        // No grant: refused by the gate.
+        assert!(claim::<scope::Manage>(&conn, Some("s1"), "claude-code").is_err());
+        store::grant_agent_site(&conn, "g1", Some("s1"), "claude-code", "manage", 7, false, false).unwrap();
+
+        // The witness carries the row and the grant, and its scope is the TYPE.
+        let w = claim::<scope::Manage>(&conn, Some("s1"), "claude-code").unwrap();
+        assert_eq!(w.site().map(|s| s.domain.as_str()), Some("shop.rex"));
+        assert_eq!(w.grant().id, "g1");
+        assert_eq!(Granted::<scope::Manage>::scope(), Scope::Manage);
+        // Implication through the witness: a `manage` grant mints a Read
+        // witness, never a Destroy one.
+        assert!(claim::<scope::Read>(&conn, Some("s1"), "claude-code").is_ok());
+        assert!(claim::<scope::Destroy>(&conn, Some("s1"), "claude-code").is_err());
+
+        // A scratch site is refused BEFORE the gate, with the scratch tools
+        // named — and no grant would change that (the tier boundary is not a
+        // prompt).
+        store::grant_agent_site(&conn, "g2", Some(&theirs.id), "claude-code", "destroy", 7, false, false).unwrap();
+        let err = claim::<scope::Read>(&conn, Some(&theirs.id), "claude-code").unwrap_err().to_string();
+        assert!(err.contains("scratch site the agent created") && err.contains("wp_run"), "{err}");
+
+        // "No such site" is a different sentence from "not the user's".
+        let missing = claim::<scope::Read>(&conn, Some("nope"), "claude-code").unwrap_err().to_string();
+        assert!(missing.contains("no site with id"), "{missing}");
+
+        // The stack: no row, a NULL-site grant.
+        assert!(claim::<scope::System>(&conn, None, "claude-code").is_err());
+        store::grant_agent_site(&conn, "g3", None, "claude-code", "system", 7, false, false).unwrap();
+        let st = claim::<scope::System>(&conn, None, "claude-code").unwrap();
+        assert!(st.site().is_none());
+
+        // Re-assert: revoking closes it; a still-standing wider grant keeps it.
+        assert!(still_granted(&conn, &w).unwrap());
+        store::grant_agent_site(&conn, "g4", Some("s1"), "claude-code", "destroy", 7, false, false).unwrap();
+        store::revoke_agent_site_grant(&conn, "g1").unwrap();
+        assert!(still_granted(&conn, &w).unwrap(), "another satisfying grant still stands");
+        store::revoke_agent_site_grant(&conn, "g4").unwrap();
+        assert!(!still_granted(&conn, &w).unwrap(), "revoked between claim and act");
+
+        // The private fields are the guarantee. Plant-and-capture, 3 Sep 2026,
+        // from `core/scratch.rs` (a sibling module, the nearest tempting place):
+        //   `Granted { site: None, grant, _scope: PhantomData }`
+        //     → E0451: fields `site`, `grant` and `_scope` of struct
+        //       `agent_grants::Granted` are private — ONE error naming all three
+        //   there is no tuple constructor and no `From`, so E0423/E0277 have
+        //   nothing to name — the shape offers the one door and nothing else.
+        let me = include_str!("agent_grants.rs");
+        let prod = &me[..me.find("#[cfg(test)]").unwrap()];
+        let start = prod.find("pub struct Granted<").unwrap();
+        let body = &prod[start..start + prod[start..].find('}').unwrap()];
+        assert!(!body.contains("pub site") && !body.contains("pub grant"), "{body}");
+        let from_impl = ["impl<S: scope::Marker> ", "From<"].concat();
+        assert!(!prod.contains(&from_impl), "a From would be a second door");
+    }
+
+    /// **`claim_or_ask` is the one call-site shape: refusal records the ask
+    /// (for a real site only), auto-allow answers only the scopes it can, and
+    /// an auto-grant goes through the same gate as a click.**
+    #[test]
+    fn claim_or_ask_records_the_ask_on_refusal_and_auto_allows_only_what_it_can() {
+        use crate::state::models::{test_site, SiteOrigin};
+        use crate::state::store;
+        let conn = conn_with_site();
+        let theirs = test_site("c58e0a41-7d2f-4b19-93a6-6e1c5d8f0a24", "probe.scratch.rex", SiteOrigin::Agent);
+        store::insert_site(&conn, &theirs).unwrap();
+        let mut reqs = GrantRequests::default();
+        let mut auto = AutoAllowScopes::default();
+
+        // Refused, and the ask is recorded with what the agent wanted.
+        let err = claim_or_ask::<scope::Manage>(&conn, &mut reqs, &auto, Some("s1"), "claude-code", "switch PHP to 8.4")
+            .err()
+            .expect("refused")
+            .to_string();
+        assert!(err.contains("Site access"), "{err}");
+        assert_eq!(reqs.list().len(), 1);
+        assert_eq!(reqs.list()[0].scope, Scope::Manage);
+        assert_eq!(reqs.list()[0].domain.as_deref(), Some("shop.rex"));
+        assert_eq!(reqs.list()[0].wanted, "switch PHP to 8.4");
+
+        // A scratch site or a missing site records NOTHING — there is no
+        // permission that could apply, so a prompt would be a lie.
+        assert!(claim_or_ask::<scope::Manage>(&conn, &mut reqs, &auto, Some(&theirs.id), "claude-code", "x").is_err());
+        assert!(claim_or_ask::<scope::Manage>(&conn, &mut reqs, &auto, Some("nope"), "claude-code", "x").is_err());
+        assert_eq!(reqs.list().len(), 1, "no ask for a scratch or missing site");
+
+        // Auto-allow ON for manage: answered, a grant row written and flagged,
+        // and the witness comes out of the SAME gate.
+        auto.set(AutoAllowable::Manage, true);
+        let c = claim_or_ask::<scope::Manage>(&conn, &mut reqs, &auto, Some("s1"), "claude-code", "switch PHP")
+            .unwrap();
+        assert!(c.auto_granted);
+        assert!(c.granted.grant().auto_granted, "the row says a toggle did this, not a person");
+        assert_eq!(c.granted.grant().scope, "manage");
+        // Implication still applies to what auto-allow wrote: a Read claim
+        // now passes on the auto-granted manage row without another grant.
+        let r = claim_or_ask::<scope::Read>(&conn, &mut reqs, &auto, Some("s1"), "claude-code", "look").unwrap();
+        assert!(!r.auto_granted, "satisfied by the existing row, nothing new written");
+        assert_eq!(store::list_agent_site_grants(&conn).unwrap().len(), 1);
+
+        // Auto-allow has no say over destroy — no variant — so it asks.
+        let err = claim_or_ask::<scope::Destroy>(&conn, &mut reqs, &auto, Some("s1"), "claude-code", "delete it")
+            .err()
+            .expect("destroy is never auto-allowed")
+            .to_string();
+        assert!(err.contains("`destroy`"), "{err}");
+        assert!(reqs.list().iter().any(|r| r.scope == Scope::Destroy));
+        // …nor over a scratch site, whatever is switched on.
+        assert!(claim_or_ask::<scope::Manage>(&conn, &mut reqs, &auto, Some(&theirs.id), "claude-code", "x").is_err());
+
+        // Exactly one place consults auto-allow — this helper.
+        let me = include_str!("agent_grants.rs");
+        let prod = &me[..me.find("#[cfg(test)]").unwrap()];
+        assert_eq!(prod.matches("auto_allow.is_on(").count(), 1, "auto-allow consulted in more than one place");
     }
 }
