@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronRight, Copy } from "lucide-react";
-import { mcpStatus, mcpSetEnabled, mcpSetMailEnabled, agentActivityClear } from "@/lib/ipc";
+import { mcpStatus, mcpSetEnabled, mcpSetMailEnabled, mcpSetSitesEnabled, agentActivityClear } from "@/lib/ipc";
 import type { ActivityStatus } from "@/types";
 import { toast, toastBackendError } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { cn } from "@/lib/utils";
 import { AgentActivityFeed } from "./AgentActivityFeed";
 import { AgentDbGrants } from "./AgentDbGrants";
+import { AgentSiteGrants } from "./AgentSiteGrants";
 
 /** The connect stanza for editors that read an MCP JSON config (Cursor, VS Code
  *  Copilot). `rex mcp` is the same dumb pipe `claude mcp add` uses. */
@@ -93,6 +94,19 @@ export function AgentsMcpCard() {
     onError: (e) => toastBackendError(e),
   });
 
+  const setSitesEnabled = useMutation({
+    mutationFn: (on: boolean) => mcpSetSitesEnabled(on),
+    onSuccess: (s) => {
+      qc.setQueryData(["mcp-status"], s);
+      toast.success(
+        s.sitesEnabled
+          ? "Agents can now ask for access to your own sites"
+          : "Agents can no longer touch your own sites",
+      );
+    },
+    onError: (e) => toastBackendError(e),
+  });
+
   const setEnabled = useMutation({
     mutationFn: (on: boolean) => mcpSetEnabled(on),
     onSuccess: (s) => {
@@ -110,6 +124,10 @@ export function AgentsMcpCard() {
 
   const enabled = data?.enabled ?? false;
   const mailEnabled = data?.mailEnabled ?? false;
+  const sitesEnabled = data?.sitesEnabled ?? false;
+  // The label comes from the backend's ONE constant — the refusal an agent
+  // reads names the same string, so the two cannot drift apart (#404).
+  const sitesToggleLabel = data?.sitesToggleLabel ?? "Let agents manage my own sites";
   const status = data ? statusLine(data.activity) : null;
   const rows = data?.recent ?? [];
   const connectCommand = data?.connectCommand ?? "claude mcp add rexenv -- rex mcp";
@@ -131,10 +149,11 @@ export function AgentsMcpCard() {
         Before you turn this on: this lets an AI agent connect to rexenv and use the tools you've
         enabled. It can look at your sites — their status and their logs — and it can create
         disposable &ldquo;scratch&rdquo; sites of its own, put code into them and run it. It cannot
-        change or delete the sites you made yourself: that refusal lives in rexenv, not in the
-        agent's good behaviour. It can ask to read one of your sites' databases,
+        change or delete the sites you made yourself unless you allow that below,
+        one site and one kind of change at a time, for a limited time: that refusal lives in
+        rexenv, not in the agent's good behaviour. It can ask to read one of your sites' databases,
         and only you can say yes — each site separately, expiring on its own, revocable here. But code running in a
-        scratch site runs as you, with your files and
+        scratch site — or in a site you granted — runs as you, with your files and
         your permissions — the same power over this machine as code you run yourself. rexenv never
         asks for your administrator password on an agent's behalf, and every call an agent makes is
         listed below. Turn this off when you're not using it.
@@ -196,6 +215,43 @@ export function AgentsMcpCard() {
         />
       </div>
 
+      {/* Sites sub-toggle (MCP parity, PLAN-mcp-parity §3.3) — the THIRD place a
+          user consents to something. Off by default, independent of the other
+          two, and on its own it grants NOTHING: it makes per-site scope grants
+          possible, each a separate consent below. The residual is restated
+          here because this is the widest surface yet. Held by the copy guard. */}
+      <div className="mt-3.5 flex items-start gap-[14px] border-t border-rex-border-subtle pt-3.5">
+        <div className="flex-1">
+          <div className="text-[0.84375rem] font-medium text-rex-text">{sitesToggleLabel}</div>
+          <div className="mt-1 space-y-1.5 text-[0.75rem] leading-[1.55] text-rex-text-muted">
+            <p>
+              With this on, an agent can ask for specific permissions on the sites you made
+              yourself — and on rexenv itself — and you decide each one, per site and per kind of
+              access, in <strong className="font-medium text-rex-text">Site access</strong> below.
+              On its own this switch grants nothing.
+            </p>
+            <p>
+              A permission bounds which site and which kind of change, not what code runs:
+              anything an agent runs inside a site you granted runs as you. Deleting a site can
+              only ever be allowed for one session at a time, and anything that needs an
+              administrator password still asks you.
+            </p>
+            <p>
+              Off by default. Switch it back off at any time and every agent stops being able to
+              touch your own sites at once; the permissions you gave stay listed and resume if you
+              switch it on again.
+            </p>
+          </div>
+        </div>
+        <StartStopToggle
+          running={sitesEnabled}
+          busy={setSitesEnabled.isPending}
+          variant="setting"
+          onToggle={() => setSitesEnabled.mutate(!sitesEnabled)}
+          label={sitesToggleLabel}
+        />
+      </div>
+
       {/* Connect — copy-paste for the agent's client config (zero new install). */}
       <div className="mt-3.5 border-t border-rex-border-subtle pt-3.5">
         <div className="text-[0.78125rem] font-medium text-rex-text">Connect an agent</div>
@@ -224,6 +280,7 @@ export function AgentsMcpCard() {
       </div>
 
       <AgentDbGrants />
+      <AgentSiteGrants />
 
       {/* Activity — every agent action, none silent. */}
       <div className="mt-3.5 border-t border-rex-border-subtle pt-3.5">

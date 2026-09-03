@@ -1483,6 +1483,57 @@ export interface AgentDbGrant {
   autoGranted: boolean;
 }
 
+/** A scope an agent can be granted on one of the user's own sites, or on the
+ *  stack (mirrors `core::agent_grants::Scope`, ranked by blast radius).
+ *  `destroy` ⊃ `manage` ⊃ `read`; `run` and `system` stand alone. */
+export type AgentScope = "read" | "manage" | "destroy" | "run" | "system";
+
+/** The scopes auto-allow CAN answer for — `destroy` and `system` are absent by
+ *  type, on both sides of the bridge (mirrors `core::agent_grants::AutoAllowable`). */
+export type AutoAllowableScope = "read" | "manage" | "run";
+
+/** An agent's outstanding ask for a scope (mirrors `core::agent_grants::GrantRequest`).
+ *  Session-scoped in the backend, like the database asks. */
+export interface AgentSiteRequest {
+  /** null = about the stack, not a site. */
+  siteId: string | null;
+  domain: string | null;
+  client: string;
+  scope: AgentScope;
+  /** What the agent was trying to do, in the tool's own words, clamped in Rust. */
+  wanted: string;
+}
+
+/** An ask as the card renders it: the request plus the one sentence saying what
+ *  the scope allows, served from Rust (`Scope::what_it_allows`) so it has one
+ *  source (mirrors `commands::mcp::AgentSiteAsk`). */
+export interface AgentSiteAsk extends AgentSiteRequest {
+  allows: string;
+}
+
+/** One recorded scope grant (mirrors `state::store::AgentSiteGrant`). Kept after
+ *  expiry and revocation, for the same reason the database grants are. */
+export interface AgentSiteGrant {
+  id: string;
+  /** null = a stack-level grant. */
+  siteId: string | null;
+  client: string;
+  scope: AgentScope;
+  grantedAt: string;
+  expiresAt: string;
+  autoGranted: boolean;
+  /** "Allow for this session": ended by the next launch. */
+  session: boolean;
+  revokedAt: string | null;
+}
+
+/** A grant as the list renders it: the row plus the site's CURRENT domain,
+ *  resolved at read time; null for a stack grant or a deleted site (mirrors
+ *  `commands::mcp::AgentSiteGrantRow`). */
+export interface AgentSiteGrantRow extends AgentSiteGrant {
+  siteLabel: string | null;
+}
+
 export interface AgentAction {
   id: number;
   at: string;
@@ -1529,4 +1580,11 @@ export interface McpStatus {
    *  turning the endpoint on does not turn mail on. While it is true, every
    *  scratch site carries rexenv's `From` stamp; while false, none does. */
   mailEnabled: boolean;
+  /** The SITES sub-toggle (MCP parity) — "Let agents manage my own sites". Off
+   *  by default, independent of both other toggles, and on its own grants
+   *  NOTHING: it makes per-site scope grants possible, each a separate consent. */
+  sitesEnabled: boolean;
+  /** The toggle's label, from the one Rust constant the refusal text also uses —
+   *  render this, never retype it. */
+  sitesToggleLabel: string;
 }

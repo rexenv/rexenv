@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { StartupNotice, AdminerStatus, AppInfo, AgentAction, AgentDbGrant, AgentDbRequest, Blueprint, BrowserApp, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoGitOp, RepoJobState, RepoKind, RepoPullRef, RepoStashEntry, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpUpdateOutcome, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteProvisionState, SiteRepoInfo, SiteResources, SiteServing, ResolverPlan, ScratchPackage, TeardownReport, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser, UnresolvableTld } from "@/types";
+import type { StartupNotice, AdminerStatus, AppInfo, AgentAction, AgentDbGrant, AgentDbRequest, AgentScope, AgentSiteAsk, AgentSiteGrant, AgentSiteGrantRow, AutoAllowableScope, Blueprint, BrowserApp, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoGitOp, RepoJobState, RepoKind, RepoPullRef, RepoStashEntry, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpUpdateOutcome, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteProvisionState, SiteRepoInfo, SiteResources, SiteServing, ResolverPlan, ScratchPackage, TeardownReport, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser, UnresolvableTld } from "@/types";
 import {
   mockAppInfo,
   mockDatabases,
@@ -2099,7 +2099,7 @@ export async function repoLink(
  *  status line, and the recent activity feed. Off/empty outside Tauri. */
 export async function mcpStatus(): Promise<McpStatus> {
   if (!isTauri())
-    return { enabled: false, mailEnabled: false, connectCommand: "claude mcp add rexenv -- rex mcp", activity: { kind: "off" }, recent: [] };
+    return { enabled: false, mailEnabled: false, sitesEnabled: false, sitesToggleLabel: "Let agents manage my own sites", connectCommand: "claude mcp add rexenv -- rex mcp", activity: { kind: "off" }, recent: [] };
   return invoke<McpStatus>("mcp_status");
 }
 
@@ -2163,6 +2163,61 @@ export async function agentDbSetAutoAllow(on: boolean): Promise<boolean> {
 /** Revoke a live grant — drops the account first, then records when it stopped. */
 export async function agentDbRevoke(id: string): Promise<void> {
   return invoke<void>("agent_db_revoke", { id });
+}
+
+// ── Site access (MCP parity): scope grants on the user's OWN sites ───────────
+
+/** Turn "Let agents manage my own sites" on or off. A flag, checked by every
+ *  parity tool BEFORE the grant gate; grants themselves are left as they are. */
+export async function mcpSetSitesEnabled(enable: boolean): Promise<McpStatus> {
+  return invoke<McpStatus>("mcp_set_sites_enabled", { enable });
+}
+
+/** The scope asks an agent has made that nobody has answered yet. Recorded on
+ *  the refusal path only — an agent cannot ask without first being told no. */
+export async function agentSiteRequests(): Promise<AgentSiteAsk[]> {
+  if (!isTauri()) return [];
+  return invoke<AgentSiteAsk[]>("agent_site_requests");
+}
+
+/** Every scope grant, live and dead, newest first, with the site's domain. */
+export async function agentSiteGrants(): Promise<AgentSiteGrantRow[]> {
+  if (!isTauri()) return [];
+  return invoke<AgentSiteGrantRow[]>("agent_site_grants");
+}
+
+/** Approve one ask for 7 days (`session: false`) or for this session only.
+ *  `siteId: null` = the stack. Refused in Rust for a scratch site or a
+ *  stack-level read/destroy, whatever the UI offered. */
+export async function agentSiteGrant(
+  siteId: string | null,
+  client: string,
+  scope: AgentScope,
+  session: boolean,
+): Promise<AgentSiteGrant> {
+  return invoke<AgentSiteGrant>("agent_site_grant", { siteId, client, scope, session });
+}
+
+/** Answer one scope ask with "no". */
+export async function agentSiteDeny(siteId: string | null, client: string, scope: AgentScope): Promise<void> {
+  return invoke<void>("agent_site_deny", { siteId, client, scope });
+}
+
+/** Revoke a scope grant — a timestamp, kept as evidence. */
+export async function agentSiteRevoke(id: string): Promise<void> {
+  return invoke<void>("agent_site_revoke", { id });
+}
+
+/** Which auto-allowable scopes are on for THIS session — none after a launch. */
+export async function agentSiteAutoAllow(): Promise<AutoAllowableScope[]> {
+  if (!isTauri()) return [];
+  return invoke<AutoAllowableScope[]>("agent_site_auto_allow");
+}
+
+/** Turn auto-allow on/off for one scope, this session. `destroy`/`system` are
+ *  not accepted by the type on either side. Returns the scopes now on. */
+export async function agentSiteSetAutoAllow(scope: AutoAllowableScope, on: boolean): Promise<AutoAllowableScope[]> {
+  return invoke<AutoAllowableScope[]>("agent_site_set_auto_allow", { scope, on });
 }
 
 /** Clear the feed — the user's own record, theirs to wipe. Returns rows removed. */

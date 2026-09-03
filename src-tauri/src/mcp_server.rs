@@ -1680,4 +1680,66 @@ mod tests {
         }
     }
 
+    /// **The Site access copy says what a scope grant hands over, and the
+    /// refusal, the switch and the section share their names.** MCP parity's
+    /// consent surface (PLAN-mcp-parity §6) — the THIRD place a user consents,
+    /// and the widest: a grant here lets an agent change or delete the sites
+    /// the user made. Every sentence below is one a trim would cut first.
+    #[test]
+    fn the_site_access_copy_says_what_a_grant_hands_over() {
+        const CARD: &str = include_str!("../../src/components/mcp/AgentsMcpCard.tsx");
+        const CONSENT: &str = include_str!("../../src/components/mcp/AgentSiteGrants.tsx");
+        const REFUSALS: &str = include_str!("core/agent_grants.rs");
+        const TOOL_REFUSAL: &str = include_str!("mcp_server/user_sites.rs");
+
+        // The enable-moment paragraph, now that "cannot change or delete your
+        // own sites" is CONDITIONAL. Each of these is what makes the sentence
+        // true rather than merely softer.
+        const CARD_MUST_SAY: &[(&str, &str)] = &[
+            ("unless you allow that below", "that the refusal is now conditional on a grant the user gives"),
+            ("one site and one kind of change at a time", "the SHAPE of a grant — per site, per scope, never blanket"),
+            ("or in a site you granted", "that the residual (#197) reaches granted sites too, not only scratch"),
+            ("grants nothing", "that the sites switch alone opens nothing — each grant is its own consent"),
+            ("still asks you", "that no grant replaces the administrator-password dialog"),
+            ("only ever be allowed for one session", "D9: deletion is never a standing week-long permission"),
+        ];
+        // The prompt, the empty state, and the auto-allow rows.
+        const CONSENT_MUST_SAY: &[(&str, &str)] = &[
+            ("It asked to:", "the concrete thing the agent tried — the question a person actually answers"),
+            ("runs as you", "the residual, in the prompt itself, not only above the master toggle"),
+            ("Allow for this session", "that a session-long yes exists — the answer a dev loop wants"),
+            ("Don't allow", "that NO is an available answer"),
+            ("revoke it", "that the decision is reversible, at the place they are deciding"),
+            ("only lasts while rexenv is running", "why an expected Allow button may not be there after a restart"),
+            ("not asked", "what auto-allow gives up"),
+            ("switches itself off when you quit rexenv", "that auto-allow is session-scoped"),
+            ("can never be allowed without asking", "that destroy/system have NO auto-allow — absent, not hidden"),
+        ];
+        for (phrase, why) in CARD_MUST_SAY {
+            assert!(CARD.contains(phrase), "the card no longer tells the user {why} (looked for \"{phrase}\")");
+        }
+        for (phrase, why) in CONSENT_MUST_SAY {
+            assert!(CONSENT.contains(phrase), "the Site access copy no longer tells the user {why} (looked for \"{phrase}\")");
+        }
+
+        // The refusal an AGENT reads names the card, the section and the switch
+        // by the strings the UI renders — #404's lesson, held on comment-stripped
+        // source so a doc comment cannot satisfy it.
+        let card = crate::core::copy_scan::strip_ts_comments(CARD);
+        let consent_ui = crate::core::copy_scan::strip_ts_comments(CONSENT);
+        assert!(card.contains("StartStopToggle") && consent_ui.contains("AgentSiteGrants"), "a scan came back empty");
+        assert!(REFUSALS.contains("AI agents (MCP)") && card.contains("AI agents (MCP)"), "the card heading");
+        assert!(REFUSALS.contains("Site access") && consent_ui.contains("Site access"), "the section heading");
+        // The switch's label is ONE constant: the tool refusal formats it in,
+        // the status carries it, and the card renders it from the status
+        // rather than retyping it.
+        assert!(TOOL_REFUSAL.contains("crate::mcp_server::SITES_TOGGLE_LABEL"), "the tool refusal must use the constant");
+        assert!(card.contains("{sitesToggleLabel}"), "the card must render the label from the status, not a literal");
+        assert!(card.contains("sitesToggleLabel"), "the card must read the label from the status");
+        // The scope sentences reach the prompt from Rust (`what_it_allows`),
+        // through the ask — so there is no TS copy to drift.
+        assert!(consent_ui.contains("{a.allows}"), "the prompt must render the scope sentence Rust served");
+        assert!(!consent_ui.contains("read its content and settings"), "a TS copy of a scope sentence appeared");
+    }
+
 }

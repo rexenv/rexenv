@@ -1974,6 +1974,22 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     dispatch, `tools/list`, the sweep and the disjointness guard all walk, with a source
     guard that fails the build on a registry module missing from the chain (plant-proven).
     `MCP_SITES_ENABLED_KEY` + `SITES_TOGGLE_LABEL` defined; nothing writes the key yet.
+    ✓ task 5 — **the switch + the grant commands**, ledger #473: `mcp_set_sites_enabled`,
+    seven `agent_site_*` commands (grant refuses scratch sites and stack-level
+    read/destroy in the COMMAND; auto-allow takes `AutoAllowable` so destroy/system do
+    not deserialise), `end_session_grants_at_launch` wired in `lib.rs`, the key Denied on
+    the CLI, TS types, wrappers — AND the card, in one commit, because two guards refuse
+    a door nothing opens (`every_ipc_wrapper_is_actually_called`,
+    `every_registered_command_is_reachable_from_a_caller`).
+    ✓ task 6 — **the copy + the card**, ledger #474: `AgentSiteGrants.tsx` (the prompt shows
+    the agent's own `wanted`, the scope sentence served from Rust, "Allow for 7 days" /
+    "Allow for this session" / "Don't allow" — destroy offers session only, D9; three
+    auto-allow rows and a stated ABSENCE for destroy/system; the grant list with site
+    labels), the sites sub-toggle with its three paragraphs, the enable-moment paragraph
+    made honestly conditional (§6), one guard holding fifteen phrases + three label pins +
+    the one-source scope sentence. L2 `agents-sites-off/on`; SMOKE steps 23–26 (eyes-only
+    until P2). **P1 is code-complete except the `run_privileged` ledger row re-scope, which
+    belongs with the first tool that needs it (P4).**
   - [ ] **P2 — site lifecycle**: `site_create` (WP/PHP/Laravel, blueprint, multisite,
     starter DB), `site_delete`, `site_configure`, `site_restart`/`site_retry`, `site_info`,
     `job_status`/`job_cancel`; L1 `mcp_user_site_check`; SMOKE §P2.

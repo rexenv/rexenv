@@ -953,7 +953,7 @@ IPC surface — which is how a reader ends up designing against a system with on
   choke point (`promote_if_scratch`); `set_php_version` deliberately routes around it,
   and a guard asserts it stays that way — an agent promoting its own site would clear the
   expiry and free a cap slot, making switch→create unbounded (ledger #223).
-- **Opt-in, twice, and never ambient.** `mcp_enabled` (absent = off) BINDS FIRST and
+- **Opt-in, three times, and never ambient.** `mcp_enabled` (absent = off) BINDS FIRST and
   persists second, so the toggle can never read on while nothing listens; disabling drops
   the accept loop and every live session mid-idle, then unlinks the socket file. The mail
   sub-toggle (`mcp_mail_enabled`, default off, independent) also **backfills the
@@ -961,7 +961,14 @@ IPC surface — which is how a reader ends up designing against a system with on
   scratch site — which is what eliminates "this site predates the feature" as a category.
   Mail's fail-closed direction is stated to the user in those words: the agent **misses
   its own mail, never sees yours**, and one predicate both filters the list and gates the
-  fetch because Mailpit ids are global.
+  fetch because Mailpit ids are global. The third switch (`mcp_sites_enabled`, MCP parity,
+  3 Sep 2026 — "Let agents manage my own sites") is a flag and nothing else: every parity
+  tool checks it BEFORE the grant gate and refuses by name, and on its own it grants
+  NOTHING — each scope grant (`agent_site_grants`, v43) is a separate consent given in the
+  card's **Site access** section, for 7 days or for this session (session grants are ended
+  at the next launch), with per-scope auto-allow that has no switch at all for `destroy`
+  or `system`. The switch's label is one Rust constant the refusal, the status and the
+  card all use.
 - **The feed is complete by construction.** Every `tools/call` outcome is recorded at ONE
   place in the session loop — including unknown tools and unparseable messages — before
   the reply is written. Rows are typed (`agent_actions`, v26/v28/v30): an unrecognised

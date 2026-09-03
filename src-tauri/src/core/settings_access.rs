@@ -129,7 +129,7 @@ pub fn cli_access(key: &str) -> CliAccess {
         ),
         // Agent control surface: the app's toggle carries the consent copy that
         // explains what enabling it exposes, and a CLI flag would route round it.
-        "mcp_enabled" | "mcp_mail_enabled" => CliAccess::Denied(
+        "mcp_enabled" | "mcp_mail_enabled" | "mcp_sites_enabled" => CliAccess::Denied(
             "the MCP agent socket's enable flag — the app's toggle carries the consent \
              wording that explains what it opens, and a shell write would skip it",
         ),

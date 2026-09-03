@@ -880,6 +880,15 @@ pub fn run() {
             #[cfg(unix)]
             mcp_server::spawn_if_enabled(app.handle().clone());
 
+            // "Allow for this session" means THIS process: end every session
+            // grant the previous launch left behind before any client connects.
+            {
+                use tauri::Manager;
+                if let Some(state) = app.try_state::<state::app::AppState>() {
+                    commands::mcp::end_session_grants_at_launch(state.inner());
+                }
+            }
+
             // The scratch reaper: collect agent-created sites whose clock ran
             // out — now (catching everything that expired while rexenv was
             // closed) and hourly after. Skips anything publicly shared (#29:
@@ -1257,6 +1266,14 @@ pub fn run() {
             commands::mcp::agent_db_revoke,
             commands::mcp::agent_db_auto_allow,
             commands::mcp::agent_db_set_auto_allow,
+            commands::mcp::mcp_set_sites_enabled,
+            commands::mcp::agent_site_requests,
+            commands::mcp::agent_site_grants,
+            commands::mcp::agent_site_grant,
+            commands::mcp::agent_site_deny,
+            commands::mcp::agent_site_revoke,
+            commands::mcp::agent_site_auto_allow,
+            commands::mcp::agent_site_set_auto_allow,
             commands::tunnels::start_tunnel,
             commands::tunnels::stop_tunnel,
             commands::tunnels::tunnels_status,

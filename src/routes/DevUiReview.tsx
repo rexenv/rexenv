@@ -678,6 +678,9 @@ function mcpStatusMock(): McpStatus {
     enabled: params.get("astate") !== "off",
     // `mail=1` shows the sub-toggle ON; default OFF, which is the shipped default.
     mailEnabled: params.get("mail") === "1",
+    // `sites=1` shows the parity sub-toggle ON; default OFF, the shipped default.
+    sitesEnabled: params.get("sites") === "1",
+    sitesToggleLabel: "Let agents manage my own sites",
     connectCommand: "claude mcp add rexenv -- rex mcp",
     activity: activityStatusMock(),
     recent,
@@ -1077,6 +1080,7 @@ export function DevUiReview() {
           return (params.get("drift") ?? "").split(",").map((t) => t.trim()).filter(Boolean);
         case "mcp_status":
         case "mcp_set_enabled":
+        case "mcp_set_sites_enabled":
           return mcpStatusMock();
         case "agent_activity":
           return params.get("feed") === "empty"

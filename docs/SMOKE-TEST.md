@@ -1017,6 +1017,33 @@ modal that steals focus.
   longer exists. That is cross-site exposure, the class this project has already
   been bitten by twice.
 
+### Parity P1 — Site access: the switch and the prompt (3 Sep 2026; no tool uses it yet)
+Steps 15–21 gate ONE resource behind ONE grant. Parity generalises that to five scopes
+on any of your own sites, and this is the first time an agent could be allowed to CHANGE
+or DELETE a site you made. **Nothing can ask yet** — the parity registry is empty until
+P2 — so today these steps are eyes-only: the switch, the copy, and the absence that is
+the point. They become executable the day the first parity tool lands, and P2's own
+section will say which.
+- [ ] **23. Off by default, and the switch alone grants nothing.** Fresh launch → Settings →
+  AI agents: **"Let agents manage my own sites"** is OFF, and its three paragraphs say
+  (a) what it opens (per-site, per-kind-of-access permissions, decided in Site access
+  below), (b) that on its own it **grants nothing**, and (c) the residual — anything an
+  agent runs in a site you granted runs as you, deleting can only be allowed per session,
+  and an administrator password still asks you. **Tell:** copy that keeps (a) and drops
+  (b) or (c) — those are the sentences a trim removes first, and without them the switch
+  reads as the permission rather than the door to one.
+- [ ] **24. Site access renders its empty state.** Below Database access, a **Site access**
+  section with no prompt and no grants says no agent can change your sites, that scratch
+  sites need no permission, and that **a request only lasts while rexenv is running**.
+- [ ] **25. ⚠ The switches that are NOT there.** Under Site access there are exactly THREE
+  "without asking" switches — reads, changes, running code — and a line saying deleting a
+  site and changing rexenv itself **can never be allowed without asking**. **Tell:** a
+  fourth switch, or a greyed-out one for deletion. There is no variant for it in the type
+  (#470), so a switch would mean the type was widened — a HOLD, not a note.
+- [ ] **26. (Runnable from P2.) A session grant dies with the app.** Allow something "for
+  this session", quit, relaunch → the grant is listed as **Revoked**, and the agent's
+  next call is refused and asks again. A week-long grant beside it must survive.
+
 ## Robustness (spot-check) — §2
 - [ ] Quit with another app on :443, relaunch → a clear "port in use" message (no crash).
 - [ ] Cancel an admin prompt once → a clear "permission cancelled, try again" state; retry works.

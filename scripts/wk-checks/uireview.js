@@ -95,6 +95,10 @@ const SCENARIOS = [
   ["wppackages-unnamed", "view=wppackages&names=none", []],
   ["agents-mail-off", "view=agents&astate=working", []],
   ["agents-mail-on", "view=agents&astate=working&mail=1", []],
+  // The SITES sub-toggle (MCP parity): off by default, on with `sites=1`, and
+  // the Site access section renders either way with its empty state.
+  ["agents-sites-off", "view=agents&astate=working", []],
+  ["agents-sites-on", "view=agents&astate=working&sites=1", []],
   // The Agent-scratch group: client badge + TTL + last-synced, a moved source,
   // an expired site, an expired one the reaper could not remove — and the two
   // rows that must render as ORDINARY sites (a Kept one, and a user's own site
@@ -479,6 +483,19 @@ const PROBES = {
       if (!toggle) problems.push("no toggle rendered");
       else if (toggle.getAttribute("aria-checked") !== (p.get("astate") === "off" ? "false" : "true"))
         problems.push("toggle state does not match astate");
+      // The SITES sub-toggle (parity) reflects `sites=1`, and the Site access
+      // section is always there — with its empty state, since the harness
+      // mocks no asks and no grants.
+      const sitesSwitch = [...document.querySelectorAll('[role="switch"]')].find((el) =>
+        (el.getAttribute("aria-label") || "").includes("manage my own sites"),
+      );
+      if (!sitesSwitch) problems.push("the sites sub-toggle is missing");
+      else if (sitesSwitch.getAttribute("aria-checked") !== (p.get("sites") === "1" ? "true" : "false"))
+        problems.push("the sites sub-toggle does not match sites=");
+      if (!text.includes("Site access")) problems.push("the Site access section is missing");
+      if (!text.includes("grants nothing")) problems.push("the sites toggle no longer says it grants nothing on its own");
+      if (!text.includes("A request only lasts while rexenv is running"))
+        problems.push("the Site access empty state is missing");
       // The feed must show resolved DOMAINS, never a raw UUID site handle (the
       // fix: target_site is a uuid, target_label is the domain shown). This now
       // also covers the case that CANNOT resolve — a reap names a site it just
