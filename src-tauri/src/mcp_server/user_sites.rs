@@ -192,6 +192,82 @@ static REGISTRY: &[UserTool] = &[
         handler: wp_theme,
     },
     UserTool {
+        name: "wp_user",
+        description: "Users on a WordPress site the user owns. Takes `site_id` and `action`: \
+                      `list` and `super_admins` need `read`; `create` {login, email, role, \
+                      password — omit to have rexenv generate one, returned ONCE}, `set_role` \
+                      {user_id, role}, `login_url` {user_id — omit for the primary administrator; a \
+                      one-time browser link into wp-admin, never recorded}, `super_admin_add` \
+                      {user} need `manage`; `set_password` {user_id, password} and `delete` \
+                      {user_id, and EXACTLY ONE of reassign (a user id to give their posts to) or \
+                      delete_posts: true} need `destroy` — a reset locks a person out, and the \
+                      app refuses to delete the primary administrator or a multisite user.",
+        input_schema: || json!({
+            "type": "object",
+            "properties": {
+                "site_id": { "type": "string" },
+                "action": { "type": "string", "enum": ["list", "create", "set_role", "login_url", "super_admins", "super_admin_add", "set_password", "delete"] },
+                "login": { "type": "string" }, "email": { "type": "string" }, "role": { "type": "string" },
+                "password": { "type": "string" }, "user_id": { "type": "integer" }, "user": { "type": "string" },
+                "reassign": { "type": "integer" }, "delete_posts": { "type": "boolean" }
+            },
+            "required": ["site_id", "action"],
+            "additionalProperties": false
+        }),
+        sweep_args: |id| json!({ "site_id": id, "action": "list" }),
+        summarise: |args| args.get("action").and_then(Value::as_str).map(|a| format!("user {a}")),
+        scope: Scope::Destroy,
+        handler: wp_user,
+    },
+    UserTool {
+        name: "wp_option",
+        description: "Settings on a WordPress site the user owns — the writes wp_info reads. Takes \
+                      `site_id` and `action`: `update` {name, value} (one option, through the \
+                      app's vetted setter), `debug` {on} (WP_DEBUG), `debug_flag` {flag, on} \
+                      (WP_DEBUG_LOG / WP_DEBUG_DISPLAY / SCRIPT_DEBUG / SAVEQUERIES), \
+                      `maintenance` {on}, `permalinks` {structure}, `language` {locale}. All need \
+                      `manage` on the site.",
+        input_schema: || json!({
+            "type": "object",
+            "properties": {
+                "site_id": { "type": "string" },
+                "action": { "type": "string", "enum": ["update", "debug", "debug_flag", "maintenance", "permalinks", "language"] },
+                "name": { "type": "string" }, "value": { "type": "string" }, "on": { "type": "boolean" },
+                "flag": { "type": "string" }, "structure": { "type": "string" }, "locale": { "type": "string" }
+            },
+            "required": ["site_id", "action"],
+            "additionalProperties": false
+        }),
+        sweep_args: |id| json!({ "site_id": id, "action": "maintenance", "on": false }),
+        summarise: |args| args.get("action").and_then(Value::as_str).map(|a| format!("option {a}")),
+        scope: Scope::Manage,
+        handler: wp_option,
+    },
+    UserTool {
+        name: "wp_maintain",
+        description: "Maintenance on a WordPress site the user owns. Takes `site_id` and `action`: \
+                      `cache_flush`, `rewrite_flush`, `transient_delete_all`, `cron_run_due`, \
+                      `cron_run_hook` {hook}, `checksum_cleanup` {paths — the files wp_info's \
+                      `checksums` reported as not WordPress's own}, `core_update` (to the latest), \
+                      `core_reinstall` (the same version, files only) need `manage`; \
+                      `core_switch` {version} needs `destroy` — a downgrade can leave the database \
+                      ahead of the code, and the reply says whether a database update is needed.",
+        input_schema: || json!({
+            "type": "object",
+            "properties": {
+                "site_id": { "type": "string" },
+                "action": { "type": "string", "enum": ["cache_flush", "rewrite_flush", "transient_delete_all", "cron_run_due", "cron_run_hook", "checksum_cleanup", "core_update", "core_reinstall", "core_switch"] },
+                "hook": { "type": "string" }, "paths": { "type": "array", "items": { "type": "string" } }, "version": { "type": "string" }
+            },
+            "required": ["site_id", "action"],
+            "additionalProperties": false
+        }),
+        sweep_args: |id| json!({ "site_id": id, "action": "cache_flush" }),
+        summarise: |args| args.get("action").and_then(Value::as_str).map(str::to_string),
+        scope: Scope::Destroy,
+        handler: wp_maintain,
+    },
+    UserTool {
         name: "site_configure",
         description: "Change how one of the user's own sites is set up — the things the site's \
                       Settings tab does. Takes `site_id` and `action`, plus the action's field: \
@@ -408,6 +484,33 @@ pub trait WpOps: Send + Sync {
     fn cron_events<'a>(&'a self, id: String) -> OpFuture<'a, Result<Vec<crate::core::wordpress::WpCronEvent>>>;
     fn core_verify_checksums<'a>(&'a self, id: String) -> OpFuture<'a, Result<crate::core::wordpress::WpChecksumReport>>;
     fn primary_admin<'a>(&'a self, id: String) -> OpFuture<'a, Result<u64>>;
+    // ── wp_user ──
+    fn users<'a>(&'a self, id: String) -> OpFuture<'a, Result<Vec<crate::core::wordpress::WpUser>>>;
+    fn user_create<'a>(&'a self, id: String, login: String, email: String, role: String, password: String) -> OpFuture<'a, Result<()>>;
+    fn user_set_password<'a>(&'a self, id: String, user_id: u64, password: String) -> OpFuture<'a, Result<()>>;
+    fn user_set_role<'a>(&'a self, id: String, user_id: u64, role: String) -> OpFuture<'a, Result<()>>;
+    fn user_delete<'a>(&'a self, id: String, user_id: u64, reassign: Option<u64>, delete_posts: bool) -> OpFuture<'a, Result<()>>;
+    fn user_login_url<'a>(&'a self, id: String, user_id: u64) -> OpFuture<'a, Result<String>>;
+    fn admin_login_url<'a>(&'a self, id: String) -> OpFuture<'a, Result<String>>;
+    fn super_admins<'a>(&'a self, id: String) -> OpFuture<'a, Result<Vec<String>>>;
+    fn super_admin_add<'a>(&'a self, id: String, user: String) -> OpFuture<'a, Result<()>>;
+    // ── wp_option ──
+    fn option_update<'a>(&'a self, id: String, name: String, value: String) -> OpFuture<'a, Result<()>>;
+    fn debug_set<'a>(&'a self, id: String, on: bool) -> OpFuture<'a, Result<()>>;
+    fn debug_flag_set<'a>(&'a self, id: String, name: String, on: bool) -> OpFuture<'a, Result<()>>;
+    fn maintenance_set<'a>(&'a self, id: String, on: bool) -> OpFuture<'a, Result<()>>;
+    fn permalink_set<'a>(&'a self, id: String, structure: String) -> OpFuture<'a, Result<()>>;
+    fn switch_language<'a>(&'a self, id: String, locale: String) -> OpFuture<'a, Result<()>>;
+    // ── wp_maintain ──
+    fn cache_flush<'a>(&'a self, id: String) -> OpFuture<'a, Result<String>>;
+    fn rewrite_flush<'a>(&'a self, id: String) -> OpFuture<'a, Result<()>>;
+    fn transient_delete_all<'a>(&'a self, id: String) -> OpFuture<'a, Result<String>>;
+    fn cron_run_due<'a>(&'a self, id: String) -> OpFuture<'a, Result<String>>;
+    fn cron_run_hook<'a>(&'a self, id: String, hook: String) -> OpFuture<'a, Result<String>>;
+    fn checksum_cleanup<'a>(&'a self, id: String, paths: Vec<String>) -> OpFuture<'a, Result<crate::core::wordpress::ChecksumCleanup>>;
+    fn core_update<'a>(&'a self, id: String) -> OpFuture<'a, Result<String>>;
+    fn core_reinstall<'a>(&'a self, id: String) -> OpFuture<'a, Result<String>>;
+    fn core_switch_version<'a>(&'a self, id: String, version: String) -> OpFuture<'a, Result<crate::core::wordpress::WpCoreSwitch>>;
 }
 
 /// What a parity handler can reach: app state, the app's own site operations,
@@ -1197,6 +1300,180 @@ fn wp_theme<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::Acted
     })
 }
 
+
+pub(crate) fn wp_user_scope(action: &str) -> Option<Scope> {
+    Some(match action {
+        "list" | "super_admins" => Scope::Read,
+        "create" | "set_role" | "login_url" | "super_admin_add" => Scope::Manage,
+        "set_password" | "delete" => Scope::Destroy,
+        _ => return None,
+    })
+}
+
+pub(crate) fn wp_maintain_scope(action: &str) -> Option<Scope> {
+    Some(match action {
+        "cache_flush" | "rewrite_flush" | "transient_delete_all" | "cron_run_due" | "cron_run_hook" | "checksum_cleanup" | "core_update" | "core_reinstall" => Scope::Manage,
+        "core_switch" => Scope::Destroy,
+        _ => return None,
+    })
+}
+
+fn u64_field(args: &Value, key: &str, tool: &str, action: &str) -> Result<u64> {
+    args.get(key).and_then(Value::as_u64).ok_or_else(|| Error::Other(format!("{tool} `{action}` needs `{key}` (a number).")))
+}
+
+fn wp_user<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTarget) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let id = args.get("site_id").and_then(Value::as_str).ok_or_else(|| Error::Other("wp_user needs a `site_id`.".into()))?;
+        let action = args.get("action").and_then(Value::as_str).ok_or_else(|| Error::Other("wp_user needs an `action`.".into()))?;
+        let scope = wp_user_scope(action).ok_or_else(|| {
+            Error::Other(format!("`{action}` is not a wp_user action. Use list, create, set_role, login_url, super_admins, super_admin_add, set_password or delete."))
+        })?;
+        // Shape, per action, before any ask.
+        let s_field = |k: &str| str_field(args, k, action);
+        let wanted = match action {
+            "list" => "list its users".to_string(),
+            "super_admins" => "list its super admins".to_string(),
+            "create" => format!("create the user `{}`", s_field("login")?),
+            "set_role" => format!("make user {} a {}", u64_field(args, "user_id", "wp_user", action)?, s_field("role")?),
+            "login_url" => "mint a one-time login link".to_string(),
+            "super_admin_add" => format!("make `{}` a super admin", s_field("user")?),
+            "set_password" => format!("reset the password of user {}", u64_field(args, "user_id", "wp_user", action)?),
+            _ => {
+                let uid = u64_field(args, "user_id", "wp_user", action)?;
+                let reassign = args.get("reassign").and_then(Value::as_u64);
+                let delete_posts = args.get("delete_posts").and_then(Value::as_bool).unwrap_or(false);
+                // The #446 fork, stated here as well as in the app: neither or both is a refusal.
+                if reassign.is_some() == delete_posts {
+                    return Err(Error::Other(
+                        "wp_user `delete` needs EXACTLY ONE of `reassign` (a user id to give the posts to) or `delete_posts: true` — deleting a user is always a decision about their posts, and rexenv will not guess.".into(),
+                    ));
+                }
+                format!("delete user {uid} and {}", if delete_posts { "their posts".to_string() } else { format!("give their posts to user {}", reassign.unwrap()) })
+            }
+        };
+        wp_precheck(&ctx, id, "wp_user")?;
+        let (site, auto) = claim_scope(&ctx, id, scope, &wanted)?;
+        acted.set(&site);
+        let sid = site.id.clone();
+        let wp = ctx.wp;
+        let result = match action {
+            "list" => to_json(wp.users(sid).await?)?,
+            "super_admins" => json!({ "superAdmins": wp.super_admins(sid).await? }),
+            "create" => {
+                let (login, email, role) = (s_field("login")?.to_string(), s_field("email")?.to_string(), s_field("role")?.to_string());
+                let generated = args.get("password").and_then(Value::as_str).filter(|p| !p.is_empty()).is_none();
+                let password = if generated { crate::core::wordpress::generate_password() } else { args["password"].as_str().unwrap().to_string() };
+                wp.user_create(sid, login.clone(), email, role, password.clone()).await?;
+                json!({ "created": login, "password": password, "note": if generated { "Generated by rexenv and shown once — not recorded anywhere an agent can read it again." } else { "The password you supplied, shown once." } })
+            }
+            "set_role" => { let uid = args["user_id"].as_u64().unwrap(); wp.user_set_role(sid, uid, s_field("role")?.to_string()).await?; json!({ "userId": uid, "role": s_field("role")? }) }
+            "login_url" => {
+                let url = match args.get("user_id").and_then(Value::as_u64) {
+                    Some(uid) => wp.user_login_url(sid, uid).await?,
+                    None => wp.admin_login_url(sid).await?,
+                };
+                json!({ "loginUrl": url, "note": "One-time, expires quickly, logs in as that user. Hand it to the person you're working with or open it once yourself; it is not recorded." })
+            }
+            "super_admin_add" => { let u = s_field("user")?.to_string(); wp.super_admin_add(sid, u.clone()).await?; json!({ "superAdminAdded": u }) }
+            "set_password" => {
+                let uid = args["user_id"].as_u64().unwrap();
+                let generated = args.get("password").and_then(Value::as_str).filter(|p| !p.is_empty()).is_none();
+                let password = if generated { crate::core::wordpress::generate_password() } else { args["password"].as_str().unwrap().to_string() };
+                wp.user_set_password(sid, uid, password.clone()).await?;
+                json!({ "userId": uid, "password": password, "note": "Shown once." })
+            }
+            _ => {
+                let uid = args["user_id"].as_u64().unwrap();
+                let reassign = args.get("reassign").and_then(Value::as_u64);
+                let delete_posts = args.get("delete_posts").and_then(Value::as_bool).unwrap_or(false);
+                wp.user_delete(sid, uid, reassign, delete_posts).await?;
+                json!({ "deleted": uid, "postsReassignedTo": reassign, "postsDeleted": delete_posts })
+            }
+        };
+        Ok(with_consent(json!({ "domain": site.domain, "action": action, "result": result }), auto))
+    })
+}
+
+fn wp_option<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTarget) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let id = args.get("site_id").and_then(Value::as_str).ok_or_else(|| Error::Other("wp_option needs a `site_id`.".into()))?;
+        let action = args.get("action").and_then(Value::as_str).ok_or_else(|| Error::Other("wp_option needs an `action`.".into()))?;
+        let on = || args.get("on").and_then(Value::as_bool).ok_or_else(|| Error::Other(format!("wp_option `{action}` needs `on` (true or false).")));
+        let wanted = match action {
+            "update" => format!("set the option `{}`", str_field(args, "name", action)?),
+            "debug" => format!("turn WP_DEBUG {}", if on()? { "on" } else { "off" }),
+            "debug_flag" => format!("turn {} {}", str_field(args, "flag", action)?, if on()? { "on" } else { "off" }),
+            "maintenance" => format!("turn maintenance mode {}", if on()? { "on" } else { "off" }),
+            "permalinks" => format!("set permalinks to `{}`", str_field(args, "structure", action)?),
+            "language" => format!("switch its language to {}", str_field(args, "locale", action)?),
+            other => return Err(Error::Other(format!("`{other}` is not a wp_option action. Use update, debug, debug_flag, maintenance, permalinks or language."))),
+        };
+        wp_precheck(&ctx, id, "wp_option")?;
+        let (site, auto) = claim_scope(&ctx, id, Scope::Manage, &wanted)?;
+        acted.set(&site);
+        let sid = site.id.clone();
+        let wp = ctx.wp;
+        match action {
+            "update" => wp.option_update(sid, str_field(args, "name", action)?.to_string(), args.get("value").and_then(Value::as_str).unwrap_or("").to_string()).await?,
+            "debug" => wp.debug_set(sid, on()?).await?,
+            "debug_flag" => wp.debug_flag_set(sid, str_field(args, "flag", action)?.to_string(), on()?).await?,
+            "maintenance" => wp.maintenance_set(sid, on()?).await?,
+            "permalinks" => wp.permalink_set(sid, str_field(args, "structure", action)?.to_string()).await?,
+            _ => wp.switch_language(sid, str_field(args, "locale", action)?.to_string()).await?,
+        }
+        Ok(with_consent(json!({ "domain": site.domain, "action": action, "done": true, "detail": wanted }), auto))
+    })
+}
+
+fn wp_maintain<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTarget) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let id = args.get("site_id").and_then(Value::as_str).ok_or_else(|| Error::Other("wp_maintain needs a `site_id`.".into()))?;
+        let action = args.get("action").and_then(Value::as_str).ok_or_else(|| Error::Other("wp_maintain needs an `action`.".into()))?;
+        let scope = wp_maintain_scope(action).ok_or_else(|| {
+            Error::Other(format!("`{action}` is not a wp_maintain action. Use cache_flush, rewrite_flush, transient_delete_all, cron_run_due, cron_run_hook, checksum_cleanup, core_update, core_reinstall or core_switch."))
+        })?;
+        let wanted = match action {
+            "cron_run_hook" => format!("run the cron hook `{}`", str_field(args, "hook", action)?),
+            "core_switch" => format!("switch WordPress to {}", str_field(args, "version", action)?),
+            "checksum_cleanup" => "remove files that are not WordPress's own".to_string(),
+            other => other.replace('_', " "),
+        };
+        wp_precheck(&ctx, id, "wp_maintain")?;
+        let (site, auto) = claim_scope(&ctx, id, scope, &wanted)?;
+        acted.set(&site);
+        let sid = site.id.clone();
+        let wp = ctx.wp;
+        // wp-cli's own words come back in several of these; every one goes
+        // through the one scrubber (#201) — a flush names nothing, an update
+        // and a checksum report both name the docroot.
+        let known = super::view::KnownPaths::for_site(ctx.state.platform.paths(), &site.path);
+        let scrub = |t: String| super::view::scrub_log_line(&t, &known);
+        let result = match action {
+            "cache_flush" => json!({ "output": scrub(wp.cache_flush(sid).await?) }),
+            "rewrite_flush" => { wp.rewrite_flush(sid).await?; json!({ "done": true }) }
+            "transient_delete_all" => json!({ "output": scrub(wp.transient_delete_all(sid).await?) }),
+            "cron_run_due" => json!({ "output": scrub(wp.cron_run_due(sid).await?) }),
+            "cron_run_hook" => json!({ "output": scrub(wp.cron_run_hook(sid, str_field(args, "hook", action)?.to_string()).await?) }),
+            "checksum_cleanup" => {
+                let paths: Vec<String> = args.get("paths").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(String::from).collect()).unwrap_or_default();
+                if paths.is_empty() {
+                    return Err(Error::Other("wp_maintain `checksum_cleanup` needs `paths` — the files wp_info `checksums` reported.".into()));
+                }
+                let r = wp.checksum_cleanup(sid, paths).await?;
+                json!({ "removed": r.removed, "skipped": r.skipped.len(), "reportOk": r.report.ok, "output": scrub(r.report.output) })
+            }
+            "core_update" => json!({ "output": scrub(wp.core_update(sid).await?) }),
+            "core_reinstall" => json!({ "output": scrub(wp.core_reinstall(sid).await?) }),
+            _ => {
+                let r = wp.core_switch_version(sid, str_field(args, "version", action)?.to_string()).await?;
+                json!({ "version": r.version, "dbUpdateRequired": r.db_update_required })
+            }
+        };
+        Ok(with_consent(json!({ "domain": site.domain, "action": action, "result": result }), auto))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1499,6 +1776,108 @@ mod tests {
         fn primary_admin<'a>(&'a self, id: String) -> OpFuture<'a, Result<u64>> {
             self.calls.lock().unwrap().push(format!("wp primary_admin {id}"));
             Box::pin(async { Ok(1) })
+        }
+        fn users<'a>(&'a self, id: String) -> OpFuture<'a, Result<Vec<crate::core::wordpress::WpUser>>> {
+            self.calls.lock().unwrap().push(format!("wp users {id}"));
+            Box::pin(async { Ok(vec![]) })
+        }
+        fn user_create<'a>(&'a self, id: String, login: String, email: String, role: String, password: String) -> OpFuture<'a, Result<()>> {
+            self.calls.lock().unwrap().push(format!("wp user create {id} {login} {email} {role} {password}"));
+            Box::pin(async { Ok(()) })
+        }
+        fn user_set_password<'a>(&'a self, id: String, user_id: u64, password: String) -> OpFuture<'a, Result<()>> {
+            self.calls.lock().unwrap().push(format!("wp user set_password {id} {user_id} {password}"));
+            Box::pin(async { Ok(()) })
+        }
+        fn user_set_role<'a>(&'a self, id: String, user_id: u64, role: String) -> OpFuture<'a, Result<()>> {
+            self.calls.lock().unwrap().push(format!("wp user set_role {id} {user_id} {role}"));
+            Box::pin(async { Ok(()) })
+        }
+        fn user_delete<'a>(&'a self, id: String, user_id: u64, reassign: Option<u64>, delete_posts: bool) -> OpFuture<'a, Result<()>> {
+            self.calls.lock().unwrap().push(format!("wp user delete {id} {user_id} {reassign:?} {delete_posts}"));
+            Box::pin(async { Ok(()) })
+        }
+        fn user_login_url<'a>(&'a self, id: String, user_id: u64) -> OpFuture<'a, Result<String>> {
+            self.calls.lock().unwrap().push(format!("wp user login_url {id} {user_id}"));
+            Box::pin(async { Ok("https://blog.rex/?rexenv_login=tok".into()) })
+        }
+        fn admin_login_url<'a>(&'a self, id: String) -> OpFuture<'a, Result<String>> {
+            self.calls.lock().unwrap().push(format!("wp admin login_url {id}"));
+            Box::pin(async { Ok("https://blog.rex/?rexenv_login=admintok".into()) })
+        }
+        fn super_admins<'a>(&'a self, id: String) -> OpFuture<'a, Result<Vec<String>>> {
+            self.calls.lock().unwrap().push(format!("wp super_admins {id}"));
+            Box::pin(async { Ok(vec!["admin".into()]) })
+        }
+        fn super_admin_add<'a>(&'a self, id: String, user: String) -> OpFuture<'a, Result<()>> {
+            self.calls.lock().unwrap().push(format!("wp super_admin_add {id} {user}"));
+            Box::pin(async { Ok(()) })
+        }
+        fn option_update<'a>(&'a self, id: String, name: String, value: String) -> OpFuture<'a, Result<()>> {
+            self.calls.lock().unwrap().push(format!("wp option update {id} {name}={value}"));
+            Box::pin(async { Ok(()) })
+        }
+        fn debug_set<'a>(&'a self, id: String, on: bool) -> OpFuture<'a, Result<()>> {
+            self.calls.lock().unwrap().push(format!("wp debug_set {id} {on}"));
+            Box::pin(async { Ok(()) })
+        }
+        fn debug_flag_set<'a>(&'a self, id: String, name: String, on: bool) -> OpFuture<'a, Result<()>> {
+            self.calls.lock().unwrap().push(format!("wp debug_flag_set {id} {name} {on}"));
+            Box::pin(async { Ok(()) })
+        }
+        fn maintenance_set<'a>(&'a self, id: String, on: bool) -> OpFuture<'a, Result<()>> {
+            self.calls.lock().unwrap().push(format!("wp maintenance_set {id} {on}"));
+            Box::pin(async { Ok(()) })
+        }
+        fn permalink_set<'a>(&'a self, id: String, structure: String) -> OpFuture<'a, Result<()>> {
+            self.calls.lock().unwrap().push(format!("wp permalink_set {id} {structure}"));
+            Box::pin(async { Ok(()) })
+        }
+        fn switch_language<'a>(&'a self, id: String, locale: String) -> OpFuture<'a, Result<()>> {
+            self.calls.lock().unwrap().push(format!("wp switch_language {id} {locale}"));
+            Box::pin(async { Ok(()) })
+        }
+        fn cache_flush<'a>(&'a self, id: String) -> OpFuture<'a, Result<String>> {
+            self.calls.lock().unwrap().push(format!("wp cache_flush {id}"));
+            Box::pin(async { Ok("Success: The cache was flushed.".into()) })
+        }
+        fn rewrite_flush<'a>(&'a self, id: String) -> OpFuture<'a, Result<()>> {
+            self.calls.lock().unwrap().push(format!("wp rewrite_flush {id}"));
+            Box::pin(async { Ok(()) })
+        }
+        fn transient_delete_all<'a>(&'a self, id: String) -> OpFuture<'a, Result<String>> {
+            self.calls.lock().unwrap().push(format!("wp transient_delete_all {id}"));
+            Box::pin(async { Ok("Success: 3 transients deleted.".into()) })
+        }
+        fn cron_run_due<'a>(&'a self, id: String) -> OpFuture<'a, Result<String>> {
+            self.calls.lock().unwrap().push(format!("wp cron_run_due {id}"));
+            Box::pin(async { Ok("Executed 2 events.".into()) })
+        }
+        fn cron_run_hook<'a>(&'a self, id: String, hook: String) -> OpFuture<'a, Result<String>> {
+            self.calls.lock().unwrap().push(format!("wp cron_run_hook {id} {hook}"));
+            Box::pin(async { Ok("Executed the cron event 'x'.".into()) })
+        }
+        fn checksum_cleanup<'a>(&'a self, id: String, paths: Vec<String>) -> OpFuture<'a, Result<crate::core::wordpress::ChecksumCleanup>> {
+            self.calls.lock().unwrap().push(format!("wp checksum_cleanup {id} {}", paths.join(",")));
+            Box::pin(async {
+                Ok(crate::core::wordpress::ChecksumCleanup {
+                    removed: 1,
+                    skipped: vec![],
+                    report: crate::core::wordpress::WpChecksumReport { ok: true, real: vec![], benign: vec![], output: "Success: WordPress installation verifies against checksums.".into() },
+                })
+            })
+        }
+        fn core_update<'a>(&'a self, id: String) -> OpFuture<'a, Result<String>> {
+            self.calls.lock().unwrap().push(format!("wp core_update {id}"));
+            Box::pin(async { Ok("Updating to version 6.7 (/Users/somebody/Library/Application Support/rexenv/Sites/blog.rex)…".into()) })
+        }
+        fn core_reinstall<'a>(&'a self, id: String) -> OpFuture<'a, Result<String>> {
+            self.calls.lock().unwrap().push(format!("wp core_reinstall {id}"));
+            Box::pin(async { Ok("Success: WordPress reinstalled.".into()) })
+        }
+        fn core_switch_version<'a>(&'a self, id: String, version: String) -> OpFuture<'a, Result<crate::core::wordpress::WpCoreSwitch>> {
+            self.calls.lock().unwrap().push(format!("wp core_switch {id} {version}"));
+            Box::pin(async move { Ok(crate::core::wordpress::WpCoreSwitch { version, db_update_required: true }) })
         }
     }
 
@@ -1915,5 +2294,93 @@ mod tests {
             assert!(calls.contains(&expect), "missing app call {expect:?} in {calls:?}");
         }
         assert_eq!(acted.take().as_deref(), Some(id));
+    }
+
+    /// **`wp_user`, `wp_option`, `wp_maintain`: the per-action tables, the #446
+    /// fork restated before any ask, a generated password shown once, a login
+    /// link never summarised, wp-cli's words scrubbed.**
+    #[tokio::test]
+    async fn wp_user_option_and_maintain_claim_per_action_and_keep_secrets_out_of_the_feed() {
+        assert_eq!(wp_user_scope("list"), Some(Scope::Read));
+        assert_eq!(wp_user_scope("create"), Some(Scope::Manage));
+        assert_eq!(wp_user_scope("login_url"), Some(Scope::Manage));
+        assert_eq!(wp_user_scope("set_password"), Some(Scope::Destroy));
+        assert_eq!(wp_user_scope("delete"), Some(Scope::Destroy));
+        assert_eq!(wp_maintain_scope("core_update"), Some(Scope::Manage));
+        assert_eq!(wp_maintain_scope("core_switch"), Some(Scope::Destroy));
+
+        let state = app_state();
+        switch_on(&state);
+        let ops = FakeOps::default();
+        let acted = super::super::feed::ActedTarget::default();
+        let ctx = UserCtx::new(&state, &ops, &ops, "claude-code");
+        let site = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "blog.rex", SiteOrigin::User);
+        {
+            let conn = state.db.lock().unwrap();
+            store::insert_site(&conn, &site).unwrap();
+            store::grant_agent_site(&conn, "g1", Some(&site.id), "claude-code", "manage", 7, false, false).unwrap();
+        }
+        // The delete fork is a SHAPE refusal — neither, and both, before any ask.
+        for args in [json!({ "site_id": site.id, "action": "delete", "user_id": 5 }), json!({ "site_id": site.id, "action": "delete", "user_id": 5, "reassign": 1, "delete_posts": true })] {
+            let err = wp_user(ctx, &args, &acted).await.unwrap_err().to_string();
+            assert!(err.contains("EXACTLY ONE"), "{err}");
+        }
+        assert!(asks(&state).is_empty());
+        // Delete needs destroy: a manage grant asks, with the posts decision in the verb.
+        let err = wp_user(ctx, &json!({ "site_id": site.id, "action": "delete", "user_id": 5, "reassign": 1 }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("`destroy`"), "{err}");
+        assert!(asks(&state)[0].wanted.contains("give their posts to user 1"));
+
+        // create with no password: generated, returned once, never in the feed summary.
+        let v = wp_user(ctx, &json!({ "site_id": site.id, "action": "create", "login": "bob", "email": "b@x.rex", "role": "editor" }), &acted).await.unwrap();
+        let pw = v["result"]["password"].as_str().unwrap().to_string();
+        assert!(pw.len() >= 12, "a generated password: {pw}");
+        assert!(v["result"]["note"].as_str().unwrap().contains("shown once"));
+        let summary = (registry().iter().find(|t| t.name == "wp_user").unwrap().summarise)(&json!({ "action": "create", "password": pw.clone() }));
+        assert_eq!(summary.as_deref(), Some("user create"), "the summary is the verb, never the value");
+        // login_url comes back, and nothing about it reaches a summary.
+        let v = wp_user(ctx, &json!({ "site_id": site.id, "action": "login_url" }), &acted).await.unwrap();
+        assert!(v["result"]["loginUrl"].as_str().unwrap().contains("rexenv_login="));
+        let v = wp_user(ctx, &json!({ "site_id": site.id, "action": "set_role", "user_id": 7, "role": "author" }), &acted).await.unwrap();
+        assert_eq!(v["result"]["role"], "author");
+
+        // wp_option: every action one app call.
+        for (args, expect) in [
+            (json!({ "action": "update", "name": "blogname", "value": "Hi" }), "wp option update"),
+            (json!({ "action": "debug", "on": true }), "wp debug_set"),
+            (json!({ "action": "debug_flag", "flag": "SCRIPT_DEBUG", "on": false }), "wp debug_flag_set"),
+            (json!({ "action": "maintenance", "on": true }), "wp maintenance_set"),
+            (json!({ "action": "permalinks", "structure": "/%postname%/" }), "wp permalink_set"),
+            (json!({ "action": "language", "locale": "de_DE" }), "wp switch_language"),
+        ] {
+            let mut a = args.clone();
+            a["site_id"] = json!(site.id);
+            let v = wp_option(ctx, &a, &acted).await.unwrap();
+            assert_eq!(v["done"], true);
+            assert!(ops.calls.lock().unwrap().iter().any(|c| c.starts_with(expect)), "missing {expect}");
+        }
+        let err = wp_option(ctx, &json!({ "site_id": site.id, "action": "debug" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("needs `on`"), "{err}");
+
+        // wp_maintain: manage actions run; core_update's output loses the docroot;
+        // core_switch needs destroy.
+        let v = wp_maintain(ctx, &json!({ "site_id": site.id, "action": "core_update" }), &acted).await.unwrap();
+        let out = v["result"]["output"].as_str().unwrap();
+        assert!(!out.contains("/Users/somebody") && out.contains("<"), "scrubbed: {out}");
+        let err = wp_maintain(ctx, &json!({ "site_id": site.id, "action": "core_switch", "version": "6.5" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("`destroy`"), "{err}");
+        let err = wp_maintain(ctx, &json!({ "site_id": site.id, "action": "checksum_cleanup" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("needs `paths`"), "{err}");
+        {
+            let conn = state.db.lock().unwrap();
+            store::grant_agent_site(&conn, "g2", Some(&site.id), "claude-code", "destroy", 1, false, true).unwrap();
+        }
+        let v = wp_maintain(ctx, &json!({ "site_id": site.id, "action": "core_switch", "version": "6.5" }), &acted).await.unwrap();
+        assert_eq!(v["result"]["dbUpdateRequired"], true);
+        let v = wp_user(ctx, &json!({ "site_id": site.id, "action": "delete", "user_id": 5, "delete_posts": true }), &acted).await.unwrap();
+        assert_eq!(v["result"]["postsDeleted"], true);
+        let calls = ops.calls.lock().unwrap().clone();
+        assert!(calls.iter().any(|c| c == &format!("wp user delete {} 5 None true", site.id)), "{calls:?}");
+        assert!(calls.iter().any(|c| c.starts_with(&format!("wp user create {} bob b@x.rex editor ", site.id))), "{calls:?}");
     }
 }

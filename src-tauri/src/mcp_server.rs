@@ -969,6 +969,78 @@ impl<Rt: tauri::Runtime> user_sites::WpOps for AppSiteCreator<Rt> {
     fn primary_admin<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<u64>> {
         Box::pin(async move { crate::commands::wordpress::wp_primary_admin(self.state()?, id).await })
     }
+    fn users<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<Vec<crate::core::wordpress::WpUser>>> {
+        Box::pin(async move { crate::commands::wordpress::wp_users(self.state()?, id).await })
+    }
+    fn user_create<'a>(&'a self, id: String, login: String, email: String, role: String, password: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::wordpress::wp_user_create(self.state()?, id, login, email, role, password).await })
+    }
+    fn user_set_password<'a>(&'a self, id: String, user_id: u64, password: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::wordpress::wp_user_set_password(self.state()?, id, user_id, password).await })
+    }
+    fn user_set_role<'a>(&'a self, id: String, user_id: u64, role: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::wordpress::wp_user_set_role(self.state()?, id, user_id, role).await })
+    }
+    fn user_delete<'a>(&'a self, id: String, user_id: u64, reassign: Option<u64>, delete_posts: bool) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::wordpress::wp_user_delete(self.state()?, id, user_id, reassign, delete_posts).await })
+    }
+    fn user_login_url<'a>(&'a self, id: String, user_id: u64) -> user_sites::OpFuture<'a, crate::error::Result<String>> {
+        Box::pin(async move { crate::commands::wordpress::wp_user_login_url(self.state()?, id, user_id).await })
+    }
+    fn admin_login_url<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<String>> {
+        Box::pin(async move { crate::commands::wordpress::wp_admin_login_url(self.state()?, id).await })
+    }
+    fn super_admins<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<Vec<String>>> {
+        Box::pin(async move { crate::commands::wordpress::wp_super_admins(self.state()?, id).await })
+    }
+    fn super_admin_add<'a>(&'a self, id: String, user: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::wordpress::wp_super_admin_add(self.state()?, id, user).await })
+    }
+    fn option_update<'a>(&'a self, id: String, name: String, value: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::wordpress::wp_option_update(self.state()?, id, name, value).await })
+    }
+    fn debug_set<'a>(&'a self, id: String, on: bool) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::wordpress::wp_debug_set(self.state()?, id, on).await })
+    }
+    fn debug_flag_set<'a>(&'a self, id: String, name: String, on: bool) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::wordpress::wp_debug_flag_set(self.state()?, id, name, on).await })
+    }
+    fn maintenance_set<'a>(&'a self, id: String, on: bool) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::wordpress::wp_maintenance_set(self.state()?, id, on).await })
+    }
+    fn permalink_set<'a>(&'a self, id: String, structure: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::wordpress::wp_permalink_set(self.state()?, id, structure).await })
+    }
+    fn switch_language<'a>(&'a self, id: String, locale: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::wordpress::wp_switch_language(self.state()?, id, locale).await })
+    }
+    fn cache_flush<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<String>> {
+        Box::pin(async move { crate::commands::wordpress::wp_cache_flush(self.state()?, id).await })
+    }
+    fn rewrite_flush<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::wordpress::wp_rewrite_flush(self.state()?, id).await })
+    }
+    fn transient_delete_all<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<String>> {
+        Box::pin(async move { crate::commands::wordpress::wp_transient_delete_all(self.state()?, id).await })
+    }
+    fn cron_run_due<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<String>> {
+        Box::pin(async move { crate::commands::wordpress::wp_cron_run_due(self.state()?, id).await })
+    }
+    fn cron_run_hook<'a>(&'a self, id: String, hook: String) -> user_sites::OpFuture<'a, crate::error::Result<String>> {
+        Box::pin(async move { crate::commands::wordpress::wp_cron_run_hook(self.state()?, id, hook).await })
+    }
+    fn checksum_cleanup<'a>(&'a self, id: String, paths: Vec<String>) -> user_sites::OpFuture<'a, crate::error::Result<crate::core::wordpress::ChecksumCleanup>> {
+        Box::pin(async move { crate::commands::wordpress::wp_checksum_cleanup(self.state()?, id, paths).await })
+    }
+    fn core_update<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<String>> {
+        Box::pin(async move { crate::commands::wordpress::wp_core_update(self.app.clone(), self.state()?, id).await })
+    }
+    fn core_reinstall<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<String>> {
+        Box::pin(async move { crate::commands::wordpress::wp_core_reinstall(self.state()?, id).await })
+    }
+    fn core_switch_version<'a>(&'a self, id: String, version: String) -> user_sites::OpFuture<'a, crate::error::Result<crate::core::wordpress::WpCoreSwitch>> {
+        Box::pin(async move { crate::commands::wordpress::wp_core_switch_version(self.state()?, id, version).await })
+    }
 }
 
 /// Run EVERY registered tool against `app`'s state with the fixture site id, and

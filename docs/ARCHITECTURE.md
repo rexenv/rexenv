@@ -906,7 +906,12 @@ IPC surface — which is how a reader ends up designing against a system with on
   `wp_plugin` and `wp_theme` (the scope decided PER ACTION from one table: `list` reads,
   `delete` destroys, the rest manage; a scratch or non-WordPress site refused BEFORE any
   ask; every action exactly one `commands::wordpress` command, so the vetted argument
-  hygiene in `core::wordpress` applies unchanged) — each through a
+  hygiene in `core::wordpress` applies unchanged), `wp_user` (list/super-admins read;
+  create with a password rexenv generates and shows ONCE, roles, a one-time login link
+  and super-admin manage; a password reset and a delete destroy — the #446 posts fork is
+  restated BEFORE any ask), `wp_option` (six vetted writes, all manage) and `wp_maintain`
+  (flushes, cron, checksum cleanup, core update/reinstall manage; `core_switch` destroys;
+  every wp-cli reply through the one scrubber) — each through a
   `Granted<S>` scope witness (`core::agent_grants`) minted from a grant the user gave in the
   app, and only while the "Let agents manage my own sites" switch is on. Shape refusals
   (a bad type, a taken domain, `multisite` on a PHP site) come BEFORE the gate and record no

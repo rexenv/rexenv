@@ -2017,8 +2017,11 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     ✓ P3.1 — **`wp_info` + `wp_plugin` + `wp_theme`**, ledger #481 (3 Sep 2026): `WpOps`
     over 24 `commands::wordpress` arms; per-action scope from one table met by the
     witness types in ONE place (`claim_scope`); scratch/non-WP refused before any ask.
-    Install is a job → P6. Remaining: `wp_user`, `wp_option`, `wp_maintain`, `wp_data`,
-    `wp_network`, `site_wp_run` (run), `wp_org_search`, `site_logs`, `mail_inbox`.
+    Install is a job → P6.
+    ✓ P3.2 — **`wp_user` + `wp_option` + `wp_maintain`**, ledger #482: 24 more arms; a
+    generated password shown once and summarised as the verb; the #446 fork restated as
+    a shape refusal; wp-cli output scrubbed; `core_switch` under destroy. Remaining:
+    `wp_data`, `wp_network`, `site_wp_run` (run), `wp_org_search`, `site_logs`, `mail_inbox`.
   - [ ] **P4 — the stack**: `stack_status`/`stack(...)` incl. privileged start/stop (D10),
     `php_*`, `settings`, `tld`, `open`, `share` (D11), TTL/cap as settings.
   - [ ] **P5 — long tail**: `repo(...)`, `valet_import`, `connection_rewrite`, `db_import`,

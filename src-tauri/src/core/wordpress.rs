@@ -3509,6 +3509,16 @@ const MULTISITE_CONSTANTS: &[&str] = &[
 /// shared publicly (see [`default_creds_active`]).
 pub const DEFAULT_ADMIN: &str = "admin";
 
+/// A fresh password for an account rexenv creates on someone's behalf (the
+/// MCP `wp_user` tool, when the agent supplies none): 20 characters from an
+/// unambiguous set, drawn from two v4 UUIDs' random bytes so it needs no
+/// OS-specific entropy source. Shown ONCE in the reply and recorded nowhere.
+pub fn generate_password() -> String {
+    const CHARS: &[u8] = b"abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let bytes: Vec<u8> = uuid::Uuid::new_v4().as_bytes().iter().chain(uuid::Uuid::new_v4().as_bytes().iter()).copied().collect();
+    bytes.iter().take(20).map(|b| CHARS[(*b as usize) % CHARS.len()] as char).collect()
+}
+
 /// Reset a WordPress site to a clean **single-site** install: DROP the
 /// database, clear any multisite constants from wp-config.php, and re-run the
 /// step-skipping installer with the default local-dev credentials
