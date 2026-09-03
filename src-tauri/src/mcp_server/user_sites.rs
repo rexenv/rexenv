@@ -343,6 +343,55 @@ static REGISTRY: &[UserTool] = &[
         handler: site_wp_run,
     },
     UserTool {
+        name: "site_logs",
+        description: "Every log that concerns one of the user's own sites — its web server, PHP \
+                      pool, edge and database logs (shared across sites) and, for WordPress, its \
+                      debug log. Takes `site_id`; without `source` it lists the sources by key; \
+                      with `source` (a key from that list, or `wp-debug`) it returns the most \
+                      recent lines (default 100, max 200), with rexenv's login tokens, cookie \
+                      headers and the paths rexenv knows removed — otherwise the raw log. Needs \
+                      the user's `read` permission on the site (the free tail_log covers only the \
+                      WordPress debug log).",
+        input_schema: || json!({
+            "type": "object",
+            "properties": {
+                "site_id": { "type": "string" },
+                "source": { "type": "string", "description": "A key from the list, or `wp-debug`. Omit to list." },
+                "lines": { "type": "integer", "description": "Max 200; default 100." }
+            },
+            "required": ["site_id"],
+            "additionalProperties": false
+        }),
+        sweep_args: |id| json!({ "site_id": id }),
+        summarise: |args| args.get("source").and_then(Value::as_str).map(str::to_string),
+        scope: Scope::Read,
+        handler: site_logs,
+    },
+    UserTool {
+        name: "mail_inbox",
+        description: "The user's whole Mailpit inbox — every message every site on this machine \
+                      sent, including password-reset links for their own sites. Takes `action`: \
+                      `list` {query?, unread?, limit?}, `get` {message_id}, `raw` {message_id} need \
+                      the user's `read` permission on rexenv itself (not on a site — the inbox is \
+                      shared) AND the mail switch in rexenv turned on; `mark_read` needs `manage`; \
+                      `delete` {message_ids} and `clear` need `destroy`. For a scratch site's own \
+                      mail use mail_list / mail_get, which need no permission.",
+        input_schema: || json!({
+            "type": "object",
+            "properties": {
+                "action": { "type": "string", "enum": ["list", "get", "raw", "mark_read", "delete", "clear"] },
+                "query": { "type": "string" }, "unread": { "type": "boolean" }, "limit": { "type": "integer" },
+                "message_id": { "type": "string" }, "message_ids": { "type": "array", "items": { "type": "string" } }
+            },
+            "required": ["action"],
+            "additionalProperties": false
+        }),
+        sweep_args: |_id| json!({ "action": "list" }),
+        summarise: |args| args.get("action").and_then(Value::as_str).map(|a| format!("inbox {a}")),
+        scope: Scope::Destroy,
+        handler: mail_inbox,
+    },
+    UserTool {
         name: "site_configure",
         description: "Change how one of the user's own sites is set up — the things the site's \
                       Settings tab does. Takes `site_id` and `action`, plus the action's field: \
@@ -598,6 +647,16 @@ pub trait WpOps: Send + Sync {
     fn network_site_delete<'a>(&'a self, id: String, blog_id: String) -> OpFuture<'a, Result<()>>;
 }
 
+/// The app's own Mailpit reads and writes (`commands::mail`), runtime-erased.
+pub trait MailOps: Send + Sync {
+    fn list<'a>(&'a self, query: Option<String>, unread_only: bool) -> OpFuture<'a, Result<crate::core::mail::MailList>>;
+    fn detail<'a>(&'a self, id: String) -> OpFuture<'a, Result<crate::core::mail::MailDetail>>;
+    fn raw<'a>(&'a self, id: String) -> OpFuture<'a, Result<String>>;
+    fn mark_all_read<'a>(&'a self) -> OpFuture<'a, Result<()>>;
+    fn clear<'a>(&'a self) -> OpFuture<'a, Result<()>>;
+    fn delete<'a>(&'a self, ids: Vec<String>) -> OpFuture<'a, Result<()>>;
+}
+
 /// What a parity handler can reach: app state, the app's own site operations,
 /// and — for any SITE or for the stack — only through [`UserCtx::claim`], which
 /// yields a `Granted<S>` or a refusal an agent can act on.
@@ -611,11 +670,12 @@ pub struct UserCtx<'a> {
     client: &'a str,
     ops: &'a dyn SiteOps,
     wp: &'a dyn WpOps,
+    mail: &'a dyn MailOps,
 }
 
 impl<'a> UserCtx<'a> {
-    pub fn new(state: &'a AppState, ops: &'a dyn SiteOps, wp: &'a dyn WpOps, client: &'a str) -> Self {
-        UserCtx { state, client, ops, wp }
+    pub fn new(state: &'a AppState, ops: &'a dyn SiteOps, wp: &'a dyn WpOps, mail: &'a dyn MailOps, client: &'a str) -> Self {
+        UserCtx { state, client, ops, wp, mail }
     }
 
     pub(crate) fn db(&self) -> Result<std::sync::MutexGuard<'_, rusqlite::Connection>> {
@@ -1698,6 +1758,150 @@ fn site_wp_run<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::Ac
     })
 }
 
+
+const LOG_DEFAULT: usize = 100;
+const LOG_MAX: usize = 200;
+
+fn site_logs<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTarget) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let id = args.get("site_id").and_then(Value::as_str).ok_or_else(|| Error::Other("site_logs needs a `site_id`.".into()))?;
+        let source = args.get("source").and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty());
+        let lines = args.get("lines").and_then(Value::as_u64).map_or(LOG_DEFAULT, |n| (n as usize).clamp(1, LOG_MAX));
+        // A scratch site is the agent's: its debug log is tail_log's, its shared
+        // logs are the same files as everyone else's — refused here so the
+        // grant surface stays about the user's sites.
+        {
+            let conn = ctx.db()?;
+            if let Some(s) = crate::state::store::get_site(&conn, id)? {
+                if s.is_scratch() {
+                    return Err(Error::Other(format!("`{}` is a scratch site — tail_log reads its debug log without any permission.", s.domain)));
+                }
+            }
+        }
+        let wanted = match source { Some(k) => format!("read its `{k}` log"), None => "list its logs".to_string() };
+        let claimed = ctx.claim::<scope::Read>(Some(id), &wanted)?;
+        let site = claimed.granted.site().cloned().ok_or_else(|| Error::Other("site_logs needs a site.".into()))?;
+        acted.set(&site);
+        let log_dir = ctx.state.platform.paths().log_dir()?;
+        // The site's OWN target list, from core — the same one its Logs tab
+        // shows — is the closed set of keys this tool will tail. A key outside
+        // it (another site's, a made-up one) is refused before core is asked.
+        let targets = crate::core::logs::targets_for_site(&site, &log_dir);
+        let known = super::view::KnownPaths::for_site(ctx.state.platform.paths(), &site.path);
+        let scrub = |v: Vec<String>| v.iter().map(|l| super::view::scrub_log_line(l, &known)).collect::<Vec<_>>();
+        let value = match source {
+            None => {
+                let mut sources: Vec<Value> = targets.iter().map(|t| json!({ "key": t.key, "label": t.label, "category": t.category })).collect();
+                if site.site_type == SiteType::Wordpress {
+                    sources.push(json!({ "key": "wp-debug", "label": "WordPress debug log", "category": "site" }));
+                }
+                json!({ "domain": site.domain, "sources": sources })
+            }
+            Some("wp-debug") => {
+                if site.site_type != SiteType::Wordpress {
+                    return Err(Error::Other(format!("`{}` is not a WordPress site, so it has no debug log.", site.domain)));
+                }
+                let raw = crate::core::logs::wp_debug_log_tail(std::path::Path::new(&site.path), site.content_dir_rel(), lines)?;
+                json!({ "domain": site.domain, "source": "wp-debug", "lines": scrub(raw) })
+            }
+            Some(key) => {
+                if !targets.iter().any(|t| t.key == key) {
+                    return Err(Error::Other(format!(
+                        "`{key}` is not one of `{}`'s logs. Call site_logs without `source` to see its keys.",
+                        site.domain
+                    )));
+                }
+                let raw = crate::core::logs::tail(ctx.state.platform.as_ref(), key, lines)?;
+                json!({ "domain": site.domain, "source": key, "lines": scrub(raw) })
+            }
+        };
+        Ok(with_consent(json!({ "note": "rexenv-issued login tokens, cookie headers and the paths rexenv knows are removed; the rest is the raw log.", "result": value }), claimed.auto_granted))
+    })
+}
+
+pub(crate) fn mail_inbox_scope(action: &str) -> Option<Scope> {
+    Some(match action {
+        "list" | "get" | "raw" => Scope::Read,
+        "mark_read" => Scope::Manage,
+        "delete" | "clear" => Scope::Destroy,
+        _ => return None,
+    })
+}
+
+const INBOX_DEFAULT: usize = 20;
+const INBOX_MAX: usize = 50;
+
+fn mail_inbox<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::ActedTarget) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let action = args.get("action").and_then(Value::as_str).ok_or_else(|| Error::Other("mail_inbox needs an `action`.".into()))?;
+        let scope = mail_inbox_scope(action).ok_or_else(|| Error::Other(format!("`{action}` is not a mail_inbox action. Use list, get, raw, mark_read, delete or clear.")))?;
+        let message_id = || str_field(args, "message_id", action).map(str::to_string);
+        let wanted = match action {
+            "list" => "read the inbox".to_string(),
+            "get" | "raw" => format!("read message {}", message_id()?),
+            "mark_read" => "mark every message read".to_string(),
+            "delete" => "delete messages from the inbox".to_string(),
+            _ => "empty the inbox".to_string(),
+        };
+        // The MAIL switch first, by name: it is the user's decision about mail
+        // as such, and a grant cannot stand in for it (D4). Then the grant.
+        {
+            let conn = ctx.db()?;
+            if !crate::mcp_server::mail_enabled(&conn) {
+                return Err(Error::Other(
+                    "reading mail is turned off. The person you're working with can switch it on in \
+                     rexenv under Settings → AI agents (MCP) → \"Let agents read scratch-site mail\" — \
+                     and the inbox additionally needs their `read` permission on rexenv itself. That \
+                     is their decision, not something an agent can change."
+                        .into(),
+                ));
+            }
+        }
+        let (_, auto) = match scope {
+            Scope::Read => { let c = ctx.claim::<scope::Read>(None, &wanted)?; ((), c.auto_granted) }
+            Scope::Manage => { let c = ctx.claim::<scope::Manage>(None, &wanted)?; ((), c.auto_granted) }
+            _ => { let c = ctx.claim::<scope::Destroy>(None, &wanted)?; ((), c.auto_granted) }
+        };
+        let mail = ctx.mail;
+        let unreachable = |e: Error| Error::Other(format!("rexenv's mail catcher isn't answering ({e}). It starts with the rest of the stack — that is the user's move in rexenv."));
+        let known = super::view::KnownPaths::for_site(ctx.state.platform.paths(), "");
+        let result = match action {
+            "list" => {
+                let limit = args.get("limit").and_then(Value::as_u64).map_or(INBOX_DEFAULT, |n| (n as usize).clamp(1, INBOX_MAX));
+                let inbox = mail.list(args.get("query").and_then(Value::as_str).map(String::from), args.get("unread").and_then(Value::as_bool).unwrap_or(false)).await.map_err(unreachable)?;
+                json!({
+                    "total": inbox.total, "unread": inbox.unread,
+                    "messages": inbox.messages.into_iter().take(limit).map(|m| json!({
+                        "id": m.id, "from": m.from.address, "to": m.to.into_iter().map(|a| a.address).collect::<Vec<_>>(),
+                        "subject": m.subject, "date": m.created, "read": m.read, "snippet": super::view::scrub_log_line(&m.snippet, &known),
+                    })).collect::<Vec<_>>(),
+                })
+            }
+            "get" => {
+                let m = mail.detail(message_id()?).await.map_err(unreachable)?;
+                json!({
+                    "id": m.id, "from": m.from.address, "to": m.to.into_iter().map(|a| a.address).collect::<Vec<_>>(),
+                    "subject": m.subject, "date": m.date,
+                    "text": m.text.lines().map(|l| super::view::scrub_log_line(l, &known)).collect::<Vec<_>>().join("\n"),
+                    "headers": m.headers.into_iter().map(|h| json!({ "name": h.name, "value": h.value })).collect::<Vec<_>>(),
+                })
+            }
+            "raw" => json!({ "raw": mail.raw(message_id()?).await.map_err(unreachable)?.lines().map(|l| super::view::scrub_log_line(l, &known)).collect::<Vec<_>>().join("\n") }),
+            "mark_read" => { mail.mark_all_read().await.map_err(unreachable)?; json!({ "markedRead": true }) }
+            "delete" => {
+                let ids: Vec<String> = args.get("message_ids").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(String::from).collect()).unwrap_or_default();
+                if ids.is_empty() {
+                    return Err(Error::Other("mail_inbox `delete` needs `message_ids`.".into()));
+                }
+                mail.delete(ids.clone()).await.map_err(unreachable)?;
+                json!({ "deleted": ids })
+            }
+            _ => { mail.clear().await.map_err(unreachable)?; json!({ "cleared": true }) }
+        };
+        Ok(with_consent(json!({ "action": action, "result": result }), auto))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2137,6 +2341,51 @@ mod tests {
         }
     }
 
+    impl MailOps for FakeOps {
+        fn list<'a>(&'a self, query: Option<String>, unread_only: bool) -> OpFuture<'a, Result<crate::core::mail::MailList>> {
+            self.calls.lock().unwrap().push(format!("mail list {query:?} {unread_only}"));
+            Box::pin(async {
+                Ok(crate::core::mail::MailList {
+                    total: 1, unread: 1,
+                    messages: vec![crate::core::mail::MailSummary {
+                        id: "m1".into(),
+                        from: crate::core::mail::MailAddress { name: "WP".into(), address: "wordpress@blog.rex".into() },
+                        to: vec![crate::core::mail::MailAddress { name: String::new(), address: "me@x.rex".into() }],
+                        subject: "Password Reset".into(), created: "2026-09-03".into(), read: false,
+                        snippet: "https://blog.rex/wp-login.php?action=rp&key=abc&rexenv_login=tok".into(),
+                    }],
+                })
+            })
+        }
+        fn detail<'a>(&'a self, id: String) -> OpFuture<'a, Result<crate::core::mail::MailDetail>> {
+            self.calls.lock().unwrap().push(format!("mail detail {id}"));
+            Box::pin(async {
+                Ok(crate::core::mail::MailDetail {
+                    id: "m1".into(),
+                    from: crate::core::mail::MailAddress { name: "WP".into(), address: "wordpress@blog.rex".into() },
+                    to: vec![], cc: vec![], subject: "Password Reset".into(), date: "2026-09-03".into(),
+                    text: "Visit https://blog.rex/?rexenv_login=tok to log in".into(), html: String::new(), headers: vec![],
+                })
+            })
+        }
+        fn raw<'a>(&'a self, id: String) -> OpFuture<'a, Result<String>> {
+            self.calls.lock().unwrap().push(format!("mail raw {id}"));
+            Box::pin(async { Ok("Subject: x\n".into()) })
+        }
+        fn mark_all_read<'a>(&'a self) -> OpFuture<'a, Result<()>> {
+            self.calls.lock().unwrap().push("mail mark_all_read".into());
+            Box::pin(async { Ok(()) })
+        }
+        fn clear<'a>(&'a self) -> OpFuture<'a, Result<()>> {
+            self.calls.lock().unwrap().push("mail clear".into());
+            Box::pin(async { Ok(()) })
+        }
+        fn delete<'a>(&'a self, ids: Vec<String>) -> OpFuture<'a, Result<()>> {
+            self.calls.lock().unwrap().push(format!("mail delete {}", ids.join(",")));
+            Box::pin(async { Ok(()) })
+        }
+    }
+
     fn switch_on(state: &AppState) {
         let conn = state.db.lock().unwrap();
         store::set_setting(&conn, crate::mcp_server::MCP_SITES_ENABLED_KEY, "true").unwrap();
@@ -2167,7 +2416,7 @@ mod tests {
         seed_php(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, "claude-code");
         let run = |args: Value| {
             let acted = &acted;
             async move { site_create(ctx, &args, acted).await }
@@ -2271,7 +2520,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, "claude-code");
         let mine = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "mine.rex", SiteOrigin::User);
         let theirs = test_site("c58e0a41-7d2f-4b19-93a6-6e1c5d8f0a24", "probe.scratch.rex", SiteOrigin::Agent);
         {
@@ -2312,7 +2561,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, "claude-code");
         let mine = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "mine.rex", SiteOrigin::User);
         {
             let conn = state.db.lock().unwrap();
@@ -2407,7 +2656,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, "claude-code");
         let mine = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "mine.rex", SiteOrigin::User);
         {
             let conn = state.db.lock().unwrap();
@@ -2478,7 +2727,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, "claude-code");
         let wp_site = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "blog.rex", SiteOrigin::User);
         let mut php_site = test_site("bbbbbbbb-bbbb-4ccc-8ddd-eeeeeeeeeeee", "plain.rex", SiteOrigin::User);
         php_site.site_type = SiteType::Php;
@@ -2569,7 +2818,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, "claude-code");
         let site = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "blog.rex", SiteOrigin::User);
         {
             let conn = state.db.lock().unwrap();
@@ -2656,7 +2905,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, "claude-code");
         let site = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "blog.rex", SiteOrigin::User);
         {
             let conn = state.db.lock().unwrap();
@@ -2698,5 +2947,66 @@ mod tests {
         assert!(err.contains("--path"), "the target screen, before resolution: {err}");
         let err = site_wp_run(ctx, &json!({ "site_id": site.id, "args": "plugin list" }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("array"), "{err}");
+    }
+
+    /// **`site_logs` tails only the site's own target keys under `read`, and
+    /// `mail_inbox` needs the mail switch AND a stack-level grant per action —
+    /// with tokens scrubbed from what comes back.**
+    #[tokio::test]
+    async fn site_logs_and_mail_inbox_gate_and_scrub() {
+        assert_eq!(mail_inbox_scope("list"), Some(Scope::Read));
+        assert_eq!(mail_inbox_scope("mark_read"), Some(Scope::Manage));
+        assert_eq!(mail_inbox_scope("clear"), Some(Scope::Destroy));
+        let state = app_state();
+        switch_on(&state);
+        let ops = FakeOps::default();
+        let acted = super::super::feed::ActedTarget::default();
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, "claude-code");
+        let site = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "blog.rex", SiteOrigin::User);
+        let theirs = test_site("c58e0a41-7d2f-4b19-93a6-6e1c5d8f0a24", "probe.scratch.rex", SiteOrigin::Agent);
+        {
+            let conn = state.db.lock().unwrap();
+            store::insert_site(&conn, &site).unwrap();
+            store::insert_site(&conn, &theirs).unwrap();
+        }
+        let err = site_logs(ctx, &json!({ "site_id": theirs.id }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("tail_log"), "{err}");
+        let err = site_logs(ctx, &json!({ "site_id": site.id }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("`read`"), "{err}");
+        {
+            let conn = state.db.lock().unwrap();
+            store::grant_agent_site(&conn, "g1", Some(&site.id), "claude-code", "read", 7, false, false).unwrap();
+        }
+        let v = site_logs(ctx, &json!({ "site_id": site.id }), &acted).await.unwrap();
+        let sources = v["result"]["sources"].as_array().unwrap();
+        assert!(sources.iter().any(|s| s["key"] == "wp-debug"));
+        assert!(!v.to_string().contains("/Users/somebody"), "a target's path leaked: {v}");
+        let err = site_logs(ctx, &json!({ "site_id": site.id, "source": "../etc/passwd" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("not one of"), "a key outside the site's list is refused before core: {err}");
+
+        // The inbox: the mail switch first, by name; then the stack-level grant.
+        let err = mail_inbox(ctx, &json!({ "action": "list" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("Let agents read scratch-site mail"), "{err}");
+        {
+            let conn = state.db.lock().unwrap();
+            store::set_setting(&conn, crate::mcp_server::MCP_MAIL_ENABLED_KEY, "true").unwrap();
+        }
+        let err = mail_inbox(ctx, &json!({ "action": "list" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("`read`") && err.contains("rexenv itself"), "{err}");
+        assert!(asks(&state).iter().any(|r| r.site_id.is_none() && r.scope == Scope::Read));
+        {
+            let conn = state.db.lock().unwrap();
+            store::grant_agent_site(&conn, "g2", None, "claude-code", "read", 7, false, false).unwrap();
+        }
+        let v = mail_inbox(ctx, &json!({ "action": "list", "unread": true }), &acted).await.unwrap();
+        let snippet = v["result"]["messages"][0]["snippet"].as_str().unwrap();
+        assert!(!snippet.contains("rexenv_login=tok"), "a login token left in a snippet: {snippet}");
+        let v = mail_inbox(ctx, &json!({ "action": "get", "message_id": "m1" }), &acted).await.unwrap();
+        assert!(!v["result"]["text"].as_str().unwrap().contains("=tok"));
+        let err = mail_inbox(ctx, &json!({ "action": "clear" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("`destroy`"), "{err}");
+        let err = mail_inbox(ctx, &json!({ "action": "mark_read" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("`manage`"), "{err}");
+        assert!(ops.calls.lock().unwrap().iter().any(|c| c == "mail list None true"));
     }
 }

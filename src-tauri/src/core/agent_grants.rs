@@ -123,12 +123,6 @@ impl Scope {
         }
     }
 
-    /// The scopes a stack-level grant (no site) can be given in. `read` of the
-    /// stack is free (status tools are unattended); `destroy` of the stack has
-    /// no meaning; so a stack grant is `manage`, `run` or `system`.
-    pub fn allowed_at_stack_level(self) -> bool {
-        matches!(self, Scope::Manage | Scope::Run | Scope::System)
-    }
 }
 
 impl std::fmt::Display for Scope {
@@ -302,12 +296,12 @@ impl Target<'_> {
 /// The refusal is the ONLY thing an agent sees, so it says what is missing,
 /// who has to give it, and where — and that the agent cannot give it itself.
 pub fn authorize(conn: &Connection, target: Target<'_>, scope: Scope, client: &str) -> Result<AgentSiteGrant> {
-    if matches!(target, Target::Stack) && !scope.allowed_at_stack_level() {
-        return Err(Error::Other(format!(
-            "`{scope}` is not something that can be granted for rexenv as a whole — it is a \
-             per-site permission. Name a site."
-        )));
-    }
+    // Every scope has a stack-level meaning (settled with the inbox, P3.4):
+    // `read` on rexenv itself is the user's whole Mailpit inbox and every log
+    // source, `destroy` on it is clearing that inbox, `manage` is creating a
+    // site or bouncing a service. An earlier version refused stack-level
+    // read/destroy as a shape; the inbox is exactly the stack-level read that
+    // must NOT be free, so the refusal was the wrong rule.
     for satisfying in scope.satisfied_by() {
         if let Some(g) = store::active_agent_site_grant(conn, target.site_id(), client, satisfying.as_db())? {
             return Ok(g);
@@ -654,10 +648,11 @@ mod tests {
         assert!(authorize(&conn, SITE, Scope::System, "claude-code").is_err(), "a stack grant opened a site");
         let stack_err = authorize(&conn, Target::Stack, Scope::Run, "claude-code").unwrap_err().to_string();
         assert!(stack_err.contains("rexenv itself") && stack_err.contains("Site access"), "{stack_err}");
-        // `read`/`destroy` have no stack meaning and are refused as a shape, not
-        // by looking for a grant.
-        let shape = authorize(&conn, Target::Stack, Scope::Destroy, "claude-code").unwrap_err().to_string();
-        assert!(shape.contains("per-site"), "{shape}");
+        // `read`/`destroy` DO have a stack meaning (the inbox): refused for
+        // want of a grant, like any other, and satisfied by one.
+        assert!(authorize(&conn, Target::Stack, Scope::Read, "claude-code").is_err());
+        store::grant_agent_site(&conn, "g-inbox", None, "claude-code", "read", 7, false, false).unwrap();
+        assert_eq!(authorize(&conn, Target::Stack, Scope::Read, "claude-code").unwrap().id, "g-inbox");
 
         // A row whose scope text is not one of ours satisfies nothing — it is
         // absent, not "some scope".

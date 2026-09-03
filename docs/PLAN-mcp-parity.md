@@ -270,6 +270,12 @@ packaged run, recorded in `TODO.md` under the existing gates row. L4 as time all
 7. Ledger: re-scope the "no registered tool reaches `run_privileged`" row to the
    first two registries; amend #197's scope sentence; new rows for 1–4.
 *Ships: a user can grant, see and revoke a scope; no tool uses one yet.*
+**P3 SHIPPED 3 Sep 2026** (#481 `wp_info`/`wp_plugin`/`wp_theme`, #482 `wp_user`/`wp_option`/
+`wp_maintain`, #483 `wp_data`/`wp_network`/`site_wp_run`/`wp_org_search`, #484 `site_logs`/
+`mail_inbox`). Two things moved: `site_wp_run` is a separate name from the scratch `wp_run`
+because registries are disjoint by name; and every scope now has a stack-level meaning,
+because the inbox is a stack-level `read`. Owed: an L1 against a real WordPress (`stack`
+tier) and SMOKE §P3 — the vetted commands are the app's and proven as the app's.
 **P2 SHIPPED 3 Sep 2026** (#475 `UserByAgent` + `site_create`, #476 `site_delete`, #477
 `site_configure`, #478 `site_restart`/`site_retry`, #479 the widened view + `site_info` +
 `site_inspect_folder`, #480 the L1). `job_status`/`job_cancel` moved to P6 with the

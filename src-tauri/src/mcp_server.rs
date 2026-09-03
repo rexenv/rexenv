@@ -673,7 +673,7 @@ async fn fulfill_tool_call<Rt: tauri::Runtime>(
         }
         Tool::User(t) => {
             let ops = AppSiteCreator { app: app.clone() };
-            (t.handler)(user_sites::UserCtx::new(state.inner(), &ops, &ops, client), args, acted).await
+            (t.handler)(user_sites::UserCtx::new(state.inner(), &ops, &ops, &ops, client), args, acted).await
         }
     };
     match outcome {
@@ -1067,6 +1067,27 @@ impl<Rt: tauri::Runtime> user_sites::WpOps for AppSiteCreator<Rt> {
     }
 }
 
+impl<Rt: tauri::Runtime> user_sites::MailOps for AppSiteCreator<Rt> {
+    fn list<'a>(&'a self, query: Option<String>, unread_only: bool) -> user_sites::OpFuture<'a, crate::error::Result<crate::core::mail::MailList>> {
+        Box::pin(async move { crate::commands::mail::mailpit_messages(self.state()?, query, Some(unread_only)).await })
+    }
+    fn detail<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<crate::core::mail::MailDetail>> {
+        Box::pin(async move { crate::commands::mail::mailpit_message(self.state()?, id).await })
+    }
+    fn raw<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<String>> {
+        Box::pin(async move { crate::commands::mail::mailpit_message_raw(self.state()?, id).await })
+    }
+    fn mark_all_read<'a>(&'a self) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::mail::mailpit_mark_all_read(self.state()?).await })
+    }
+    fn clear<'a>(&'a self) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::mail::mailpit_clear(self.state()?).await })
+    }
+    fn delete<'a>(&'a self, ids: Vec<String>) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::mail::mailpit_delete(self.state()?, ids).await })
+    }
+}
+
 /// Run EVERY registered tool against `app`'s state with the fixture site id, and
 /// return each tool's serialised output (or its error text — errors can leak
 /// too). For the secret-leak sweep (`examples/mcp_secret_sweep`): it plants
@@ -1087,7 +1108,7 @@ pub async fn sweep_tool_outputs<Rt: tauri::Runtime>(
     let ctx = ReadCtx::new(state.inner());
     let creator = AppSiteCreator { app: app.clone() };
     let sctx = scratch::ScratchCtx::new(state.inner(), &creator, &creator, "secret-sweep");
-    let uctx = user_sites::UserCtx::new(state.inner(), &creator, &creator, "secret-sweep");
+    let uctx = user_sites::UserCtx::new(state.inner(), &creator, &creator, &creator, "secret-sweep");
     let mut outputs = Vec::new();
     // The sweep exercises handlers for their OUTPUT; a target they record is
     // irrelevant here, so each gets a throwaway recorder.

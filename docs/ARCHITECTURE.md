@@ -916,7 +916,10 @@ IPC surface — which is how a reader ends up designing against a system with on
   located in words; a dry-run search-replace manages, a live one destroys; import and
   reset destroy), `wp_network`, and `site_wp_run` — the raw runner on the USER's site
   behind `run`, which is `scratch::wp_run`'s resolver, target screen, runner and scrubber
-  reused rather than copied — each through a
+  reused rather than copied, `site_logs` (every source the site's Logs tab shows, by key
+  from the site's own closed list, under `read`) and `mail_inbox` (the user's whole
+  Mailpit inbox: the mail switch by name, THEN `read`/`manage`/`destroy` on rexenv
+  itself — every scope has a stack-level meaning now) — each through a
   `Granted<S>` scope witness (`core::agent_grants`) minted from a grant the user gave in the
   app, and only while the "Let agents manage my own sites" switch is on. Shape refusals
   (a bad type, a taken domain, `multisite` on a PHP site) come BEFORE the gate and record no

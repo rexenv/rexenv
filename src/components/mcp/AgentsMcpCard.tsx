@@ -192,7 +192,10 @@ export function AgentsMcpCard() {
               rexenv catches mail from every site in one inbox — yours and the agent's together.
               With this on, an agent can read only the messages that came{" "}
               <strong className="font-medium text-rex-text">from a scratch site it created</strong>;
-              your own sites' mail is never returned, and that includes password-reset links.
+              your own sites' mail is never returned by those tools, and that includes password-reset
+              links. Reading your whole inbox is a separate permission an agent has to ask for in
+              Site access below — <em>read</em> on rexenv itself — which needs this switch on too and
+              which you can refuse.
             </p>
             <p>
               The way rexenv tells them apart is a small plugin it installs into each scratch site,

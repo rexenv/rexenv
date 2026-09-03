@@ -2187,8 +2187,8 @@ export async function agentSiteGrants(): Promise<AgentSiteGrantRow[]> {
 }
 
 /** Approve one ask for 7 days (`session: false`) or for this session only.
- *  `siteId: null` = the stack. Refused in Rust for a scratch site or a
- *  stack-level read/destroy, whatever the UI offered. */
+ *  `siteId: null` = the stack (rexenv itself — its inbox, its logs, creating
+ *  sites). Refused in Rust for a scratch site, whatever the UI offered. */
 export async function agentSiteGrant(
   siteId: string | null,
   client: string,

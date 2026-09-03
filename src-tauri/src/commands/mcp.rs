@@ -522,12 +522,10 @@ pub fn agent_site_grants(state: State<'_, AppState>) -> Result<Vec<AgentSiteGran
 /// Approve one ask: record a grant for `scope` on `site_id` (or the stack, for
 /// `None`) to `client`, for 7 days or for this session.
 ///
-/// Refuses, rather than records, the two shapes no dialog should have offered:
+/// Refuses, rather than records, the one shape no dialog should have offered:
 /// a scratch site (the agent's own — no grant applies, and a row for one would
-/// be a permission nothing reads), and a stack-level `read`/`destroy` (no
-/// meaning; `Scope::allowed_at_stack_level`). Both are checked HERE and not
-/// only in the UI, because this is the command the button calls and the UI is
-/// not the boundary.
+/// be a permission nothing reads). Checked HERE and not only in the UI, because
+/// this is the command the button calls and the UI is not the boundary.
 #[tauri::command]
 pub fn agent_site_grant(
     state: State<'_, AppState>,
@@ -538,24 +536,17 @@ pub fn agent_site_grant(
 ) -> Result<crate::state::store::AgentSiteGrant> {
     use crate::core::agent_grants::{GRANT_DAYS, SESSION_CEILING_DAYS};
     let conn = db(&state)?;
-    match site_id.as_deref() {
-        Some(id) => {
-            let site = crate::state::store::get_site(&conn, id)?
-                .ok_or_else(|| crate::error::Error::Other(format!("no site with id {id:?}")))?;
-            if site.is_scratch() {
-                return Err(crate::error::Error::Other(format!(
-                    "`{}` is a scratch site the agent created — it needs no permission, and rexenv \
-                     will not record one for it",
-                    site.domain
-                )));
-            }
-        }
-        None => {
-            if !scope.allowed_at_stack_level() {
-                return Err(crate::error::Error::Other(format!(
-                    "`{scope}` is a per-site permission and cannot be granted for rexenv as a whole"
-                )));
-            }
+    // A stack-level grant (`None`) passes: every scope has a meaning there — the
+    // inbox is a stack-level `read`, clearing it a stack-level `destroy`.
+    if let Some(id) = site_id.as_deref() {
+        let site = crate::state::store::get_site(&conn, id)?
+            .ok_or_else(|| crate::error::Error::Other(format!("no site with id {id:?}")))?;
+        if site.is_scratch() {
+            return Err(crate::error::Error::Other(format!(
+                "`{}` is a scratch site the agent created — it needs no permission, and rexenv \
+                 will not record one for it",
+                site.domain
+            )));
         }
     }
     let days = if session { SESSION_CEILING_DAYS } else { GRANT_DAYS };

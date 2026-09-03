@@ -2024,8 +2024,11 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     ✓ P3.3 — **`wp_data` + `wp_network` + `site_wp_run` + `wp_org_search`**, ledger #483:
     dry-run manages / live destroys; files named, never located; the raw runner behind
     `run` reusing the scratch runner's pieces (target screen before resolution, proven by
-    the stub platform not panicking). The eight `wp_*` are complete. Remaining:
-    `site_logs` (every source, `read`), `mail_inbox`; then the L1 (`stack`) + SMOKE §P3.
+    the stub platform not panicking). The eight `wp_*` are complete.
+    ✓ P3.4 — **`site_logs` + `mail_inbox`**, ledger #484 (+#469/#473 amended: every scope
+    has a stack-level meaning — the inbox is the stack-level `read` that must not be
+    free). The mail toggle's copy extended, not trimmed. **P3's tools are complete (31
+    tools).** Owed: an L1 with a real WordPress (`stack` tier) and SMOKE §P3.
   - [ ] **P4 — the stack**: `stack_status`/`stack(...)` incl. privileged start/stop (D10),
     `php_*`, `settings`, `tld`, `open`, `share` (D11), TTL/cap as settings.
   - [ ] **P5 — long tail**: `repo(...)`, `valet_import`, `connection_rewrite`, `db_import`,
