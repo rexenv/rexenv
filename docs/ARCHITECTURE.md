@@ -886,12 +886,14 @@ IPC surface — which is how a reader ends up designing against a system with on
   packaged-build enable crash. The *convention* is shared; the binder is its own, and a
   test pins that binding needs no ambient runtime.
 - **Three registries, and the registry IS the capability.** `mcp_server/tools.rs` holds the
-  seven read-only tools (`list_sites` — widened with parity to carry owner / multisite /
+  nine read-only tools (`list_sites` — widened with parity to carry owner / multisite /
   xdebug / aliases / setup-complete / linked, `site_status`, `tail_log`, and from parity
   P2.3 `site_info` — cert validity without its directory, packages without their source
   path, the M1 verdict — and `site_inspect_folder`, the New Site dialog's own preflight,
   which classifies a folder and runs nothing, `wp_org_search`, a public network read, and
-  `stack_status` — `rex doctor`'s composite with no path, pid or socket in it);
+  `stack_status` — `rex doctor`'s composite with no path, pid or socket in it, `settings_get`
+  — one key through the CLI's allow-list, a denied key refused with the reason, and
+  `php_settings` — a pool's ini overrides);
   `mcp_server/scratch.rs`
   holds the nine executing ones (`scratch_create_site`, `scratch_delete_site`,
   `scratch_add_package`, `scratch_sync_package`, `wp_run`, `set_php_version`, `db_query`,
@@ -923,7 +925,13 @@ IPC surface — which is how a reader ends up designing against a system with on
   itself — every scope has a stack-level meaning now), and from P4 `stack` — start/stop of
   the whole stack under `system` (the ONE arm that reaches `run_privileged`; the macOS
   dialog it raises is a second consent the agent cannot give, and the tool says so), a
-  web-tier restart, an engine or the mail catcher under `manage` — each through a
+  web-tier restart, an engine or the mail catcher under `manage`; `php` (install/uninstall,
+  ini overrides, update check under `manage`; the default version and a pool swap under
+  `system`); `settings` (a write through `rex config`'s own allow-list, refused with its
+  reason BEFORE the gate for a read-only or denied key, under `system`); `tld` (set / repair /
+  remove — three resolver writes, `system` plus the password dialog); and `open` (the site's
+  own URL or folder in the user's browser, editor or Finder, under `manage`; never an
+  arbitrary URL or path) — each through a
   `Granted<S>` scope witness (`core::agent_grants`) minted from a grant the user gave in the
   app, and only while the "Let agents manage my own sites" switch is on. Shape refusals
   (a bad type, a taken domain, `multisite` on a PHP site) come BEFORE the gate and record no

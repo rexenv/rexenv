@@ -673,7 +673,7 @@ async fn fulfill_tool_call<Rt: tauri::Runtime>(
         }
         Tool::User(t) => {
             let ops = AppSiteCreator { app: app.clone() };
-            (t.handler)(user_sites::UserCtx::new(state.inner(), &ops, &ops, &ops, &ops, client), args, acted).await
+            (t.handler)(user_sites::UserCtx::new(state.inner(), &ops, &ops, &ops, &ops, &ops, client), args, acted).await
         }
     };
     match outcome {
@@ -1116,6 +1116,53 @@ impl<Rt: tauri::Runtime> user_sites::StackOps for AppSiteCreator<Rt> {
     }
 }
 
+impl<Rt: tauri::Runtime> user_sites::SystemOps for AppSiteCreator<Rt> {
+    fn set_setting<'a>(&'a self, key: String, value: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::settings::set_setting(self.state()?, key, value) })
+    }
+    // The three resolver writes reach `run_privileged` (an /etc/resolver file):
+    // `system` scope + the macOS dialog, exactly as the stack's start/stop.
+    fn set_default_tld<'a>(&'a self, tld: String) -> user_sites::OpFuture<'a, crate::error::Result<String>> {
+        Box::pin(async move { crate::commands::settings::set_default_tld(self.state()?, tld) })
+    }
+    fn repair_resolver<'a>(&'a self, tld: String) -> user_sites::OpFuture<'a, crate::error::Result<String>> {
+        Box::pin(async move { crate::commands::system::repair_resolver(self.state()?, tld) })
+    }
+    fn remove_resolver<'a>(&'a self, tld: String) -> user_sites::OpFuture<'a, crate::error::Result<bool>> {
+        Box::pin(async move { crate::commands::system::remove_resolver(self.state()?, tld) })
+    }
+    fn set_php_installed<'a>(&'a self, minor: String, installed: bool) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::php::set_php_version_installed(self.state()?, minor, installed).await })
+    }
+    fn set_default_php<'a>(&'a self, minor: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::php::set_default_php_version(self.state()?, minor) })
+    }
+    fn apply_php_settings<'a>(&'a self, minor: String, settings: Vec<crate::commands::php::PhpSettingInput>) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::php::apply_php_settings(self.state()?, minor, settings).await })
+    }
+    fn php_update_check<'a>(&'a self) -> user_sites::OpFuture<'a, crate::error::Result<Vec<crate::state::models::PhpVersionView>>> {
+        Box::pin(async move { crate::commands::php::php_update_check(self.state()?).await })
+    }
+    fn php_update_apply<'a>(&'a self, minor: String, patch: String) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::php::PhpUpdateOutcome>> {
+        Box::pin(async move { crate::commands::php::php_update_apply(self.state()?, minor, patch).await })
+    }
+    fn browsers<'a>(&'a self) -> user_sites::OpFuture<'a, Vec<crate::platform::traits::BrowserApp>> {
+        Box::pin(async move { self.state().map(crate::commands::system::list_browsers).unwrap_or_default() })
+    }
+    fn open_in_browser<'a>(&'a self, browser_id: String, url: String, private: bool) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::system::open_in_browser(self.state()?, browser_id, url, private) })
+    }
+    fn editors<'a>(&'a self) -> user_sites::OpFuture<'a, Vec<crate::platform::traits::EditorApp>> {
+        Box::pin(async move { self.state().map(crate::commands::system::list_editors).unwrap_or_default() })
+    }
+    fn open_in_editor<'a>(&'a self, editor_id: String, path: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::system::open_in_editor(self.state()?, editor_id, path) })
+    }
+    fn reveal_path<'a>(&'a self, path: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::system::reveal_path(self.state()?, path) })
+    }
+}
+
 /// Run EVERY registered tool against `app`'s state with the fixture site id, and
 /// return each tool's serialised output (or its error text — errors can leak
 /// too). For the secret-leak sweep (`examples/mcp_secret_sweep`): it plants
@@ -1136,7 +1183,7 @@ pub async fn sweep_tool_outputs<Rt: tauri::Runtime>(
     let ctx = ReadCtx::new(state.inner());
     let creator = AppSiteCreator { app: app.clone() };
     let sctx = scratch::ScratchCtx::new(state.inner(), &creator, &creator, "secret-sweep");
-    let uctx = user_sites::UserCtx::new(state.inner(), &creator, &creator, &creator, &creator, "secret-sweep");
+    let uctx = user_sites::UserCtx::new(state.inner(), &creator, &creator, &creator, &creator, &creator, "secret-sweep");
     let mut outputs = Vec::new();
     // The sweep exercises handlers for their OUTPUT; a target they record is
     // irrelevant here, so each gets a throwaway recorder.

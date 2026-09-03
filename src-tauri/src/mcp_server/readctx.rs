@@ -170,6 +170,37 @@ impl<'a> ReadCtx<'a> {
         })
     }
 
+    /// One setting, through the CLI's own allow-list (`core::settings_access`,
+    /// deny by default): a Denied key is refused with the policy's reason and
+    /// never read — the signed update chain and the MCP switches live in the
+    /// same table as the preferences.
+    pub fn setting(&self, key: &str) -> Result<Option<String>> {
+        if let core::settings_access::CliAccess::Denied(why) = core::settings_access::cli_access(key) {
+            return Err(Error::Other(format!("`{key}` is not readable through an agent: {why}.")));
+        }
+        let conn = self
+            .state
+            .db
+            .lock()
+            .map_err(|_| Error::Other("the app database lock is poisoned".into()))?;
+        crate::state::store::get_setting(&conn, key)
+    }
+
+    /// A PHP minor's ini overrides — every key rexenv edits, with its stored
+    /// value (if any) and default. Pure read of the settings row.
+    pub fn php_settings(&self, minor: &str) -> Result<Vec<(&'static str, Option<String>, &'static str)>> {
+        let conn = self
+            .state
+            .db
+            .lock()
+            .map_err(|_| Error::Other("the app database lock is poisoned".into()))?;
+        let stored = crate::state::store::get_php_settings(&conn, minor)?;
+        Ok(core::php::SETTINGS
+            .iter()
+            .map(|s| (s.key, stored.iter().find(|(k, _)| k == s.key).map(|(_, v)| v.clone()), s.default))
+            .collect())
+    }
+
     /// Search the WordPress.org directory — a network READ of a public API, no
     /// site involved (the Add-plugin/theme flows' own call).
     pub async fn wporg_search(&self, kind: &str, query: &str) -> Result<serde_json::Value> {

@@ -136,6 +136,39 @@ static REGISTRY: &[ReadTool] = &[
         handler: stack_status,
     },
     ReadTool {
+        name: "settings_get",
+        description: "Read one rexenv setting by key — the same allow-list `rex config get` uses: \
+                      preferences like `preferred_browser`, `preferred_editor`, \
+                      `start_services_on_launch`, `default_tld`, the pinned engine versions. Keys \
+                      that hold signed update state or the MCP switches are refused with the \
+                      reason. Takes `key`. Writing is the `settings` tool, under `system`.",
+        input_schema: || json!({
+            "type": "object",
+            "properties": { "key": { "type": "string" } },
+            "required": ["key"],
+            "additionalProperties": false
+        }),
+        sweep_args: |_id| json!({ "key": "preferred_browser" }),
+        summarise: |args| args.get("key").and_then(Value::as_str).map(str::to_string),
+        handler: settings_get,
+    },
+    ReadTool {
+        name: "php_settings",
+        description: "The php.ini overrides rexenv applies to one PHP version's pool — every key it \
+                      edits (memory limit, upload size, execution time, …) with the stored value, \
+                      if any, and the default. Takes `minor` (e.g. `8.3`). Changing them is the \
+                      `php` tool's `settings_set`.",
+        input_schema: || json!({
+            "type": "object",
+            "properties": { "minor": { "type": "string" } },
+            "required": ["minor"],
+            "additionalProperties": false
+        }),
+        sweep_args: |_id| json!({ "minor": "8.3" }),
+        summarise: |_| None,
+        handler: php_settings,
+    },
+    ReadTool {
         name: "wp_org_search",
         description: "Search the WordPress.org directory for plugins or themes — slug, name, \
                       author, rating, active installs. A public network read; no site involved \
@@ -341,6 +374,35 @@ fn stack_status<'a>(
             obj.insert("tcp443Open".into(), json!(tcp_443_open));
         }
         Ok(value)
+    })
+}
+
+fn settings_get<'a>(
+    ctx: ReadCtx<'a>,
+    args: &'a Value,
+    _acted: &'a super::feed::ActedTarget,
+) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let key = args.get("key").and_then(Value::as_str).map(str::trim).filter(|k| !k.is_empty())
+            .ok_or_else(|| Error::Other("settings_get needs a `key`".into()))?;
+        let value = ctx.setting(key)?;
+        Ok(json!({ "key": key, "value": value, "set": value.is_some() }))
+    })
+}
+
+fn php_settings<'a>(
+    ctx: ReadCtx<'a>,
+    args: &'a Value,
+    _acted: &'a super::feed::ActedTarget,
+) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let minor = args.get("minor").and_then(Value::as_str).map(str::trim).filter(|k| !k.is_empty())
+            .ok_or_else(|| Error::Other("php_settings needs a `minor` like `8.3`".into()))?;
+        let rows: Vec<Value> = ctx.php_settings(minor)?
+            .into_iter()
+            .map(|(key, value, default)| json!({ "key": key, "value": value, "default": default }))
+            .collect();
+        Ok(json!({ "minor": minor, "settings": rows }))
     })
 }
 

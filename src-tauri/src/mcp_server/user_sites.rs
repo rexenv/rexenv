@@ -419,6 +419,92 @@ static REGISTRY: &[UserTool] = &[
         handler: stack,
     },
     UserTool {
+        name: "php",
+        description: "PHP versions on this machine. Takes `action` and `minor` (e.g. `8.3`): \
+                      `install` (download and enable a pool for it) / `uninstall`, `settings_set` \
+                      {key, value — a php.ini override listed by php_settings; empty value = back to the \
+                      default} and `update_check` need `manage` on rexenv itself; `default` (the \
+                      version new sites get) and `update_apply` {patch — from update_check, \
+                      swapping the running pool to a newer signed build} need `system`. Which \
+                      versions exist: stack_status. Per-site PHP: site_configure `php`.",
+        input_schema: || json!({
+            "type": "object",
+            "properties": {
+                "action": { "type": "string", "enum": ["install", "uninstall", "settings_set", "update_check", "default", "update_apply"] },
+                "minor": { "type": "string" }, "key": { "type": "string" }, "value": { "type": "string" }, "patch": { "type": "string" }
+            },
+            "required": ["action"],
+            "additionalProperties": false
+        }),
+        sweep_args: |_id| json!({ "action": "update_check" }),
+        summarise: |args| args.get("action").and_then(Value::as_str).map(str::to_string),
+        scope: Scope::System,
+        handler: php,
+    },
+    UserTool {
+        name: "settings",
+        description: "Write one rexenv setting — the same allow-list `rex config set` uses, so a key \
+                      that is read-only or refused there is refused here with the reason (the sites \
+                      folder, the signed update chain, the MCP switches). Takes `key` and `value`. \
+                      Needs `system` on rexenv itself. Reading is settings_get, which needs nothing.",
+        input_schema: || json!({
+            "type": "object",
+            "properties": { "key": { "type": "string" }, "value": { "type": "string" } },
+            "required": ["key", "value"],
+            "additionalProperties": false
+        }),
+        sweep_args: |_id| json!({ "key": "mcp_enabled", "value": "false" }),
+        summarise: |args| args.get("key").and_then(Value::as_str).map(str::to_string),
+        scope: Scope::System,
+        handler: settings,
+    },
+    UserTool {
+        name: "tld",
+        description: "The top-level domains rexenv resolves. Takes `action` and `tld`: `set` makes it \
+                      the default for new sites and installs its resolver file; `repair` puts back \
+                      the resolver file for a TLD your sites already answer on (what stack_status \
+                      or rex doctor would tell you is missing); `remove` takes rexenv's own file for \
+                      a TLD no site uses back out. All three write under /etc/resolver, so they \
+                      need `system` on rexenv itself AND macOS asks the user for their password — a \
+                      dialog the agent cannot answer. The current default is in stack_status.",
+        input_schema: || json!({
+            "type": "object",
+            "properties": {
+                "action": { "type": "string", "enum": ["set", "repair", "remove"] },
+                "tld": { "type": "string" }
+            },
+            "required": ["action", "tld"],
+            "additionalProperties": false
+        }),
+        sweep_args: |_id| json!({ "action": "repair", "tld": "rex" }),
+        summarise: |args| args.get("action").and_then(Value::as_str).map(str::to_string),
+        scope: Scope::System,
+        handler: tld,
+    },
+    UserTool {
+        name: "open",
+        description: "Open one of the user's own sites on THEIR screen: `target` `browser` (the \
+                      site's URL in their preferred browser, or `app` = a browser id; `private` for \
+                      a private window), `editor` (the site's folder in their preferred editor, or \
+                      `app` = an editor id) or `finder` (reveal the folder). Takes `site_id`. Needs \
+                      `manage` on the site. Never an arbitrary URL or path — only this site's.",
+        input_schema: || json!({
+            "type": "object",
+            "properties": {
+                "site_id": { "type": "string" },
+                "target": { "type": "string", "enum": ["browser", "editor", "finder"] },
+                "app": { "type": "string", "description": "A browser or editor id from the user's installed apps; omit for their preference." },
+                "private": { "type": "boolean" }
+            },
+            "required": ["site_id", "target"],
+            "additionalProperties": false
+        }),
+        sweep_args: |id| json!({ "site_id": id, "target": "finder" }),
+        summarise: |args| args.get("target").and_then(Value::as_str).map(str::to_string),
+        scope: Scope::Manage,
+        handler: open,
+    },
+    UserTool {
         name: "site_configure",
         description: "Change how one of the user's own sites is set up — the things the site's \
                       Settings tab does. Takes `site_id` and `action`, plus the action's field: \
@@ -688,6 +774,27 @@ pub trait StackOps: Send + Sync {
     fn stop_mail<'a>(&'a self) -> OpFuture<'a, Result<()>>;
 }
 
+/// The app's own machine-wide settings and the open-in-app verbs
+/// (`commands::php`, `settings`, `system`), runtime-erased. `set_default_tld`,
+/// `repair_resolver` and `remove_resolver` write under `/etc/resolver` and
+/// raise the macOS dialog — the `system` scope's second consent, like the stack.
+pub trait SystemOps: Send + Sync {
+    fn set_setting<'a>(&'a self, key: String, value: String) -> OpFuture<'a, Result<()>>;
+    fn set_default_tld<'a>(&'a self, tld: String) -> OpFuture<'a, Result<String>>;
+    fn repair_resolver<'a>(&'a self, tld: String) -> OpFuture<'a, Result<String>>;
+    fn remove_resolver<'a>(&'a self, tld: String) -> OpFuture<'a, Result<bool>>;
+    fn set_php_installed<'a>(&'a self, minor: String, installed: bool) -> OpFuture<'a, Result<()>>;
+    fn set_default_php<'a>(&'a self, minor: String) -> OpFuture<'a, Result<()>>;
+    fn apply_php_settings<'a>(&'a self, minor: String, settings: Vec<crate::commands::php::PhpSettingInput>) -> OpFuture<'a, Result<()>>;
+    fn php_update_check<'a>(&'a self) -> OpFuture<'a, Result<Vec<crate::state::models::PhpVersionView>>>;
+    fn php_update_apply<'a>(&'a self, minor: String, patch: String) -> OpFuture<'a, Result<crate::commands::php::PhpUpdateOutcome>>;
+    fn browsers<'a>(&'a self) -> OpFuture<'a, Vec<crate::platform::traits::BrowserApp>>;
+    fn open_in_browser<'a>(&'a self, browser_id: String, url: String, private: bool) -> OpFuture<'a, Result<()>>;
+    fn editors<'a>(&'a self) -> OpFuture<'a, Vec<crate::platform::traits::EditorApp>>;
+    fn open_in_editor<'a>(&'a self, editor_id: String, path: String) -> OpFuture<'a, Result<()>>;
+    fn reveal_path<'a>(&'a self, path: String) -> OpFuture<'a, Result<()>>;
+}
+
 /// The app's own Mailpit reads and writes (`commands::mail`), runtime-erased.
 pub trait MailOps: Send + Sync {
     fn list<'a>(&'a self, query: Option<String>, unread_only: bool) -> OpFuture<'a, Result<crate::core::mail::MailList>>;
@@ -713,11 +820,13 @@ pub struct UserCtx<'a> {
     wp: &'a dyn WpOps,
     mail: &'a dyn MailOps,
     stack: &'a dyn StackOps,
+    sys: &'a dyn SystemOps,
 }
 
 impl<'a> UserCtx<'a> {
-    pub fn new(state: &'a AppState, ops: &'a dyn SiteOps, wp: &'a dyn WpOps, mail: &'a dyn MailOps, stack: &'a dyn StackOps, client: &'a str) -> Self {
-        UserCtx { state, client, ops, wp, mail, stack }
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(state: &'a AppState, ops: &'a dyn SiteOps, wp: &'a dyn WpOps, mail: &'a dyn MailOps, stack: &'a dyn StackOps, sys: &'a dyn SystemOps, client: &'a str) -> Self {
+        UserCtx { state, client, ops, wp, mail, stack, sys }
     }
 
     pub(crate) fn db(&self) -> Result<std::sync::MutexGuard<'_, rusqlite::Connection>> {
@@ -2000,6 +2109,139 @@ fn stack<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::ActedTa
     })
 }
 
+
+pub(crate) fn php_scope(action: &str) -> Option<Scope> {
+    Some(match action {
+        "install" | "uninstall" | "settings_set" | "update_check" => Scope::Manage,
+        "default" | "update_apply" => Scope::System,
+        _ => return None,
+    })
+}
+
+fn php<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::ActedTarget) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let action = args.get("action").and_then(Value::as_str).ok_or_else(|| Error::Other("php needs an `action`.".into()))?;
+        let scope = php_scope(action).ok_or_else(|| Error::Other(format!("`{action}` is not a php action. Use install, uninstall, settings_set, update_check, default or update_apply.")))?;
+        let minor = || str_field(args, "minor", action);
+        let wanted = match action {
+            "install" => format!("install PHP {}", minor()?),
+            "uninstall" => format!("uninstall PHP {}", minor()?),
+            "settings_set" => format!("set `{}` for PHP {}", str_field(args, "key", action)?, minor()?),
+            "update_check" => "check for PHP updates".to_string(),
+            "default" => format!("make PHP {} the default for new sites", minor()?),
+            _ => format!("update PHP {} to {}", minor()?, str_field(args, "patch", action)?),
+        };
+        let auto = match scope {
+            Scope::System => ctx.claim::<scope::System>(None, &wanted)?.auto_granted,
+            _ => ctx.claim::<scope::Manage>(None, &wanted)?.auto_granted,
+        };
+        let sys = ctx.sys;
+        let result = match action {
+            "install" => { sys.set_php_installed(minor()?.to_string(), true).await?; json!({ "installed": minor()? }) }
+            "uninstall" => { sys.set_php_installed(minor()?.to_string(), false).await?; json!({ "uninstalled": minor()? }) }
+            "settings_set" => {
+                let key = str_field(args, "key", action)?.to_string();
+                let value = args.get("value").and_then(Value::as_str).unwrap_or("").to_string();
+                sys.apply_php_settings(minor()?.to_string(), vec![crate::commands::php::PhpSettingInput { key: key.clone(), value: value.clone() }]).await?;
+                json!({ "minor": minor()?, "key": key, "value": value })
+            }
+            "update_check" => {
+                let views = sys.php_update_check().await?;
+                json!({ "versions": views.iter().map(|v| json!({ "minor": v.minor, "patch": v.patch, "installed": v.installed, "default": v.is_default, "updatable": v.updatable })).collect::<Vec<_>>() })
+            }
+            "default" => { sys.set_default_php(minor()?.to_string()).await?; json!({ "default": minor()? }) }
+            _ => {
+                let o = sys.php_update_apply(minor()?.to_string(), str_field(args, "patch", action)?.to_string()).await?;
+                json!({ "minor": minor()?, "patch": o.patch, "restarted": o.restarted })
+            }
+        };
+        Ok(with_consent(json!({ "action": action, "result": result }), auto))
+    })
+}
+
+fn settings<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::ActedTarget) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let key = str_field(args, "key", "settings")?.to_string();
+        let value = args.get("value").and_then(Value::as_str).ok_or_else(|| Error::Other("settings needs `value`.".into()))?.to_string();
+        // The CLI's own policy, BEFORE the gate: a key that `rex config set`
+        // would refuse is refused here with the same reason, and no ask is
+        // recorded for a permission that could not be used.
+        match crate::core::settings_access::cli_access(&key) {
+            crate::core::settings_access::CliAccess::ReadWrite => {}
+            crate::core::settings_access::CliAccess::ReadOnly(why) => return Err(Error::Other(format!("`{key}` is read-only: {why}."))),
+            crate::core::settings_access::CliAccess::Denied(why) => return Err(Error::Other(format!("`{key}` cannot be set through an agent: {why}."))),
+        }
+        let auto = ctx.claim::<scope::System>(None, &format!("set the rexenv setting `{key}`"))?.auto_granted;
+        ctx.sys.set_setting(key.clone(), value.clone()).await?;
+        Ok(with_consent(json!({ "key": key, "value": value, "set": true }), auto))
+    })
+}
+
+fn tld<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::ActedTarget) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let action = args.get("action").and_then(Value::as_str).ok_or_else(|| Error::Other("tld needs an `action`.".into()))?;
+        let tld = str_field(args, "tld", action)?.trim_start_matches('.').to_ascii_lowercase();
+        let wanted = match action {
+            "set" => format!("make `.{tld}` the default TLD and install its resolver (macOS will also ask for your password)"),
+            "repair" => format!("put back the resolver file for `.{tld}` (macOS will also ask for your password)"),
+            "remove" => format!("remove rexenv's resolver file for `.{tld}` (macOS will also ask for your password)"),
+            other => return Err(Error::Other(format!("`{other}` is not a tld action. Use set, repair or remove."))),
+        };
+        let auto = ctx.claim::<scope::System>(None, &wanted)?.auto_granted;
+        let result = match action {
+            "set" => json!({ "defaultTld": ctx.sys.set_default_tld(tld.clone()).await? }),
+            "repair" => json!({ "repaired": tld, "detail": ctx.sys.repair_resolver(tld.clone()).await? }),
+            _ => json!({ "removed": ctx.sys.remove_resolver(tld.clone()).await?, "tld": tld }),
+        };
+        Ok(with_consent(json!({ "action": action, "result": result }), auto))
+    })
+}
+
+fn open<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTarget) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let id = args.get("site_id").and_then(Value::as_str).ok_or_else(|| Error::Other("open needs a `site_id`.".into()))?;
+        let target = args.get("target").and_then(Value::as_str).ok_or_else(|| Error::Other("open needs `target`: browser, editor or finder.".into()))?;
+        if !matches!(target, "browser" | "editor" | "finder") {
+            return Err(Error::Other(format!("`{target}` is not an open target. Use browser, editor or finder.")));
+        }
+        let app = args.get("app").and_then(Value::as_str).map(str::to_string);
+        let private = args.get("private").and_then(Value::as_bool).unwrap_or(false);
+        let claimed = ctx.claim::<scope::Manage>(Some(id), &format!("open it in the user's {target}"))?;
+        let site = claimed.granted.site().cloned().ok_or_else(|| Error::Other("open needs a site.".into()))?;
+        acted.set(&site);
+        let sys = ctx.sys;
+        let preferred = |key: &str| -> Option<String> {
+            let conn = ctx.db().ok()?;
+            crate::state::store::get_setting(&conn, key).ok().flatten()
+        };
+        let opened = match target {
+            "browser" => {
+                let browsers = sys.browsers().await;
+                let want = app.or_else(|| preferred(crate::commands::system::PREFERRED_BROWSER_KEY));
+                let chosen = match want {
+                    Some(w) => browsers.iter().find(|b| b.id == w).map(|b| b.id.clone()).ok_or_else(|| Error::Other(format!("`{w}` is not an installed browser. Installed: {}.", browsers.iter().map(|b| b.id.as_str()).collect::<Vec<_>>().join(", "))))?,
+                    None => browsers.first().map(|b| b.id.clone()).ok_or_else(|| Error::Other("no browser was detected on this machine.".into()))?,
+                };
+                sys.open_in_browser(chosen.clone(), format!("https://{}", site.domain), private).await?;
+                json!({ "browser": chosen, "url": format!("https://{}", site.domain), "private": private })
+            }
+            "editor" => {
+                let editors = sys.editors().await;
+                let want = app.or_else(|| preferred("preferred_editor"));
+                let chosen = match want {
+                    Some(w) => editors.iter().find(|e| e.id == w).map(|e| e.id.clone()).ok_or_else(|| Error::Other(format!("`{w}` is not an installed editor. Installed: {}.", editors.iter().map(|e| e.id.as_str()).collect::<Vec<_>>().join(", "))))?,
+                    None => editors.first().map(|e| e.id.clone()).ok_or_else(|| Error::Other("no editor was detected on this machine.".into()))?,
+                };
+                // The site's OWN folder — never a path the agent chose.
+                sys.open_in_editor(chosen.clone(), site.path.clone()).await?;
+                json!({ "editor": chosen })
+            }
+            _ => { sys.reveal_path(site.path.clone()).await?; json!({ "revealed": true }) }
+        };
+        Ok(with_consent(json!({ "domain": site.domain, "target": target, "result": opened }), claimed.auto_granted))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2497,6 +2739,33 @@ mod tests {
         fn stop_mail<'a>(&'a self) -> OpFuture<'a, Result<()>> { self.calls.lock().unwrap().push("mail stop".into()); Box::pin(async { Ok(()) }) }
     }
 
+    impl SystemOps for FakeOps {
+        fn set_setting<'a>(&'a self, key: String, value: String) -> OpFuture<'a, Result<()>> { self.calls.lock().unwrap().push(format!("setting {key}={value}")); Box::pin(async { Ok(()) }) }
+        fn set_default_tld<'a>(&'a self, tld: String) -> OpFuture<'a, Result<String>> { self.calls.lock().unwrap().push(format!("tld set {tld}")); Box::pin(async move { Ok(tld) }) }
+        fn repair_resolver<'a>(&'a self, tld: String) -> OpFuture<'a, Result<String>> { self.calls.lock().unwrap().push(format!("tld repair {tld}")); Box::pin(async { Ok("installed".into()) }) }
+        fn remove_resolver<'a>(&'a self, tld: String) -> OpFuture<'a, Result<bool>> { self.calls.lock().unwrap().push(format!("tld remove {tld}")); Box::pin(async { Ok(true) }) }
+        fn set_php_installed<'a>(&'a self, minor: String, installed: bool) -> OpFuture<'a, Result<()>> { self.calls.lock().unwrap().push(format!("php installed {minor} {installed}")); Box::pin(async { Ok(()) }) }
+        fn set_default_php<'a>(&'a self, minor: String) -> OpFuture<'a, Result<()>> { self.calls.lock().unwrap().push(format!("php default {minor}")); Box::pin(async { Ok(()) }) }
+        fn apply_php_settings<'a>(&'a self, minor: String, settings: Vec<crate::commands::php::PhpSettingInput>) -> OpFuture<'a, Result<()>> {
+            self.calls.lock().unwrap().push(format!("php settings {minor} {}", settings.iter().map(|s| format!("{}={}", s.key, s.value)).collect::<Vec<_>>().join(",")));
+            Box::pin(async { Ok(()) })
+        }
+        fn php_update_check<'a>(&'a self) -> OpFuture<'a, Result<Vec<crate::state::models::PhpVersionView>>> { self.calls.lock().unwrap().push("php update_check".into()); Box::pin(async { Ok(vec![]) }) }
+        fn php_update_apply<'a>(&'a self, minor: String, patch: String) -> OpFuture<'a, Result<crate::commands::php::PhpUpdateOutcome>> {
+            self.calls.lock().unwrap().push(format!("php update_apply {minor} {patch}"));
+            Box::pin(async move { Ok(crate::commands::php::PhpUpdateOutcome { patch, restarted: false }) })
+        }
+        fn browsers<'a>(&'a self) -> OpFuture<'a, Vec<crate::platform::traits::BrowserApp>> {
+            Box::pin(async { vec![crate::platform::traits::BrowserApp { id: "chrome".into(), name: "Chrome".into(), icon: None, system_default: true, supports_private: true }] })
+        }
+        fn open_in_browser<'a>(&'a self, browser_id: String, url: String, private: bool) -> OpFuture<'a, Result<()>> { self.calls.lock().unwrap().push(format!("open browser {browser_id} {url} {private}")); Box::pin(async { Ok(()) }) }
+        fn editors<'a>(&'a self) -> OpFuture<'a, Vec<crate::platform::traits::EditorApp>> {
+            Box::pin(async { vec![crate::platform::traits::EditorApp { id: "phpstorm".into(), name: "PhpStorm".into(), icon: None }] })
+        }
+        fn open_in_editor<'a>(&'a self, editor_id: String, path: String) -> OpFuture<'a, Result<()>> { self.calls.lock().unwrap().push(format!("open editor {editor_id} {path}")); Box::pin(async { Ok(()) }) }
+        fn reveal_path<'a>(&'a self, path: String) -> OpFuture<'a, Result<()>> { self.calls.lock().unwrap().push(format!("reveal {path}")); Box::pin(async { Ok(()) }) }
+    }
+
     fn switch_on(state: &AppState) {
         let conn = state.db.lock().unwrap();
         store::set_setting(&conn, crate::mcp_server::MCP_SITES_ENABLED_KEY, "true").unwrap();
@@ -2527,7 +2796,7 @@ mod tests {
         seed_php(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, "claude-code");
         let run = |args: Value| {
             let acted = &acted;
             async move { site_create(ctx, &args, acted).await }
@@ -2631,7 +2900,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, "claude-code");
         let mine = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "mine.rex", SiteOrigin::User);
         let theirs = test_site("c58e0a41-7d2f-4b19-93a6-6e1c5d8f0a24", "probe.scratch.rex", SiteOrigin::Agent);
         {
@@ -2672,7 +2941,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, "claude-code");
         let mine = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "mine.rex", SiteOrigin::User);
         {
             let conn = state.db.lock().unwrap();
@@ -2767,7 +3036,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, "claude-code");
         let mine = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "mine.rex", SiteOrigin::User);
         {
             let conn = state.db.lock().unwrap();
@@ -2838,7 +3107,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, "claude-code");
         let wp_site = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "blog.rex", SiteOrigin::User);
         let mut php_site = test_site("bbbbbbbb-bbbb-4ccc-8ddd-eeeeeeeeeeee", "plain.rex", SiteOrigin::User);
         php_site.site_type = SiteType::Php;
@@ -2929,7 +3198,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, "claude-code");
         let site = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "blog.rex", SiteOrigin::User);
         {
             let conn = state.db.lock().unwrap();
@@ -3016,7 +3285,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, "claude-code");
         let site = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "blog.rex", SiteOrigin::User);
         {
             let conn = state.db.lock().unwrap();
@@ -3072,7 +3341,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, "claude-code");
         let site = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "blog.rex", SiteOrigin::User);
         let theirs = test_site("c58e0a41-7d2f-4b19-93a6-6e1c5d8f0a24", "probe.scratch.rex", SiteOrigin::Agent);
         {
@@ -3149,7 +3418,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, "claude-code");
         let err = stack(ctx, &json!({ "action": "start" }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("`system`") && err.contains("rexenv itself"), "{err}");
         let a = asks(&state);
@@ -3178,5 +3447,73 @@ mod tests {
             assert!(calls.iter().any(|x| x == c), "missing {c} in {calls:?}");
         }
         assert!(!calls.iter().any(|x| x == "stack start"), "start never ran without system");
+    }
+
+    /// **`php`, `settings`, `tld`, `open`: the per-action tables, the CLI's
+    /// settings policy applied BEFORE the gate, the resolver writes naming the
+    /// password dialog, and `open` reaching only the site's own URL and folder.**
+    #[tokio::test]
+    async fn php_settings_tld_and_open_gate_per_action_and_reach_only_the_sites_own_things() {
+        assert_eq!(php_scope("install"), Some(Scope::Manage));
+        assert_eq!(php_scope("default"), Some(Scope::System));
+        assert_eq!(php_scope("update_apply"), Some(Scope::System));
+        let state = app_state();
+        switch_on(&state);
+        let ops = FakeOps::default();
+        let acted = super::super::feed::ActedTarget::default();
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, "claude-code");
+        let site = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "blog.rex", SiteOrigin::User);
+        {
+            let conn = state.db.lock().unwrap();
+            store::insert_site(&conn, &site).unwrap();
+        }
+        // settings: the CLI's policy first — a Denied or ReadOnly key records no ask.
+        let err = settings(ctx, &json!({ "key": "mcp_enabled", "value": "true" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("cannot be set through an agent"), "{err}");
+        let err = settings(ctx, &json!({ "key": "adminer_version", "value": "5" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("read-only"), "{err}");
+        assert!(asks(&state).is_empty());
+        let err = settings(ctx, &json!({ "key": "preferred_browser", "value": "chrome" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("`system`"), "{err}");
+        // tld: every action names the password dialog in its ask.
+        assert!(tld(ctx, &json!({ "action": "repair", "tld": ".Test" }), &acted).await.is_err());
+        assert!(asks(&state).iter().any(|r| r.scope == Scope::System && r.wanted.contains("`.test`") && r.wanted.contains("password")));
+        // php: manage for install, system for default.
+        {
+            let conn = state.db.lock().unwrap();
+            store::grant_agent_site(&conn, "g1", None, "claude-code", "manage", 7, false, false).unwrap();
+            store::grant_agent_site(&conn, "g2", Some(&site.id), "claude-code", "manage", 7, false, false).unwrap();
+        }
+        let v = php(ctx, &json!({ "action": "install", "minor": "8.4" }), &acted).await.unwrap();
+        assert_eq!(v["result"]["installed"], "8.4");
+        let v = php(ctx, &json!({ "action": "settings_set", "minor": "8.3", "key": "memory_limit", "value": "768M" }), &acted).await.unwrap();
+        assert_eq!(v["result"]["key"], "memory_limit");
+        let err = php(ctx, &json!({ "action": "default", "minor": "8.4" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("`system`"), "{err}");
+        let err = php(ctx, &json!({ "action": "paint" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("not a php action"), "{err}");
+        // open: the site's own URL and folder, the preferred app or the named one.
+        let v = open(ctx, &json!({ "site_id": site.id, "target": "browser", "private": true }), &acted).await.unwrap();
+        assert_eq!(v["result"]["url"], "https://blog.rex");
+        let err = open(ctx, &json!({ "site_id": site.id, "target": "browser", "app": "netscape" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("not an installed browser") && err.contains("chrome"), "{err}");
+        open(ctx, &json!({ "site_id": site.id, "target": "editor" }), &acted).await.unwrap();
+        open(ctx, &json!({ "site_id": site.id, "target": "finder" }), &acted).await.unwrap();
+        let err = open(ctx, &json!({ "site_id": site.id, "target": "terminal" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("not an open target"), "{err}");
+        {
+            let conn = state.db.lock().unwrap();
+            store::grant_agent_site(&conn, "g3", None, "claude-code", "system", 7, false, false).unwrap();
+        }
+        let v = settings(ctx, &json!({ "key": "preferred_browser", "value": "chrome" }), &acted).await.unwrap();
+        assert_eq!(v["set"], true);
+        let v = tld(ctx, &json!({ "action": "set", "tld": "dev" }), &acted).await.unwrap();
+        assert_eq!(v["result"]["defaultTld"], "dev");
+        let v = php(ctx, &json!({ "action": "default", "minor": "8.4" }), &acted).await.unwrap();
+        assert_eq!(v["result"]["default"], "8.4");
+        let calls = ops.calls.lock().unwrap().clone();
+        for c in ["php installed 8.4 true", "php settings 8.3 memory_limit=768M", "open browser chrome https://blog.rex true", &format!("open editor phpstorm {}", site.path), &format!("reveal {}", site.path), "setting preferred_browser=chrome", "tld set dev", "php default 8.4"] {
+            assert!(calls.iter().any(|x| x == c), "missing {c} in {calls:?}");
+        }
     }
 }

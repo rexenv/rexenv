@@ -2039,8 +2039,11 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     ✓ P4.1 — **`stack_status` (read) + `stack(...)`**, ledger #485 (3 Sep 2026): start/stop
     under `system` from ONE arm (source-scanned), macOS dialog = second consent stated in
     the tool; restart/engines/mail under `manage` on rexenv itself. The old "no tool
-    reaches run_privileged" row never landed; #485 is the narrower true claim. Remaining:
-    `php_*`, `settings`, `tld`, `open`, `share`, TTL/cap settings, SMOKE §P4.
+    reaches run_privileged" row never landed; #485 is the narrower true claim.
+    ✓ P4.2 — **`php`, `settings`, `tld`, `open` + read `settings_get`/`php_settings`**, ledger
+    #486: the CLI's settings policy consulted before the gate; resolver writes `system`
+    naming the dialog; `open` only the site's own URL/folder. Remaining: `share` (D11),
+    TTL/cap as settings, SMOKE §P4.
   - [ ] **P5 — long tail**: `repo(...)`, `valet_import`, `connection_rewrite`, `db_import`,
     `blueprints`, `wp_org_search`, `agent_activity`.
   - [ ] **P6 — protocol**: annotations, progress notifications riding #447's records,
