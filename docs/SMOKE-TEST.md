@@ -1191,7 +1191,10 @@ the human legs. Set up: stack up, switch ON, one of your own sites.
   `ls -l vendor/acme/` in the project shows the symlink; the project's `composer.json` has
   `repositories.acme-widgets` with `"symlink": true`. Edit the class in the SOURCE folder →
   the site sees it with no sync. Ask for `~` as the source → refused (blast radius), and
-  nothing in `composer.json` changed.
+  nothing in `composer.json` changed. *Done 3 Sep 2026 on `hisab-counter.rex`: `vendor/acme/widgets`
+  is a symlink, a source edit showed through `tinker --execute` with no sync, `~` refused with
+  `composer.json` byte-identical. Composer's log carried the source's absolute path — fixed the
+  same run (labelled `<source>` before the scrub).*
 
 ## Robustness (spot-check) — §2
 - [ ] Quit with another app on :443, relaunch → a clear "port in use" message (no crash).

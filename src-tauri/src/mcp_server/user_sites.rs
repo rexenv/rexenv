@@ -2360,7 +2360,16 @@ fn composer_link<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::
         }
         let run = ctx.repo.composer_link(site.id.clone(), link.clone()).await?;
         let known = super::view::KnownPaths::for_site(ctx.state.platform.paths(), &site.path);
-        let log: Vec<String> = run.log.iter().map(|l| super::view::scrub_log_line(l, &known)).collect();
+        // Composer prints the source's absolute path ("Symlinking from …") and
+        // the one scrubber only knows rexenv's own paths — the source is
+        // labelled here, before the scrub, so the reply names it and never
+        // locates it. Found in the live run of 3 Sep 2026.
+        let source_abs = link.source.display().to_string();
+        let log: Vec<String> = run
+            .log
+            .iter()
+            .map(|l| super::view::scrub_log_line(&l.replace(&source_abs, "<source>"), &known))
+            .collect();
         if !run.ok {
             let tail: Vec<&str> = log.iter().rev().take(12).rev().map(String::as_str).collect();
             return Err(Error::Other(format!(
@@ -4862,7 +4871,8 @@ mod tests {
         let calls = ops.calls.lock().unwrap().clone();
         assert!(calls.iter().any(|c| c == &format!("composer link {} acme/widgets acme-widgets {}", lv.id, canonical.display())), "{calls:?}");
         let log = v["log"].as_array().unwrap();
-        assert!(log.iter().any(|l| l.as_str().unwrap().contains("Symlinking")), "{log:?}");
+        assert!(log.iter().any(|l| l.as_str().unwrap().contains("Symlinking from <source>")), "the source is labelled, never located: {log:?}");
+        assert!(!v.to_string().contains(&canonical.display().to_string()), "no absolute source path anywhere in the reply: {v}");
         assert!(!v.to_string().contains(&home), "no absolute home path in the reply: {v}");
         assert_eq!(acted.take().as_deref(), Some(lv.id.as_str()));
         std::fs::remove_dir_all(&root).unwrap();
