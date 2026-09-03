@@ -246,12 +246,16 @@ fn refusal(target: Target<'_>, scope: Scope) -> String {
         Target::Site { domain, .. } => format!("`{domain}` is one of the user's own sites, and this"),
         Target::Stack => "this acts on rexenv itself, and it".to_string(),
     };
+    // After D15 this text is read for ONE thing — publishing a site — and the
+    // prompt offers one duration; "7 days" here would promise a button that is
+    // not there (the live run of 4 Sep 2026 read it).
     format!(
-        "{what} needs the user's `{scope}` permission, which has not been given (or has expired). \
-         rexenv is asking for it now, in the app: Settings → \"AI agents (MCP)\" → \"Site access\", \
-         where it can be allowed for {GRANT_DAYS} days, for this session only, or refused. That \
-         section also lists every permission and when it expires. This is not something the agent \
-         can grant itself; if the person you're working with wants it, they will allow it there."
+        "{what} needs the user's `{scope}` permission, which has not been given (or has expired) — \
+         the Agent access dial never covers publishing a site. rexenv is asking for it now, in \
+         the app: Settings → \"AI agents (MCP)\" → \"Site access\", where it can be allowed for \
+         this session only, or refused. That section also lists every such permission and when \
+         it ends. This is not something the agent can grant itself; if the person you're working \
+         with wants it, they will allow it there."
     )
 }
 
@@ -527,7 +531,7 @@ mod tests {
         // Nothing granted: refused, and the refusal is followable — card,
         // section, both durations, and who cannot give it.
         let err = authorize(&conn, SITE, Scope::Manage, "claude-code").unwrap_err().to_string();
-        for must in ["shop.rex", "`manage`", "AI agents (MCP)", "Site access", "7 days", "this session", "not something the agent can grant itself"] {
+        for must in ["shop.rex", "`manage`", "AI agents (MCP)", "Site access", "publishing a site", "this session", "not something the agent can grant itself"] {
             assert!(err.contains(must), "refusal must say {must:?}: {err}");
         }
 
