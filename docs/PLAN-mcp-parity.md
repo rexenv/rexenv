@@ -270,6 +270,10 @@ packaged run, recorded in `TODO.md` under the existing gates row. L4 as time all
 7. Ledger: re-scope the "no registered tool reaches `run_privileged`" row to the
    first two registries; amend #197's scope sentence; new rows for 1–4.
 *Ships: a user can grant, see and revoke a scope; no tool uses one yet.*
+**P2 SHIPPED 3 Sep 2026** (#475 `UserByAgent` + `site_create`, #476 `site_delete`, #477
+`site_configure`, #478 `site_restart`/`site_retry`, #479 the widened view + `site_info` +
+`site_inspect_folder`, #480 the L1). `job_status`/`job_cancel` moved to P6 with the
+progress work they belong to. SMOKE §P2 (27–31) is the owner's run.
 **P1 SHIPPED 3 Sep 2026** (#468 v43, #469/#470 the scope model, #471 the witness, #472
 the third registry + `every_tool`, #473 the switch and commands, #474 the copy). What
 moved from the list above: task 7's `run_privileged` re-scope is deferred to the first

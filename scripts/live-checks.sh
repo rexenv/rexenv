@@ -134,6 +134,7 @@ mcp_mail_check service
 mcp_scratch_check sandbox
 mcp_secret_sweep sandbox
 mcp_socket_check stack
+mcp_user_site_check sandbox
 metrics_check sandbox
 monitor_coverage_demo service
 multisite_check network

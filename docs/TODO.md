@@ -2005,8 +2005,13 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     ✓ P2.3 — **`list_sites` widened + `site_info` + `site_inspect_folder`**, ledger #479:
     owner/multisite/xdebug/aliases/setupComplete/linked on the view; cert without its dir,
     packages without their source path; the dialog's preflight as a read tool. Resources
-    stay out of the read tier (they run the SQL client). Remaining: `job_*` (P6), the L1
-    `mcp_user_site_check`, SMOKE §P2.
+    stay out of the read tier (they run the SQL client).
+    ✓ P2.4 — **L1 `mcp_user_site_check` (sandbox) PASS + SMOKE §P2 steps 27–31**, ledger
+    #480: the switch, the gate, a real rename through `rename_site`, a real delete that
+    removed a sandbox docroot, the scratch refusal, the feed, the launch sweep — all over
+    the socket. **P2 is shipped** except `job_status`/`job_cancel`, which move to P6 with
+    the progress work. What only a human can run: SMOKE 27–31 (create/retry/restart for
+    real, and the gate in front of a model).
   - [ ] **P3 — WordPress on real sites** (eight grouped `wp_*` tools + `wp_run`'s `run`
     arm), `tail_log` every source, `mail_inbox`.
   - [ ] **P4 — the stack**: `stack_status`/`stack(...)` incl. privileged start/stop (D10),
