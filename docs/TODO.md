@@ -2076,8 +2076,16 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     ✓ P6.4 — SMOKE §P5 (40–42) and §P6 (43–45) written; the sandbox L1 re-run at 45
     tools (PASS). **P6 is shipped.** What only a human can prove: D12's two-client
     `tools/list`, the destructive hint in Claude Code's confirm, a quit mid-call.
-  - [ ] **P7 — Laravel loop**: `php_artisan`, Composer path-repo link (S1 re-run for
+  - [x] **P7 — Laravel loop**: `php_artisan`, Composer path-repo link (S1 re-run for
     Composer), D13.
+    ✓ P7.1 — **`site_artisan`**, ledger #495: the project's own artisan on the pool's PHP,
+    `--no-interaction` last, stdin null, `wp_run`'s timeout; refused on the row for a
+    non-Laravel, scratch or half-installed site. ✓ P7.2 — **`composer_link`**, ledger
+    #496, D14: a `path` repository as an explicit SYMLINK (S1 re-run for Composer, ruled
+    the other way — the grant is the click), name read from the source's manifest, the
+    `run` claim before the source is read, the clone's blast radius, the write-back
+    truth in the reply. D13 stays deferred. **47 tools**; SMOKE §P7 46–47 written; the
+    sandbox L1 re-run (PASS). Owed to the owner: SMOKE §P1–§P7, all human legs.
 - [ ] **MCP server — EVERY PLANNED MILESTONE IS SHIPPED (M1, M2a, M2b, M3).** Header
   corrected twice, and the second time is the instructive one. 21 Aug 2026: it had read
   "building M2a → M2b → M3" for eight days after both were done. 25 Aug 2026: it read

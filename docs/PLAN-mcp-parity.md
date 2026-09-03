@@ -49,7 +49,7 @@ Ordered by what it costs to leave open. Each row says where the evidence is.
 | L5 | **In-band "rexenv stopped" error in `rex mcp` — deferred WITH A TRIGGER, and the trigger fired at M2.** §2.3 said the dumb pipe is fine while there are no tools, and that a mid-session app quit becomes a *model-facing* failure the day tools land. Nine executing tools have landed; `cli/src/main.rs::run_mcp_bridge` is still the dumb byte pipe. A model whose `scratch_create_site` dies with a bare EOF will guess. | `PLAN-mcp-server.md` §2.3; `cli/src/main.rs:210-230` | ✅ P6.2, 3 Sep 2026 (#493) — ids read, nothing constructed; the pending request answered in-band |
 | L6 | **Tool annotations never emitted.** §2.4 says tools carry `readOnlyHint`/`destructiveHint`; `tools_list_result` emits name/description/inputSchema only (grep: no `Hint` in `mcp_server.rs`). Harmless today (12 tools, obvious names); load-bearing at parity, where a client's confirm-before-destructive UX reads exactly these. | `mcp_server/tools.rs::tools_list_result` | ✅ P6.1, 3 Sep 2026 (#492) — one place, from the registry |
 | L7 | **TTL and cap are compile-time constants** (`MAX_SCRATCH_SITES = 5`, 24 h) where §4.2/§4.3 said settings. `ARCHITECTURE.md` §8.3 records the divergence. Not a defect; a parity agent that runs a matrix across five PHP minors on five plugins will hit the cap. | `core/scratch.rs:77` | ✅ P4.3, 3 Sep 2026 (#488) — `scratch_cap` / `scratch_ttl_hours`, gated setters, the constants as defaults |
-| L8 | **Laravel headline (M-later trio)**: scratch Laravel skeleton, `php_artisan` runner, Composer path-repo link. Ranked in §5.1/§7.3 of the old plan, never started. Parity makes the first one moot in the scratch form (a real Laravel site is creatable, §4) but the runner and the path-repo link are still the Laravel dev loop. | `PLAN-mcp-server.md` §5.1 | ⏳ — §5 P7 |
+| L8 | **Laravel headline (M-later trio)**: scratch Laravel skeleton, `php_artisan` runner, Composer path-repo link. Ranked in §5.1/§7.3 of the old plan, never started. Parity makes the first one moot in the scratch form (a real Laravel site is creatable, §4) but the runner and the path-repo link are still the Laravel dev loop. | `PLAN-mcp-server.md` §5.1 | ✅ P7, 3 Sep 2026 (#495 `site_artisan`, #496 `composer_link`); the scratch skeleton stays deferred (D13) |
 | L9 | **Progress for long tool calls.** The CLI got streaming 2 Sep 2026 (#447); MCP still blocks the whole call (`state_of` poll) — fine for a 60 s scratch create, not for a git-cloned Laravel site with `composer install` + asset build. | `PLAN-mcp-server.md` §2.5 | ✅ P6.3, 3 Sep 2026 (#494) — `notifications/progress` when the client sends `_meta.progressToken`; provision, repo and db-import loops report. **`job_status`/`job_cancel` are NOT built, as a decision:** a blocking call with progress and a per-tool cancel (`repo cancel`, `db_import cancel`, `valet_import cancel`; a half-built site is `site_delete`) covers what a job id would, and a job id an agent must poll is a worse reply than one message |
 | L10 | Windows/Linux socket path + named pipe. | Phase 4 | out of scope, unchanged |
 
@@ -270,6 +270,11 @@ packaged run, recorded in `TODO.md` under the existing gates row. L4 as time all
 7. Ledger: re-scope the "no registered tool reaches `run_privileged`" row to the
    first two registries; amend #197's scope sentence; new rows for 1–4.
 *Ships: a user can grant, see and revoke a scope; no tool uses one yet.*
+**P7 SHIPPED 3 Sep 2026** (#495 `site_artisan`, #496 `composer_link` — D14 below). **47 tools**
+across the three registries; every phase of §5 is shipped. D13 stays deferred (a scratch
+Laravel site is not built: `site_create` + a `destroy` grant is a Laravel site an agent can
+delete). What only a human can prove: SMOKE §P7 46–47 — a real artisan and a real
+`composer require` on a real Laravel site.
 **P6 SHIPPED 3 Sep 2026** (#492 annotations, #493 the shim's in-band error, #494 progress).
 `job_status`/`job_cancel` deliberately not built (L9 row). What only a human can prove:
 SMOKE §P6 43–45 — D12's real-client `tools/list` at 45 tools, the destructive hint reaching
@@ -339,6 +344,8 @@ Composer path-repo link with S1's clone-vs-link reasoning RE-RUN for Composer (i
 symlinks by default — the old plan said not to assume). The scratch Laravel
 skeleton is subsumed by `site_create` + a scratch `type` param — decide whether a
 disposable Laravel site is worth the provision shape (D13).
+*Built as:* `site_artisan` (real sites only, `run`; there is no scratch form because
+scratch sites are WordPress — D13 deferred) and `composer_link` (`run`; D14). §7.
 
 ## 6. The copy — drafted first, because it constrained M2 and will constrain this
 
@@ -378,6 +385,7 @@ so the reasoning that was in front of the owner is the reasoning on file.
 | D11 | `share(start)`: scratch-only or any granted site? | **Any granted site, ≤ 60 min, never auto-allowed** — webhook testing is on real sites |
 | D12 | Grouped tools with `action` (~42) vs flat (~150)? | **Grouped.** Prove with a real Cursor + Claude Code `tools/list` in P6 before P3 lands, since the risk is client-side |
 | D13 | A scratch Laravel site (disposable, agent-owned)? | Defer — `site_create` + `destroy` grant gives an agent a Laravel site it can delete; build the skeleton only if the reaper/TTL semantics turn out to matter for Laravel |
+| D14 (3 Sep 2026, at build time) | Composer path-repo link: symlink (Composer's default, the Valet loop) or a copy with a sync verb (S1's clone)? | **Symlink, stated explicitly in the repository spec.** S1 fell on *who runs what where*: an UNATTENDED raw runner on the agent's OWN site could unpack over the user's checkout with no click. `composer_link` acts on the USER's site under a `run` grant the user answered — the Settings prompt already says code of the agent's choosing runs there as them — and a live checkout is what a path repository is FOR; a copy would buy a sync verb nobody asked for. The truth a symlink carries (the site writes into `vendor/<name>` land in the checkout) is said in the tool's description AND its reply. Blast radius unchanged from the clone (#231). Ledger #496 |
 
 ## 8. Verification + ledger rows (the core set; every row says what it does NOT certify)
 

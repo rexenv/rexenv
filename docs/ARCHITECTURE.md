@@ -928,7 +928,13 @@ IPC surface — which is how a reader ends up designing against a system with on
   located in words; a dry-run search-replace manages, a live one destroys; import and
   reset destroy), `wp_network`, and `site_wp_run` — the raw runner on the USER's site
   behind `run`, which is `scratch::wp_run`'s resolver, target screen, runner and scrubber
-  reused rather than copied, `site_logs` (every source the site's Logs tab shows, by key
+  reused rather than copied, and from P7 its Laravel twin `site_artisan` (the project's own
+  `artisan` on the pool's PHP, `--no-interaction` last, stdin null; refused on the row for a
+  non-Laravel, scratch or half-installed site) and `composer_link` (a `path` repository that
+  is an explicit SYMLINK — D14, the S1 question re-run for Composer and ruled the other way
+  because the site is the user's and `run` was their answer; the name read from the source's
+  manifest, the source behind the scratch clone's blast-radius rule, the write-back truth
+  said in the reply), `site_logs` (every source the site's Logs tab shows, by key
   from the site's own closed list, under `read`) and `mail_inbox` (the user's whole
   Mailpit inbox: the mail switch by name, THEN `read`/`manage`/`destroy` on rexenv
   itself — every scope has a stack-level meaning now), and from P4 `stack` — start/stop of

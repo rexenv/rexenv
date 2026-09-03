@@ -158,7 +158,7 @@ async fn main() {
     send(&mut stream, r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#);
     let v = read_reply(&mut reader);
     let names: Vec<&str> = v["result"]["tools"].as_array().expect("tools").iter().filter_map(|t| t["name"].as_str()).collect();
-    for expected in ["list_sites", "site_info", "site_inspect_folder", "wp_org_search", "scratch_create_site", "site_create", "site_delete", "site_configure", "site_restart", "site_retry", "wp_info", "wp_plugin", "wp_theme", "wp_user", "wp_option", "wp_maintain", "wp_data", "wp_network", "site_wp_run", "site_logs", "mail_inbox"] {
+    for expected in ["list_sites", "site_info", "site_inspect_folder", "wp_org_search", "scratch_create_site", "site_create", "site_delete", "site_configure", "site_restart", "site_retry", "wp_info", "wp_plugin", "wp_theme", "wp_user", "wp_option", "wp_maintain", "wp_data", "wp_network", "site_wp_run", "site_logs", "mail_inbox", "site_artisan", "composer_link"] {
         assert!(names.contains(&expected), "`{expected}` is not advertised: {names:?}");
     }
     let destructive = v["result"]["tools"].as_array().unwrap().iter().find(|t| t["name"] == "site_delete").unwrap();
@@ -278,6 +278,15 @@ async fn main() {
     assert!(err && text.contains("not WordPress"), "{text}");
     let (err, text) = c("wp_info", json!({ "site_id": theirs.id, "what": "info" }));
     assert!(err && text.contains("wp_run"), "{text}");
+    // P7: the Laravel runner and the Composer link refuse on the ROW too — a
+    // PHP site has no artisan and (here) no composer.json; the scratch site
+    // is WordPress — with no ask recorded for any of them.
+    let (err, text) = c("site_artisan", json!({ "site_id": mine.id, "args": ["about"] }));
+    assert!(err && text.contains("not a Laravel site"), "{text}");
+    let (err, text) = c("site_artisan", json!({ "site_id": theirs.id, "args": ["about"] }));
+    assert!(err && text.contains("scratch"), "{text}");
+    let (err, text) = c("composer_link", json!({ "site_id": mine.id, "source": sandbox_root.display().to_string() }));
+    assert!(err && text.contains("no composer.json at its project root"), "{text}");
     assert_eq!(asks(&state).len(), asks_before, "row refusals ask for nothing");
     let (err, text) = c("site_logs", json!({ "site_id": mine.id }));
     assert!(!err, "site_logs under manage (⊃ read): {text}");
@@ -291,7 +300,7 @@ async fn main() {
     let (err, text) = c("mail_inbox", json!({ "action": "list" }));
     assert!(err && text.contains("Let agents read scratch-site mail"), "{text}");
     assert_eq!(asks(&state).len(), asks_before, "the mail switch refuses before the grant is even asked for");
-    println!("✓ wp tools refuse a PHP/scratch site on the row; site_logs lists keys without paths and refuses a stray key; mail_inbox refuses by the mail switch's name");
+    println!("✓ wp/artisan/composer tools refuse a PHP/scratch site on the row; site_logs lists keys without paths and refuses a stray key; mail_inbox refuses by the mail switch's name");
 
     // 7) A session `destroy` grant: the app's full delete runs — the docroot is
     //    gone from disk and the row is gone.

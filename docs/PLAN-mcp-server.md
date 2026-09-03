@@ -846,6 +846,11 @@ and a `php_artisan(site, argv)` analogue to `wp_run`, are the Laravel headline �
   Composer itself symlinks — so S1's reasoning has to be re-run for it, not
   assumed). M-later.
 
+**SHIPPED 3 Sep 2026 as parity P7** (`PLAN-mcp-parity.md` §5, D14): `site_artisan`
+and `composer_link` on the USER's Laravel site under a `run` grant (#495, #496) — not
+scratch-only, because scratch sites stayed WordPress (D13 deferred). S1 was re-run for
+Composer and ruled the other way — a symlink, because the grant is the click.
+
 **Tool count, recounted after S1/S2 (1 Aug 2026).** M1 shipped **3**
 (`list_sites`, `site_status`, `tail_log`). M2a adds **5** (`scratch_create_site`,
 `scratch_delete_site`, `scratch_add_package`, `scratch_sync_package`, `wp_run`).

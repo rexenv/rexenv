@@ -790,8 +790,19 @@ impl<'a> ScratchCtx<'a> {
 /// must treat the gap either side of it as a real window. Shared with the
 /// parity registry's `site_wp_run`: one resolver, one runner, one scrubber.
 pub(super) async fn resolve_wp_tools(state: &AppState, php_minor: &str) -> Result<(std::path::PathBuf, std::path::PathBuf)> {
+    let php_bin = resolve_php(state, php_minor).await?;
+    let platform = state.platform.as_ref();
+    // wp-cli is a .phar, not a Mach-O → resolve_file (no chmod/codesign).
+    let wp_phar = crate::core::binaries::resolve_file(platform, "wp-cli", crate::core::binaries::WP_CLI_VERSION).await?;
+    Ok((php_bin, wp_phar))
+}
+
+/// The PHP CLI a site's commands run on — the same interpreter its pool
+/// serves. Split from [`resolve_wp_tools`] for the runners that want no
+/// wp-cli (`site_artisan`): resolving the phar there would download it.
+pub(super) async fn resolve_php(state: &AppState, php_minor: &str) -> Result<std::path::PathBuf> {
     // The patch the site's POOL runs (selection floored by the pin), not the
-    // pin — an agent running wp-cli on a different interpreter than the site
+    // pin — an agent running a CLI on a different interpreter than the site
     // serves is a disagreement nobody can see from either side.
     let patch = {
         let conn = state.db.lock().map_err(|_| Error::Other("the app database lock is poisoned".into()))?;
@@ -802,11 +813,7 @@ pub(super) async fn resolve_wp_tools(state: &AppState, php_minor: &str) -> Resul
             ))
         })?
     };
-    let platform = state.platform.as_ref();
-    let php_bin = crate::core::binaries::resolve(platform, "php", &patch).await?;
-    // wp-cli is a .phar, not a Mach-O → resolve_file (no chmod/codesign).
-    let wp_phar = crate::core::binaries::resolve_file(platform, "wp-cli", crate::core::binaries::WP_CLI_VERSION).await?;
-    Ok((php_bin, wp_phar))
+    crate::core::binaries::resolve(state.platform.as_ref(), "php", &patch).await
 }
 
 /// This registry's tools as MCP descriptors, for the union `tools/list`.
@@ -2109,7 +2116,7 @@ fn set_php_version<'a>(
     })
 }
 
-fn two_args(args: &Value, a: &str, b: &str, tool: &str) -> Result<(String, String)> {
+pub(super) fn two_args(args: &Value, a: &str, b: &str, tool: &str) -> Result<(String, String)> {
     let get = |k: &str| args.get(k).and_then(Value::as_str).map(str::to_string);
     match (get(a), get(b)) {
         (Some(x), Some(y)) => Ok((x, y)),

@@ -1155,7 +1155,7 @@ the human legs. Set up: stack up, switch ON, one of your own sites.
   `read` on rexenv itself lists it by name only.
 
 ### Parity P6 — the protocol, in front of the real clients. Ships only if 43–45 pass.
-- [ ] **43. ⚠ D12: 45 tools, two clients.** `claude mcp add rexenv -- rex mcp` → Claude Code
+- [ ] **43. ⚠ D12: 47 tools, two clients.** `claude mcp add rexenv -- rex mcp` → Claude Code
   lists every tool (`/mcp` → rexenv) with no schema complaint, and a call works. Then the
   Cursor stanza from the card → Cursor shows the server connected and its tool list
   complete (Cursor has historically capped tools per server; if it truncates, THAT is the
@@ -1170,6 +1170,22 @@ the human legs. Set up: stack up, switch ON, one of your own sites.
   the outcome is unknown"** and does NOT retry the create on its own. Reopen rexenv →
   the half-built or finished site is in the list; `site_status` says which.
   **Tell — a HOLD:** the model sees a bare transport error, or retries the create.
+
+### Parity P7 — the Laravel loop. Ships only if 46–47 pass.
+- [ ] **46. artisan, non-interactive by construction.** On one of your Laravel sites ask:
+  *"run migrate:status"* → a `run` prompt → Allow for this session → the table comes back.
+  Then *"run tinker"* → returns within the timeout with a non-zero exit and no hang (stdin
+  is null). Then *"run db:wipe"* → comes back "no" from the confirm (rexenv's
+  `--no-interaction`), and the database still has its tables. **Tell — a HOLD:** tinker
+  hangs the call, or db:wipe wipes.
+- [ ] **47. A Composer link is a symlink, and says so.** Make a package folder with a
+  `composer.json` (`"name": "acme/widgets"`, a `src/` with one class). Ask: *"link
+  `~/Projects/acme-widgets` into `<laravel site>`"* → under the session's `run` grant,
+  Composer runs (the reply's `log`) and the reply says SYMLINK and "lands in the checkout".
+  `ls -l vendor/acme/` in the project shows the symlink; the project's `composer.json` has
+  `repositories.acme-widgets` with `"symlink": true`. Edit the class in the SOURCE folder →
+  the site sees it with no sync. Ask for `~` as the source → refused (blast radius), and
+  nothing in `composer.json` changed.
 
 ## Robustness (spot-check) — §2
 - [ ] Quit with another app on :443, relaunch → a clear "port in use" message (no crash).

@@ -169,6 +169,150 @@ pub fn wire_env(original: &str, app_url: &str, db: &DbSettings) -> String {
     )
 }
 
+/// Raw `php artisan <args…>` for the MCP runner (`site_artisan`) — the
+/// [`crate::core::wordpress::wp_run_raw`] shape, on purpose:
+///
+/// - **A non-zero exit is an answer, not an error.** `artisan migrate:status`
+///   exits 1 to say "pending"; the caller reports the code and both streams.
+/// - **A hard timeout, always**, and stdin is `/dev/null`: `artisan tinker`
+///   with nothing to read exits instead of waiting for a keyboard that is not
+///   there, and a wedged command comes back as a killed one.
+/// - **`--no-interaction` is rexenv's and goes LAST.** Symfony Console takes
+///   the option wherever it sits, so this is a belt rather than a race — a
+///   confirm prompt (`migrate:fresh` in production, `db:wipe`) answers itself
+///   "no" instead of hanging on the timeout.
+///
+/// The project root comes from the site row — the caller has already decided
+/// WHICH artisan runs; this only runs it.
+pub fn artisan_raw(
+    php: &Path,
+    project: &Path,
+    args: &[String],
+    timeout: std::time::Duration,
+) -> Result<std::process::Output> {
+    let mut cmd = std::process::Command::new(php);
+    cmd.arg(project.join("artisan"))
+        .args(args)
+        .arg("--no-interaction")
+        .current_dir(project);
+    let what = format!("php artisan {}", args.first().map(String::as_str).unwrap_or(""));
+    crate::core::wordpress::run_with_timeout(cmd, timeout, &what)
+}
+
+/// A Composer package on disk, about to be linked into a project as a `path`
+/// repository (D14 in `PLAN-mcp-parity.md`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ComposerLink {
+    /// The `name` from the source's `composer.json` — `vendor/package`.
+    pub name: String,
+    /// The repository key in the project's `composer.json`: the name with `/`
+    /// (and anything else Composer would not take in a key) folded to `-`.
+    pub key: String,
+    /// The source directory, already canonical and blast-radius checked.
+    pub source: PathBuf,
+}
+
+/// Read the package name out of `source/composer.json`.
+///
+/// The name is a FACT read from the source, never a parameter the agent
+/// asserts (the scratch clone reads the plugin header the same way): a name
+/// that disagrees with the manifest would link nothing and `require` the
+/// wrong package from Packagist — over the network, as the user.
+pub fn read_composer_link(source: &Path) -> Result<ComposerLink> {
+    let manifest = source.join("composer.json");
+    let raw = std::fs::read_to_string(&manifest).map_err(|_| {
+        Error::Other(format!(
+            "`{}` has no composer.json — a Composer path repository needs one with a `name`.",
+            source.file_name().and_then(|n| n.to_str()).unwrap_or("that folder")
+        ))
+    })?;
+    let json: serde_json::Value = serde_json::from_str(&raw)
+        .map_err(|e| Error::Other(format!("the source's composer.json is not valid JSON: {e}")))?;
+    let name = json
+        .get("name")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|n| is_composer_package_name(n))
+        .ok_or_else(|| {
+            Error::Other(
+                "the source's composer.json has no `name` of the form `vendor/package` — \
+                 Composer cannot require a package without one."
+                    .into(),
+            )
+        })?;
+    let key: String = name
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '-' })
+        .collect();
+    Ok(ComposerLink { name: name.to_string(), key, source: source.to_path_buf() })
+}
+
+/// Composer's own rule for a package name, without the regex: lowercase
+/// `vendor/package`, each side non-empty and made of `[a-z0-9_.-]`.
+fn is_composer_package_name(name: &str) -> bool {
+    let Some((vendor, package)) = name.split_once('/') else { return false };
+    let ok = |s: &str| {
+        !s.is_empty()
+            && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '_' | '.' | '-'))
+            && s.chars().next().is_some_and(|c| c.is_ascii_alphanumeric())
+    };
+    ok(vendor) && ok(package) && !package.contains('/')
+}
+
+/// The two Composer invocations a link IS, as argv (the phar first — Composer
+/// runs through the site's PHP), so a test can hold them still.
+///
+/// **The repository is a SYMLINK, stated explicitly** (`"symlink": true` is
+/// Composer's default, written out so the ruling is in the file, not in a
+/// default someone reads later). This is the S1 question re-run for Composer
+/// (D14): the scratch clone protected a checkout from an UNATTENDED raw runner
+/// on the agent's own site; here the site is the user's, the `run` grant they
+/// answered says code of the agent's choosing runs there as them, and a live
+/// checkout is what a Composer path repository is FOR. The truth a symlink
+/// carries — the site writes into `vendor/<name>` land in the checkout — is
+/// said in the reply rather than engineered away.
+///
+/// `@dev` is the stability that lets Composer pick the path repository over
+/// a Packagist release of the same name, and `--no-interaction` answers every
+/// prompt "no" rather than waiting.
+pub fn composer_link_argv(link: &ComposerLink, composer_phar: &Path) -> [Vec<String>; 2] {
+    let phar = composer_phar.to_string_lossy().into_owned();
+    let spec = serde_json::json!({
+        "type": "path",
+        "url": link.source.display().to_string(),
+        "options": { "symlink": true },
+    })
+    .to_string();
+    [
+        vec![phar.clone(), "config".into(), format!("repositories.{}", link.key), spec, "--no-interaction".into()],
+        vec![phar, "require".into(), format!("{}:@dev", link.name), "--no-interaction".into()],
+    ]
+}
+
+/// Link a package checkout into a project: write the path repository, then
+/// `composer require <name>:@dev`. Streams Composer's lines (the same idle
+/// limit as an install — silence is a wedge, B25); the require's failure maps
+/// through the same Composer error table as `composer install`.
+#[allow(clippy::too_many_arguments)]
+pub fn composer_link(
+    supervisor: &dyn ProcessSupervisor,
+    php: &Path,
+    composer_phar: &Path,
+    project: &Path,
+    link: &ComposerLink,
+    env: &[(String, String)],
+    cancel: &CancelToken,
+    on_line: &mut dyn FnMut(&str),
+) -> Result<()> {
+    let [config, require] = composer_link_argv(link, composer_phar);
+    on_line(&format!("$ composer config repositories.{} path <source>", link.key));
+    let result = run_step_streamed(supervisor, php, &config, project, env, cancel, on_line, Some(STEP_IDLE_LIMIT))?;
+    verdict(result, "composer config")?;
+    on_line(&format!("$ composer require {}:@dev --no-interaction", link.name));
+    let result = run_step_streamed(supervisor, php, &require, project, env, cancel, on_line, Some(STEP_IDLE_LIMIT))?;
+    verdict(result, &format!("composer require {}", link.name))
+}
+
 fn verdict(result: StepResult, what: &str) -> Result<()> {
     if result.ok {
         return Ok(());
@@ -183,6 +327,67 @@ fn verdict(result: StepResult, what: &str) -> Result<()> {
 mod tests {
     use super::*;
     use crate::core::dotenv::EnvOrigin;
+
+    /// **The link reads its name from the SOURCE's manifest, folds it to a key
+    /// Composer accepts, writes the repository as an explicit symlink and
+    /// requires it at `@dev`, non-interactively — and a manifest without a
+    /// `vendor/package` name is refused before Composer is asked anything.**
+    #[test]
+    fn a_composer_link_is_read_from_the_manifest_and_pinned_as_a_symlink_at_dev() {
+        let dir = std::env::temp_dir().join(format!("rexenv-laravel-{}-link", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let err = read_composer_link(&dir).unwrap_err().to_string();
+        assert!(err.contains("no composer.json"), "{err}");
+        std::fs::write(dir.join("composer.json"), r#"{"name": "Acme Widgets"}"#).unwrap();
+        let err = read_composer_link(&dir).unwrap_err().to_string();
+        assert!(err.contains("`vendor/package`"), "{err}");
+        std::fs::write(dir.join("composer.json"), r#"{"name": "acme/widgets.v2", "type": "library"}"#).unwrap();
+
+        let link = read_composer_link(&dir).unwrap();
+        assert_eq!(link.name, "acme/widgets.v2");
+        assert_eq!(link.key, "acme-widgets-v2", "the key is the name with everything Composer's key grammar refuses folded to `-`");
+        let [config, require] = composer_link_argv(&link, Path::new("/bin/composer.phar"));
+        assert_eq!(&config[..3], &["/bin/composer.phar", "config", "repositories.acme-widgets-v2"]);
+        let spec: serde_json::Value = serde_json::from_str(&config[3]).unwrap();
+        assert_eq!(spec["type"], "path");
+        assert_eq!(spec["url"], dir.display().to_string());
+        assert_eq!(spec["options"]["symlink"], true, "the ruling is written into the file, not left to Composer's default");
+        assert_eq!(config.last().map(String::as_str), Some("--no-interaction"));
+        assert_eq!(require, vec!["/bin/composer.phar", "require", "acme/widgets.v2:@dev", "--no-interaction"]);
+        assert!(!is_composer_package_name("acme/"), "an empty package side");
+        assert!(!is_composer_package_name("acme/one/two"));
+        assert!(!is_composer_package_name("-acme/x"), "a leading separator");
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// **`artisan_raw` runs the project's own `artisan` through the given PHP
+    /// in the project directory, puts `--no-interaction` LAST, reads no stdin
+    /// and reports a non-zero exit as output rather than an error.** Proven
+    /// with a fake "php" that prints its argv and exits 3.
+    #[test]
+    fn artisan_raw_runs_in_the_project_with_no_interaction_last_and_returns_a_nonzero_exit() {
+        let dir = std::env::temp_dir().join(format!("rexenv-laravel-{}-artisan", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let fake_php = dir.join("php");
+        std::fs::write(&fake_php, "#!/bin/sh\npwd\nfor a in \"$@\"; do echo \"$a\"; done\nread x && echo \"read: $x\"\nexit 3\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&fake_php, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let out = artisan_raw(&fake_php, &dir, &["migrate:status".to_string(), "--pending".to_string()], std::time::Duration::from_secs(10)).unwrap();
+        assert_eq!(out.status.code(), Some(3), "a non-zero exit is an answer");
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        let lines: Vec<&str> = stdout.lines().collect();
+        assert_eq!(std::fs::canonicalize(lines[0]).unwrap(), std::fs::canonicalize(&dir).unwrap(), "runs in the project root");
+        assert_eq!(&lines[1..], &[dir.join("artisan").display().to_string().as_str(), "migrate:status", "--pending", "--no-interaction"]);
+        assert!(!stdout.contains("read:"), "stdin is /dev/null — nothing was read");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     fn db() -> DbSettings {
         DbSettings {

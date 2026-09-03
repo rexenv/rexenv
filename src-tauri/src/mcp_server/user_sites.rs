@@ -343,6 +343,59 @@ static REGISTRY: &[UserTool] = &[
         handler: site_wp_run,
     },
     UserTool {
+        name: "site_artisan",
+        description: "Run `php artisan …` in a Laravel site the user owns, on the PHP the site \
+                      serves with, in its project root — needs the user's `run` permission on \
+                      that site (asked for in the app). Takes `site_id` and `args` (the artisan \
+                      command as an array of words WITHOUT `php artisan`: [\"migrate\", \
+                      \"--seed\"]). Non-interactive: rexenv appends `--no-interaction`, so a \
+                      confirm prompt answers itself no; `tinker` needs `--execute`. The exit \
+                      code, stdout and stderr come back; a non-zero exit is an answer, not a \
+                      tool failure — check `succeeded`. Only for Laravel sites that finished \
+                      installing; scratch sites are WordPress and have no artisan.",
+        input_schema: || json!({
+            "type": "object",
+            "properties": {
+                "site_id": { "type": "string" },
+                "args": { "type": "array", "items": { "type": "string" }, "description": "The artisan command as separate words, without `php artisan`." }
+            },
+            "required": ["site_id", "args"],
+            "additionalProperties": false
+        }),
+        sweep_args: |id| json!({ "site_id": id, "args": ["about"] }),
+        summarise: super::scratch::summarise_wp_run_public,
+        scope: Scope::Run,
+        handler: site_artisan,
+    },
+    UserTool {
+        name: "composer_link",
+        description: "Link a Composer package you are developing into one of the user's own \
+                      PHP or Laravel sites as a `path` repository — `composer config \
+                      repositories.<name> path <source>` then `composer require <name>:@dev`, \
+                      on the site's PHP with rexenv's pinned Composer. Takes `site_id` and \
+                      `source` (the package checkout's directory; its composer.json `name` is \
+                      read from there, never guessed). Needs the user's `run` permission on the \
+                      site: Composer runs the package's scripts as the user. THE LINK IS A \
+                      SYMLINK: the site runs the checkout live, edits show without a sync, and \
+                      anything the site writes under vendor/<name> lands in the checkout. The \
+                      home folder, Desktop/Documents/Downloads, a volume root, rexenv's own \
+                      folders and any site's folder are refused as a source. For a WordPress \
+                      plugin use wp_plugin, or scratch_add_package on a scratch site.",
+        input_schema: || json!({
+            "type": "object",
+            "properties": {
+                "site_id": { "type": "string" },
+                "source": { "type": "string", "description": "Absolute path of the package checkout — the directory holding its composer.json." }
+            },
+            "required": ["site_id", "source"],
+            "additionalProperties": false
+        }),
+        sweep_args: |id| json!({ "site_id": id, "source": "/Users/somebody/Projects/acme-widgets" }),
+        summarise: |v| v.get("package").and_then(Value::as_str).map(|p| format!("linked {p}")),
+        scope: Scope::Run,
+        handler: composer_link,
+    },
+    UserTool {
         name: "site_logs",
         description: "Every log that concerns one of the user's own sites — its web server, PHP \
                       pool, edge and database logs (shared across sites) and, for WordPress, its \
@@ -805,6 +858,14 @@ pub fn tools_list_descriptors() -> Value {
 /// A parity tool's async result over the app's own site operations.
 pub type OpFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
+/// What a Composer run left behind: whether it succeeded, and every line it
+/// printed (unscrubbed — the handler owns the one scrubber).
+#[derive(Debug, Clone, Default)]
+pub struct ComposerRun {
+    pub ok: bool,
+    pub log: Vec<String>,
+}
+
 /// The app's own site operations, reached through the app handle.
 ///
 /// A trait object for the reason `scratch::SiteCreator` is one: the commands
@@ -962,6 +1023,13 @@ pub trait SystemOps: Send + Sync {
 /// because a tool reply is one message and a job id an agent must poll is a
 /// worse one; progress is P6's business.
 pub trait RepoOps: Send + Sync {
+    /// Link a package checkout into a site's project as a Composer `path`
+    /// repository (`core::laravel::composer_link`). Lives with the app rather
+    /// than in the handler because the run wants the user's login-shell env
+    /// (`RepoJobs`, for `COMPOSER_HOME`/auth.json) and a blocking thread the
+    /// handler's borrowed state cannot lend. Returns Composer's lines, ok or
+    /// not — a failed require's reason is in them.
+    fn composer_link<'a>(&'a self, site_id: String, link: crate::core::laravel::ComposerLink) -> OpFuture<'a, Result<ComposerRun>>;
     fn assets<'a>(&'a self, site_id: String) -> OpFuture<'a, Result<Vec<crate::state::models::GitAsset>>>;
     fn asset_status<'a>(&'a self, site_id: String, kind: String, dir: String) -> OpFuture<'a, Result<crate::commands::repo::AssetStatusResult>>;
     fn branches<'a>(&'a self, site_id: String, kind: String, dir: String) -> OpFuture<'a, Result<crate::commands::repo::RepoBranches>>;
@@ -2130,6 +2198,188 @@ fn site_wp_run<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::Ac
     })
 }
 
+/// The scrub's scope for an artisan reply — `WP_RUN_NOTE`'s sentence with the
+/// right program named.
+const ARTISAN_NOTE: &str = "Absolute paths rexenv knows — the site's project folder, rexenv's own \
+    directories, the home directory — are shown as labels like <docroot>. Paths rexenv doesn't \
+    know are printed as artisan wrote them: this is raw command output, not sanitised content.";
+
+/// The site a Laravel runner may touch: the user's, Laravel, and INSTALLED —
+/// a project whose `composer create-project` is still running (or failed) has
+/// no `artisan` to run, and the honest answer names `site_status`/`site_retry`
+/// rather than a "No such file" from PHP. A shape check, before the gate.
+fn laravel_precheck(ctx: &UserCtx<'_>, site_id: &str, tool: &str) -> Result<Site> {
+    let conn = ctx.db()?;
+    let Some(site) = crate::state::store::get_site(&conn, site_id)? else {
+        return Err(Error::Other(format!("There is no site with id `{site_id}`. Use list_sites to see the sites that exist.")));
+    };
+    if site.is_scratch() {
+        return Err(Error::Other(format!(
+            "`{}` is a scratch site — scratch sites are WordPress, and {tool} has nothing to run there. Use wp_run on it.",
+            site.domain
+        )));
+    }
+    if site.site_type != SiteType::Laravel {
+        return Err(Error::Other(format!(
+            "`{}` is a {} site, not a Laravel site — {tool} has no artisan to run there.",
+            site.domain,
+            site.site_type.as_db()
+        )));
+    }
+    if !crate::core::laravel::is_installed(std::path::Path::new(&site.path)) {
+        return Err(Error::Other(format!(
+            "`{}` has not finished installing — there is no artisan in its project yet. Check site_status; site_retry re-runs a failed install.",
+            site.domain
+        )));
+    }
+    Ok(site)
+}
+
+/// The shape of `args` for `site_artisan` — `wp_argv`'s rule with artisan's
+/// words: an array of separate strings, at least one, none of them `php` or
+/// `artisan` (a model that pastes the whole line gets told, not silently run).
+fn artisan_argv(args: &Value) -> Result<Vec<String>> {
+    let Some(list) = args.get("args").and_then(Value::as_array) else {
+        return Err(Error::Other(
+            "site_artisan needs `args`: the command as an array of separate words, without `php artisan` — \
+             [\"migrate\", \"--seed\"], not \"php artisan migrate --seed\"."
+                .into(),
+        ));
+    };
+    let words = list
+        .iter()
+        .map(|v| v.as_str().map(str::to_string).ok_or_else(|| Error::Other("every entry in `args` has to be a string — one artisan word per entry.".into())))
+        .collect::<Result<Vec<String>>>()?;
+    match words.first().map(String::as_str) {
+        None => Err(Error::Other("site_artisan needs at least one word in `args` — the artisan command to run, e.g. [\"migrate:status\"].".into())),
+        Some("php") | Some("artisan") => Err(Error::Other("`args` starts with the command itself — leave out `php artisan`; the first word is the artisan command, e.g. [\"migrate\", \"--seed\"].".into())),
+        Some(_) => Ok(words),
+    }
+}
+
+/// Run `php artisan …` in a Laravel site the user owns, under `run`.
+///
+/// `site_wp_run`'s shape (#480): the project root comes from the witness's
+/// row, never from an argument; `--no-interaction` is rexenv's and last; the
+/// timeout is `wp_run`'s; both streams pass through the one scrubber and the
+/// cap; a non-zero exit is a normal result with `succeeded: false`.
+fn site_artisan<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTarget) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let id = args.get("site_id").and_then(Value::as_str).ok_or_else(|| Error::Other("site_artisan needs a `site_id`.".into()))?;
+        let argv = artisan_argv(args)?;
+        laravel_precheck(&ctx, id, "site_artisan")?;
+        let wanted = format!("run `php artisan {}` in it", argv.iter().take(2).cloned().collect::<Vec<_>>().join(" "));
+        let claimed = ctx.claim::<scope::Run>(Some(id), &wanted)?;
+        let site = claimed.granted.site().cloned().ok_or_else(|| Error::Other("site_artisan needs a site.".into()))?;
+        acted.set(&site);
+        let project = std::path::PathBuf::from(&site.path);
+        let php_bin = super::scratch::resolve_php(ctx.state, &site.php_version).await?;
+        if !ctx.still_granted(&claimed.granted)? {
+            return Err(Error::Other(format!("the `run` permission on `{}` was revoked before the command ran — nothing was run.", site.domain)));
+        }
+        let printed = argv.join(" ");
+        let timeout = std::time::Duration::from_secs(crate::core::scratch::WP_RUN_TIMEOUT_SECS);
+        let out = crate::commands::wordpress::wp_blocking(move || crate::core::laravel::artisan_raw(&php_bin, &project, &argv, timeout)).await?;
+        let known = super::view::KnownPaths::for_site(ctx.state.platform.paths(), &site.path);
+        let (stdout, cut_out) = super::scratch::agent_stream(&out.stdout, &known);
+        let (stderr, cut_err) = super::scratch::agent_stream(&out.stderr, &known);
+        let succeeded = out.status.success();
+        let exit_code = out.status.code();
+        let mut detail = if succeeded {
+            format!("`php artisan {printed}` ran in `{}` and succeeded.", site.domain)
+        } else {
+            format!("`php artisan {printed}` FAILED in `{}` (exit {}). What artisan said is in `stderr` (or `stdout` — Symfony Console writes errors to both).", site.domain, exit_code.map_or_else(|| "killed by a signal".to_string(), |c| c.to_string()))
+        };
+        if cut_out || cut_err {
+            detail.push_str(&format!(" The output was longer than {} KB and has been cut — run a narrower command if you need the rest.", super::scratch::WP_OUTPUT_CAP / 1024));
+        }
+        let view = super::scratch::AgentWpRun { succeeded, exit_code, stdout, stderr, truncated: cut_out || cut_err, detail, note: ARTISAN_NOTE };
+        Ok(with_consent(to_json(view)?, claimed.auto_granted))
+    })
+}
+
+/// The site a Composer link may go into: the user's, not WordPress (a plugin
+/// has its own tools), with a `composer.json` at its project root.
+fn composer_precheck(ctx: &UserCtx<'_>, site_id: &str) -> Result<Site> {
+    let conn = ctx.db()?;
+    let Some(site) = crate::state::store::get_site(&conn, site_id)? else {
+        return Err(Error::Other(format!("There is no site with id `{site_id}`. Use list_sites to see the sites that exist.")));
+    };
+    if site.is_scratch() {
+        return Err(Error::Other(format!(
+            "`{}` is a scratch site — use scratch_add_package to put a plugin or theme into it; no permission is needed.",
+            site.domain
+        )));
+    }
+    if site.site_type == SiteType::Wordpress {
+        return Err(Error::Other(format!(
+            "`{}` is a WordPress site — a plugin or theme goes in through wp_plugin/wp_theme, not Composer.",
+            site.domain
+        )));
+    }
+    if !std::path::Path::new(&site.path).join("composer.json").is_file() {
+        return Err(Error::Other(format!(
+            "`{}` has no composer.json at its project root — there is nothing to link a package into. If the site is still installing, check site_status.",
+            site.domain
+        )));
+    }
+    Ok(site)
+}
+
+/// Link a package checkout into a user's site as a Composer path repository
+/// (D14 — a SYMLINK, the S1 ruling re-run for Composer).
+///
+/// Order, and why: shape and site precheck refuse before any ask; the `run`
+/// claim comes BEFORE the source is looked at, because reading a manifest out
+/// of an arbitrary path is a read of the user's disk and belongs behind the
+/// grant; then the blast-radius rule the scratch clone uses (#231: home,
+/// volumes, Desktop/Documents/Downloads, app-data, any site's folder — the
+/// site's own included), then the manifest, then Composer through the app.
+fn composer_link<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTarget) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let (id, source) = super::scratch::two_args(args, "site_id", "source", "composer_link")?;
+        composer_precheck(&ctx, &id)?;
+        let wanted = format!("link the Composer package in `{}` into it", basename(&source));
+        let claimed = ctx.claim::<scope::Run>(Some(&id), &wanted)?;
+        let site = claimed.granted.site().cloned().ok_or_else(|| Error::Other("composer_link needs a site.".into()))?;
+        acted.set(&site);
+        let src = {
+            let conn = ctx.db()?;
+            crate::core::sites::validate_linked_docroot(&conn, ctx.state.platform.as_ref(), &source)?
+        };
+        let link = crate::core::laravel::read_composer_link(&src)?;
+        if !ctx.still_granted(&claimed.granted)? {
+            return Err(Error::Other(format!("the `run` permission on `{}` was revoked before Composer ran — nothing was linked.", site.domain)));
+        }
+        let run = ctx.repo.composer_link(site.id.clone(), link.clone()).await?;
+        let known = super::view::KnownPaths::for_site(ctx.state.platform.paths(), &site.path);
+        let log: Vec<String> = run.log.iter().map(|l| super::view::scrub_log_line(l, &known)).collect();
+        if !run.ok {
+            let tail: Vec<&str> = log.iter().rev().take(12).rev().map(String::as_str).collect();
+            return Err(Error::Other(format!(
+                "Composer could not link `{}` into `{}` — nothing is required. Its last lines:\n{}",
+                link.name,
+                site.domain,
+                tail.join("\n")
+            )));
+        }
+        Ok(with_consent(
+            json!({
+                "ok": true,
+                "package": link.name,
+                "repositoryKey": link.key,
+                "source": basename(&source),
+                "symlinked": true,
+                "log": log,
+                "detail": format!(
+                    "`{}` is required by `{}` at @dev through a path repository that is a SYMLINK to `{}`: the site runs the checkout live — edits show at once, no sync step — and anything the site writes under vendor/{} lands in the checkout.",
+                    link.name, site.domain, basename(&source), link.name
+                ),
+            }),
+            claimed.auto_granted,
+        ))
+    })
+}
 
 const LOG_DEFAULT: usize = 100;
 const LOG_MAX: usize = 200;
@@ -3430,6 +3680,10 @@ mod tests {
         }
     }
     impl RepoOps for FakeOps {
+        fn composer_link<'a>(&'a self, site_id: String, link: crate::core::laravel::ComposerLink) -> OpFuture<'a, Result<ComposerRun>> {
+            self.calls.lock().unwrap().push(format!("composer link {site_id} {} {} {}", link.name, link.key, link.source.display()));
+            Box::pin(async move { Ok(ComposerRun { ok: true, log: vec![format!("$ composer require {}:@dev --no-interaction", link.name), format!("  - Installing {} (dev-main): Symlinking from {}", link.name, link.source.display())] }) })
+        }
         fn assets<'a>(&'a self, site_id: String) -> OpFuture<'a, Result<Vec<crate::state::models::GitAsset>>> { self.calls.lock().unwrap().push(format!("repo assets {site_id}")); Box::pin(async { Ok(vec![]) }) }
         fn asset_status<'a>(&'a self, site_id: String, kind: String, dir: String) -> OpFuture<'a, Result<crate::commands::repo::AssetStatusResult>> {
             self.calls.lock().unwrap().push(format!("repo status {site_id} {kind} {dir}"));
@@ -4481,5 +4735,125 @@ mod tests {
         let calls = ops.calls.lock().unwrap().clone();
         assert!(calls.iter().any(|c| c == "valet run shop.test db=true"), "{calls:?}");
         assert!(calls.iter().any(|c| c == &format!("dbimport start {} Some(\"mine.rex\")", site.id)), "{calls:?}");
+    }
+
+    /// **`site_artisan` refuses on shape and on the site (not Laravel, scratch,
+    /// not finished installing) before any ask, and — the project real — asks
+    /// for `run` on the site.** A pasted `php artisan …` is told, not run.
+    #[tokio::test]
+    async fn site_artisan_refuses_shape_and_unfinished_projects_before_the_gate_then_asks_run() {
+        let state = app_state();
+        switch_on(&state);
+        let ops = FakeOps::default();
+        let acted = super::super::feed::ActedTarget::default();
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
+        let dir = std::env::temp_dir().join(format!("rexenv-artisan-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("public")).unwrap();
+        let wp = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "blog.rex", SiteOrigin::User);
+        let scratch = test_site("c58e0a41-7d2f-4b19-93a6-6e1c5d8f0a24", "probe.scratch.rex", SiteOrigin::Agent);
+        let mut lv = test_site("bbbbbbbb-bbbb-4ccc-8ddd-eeeeeeeeeeee", "shop.rex", SiteOrigin::User);
+        lv.site_type = SiteType::Laravel;
+        lv.path = dir.display().to_string();
+        lv.docroot_subdir = "public".into();
+        {
+            let conn = state.db.lock().unwrap();
+            for s in [&wp, &scratch, &lv] {
+                store::insert_site(&conn, s).unwrap();
+            }
+        }
+        let err = site_artisan(ctx, &json!({ "site_id": lv.id, "args": "migrate" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("array of separate words"), "{err}");
+        let err = site_artisan(ctx, &json!({ "site_id": lv.id, "args": ["php", "artisan", "migrate"] }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("leave out `php artisan`"), "{err}");
+        let err = site_artisan(ctx, &json!({ "site_id": wp.id, "args": ["migrate"] }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("not a Laravel site"), "{err}");
+        let err = site_artisan(ctx, &json!({ "site_id": scratch.id, "args": ["migrate"] }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("scratch"), "{err}");
+        let err = site_artisan(ctx, &json!({ "site_id": lv.id, "args": ["migrate"] }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("not finished installing"), "{err}");
+        assert!(asks(&state).is_empty(), "every refusal so far was on shape — nothing asked");
+
+        std::fs::write(dir.join("artisan"), "#!/usr/bin/env php").unwrap();
+        std::fs::write(dir.join("public/index.php"), "<?php").unwrap();
+        let err = site_artisan(ctx, &json!({ "site_id": lv.id, "args": ["migrate", "--seed"] }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("`run`"), "{err}");
+        let a = asks(&state);
+        assert_eq!(a.len(), 1);
+        assert_eq!((a[0].site_id.as_deref(), a[0].scope), (Some(lv.id.as_str()), Scope::Run));
+        assert!(a[0].wanted.contains("php artisan migrate --seed"), "{}", a[0].wanted);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// **`composer_link` refuses WordPress, scratch and a project with no
+    /// composer.json on shape; asks for `run` BEFORE looking at the source;
+    /// granted, refuses the home folder as a source exactly as a link would,
+    /// reads the package name from the source's manifest, runs the app's
+    /// Composer op, and says in the reply that the link is a symlink.**
+    #[tokio::test]
+    async fn composer_link_asks_run_before_reading_the_source_and_says_the_link_is_a_symlink() {
+        let state = app_state();
+        switch_on(&state);
+        let ops = FakeOps::default();
+        let acted = super::super::feed::ActedTarget::default();
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
+        let root = std::env::temp_dir().join(format!("rexenv-composer-link-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let project = root.join("shop");
+        let pkg = root.join("acme-widgets");
+        std::fs::create_dir_all(&project).unwrap();
+        std::fs::create_dir_all(&pkg).unwrap();
+        let wp = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "blog.rex", SiteOrigin::User);
+        let mut lv = test_site("bbbbbbbb-bbbb-4ccc-8ddd-eeeeeeeeeeee", "shop.rex", SiteOrigin::User);
+        lv.site_type = SiteType::Laravel;
+        lv.path = project.display().to_string();
+        {
+            let conn = state.db.lock().unwrap();
+            store::insert_site(&conn, &wp).unwrap();
+            store::insert_site(&conn, &lv).unwrap();
+        }
+        let src = pkg.display().to_string();
+        let err = composer_link(ctx, &json!({ "site_id": wp.id, "source": src }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("wp_plugin"), "{err}");
+        let err = composer_link(ctx, &json!({ "site_id": lv.id, "source": src }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("no composer.json at its project root"), "{err}");
+        std::fs::write(project.join("composer.json"), r#"{"name": "acme/shop"}"#).unwrap();
+        assert!(asks(&state).is_empty());
+
+        // The source has no manifest yet — and is not looked at: the ask comes first.
+        let err = composer_link(ctx, &json!({ "site_id": lv.id, "source": src }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("`run`"), "{err}");
+        assert!(!err.contains("composer.json"), "the source was not read before the grant: {err}");
+        let a = asks(&state);
+        assert_eq!((a.len(), a[0].scope), (1, Scope::Run));
+        assert!(a[0].wanted.contains("`acme-widgets`"), "{}", a[0].wanted);
+
+        {
+            let conn = state.db.lock().unwrap();
+            store::grant_agent_site(&conn, "g1", Some(&lv.id), "claude-code", "run", 1, false, true).unwrap();
+        }
+        let home = std::env::var("HOME").unwrap();
+        let err = composer_link(ctx, &json!({ "site_id": lv.id, "source": home }), &acted).await.unwrap_err().to_string();
+        assert!(!err.contains("`run`"), "granted — the refusal is the blast radius's: {err}");
+        assert!(ops.calls.lock().unwrap().iter().all(|c| !c.starts_with("composer link")));
+        let err = composer_link(ctx, &json!({ "site_id": lv.id, "source": src }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("no composer.json"), "{err}");
+
+        std::fs::write(pkg.join("composer.json"), r#"{"name": "acme/widgets"}"#).unwrap();
+        let v = composer_link(ctx, &json!({ "site_id": lv.id, "source": src }), &acted).await.unwrap();
+        assert_eq!(v["package"], "acme/widgets");
+        assert_eq!(v["repositoryKey"], "acme-widgets");
+        assert_eq!(v["symlinked"], true);
+        assert_eq!(v["source"], "acme-widgets", "the source is named, never located");
+        let detail = v["detail"].as_str().unwrap();
+        assert!(detail.contains("SYMLINK") && detail.contains("lands in the checkout"), "{detail}");
+        let canonical = std::fs::canonicalize(&pkg).unwrap();
+        let calls = ops.calls.lock().unwrap().clone();
+        assert!(calls.iter().any(|c| c == &format!("composer link {} acme/widgets acme-widgets {}", lv.id, canonical.display())), "{calls:?}");
+        let log = v["log"].as_array().unwrap();
+        assert!(log.iter().any(|l| l.as_str().unwrap().contains("Symlinking")), "{log:?}");
+        assert!(!v.to_string().contains(&home), "no absolute home path in the reply: {v}");
+        assert_eq!(acted.take().as_deref(), Some(lv.id.as_str()));
+        std::fs::remove_dir_all(&root).unwrap();
     }
 }

@@ -1351,6 +1351,38 @@ impl<Rt: tauri::Runtime> AppSiteCreator<Rt> {
 }
 
 impl<Rt: tauri::Runtime> user_sites::RepoOps for AppSiteCreator<Rt> {
+    fn composer_link<'a>(&'a self, site_id: String, link: crate::core::laravel::ComposerLink) -> user_sites::OpFuture<'a, crate::error::Result<user_sites::ComposerRun>> {
+        Box::pin(async move {
+            let state = self.state()?;
+            let (project, minor) = {
+                let conn = state.db.lock().map_err(|_| crate::error::Error::Other("database lock poisoned".into()))?;
+                let site = crate::state::store::get_site(&conn, &site_id)?
+                    .ok_or_else(|| crate::error::Error::Other(format!("no site {site_id}")))?;
+                (std::path::PathBuf::from(&site.path), site.php_version)
+            };
+            // The site's PHP and the pinned phar — never a system `composer`.
+            let (php, composer) = crate::commands::wordpress::composer_tools(&state, &minor).await?;
+            let jobs = self.repo_jobs()?;
+            let env = crate::commands::repo::shell_env(state.inner(), &jobs, false)?;
+            let app = self.app.clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                let state = tauri::Manager::state::<AppState>(&app);
+                let mut log = Vec::new();
+                let cancel = crate::core::repo::CancelToken::new();
+                let outcome = crate::core::laravel::composer_link(
+                    state.platform.supervisor(), &php, &composer, &project, &link, &env, &cancel,
+                    &mut |l| log.push(l.to_string()),
+                );
+                let ok = match outcome {
+                    Ok(()) => true,
+                    Err(e) => { log.push(e.to_string()); false }
+                };
+                Ok(user_sites::ComposerRun { ok, log })
+            })
+            .await
+            .map_err(|e| crate::error::Error::Other(format!("the Composer thread ended early: {e}")))?
+        })
+    }
     fn assets<'a>(&'a self, site_id: String) -> user_sites::OpFuture<'a, crate::error::Result<Vec<crate::state::models::GitAsset>>> {
         Box::pin(async move { crate::commands::repo::repo_assets(self.state()?, site_id).await })
     }
