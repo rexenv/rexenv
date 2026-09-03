@@ -178,7 +178,7 @@ function FilterTabs({
           )}
         >
           {t.label}
-          <span className="font-mono text-[0.65625rem] opacity-70">{counts[t.key]}</span>
+          <span className="font-mono text-[0.65625rem]">{counts[t.key]}</span>
         </button>
       ))}
     </div>
@@ -287,7 +287,7 @@ export function SiteRow({
             <span
               data-probe="extra-domains"
               title={`Also answers on ${extraDomains.join(", ")}`}
-              className="flex-none text-rex-text-muted opacity-70"
+              className="flex-none text-rex-text-muted"
             >
               +{extraDomains.length}
             </span>

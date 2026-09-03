@@ -543,7 +543,7 @@ export function WordPressManager({
           >
             {s.label}
             {s.count !== undefined && (
-              <span className="font-mono text-[0.65625rem] opacity-70">{s.count}</span>
+              <span className="font-mono text-[0.65625rem]">{s.count}</span>
             )}
           </button>
         ))}

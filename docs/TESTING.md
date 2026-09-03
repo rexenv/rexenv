@@ -207,6 +207,14 @@ it can:
   `opacity`, so a badge inside a Services row dimmed with `opacity-[0.74]` reported 4.9:1
   and rendered at 3.1:1 — the gate that certified the periwinkle change was blind one
   compositing level up. It now multiplies every ancestor's opacity into the text alpha.
+  That sharpening shipped BROKEN: the same commit put a raw backtick in a comment inside
+  the probe's template literal, so `contrast.js` became a `SyntaxError` and the 44 pairs
+  it had just started catching stayed unseen for four commits — the file's answer was
+  "does not load", and only `run-all.js` was ever going to say so. **A probe that does not
+  parse is a probe that passes.** L2 needs a browser and a dev server and so runs at
+  release time, but its SYNTAX costs nothing, so `verify.sh` now runs `node --check` over
+  every `scripts/wk-checks/*.js` on every commit. It proves the file is loadable, not that
+  its assertions still bite — that stays the release sweep's job.
   And `wpfocus.js`'s ride-along control names the FLAG it proves (`refetchOnWindowFocus:
   false`), not the stale window it fires inside of.
   Its second lesson is the fixture one: the first stand-in cloudflared was

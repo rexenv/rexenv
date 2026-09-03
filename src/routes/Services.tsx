@@ -18,6 +18,15 @@ const KIND_ACCENT: Record<ServiceKind, { bg: string; border: string; color: stri
   web: { bg: "var(--rex-accent-teal-bg)", border: "var(--rex-accent-teal-border)", color: "var(--rex-accent-teal)" },
 };
 
+/** The badge of a STOPPED service: the same tile, drained of its kind colour.
+    Neutral tokens, not a faded accent — see the row comment for why opacity is
+    not available to us here. */
+const STOPPED_ACCENT = {
+  background: "var(--rex-well)",
+  color: "var(--rex-text-muted)",
+  borderColor: "var(--rex-border-subtle)",
+} as const;
+
 /** A short monogram for the row's accent badge. */
 function serviceBadge(svc: ServiceInfo, kind: ServiceKind): string {
   // Per-site FrankenPHP rows get the marker, never the (long) name/domain —
@@ -130,21 +139,27 @@ function ServiceRow({
   return (
     <div
       className={cn(
-        // NO transition-opacity: opacity<1 promotes the row to its own compositing
-        // layer, and WKWebView animating that layer WHILE the pill's label swaps
-        // composites the stale frame over the new text — the overlapping-words
-        // glitch on Running->Idle (idle = the direction that ADDS the layer and
-        // stops all animation, so the ghost lingers). Dim instantly instead.
+        // A stopped row is signalled by a DESATURATED badge, the Idle pill and
+        // the off toggle — never by opacity. Fading the row was how it used to
+        // read, and it cost every string in it AA: the muted token sits at
+        // 4.91:1 on the pill background, so the alpha that still passes is 0.94
+        // — a dim nobody can see. Desaturating carries the same meaning at full
+        // strength. (This also retires the transition-opacity note: with no
+        // opacity on the row there is no compositing layer to promote, so the
+        // Running->Idle ghost-text glitch has no mechanism left.)
         // gap-3 (not 4): at the 980px min window + 1.1x type scale the fixed
         // columns left the flex-1 name < 30px — tighter gaps keep names readable.
         "flex items-center gap-3 border-b border-rex-border-subtle px-4 py-3 last:border-b-0",
-        !running && "opacity-[0.74]",
       )}
     >
       <div className="flex min-w-0 flex-1 items-center gap-[11px]">
         <span
           className="flex h-[30px] w-[30px] flex-none items-center justify-center rounded-lg border font-mono text-[0.625rem] font-bold"
-          style={{ background: accent.bg, color: accent.color, borderColor: accent.border }}
+          style={
+            running
+              ? { background: accent.bg, color: accent.color, borderColor: accent.border }
+              : STOPPED_ACCENT
+          }
         >
           {serviceBadge(svc, kind)}
         </span>

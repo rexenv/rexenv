@@ -78,6 +78,24 @@ the shipped UI toward one.
   tile: a tinted background composited from an `-bg` token, which no text/surface pairing
   covers. `wk-checks/contrast.js` reads what a pixel actually is — painted ancestor, alpha,
   the AA size threshold — which is why it sees these and L0 cannot.
+  **Opacity dims ornament, never text.** A stopped Services row faded the whole row at
+  `opacity-[0.74]`, and group opacity composites the entire subtree over the page — so
+  every string in it rendered at an alpha nobody had checked: ports, CPU/RAM labels, the
+  Idle pill, the letter tile, all between 3.09:1 and 4.45:1. The arithmetic leaves no
+  room to tune it: `--rex-text-muted` sits at 4.91:1 on the pill background, so the
+  lowest alpha that still clears AA is **0.94** — a dim no one can see. Stopped now reads
+  from a DESATURATED badge (neutral tokens, full strength) plus the Idle pill and the off
+  toggle, which says the same thing without touching a single contrast ratio. Same fix on
+  the three `opacity-70` counters, which were dimming an already-muted token. The one
+  exemption is the standard's own: WCAG 2.1 SC 1.4.3 Incidental covers *inactive user
+  interface components*, so a `:disabled` button's faded label is not debt — the probe
+  skips `:disabled`/`[aria-disabled]` subtrees and nothing else.
+  **A probe that does not parse is a probe that passes.** The ancestor-opacity
+  compositing above and a stray backtick inside `contrast.js`'s template literal shipped
+  in the same commit; the file became a `SyntaxError`, so the 44 pairs the sharpened
+  probe had just started catching went unseen until the next full sweep. `verify.sh` now
+  runs `node --check` over every `wk-checks/*.js` — the probes themselves need a browser
+  and a dev server, but their SYNTAX is free to gate on every commit.
 - **An embedded surface follows the app's theme, not the OS's.** The Adminer console
   renders in its own process off its own stylesheet, so it defaulted to
   `prefers-color-scheme` — and a rexenv set to Light framed a dark console, which reads

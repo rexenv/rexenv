@@ -103,6 +103,16 @@ npx eslint "src/**/*.{ts,tsx}"
 # anything and all in the way that costs a reader their trust in the file.
 ./scripts/doc-counts.sh --check
 
+# The L2 probes parse. They only RUN at release time (verify-full.sh / a manual
+# sweep), so an edit that breaks one is invisible until then: a stray backtick
+# in a comment inside contrast.js's template literal made that probe a syntax
+# error, and it stayed one through several commits because nothing cheap looked.
+# `node --check` needs no browser and no dev server, so the parse can be a
+# pre-commit gate even though the probe itself cannot.
+for f in scripts/wk-checks/*.js; do
+  node --check "$f" || { echo "verify: $f does not parse"; exit 1; }
+done
+
 # The receipt (see scripts/verify-receipt.sh). Written LAST, and only when the
 # tree is still the one that was checked.
 if [ -n "$TREE_BEFORE" ]; then

@@ -107,6 +107,14 @@ const AUDIT = `(() => {
       .trim();
     if (!own) continue;
     if (el.closest("[aria-hidden='true']")) continue;
+    // INACTIVE controls are exempt, and only these. WCAG 2.1 SC 1.4.3 lists
+    // "text or images of text that are part of an inactive user interface
+    // component" under Incidental, so a disabled button's label is not debt --
+    // it is the standard's own carve-out, and dimming it is how disabled READS.
+    // Narrow on purpose: :disabled and aria-disabled only. A stopped service
+    // row is not an inactive CONTROL, it is live text about a stopped service,
+    // and it stays in the sweep.
+    if (el.closest(":disabled, [aria-disabled='true']")) continue;
     const st = getComputedStyle(el);
     if (st.visibility === "hidden" || st.display === "none" || parseFloat(st.opacity) === 0) continue;
     const box = el.getBoundingClientRect();
@@ -115,8 +123,12 @@ const AUDIT = `(() => {
     const fg0 = parse(st.color);
     if (!fg0) continue;
     const bg = paintedBg(el);
+    // (Quotes, not backticks: this whole body is a template literal, and a raw
+    // backtick in a COMMENT closed it — the probe stopped parsing for a week
+    // and run-all.js was the only thing that would have said so. See the
+    // node --check gate in verify.sh.)
     // EFFECTIVE opacity — the element's own times every ancestor's. A stopped
-    // Services row is dimmed with `opacity-[0.74]` on the ROW, and reading only
+    // Services row is dimmed with 'opacity-[0.74]' on the ROW, and reading only
     // the element's own opacity reported the badge inside it at 4.9:1 while it
     // rendered at 3.1:1. Group opacity composites the whole subtree over the
     // page, so the text is drawn at that alpha over the painted background.
