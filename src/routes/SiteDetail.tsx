@@ -1112,33 +1112,48 @@ function envVarProblem(v: EnvVar): string | null {
 function ExtraDomainsCard({ site }: { site: Site }) {
   const qc = useQueryClient();
   const [draft, setDraft] = useState("");
-  const { data: domains, isLoading } = useQuery({
+  const { data: domains, isLoading, isError, error } = useQuery({
     queryKey: ["site-domains", site.id],
     queryFn: () => siteDomains(site.id),
   });
 
+  // After a mutation the reply IS the list, so it lands directly — but a
+  // focus-triggered refetch already in flight would land AFTER it with the
+  // pre-mutation answer, so that refetch is cancelled first. The Sites page
+  // keeps its own read of the same table (`["site-domains", "all"]`, the `+N`
+  // marker); the PREFIX invalidation reaches both keys, where a per-key one
+  // left the marker resting on the default staleTime to catch up.
+  const settle = async (list: string[]) => {
+    await qc.cancelQueries({ queryKey: ["site-domains", site.id] });
+    qc.setQueryData(["site-domains", site.id], list);
+    void qc.invalidateQueries({ queryKey: ["site-domains"] });
+    void qc.invalidateQueries({ queryKey: ["site-cert", site.id] });
+  };
   const add = useMutation({
     mutationFn: (domain: string) => addSiteDomain(site.id, domain),
-    onSuccess: (list) => {
+    onSuccess: async (list) => {
       setDraft("");
-      qc.setQueryData(["site-domains", site.id], list);
-      void qc.invalidateQueries({ queryKey: ["site-cert", site.id] });
+      await settle(list);
       toast.success("Extra domain added — certificate re-issued and the web server reloaded.");
     },
     onError: (e) => toastBackendError(e),
   });
   const remove = useMutation({
     mutationFn: (domain: string) => removeSiteDomain(site.id, domain),
-    onSuccess: (list) => {
-      qc.setQueryData(["site-domains", site.id], list);
-      void qc.invalidateQueries({ queryKey: ["site-cert", site.id] });
+    onSuccess: async (list) => {
+      await settle(list);
       toast.success("Extra domain removed.");
     },
     onError: (e) => toastBackendError(e),
   });
 
   const busy = add.isPending || remove.isPending;
+  // The backend's list, head first: the primary is `shown[0]` and NOT
+  // `site.domain`, because the two can disagree for as long as this page is
+  // open after a `rex site domain` rename — and dropping the reply's head
+  // while printing the prop would then hide the real primary altogether.
   const shown = domains ?? [site.domain];
+  const primary = shown[0] ?? site.domain;
   const extras = shown.slice(1);
 
   return (
@@ -1146,10 +1161,17 @@ function ExtraDomainsCard({ site }: { site: Site }) {
       <div className="flex flex-col gap-3">
         {isLoading ? (
           <div className="text-[0.78125rem] text-rex-text-muted">Reading domains…</div>
+        ) : isError ? (
+          // A failed read must not render as "this site has one name" — that
+          // is the honest-UI failure the card exists to avoid, in the other
+          // direction: a list that looks complete and is not.
+          <div className="text-[0.78125rem] text-status-error-bright" data-probe="extra-domains-error">
+            Couldn’t read this site’s domains: {error instanceof Error ? error.message : String(error)}
+          </div>
         ) : (
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
-              <span className="font-mono text-[0.78125rem] text-rex-text">{site.domain}</span>
+              <span className="font-mono text-[0.78125rem] text-rex-text">{primary}</span>
               <span className="text-[0.71875rem] text-rex-text-muted">primary</span>
             </div>
             {extras.map((d) => (
@@ -1196,12 +1218,15 @@ function ExtraDomainsCard({ site }: { site: Site }) {
               one the user was told about: the alternative is somebody adding
               `staging.acme.rex`, watching the address bar snap back to
               `acme.rex`, and concluding rexenv ignored them. */}
-          {site.type === "wordpress" && (
+          {/* Only when there IS an extra name to be redirected — the CLI twin
+              gates the same way, and a note about a thing that cannot happen
+              is the noise that stops the useful notes being read. */}
+          {site.type === "wordpress" && extras.length > 0 && (
             <>
               {" "}
               <span className="text-rex-text">
-                WordPress sends visitors to {site.domain}: the extra names reach this site and
-                then redirect there, because WordPress decides its own canonical address.
+                WordPress sends visitors to {primary}: the extra names reach this site and then
+                redirect there, because WordPress decides its own canonical address.
               </span>
             </>
           )}

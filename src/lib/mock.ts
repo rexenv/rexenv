@@ -272,15 +272,30 @@ export function mockSiteDomains(id: string): string[] {
   return mockDomains[id] ?? (site ? [site.domain] : []);
 }
 
+/** Refuses what `core::sites::validate_alias` refuses, naming the site — the
+ *  dev shell must not accept another site's primary and render it, which is the
+ *  honest-UI violation the card exists to prevent, passing its own probe. */
 export function mockAddSiteDomain(id: string, domain: string): string[] {
   const list = mockSiteDomains(id);
   if (list.includes(domain)) throw new Error(`this site already answers on "${domain}"`);
+  for (const other of mockSites) {
+    if (other.id === id) continue;
+    const names = mockSiteDomains(other.id);
+    if (names[0] === domain)
+      throw new Error(
+        `"${domain}" is already the domain of the site "${other.name}" — one hostname can only reach one site`,
+      );
+    if (names.includes(domain))
+      throw new Error(`"${domain}" is already an extra domain of the site "${other.name}"`);
+  }
   mockDomains[id] = [...list, domain];
   return mockDomains[id];
 }
 
+/** The primary (index 0) is not removable here, exactly as in the backend. */
 export function mockRemoveSiteDomain(id: string, domain: string): string[] {
-  mockDomains[id] = mockSiteDomains(id).filter((d) => d !== domain);
+  const [primary, ...extras] = mockSiteDomains(id);
+  mockDomains[id] = [primary, ...extras.filter((d) => d !== domain)];
   return mockDomains[id];
 }
 

@@ -691,7 +691,15 @@ export function Sites() {
       const st = statusOf(s);
       if (filter === "running" && st !== "running") return false;
       if (filter === "stopped" && st === "running") return false;
-      if (q && !s.name.toLowerCase().includes(q) && !s.domain.toLowerCase().includes(q))
+      // Any name the site answers on: the row's `+N` tooltip shows the extra
+      // domains, so typing one of them and getting "No sites match" is the
+      // page contradicting itself.
+      if (
+        q &&
+        !s.name.toLowerCase().includes(q) &&
+        !s.domain.toLowerCase().includes(q) &&
+        !(extraDomains[s.id] ?? []).some((d) => d.toLowerCase().includes(q))
+      )
         return false;
       return true;
     });

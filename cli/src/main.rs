@@ -715,12 +715,22 @@ fn cmd_site_list(json_output: bool) {
             .max(min)
     };
     let (dw, nw) = (col("domain", 6), col("name", 4));
-    println!("{:<dw$}  {:<nw$}  {:<9}  {:<5}  {:<10}  {:<7}  STATE", "DOMAIN", "NAME", "TYPE", "PHP", "SERVER", "DB");
+    // The extra names a site answers on (v42), after the columns every site
+    // has — `find_site` accepts them and the error it prints sends people
+    // here, so a list that hid them sent people to a dead end.
+    let also = |s: &Value| -> String {
+        s["id"]
+            .as_str()
+            .and_then(|id| data["aliases"][id].as_array())
+            .map(|list| list.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(", "))
+            .unwrap_or_default()
+    };
+    println!("{:<dw$}  {:<nw$}  {:<9}  {:<5}  {:<10}  {:<7}  {:<7}  ALSO", "DOMAIN", "NAME", "TYPE", "PHP", "SERVER", "DB", "STATE");
     for s in sites {
         let domain = s["domain"].as_str().unwrap_or("?");
         let up = serving.iter().any(|(d, up)| *d == domain && *up);
         println!(
-            "{:<dw$}  {:<nw$}  {:<9}  {:<5}  {:<10}  {:<7}  {}",
+            "{:<dw$}  {:<nw$}  {:<9}  {:<5}  {:<10}  {:<7}  {:<7}  {}",
             domain,
             s["name"].as_str().unwrap_or("?"),
             s["type"].as_str().unwrap_or("?"),
@@ -728,6 +738,7 @@ fn cmd_site_list(json_output: bool) {
             s["webServer"].as_str().unwrap_or("?"),
             s["dbEngine"].as_str().unwrap_or("?"),
             if up { "serving" } else { "down" },
+            also(s),
         );
     }
 }
@@ -785,13 +796,39 @@ fn cmd_site_create(words: &[String], json_output: bool) {
     );
 }
 
+/// One spelling for a hostname typed at the CLI: trimmed, no trailing dot,
+/// lower-case — the same normalisation the app applies before it stores one.
+fn normalize_hostname(domain: &str) -> String {
+    domain.trim().trim_end_matches('.').to_ascii_lowercase()
+}
+
+/// The site that answers on `domain` as an EXTRA name, if any — `(id, primary)`.
+fn alias_owner(data: &Value, domain: &str) -> Option<(String, String)> {
+    let owner = data["aliases"].as_object()?.iter().find_map(|(id, list)| {
+        list.as_array()?
+            .iter()
+            .any(|d| d == &json!(domain))
+            .then(|| id.clone())
+    })?;
+    let primary = data["sites"]
+        .as_array()?
+        .iter()
+        .find(|s| s["id"] == json!(owner))?["domain"]
+        .as_str()?
+        .to_string();
+    Some((owner, primary))
+}
+
 /// Resolve a `<domain>` argument to the site object via the app's own list —
-/// the same lookup `site delete` does; exits with a helpful error otherwise.
+/// exits with a helpful error otherwise. Any name the site answers on works.
 fn find_site(words: &[String], usage: &str) -> Value {
     let Some(domain) = words.first().filter(|w| !w.starts_with("--")) else {
         eprintln!("rex: usage: {usage}");
         exit(1);
     };
+    // The spelling the app stores: `dig` prints a trailing dot and people
+    // type capitals, and the app accepted both on the way in.
+    let domain = normalize_hostname(domain);
     let data = request("site.list", Value::Null);
     let sites = data["sites"].as_array().cloned().unwrap_or_default();
     // The site's OWN domain first, then its EXTRA domains (v42): a site that
@@ -801,18 +838,13 @@ fn find_site(words: &[String], usage: &str) -> Value {
     // a site that answers on it.
     let by_primary = sites.iter().find(|s| s["domain"] == json!(domain)).cloned();
     let site = by_primary.or_else(|| {
-        let owner = data["aliases"].as_object()?.iter().find_map(|(id, list)| {
-            list.as_array()?
-                .iter()
-                .any(|d| d == &json!(domain))
-                .then(|| id.clone())
-        })?;
+        let (owner, _) = alias_owner(&data, &domain)?;
         sites.iter().find(|s| s["id"] == json!(owner)).cloned()
     });
     match site {
         Some(site) => site,
         None => {
-            eprintln!("rex: no site with domain `{domain}` (see `rex site list`)");
+            eprintln!("rex: no site answers on `{domain}` (see `rex site list`)");
             exit(1);
         }
     }
@@ -2847,31 +2879,46 @@ fn cmd_doctor(json_output: bool) {
     // DNS never reaches. Nothing else notices, because our own resolver keeps
     // answering for every other TLD.
     if let Some(rows) = data["unresolvableTlds"].as_array().filter(|r| !r.is_empty()) {
-        let names = rows
-            .iter()
-            .map(|r| {
-                let tld = r["tld"].as_str().unwrap_or("?");
-                match r["foreign"] == json!(true) {
-                    // The two need different fixes, so they get different words.
-                    true => format!(".{tld} (another tool owns its resolver file)"),
-                    false => format!(".{tld} (no resolver file)"),
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(", ");
-        line(
-            false,
-            false,
-            "TLDs in use",
-            format!(
-                "{names} — sites on {} do not resolve on this machine, however well they are \
-                 served\n            fix: rex tld --repair {}",
-                if rows.len() == 1 { "it" } else { "them" },
-                rows.first()
-                    .and_then(|r| r["tld"].as_str())
-                    .unwrap_or("<tld>")
-            ),
-        );
+        // The two halves need different SENTENCES and different FIXES, and the
+        // first version printed one fix for both: `rex tld --repair` refuses a
+        // foreign file by design (it will not take over another tool's
+        // resolver), so the row it was prescribed for could never be fixed by
+        // it — the circle the split exists to break. And it named only the
+        // first of N, so with three TLDs down the user repaired one, read
+        // "sites on it should load now", and the other two stayed dark.
+        let tld_of = |r: &Value| r["tld"].as_str().unwrap_or("?").to_string();
+        let (foreign, absent): (Vec<&Value>, Vec<&Value>) =
+            rows.iter().partition(|r| r["foreign"] == json!(true));
+        let mut msg = String::new();
+        if !absent.is_empty() {
+            let names = absent.iter().map(|r| format!(".{}", tld_of(r))).collect::<Vec<_>>();
+            msg.push_str(&format!(
+                "{} — no resolver file, so sites on {} do not resolve on this machine, however \
+                 well they are served",
+                names.join(", "),
+                if names.len() == 1 { "it" } else { "them" }
+            ));
+            for r in &absent {
+                msg.push_str(&format!("\n            fix: rex tld --repair {}", tld_of(r)));
+            }
+        }
+        if !foreign.is_empty() {
+            let names = foreign.iter().map(|r| format!(".{}", tld_of(r))).collect::<Vec<_>>();
+            if !msg.is_empty() {
+                msg.push_str("\n            ");
+            }
+            // Not "does not resolve": a Valet or Herd resolver for `.test` does
+            // resolve — to THAT tool's server, which is not rexenv's. The
+            // honest sentence is who answers, not that nobody does.
+            msg.push_str(&format!(
+                "{} — another tool owns the resolver file, so {} reach whatever it answers, \
+                 not rexenv; `rex tld --repair` will not take a file it was never given \
+                 (hand the TLD over in the app's import, or use .rex)",
+                names.join(", "),
+                if names.len() == 1 { "sites on it" } else { "sites on them" }
+            ));
+        }
+        line(false, false, "TLDs in use", msg);
     } else {
         line(true, false, "TLDs in use", "every TLD your sites answer on resolves here".into());
     }
@@ -3068,14 +3115,27 @@ fn cmd_site_delete(words: &[String], json_output: bool) {
         eprintln!("rex: usage: rex site delete <domain> [--yes]");
         exit(1);
     };
-    // Resolve domain → id through the app (same list the UI shows).
+    // Resolve domain → id through the app (same list the UI shows). By the
+    // PRIMARY only, on purpose: a delete is the one verb where "the site that
+    // answers on this name" is the wrong resolution — typing an extra name
+    // most likely means "stop this name", not "destroy the site and its
+    // database" — so an alias is named for what it is, with both ways out.
+    let domain = normalize_hostname(domain);
     let data = request("site.list", Value::Null);
     let site = data["sites"]
         .as_array()
         .and_then(|sites| sites.iter().find(|s| s["domain"] == json!(domain)))
         .cloned();
     let Some(site) = site else {
-        eprintln!("rex: no site with domain `{domain}` (see `rex site list`)");
+        if let Some((_, primary)) = alias_owner(&data, &domain) {
+            eprintln!(
+                "rex: `{domain}` is an extra domain of `{primary}` — delete the site as \
+                 `rex site delete {primary}`, or drop just this name with \
+                 `rex site domains {primary} --remove {domain}`"
+            );
+        } else {
+            eprintln!("rex: no site with domain `{domain}` (see `rex site list`)");
+        }
         exit(1);
     };
     // Destructive: database + docroot go away. Ask unless --yes (and always
@@ -3266,7 +3326,7 @@ mod tests {
         let primary = body
             .find("s[\"domain\"] == json!(domain)")
             .expect("`find_site` no longer matches the site's own domain");
-        let alias = body.find("\"aliases\"").expect(
+        let alias = body.find("alias_owner(").expect(
             "`find_site` never consults the alias map — a site's extra domains are served by \
              nginx and the edge, and the CLI cannot name them",
         );
@@ -3275,6 +3335,32 @@ mod tests {
             "the alias map is consulted BEFORE the site's own domain — an alias would shadow a \
              primary, and a name that is somebody's actual domain would resolve to another site"
         );
+        // The argument is normalised the way the app normalised it on the way
+        // in: `dig` prints a trailing dot, people type capitals, and both were
+        // accepted by the add — so both must find the site.
+        assert!(
+            body.find("normalize_hostname(").is_some_and(|n| n < primary),
+            "`find_site` compares the raw argument — `rex site info Shop.rex.` fails for a \
+             name the app accepted as `shop.rex`"
+        );
+
+        // And the helper itself, behaviourally: the owner of an alias is the
+        // site whose id the map lists it under, by primary; a primary is not
+        // an alias; an unknown name is nobody's.
+        let data = json!({
+            "sites": [
+                {"id": "a", "domain": "acme.rex"},
+                {"id": "b", "domain": "beta.rex"}
+            ],
+            "aliases": {"b": ["shop.rex", "www.beta.rex"]}
+        });
+        assert_eq!(
+            alias_owner(&data, "shop.rex"),
+            Some(("b".to_string(), "beta.rex".to_string()))
+        );
+        assert_eq!(alias_owner(&data, "acme.rex"), None);
+        assert_eq!(alias_owner(&data, "nobody.rex"), None);
+        assert_eq!(normalize_hostname(" Shop.REX. "), "shop.rex");
     }
 
     /// **Every subcommand the CLI dispatches is completable, and every
