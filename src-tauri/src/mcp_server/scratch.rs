@@ -295,7 +295,7 @@ pub(super) fn summarise_wp_run_public(args: &Value) -> Option<String> {
 
 fn summarise_wp_run(args: &Value) -> Option<String> {
     let list = args.get("args")?.as_array()?;
-    let words: Vec<&str> = list
+    let words: Vec<String> = list
         .iter()
         .filter_map(Value::as_str)
         // A flag is not the command — `wp --path=x plugin list` must summarise
@@ -309,6 +309,7 @@ fn summarise_wp_run(args: &Value) -> Option<String> {
         // a fragment of someone's code is not a summary. One shared predicate
         // (`feed::is_summary_token`) decides here and at the write, so the two
         // cannot disagree about what is command-shaped.
+        .map(super::feed::fold_token)
         .take_while(|w| super::feed::is_summary_token(w))
         .take(2)
         .collect();

@@ -1178,10 +1178,12 @@ the human legs. Set up: stack up, switch ON, one of your own sites.
 ### Parity P7 — the Laravel loop. Ships only if 46–47 pass.
 - [ ] **46. artisan, non-interactive by construction.** On one of your Laravel sites ask:
   *"run migrate:status"* → a `run` prompt → Allow for this session → the table comes back.
-  Then *"run tinker"* → returns within the timeout with a non-zero exit and no hang (stdin
-  is null). Then *"run db:wipe"* → comes back "no" from the confirm (rexenv's
-  `--no-interaction`), and the database still has its tables. **Tell — a HOLD:** tinker
-  hangs the call, or db:wipe wipes.
+  Then *"run tinker"* → returns at once, exit 0, no hang (stdin is null; psysh prints a
+  termcap warning to stderr, not an error). **Never `db:wipe`/`migrate:fresh` here to test
+  the prompt: Laravel's `ConfirmableTrait` only asks in production — locally they wipe at
+  once.** (This step first said to run `db:wipe`; corrected 3 Sep 2026 before anyone did.)
+  **Tell — a HOLD:** tinker hangs the call. *Done 3 Sep 2026 on `hisab-counter.rex`:
+  `migrate:status` listed the batches, `tinker` exited 0 immediately.*
 - [ ] **47. A Composer link is a symlink, and says so.** Make a package folder with a
   `composer.json` (`"name": "acme/widgets"`, a `src/` with one class). Ask: *"link
   `~/Projects/acme-widgets` into `<laravel site>`"* → under the session's `run` grant,

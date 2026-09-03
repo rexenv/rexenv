@@ -348,8 +348,11 @@ static REGISTRY: &[UserTool] = &[
                       serves with, in its project root — needs the user's `run` permission on \
                       that site (asked for in the app). Takes `site_id` and `args` (the artisan \
                       command as an array of words WITHOUT `php artisan`: [\"migrate\", \
-                      \"--seed\"]). Non-interactive: rexenv appends `--no-interaction`, so a \
-                      confirm prompt answers itself no; `tinker` needs `--execute`. The exit \
+                      \"--seed\"]). Non-interactive: rexenv appends `--no-interaction` and gives no \
+                      stdin, so `tinker` exits instead of waiting (use `--execute`) and a command \
+                      that would prompt answers itself no. Laravel's destructive commands \
+                      (`db:wipe`, `migrate:fresh`) only confirm in production — in this local \
+                      site they run at once, so do not use them to test the prompt. The exit \
                       code, stdout and stderr come back; a non-zero exit is an answer, not a \
                       tool failure — check `succeeded`. Only for Laravel sites that finished \
                       installing; scratch sites are WordPress and have no artisan.",

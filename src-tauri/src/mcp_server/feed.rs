@@ -333,16 +333,23 @@ pub fn is_summary_token(t: &str) -> bool {
 /// words, replaced them. Folding keeps the rule (still lowercase words) and
 /// keeps the summary readable.
 pub fn clamp_summary(raw: &str) -> Option<String> {
-    let ok = is_summary_token;
     let out: Vec<String> = raw
         .split_whitespace()
         .take(SUMMARY_TOKENS)
         .map(|t| {
-            let folded = t.replace(['_', '.'], "-");
-            if ok(&folded) { folded } else { "?".to_string() }
+            let folded = fold_token(t);
+            if is_summary_token(&folded) { folded } else { "?".to_string() }
         })
         .collect();
     (!out.is_empty()).then(|| out.join(" "))
+}
+
+/// The identifier separators a summary token may carry, folded to the one the
+/// charset allows: `search_replace`, `rexenv.log`, `migrate:status` are words
+/// to a reader. Used by the writer AND by a summariser deciding where to stop,
+/// so `migrate:status` is neither `?` nor dropped.
+pub fn fold_token(t: &str) -> String {
+    t.replace(['_', '.', ':'], "-")
 }
 
 /// Fill each row's `target_label` with the named site's CURRENT domain. The feed
@@ -622,6 +629,7 @@ mod tests {
         assert_eq!(clamp_summary("data search_replace").as_deref(), Some("data search-replace"));
         assert_eq!(clamp_summary("mcp_enabled").as_deref(), Some("mcp-enabled"));
         assert_eq!(clamp_summary("rexenv.log").as_deref(), Some("rexenv-log"));
+        assert_eq!(clamp_summary("migrate:status --pending").as_deref(), Some("migrate-status ?"));
         assert_eq!(clamp_summary("Data /etc/passwd").as_deref(), Some("? ?"), "a case or a slash is still not a word");
     }
 
