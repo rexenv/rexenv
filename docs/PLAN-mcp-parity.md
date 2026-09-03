@@ -1,6 +1,6 @@
 # MCP parity — every rexenv function drivable by an agent
 
-**Status: PLANNED 3 Sep 2026; D8–D13 ALL SETTLED by the owner the same day, on the recommendations (§7); P1 building.** This is the TODO list for the MCP
+**Status: PLANNED 3 Sep 2026; D8–D13 ALL SETTLED by the owner the same day, on the recommendations (§7); P1 (the foundation) SHIPPED the same day in six commits, ledger #468–#474 — see `docs/TODO.md` for the per-task evidence. Next: P2, the site lifecycle.** This is the TODO list for the MCP
 server after every milestone in `docs/PLAN-mcp-server.md` shipped (M1, M2a, M2b, M3).
 It has two halves, and they are different kinds of work:
 
@@ -270,6 +270,12 @@ packaged run, recorded in `TODO.md` under the existing gates row. L4 as time all
 7. Ledger: re-scope the "no registered tool reaches `run_privileged`" row to the
    first two registries; amend #197's scope sentence; new rows for 1–4.
 *Ships: a user can grant, see and revoke a scope; no tool uses one yet.*
+**P1 SHIPPED 3 Sep 2026** (#468 v43, #469/#470 the scope model, #471 the witness, #472
+the third registry + `every_tool`, #473 the switch and commands, #474 the copy). What
+moved from the list above: task 7's `run_privileged` re-scope is deferred to the first
+tool that needs it (P4's `stack(start|stop)`) — re-scoping a row for a tool that does
+not exist would be a claim about nothing; #197 IS amended. Tasks 5 and 6 landed as one
+commit because two guards refuse a registered command or wrapper nothing calls.
 
 **P2 — the site lifecycle (the brief's headline).** `site_create` (WP / PHP /
 Laravel, blueprint, multisite, starter DB), `site_delete`, `site_configure` (all
