@@ -60,15 +60,31 @@ const FIXTURE_DOMAIN: &str = "parent-death-fixture.rex";
 /// the same run passed by hand in a shell, which reaps its background jobs for
 /// you. `try_wait` asks the parent's own bookkeeping instead, which is the only
 /// thing that can tell a live child from an unreaped corpse.
-fn alive(child: &mut Child) -> bool {
-    matches!(child.try_wait(), Ok(None))
+fn alive(child: &mut Owned) -> bool {
+    matches!(child.0.try_wait(), Ok(None))
+}
+
+/// A child THIS example owns, killed and waited for on drop — so an `expect`
+/// that unwinds mid-leg (the first version's explicit `reap` calls sat after
+/// the assertions, and a panic walked straight past them) cannot leave a
+/// stand-in `sleep 300`, a stand-in tunnel, or a real guard process behind.
+/// The `common::Reaped` fixture is for services on a fixture PORT; these
+/// stand-ins listen on nothing, so the invariant is carried locally.
+struct Owned(Child);
+
+impl Drop for Owned {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
 }
 
 /// Kill one of our children and WAIT for it, so it leaves no zombie behind to
-/// confuse the next probe.
-fn reap(child: &mut Child) {
-    let _ = child.kill();
-    let _ = child.wait();
+/// confuse the next probe. Explicit where a leg needs the kill NOW ("the user
+/// stops sharing"); the drop guard covers every other exit.
+fn reap(child: &mut Owned) {
+    let _ = child.0.kill();
+    let _ = child.0.wait();
 }
 
 /// SIGKILL a pid we do not own the handle for (used only on the stand-in parent
@@ -78,20 +94,20 @@ fn sigkill(pid: u32) {
 }
 
 /// A stand-in rexenv: something to SIGKILL.
-fn stand_in_parent() -> Child {
-    Command::new("/bin/sh")
+fn stand_in_parent() -> Owned {
+    Owned(Command::new("/bin/sh")
         .args(["-c", "sleep 300"])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .expect("spawn stand-in parent")
+        .expect("spawn stand-in parent"))
 }
 
 /// A stand-in cloudflared whose ARGV is what the guard identifies on. It must
 /// carry the app-data marker, the program name, and the host-header pair — a
 /// process that merely sleeps is not the thing under test.
-fn stand_in_tunnel(script: &PathBuf, marker: &str, domain: &str) -> Child {
-    Command::new(script)
+fn stand_in_tunnel(script: &PathBuf, marker: &str, domain: &str) -> Owned {
+    Owned(Command::new(script)
         .args([
             "tunnel",
             "--no-autoupdate",
@@ -105,7 +121,7 @@ fn stand_in_tunnel(script: &PathBuf, marker: &str, domain: &str) -> Child {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .expect("spawn stand-in tunnel")
+        .expect("spawn stand-in tunnel"))
 }
 
 fn main() {
@@ -171,13 +187,15 @@ fn main() {
     }
 
     let mut failures: Vec<String> = Vec::new();
-    let guard = |parent: u32, child: u32, domain: &str| -> Child {
-        Command::new(&exe)
-            .args(["--tunnel-guard", &parent.to_string(), &child.to_string(), domain])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .expect("spawn guard")
+    let guard = |parent: u32, child: u32, domain: &str| -> Owned {
+        Owned(
+            Command::new(&exe)
+                .args(["--tunnel-guard", &parent.to_string(), &child.to_string(), domain])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .expect("spawn guard"),
+        )
     };
 
     // ── Leg 1: the app is SIGKILLed → the share dies with it ──────────────────
@@ -185,7 +203,7 @@ fn main() {
         println!("leg 1: parent SIGKILLed — the share must not survive it");
         let mut parent = stand_in_parent();
         let mut tunnel = stand_in_tunnel(&script, &marker, FIXTURE_DOMAIN);
-        let (p, c) = (parent.id(), tunnel.id());
+        let (p, c) = (parent.0.id(), tunnel.0.id());
         let mut g = guard(p, c, FIXTURE_DOMAIN);
         std::thread::sleep(Duration::from_millis(800));
         sigkill(p); // SIGKILL: the dying app runs NONE of its own shutdown code
@@ -209,7 +227,7 @@ fn main() {
         println!("leg 2: the pid's argv names ANOTHER domain — it must survive");
         let mut parent = stand_in_parent();
         let mut tunnel = stand_in_tunnel(&script, &marker, "someone-elses.rex");
-        let (p, c) = (parent.id(), tunnel.id());
+        let (p, c) = (parent.0.id(), tunnel.0.id());
         let mut g = guard(p, c, FIXTURE_DOMAIN);
         std::thread::sleep(Duration::from_millis(800));
         sigkill(p);
@@ -234,7 +252,7 @@ fn main() {
         println!("leg 3: the share ends first — the guard must exit on its own");
         let mut parent = stand_in_parent();
         let mut tunnel = stand_in_tunnel(&script, &marker, FIXTURE_DOMAIN);
-        let (p, c) = (parent.id(), tunnel.id());
+        let (p, c) = (parent.0.id(), tunnel.0.id());
         let mut g = guard(p, c, FIXTURE_DOMAIN);
         std::thread::sleep(Duration::from_millis(800));
         reap(&mut tunnel); // the user stops sharing

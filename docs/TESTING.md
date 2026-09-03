@@ -188,6 +188,15 @@ it can:
   executed. It now REFUSES when the binary predates the guard's source. Same family as
   `cli_socket_check`'s stale-server trap, and the general rule this layer keeps re-learning:
   **an example that re-executes the app must prove the app is the one you just edited.**
+  Two fixture-hygiene defects found in the post-0.4.0 review (3 Sep 2026): its three
+  stand-ins were reaped by explicit calls placed AFTER the assertions, so an `expect` that
+  unwound mid-leg walked past them and left a `sleep 300`, a stand-in tunnel and a real
+  guard process behind — they are now an `Owned` drop guard (kill + wait), because
+  `common::Reaped` is for services on a fixture PORT and these listen on nothing. And
+  `db_version_switch_check` (network tier) ran on `platform::current()` with no sandbox,
+  so its two `initdb`s and its CREATE/DROP DATABASE landed in the REAL
+  `<app_data>/postgres/{17,16}/data` on the production port — the exact shape
+  `examples/common/mod.rs`'s invariant forbids; it runs in `common::sandbox` now.
   Its second lesson is the fixture one: the first stand-in cloudflared was
   `sh -c 'sleep 300' <argv…>`, which EXECS sleep, so `ps` reported `sleep 300` — no marker,
   no program name — and the guard correctly refused it. A positive leg written that way

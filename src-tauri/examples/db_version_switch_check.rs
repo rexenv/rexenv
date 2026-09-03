@@ -17,10 +17,11 @@
 //!
 //! The legacy default-series datadirs are never touched.
 
+mod common;
+
 use rexenv_lib::core::db::DbEngine;
 use rexenv_lib::core::service_manager::ServiceManager;
 use rexenv_lib::core::{binaries, ports, postgres};
-use rexenv_lib::platform;
 use std::process::Command;
 
 const MARKER_DB: &str = "rexenv_switch_check";
@@ -64,7 +65,12 @@ fn down(mgr: &mut ServiceManager, plat: &dyn rexenv_lib::platform::traits::Platf
 
 #[tokio::main]
 async fn main() {
-    let plat = platform::current();
+    // SANDBOXED: the first version used `platform::current()`, so its two
+    // `initdb`s and its CREATE/DROP DATABASE landed in the REAL
+    // `<app_data>/postgres/{17,16}/data` on the production port — an example
+    // that ran against the user's own datadirs. The binary cache is shared
+    // with the sandbox; the datadirs are not.
+    let (plat, _sandbox) = common::sandbox("dbvsw");
     let engine = DbEngine::Postgres;
     let mut ok = true;
 
