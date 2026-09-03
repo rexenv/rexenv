@@ -1431,5 +1431,105 @@ const LINK = "https://example.test/a//b";
         assert_eq!(lines.first().map(|(n, _)| *n), Some(1));
         assert_eq!(lines.last().map(|(n, _)| *n), Some(7));
     }
+
+    /// **Every IPC tally key a WebKit probe reads is a key the app can produce.**
+    ///
+    /// `DevGitPanel`'s mock counts each invoked command into `window.__ipcCalls`,
+    /// and probes assert on those counts. A key nobody writes reads back as `0`
+    /// forever — so `before === after` holds, and an assertion of the form "the
+    /// costly pass did NOT ride along" passes while watching nothing. That is
+    /// not hypothetical: `wpfocus.js` shipped reading `wp_plugins:updates` when
+    /// the flag it needed was `checkUpdates`, and the control half of the probe
+    /// was decoration until the key was made real.
+    ///
+    /// A key is `<command>` or `<command>:<suffix>`. The command must be
+    /// registered on the bridge; the suffix must be one the tally actually
+    /// synthesises, read out of `DevGitPanel.tsx` rather than listed here — a
+    /// second copy of that list is how it would drift.
+    #[test]
+    fn every_ipc_tally_key_a_probe_reads_is_a_key_the_app_can_produce() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let lib = std::fs::read_to_string(root.join("src/lib.rs")).expect("lib.rs");
+        let handler = lib
+            .split("tauri::generate_handler![")
+            .nth(1)
+            .and_then(|b| b.split("])").next())
+            .expect("the invoke_handler list");
+        let registered: Vec<String> = handler
+            .lines()
+            .filter_map(|l| {
+                let t = l.trim().trim_end_matches(',');
+                t.strip_prefix("commands::").and_then(|r| r.rsplit("::").next()).map(str::to_string)
+            })
+            .filter(|n| !n.is_empty() && !n.contains(' '))
+            .collect();
+        assert!(registered.len() > 150, "only {} commands parsed — the scan is broken", registered.len());
+
+        // The suffixes the tally invents, taken from the source that invents
+        // them: `tally[`${cmd}:updates`]` and any sibling.
+        let panel = std::fs::read_to_string(root.join("../src/routes/DevGitPanel.tsx"))
+            .expect("DevGitPanel.tsx — the file that owns the tally");
+        let mut suffixes: Vec<String> = Vec::new();
+        for part in panel.split("${cmd}:").skip(1) {
+            let s: String = part.chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '_').collect();
+            if !s.is_empty() {
+                suffixes.push(s);
+            }
+        }
+        assert!(
+            !suffixes.is_empty(),
+            "no synthesised tally suffix found in DevGitPanel.tsx — either the tally changed shape \
+             or this scan is looking at the wrong thing, and a green here would mean nothing"
+        );
+
+        // Every literal a probe reads through its `calls(...)` helper.
+        let dir = root.join("../scripts/wk-checks");
+        let mut keys: Vec<(String, String)> = Vec::new(); // (file, key)
+        for e in std::fs::read_dir(&dir).expect("wk-checks/").flatten() {
+            let p = e.path();
+            if p.extension().and_then(|x| x.to_str()) != Some("js") {
+                continue;
+            }
+            let file = p.file_name().and_then(|x| x.to_str()).unwrap_or("?").to_string();
+            let src = std::fs::read_to_string(&p).unwrap_or_default();
+            for part in src.split("calls(\"").skip(1) {
+                if let Some(k) = part.split('"').next() {
+                    keys.push((file.clone(), k.to_string()));
+                }
+            }
+        }
+        assert!(
+            keys.len() >= 4,
+            "only {} tally reads found across wk-checks — the probes that assert on IPC counts \
+             were not seen, so this test is watching an empty set",
+            keys.len()
+        );
+
+        let bad: Vec<String> = keys
+            .iter()
+            .filter_map(|(file, key)| {
+                let (base, suffix) = match key.split_once(':') {
+                    Some((b, s)) => (b, Some(s)),
+                    None => (key.as_str(), None),
+                };
+                if !registered.iter().any(|r| r == base) {
+                    return Some(format!("{file}: \"{key}\" — no command named `{base}` is registered"));
+                }
+                match suffix {
+                    Some(s) if !suffixes.iter().any(|x| x == s) => Some(format!(
+                        "{file}: \"{key}\" — the tally never synthesises a `:{s}` key"
+                    )),
+                    _ => None,
+                }
+            })
+            .collect();
+        assert!(
+            bad.is_empty(),
+            "these probes read an IPC tally key nothing writes, so the count they assert on is \
+             frozen at 0 and the assertion is decoration:\n  {}\nFix the key, or make the tally \
+             produce it — see the `wp_plugins:updates` note in DevGitPanel.tsx",
+            bad.join("\n  ")
+        );
+    }
 }
 // probe

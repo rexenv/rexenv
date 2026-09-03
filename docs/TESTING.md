@@ -215,6 +215,15 @@ it can:
   release time, but its SYNTAX costs nothing, so `verify.sh` now runs `node --check` over
   every `scripts/wk-checks/*.js` on every commit. It proves the file is loadable, not that
   its assertions still bite — that stays the release sweep's job.
+  The narrower half of "still bite" now has an L0 control. Probes assert on
+  `window.__ipcCalls`, the tally `DevGitPanel`'s mock keeps of every command the app
+  invokes; a key nobody writes reads back 0 forever, so a *"this did NOT happen"*
+  assertion passes while watching nothing — which is precisely how `wpfocus.js`'s control
+  half shipped as decoration (`wp_plugins:updates` against a flag actually called
+  `checkUpdates`). `copy_scan::every_ipc_tally_key_a_probe_reads_is_a_key_the_app_can_produce`
+  requires each key's command to be registered in `generate_handler!` and each `:suffix` to
+  be one the tally synthesises — read out of `DevGitPanel.tsx`, not listed in the test.
+  It proves the key is WRITABLE, never that the assertion around it is meaningful.
   And `wpfocus.js`'s ride-along control names the FLAG it proves (`refetchOnWindowFocus:
   false`), not the stale window it fires inside of.
   Its second lesson is the fixture one: the first stand-in cloudflared was
