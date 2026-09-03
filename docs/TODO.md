@@ -2002,7 +2002,11 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     actions, one app command each through `SiteOps`; env as a merge with names only;
     a domain change's backup as a fact; ports dropped; the retry's text scrubbed. Found
     and fixed: a db guard held across `service_infos()` deadlocked the reply path.
-    Remaining: `site_info` + `list_sites` widened, `job_*`, the L1, SMOKE §P2.
+    ✓ P2.3 — **`list_sites` widened + `site_info` + `site_inspect_folder`**, ledger #479:
+    owner/multisite/xdebug/aliases/setupComplete/linked on the view; cert without its dir,
+    packages without their source path; the dialog's preflight as a read tool. Resources
+    stay out of the read tier (they run the SQL client). Remaining: `job_*` (P6), the L1
+    `mcp_user_site_check`, SMOKE §P2.
   - [ ] **P3 — WordPress on real sites** (eight grouped `wp_*` tools + `wp_run`'s `run`
     arm), `tail_log` every source, `mail_inbox`.
   - [ ] **P4 — the stack**: `stack_status`/`stack(...)` incl. privileged start/stop (D10),

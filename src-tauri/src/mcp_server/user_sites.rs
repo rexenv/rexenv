@@ -390,8 +390,9 @@ struct AgentCreatedSite {
     admin: Option<AgentAdmin>,
     /// What happened to a requested multisite conversion, when one was asked
     /// for: the site exists either way, so this is a field, not a failure.
+    /// (`multisite` itself is the view's mode field, flattened in above.)
     #[serde(skip_serializing_if = "Option::is_none")]
-    multisite: Option<String>,
+    multisite_conversion: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -611,11 +612,11 @@ fn site_create<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::Ac
         let signals = read.probe_serving(&site).await;
         let serving = signals.serving_manager && signals.edge_answers_ours;
         let view = AgentCreatedSite {
-            site: super::view::AgentSiteView::from_site(&site, serving),
+            site: super::view::AgentSiteView::from_site(&site, serving, Vec::new()),
             url: format!("https://{}", site.domain),
             status: super::view::AgentSiteStatus::from_signals(&site, &signals),
             admin,
-            multisite,
+            multisite_conversion: multisite,
         };
         let mut value = serde_json::to_value(view).map_err(|e| Error::Other(format!("serialising the site: {e}")))?;
         if claimed.auto_granted {
@@ -668,7 +669,11 @@ fn site_after(ctx: &UserCtx<'_>, id: &str) -> Result<Value> {
     let serving = crate::core::service_manager::site_serving(std::slice::from_ref(&site), &ctx.state.service_infos())
         .first()
         .is_some_and(|s| s.serving);
-    serde_json::to_value(super::view::AgentSiteView::from_site(&site, serving))
+    let aliases = {
+        let conn = ctx.db()?;
+        crate::state::store::all_site_aliases(&conn)?.remove(&site.id).unwrap_or_default()
+    };
+    serde_json::to_value(super::view::AgentSiteView::from_site(&site, serving, aliases))
         .map_err(|e| Error::Other(format!("serialising the site: {e}")))
 }
 
@@ -1196,7 +1201,9 @@ mod tests {
         assert_eq!(v["admin"]["password"], crate::core::wordpress::DEFAULT_ADMIN);
         assert!(v["admin"]["note"].as_str().unwrap().contains("Shown once"));
         assert!(v.get("consent").is_none());
-        assert!(v.get("multisite").is_none());
+        assert!(v.get("multisiteConversion").is_none());
+        assert_eq!(v["multisite"], "none", "the view's own mode field");
+        assert_eq!(v["owner"], "user");
         assert_eq!(acted.take().as_deref(), Some("11111111-2222-4333-8444-555555555555"), "the feed names what was made");
         assert!(asks(&state).is_empty(), "the grant answered the ask");
 
@@ -1204,7 +1211,7 @@ mod tests {
         // SECOND operation and reports it in the reply.
         let v = run(json!({ "name": "Net", "domain": "net.rex", "type": "wordpress", "multisite": "subdirectory" })).await.unwrap();
         assert_eq!(ops.converted.lock().unwrap().as_slice(), &[("11111111-2222-4333-8444-555555555555".to_string(), "subdirectory".to_string())]);
-        assert!(v["multisite"].as_str().unwrap().contains("subdirectory"));
+        assert!(v["multisiteConversion"].as_str().unwrap().contains("subdirectory"));
         let v = run(json!({ "name": "Blank", "domain": "blank.rex", "type": "php", "starter_db": true })).await.unwrap();
         assert!(v.get("admin").is_none(), "no credentials for a site with no WordPress");
         let created = ops.created.lock().unwrap();
@@ -1383,5 +1390,27 @@ mod tests {
         assert!(!text.contains("/Users/somebody"), "the job's own text is scrubbed: {text}");
         assert!(text.contains("<"), "the scrubbed path reads as a label: {text}");
         assert!(ops.calls.lock().unwrap().iter().any(|c| c == &format!("retry {}", mine.id)));
+    }
+
+    /// **`site_inspect_folder` is the dialog's own preflight: it classifies a
+    /// real folder without creating anything, and refuses the folders the
+    /// dialog refuses with the dialog's reason.**
+    #[test]
+    fn inspect_folder_classifies_without_creating_and_refuses_what_the_dialog_refuses() {
+        let state = app_state();
+        let read = super::super::readctx::ReadCtx::new(&state);
+        let dir = std::env::temp_dir().join(format!("rexenv-inspect-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("public")).unwrap();
+        std::fs::write(dir.join("artisan"), "#!/usr/bin/env php\n").unwrap();
+        std::fs::write(dir.join("public/index.php"), "<?php\n").unwrap();
+        let found = read.inspect_folder(&dir.display().to_string()).unwrap();
+        assert_eq!(found.site_type, SiteType::Laravel);
+        assert_eq!(found.docroot_rel, "public");
+        assert!(std::fs::read_dir(&dir).unwrap().count() == 2, "nothing was created in the folder");
+        // The home folder: the dialog's refusal, verbatim through the same function.
+        let home = directories::BaseDirs::new().unwrap().home_dir().display().to_string();
+        assert!(read.inspect_folder(&home).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

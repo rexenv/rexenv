@@ -25,10 +25,21 @@ use crate::core;
 use crate::error::{Error, Result};
 use crate::state::app::AppState;
 use crate::state::models::{Site, SiteType};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 /// The edge's HTTPS port — the one place a browser reaches a site.
 const EDGE_HTTPS_PORT: u16 = 443;
+
+/// What `inspect_folder` learned — the dialog's `LinkedFolderInfo` minus the two
+/// absolute paths (the agent supplied the root, and the served folder is
+/// `docroot_rel` under it).
+pub struct InspectedFolder {
+    pub site_type: SiteType,
+    pub docroot_rel: String,
+    pub label: &'static str,
+    pub existing_install: bool,
+    pub has_custom_valet_driver: bool,
+}
 
 #[derive(Clone, Copy)]
 pub struct ReadCtx<'a> {
@@ -53,6 +64,62 @@ impl<'a> ReadCtx<'a> {
     /// One site by id (read-only), or `None` if there is no such site.
     pub fn site_by_id(&self, id: &str) -> Result<Option<Site>> {
         Ok(self.sites()?.into_iter().find(|s| s.id == id))
+    }
+
+    /// Every site's EXTRA hostnames, keyed by site id (v42) — one read for the
+    /// whole list, the Sites page's own shape.
+    pub fn aliases_by_site(&self) -> Result<HashMap<String, Vec<String>>> {
+        let conn = self
+            .state
+            .db
+            .lock()
+            .map_err(|_| Error::Other("the app database lock is poisoned".into()))?;
+        crate::state::store::all_site_aliases(&conn)
+    }
+
+    /// The site's HTTPS leaf certificate, parsed from the file (read-only;
+    /// `None` when none has been issued yet). The caller drops the cert DIR.
+    pub fn cert_info(&self, site: &Site) -> Result<Option<core::ssl::SiteCertInfo>> {
+        core::ssl::site_cert_info(self.state.platform.paths(), &site.domain)
+    }
+
+    /// The packages an agent added to a SCRATCH site (v29) — empty for the
+    /// user's own sites, which have none by construction.
+    pub fn scratch_packages_of(&self, site: &Site) -> Result<Vec<crate::state::models::ScratchPackage>> {
+        let conn = self
+            .state
+            .db
+            .lock()
+            .map_err(|_| Error::Other("the app database lock is poisoned".into()))?;
+        Ok(crate::state::store::all_scratch_packages(&conn)?
+            .into_iter()
+            .filter(|p| p.site_id == site.id)
+            .collect())
+    }
+
+    /// Classify a folder the agent names WITHOUT creating anything — the New
+    /// Site dialog's own preflight (`validate_linked_docroot`, which refuses
+    /// `/`, the home folder, Desktop/Documents/Downloads, volume roots, app-data
+    /// and overlaps with another site) and then `detect_project`, which reads
+    /// marker files and executes nothing. A refusal is the dialog's own words.
+    pub fn inspect_folder(&self, path: &str) -> Result<InspectedFolder> {
+        let conn = self
+            .state
+            .db
+            .lock()
+            .map_err(|_| Error::Other("the app database lock is poisoned".into()))?;
+        let platform = self.state.platform.as_ref();
+        let root = core::sites::validate_linked_docroot(&conn, platform, path)?;
+        let detected = core::sites::detect_project(&root);
+        let serve = if detected.docroot_rel.is_empty() { root.clone() } else { root.join(&detected.docroot_rel) };
+        core::sites::validate_linked_docroot(&conn, platform, &serve.display().to_string())?;
+        Ok(InspectedFolder {
+            site_type: detected.site_type,
+            docroot_rel: detected.docroot_rel,
+            label: detected.label,
+            existing_install: detected.existing_install,
+            has_custom_valet_driver: core::sites::has_custom_valet_driver(&root),
+        })
     }
 
     /// The set of domains ACTUALLY serving right now — the non-blocking

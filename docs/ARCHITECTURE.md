@@ -886,7 +886,11 @@ IPC surface — which is how a reader ends up designing against a system with on
   packaged-build enable crash. The *convention* is shared; the binder is its own, and a
   test pins that binding needs no ambient runtime.
 - **Three registries, and the registry IS the capability.** `mcp_server/tools.rs` holds the
-  three read-only tools (`list_sites`, `site_status`, `tail_log`); `mcp_server/scratch.rs`
+  five read-only tools (`list_sites` — widened with parity to carry owner / multisite /
+  xdebug / aliases / setup-complete / linked, `site_status`, `tail_log`, and from parity
+  P2.3 `site_info` — cert validity without its directory, packages without their source
+  path, the M1 verdict — and `site_inspect_folder`, the New Site dialog's own preflight,
+  which classifies a folder and runs nothing); `mcp_server/scratch.rs`
   holds the nine executing ones (`scratch_create_site`, `scratch_delete_site`,
   `scratch_add_package`, `scratch_sync_package`, `wp_run`, `set_php_version`, `db_query`,
   `mail_list`, `mail_get`); `mcp_server/user_sites.rs` (MCP parity, 3 Sep 2026) holds the

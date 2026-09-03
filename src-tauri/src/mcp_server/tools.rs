@@ -90,6 +90,38 @@ static REGISTRY: &[ReadTool] = &[
         handler: site_status,
     },
     ReadTool {
+        name: "site_info",
+        description: "Everything rexenv records about one site, in one read: the list_sites view \
+                      (type, PHP, server, owner, extra domains, whether setup finished, whether the \
+                      folder is the user's own), the serving verdict site_status gives, the \
+                      database engine, when it was made, its HTTPS certificate (validity, days \
+                      left, names) and — for a scratch site — the packages the agent added and \
+                      when each was last synced. Runs nothing. Takes `site_id`.",
+        input_schema: site_id_param,
+        sweep_args: |id| json!({ "site_id": id }),
+        summarise: |_| None,
+        handler: site_info,
+    },
+    ReadTool {
+        name: "site_inspect_folder",
+        description: "Look at a folder on this machine the way the New Site dialog does before \
+                      linking it: what kind of project it holds (WordPress, Laravel, a plain PHP \
+                      site…), which subfolder would be served, and whether it already holds an \
+                      installed app. Creates and runs nothing; refuses the same folders the dialog \
+                      refuses (the home folder, Desktop/Documents/Downloads, a whole volume, \
+                      rexenv's own data, a folder another site already uses) with the dialog's own \
+                      reason. Takes `path` (absolute).",
+        input_schema: || json!({
+            "type": "object",
+            "properties": { "path": { "type": "string", "description": "Absolute path to the folder." } },
+            "required": ["path"],
+            "additionalProperties": false
+        }),
+        sweep_args: |_id| json!({ "path": "/tmp/rexenv-sweep-probe" }),
+        summarise: |_| None,
+        handler: site_inspect_folder,
+    },
+    ReadTool {
         name: "tail_log",
         description: "Read the tail of a WordPress site's OWN debug log — its plugin/theme PHP \
                       errors and warnings — the most recent lines (tail-only, capped at 200, \
@@ -156,9 +188,10 @@ fn list_sites<'a>(
     Box::pin(async move {
         let sites = ctx.sites()?;
         let serving = ctx.serving_domains()?;
+        let mut aliases = ctx.aliases_by_site()?;
         let views: Vec<AgentSiteView> = sites
             .iter()
-            .map(|s| AgentSiteView::from_site(s, serving.contains(&s.domain)))
+            .map(|s| AgentSiteView::from_site(s, serving.contains(&s.domain), aliases.remove(&s.id).unwrap_or_default()))
             .collect();
         serde_json::to_value(views).map_err(|e| Error::Other(format!("serialising sites: {e}")))
     })
@@ -180,6 +213,77 @@ fn site_status<'a>(
         let signals = ctx.probe_serving(&site).await;
         let status = AgentSiteStatus::from_signals(&site, &signals);
         serde_json::to_value(status).map_err(|e| Error::Other(format!("serialising status: {e}")))
+    })
+}
+
+fn site_info<'a>(
+    ctx: ReadCtx<'a>,
+    args: &'a Value,
+    _acted: &'a super::feed::ActedTarget,
+) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let id = args
+            .get("site_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| Error::Other("site_info needs a `site_id` string".into()))?;
+        let site = ctx
+            .site_by_id(id)?
+            .ok_or_else(|| Error::Other(format!("no site with id `{id}`")))?;
+        let aliases = ctx.aliases_by_site()?.remove(&site.id).unwrap_or_default();
+        let signals = ctx.probe_serving(&site).await;
+        let serving = signals.serving_manager && signals.edge_answers_ours;
+        let view = AgentSiteView::from_site(&site, serving, aliases);
+        let status = AgentSiteStatus::from_signals(&site, &signals);
+        // The certificate WITHOUT its directory — a path into app-data, which
+        // the agent has no use for and the view rule keeps out.
+        let cert = ctx.cert_info(&site)?.map(|c| {
+            json!({ "notBefore": c.not_before, "notAfter": c.not_after, "daysLeft": c.days_left, "sans": c.sans })
+        });
+        // Packages: slug, kind and the sync time. NOT the recorded source path —
+        // the agent supplied it and the user's card shows it; a tool reply is a
+        // third place for a path into someone's project to travel.
+        let packages: Vec<Value> = ctx
+            .scratch_packages_of(&site)?
+            .iter()
+            .map(|p| json!({ "slug": p.slug, "kind": p.kind, "syncedAt": p.synced_at }))
+            .collect();
+        let mut value = serde_json::to_value(view).map_err(|e| Error::Other(format!("serialising site: {e}")))?;
+        if let Some(obj) = value.as_object_mut() {
+            obj.insert("status".into(), serde_json::to_value(status).map_err(|e| Error::Other(e.to_string()))?);
+            obj.insert("dbEngine".into(), json!(site.db_engine));
+            obj.insert("createdAt".into(), json!(site.created_at));
+            obj.insert("certificate".into(), cert.unwrap_or(Value::Null));
+            obj.insert("packages".into(), Value::Array(packages));
+        }
+        Ok(value)
+    })
+}
+
+fn site_inspect_folder<'a>(
+    ctx: ReadCtx<'a>,
+    args: &'a Value,
+    _acted: &'a super::feed::ActedTarget,
+) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let path = args
+            .get("path")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|p| !p.is_empty())
+            .ok_or_else(|| Error::Other("site_inspect_folder needs an absolute `path`".into()))?;
+        let found = ctx.inspect_folder(path)?;
+        Ok(json!({
+            "type": found.site_type,
+            "label": found.label,
+            "docrootRel": found.docroot_rel,
+            "existingInstall": found.existing_install,
+            "customValetDriver": found.has_custom_valet_driver,
+            "note": if found.docroot_rel.is_empty() {
+                "The folder itself would be served.".to_string()
+            } else {
+                format!("`{}` under this folder would be served, not the folder itself.", found.docroot_rel)
+            },
+        }))
     })
 }
 

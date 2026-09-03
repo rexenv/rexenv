@@ -10,7 +10,7 @@
 //! the default is that a path appears only where a tool genuinely cannot work
 //! without it, and listing sites is not that.
 
-use crate::state::models::{Site, SiteType, WebServer};
+use crate::state::models::{MultisiteMode, Site, SiteType, WebServer};
 use serde::Serialize;
 
 /// One site, as an agent sees it. `SiteType`/`WebServer` serialize to their
@@ -33,12 +33,29 @@ pub struct AgentSiteView {
     /// Whether the site is ACTUALLY serving right now (edge up AND its upstream
     /// up), not merely whether the stack is up.
     pub serving: bool,
+    /// `"user"` or `"agent"` — the RECORDED origin (v27), which decides which
+    /// tools apply: the scratch tools for an agent's, the parity tools (behind
+    /// a grant) for the user's. Added with parity so an agent can tell without
+    /// guessing from the name.
+    pub owner: &'static str,
+    /// `none` / `subdomain` / `subdirectory`.
+    pub multisite: MultisiteMode,
+    pub xdebug: bool,
+    /// Extra hostnames the site also answers on (v42). Empty for most.
+    pub aliases: Vec<String>,
+    /// False while the site is listed as "setup incomplete" — `site_retry`
+    /// finishes it.
+    pub setup_complete: bool,
+    /// The docroot is a folder the USER owns (linked or imported): rexenv never
+    /// writes into it, `move` refuses it, and deleting the site leaves it.
+    pub linked: bool,
 }
 
 impl AgentSiteView {
-    /// Build from a `Site` and its live serving state. Every field is named
-    /// explicitly; any `Site` field not named here is dropped by construction.
-    pub fn from_site(s: &Site, serving: bool) -> Self {
+    /// Build from a `Site`, its live serving state and its extra domains. Every
+    /// field is named explicitly; any `Site` field not named here is dropped by
+    /// construction.
+    pub fn from_site(s: &Site, serving: bool, aliases: Vec<String>) -> Self {
         AgentSiteView {
             id: s.id.clone(),
             domain: s.domain.clone(),
@@ -47,6 +64,12 @@ impl AgentSiteView {
             php_version: s.php_version.clone(),
             web_server: s.web_server, // Copy
             serving,
+            owner: if s.is_scratch() { "agent" } else { "user" },
+            multisite: s.multisite,
+            xdebug: s.xdebug,
+            aliases,
+            setup_complete: s.provisioned,
+            linked: s.docroot_managed == Some(false),
         }
     }
 }
@@ -393,14 +416,25 @@ mod tests {
             php_version: "8.3".into(),
             web_server: WebServer::Nginx,
             serving: true,
+            owner: "user",
+            multisite: MultisiteMode::None,
+            xdebug: false,
+            aliases: vec![],
+            setup_complete: true,
+            linked: false,
         };
         let json = serde_json::to_value(&v).expect("serialise");
         let keys: BTreeSet<&str> =
             json.as_object().expect("object").keys().map(String::as_str).collect();
-        let expected: BTreeSet<&str> =
-            ["id", "domain", "name", "type", "phpVersion", "webServer", "serving"]
-                .into_iter()
-                .collect();
+        // Widened with MCP parity (3 Sep 2026): owner / multisite / xdebug /
+        // aliases / setupComplete / linked — each a fact an agent needs to pick
+        // the right tool, none a path or a name of anything on disk.
+        let expected: BTreeSet<&str> = [
+            "id", "domain", "name", "type", "phpVersion", "webServer", "serving",
+            "owner", "multisite", "xdebug", "aliases", "setupComplete", "linked",
+        ]
+        .into_iter()
+        .collect();
         // Adding a field to AgentSiteView is a deliberate act — this fails loudly
         // if one appears, so a docroot path or db name can never slip in silently.
         assert_eq!(keys, expected, "AgentSiteView key set drifted");
