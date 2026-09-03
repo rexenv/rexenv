@@ -794,15 +794,8 @@ pub fn tools_list_descriptors() -> Value {
                     "name": t.name,
                     "description": t.description,
                     "inputSchema": (t.input_schema)(),
-                    // MCP tool annotations — UX hints a client may use to
-                    // confirm before a destructive call. The spec says clients
-                    // must treat them as untrusted, and so does rexenv: the
-                    // scope the handler's witness type enforces is the boundary;
-                    // this is the same fact said in the protocol's vocabulary.
-                    "annotations": {
-                        "readOnlyHint": t.scope == Scope::Read,
-                        "destructiveHint": t.scope == Scope::Destroy,
-                    },
+                    // Annotations are added in ONE place, `mcp_server::Tool::descriptor`,
+                    // from the registry a tool came from — never here.
                 })
             })
             .collect(),

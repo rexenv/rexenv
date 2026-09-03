@@ -566,15 +566,35 @@ impl Tool {
     }
 
     /// The MCP descriptor, from the registry's own descriptor list.
+    /// The MCP tool annotations (`readOnlyHint`, `destructiveHint`), decided
+    /// HERE from the registry a tool came from — the same fact dispatch uses
+    /// for its capability — never from a field the tool sets about itself.
+    /// The spec says clients must treat these as untrusted UX hints, and so
+    /// does rexenv: the registry and the witness types are the boundary; this
+    /// is that boundary said in the protocol's vocabulary (PLAN-mcp-parity L6).
+    fn annotations(self) -> (bool, bool) {
+        match self {
+            Tool::Read(_) => (true, false),
+            Tool::Scratch(t) => (false, t.name == "scratch_delete_site"),
+            Tool::User(t) => (t.scope == crate::core::agent_grants::Scope::Read, t.scope == crate::core::agent_grants::Scope::Destroy),
+        }
+    }
+
     fn descriptor(self) -> Value {
         let list = match self {
             Tool::Read(_) => tools::tools_list_result()["tools"].clone(),
             Tool::Scratch(_) => scratch::tools_list_descriptors(),
             Tool::User(_) => user_sites::tools_list_descriptors(),
         };
-        list.as_array()
+        let mut d = list
+            .as_array()
             .and_then(|a| a.iter().find(|d| d["name"] == self.name()).cloned())
-            .unwrap_or_else(|| json!({ "name": self.name() }))
+            .unwrap_or_else(|| json!({ "name": self.name() }));
+        let (read_only, destructive) = self.annotations();
+        if let Some(obj) = d.as_object_mut() {
+            obj.insert("annotations".into(), json!({ "readOnlyHint": read_only, "destructiveHint": destructive }));
+        }
+        d
     }
 }
 
@@ -2073,6 +2093,30 @@ mod tests {
         // classified as registry-or-not here, by name).
         let declared = prod.matches("\nmod ").count() + prod.matches("\npub mod ").count();
         assert_eq!(declared, sources.len(), "a module was added to mcp_server.rs without being classified here");
+    }
+
+    /// **Every advertised tool carries `readOnlyHint`/`destructiveHint`, decided
+    /// from its registry** — a read tool is read-only, `scratch_delete_site`
+    /// and every `destroy`-scoped parity tool are destructive, nothing else is.
+    #[test]
+    fn every_advertised_tool_carries_honest_annotations() {
+        let v = reply(r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#);
+        let listed = v["result"]["tools"].as_array().expect("tools array");
+        assert!(!listed.is_empty());
+        for d in listed {
+            let name = d["name"].as_str().unwrap();
+            let a = &d["annotations"];
+            assert!(a["readOnlyHint"].is_boolean() && a["destructiveHint"].is_boolean(), "{name} lacks annotations: {d}");
+            let tool = find_tool(name).expect("advertised tools are registered");
+            let (ro, de) = tool.annotations();
+            assert_eq!((a["readOnlyHint"].as_bool(), a["destructiveHint"].as_bool()), (Some(ro), Some(de)), "{name}");
+            assert!(!(ro && de), "{name}: read-only and destructive at once");
+            match tool {
+                Tool::Read(_) => assert!(ro && !de, "{name}"),
+                Tool::Scratch(_) => assert!(!ro && (de == (name == "scratch_delete_site")), "{name}"),
+                Tool::User(t) => assert_eq!((ro, de), (t.scope == crate::core::agent_grants::Scope::Read, t.scope == crate::core::agent_grants::Scope::Destroy), "{name}"),
+            }
+        }
     }
 
     #[test]

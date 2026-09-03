@@ -2066,6 +2066,7 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   - [ ] **P6 — protocol**: annotations, progress notifications riding #447's records,
     the in-band shim error, `job_*` as the one job pattern, a real Cursor + Claude Code
     `tools/list` check at ~42 tools.
+    ✓ P6.1 — **annotations for every registry, in one place**, ledger #492 (L6 closed).
   - [ ] **P7 — Laravel loop**: `php_artisan`, Composer path-repo link (S1 re-run for
     Composer), D13.
 - [ ] **MCP server — EVERY PLANNED MILESTONE IS SHIPPED (M1, M2a, M2b, M3).** Header
