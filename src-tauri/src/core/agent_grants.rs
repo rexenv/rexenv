@@ -488,7 +488,13 @@ pub fn claim_or_ask<S: scope::Marker>(
     wanted: &str,
 ) -> Result<Claimed<S>> {
     let refusal = match claim::<S>(conn, site_id, client) {
-        Ok(granted) => return Ok(Claimed { granted, auto_granted: false }),
+        Ok(granted) => {
+            // A grant that now satisfies the claim makes any outstanding ask for
+            // it stale — a prompt for something already allowed is noise, and
+            // the button's own path clears it the same way.
+            requests.answer(site_id, client, S::SCOPE);
+            return Ok(Claimed { granted, auto_granted: false });
+        }
         Err(e) => e,
     };
     // Only a REAL, EXISTING site (or the stack) can be asked about: a missing

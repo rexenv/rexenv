@@ -671,7 +671,10 @@ async fn fulfill_tool_call<Rt: tauri::Runtime>(
             let ctx = scratch::ScratchCtx::new(state.inner(), &creator, &creator, client);
             (t.handler)(ctx, args, acted).await
         }
-        Tool::User(t) => (t.handler)(user_sites::UserCtx::new(state.inner(), client), args, acted).await,
+        Tool::User(t) => {
+            let ops = AppSiteCreator { app: app.clone() };
+            (t.handler)(user_sites::UserCtx::new(state.inner(), &ops, client), args, acted).await
+        }
     };
     match outcome {
         Ok(v) => (result_response(id, tool_success_content(&v)), feed::Outcome::Ok, None),
@@ -772,6 +775,54 @@ impl<Rt: tauri::Runtime> scratch::SiteCreator for AppSiteCreator<Rt> {
     }
 }
 
+impl<Rt: tauri::Runtime> user_sites::SiteOps for AppSiteCreator<Rt> {
+    fn create<'a>(
+        &'a self,
+        new: crate::state::models::NewSite,
+        wp: Option<crate::core::wordpress::InstallOptions>,
+        blueprint_id: Option<String>,
+        ownership: crate::core::sites::Ownership,
+    ) -> user_sites::OpFuture<'a, Result<crate::state::models::Site, crate::commands::sites::CreateFailure>> {
+        use tauri::Manager;
+        Box::pin(async move {
+            let state = self.app.try_state::<AppState>().ok_or_else(|| crate::commands::sites::CreateFailure {
+                site_id: None,
+                error: crate::error::Error::Other("rexenv is still starting — try again in a moment".into()),
+            })?;
+            let jobs = self
+                .app
+                .try_state::<crate::commands::site_provision::ProvisionJobs>()
+                .ok_or_else(|| crate::commands::sites::CreateFailure {
+                    site_id: None,
+                    error: crate::error::Error::Other(
+                        "rexenv cannot create sites right now — its provisioning service is not \
+                         running. The person you're working with may need to restart rexenv."
+                            .into(),
+                    ),
+                })?;
+            crate::commands::sites::create_site_owned(self.app.clone(), state.inner(), jobs.inner(), new, wp, blueprint_id, ownership)
+                .await
+        })
+    }
+
+    fn delete<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        <Self as scratch::SiteDeleter>::delete(self, id)
+    }
+
+    fn multisite_convert<'a>(&'a self, id: String, mode: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        use tauri::Manager;
+        Box::pin(async move {
+            // The app's OWN command, with its share guard — `State` handles come
+            // straight off the app handle, so this IS the dialog's post-create path.
+            let state = self.app.try_state::<AppState>()
+                .ok_or_else(|| crate::error::Error::Other("rexenv is still starting".into()))?;
+            let tunnels = self.app.try_state::<crate::commands::tunnels::Tunnels>()
+                .ok_or_else(|| crate::error::Error::Other("rexenv cannot convert sites right now".into()))?;
+            crate::commands::wordpress::wp_multisite_convert(state, tunnels, id, mode).await.map(|_| ())
+        })
+    }
+}
+
 /// Run EVERY registered tool against `app`'s state with the fixture site id, and
 /// return each tool's serialised output (or its error text — errors can leak
 /// too). For the secret-leak sweep (`examples/mcp_secret_sweep`): it plants
@@ -792,7 +843,7 @@ pub async fn sweep_tool_outputs<Rt: tauri::Runtime>(
     let ctx = ReadCtx::new(state.inner());
     let creator = AppSiteCreator { app: app.clone() };
     let sctx = scratch::ScratchCtx::new(state.inner(), &creator, &creator, "secret-sweep");
-    let uctx = user_sites::UserCtx::new(state.inner(), "secret-sweep");
+    let uctx = user_sites::UserCtx::new(state.inner(), &creator, "secret-sweep");
     let mut outputs = Vec::new();
     // The sweep exercises handlers for their OUTPUT; a target they record is
     // irrelevant here, so each gets a throwaway recorder.

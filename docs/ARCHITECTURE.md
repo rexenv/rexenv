@@ -889,10 +889,15 @@ IPC surface — which is how a reader ends up designing against a system with on
   three read-only tools (`list_sites`, `site_status`, `tail_log`); `mcp_server/scratch.rs`
   holds the nine executing ones (`scratch_create_site`, `scratch_delete_site`,
   `scratch_add_package`, `scratch_sync_package`, `wp_run`, `set_php_version`, `db_query`,
-  `mail_list`, `mail_get`); `mcp_server/user_sites.rs` (MCP parity, 3 Sep 2026 — EMPTY until
-  P2's first tool) will hold the tools that act on the USER's own sites and the stack, each
-  through a `Granted<S>` scope witness (`core::agent_grants`) minted from a grant the user
-  gave in the app, and only while the "Let agents manage my own sites" switch is on.
+  `mail_list`, `mail_get`); `mcp_server/user_sites.rs` (MCP parity, 3 Sep 2026) holds the
+  tools that act on the USER's own sites and the stack — `site_create` (`manage` on rexenv
+  itself; a WordPress / blank-PHP / Laravel site through the app's own provision job,
+  recorded as the USER's via `Ownership::UserByAgent`, which never prompts) and
+  `site_delete` (`destroy`, session-only; the app's full delete) so far — each through a
+  `Granted<S>` scope witness (`core::agent_grants`) minted from a grant the user gave in the
+  app, and only while the "Let agents manage my own sites" switch is on. Shape refusals
+  (a bad type, a taken domain, `multisite` on a PHP site) come BEFORE the gate and record no
+  ask, so a typo is answered as a typo and never as a permission prompt.
   What a tool may do is decided by **which registry its name came from** —
   never by a field the tool sets about itself. **One enumeration** (`every_tool`) feeds
   dispatch, `tools/list`, the leak sweep and the disjointness guard, and a source guard

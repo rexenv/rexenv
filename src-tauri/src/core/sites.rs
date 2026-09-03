@@ -26,7 +26,7 @@ use uuid::Uuid;
 /// refused here — the trust boundary for BOTH create and change-domain — so a blocked
 /// TLD can't get through even via a direct IPC invoke. The UI already slugs input to
 /// this shape; this is the backstop for every other caller.
-fn validate_domain(domain: &str) -> Result<()> {
+pub(crate) fn validate_domain(domain: &str) -> Result<()> {
     let reject = |why: &str| Error::Other(format!("invalid domain '{domain}': {why}"));
     // DNS caps a name at 253 chars; stay well under any fs/DB-identifier limit too.
     if domain.is_empty() || domain.len() > 253 {
@@ -495,18 +495,21 @@ fn create_recording_ownership(
         // v27, from the ONE ownership value — recorded at the insert, never
         // derived later from the domain or the path.
         origin: match ownership {
-            Ownership::User => SiteOrigin::User,
+            Ownership::User | Ownership::UserByAgent { .. } => SiteOrigin::User,
             Ownership::Agent { .. } => SiteOrigin::Agent,
         },
+        // `UserByAgent` records NO client on the row: `agent_client` is the
+        // scratch badge's field, and a user's own site must never wear it.
+        // Who created it is the feed's fact.
         agent_client: match &ownership {
-            Ownership::User => None,
+            Ownership::User | Ownership::UserByAgent { .. } => None,
             Ownership::Agent { client, .. } => Some(client.clone()),
         },
         // The clock starts here, at the insert, so a site that fails LATER in
         // provisioning still expires and still gets reaped — a half-built
         // scratch site is exactly the kind that would otherwise linger forever.
         expires_at: match &ownership {
-            Ownership::User => None,
+            Ownership::User | Ownership::UserByAgent { .. } => None,
             Ownership::Agent { ttl_hours, .. } => Some(store::db_time_from_now(conn, *ttl_hours)?),
         },
         docroot_subdir,
@@ -1452,6 +1455,11 @@ pub fn validate_git_source(new: &NewSite, ownership: &Ownership) -> Result<Optio
                 .into(),
         ));
     }
+    // `UserByAgent` passes here: cloning under a scope grant is the `run`
+    // scope's business, decided in the tool layer BEFORE this is reached
+    // (`site_create` never sets `git_url`; a future git tool claims `run`).
+    // Only the scratch path is refused outright — a disposable site is not a
+    // reason to run a stranger's install scripts.
     if matches!(ownership, Ownership::Agent { .. }) {
         return Err(Error::Other(
             "creating a site from a git repository is a user action: it downloads code and then \
@@ -1959,6 +1967,19 @@ pub enum Ownership {
         /// Hours from now until it expires.
         ttl_hours: i64,
     },
+    /// The USER's site, created on their behalf by an agent under a scope grant
+    /// (MCP parity, `docs/PLAN-mcp-parity.md` §4.1). Recorded exactly as `User`
+    /// — `origin='user'`, no client badge, no clock, never reaped — because the
+    /// user asked for it (the grant is the asking). What differs is the one
+    /// thing a grant is NOT: an administrator password. So it never prompts,
+    /// and a site whose TLD has no resolver fails with the setup message
+    /// instead of raising the macOS dialog on an agent's behalf (#210's rule,
+    /// third variant).
+    UserByAgent {
+        /// The MCP client's self-reported name — for the FEED row, not the
+        /// site row (the Sites page reads `origin` alone, #219).
+        client: String,
+    },
 }
 
 impl Ownership {
@@ -1967,7 +1988,9 @@ impl Ownership {
     pub fn resolver_prompt(&self) -> crate::core::dns::ResolverPrompt {
         match self {
             Ownership::User => crate::core::dns::ResolverPrompt::Allow,
-            Ownership::Agent { .. } => crate::core::dns::ResolverPrompt::Never,
+            Ownership::Agent { .. } | Ownership::UserByAgent { .. } => {
+                crate::core::dns::ResolverPrompt::Never
+            }
         }
     }
 }
@@ -4819,6 +4842,41 @@ mod tests {
             .unwrap();
         assert_eq!(t, "php");
         assert_eq!(ws, "apache");
+    }
+
+    /// **A site an agent makes FOR the user is the user's — no badge, no clock,
+    /// never reaped — and it never prompts.** The third ownership value (MCP
+    /// parity): recorded exactly as `User` at the insert, because the grant was
+    /// the asking; refused the resolver prompt exactly as `Agent`, because a
+    /// grant is not an administrator password. Cloning is NOT refused for it
+    /// here — that is the `run` scope's decision in the tool layer.
+    #[test]
+    fn a_site_an_agent_makes_for_the_user_is_the_users_and_never_prompts() {
+        use crate::state::models::SiteOrigin;
+        let conn = db::open_in_memory().unwrap();
+        let (dir, new) = docroot_fixture("byagent");
+        let ownership = Ownership::UserByAgent { client: "claude-code".into() };
+        assert_eq!(ownership.resolver_prompt(), crate::core::dns::ResolverPrompt::Never);
+        let site = create_recording_ownership(
+            &conn,
+            NewSite { domain: "byagent.rex".into(), ..new.clone() },
+            true,
+            ownership.clone(),
+            None,
+        )
+        .unwrap();
+        assert_eq!(site.origin, SiteOrigin::User);
+        assert!(!site.is_scratch());
+        assert_eq!(site.agent_client, None, "a user's site never wears the scratch badge");
+        assert_eq!(site.expires_at, None, "…and never has a clock");
+        let read = store::get_site(&conn, &site.id).unwrap().unwrap();
+        assert!(!read.is_scratch() && read.expires_at.is_none());
+        // Git is a `run`-scope question, not an ownership one: the shape check
+        // passes for this value where it refuses the scratch one.
+        let git = NewSite { git_url: "https://github.com/octocat/Hello-World.git".into(), path: String::new(), ..new };
+        assert!(validate_git_source(&git, &ownership).is_ok());
+        assert!(validate_git_source(&git, &Ownership::Agent { client: "x".into(), ttl_hours: 1 }).is_err());
+        let _ = dir;
     }
 
     #[test]

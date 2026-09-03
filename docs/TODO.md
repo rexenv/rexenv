@@ -1993,6 +1993,12 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   - [ ] **P2 — site lifecycle**: `site_create` (WP/PHP/Laravel, blueprint, multisite,
     starter DB), `site_delete`, `site_configure`, `site_restart`/`site_retry`, `site_info`,
     `job_status`/`job_cancel`; L1 `mcp_user_site_check`; SMOKE §P2.
+    ✓ P2.1 — **`site_create` + `site_delete`**, ledger #475/#476 (3 Sep 2026):
+    `Ownership::UserByAgent` (the user's site, never prompts, no badge/clock); shape
+    refusals before the gate and no ask for them; the app's own provision job and full
+    delete through the erased `SiteOps`; multisite as a reported second op; credentials
+    once. A satisfied claim now clears its stale ask. Remaining: `site_configure`,
+    `site_restart`/`site_retry`, `site_info`, the L1, SMOKE §P2.
   - [ ] **P3 — WordPress on real sites** (eight grouped `wp_*` tools + `wp_run`'s `run`
     arm), `tail_log` every source, `mail_inbox`.
   - [ ] **P4 — the stack**: `stack_status`/`stack(...)` incl. privileged start/stop (D10),

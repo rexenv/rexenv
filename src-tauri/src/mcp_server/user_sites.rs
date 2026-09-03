@@ -31,8 +31,11 @@
 //! registered untested, unlisted, unswept or unranked.
 
 use crate::core::agent_grants::{self, scope, Claimed, Granted, Scope};
+use crate::core::sites::Ownership;
 use crate::error::{Error, Result};
 use crate::state::app::AppState;
+use crate::state::models::{MultisiteMode, NewSite, Site, SiteDbEngine, SiteType, WebServer};
+use serde::Serialize;
 use serde_json::{json, Value};
 use std::future::Future;
 use std::pin::Pin;
@@ -67,14 +70,86 @@ pub struct UserTool {
     pub handler: ToolHandler,
 }
 
-/// The closed set of parity tools. Empty until P2's first tool lands — the
-/// registry, the dispatch route, the sweep coverage and the disjointness guard
-/// all exist first, so the first tool cannot arrive unranked or unswept.
+/// The closed set of parity tools. The registry, the dispatch route, the sweep
+/// coverage and the disjointness guard existed before the first tool did, so no
+/// tool here arrived unranked or unswept.
 pub fn registry() -> &'static [UserTool] {
     REGISTRY
 }
 
-static REGISTRY: &[UserTool] = &[];
+static REGISTRY: &[UserTool] = &[
+    UserTool {
+        name: "site_create",
+        description: "Create a real site for the person you're working with — the same kind the \
+                      app's New Site dialog makes: `type` is `wordpress` (installed and ready to \
+                      log in), `php` (a blank PHP site) or `laravel` (a fresh skeleton). Takes \
+                      `name`, `domain` (a full hostname like `shop.rex`), `type`, and optionally \
+                      `php` (a minor like `8.3`), `server` (nginx / apache / frankenphp), \
+                      `db_engine` (mysql / mariadb), `blueprint` (a saved blueprint's name), and for \
+                      WordPress `wp` ({title, admin_user, admin_email, admin_password, language}) \
+                      and `multisite` (subdomain / subdirectory); for a blank PHP site `starter_db` \
+                      (true creates a database with a sample table). Needs the user's `manage` \
+                      permission for rexenv itself — asked for in the app if it is missing. This \
+                      can take a minute or two. Never links a folder or clones a repository; those \
+                      are separate tools. Admin credentials come back ONCE, in the reply.",
+        input_schema: create_params,
+        // The sweep runs with the sites switch OFF, so this refuses by name
+        // before touching anything — and the refusal is what gets swept.
+        sweep_args: |_id| json!({ "name": "sweep-probe", "domain": "sweep-probe.rex", "type": "php" }),
+        summarise: |args| args.get("type").and_then(Value::as_str).map(str::to_string),
+        scope: Scope::Manage,
+        handler: site_create,
+    },
+    UserTool {
+        name: "site_delete",
+        description: "Delete one of the user's own sites — its files (if rexenv made them), its \
+                      database and its configuration. Takes `site_id`. Needs the user's `destroy` \
+                      permission on that site, which they can only give for the current session; \
+                      it is asked for in the app if missing. A scratch site the agent created is \
+                      refused here — use scratch_delete_site for those.",
+        input_schema: || json!({
+            "type": "object",
+            "properties": { "site_id": { "type": "string", "description": "The site's id (from list_sites)." } },
+            "required": ["site_id"],
+            "additionalProperties": false
+        }),
+        sweep_args: |id| json!({ "site_id": id }),
+        summarise: |_| None,
+        scope: Scope::Destroy,
+        handler: site_delete,
+    },
+];
+
+fn create_params() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "name": { "type": "string", "description": "Display name, e.g. `My Shop`." },
+            "domain": { "type": "string", "description": "Full hostname, e.g. `shop.rex`. The TLD must be one rexenv already resolves." },
+            "type": { "type": "string", "enum": ["wordpress", "php", "laravel"] },
+            "php": { "type": "string", "description": "PHP minor, e.g. `8.3`. Defaults to rexenv's default." },
+            "server": { "type": "string", "enum": ["nginx", "apache", "frankenphp"], "description": "Defaults to nginx." },
+            "db_engine": { "type": "string", "enum": ["mysql", "mariadb"], "description": "Defaults to mysql." },
+            "blueprint": { "type": "string", "description": "The NAME of a saved blueprint (WordPress only)." },
+            "multisite": { "type": "string", "enum": ["subdomain", "subdirectory"], "description": "WordPress only: convert to a network after install." },
+            "starter_db": { "type": "boolean", "description": "Blank PHP only: create a database with a sample table and a db.php." },
+            "wp": {
+                "type": "object",
+                "description": "WordPress install options; every field optional.",
+                "properties": {
+                    "title": { "type": "string" },
+                    "admin_user": { "type": "string" },
+                    "admin_email": { "type": "string" },
+                    "admin_password": { "type": "string", "description": "Omit to use rexenv's local-dev default; the reply says which." },
+                    "language": { "type": "string", "description": "A WordPress locale like `de_DE`." }
+                },
+                "additionalProperties": false
+            }
+        },
+        "required": ["name", "domain", "type"],
+        "additionalProperties": false
+    })
+}
 
 /// This registry's tools as MCP descriptors, for the union `tools/list`.
 pub fn tools_list_descriptors() -> Value {
@@ -101,9 +176,35 @@ pub fn tools_list_descriptors() -> Value {
     )
 }
 
-/// What a parity handler can reach: app state, and — for any SITE or for the
-/// stack — only through [`UserCtx::claim`], which yields a `Granted<S>` or a
-/// refusal an agent can act on.
+/// A parity tool's async result over the app's own site operations.
+pub type OpFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+
+/// The app's own site operations, reached through the app handle.
+///
+/// A trait object for the reason `scratch::SiteCreator` is one: the commands
+/// are generic over `tauri::Runtime` and a `static` registry of fn pointers
+/// cannot be, so the runtime is erased HERE and every parity tool runs exactly
+/// the code the app and the CLI run — the one-brain rule, kept across the
+/// erasure. Nothing in this module re-implements a site operation.
+pub trait SiteOps: Send + Sync {
+    /// The app's create — the streamed provision job, blocking until settled.
+    fn create<'a>(
+        &'a self,
+        new: NewSite,
+        wp: Option<crate::core::wordpress::InstallOptions>,
+        blueprint_id: Option<String>,
+        ownership: Ownership,
+    ) -> OpFuture<'a, std::result::Result<Site, crate::commands::sites::CreateFailure>>;
+    /// The app's full delete (tunnel stop, DB drop by provenance, teardown by
+    /// `docroot_managed`, agent accounts, reload).
+    fn delete<'a>(&'a self, id: String) -> OpFuture<'a, Result<()>>;
+    /// `wp core multisite-convert` through the app's command (share-guarded).
+    fn multisite_convert<'a>(&'a self, id: String, mode: String) -> OpFuture<'a, Result<()>>;
+}
+
+/// What a parity handler can reach: app state, the app's own site operations,
+/// and — for any SITE or for the stack — only through [`UserCtx::claim`], which
+/// yields a `Granted<S>` or a refusal an agent can act on.
 ///
 /// `Copy` (a single `&AppState`), like the other two contexts, so async handlers
 /// take it by value.
@@ -112,18 +213,12 @@ pub struct UserCtx<'a> {
     state: &'a AppState,
     /// The MCP client's self-reported name — the principal a grant is TO.
     client: &'a str,
+    ops: &'a dyn SiteOps,
 }
 
-// Until P2's first tool lands nothing calls these — the registry is empty by
-// design (the structure arrives first). Lifted with the first handler.
-#[allow(dead_code)]
 impl<'a> UserCtx<'a> {
-    pub fn new(state: &'a AppState, client: &'a str) -> Self {
-        UserCtx { state, client }
-    }
-
-    pub fn client(&self) -> &'a str {
-        self.client
+    pub fn new(state: &'a AppState, ops: &'a dyn SiteOps, client: &'a str) -> Self {
+        UserCtx { state, client, ops }
     }
 
     pub(crate) fn db(&self) -> Result<std::sync::MutexGuard<'_, rusqlite::Connection>> {
@@ -175,6 +270,288 @@ impl<'a> UserCtx<'a> {
     }
 }
 
+
+/// The created site, as the agent sees it: M1's view + M1's status vocabulary +
+/// the one thing only the creator can know, the admin credentials — once.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AgentCreatedSite {
+    #[serde(flatten)]
+    site: super::view::AgentSiteView,
+    url: String,
+    #[serde(flatten)]
+    status: super::view::AgentSiteStatus,
+    /// WordPress only. The password is shown HERE and nowhere else — not in the
+    /// feed (the summariser records the type, never a value), not in a later
+    /// call. An agent that loses it asks the user, who can reset it in rexenv.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    admin: Option<AgentAdmin>,
+    /// What happened to a requested multisite conversion, when one was asked
+    /// for: the site exists either way, so this is a field, not a failure.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    multisite: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AgentAdmin {
+    user: String,
+    password: String,
+    note: &'static str,
+}
+
+/// Everything `site_create` decided from its arguments BEFORE asking for
+/// permission — every refusal here is about the SHAPE of the request and needs
+/// no grant to answer, so an agent with a typo is told about the typo rather
+/// than sent to ask the user for a permission it would then misuse.
+struct CreatePlan {
+    new: NewSite,
+    wp: Option<crate::core::wordpress::InstallOptions>,
+    blueprint_id: Option<String>,
+    multisite: Option<MultisiteMode>,
+}
+
+fn plan_create(ctx: &UserCtx<'_>, args: &Value) -> Result<CreatePlan> {
+    let str_arg = |k: &str| args.get(k).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty());
+    let name = str_arg("name").ok_or_else(|| Error::Other("site_create needs a `name`.".into()))?;
+    let domain = str_arg("domain")
+        .ok_or_else(|| Error::Other("site_create needs a `domain`, a full hostname like `shop.rex`.".into()))?
+        .to_ascii_lowercase();
+    let site_type = match str_arg("type") {
+        Some(t) => SiteType::parse_db(t).map_err(|_| {
+            Error::Other(format!("`{t}` is not a site type — use `wordpress`, `php` or `laravel`."))
+        })?,
+        None => return Err(Error::Other("site_create needs a `type`: `wordpress`, `php` or `laravel`.".into())),
+    };
+    crate::core::sites::validate_domain(&domain)?;
+    let web_server = match str_arg("server") {
+        Some(s) => WebServer::parse_db(s)
+            .map_err(|_| Error::Other(format!("`{s}` is not a web server rexenv runs — use `nginx`, `apache` or `frankenphp`.")))?,
+        None => WebServer::Nginx,
+    };
+    let db_engine = match str_arg("db_engine") {
+        Some(e) => SiteDbEngine::parse_db(e)
+            .map_err(|_| Error::Other(format!("`{e}` is not a database engine here — use `mysql` or `mariadb`.")))?,
+        None => SiteDbEngine::Mysql,
+    };
+    let multisite = match str_arg("multisite") {
+        None => None,
+        Some(m) => {
+            if site_type != SiteType::Wordpress {
+                return Err(Error::Other("`multisite` only applies to a `wordpress` site.".into()));
+            }
+            match MultisiteMode::parse_db(m) {
+                Ok(MultisiteMode::None) | Err(_) => {
+                    return Err(Error::Other(format!("`{m}` is not a multisite mode — use `subdomain` or `subdirectory`.")))
+                }
+                Ok(mode) => Some(mode),
+            }
+        }
+    };
+    let starter_db = args.get("starter_db").and_then(Value::as_bool).unwrap_or(false);
+    if starter_db && site_type != SiteType::Php {
+        // The app's own rule (`sites::starter_db_refusal`, #462): the field is
+        // dropped in silence everywhere but a blank PHP site, so asking for it
+        // elsewhere would produce a site with no error and nothing to say why.
+        return Err(Error::Other("`starter_db` only applies to a `php` (blank PHP) site.".into()));
+    }
+    let wp = if site_type == SiteType::Wordpress {
+        let w = args.get("wp").cloned().unwrap_or_else(|| json!({}));
+        let field = |k: &str| w.get(k).and_then(Value::as_str).map(str::trim).unwrap_or("").to_string();
+        Some(crate::core::wordpress::InstallOptions {
+            title: field("title"),
+            admin_user: field("admin_user"),
+            admin_email: field("admin_email"),
+            admin_password: field("admin_password"),
+            language: field("language"),
+        })
+    } else {
+        if args.get("wp").is_some() {
+            return Err(Error::Other("`wp` options only apply to a `wordpress` site.".into()));
+        }
+        None
+    };
+    let conn = ctx.db()?;
+    if let Some(owner) = crate::core::sites::domain_taken_by(&conn, &domain)? {
+        return Err(Error::Other(format!(
+            "`{domain}` already reaches the site \"{owner}\" — one hostname can only reach one site. \
+             Pick a different domain, or use the site that is already there (list_sites shows it)."
+        )));
+    }
+    let blueprint_id = match str_arg("blueprint") {
+        None => None,
+        Some(bp_name) => {
+            let all = crate::state::store::list_blueprints(&conn)?;
+            let Some(bp) = all.iter().find(|b| b.name.eq_ignore_ascii_case(bp_name)) else {
+                let names: Vec<&str> = all.iter().map(|b| b.name.as_str()).collect();
+                return Err(Error::Other(if names.is_empty() {
+                    format!("there is no blueprint called `{bp_name}` — the person you're working with has not saved any.")
+                } else {
+                    format!("there is no blueprint called `{bp_name}`. The saved ones are: {}.", names.join(", "))
+                }));
+            };
+            if bp.spec.site_type != site_type {
+                return Err(Error::Other(format!(
+                    "blueprint `{}` is for a `{}` site, not a `{}` one.",
+                    bp.name,
+                    bp.spec.site_type.as_db(),
+                    site_type.as_db()
+                )));
+            }
+            Some(bp.id.clone())
+        }
+    };
+    let php_version = match str_arg("php") {
+        Some(v) => v.to_string(),
+        None => crate::state::store::list_php_versions(&conn)?
+            .into_iter()
+            .find(|v| v.is_default)
+            .map(|v| v.minor)
+            .ok_or_else(|| {
+                Error::Other(
+                    "rexenv has no default PHP version yet — the person you're working with needs to \
+                     finish rexenv's setup before sites can be created."
+                        .into(),
+                )
+            })?,
+    };
+    Ok(CreatePlan {
+        new: NewSite {
+            name: name.to_string(),
+            domain,
+            site_type,
+            php_version,
+            web_server,
+            path: String::new(),    // never a caller path: linking is its own tool, under `run`
+            db_engine,
+            git_url: String::new(), // never a clone: its own tool, under `run`
+            git_ref: None,
+            git_migrate: true,
+            git_build_assets: false,
+            starter_db,
+        },
+        wp,
+        blueprint_id,
+        multisite,
+    })
+}
+
+/// A create failure, translated for an agent — the scratch tool's shape, with
+/// the parity tools' names for the way forward.
+fn translate_create_failure(
+    domain: &str,
+    failure: crate::commands::sites::CreateFailure,
+    conn: Option<&rusqlite::Connection>,
+    acted: &super::feed::ActedTarget,
+) -> Error {
+    let Some(id) = failure.site_id else {
+        return failure.error;
+    };
+    if let Some(conn) = conn {
+        if let Ok(Some(site)) = crate::state::store::get_site(conn, &id) {
+            acted.set(&site);
+        }
+    }
+    Error::Other(format!(
+        "`{domain}` was created but its setup did not finish, so it is not usable yet. It exists \
+         (id `{id}`) and the person you're working with can see it in rexenv listed as \"setup \
+         incomplete\", where they can retry or remove it. You can read what went wrong with \
+         tail_log, retry it with site_retry, or remove it with site_delete (which needs their \
+         `destroy` permission)."
+    ))
+}
+
+fn site_create<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTarget) -> ToolFuture<'a> {
+    Box::pin(async move {
+        // Shape first — no permission needed to be told about a typo.
+        let plan = plan_create(&ctx, args)?;
+        let domain = plan.new.domain.clone();
+        let wanted = format!("create a {} site `{domain}`", plan.new.site_type.as_db());
+        // Then the user's word: `manage` on rexenv itself (there is no site yet).
+        let claimed = ctx.claim::<scope::Manage>(None, &wanted)?;
+        let _ = &claimed.granted;
+
+        // The resolved credentials are computed from the SAME function the
+        // provision job uses, so what the reply reports is what was set.
+        let admin = plan.wp.as_ref().map(|opts| {
+            let r = crate::core::wordpress::resolve_install_options(&domain, &plan.new.name, opts);
+            AgentAdmin {
+                user: r.admin_user,
+                password: r.admin_password,
+                note: "Shown once. Not recorded anywhere an agent can read it again; the person \
+                       you're working with can reset it in rexenv.",
+            }
+        });
+        let ownership = Ownership::UserByAgent { client: ctx.client.to_string() };
+        let site = match ctx.ops.create(plan.new, plan.wp, plan.blueprint_id, ownership).await {
+            Ok(site) => {
+                acted.set(&site);
+                site
+            }
+            Err(failure) => {
+                let conn = ctx.db().ok();
+                return Err(translate_create_failure(&domain, failure, conn.as_deref(), acted));
+            }
+        };
+        // The multisite conversion is a SECOND operation on a site that now
+        // exists (the dialog does the same after its create). Its failure is
+        // reported in the reply, never as a failure of the create — "it failed"
+        // about a site sitting in the user's list would send the agent to make
+        // another one.
+        let multisite = match plan.multisite {
+            None => None,
+            Some(mode) => Some(match ctx.ops.multisite_convert(site.id.clone(), mode.as_db().to_string()).await {
+                Ok(()) => format!("converted to a {} network", mode.as_db()),
+                Err(e) => format!("the site was created but converting it to a {} network failed: {e}", mode.as_db()),
+            }),
+        };
+        let read = super::readctx::ReadCtx::new(ctx.state);
+        let signals = read.probe_serving(&site).await;
+        let serving = signals.serving_manager && signals.edge_answers_ours;
+        let view = AgentCreatedSite {
+            site: super::view::AgentSiteView::from_site(&site, serving),
+            url: format!("https://{}", site.domain),
+            status: super::view::AgentSiteStatus::from_signals(&site, &signals),
+            admin,
+            multisite,
+        };
+        let mut value = serde_json::to_value(view).map_err(|e| Error::Other(format!("serialising the site: {e}")))?;
+        if claimed.auto_granted {
+            if let Some(obj) = value.as_object_mut() {
+                obj.insert("consent".into(), Value::String(agent_grants::AUTO_GRANTED_NOTE.to_string()));
+            }
+        }
+        Ok(value)
+    })
+}
+
+fn site_delete<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTarget) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let id = args
+            .get("site_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| Error::Other("site_delete needs a `site_id`.".into()))?;
+        // THE gate: the witness, typed `Destroy` — a `manage` grant cannot reach this line.
+        let claimed = ctx.claim::<scope::Destroy>(Some(id), "delete the site — its files, its database and its configuration")?;
+        let site = claimed.granted.site().cloned().ok_or_else(|| Error::Other("site_delete needs a site, not the stack.".into()))?;
+        acted.set(&site);
+        // The witness is a snapshot: re-assert before the destructive step, for
+        // the case it does not cover — the user pressing Revoke in between.
+        if !ctx.still_granted(&claimed.granted)? {
+            return Err(Error::Other(format!(
+                "the permission to delete `{}` was revoked before anything was done — nothing was deleted.",
+                site.domain
+            )));
+        }
+        ctx.ops.delete(site.id.clone()).await?;
+        Ok(json!({
+            "deleted": true,
+            "domain": site.domain,
+            "detail": format!("`{}` and its database are gone.", site.domain),
+        }))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -189,7 +566,10 @@ mod tests {
         let me = include_str!("user_sites.rs");
         let prod = &me[..me.find("#[cfg(test)]").unwrap()];
         let ctx = prod.find("impl<'a> UserCtx<'a> {").unwrap();
-        let body = &prod[ctx..];
+        // The impl block ONLY — a handler below it may resolve a row it was
+        // already handed (the feed's `acted` target), but the CONTEXT offers
+        // no method that does.
+        let body = &prod[ctx..ctx + prod[ctx..].find("\n}\n").unwrap()];
         for door in ["fn site_by_id", "fn sites(", "fn site(", "get_site(", "list_sites("] {
             assert!(!body.contains(door), "UserCtx grew a second door to sites: {door}");
         }
@@ -214,5 +594,239 @@ mod tests {
             assert!(Scope::ALL.contains(&t.scope));
         }
         assert_eq!(tools_list_descriptors().as_array().map(Vec::len), Some(registry().len()));
+    }
+
+    // ── The handlers, against a real AppState and a fake app ──────────────
+    use crate::state::models::{test_site, SiteOrigin};
+    use crate::state::store;
+    use std::sync::Mutex;
+
+    struct SandboxPaths;
+    impl crate::platform::traits::Paths for SandboxPaths {
+        fn app_data_dir(&self) -> Result<std::path::PathBuf> { Ok("/Users/somebody/Library/Application Support/rexenv".into()) }
+        fn config_dir(&self) -> Result<std::path::PathBuf> { Ok("/Users/somebody/Library/Application Support/rexenv/config".into()) }
+        fn log_dir(&self) -> Result<std::path::PathBuf> { Ok("/Users/somebody/Library/Application Support/rexenv/logs".into()) }
+        fn bin_dir(&self) -> Result<std::path::PathBuf> { Ok("/Users/somebody/Library/Application Support/rexenv/bin".into()) }
+        fn hosts_file(&self) -> std::path::PathBuf { "/etc/hosts".into() }
+    }
+    struct StubPlatform;
+    impl crate::platform::traits::Platform for StubPlatform {
+        fn paths(&self) -> &dyn crate::platform::traits::Paths { &SandboxPaths }
+        fn dns(&self) -> &dyn crate::platform::traits::DnsManager { unimplemented!() }
+        fn cert_trust(&self) -> &dyn crate::platform::traits::CertTrustManager { unimplemented!() }
+        fn privileges(&self) -> &dyn crate::platform::traits::PrivilegeManager { unimplemented!() }
+        fn supervisor(&self) -> &dyn crate::platform::traits::ProcessSupervisor { unimplemented!() }
+        fn autostart(&self) -> &dyn crate::platform::traits::AutostartManager { unimplemented!() }
+        fn permissions(&self) -> &dyn crate::platform::traits::PermissionManager { unimplemented!() }
+        fn shell(&self) -> &dyn crate::platform::traits::ShellRunner { unimplemented!() }
+        fn binaries(&self) -> &dyn crate::platform::traits::BinaryProvider { unimplemented!() }
+        fn edge(&self) -> &dyn crate::platform::traits::EdgeSupervisor { unimplemented!() }
+        fn dns_agent(&self) -> &dyn crate::platform::traits::DnsAgentManager { unimplemented!() }
+    }
+
+    fn app_state() -> AppState {
+        let conn = crate::state::db::open_in_memory().unwrap();
+        let ca = crate::core::ssl::LocalCa {
+            cert_pem: String::new(),
+            key_pem: String::new(),
+            cert_path: "/tmp/never/ca.pem".into(),
+            key_path: "/tmp/never/ca.key".into(),
+        };
+        AppState::new(conn, Box::new(StubPlatform), ca)
+    }
+
+    type Created = (NewSite, Option<crate::core::wordpress::InstallOptions>, Option<String>, Ownership);
+
+    /// Records what the app was asked to do; builds nothing.
+    #[derive(Default)]
+    struct FakeOps {
+        created: Mutex<Vec<Created>>,
+        deleted: Mutex<Vec<String>>,
+        converted: Mutex<Vec<(String, String)>>,
+    }
+    impl SiteOps for FakeOps {
+        fn create<'a>(
+            &'a self,
+            new: NewSite,
+            wp: Option<crate::core::wordpress::InstallOptions>,
+            blueprint_id: Option<String>,
+            ownership: Ownership,
+        ) -> OpFuture<'a, std::result::Result<Site, crate::commands::sites::CreateFailure>> {
+            let site = test_site("11111111-2222-4333-8444-555555555555", &new.domain, SiteOrigin::User);
+            self.created.lock().unwrap().push((new, wp, blueprint_id, ownership));
+            Box::pin(async move { Ok(site) })
+        }
+        fn delete<'a>(&'a self, id: String) -> OpFuture<'a, Result<()>> {
+            self.deleted.lock().unwrap().push(id);
+            Box::pin(async { Ok(()) })
+        }
+        fn multisite_convert<'a>(&'a self, id: String, mode: String) -> OpFuture<'a, Result<()>> {
+            self.converted.lock().unwrap().push((id, mode));
+            Box::pin(async { Ok(()) })
+        }
+    }
+
+    fn switch_on(state: &AppState) {
+        let conn = state.db.lock().unwrap();
+        store::set_setting(&conn, crate::mcp_server::MCP_SITES_ENABLED_KEY, "true").unwrap();
+    }
+
+    /// A default PHP version, so a create without `php` can resolve one — the
+    /// SHAPE step runs before the switch is consulted, so this is seeded first.
+    fn seed_php(state: &AppState) {
+        let conn = state.db.lock().unwrap();
+        conn.execute(
+            "INSERT OR REPLACE INTO php_versions (minor, fpm_port, installed, is_default) VALUES ('8.3', 19083, 1, 1)",
+            [],
+        )
+        .unwrap();
+    }
+
+    fn asks(state: &AppState) -> Vec<crate::core::agent_grants::GrantRequest> {
+        state.agent_site_requests.lock().unwrap().list().to_vec()
+    }
+
+    /// **`site_create` refuses a bad request on its shape before asking for
+    /// anything, asks for `manage` on rexenv itself when the shape is fine,
+    /// and — granted — runs the app's own create as the USER's site, returning
+    /// the admin credentials once.**
+    #[tokio::test]
+    async fn site_create_refuses_shape_before_the_gate_and_asks_after_it() {
+        let state = app_state();
+        seed_php(&state);
+        let ops = FakeOps::default();
+        let acted = super::super::feed::ActedTarget::default();
+        let ctx = UserCtx::new(&state, &ops, "claude-code");
+        let run = |args: Value| {
+            let acted = &acted;
+            async move { site_create(ctx, &args, acted).await }
+        };
+        let ok_args = json!({ "name": "Shop", "domain": "Shop.rex", "type": "wordpress" });
+
+        // The switch is off: refused by name, before anything else.
+        let err = run(ok_args.clone()).await.unwrap_err().to_string();
+        assert!(err.contains(crate::mcp_server::SITES_TOGGLE_LABEL), "{err}");
+        assert!(asks(&state).is_empty(), "a switched-off surface records no ask");
+
+        switch_on(&state);
+        // SHAPE refusals need no permission and record no ask.
+        for (args, expect) in [
+            (json!({ "name": "x", "domain": "x.rex", "type": "drupal" }), "not a site type"),
+            (json!({ "name": "x", "domain": "x.rex", "type": "php", "multisite": "subdomain" }), "only applies to a `wordpress`"),
+            (json!({ "name": "x", "domain": "x.rex", "type": "wordpress", "starter_db": true }), "only applies to a `php`"),
+            (json!({ "name": "x", "domain": "x.rex", "type": "laravel", "wp": {} }), "only apply to a `wordpress`"),
+            (json!({ "name": "x", "domain": "x.rex", "type": "php", "server": "iis" }), "not a web server"),
+            (json!({ "name": "x", "domain": "x.rex", "type": "php", "blueprint": "nope" }), "no blueprint called"),
+        ] {
+            let err = run(args).await.unwrap_err().to_string();
+            assert!(err.contains(expect), "expected {expect:?}: {err}");
+        }
+        assert!(asks(&state).is_empty(), "a shape refusal never asks the user for anything");
+
+        // A domain some site already answers on: refused, no ask.
+        {
+            let conn = state.db.lock().unwrap();
+            store::insert_site(&conn, &test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "taken.rex", SiteOrigin::User)).unwrap();
+        }
+        let err = run(json!({ "name": "x", "domain": "taken.rex", "type": "php" })).await.unwrap_err().to_string();
+        assert!(err.contains("already reaches"), "{err}");
+        assert!(asks(&state).is_empty());
+
+        // Good shape, no grant: refused with the place consent lives, and the
+        // ask is recorded — stack-level, `manage`, naming the domain.
+        let err = run(ok_args.clone()).await.unwrap_err().to_string();
+        assert!(err.contains("Site access") && err.contains("`manage`"), "{err}");
+        let a = asks(&state);
+        assert_eq!(a.len(), 1);
+        assert_eq!(a[0].site_id, None, "creating a site is a permission on rexenv itself");
+        assert_eq!(a[0].scope, Scope::Manage);
+        assert!(a[0].wanted.contains("shop.rex") && a[0].wanted.contains("wordpress"), "{}", a[0].wanted);
+        assert!(ops.created.lock().unwrap().is_empty(), "nothing ran");
+
+        // Granted: the app's create runs, as the USER's site, with the shape
+        // the agent asked for and nothing it did not.
+        {
+            let conn = state.db.lock().unwrap();
+            store::grant_agent_site(&conn, "g1", None, "claude-code", "manage", 7, false, false).unwrap();
+        }
+        let v = run(json!({ "name": "Shop", "domain": "Shop.rex", "type": "wordpress", "php": "8.2", "server": "frankenphp",
+                            "wp": { "admin_user": "owner" } })).await.unwrap();
+        {
+            let created = ops.created.lock().unwrap();
+            assert_eq!(created.len(), 1);
+            let (new, wp, bp, ownership) = &created[0];
+            assert_eq!(new.domain, "shop.rex", "lower-cased on the way in");
+            assert_eq!(new.site_type, SiteType::Wordpress);
+            assert_eq!(new.php_version, "8.2");
+            assert_eq!(new.web_server, WebServer::Frankenphp);
+            assert!(new.path.is_empty() && new.git_url.is_empty(), "never a link, never a clone");
+            assert_eq!(wp.as_ref().map(|w| w.admin_user.as_str()), Some("owner"));
+            assert_eq!(*bp, None);
+            assert!(matches!(ownership, Ownership::UserByAgent { client } if client == "claude-code"));
+        }
+        // The reply: the site, its url, the credentials ONCE (the resolved
+        // defaults — the same function the job uses), and no consent note
+        // because a person clicked.
+        assert_eq!(v["domain"], "shop.rex");
+        assert_eq!(v["url"], "https://shop.rex");
+        assert_eq!(v["admin"]["user"], "owner");
+        assert_eq!(v["admin"]["password"], crate::core::wordpress::DEFAULT_ADMIN);
+        assert!(v["admin"]["note"].as_str().unwrap().contains("Shown once"));
+        assert!(v.get("consent").is_none());
+        assert!(v.get("multisite").is_none());
+        assert_eq!(acted.take().as_deref(), Some("11111111-2222-4333-8444-555555555555"), "the feed names what was made");
+        assert!(asks(&state).is_empty(), "the grant answered the ask");
+
+        // A blank PHP site: no `wp`, no admin block; `multisite` runs the
+        // SECOND operation and reports it in the reply.
+        let v = run(json!({ "name": "Net", "domain": "net.rex", "type": "wordpress", "multisite": "subdirectory" })).await.unwrap();
+        assert_eq!(ops.converted.lock().unwrap().as_slice(), &[("11111111-2222-4333-8444-555555555555".to_string(), "subdirectory".to_string())]);
+        assert!(v["multisite"].as_str().unwrap().contains("subdirectory"));
+        let v = run(json!({ "name": "Blank", "domain": "blank.rex", "type": "php", "starter_db": true })).await.unwrap();
+        assert!(v.get("admin").is_none(), "no credentials for a site with no WordPress");
+        let created = ops.created.lock().unwrap();
+        let (new, wp, _, _) = created.last().unwrap();
+        assert!(new.starter_db && wp.is_none());
+        drop(created);
+    }
+
+    /// **`site_delete` needs `destroy` — a `manage` grant does not reach it —
+    /// refuses the agent's own scratch site, and runs the app's full delete.**
+    #[tokio::test]
+    async fn site_delete_needs_destroy_and_refuses_the_agents_own_scratch_site() {
+        let state = app_state();
+        switch_on(&state);
+        let ops = FakeOps::default();
+        let acted = super::super::feed::ActedTarget::default();
+        let ctx = UserCtx::new(&state, &ops, "claude-code");
+        let mine = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "mine.rex", SiteOrigin::User);
+        let theirs = test_site("c58e0a41-7d2f-4b19-93a6-6e1c5d8f0a24", "probe.scratch.rex", SiteOrigin::Agent);
+        {
+            let conn = state.db.lock().unwrap();
+            store::insert_site(&conn, &mine).unwrap();
+            store::insert_site(&conn, &theirs).unwrap();
+            store::grant_agent_site(&conn, "g1", Some(&mine.id), "claude-code", "manage", 7, false, false).unwrap();
+        }
+        let err = site_delete(ctx, &json!({ "site_id": mine.id }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("`destroy`"), "a manage grant must not reach a delete: {err}");
+        let a = asks(&state);
+        assert_eq!(a.len(), 1);
+        assert_eq!((a[0].site_id.as_deref(), a[0].scope), (Some(mine.id.as_str()), Scope::Destroy));
+        assert!(ops.deleted.lock().unwrap().is_empty());
+
+        // The scratch site: refused before the gate, scratch tools named.
+        let err = site_delete(ctx, &json!({ "site_id": theirs.id }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("scratch_delete_site"), "{err}");
+
+        // A session-long destroy grant: the app's delete runs, the feed names it.
+        {
+            let conn = state.db.lock().unwrap();
+            store::grant_agent_site(&conn, "g2", Some(&mine.id), "claude-code", "destroy", 1, false, true).unwrap();
+        }
+        let v = site_delete(ctx, &json!({ "site_id": mine.id }), &acted).await.unwrap();
+        assert_eq!(v["deleted"], true);
+        assert_eq!(v["domain"], "mine.rex");
+        assert_eq!(ops.deleted.lock().unwrap().as_slice(), std::slice::from_ref(&mine.id));
+        assert_eq!(acted.take().as_deref(), Some(mine.id.as_str()));
     }
 }
