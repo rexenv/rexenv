@@ -2100,6 +2100,18 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     printed `?` for identifier tokens (`_`/`.` now fold, #222); the agent view's
     `targetLabel` was never resolved (#489); the `--path` refusal said "scratch site"
     on the user's tool; the stack-target refusal said "changes" for a read.
+    ✓ **Live run, rounds 2–3 (same day):** destroy (session) → `wp_plugin delete hello`
+    ran, `wp_user delete` refused without the posts decision then ran with it (#446 fork);
+    **SMOKE 36 whole:** `stack stop` → macOS dialog cancelled → "Administrator permission
+    was cancelled", stack up; password → 0 running; `start` → 12 running; **SMOKE 46:**
+    `migrate:status` + `tinker` on `hisab-counter.rex`; **SMOKE 47:** `composer_link` →
+    symlink on disk, live edit seen through `tinker --execute`, `~` refused with
+    `composer.json` byte-identical. Two more fixes: `migrate:status` summarised as nothing
+    (colon folds now) and Composer's log located the source (labelled `<source>`); and a
+    WRONG claim caught before it was run — `--no-interaction` does not guard `db:wipe`
+    locally (ConfirmableTrait asks only in production). Still owed: SMOKE 26 (quit/relaunch
+    kills session grants), 38 (share — outward-facing, not run without a yes), 43 Cursor,
+    44, 45.
 - [ ] **MCP server — EVERY PLANNED MILESTONE IS SHIPPED (M1, M2a, M2b, M3).** Header
   corrected twice, and the second time is the instructive one. 21 Aug 2026: it had read
   "building M2a → M2b → M3" for eight days after both were done. 25 Aug 2026: it read
