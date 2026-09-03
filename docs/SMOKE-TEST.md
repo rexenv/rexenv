@@ -1084,6 +1084,36 @@ stack running, at least one of your own sites. Keep Settings → AI agents visib
   shared / refused) and how many sites share the pool; with `pool: true` it names them.
   **Tell:** the reply carries a local log path or a port number.
 
+### Parity P3 — WordPress on YOUR sites, and the inbox. Ships only if 32–35 pass.
+`mcp_user_site_check` proves the gates over the socket (a PHP site and a scratch site
+refused on the row, the log list without paths, the mail switch refusing by name). What
+no tier proves is a vetted command actually running on a real WordPress under a grant,
+the raw runner as YOU, and the inbox behind two consents. Set up: the stack up, one of
+your own WordPress sites with real content, mail switch OFF.
+- [ ] **32. Read, then manage, under the right prompts.** Ask: *"list the plugins on
+  `<your WP site>`"* → refused; the prompt says `read` for THAT site with "list its
+  plugins". Allow for this session → the list comes back. Ask it to *activate* one → a
+  SECOND prompt, `manage`, naming the plugin. Allow → activated (check wp-admin).
+  **Tell:** the `read` grant let the activation through (implication runs the wrong way).
+- [ ] **33. ⚠ Destroy is never a week, and never quiet.** Ask it to *"delete the plugin
+  `hello`"* → a `destroy` prompt with **Allow for this session** and **Don't allow** only.
+  Don't allow → plugin still there. Then ask for a live search-replace (`dry_run: false`)
+  → also `destroy`; a dry run must NOT prompt beyond `manage`. **Tell — a HOLD:** a 7-day
+  option on either prompt, or the live replace running under `manage`.
+- [ ] **34. The raw runner runs as you.** Ask: *"run `wp option get siteurl` on `<your
+  site>`"* → a `run` prompt, its own scope (the `manage` grant from 32 must NOT cover
+  it). Allow → the value comes back with `succeeded: true`. Ask for *"`wp plugin list
+  --path=/`"* → refused naming `--path`, no prompt. Ask for a user with no password →
+  the reply shows a generated password once; the feed row reads `user create` and never
+  the value.
+- [ ] **35. ⚠ The inbox is two consents.** Mail switch OFF: *"read my inbox"* → refused
+  naming **"Let agents read scratch-site mail"**, and NO prompt appears in Site access.
+  Turn the switch on, ask again → now a `read` prompt for **rexenv itself**. Read its
+  copy: it must say `read` on rexenv itself is the whole inbox. Don't allow → nothing
+  returned. Allow for this session → your messages come back; open a password-reset
+  mail's text → the `rexenv_login=` token is gone. **Tell — a HOLD:** the inbox readable
+  with the switch off, or a message body carrying a login token.
+
 ## Robustness (spot-check) — §2
 - [ ] Quit with another app on :443, relaunch → a clear "port in use" message (no crash).
 - [ ] Cancel an admin prompt once → a clear "permission cancelled, try again" state; retry works.

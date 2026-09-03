@@ -2028,7 +2028,12 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     ✓ P3.4 — **`site_logs` + `mail_inbox`**, ledger #484 (+#469/#473 amended: every scope
     has a stack-level meaning — the inbox is the stack-level `read` that must not be
     free). The mail toggle's copy extended, not trimmed. **P3's tools are complete (31
-    tools).** Owed: an L1 with a real WordPress (`stack` tier) and SMOKE §P3.
+    tools).**
+    ✓ P3.5 — the L1 `mcp_user_site_check` grew the P3 gating legs (PASS over the socket:
+    row refusals, the log list without paths, a stray key refused, the mail switch by
+    name) and SMOKE §P3 steps 32–35 are written (#480 amended). What no tier proves and
+    the human leg owns: a vetted command on a real WordPress under a grant, the raw
+    runner as the user, the inbox behind two consents.
   - [ ] **P4 — the stack**: `stack_status`/`stack(...)` incl. privileged start/stop (D10),
     `php_*`, `settings`, `tld`, `open`, `share` (D11), TTL/cap as settings.
   - [ ] **P5 — long tail**: `repo(...)`, `valet_import`, `connection_rewrite`, `db_import`,

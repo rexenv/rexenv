@@ -275,7 +275,8 @@ packaged run, recorded in `TODO.md` under the existing gates row. L4 as time all
 `mail_inbox`). Two things moved: `site_wp_run` is a separate name from the scratch `wp_run`
 because registries are disjoint by name; and every scope now has a stack-level meaning,
 because the inbox is a stack-level `read`. Owed: an L1 against a real WordPress (`stack`
-tier) and SMOKE §P3 — the vetted commands are the app's and proven as the app's.
+tier) — the vetted commands are the app's and proven as the app's; the sandbox L1
+covers the gates over the socket and SMOKE §P3 (32–35) is the human leg.
 **P2 SHIPPED 3 Sep 2026** (#475 `UserByAgent` + `site_create`, #476 `site_delete`, #477
 `site_configure`, #478 `site_restart`/`site_retry`, #479 the widened view + `site_info` +
 `site_inspect_folder`, #480 the L1). `job_status`/`job_cancel` moved to P6 with the

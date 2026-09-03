@@ -158,7 +158,7 @@ async fn main() {
     send(&mut stream, r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#);
     let v = read_reply(&mut reader);
     let names: Vec<&str> = v["result"]["tools"].as_array().expect("tools").iter().filter_map(|t| t["name"].as_str()).collect();
-    for expected in ["list_sites", "site_info", "site_inspect_folder", "scratch_create_site", "site_create", "site_delete", "site_configure", "site_restart", "site_retry"] {
+    for expected in ["list_sites", "site_info", "site_inspect_folder", "wp_org_search", "scratch_create_site", "site_create", "site_delete", "site_configure", "site_restart", "site_retry", "wp_info", "wp_plugin", "wp_theme", "wp_user", "wp_option", "wp_maintain", "wp_data", "wp_network", "site_wp_run", "site_logs", "mail_inbox"] {
         assert!(names.contains(&expected), "`{expected}` is not advertised: {names:?}");
     }
     let destructive = v["result"]["tools"].as_array().unwrap().iter().find(|t| t["name"] == "site_delete").unwrap();
@@ -267,6 +267,31 @@ async fn main() {
     assert_eq!(found["type"], "php");
     assert_eq!(std::fs::read_dir(&probe).unwrap().count(), 1, "inspect created something");
     println!("✓ site_info carries no path; site_inspect_folder refuses app-data and classifies a real folder");
+
+    // 6b) The P3 surfaces over the socket, on the grant from step 4 (manage ⊃
+    //     read): a WordPress tool on a PHP site is refused on the row BEFORE any
+    //     ask; on the scratch site it names wp_run; site_logs lists the site's
+    //     sources with no path and refuses a key outside them; mail_inbox is
+    //     refused by the mail switch's own label before any grant is consulted.
+    let asks_before = asks(&state).len();
+    let (err, text) = c("wp_plugin", json!({ "site_id": mine.id, "action": "list" }));
+    assert!(err && text.contains("not WordPress"), "{text}");
+    let (err, text) = c("wp_info", json!({ "site_id": theirs.id, "what": "info" }));
+    assert!(err && text.contains("wp_run"), "{text}");
+    assert_eq!(asks(&state).len(), asks_before, "row refusals ask for nothing");
+    let (err, text) = c("site_logs", json!({ "site_id": mine.id }));
+    assert!(!err, "site_logs under manage (⊃ read): {text}");
+    let logs: Value = serde_json::from_str(&text).unwrap();
+    let keys: Vec<String> = logs["result"]["sources"].as_array().unwrap().iter().map(|s| s["key"].as_str().unwrap().to_string()).collect();
+    assert!(!keys.is_empty() && !text.contains(&sandbox_root.display().to_string()), "sources listed without paths: {text}");
+    let (err, text) = c("site_logs", json!({ "site_id": mine.id, "source": "../../etc/passwd" }));
+    assert!(err && text.contains("not one of"), "{text}");
+    let (err, text) = c("site_logs", json!({ "site_id": mine.id, "source": keys[0] }));
+    assert!(!err, "a real key tails (the file may be empty in the sandbox): {text}");
+    let (err, text) = c("mail_inbox", json!({ "action": "list" }));
+    assert!(err && text.contains("Let agents read scratch-site mail"), "{text}");
+    assert_eq!(asks(&state).len(), asks_before, "the mail switch refuses before the grant is even asked for");
+    println!("✓ wp tools refuse a PHP/scratch site on the row; site_logs lists keys without paths and refuses a stray key; mail_inbox refuses by the mail switch's name");
 
     // 7) A session `destroy` grant: the app's full delete runs — the docroot is
     //    gone from disk and the row is gone.
