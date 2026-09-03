@@ -1951,6 +1951,11 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     `Granted<Scope>` witness, the third registry with the sweep walking a LIST, the
     sub-toggle + generalised grants card, the copy on the must-say list, the
     `run_privileged` ledger row re-scoped.
+    ✓ task 1 — **v43 `agent_site_grants`** + store helpers, ledger #468 (3 Sep 2026):
+    `site_id` NULLABLE for stack-level grants and matched with `IS` (an `=` would never
+    find one); scope matched by TEXT in the store so policy stays in core; `session`
+    recorded and `revoke_session_agent_site_grants` ends exactly those rows at launch.
+    One test, five grants, every key proven exact.
   - [ ] **P2 — site lifecycle**: `site_create` (WP/PHP/Laravel, blueprint, multisite,
     starter DB), `site_delete`, `site_configure`, `site_restart`/`site_retry`, `site_info`,
     `job_status`/`job_cancel`; L1 `mcp_user_site_check`; SMOKE §P2.

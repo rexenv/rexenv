@@ -1616,6 +1616,153 @@ pub fn revoke_agent_db_grant(conn: &Connection, id: &str) -> Result<bool> {
     Ok(n > 0)
 }
 
+// ── Agent SITE grants (v43 — MCP parity, `docs/PLAN-mcp-parity.md` §3) ────────
+
+/// One agent's recorded permission to act on ONE site (or, with `site_id`
+/// `None`, on the stack) within one scope.
+///
+/// `AgentDbGrant` generalised. Every field recorded, none derived; the scope is
+/// stored as the text the dialog showed and is interpreted ONLY by
+/// `core::agent_grants` — this layer never decides what a scope allows.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentSiteGrant {
+    pub id: String,
+    /// `None` = a stack-level grant (nothing to do with one site).
+    pub site_id: Option<String>,
+    pub client: String,
+    /// The scope's canonical name (`read` / `manage` / `destroy` / `run` /
+    /// `system`). Text here on purpose — see the v43 migration comment.
+    pub scope: String,
+    pub granted_at: String,
+    pub expires_at: String,
+    pub auto_granted: bool,
+    /// "Allow for this session": revoked by the launch sweep, so it cannot
+    /// outlive the process it was given in.
+    pub session: bool,
+    pub revoked_at: Option<String>,
+}
+
+/// Record a scope grant. `days` is added by the DATABASE, from its own clock —
+/// the same rule as `grant_agent_db`, for the same reason: the stored expiry and
+/// the stored `granted_at` cannot disagree by a process clock or a timezone.
+#[allow(clippy::too_many_arguments)]
+pub fn grant_agent_site(
+    conn: &Connection,
+    id: &str,
+    site_id: Option<&str>,
+    client: &str,
+    scope: &str,
+    days: u32,
+    auto_granted: bool,
+    session: bool,
+) -> Result<AgentSiteGrant> {
+    conn.execute(
+        "INSERT INTO agent_site_grants
+             (id, site_id, client, scope, granted_at, expires_at, auto_granted, session)
+         VALUES (?1, ?2, ?3, ?4, datetime('now'), datetime('now', ?5), ?6, ?7)",
+        rusqlite::params![id, site_id, client, scope, format!("+{days} days"), auto_granted, session],
+    )?;
+    get_agent_site_grant(conn, id)?
+        .ok_or_else(|| crate::error::Error::Other("grant vanished after insert".into()))
+}
+
+pub fn get_agent_site_grant(conn: &Connection, id: &str) -> Result<Option<AgentSiteGrant>> {
+    let mut st = conn.prepare(
+        "SELECT id, site_id, client, scope, granted_at, expires_at, revoked_at, auto_granted, session
+         FROM agent_site_grants WHERE id = ?1",
+    )?;
+    let mut rows = st.query([id])?;
+    match rows.next()? {
+        Some(r) => Ok(Some(AgentSiteGrant {
+            id: r.get(0)?,
+            site_id: r.get(1)?,
+            client: r.get(2)?,
+            scope: r.get(3)?,
+            granted_at: r.get(4)?,
+            expires_at: r.get(5)?,
+            revoked_at: r.get(6)?,
+            auto_granted: r.get::<_, i64>(7)? != 0,
+            session: r.get::<_, i64>(8)? != 0,
+        })),
+        None => Ok(None),
+    }
+}
+
+/// The grant that lets `client` act within `scope` on `site_id` (or on the
+/// stack, for `None`) RIGHT NOW, if there is one.
+///
+/// EXACT scope match, by text. Whether one scope implies another (a `destroy`
+/// grant covering a `manage` action) is a RULE, and rules live in
+/// `core::agent_grants`, which asks this function once per scope it accepts.
+/// Putting the implication here would make the store decide policy from a
+/// string, and "now" is the database's clock in SQL, as for the DB grant.
+/// `IS` rather than `=` on `site_id` so a NULL parameter matches NULL rows —
+/// with `=`, a stack-level grant could never be found.
+pub fn active_agent_site_grant(
+    conn: &Connection,
+    site_id: Option<&str>,
+    client: &str,
+    scope: &str,
+) -> Result<Option<AgentSiteGrant>> {
+    let mut st = conn.prepare(
+        "SELECT id FROM agent_site_grants
+         WHERE site_id IS ?1 AND client = ?2 AND scope = ?3
+           AND revoked_at IS NULL
+           AND expires_at > datetime('now')
+         ORDER BY granted_at DESC LIMIT 1",
+    )?;
+    let mut rows = st.query(rusqlite::params![site_id, client, scope])?;
+    match rows.next()? {
+        Some(r) => {
+            let id: String = r.get(0)?;
+            drop(rows);
+            get_agent_site_grant(conn, &id)
+        }
+        None => Ok(None),
+    }
+}
+
+/// Every scope grant for the UI — live, expired, revoked — newest first.
+pub fn list_agent_site_grants(conn: &Connection) -> Result<Vec<AgentSiteGrant>> {
+    let mut st = conn.prepare("SELECT id FROM agent_site_grants ORDER BY granted_at DESC")?;
+    let ids: Vec<String> =
+        st.query_map([], |r| r.get::<_, String>(0))?.collect::<rusqlite::Result<_>>()?;
+    let mut out = Vec::with_capacity(ids.len());
+    for id in ids {
+        if let Some(g) = get_agent_site_grant(conn, &id)? {
+            out.push(g);
+        }
+    }
+    Ok(out)
+}
+
+/// Revoke one scope grant. Idempotent; never moves a first revocation time.
+pub fn revoke_agent_site_grant(conn: &Connection, id: &str) -> Result<bool> {
+    let n = conn.execute(
+        "UPDATE agent_site_grants SET revoked_at = datetime('now')
+         WHERE id = ?1 AND revoked_at IS NULL",
+        [id],
+    )?;
+    Ok(n > 0)
+}
+
+/// End every "for this session" grant — what app launch runs, so a session
+/// grant cannot outlive the process it was given in. Returns how many it ended.
+///
+/// Revokes rather than deletes, like every other end of a grant: the row is the
+/// record that the access existed. Week-long grants are untouched — the
+/// `session = 1` clause is the whole predicate, and a sweep that took the
+/// others too would be the launch quietly un-deciding what the user decided.
+pub fn revoke_session_agent_site_grants(conn: &Connection) -> Result<usize> {
+    let n = conn.execute(
+        "UPDATE agent_site_grants SET revoked_at = datetime('now')
+         WHERE session = 1 AND revoked_at IS NULL",
+        [],
+    )?;
+    Ok(n)
+}
+
 pub fn list_blueprints(conn: &Connection) -> Result<Vec<Blueprint>> {
     let mut stmt =
         conn.prepare("SELECT id, name, spec FROM blueprints ORDER BY created_at DESC, name")?;
@@ -1735,6 +1882,96 @@ mod tests {
         conn.execute("PRAGMA foreign_keys = ON", []).unwrap();
         conn.execute("DELETE FROM sites WHERE id='s1'", []).unwrap();
         assert!(list_agent_db_grants(&conn).unwrap().is_empty(), "grants outlived their site");
+    }
+
+    /// **A scope grant is exact about site, client and scope; a stack-level grant
+    /// is findable; and a session grant ends at launch while a week-long one does
+    /// not.** (v43 — the parity foundation. Everything `#398` proved for the DB
+    /// grant is re-asserted here rather than assumed to carry over, because this
+    /// is a different table and the cascade, the clock and the idempotent revoke
+    /// each had to be written again.)
+    #[test]
+    fn a_site_grant_is_exact_about_its_three_keys_and_a_session_grant_dies_at_launch() {
+        let conn = db::open_in_memory().unwrap();
+        for (id, dom) in [("s1", "s.rex"), ("s2", "t.rex")] {
+            conn.execute(
+                "INSERT INTO sites (id, name, domain, type, status, php_version, web_server, ssl,
+                                    path, db_name, db_engine)
+                 VALUES (?1,'S',?2,'php','stopped','8.3','nginx',1,'/tmp/s','wp_s','mysql')",
+                rusqlite::params![id, dom],
+            )
+            .unwrap();
+        }
+        let find = |site: Option<&str>, client: &str, scope: &str| {
+            active_agent_site_grant(&conn, site, client, scope).unwrap().map(|g| g.id)
+        };
+
+        let live =
+            grant_agent_site(&conn, "g1", Some("s1"), "claude-code", "manage", 7, false, false).unwrap();
+        assert!(live.expires_at > live.granted_at);
+        assert_eq!(live.site_id.as_deref(), Some("s1"));
+        assert!(!live.session && !live.auto_granted && live.revoked_at.is_none());
+
+        // Exact on all three keys. The store does NOT know that `destroy` might
+        // imply `manage` — that is core's rule — so a different scope is simply
+        // absent here, and so are a different client and a different site.
+        assert_eq!(find(Some("s1"), "claude-code", "manage"), Some("g1".into()));
+        assert_eq!(find(Some("s1"), "claude-code", "read"), None, "scope is exact in the store");
+        assert_eq!(find(Some("s1"), "cursor", "manage"), None, "a grant is to ONE client");
+        assert_eq!(find(Some("s2"), "claude-code", "manage"), None, "…and about ONE site");
+        assert_eq!(find(None, "claude-code", "manage"), None, "a site grant is not a stack grant");
+
+        // A STACK-level grant: NULL site, and the lookup must find it — `=`
+        // would never match NULL and every stack tool would refuse forever.
+        grant_agent_site(&conn, "g2", None, "claude-code", "system", 7, false, false).unwrap();
+        assert_eq!(find(None, "claude-code", "system"), Some("g2".into()));
+        assert_eq!(find(Some("s1"), "claude-code", "system"), None, "a stack grant is not a site grant");
+
+        // EXPIRED: absent from the gate, present in the list.
+        grant_agent_site(&conn, "g3", Some("s1"), "old-agent", "read", 7, false, false).unwrap();
+        conn.execute(
+            "UPDATE agent_site_grants SET expires_at = datetime('now','-1 day') WHERE id='g3'",
+            [],
+        )
+        .unwrap();
+        assert_eq!(find(Some("s1"), "old-agent", "read"), None);
+        assert!(get_agent_site_grant(&conn, "g3").unwrap().is_some(), "the row is evidence, kept");
+
+        // SESSION grants end at launch; the week-long ones beside them do not.
+        grant_agent_site(&conn, "g4", Some("s2"), "claude-code", "destroy", 1, false, true).unwrap();
+        grant_agent_site(&conn, "g5", None, "claude-code", "run", 1, true, true).unwrap();
+        assert_eq!(find(Some("s2"), "claude-code", "destroy"), Some("g4".into()));
+        assert_eq!(revoke_session_agent_site_grants(&conn).unwrap(), 2, "exactly the two session rows");
+        assert_eq!(find(Some("s2"), "claude-code", "destroy"), None, "a session grant died at launch");
+        assert_eq!(find(None, "claude-code", "run"), None);
+        assert_eq!(find(Some("s1"), "claude-code", "manage"), Some("g1".into()), "the 7-day grant survived");
+        assert_eq!(find(None, "claude-code", "system"), Some("g2".into()));
+        assert_eq!(revoke_session_agent_site_grants(&conn).unwrap(), 0, "a second sweep finds nothing");
+        let g5 = get_agent_site_grant(&conn, "g5").unwrap().unwrap();
+        assert!(g5.session && g5.auto_granted, "both facts recorded, not inferred");
+
+        // REVOKED: gone from the gate at once, kept in the list, and a second
+        // revoke does not move the time the access actually stopped.
+        assert!(revoke_agent_site_grant(&conn, "g1").unwrap());
+        assert_eq!(find(Some("s1"), "claude-code", "manage"), None);
+        let first = get_agent_site_grant(&conn, "g1").unwrap().unwrap().revoked_at.unwrap();
+        assert!(!revoke_agent_site_grant(&conn, "g1").unwrap());
+        assert_eq!(get_agent_site_grant(&conn, "g1").unwrap().unwrap().revoked_at, Some(first));
+
+        assert_eq!(list_agent_site_grants(&conn).unwrap().len(), 5, "the list shows everything");
+
+        // Deleting a site cascades ITS grants and leaves the stack-level ones —
+        // a stack grant is not about the site, so the site's death is not its
+        // end.
+        conn.execute("PRAGMA foreign_keys = ON", []).unwrap();
+        conn.execute("DELETE FROM sites WHERE id='s1'", []).unwrap();
+        // Sorted: every row here was granted in the same second, so the
+        // newest-first order is a tie and asserting it would test SQLite's
+        // tie-breaking rather than the cascade.
+        let mut left: Vec<String> =
+            list_agent_site_grants(&conn).unwrap().into_iter().map(|g| g.id).collect();
+        left.sort();
+        assert_eq!(left, vec!["g2", "g4", "g5"], "s1's rows gone, s2's and the stack's kept");
     }
 
     /// Every column an upsert may write in its `DO UPDATE SET` list, per table.

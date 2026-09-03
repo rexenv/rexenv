@@ -633,6 +633,49 @@ const MIGRATIONS: &[&str] = &[
         domain  TEXT NOT NULL UNIQUE,
         PRIMARY KEY (site_id, domain)
     );",
+    // v43 — an agent's permission to ACT on the user's own sites, or on the
+    // stack, by SCOPE (MCP parity, `docs/PLAN-mcp-parity.md` §3).
+    //
+    // v38's `agent_db_grants` generalised, not replaced: that table provisions a
+    // database ACCOUNT per grant, which a scope row does not, so the two stay
+    // apart and the DB grant keeps its own drop-the-principal lifecycle.
+    // Everything v38 argued still holds here — a grant is a DECISION and the only
+    // honest source for a decision is the row it was written into; `expires_at`
+    // is stored on the database's clock so the dialog's "expires in 7 days" is a
+    // fact and not a recomputation; `client` is part of the identity because a
+    // grant to one agent is not a grant to the next one that connects; and
+    // `revoked_at` is kept rather than DELETEd because a revoked grant is the
+    // answer to "what could that agent do, and until when".
+    //
+    // What is NEW, and why each column exists:
+    //   - `site_id` is NULLABLE. NULL = a grant about the STACK rather than a
+    //     site (start it, install a PHP version, change a setting). A sentinel
+    //     id would have needed a sites row that is not a site, and a second
+    //     table would have split "what did I allow this agent" across two lists.
+    //   - `scope` is the closed set the dialog names (read / manage / destroy /
+    //     run / system). It is TEXT with no CHECK: the set is ruled in
+    //     `core::agent_grants`, where the gate reads it, and a second copy in SQL
+    //     would be one more place for the two to disagree. An unknown scope reads
+    //     as NO in core, never as "some scope".
+    //   - `session` marks the "Allow for this session" answer: the row still
+    //     carries a real `expires_at` (a ceiling, so it dies even if nothing
+    //     sweeps), and a launch sweep revokes every session row, which is what
+    //     "this session" means — the grant does not survive the process that
+    //     asked for it. Recorded because a user reading the list later must be
+    //     able to tell a week-long allow from an afternoon's one.
+    //   - `auto_granted`, as v40: a click and a toggle are different facts.
+    "CREATE TABLE agent_site_grants (
+        id           TEXT PRIMARY KEY,
+        site_id      TEXT REFERENCES sites(id) ON DELETE CASCADE,
+        client       TEXT NOT NULL,
+        scope        TEXT NOT NULL,
+        granted_at   TEXT NOT NULL,
+        expires_at   TEXT NOT NULL,
+        revoked_at   TEXT,
+        auto_granted INTEGER NOT NULL DEFAULT 0,
+        session      INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX idx_agent_site_grants_site ON agent_site_grants(site_id);",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.
