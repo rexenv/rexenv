@@ -105,12 +105,26 @@ pub fn resolver_for(minor: &str) -> Option<CurlResolver> {
 pub fn ares_minors_in_use(sites: &[Site]) -> Vec<String> {
     let mut minors: Vec<String> = sites
         .iter()
-        .map(|s| crate::core::php::minor_of(&s.php_version))
+        .map(|s| crate::core::php::minor_of(&effective_php_version(s)))
         .filter(|m| resolver_for(m) == Some(CurlResolver::Ares))
         .collect();
     minors.sort();
     minors.dedup();
     minors
+}
+
+/// The PHP that actually RUNS a site: a FrankenPHP site runs the server's
+/// embedded PHP, whatever its stored `php_version` says (that column is
+/// deliberately left untouched — ledger #333). Attributing exposure by the
+/// stored version alone called a FrankenPHP site on 7.4 unexposed while its
+/// interpreter was 8.5, and counted one on 8.3 against a build it never runs.
+pub fn effective_php_version(site: &Site) -> String {
+    match site.web_server {
+        crate::state::models::WebServer::Frankenphp => {
+            crate::core::binaries::FRANKENPHP_EMBEDDED_PHP.to_string()
+        }
+        _ => site.php_version.clone(),
+    }
 }
 
 /// The auto-managed mu-plugin. No placeholders: it is byte-identical for every

@@ -1774,7 +1774,11 @@ where
                 let minors = crate::core::wp_dns::ares_minors_in_use(&sites);
                 let count = sites
                     .iter()
-                    .filter(|s| minors.contains(&crate::core::php::minor_of(&s.php_version)))
+                    .filter(|s| {
+                        minors.contains(&crate::core::php::minor_of(
+                            &crate::core::wp_dns::effective_php_version(s),
+                        ))
+                    })
                     .count();
                 (minors, count)
             };

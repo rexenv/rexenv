@@ -3685,6 +3685,7 @@ function useUpdateStream<T>(
   run: (names: string[]) => Promise<T>,
   onDone: (result: T, names: string[]) => void,
 ) {
+  const qc = useQueryClient();
   // `updating` is the argv order we sent, which is the order wp-cli works in.
   const [updating, setUpdating] = useState<string[]>([]);
   const [progress, setProgress] = useState<WpUpdateProgress | null>(null);
@@ -3723,6 +3724,11 @@ function useUpdateStream<T>(
     onSettled: () => {
       setUpdating([]);
       setProgress(null);
+      // A PARTIAL failure ("Only updated 2 of 3 plugins") lands in onError,
+      // and the two that did update kept their old version and their badge
+      // until a manual Refresh. A re-read, never an optimistic write: the
+      // cache says what wp-cli says now.
+      void qc.invalidateQueries({ queryKey: [`wp-${channel}`, siteId] });
     },
   });
   /** Where one item is in the run — null when it isn't part of it. Items

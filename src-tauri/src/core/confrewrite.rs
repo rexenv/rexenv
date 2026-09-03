@@ -71,10 +71,28 @@ pub fn atomic_write_preserving_mode(path: &Path, content: &str) -> Result<()> {
         .ok_or_else(|| Error::Other(format!("config path has no file name: {path:?}")))?;
     let tmp = dir.join(format!(".{base}.rexenv-tmp"));
 
-    std::fs::write(&tmp, content)?;
+    // The temp is BORN owner-only and widened to their file's mode after the
+    // content is in it — never the other way round: `fs::write` creates at
+    // 0666 & ~umask with the database password already inside, and a chmod
+    // afterwards leaves a world-readable window (and, when the original had
+    // vanished, a world-readable file renamed into place for good).
+    {
+        use std::io::Write;
+        let mut opts = std::fs::OpenOptions::new();
+        opts.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            opts.mode(0o600);
+        }
+        let mut f = opts.open(&tmp)?;
+        f.write_all(content.as_bytes())?;
+        f.sync_all()?;
+    }
     // Their file's mode survives the inode swap (a config chmodded 0600 must
     // not come back 0644). If the original vanished mid-flight the rename
-    // below recreates it; default temp-file bits are the only honest answer.
+    // below recreates it — owner-only, which for a file holding credentials
+    // is the honest default.
     if let Ok(meta) = std::fs::metadata(path) {
         let _ = std::fs::set_permissions(&tmp, meta.permissions());
     }

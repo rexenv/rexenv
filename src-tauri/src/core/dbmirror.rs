@@ -78,6 +78,13 @@ pub const USER_NAME_MAX: usize = 32;
 /// ALTER USER 'u'@'h' IDENTIFIED BY 'p';   -- converge a changed password
 /// GRANT ALL PRIVILEGES ON `db`.* TO 'u'@'h';   -- db wildcard-escaped (grant_db_object)
 /// ```
+/// Whether `user` is an account rexenv will never create or alter (root and
+/// the engine's own). The rule `mirror` applies — exposed so a caller can
+/// RECORD the user it is about to create before creating it.
+pub fn is_reserved(user: &str) -> bool {
+    RESERVED_USERS.iter().any(|r| r.eq_ignore_ascii_case(user))
+}
+
 pub fn mirror(
     client: &SqlClient,
     port: u16,
@@ -85,7 +92,7 @@ pub fn mirror(
     user: &str,
     password: &str,
 ) -> Result<MirrorOutcome> {
-    if RESERVED_USERS.iter().any(|r| r.eq_ignore_ascii_case(user)) {
+    if is_reserved(user) {
         return Ok(MirrorOutcome::RefusedReserved { user: user.to_string() });
     }
     validate_db_name(db)?;

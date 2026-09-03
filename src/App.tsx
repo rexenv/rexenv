@@ -103,10 +103,15 @@ function TrayRouteWatch() {
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     let disposed = false;
-    onTrayRoute((path) => navigate(path)).then((f) => {
-      if (disposed) f();
-      else unlisten = f;
-    });
+    onTrayRoute((path) => navigate(path))
+      .then((f) => {
+        if (disposed) f();
+        else unlisten = f;
+      })
+      // Outside the app shell the event API rejects; an unhandled rejection
+      // is a console error on every /dev route for a listener that has
+      // nothing to listen to there.
+      .catch(() => {});
     return () => {
       disposed = true;
       unlisten?.();

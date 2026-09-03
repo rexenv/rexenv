@@ -17,7 +17,6 @@
 use crate::core::db::DbEngine;
 use crate::core::dbcompat::{self, Verdict};
 use crate::core::dbimport::{DbSiteStatus, Driver};
-use crate::core::dbmirror::MirrorOutcome;
 use crate::core::dbrestore::FeedOutcome;
 use crate::core::dbsource::{Identity, Vendor};
 use crate::core::{self, dbdump, dbimport, dbmirror, dbrestore, dbsource};
@@ -244,7 +243,18 @@ pub async fn db_import_start<R: tauri::Runtime>(
             result: None,
         }),
     });
-    jobs.jobs.lock().expect("db import jobs lock").insert(id, entry.clone());
+    {
+        // One settled job per site: the map was never pruned, so a retry's
+        // `db_import_state` lookup (a `find` over `values()`) could bind the
+        // card to the OLD settled job — its old error, a `kept_artifact` the
+        // new run already deleted — and, being settled, never subscribe.
+        let mut map = jobs.jobs.lock().expect("db import jobs lock");
+        map.retain(|_, e| {
+            e.running.load(Ordering::SeqCst)
+                || e.state.lock().map(|s| s.site_id != site.id).unwrap_or(true)
+        });
+        map.insert(id, entry.clone());
+    }
     let _ = std::fs::write(&entry.log_path, "");
 
     let worker_app = app.clone();
@@ -291,6 +301,12 @@ async fn run<R: tauri::Runtime>(
         Error::Other(DbSiteStatus::NeedsAttention { reason, source }.message())
     })?;
     log_line(app, entry, &format!("source: {:?}", conn_info.info()));
+    // The target name is decided (and validated) HERE, before the dump: the
+    // first version validated it at prepare_target, after minutes and
+    // gigabytes of dump, and `DB_NAME=my-site` — routine under Valet and Herd,
+    // legal MySQL when backticked — burned the whole dump to die on
+    // `invalid database name`.
+    crate::core::database::validate_db_name(&target_db_name(&conn_info.database, None))?;
     match conn_info.driver {
         Driver::MysqlFamily => {}
         other => {
@@ -499,17 +515,18 @@ async fn run<R: tauri::Runtime>(
     emit(app, entry);
     // D1: keep their name when free; disambiguate when another SITE owns it;
     // typed confirmation when an unclaimed database of that name exists.
-    let mut name = conn_info.database.clone();
+    let mut name = target_db_name(&conn_info.database, None);
+    if name != conn_info.database {
+        log_line(app, entry, &format!(
+            "`{}` is not a name rexenv's engine can hold as-is — importing as `{name}`",
+            conn_info.database
+        ));
+    }
     {
         let conn = lock(state)?;
         if let Some(other) = crate::state::store::site_with_db_name(&conn, &name)? {
             if other.id != site.id {
-                let slug: String = site
-                    .domain
-                    .chars()
-                    .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
-                    .collect();
-                name = format!("{name}_{slug}");
+                name = target_db_name(&conn_info.database, Some(&site.domain));
                 log_line(app, entry, &format!(
                     "`{}` belongs to {} — importing as `{name}` instead",
                     conn_info.database, other.domain
@@ -574,17 +591,20 @@ async fn run<R: tauri::Runtime>(
     log_line(app, entry, &format!("fed {fed} bytes"));
     let verified = dbrestore::verify_complete(&tgt_client, target_engine.port(), &name, &manifest)?;
 
-    // ── settle: finish, mirror, record the ONE fact, drop the artifact ──────
+    // ── settle: finish, RECORD, then mirror, drop the artifact ─────────────
+    //
+    // Record-first, like the Stage 3 rewrite (`rewrite.rs`) and for the same
+    // reason: the mirror creates an account holding the site's real password,
+    // and a failure between creating it and recording it (a poisoned lock, a
+    // sqlite error, a site deleted mid-import) left a credentialed account
+    // nothing named — site delete drops users strictly from the record, so it
+    // was never cleaned up and needed a manual `DROP USER`. The record now
+    // names the user it is ABOUT to create; a mirror that then fails leaves a
+    // record over-claiming a user that does not exist, which the delete's
+    // `DROP USER IF EXISTS` tolerates — the safe direction.
     enter_phase(entry, 4);
     emit(app, entry);
-    let mirror_outcome = dbmirror::mirror(
-        &tgt_client,
-        target_engine.port(),
-        &name,
-        &conn_info.user,
-        &conn_info.password,
-    )?;
-    log_line(app, entry, &mirror_outcome.message(&name));
+    let intended_user = (!dbmirror::is_reserved(&conn_info.user)).then(|| conn_info.user.clone());
     let record = {
         let conn = lock(state)?;
         dbrestore::finish(&conn, &site.id, &name, &verified)?;
@@ -600,10 +620,7 @@ async fn run<R: tauri::Runtime>(
                 Some(v) => format!("{} {} at {}:{}", source_vendor.label(), v, conn_info.host, conn_info.port),
                 None => format!("{}:{}", conn_info.host, conn_info.port),
             },
-            mirrored_user: match &mirror_outcome {
-                MirrorOutcome::Mirrored { user } => Some(user.clone()),
-                MirrorOutcome::RefusedReserved { .. } => None,
-            },
+            mirrored_user: intended_user,
             // From the MANIFEST, not the local variable: the manifest is what
             // the artifact actually was, and a re-import from an existing
             // artifact settles this record without re-running the probe.
@@ -611,12 +628,63 @@ async fn run<R: tauri::Runtime>(
         };
         crate::state::store::upsert_db_import(&conn, &new)?
     };
+    let mirror_outcome = dbmirror::mirror(
+        &tgt_client,
+        target_engine.port(),
+        &name,
+        &conn_info.user,
+        &conn_info.password,
+    )?;
+    log_line(app, entry, &mirror_outcome.message(&name));
     // D5: the artifact is deleted when the job settles ok.
     let _ = std::fs::remove_file(&artifact);
     let _ = std::fs::remove_file(dbdump::manifest_path(&dest_dir, &site.domain));
     settle(entry, "ok", None, None, Some(record));
     log_line(app, entry, "imported — the site still reads its old database (see the summary)");
     Ok(())
+}
+
+/// The name the imported database gets on rexenv's engine: theirs, with every
+/// character the engine cannot hold unquoted mapped to `_`; and when another
+/// site already owns that name, suffixed with the site's domain slug — CAPPED
+/// at the identifier budget with the FNV disambiguation `dedicated_user_name`
+/// uses, because `<name>_<full domain>` ran past 64 characters and died as
+/// MySQL error 1059 after the dump.
+pub(crate) fn target_db_name(source: &str, disambiguate_with: Option<&str>) -> String {
+    let clean = |s: &str| -> String {
+        s.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect()
+    };
+    let base = clean(source);
+    let base = if base.is_empty() { "imported".to_string() } else { base };
+    let Some(domain) = disambiguate_with else { return base };
+    let full = format!("{base}_{}", clean(domain));
+    let max = crate::core::wordpress::DB_NAME_MAX;
+    if full.len() <= max {
+        return full;
+    }
+    let suffix = format!("{:08x}", crate::core::wordpress::fnv1a(full.as_bytes()));
+    let keep = max - 1 - suffix.len();
+    let head: String = full.chars().take(keep).collect();
+    format!("{head}_{suffix}")
+}
+
+#[cfg(test)]
+mod target_name_tests {
+    use super::*;
+
+    #[test]
+    fn the_target_name_is_engine_safe_and_capped() {
+        assert_eq!(target_db_name("my-site", None), "my_site");
+        assert_eq!(target_db_name("acme.local", None), "acme_local");
+        assert_eq!(target_db_name("wp", Some("acme.test")), "wp_acme_test");
+        let long = target_db_name(&"d".repeat(40), Some(&format!("{}.test", "x".repeat(40))));
+        assert!(long.len() <= crate::core::wordpress::DB_NAME_MAX, "{long}");
+        assert!(crate::core::database::validate_db_name(&long).is_ok());
+        // Two long names that truncate to the same head stay distinct.
+        let a = target_db_name(&"d".repeat(40), Some(&format!("{}a.test", "x".repeat(40))));
+        let b = target_db_name(&"d".repeat(40), Some(&format!("{}b.test", "x".repeat(40))));
+        assert_ne!(a, b);
+    }
 }
 
 /// Latest job state for a site (the SiteDetail card re-attaches on mount).

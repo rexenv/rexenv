@@ -1745,7 +1745,7 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
 - [ ] **PUBLISH-TESTING §B** — uninstall removes the root :443 daemon (live launchd).
 - [ ] **PUBLISH-TESTING §D** — `--zap` ONLY; everything else has now run four times.
   **Re-scoped 21 Aug 2026**: the row below pins the v0.1.0 cask hash, but the cask has
-  bumped cleanly through 0.1.1, 0.2.0 and 0.3.0 since, so the install half is not "half
+  bumped cleanly through 0.1.1, 0.2.0, 0.3.0 and 0.4.0 since, so the install half is not "half
   done from August 12" — it is the routine path and `--zap` is the single step that has
   never run anywhere. Original text, still accurate about what was proven:
   full tap install dry-run. **Half done 12 Aug 2026**:

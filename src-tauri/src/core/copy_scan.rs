@@ -68,7 +68,21 @@ pub(crate) fn production_lines(src: &str) -> Vec<(usize, &str)> {
     let mut depth: Option<i32> = None;
     for (i, line) in src.lines().enumerate() {
         match depth.as_mut() {
-            None if line.trim_start().starts_with("#[cfg(test)]") => depth = Some(0),
+            // A one-line item under the attribute — `#[cfg(test)] pub(crate)
+            // mod copy_scan;` — has no brace to close, and the first version
+            // waited for a `}` that never came: everything after line 15 of
+            // `core/mod.rs` was dropped from every tree-wide scan. An item
+            // that ends in `;` with no `{` is over on its own line.
+            None if line.trim_start().starts_with("#[cfg(test)]") => {
+                let rest = line.trim_start().trim_start_matches("#[cfg(test)]");
+                if !rest.contains(';') || rest.contains('{') {
+                    depth = Some(0);
+                }
+            }
+            Some(0) if line.contains(';') && !line.contains('{') && !line.contains('}') => {
+                // The item after the attribute was a one-liner on its own line.
+                depth = None;
+            }
             None => out.push((i + 1, line)),
             Some(d) => {
                 *d += line.matches('{').count() as i32 - line.matches('}').count() as i32;
@@ -244,6 +258,7 @@ const LINK = "https://example.test/a//b";
             ("rex_ro_agentprobe_rex", "a database name from a live run"),
             ("rex_ro_photocontest_test", "a database name from a live run"),
             ("rex_agent_mailfix_scratch_rex", "a database name from a live run"),
+            ("tray_lifetime_check", "the L1 example that was measured AWAY, cited as the plan not written (#436)"),
         ];
 
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -298,7 +313,13 @@ const LINK = "https://example.test/a//b";
             let row = line.split('|').nth(1).unwrap_or("?").trim().to_string();
             let verdict = line.rsplit(" | ").next().unwrap_or_default();
             for cite in verdict.split('`').skip(1).step_by(2) {
-                let looks_like_a_test = cite.matches('_').count() >= 3
+                // Three underscores, OR the `_check` suffix every live-check
+                // example carries: `tray_lifetime_check` — cited by a row for
+                // an example that was never written — has two underscores and
+                // slipped through the count alone. (A plain two-underscore
+                // rule flags thirteen real identifiers: std functions, MCP
+                // tool names, ini keys.)
+                let looks_like_a_test = (cite.matches('_').count() >= 3 || cite.ends_with("_check"))
                     && cite
                         .chars()
                         .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_');
