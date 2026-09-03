@@ -673,7 +673,7 @@ async fn fulfill_tool_call<Rt: tauri::Runtime>(
         }
         Tool::User(t) => {
             let ops = AppSiteCreator { app: app.clone() };
-            (t.handler)(user_sites::UserCtx::new(state.inner(), &ops, &ops, &ops, &ops, &ops, &ops, client), args, acted).await
+            (t.handler)(user_sites::UserCtx::new(state.inner(), &ops, &ops, &ops, &ops, &ops, &ops, &ops, client), args, acted).await
         }
     };
     match outcome {
@@ -1325,6 +1325,94 @@ impl<Rt: tauri::Runtime> user_sites::RepoOps for AppSiteCreator<Rt> {
     }
 }
 
+impl<Rt: tauri::Runtime> user_sites::ImportOps for AppSiteCreator<Rt> {
+    fn valet_scan<'a>(&'a self) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::valet_import::ImportScan>> {
+        Box::pin(async move { crate::commands::valet_import::scan_valet_import(self.state()?) })
+    }
+    fn valet_drift<'a>(&'a self) -> user_sites::OpFuture<'a, crate::error::Result<Vec<String>>> {
+        Box::pin(async move { crate::commands::valet_import::resolver_drift(self.state()?) })
+    }
+    fn valet_run<'a>(&'a self, request: crate::commands::valet_import::ImportRequest) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::valet_import::ImportResult>> {
+        Box::pin(async move {
+            use tauri::Manager;
+            let import_jobs = self.app.try_state::<crate::commands::valet_import::ImportJobs>().ok_or_else(|| crate::error::Error::Other("rexenv's import jobs are not ready".into()))?;
+            let db_jobs = self.app.try_state::<crate::commands::db_import::DbImportJobs>().ok_or_else(|| crate::error::Error::Other("rexenv's import jobs are not ready".into()))?;
+            crate::commands::valet_import::valet_import_run(self.app.clone(), self.state()?, import_jobs, self.jobs()?, db_jobs, request).await
+        })
+    }
+    fn valet_cancel<'a>(&'a self) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move {
+            use tauri::Manager;
+            let import_jobs = self.app.try_state::<crate::commands::valet_import::ImportJobs>().ok_or_else(|| crate::error::Error::Other("rexenv's import jobs are not ready".into()))?;
+            crate::commands::valet_import::valet_import_cancel(import_jobs);
+            Ok(())
+        })
+    }
+    // Root: the resolver file. `system` + the dialog, the stack's rule.
+    fn resolver_take_over<'a>(&'a self, tld: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::valet_import::resolver_take_over(self.state()?, tld).await })
+    }
+    fn resolver_hand_back<'a>(&'a self, tld: String) -> user_sites::OpFuture<'a, crate::error::Result<crate::core::dns::ResolverPlan>> {
+        Box::pin(async move { crate::commands::valet_import::resolver_hand_back(self.state()?, tld).await })
+    }
+    fn rewrite_preview<'a>(&'a self, site_id: String) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::rewrite::RewritePreview>> {
+        Box::pin(async move { crate::commands::rewrite::rewrite_preview(self.state()?, site_id).await })
+    }
+    fn rewrite_apply<'a>(&'a self, site_id: String, fingerprint: String) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::rewrite::RewriteApplied>> {
+        Box::pin(async move { crate::commands::rewrite::rewrite_apply(self.state()?, self.jobs()?, self.tunnels()?, site_id, fingerprint).await })
+    }
+    fn rewrite_revert<'a>(&'a self, site_id: String, force: bool) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::rewrite::RevertOutcome>> {
+        Box::pin(async move { crate::commands::rewrite::rewrite_revert(self.state()?, self.jobs()?, self.tunnels()?, site_id, force).await })
+    }
+    fn db_import_start<'a>(&'a self, site_id: String, confirm_overwrite: Option<String>) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::db_import::DbImportJobState>> {
+        Box::pin(async move {
+            use tauri::Manager;
+            let db_jobs = self.app.try_state::<crate::commands::db_import::DbImportJobs>().ok_or_else(|| crate::error::Error::Other("rexenv's import jobs are not ready".into()))?;
+            let mut st = crate::commands::db_import::db_import_start(self.app.clone(), self.state()?, db_jobs, self.jobs()?, self.tunnels()?, site_id.clone(), confirm_overwrite).await?;
+            // Block until it settles — a tool reply is one message.
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30 * 60);
+            while st.status == "running" {
+                if std::time::Instant::now() > deadline {
+                    return Err(crate::error::Error::Other("the database import has not settled after 30 minutes — it keeps running in rexenv; read it later with db_import `status`.".into()));
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+                let db_jobs = self.app.try_state::<crate::commands::db_import::DbImportJobs>().ok_or_else(|| crate::error::Error::Other("rexenv's import jobs are not ready".into()))?;
+                match crate::commands::db_import::db_import_state(db_jobs, site_id.clone())? {
+                    Some(next) => st = next,
+                    None => break,
+                }
+            }
+            Ok(st)
+        })
+    }
+    fn db_import_state<'a>(&'a self, site_id: String) -> user_sites::OpFuture<'a, crate::error::Result<Option<crate::commands::db_import::DbImportJobState>>> {
+        Box::pin(async move {
+            use tauri::Manager;
+            let db_jobs = self.app.try_state::<crate::commands::db_import::DbImportJobs>().ok_or_else(|| crate::error::Error::Other("rexenv's import jobs are not ready".into()))?;
+            crate::commands::db_import::db_import_state(db_jobs, site_id)
+        })
+    }
+    fn db_import_cancel<'a>(&'a self, job_id: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move {
+            use tauri::Manager;
+            let db_jobs = self.app.try_state::<crate::commands::db_import::DbImportJobs>().ok_or_else(|| crate::error::Error::Other("rexenv's import jobs are not ready".into()))?;
+            crate::commands::db_import::db_import_cancel(db_jobs, job_id)
+        })
+    }
+    fn db_import_record<'a>(&'a self, site_id: String) -> user_sites::OpFuture<'a, crate::error::Result<Option<crate::state::store::DbImportRecord>>> {
+        Box::pin(async move { crate::commands::db_import::db_import_record(self.state()?, site_id) })
+    }
+    fn db_import_records<'a>(&'a self) -> user_sites::OpFuture<'a, crate::error::Result<Vec<crate::state::store::DbImportRecord>>> {
+        Box::pin(async move { crate::commands::db_import::db_import_records(self.state()?) })
+    }
+    fn db_import_leftovers<'a>(&'a self) -> user_sites::OpFuture<'a, crate::error::Result<Vec<crate::commands::db_import::LeftoverDump>>> {
+        Box::pin(async move { crate::commands::db_import::db_import_leftovers(self.state()?) })
+    }
+    fn db_import_delete_leftover<'a>(&'a self, file: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::db_import::db_import_delete_leftover(self.state()?, file) })
+    }
+}
+
 /// Run EVERY registered tool against `app`'s state with the fixture site id, and
 /// return each tool's serialised output (or its error text — errors can leak
 /// too). For the secret-leak sweep (`examples/mcp_secret_sweep`): it plants
@@ -1345,7 +1433,7 @@ pub async fn sweep_tool_outputs<Rt: tauri::Runtime>(
     let ctx = ReadCtx::new(state.inner());
     let creator = AppSiteCreator { app: app.clone() };
     let sctx = scratch::ScratchCtx::new(state.inner(), &creator, &creator, "secret-sweep");
-    let uctx = user_sites::UserCtx::new(state.inner(), &creator, &creator, &creator, &creator, &creator, &creator, "secret-sweep");
+    let uctx = user_sites::UserCtx::new(state.inner(), &creator, &creator, &creator, &creator, &creator, &creator, &creator, "secret-sweep");
     let mut outputs = Vec::new();
     // The sweep exercises handlers for their OUTPUT; a target they record is
     // irrelevant here, so each gets a throwaway recorder.

@@ -270,6 +270,12 @@ packaged run, recorded in `TODO.md` under the existing gates row. L4 as time all
 7. Ledger: re-scope the "no registered tool reaches `run_privileged`" row to the
    first two registries; amend #197's scope sentence; new rows for 1–4.
 *Ships: a user can grant, see and revoke a scope; no tool uses one yet.*
+**P5 SHIPPED 3 Sep 2026** (#489 blueprints / the feed / share status, #490 `repo`, #491
+`valet_import` / `connection_rewrite` / `db_import`). Deviation from §4.4, recorded: `db_import
+start` is `destroy`, not `run` — it drops and rebuilds the site's database behind
+`confirm_overwrite`, which is the shape of a loss. Every module in §4's matrix now has its
+tools: **45 tools** across the three registries. SMOKE §P5 is still to write (a real import
+and a real rewrite under grants).
 **P4 SHIPPED 3 Sep 2026** (#485 `stack_status`/`stack`, #486 `php`/`settings`/`tld`/`open` +
 `settings_get`/`php_settings`, #487 `share`, #488 cap/TTL as settings). What moved: the
 old "no tool reaches `run_privileged`" row never existed to re-scope — #485 is the narrower

@@ -941,7 +941,11 @@ IPC surface — which is how a reader ends up designing against a system with on
   two under rexenv itself, and everything that clones, links, runs git, scripts, install
   steps, archives or watches under `run`; job-shaped actions block until the job settles
   by the CLI's own rule and reply with steps, the archive's FILE NAME and the scrubbed log,
-  never a path) — each through a
+  never a path); `valet_import` (scan/drift `read`, the import `run`, the two resolver
+  writes `system`); `connection_rewrite` (preview `read` with the diff scrubbed and the
+  file NAMED, apply and revert `destroy`, the fingerprint binding apply to the previewed
+  bytes); and `db_import` (status `read`, start `destroy` — it DROPS the site's database —
+  blocking until settled, leftovers deleted by NAME only) — each through a
   `Granted<S>` scope witness (`core::agent_grants`) minted from a grant the user gave in the
   app, and only while the "Let agents manage my own sites" switch is on. Shape refusals
   (a bad type, a taken domain, `multisite` on a PHP site) come BEFORE the gate and record no

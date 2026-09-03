@@ -2056,7 +2056,13 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     shipped in P3.3.)
     ✓ P5.2 — **`repo(...)`**, ledger #490: 25 actions, reads `read` / writes `run`, the
     CLI's settle rule shared (`repo_job_settled` pub(crate)), job replies with file names
-    and a scrubbed log. Remaining: `valet_import`, `connection_rewrite`, `db_import`.
+    and a scrubbed log.
+    ✓ P5.3 — **`valet_import` + `connection_rewrite` + `db_import`**, ledger #491: reads
+    `read`, the import `run`, resolver writes `system`, rewrite apply/revert and the
+    database import `destroy` (a deviation from the plan table's `run` for the import — it
+    drops a database); files named, diffs scrubbed. **P5 is shipped** — every module in the
+    plan's §4 matrix has its tools (45 tools). Owed: SMOKE §P5 (the human legs of a real
+    import and rewrite).
   - [ ] **P6 — protocol**: annotations, progress notifications riding #447's records,
     the in-band shim error, `job_*` as the one job pattern, a real Cursor + Claude Code
     `tools/list` check at ~42 tools.

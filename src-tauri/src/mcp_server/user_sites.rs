@@ -590,6 +590,81 @@ static REGISTRY: &[UserTool] = &[
         handler: repo,
     },
     UserTool {
+        name: "valet_import",
+        description: "Bring sites over from Laravel Valet or Herd. Takes `action`: `scan` (what \
+                      Valet/Herd serve on this machine and which TLDs they own — reads their config, \
+                      runs nothing) and `drift` (TLDs another tool has taken back) need `read` on \
+                      rexenv itself; `run` {domains: [...], php?: {domain: minor}, \
+                      import_databases?} imports the named sites — their folders are LINKED, never \
+                      moved, and a database import is a COPY of theirs — and needs `run` on rexenv \
+                      itself; `cancel` needs `manage`; `take_over` {tld} / `hand_back` {tld} rewrite \
+                      the OS resolver for that TLD (root — macOS asks the user for their password) \
+                      and need `system`.",
+        input_schema: || json!({
+            "type": "object",
+            "properties": {
+                "action": { "type": "string", "enum": ["scan", "drift", "run", "cancel", "take_over", "hand_back"] },
+                "domains": { "type": "array", "items": { "type": "string" } },
+                "php": { "type": "object", "additionalProperties": { "type": "string" } },
+                "import_databases": { "type": "boolean" },
+                "tld": { "type": "string" }
+            },
+            "required": ["action"],
+            "additionalProperties": false
+        }),
+        sweep_args: |_id| json!({ "action": "drift" }),
+        summarise: |args| args.get("action").and_then(Value::as_str).map(|a| format!("valet {a}")),
+        scope: Scope::System,
+        handler: valet_import,
+    },
+    UserTool {
+        name: "connection_rewrite",
+        description: "Point an imported site's own config (wp-config.php or .env) at the database \
+                      rexenv imported for it. Takes `site_id` and `action`: `preview` (the exact \
+                      diff, and a `fingerprint` of the file as it is now) needs `read`; `apply` \
+                      {fingerprint — from the preview; refused if the file changed since} writes \
+                      the file after backing it up, and `revert` {force?} puts the original back \
+                      (refused without force if the file was edited since) — both need `destroy`. \
+                      The diff may show the site's database credentials.",
+        input_schema: || json!({
+            "type": "object",
+            "properties": {
+                "site_id": { "type": "string" },
+                "action": { "type": "string", "enum": ["preview", "apply", "revert"] },
+                "fingerprint": { "type": "string" }, "force": { "type": "boolean" }
+            },
+            "required": ["site_id", "action"],
+            "additionalProperties": false
+        }),
+        sweep_args: |id| json!({ "site_id": id, "action": "preview" }),
+        summarise: |args| args.get("action").and_then(Value::as_str).map(|a| format!("rewrite {a}")),
+        scope: Scope::Destroy,
+        handler: connection_rewrite,
+    },
+    UserTool {
+        name: "db_import",
+        description: "The per-site database import from Valet/Herd. Takes `action`: `status` \
+                      {site_id} (the running or last job, and what was imported) needs `read` on the \
+                      site; `records` and `leftovers` (dumps kept after a failed import) need `read` \
+                      on rexenv itself; `start` {site_id, confirm_overwrite?: the site's domain, \
+                      when a database already exists — it is DROPPED and rebuilt} needs `destroy` on \
+                      the site and blocks until it settles; `cancel` {site_id} needs `manage`; \
+                      `delete_leftover` {file} needs `destroy` on rexenv itself.",
+        input_schema: || json!({
+            "type": "object",
+            "properties": {
+                "action": { "type": "string", "enum": ["status", "records", "leftovers", "start", "cancel", "delete_leftover"] },
+                "site_id": { "type": "string" }, "confirm_overwrite": { "type": "string" }, "file": { "type": "string" }
+            },
+            "required": ["action"],
+            "additionalProperties": false
+        }),
+        sweep_args: |id| json!({ "action": "status", "site_id": id }),
+        summarise: |args| args.get("action").and_then(Value::as_str).map(|a| format!("dbimport {a}")),
+        scope: Scope::Destroy,
+        handler: db_import,
+    },
+    UserTool {
         name: "site_configure",
         description: "Change how one of the user's own sites is set up — the things the site's \
                       Settings tab does. Takes `site_id` and `action`, plus the action's field: \
@@ -923,6 +998,29 @@ pub trait RepoOps: Send + Sync {
     fn job_log<'a>(&'a self, log_key: String) -> OpFuture<'a, Vec<String>>;
 }
 
+/// The Valet/Herd migration, the connection rewrite and the per-site database
+/// import (`commands::{valet_import, rewrite, db_import}`), runtime-erased.
+pub trait ImportOps: Send + Sync {
+    fn valet_scan<'a>(&'a self) -> OpFuture<'a, Result<crate::commands::valet_import::ImportScan>>;
+    fn valet_drift<'a>(&'a self) -> OpFuture<'a, Result<Vec<String>>>;
+    fn valet_run<'a>(&'a self, request: crate::commands::valet_import::ImportRequest) -> OpFuture<'a, Result<crate::commands::valet_import::ImportResult>>;
+    fn valet_cancel<'a>(&'a self) -> OpFuture<'a, Result<()>>;
+    fn resolver_take_over<'a>(&'a self, tld: String) -> OpFuture<'a, Result<()>>;
+    fn resolver_hand_back<'a>(&'a self, tld: String) -> OpFuture<'a, Result<crate::core::dns::ResolverPlan>>;
+    fn rewrite_preview<'a>(&'a self, site_id: String) -> OpFuture<'a, Result<crate::commands::rewrite::RewritePreview>>;
+    fn rewrite_apply<'a>(&'a self, site_id: String, fingerprint: String) -> OpFuture<'a, Result<crate::commands::rewrite::RewriteApplied>>;
+    fn rewrite_revert<'a>(&'a self, site_id: String, force: bool) -> OpFuture<'a, Result<crate::commands::rewrite::RevertOutcome>>;
+    /// Start the import and block until it settles (the app's job is polled by
+    /// `db_import_state`; the settled snapshot comes back).
+    fn db_import_start<'a>(&'a self, site_id: String, confirm_overwrite: Option<String>) -> OpFuture<'a, Result<crate::commands::db_import::DbImportJobState>>;
+    fn db_import_state<'a>(&'a self, site_id: String) -> OpFuture<'a, Result<Option<crate::commands::db_import::DbImportJobState>>>;
+    fn db_import_cancel<'a>(&'a self, job_id: String) -> OpFuture<'a, Result<()>>;
+    fn db_import_record<'a>(&'a self, site_id: String) -> OpFuture<'a, Result<Option<crate::state::store::DbImportRecord>>>;
+    fn db_import_records<'a>(&'a self) -> OpFuture<'a, Result<Vec<crate::state::store::DbImportRecord>>>;
+    fn db_import_leftovers<'a>(&'a self) -> OpFuture<'a, Result<Vec<crate::commands::db_import::LeftoverDump>>>;
+    fn db_import_delete_leftover<'a>(&'a self, file: String) -> OpFuture<'a, Result<()>>;
+}
+
 /// The app's own Mailpit reads and writes (`commands::mail`), runtime-erased.
 pub trait MailOps: Send + Sync {
     fn list<'a>(&'a self, query: Option<String>, unread_only: bool) -> OpFuture<'a, Result<crate::core::mail::MailList>>;
@@ -950,12 +1048,13 @@ pub struct UserCtx<'a> {
     stack: &'a dyn StackOps,
     sys: &'a dyn SystemOps,
     repo: &'a dyn RepoOps,
+    import: &'a dyn ImportOps,
 }
 
 impl<'a> UserCtx<'a> {
     #[allow(clippy::too_many_arguments)]
-    pub fn new(state: &'a AppState, ops: &'a dyn SiteOps, wp: &'a dyn WpOps, mail: &'a dyn MailOps, stack: &'a dyn StackOps, sys: &'a dyn SystemOps, repo: &'a dyn RepoOps, client: &'a str) -> Self {
-        UserCtx { state, client, ops, wp, mail, stack, sys, repo }
+    pub fn new(state: &'a AppState, ops: &'a dyn SiteOps, wp: &'a dyn WpOps, mail: &'a dyn MailOps, stack: &'a dyn StackOps, sys: &'a dyn SystemOps, repo: &'a dyn RepoOps, import: &'a dyn ImportOps, client: &'a str) -> Self {
+        UserCtx { state, client, ops, wp, mail, stack, sys, repo, import }
     }
 
     pub(crate) fn db(&self) -> Result<std::sync::MutexGuard<'_, rusqlite::Connection>> {
@@ -2589,6 +2688,192 @@ fn repo<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTarg
     })
 }
 
+
+pub(crate) fn valet_scope(action: &str) -> Option<Scope> {
+    Some(match action {
+        "scan" | "drift" => Scope::Read,
+        "run" => Scope::Run,
+        "cancel" => Scope::Manage,
+        "take_over" | "hand_back" => Scope::System,
+        _ => return None,
+    })
+}
+
+/// A stack-level claim by scope value — the grouped stack tools' one place.
+fn claim_stack(ctx: &UserCtx<'_>, scope: Scope, wanted: &str) -> Result<bool> {
+    Ok(match scope {
+        Scope::Read => ctx.claim::<scope::Read>(None, wanted)?.auto_granted,
+        Scope::Manage => ctx.claim::<scope::Manage>(None, wanted)?.auto_granted,
+        Scope::Destroy => ctx.claim::<scope::Destroy>(None, wanted)?.auto_granted,
+        Scope::Run => ctx.claim::<scope::Run>(None, wanted)?.auto_granted,
+        Scope::System => ctx.claim::<scope::System>(None, wanted)?.auto_granted,
+    })
+}
+
+fn valet_import<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::ActedTarget) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let action = args.get("action").and_then(Value::as_str).ok_or_else(|| Error::Other("valet_import needs an `action`.".into()))?;
+        let scope = valet_scope(action).ok_or_else(|| Error::Other(format!("`{action}` is not a valet_import action. Use scan, drift, run, cancel, take_over or hand_back.")))?;
+        let domains: Vec<String> = args.get("domains").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(|d| d.trim().to_ascii_lowercase()).filter(|d| !d.is_empty()).collect()).unwrap_or_default();
+        let wanted = match action {
+            "scan" => "scan Valet/Herd for sites to import".to_string(),
+            "drift" => "check the resolvers".to_string(),
+            "run" => {
+                if domains.is_empty() {
+                    return Err(Error::Other("valet_import `run` needs `domains` — the sites to import, from `scan`.".into()));
+                }
+                format!("import {} from Valet/Herd", domains.join(", "))
+            }
+            "cancel" => "cancel the running import".to_string(),
+            _ => format!("{} the resolver for `.{}` (macOS will also ask for your password)", action.replace('_', " "), str_field(args, "tld", action)?.trim_start_matches('.')),
+        };
+        let auto = claim_stack(&ctx, scope, &wanted)?;
+        let known = super::view::KnownPaths::for_site(ctx.state.platform.paths(), "");
+        let scrub = |s: &str| super::view::scrub_log_line(s, &known);
+        let im = ctx.import;
+        let result = match action {
+            "scan" => {
+                let scan = im.valet_scan().await?;
+                json!({
+                    "sources": scan.sources.iter().map(|s| json!({ "kind": s.kind, "tld": s.tld, "loopback": s.loopback, "parked": s.parked.len() })).collect::<Vec<_>>(),
+                    "candidates": scan.candidates.iter().map(|c| json!({ "name": c.name, "domain": c.domain, "source": c.source, "siteType": c.site_type, "label": c.label, "docrootRel": c.docroot_rel, "phpMinor": c.php_minor, "phpTarget": c.php_target, "secured": c.secured, "proxyTo": c.proxy_to, "alsoIn": c.also_in })).collect::<Vec<_>>(),
+                    "tlds": scan.tlds.iter().map(|t| json!({ "tld": t.tld, "owner": t.owner, "rexenvSites": t.rexenv_sites })).collect::<Vec<_>>(),
+                    "availablePhp": scan.available_php,
+                })
+            }
+            "drift" => json!({ "driftedTlds": im.valet_drift().await? }),
+            "run" => {
+                let php: std::collections::HashMap<String, String> = args.get("php").and_then(Value::as_object).map(|m| m.iter().filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string()))).collect()).unwrap_or_default();
+                let r = im.valet_run(crate::commands::valet_import::ImportRequest { domains, php, import_databases: args.get("import_databases").and_then(Value::as_bool).unwrap_or(false) }).await?;
+                json!({
+                    "imported": r.imported, "failed": r.failed, "skipped": r.skipped, "dbImported": r.db_imported, "dbFailed": r.db_failed,
+                    "outcomes": r.outcomes.iter().map(|o| json!({ "domain": o.domain, "status": o.status, "reason": o.reason.as_deref().map(scrub), "siteId": o.site_id, "db": o.db.as_deref().map(scrub) })).collect::<Vec<_>>(),
+                    "serving": r.serving.as_ref().map(|s| json!({ "kind": s.kind, "holder": s.holder, "app": s.app })),
+                })
+            }
+            "cancel" => { im.valet_cancel().await?; json!({ "cancelled": true }) }
+            "take_over" => { im.resolver_take_over(str_field(args, "tld", action)?.trim_start_matches('.').to_string()).await?; json!({ "takenOver": true }) }
+            _ => {
+                let plan = im.resolver_hand_back(str_field(args, "tld", action)?.trim_start_matches('.').to_string()).await?;
+                json!({ "removed": plan.remove, "restored": plan.restore.iter().map(|(t, _)| t).collect::<Vec<_>>(), "dropRecords": plan.drop_records, "backupMissing": plan.backup_missing, "reclaimed": plan.reclaimed })
+            }
+        };
+        Ok(with_consent(json!({ "action": action, "result": result }), auto))
+    })
+}
+
+fn connection_rewrite<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTarget) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let id = args.get("site_id").and_then(Value::as_str).ok_or_else(|| Error::Other("connection_rewrite needs a `site_id`.".into()))?;
+        let action = args.get("action").and_then(Value::as_str).ok_or_else(|| Error::Other("connection_rewrite needs an `action`: preview, apply or revert.".into()))?;
+        let scope = match action {
+            "preview" => Scope::Read,
+            "apply" | "revert" => Scope::Destroy,
+            other => return Err(Error::Other(format!("`{other}` is not a connection_rewrite action. Use preview, apply or revert."))),
+        };
+        let wanted = match action {
+            "preview" => "preview the connection rewrite of its config".to_string(),
+            "apply" => { str_field(args, "fingerprint", action)?; "REWRITE its config to point at rexenv's database".to_string() }
+            _ => "put its original config back".to_string(),
+        };
+        let (site, auto) = claim_scope(&ctx, id, scope, &wanted)?;
+        acted.set(&site);
+        let known = super::view::KnownPaths::for_site(ctx.state.platform.paths(), &site.path);
+        let scrub = |s: &str| super::view::scrub_log_line(s, &known);
+        let im = ctx.import;
+        use crate::commands::rewrite::{RevertOutcome, RewriteApplied, RewritePreview};
+        let result = match action {
+            "preview" => match im.rewrite_preview(site.id.clone()).await? {
+                RewritePreview::Ready { file, diff, fingerprint, creates_user, backup_exists, laravel_cache_warning, target } => json!({
+                    "status": "ready", "file": basename(&file), "fingerprint": fingerprint, "createsUser": creates_user, "backupExists": backup_exists,
+                    "laravelCacheWarning": laravel_cache_warning, "target": target,
+                    "diff": diff.iter().map(|d| json!({ "sign": d.sign.to_string(), "line": d.line, "text": scrub(&d.text) })).collect::<Vec<_>>(),
+                }),
+                RewritePreview::Refused { reason, file } => json!({ "status": "refused", "reason": scrub(&reason), "file": file.as_deref().map(basename) }),
+            },
+            "apply" => match im.rewrite_apply(site.id.clone(), str_field(args, "fingerprint", action)?.to_string()).await? {
+                RewriteApplied::Applied { record, message } => json!({ "status": "applied", "message": scrub(&message), "state": record.state, "dbName": record.db_name }),
+                RewriteApplied::FileChanged { message } => json!({ "status": "fileChanged", "message": scrub(&message) }),
+                RewriteApplied::EngineStopped { message } => json!({ "status": "engineStopped", "message": scrub(&message) }),
+                RewriteApplied::VerifyFailed { reason, message } => json!({ "status": "verifyFailed", "reason": scrub(&reason), "message": scrub(&message) }),
+                RewriteApplied::Refused { reason, file } => json!({ "status": "refused", "reason": scrub(&reason), "file": file.as_deref().map(basename) }),
+            },
+            _ => match im.rewrite_revert(site.id.clone(), args.get("force").and_then(Value::as_bool).unwrap_or(false)).await? {
+                RevertOutcome::Reverted { file, message } => json!({ "status": "reverted", "file": basename(&file), "message": scrub(&message) }),
+                RevertOutcome::RefusedEdited { file, reason, message } => json!({ "status": "refusedEdited", "file": basename(&file), "reason": reason, "message": scrub(&message) }),
+                RevertOutcome::BackupMissing { file, message } => json!({ "status": "backupMissing", "file": basename(&file), "message": scrub(&message) }),
+                RevertOutcome::NoRewrite { message } => json!({ "status": "noRewrite", "message": scrub(&message) }),
+            },
+        };
+        Ok(with_consent(json!({ "domain": site.domain, "action": action, "result": result }), auto))
+    })
+}
+
+fn db_import_job_view(st: &crate::commands::db_import::DbImportJobState, scrub: &dyn Fn(&str) -> String) -> Value {
+    json!({
+        "status": st.status, "pct": st.pct,
+        "phases": st.phases.iter().map(|p| json!({ "key": p.key, "label": p.label, "status": p.status })).collect::<Vec<_>>(),
+        "error": st.error.as_deref().map(scrub),
+        "keptArtifact": st.kept_artifact.as_deref().map(basename),
+        "result": st.result.as_ref().map(|r| json!({ "state": r.state, "dbName": r.db_name, "tables": r.table_count, "sizeBytes": r.size_bytes, "source": r.source_label, "skippedTables": r.skipped_tables, "importedAt": r.imported_at })),
+    })
+}
+
+fn db_import<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTarget) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let action = args.get("action").and_then(Value::as_str).ok_or_else(|| Error::Other("db_import needs an `action`.".into()))?;
+        let known = super::view::KnownPaths::for_site(ctx.state.platform.paths(), "");
+        let scrub = |s: &str| super::view::scrub_log_line(s, &known);
+        let im = ctx.import;
+        let site_id = || args.get("site_id").and_then(Value::as_str).ok_or_else(|| Error::Other(format!("db_import `{action}` needs a `site_id`.")));
+        let (value, auto) = match action {
+            "records" => {
+                let auto = claim_stack(&ctx, Scope::Read, "list the imported databases")?;
+                let rows = im.db_import_records().await?;
+                (json!(rows.iter().map(|r| json!({ "siteId": r.site_id, "state": r.state, "dbName": r.db_name, "tables": r.table_count, "sizeBytes": r.size_bytes, "source": r.source_label, "importedAt": r.imported_at })).collect::<Vec<_>>()), auto)
+            }
+            "leftovers" => {
+                let auto = claim_stack(&ctx, Scope::Read, "list the dumps kept after failed imports")?;
+                let rows = im.db_import_leftovers().await?;
+                (json!(rows.iter().map(|l| json!({ "file": l.file, "sizeBytes": l.size_bytes })).collect::<Vec<_>>()), auto)
+            }
+            "delete_leftover" => {
+                let file = str_field(args, "file", action)?.to_string();
+                if file.contains('/') {
+                    return Err(Error::Other("db_import `delete_leftover` takes a file NAME from `leftovers`, not a path.".into()));
+                }
+                let auto = claim_stack(&ctx, Scope::Destroy, &format!("delete the kept dump `{file}`"))?;
+                im.db_import_delete_leftover(file.clone()).await?;
+                (json!({ "deleted": file }), auto)
+            }
+            "status" => {
+                let (site, auto) = claim_scope(&ctx, site_id()?, Scope::Read, "read its database import")?;
+                acted.set(&site);
+                let job = im.db_import_state(site.id.clone()).await?;
+                let record = im.db_import_record(site.id.clone()).await?;
+                (json!({ "domain": site.domain, "job": job.as_ref().map(|j| db_import_job_view(j, &scrub)), "record": record.as_ref().map(|r| json!({ "state": r.state, "dbName": r.db_name, "tables": r.table_count, "sizeBytes": r.size_bytes, "source": r.source_label, "importedAt": r.imported_at })) }), auto)
+            }
+            "start" => {
+                let (site, auto) = claim_scope(&ctx, site_id()?, Scope::Destroy, "import its database from Valet/Herd, DROPPING the one rexenv has")?;
+                acted.set(&site);
+                let st = im.db_import_start(site.id.clone(), args.get("confirm_overwrite").and_then(Value::as_str).map(String::from)).await?;
+                (json!({ "domain": site.domain, "job": db_import_job_view(&st, &scrub) }), auto)
+            }
+            "cancel" => {
+                let (site, auto) = claim_scope(&ctx, site_id()?, Scope::Manage, "cancel its database import")?;
+                acted.set(&site);
+                let Some(job) = im.db_import_state(site.id.clone()).await? else {
+                    return Err(Error::Other(format!("`{}` has no database import running.", site.domain)));
+                };
+                im.db_import_cancel(job.id).await?;
+                (json!({ "domain": site.domain, "cancelled": true }), auto)
+            }
+            other => return Err(Error::Other(format!("`{other}` is not a db_import action. Use status, records, leftovers, start, cancel or delete_leftover."))),
+        };
+        Ok(with_consent(json!({ "action": action, "result": value }), auto))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3183,6 +3468,47 @@ mod tests {
         fn job_log<'a>(&'a self, _k: String) -> OpFuture<'a, Vec<String>> { Box::pin(async { vec!["Cloning into '/Users/somebody/Library/Application Support/rexenv/Sites/mine.rex/wp-content/plugins/acme'...".into()] }) }
     }
 
+    impl ImportOps for FakeOps {
+        fn valet_scan<'a>(&'a self) -> OpFuture<'a, Result<crate::commands::valet_import::ImportScan>> {
+            self.calls.lock().unwrap().push("valet scan".into());
+            Box::pin(async { Ok(crate::commands::valet_import::ImportScan { sources: vec![], candidates: vec![], tlds: vec![], available_php: vec!["8.3".into()] }) })
+        }
+        fn valet_drift<'a>(&'a self) -> OpFuture<'a, Result<Vec<String>>> { Box::pin(async { Ok(vec!["test".into()]) }) }
+        fn valet_run<'a>(&'a self, request: crate::commands::valet_import::ImportRequest) -> OpFuture<'a, Result<crate::commands::valet_import::ImportResult>> {
+            self.calls.lock().unwrap().push(format!("valet run {} db={}", request.domains.join(","), request.import_databases));
+            Box::pin(async { Ok(crate::commands::valet_import::ImportResult { outcomes: vec![], imported: 1, failed: 0, skipped: 0, db_imported: 0, db_failed: 0, serving: None }) })
+        }
+        fn valet_cancel<'a>(&'a self) -> OpFuture<'a, Result<()>> { Box::pin(async { Ok(()) }) }
+        fn resolver_take_over<'a>(&'a self, tld: String) -> OpFuture<'a, Result<()>> { self.calls.lock().unwrap().push(format!("resolver take_over {tld}")); Box::pin(async { Ok(()) }) }
+        fn resolver_hand_back<'a>(&'a self, _tld: String) -> OpFuture<'a, Result<crate::core::dns::ResolverPlan>> { Box::pin(async { Ok(crate::core::dns::ResolverPlan { remove: vec![], restore: vec![], drop_records: vec![], backup_missing: vec![], reclaimed: vec![] }) }) }
+        fn rewrite_preview<'a>(&'a self, site_id: String) -> OpFuture<'a, Result<crate::commands::rewrite::RewritePreview>> {
+            self.calls.lock().unwrap().push(format!("rewrite preview {site_id}"));
+            Box::pin(async { Ok(crate::commands::rewrite::RewritePreview::Ready {
+                file: "/Users/somebody/Sites/shop/wp-config.php".into(),
+                diff: vec![crate::core::confedit::DiffLine { sign: '+', line: 3, text: "define('DB_HOST', '127.0.0.1:13306'); // was /Users/somebody/Library/Application Support/rexenv/x".into() }],
+                fingerprint: "sha256:abc".into(), creates_user: None, backup_exists: false, laravel_cache_warning: false, target: "127.0.0.1:13306".into(),
+            }) })
+        }
+        fn rewrite_apply<'a>(&'a self, site_id: String, fingerprint: String) -> OpFuture<'a, Result<crate::commands::rewrite::RewriteApplied>> {
+            self.calls.lock().unwrap().push(format!("rewrite apply {site_id} {fingerprint}"));
+            Box::pin(async { Ok(crate::commands::rewrite::RewriteApplied::FileChanged { message: "changed".into() }) })
+        }
+        fn rewrite_revert<'a>(&'a self, site_id: String, force: bool) -> OpFuture<'a, Result<crate::commands::rewrite::RevertOutcome>> {
+            self.calls.lock().unwrap().push(format!("rewrite revert {site_id} {force}"));
+            Box::pin(async { Ok(crate::commands::rewrite::RevertOutcome::NoRewrite { message: "nothing".into() }) })
+        }
+        fn db_import_start<'a>(&'a self, site_id: String, confirm: Option<String>) -> OpFuture<'a, Result<crate::commands::db_import::DbImportJobState>> {
+            self.calls.lock().unwrap().push(format!("dbimport start {site_id} {confirm:?}"));
+            Box::pin(async { Ok(crate::commands::db_import::DbImportJobState { id: "j".into(), site_id: "s".into(), domain: "mine.rex".into(), phases: vec![], phase_cursor: 0, pct: 100, status: "ok".into(), error: None, log_key: "x".into(), kept_artifact: Some("/Users/somebody/Library/Application Support/rexenv/imports/mine.sql".into()), result: None }) })
+        }
+        fn db_import_state<'a>(&'a self, _s: String) -> OpFuture<'a, Result<Option<crate::commands::db_import::DbImportJobState>>> { Box::pin(async { Ok(None) }) }
+        fn db_import_cancel<'a>(&'a self, _j: String) -> OpFuture<'a, Result<()>> { Box::pin(async { Ok(()) }) }
+        fn db_import_record<'a>(&'a self, _s: String) -> OpFuture<'a, Result<Option<crate::state::store::DbImportRecord>>> { Box::pin(async { Ok(None) }) }
+        fn db_import_records<'a>(&'a self) -> OpFuture<'a, Result<Vec<crate::state::store::DbImportRecord>>> { Box::pin(async { Ok(vec![]) }) }
+        fn db_import_leftovers<'a>(&'a self) -> OpFuture<'a, Result<Vec<crate::commands::db_import::LeftoverDump>>> { Box::pin(async { Ok(vec![crate::commands::db_import::LeftoverDump { file: "shop.sql".into(), path: "/Users/somebody/Library/Application Support/rexenv/imports/shop.sql".into(), size_bytes: 12 }]) }) }
+        fn db_import_delete_leftover<'a>(&'a self, file: String) -> OpFuture<'a, Result<()>> { self.calls.lock().unwrap().push(format!("dbimport delete_leftover {file}")); Box::pin(async { Ok(()) }) }
+    }
+
     fn switch_on(state: &AppState) {
         let conn = state.db.lock().unwrap();
         store::set_setting(&conn, crate::mcp_server::MCP_SITES_ENABLED_KEY, "true").unwrap();
@@ -3213,7 +3539,7 @@ mod tests {
         seed_php(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
         let run = |args: Value| {
             let acted = &acted;
             async move { site_create(ctx, &args, acted).await }
@@ -3317,7 +3643,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
         let mine = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "mine.rex", SiteOrigin::User);
         let theirs = test_site("c58e0a41-7d2f-4b19-93a6-6e1c5d8f0a24", "probe.scratch.rex", SiteOrigin::Agent);
         {
@@ -3358,7 +3684,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
         let mine = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "mine.rex", SiteOrigin::User);
         {
             let conn = state.db.lock().unwrap();
@@ -3453,7 +3779,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
         let mine = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "mine.rex", SiteOrigin::User);
         {
             let conn = state.db.lock().unwrap();
@@ -3524,7 +3850,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
         let wp_site = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "blog.rex", SiteOrigin::User);
         let mut php_site = test_site("bbbbbbbb-bbbb-4ccc-8ddd-eeeeeeeeeeee", "plain.rex", SiteOrigin::User);
         php_site.site_type = SiteType::Php;
@@ -3615,7 +3941,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
         let site = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "blog.rex", SiteOrigin::User);
         {
             let conn = state.db.lock().unwrap();
@@ -3702,7 +4028,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
         let site = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "blog.rex", SiteOrigin::User);
         {
             let conn = state.db.lock().unwrap();
@@ -3758,7 +4084,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
         let site = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "blog.rex", SiteOrigin::User);
         let theirs = test_site("c58e0a41-7d2f-4b19-93a6-6e1c5d8f0a24", "probe.scratch.rex", SiteOrigin::Agent);
         {
@@ -3835,7 +4161,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
         let err = stack(ctx, &json!({ "action": "start" }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("`system`") && err.contains("rexenv itself"), "{err}");
         let a = asks(&state);
@@ -3878,7 +4204,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
         let site = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "blog.rex", SiteOrigin::User);
         {
             let conn = state.db.lock().unwrap();
@@ -3943,7 +4269,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
         let site = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "mine.rex", SiteOrigin::User);
         {
             let conn = state.db.lock().unwrap();
@@ -4012,7 +4338,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
         let site = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "mine.rex", SiteOrigin::User);
         {
             let conn = state.db.lock().unwrap();
@@ -4062,7 +4388,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
         let site = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "mine.rex", SiteOrigin::User);
         {
             let conn = state.db.lock().unwrap();
@@ -4101,5 +4427,66 @@ mod tests {
         for c in ["repo tools true", &format!("repo add {} plugin https://github.com/acme/acme.git true", site.id), &format!("repo link {} theme /Users/somebody/Projects/acme", site.id), &format!("repo git {} plugin acme pull false", site.id)] {
             assert!(calls.iter().any(|x| x == c), "missing {c} in {calls:?}");
         }
+    }
+
+    /// **The migration surfaces: scan/drift `read`, import `run`, resolver
+    /// writes `system` naming the dialog; a rewrite preview reads and apply /
+    /// revert destroy, with the file named and the diff scrubbed; a database
+    /// import destroys, its kept dump named never located, and a leftover is
+    /// deleted by NAME only.**
+    #[tokio::test]
+    async fn valet_rewrite_and_db_import_gate_per_action_and_name_no_path() {
+        assert_eq!(valet_scope("scan"), Some(Scope::Read));
+        assert_eq!(valet_scope("run"), Some(Scope::Run));
+        assert_eq!(valet_scope("take_over"), Some(Scope::System));
+        let state = app_state();
+        switch_on(&state);
+        let ops = FakeOps::default();
+        let acted = super::super::feed::ActedTarget::default();
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
+        let site = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "mine.rex", SiteOrigin::User);
+        {
+            let conn = state.db.lock().unwrap();
+            store::insert_site(&conn, &site).unwrap();
+        }
+        let err = valet_import(ctx, &json!({ "action": "run" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("needs `domains`"), "{err}");
+        assert!(valet_import(ctx, &json!({ "action": "scan" }), &acted).await.is_err());
+        assert!(asks(&state).iter().any(|r| r.site_id.is_none() && r.scope == Scope::Read));
+        assert!(valet_import(ctx, &json!({ "action": "take_over", "tld": ".test" }), &acted).await.is_err());
+        assert!(asks(&state).iter().any(|r| r.scope == Scope::System && r.wanted.contains("`.test`") && r.wanted.contains("password")));
+        let err = db_import(ctx, &json!({ "action": "delete_leftover", "file": "/etc/passwd" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("NAME"), "a path is refused on shape: {err}");
+        {
+            let conn = state.db.lock().unwrap();
+            store::grant_agent_site(&conn, "g1", None, "claude-code", "read", 7, false, false).unwrap();
+            store::grant_agent_site(&conn, "g2", None, "claude-code", "run", 7, false, false).unwrap();
+            store::grant_agent_site(&conn, "g3", Some(&site.id), "claude-code", "read", 7, false, false).unwrap();
+        }
+        let v = valet_import(ctx, &json!({ "action": "scan" }), &acted).await.unwrap();
+        assert_eq!(v["result"]["availablePhp"], json!(["8.3"]));
+        let v = valet_import(ctx, &json!({ "action": "run", "domains": ["Shop.test"], "import_databases": true }), &acted).await.unwrap();
+        assert_eq!(v["result"]["imported"], 1);
+        let v = connection_rewrite(ctx, &json!({ "site_id": site.id, "action": "preview" }), &acted).await.unwrap();
+        assert_eq!(v["result"]["file"], "wp-config.php");
+        assert!(!v.to_string().contains("/Users/somebody"), "the diff and file are scrubbed/named: {v}");
+        let err = connection_rewrite(ctx, &json!({ "site_id": site.id, "action": "apply", "fingerprint": "sha256:abc" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("`destroy`"), "{err}");
+        let err = connection_rewrite(ctx, &json!({ "site_id": site.id, "action": "apply" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("needs `fingerprint`"), "{err}");
+        let v = db_import(ctx, &json!({ "action": "leftovers" }), &acted).await.unwrap();
+        assert_eq!(v["result"][0]["file"], "shop.sql");
+        assert!(v["result"][0].get("path").is_none());
+        assert!(db_import(ctx, &json!({ "action": "start", "site_id": site.id }), &acted).await.is_err(), "an import destroys");
+        {
+            let conn = state.db.lock().unwrap();
+            store::grant_agent_site(&conn, "g4", Some(&site.id), "claude-code", "destroy", 1, false, true).unwrap();
+        }
+        let v = db_import(ctx, &json!({ "action": "start", "site_id": site.id, "confirm_overwrite": "mine.rex" }), &acted).await.unwrap();
+        assert_eq!(v["result"]["job"]["status"], "ok");
+        assert_eq!(v["result"]["job"]["keptArtifact"], "mine.sql", "named, never located");
+        let calls = ops.calls.lock().unwrap().clone();
+        assert!(calls.iter().any(|c| c == "valet run shop.test db=true"), "{calls:?}");
+        assert!(calls.iter().any(|c| c == &format!("dbimport start {} Some(\"mine.rex\")", site.id)), "{calls:?}");
     }
 }
