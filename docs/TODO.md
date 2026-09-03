@@ -2061,7 +2061,7 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     `read`, the import `run`, resolver writes `system`, rewrite apply/revert and the
     database import `destroy` (a deviation from the plan table's `run` for the import — it
     drops a database); files named, diffs scrubbed. **P5 is shipped** — every module in the
-    plan's §4 matrix has its tools (45 tools). Owed: SMOKE §P5 (the human legs of a real
+    plan's §4 matrix has its tools (47 tools — first written as 45, corrected 3 Sep from the server's own list). Owed: SMOKE §P5 (the human legs of a real
     import and rewrite).
   - [ ] **P6 — protocol**: annotations, progress notifications riding #447's records,
     the in-band shim error, `job_*` as the one job pattern, a real Cursor + Claude Code
@@ -2073,7 +2073,7 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     ✓ P6.3 — **progress notifications**, ledger #494 (L9 closed): opt-in by
     `_meta.progressToken`, provision/repo/db-import loops report the card's own labels,
     every line before the reply. `job_*` NOT built, as a decision (plan L9 row).
-    ✓ P6.4 — SMOKE §P5 (40–42) and §P6 (43–45) written; the sandbox L1 re-run at 45
+    ✓ P6.4 — SMOKE §P5 (40–42) and §P6 (43–45) written; the sandbox L1 re-run at 47
     tools (PASS). **P6 is shipped.** What only a human can prove: D12's two-client
     `tools/list`, the destructive hint in Claude Code's confirm, a quit mid-call.
   - [x] **P7 — Laravel loop**: `php_artisan`, Composer path-repo link (S1 re-run for
@@ -2084,8 +2084,11 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     #496, D14: a `path` repository as an explicit SYMLINK (S1 re-run for Composer, ruled
     the other way — the grant is the click), name read from the source's manifest, the
     `run` claim before the source is read, the clone's blast radius, the write-back
-    truth in the reply. D13 stays deferred. **47 tools**; SMOKE §P7 46–47 written; the
-    sandbox L1 re-run (PASS). Owed to the owner: SMOKE §P1–§P7, all human legs.
+    truth in the reply. D13 stays deferred. **49 tools** (the server's own `tools/list` line — the hand-carried 45/47 figures were wrong); SMOKE §P7 46–47 written; the
+    sandbox L1 re-run (PASS). ✓ Real-client, Claude Code half of SMOKE 43 (3 Sep 2026,
+    HEAD via `REXENV_MCP_HOLD_SECS` on `mcp_socket_check` + `claude -p --mcp-config`):
+    49/49 tools listed, no schema complaint, `list_sites` round-tripped through `rex mcp`.
+    Owed to the owner: SMOKE §P1–§P7's remaining human legs (Cursor, grants, real Laravel).
 - [ ] **MCP server — EVERY PLANNED MILESTONE IS SHIPPED (M1, M2a, M2b, M3).** Header
   corrected twice, and the second time is the instructive one. 21 Aug 2026: it had read
   "building M2a → M2b → M3" for eight days after both were done. 25 Aug 2026: it read

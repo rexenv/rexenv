@@ -1155,13 +1155,17 @@ the human legs. Set up: stack up, switch ON, one of your own sites.
   `read` on rexenv itself lists it by name only.
 
 ### Parity P6 — the protocol, in front of the real clients. Ships only if 43–45 pass.
-- [ ] **43. ⚠ D12: 47 tools, two clients.** `claude mcp add rexenv -- rex mcp` → Claude Code
+- [ ] **43. ⚠ D12: 49 tools, two clients.** `claude mcp add rexenv -- rex mcp` → Claude Code
   lists every tool (`/mcp` → rexenv) with no schema complaint, and a call works. Then the
   Cursor stanza from the card → Cursor shows the server connected and its tool list
   complete (Cursor has historically capped tools per server; if it truncates, THAT is the
   finding — record the number). **Tell — a HOLD:** either client rejects the list or a
   descriptor; the grouped design (D12) was chosen on this evidence and has to be re-cut
-  if it fails here.
+  if it fails here. *Without a packaged app* the Claude Code half runs against HEAD:
+  `REXENV_MCP_HOLD_SECS=120 cargo run --example mcp_socket_check` (app quit), then
+  `claude -p "list every rexenv tool name" --mcp-config <json naming cli/target/debug/rex mcp>
+  --strict-mcp-config` — the count in the answer is the real client's `tools/list`. *Claude
+  Code half done this way 3 Sep 2026: 49/49 listed, `list_sites` round-tripped. Cursor owed.*
 - [ ] **44. Destructive hints reach the client.** In Claude Code, ask for `site_delete` on
   a granted site → the client's confirm-before-destructive UX appears (it reads
   `destructiveHint`); `list_sites` never prompts (read-only).

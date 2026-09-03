@@ -9,8 +9,13 @@
 //! tools/call to `list_sites`, ping. The bytes sent are written to match the MCP
 //! spec's own message shapes, NOT round-tripped through our own types, so this
 //! catches the our-encoder-agrees-with-our-decoder trap the plan (§8) warns
-//! about. It does NOT prove the real Claude Code client — that is the manual
-//! `claude mcp add rexenv -- rex mcp` step.
+//! about. It does NOT prove the real Claude Code client on its own — but with
+//! `REXENV_MCP_HOLD_SECS=<n>` it keeps serving the socket for n seconds after
+//! its own session, so a REAL client can be pointed at HEAD's server without
+//! a packaged app: `claude -p … --mcp-config <file naming "rex mcp">` against
+//! the just-built `rex`. Feed rows the held session writes are removed with
+//! this run's own (same id scope). Added 3 Sep 2026 for SMOKE §P6 43, when
+//! the only installed app was a release behind the tree.
 //!
 //! Read-only by construction: `list_sites` reaches state only through `ReadCtx`,
 //! and reads the real database. It is the HANDLER that writes nothing — the
@@ -218,9 +223,23 @@ async fn main() {
         conn.execute("DELETE FROM agent_actions WHERE id > ?1", [before_id]).unwrap();
     }
 
+    // Optional hold: keep serving so a real client can drive HEAD's server.
+    if let Some(secs) = std::env::var("REXENV_MCP_HOLD_SECS").ok().and_then(|s| s.parse::<u64>().ok()) {
+        println!("… holding the MCP socket for {secs}s — point a real client at `rex mcp` now");
+        tokio::time::sleep(std::time::Duration::from_secs(secs)).await;
+        let state = app.state::<AppState>();
+        let conn = state.db.lock().unwrap();
+        let held: Vec<_> = mcp_server::feed::recent(&conn, 200).unwrap().into_iter().filter(|a| a.id > before_id).collect();
+        for a in &held {
+            println!("  held-session call: {} by {} → {:?}", a.tool, a.client, a.outcome);
+        }
+        conn.execute("DELETE FROM agent_actions WHERE id > ?1", [before_id]).unwrap();
+        println!("✓ hold over — {} feed row(s) from the held session removed", held.len());
+    }
+
     let _ = std::fs::remove_file(&sock);
     println!(
         "✓ mcp_socket_check green — handshake + list_sites/site_status/tail_log + activity feed OK. \
-         Real-client check: `claude mcp add rexenv -- rex mcp` (manual, §8)."
+         Real-client check: `claude mcp add rexenv -- rex mcp` (manual, §8), or REXENV_MCP_HOLD_SECS + `claude -p`."
     );
 }

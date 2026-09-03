@@ -270,20 +270,27 @@ packaged run, recorded in `TODO.md` under the existing gates row. L4 as time all
 7. Ledger: re-scope the "no registered tool reaches `run_privileged`" row to the
    first two registries; amend #197's scope sentence; new rows for 1–4.
 *Ships: a user can grant, see and revoke a scope; no tool uses one yet.*
-**P7 SHIPPED 3 Sep 2026** (#495 `site_artisan`, #496 `composer_link` — D14 below). **47 tools**
+**P7 SHIPPED 3 Sep 2026** (#495 `site_artisan`, #496 `composer_link` — D14 below). **49 tools**
 across the three registries; every phase of §5 is shipped. D13 stays deferred (a scratch
 Laravel site is not built: `site_create` + a `destroy` grant is a Laravel site an agent can
 delete). What only a human can prove: SMOKE §P7 46–47 — a real artisan and a real
 `composer require` on a real Laravel site.
+*Counts corrected the same day:* the P5/P6 lines first said 45 and the P7 line 47 — figures
+carried forward by hand, never read off the server. The `mcp_socket_check` run prints the
+server's own `tools/list` length (49 after P7); that line is the only source for this number.
+*D12's Claude Code half, 3 Sep 2026, against HEAD:* with `REXENV_MCP_HOLD_SECS` holding the
+socket and `claude -p --mcp-config` naming the just-built `rex mcp`, the real client listed
+all 49 tools with no schema complaint and a `list_sites` call round-tripped through the
+bridge (21 sites, domains only). The Cursor half is still the owner's (SMOKE 43).
 **P6 SHIPPED 3 Sep 2026** (#492 annotations, #493 the shim's in-band error, #494 progress).
 `job_status`/`job_cancel` deliberately not built (L9 row). What only a human can prove:
-SMOKE §P6 43–45 — D12's real-client `tools/list` at 45 tools, the destructive hint reaching
+SMOKE §P6 43–45 — D12's real-client `tools/list` at 47 tools, the destructive hint reaching
 Claude Code's confirm, and a quit mid-call reading as a sentence rather than an EOF.
 **P5 SHIPPED 3 Sep 2026** (#489 blueprints / the feed / share status, #490 `repo`, #491
 `valet_import` / `connection_rewrite` / `db_import`). Deviation from §4.4, recorded: `db_import
 start` is `destroy`, not `run` — it drops and rebuilds the site's database behind
 `confirm_overwrite`, which is the shape of a loss. Every module in §4's matrix now has its
-tools: **45 tools** across the three registries. SMOKE §P5 is still to write (a real import
+tools: **47 tools** across the three registries. SMOKE §P5 is still to write (a real import
 and a real rewrite under grants).
 **P4 SHIPPED 3 Sep 2026** (#485 `stack_status`/`stack`, #486 `php`/`settings`/`tld`/`open` +
 `settings_get`/`php_settings`, #487 `share`, #488 cap/TTL as settings). What moved: the
