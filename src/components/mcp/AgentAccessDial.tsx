@@ -27,7 +27,9 @@ const MODES: { mode: AgentAccessMode; label: string; what: string }[] = [
  *  residual — code an agent runs in your site runs as you. */
 export function AgentAccessDial() {
   const qc = useQueryClient();
-  const access = useQuery({ queryKey: ["agentAccess"], queryFn: agentAccess });
+  // Polled like the asks: a 7-day setting expires while the card is open, and
+  // the notice has to appear without a reload.
+  const access = useQuery({ queryKey: ["agentAccess"], queryFn: agentAccess, refetchInterval: 4000 });
   const set = useMutation({
     mutationFn: (v: { level: AgentAccessLevel; mode: AgentAccessMode | null }) => agentAccessSet(v.level, v.mode),
     onSuccess: (a) => {
