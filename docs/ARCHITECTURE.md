@@ -864,8 +864,11 @@ IPC surface — which is how a reader ends up designing against a system with on
 - **What it is.** An opt-in MCP endpoint so a developer's AI agent can drive rexenv:
   read-only diagnosis (M1), and disposable WordPress **scratch sites** the agent owns
   outright (M2a/M2b). In-process beside `cli_server`, second `0600` unix socket, bridged
-  by `rex mcp`. M3 (database access, agent principals, the first consent dialog) is
-  specified in `docs/PLAN-mcp-server.md` and **not built** — nothing of it is in the tree.
+  by `rex mcp`. M3 (database access, agent principals, the first consent dialog)
+  SHIPPED 24–25 Aug 2026 (#398–#404) — this bullet said "not built" until 3 Sep 2026,
+  nine days after, while the `db_query` bullet below described the shipped thing. The
+  next stage is parity — every app function behind a scoped grant — planned in
+  `docs/PLAN-mcp-parity.md`, nothing of it built.
 - **The honest guarantee, first, because it constrains everything below.** This is **not
   a sandbox** (ledger #197). A read tool cannot mutate rexenv's state; an executing tool
   runs the user's own code — `wp eval`, `wp db query`, `wp plugin install --force` — as

@@ -1925,6 +1925,46 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   tests; do not reopen). ✓ ticked 30 Aug 2026: the body had said "none" for weeks
   while the box stayed open, which is a row that can never be closed by doing
   anything — exactly the shape that makes the backlog lie about its size.
+- [ ] **MCP parity — every app function drivable by an agent** (`docs/PLAN-mcp-parity.md`,
+  planned 3 Sep 2026, nothing built). The owner's brief: scratch subdomains are a test
+  surface; real work means creating a WordPress / blank-PHP / Laravel site the way the
+  Sites page does, switching its PHP or web server, and everything else the app can do —
+  through MCP. That REOPENS D3 ("real-site mutation may ship never") and old §3.3's
+  "agents get scratch sites only", recorded as a decision in the plan's §2.1, not slipped
+  in. Shape: a THIRD registry of tools on the user's own sites and the stack, each behind
+  a recorded, scoped, expiring grant — `agent_db_grants` generalised to five scopes
+  (`read` / `manage` / `destroy` / `run` / `system`), the M3 consent surface reused,
+  `destroy`/`system` never auto-allowed. Coverage measured against all 231 Tauri commands
+  (plan §4, every one filed with a reason); ~42 grouped tools proposed, not 150 flat.
+  Copy drafted FIRST (§6) because the #209/#211 guard fires the day the registry lands.
+  Six owner decisions gate the build (§7, D8–D13): real-site raw `wp_run`, the `destroy`
+  grant shape, privileged stack start/stop as a tool, `share(start)` scope, grouped vs
+  flat tools, a scratch Laravel type.
+  - [x] **§1 leftovers audit** ✓ 3 Sep 2026 — ten rows, each with its evidence. Found
+    and fixed in the same commit: THREE docs still said M3 was unbuilt nine days after it
+    shipped (`PLAN-mcp-server.md` header, `ARCHITECTURE.md` §8.3, the `CLAUDE.md`
+    router). Found and left open with a home: the `rex mcp` in-band "rexenv stopped"
+    error whose §2.3 trigger fired at M2 (P6), tool annotations never emitted (P6), the
+    TTL/cap constants the plan called settings (P4), MCP still blocking long calls while
+    the CLI streams (P6), the Laravel trio (P7).
+  - [ ] **P1 — foundation**: `agent_site_grants`, `core::agent_grants::authorize`, the
+    `Granted<Scope>` witness, the third registry with the sweep walking a LIST, the
+    sub-toggle + generalised grants card, the copy on the must-say list, the
+    `run_privileged` ledger row re-scoped.
+  - [ ] **P2 — site lifecycle**: `site_create` (WP/PHP/Laravel, blueprint, multisite,
+    starter DB), `site_delete`, `site_configure`, `site_restart`/`site_retry`, `site_info`,
+    `job_status`/`job_cancel`; L1 `mcp_user_site_check`; SMOKE §P2.
+  - [ ] **P3 — WordPress on real sites** (eight grouped `wp_*` tools + `wp_run`'s `run`
+    arm), `tail_log` every source, `mail_inbox`.
+  - [ ] **P4 — the stack**: `stack_status`/`stack(...)` incl. privileged start/stop (D10),
+    `php_*`, `settings`, `tld`, `open`, `share` (D11), TTL/cap as settings.
+  - [ ] **P5 — long tail**: `repo(...)`, `valet_import`, `connection_rewrite`, `db_import`,
+    `blueprints`, `wp_org_search`, `agent_activity`.
+  - [ ] **P6 — protocol**: annotations, progress notifications riding #447's records,
+    the in-band shim error, `job_*` as the one job pattern, a real Cursor + Claude Code
+    `tools/list` check at ~42 tools.
+  - [ ] **P7 — Laravel loop**: `php_artisan`, Composer path-repo link (S1 re-run for
+    Composer), D13.
 - [ ] **MCP server — EVERY PLANNED MILESTONE IS SHIPPED (M1, M2a, M2b, M3).** Header
   corrected twice, and the second time is the instructive one. 21 Aug 2026: it had read
   "building M2a → M2b → M3" for eight days after both were done. 25 Aug 2026: it read
@@ -1936,8 +1976,9 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   **What is genuinely left:** the M1/M2a/M2b human gates (below — §M3's is run), D2
   (`wp_login_url`, scratch-only) which is the one open decision and non-blocking, and the
   post-M3 surface the plan calls the old "M4" (general T1 real-site vetted-WP ops, PHP
-  switch on real sites, DB export) which is **explicitly may-ship-never** (§9 D3) and is
-  not a commitment.
+  switch on real sites, DB export) which was **explicitly may-ship-never** (§9 D3) —
+  **REOPENED 3 Sep 2026 by the owner's parity brief**: it is now the row directly above
+  this one, `docs/PLAN-mcp-parity.md`.
   (`docs/PLAN-mcp-server.md`): expose an MCP server so a dev's AI agent can drive
   rexenv — disposable WordPress "scratch" sites (new `origin='agent'` column,
   TTL+cap+reaper), real-site DB SELECT-only via a native driver, read-only

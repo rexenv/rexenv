@@ -2,9 +2,15 @@
 
 **Status: M1 SHIPPED 30 Jul 2026 (ledger #198–#203). M2a AND M2b SHIPPED and
 code-complete 13 Aug 2026 — all eight executing tools registered in
-`mcp_server/scratch.rs`, schema v27–v30. M3 (database access) is the only milestone
-left, and nothing of it is in the tree.**
-Header corrected 21 Aug 2026: it had read "building M2a → M2b → M3" for eight days after
+`mcp_server/scratch.rs`, schema v27–v30. M3 (database access) SHIPPED 24–25 Aug 2026
+(ledger #398–#404, v38/v39, `db_query` + the consent surface) and its §M3 gate was run.
+EVERY milestone in this file is shipped; what is left, and the parity work that comes
+next, lives in `docs/PLAN-mcp-parity.md` §1.**
+Header corrected THREE times, and the third is the one to learn from (3 Sep 2026): it
+read "M3 is the only milestone left, and nothing of it is in the tree" for nine days
+after M3 shipped — the TODO row recording the correction was updated, this file was not.
+A header that restates a milestone list is stale the moment the list moves.
+21 Aug 2026: it had read "building M2a → M2b → M3" for eight days after
 both were done, and listed D5 as open when it is settled (no SDK, hand-rolled — §9.5).
 D2 (`wp_login_url`, scratch-only) is the one open decision and is non-blocking.
 **Not shipped with the code: the human gates.** `docs/SMOKE-TEST.md` §M2a/§M2b carry 14
