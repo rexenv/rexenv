@@ -47,8 +47,11 @@ export function AgentAccessDial() {
 
   const choose = (next: AgentAccessLevel) => {
     if (next === "read") set.mutate({ level: "read", mode: null });
-    // A level above Read keeps the duration already chosen, else the shortest.
-    else set.mutate({ level: next, mode: mode ?? "session" });
+    // A level above Read keeps the duration already chosen, else the shortest —
+    // and an EXPIRED 7-day setting is not "already chosen": picking a level
+    // after an expiry starts at this session (the live run of 4 Sep 2026 saw
+    // "changes (days)" written first, from the stale mode).
+    else set.mutate({ level: next, mode: a?.expired ? "session" : (mode ?? "session") });
   };
 
   return (

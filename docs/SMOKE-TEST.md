@@ -1046,6 +1046,15 @@ turns; the L0/L1/L2 legs (#497, #498) hold the rest.
   macOS password dialog still appears. **Tells — a HOLD:** a share started without the
   prompt; a 7-day option on the publish prompt; an agent turning the dial; no macOS
   dialog.
+  *23–26 done 4 Sep 2026 on the rebuilt app, the owner turning the dial, Claude Code
+  driving `bl.rex`: Read free (plugins/logs/inbox), a change and a destroy refused naming
+  the level; Changes → xdebug ran, delete and `wp` refused naming Full, share asked;
+  Full · 7 days → delete, `wp option get`, dry run ran, share still refused after Don't
+  allow (its prompt offered session only); the stamp set to the past → "has expired, so
+  it is back at Read" and the card's notice; Changes · This session → relaunch → Read (the
+  log says so). The `settings` tool refused `agent_access_level`. Two fixes from the run:
+  share's refusal promised a 7-day button; the dial polls; picking a level after an
+  expiry starts at this session.*
 
 > **D15 note for 27–39:** where a step below says "a prompt for `manage`/`destroy`/`run`
 > → Allow", read: refused naming **Agent access** at Changes/Full → turn the dial (for this

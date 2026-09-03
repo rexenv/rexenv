@@ -2096,6 +2096,9 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     `system` sits at Changes because the macOS dialog is the second consent; `run` sits at
     Full because it is a shell as the user. Auto-allow and the sites sub-toggle are gone.
     SMOKE §P1 23–26 rewritten; the wk harness has `agents-access-read/full/expired`.
+    ✓ **D15 live (4 Sep 2026, rebuilt app):** SMOKE 23–26 all seen — every level, every
+    duration, the expiry notice, the relaunch sweep, share still a click, the keys refused
+    to the agent. Three small fixes from it (share copy, dial polling, post-expiry default).
     ✓ **Live run 3 Sep 2026 (owner clicking, Claude Code driving, `bl.rex`):** 23–25 seen;
     27-shape asks recorded for read/manage/run/destroy per site + read on rexenv itself;
     destroy prompt session-only and denied → live search-replace refused, dry run ran under
