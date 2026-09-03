@@ -1956,6 +1956,12 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     find one); scope matched by TEXT in the store so policy stays in core; `session`
     recorded and `revoke_session_agent_site_grants` ends exactly those rows at launch.
     One test, five grants, every key proven exact.
+    ✓ task 2 — **`core::agent_grants`**, ledger #469/#470: the five scopes with the ONE
+    implication rule (`destroy` ⊃ `manage` ⊃ `read`; `run`/`system` alone), the pure
+    `authorize` gate (no ownership, no auto-allow, no ask — each lives at the call
+    site), `GrantRequests` keyed on (site, client, scope) with the agent's `wanted`
+    text clamped at the writer, and `AutoAllowable` with NO variant for
+    `destroy`/`system`. AppState gained the two in-memory fields.
   - [ ] **P2 — site lifecycle**: `site_create` (WP/PHP/Laravel, blueprint, multisite,
     starter DB), `site_delete`, `site_configure`, `site_restart`/`site_retry`, `site_info`,
     `job_status`/`job_cancel`; L1 `mcp_user_site_check`; SMOKE §P2.
