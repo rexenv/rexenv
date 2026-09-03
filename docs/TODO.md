@@ -2109,9 +2109,13 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     `composer.json` byte-identical. Two more fixes: `migrate:status` summarised as nothing
     (colon folds now) and Composer's log located the source (labelled `<source>`); and a
     WRONG claim caught before it was run — `--no-interaction` does not guard `db:wipe`
-    locally (ConfirmableTrait asks only in production). Still owed: SMOKE 26 (quit/relaunch
-    kills session grants), 38 (share — outward-facing, not run without a yes), 43 Cursor,
-    44, 45.
+    locally (ConfirmableTrait asks only in production).
+    ✓ **Round 4:** SMOKE 26 session half (7 grants Revoked at relaunch, read re-asks);
+    SMOKE 38 both halves (a person's `run` → share up, stopped at 2m 00s by rexenv, URL
+    530 after; auto-allow → refused naming it, auto row left, no tunnel). One thing
+    unexplained: the auto-allow switch's first click never reached the backend (no log
+    line), the second did — the harness never clicks that switch (render-only). Still
+    owed: 26's week-long half, 43 Cursor, 44, 45.
 - [ ] **MCP server — EVERY PLANNED MILESTONE IS SHIPPED (M1, M2a, M2b, M3).** Header
   corrected twice, and the second time is the instructive one. 21 Aug 2026: it had read
   "building M2a → M2b → M3" for eight days after both were done. 25 Aug 2026: it read

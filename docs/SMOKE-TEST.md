@@ -1042,7 +1042,9 @@ section will say which.
   (#470), so a switch would mean the type was widened — a HOLD, not a note.
 - [ ] **26. A session grant dies with the app.** Allow something "for this session", quit,
   relaunch → the grant is listed as **Revoked**, and the agent's next call is refused and
-  asks again. A week-long grant beside it must survive.
+  asks again. A week-long grant beside it must survive. *Done 3 Sep 2026 (session half):
+  7 session grants Revoked at relaunch (the log says so too), the next read asked again.
+  The week-long half is not yet seen live.*
 
 ### Parity P2 — the site lifecycle on YOUR sites. Ships only if 27–31 pass.
 `mcp_user_site_check` (sandbox tier) proves the switch, the gate, a real rename and a
@@ -1123,7 +1125,9 @@ the human legs. Set up: stack up, switch ON, one of your own sites.
   → the call fails, the stack is still up. Retry, enter the password → every site is
   offline; `stack_status` says so. Start it again the same way. **Tells — a HOLD:** no
   macOS dialog (the privileged path was bypassed); the stack stopped under a `manage`
-  grant; a `system` auto-allow switch exists anywhere in Site access.
+  grant; a `system` auto-allow switch exists anywhere in Site access. *Done 3 Sep 2026:
+  cancelled → "Administrator permission was cancelled", stack up; password → 0 running;
+  start → 12 running.*
 - [ ] **37. A resolver write is the same shape.** Ask it to *"repair the resolver for
   `.rex`"* → `system` prompt naming the dialog → Allow → the macOS dialog → the file is
   back. Ask it to set `mcp_enabled` through `settings` → refused with the policy's
@@ -1135,6 +1139,11 @@ the human legs. Set up: stack up, switch ON, one of your own sites.
   loads from your phone. Wait 2 minutes → the Tunnels page shows it stopped, and the
   feed shows no second agent call. **Tells — a HOLD:** the share started under the
   auto-allowed grant; the tunnel outlives its minutes; quitting rexenv leaves it up.
+  *Done 3 Sep 2026, in the other order: a person's session `run` → share started, the
+  reply's `trycloudflare` URL, stopped by rexenv at 2m 00s (log), no second agent call,
+  URL then 530; grant revoked + switch ON → share refused naming auto-allow, the
+  auto-granted row left behind, no tunnel. The switch's FIRST click never reached the
+  backend (no log line); the second did — unexplained, watch for it.*
 - [ ] **39. Cap and TTL are settings.** `rex config set scratch_cap 0` → refused with the
   range; `rex config set scratch_cap 2` → the third scratch_create_site names the limit
   as 2 and lists the two.
