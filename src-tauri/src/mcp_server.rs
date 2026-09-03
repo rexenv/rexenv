@@ -22,19 +22,24 @@
 //!
 //! **What the SOCKET guarantees, as opposed to what M1's tools guarantee.**
 //! These are two different statements and only one of them is #199. Dispatch
-//! routes BOTH registries, so once the executing registry is non-empty the
-//! honest description of the endpoint is:
+//! routes EVERY registry through one enumeration (`every_tool`), so the honest
+//! description of the endpoint is:
 //!
 //! - a call reaches exactly one registry, and its capability is decided by which
 //!   one it came from (`find_tool` → `Tool::Read` gets a `ReadCtx`,
-//!   `Tool::Scratch` a `ScratchCtx`) — never by the tool's own say-so, never by
-//!   its arguments, and never by lookup order, because the two registries are
-//!   disjoint by test;
+//!   `Tool::Scratch` a `ScratchCtx`, `Tool::User` a `UserCtx`) — never by the
+//!   tool's own say-so, never by its arguments, and never by lookup order,
+//!   because the registries are disjoint by test;
 //! - a READ tool cannot mutate anything (#199, unchanged by M2's arrival);
 //! - an EXECUTING tool can only reach a site the agent OWNS — its context's only
 //!   door to a site is the `origin`-checked witness (#208) — but within such a
 //!   site it runs the user's code, which is user-level power over this machine
-//!   (PLAN §3.1, ledger #197).
+//!   (PLAN §3.1, ledger #197);
+//! - a PARITY tool (`user_sites`, MCP parity) can reach the user's OWN site or
+//!   the stack only through a scope witness minted from a grant the user gave in
+//!   the app (#471), and only while the "manage my own sites" switch is on —
+//!   and inside such a site it runs the user's code too. Wider surface, same
+//!   residual, said in the same words.
 //!
 //! So "the MCP socket is read-only" is true of M1 alone and **false of the
 //! endpoint** the moment a scratch tool lands. Nothing here, in the plan, or in
@@ -72,6 +77,7 @@ pub mod feed;
 mod readctx;
 mod scratch;
 mod tools;
+mod user_sites;
 mod view;
 
 use crate::state::app::AppState;
@@ -104,6 +110,24 @@ pub const MCP_MAIL_ENABLED_KEY: &str = "mcp_mail_enabled";
 /// even once the endpoint itself is enabled.
 pub fn mail_enabled(conn: &rusqlite::Connection) -> bool {
     matches!(crate::state::store::get_setting(conn, MCP_MAIL_ENABLED_KEY), Ok(Some(v)) if v == "true")
+}
+
+/// The SITES sub-toggle (MCP parity, `docs/PLAN-mcp-parity.md` §3.3): "Let
+/// agents manage my own sites". A settings row, default OFF, independent of the
+/// master and mail toggles. While it is off, every tool in the `user_sites`
+/// registry refuses BY NAME — the registry stays listed so `tools/list` is
+/// stable and the leak sweep covers it. On its own it grants NOTHING: it makes
+/// scope grants possible, and each grant is a separate consent.
+pub const MCP_SITES_ENABLED_KEY: &str = "mcp_sites_enabled";
+
+/// The toggle's label, as the refusal text names it and as the card must render
+/// it — one constant so the two cannot disagree (#404's three-names-for-one-
+/// place lesson).
+pub const SITES_TOGGLE_LABEL: &str = "Let agents manage my own sites";
+
+/// Is the sites sub-toggle on? Default OFF.
+pub fn sites_enabled(conn: &rusqlite::Connection) -> bool {
+    matches!(crate::state::store::get_setting(conn, MCP_SITES_ENABLED_KEY), Ok(Some(v)) if v == "true")
 }
 
 /// The MCP revision whose stable JSON-RPC core we implement (docs/PLAN §2.1).
@@ -363,6 +387,7 @@ async fn session<R, W, Rt>(
                 let args_summary = find_tool(&name).and_then(|t| match t {
                     Tool::Read(t) => (t.summarise)(&args),
                     Tool::Scratch(t) => (t.summarise)(&args),
+                    Tool::User(t) => (t.summarise)(&args),
                 });
                 let (reply, outcome, detail) =
                     fulfill_tool_call(&app, id, &name, &args, &acted, &client).await;
@@ -506,40 +531,81 @@ fn tool_target_site(msg: &Value) -> Option<String> {
     msg.pointer("/params/arguments/site_id").and_then(Value::as_str).map(String::from)
 }
 
-/// One registered tool, from either registry — the socket's whole tool surface.
+/// One registered tool, from any registry — the socket's whole tool surface.
 ///
 /// The variants ARE the capability split: a `Read` tool's handler gets a
 /// `ReadCtx` (no mutating method), a `Scratch` tool's gets a `ScratchCtx` whose
-/// only door to a site is the `origin`-checked witness (#208). Dispatch is the
+/// only door to a site is the `origin`-checked witness (#208), a `User` tool's
+/// gets a `UserCtx` whose only door is the scope witness (#471). Dispatch is the
 /// one place that maps a name to a capability, so a tool cannot be routed to a
 /// context its module never gave it.
+#[derive(Clone, Copy)]
 enum Tool {
     Read(&'static tools::ReadTool),
     Scratch(&'static scratch::ScratchTool),
+    User(&'static user_sites::UserTool),
 }
 
-/// Look a tool up across BOTH registries. Read side first — an M1 name can never
-/// be shadowed by a later scratch tool, and the disjointness guard means that
-/// precedence never has to be exercised (see
-/// `the_two_registries_are_disjoint_and_say_which_side_a_tool_belongs_on`).
-fn find_tool(name: &str) -> Option<Tool> {
-    tools::find(name)
+impl Tool {
+    fn name(self) -> &'static str {
+        match self {
+            Tool::Read(t) => t.name,
+            Tool::Scratch(t) => t.name,
+            Tool::User(t) => t.name,
+        }
+    }
+
+    /// Which module this tool came from — for the disjointness guard's message.
+    #[cfg(test)]
+    fn module(self) -> &'static str {
+        match self {
+            Tool::Read(_) => "mcp_server/tools.rs",
+            Tool::Scratch(_) => "mcp_server/scratch.rs",
+            Tool::User(_) => "mcp_server/user_sites.rs",
+        }
+    }
+
+    /// The MCP descriptor, from the registry's own descriptor list.
+    fn descriptor(self) -> Value {
+        let list = match self {
+            Tool::Read(_) => tools::tools_list_result()["tools"].clone(),
+            Tool::Scratch(_) => scratch::tools_list_descriptors(),
+            Tool::User(_) => user_sites::tools_list_descriptors(),
+        };
+        list.as_array()
+            .and_then(|a| a.iter().find(|d| d["name"] == self.name()).cloned())
+            .unwrap_or_else(|| json!({ "name": self.name() }))
+    }
+}
+
+/// **The ONE enumeration of every registry**, in precedence order. `find_tool`,
+/// `tools/list`, the leak sweep and the disjointness guard all walk THIS, so a
+/// registry that exists but is not chained here is unreachable, unlisted AND
+/// unswept at once — which is loud, where the old shape (each consumer naming
+/// "both" registries by hand) would have let a third registry be listed but not
+/// swept, or swept but not dispatched. A source guard fails the build on a
+/// registry module missing from this chain.
+fn every_tool() -> impl Iterator<Item = Tool> {
+    tools::registry()
+        .iter()
         .map(Tool::Read)
-        .or_else(|| scratch::find(name).map(Tool::Scratch))
+        .chain(scratch::registry().iter().map(Tool::Scratch))
+        .chain(user_sites::registry().iter().map(Tool::User))
 }
 
-/// The `tools/list` result — the UNION of both registries, which is what the
+/// Look a tool up across every registry. Read side first — an M1 name can never
+/// be shadowed by a later tool, and the disjointness guard means that precedence
+/// never has to be exercised (see
+/// `every_registry_is_disjoint_and_the_guard_says_which_side_a_tool_belongs_on`).
+fn find_tool(name: &str) -> Option<Tool> {
+    every_tool().find(|t| t.name() == name)
+}
+
+/// The `tools/list` result — the UNION of every registry, which is what the
 /// socket actually offers. A client sees one flat list; the tier a tool belongs
 /// to is a fact about what rexenv will let it do, not something the agent picks.
 fn tools_list_result() -> Value {
-    let mut list = tools::tools_list_result();
-    if let (Some(all), Some(extra)) = (
-        list.get_mut("tools").and_then(Value::as_array_mut),
-        scratch::tools_list_descriptors().as_array(),
-    ) {
-        all.extend(extra.iter().cloned());
-    }
-    list
+    json!({ "tools": every_tool().map(Tool::descriptor).collect::<Vec<_>>() })
 }
 
 /// Which site a feed row names, given both provenances.
@@ -605,6 +671,7 @@ async fn fulfill_tool_call<Rt: tauri::Runtime>(
             let ctx = scratch::ScratchCtx::new(state.inner(), &creator, &creator, client);
             (t.handler)(ctx, args, acted).await
         }
+        Tool::User(t) => (t.handler)(user_sites::UserCtx::new(state.inner(), client), args, acted).await,
     };
     match outcome {
         Ok(v) => (result_response(id, tool_success_content(&v)), feed::Outcome::Ok, None),
@@ -708,9 +775,12 @@ impl<Rt: tauri::Runtime> scratch::SiteCreator for AppSiteCreator<Rt> {
 /// Run EVERY registered tool against `app`'s state with the fixture site id, and
 /// return each tool's serialised output (or its error text — errors can leak
 /// too). For the secret-leak sweep (`examples/mcp_secret_sweep`): it plants
-/// secrets in the state and asserts none appear in any output here. Enumerates
-/// the registry (`tools::sweep_plan`), so a new tool is swept by construction —
-/// adding one WITHOUT the sweep covering it is not possible.
+/// secrets in the state and asserts none appear in any output here. Walks
+/// `every_tool` — the same enumeration dispatch uses — so a tool that can be
+/// CALLED is swept by construction, whichever registry it lives in. (This used
+/// to name "both" registries by hand; the third one is exactly the moment that
+/// shape would have narrowed "every registered tool's output is swept" to
+/// "every tool in the two someone remembered".)
 pub async fn sweep_tool_outputs<Rt: tauri::Runtime>(
     app: &tauri::AppHandle<Rt>,
     fixture_site_id: &str,
@@ -720,29 +790,24 @@ pub async fn sweep_tool_outputs<Rt: tauri::Runtime>(
         return Vec::new();
     };
     let ctx = ReadCtx::new(state.inner());
+    let creator = AppSiteCreator { app: app.clone() };
+    let sctx = scratch::ScratchCtx::new(state.inner(), &creator, &creator, "secret-sweep");
+    let uctx = user_sites::UserCtx::new(state.inner(), "secret-sweep");
     let mut outputs = Vec::new();
     // The sweep exercises handlers for their OUTPUT; a target they record is
     // irrelevant here, so each gets a throwaway recorder.
     let acted = feed::ActedTarget::default();
-    for (tool, args) in tools::sweep_plan(fixture_site_id) {
-        let text = match (tool.handler)(ctx, &args, &acted).await {
+    for tool in every_tool() {
+        let (name, result) = match tool {
+            Tool::Read(t) => (t.name, (t.handler)(ctx, &(t.sweep_args)(fixture_site_id), &acted).await),
+            Tool::Scratch(t) => (t.name, (t.handler)(sctx, &(t.sweep_args)(fixture_site_id), &acted).await),
+            Tool::User(t) => (t.name, (t.handler)(uctx, &(t.sweep_args)(fixture_site_id), &acted).await),
+        };
+        let text = match result {
             Ok(v) => serde_json::to_string(&v).unwrap_or_default(),
             Err(e) => e.to_string(),
         };
-        outputs.push((tool.name, text));
-    }
-    // ...and the executing registry too. Walking only M1's would silently narrow
-    // "every registered tool's output is swept" to "every READ tool's" the first
-    // time a scratch tool lands — the surface-coverage defect family, which is
-    // exactly what a second registry invites.
-    let creator = AppSiteCreator { app: app.clone() };
-    let sctx = scratch::ScratchCtx::new(state.inner(), &creator, &creator, "secret-sweep");
-    for (tool, args) in scratch::sweep_plan(fixture_site_id) {
-        let text = match (tool.handler)(sctx, &args, &acted).await {
-            Ok(v) => serde_json::to_string(&v).unwrap_or_default(),
-            Err(e) => e.to_string(),
-        };
-        outputs.push((tool.name, text));
+        outputs.push((name, text));
     }
     outputs
 }
@@ -835,29 +900,40 @@ fn error_response(id: Value, code: i64, message: &str) -> String {
 mod tests {
     use super::*;
 
-    /// The violation message when a name appears in BOTH registries, or `None` when
-    /// they are disjoint.
+    /// The violation message when a name appears in MORE THAN ONE registry, or
+    /// `None` when they are all disjoint. Takes `(module, names)` per registry.
     ///
     /// Phrased for the person who trips it — who is, by definition, mid-way through
     /// adding a tool: it names the tool, states the rule, and says which side it
     /// belongs on. A set difference would tell them what happened and not what to
     /// do. (The import guard's lesson: a guard that fires without teaching gets
     /// worked around.)
-    fn registry_conflict(read: &[&str], scratch: &[&str]) -> Option<String> {
-        let clash: Vec<&str> = read.iter().copied().filter(|n| scratch.contains(n)).collect();
+    fn registry_conflict(registries: &[(&str, &[&str])]) -> Option<String> {
+        let mut clash: Vec<String> = Vec::new();
+        for (i, (module, names)) in registries.iter().enumerate() {
+            for name in names.iter() {
+                for (other, theirs) in registries.iter().skip(i + 1) {
+                    if theirs.contains(name) {
+                        clash.push(format!("`{name}` (in `{module}` and `{other}`)"));
+                    }
+                }
+            }
+        }
         if clash.is_empty() {
             return None;
         }
         Some(format!(
-            "MCP tool name(s) registered in BOTH registries: {}.\n\
+            "MCP tool name(s) registered in more than one registry: {}.\n\
              One name, one capability — a tool belongs to exactly one side:\n\
              - `mcp_server/tools.rs` (M1) if it only READS: its handler gets a ReadCtx, which has no \
              mutating method, and the read-only guard scans that module.\n\
-             - `mcp_server/scratch.rs` (M2) if it changes or runs anything: its handler gets a \
-             ScratchCtx, whose only door to a site is the origin-checked witness.\n\
-             Duplicating a name would let the read side shadow the executing one (or the reverse after \
-             any reordering), so the tool an agent called would not be the tool that ran. Delete the \
-             copy from the side it does not belong on.",
+             - `mcp_server/scratch.rs` (M2) if it changes or runs anything in a site the AGENT made: \
+             its handler gets a ScratchCtx, whose only door to a site is the origin-checked witness.\n\
+             - `mcp_server/user_sites.rs` (parity) if it acts on the USER's own site or the stack: its \
+             handler gets a UserCtx, whose only door is the scope witness minted from the user's grant.\n\
+             Duplicating a name would let one side shadow the other (whichever `every_tool` chains \
+             first), so the tool an agent called would not be the tool that ran. Delete the copy from \
+             the side it does not belong on.",
             clash.join(", ")
         ))
     }
@@ -1027,19 +1103,17 @@ mod tests {
         // ones" — the executing side is where a docroot actually re-enters the
         // output (`wp_run`), so it is the half that most needs to be in the
         // sweep (#209).
-        let named: Vec<(&str, Value)> = tools::registry()
-            .iter()
-            .map(|t| (t.name, (t.sweep_args)("fixture-site-id")))
-            .chain(
-                scratch::registry()
-                    .iter()
-                    .map(|t| (t.name, (t.sweep_args)("fixture-site-id"))),
-            )
+        let named: Vec<(&str, Value)> = every_tool()
+            .map(|t| match t {
+                Tool::Read(t) => (t.name, (t.sweep_args)("fixture-site-id")),
+                Tool::Scratch(t) => (t.name, (t.sweep_args)("fixture-site-id")),
+                Tool::User(t) => (t.name, (t.sweep_args)("fixture-site-id")),
+            })
             .collect();
         assert_eq!(
             named.len(),
-            tools::registry().len() + scratch::registry().len(),
-            "every tool in BOTH registries declares sweep_args"
+            tools::registry().len() + scratch::registry().len() + user_sites::registry().len(),
+            "every tool in EVERY registry declares sweep_args"
         );
         for (name, args) in named {
             assert!(args.is_object(), "{name}: sweep_args must be a JSON object");
@@ -1278,48 +1352,105 @@ mod tests {
 
 
     #[test]
-    fn the_two_registries_are_disjoint_and_say_which_side_a_tool_belongs_on() {
+    fn every_registry_is_disjoint_and_the_guard_says_which_side_a_tool_belongs_on() {
         // The load-bearing half of the module split. One name, one capability:
         // a duplicate would mean the tool an agent CALLED is not the tool that
         // RAN (whichever registry dispatch consults first), which is a capability
         // decided by lookup order instead of by where the tool lives.
-        let read: Vec<&str> = tools::registry().iter().map(|t| t.name).collect();
-        let scratch: Vec<&str> = scratch::registry().iter().map(|t| t.name).collect();
+        //
+        // Grouped from `every_tool` — the same enumeration dispatch uses — so
+        // the registries this guard sees are the registries a call can reach.
+        let mut groups: Vec<(&str, Vec<&str>)> = Vec::new();
+        for t in every_tool() {
+            match groups.iter_mut().find(|(m, _)| *m == t.module()) {
+                Some((_, names)) => names.push(t.name()),
+                None => groups.push((t.module(), vec![t.name()])),
+            }
+        }
+        let regs: Vec<(&str, &[&str])> = groups.iter().map(|(m, n)| (*m, n.as_slice())).collect();
         // `panic!` with the message itself, NOT `assert_eq!(.., None)`: the
         // latter prints it Debug-escaped as one long line with literal \n, which
         // is the guidance made unreadable at the exact moment someone needs it.
-        if let Some(msg) = registry_conflict(&read, &scratch) {
+        if let Some(msg) = registry_conflict(&regs) {
             panic!("{msg}");
         }
 
         // ...and the message a person actually gets. Whoever trips this is
         // mid-way through adding a tool, so it has to teach the rule, not report
-        // a set difference.
-        let msg = registry_conflict(&["list_sites", "tail_log"], &["scratch_create_site", "tail_log"])
-            .expect("a shared name must be caught");
-        assert!(msg.contains("tail_log"), "names the offending tool: {msg}");
-        assert!(!msg.contains("list_sites"), "names ONLY the offender: {msg}");
-        assert!(msg.contains("mcp_server/tools.rs") && msg.contains("mcp_server/scratch.rs"),
-                "says which side to put it on: {msg}");
-        assert!(msg.contains("only READS") && msg.contains("changes or runs"),
+        // a set difference. Three-way, because a clash can now be with either
+        // other side.
+        let msg = registry_conflict(&[
+            ("mcp_server/tools.rs", &["list_sites", "tail_log"]),
+            ("mcp_server/scratch.rs", &["scratch_create_site", "tail_log"]),
+            ("mcp_server/user_sites.rs", &["site_create", "scratch_create_site"]),
+        ])
+        .expect("a shared name must be caught");
+        assert!(msg.contains("`tail_log`") && msg.contains("`scratch_create_site`"), "names each offender: {msg}");
+        assert!(!msg.contains("`list_sites`") && !msg.contains("`site_create`"), "names ONLY the offenders: {msg}");
+        assert!(
+            msg.contains("mcp_server/tools.rs") && msg.contains("mcp_server/scratch.rs") && msg.contains("mcp_server/user_sites.rs"),
+            "says which sides exist: {msg}"
+        );
+        assert!(msg.contains("only READS") && msg.contains("AGENT made") && msg.contains("USER's own"),
                 "states the rule that decides the side: {msg}");
         assert!(msg.contains("shadow"), "says what goes wrong, not just that it did: {msg}");
     }
 
+    /// **A registry that exists but is not in `every_tool` is a build failure.**
+    /// The chain is the ONE place a registry becomes reachable, listed and
+    /// swept; this scans the module list for any registry module missing from it.
     #[test]
-    fn tools_list_offers_the_union_of_both_registries() {
-        // What the SOCKET advertises is both registries, flat — the tier is a
+    fn every_registry_module_is_chained_into_the_one_enumeration() {
+        let me = include_str!("mcp_server.rs");
+        // The TEST MODULE's marker, not the first `#[cfg(test)]` — `Tool::module`
+        // is test-only and sits above the chain.
+        let prod = &me[..me.find("#[cfg(test)]\nmod tests").unwrap()];
+        let chain_start = prod.find("fn every_tool()").expect("the enumeration");
+        let chain = &prod[chain_start..chain_start + prod[chain_start..].find("\n}\n").unwrap()];
+        let sources: &[(&str, &str)] = &[
+            ("tools", include_str!("mcp_server/tools.rs")),
+            ("scratch", include_str!("mcp_server/scratch.rs")),
+            ("user_sites", include_str!("mcp_server/user_sites.rs")),
+            ("readctx", include_str!("mcp_server/readctx.rs")),
+            ("view", include_str!("mcp_server/view.rs")),
+            ("feed", include_str!("mcp_server/feed.rs")),
+        ];
+        let mut registries = 0;
+        for (module, src) in sources {
+            assert!(prod.contains(&format!("mod {module};")), "the source list here must name every mcp_server module — `{module}` is missing");
+            if src.contains("pub fn registry()") {
+                registries += 1;
+                assert!(
+                    chain.contains(&format!("{module}::registry()")),
+                    "`mcp_server/{module}.rs` defines a registry that `every_tool` does not chain — its tools \
+                     would be unreachable, unlisted AND unswept. Add it to the chain (and a `Tool` variant)."
+                );
+            }
+        }
+        assert_eq!(registries, 3, "three registries today — update this if a fourth is a real decision");
+        // …and every module file is in the list above (a new `mod x;` must be
+        // classified as registry-or-not here, by name).
+        let declared = prod.matches("\nmod ").count() + prod.matches("\npub mod ").count();
+        assert_eq!(declared, sources.len(), "a module was added to mcp_server.rs without being classified here");
+    }
+
+    #[test]
+    fn tools_list_offers_the_union_of_every_registry() {
+        // What the SOCKET advertises is every registry, flat — the tier is a
         // fact about what rexenv will let a tool do, never something the agent
-        // selects. Today the scratch side is empty, so this pins the count
-        // relationship rather than a literal.
+        // selects. Pins the count relationship rather than a literal.
         let v = reply(r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#);
         let listed = v["result"]["tools"].as_array().expect("tools array").len();
         assert_eq!(
             listed,
-            tools::registry().len() + scratch::registry().len(),
-            "tools/list must advertise BOTH registries — a tool that exists but isn't listed is \
+            tools::registry().len() + scratch::registry().len() + user_sites::registry().len(),
+            "tools/list must advertise EVERY registry — a tool that exists but isn't listed is \
              a tool an agent will never call, and one listed twice is a name collision"
         );
+        // …and each descriptor is the registry's own (name, description, schema).
+        for d in v["result"]["tools"].as_array().unwrap() {
+            assert!(d["description"].is_string() && d["inputSchema"].is_object(), "{d}");
+        }
     }
 
     #[test]

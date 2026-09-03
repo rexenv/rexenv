@@ -885,12 +885,20 @@ IPC surface — which is how a reader ends up designing against a system with on
   weeks: that binder returns a tokio listener and panics off-runtime, which was a
   packaged-build enable crash. The *convention* is shared; the binder is its own, and a
   test pins that binding needs no ambient runtime.
-- **Two registries, and the registry IS the capability.** `mcp_server/tools.rs` holds the
+- **Three registries, and the registry IS the capability.** `mcp_server/tools.rs` holds the
   three read-only tools (`list_sites`, `site_status`, `tail_log`); `mcp_server/scratch.rs`
   holds the nine executing ones (`scratch_create_site`, `scratch_delete_site`,
   `scratch_add_package`, `scratch_sync_package`, `wp_run`, `set_php_version`, `db_query`,
-  `mail_list`, `mail_get`). What a tool may do is decided by **which registry its name came from** —
-  never by a field the tool sets about itself. A guard proves the two are disjoint and, on
+  `mail_list`, `mail_get`); `mcp_server/user_sites.rs` (MCP parity, 3 Sep 2026 — EMPTY until
+  P2's first tool) will hold the tools that act on the USER's own sites and the stack, each
+  through a `Granted<S>` scope witness (`core::agent_grants`) minted from a grant the user
+  gave in the app, and only while the "Let agents manage my own sites" switch is on.
+  What a tool may do is decided by **which registry its name came from** —
+  never by a field the tool sets about itself. **One enumeration** (`every_tool`) feeds
+  dispatch, `tools/list`, the leak sweep and the disjointness guard, and a source guard
+  fails the build on a registry module missing from it — because the old shape (each
+  consumer naming "both" registries by hand) is exactly what a third registry would have
+  let drift: listed but not swept, or swept but not dispatched. A guard proves the registries are disjoint and, on
   a collision, names the offender and the file it belongs in.
 - **`db_query` is the one tool that reads a site the agent does not own, and it is the
   only one behind a recorded grant** (M3). Ownership decides the principal, not the

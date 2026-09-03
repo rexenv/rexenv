@@ -4,7 +4,8 @@
 //!   cargo run --example mcp_secret_sweep
 //!
 //! This is the HARNESS, not one tool's test: `mcp_server::sweep_tool_outputs`
-//! enumerates `tools::registry()`, so a new content tool is swept by
+//! walks `every_tool()` — the one enumeration of every registry (read, scratch,
+//! parity), the same one dispatch uses — so a new content tool is swept by
 //! construction — it can't be registered without a `sweep_args`, and it can't be
 //! registered without appearing here. The fixture plants a site whose docroot
 //! path and db_name are distinctive markers that the `Agent*` conversions DROP;

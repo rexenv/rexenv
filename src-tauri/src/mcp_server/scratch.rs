@@ -7,9 +7,11 @@
 //! manager, a command, or a syscall. A mutating tool added there would trip that
 //! guard — correctly. So M2's tools live here, with their own context type, and
 //! M1's guarantee is untouched by their arrival rather than quietly widened to
-//! accommodate them. The two registries are **disjoint by test**
-//! (`the_two_registries_are_disjoint_and_say_which_side_a_tool_belongs_on`): one
-//! name, one capability, no shadowing.
+//! accommodate them. The registries — this one, M1's, and the parity one
+//! (`user_sites`, which acts on the USER's sites through a scope witness) — are
+//! **disjoint by test**
+//! (`every_registry_is_disjoint_and_the_guard_says_which_side_a_tool_belongs_on`):
+//! one name, one capability, no shadowing.
 //!
 //! **The capability, precisely.** An M1 handler receives a `ReadCtx`, which has
 //! no mutating method. A scratch handler receives a [`ScratchCtx`], whose door
@@ -508,19 +510,6 @@ fn create_params() -> Value {
         "required": ["name"],
         "additionalProperties": false
     })
-}
-
-/// Look up a scratch tool by name.
-pub fn find(name: &str) -> Option<&'static ScratchTool> {
-    registry().iter().find(|t| t.name == name)
-}
-
-/// Every scratch tool paired with the arguments the sweep exercises it with —
-/// the mirror of `tools::sweep_plan`, so the sweep covers BOTH registries. A
-/// sweep that walked only M1's would silently narrow "every registered tool's
-/// output is swept" to "every read tool's" the moment this list grows.
-pub fn sweep_plan(fixture_site_id: &str) -> Vec<(&'static ScratchTool, Value)> {
-    registry().iter().map(|t| (t, (t.sweep_args)(fixture_site_id))).collect()
 }
 
 /// What an executing handler can reach: app state, and — for any SITE — only

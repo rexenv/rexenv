@@ -1968,6 +1968,12 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     and `claim_or_ask` as the one call-site shape — ask on refusal (real sites only),
     auto-allow only where a variant exists, the auto path re-claimed through the same
     gate.
+    ✓ task 4 — **the third registry**, ledger #472 (+#209 amended): `mcp_server/user_sites.rs`
+    (empty; `UserTool` with a REQUIRED `scope`; `UserCtx` whose only door is `claim<S>`,
+    toggle refused by name BEFORE the gate) and `every_tool()` — the one enumeration that
+    dispatch, `tools/list`, the sweep and the disjointness guard all walk, with a source
+    guard that fails the build on a registry module missing from the chain (plant-proven).
+    `MCP_SITES_ENABLED_KEY` + `SITES_TOGGLE_LABEL` defined; nothing writes the key yet.
   - [ ] **P2 — site lifecycle**: `site_create` (WP/PHP/Laravel, blueprint, multisite,
     starter DB), `site_delete`, `site_configure`, `site_restart`/`site_retry`, `site_info`,
     `job_status`/`job_cancel`; L1 `mcp_user_site_check`; SMOKE §P2.

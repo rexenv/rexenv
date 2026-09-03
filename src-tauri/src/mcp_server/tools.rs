@@ -122,20 +122,6 @@ pub fn tools_list_result() -> Value {
     json!({ "tools": tools })
 }
 
-/// Look up a tool by name, or `None` if it is not registered.
-pub fn find(name: &str) -> Option<&'static ReadTool> {
-    registry().iter().find(|t| t.name == name)
-}
-
-/// The secret-leak sweep's plan: EVERY registered tool paired with the arguments
-/// to exercise it, given a planted fixture site id. The sweep
-/// (`examples/mcp_secret_sweep`, driven via `super::sweep_tool_outputs`)
-/// enumerates this, so a new tool is covered by construction — it cannot be
-/// registered without a `sweep_args` and thus without being swept.
-pub fn sweep_plan(fixture_site_id: &str) -> Vec<(&'static ReadTool, Value)> {
-    registry().iter().map(|t| (t, (t.sweep_args)(fixture_site_id))).collect()
-}
-
 fn no_params() -> Value {
     json!({ "type": "object", "properties": {}, "additionalProperties": false })
 }
