@@ -2014,6 +2014,11 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     real, and the gate in front of a model).
   - [ ] **P3 — WordPress on real sites** (eight grouped `wp_*` tools + `wp_run`'s `run`
     arm), `tail_log` every source, `mail_inbox`.
+    ✓ P3.1 — **`wp_info` + `wp_plugin` + `wp_theme`**, ledger #481 (3 Sep 2026): `WpOps`
+    over 24 `commands::wordpress` arms; per-action scope from one table met by the
+    witness types in ONE place (`claim_scope`); scratch/non-WP refused before any ask.
+    Install is a job → P6. Remaining: `wp_user`, `wp_option`, `wp_maintain`, `wp_data`,
+    `wp_network`, `site_wp_run` (run), `wp_org_search`, `site_logs`, `mail_inbox`.
   - [ ] **P4 — the stack**: `stack_status`/`stack(...)` incl. privileged start/stop (D10),
     `php_*`, `settings`, `tld`, `open`, `share` (D11), TTL/cap as settings.
   - [ ] **P5 — long tail**: `repo(...)`, `valet_import`, `connection_rewrite`, `db_import`,

@@ -119,6 +119,79 @@ static REGISTRY: &[UserTool] = &[
         handler: site_delete,
     },
     UserTool {
+        name: "wp_info",
+        description: "Read a WordPress site the user owns — the things its WordPress tab shows. \
+                      Takes `site_id` and `what`: `info` (version, multisite), `options` (the \
+                      general settings form — title, admin email, timezone, roles), `debug` (WP_DEBUG \
+                      and the named debug flags), `maintenance`, `permalinks`, `languages`, \
+                      `cron` (scheduled events), `checksums` (core files verified against \
+                      WordPress.org), `primary_admin`. Every read boots the site's own code through \
+                      wp-cli, as the user, so it needs the user's `read` permission on that site. \
+                      Refused on a scratch site (use wp_run there) and on a non-WordPress site.",
+        input_schema: || json!({
+            "type": "object",
+            "properties": {
+                "site_id": { "type": "string" },
+                "what": { "type": "string", "enum": ["info", "options", "debug", "maintenance", "permalinks", "languages", "cron", "checksums", "primary_admin"] },
+                "flag": { "type": "string", "description": "debug: one named flag (WP_DEBUG_LOG, WP_DEBUG_DISPLAY, SCRIPT_DEBUG, SAVEQUERIES) instead of WP_DEBUG." }
+            },
+            "required": ["site_id", "what"],
+            "additionalProperties": false
+        }),
+        sweep_args: |id| json!({ "site_id": id, "what": "info" }),
+        summarise: |args| args.get("what").and_then(Value::as_str).map(str::to_string),
+        scope: Scope::Read,
+        handler: wp_info,
+    },
+    UserTool {
+        name: "wp_plugin",
+        description: "Plugins on a WordPress site the user owns. Takes `site_id`, `action` and \
+                      `names` (plugin slugs; `list` needs none). `list` (with `check_updates`) \
+                      needs `read`; `activate`, `deactivate`, `update`, `activate_network`, \
+                      `deactivate_network` need `manage`; `delete` needs `destroy`. Installing is \
+                      not here — it is a job with progress, coming separately. The app's own rules \
+                      apply: a plugin rexenv linked from a repo is unlinked on delete, never \
+                      removed from the checkout.",
+        input_schema: || json!({
+            "type": "object",
+            "properties": {
+                "site_id": { "type": "string" },
+                "action": { "type": "string", "enum": ["list", "activate", "deactivate", "update", "delete", "activate_network", "deactivate_network"] },
+                "names": { "type": "array", "items": { "type": "string" }, "description": "Plugin slugs (folder names)." },
+                "check_updates": { "type": "boolean", "description": "list: also ask WordPress.org for available updates (slower)." }
+            },
+            "required": ["site_id", "action"],
+            "additionalProperties": false
+        }),
+        sweep_args: |id| json!({ "site_id": id, "action": "list" }),
+        summarise: |args| args.get("action").and_then(Value::as_str).map(|a| format!("plugin {a}")),
+        scope: Scope::Destroy,
+        handler: wp_plugin,
+    },
+    UserTool {
+        name: "wp_theme",
+        description: "Themes on a WordPress site the user owns. Takes `site_id`, `action` and \
+                      `names` (theme slugs; `list` and `network_enabled` need none). `list` (with \
+                      `check_updates`) and `network_enabled` need `read`; `activate`, `update`, \
+                      `enable_network`, `disable_network` need `manage`; `delete` needs `destroy`. \
+                      Installing is a separate job tool.",
+        input_schema: || json!({
+            "type": "object",
+            "properties": {
+                "site_id": { "type": "string" },
+                "action": { "type": "string", "enum": ["list", "activate", "update", "delete", "network_enabled", "enable_network", "disable_network"] },
+                "names": { "type": "array", "items": { "type": "string" }, "description": "Theme slugs (folder names)." },
+                "check_updates": { "type": "boolean" }
+            },
+            "required": ["site_id", "action"],
+            "additionalProperties": false
+        }),
+        sweep_args: |id| json!({ "site_id": id, "action": "list" }),
+        summarise: |args| args.get("action").and_then(Value::as_str).map(|a| format!("theme {a}")),
+        scope: Scope::Destroy,
+        handler: wp_theme,
+    },
+    UserTool {
         name: "site_configure",
         description: "Change how one of the user's own sites is set up — the things the site's \
                       Settings tab does. Takes `site_id` and `action`, plus the action's field: \
@@ -304,6 +377,39 @@ pub trait SiteOps: Send + Sync {
     fn retry<'a>(&'a self, site_id: String) -> OpFuture<'a, Result<crate::commands::site_provision::SiteProvisionState>>;
 }
 
+/// The app's own WordPress operations (`commands::wordpress`), runtime-erased
+/// like [`SiteOps`] and for the same reason. Every method is one `#[tauri::command]`
+/// the WordPress tabs call; nothing here re-implements a wp-cli invocation, so
+/// the vetted argument hygiene in `core::wordpress` (slug guards, the
+/// `DEBUG_FLAGS` allow-list, the #446 user-delete fork) applies unchanged.
+pub trait WpOps: Send + Sync {
+    fn info<'a>(&'a self, id: String) -> OpFuture<'a, Result<crate::core::wordpress::WpInfo>>;
+    fn plugins<'a>(&'a self, id: String, check_updates: bool) -> OpFuture<'a, Result<Vec<crate::core::wordpress::WpPlugin>>>;
+    fn plugin_activate<'a>(&'a self, id: String, names: Vec<String>) -> OpFuture<'a, Result<()>>;
+    fn plugin_deactivate<'a>(&'a self, id: String, names: Vec<String>) -> OpFuture<'a, Result<()>>;
+    fn plugin_update<'a>(&'a self, id: String, names: Vec<String>) -> OpFuture<'a, Result<()>>;
+    fn plugin_delete<'a>(&'a self, id: String, names: Vec<String>) -> OpFuture<'a, Result<()>>;
+    fn plugin_activate_network<'a>(&'a self, id: String, names: Vec<String>) -> OpFuture<'a, Result<()>>;
+    fn plugin_deactivate_network<'a>(&'a self, id: String, names: Vec<String>) -> OpFuture<'a, Result<()>>;
+    fn themes<'a>(&'a self, id: String, check_updates: bool) -> OpFuture<'a, Result<Vec<crate::core::wordpress::WpTheme>>>;
+    fn theme_activate<'a>(&'a self, id: String, name: String) -> OpFuture<'a, Result<()>>;
+    fn theme_update<'a>(&'a self, id: String, names: Vec<String>) -> OpFuture<'a, Result<()>>;
+    fn theme_delete<'a>(&'a self, id: String, names: Vec<String>) -> OpFuture<'a, Result<()>>;
+    fn themes_network_enabled<'a>(&'a self, id: String) -> OpFuture<'a, Result<Vec<String>>>;
+    fn theme_enable_network<'a>(&'a self, id: String, name: String) -> OpFuture<'a, Result<()>>;
+    fn theme_disable_network<'a>(&'a self, id: String, name: String) -> OpFuture<'a, Result<()>>;
+    // ── the reads `wp_info` groups ──
+    fn options<'a>(&'a self, id: String) -> OpFuture<'a, Result<crate::core::wordpress::WpOptionsForm>>;
+    fn debug_get<'a>(&'a self, id: String) -> OpFuture<'a, Result<bool>>;
+    fn debug_flag_get<'a>(&'a self, id: String, name: String) -> OpFuture<'a, Result<bool>>;
+    fn maintenance_get<'a>(&'a self, id: String) -> OpFuture<'a, Result<bool>>;
+    fn permalink_get<'a>(&'a self, id: String) -> OpFuture<'a, Result<String>>;
+    fn languages<'a>(&'a self, id: String) -> OpFuture<'a, Result<Vec<crate::core::wordpress::WpLanguage>>>;
+    fn cron_events<'a>(&'a self, id: String) -> OpFuture<'a, Result<Vec<crate::core::wordpress::WpCronEvent>>>;
+    fn core_verify_checksums<'a>(&'a self, id: String) -> OpFuture<'a, Result<crate::core::wordpress::WpChecksumReport>>;
+    fn primary_admin<'a>(&'a self, id: String) -> OpFuture<'a, Result<u64>>;
+}
+
 /// What a parity handler can reach: app state, the app's own site operations,
 /// and — for any SITE or for the stack — only through [`UserCtx::claim`], which
 /// yields a `Granted<S>` or a refusal an agent can act on.
@@ -316,11 +422,12 @@ pub struct UserCtx<'a> {
     /// The MCP client's self-reported name — the principal a grant is TO.
     client: &'a str,
     ops: &'a dyn SiteOps,
+    wp: &'a dyn WpOps,
 }
 
 impl<'a> UserCtx<'a> {
-    pub fn new(state: &'a AppState, ops: &'a dyn SiteOps, client: &'a str) -> Self {
-        UserCtx { state, client, ops }
+    pub fn new(state: &'a AppState, ops: &'a dyn SiteOps, wp: &'a dyn WpOps, client: &'a str) -> Self {
+        UserCtx { state, client, ops, wp }
     }
 
     pub(crate) fn db(&self) -> Result<std::sync::MutexGuard<'_, rusqlite::Connection>> {
@@ -896,6 +1003,200 @@ fn site_retry<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::Act
     })
 }
 
+
+/// The WordPress tools' shared preconditions, checked on the ROW before any
+/// permission is asked for: a scratch site is the agent's (the scratch tools
+/// apply), and a site with no WordPress in it has nothing for wp-cli to boot.
+/// Both are shape refusals — an ask for `read` on a Laravel site would prompt
+/// the user about a permission that cannot be used.
+fn wp_precheck(ctx: &UserCtx<'_>, site_id: &str, tool: &str) -> Result<()> {
+    let conn = ctx.db()?;
+    let Some(site) = crate::state::store::get_site(&conn, site_id)? else {
+        return Err(Error::Other(format!("There is no site with id `{site_id}`. Use list_sites to see the sites that exist.")));
+    };
+    if site.is_scratch() {
+        return Err(Error::Other(format!(
+            "`{}` is a scratch site the agent created — {tool} is for the user's own sites. Use wp_run on it instead; no permission is needed.",
+            site.domain
+        )));
+    }
+    if site.site_type != SiteType::Wordpress {
+        return Err(Error::Other(format!(
+            "`{}` is a {} site, not WordPress — {tool} has nothing to run there.",
+            site.domain,
+            site.site_type.as_db()
+        )));
+    }
+    Ok(())
+}
+
+/// One typed claim per scope, chosen by a VALUE — the grouped WordPress tools
+/// decide the scope per ACTION (list reads, delete destroys) from a table the
+/// tests hold, and this is the only place that table meets the witness types.
+/// The witness is claimed, its site taken, and the witness dropped: a grouped
+/// tool's handler holds no `Granted<S>` of a scope it did not ask for.
+fn claim_scope(ctx: &UserCtx<'_>, site_id: &str, scope: Scope, wanted: &str) -> Result<(Site, bool)> {
+    let take = |site: Option<&Site>| site.cloned().ok_or_else(|| Error::Other("this tool needs a site, not the stack.".into()));
+    Ok(match scope {
+        Scope::Read => {
+            let c = ctx.claim::<scope::Read>(Some(site_id), wanted)?;
+            (take(c.granted.site())?, c.auto_granted)
+        }
+        Scope::Manage => {
+            let c = ctx.claim::<scope::Manage>(Some(site_id), wanted)?;
+            (take(c.granted.site())?, c.auto_granted)
+        }
+        Scope::Destroy => {
+            let c = ctx.claim::<scope::Destroy>(Some(site_id), wanted)?;
+            (take(c.granted.site())?, c.auto_granted)
+        }
+        Scope::Run => {
+            let c = ctx.claim::<scope::Run>(Some(site_id), wanted)?;
+            (take(c.granted.site())?, c.auto_granted)
+        }
+        Scope::System => {
+            let c = ctx.claim::<scope::System>(Some(site_id), wanted)?;
+            (take(c.granted.site())?, c.auto_granted)
+        }
+    })
+}
+
+fn names_arg(args: &Value, tool: &str, action: &str) -> Result<Vec<String>> {
+    let names: Vec<String> = args
+        .get("names")
+        .and_then(Value::as_array)
+        .map(|a| a.iter().filter_map(Value::as_str).map(str::trim).filter(|s| !s.is_empty()).map(String::from).collect())
+        .unwrap_or_default();
+    if names.is_empty() {
+        return Err(Error::Other(format!("{tool} `{action}` needs `names` — at least one slug.")));
+    }
+    Ok(names)
+}
+
+fn with_consent(mut value: Value, auto_granted: bool) -> Value {
+    if auto_granted {
+        if let Some(obj) = value.as_object_mut() {
+            obj.insert("consent".into(), Value::String(agent_grants::AUTO_GRANTED_NOTE.to_string()));
+        }
+    }
+    value
+}
+
+fn to_json<T: Serialize>(v: T) -> Result<Value> {
+    serde_json::to_value(v).map_err(|e| Error::Other(format!("serialising the reply: {e}")))
+}
+
+fn wp_info<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTarget) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let id = args.get("site_id").and_then(Value::as_str).ok_or_else(|| Error::Other("wp_info needs a `site_id`.".into()))?;
+        let what = args.get("what").and_then(Value::as_str).ok_or_else(|| Error::Other("wp_info needs `what`.".into()))?;
+        const WHATS: &[&str] = &["info", "options", "debug", "maintenance", "permalinks", "languages", "cron", "checksums", "primary_admin"];
+        if !WHATS.contains(&what) {
+            return Err(Error::Other(format!("`{what}` is not something wp_info reads. Use one of: {}.", WHATS.join(", "))));
+        }
+        wp_precheck(&ctx, id, "wp_info")?;
+        let (site, auto) = claim_scope(&ctx, id, Scope::Read, &format!("read its WordPress {what}"))?;
+        acted.set(&site);
+        let sid = site.id.clone();
+        let wp = ctx.wp;
+        let value = match what {
+            "info" => to_json(wp.info(sid).await?)?,
+            "options" => to_json(wp.options(sid).await?)?,
+            "debug" => match args.get("flag").and_then(Value::as_str) {
+                Some(flag) => json!({ "flag": flag, "on": wp.debug_flag_get(sid, flag.to_string()).await? }),
+                None => json!({ "flag": "WP_DEBUG", "on": wp.debug_get(sid).await? }),
+            },
+            "maintenance" => json!({ "on": wp.maintenance_get(sid).await? }),
+            "permalinks" => json!({ "structure": wp.permalink_get(sid).await? }),
+            "languages" => to_json(wp.languages(sid).await?)?,
+            "cron" => to_json(wp.cron_events(sid).await?)?,
+            "checksums" => {
+                // The report's raw wp-cli output names the docroot: scrubbed.
+                let r = wp.core_verify_checksums(sid).await?;
+                let known = super::view::KnownPaths::for_site(ctx.state.platform.paths(), &site.path);
+                json!({ "ok": r.ok, "real": r.real, "benign": r.benign, "output": super::view::scrub_log_line(&r.output, &known) })
+            }
+            _ => json!({ "primaryAdminUserId": wp.primary_admin(sid).await? }),
+        };
+        Ok(with_consent(json!({ "domain": site.domain, "what": what, "result": value }), auto))
+    })
+}
+
+/// Which scope each plugin action demands — the table the tests hold.
+pub(crate) fn wp_plugin_scope(action: &str) -> Option<Scope> {
+    Some(match action {
+        "list" => Scope::Read,
+        "activate" | "deactivate" | "update" | "activate_network" | "deactivate_network" => Scope::Manage,
+        "delete" => Scope::Destroy,
+        _ => return None,
+    })
+}
+
+/// Which scope each theme action demands.
+pub(crate) fn wp_theme_scope(action: &str) -> Option<Scope> {
+    Some(match action {
+        "list" | "network_enabled" => Scope::Read,
+        "activate" | "update" | "enable_network" | "disable_network" => Scope::Manage,
+        "delete" => Scope::Destroy,
+        _ => return None,
+    })
+}
+
+fn wp_plugin<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTarget) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let id = args.get("site_id").and_then(Value::as_str).ok_or_else(|| Error::Other("wp_plugin needs a `site_id`.".into()))?;
+        let action = args.get("action").and_then(Value::as_str).ok_or_else(|| Error::Other("wp_plugin needs an `action`.".into()))?;
+        let scope = wp_plugin_scope(action).ok_or_else(|| {
+            Error::Other(format!("`{action}` is not a wp_plugin action. Use list, activate, deactivate, update, delete, activate_network or deactivate_network."))
+        })?;
+        let names = if action == "list" { Vec::new() } else { names_arg(args, "wp_plugin", action)? };
+        wp_precheck(&ctx, id, "wp_plugin")?;
+        let wanted = if action == "list" { "list its plugins".to_string() } else { format!("{} the plugin(s) {}", action.replace('_', " "), names.join(", ")) };
+        let (site, auto) = claim_scope(&ctx, id, scope, &wanted)?;
+        acted.set(&site);
+        let sid = site.id.clone();
+        let wp = ctx.wp;
+        let result = match action {
+            "list" => to_json(wp.plugins(sid, args.get("check_updates").and_then(Value::as_bool).unwrap_or(false)).await?)?,
+            "activate" => { wp.plugin_activate(sid, names.clone()).await?; json!({ "activated": names }) }
+            "deactivate" => { wp.plugin_deactivate(sid, names.clone()).await?; json!({ "deactivated": names }) }
+            "update" => { wp.plugin_update(sid, names.clone()).await?; json!({ "updated": names }) }
+            "delete" => { wp.plugin_delete(sid, names.clone()).await?; json!({ "deleted": names }) }
+            "activate_network" => { wp.plugin_activate_network(sid, names.clone()).await?; json!({ "networkActivated": names }) }
+            _ => { wp.plugin_deactivate_network(sid, names.clone()).await?; json!({ "networkDeactivated": names }) }
+        };
+        Ok(with_consent(json!({ "domain": site.domain, "action": action, "result": result }), auto))
+    })
+}
+
+fn wp_theme<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTarget) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let id = args.get("site_id").and_then(Value::as_str).ok_or_else(|| Error::Other("wp_theme needs a `site_id`.".into()))?;
+        let action = args.get("action").and_then(Value::as_str).ok_or_else(|| Error::Other("wp_theme needs an `action`.".into()))?;
+        let scope = wp_theme_scope(action).ok_or_else(|| {
+            Error::Other(format!("`{action}` is not a wp_theme action. Use list, activate, update, delete, network_enabled, enable_network or disable_network."))
+        })?;
+        let names = if matches!(action, "list" | "network_enabled") { Vec::new() } else { names_arg(args, "wp_theme", action)? };
+        wp_precheck(&ctx, id, "wp_theme")?;
+        let wanted = if names.is_empty() { format!("{} its themes", action.replace('_', " ")) } else { format!("{} the theme(s) {}", action.replace('_', " "), names.join(", ")) };
+        let (site, auto) = claim_scope(&ctx, id, scope, &wanted)?;
+        acted.set(&site);
+        let sid = site.id.clone();
+        let wp = ctx.wp;
+        let one = |names: &[String]| names.first().cloned().unwrap_or_default();
+        let result = match action {
+            "list" => to_json(wp.themes(sid, args.get("check_updates").and_then(Value::as_bool).unwrap_or(false)).await?)?,
+            "network_enabled" => json!({ "networkEnabled": wp.themes_network_enabled(sid).await? }),
+            "activate" => { let n = one(&names); wp.theme_activate(sid, n.clone()).await?; json!({ "activated": n }) }
+            "update" => { wp.theme_update(sid, names.clone()).await?; json!({ "updated": names }) }
+            "delete" => { wp.theme_delete(sid, names.clone()).await?; json!({ "deleted": names }) }
+            "enable_network" => { let n = one(&names); wp.theme_enable_network(sid, n.clone()).await?; json!({ "networkEnabled": n }) }
+            _ => { let n = one(&names); wp.theme_disable_network(sid, n.clone()).await?; json!({ "networkDisabled": n }) }
+        };
+        Ok(with_consent(json!({ "domain": site.domain, "action": action, "result": result }), auto))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1094,6 +1395,113 @@ mod tests {
         }
     }
 
+    /// The WordPress commands, recorded; the reads answer canned shapes.
+    impl WpOps for FakeOps {
+        fn info<'a>(&'a self, id: String) -> OpFuture<'a, Result<crate::core::wordpress::WpInfo>> {
+            self.calls.lock().unwrap().push(format!("wp info {id}"));
+            Box::pin(async { Ok(crate::core::wordpress::WpInfo { is_wordpress: true, version: Some("6.6".into()), multisite: false }) })
+        }
+        fn plugins<'a>(&'a self, id: String, check_updates: bool) -> OpFuture<'a, Result<Vec<crate::core::wordpress::WpPlugin>>> {
+            self.calls.lock().unwrap().push(format!("wp plugins {id} {check_updates}"));
+            Box::pin(async { Ok(vec![]) })
+        }
+        fn plugin_activate<'a>(&'a self, id: String, names: Vec<String>) -> OpFuture<'a, Result<()>> {
+            self.calls.lock().unwrap().push(format!("wp plugin activate {id} {}", names.join(",")));
+            Box::pin(async { Ok(()) })
+        }
+        fn plugin_deactivate<'a>(&'a self, id: String, names: Vec<String>) -> OpFuture<'a, Result<()>> {
+            self.calls.lock().unwrap().push(format!("wp plugin deactivate {id} {}", names.join(",")));
+            Box::pin(async { Ok(()) })
+        }
+        fn plugin_update<'a>(&'a self, id: String, names: Vec<String>) -> OpFuture<'a, Result<()>> {
+            self.calls.lock().unwrap().push(format!("wp plugin update {id} {}", names.join(",")));
+            Box::pin(async { Ok(()) })
+        }
+        fn plugin_delete<'a>(&'a self, id: String, names: Vec<String>) -> OpFuture<'a, Result<()>> {
+            self.calls.lock().unwrap().push(format!("wp plugin delete {id} {}", names.join(",")));
+            Box::pin(async { Ok(()) })
+        }
+        fn plugin_activate_network<'a>(&'a self, id: String, names: Vec<String>) -> OpFuture<'a, Result<()>> {
+            self.calls.lock().unwrap().push(format!("wp plugin activate_network {id} {}", names.join(",")));
+            Box::pin(async { Ok(()) })
+        }
+        fn plugin_deactivate_network<'a>(&'a self, id: String, names: Vec<String>) -> OpFuture<'a, Result<()>> {
+            self.calls.lock().unwrap().push(format!("wp plugin deactivate_network {id} {}", names.join(",")));
+            Box::pin(async { Ok(()) })
+        }
+        fn themes<'a>(&'a self, id: String, check_updates: bool) -> OpFuture<'a, Result<Vec<crate::core::wordpress::WpTheme>>> {
+            self.calls.lock().unwrap().push(format!("wp themes {id} {check_updates}"));
+            Box::pin(async { Ok(vec![]) })
+        }
+        fn theme_activate<'a>(&'a self, id: String, name: String) -> OpFuture<'a, Result<()>> {
+            self.calls.lock().unwrap().push(format!("wp theme activate {id} {name}"));
+            Box::pin(async { Ok(()) })
+        }
+        fn theme_update<'a>(&'a self, id: String, names: Vec<String>) -> OpFuture<'a, Result<()>> {
+            self.calls.lock().unwrap().push(format!("wp theme update {id} {}", names.join(",")));
+            Box::pin(async { Ok(()) })
+        }
+        fn theme_delete<'a>(&'a self, id: String, names: Vec<String>) -> OpFuture<'a, Result<()>> {
+            self.calls.lock().unwrap().push(format!("wp theme delete {id} {}", names.join(",")));
+            Box::pin(async { Ok(()) })
+        }
+        fn themes_network_enabled<'a>(&'a self, id: String) -> OpFuture<'a, Result<Vec<String>>> {
+            self.calls.lock().unwrap().push(format!("wp themes network_enabled {id}"));
+            Box::pin(async { Ok(vec!["twentytwentyfour".into()]) })
+        }
+        fn theme_enable_network<'a>(&'a self, id: String, name: String) -> OpFuture<'a, Result<()>> {
+            self.calls.lock().unwrap().push(format!("wp theme enable_network {id} {name}"));
+            Box::pin(async { Ok(()) })
+        }
+        fn theme_disable_network<'a>(&'a self, id: String, name: String) -> OpFuture<'a, Result<()>> {
+            self.calls.lock().unwrap().push(format!("wp theme disable_network {id} {name}"));
+            Box::pin(async { Ok(()) })
+        }
+        fn options<'a>(&'a self, id: String) -> OpFuture<'a, Result<crate::core::wordpress::WpOptionsForm>> {
+            self.calls.lock().unwrap().push(format!("wp options {id}"));
+            Box::pin(async { Ok(crate::core::wordpress::WpOptionsForm { fields: vec![], timezones: vec![], roles: vec![] }) })
+        }
+        fn debug_get<'a>(&'a self, id: String) -> OpFuture<'a, Result<bool>> {
+            self.calls.lock().unwrap().push(format!("wp debug_get {id}"));
+            Box::pin(async { Ok(true) })
+        }
+        fn debug_flag_get<'a>(&'a self, id: String, name: String) -> OpFuture<'a, Result<bool>> {
+            self.calls.lock().unwrap().push(format!("wp debug_flag_get {id} {name}"));
+            Box::pin(async { Ok(false) })
+        }
+        fn maintenance_get<'a>(&'a self, id: String) -> OpFuture<'a, Result<bool>> {
+            self.calls.lock().unwrap().push(format!("wp maintenance_get {id}"));
+            Box::pin(async { Ok(false) })
+        }
+        fn permalink_get<'a>(&'a self, id: String) -> OpFuture<'a, Result<String>> {
+            self.calls.lock().unwrap().push(format!("wp permalink_get {id}"));
+            Box::pin(async { Ok("/%postname%/".into()) })
+        }
+        fn languages<'a>(&'a self, id: String) -> OpFuture<'a, Result<Vec<crate::core::wordpress::WpLanguage>>> {
+            self.calls.lock().unwrap().push(format!("wp languages {id}"));
+            Box::pin(async { Ok(vec![]) })
+        }
+        fn cron_events<'a>(&'a self, id: String) -> OpFuture<'a, Result<Vec<crate::core::wordpress::WpCronEvent>>> {
+            self.calls.lock().unwrap().push(format!("wp cron_events {id}"));
+            Box::pin(async { Ok(vec![]) })
+        }
+        fn core_verify_checksums<'a>(&'a self, id: String) -> OpFuture<'a, Result<crate::core::wordpress::WpChecksumReport>> {
+            self.calls.lock().unwrap().push(format!("wp checksums {id}"));
+            Box::pin(async {
+                Ok(crate::core::wordpress::WpChecksumReport {
+                    ok: false,
+                    real: vec!["wp-includes/x.php".into()],
+                    benign: vec![],
+                    output: "Warning: File doesn't verify: /Users/somebody/Library/Application Support/rexenv/Sites/mine.rex/wp-includes/x.php".into(),
+                })
+            })
+        }
+        fn primary_admin<'a>(&'a self, id: String) -> OpFuture<'a, Result<u64>> {
+            self.calls.lock().unwrap().push(format!("wp primary_admin {id}"));
+            Box::pin(async { Ok(1) })
+        }
+    }
+
     fn switch_on(state: &AppState) {
         let conn = state.db.lock().unwrap();
         store::set_setting(&conn, crate::mcp_server::MCP_SITES_ENABLED_KEY, "true").unwrap();
@@ -1124,7 +1532,7 @@ mod tests {
         seed_php(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, "claude-code");
         let run = |args: Value| {
             let acted = &acted;
             async move { site_create(ctx, &args, acted).await }
@@ -1228,7 +1636,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, "claude-code");
         let mine = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "mine.rex", SiteOrigin::User);
         let theirs = test_site("c58e0a41-7d2f-4b19-93a6-6e1c5d8f0a24", "probe.scratch.rex", SiteOrigin::Agent);
         {
@@ -1269,7 +1677,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, "claude-code");
         let mine = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "mine.rex", SiteOrigin::User);
         {
             let conn = state.db.lock().unwrap();
@@ -1364,7 +1772,7 @@ mod tests {
         switch_on(&state);
         let ops = FakeOps::default();
         let acted = super::super::feed::ActedTarget::default();
-        let ctx = UserCtx::new(&state, &ops, "claude-code");
+        let ctx = UserCtx::new(&state, &ops, &ops, "claude-code");
         let mine = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "mine.rex", SiteOrigin::User);
         {
             let conn = state.db.lock().unwrap();
@@ -1412,5 +1820,100 @@ mod tests {
         let home = directories::BaseDirs::new().unwrap().home_dir().display().to_string();
         assert!(read.inspect_folder(&home).is_err());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **The grouped WordPress tools decide the scope per ACTION from one table,
+    /// refuse a scratch or non-WordPress site before asking, claim exactly that
+    /// scope, and run exactly the app command — with wp-cli's own text scrubbed.**
+    #[tokio::test]
+    async fn wp_tools_claim_per_action_and_refuse_non_wordpress_before_asking() {
+        // The table itself: list reads, delete destroys, everything else manages.
+        assert_eq!(wp_plugin_scope("list"), Some(Scope::Read));
+        assert_eq!(wp_plugin_scope("delete"), Some(Scope::Destroy));
+        for a in ["activate", "deactivate", "update", "activate_network", "deactivate_network"] {
+            assert_eq!(wp_plugin_scope(a), Some(Scope::Manage), "{a}");
+        }
+        assert_eq!(wp_plugin_scope("install"), None, "install is a job, not here");
+        assert_eq!(wp_theme_scope("list"), Some(Scope::Read));
+        assert_eq!(wp_theme_scope("network_enabled"), Some(Scope::Read));
+        assert_eq!(wp_theme_scope("delete"), Some(Scope::Destroy));
+        assert_eq!(wp_theme_scope("enable_network"), Some(Scope::Manage));
+
+        let state = app_state();
+        switch_on(&state);
+        let ops = FakeOps::default();
+        let acted = super::super::feed::ActedTarget::default();
+        let ctx = UserCtx::new(&state, &ops, &ops, "claude-code");
+        let wp_site = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "blog.rex", SiteOrigin::User);
+        let mut php_site = test_site("bbbbbbbb-bbbb-4ccc-8ddd-eeeeeeeeeeee", "plain.rex", SiteOrigin::User);
+        php_site.site_type = SiteType::Php;
+        let theirs = test_site("c58e0a41-7d2f-4b19-93a6-6e1c5d8f0a24", "probe.scratch.rex", SiteOrigin::Agent);
+        {
+            let conn = state.db.lock().unwrap();
+            for s in [&wp_site, &php_site, &theirs] {
+                store::insert_site(&conn, s).unwrap();
+            }
+        }
+        // Shape and precheck refusals — no ask for any of them.
+        let err = wp_plugin(ctx, &json!({ "site_id": wp_site.id, "action": "install", "names": ["x"] }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("not a wp_plugin action"), "{err}");
+        let err = wp_plugin(ctx, &json!({ "site_id": wp_site.id, "action": "activate" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("needs `names`"), "{err}");
+        let err = wp_info(ctx, &json!({ "site_id": php_site.id, "what": "info" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("not WordPress"), "{err}");
+        let err = wp_theme(ctx, &json!({ "site_id": theirs.id, "action": "list" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("wp_run"), "a scratch site is sent to the scratch tools: {err}");
+        assert!(asks(&state).is_empty(), "none of those asks for anything");
+
+        // No grant: each action asks for ITS scope.
+        assert!(wp_plugin(ctx, &json!({ "site_id": wp_site.id, "action": "list" }), &acted).await.is_err());
+        assert!(wp_plugin(ctx, &json!({ "site_id": wp_site.id, "action": "delete", "names": ["akismet"] }), &acted).await.is_err());
+        let a = asks(&state);
+        let scopes: Vec<Scope> = a.iter().map(|r| r.scope).collect();
+        assert!(scopes.contains(&Scope::Read) && scopes.contains(&Scope::Destroy), "{a:?}");
+        assert!(a.iter().any(|r| r.wanted.contains("delete the plugin(s) akismet")), "{a:?}");
+
+        // A `manage` grant covers list (implication) and activate, not delete.
+        {
+            let conn = state.db.lock().unwrap();
+            store::grant_agent_site(&conn, "g1", Some(&wp_site.id), "claude-code", "manage", 7, false, false).unwrap();
+        }
+        let v = wp_plugin(ctx, &json!({ "site_id": wp_site.id, "action": "list", "check_updates": true }), &acted).await.unwrap();
+        assert_eq!(v["action"], "list");
+        let v = wp_plugin(ctx, &json!({ "site_id": wp_site.id, "action": "activate", "names": ["akismet", "hello"] }), &acted).await.unwrap();
+        assert_eq!(v["result"]["activated"], json!(["akismet", "hello"]));
+        assert!(wp_plugin(ctx, &json!({ "site_id": wp_site.id, "action": "delete", "names": ["akismet"] }), &acted).await.is_err(), "manage does not delete");
+        let v = wp_theme(ctx, &json!({ "site_id": wp_site.id, "action": "activate", "names": ["twentytwentyfour"] }), &acted).await.unwrap();
+        assert_eq!(v["result"]["activated"], "twentytwentyfour");
+        let v = wp_theme(ctx, &json!({ "site_id": wp_site.id, "action": "network_enabled" }), &acted).await.unwrap();
+        assert_eq!(v["result"]["networkEnabled"], json!(["twentytwentyfour"]));
+        // Every `what` of wp_info reaches its read; the checksum output is scrubbed.
+        for what in ["info", "options", "debug", "maintenance", "permalinks", "languages", "cron", "checksums", "primary_admin"] {
+            let v = wp_info(ctx, &json!({ "site_id": wp_site.id, "what": what }), &acted).await.unwrap();
+            assert_eq!(v["what"], what);
+        }
+        let v = wp_info(ctx, &json!({ "site_id": wp_site.id, "what": "debug", "flag": "SCRIPT_DEBUG" }), &acted).await.unwrap();
+        assert_eq!(v["result"]["flag"], "SCRIPT_DEBUG");
+        let v = wp_info(ctx, &json!({ "site_id": wp_site.id, "what": "checksums" }), &acted).await.unwrap();
+        let out = v["result"]["output"].as_str().unwrap();
+        assert!(!out.contains("/Users/somebody"), "wp-cli's own text is scrubbed: {out}");
+
+        // A session `destroy` grant lets delete through.
+        {
+            let conn = state.db.lock().unwrap();
+            store::grant_agent_site(&conn, "g2", Some(&wp_site.id), "claude-code", "destroy", 1, false, true).unwrap();
+        }
+        let v = wp_plugin(ctx, &json!({ "site_id": wp_site.id, "action": "delete", "names": ["akismet"] }), &acted).await.unwrap();
+        assert_eq!(v["result"]["deleted"], json!(["akismet"]));
+        let calls = ops.calls.lock().unwrap().clone();
+        let id = wp_site.id.as_str();
+        for expect in [
+            format!("wp plugins {id} true"), format!("wp plugin activate {id} akismet,hello"), format!("wp plugin delete {id} akismet"),
+            format!("wp theme activate {id} twentytwentyfour"), format!("wp themes network_enabled {id}"),
+            format!("wp info {id}"), format!("wp debug_flag_get {id} SCRIPT_DEBUG"), format!("wp checksums {id}"), format!("wp primary_admin {id}"),
+        ] {
+            assert!(calls.contains(&expect), "missing app call {expect:?} in {calls:?}");
+        }
+        assert_eq!(acted.take().as_deref(), Some(id));
     }
 }

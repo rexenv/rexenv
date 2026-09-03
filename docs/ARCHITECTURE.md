@@ -901,7 +901,12 @@ IPC surface — which is how a reader ends up designing against a system with on
   on the site; twelve actions, each exactly one app command — rename, php, server, xdebug,
   env set/unset as a merge whose VALUES never come back, domain change, extra domains,
   move, relink, cert), `site_restart` (#444's three outcomes in words, ports dropped) and
-  `site_retry` (the job's own text through the one scrubber) — each through a
+  `site_retry` (the job's own text through the one scrubber), and from P3 the grouped
+  WordPress tools on the user's own sites — `wp_info` (nine reads under `read`),
+  `wp_plugin` and `wp_theme` (the scope decided PER ACTION from one table: `list` reads,
+  `delete` destroys, the rest manage; a scratch or non-WordPress site refused BEFORE any
+  ask; every action exactly one `commands::wordpress` command, so the vetted argument
+  hygiene in `core::wordpress` applies unchanged) — each through a
   `Granted<S>` scope witness (`core::agent_grants`) minted from a grant the user gave in the
   app, and only while the "Let agents manage my own sites" switch is on. Shape refusals
   (a bad type, a taken domain, `multisite` on a PHP site) come BEFORE the gate and record no

@@ -673,7 +673,7 @@ async fn fulfill_tool_call<Rt: tauri::Runtime>(
         }
         Tool::User(t) => {
             let ops = AppSiteCreator { app: app.clone() };
-            (t.handler)(user_sites::UserCtx::new(state.inner(), &ops, client), args, acted).await
+            (t.handler)(user_sites::UserCtx::new(state.inner(), &ops, &ops, client), args, acted).await
         }
     };
     match outcome {
@@ -896,6 +896,81 @@ impl<Rt: tauri::Runtime> user_sites::SiteOps for AppSiteCreator<Rt> {
     }
 }
 
+impl<Rt: tauri::Runtime> user_sites::WpOps for AppSiteCreator<Rt> {
+    fn info<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<crate::core::wordpress::WpInfo>> {
+        Box::pin(async move { crate::commands::wordpress::wp_info(self.state()?, id).await })
+    }
+    fn plugins<'a>(&'a self, id: String, check_updates: bool) -> user_sites::OpFuture<'a, crate::error::Result<Vec<crate::core::wordpress::WpPlugin>>> {
+        Box::pin(async move { crate::commands::wordpress::wp_plugins(self.state()?, id, Some(check_updates)).await })
+    }
+    fn plugin_activate<'a>(&'a self, id: String, names: Vec<String>) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::wordpress::wp_plugin_activate(self.state()?, id, names).await })
+    }
+    fn plugin_deactivate<'a>(&'a self, id: String, names: Vec<String>) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::wordpress::wp_plugin_deactivate(self.state()?, id, names).await })
+    }
+    fn plugin_update<'a>(&'a self, id: String, names: Vec<String>) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::wordpress::wp_plugin_update(self.app.clone(), self.state()?, id, names).await })
+    }
+    fn plugin_delete<'a>(&'a self, id: String, names: Vec<String>) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::wordpress::wp_plugin_delete(self.state()?, id, names).await })
+    }
+    fn plugin_activate_network<'a>(&'a self, id: String, names: Vec<String>) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::wordpress::wp_plugin_activate_network(self.state()?, id, names).await })
+    }
+    fn plugin_deactivate_network<'a>(&'a self, id: String, names: Vec<String>) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::wordpress::wp_plugin_deactivate_network(self.state()?, id, names).await })
+    }
+    fn themes<'a>(&'a self, id: String, check_updates: bool) -> user_sites::OpFuture<'a, crate::error::Result<Vec<crate::core::wordpress::WpTheme>>> {
+        Box::pin(async move { crate::commands::wordpress::wp_themes(self.state()?, id, Some(check_updates)).await })
+    }
+    fn theme_activate<'a>(&'a self, id: String, name: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::wordpress::wp_theme_activate(self.state()?, id, name).await })
+    }
+    fn theme_update<'a>(&'a self, id: String, names: Vec<String>) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::wordpress::wp_theme_update(self.app.clone(), self.state()?, id, names).await })
+    }
+    fn theme_delete<'a>(&'a self, id: String, names: Vec<String>) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::wordpress::wp_theme_delete(self.state()?, id, names).await })
+    }
+    fn themes_network_enabled<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<Vec<String>>> {
+        Box::pin(async move { crate::commands::wordpress::wp_themes_network_enabled(self.state()?, id).await })
+    }
+    fn theme_enable_network<'a>(&'a self, id: String, name: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::wordpress::wp_theme_enable_network(self.state()?, id, name).await })
+    }
+    fn theme_disable_network<'a>(&'a self, id: String, name: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::wordpress::wp_theme_disable_network(self.state()?, id, name).await })
+    }
+    fn options<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<crate::core::wordpress::WpOptionsForm>> {
+        Box::pin(async move { crate::commands::wordpress::wp_options(self.state()?, id).await })
+    }
+    fn debug_get<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<bool>> {
+        Box::pin(async move { crate::commands::wordpress::wp_debug_get(self.state()?, id).await })
+    }
+    fn debug_flag_get<'a>(&'a self, id: String, name: String) -> user_sites::OpFuture<'a, crate::error::Result<bool>> {
+        Box::pin(async move { crate::commands::wordpress::wp_debug_flag_get(self.state()?, id, name).await })
+    }
+    fn maintenance_get<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<bool>> {
+        Box::pin(async move { crate::commands::wordpress::wp_maintenance_get(self.state()?, id).await })
+    }
+    fn permalink_get<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<String>> {
+        Box::pin(async move { crate::commands::wordpress::wp_permalink_get(self.state()?, id).await })
+    }
+    fn languages<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<Vec<crate::core::wordpress::WpLanguage>>> {
+        Box::pin(async move { crate::commands::wordpress::wp_languages(self.state()?, id).await })
+    }
+    fn cron_events<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<Vec<crate::core::wordpress::WpCronEvent>>> {
+        Box::pin(async move { crate::commands::wordpress::wp_cron_events(self.state()?, id).await })
+    }
+    fn core_verify_checksums<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<crate::core::wordpress::WpChecksumReport>> {
+        Box::pin(async move { crate::commands::wordpress::wp_core_verify_checksums(self.state()?, id).await })
+    }
+    fn primary_admin<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<u64>> {
+        Box::pin(async move { crate::commands::wordpress::wp_primary_admin(self.state()?, id).await })
+    }
+}
+
 /// Run EVERY registered tool against `app`'s state with the fixture site id, and
 /// return each tool's serialised output (or its error text — errors can leak
 /// too). For the secret-leak sweep (`examples/mcp_secret_sweep`): it plants
@@ -916,7 +991,7 @@ pub async fn sweep_tool_outputs<Rt: tauri::Runtime>(
     let ctx = ReadCtx::new(state.inner());
     let creator = AppSiteCreator { app: app.clone() };
     let sctx = scratch::ScratchCtx::new(state.inner(), &creator, &creator, "secret-sweep");
-    let uctx = user_sites::UserCtx::new(state.inner(), &creator, "secret-sweep");
+    let uctx = user_sites::UserCtx::new(state.inner(), &creator, &creator, "secret-sweep");
     let mut outputs = Vec::new();
     // The sweep exercises handlers for their OUTPUT; a target they record is
     // irrelevant here, so each gets a throwaway recorder.
