@@ -28,6 +28,9 @@ use common::Reaped;
 
 const NGINX_PORT: u16 = 18099;
 const DOMAIN: &str = "importcheck.rex";
+/// An extra name the site answers on (v42) — a link-farm alias, recorded and
+/// then proved served only through the manager's mirror.
+const ALIAS: &str = "www.importcheck.rex";
 const MARKER: &str = "IMPORTED-FROM-THEIR-OWN-FOLDER";
 
 fn fingerprint(dir: &Path) -> BTreeMap<String, u64> {
@@ -144,8 +147,40 @@ async fn main() {
     println!("  their folder      untouched by import: {}", fingerprint(&project) == project_before);
     ok &= linked_ok;
 
+    println!("\n=== 3b. an extra name is served by the MIRROR the manager holds, not the table ===");
+    // The stale-mirror shape, reproduced: production regenerates configs from
+    // `ServiceManager::site_aliases` (`rebuild_configs_for`), while the DB path
+    // (`rebuild_configs`) is what every example calls — so no example could
+    // catch an alias that was recorded and never pushed to the manager (the
+    // Valet import did exactly that, 3 Sep 2026). Here the alias is recorded,
+    // then the configs are built with an EMPTY mirror and must NOT serve it,
+    // and with the table's map and must.
+    sites::add_alias(&conn, &created.id, ALIAS).expect("record the extra name");
+    let stale = sites::rebuild_configs_for(
+        &sites::list(&conn).unwrap(),
+        &*plat,
+        &ca,
+        NGINX_PORT,
+        8081,
+        8444,
+        &Default::default(),
+        &Default::default(),
+        &std::collections::HashMap::new(),
+    )
+    .unwrap();
+    let stale_conf = std::fs::read_to_string(&stale.nginx_conf).unwrap_or_default();
+    let stale_serves = stale_conf.contains(ALIAS);
+    println!("  empty mirror  → nginx.conf names {ALIAS}: {stale_serves} (want false — the recorded name is DARK)");
+    let fresh = sites::rebuild_configs(&conn, &*plat, &ca, NGINX_PORT, 8081, 8444).unwrap();
+    let fresh_conf = std::fs::read_to_string(&fresh.nginx_conf).unwrap_or_default();
+    let fresh_serves = fresh_conf
+        .lines()
+        .any(|l| l.trim_start().starts_with("server_name") && l.contains(ALIAS) && l.contains(DOMAIN));
+    println!("  table's map   → one server_name carries {DOMAIN} and {ALIAS}: {fresh_serves} (want true)");
+    ok &= !stale_serves && fresh_serves;
+
     println!("\n=== 4. serve their file ===");
-    let cfg = sites::rebuild_configs(&conn, &*plat, &ca, NGINX_PORT, 8081, 8444).unwrap();
+    let cfg = fresh;
     let nginx_bin = binaries::resolve(&*plat, "nginx", binaries::NGINX_VERSION).await.unwrap();
     let mut nginx = Reaped::new(
         services::start_nginx(&*plat, &nginx_bin, &cfg.nginx_conf, &cfg.nginx_prefix).unwrap(),

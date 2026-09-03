@@ -1587,6 +1587,49 @@ mod a_site_restart_never_bounces_a_shared_pool_uninvited {
     /// flag, and the guard is on the SHAPE, because "we only call it when the
     /// flag is set" is exactly the kind of claim that stays true until someone
     /// hoists the call for tidiness.
+    /// **Every alias WRITER in `commands/` refreshes the manager's mirror.**
+    ///
+    /// The web tier regenerates from `ServiceManager::site_aliases`, not the
+    /// table (the manager has no database — core is platform-agnostic and the
+    /// mirror is how it learns anything). So a command that records an alias
+    /// and does not push the mirror + reload ships a name the UI lists and
+    /// nginx never answers on — which is exactly what the Valet import did
+    /// for a day (3 Sep 2026). Whole-surface: every file under `commands/`
+    /// that calls an alias writer must, in that same file, hand the manager
+    /// the new map — through `reload_for_domains` or `set_site_aliases`.
+    #[test]
+    fn every_alias_writer_in_commands_refreshes_the_mirror() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/commands");
+        let writers = ["add_alias(", "remove_alias(", "add_site_alias(", "remove_site_alias("];
+        let mut seen = Vec::new();
+        for entry in std::fs::read_dir(&dir).expect("commands dir").flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+                continue;
+            }
+            let text = std::fs::read_to_string(&path).unwrap_or_default();
+            let src = crate::core::copy_scan::production_source(&text);
+            if !writers.iter().any(|w| src.contains(w)) {
+                continue;
+            }
+            let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+            assert!(
+                src.contains("reload_for_domains(") || src.contains("set_site_aliases("),
+                "{name} writes an alias and never refreshes the manager's alias mirror — the \
+                 name is recorded, listed everywhere, and served by nginx's default vhost until \
+                 the next Stop all → Start all"
+            );
+            seen.push(name);
+        }
+        seen.sort();
+        assert_eq!(
+            seen,
+            vec!["sites.rs".to_string(), "valet_import.rs".to_string()],
+            "the set of alias writers changed — if a new one appeared, it is covered above; if \
+             one vanished, check the feature did not go with it"
+        );
+    }
+
     #[test]
     fn the_pool_restart_is_reachable_only_through_the_opt_in_flag() {
         let src = crate::core::copy_scan::production_source(include_str!("sites.rs"));

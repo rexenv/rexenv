@@ -82,7 +82,7 @@ count in **each** slice separately. A zero on either side is a HOLD — do not r
 is only as complete as its list of payloads, and a payload nobody added is the
 one that ships in one slice.
 
-## A) ✅ 0.4.0 — PUBLISHED (§A0 ✅, §A ✅, SMOKE-TEST ✅)
+## A) ✅ 0.4.0 — PUBLISHED (§A0 ✅ measured · §A ✅ asserted · SMOKE-TEST ◐ asserted, no contemporaneous record)
 
 **0.4.0 PUBLISHED 27 Aug 2026, 16:37:03Z** at `homebrew-tap/releases/tag/v0.4.0`, cask
 bumped by `update-cask.yml` (`66b262d`, 17:43:44Z) to version 0.4.0 / sha256
@@ -108,11 +108,20 @@ in arm64, ×5 in x86_64 — a half-populated fat binary is invisible to `lipo -a
 which is why the check thins first); `codesign --verify --deep --strict` passes on the
 `.app`.
 
-**§A ✅ and `docs/SMOKE-TEST.md` ✅ — both run on THESE bytes before publishing**, which
-is the rule working as written: the release was created as a draft on the tap, the two
-human-only gates ran against the dmg attached to it, and publishing was the §A sign-off.
-New this release and covered by that smoke pass: the blank-PHP starter database, the
-built-in terminal, multisite through a tunnel, MCP M3.
+**§A and `docs/SMOKE-TEST.md` — ASSERTED, and the record is honest about when.** The
+sentence this paragraph used to carry ("both run on these bytes before publishing") was
+written on 30 Aug (`bd71bfc`), three days after the fact, from memory. What the repo
+itself records: `bbf7465` at 16:14:07Z on publish day lists SMOKE-TEST and §A as
+"publish-blocking and human-only … outstanding"; the release went public at 16:37:03Z,
+twenty-three minutes later; and no commit touched `docs/SMOKE-TEST.md` between 27 and
+31 Aug (a full clean-Mac SMOKE pass leaves ticks and findings behind — every earlier one
+did). So: the releaser's sign-off is that both gates ran on the draft's dmg (the blank-PHP
+starter database, the built-in terminal, multisite through a tunnel, MCP M3 included),
+and nothing written at the time backs the SMOKE half. It is recorded as ◐ — asserted,
+not evidenced — and NOT re-run: 0.4.0 is on the tap and the next release re-runs the
+whole set on its own bytes. **The rule this cost restates**: the receipt is written at
+the moment the gate runs, in the same commit as the publish, or it is a memory — the
+same lesson as 0.3.0's row, paid a second time in a milder form.
 
 **Four-way hash match, verified 30 Aug 2026** — the check that caught 0.1.0's
 placeholder hash, and the one 0.3.0's row had to be reopened for. The published asset

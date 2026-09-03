@@ -1622,9 +1622,12 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   a `v*` push while `rexenv/rexenv` is private; `git ls-remote --tags origin` is empty for
   every release so far). dmg built locally per the interim flow, sha256 `a7aecee7…`,
   26,275,202 bytes, released on `rexenv/homebrew-tap` and cask-bumped by CI 17:43:44Z
-  (`66b262d`). **All three gates ✅ on these bytes**: §A0 by hand (per-slice `lipo`, the
+  (`66b262d`). **§A0 ✅ measured on these bytes** (per-slice `lipo`, the
   `Dist_Archive_Command` payload in BOTH thinned slices, `codesign --verify --deep
-  --strict`), `docs/SMOKE-TEST.md` end-to-end, then §A — publishing was the sign-off.
+  --strict`); **§A ✅ and `docs/SMOKE-TEST.md` ◐ ASSERTED** — the releaser's sign-off,
+  written 30 Aug; the publish-day record (`bbf7465`, 16:14Z) still called both outstanding
+  23 minutes before publish and no SMOKE-TEST edit exists from that day, so the SMOKE half
+  has no contemporaneous receipt (see `docs/PUBLISH-TESTING.md` §A, 3 Sep 2026).
   **The commit is a MEASUREMENT this time**: the mounted dmg's own `rex --version` says
   `rex 0.4.0 (d363e24)`. **Four-way hash match verified 30 Aug** — anonymous download
   (HTTP 200, 26,275,202 bytes) hashes to what the cask pins, what the release API reports

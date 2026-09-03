@@ -30,6 +30,11 @@ pub use macos::webview_dialogs::install_js_dialog_panels;
 #[cfg(target_os = "macos")]
 pub use macos::parent_death_guard::run as run_tunnel_guard;
 
+/// A process's start-time token — the guard's second identity for its parent.
+/// Re-exported for the live check that spawns guards by hand.
+#[cfg(target_os = "macos")]
+pub use macos::process_start_token;
+
 /// Bring rexenv to the front. Needed because it is an ACCESSORY app (menu bar,
 /// no dock tile): nothing activates it on the user's behalf, so a window it
 /// shows — or a modal it opens — can come up behind whatever the developer was

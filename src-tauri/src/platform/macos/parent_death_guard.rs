@@ -21,14 +21,15 @@
 //! [`crate::core::tunnels::GUARD_FLAG`], the same self-exec shape the DNS agent
 //! uses.
 //!
-//! **The registration gap, named.** The parent pid arrives on argv; between
+//! **The registration gap, closed.** The parent pid arrives on argv; between
 //! rexenv reading its own pid and this guard's `kevent`, rexenv could die and
-//! the kernel recycle the number. Registration then succeeds against a
-//! STRANGER, and the guard sleeps until that process exits — the share stays
-//! public for however long that is. `still_ours` keeps the eventual kill safe,
-//! not timely. The window is milliseconds and macOS allocates pids sequentially,
-//! so it is recorded here rather than closed (closing it needs the parent's
-//! start time on argv and a re-check at registration).
+//! the kernel recycle the number. Registration would then succeed against a
+//! STRANGER, and the guard sleep until that process exits — the share public for
+//! however long that is. So the parent's START TIME rides argv too
+//! (`GuardArgs::parent_start`), and the pid is checked against it twice: before
+//! registering, and again AFTER — a pid that died and came back between the
+//! two wears a different start time, and either mismatch is read as "the
+//! parent is gone" (the share dies). `still_ours` keeps the kill itself safe.
 //!
 //! **Why kqueue and not a poll.** `EVFILT_PROC`/`NOTE_EXIT` is the kernel telling
 //! us the process is gone; a poll is a timer that pretends to be an event and
@@ -56,8 +57,8 @@ const TERM_GRACE: Duration = Duration::from_millis(1500);
 /// child if (and only if) it is still provably ours. Returns the process exit
 /// code — the caller is `main`, before Tauri boots.
 pub fn run(args: GuardArgs) -> i32 {
-    let GuardArgs { parent, child, domain } = args;
-    match wait_for_exit(parent, child) {
+    let GuardArgs { parent, child, domain, parent_start } = args;
+    match wait_for_exit(parent, child, &parent_start) {
         Exit::Child => 0, // the share ended on its own terms; nothing to do
         Exit::Parent | Exit::Immediate => {
             if !still_ours(child, &domain) {
@@ -85,8 +86,18 @@ enum Exit {
     Unwatchable,
 }
 
+/// Is `pid` the process whose start time we were handed? `false` for a gone
+/// pid and for a recycled one alike — both mean the parent we were told about
+/// is dead.
+fn parent_is_ours(pid: u32, start: &str) -> bool {
+    super::process_start_token(pid).as_deref() == Some(start)
+}
+
 /// Block on `NOTE_EXIT` for both pids and report which fired first.
-fn wait_for_exit(parent: u32, child: u32) -> Exit {
+fn wait_for_exit(parent: u32, child: u32, parent_start: &str) -> Exit {
+    if !parent_is_ours(parent, parent_start) {
+        return Exit::Immediate;
+    }
     // SAFETY: kqueue/kevent with a locally-owned fd and stack-allocated event
     // structs; every raw pointer below points at a live local.
     unsafe {
@@ -104,6 +115,12 @@ fn wait_for_exit(parent: u32, child: u32) -> Exit {
                 libc::close(kq);
                 return if i == 0 { Exit::Immediate } else { Exit::Child };
             }
+        }
+        // Re-check AFTER registering: a parent that died and was replaced
+        // between the check above and the `kevent` registered a stranger.
+        if !parent_is_ours(parent, parent_start) {
+            libc::close(kq);
+            return Exit::Immediate;
         }
         let mut out: libc::kevent = std::mem::zeroed();
         let rc = libc::kevent(kq, std::ptr::null(), 0, &mut out, 1, std::ptr::null());

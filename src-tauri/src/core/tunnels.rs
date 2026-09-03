@@ -622,6 +622,13 @@ pub struct GuardArgs {
     /// IDENTITY, never on a bare pid (the pid may have been recycled between
     /// the parent's death and ours noticing).
     pub domain: String,
+    /// The PARENT's identity beyond its pid: its start time as the OS prints
+    /// it. Between rexenv reading its own pid and the guard registering on it,
+    /// rexenv can die and the kernel recycle the number — registration then
+    /// succeeds against a STRANGER and the guard sleeps until that process
+    /// exits, the share public the whole time. A pid whose start time is not
+    /// this one is not our parent, whatever number it wears.
+    pub parent_start: String,
 }
 
 /// The flag the guard mode is dispatched on (`main.rs`, before Tauri boots).
@@ -629,8 +636,14 @@ pub const GUARD_FLAG: &str = "--tunnel-guard";
 
 /// Build the guard's argv. Kept beside the parser so a change to one fails the
 /// round-trip test rather than producing a guard that silently never fires.
-pub fn guard_argv(parent: u32, child: u32, domain: &str) -> Vec<String> {
-    vec![GUARD_FLAG.to_string(), parent.to_string(), child.to_string(), domain.to_string()]
+pub fn guard_argv(parent: u32, child: u32, domain: &str, parent_start: &str) -> Vec<String> {
+    vec![
+        GUARD_FLAG.to_string(),
+        parent.to_string(),
+        child.to_string(),
+        domain.to_string(),
+        parent_start.to_string(),
+    ]
 }
 
 /// Parse a guard invocation. `None` = not a guard invocation, or a malformed
@@ -641,10 +654,11 @@ pub fn parse_guard_args(args: &[String]) -> Option<GuardArgs> {
     let parent: u32 = args.get(i + 1)?.parse().ok()?;
     let child: u32 = args.get(i + 2)?.parse().ok()?;
     let domain = args.get(i + 3)?.trim().to_string();
-    if parent <= 1 || child <= 1 || domain.is_empty() {
+    let parent_start = args.get(i + 4)?.trim().to_string();
+    if parent <= 1 || child <= 1 || domain.is_empty() || parent_start.is_empty() {
         return None;
     }
-    Some(GuardArgs { parent, child, domain })
+    Some(GuardArgs { parent, child, domain, parent_start })
 }
 
 /// The `rexenv.log` line a share leaves BEHIND IT when it starts (ledger #430).
@@ -745,10 +759,18 @@ mod tests {
     /// and a killer aiming at it.
     #[test]
     fn a_guard_is_started_with_exactly_what_it_parses_back() {
-        let argv = guard_argv(4242, 78716, "mstest.rex");
+        let argv = guard_argv(4242, 78716, "mstest.rex", "Wed Sep  3 12:00:01 2026");
         assert_eq!(argv[0], GUARD_FLAG);
         let parsed = parse_guard_args(&argv).expect("its own argv must parse");
-        assert_eq!(parsed, GuardArgs { parent: 4242, child: 78716, domain: "mstest.rex".into() });
+        assert_eq!(
+            parsed,
+            GuardArgs {
+                parent: 4242,
+                child: 78716,
+                domain: "mstest.rex".into(),
+                parent_start: "Wed Sep  3 12:00:01 2026".into()
+            }
+        );
 
         // The app's OWN launch must never be read as a guard invocation.
         let normal: Vec<String> = ["/Applications/rexenv.app/Contents/MacOS/rexenv".to_string()].into();
@@ -760,11 +782,13 @@ mod tests {
             vec![GUARD_FLAG.into()],                                     // no pids at all
             vec![GUARD_FLAG.into(), "4242".into()],                      // no child
             vec![GUARD_FLAG.into(), "4242".into(), "78716".into()],      // no domain
-            vec![GUARD_FLAG.into(), "x".into(), "78716".into(), "a.rex".into()], // parent NaN
-            vec![GUARD_FLAG.into(), "4242".into(), "y".into(), "a.rex".into()],  // child NaN
-            vec![GUARD_FLAG.into(), "1".into(), "78716".into(), "a.rex".into()], // parent = init
-            vec![GUARD_FLAG.into(), "4242".into(), "0".into(), "a.rex".into()],  // child = 0
-            vec![GUARD_FLAG.into(), "4242".into(), "78716".into(), "  ".into()], // blank domain
+            vec![GUARD_FLAG.into(), "4242".into(), "78716".into(), "a.rex".into()], // no parent start (the pre-3-Sep shape)
+            vec![GUARD_FLAG.into(), "x".into(), "78716".into(), "a.rex".into(), "t".into()], // parent NaN
+            vec![GUARD_FLAG.into(), "4242".into(), "y".into(), "a.rex".into(), "t".into()],  // child NaN
+            vec![GUARD_FLAG.into(), "1".into(), "78716".into(), "a.rex".into(), "t".into()], // parent = init
+            vec![GUARD_FLAG.into(), "4242".into(), "0".into(), "a.rex".into(), "t".into()],  // child = 0
+            vec![GUARD_FLAG.into(), "4242".into(), "78716".into(), "  ".into(), "t".into()], // blank domain
+            vec![GUARD_FLAG.into(), "4242".into(), "78716".into(), "a.rex".into(), " ".into()], // blank start
         ] {
             assert!(
                 parse_guard_args(&bad).is_none(),

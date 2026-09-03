@@ -316,7 +316,11 @@ impl ProcessSupervisor for MacosSupervisor {
         // the DNS agent uses, and for the same reason: no second artifact to
         // ship, sign and keep in step with the app.
         let exe = std::env::current_exe()?;
-        let args = crate::core::tunnels::guard_argv(std::process::id(), child, domain);
+        let me = std::process::id();
+        let start = process_start_token(me).ok_or_else(|| {
+            Error::Other(format!("could not read this process's start time (pid {me})"))
+        })?;
+        let args = crate::core::tunnels::guard_argv(me, child, domain, &start);
         // Detached and silent: it must outlive us (that is its whole job), and
         // it has nothing to say — it either signals a still-identified child or
         // exits. Anything worth reading is already in the child's own log.
@@ -870,6 +874,18 @@ impl AutostartManager for MacosAutostart {
         // app moved, an old build was deleted): re-point, and reload.
         self.enable()
     }
+}
+
+/// A process's start time as `ps` prints it (`lstart`, second resolution) —
+/// the identity the tunnel guard checks beyond the pid, because a pid is
+/// recycled and a start time is not. `None` when the pid is gone.
+pub fn process_start_token(pid: u32) -> Option<String> {
+    let out = std::process::Command::new("ps")
+        .args(["-p", &pid.to_string(), "-o", "lstart="])
+        .output()
+        .ok()?;
+    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    (out.status.success() && !s.is_empty()).then_some(s)
 }
 
 /// The program a login-item plist names: the first `<string>` after

@@ -197,6 +197,12 @@ it can:
   so its two `initdb`s and its CREATE/DROP DATABASE landed in the REAL
   `<app_data>/postgres/{17,16}/data` on the production port — the exact shape
   `examples/common/mod.rs`'s invariant forbids; it runs in `common::sandbox` now.
+  Leg 4 (3 Sep 2026) hands the guard a LIVE stand-in parent with a start time that is not
+  its own — the recycled-pid shape, reproduced without recycling a pid — and requires the
+  share to end while the stand-in survives. `valet_import_check` gained step 3b the same
+  day: the one example that builds configs BOTH ways (an empty manager mirror vs the
+  table's alias map), because every other example calls the DB path and could never see
+  a recorded-but-unpushed alias.
   Also from that review: `scripts/wk-checks/contrast.js` read only an element's OWN
   `opacity`, so a badge inside a Services row dimmed with `opacity-[0.74]` reported 4.9:1
   and rendered at 3.1:1 — the gate that certified the periwinkle change was blind one

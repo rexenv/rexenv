@@ -187,15 +187,19 @@ fn main() {
     }
 
     let mut failures: Vec<String> = Vec::new();
-    let guard = |parent: u32, child: u32, domain: &str| -> Owned {
+    let guard_with_start = |parent: u32, child: u32, domain: &str, start: &str| -> Owned {
         Owned(
             Command::new(&exe)
-                .args(["--tunnel-guard", &parent.to_string(), &child.to_string(), domain])
+                .args(["--tunnel-guard", &parent.to_string(), &child.to_string(), domain, start])
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
                 .spawn()
                 .expect("spawn guard"),
         )
+    };
+    let guard = |parent: u32, child: u32, domain: &str| -> Owned {
+        let start = rexenv_lib::platform::process_start_token(parent).expect("parent start time");
+        guard_with_start(parent, child, domain, &start)
     };
 
     // ── Leg 1: the app is SIGKILLed → the share dies with it ──────────────────
@@ -272,6 +276,34 @@ fn main() {
         reap(&mut parent);
         reap(&mut g);
         let _ = (p, c);
+    }
+
+    // ── Leg 4: a pid that is not our parent is treated as a dead parent ─────
+    {
+        println!("leg 4: the parent pid wears a different start time — the share must end");
+        let mut parent = stand_in_parent();
+        let mut tunnel = stand_in_tunnel(&script, &marker, FIXTURE_DOMAIN);
+        let (p, c) = (parent.0.id(), tunnel.0.id());
+        // A live pid, a start time that is not its own: the recycled-pid shape,
+        // reproduced without having to recycle a pid.
+        let mut g = guard_with_start(p, c, FIXTURE_DOMAIN, "Thu Jan  1 00:00:00 1970");
+        std::thread::sleep(Duration::from_millis(2500));
+        if alive(&mut tunnel) {
+            failures.push(
+                "the guard accepted a parent pid whose start time is not the one it was handed — \
+                 a recycled pid would then be watched as if it were rexenv, and the share would \
+                 stay public until a stranger exits"
+                    .into(),
+            );
+        } else {
+            println!("  ✓ share ended — the pid was not our parent");
+        }
+        if !alive(&mut parent) {
+            failures.push("the guard killed the PARENT stand-in — it must only ever signal the child".into());
+        }
+        reap(&mut tunnel);
+        reap(&mut parent);
+        reap(&mut g);
     }
 
     let _ = std::fs::remove_dir_all(&dir);
