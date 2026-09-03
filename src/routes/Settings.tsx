@@ -29,6 +29,8 @@ import {
   defaultTld,
   deleteBlueprint,
   dnsStatus,
+  repairResolver,
+  unresolvableTlds,
   firefoxTrustStatus,
   getAppInfo,
   getPhpSettings,
@@ -741,6 +743,24 @@ function DnsSslSetting() {
   // the app — amber, never green), down = fault. See DnsStatus.mode.
   const dnsDegraded = dnsActive && dns?.mode === "in-process";
 
+  // A TLD one of this machine's sites ANSWERS on that cannot resolve here. The
+  // card's own line covers the DEFAULT TLD, which says nothing about a site —
+  // or an extra domain — on a second one whose resolver went away: nginx serves
+  // it, the certificate covers it, and the browser cannot find it. Empty is the
+  // ordinary answer and renders nothing.
+  const { data: unresolvable = [] } = useQuery({
+    queryKey: ["unresolvable-tlds"],
+    queryFn: unresolvableTlds,
+  });
+  const repair = useMutation({
+    mutationFn: (tld: string) => repairResolver(tld),
+    onSuccess: (tld) => {
+      void qc.invalidateQueries({ queryKey: ["unresolvable-tlds"] });
+      toast.success(`.${tld} resolves here again — sites on it should load now.`);
+    },
+    onError: (e) => toastBackendError(e),
+  });
+
   return (
     <>
       <div className="rounded-[13px] border border-rex-border-subtle bg-rex-surface-1 p-5">
@@ -799,6 +819,42 @@ function DnsSslSetting() {
               </div>
             </div>
           </div>
+        {unresolvable.length > 0 && (
+          <div className="mt-3 rounded-[11px] border border-status-warning-border bg-rex-well px-[14px] py-[11px]">
+            <div className="text-[0.8125rem] font-medium text-rex-text">
+              {unresolvable.length === 1 ? "A TLD your sites use" : "TLDs your sites use"} can't be
+              resolved on this Mac
+            </div>
+            {/* Said plainly because everything ELSE about these sites is fine:
+                nginx serves them, the edge routes them, the certificate covers
+                them — and the browser still cannot find them. Without this line
+                the app looks healthy while a site does not load. */}
+            <div className="mt-0.5 text-[0.71875rem] leading-snug text-rex-text-muted">
+              Their sites are served correctly; the name just doesn't reach this machine.
+            </div>
+            <div className="mt-2 flex flex-col gap-1.5">
+              {unresolvable.map((u) => (
+                <div key={u.tld} className="flex items-center justify-between gap-3">
+                  <span className="font-mono text-[0.71875rem] text-rex-text">
+                    .{u.tld}
+                    <span className="ml-2 text-rex-text-muted">
+                      {/* Two causes, two fixes: telling someone to install a
+                          file another tool already owns sends them in a circle. */}
+                      {u.foreign ? "another tool owns its resolver file" : "no resolver file"}
+                    </span>
+                  </span>
+                  <Button
+                    variant="secondary"
+                    disabled={repair.isPending}
+                    onClick={() => repair.mutate(u.tld)}
+                  >
+                    {repair.isPending ? "Repairing…" : "Repair"}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         </div>
       </div>
 

@@ -164,6 +164,14 @@ export type ImportStatus =
   | { status: "alreadyImported" };
 
 /** One reviewable row of the Valet/Herd migration list. */
+/** A TLD a site answers on that this machine cannot resolve. `foreign` = another
+ *  tool owns its resolver file (take it back) rather than the file being absent
+ *  (install it) — two causes, two fixes. */
+export interface UnresolvableTld {
+  tld: string;
+  foreign: boolean;
+}
+
 export interface ImportCandidate {
   source: ImportSource;
   name: string;

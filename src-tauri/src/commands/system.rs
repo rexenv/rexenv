@@ -100,6 +100,39 @@ pub fn app_info() -> AppInfo {
     }
 }
 
+/// TLDs a site ANSWERS on that this machine cannot resolve, each flagged with
+/// WHY: `foreign` = another tool owns the resolver file, otherwise it is simply
+/// missing.
+///
+/// The Settings screen's counterpart to the `rex doctor` line (#457). The DNS
+/// card shows the DEFAULT TLD's health, which is the common case and says
+/// nothing about a site — or an extra domain — on a second TLD whose resolver
+/// went away. Empty is the ordinary answer and renders nothing.
+#[tauri::command]
+pub fn unresolvable_tlds(state: State<'_, AppState>) -> Result<Vec<UnresolvableTld>> {
+    let conn = state
+        .db
+        .lock()
+        .map_err(|_| Error::Other("database lock poisoned".into()))?;
+    Ok(
+        core::dns::unresolvable_tlds_in_use(&conn, state.platform.as_ref(), core::dns::DEFAULT_DNS_PORT)
+            .into_iter()
+            .map(|(tld, foreign)| UnresolvableTld { tld, foreign })
+            .collect(),
+    )
+}
+
+/// One TLD the machine cannot resolve, and why — the two causes need different
+/// sentences and different fixes.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnresolvableTld {
+    pub tld: String,
+    /// Another tool owns its resolver file (take it back), rather than the file
+    /// being absent (install it).
+    pub foreign: bool,
+}
+
 /// Re-install the OS resolver file for a TLD one of this machine's sites
 /// actually answers on — the fix `rex doctor` names when it finds one missing.
 ///
