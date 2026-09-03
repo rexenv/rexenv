@@ -1696,6 +1696,14 @@ pub struct WatchState {
     /// "running" | "exited".
     pub status: String,
     pub exit: Option<i32>,
+    /// The log file this watcher appends to, as a `logs.tail` key.
+    ///
+    /// Carried in the snapshot rather than rebuilt by callers: the name is a
+    /// server-side rule (`repo-<domain>-<dir>-watch.log`), and a caller that
+    /// re-derives it is one rename away from asking for a file nobody writes.
+    /// `site_resources_check` re-derived a database name exactly this way and
+    /// failed on every install with an imported site (ledger #390).
+    pub log_key: String,
 }
 
 fn watch_asset_key(site_id: &str, kind: &str, dir_name: &str) -> String {
@@ -1751,6 +1759,7 @@ pub async fn repo_watch_start<R: tauri::Runtime>(
     }
     let asset_key = watch_asset_key(&site_id, &kind, &dir_name);
     let id = uuid::Uuid::new_v4().to_string();
+    let log_key = format!("repo-{}-{}-watch.log", site.domain, dir_name);
     let entry = Arc::new(WatchEntry {
         id: id.clone(),
         asset_key: asset_key.clone(),
@@ -1763,6 +1772,7 @@ pub async fn repo_watch_start<R: tauri::Runtime>(
             script: script.clone(),
             status: "running".into(),
             exit: None,
+            log_key: log_key.clone(),
         }),
         ring: Mutex::new(std::collections::VecDeque::with_capacity(WATCH_RING_CAP)),
     });
@@ -1782,11 +1792,7 @@ pub async fn repo_watch_start<R: tauri::Runtime>(
         map.retain(|_, w| w.asset_key != asset_key);
         map.insert(id.clone(), entry.clone());
     }
-    let log_path = state
-        .platform
-        .paths()
-        .log_dir()?
-        .join(format!("repo-{}-{}-watch.log", site.domain, dir_name));
+    let log_path = state.platform.paths().log_dir()?.join(&log_key);
     let _ = std::fs::write(&log_path, "");
     emit_watch_global(&app);
 

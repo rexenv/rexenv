@@ -149,7 +149,7 @@ to launch a specific copy with `open /Applications/rexenv.app` when it matters. 
 | `rex doctor` | composite: `dns_status` + `services_status` + `edge_answers_as_ours` + `default_ports` scan + `cli_status` + `resolver_drift` | ✓ | shipped 16 Jul — exit 0/1 (CI-gateable); synthetic foreign listener flagged with attributed holder + copyable fix. **13 Aug 2026: the `Resolvers` line.** `resolverDrift` had been in the payload since the beginning and was rendered by nothing, so a TLD reclaimed by Valet or Herd — sites dark while every other line reads ✓ — was invisible here. Now a FINDING (counts toward the exit code), naming the TLDs and pointing at rexenv → Import, which is the only place a takeover can be redone. An ABSENT field (an older app) reads as ⚠ unknown, never ✓ |
 | `rex completions zsh\|bash` | — | ✓ | shipped 16 Jul — static tree, both syntax-checked |
 
-## Repo group (git/asset feature-set — waves 1+2 SHIPPED 18 Jul 2026; only `watch --tail` live streaming remains, with the 🔴 infra item)
+## Repo group (git/asset feature-set — waves 1+2 SHIPPED 18 Jul 2026; `watch --tail` closed 3 Sep 2026, so the group is COMPLETE)
 
 Every backing IPC below shipped with the add-from-Git/asset phases
 (`commands/repo.rs`) — the whole group is dispatch arms + subcommands, no
@@ -165,7 +165,10 @@ and stream via Tauri events, which the CLI socket doesn't carry — the 🟡
 arms below poll `repo_job_state` until terminal, then print the job's flat
 log via the existing `logs.tail` (`log_key` is in every snapshot). LIVE
 line streaming was the same "progress streaming" infra item — which SHIPPED 2 Sep 2026
-(ledger #447), so `repo watch --tail` is now a build, not a blocked design.
+(ledger #447), and `repo watch --tail` followed on 3 Sep 2026 (ledger #467). It did not need
+the streaming protocol in the end: a watcher already writes a log file, so the CLI follows
+THAT through the existing `logs.tail`, and the only new thing the app had to say was WHICH
+file — carried in the watcher snapshot as `logKey`, never rebuilt by the caller.
 
 | Command | Backing IPC | Tag | Notes |
 |---|---|---|---|
@@ -180,7 +183,7 @@ line streaming was the same "progress streaming" infra item — which SHIPPED 2 
 | `repo fetch\|pull\|checkout\|push <domain> <dir> [ref] [--install]` | `repo_git_op` + poll + `logs.tail` (+ offered-step chain on `--install`) | ✓ | shipped 18 Jul — live vs a LOCAL bare origin: pull file arrived, push seen at origin, checkout landed on feat |
 | `repo run <domain> <dir> <script>` | `repo_script_job` + poll + `logs.tail` (script validated backend-side) | ✓ | shipped 18 Jul — live: one-shot output present in the completion log |
 | `repo install …` | — | ✓ | resolved as the `--install` flag on `add`/`pull`/`checkout` (explicit consent on the command line; offered steps chain via `repo_run_step`, first failure stops the chain) — no standalone command needed |
-| `repo watch start\|stop\|list <domain> [dir] [script]` | `repo_watch_start` / `repo_watch_stop` (stop resolves the id BY DIR via `repo_watches`) | ✓ | shipped 18 Jul — start prints the runs-inside-the-app/stops-on-quit note; live check proved start→list→stop with zero orphans; `--tail` stays 🔴 streaming |
+| `repo watch start\|stop\|list\|tail <domain> [dir] [script]` | `repo_watch_start` / `repo_watch_stop` (stop resolves the id BY DIR via `repo_watches`) + `logs.tail` on the snapshot's `logKey` | ✓ | shipped 18 Jul — start prints the runs-inside-the-app/stops-on-quit note; live check proved start→list→stop with zero orphans. **`--tail` shipped 3 Sep 2026** (ledger #467): `watch start … --tail` follows the output, and `watch tail <dir>` picks up a watcher already running (the common case — started in the app, watched from the terminal). Ctrl-C stops FOLLOWING, not the watcher, and the message says so because the opposite is what a reader assumes |
 | `repo delete <domain> <dir> [--theme --yes]` | `repo_asset_status` (loss/linked preview, printed even with `--yes`) → the EXISTING `wp.plugin.delete`/`wp.theme.delete` arms | ✓ | shipped 18 Jul — pure client composition, zero new delete path; guard proven through dispatch (link gone, target byte-intact) |
 | `repo tools [--refresh]` | `repo_tools` | ✓ | shipped 18 Jul — plus a fixed line stating composer is the bundled phar |
 
@@ -281,6 +284,14 @@ What remains:
    filter cut 3 rows to 2, and a query matched 1 of 3. The live run also found
    the header describing the MAILBOX above a FILTERED list, which reads as a
    listing bug; it says "1 of 3 messages shown" now.
+   **`repo watch --tail` and `watch tail` — VERIFIED live 3 Sep 2026** on a scratch
+   WordPress site with a fixture plugin (a `package.json` whose `dev` script prints a
+   tick a second, linked in — never the user's own repos, whose build scripts are not
+   ours to run): ticks arrived one per second as they were produced; the watcher was
+   still `running` after the tail was killed, which is the promise the message makes;
+   `watch tail <dir>` picked up the same watcher already running; and an unknown dir
+   was refused by name pointing at `watch list`. Site deleted after with no residue,
+   the fixture FOLDER intact (link-only delete, as `repo link` promises).
    **`site relink` — VERIFIED live 23 Aug 2026** on a throwaway linked site with
    two docroots: what the site SERVED changed with the re-point (the config
    regenerated and the edge reloaded), the old docroot was untouched, a relative

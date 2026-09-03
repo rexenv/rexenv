@@ -128,8 +128,11 @@ COMMANDS:
   repo <domain> adopt <dir> [--theme]  Manage an existing checkout (metadata only)
   repo <domain> link <path> [--name N] [--theme]
                 Symlink an external folder in (deleting later only unlinks)
-  repo <domain> watch list | watch start <dir> <script> | watch stop <dir>
-                Dev watchers — run inside the app, stop when it quits
+  repo <domain> watch list | watch start <dir> <script> [--tail] | watch tail <dir>
+                            | watch stop <dir>
+                Dev watchers — run inside the app, stop when it quits.
+                --tail (or `watch tail`) follows the output here; Ctrl-C stops
+                following, not the watcher.
   repo <domain> add <url> [--branch B] [--name N] [--theme] [--install]
                 Clone a repo in (public https/owner-repo, private via YOUR ssh
                 keys); --install also runs detected composer/npm/build steps.
@@ -1279,6 +1282,25 @@ const REPO_USAGE: &str =
 
 /// Git/asset assets — wave 1: pure request/response commands. Every call
 /// rides the same commands::repo fns the app UI uses (one code path).
+/// Follow a watcher's log until Ctrl-C.
+///
+/// The key comes from the SNAPSHOT (`logKey`), never rebuilt here. The name is
+/// a server-side rule and a caller that re-derives it is one rename away from
+/// tailing a file nobody writes — which is how `site_resources_check` came to
+/// demand a database name the model forbids re-deriving (ledger #390). An older
+/// app that does not send the field is told so, rather than guessing.
+fn follow_watch_log(w: &Value, dir: &str) {
+    let Some(key) = w["logKey"].as_str().filter(|k| !k.is_empty()) else {
+        eprintln!(
+            "rex: this app build does not report the watcher's log file, so `--tail` has \
+             nothing to follow — `rex version` will say if the app is older than this rex"
+        );
+        exit(1);
+    };
+    eprintln!("— following {dir} ({key}); Ctrl-C to stop watching the LOG (the watcher keeps running) —");
+    tail_loop(json!({ "key": key }), 200, true);
+}
+
 fn cmd_repo(words: &[String], json_output: bool) {
     // `rex repo tools` is app-wide, not site-scoped.
     if words.first().map(String::as_str) == Some("tools") {
@@ -1524,7 +1546,7 @@ fn cmd_repo(words: &[String], json_output: bool) {
             }
             Some("start") => {
                 let (Some(dir), Some(script)) = (words.get(3), words.get(4)) else {
-                    eprintln!("rex: usage: rex repo <domain> watch start <dir> <script> [--theme]");
+                    eprintln!("rex: usage: rex repo <domain> watch start <dir> <script> [--theme] [--tail]");
                     exit(1);
                 };
                 let w = request(
@@ -1538,6 +1560,30 @@ fn cmd_repo(words: &[String], json_output: bool) {
                     "watching {dir} — {script} (runs inside the app; output in the app panel \
                      and logs/repo-*-watch.log; stops when the app quits, never auto-restarts)"
                 );
+                if words.iter().any(|x| x == "--tail") {
+                    follow_watch_log(&w, dir);
+                }
+            }
+            // Follow a watcher that is ALREADY running — the same view
+            // `start --tail` gives, for the common case where the watcher was
+            // started from the app and the terminal wants to see it.
+            Some("tail") => {
+                let Some(dir) = words.get(3) else {
+                    eprintln!("rex: usage: rex repo <domain> watch tail <dir>");
+                    exit(1);
+                };
+                let data = request("repo.watch.list", json!({ "id": id }));
+                let found = data["watchers"]
+                    .as_array()
+                    .and_then(|rows| rows.iter().find(|w| w["dirName"] == json!(dir.as_str())))
+                    .cloned();
+                let Some(w) = found else {
+                    eprintln!(
+                        "rex: no watcher running for `{dir}` (see `rex repo <domain> watch list`)"
+                    );
+                    exit(1);
+                };
+                follow_watch_log(&w, dir);
             }
             Some("stop") => {
                 let Some(dir) = words.get(3) else {
@@ -1550,7 +1596,10 @@ fn cmd_repo(words: &[String], json_output: bool) {
                 }
             }
             _ => {
-                eprintln!("rex: usage: rex repo <domain> watch list|start <dir> <script>|stop <dir>");
+                eprintln!(
+                    "rex: usage: rex repo <domain> watch list | start <dir> <script> [--tail] | \
+                     tail <dir> | stop <dir>"
+                );
                 exit(1);
             }
         },
@@ -4144,9 +4193,16 @@ mod tests {
     fn a_flag_is_never_looked_for_in_the_positional_list() {
         const ME: &str = include_str!("main.rs");
 
+        // PRODUCTION code only, both halves. A dead branch inside a test is
+        // not shipped behaviour, and scanning the test module makes a scan
+        // capable of matching its own assertion text — which is how the
+        // sibling guard below first "found" itself.
+        let prod = ME.split("\n#[cfg(test)]").next().unwrap_or(ME);
+        assert!(prod.len() > 50_000, "the test-module split ate the file — the scan is blind");
+
         // Every name bound to a `--`-filtered collection.
         let mut filtered: Vec<&str> = Vec::new();
-        for line in ME.lines() {
+        for line in prod.lines() {
             if !line.contains("!w.starts_with(\"--\")") {
                 continue;
             }
@@ -4165,7 +4221,7 @@ mod tests {
         );
 
         let mut dead: Vec<String> = Vec::new();
-        for (i, line) in ME.lines().enumerate() {
+        for (i, line) in prod.lines().enumerate() {
             let code = line.split("//").next().unwrap_or("");
             if !code.contains("\"--") {
                 continue;
@@ -4347,6 +4403,45 @@ mod tests {
         // Values are never flags, however flag-shaped the text is.
         assert_eq!(unknown_flag(&w("old new"), &known), None);
         assert_eq!(unknown_flag(&w("-x old"), &known), None, "a single dash is not our shape");
+    }
+
+    /// **The CLI never rebuilds a log key the app already sends.**
+    ///
+    /// `repo watch --tail` follows a file named by a server-side rule
+    /// (`repo-<domain>-<dir>-watch.log`). Rebuilding that name here would work
+    /// until the day the rule changes, and then `--tail` would follow a file
+    /// nobody writes — silently, because an absent log tails as empty.
+    /// `site_resources_check` re-derived a database name exactly this way and
+    /// failed on every install that had an imported site (ledger #390), which
+    /// is why the key rides in the watcher SNAPSHOT instead.
+    #[test]
+    fn the_watch_tail_reads_its_log_key_and_never_composes_one() {
+        const ME: &str = include_str!("main.rs");
+        assert!(
+            ME.contains("w[\"logKey\"]"),
+            "`--tail` must take the log key from the watcher snapshot"
+        );
+        // PRODUCTION code only — the scan matched its own assertion line, which
+        // is the same self-agreement trap as #463's first version wearing a
+        // different hat: a test that can satisfy itself proves nothing.
+        let prod = ME.split("\n#[cfg(test)]").next().unwrap_or(ME);
+        assert!(prod.len() > 50_000, "the test-module split ate the file — the scan is blind");
+        for (i, line) in prod.lines().enumerate() {
+            let code = line.split("//").next().unwrap_or("");
+            assert!(
+                !(code.contains("format!") && code.contains("-watch.log")),
+                "line {}: the CLI is composing a watch log name. The app sends it as `logKey` — \
+                 compose it here and a rename in commands/repo.rs leaves `--tail` following a \
+                 file nobody writes: {}",
+                i + 1,
+                code.trim()
+            );
+        }
+        // And the older-app case is answered, not guessed at.
+        assert!(
+            ME.contains("does not report the watcher's log file"),
+            "an app that predates `logKey` must be told apart from a watcher with no output"
+        );
     }
 
 }
