@@ -1,0 +1,148 @@
+# PLAN — per-site start/stop, and a site-type filter on the Sites page
+
+Status: **planned, not started** (4 Sep 2026). Two user-reported gaps on the Sites
+page, planned together because they land on the same screen and the second one is
+only worth having once the first exists.
+
+1. Every site is running or none is. There is no way to stop ONE site.
+2. The list filters by status only (All / Running / Stopped). With twenty sites,
+   "show me my Laravel ones" is a manual scan of the avatar column.
+
+---
+
+## 1. What "stop a site" can honestly mean here
+
+A rexenv site is **not a process** (`docs/ARCHITECTURE.md`, request topology):
+
+```
+browser → Caddy :443 → ONE shared Nginx :18088 (vhost by server_name)
+        → one php-fpm pool PER PHP VERSION (not per site) → WordPress → DB
+```
+
+So the two obvious implementations are both wrong:
+
+- **Stop the pool.** The pool is shared by every site on that PHP minor. This is
+  exactly what `restart_site` already refuses to do implicitly (`pool: true` is
+  opt-in and the report says how many sites it would touch). Stopping one site
+  must never take another site down — that asymmetry is the whole point.
+- **Stop nginx / the edge.** That is "Stop all", which already exists in the
+  footer and stops everything.
+
+**The ruling: stopping a site removes it from the serving surface, and touches no
+shared process.**
+
+| Leg | Stopped site |
+|---|---|
+| Nginx vhost | not emitted at all — the site has no `server_name` block |
+| Caddy route | **kept**, TLS and cert intact, but `respond 503` with an honest body instead of `reverse_proxy` |
+| Its OWN backend (FrankenPHP / Apache override) | actually stopped — that process serves one site, so stopping it is exact |
+| Shared nginx, shared php-fpm pool, DB, edge | untouched |
+
+Why the Caddy route stays rather than disappearing: dropping the route means the
+browser gets a TLS failure or a stray match from another block — a "your machine
+is broken" screen for a state the user deliberately chose. A 503 that says *this
+site is stopped in rexenv* is the honest answer, and it keeps the hostname from
+falling through to a wildcard-multisite block that would then answer for it.
+
+Starting is the inverse, plus one thing: if the stack is up but the site's own
+PHP minor pool is down, start **starts that pool** (it serves this site; starting
+it harms nobody). It never starts the whole stack behind the user's back — if the
+edge is down, start records the site as enabled and says plainly that nothing
+will answer until the stack is started.
+
+## 2. Where the fact lives
+
+New column, schema **v44**: `sites.enabled INTEGER NOT NULL DEFAULT 1`.
+
+- **Recorded, not in-memory.** Services outlive the app; a site the user stopped
+  on Tuesday must still be stopped after a relaunch, and `rebuild_configs_for` is
+  reached from `start`, `reload`, `adopt_startup`, site create/edit and the
+  scratch reaper. A single recorded fact is the only thing every one of those
+  paths can read.
+- **User-owned column** (per-column fact ownership): provisioning, config sync,
+  valet import and site edits must never write it. The upsert test pins that.
+- Pre-v44 rows read as enabled — every site that could exist before this column
+  was serving, so `DEFAULT 1` is a fact, not a guess.
+
+## 3. Status must stay one derivation
+
+`site_serving` is the ONE place a site's displayed state comes from, and it grows
+one leg: a disabled site is `serving: false` whatever the stack is doing. The
+shape also grows `disabled: bool`, so the UI can tell the two stopped-nesses
+apart instead of showing one word for both:
+
+- **Stopped** — the stack is down, or this site's upstream is.
+- **Stopped by you** — the row says so; starting the stack will not bring it back.
+
+Guard-covers-claimed-surface: every consumer of site status reads this one
+function — Sites list, SiteDetail, `mcp__rexenv__site_status`, `rex site`, tray.
+
+## 4. Filters on the Sites page
+
+A second segmented control beside the status one: **All / WordPress / Laravel /
+PHP**, using the same `SITE_TYPE_META` letters/colours as the row avatars. The
+two filters AND together.
+
+**Counts must not lie.** Each control's counts are computed against the OTHER
+control's current selection — i.e. the number on a tab is what clicking it would
+actually show. (A count computed over all sites while the list is already
+filtered puts "Laravel 3" above an empty list.)
+
+**Default selection**: `Running` when at least one site is running, otherwise
+`All`. Decided ONCE, on the first successful sites+serving load, and never again
+— a filter that re-decides on every 2s serving poll would yank the list out from
+under a user who just chose a tab, and stopping the last running site would jump
+them somewhere they did not ask to be. If a filter leaves the list empty, the
+empty state says so and offers "Show all sites" rather than silently switching.
+
+## 5. Tasks
+
+Each is one commit, verified by `scripts/verify.sh` (the only green verdict).
+
+- **T1 — the column.** v44 migration + `Site.enabled` in `state/models.rs` and
+  `store.rs` (read + upsert). Tests: pre-v44 rows read enabled; a site upsert
+  from provisioning/edit never clobbers `enabled`.
+- **T2 — config generation.** `rebuild_configs_for` drops disabled sites from the
+  nginx vhost list; `SiteRoute { stopped }` renders `respond 503` + honest body
+  instead of `reverse_proxy`, keeping `tls` and the marker header. Tests on the
+  generated Caddyfile/nginx conf: a disabled site has no upstream anywhere, its
+  cert block survives, neighbours are byte-identical.
+- **T3 — processes and status.** `reconcile_overrides` stops a disabled site's own
+  backend (and never starts one for it); `site_serving` returns
+  `serving: false, disabled: true`. Test: disabling a site changes no shared
+  service's state.
+- **T4 — the command.** `set_site_enabled(id, enabled)` — thin IPC handler over a
+  core fn that writes the row, reconciles overrides, rebuilds configs, reloads the
+  web tier, and on enable starts the site's PHP minor pool if the stack is up and
+  that pool is not. Returns an honest report (`enabled`, `serving`, and why not
+  when false). Locking rule: spawn under the services lock, `await_ready` after
+  dropping it.
+- **T5 — the UI action.** IPC wrapper in `src/lib/ipc`, row-menu `Start site` /
+  `Stop site`, the same action in the SiteDetail header, query invalidation, and
+  the "stopped by you" pill/badge. Copy must separate this from the footer's
+  "Stop all": stopping a site leaves the shared services running.
+- **T6 — the type filter.** Second segmented control + the both-ways counts +
+  empty-state copy.
+- **T7 — the default filter.** One-shot Running/All decision on first load.
+- **T8 — parity.** `site_configure` gains an `enabled` action (existing `manage`
+  scope, so no new consent surface) and `site_status` reports it; `rex site start
+  <domain>` / `rex site stop <domain>`; `docs/CLI-ROADMAP.md` updated.
+- **T9 — docs + proof.** `ARCHITECTURE.md` (what stopping a site is and is not),
+  `DESIGN.md` (two stopped-nesses, one word each), `CLAIM-LEDGER.md` rows —
+  *stopping one site never stops a shared pool* and *a disabled site appears in no
+  nginx server block* — with verdicts, plus `MAP.md`, `TESTING.md` and a
+  fixture-owned `examples/` live check registered in `scripts/live-checks.sh`
+  (sandbox tier): stop a fixture site, prove the neighbour still answers 200 and
+  the stopped one answers 503, start it, prove it answers again.
+
+## 6. Known edges to handle, not discover later
+
+- **Sharing a stopped site** (Tunnels): the tunnel would publish a 503. Warn at
+  share time, or refuse — decide in T5.
+- **Scratch sites**: the reaper deletes on expiry regardless of `enabled`; a
+  stopped scratch site still expires. No change, but state it.
+- **Site create**: new sites are enabled. A site whose provisioning never
+  finished is `provisioned: false`, which is a different fact and keeps its own
+  badge — a half-provisioned site is not "stopped by you".
+- **`restart_site` on a stopped site**: refuse with the reason, rather than
+  rebuilding a config that deliberately does not serve it.

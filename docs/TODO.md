@@ -35,6 +35,28 @@ paying for anyway: **the tick belongs in the commit that does the work.**
 
 ## Now — actionable code/test work
 
+- [ ] **A site cannot be stopped on its own; the list cannot be filtered by type**
+  — both reported 4 Sep 2026, planned in `docs/PLAN-per-site-lifecycle.md`. Today
+  the stack is all-or-nothing (`Stop all` in the footer) because a default site has
+  no process of its own: shared nginx, and a php-fpm pool shared with every site on
+  its PHP minor. The plan's ruling is that stopping a site is a **serving-surface**
+  change, not a process one — no nginx vhost, a Caddy route that keeps its cert and
+  answers 503, and only a site's OWN override backend (FrankenPHP/Apache) actually
+  stopped. Nine tasks, T1–T9 in the plan:
+  - [ ] T1 — v44 `sites.enabled`, user-owned column, upsert must not clobber it
+  - [ ] T2 — `rebuild_configs_for` drops disabled vhosts; `SiteRoute { stopped }` → 503
+  - [ ] T3 — `reconcile_overrides` stops a disabled site's own backend; `site_serving`
+        returns `disabled` so "stopped" and "stopped by you" are different words
+  - [ ] T4 — `set_site_enabled` command (enable may start the site's PHP pool; disable
+        never stops a shared one), honest report when the stack is down
+  - [ ] T5 — row menu + SiteDetail action, copy that separates it from "Stop all"
+  - [ ] T6 — site-type filter (All/WordPress/Laravel/PHP), counts computed against the
+        other filter's selection so no tab's number contradicts the list under it
+  - [ ] T7 — default filter = Running when anything runs, else All; decided ONCE on
+        first load, never re-decided by a 2s poll
+  - [ ] T8 — parity: `site_configure` `enabled` action, `site_status`, `rex site start/stop`
+  - [ ] T9 — docs + a fixture-owned live check (neighbour still 200, stopped site 503)
+
 - [x] **Laravel mail escaped the catch-all entirely** ✓ 4 Sep 2026 — reported by a
   user, reproduced on the dev Mac's own Laravel site, ledger #504. `sendmail_path`
   catches PHP's `mail()`; Laravel's sendmail transport never reads php.ini
