@@ -237,6 +237,17 @@ it can:
   requires each key's command to be registered in `generate_handler!` and each `:suffix` to
   be one the tally synthesises — read out of `DevGitPanel.tsx`, not listed in the test.
   It proves the key is WRITABLE, never that the assertion around it is meaningful.
+
+  **A control that reads TEXT cannot see an empty element.** `sharedstopped.js`
+  (5 Sep 2026) checks that a share of a stopped site carries the backend's warning on
+  the card. Its first control read a HEALTHY card and asserted the warning text was
+  absent — which looked like a control and was not: making the strip unconditional
+  renders an empty amber box on every card, because `{tunnel.warning}` of `undefined`
+  prints nothing, so the plant it existed to catch came back green. Counting the
+  elements (`[data-probe="share-warning"]`, exactly one) sees what reading them cannot.
+  The check's load-bearing assertion is separate again: the rendered sentence must
+  equal the backend's CHARACTER FOR CHARACTER, which is what distinguishes a
+  pass-through from a second copy the UI composes and then drifts.
   And `wpfocus.js`'s ride-along control names the FLAG it proves (`refetchOnWindowFocus:
   false`), not the stale window it fires inside of.
   Its second lesson is the fixture one: the first stand-in cloudflared was

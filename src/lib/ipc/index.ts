@@ -1650,6 +1650,13 @@ export async function tunnelsStatus(): Promise<TunnelInfo[]> {
     // Three tunnels, one per HEALTH — the dev shell renders every state the
     // card can be in, and the L2 probe needs the two that are NOT reachable to
     // prove "Live" is earned rather than painted on anything running.
+    //
+    // Plus a fourth carrying a WARNING. A share of a stopped site is allowed
+    // and must never be silent (ledger #510), and the sentence is the
+    // BACKEND's — `core::tunnels::stopped_share_warning`. The fixture repeats
+    // it verbatim so `sharedstopped.js` can assert the card renders what it was
+    // given rather than a sentence the UI composed, which is the difference
+    // between a pass-through and a second copy that drifts.
     return [
       {
         domain: "acme.rex",
@@ -1668,6 +1675,15 @@ export async function tunnelsStatus(): Promise<TunnelInfo[]> {
         url: "https://red-owl-fell.trycloudflare.com",
         running: true,
         health: "broken",
+        // network.rex is the fixture site whose status is "stopped", so it is
+        // also the one a stopped-site share belongs on — the two facts are the
+        // same fact. Sentence copied VERBATIM from
+        // `core::tunnels::stopped_share_warning`; `sharedstopped.js` asserts the
+        // card renders it character for character, which is what tells a
+        // pass-through apart from a second copy the UI writes itself.
+        warning:
+          'network.rex is stopped in rexenv, so this link shows the "site stopped" page to ' +
+          "anyone who opens it. Start the site to serve it.",
       },
     ];
   }

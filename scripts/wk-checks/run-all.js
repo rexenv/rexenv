@@ -26,6 +26,7 @@ const CHECKS = [
   "wpfocus.js",
   "frameancestors.js",
   "importbar.js",
+  "sharedstopped.js",
   "contrast.js",
   "mail.js",
   // The UI-review sweep asserts now (overflow fatal, pageerror listeners,

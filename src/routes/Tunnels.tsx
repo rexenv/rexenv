@@ -452,7 +452,10 @@ function TunnelCard({
             /* A share of a STOPPED site is allowed (the owner's call) and never
                silent: the link works, and what it shows is rexenv's stop page.
                Warning colours, not error — nothing failed. */
-            <div className="mt-[11px] flex items-start gap-2 rounded-[9px] border border-status-warning-border bg-status-warning-bg px-3 py-2 text-[0.75rem] leading-[1.5] text-status-warning-bright">
+            <div
+              data-probe="share-warning"
+              className="mt-[11px] flex items-start gap-2 rounded-[9px] border border-status-warning-border bg-status-warning-bg px-3 py-2 text-[0.75rem] leading-[1.5] text-status-warning-bright"
+            >
               <AlertTriangle className="mt-px h-3.5 w-3.5 flex-none" strokeWidth={1.8} />
               <span>{tunnel.warning}</span>
             </div>
