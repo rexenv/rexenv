@@ -670,6 +670,27 @@ pub fn parse_guard_args(args: &[String]) -> Option<GuardArgs> {
 /// 2026), `rexenv.log` had no line for it: the evidence was in
 /// `logs/tunnel-mstest.rex.log`, a file you only think to open once you
 /// already know which domain to suspect, which is the thing you are trying to
+/// What a share of a STOPPED site publishes (v44) — the ONE sentence, so the
+/// app, the CLI and an agent all say the same thing.
+///
+/// **A warning, not a refusal** (the owner's call, 4 Sep 2026). Sharing a
+/// stopped site is not dangerous: the visitor gets rexenv's own "this site is
+/// stopped" page, which is honest — and there are real reasons to want the URL
+/// standing before the site is (handing it to a colleague, keeping a link
+/// stable across a restart). What it must never be is SILENT: a link handed to
+/// somebody else that shows them a stop page, with the sharer believing their
+/// site is up, is the shape of a wasted afternoon.
+///
+/// Recomputed wherever a share is reported rather than captured at start,
+/// because the site can be stopped AFTER the tunnel exists — a one-time check
+/// on a mutable fact is a snapshot, and this project has paid for that twice.
+pub fn stopped_share_warning(domain: &str) -> String {
+    format!(
+        "{domain} is stopped in rexenv, so this link shows the \"site stopped\" page to \
+         anyone who opens it. Start the site to serve it."
+    )
+}
+
 /// find out. The line therefore carries the three facts that IDENTIFY an
 /// exposure — the site, the public URL, the pid — plus the origin it points
 /// at, so `grep tunnels: rexenv.log` answers "what was public, when, and

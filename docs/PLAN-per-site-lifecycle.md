@@ -166,10 +166,13 @@ site's own hostname, and both ways to start it (the app's menu wording and
 
 ## 6. Known edges — how each was settled
 
-- **Sharing a stopped site** (Tunnels): still open. A share of a stopped site
-  publishes the 503 page, which is honest but useless; a refusal (or a warning)
-  at share time is the obvious next move and is filed in `docs/TODO.md` rather
-  than smuggled into this feature.
+- **Sharing a stopped site** (Tunnels): **warn, don't refuse** (owner's ruling,
+  4 Sep 2026). The link works and publishes the stop page, and there are real
+  reasons to want a URL standing before the site is. The warning is derived on
+  every report (`core::tunnels::stopped_share_warning`, recomputed in
+  `tunnels_status`), because the ordinary sequence is share first and stop the
+  site later — a warning decided at start would say the opposite of what the
+  link shows. Ledger #509.
 - **Scratch sites**: the reaper deletes on expiry regardless of `enabled`; a
   stopped scratch site still expires. No change, but state it.
 - **Site create**: new sites are enabled. A site whose provisioning never

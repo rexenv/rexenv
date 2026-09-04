@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { toastBackendError } from "@/lib/toast";
+import { toast, toastBackendError } from "@/lib/toast";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Check, ChevronRight, Cloud, Copy, ExternalLink, Lightbulb, Share2, Square } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -70,10 +70,19 @@ export function Tunnels() {
 
   const share = useMutation({
     mutationFn: async ({ id, on }: { id: string; on: boolean }) => {
-      if (on) await startTunnel(id);
-      else await stopTunnel(id);
+      if (!on) {
+        await stopTunnel(id);
+        return null;
+      }
+      return startTunnel(id);
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["tunnels"] }),
+    onSuccess: (info) => {
+      // The link is live either way; if it publishes the stop page, say so at
+      // the moment of sharing rather than only in the row the user may not
+      // scroll to. The sentence is the backend's — one source (core::tunnels).
+      if (info?.warning) toast.info(info.warning);
+      void qc.invalidateQueries({ queryKey: ["tunnels"] });
+    },
     onError: (e) => toastBackendError(e),
   });
 
@@ -439,6 +448,15 @@ function TunnelCard({
               Stop sharing
             </button>
           </div>
+          {tunnel?.warning && (
+            /* A share of a STOPPED site is allowed (the owner's call) and never
+               silent: the link works, and what it shows is rexenv's stop page.
+               Warning colours, not error — nothing failed. */
+            <div className="mt-[11px] flex items-start gap-2 rounded-[9px] border border-status-warning-border bg-status-warning-bg px-3 py-2 text-[0.75rem] leading-[1.5] text-status-warning-bright">
+              <AlertTriangle className="mt-px h-3.5 w-3.5 flex-none" strokeWidth={1.8} />
+              <span>{tunnel.warning}</span>
+            </div>
+          )}
           {health === "broken" && (
             <div className="mt-[11px] flex items-start gap-2 rounded-[9px] border border-status-error-border bg-status-error-bg px-3 py-2 text-[0.75rem] leading-[1.5] text-status-error-bright">
               <AlertTriangle className="mt-px h-3.5 w-3.5 flex-none" strokeWidth={1.8} />

@@ -2461,6 +2461,9 @@ fn cmd_tunnel(words: &[String], json_output: bool) {
             }
             for t in tunnels {
                 println!("{:<24} {}", t["domain"].as_str().unwrap_or("?"), t["url"].as_str().unwrap_or(""));
+                if let Some(w) = t["warning"].as_str() {
+                    println!("{:<24} warning: {w}", "");
+                }
             }
         }
         Some(act @ ("start" | "stop")) => {
@@ -2482,6 +2485,12 @@ fn cmd_tunnel(words: &[String], json_output: bool) {
             }
             if act == "start" {
                 println!("✓ public URL: {}", r["url"].as_str().unwrap_or("?"));
+                // A share of a STOPPED site is allowed and never silent: the
+                // link works, and what visitors get is rexenv's stop page. The
+                // sentence is the app's own (one source, `core::tunnels`).
+                if let Some(w) = r["warning"].as_str() {
+                    println!("warning: {w}");
+                }
             } else {
                 println!("✓ tunnel stopped");
             }

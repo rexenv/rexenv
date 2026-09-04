@@ -89,11 +89,15 @@ paying for anyway: **the tick belongs in the commit that does the work.**
         nobody else's marker, the neighbour still serving, and the site back on the
         certificate it kept
 
-- [ ] **Sharing a site that is stopped publishes the "site stopped" page** — found while
-  shipping the per-site switch (4 Sep 2026). A tunnel over a stopped site is honest and
-  useless: the visitor gets rexenv's 503. Decide between refusing the share (like the
-  override-server refusal in `core/tunnels.rs`, which names what would be published) and
-  warning at share time; either way the refusal must name the reason and the fix.
+- [x] **Sharing a site that is stopped** ✓ 4 Sep 2026 — owner's ruling: **warn, don't
+  refuse**. The link works and publishes rexenv's stop page, which there are real reasons
+  to want standing; what it must never be is silent. `core::tunnels::stopped_share_warning`
+  is the one sentence, and it is DERIVED on every report (`tunnels_status` reads the site
+  rows) rather than captured at start — the ordinary sequence is share first, stop later,
+  and a captured warning would say the opposite of what the link shows. Surfaces: a toast
+  at share time + a warning strip on the Tunnels row, `rex tunnel start|list`, and the MCP
+  `share` reply (in `warning` and folded into `detail`, so a model cannot relay "it's
+  live" while visitors get a stop page).
 
 - [x] **Laravel mail escaped the catch-all entirely** ✓ 4 Sep 2026 — reported by a
   user, reproduced on the dev Mac's own Laravel site, ledger #504. `sendmail_path`

@@ -619,6 +619,11 @@ site with a REAL plugin, which is the part the fixtures cannot buy.
 - [ ] Create a sub-site; it appears in the list and loads.
 
 ## Public sharing (Tunnels) — needs internet
+- [ ] **Share a site, then STOP that site** (v44): the Tunnels row grows an amber strip
+      saying the link now shows the "site stopped" page — without re-sharing, because the
+      warning is derived on each poll. Start the site again and the strip goes away.
+- [ ] Share a site that is ALREADY stopped: it shares (no refusal) and a toast says what
+      the link publishes. `rex tunnel start <domain>` prints the same sentence.
 - [ ] **Filter while a share is live** (19 Aug 2026, #371 — the half L2 cannot reach,
   since the harness has no event transport): share two sites, type a query in the
   Tunnels search box that matches NEITHER. The amber line must name both ("2 shared

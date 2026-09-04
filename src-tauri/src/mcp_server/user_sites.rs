@@ -2796,7 +2796,7 @@ fn share<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTar
             let shares: Vec<Value> = all
                 .into_iter()
                 .filter(|t| domain.as_deref().map_or(true, |d| d == t.domain))
-                .map(|t| json!({ "domain": t.domain, "url": t.url, "running": t.running, "health": t.health }))
+                .map(|t| json!({ "domain": t.domain, "url": t.url, "running": t.running, "health": t.health, "warning": t.warning }))
                 .collect();
             return Ok(json!({ "shares": shares }));
         }
@@ -2816,9 +2816,20 @@ fn share<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTar
                     return Err(Error::Other("Agent access was turned down before the share started — nothing is published.".into()));
                 }
                 let info = ctx.ops.share_start(site.id.clone(), minutes).await?;
+                let mut detail = format!("`{}` is public at that URL for {minutes} minutes, then rexenv stops the share on its own (or sooner if rexenv quits). Anyone with the URL reaches it.", site.domain);
+                // A stopped site is shared, not refused — and the agent is told
+                // what the link actually shows, in the app's own sentence. Put
+                // in `detail` as well as its own field because a model relaying
+                // "it's live at this URL" while the visitor gets a stop page is
+                // the failure this warning exists to prevent.
+                if let Some(w) = &info.warning {
+                    detail.push(' ');
+                    detail.push_str(w);
+                }
                 Ok(json!({
                     "domain": site.domain, "url": info.url, "running": info.running, "minutes": minutes,
-                    "detail": format!("`{}` is public at that URL for {minutes} minutes, then rexenv stops the share on its own (or sooner if rexenv quits). Anyone with the URL reaches it.", site.domain),
+                    "warning": info.warning,
+                    "detail": detail,
                 }))
             }
             "stop" => {
@@ -3290,6 +3301,7 @@ pub(crate) mod tests {
                 Ok(crate::commands::tunnels::TunnelInfo {
                     domain: "mine.rex".into(), url: "https://abc.trycloudflare.com".into(), running: true,
                     health: crate::core::tunnels::TunnelHealth::Reachable, diagnosis: None,
+                    warning: None,
                 })
             })
         }
@@ -3300,8 +3312,8 @@ pub(crate) mod tests {
         fn shares<'a>(&'a self) -> OpFuture<'a, Result<Vec<crate::commands::tunnels::TunnelInfo>>> {
             Box::pin(async {
                 Ok(vec![
-                    crate::commands::tunnels::TunnelInfo { domain: "mine.rex".into(), url: "https://abc.trycloudflare.com".into(), running: true, health: crate::core::tunnels::TunnelHealth::Reachable, diagnosis: None },
-                    crate::commands::tunnels::TunnelInfo { domain: "other.rex".into(), url: "https://xyz.trycloudflare.com".into(), running: true, health: crate::core::tunnels::TunnelHealth::Unverified, diagnosis: None },
+                    crate::commands::tunnels::TunnelInfo { domain: "mine.rex".into(), url: "https://abc.trycloudflare.com".into(), running: true, health: crate::core::tunnels::TunnelHealth::Reachable, diagnosis: None, warning: None },
+                    crate::commands::tunnels::TunnelInfo { domain: "other.rex".into(), url: "https://xyz.trycloudflare.com".into(), running: true, health: crate::core::tunnels::TunnelHealth::Unverified, diagnosis: None, warning: Some("other.rex is stopped in rexenv, so this link shows the \"site stopped\" page to anyone who opens it. Start the site to serve it.".into()) },
                 ])
             })
         }

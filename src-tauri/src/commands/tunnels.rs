@@ -525,6 +525,22 @@ pub struct TunnelInfo {
     /// Why the URL is unreachable from THIS machine, when it is (the line
     /// under the badge — the badge itself never changes meaning for this).
     pub diagnosis: Option<crate::core::tunnels::TunnelDiagnosis>,
+    /// What this share currently publishes, when that is not the site (v44):
+    /// today, that the site is STOPPED and the link shows the stop page.
+    ///
+    /// Recomputed on every report rather than recorded at start — a site can be
+    /// stopped after its tunnel exists, and a warning captured once would keep
+    /// saying whatever was true at spawn time.
+    pub warning: Option<String>,
+}
+
+/// The warning a share of this site carries right now, or `None`.
+///
+/// One function so the toast, the Tunnels row, the CLI line and an agent's
+/// reply cannot drift; the sentence itself lives in `core::tunnels`, beside the
+/// rule it describes.
+fn share_warning(site: &Site) -> Option<String> {
+    (!site.enabled).then(|| tunnels::stopped_share_warning(&site.domain))
 }
 
 /// Max time to wait for cloudflared to print the public URL.
@@ -586,6 +602,7 @@ pub async fn start_tunnel<R: tauri::Runtime>(
                 running: true,
                 health: e.health,
                 diagnosis: e.diagnosis,
+                warning: share_warning(&site),
             });
         }
     }
@@ -813,6 +830,9 @@ pub async fn start_tunnel<R: tauri::Runtime>(
         running: true,
         health: crate::core::tunnels::TunnelHealth::Unverified,
         diagnosis: None,
+        // A stopped site is SHARED, not refused (the owner's call) — but never
+        // silently: this is the sentence the caller shows.
+        warning: share_warning(&site),
     })
 }
 
@@ -844,6 +864,17 @@ pub async fn tunnels_status(
     tunnels: State<'_, Tunnels>,
 ) -> Result<Vec<TunnelInfo>> {
     settle_dead(&state, tunnels.take_dead());
+    // The stopped-site warning is derived HERE, on every poll, from the site
+    // rows — so stopping a site that is already shared starts warning about it,
+    // and starting it again stops. One read for the whole list.
+    let stopped: std::collections::HashSet<String> = {
+        let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
+        crate::core::sites::list(&conn)?
+            .into_iter()
+            .filter(|s| !s.enabled)
+            .map(|s| s.domain)
+            .collect()
+    };
     let map = tunnels.0.lock().map_err(|_| Error::Other("tunnel registry poisoned".into()))?;
     let mut out: Vec<TunnelInfo> = map
         .iter()
@@ -853,6 +884,9 @@ pub async fn tunnels_status(
             running: true,
             health: e.health,
             diagnosis: e.diagnosis,
+            warning: stopped
+                .contains(domain)
+                .then(|| tunnels::stopped_share_warning(domain)),
         })
         .collect();
     out.sort_by(|a, b| a.domain.cmp(&b.domain));
@@ -1149,6 +1183,50 @@ mod lifecycle_guards {
     /// readers settle dead children BEFORE reading, so the answer can't come
     /// from a corpse.
     ///
+    /// **A share of a stopped site warns — and keeps warning, because the
+    /// warning is DERIVED on every report.**
+    ///
+    /// The owner's call (4 Sep 2026) is a warning rather than a refusal: the
+    /// link works, and what it publishes is rexenv's "site stopped" page, which
+    /// there are real reasons to want standing. What it must never be is
+    /// silent. The trap is the obvious implementation — decide at `start` and
+    /// remember — because the ordinary sequence is share first, stop the site
+    /// later, and a warning captured at spawn time would then say the opposite
+    /// of what the link shows. Same shape as this repo's two lifetime-guard
+    /// defects: a one-time check on a mutable fact is a snapshot.
+    #[test]
+    fn the_stopped_share_warning_is_recomputed_on_every_report_not_captured_at_start() {
+        let src = crate::core::copy_scan::production_source(include_str!("tunnels.rs"));
+        let body = src
+            .split("pub async fn tunnels_status(")
+            .nth(1)
+            .and_then(|b| b.split("\n#[").next())
+            .expect("tunnels_status");
+        assert!(
+            body.contains("core::sites::list(") && body.contains("s.enabled"),
+            "`tunnels_status` no longer reads the site rows, so a site stopped AFTER it was \
+             shared reports no warning — and the link goes on showing the stop page while \
+             the app says nothing"
+        );
+        assert!(
+            body.contains("stopped_share_warning("),
+            "the warning text is no longer the one in `core::tunnels` — the app, the CLI and \
+             an agent must all say the same sentence"
+        );
+        // And it is a WARNING, not a refusal: nothing on this path returns an
+        // error for a stopped site.
+        let start = src
+            .split("pub async fn start_tunnel<R: tauri::Runtime>(")
+            .nth(1)
+            .and_then(|b| b.split("\n/// ").next())
+            .expect("start_tunnel");
+        assert!(
+            !start.contains("is stopped in rexenv"),
+            "sharing a stopped site now REFUSES; the ruling is that it shares and warns"
+        );
+        assert!(start.contains("share_warning("), "the start reply must carry the warning");
+    }
+
     /// #29: rexenv never stops a share on the USER'S behalf. The reaper is
     /// where that now bites — it deletes sites unattended, and
     /// `delete_site_owned`'s first act is to stop the site's tunnel. It must

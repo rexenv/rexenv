@@ -732,6 +732,11 @@ export interface TunnelInfo {
   running: boolean;
   health: TunnelHealth;
   diagnosis?: TunnelDiagnosis | null;
+  /** What this share currently publishes, when that is not the site (v44):
+   *  today, that the site is STOPPED and the link shows the stop page. Written
+   *  by the backend on every report — never cached here — so stopping a site
+   *  that is already shared starts warning, and starting it stops. */
+  warning?: string | null;
 }
 
 /** A WordPress plugin row (mirrors the Rust WpPlugin DTO / `wp plugin list`). */
