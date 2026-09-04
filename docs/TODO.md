@@ -1990,7 +1990,7 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     the one-source scope sentence. L2 `agents-sites-off/on`; SMOKE steps 23–26 (eyes-only
     until P2). **P1 is code-complete except the `run_privileged` ledger row re-scope, which
     belongs with the first tool that needs it (P4).**
-  - [ ] **P2 — site lifecycle**: `site_create` (WP/PHP/Laravel, blueprint, multisite,
+  - [x] **P2 — site lifecycle**: `site_create` (WP/PHP/Laravel, blueprint, multisite,
     starter DB), `site_delete`, `site_configure`, `site_restart`/`site_retry`, `site_info`,
     `job_status`/`job_cancel`; L1 `mcp_user_site_check`; SMOKE §P2.
     ✓ P2.1 — **`site_create` + `site_delete`**, ledger #475/#476 (3 Sep 2026):
@@ -2012,7 +2012,7 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     the socket. **P2 is shipped** except `job_status`/`job_cancel`, which move to P6 with
     the progress work. What only a human can run: SMOKE 27–31 (create/retry/restart for
     real, and the gate in front of a model).
-  - [ ] **P3 — WordPress on real sites** (eight grouped `wp_*` tools + `wp_run`'s `run`
+  - [x] **P3 — WordPress on real sites** (eight grouped `wp_*` tools + `wp_run`'s `run`
     arm), `tail_log` every source, `mail_inbox`.
     ✓ P3.1 — **`wp_info` + `wp_plugin` + `wp_theme`**, ledger #481 (3 Sep 2026): `WpOps`
     over 24 `commands::wordpress` arms; per-action scope from one table met by the
@@ -2034,7 +2034,7 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     name) and SMOKE §P3 steps 32–35 are written (#480 amended). What no tier proves and
     the human leg owns: a vetted command on a real WordPress under a grant, the raw
     runner as the user, the inbox behind two consents.
-  - [ ] **P4 — the stack**: `stack_status`/`stack(...)` incl. privileged start/stop (D10),
+  - [x] **P4 — the stack**: `stack_status`/`stack(...)` incl. privileged start/stop (D10),
     `php_*`, `settings`, `tld`, `open`, `share` (D11), TTL/cap as settings.
     ✓ P4.1 — **`stack_status` (read) + `stack(...)`**, ledger #485 (3 Sep 2026): start/stop
     under `system` from ONE arm (source-scanned), macOS dialog = second consent stated in
@@ -2048,7 +2048,7 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     ≤60 min, an app-side timer that dies with the app; `scratch_cap`/`scratch_ttl_hours`
     gated setters with the constants as defaults (L7 closed). SMOKE §P4 (36–39) written.
     **P4 is shipped** (37 tools). Owed: a tunnel-status read (P5).
-  - [ ] **P5 — long tail**: `repo(...)`, `valet_import`, `connection_rewrite`, `db_import`,
+  - [x] **P5 — long tail**: `repo(...)`, `valet_import`, `connection_rewrite`, `db_import`,
     `blueprints`, `wp_org_search`, `agent_activity`.
     ✓ P5.1 — **`blueprints_list` + `agent_activity` (read), `blueprints`, `share status`**,
     ledger #489 (3 Sep 2026): blueprints by name, spec validated on shape before the ask;
@@ -2063,7 +2063,7 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     drops a database); files named, diffs scrubbed. **P5 is shipped** — every module in the
     plan's §4 matrix has its tools (47 tools — first written as 45, corrected 3 Sep from the server's own list). Owed: SMOKE §P5 (the human legs of a real
     import and rewrite).
-  - [ ] **P6 — protocol**: annotations, progress notifications riding #447's records,
+  - [x] **P6 — protocol**: annotations, progress notifications riding #447's records,
     the in-band shim error, `job_*` as the one job pattern, a real Cursor + Claude Code
     `tools/list` check at ~42 tools.
     ✓ P6.1 — **annotations for every registry, in one place**, ledger #492 (L6 closed).
