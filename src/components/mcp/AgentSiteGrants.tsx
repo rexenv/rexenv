@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { KeyRound } from "lucide-react";
+import { ChevronRight, KeyRound } from "lucide-react";
 import { agentSiteRequests, agentSiteGrants, agentSiteGrant, agentSiteDeny, agentSiteRevoke } from "@/lib/ipc";
 import type { AgentSiteAsk, AgentSiteGrantRow } from "@/types";
 import { toastBackendError } from "@/lib/toast";
@@ -57,6 +57,32 @@ export function AgentSiteGrants() {
 
   const asks = requests.data ?? [];
   const rows = grants.data ?? [];
+  const live = rows.filter((g) => state(g).live);
+  const past = rows.filter((g) => !state(g).live);
+
+  // The recorded SCOPE, never a verb this component invented: rows predating
+  // D15/D16 hold `read`/`manage`/`destroy`/`system`, and labelling every one
+  // "publish" told the user something the record does not say.
+  const row = (g: AgentSiteGrantRow, canRevoke: boolean) => {
+    const s = state(g);
+    const where = g.siteId === null ? "rexenv itself" : (g.siteLabel ?? "(deleted site)");
+    return (
+      <li key={g.id} className="flex items-center gap-2 rounded-md border border-rex-border-subtle px-2.5 py-1.5">
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[0.75rem] text-rex-text">
+            {g.client} · <em>{g.scope}</em>{g.scope === "run" ? " (publish)" : ""} ·{" "}
+            <span className="font-mono text-[0.6875rem]">{where}</span>
+          </div>
+          <div className="text-[0.6875rem] text-rex-text-muted">{s.label}</div>
+        </div>
+        {canRevoke && s.live && (
+          <Button size="sm" variant="ghost" disabled={revoke.isPending} onClick={() => revoke.mutate(g.id)}>
+            Revoke
+          </Button>
+        )}
+      </li>
+    );
+  };
 
   return (
     <div className="mt-3.5 border-t border-rex-border-subtle pt-3.5">
@@ -94,7 +120,7 @@ export function AgentSiteGrants() {
         </div>
       ))}
 
-      {rows.length === 0 && asks.length === 0 && (
+      {live.length === 0 && asks.length === 0 && (
         <p className="mt-1.5 text-[0.71875rem] leading-[1.55] text-rex-text-muted">
           Publishing a site is the one thing an agent always has to ask you for, whatever Agent
           access is set to. The ask appears here when it tries, and{" "}
@@ -102,28 +128,20 @@ export function AgentSiteGrants() {
         </p>
       )}
 
-      {rows.length > 0 && (
-        <ul className="mt-2 space-y-1">
-          {rows.map((g) => {
-            const s = state(g);
-            const where = g.siteId === null ? "rexenv itself" : (g.siteLabel ?? "(deleted site)");
-            return (
-              <li key={g.id} className="flex items-center gap-2 rounded-md border border-rex-border-subtle px-2.5 py-1.5">
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-[0.75rem] text-rex-text">
-                    {g.client} · publish · <span className="font-mono text-[0.6875rem]">{where}</span>
-                  </div>
-                  <div className="text-[0.6875rem] text-rex-text-muted">{s.label}</div>
-                </div>
-                {s.live && (
-                  <Button size="sm" variant="ghost" disabled={revoke.isPending} onClick={() => revoke.mutate(g.id)}>
-                    Revoke
-                  </Button>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+      {live.length > 0 && <ul className="mt-2 space-y-1">{live.map((g) => row(g, true))}</ul>}
+
+      {/* Answered, expired and revoked decisions are EVIDENCE, not a to-do
+          list: kept, because "what could that agent do, and until when" is the
+          question this section exists to answer — folded away, because a
+          column of "Revoked" is the whole section otherwise. */}
+      {past.length > 0 && (
+        <details className="group mt-2">
+          <summary className="flex cursor-pointer list-none items-center gap-1 text-[0.6875rem] text-rex-text-muted hover:text-rex-text">
+            <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
+            Earlier decisions ({past.length})
+          </summary>
+          <ul className="mt-1.5 space-y-1">{past.map((g) => row(g, false))}</ul>
+        </details>
       )}
     </div>
   );
