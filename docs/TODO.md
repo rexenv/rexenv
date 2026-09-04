@@ -81,7 +81,19 @@ paying for anyway: **the tick belongs in the commit that does the work.**
         resolution is `AgentOrUser` (the first non-serving state an agent can fix itself);
         `rex site start|stop <domain>`, whose output says every time that it is not
         `rex stop`
-  - [ ] T9 — docs + a fixture-owned live check (neighbour still 200, stopped site 503)
+  - [x] T9 — docs + proof ✓ 4 Sep 2026 — ARCHITECTURE §2 (what stopping a site is and is
+        not), DESIGN (two stopped-nesses; a filter tab's count is what clicking it shows;
+        a default chosen once), MAP, TESTING, CLI-ROADMAP, SMOKE (two new sections),
+        ledger #506/#507 + tally, and `examples/site_stop_start_check.rs` (sandbox tier)
+        — which PASSED on its first live run: controls, the 503 with rexenv's words and
+        nobody else's marker, the neighbour still serving, and the site back on the
+        certificate it kept
+
+- [ ] **Sharing a site that is stopped publishes the "site stopped" page** — found while
+  shipping the per-site switch (4 Sep 2026). A tunnel over a stopped site is honest and
+  useless: the visitor gets rexenv's 503. Decide between refusing the share (like the
+  override-server refusal in `core/tunnels.rs`, which names what would be published) and
+  warning at share time; either way the refusal must name the reason and the fix.
 
 - [x] **Laravel mail escaped the catch-all entirely** ✓ 4 Sep 2026 — reported by a
   user, reproduced on the dev Mac's own Laravel site, ledger #504. `sendmail_path`

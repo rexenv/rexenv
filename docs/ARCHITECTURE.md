@@ -134,6 +134,52 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   `{`/`}` — Caddy expands placeholders in quoted strings; control chars) and escape
   `\`/`"`. Plain text in generated configs — not a secrets store.
 
+### Stopping ONE site (v44, `docs/PLAN-per-site-lifecycle.md`)
+
+Read the topology above and the question answers itself: a default site has **no
+process of its own**. The web server is one shared nginx, and the php-fpm pool is
+shared by every site on that PHP minor. So the two obvious implementations of
+"stop this site" are both wrong — stopping the pool stops every site on that
+version (which is why `restart_site`'s `--pool` is opt-in and reports how many),
+and stopping nginx or the edge is "Stop all", which already exists.
+
+**Stopping a site is therefore a change to the SERVING SURFACE, not to any
+shared process.** The recorded switch is `sites.enabled` (v44, user-owned — one
+writer, `store::set_site_enabled`), and the config rebuild reads it:
+
+| Leg | A stopped site |
+|---|---|
+| nginx server block | not emitted at all (`sites::gets_nginx_block`) |
+| Caddy route | **kept**, with its `tls` line and certificate — answers `respond STOPPED_SITE_BODY 503` instead of proxying |
+| its OWN override backend (FrankenPHP/Apache) | actually stopped: `OverrideKind::wanted_by` returns `None`, and `reconcile_overrides` stops what is no longer wanted |
+| shared nginx, php-fpm pools, DB, edge | untouched |
+
+Two decisions worth keeping:
+
+- **The route stays.** Dropping it hands the browser a TLS failure — or, next to
+  a subdomain-multisite block, somebody ELSE's site at this site's address (the
+  fallthrough `override_fallthrough_check` measured). A 503 that says the site is
+  stopped is the honest answer, and it keeps the certificate warm so starting the
+  site again is a reload rather than a name the browser has never been given a
+  cert for.
+- **The switch is in the DATABASE**, not the ServiceManager, because services
+  outlive the app: a site the user stopped must still be stopped after a
+  relaunch, and the rebuild is reached from start, reload, startup adoption, site
+  edits and the scratch reaper.
+
+Starting is the inverse plus one thing: with the stack up, it ensures the site's
+PHP minor pool. It never starts the stack — a user who stopped everything meant
+it — so the report carries `serving` (read from `site_serving`, the ONE status
+derivation) and the reason when a started site still is not answering. Status
+carries `disabled` beside `serving` for the same reason: "the stack is down" and
+"you stopped this one" have different fixes, and one word for both sends people
+to start a stack that is already running.
+
+Reachable from the Sites row menu and the site page, `rex site start|stop
+<domain>`, and `site_configure {action: "enabled"}` (existing `manage` scope —
+through the MECHANISM, never the Tauri command, which promotes a scratch site).
+Live-proven end to end by `site_stop_start_check`.
+
 ## 3. Caddy edge lifecycle (`core/proxy.rs`)
 
 - Edge binds real `:80`/`:443` → needs one privileged install (foreground admin prompt —

@@ -580,6 +580,36 @@ site with a REAL plugin, which is the part the fixtures cannot buy.
 - [ ] Overview → Quick links → **Database** opens THIS site's Database tab, not the engines screen (8 Aug).
 - [ ] Open a WordPress site you have NOT opened this session: the **WordPress tab and Magic Login are there on the first frame** — no second-late pop-in while `wp-info` resolves (8 Aug).
 
+## Stopping ONE site (v44) — the shared services must NOT go with it
+- [ ] With at least two sites serving, row menu → **Stop site** on one. Its pill reads
+      **Stopped by you**, and the toast says your other sites keep running.
+- [ ] In a browser, the stopped site's URL answers **"This site is stopped in rexenv"** —
+      not a certificate warning, not a 502, and **not another site's content** (the
+      fallthrough this design exists to prevent; the automated proof is
+      `site_stop_start_check`).
+- [ ] The OTHER site still loads, and Services still shows the web tier running. A stopped
+      site must never have stopped a php-fpm pool — every site on that PHP version shares it.
+- [ ] **Start site** → it serves again on the SAME certificate (no interstitial, no
+      "certificate is not trusted" — the route kept its cert while stopped).
+- [ ] Stop a site, **quit rexenv and relaunch**: it is still stopped. (The switch is in the
+      database precisely because services outlive the app.)
+- [ ] With everything stopped (Stop all), press **Start site** on a stopped site: the toast
+      says the site is set to run but rexenv's services are stopped — no "started" claim
+      the browser would contradict.
+- [ ] `rex site stop <domain>` / `rex site start <domain>` do the same thing from a
+      terminal, and the stop output says this is not `rex stop`.
+
+## The Sites list's two filters
+- [ ] Open Sites with sites running: it opens on **Running**, not All. Stop every site and
+      re-open: it opens on **All** (never an empty page).
+- [ ] Choose a **type** tab (WordPress / Laravel / Blank PHP): the list narrows, and each
+      status tab's count matches what that tab actually shows (and vice-versa) — no number
+      above a list that does not contain that many rows.
+- [ ] Filter down to nothing: the empty state offers **Show all sites**, and clicking it
+      restores the full list.
+- [ ] Pick a tab, then leave the page idle for ~10s while sites start or stop: **the tab
+      does not change under you** (the default is decided once, not by the 2s poll).
+
 ## Multisite
 - [ ] Convert the WP site to multisite. **The convert panel starts on subdomain**, matching
       New Site's toggle (8 Aug — the two screens used to default differently, and the mode

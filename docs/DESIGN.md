@@ -49,6 +49,33 @@ the shipped UI toward one.
   publishing a site lives in Full beside "runs code of its choosing as you", because a
   second prompt for a thing the chosen level spells out is friction the user reads as
   noise, not as consent.
+- **Two stopped-nesses, two sentences.** A site can be down because rexenv's
+  services are stopped, or because the user stopped THAT site (v44). The pill is
+  the same shape either way — the site is not serving, and that is one honest
+  fact — but the user's own choice reads "Stopped by you" and the tooltip names
+  the fix, which is different for each ("Start all" in the footer vs. this row's
+  own Start). Collapsing them would send someone to start a stack that is already
+  running. The same rule reaches the wire: `site_serving` carries `disabled`, the
+  agent view carries `stopped`, and the CLI's `stop` output says every time that
+  this is not `rex stop`, because the two are one argument apart and the mistake
+  is otherwise silent.
+- **A per-site Start reports what is TRUE, not what was asked.** Starting a site
+  while the services are stopped records the switch and serves nothing; the toast
+  is the backend's own sentence about why, never a success. Same rule as the
+  status pill: this app does not congratulate itself for a thing the browser is
+  about to contradict.
+- **A filter tab's count is what clicking it would show.** The Sites page filters
+  on two axes (status, and site type), and each control's counts are computed
+  against the OTHER's current selection. Counting all sites in both puts
+  "Laravel 3" directly above an empty list, and the page then argues with itself
+  about how many sites the user has. The list's own empty state offers "Show all
+  sites" as a BUTTON — advice to go and clear a filter is not a way out.
+- **A default view is chosen once, not re-chosen by a poll.** Sites opens on
+  Running when anything is running (else All), decided on the first load that has
+  both facts in hand — an unanswered serving poll means "not asked yet", not
+  "nothing is running". Re-deciding on the 2s refetch would move the user's tab
+  the moment they stopped their last running site, which is now something they do
+  from this very list.
 - **A chosen-one-of-N control shows its choice the way the New-site type cards do:**
   `border-brand` (+ `shadow-glow-primary`) on the chosen card with a filled
   `CheckCircle2` and a `text-brand-tint` label; a segmented pill (`bg-brand-tint-bg

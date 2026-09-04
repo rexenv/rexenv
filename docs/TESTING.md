@@ -197,6 +197,19 @@ it can:
   so its two `initdb`s and its CREATE/DROP DATABASE landed in the REAL
   `<app_data>/postgres/{17,16}/data` on the production port — the exact shape
   `examples/common/mod.rs`'s invariant forbids; it runs in `common::sandbox` now.
+  **`site_stop_start_check` (sandbox tier, 4 Sep 2026) is the layer aimed at what a
+  BROWSER gets.** L0 proves the two halves of stopping one site separately — a stopped
+  site gets no nginx server block, and its edge route renders a 503 — and neither can
+  say what comes back over the wire. The failure the design exists to prevent is
+  precisely a wire fact: with no block of its own, a Host can fall through to a
+  NEIGHBOUR's block and publish someone else's site at the stopped site's address, which
+  is exactly what `override_fallthrough_check` measured for override sites. So this one
+  runs a real nginx and a real edge over the real generated configs and asserts on bytes:
+  both sites serving their own marker first (without that control, "the stopped site did
+  not serve its marker" cannot be told from "this fixture never served anything"), then
+  the 503 carrying rexenv's own words and NOBODY's marker, the neighbour still answering
+  while its neighbour is down, and the site serving again after the switch goes back —
+  on the certificate it kept.
   Leg 4 (3 Sep 2026) hands the guard a LIVE stand-in parent with a start time that is not
   its own — the recycled-pid shape, reproduced without recycling a pid — and requires the
   share to end while the stand-in survives. `valet_import_check` gained step 3b the same

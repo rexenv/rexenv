@@ -1,6 +1,9 @@
 # PLAN — per-site start/stop, and a site-type filter on the Sites page
 
-Status: **planned, not started** (4 Sep 2026). Two user-reported gaps on the Sites
+Status: **SHIPPED 4 Sep 2026** — T1–T9, ledger #506/#507, live-proven by
+`examples/site_stop_start_check.rs` (sandbox tier). Kept as the design record: the
+reasoning below is why stopping a site is a serving-surface change, which is the part
+the code cannot say for itself. Two user-reported gaps on the Sites
 page, planned together because they land on the same screen and the second one is
 only worth having once the first exists.
 
@@ -95,9 +98,12 @@ under a user who just chose a tab, and stopping the last running site would jump
 them somewhere they did not ask to be. If a filter leaves the list empty, the
 empty state says so and offers "Show all sites" rather than silently switching.
 
-## 5. Tasks
+## 5. Tasks — all shipped
 
-Each is one commit, verified by `scripts/verify.sh` (the only green verdict).
+Each was one commit, verified by `scripts/verify.sh` (the only green verdict). T4 and
+T5 landed together because the tree refuses the halves: a registered command with no
+caller fails `every_registered_command_is_reachable_from_a_caller`, and an IPC wrapper
+with no UI fails `every_ipc_wrapper_is_actually_called`.
 
 - **T1 — the column.** v44 migration + `Site.enabled` in `state/models.rs` and
   `store.rs` (read + upsert). Tests: pre-v44 rows read enabled; a site upsert
@@ -135,14 +141,18 @@ Each is one commit, verified by `scripts/verify.sh` (the only green verdict).
   (sandbox tier): stop a fixture site, prove the neighbour still answers 200 and
   the stopped one answers 503, start it, prove it answers again.
 
-## 6. Known edges to handle, not discover later
+## 6. Known edges — how each was settled
 
-- **Sharing a stopped site** (Tunnels): the tunnel would publish a 503. Warn at
-  share time, or refuse — decide in T5.
+- **Sharing a stopped site** (Tunnels): still open. A share of a stopped site
+  publishes the 503 page, which is honest but useless; a refusal (or a warning)
+  at share time is the obvious next move and is filed in `docs/TODO.md` rather
+  than smuggled into this feature.
 - **Scratch sites**: the reaper deletes on expiry regardless of `enabled`; a
   stopped scratch site still expires. No change, but state it.
 - **Site create**: new sites are enabled. A site whose provisioning never
   finished is `provisioned: false`, which is a different fact and keeps its own
   badge — a half-provisioned site is not "stopped by you".
-- **`restart_site` on a stopped site**: refuse with the reason, rather than
-  rebuilding a config that deliberately does not serve it.
+- **`restart_site` on a stopped site**: refuses, naming the state — "… is
+  stopped, so there is nothing to restart. Start it first." Rebuilding a config
+  that deliberately does not serve the site and calling it a restart would be the
+  least true word available.

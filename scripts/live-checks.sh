@@ -173,6 +173,7 @@ service_manager_demo system
 site_cert_gen system
 site_provision_check network
 site_resources_check stack
+site_stop_start_check sandbox
 sites_folder_check sandbox
 starter_seed_check sandbox
 stack_guard_check stack
