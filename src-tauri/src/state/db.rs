@@ -676,6 +676,26 @@ const MIGRATIONS: &[&str] = &[
         session      INTEGER NOT NULL DEFAULT 0
     );
     CREATE INDEX idx_agent_site_grants_site ON agent_site_grants(site_id);",
+    // v44 — is this site SERVED, or did the user stop this ONE site?
+    //
+    // The column exists because a rexenv site has no process of its own to stop:
+    // the web server is shared and the php-fpm pool is shared by every site on a
+    // PHP minor, so "stop this site" can only mean "take it off the serving
+    // surface" — no nginx server block, a Caddy route that keeps its cert and
+    // answers 503, and only a site's OWN override backend actually stopped
+    // (`docs/PLAN-per-site-lifecycle.md`).
+    //
+    // In the DATABASE rather than in the ServiceManager because services outlive
+    // the app. A stopped site that came back serving after a relaunch would be
+    // the worst version of this feature — the user's decision quietly reversed
+    // by a restart — and the config rebuild is reached from start, reload,
+    // startup adoption, site edits and the scratch reaper, which is far too many
+    // paths to keep a memory-only flag honest across.
+    //
+    // NOT NULL DEFAULT 1, with no backfill needed: every row written before this
+    // column was served, because stopping one site was not possible. That is a
+    // fact about the past, not the usual "assume the safe thing" guess.
+    "ALTER TABLE sites ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1;",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.
@@ -1328,6 +1348,44 @@ mod tests {
             .unwrap();
         assert_eq!(url, None, "a pre-v33 site provably came from no repository");
         assert_eq!(git_ref, None);
+    }
+
+    /// **v44 leaves every existing site SERVING, and that is a fact rather than
+    /// a safe guess.**
+    ///
+    /// The usual question for a new NOT NULL column is "what should old rows
+    /// say", and the usual answer is a defensible default. Here it is exact:
+    /// before this column there was no way to stop one site, so every row that
+    /// could exist was being served. A migration that defaulted these to 0 —
+    /// or one that "played safe" — would silently take every one of a user's
+    /// sites off the air on the first launch after an update.
+    #[test]
+    fn v44_leaves_every_existing_site_served_because_none_could_have_been_stopped() {
+        let conn = Connection::open_in_memory().unwrap();
+        for (i, stmt) in MIGRATIONS[..43].iter().enumerate() {
+            conn.execute_batch(stmt).unwrap();
+            conn.pragma_update(None, "user_version", (i + 1) as i64).unwrap();
+        }
+        conn.execute(
+            "INSERT INTO sites (id, name, domain, type, php_version, path)
+             VALUES ('7f3a1c02-9d51-4d2e-8b77-2c9a4e6f1b30', 'Shop', 'shop.rex', 'laravel',
+                     '8.3', '/Users/x/Library/Application Support/dev.rexenv.rexenv/Sites/shop.rex')",
+            [],
+        )
+        .unwrap();
+
+        migrate(&conn).unwrap();
+
+        let enabled: i64 =
+            conn.query_row("SELECT enabled FROM sites", [], |r| r.get(0)).unwrap();
+        assert_eq!(enabled, 1, "a pre-v44 site was provably being served — it could not be stopped");
+        // And the column is NOT NULL, so nothing downstream has to handle a
+        // third state ("stopped, served, or unknown" is two states too many for
+        // a switch a user flips).
+        assert!(
+            conn.execute("UPDATE sites SET enabled = NULL", []).is_err(),
+            "`enabled` must be NOT NULL — a null would be a third state nobody renders"
+        );
     }
 
     #[test]

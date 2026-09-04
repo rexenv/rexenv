@@ -200,7 +200,7 @@ rexenv/
         │   └── windows/ · linux/   # todo!() stubs (fill later, no restructuring)
         │
         └── state/              # app state
-            ├── db.rs           # SQLite + migrations (v1–v43)
+            ├── db.rs           # SQLite + migrations (v1–v44)
             ├── models.rs · store.rs
             └── app.rs          # AppState (db + platform + CA + ServiceManager + …)
 ```

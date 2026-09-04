@@ -553,7 +553,7 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
 
 ## 8. Data & app state
 
-- **SQLite for all app state** (`state/db.rs`), `user_version` migrations, currently 43:
+- **SQLite for all app state** (`state/db.rs`), `user_version` migrations, currently 44:
   v1 `sites` + `settings` · v2 `php_versions` registry · v3 `sites.multisite` ·
   v4 `blueprints` (JSON `spec`) · v5 `php_settings` · v6 `sites.db_name` (stored, never
   re-derived) · v7 `site_env` · v8/v9 `default_tld` seed + `.rex` flip ·
@@ -594,7 +594,17 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   Blank-PHP site ask for a starter database? INTENT, written at the insert, beside
   v19's `db_created` PROVENANCE, written by the job after `CREATE DATABASE` — one
   column could not hold both without lying in the window a failed job leaves the
-  user sitting in, holding Retry).
+  user sitting in, holding Retry) · v42 `site_domains` (the extra hostnames a site
+  also answers on — Valet compatibility, §the multi-name entry above) · v43
+  `agent_site_grants` (kept as HISTORY: D17 retired every reader and writer, and a
+  source guard bans the symbols) · v44 `sites.enabled` (**is this site served?** —
+  `false` is the user stopping ONE site, which in this topology is a serving-surface
+  change and not a process one: no nginx server block, a Caddy route that keeps its
+  certificate and answers 503, and only a site's OWN override backend stopped. In the
+  database, not the ServiceManager, because services outlive the app and a stopped site
+  that came back on after a relaunch would be the user's decision quietly reversed.
+  DEFAULT 1 with no backfill, and that is exact rather than safe: before the column,
+  stopping one site was impossible — `docs/PLAN-per-site-lifecycle.md`).
   Per-engine DB versions are settings-KV rows (`db_version_<engine>`), not a migration.
   *(This list read "currently 25" for eight migrations — restored 11 Aug 2026.
   A count is the one part of a list that goes wrong silently, so check it

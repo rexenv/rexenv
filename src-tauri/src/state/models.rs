@@ -280,6 +280,27 @@ pub struct Site {
     /// column. Read through [`Site::has_starter_db`], never directly.
     #[serde(default)]
     pub starter_db: Option<bool>,
+    /// Is this site SERVED (v44)? `false` = the user stopped this one site.
+    ///
+    /// A rexenv site is not a process — shared nginx, and a php-fpm pool shared
+    /// with every site on its PHP minor — so stopping one is a change to the
+    /// SERVING SURFACE, not to any process: no nginx server block, a Caddy route
+    /// that keeps its certificate and answers 503, and only a site's OWN override
+    /// backend (FrankenPHP/Apache) actually stopped. See
+    /// `docs/PLAN-per-site-lifecycle.md`.
+    ///
+    /// Recorded rather than held in memory because services OUTLIVE the app: a
+    /// site the user stopped must still be stopped after a relaunch, and the
+    /// config rebuild is reached from start, reload, startup adoption, site
+    /// edits and the scratch reaper — one recorded fact is the only thing all of
+    /// them can read. USER-OWNED: only [`crate::state::store::set_site_enabled`]
+    /// writes it, so provisioning and config sync can never turn a stopped site
+    /// back on behind the user.
+    ///
+    /// Every pre-v44 row reads `true`, which is exact: before the column there
+    /// was no way to stop one site.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
 }
 
 impl Site {
@@ -404,6 +425,7 @@ pub(crate) fn test_site(id: &str, domain: &str, origin: SiteOrigin) -> Site {
         git_migrate: None,
         git_build_assets: None,
         starter_db: None,
+        enabled: true,
     }
 }
 
@@ -685,6 +707,7 @@ mod tests {
             git_migrate: None,
             git_build_assets: None,
             starter_db: None,
+            enabled: true,
         }
     }
 

@@ -538,6 +538,7 @@ fn create_recording_ownership(
         // to fill and a clone brings its own code, so neither is ever seeded.
         starter_db: (new.site_type == SiteType::Php && docroot_managed && git.is_none())
             .then_some(new.starter_db),
+        enabled: true,
     };
     store::insert_site(conn, &site)?;
     Ok(site)
@@ -3123,6 +3124,7 @@ mod tests {
             git_migrate: None,
             git_build_assets: None,
             starter_db: None,
+            enabled: true,
         }
     }
 
@@ -3379,6 +3381,7 @@ mod tests {
             git_migrate: None,
             git_build_assets: None,
             starter_db: None,
+            enabled: true,
         }
     }
 

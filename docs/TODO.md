@@ -43,7 +43,10 @@ paying for anyway: **the tick belongs in the commit that does the work.**
   change, not a process one — no nginx vhost, a Caddy route that keeps its cert and
   answers 503, and only a site's OWN override backend (FrankenPHP/Apache) actually
   stopped. Nine tasks, T1–T9 in the plan:
-  - [ ] T1 — v44 `sites.enabled`, user-owned column, upsert must not clobber it
+  - [x] T1 — v44 `sites.enabled`, user-owned column ✓ 4 Sep 2026 — DEFAULT 1 with no
+        backfill (exact, not safe: stopping one site was impossible before the column),
+        `set_site_enabled` as the ONE writer, pinned by a source scan that counts writers
+        of `sites.enabled` and by a round trip asserting the switch moves no other field
   - [ ] T2 — `rebuild_configs_for` drops disabled vhosts; `SiteRoute { stopped }` → 503
   - [ ] T3 — `reconcile_overrides` stops a disabled site's own backend; `site_serving`
         returns `disabled` so "stopped" and "stopped by you" are different words

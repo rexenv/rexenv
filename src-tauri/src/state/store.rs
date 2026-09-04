@@ -28,7 +28,7 @@ use rusqlite::{params, Connection, Row};
 const SITE_COLUMNS: &str = "id, name, domain, type, status, php_version, web_server, ssl, path, \
      created_at, multisite, db_name, db_engine, xdebug, override_port, provisioned, \
      docroot_managed, db_created, content_dir, mu_dir_created, origin, agent_client, expires_at, \
-     docroot_subdir, git_url, git_ref, git_migrate, git_build_assets, starter_db";
+     docroot_subdir, git_url, git_ref, git_migrate, git_build_assets, starter_db, enabled";
 
 /// Bound on the AGENT-controlled `agent_client` (v27). It arrives from MCP
 /// `initialize`'s `clientInfo.name`, bounded only by the session's 4 MB line
@@ -108,6 +108,9 @@ fn row_to_site(row: &Row) -> rusqlite::Result<Site> {
         // v41: NULL = NO — exact, since a Blank-PHP site got a `phpinfo()` page
         // and no database before this column. Read via `Site::has_starter_db`.
         starter_db: row.get::<_, Option<i64>>(28)?.map(|v| v != 0),
+        // v44: NOT NULL, defaulting to 1 — every pre-v44 row was served, since
+        // stopping one site did not exist before the column. See `Site::enabled`.
+        enabled: row.get::<_, i64>(29)? != 0,
     })
 }
 
@@ -121,8 +124,8 @@ fn to_sqlite_err(e: crate::error::Error) -> rusqlite::Error {
 pub fn insert_site(conn: &Connection, site: &Site) -> Result<()> {
     conn.execute(
         "INSERT INTO sites
-            (id, name, domain, type, status, php_version, web_server, ssl, path, created_at, multisite, db_name, db_engine, xdebug, override_port, provisioned, docroot_managed, db_created, content_dir, mu_dir_created, origin, agent_client, expires_at, docroot_subdir, git_url, git_ref, git_migrate, git_build_assets, starter_db)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29)",
+            (id, name, domain, type, status, php_version, web_server, ssl, path, created_at, multisite, db_name, db_engine, xdebug, override_port, provisioned, docroot_managed, db_created, content_dir, mu_dir_created, origin, agent_client, expires_at, docroot_subdir, git_url, git_ref, git_migrate, git_build_assets, starter_db, enabled)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30)",
         params![
             site.id,
             site.name,
@@ -155,6 +158,7 @@ pub fn insert_site(conn: &Connection, site: &Site) -> Result<()> {
             site.git_migrate.map(|m| m as i64),
             site.git_build_assets.map(|b| b as i64),
             site.starter_db.map(|b| b as i64),
+            site.enabled as i64,
         ],
     )?;
     Ok(())
@@ -185,6 +189,20 @@ pub fn set_site_db_created(conn: &Connection, id: &str, created: bool) -> Result
 pub fn set_site_db_name(conn: &Connection, id: &str, db_name: &str) -> Result<bool> {
     let affected =
         conn.execute("UPDATE sites SET db_name = ?1 WHERE id = ?2", params![db_name, id])?;
+    Ok(affected > 0)
+}
+
+/// Serve this site, or stop serving it (v44) — see
+/// [`crate::state::models::Site::enabled`].
+///
+/// The ONE writer of the column. Deliberately not folded into any of the
+/// site-edit writers above: `enabled` is the user's answer to "should this site
+/// answer requests", and a rename, a PHP switch or a re-provision must never
+/// carry an opinion about it (per-column fact ownership — this project has
+/// already lost `patch` and `is_default` to one clause that wrote both).
+pub fn set_site_enabled(conn: &Connection, id: &str, enabled: bool) -> Result<bool> {
+    let affected = conn
+        .execute("UPDATE sites SET enabled = ?1 WHERE id = ?2", params![enabled as i64, id])?;
     Ok(affected > 0)
 }
 
@@ -1964,6 +1982,112 @@ has never heard of cannot pass unread.";
         );
     }
 
+    /// **`sites.enabled` has exactly ONE writer, and it is the user's switch.**
+    ///
+    /// The column answers "should this site answer requests" (v44), and the
+    /// only honest source for that is the user. Every other writer on this
+    /// table is a fact ABOUT the site — its name, its PHP version, whether
+    /// provisioning finished — and the moment one of them carries an opinion
+    /// about `enabled` too, a rename or a re-provision quietly restarts a site
+    /// the user stopped. That is not hypothetical here: `php_versions` lost
+    /// `patch` and `is_default` to exactly this (ledger #339/#340/#344), which
+    /// is why the discipline is per COLUMN and why it is asserted rather than
+    /// remembered.
+    ///
+    /// The scan is over production source with comments stripped — the same
+    /// shape (and the same reason) as the upsert guard above.
+    #[test]
+    fn only_the_users_switch_writes_sites_enabled() {
+        use crate::core::copy_scan::production_source;
+
+        fn walk(dir: &std::path::Path, out: &mut Vec<(String, String)>) {
+            let Ok(entries) = std::fs::read_dir(dir) else { return };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    walk(&path, out);
+                    continue;
+                }
+                if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+                    continue;
+                }
+                let Ok(raw) = std::fs::read_to_string(&path) else { continue };
+                let code: String = production_source(&raw)
+                    .lines()
+                    .filter(|l| !l.trim_start().starts_with("//"))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                out.push((path.display().to_string(), code));
+            }
+        }
+
+        let mut files = Vec::new();
+        walk(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"), &mut files);
+        assert!(!files.is_empty(), "scanned nothing — the walk is broken, not the code");
+
+        let mut writers: Vec<String> = Vec::new();
+        for (file, src) in &files {
+            let flat = src.split_whitespace().collect::<Vec<_>>().join(" ");
+            for (i, _) in flat.match_indices("SET enabled") {
+                // Only writes against `sites`: other tables may have their own.
+                let before = &flat[..i];
+                let table = before
+                    .rmatch_indices("UPDATE ")
+                    .next()
+                    .map(|(j, _)| {
+                        before[j + "UPDATE ".len()..].split_whitespace().next().unwrap_or("")
+                    })
+                    .unwrap_or("");
+                if table == "sites" {
+                    writers.push(file.clone());
+                }
+            }
+        }
+        assert_eq!(
+            writers.len(),
+            1,
+            "`sites.enabled` now has {} writers ({}). It may have exactly one — \
+             `set_site_enabled` — because it records the USER's decision to stop a site, \
+             and any second writer is a path that can turn a stopped site back on without \
+             being asked.",
+            writers.len(),
+            writers.join(", ")
+        );
+        assert!(
+            writers[0].ends_with("state/store.rs"),
+            "the one writer of `sites.enabled` moved out of state/store.rs: {}",
+            writers[0]
+        );
+    }
+
+    /// Stop one site, start it again — and prove the switch touches nothing
+    /// else on the row. `enabled` is written beside columns whose values a user
+    /// chose (name, PHP version, web server), so "did the write stay in its own
+    /// lane" is the question worth a test, not the round trip itself.
+    #[test]
+    fn set_site_enabled_flips_only_that_column() {
+        let conn = crate::state::db::open_in_memory().unwrap();
+        let site = scratch(None);
+        insert_site(&conn, &site).unwrap();
+        assert!(get_site(&conn, &site.id).unwrap().unwrap().enabled, "a new site is served");
+
+        assert!(set_site_enabled(&conn, &site.id, false).unwrap());
+        let stopped = get_site(&conn, &site.id).unwrap().unwrap();
+        assert!(!stopped.enabled);
+        assert_eq!(
+            format!("{:?}", Site { enabled: true, ..stopped.clone() }),
+            format!("{:?}", site),
+            "the switch wrote something other than `enabled`"
+        );
+
+        assert!(set_site_enabled(&conn, &site.id, true).unwrap());
+        assert!(get_site(&conn, &site.id).unwrap().unwrap().enabled);
+
+        // An id that is not there is `false`, not an error: the caller can tell
+        // "no such site" from "wrote it" without parsing a message.
+        assert!(!set_site_enabled(&conn, "no-such-site", false).unwrap());
+    }
+
     /// A scratch row in production shape (UUID id, absolute app-data docroot,
     /// a real `datetime('now')`-style expiry).
     fn scratch(agent_client: Option<&str>) -> Site {
@@ -1998,6 +2122,7 @@ has never heard of cannot pass unread.";
             git_migrate: None,
             git_build_assets: None,
             starter_db: None,
+            enabled: true,
         }
     }
 

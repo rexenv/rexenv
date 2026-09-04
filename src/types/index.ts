@@ -55,6 +55,14 @@ export interface Site {
    *  shape a user site and a Kept scratch site share, so nothing can treat
    *  "no expiry" as two different states. */
   expiresAt?: string | null;
+  /** Is this site SERVED (v44)? `false` = the user stopped this ONE site.
+   *  A rexenv site has no process of its own — shared web server, and a
+   *  php-fpm pool shared with every site on its PHP minor — so stopping one is
+   *  a serving-surface change: no nginx server block, a Caddy route that keeps
+   *  its certificate and answers 503, and only a site's own override backend
+   *  actually stopped. Optional and defaulting to served for the same reason
+   *  the Rust side does: nothing written before v44 could have been stopped. */
+  enabled?: boolean;
   /** Folder inside `path` that the web server roots at (v32). `""`/absent = the
    *  path itself; a Laravel site rexenv created stores `"public"`, keeping its
    *  `.env` above anything served. Display only — the backend decides it. */

@@ -3254,6 +3254,7 @@ mod tests {
             git_migrate: None,
             git_build_assets: None,
             starter_db: None,
+            enabled: true,
         };
         let platform = override_test_platform("restart-shared", None);
         let mut mgr = ServiceManager::default();
@@ -3320,6 +3321,7 @@ mod tests {
             git_migrate: None,
             git_build_assets: None,
             starter_db: None,
+            enabled: true,
         };
 
         let sites = vec![
