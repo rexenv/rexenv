@@ -1263,6 +1263,14 @@ impl<Rt: tauri::Runtime> user_sites::StackOps for AppSiteCreator<Rt> {
     fn stop_mail<'a>(&'a self) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
         Box::pin(async move { crate::commands::mail::stop_mail(self.state()?).await })
     }
+    fn set_all_sites_enabled<'a>(
+        &'a self,
+        enabled: bool,
+    ) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::sites::BulkEnabledReport>> {
+        Box::pin(async move {
+            crate::commands::sites::set_all_enabled(self.state()?.inner(), enabled).await
+        })
+    }
 }
 
 impl<Rt: tauri::Runtime> user_sites::SystemOps for AppSiteCreator<Rt> {

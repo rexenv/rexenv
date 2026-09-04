@@ -986,6 +986,17 @@ where
             .await?;
             to_value(&report)
         }
+        // Every site at once — the Sites page's bulk action, not `rex stop`.
+        // The services stay up; only the sites' serving surface changes.
+        "sites.enabled" => {
+            let state = app_state(app)?;
+            let report = commands::sites::set_all_sites_enabled(
+                state.clone(),
+                args.get("enabled").and_then(Value::as_bool).unwrap_or(true),
+            )
+            .await?;
+            to_value(&report)
+        }
         "blueprint.list" => {
             let state = app_state(app)?;
             Ok(json!({ "blueprints": to_value(&commands::blueprints::list_blueprints(state.clone())?)? }))

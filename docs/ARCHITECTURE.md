@@ -184,8 +184,17 @@ carries `disabled` beside `serving` for the same reason: "the stack is down" and
 "you stopped this one" have different fixes, and one word for both sends people
 to start a stack that is already running.
 
-Reachable from the Sites row menu and the site page, `rex site start|stop
-<domain>`, and `site_configure {action: "enabled"}` (existing `manage` scope —
+**All of them at once** is the same mechanism batched: `set_all_enabled` writes
+every row, then does ONE config rebuild and ONE reload — a per-site loop meant N
+reloads and N chances of a half-applied state — and skips (counting) sites whose
+setup never finished, so one half-built site cannot fail the action for the rest.
+It performs no scratch promotion, because a bulk action is not a decision about
+any one site.
+
+Reachable from the Sites row menu and the site page, the Sites page's "All sites"
+menu, `rex site start|stop <domain>` (`--all` for every site), and
+`site_configure {action: "enabled"}` / `stack {action: "start_sites"|"stop_sites"}`
+(`manage`, not `system`: no service is touched and no password dialog comes) (existing `manage` scope —
 through the MECHANISM, never the Tauri command, which promotes a scratch site).
 Live-proven end to end by `site_stop_start_check`.
 

@@ -113,11 +113,17 @@ export function MenuItem({
   onSelect,
   danger,
   action,
+  disabled,
 }: {
   icon?: ReactNode;
   children: ReactNode;
   onSelect?: () => void;
   danger?: boolean;
+  /** A row that is present but cannot fire — for an action that exists and has
+   *  nothing to do right now ("Start all sites (none stopped)"). Shown rather
+   *  than hidden so the menu's shape does not change under the cursor, and so
+   *  the label can say WHY it is unavailable. */
+  disabled?: boolean;
   /** A SECOND target on the same row, split off by a divider — "…and open it
    *  privately". Rendered as a SIBLING button, never nested inside the row's
    *  own button: nested buttons are invalid HTML and WebKit swallows the inner
@@ -129,6 +135,7 @@ export function MenuItem({
   const row = (
     <button
       type="button"
+      disabled={disabled}
       onClick={() => {
         onSelect?.();
         close();
@@ -137,9 +144,14 @@ export function MenuItem({
         "flex items-center gap-2.5 px-[9px] py-[7px] text-left text-[0.78125rem] transition-colors",
         // min-w-0 keeps a truncating child truncating inside the flex row.
         action ? "min-w-0 flex-1 rounded-l-[7px]" : "w-full rounded-[7px]",
-        danger
-          ? "text-status-error-bright hover:bg-status-error-bg"
-          : "text-rex-text-bright hover:bg-rex-hover",
+        disabled
+          ? // `text-rex-text-muted`, not `-dim`: dim fails the WCAG pairing guard
+            // on this menu's surface, and a row you cannot click still has to be
+            // readable — that is what tells you WHY it is unavailable.
+            "cursor-default text-rex-text-muted"
+          : danger
+            ? "text-status-error-bright hover:bg-status-error-bg"
+            : "text-rex-text-bright hover:bg-rex-hover",
       )}
     >
       {icon}

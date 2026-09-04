@@ -155,6 +155,27 @@ export async function setSiteEnabled(
   return invoke<SiteEnabledReport | null>("set_site_enabled", { id, enabled });
 }
 
+/** What a bulk start/stop of every site did (v44). Counts, because "done" is
+ *  not something a user can check against the list — and `changed` differs from
+ *  `total` whenever some sites were already in the wanted state. */
+export interface BulkEnabledReport {
+  enabled: boolean;
+  changed: number;
+  total: number;
+  /** Sites left alone because their setup never finished (Retry is their verb),
+   *  counted so "5 of 6" never reads as a bug. */
+  skippedUnprovisioned: number;
+  note: string | null;
+}
+
+/** Serve every site, or stop serving every site (v44) — the Sites page's bulk
+ *  switch. NOT the footer's "Stop all": rexenv's services keep running, so the
+ *  stack is still there to serve the next site you start. */
+export async function setAllSitesEnabled(enabled: boolean): Promise<BulkEnabledReport | null> {
+  if (!isTauri()) return null;
+  return invoke<BulkEnabledReport>("set_all_sites_enabled", { enabled });
+}
+
 /** Rename a site's display name (domain unchanged). No-op outside Tauri. */
 export async function renameSite(id: string, name: string): Promise<Site | null> {
   if (!isTauri()) return null;

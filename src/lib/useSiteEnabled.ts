@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { setSiteEnabled } from "@/lib/ipc";
+import { setAllSitesEnabled, setSiteEnabled } from "@/lib/ipc";
 import { toast, toastBackendError } from "@/lib/toast";
 import type { Site } from "@/types";
 
@@ -19,6 +19,36 @@ import type { Site } from "@/types";
  *   reason (`note`) and it is shown as-is, rather than a success toast the
  *   browser will contradict a second later.
  */
+export function useAllSitesEnabled() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) => setAllSitesEnabled(enabled),
+    onSuccess: (report, enabled) => {
+      void qc.invalidateQueries({ queryKey: ["sites"] });
+      void qc.invalidateQueries({ queryKey: ["sites-serving"] });
+      if (!report) return;
+      // Counts, and the skipped half-provisioned sites named — a bulk action
+      // that reports only success leaves the user counting rows to check it,
+      // and "5 of 6" with no reason reads as a bug rather than as a site whose
+      // setup never finished.
+      const skipped =
+        report.skippedUnprovisioned > 0
+          ? ` ${report.skippedUnprovisioned} site${report.skippedUnprovisioned === 1 ? "" : "s"} skipped — setup unfinished.`
+          : "";
+      if (report.note) {
+        toast.info(`${report.note}${skipped}`);
+        return;
+      }
+      toast.success(
+        enabled
+          ? `${report.total} site${report.total === 1 ? "" : "s"} serving again.${skipped}`
+          : `${report.total} site${report.total === 1 ? "" : "s"} stopped — rexenv's services keep running.${skipped}`,
+      );
+    },
+    onError: (e) => toastBackendError(e),
+  });
+}
+
 export function useSiteEnabled() {
   const qc = useQueryClient();
   return useMutation({

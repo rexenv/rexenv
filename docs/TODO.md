@@ -81,6 +81,15 @@ paying for anyway: **the tick belongs in the commit that does the work.**
         resolution is `AgentOrUser` (the first non-serving state an agent can fix itself);
         `rex site start|stop <domain>`, whose output says every time that it is not
         `rex stop`
+  - [x] **Bulk: start/stop ALL sites** ✓ 4 Sep 2026 (owner's ask) — one rebuild and one
+        reload for the whole batch (N sites meant N reloads and N chances of a half-applied
+        state); half-provisioned sites are SKIPPED and counted, not refused, so one of them
+        cannot fail the action for the other nineteen. On the Sites page only, as an
+        "All sites" menu whose two rows carry counts and stay visible-but-disabled when
+        they would do nothing. No scratch promotion: a bulk action is not a decision about
+        any one site. Also `rex site start|stop --all` and MCP `stack {action:
+        start_sites|stop_sites}` — `manage`, not `system`, because no service is touched
+        and no password dialog comes.
   - [x] T9 — docs + proof ✓ 4 Sep 2026 — ARCHITECTURE §2 (what stopping a site is and is
         not), DESIGN (two stopped-nesses; a filter tab's count is what clicking it shows;
         a default chosen once), MAP, TESTING, CLI-ROADMAP, SMOKE (two new sections),

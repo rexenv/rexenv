@@ -98,8 +98,8 @@ COMMANDS:
   site xdebug <domain> on|off        Toggle the site's Xdebug debug pool
   site server <domain> nginx|frankenphp|apache   Switch the web server
   site restart <domain> [--pool]     Restart the site's own backend (--pool also bounces its shared PHP pool)
-  site start <domain>                Serve this site again
-  site stop <domain>                 Stop serving THIS site (the shared server and PHP pools keep running)
+  site start <domain> | --all        Serve this site (or every site, --all) again
+  site stop <domain> | --all         Stop serving THIS site, or every site — rexenv's services keep running
   site domains <domain> [--add N | --remove N]   Extra hostnames the site answers on
   service restart <nginx|edge|php-8.3>           Bounce one web-tier service on a fresh config
   site rename <domain> <name>        Display name only (domain unchanged)
@@ -1932,6 +1932,31 @@ fn cmd_site_domains(words: &[String], json_output: bool) {
 /// argument apart and the mistake is silent otherwise.
 fn cmd_site_enabled(words: &[String], enabled: bool, json_output: bool) {
     let verb = if enabled { "start" } else { "stop" };
+    // `--all` is the Sites page's bulk switch, NOT `rex stop`: every site's
+    // serving surface changes and rexenv's services stay up. Handled before
+    // `find_site`, which would otherwise demand a domain.
+    if words.iter().any(|w| w == "--all") {
+        let r = request("sites.enabled", json!({ "enabled": enabled }));
+        if json_output {
+            return print_json(&r);
+        }
+        let total = r["total"].as_u64().unwrap_or(0);
+        let changed = r["changed"].as_u64().unwrap_or(0);
+        let skipped = r["skippedUnprovisioned"].as_u64().unwrap_or(0);
+        println!(
+            "{total} site(s) {} now ({changed} changed) — rexenv's services were not touched",
+            if enabled { "served" } else { "stopped" },
+        );
+        if skipped > 0 {
+            println!(
+                "{skipped} site(s) skipped: their setup never finished (rex site retry <domain>)"
+            );
+        }
+        if let Some(note) = r["note"].as_str() {
+            println!("{note}");
+        }
+        return;
+    }
     let site = find_site(words, &format!("rex site {verb} <domain>"));
     let r = request("site.enabled", json!({ "id": site["id"], "enabled": enabled }));
     if json_output {

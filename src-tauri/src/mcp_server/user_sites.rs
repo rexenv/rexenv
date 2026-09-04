@@ -458,12 +458,15 @@ static REGISTRY: &[UserTool] = &[
                       php-8.3 …} rebuilds that service's config and restarts it (the edge is \
                       reloaded, never stopped); `start_database` / `stop_database` {service: mysql \
                       / mariadb / postgres} and `start_mail` / `stop_mail` need `manage` on rexenv \
-                      itself and never prompt. A stopped web tier is every site down: prefer \
+                      itself and never prompt. `start_sites` / `stop_sites` serve — or stop \
+                      serving — EVERY one of the user's sites at once, leaving rexenv's services \
+                      running (a stopped site answers a `site stopped` page; the stack is \
+                      untouched, so this is `manage`, not `system`). A stopped web tier is every site down: prefer \
                       `restart` to stopping.",
         input_schema: || json!({
             "type": "object",
             "properties": {
-                "action": { "type": "string", "enum": ["start", "stop", "restart", "start_database", "stop_database", "start_mail", "stop_mail"] },
+                "action": { "type": "string", "enum": ["start", "stop", "restart", "start_database", "stop_database", "start_mail", "stop_mail", "start_sites", "stop_sites"] },
                 "service": { "type": "string", "description": "restart: nginx / edge / php-<minor>; start_database / stop_database: mysql / mariadb / postgres." }
             },
             "required": ["action"],
@@ -1007,6 +1010,13 @@ pub trait StackOps: Send + Sync {
     fn stop_database<'a>(&'a self, key: String) -> OpFuture<'a, Result<()>>;
     fn start_mail<'a>(&'a self) -> OpFuture<'a, Result<()>>;
     fn stop_mail<'a>(&'a self) -> OpFuture<'a, Result<()>>;
+    /// Serve every site, or stop serving every site (v44). NOT `stop_all`: the
+    /// services stay up and only the sites' serving surface changes, which is
+    /// why it is `manage` and never raises the password dialog.
+    fn set_all_sites_enabled<'a>(
+        &'a self,
+        enabled: bool,
+    ) -> OpFuture<'a, Result<crate::commands::sites::BulkEnabledReport>>;
 }
 
 /// The app's own machine-wide settings and the open-in-app verbs
@@ -2582,7 +2592,11 @@ fn scrub_raw_source(source: &str, known: &super::view::KnownPaths) -> String {
 pub(crate) fn stack_scope(action: &str) -> Option<Scope> {
     Some(match action {
         "start" | "stop" => Scope::System,
-        "restart" | "start_database" | "stop_database" | "start_mail" | "stop_mail" => Scope::Manage,
+        // `start_sites` / `stop_sites` touch no service and raise no password
+        // dialog — they are the Sites page's bulk switch, so they sit with the
+        // other `manage` arms and NOT with the stack's own start/stop.
+        "restart" | "start_database" | "stop_database" | "start_mail" | "stop_mail"
+        | "start_sites" | "stop_sites" => Scope::Manage,
         _ => return None,
     })
 }
@@ -2609,7 +2623,9 @@ fn stack<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::ActedTa
                 format!("{} the {s} engine", if action == "start_database" { "start" } else { "stop" })
             }
             "start_mail" => "start the mail catcher".to_string(),
-            _ => "stop the mail catcher".to_string(),
+            "stop_mail" => "stop the mail catcher".to_string(),
+            "start_sites" => "serve every one of the user's sites again".to_string(),
+            _ => "stop serving every one of the user's sites (rexenv's services keep running)".to_string(),
         };
         match scope {
             // `System` has no auto-allow variant (#470): this arm is reached only
@@ -2628,7 +2644,32 @@ fn stack<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::ActedTa
             "start_database" => { st.start_database(service.unwrap().to_string()).await?; json!({ "started": service }) }
             "stop_database" => { st.stop_database(service.unwrap().to_string()).await?; json!({ "stopped": service }) }
             "start_mail" => { st.start_mail().await?; json!({ "started": "mail" }) }
-            _ => { st.stop_mail().await?; json!({ "stopped": "mail" }) }
+            "stop_mail" => { st.stop_mail().await?; json!({ "stopped": "mail" }) }
+            act @ ("start_sites" | "stop_sites") => {
+                let on = act == "start_sites";
+                let r = st.set_all_sites_enabled(on).await?;
+                // Counts, not "done": the user's next question is how many, and
+                // a site left out because its setup never finished has to be
+                // named or "5 of 6" reads as a bug.
+                let mut detail = format!(
+                    "{} of the user's sites {} now — {} changed by this call. rexenv's services were not touched.",
+                    r.total,
+                    if on { "are served" } else { "are stopped" },
+                    r.changed,
+                );
+                if r.skipped_unprovisioned > 0 {
+                    detail.push_str(&format!(
+                        " {} site(s) were left alone because their setup never finished (site_retry finishes them).",
+                        r.skipped_unprovisioned
+                    ));
+                }
+                if let Some(note) = &r.note {
+                    detail.push(' ');
+                    detail.push_str(note);
+                }
+                json!({ "enabled": r.enabled, "changed": r.changed, "total": r.total, "detail": detail })
+            }
+            _ => unreachable!("stack_scope admits no other action"),
         };
         Ok(json!({ "action": action, "result": result }))
     })
@@ -3725,6 +3766,18 @@ pub(crate) mod tests {
         fn stop_database<'a>(&'a self, key: String) -> OpFuture<'a, Result<()>> { self.calls.lock().unwrap().push(format!("db stop {key}")); Box::pin(async { Ok(()) }) }
         fn start_mail<'a>(&'a self) -> OpFuture<'a, Result<()>> { self.calls.lock().unwrap().push("mail start".into()); Box::pin(async { Ok(()) }) }
         fn stop_mail<'a>(&'a self) -> OpFuture<'a, Result<()>> { self.calls.lock().unwrap().push("mail stop".into()); Box::pin(async { Ok(()) }) }
+        fn set_all_sites_enabled<'a>(&'a self, enabled: bool) -> OpFuture<'a, Result<crate::commands::sites::BulkEnabledReport>> {
+            self.calls.lock().unwrap().push(format!("sites enabled {enabled}"));
+            Box::pin(async move {
+                Ok(crate::commands::sites::BulkEnabledReport {
+                    enabled,
+                    changed: 2,
+                    total: 3,
+                    skipped_unprovisioned: 1,
+                    note: None,
+                })
+            })
+        }
     }
 
     impl SystemOps for FakeOps {
@@ -4467,6 +4520,31 @@ pub(crate) mod tests {
             assert!(calls.iter().any(|x| x == c), "missing {c} in {calls:?}");
         }
         assert_eq!(calls.iter().filter(|x| *x == "stack start").count(), 1, "start ran once, under Changes");
+
+        // **The bulk site switch is `manage`, NOT `system`** (v44): it touches no
+        // service and raises no password dialog — it changes which sites the
+        // running stack serves. Filing it with the stack's own start/stop would
+        // have made "stop the user's sites" as heavy as "stop their machine's
+        // web server", and (worse) implied a privileged prompt that never comes.
+        assert_eq!(stack_scope("start_sites"), Some(Scope::Manage));
+        assert_eq!(stack_scope("stop_sites"), Some(Scope::Manage));
+        let v = stack(ctx, &json!({ "action": "stop_sites" }), &acted).await.unwrap();
+        assert_eq!(v["result"]["enabled"], false);
+        assert_eq!(v["result"]["total"], 3);
+        let detail = v["result"]["detail"].as_str().unwrap_or_default().to_string();
+        // Counts, the skipped half-provisioned sites NAMED (or "5 of 6" reads as
+        // a bug), and the fact the services were left alone — an agent relaying
+        // "stopped everything" would otherwise be describing `stack stop`.
+        assert!(detail.contains("3 of the user's sites"), "{detail}");
+        assert!(detail.contains("setup never finished"), "{detail}");
+        assert!(detail.contains("services were not touched"), "{detail}");
+        let v = stack(ctx, &json!({ "action": "start_sites" }), &acted).await.unwrap();
+        assert_eq!(v["result"]["enabled"], true);
+        let calls = ops.calls.lock().unwrap().clone();
+        assert!(calls.iter().any(|c| c == "sites enabled false"));
+        assert!(calls.iter().any(|c| c == "sites enabled true"));
+        // …and it never reached the stack's own lifecycle.
+        assert_eq!(calls.iter().filter(|x| *x == "stack stop").count(), 1, "the bulk switch stopped the STACK");
     }
 
     /// **`php`, `settings`, `tld`, `open`: the per-action tables, the CLI's

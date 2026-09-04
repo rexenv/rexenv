@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, FolderInput, Plus, Globe, FolderOpen, Database, Lock, LockOpen, Trash2, MoreVertical, ArrowDownUp, Pencil, Copy, Code, Link, RefreshCw, Pin as PinIcon, Bot, X, Play, Square } from "lucide-react";
+import { AlertCircle, FolderInput, Plus, Globe, FolderOpen, Database, Lock, LockOpen, Trash2, MoreVertical, ArrowDownUp, Pencil, Copy, Code, Link, RefreshCw, Pin as PinIcon, Bot, X, Play, Square, ChevronDown } from "lucide-react";
 import { WordPressIcon } from "@/components/common/WordPressIcon";
 import { RexLogo } from "@/components/common/RexLogo";
 import { toast, toastBackendError } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { TopBar } from "@/components/shell/TopBar";
 import { Menu, MenuItem, MenuSeparator } from "@/components/ui/menu";
-import { useSiteEnabled } from "@/lib/useSiteEnabled";
+import { useAllSitesEnabled, useSiteEnabled } from "@/lib/useSiteEnabled";
 import { ConfirmDialog, PromptDialog } from "@/components/ui/dialog";
 import { DeleteSiteDialog } from "@/components/sites/DeleteSiteDialog";
 import { siteTypeMeta } from "@/lib/siteType";
@@ -206,7 +206,7 @@ function SortButton({ value, onCycle }: { value: Sort; onCycle: () => void }) {
     <button
       onClick={onCycle}
       title="Change sort order"
-      className="flex h-[34px] items-center gap-[7px] rounded-[9px] border border-rex-border bg-rex-surface-1 px-3 text-[0.8125rem] text-rex-text-bright transition-colors hover:border-rex-border-strong hover:bg-rex-surface-2"
+      className="flex h-[34px] flex-none items-center gap-[7px] whitespace-nowrap rounded-[9px] border border-rex-border bg-rex-surface-1 px-3 text-[0.8125rem] text-rex-text-bright transition-colors hover:border-rex-border-strong hover:bg-rex-surface-2"
     >
       <ArrowDownUp className="h-3.5 w-3.5 text-rex-text-muted" strokeWidth={1.8} />
       {SORT_LABEL[value]}
@@ -681,6 +681,13 @@ export function Sites() {
     servingMap.get(site.domain) ? "running" : "stopped";
 
   const toggle = useSiteEnabled();
+  const bulk = useAllSitesEnabled();
+  // The two numbers the bulk menu needs, over PROVISIONED sites only — a
+  // half-provisioned site is skipped by the backend, so counting it here would
+  // offer an action for a site that will not move.
+  const switchable = sites.filter((s) => s.provisioned);
+  const stoppedCount = switchable.filter((s) => s.enabled === false).length;
+  const servedCount = switchable.length - stoppedCount;
 
   const remove = useMutation({
     mutationFn: (site: Site) => deleteSite(site.id),
@@ -903,6 +910,52 @@ export function Sites() {
 
   const headerActions = (
     <>
+      {/* The Sites page's OWN bulk switch, and the copy has to keep it
+          apart from the footer's "Stop all": that one stops rexenv's
+          services (machine-wide), this one stops the SITES and leaves the
+          stack up. A menu rather than one guessing button — with some
+          sites running and some stopped, either verb is a guess, and
+          guessing wrong here changes every site. */}
+      {/* `flex-none` goes on a WRAPPER, not the button: `Menu` renders its own
+          `inline-flex` div, and THAT is the flex item this row shrinks — which
+          wrapped the label onto two lines while the button itself was doing as
+          it was told. */}
+      <div className="flex-none">
+      <Menu
+        trigger={
+          <button
+            type="button"
+            className="flex h-[34px] items-center gap-[7px] whitespace-nowrap rounded-[9px] border border-rex-border bg-rex-surface-1 px-3 text-[0.8125rem] text-rex-text-bright transition-colors hover:border-rex-border-strong hover:bg-rex-surface-2"
+            title="Start or stop every site — rexenv's services keep running"
+          >
+            All sites
+            <ChevronDown className="h-3.5 w-3.5 text-rex-text-muted" strokeWidth={1.8} />
+          </button>
+        }
+      >
+        <MenuItem
+          icon={<Play className="h-[15px] w-[15px]" strokeWidth={1.7} />}
+          disabled={stoppedCount === 0 || bulk.isPending}
+          onSelect={() => bulk.mutate(true)}
+        >
+          {stoppedCount === 0
+            ? "Start all sites (none stopped)"
+            : `Start all sites (${stoppedCount} stopped)`}
+        </MenuItem>
+        <MenuItem
+          icon={<Square className="h-[15px] w-[15px]" strokeWidth={1.7} />}
+          disabled={servedCount === 0 || bulk.isPending}
+          onSelect={() => bulk.mutate(false)}
+        >
+          {servedCount === 0
+            ? "Stop all sites (none started)"
+            : /* "started", not "serving": this counts the SWITCH, and a site
+                 can be started while the stack is down — "serving" would
+                 promise something the number does not check. */
+              `Stop all sites (${servedCount} started)`}
+        </MenuItem>
+      </Menu>
+      </div>
       <SortButton value={sort} onCycle={() => setSort((s) => SORT_CYCLE[s])} />
       {newSiteButton}
     </>
@@ -921,8 +974,12 @@ export function Sites() {
         action={headerActions}
       />
       {!isLoading && sites.length > 0 && (
-        <div className="flex flex-none items-center justify-between px-[22px] pb-[9px] pt-[14px]">
-          <div className="flex min-w-0 items-center gap-2">
+        /* Two filter controls, a bulk action and the column headings on one
+           row: it WRAPS rather than overlapping — at 1100px the third group has
+           nowhere to go, and a `justify-between` row silently drew them on top
+           of each other. */
+        <div className="flex flex-none flex-wrap items-center gap-y-2 px-[22px] pb-[9px] pt-[14px]">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
             <FilterTabs
               value={filter}
               onChange={chooseFilter}
@@ -943,9 +1000,11 @@ export function Sites() {
               }))}
             />
           </div>
-          <div className="hidden items-center gap-[18px] pr-2 font-mono text-[0.625rem] uppercase tracking-[0.1em] text-rex-text-muted xl:flex">
-            <span className="w-[118px]">Stack</span>
-            <span className="w-[88px]">Status</span>
+          <div className="ml-auto flex items-center gap-3 pl-3">
+            <div className="hidden items-center gap-[18px] pr-2 font-mono text-[0.625rem] uppercase tracking-[0.1em] text-rex-text-muted xl:flex">
+              <span className="w-[118px]">Stack</span>
+              <span className="w-[88px]">Status</span>
+            </div>
           </div>
         </div>
       )}

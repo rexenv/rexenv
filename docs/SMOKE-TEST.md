@@ -601,6 +601,17 @@ site with a REAL plugin, which is the part the fixtures cannot buy.
 - [ ] `rex site stop <domain>` / `rex site start <domain>` do the same thing from a
       terminal, and the stop output says this is not `rex stop`.
 
+## Start/stop EVERY site (Sites page only)
+- [ ] Sites → **All sites** menu → **Stop all sites (N started)**: every row goes to
+      "Stopped by you", the toast counts them, and Services still shows the web tier
+      RUNNING — this is not the footer's "Stop all".
+- [ ] The menu's other row now reads **Start all sites (N stopped)**; the one that would
+      do nothing is visible but disabled and says why ("none stopped").
+- [ ] With a "setup incomplete" site present, the toast says how many were skipped — and
+      that site is untouched.
+- [ ] `rex site stop --all` then `rex site start --all` do the same from a terminal and
+      print the counts.
+
 ## The Sites list's two filters
 - [ ] Open Sites with sites running: it opens on **Running**, not All. Stop every site and
       re-open: it opens on **All** (never an empty page).

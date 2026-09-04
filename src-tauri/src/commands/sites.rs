@@ -539,6 +539,134 @@ pub(crate) async fn set_enabled(
     Ok(Some(SiteEnabledReport { enabled: site.enabled, serving, note, own_backend }))
 }
 
+/// What a bulk start/stop did (v44). Counts, because the honest answer to
+/// "stop all my sites" is a number the user can check against the list — and
+/// because `changed` and `total` differ whenever some sites were already in the
+/// wanted state, which is the ordinary case on a second click.
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BulkEnabledReport {
+    /// The state every eligible site is now in.
+    pub enabled: bool,
+    /// How many sites this call actually flipped.
+    pub changed: usize,
+    /// How many are now in that state (including the ones already there).
+    pub total: usize,
+    /// Sites left alone because their setup never finished — they have no
+    /// serving surface to switch, and Retry is their verb. Counted rather than
+    /// silently included, so "5 of 6" never looks like a bug.
+    pub skipped_unprovisioned: usize,
+    /// Set when the sites are enabled and nothing is serving them: the same
+    /// honest reason a single start carries.
+    pub note: Option<String>,
+}
+
+/// Serve every site, or stop serving every site (v44) — the Sites page's own
+/// bulk action, and deliberately NOT the footer's "Stop all".
+///
+/// The two are different verbs on purpose: "Stop all" stops rexenv's SERVICES
+/// (the edge, the web server, the pools, the databases), which is a machine-wide
+/// state; this stops the SITES and leaves the services running, so the stack is
+/// still there to serve the one site you start next. The report's counts are
+/// what the caller shows — a bulk action that says only "done" gives the user
+/// nothing to check the list against.
+///
+/// **One rebuild and one reload for the whole batch**, not one per site: N sites
+/// meant N config rebuilds and N nginx reloads, which on a twenty-site machine
+/// is a visible stall and twenty chances for a half-applied state.
+pub(crate) async fn set_all_enabled(
+    state: &AppState,
+    enabled: bool,
+) -> Result<BulkEnabledReport> {
+    let (changed, total, skipped, sites, php_patches) = {
+        let conn = state
+            .db
+            .lock()
+            .map_err(|_| Error::Other("database lock poisoned".into()))?;
+        let all = core::sites::list(&conn)?;
+        let mut changed = 0usize;
+        let mut skipped = 0usize;
+        for site in &all {
+            // A half-provisioned site is skipped rather than refused: one of
+            // them must not fail a bulk action over the other nineteen.
+            if !site.provisioned {
+                skipped += 1;
+                continue;
+            }
+            if site.enabled != enabled && crate::state::store::set_site_enabled(&conn, &site.id, enabled)? {
+                changed += 1;
+            }
+        }
+        let after = core::sites::list(&conn)?;
+        let total = after.iter().filter(|s| s.enabled == enabled && s.provisioned).count();
+        (changed, total, skipped, after, core::php::effective_patches(&conn)?)
+    };
+
+    if enabled {
+        // Every PHP minor the started sites need, cached before the lock — one
+        // prefetch for the batch, and a no-op when warm.
+        let mut minors: Vec<String> = sites
+            .iter()
+            .filter(|s| s.enabled && !matches!(s.web_server, WebServer::Frankenphp))
+            .map(|s| core::php::minor_of(&s.php_version))
+            .collect();
+        minors.sort();
+        minors.dedup();
+        for minor in &minors {
+            let plan =
+                core::downloads::plan_for_pool_with(state.platform.as_ref(), minor, &php_patches);
+            core::downloads::prefetch(state.platform.as_ref(), "Start sites", &plan).await?;
+        }
+        let checks = {
+            let mut mgr = state.services.lock().await;
+            if mgr.is_running() {
+                for minor in &minors {
+                    mgr.ensure_php_pool(state.platform.as_ref(), minor).await?;
+                }
+                mgr.reload(state.platform.as_ref(), &state.ca, &sites, false).await?
+            } else {
+                Vec::new()
+            }
+        };
+        core::service_manager::await_ready(checks).await?;
+    } else {
+        let checks = {
+            let mut mgr = state.services.lock().await;
+            if mgr.is_running() {
+                mgr.reload(state.platform.as_ref(), &state.ca, &sites, false).await?
+            } else {
+                Vec::new()
+            }
+        };
+        core::service_manager::await_ready(checks).await?;
+    }
+
+    let serving = core::service_manager::site_serving(&sites, &state.service_infos())
+        .iter()
+        .filter(|s| s.serving)
+        .count();
+    let note = (enabled && total > 0 && serving == 0).then(|| {
+        "Your sites are set to run, but nothing is serving them — rexenv's services are \
+         stopped. Start them and they come back."
+            .to_string()
+    });
+    Ok(BulkEnabledReport { enabled, changed, total, skipped_unprovisioned: skipped, note })
+}
+
+/// Serve every site, or stop serving every site (v44) — the USER's path.
+///
+/// No scratch promotion here, unlike the single-site command: a bulk action is
+/// not a decision about any one site, and adopting an agent's disposable sites
+/// because the user stopped everything would take them out of the reaper's
+/// hands for a click that was never about them.
+#[tauri::command]
+pub async fn set_all_sites_enabled(
+    state: State<'_, AppState>,
+    enabled: bool,
+) -> Result<BulkEnabledReport> {
+    set_all_enabled(state.inner(), enabled).await
+}
+
 /// Serve one site, or stop serving it (v44). The USER's path — it adopts a
 /// scratch site the same way every other user-initiated mutation does (#214).
 #[tauri::command]
