@@ -432,6 +432,12 @@ pub fn run() {
                     // fixes it is installed per site at provision; this pass is
                     // what covers the sites that predate it, or lost the file.
                     core::wp_dns::ensure_all(&conn, &sites);
+                    // The mail catcher: an SMTP plugin replaces PHPMailer's
+                    // transport, after which the pool's `sendmail_path` is never
+                    // consulted and a site imported from production delivers for
+                    // real. This pass covers sites that predate the file, and it
+                    // is also how turning the catch-all OFF reaches them.
+                    core::wp_mail_catch::apply_all(&conn, &sites);
                     // Opt-in "start services when rexenv opens" (Settings) — read
                     // while the connection is still ours; acted on below, after
                     // AppState is managed and survivors are adopted.

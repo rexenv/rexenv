@@ -74,6 +74,7 @@ pub mod updates;
 pub mod wp_dns;
 pub mod wp_login;
 pub mod wporg;
+pub mod wp_mail_catch;
 pub mod wp_mailtag;
 pub mod wp_packages;
 pub mod wp_tunnel;

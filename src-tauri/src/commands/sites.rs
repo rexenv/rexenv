@@ -1371,6 +1371,7 @@ pub async fn change_site_domain(
     {
         let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
         core::wp_dns::ensure_for_site(&conn, &updated);
+        core::wp_mail_catch::apply_for_site(&conn, &updated);
     }
     if let Ok(dir) = core::ssl::site_cert_dir(state.platform.paths(), &old_domain) {
         let _ = std::fs::remove_dir_all(dir);

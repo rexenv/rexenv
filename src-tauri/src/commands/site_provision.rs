@@ -863,6 +863,7 @@ async fn run_provision_job<R: tauri::Runtime>(
             // the startup pass in lib.rs is the backstop, not the mechanism.
             if let Ok(Some(fresh)) = crate::core::sites::get(&conn, &site.id) {
                 crate::core::wp_dns::ensure_for_site(&conn, &fresh);
+                crate::core::wp_mail_catch::apply_for_site(&conn, &fresh);
             }
         };
     }

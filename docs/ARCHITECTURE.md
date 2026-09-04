@@ -1214,6 +1214,30 @@ IPC surface — which is how a reader ends up designing against a system with on
     before the quoting landed. Verified the same day over FastCGI that a quoted
     `env[]` reaches `getenv()`, `$_SERVER` and `$_ENV` alike — the three places
     Dotenv's adapters look.
+  - **The WordPress half needs its own mechanism too, for the mirror-image
+    reason.** `sendmail_path` holds only while nothing has replaced PHPMailer's
+    transport, and an SMTP plugin (WP Mail SMTP, FluentSMTP, Post SMTP …) hooks
+    `phpmailer_init` and calls `isSMTP()`, after which PHPMailer opens its own
+    socket. Measured 4 Sep 2026 on a real site through rexenv's own CLI shim:
+    plain `wp_mail()` → Mailpit; the same call with the site calling `isSMTP()` →
+    nothing in Mailpit, and against a REACHABLE provider it is genuinely
+    delivered, from a laptop, to whoever the imported database happens to name.
+    `core/wp_mail_catch.rs` is an auto-managed mu-plugin (`rexenv-mail.php`,
+    installed like the loopback-DNS one) hooking `phpmailer_init` at
+    `PHP_INT_MAX` and calling `isMail()` to put the transport back on PHP's
+    `mail()`. **This is the DELIBERATE inverse of `wp_mailtag`'s rule**: the
+    stamp is allowed to lose to a site's own filter because its failure
+    direction is "the agent misses its own mail"; here the failure direction of
+    losing is "a customer receives mail from a laptop", so the catch takes the
+    last word. `isMail()` rather than clearing `Host` alone — a hook that runs
+    last but leaves `Mailer = 'smtp'` makes PHPMailer FAIL the send, and a mail
+    that fails is a mail the developer never sees. **Not caught, stated because
+    the promise reads absolute:** an HTTP-API transport (Mailgun's API, SES via
+    the SDK, Postmark's REST endpoint) posts with `wp_remote_post`, fires no
+    `phpmailer_init`, and is invisible here. **Install and REMOVAL are one
+    function** (`apply_for_site`): a file left behind when the switch went off
+    would keep hijacking mail the user had asked to be delivered, with the
+    setting looking broken and nothing to point at.
   - **Four surfaces, one switch.** The pool covers a page request. `php artisan` sees
     none of it — a queue worker, a scheduled command and a `tinker` one-liner are
     fresh processes with the app's own `.env` — so `laravel::mail_env` puts the same

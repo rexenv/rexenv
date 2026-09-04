@@ -50,18 +50,17 @@ paying for anyway: **the tick belongs in the commit that does the work.**
   client), and php-fpm's ini parser reads a bare `null` as the empty string — an
   unquoted `env[MAIL_URL] = null` is `ERROR: empty value` and the pool never starts.
 
-- [ ] **The same escape exists for WordPress and is NOT fixed yet** (found 4 Sep 2026
-  while proving the row above). A WP site with an SMTP plugin configured — WP Mail
-  SMTP, FluentSMTP, anything hooking `phpmailer_init` and calling `isSMTP()` — opens
-  its own socket, and `sendmail_path` never sees it. Measured on `new.rex` through
-  rexenv's own CLI shim: plain `wp_mail()` → Mailpit; the same call with the site
-  setting `isSMTP()` → nothing in Mailpit. So the ARCHITECTURE promise "every site's
-  mail is CAUGHT, never delivered" is still false for any SMTP-configured WP site.
-  The fix is measured and works: an auto-installed mu-plugin hooking `phpmailer_init`
-  at `PHP_INT_MAX` (so it runs LAST) and calling `isMail()` to force the transport
-  back — verified live, `wp_mail` true, message in Mailpit. Note it is the DELIBERATE
-  inverse of `wp_mailtag`'s fail-closed priority rule, so it needs its own ledger row
-  saying why this one is allowed to win.
+- [x] **The same escape existed for WordPress** ✓ 4 Sep 2026 — found while proving the
+  row above, ledger #505. A WP site with an SMTP plugin configured (WP Mail SMTP,
+  FluentSMTP, anything hooking `phpmailer_init` and calling `isSMTP()`) opens its own
+  socket and `sendmail_path` never sees it: measured on `new.rex`, plain `wp_mail()` →
+  Mailpit, the same call with `isSMTP()` → nothing. `core/wp_mail_catch.rs` is the
+  auto-installed mu-plugin that hooks at `PHP_INT_MAX` and calls `isMail()`; proven
+  live with its own shipped bytes against a plugin-shaped callback, with the
+  no-file negative control measured first. It is the DELIBERATE inverse of
+  `wp_mailtag`'s fail-closed priority rule — the ledger row says why this one wins.
+  **Still open by design:** an HTTP-API transport (Mailgun's API, SES via the SDK)
+  posts with `wp_remote_post`, fires no `phpmailer_init`, and is not caught.
 
 - [ ] **~16 flag-taking `rex` commands still ignore what they do not recognise**
   (3 Sep 2026, ledger #463/#466). Done: `site create`, `wp search-replace`,
