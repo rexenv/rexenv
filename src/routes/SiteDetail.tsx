@@ -17,6 +17,8 @@ import {
   Loader2,
   Lock,
   LockOpen,
+  Play,
+  Square,
   TerminalSquare,
   Trash2,
 } from "lucide-react";
@@ -31,6 +33,7 @@ import { Menu } from "@/components/ui/menu";
 import { SplitButton } from "@/components/ui/split-button";
 import { BROWSER_MENU_WIDTH, useBrowserMenu, useEditorMenu } from "@/components/ui/open-in";
 import { StatusPill } from "@/components/common/StatusPill";
+import { useSiteEnabled } from "@/lib/useSiteEnabled";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { Button } from "@/components/ui/button";
 import { confirm } from "@/components/ui/dialog";
@@ -131,6 +134,8 @@ export function SiteDetail() {
     refetchOnWindowFocus: false,
     retry: 1,
   });
+
+  const toggle = useSiteEnabled();
 
   // Displayed status is this site's live *serving* state, not sites.status — serving
   // only when the edge is up AND its own upstream (php-fpm pool or FrankenPHP backend)
@@ -242,6 +247,10 @@ export function SiteDetail() {
         isWordpress={isWordpress}
         status={isServing ? "running" : "stopped"}
         onBack={() => navigate("/sites")}
+        togglePending={toggle.isPending}
+        onToggleEnabled={
+          site.provisioned ? (enabled) => toggle.mutate({ site, enabled }) : undefined
+        }
       />
 
       <div className="flex-none border-b border-rex-border-subtle px-[22px]">
@@ -345,11 +354,17 @@ function SiteHeader({
   isWordpress,
   status,
   onBack,
+  onToggleEnabled,
+  togglePending,
 }: {
   site: Site;
   isWordpress: boolean;
   status: Site["status"];
   onBack: () => void;
+  /** Start or stop THIS site (v44) — absent while its setup is unfinished,
+   *  which is Retry's job, not this button's. */
+  onToggleEnabled?: (enabled: boolean) => void;
+  togglePending?: boolean;
 }) {
   const t = siteTypeMeta(site.type);
   const url = `https://${site.domain}`;
@@ -392,7 +407,10 @@ function SiteHeader({
               <span className="text-[1.1875rem] font-semibold tracking-[-.01em] text-rex-text">
                 {site.name}
               </span>
-              <StatusPill status={status} />
+              <StatusPill
+                status={status}
+                label={site.enabled === false ? "Stopped by you" : undefined}
+              />
             </div>
             <div className="mt-1 flex items-center gap-2 font-mono text-[0.78125rem] text-rex-text-muted">
               <span className="truncate">{site.domain}</span>
@@ -401,6 +419,35 @@ function SiteHeader({
           </div>
         </div>
         <div className="flex flex-none items-center gap-[9px]">
+          {onToggleEnabled && (
+            /* Deliberately NOT a primary button: stopping a site is a normal,
+               reversible thing to do to one site, and the loud button on this
+               page belongs to the action people came for. The label says
+               "site" so it can never read as the footer's Stop all. */
+            <Button
+              variant="ghost"
+              disabled={togglePending}
+              title={
+                site.enabled === false
+                  ? "Serve this site again"
+                  : "Stop serving this site — your other sites and rexenv's services keep running"
+              }
+              onClick={() => onToggleEnabled(site.enabled === false)}
+            >
+              {site.enabled === false ? (
+                <Play className="h-[15px] w-[15px]" strokeWidth={1.8} />
+              ) : (
+                <Square className="h-[15px] w-[15px]" strokeWidth={1.8} />
+              )}
+              {togglePending
+                ? site.enabled === false
+                  ? "Starting…"
+                  : "Stopping…"
+                : site.enabled === false
+                  ? "Start site"
+                  : "Stop site"}
+            </Button>
+          )}
           <SplitButton
             onClick={() => void openExternal(url).catch(toastBackendError)}
             menu={browserMenu}

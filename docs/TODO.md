@@ -55,9 +55,16 @@ paying for anyway: **the tick belongs in the commit that does the work.**
         site wants no backend; a shared site never had one, so no path here can reach
         for a php-fpm pool), and `site_serving` returns `disabled` beside `serving` so
         "the stack is down" and "you stopped this one" stay different answers
-  - [ ] T4 — `set_site_enabled` command (enable may start the site's PHP pool; disable
-        never stops a shared one), honest report when the stack is down
-  - [ ] T5 — row menu + SiteDetail action, copy that separates it from "Stop all"
+  - [x] T4 + T5 — the command and the action ✓ 4 Sep 2026 (one commit: a registered
+        command with no caller fails `every_registered_command_is_reachable_from_a_caller`,
+        and an IPC wrapper with no UI fails `every_ipc_wrapper_is_actually_called`) —
+        `set_site_enabled` records the switch, rebuilds + reloads, and on START ensures
+        that site's PHP pool if the stack is up; it never starts the stack and never
+        touches a shared process (source guard). The report carries `serving` read from
+        `site_serving` plus the reason a started site still is not answering, so the UI
+        cannot claim "running" while the browser gets a 503. Row menu + site-page button
+        + "Stopped by you" pill; `core::sites::set_enabled` refuses a half-provisioned
+        site by naming Retry
   - [ ] T6 — site-type filter (All/WordPress/Laravel/PHP), counts computed against the
         other filter's selection so no tab's number contradicts the list under it
   - [ ] T7 — default filter = Running when anything runs, else All; decided ONCE on

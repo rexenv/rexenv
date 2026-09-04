@@ -441,6 +441,116 @@ pub(crate) async fn reload_for_domains(
     core::service_manager::await_ready(checks).await
 }
 
+/// What `set_site_enabled` did — and, when the answer is "not much", why.
+///
+/// The report exists because "start this site" can succeed as a decision and
+/// still leave nothing answering: the site is enabled, its config is written,
+/// and the stack it needs is not running. A boolean would make the app claim
+/// the site is up while the browser says otherwise, which is the exact failure
+/// this project keeps buying tests to avoid.
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SiteEnabledReport {
+    /// The recorded switch after the call.
+    pub enabled: bool,
+    /// Is the site actually answering now — the same derivation the Sites list
+    /// reads (`site_serving`), never a hopeful echo of `enabled`.
+    pub serving: bool,
+    /// Set when `enabled` is true but `serving` is not: the honest reason, in
+    /// the words the UI can show. `None` when the two agree.
+    pub note: Option<String>,
+    /// Did this stop/start touch a process of its own (a FrankenPHP/Apache
+    /// backend)? False for a site on the shared web server — which is most of
+    /// them, and is why the copy beside this must not promise a restart.
+    pub own_backend: bool,
+}
+
+/// Serve one site, or stop serving it (v44) — the mechanism, with no ownership
+/// policy in it (see [`switch_php_version`] for why that split exists).
+///
+/// What it does, in order: record the switch; rebuild the configs and reload the
+/// web tier, which is what actually adds or removes this site's serving surface
+/// (no nginx server block, and a 503 at the edge); and, when STARTING a site
+/// while the stack is up, ensure the php-fpm pool for that site's PHP minor is
+/// running.
+///
+/// **What it deliberately does not do.** Stopping a site never stops a shared
+/// process — the pool serves every site on its PHP minor, and nginx serves
+/// everyone — so the only process this can stop is the site's OWN override
+/// backend, which `reconcile_overrides` handles from the recorded switch.
+/// Starting a site never starts the stack: a user who stopped everything did
+/// that on purpose, and the report says plainly that nothing will answer until
+/// they start it.
+pub(crate) async fn set_enabled(
+    state: &AppState,
+    id: &str,
+    enabled: bool,
+) -> Result<Option<SiteEnabledReport>> {
+    let (site, sites, php_patches) = {
+        let conn = state
+            .db
+            .lock()
+            .map_err(|_| Error::Other("database lock poisoned".into()))?;
+        let updated = core::sites::set_enabled(&conn, id, enabled)?;
+        (updated, core::sites::list(&conn)?, core::php::effective_patches(&conn)?)
+    };
+    let Some(site) = site else { return Ok(None) };
+
+    let minor = core::php::minor_of(&site.php_version);
+    let own_backend = core::sites::recorded_override_port(&site).is_some();
+    let needs_pool = enabled && !matches!(site.web_server, WebServer::Frankenphp);
+    if needs_pool {
+        // Cache the pool's pinned build BEFORE the locked scope — a download
+        // under the services lock parks every status poll behind the network.
+        // No-op when warm, which is the usual case for a site being started.
+        let plan =
+            core::downloads::plan_for_pool_with(state.platform.as_ref(), &minor, &php_patches);
+        core::downloads::prefetch(state.platform.as_ref(), "Start site", &plan).await?;
+    }
+    let checks = {
+        let mut mgr = state.services.lock().await;
+        if mgr.is_running() {
+            if needs_pool {
+                mgr.ensure_php_pool(state.platform.as_ref(), &minor).await?;
+            }
+            mgr.reload(state.platform.as_ref(), &state.ca, &sites, false).await?
+        } else {
+            Vec::new()
+        }
+    };
+    core::service_manager::await_ready(checks).await?;
+
+    // The status the SITES LIST will show, read from the one derivation that
+    // decides it — not recomputed here, where it could disagree.
+    let serving = core::service_manager::site_serving(
+        std::slice::from_ref(&site),
+        &state.service_infos(),
+    )
+    .first()
+    .is_some_and(|s| s.serving);
+    let note = match (enabled, serving) {
+        (true, false) => Some(format!(
+            "{} is set to run, but nothing is serving it yet — rexenv's services are \
+             stopped. Start them and the site comes back.",
+            site.domain
+        )),
+        _ => None,
+    };
+    Ok(Some(SiteEnabledReport { enabled: site.enabled, serving, note, own_backend }))
+}
+
+/// Serve one site, or stop serving it (v44). The USER's path — it adopts a
+/// scratch site the same way every other user-initiated mutation does (#214).
+#[tauri::command]
+pub async fn set_site_enabled(
+    state: State<'_, AppState>,
+    id: String,
+    enabled: bool,
+) -> Result<Option<SiteEnabledReport>> {
+    promote_if_scratch(&state, &id);
+    set_enabled(state.inner(), &id, enabled).await
+}
+
 /// What `restart_site` did, in the words the caller reports.
 ///
 /// The shape exists because "restart this site" has no single honest meaning in
@@ -492,6 +602,15 @@ pub async fn restart_site(
             .ok_or_else(|| Error::Other(format!("site not found: {id}")))?;
         (site, core::sites::list(&conn)?)
     };
+    // A site the user STOPPED has no serving surface to refresh: the rebuild
+    // this would do is the one that deliberately leaves it out, so "restarted"
+    // would be the least true word available. Say what the site actually is.
+    if !site.enabled {
+        return Err(Error::Other(format!(
+            "{} is stopped, so there is nothing to restart. Start it first.",
+            site.domain
+        )));
+    }
     let pool_port = core::sites::pool_port_for_site(&site);
     let sites_on_pool =
         sites.iter().filter(|s| core::sites::pool_port_for_site(s) == pool_port).count();
@@ -1683,6 +1802,84 @@ mod a_site_restart_never_bounces_a_shared_pool_uninvited {
             body.contains("sites_on_pool"),
             "the report no longer carries how many sites share the pool, so `--pool` is a \
              flag with no stated cost"
+        );
+    }
+}
+
+/// Stopping ONE site may never reach for a process other sites are served by.
+#[cfg(test)]
+mod stopping_one_site_never_stops_a_shared_process {
+    /// **`set_enabled` touches no shared lifecycle call.**
+    ///
+    /// The tempting implementation of "stop this site" is the one that makes
+    /// something visibly stop: bounce the php-fpm pool, or stop nginx. Both
+    /// serve every other site on the machine — the pool for its PHP minor,
+    /// nginx for all of them — so either would answer one user's click by
+    /// taking other people's sites down, and the person who clicked would have
+    /// no reason to suspect it. The honest mechanism is a config rebuild plus a
+    /// reload, and the only process it may stop is the site's OWN override
+    /// backend, which `reconcile_overrides` decides from the recorded switch.
+    ///
+    /// A source guard because this is a claim about what the function does NOT
+    /// do — the failure has no return value to assert on, and it would arrive
+    /// as a tidy-up ("while we're here, restart the pool so it definitely picks
+    /// this up") long after anyone remembers why it was left out.
+    #[test]
+    fn set_enabled_calls_no_shared_stop_or_restart() {
+        let src = crate::core::copy_scan::production_source(include_str!("sites.rs"));
+        let body = src
+            .split("pub(crate) async fn set_enabled(")
+            .nth(1)
+            .and_then(|b| b.split("\n/// ").next())
+            .expect("set_enabled");
+        for banned in [
+            "restart_pools_for(",
+            "stop_all(",
+            "stop_php_debug_pool(",
+            "restart_web_service(",
+            "restart_site_backend(",
+        ] {
+            assert!(
+                !body.contains(banned),
+                "`set_enabled` calls `{banned}` — stopping or starting ONE site must never \
+                 touch a process that serves the others. Removing the site from the generated \
+                 config and reloading is the whole mechanism; its own override backend is \
+                 handled by `reconcile_overrides` from the recorded switch."
+            );
+        }
+        // The two calls that ARE the mechanism, so the guard fails if someone
+        // deletes the body and leaves the test passing on an empty function.
+        assert!(body.contains("reload("), "the reload IS the stop — without it nothing changed");
+        assert!(
+            body.contains("site_serving("),
+            "the report must read the ONE status derivation, not echo `enabled` back"
+        );
+    }
+
+    /// **Starting a site never starts the stack, and says so.**
+    ///
+    /// The user who stopped every service did that deliberately; a per-site
+    /// Start that quietly brought the whole stack up would be a different (and
+    /// much larger) action than the one on the button. So the reload is gated
+    /// on the stack already running — and because the site is then enabled
+    /// while still not answering, the report has to carry the reason rather
+    /// than let the UI infer "running" from the switch.
+    #[test]
+    fn starting_a_site_with_the_stack_down_is_reported_not_papered_over() {
+        let src = crate::core::copy_scan::production_source(include_str!("sites.rs"));
+        let body = src
+            .split("pub(crate) async fn set_enabled(")
+            .nth(1)
+            .and_then(|b| b.split("\n/// ").next())
+            .expect("set_enabled");
+        assert!(
+            body.contains("if mgr.is_running()"),
+            "`set_enabled` no longer gates on the stack being up — either it starts services \
+             the user stopped, or it reloads a stack that is not there"
+        );
+        assert!(
+            body.contains("note"),
+            "the report no longer carries the honest reason a started site is not serving"
         );
     }
 }

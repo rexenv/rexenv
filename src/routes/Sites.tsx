@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, FolderInput, Plus, Globe, FolderOpen, Database, Lock, LockOpen, Trash2, MoreVertical, ArrowDownUp, Pencil, Copy, Code, Link, RefreshCw, Pin as PinIcon, Bot, X } from "lucide-react";
+import { AlertCircle, FolderInput, Plus, Globe, FolderOpen, Database, Lock, LockOpen, Trash2, MoreVertical, ArrowDownUp, Pencil, Copy, Code, Link, RefreshCw, Pin as PinIcon, Bot, X, Play, Square } from "lucide-react";
 import { WordPressIcon } from "@/components/common/WordPressIcon";
 import { RexLogo } from "@/components/common/RexLogo";
 import { toast, toastBackendError } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { TopBar } from "@/components/shell/TopBar";
 import { Menu, MenuItem, MenuSeparator } from "@/components/ui/menu";
+import { useSiteEnabled } from "@/lib/useSiteEnabled";
 import { ConfirmDialog, PromptDialog } from "@/components/ui/dialog";
 import { DeleteSiteDialog } from "@/components/sites/DeleteSiteDialog";
 import { siteTypeMeta } from "@/lib/siteType";
@@ -212,9 +213,12 @@ export function SiteRow({
   onDuplicate,
   onRetry,
   onKeep,
+  onToggleEnabled,
   packages,
   reapFailure,
   extraDomains,
+  stoppedByUser,
+  togglePending,
 }: {
   site: Site;
   status: Site["status"];
@@ -238,6 +242,14 @@ export function SiteRow({
   packages?: ScratchPackage[];
   /** Why the reaper could not remove this expired site, from its own feed row. */
   reapFailure?: string;
+  /** Start or stop THIS site (v44). Absent for a site with nothing to serve. */
+  onToggleEnabled?: (enabled: boolean) => void;
+  /** The user stopped this site — as opposed to the stack being down. The two
+   *  are the same word ("Stopped") in the pill and different sentences in the
+   *  tooltip, because the fix is different: one is a button on this row, the
+   *  other is Start all in the footer. */
+  stoppedByUser?: boolean;
+  togglePending?: boolean;
 }) {
   const t = siteTypeMeta(site.type);
   const scratch = isScratch(site);
@@ -466,7 +478,22 @@ export function SiteRow({
         </span>
       )}
       {site.provisioned ? (
-        <StatusPill status={status} className="min-w-[92px]" />
+        <span
+          title={
+            stoppedByUser
+              ? "You stopped this site — it answers \"site stopped\" and nothing else is affected. Start it from the row menu."
+              : status === "running"
+                ? "Serving: the edge is up and so is this site's own upstream"
+                : "Not serving — rexenv's services are stopped (Start all in the footer)"
+          }
+          className="flex-none"
+        >
+          <StatusPill
+            status={status}
+            className="min-w-[92px]"
+            label={stoppedByUser ? "Stopped by you" : undefined}
+          />
+        </span>
       ) : (
         /* Honest half-site marker (v16): provisioning died or was cancelled —
            the site is NOT healthy-stopped. Retry re-runs the remaining
@@ -513,6 +540,29 @@ export function SiteRow({
             onSelect={onKeep}
           >
             Keep this site
+          </MenuItem>
+        )}
+        {onToggleEnabled && (
+          /* The row's own lifecycle, and the copy has to keep it apart from the
+             footer's "Stop all": this stops ONE site's serving surface — the
+             shared web server and PHP pool keep running for the others. */
+          <MenuItem
+            icon={
+              stoppedByUser ? (
+                <Play className="h-[15px] w-[15px]" strokeWidth={1.7} />
+              ) : (
+                <Square className="h-[15px] w-[15px]" strokeWidth={1.7} />
+              )
+            }
+            onSelect={() => onToggleEnabled(!!stoppedByUser)}
+          >
+            {togglePending
+              ? stoppedByUser
+                ? "Starting…"
+                : "Stopping…"
+              : stoppedByUser
+                ? "Start site"
+                : "Stop site"}
           </MenuItem>
         )}
         <MenuItem icon={<Pencil className="h-[15px] w-[15px]" strokeWidth={1.7} />} onSelect={onRename}>
@@ -613,6 +663,8 @@ export function Sites() {
   );
   const statusOf = (site: Site): Site["status"] =>
     servingMap.get(site.domain) ? "running" : "stopped";
+
+  const toggle = useSiteEnabled();
 
   const remove = useMutation({
     mutationFn: (site: Site) => deleteSite(site.id),
@@ -886,6 +938,16 @@ export function Sites() {
                 onDuplicate={() => setDupSource(site)}
                 onRetry={() => retry.mutate(site)}
                 onKeep={isScratch(site) ? () => setKeepTarget(site) : undefined}
+                stoppedByUser={site.enabled === false}
+                togglePending={toggle.isPending && toggle.variables?.site.id === site.id}
+                onToggleEnabled={
+                  /* A half-provisioned site has no serving surface to switch:
+                     Retry is its verb, and the backend refuses this one anyway
+                     — an action offered and then refused is worse than absent. */
+                  site.provisioned
+                    ? (enabled) => toggle.mutate({ site, enabled })
+                    : undefined
+                }
               />
             );
             return (

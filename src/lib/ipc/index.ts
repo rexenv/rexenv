@@ -127,6 +127,34 @@ export async function sitesResources(): Promise<SiteResources[]> {
   return invoke<SiteResources[]>("sites_resources");
 }
 
+/** What starting or stopping ONE site did (v44) — and, when a started site is
+ *  still not answering, why. `serving` is read from the same derivation the
+ *  Sites list uses, never an echo of `enabled`, so the UI can never claim a site
+ *  is up while the browser gets a 503. */
+export interface SiteEnabledReport {
+  enabled: boolean;
+  serving: boolean;
+  /** Set only when `enabled` is true and `serving` is not — the honest reason,
+   *  ready to show (today: rexenv's services are stopped). */
+  note: string | null;
+  /** Did this touch a process of its own (a FrankenPHP/Apache backend)? False
+   *  for a site on the shared web server, which is most of them — so the copy
+   *  beside it must not promise a restart. */
+  ownBackend: boolean;
+}
+
+/** Serve one site, or stop serving it (v44). Stopping removes the site from the
+ *  generated config — no server block, and a 503 at the edge — and stops only
+ *  its OWN override backend; the shared web server and php-fpm pools keep
+ *  running for every other site. Returns null when the id is not a site. */
+export async function setSiteEnabled(
+  id: string,
+  enabled: boolean,
+): Promise<SiteEnabledReport | null> {
+  if (!isTauri()) return null;
+  return invoke<SiteEnabledReport | null>("set_site_enabled", { id, enabled });
+}
+
 /** Rename a site's display name (domain unchanged). No-op outside Tauri. */
 export async function renameSite(id: string, name: string): Promise<Site | null> {
   if (!isTauri()) return null;

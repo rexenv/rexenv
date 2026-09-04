@@ -1291,6 +1291,31 @@ pub fn set_xdebug(conn: &Connection, id: &str, enabled: bool) -> Result<Option<S
     get(conn, id)
 }
 
+/// Serve this site, or stop serving it (v44) — the core half: the recorded
+/// switch, with the refusals that belong to the DECISION rather than to any
+/// caller. Returns the updated site, or `None` when the id is not a site.
+///
+/// The one refusal here is a site whose provisioning never finished: it has no
+/// serving surface to take away, and offering Start/Stop beside "setup
+/// incomplete" would invite a user to fix a half-built site with the wrong
+/// verb. Retry is the verb that half-built sites have.
+pub fn set_enabled(conn: &Connection, id: &str, enabled: bool) -> Result<Option<Site>> {
+    let Some(site) = get(conn, id)? else {
+        return Ok(None);
+    };
+    if !site.provisioned {
+        return Err(Error::Other(format!(
+            "{} did not finish setting up, so there is nothing to start or stop yet. \
+             Use Retry to finish it (or delete it).",
+            site.domain
+        )));
+    }
+    if !store::set_site_enabled(conn, id, enabled)? {
+        return Ok(None);
+    }
+    get(conn, id)
+}
+
 /// What a [`teardown`] actually did. The docroot half is REPORTED rather than
 /// silent: "your folder is still there" and "your folder is gone" are not
 /// details a delete may leave ambiguous.
@@ -4674,6 +4699,39 @@ mod tests {
             sites_dir(&conn, &*platform).unwrap(),
             PathBuf::from("/tmp/custom-sites")
         );
+    }
+
+    /// **The switch refuses a half-built site, and is idempotent otherwise.**
+    ///
+    /// "Setup incomplete" and "stopped" look alike on a list and are not the
+    /// same state: a site whose provisioning died has no serving surface to take
+    /// away, and Start on it would promise something the row cannot deliver.
+    /// Retry is that site's verb — so the refusal names it rather than failing
+    /// with a generic error.
+    #[test]
+    fn set_enabled_refuses_a_site_that_never_finished_setting_up() {
+        let conn = db::open_in_memory().unwrap();
+        let site = create(&conn, sample("Half", "half.test")).unwrap();
+        store::set_site_provisioned(&conn, &site.id, false).unwrap();
+
+        let err = set_enabled(&conn, &site.id, false).unwrap_err().to_string();
+        assert!(err.contains("Retry"), "the refusal must name the verb that DOES apply: {err}");
+        assert!(err.contains("half.test"), "the refusal must name the site: {err}");
+        assert!(
+            get(&conn, &site.id).unwrap().unwrap().enabled,
+            "a refused stop must not have written the switch anyway"
+        );
+
+        // A finished site stops, stays stopped when asked twice (the UI can
+        // fire twice; the second must not be an error), and starts again.
+        store::set_site_provisioned(&conn, &site.id, true).unwrap();
+        assert!(!set_enabled(&conn, &site.id, false).unwrap().unwrap().enabled);
+        assert!(!set_enabled(&conn, &site.id, false).unwrap().unwrap().enabled);
+        assert!(set_enabled(&conn, &site.id, true).unwrap().unwrap().enabled);
+
+        // An id that is not a site is `None`, not an error — the caller says
+        // "no such site" once, in its own words.
+        assert!(set_enabled(&conn, "no-such-site", false).unwrap().is_none());
     }
 
     /// **A stopped site is in NO nginx server block, whatever serves it.**

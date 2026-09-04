@@ -1142,6 +1142,7 @@ pub fn run() {
             commands::sites::set_site_php_version,
             commands::sites::set_site_web_server,
             commands::sites::restart_site,
+            commands::sites::set_site_enabled,
             commands::sites::add_site_domain,
             commands::sites::remove_site_domain,
             commands::sites::site_domains,
