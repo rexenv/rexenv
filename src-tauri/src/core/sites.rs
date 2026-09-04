@@ -2198,14 +2198,16 @@ pub(crate) fn is_nginx_served(s: &Site) -> bool {
     !matches!(s.web_server, WebServer::Frankenphp | WebServer::Apache)
 }
 
-/// Does this site get a server block in the SHARED nginx config?
+/// Does this site get a SERVING block in the SHARED nginx config?
 ///
 /// Two independent reasons not to, and they mean different things: an override
 /// site (FrankenPHP/Apache) is served by its own backend, and a site the user
-/// STOPPED (v44) is served by nothing at all. The stopped one is deliberately
-/// answered here rather than by emitting a block that returns an error —
-/// nginx is shared by every site, and the honest "this site is stopped"
-/// response belongs at the edge, which addresses this site by name.
+/// STOPPED (v44) is served by nothing at all. A stopped site still gets a block
+/// of its own — a STOPPED one (`services::NginxStopped`, ledger #511): nginx
+/// answers a name it has no block for from its default server, i.e. another
+/// site, and a tunnel reaches nginx without passing the edge. This predicate
+/// decides only the serving half; `rebuild_configs_for` pairs it with the
+/// stopped list.
 pub(crate) fn gets_nginx_block(s: &Site) -> bool {
     s.enabled && is_nginx_served(s)
 }
@@ -2369,11 +2371,10 @@ pub fn rebuild_configs_for(
     // their own backend process.
     let mut nginx_sites: Vec<services::NginxSite> = sites
         .iter()
-        // A site the user STOPPED (v44) gets no server block at all. Not an
-        // empty one, not one returning 503: nginx is shared, and the honest
-        // 503 page belongs at the edge (`core::stopped_page`), which is the
-        // only tier that knows this site by name without also being the tier
-        // every other site is served from.
+        // A site the user STOPPED (v44) gets no SERVING block here — it gets a
+        // STOPPED block instead, built below (`stopped_sites`), because a name
+        // with no block at all is answered by nginx's default server, which is
+        // another site (ledger #511).
         .filter(|s| gets_nginx_block(s))
         .map(|s| nginx_site_for(s, body_limits, site_env, aliases))
         .collect();

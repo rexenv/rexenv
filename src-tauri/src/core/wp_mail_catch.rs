@@ -66,7 +66,7 @@ use std::path::{Path, PathBuf};
 /// left half-configured for a later hook to read.
 const MU_PLUGIN: &str = r#"<?php
 /* Plugin Name: rexenv mail catcher
- * Description: Auto-managed by rexenv. Forces this local site's outgoing mail through rexenv's mail catcher (Mailpit), even when an SMTP plugin is configured, so a development site can never deliver to a real inbox. Turn it off in rexenv → Settings → Agent & mail. Safe to delete.
+ * Description: Auto-managed by rexenv. Forces this local site's outgoing mail through rexenv's mail catcher (Mailpit), even when an SMTP plugin is configured, so a development site can never deliver to a real inbox. Turn it off in rexenv → Settings → Services → "Catch all outgoing mail". Safe to delete.
  */
 if (!defined('ABSPATH')) {
     exit;

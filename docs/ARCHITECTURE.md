@@ -679,8 +679,10 @@ Live-proven end to end by `site_stop_start_check`.
   `agent_site_grants` (kept as HISTORY: D17 retired every reader and writer, and a
   source guard bans the symbols) · v44 `sites.enabled` (**is this site served?** —
   `false` is the user stopping ONE site, which in this topology is a serving-surface
-  change and not a process one: no nginx server block, a Caddy route that keeps its
-  certificate and answers 503, and only a site's OWN override backend stopped. In the
+  change and not a process one: no SERVING nginx block — a STOPPED one instead, 503 with
+  the stop page, because a name with no block is answered by nginx's default server
+  (#511) — a Caddy route that keeps its certificate and answers 503, and only a site's
+  OWN override backend stopped. In the
   database, not the ServiceManager, because services outlive the app and a stopped site
   that came back on after a relaunch would be the user's decision quietly reversed.
   DEFAULT 1 with no backfill, and that is exact rather than safe: before the column,
@@ -1335,6 +1337,12 @@ IPC surface — which is how a reader ends up designing against a system with on
     terminal. Same split that bit wp-cli on 25 Aug 2026 (`wp_mail()` caught through the
     browser, dropped from the command line, `true` returned both times); same fix.
     The user's own iTerm is beyond reach and always will be.
+  - **Not covered: a FrankenPHP override site** (5 Sep 2026 audit, `docs/TODO.md`). Both
+    halves are properties of the php-fpm POOL, and a FrankenPHP site has none — its
+    embedded PHP keeps the default `sendmail_path` and its process carries only the
+    site's own env — so neither `mail()` nor a Laravel `.env` is caught there. Apache is
+    covered (its `.php` goes to the shared pool). Stated on the Settings card beside the
+    other limits until the override spawn carries the catch.
   - **`.env` is written too, and that is not redundancy** — it is the
     `php artisan config:cache` case. A cached config is baked from `env()` at cache
     time and `env()` is never read again, so a site that caches keeps whatever its file

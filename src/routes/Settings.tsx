@@ -1261,7 +1261,9 @@ function MailCatchAllCard() {
           Not everything can be caught: a Laravel app that has run{" "}
           <span className="font-mono text-[0.6875rem]">php artisan config:cache</span> reads its
           baked config, a plugin that mails through a provider&rsquo;s HTTP API never touches
-          PHP&rsquo;s mailer, and commands you run in your own terminal are outside rexenv.
+          PHP&rsquo;s mailer, a site served by FrankenPHP runs its own PHP outside the shared
+          pools the catch lives in, and commands you run in your own terminal are outside
+          rexenv.
         </div>
       ) : null}
     </div>

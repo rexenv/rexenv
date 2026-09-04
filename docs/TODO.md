@@ -35,7 +35,10 @@ paying for anyway: **the tick belongs in the commit that does the work.**
 
 ## Now — actionable code/test work
 
-- [ ] **A site cannot be stopped on its own; the list cannot be filtered by type**
+- [x] **A site cannot be stopped on its own; the list cannot be filtered by type**
+  ✓ 4 Sep 2026 — every task below shipped (T1–T9, the bulk switch, the stopped-share
+  warning, the tunnel-fallthrough fix #511). *The parent box stayed open after the last
+  child closed; ticked by the 5 Sep 2026 audit.*
   — both reported 4 Sep 2026, planned in `docs/PLAN-per-site-lifecycle.md`. Today
   the stack is all-or-nothing (`Stop all` in the footer) because a default site has
   no process of its own: shared nginx, and a php-fpm pool shared with every site on
@@ -143,6 +146,24 @@ paying for anyway: **the tick belongs in the commit that does the work.**
   `wp_mailtag`'s fail-closed priority rule — the ledger row says why this one wins.
   **Still open by design:** an HTTP-API transport (Mailgun's API, SES via the SDK)
   posts with `wp_remote_post`, fires no `phpmailer_init`, and is not caught.
+
+- [ ] **The mail catch-all does not reach a FrankenPHP override site** (found by the
+  5 Sep 2026 audit, read off the code — not yet measured). Both halves ride the php-fpm
+  POOL (`php_admin_value[sendmail_path]` + `env[MAIL_*]`, `mail::Catch`), and a FrankenPHP
+  site has no pool: its embedded PHP keeps PHP's default `sendmail_path` (macOS's postfix
+  binary, which queues locally), and its process gets only the site's own env
+  (`reconcile_overrides` → `spawn_override`'s `env`). So a Laravel site on FrankenPHP
+  with a real `MAIL_HOST` in `.env` still delivers for real, and the WordPress
+  mu-plugin's `isMail()` there hands the message to a sendmail that is not Mailpit's.
+  Apache is covered (it proxies `.php` to the shared pool). Fix shape: the env half is
+  the `env` argument of `spawn_override` — append `mail::laravel_env()` when the catch is
+  on, and make the toggle reconcile overrides rather than only pools (today
+  `set_mail_catch_all` restarts pools alone); the `mail()` half needs FrankenPHP's
+  `php_ini` directive in the generated Caddyfile, which is a claim about the pinned
+  1.12.4 build and needs the live leg BEFORE it is written (a flag read off a
+  changelog is unproven until a real server answers). The Settings card's "Not
+  everything can be caught" line names FrankenPHP meanwhile, so the gap is stated where
+  the switch is.
 
 - [ ] **~16 flag-taking `rex` commands still ignore what they do not recognise**
   (3 Sep 2026, ledger #463/#466). Done: `site create`, `wp search-replace`,

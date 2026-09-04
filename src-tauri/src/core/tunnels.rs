@@ -661,15 +661,6 @@ pub fn parse_guard_args(args: &[String]) -> Option<GuardArgs> {
     Some(GuardArgs { parent, child, domain, parent_start })
 }
 
-/// The `rexenv.log` line a share leaves BEHIND IT when it starts (ledger #430).
-///
-/// A public share is the only thing rexenv does that is visible from outside
-/// this machine, and until 30 Aug 2026 starting one wrote NOTHING to the
-/// app-wide log — only failures, crashes and sweeps did. So when a share for
-/// `mstest.rex` was found running that nobody remembered starting (27 Aug
-/// 2026), `rexenv.log` had no line for it: the evidence was in
-/// `logs/tunnel-mstest.rex.log`, a file you only think to open once you
-/// already know which domain to suspect, which is the thing you are trying to
 /// What a share of a STOPPED site publishes (v44) — the ONE sentence, so the
 /// app, the CLI and an agent all say the same thing.
 ///
@@ -691,6 +682,15 @@ pub fn stopped_share_warning(domain: &str) -> String {
     )
 }
 
+/// The `rexenv.log` line a share leaves BEHIND IT when it starts (ledger #430).
+///
+/// A public share is the only thing rexenv does that is visible from outside
+/// this machine, and until 30 Aug 2026 starting one wrote NOTHING to the
+/// app-wide log — only failures, crashes and sweeps did. So when a share for
+/// `mstest.rex` was found running that nobody remembered starting (27 Aug
+/// 2026), `rexenv.log` had no line for it: the evidence was in
+/// `logs/tunnel-mstest.rex.log`, a file you only think to open once you
+/// already know which domain to suspect, which is the thing you are trying to
 /// find out. The line therefore carries the three facts that IDENTIFY an
 /// exposure — the site, the public URL, the pid — plus the origin it points
 /// at, so `grep tunnels: rexenv.log` answers "what was public, when, and

@@ -2609,7 +2609,7 @@ pub(crate) fn stack_scope(action: &str) -> Option<Scope> {
 fn stack<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::ActedTarget) -> ToolFuture<'a> {
     Box::pin(async move {
         let action = args.get("action").and_then(Value::as_str).ok_or_else(|| Error::Other("stack needs an `action`.".into()))?;
-        let scope = stack_scope(action).ok_or_else(|| Error::Other(format!("`{action}` is not a stack action. Use start, stop, restart, start_database, stop_database, start_mail or stop_mail.")))?;
+        let scope = stack_scope(action).ok_or_else(|| Error::Other(format!("`{action}` is not a stack action. Use start, stop, restart, start_database, stop_database, start_mail, stop_mail, start_sites or stop_sites.")))?;
         let service = args.get("service").and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty());
         let wanted = match action {
             "start" => "start rexenv's whole stack (macOS will also ask for your password)".to_string(),

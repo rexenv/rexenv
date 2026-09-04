@@ -199,7 +199,8 @@ it can:
   `examples/common/mod.rs`'s invariant forbids; it runs in `common::sandbox` now.
   **`site_stop_start_check` (sandbox tier, 4 Sep 2026) is the layer aimed at what a
   BROWSER gets.** L0 proves the two halves of stopping one site separately — a stopped
-  site gets no nginx server block, and its edge route renders a 503 — and neither can
+  site gets a STOPPED nginx block in place of a serving one, and its edge route renders a
+  503 — and neither can
   say what comes back over the wire. The failure the design exists to prevent is
   precisely a wire fact: with no block of its own, a Host can fall through to a
   NEIGHBOUR's block and publish someone else's site at the stopped site's address, which
