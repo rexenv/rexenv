@@ -118,6 +118,84 @@ fn sh_escape(s: &str) -> String {
         .collect()
 }
 
+/// Setting key for the mail catch-all (`true`/`false`; ABSENT means on).
+///
+/// Absent-is-on is deliberate and is the only reading that keeps the promise
+/// true for sites that predate the feature: a default read off a missing row
+/// would otherwise make "every site's mail is caught" mean "every site created
+/// after the user found the switch".
+pub const CATCH_ALL_KEY: &str = "mail.catch_all";
+
+/// Whether rexenv forces every site's outgoing mail into Mailpit.
+///
+/// ON is the default because a local site mailing the real world is the failure
+/// this whole subsystem exists to prevent — a developer testing a password
+/// reset should not need to know that their app was configured, months ago, to
+/// talk to a real SMTP provider. OFF exists because the opposite is also a real
+/// task: deliberately proving a live SES/Postmark integration from a local box.
+/// A read error is treated as ON for the same reason the absent row is.
+pub fn catch_all_enabled(conn: &rusqlite::Connection) -> bool {
+    !matches!(
+        crate::state::store::get_setting(conn, CATCH_ALL_KEY),
+        Ok(Some(ref v)) if v == "false"
+    )
+}
+
+/// The environment that points a **Laravel** app at Mailpit — and OUTRANKS the
+/// app's own `.env`.
+///
+/// # Why the environment and not the file
+///
+/// `sendmail_path` cannot reach Laravel at all. Laravel's sendmail transport
+/// does not consult php.ini; `config/mail.php` ships
+/// `'path' => env('MAIL_SENDMAIL_PATH', '/usr/sbin/sendmail -bs -i')`, so the
+/// pool's shim — the mechanism that catches WordPress's `mail()` — is invisible
+/// to it. Measured 4 Sep 2026 on a real site: `MAIL_MAILER=sendmail` +
+/// `Mail::raw(...)` exited 0, reported success, and Mailpit received nothing.
+/// Silent success is the shape this tree treats as a defect.
+///
+/// The lever that DOES work is Laravel's own env precedence: `LoadEnvironment-
+/// Variables` builds an **immutable** Dotenv repository, so a variable already
+/// present in the process environment is never overwritten by `.env`. Setting
+/// these in the php-fpm pool and in the artisan runner therefore beats a real
+/// `MAIL_HOST=smtp.gmail.com` in the developer's own file, which is exactly the
+/// case the catch-all is for. Verified live the same day: `.env` said
+/// `MAIL_MAILER=log`, the environment said smtp/11025, and the message arrived
+/// in Mailpit.
+///
+/// # Why these nine keys
+///
+/// Each one is a way an app can escape, not a synonym for the last:
+/// - `MAIL_MAILER` / `MAIL_DRIVER` — the same choice under Laravel >= 7 and
+///   <= 6. An old app reads only the second, and would keep its own mailer.
+/// - `MAIL_URL` — Laravel 11 lets one DSN override host, port and credentials
+///   together. Left alone it silently wins over everything below it.
+/// - `MAIL_HOST` / `MAIL_PORT` — the sink.
+/// - `MAIL_USERNAME` / `MAIL_PASSWORD` — `"null"`, which Laravel's `Env` maps
+///   to a real null, so a stray credential cannot make Mailpit refuse the
+///   session by attempting AUTH against a server that offers none.
+/// - `MAIL_SCHEME` / `MAIL_ENCRYPTION` — the modern and legacy spellings of
+///   "no TLS". Mailpit's SMTP listener is plaintext; a TLS attempt fails
+///   closed, and a mail that fails is a mail the developer never sees.
+///
+/// Returned rather than written by each caller for the [`sendmail_path`]
+/// reason: one definition, two renderings (a pool config, a process
+/// environment), so the pool and the CLI cannot drift into disagreeing about
+/// where a site's mail goes.
+pub fn laravel_env() -> Vec<(&'static str, String)> {
+    vec![
+        ("MAIL_MAILER", "smtp".to_string()),
+        ("MAIL_DRIVER", "smtp".to_string()),
+        ("MAIL_URL", "null".to_string()),
+        ("MAIL_HOST", "127.0.0.1".to_string()),
+        ("MAIL_PORT", MAILPIT_SMTP_PORT.to_string()),
+        ("MAIL_USERNAME", "null".to_string()),
+        ("MAIL_PASSWORD", "null".to_string()),
+        ("MAIL_SCHEME", "smtp".to_string()),
+        ("MAIL_ENCRYPTION", "null".to_string()),
+    ]
+}
+
 /// Start the Mailpit server (loopback SMTP + HTTP, persistent DB) via
 /// `ProcessSupervisor`; stdout/stderr go to a per-service log.
 pub fn start(platform: &dyn Platform, mailpit_bin: &Path) -> Result<Child> {
@@ -513,6 +591,83 @@ mod tests {
                 "{ch:?} reached the shell unescaped in {esc}"
             );
         }
+    }
+
+    /// **Absent means ON, and only the exact string `false` turns it off.**
+    ///
+    /// The default is read on the "sites that predate the switch" case, which
+    /// is the one an absent row actually describes. A `bool::from_str`-shaped
+    /// reading — anything-but-`true` is off — would silently un-catch every
+    /// site on the machine the day this shipped, and it would look like a
+    /// working default because a fresh install writes the row.
+    #[test]
+    fn the_catch_all_is_on_until_something_says_the_word_false() {
+        let c = crate::state::db::open_in_memory().unwrap();
+        assert!(catch_all_enabled(&c), "an absent row must mean caught, not delivered");
+
+        crate::state::store::set_setting(&c, CATCH_ALL_KEY, "false").unwrap();
+        assert!(!catch_all_enabled(&c));
+
+        crate::state::store::set_setting(&c, CATCH_ALL_KEY, "true").unwrap();
+        assert!(catch_all_enabled(&c));
+
+        // Garbage is not "off". Anything we cannot read as a deliberate opt-out
+        // leaves the mail caught, because that is the recoverable direction:
+        // the developer sees a message they expected to leave, not a customer
+        // receiving one from a laptop.
+        for junk in ["", "0", "no", "FALSE", "off"] {
+            crate::state::store::set_setting(&c, CATCH_ALL_KEY, junk).unwrap();
+            assert!(catch_all_enabled(&c), "{junk:?} is not the opt-out");
+        }
+
+        crate::state::store::delete_setting(&c, CATCH_ALL_KEY).unwrap();
+        assert!(catch_all_enabled(&c));
+    }
+
+    /// **Every escape hatch a Laravel app has is closed, not just the obvious one.**
+    ///
+    /// The nine keys are nine different ways an app can end up mailing
+    /// somewhere else; a set that covered only `MAIL_MAILER`/`MAIL_HOST` would
+    /// look right and lose to a `MAIL_URL` DSN or to a Laravel 6 app reading
+    /// `MAIL_DRIVER`. Asserting the whole set here is what stops the list being
+    /// trimmed to the ones someone happened to test.
+    #[test]
+    fn the_laravel_env_closes_every_route_out_of_mailpit() {
+        let env = laravel_env();
+        let get = |k: &str| {
+            env.iter().find(|(n, _)| *n == k).map(|(_, v)| v.as_str())
+        };
+        // The sink itself.
+        assert_eq!(get("MAIL_HOST"), Some("127.0.0.1"));
+        assert_eq!(get("MAIL_PORT"), Some(MAILPIT_SMTP_PORT.to_string().as_str()));
+        // Both spellings of "which mailer" — Laravel >= 7 and <= 6.
+        assert_eq!(get("MAIL_MAILER"), Some("smtp"));
+        assert_eq!(get("MAIL_DRIVER"), Some("smtp"));
+        // A DSN would override host AND port AND credentials in one key.
+        assert_eq!(get("MAIL_URL"), Some("null"));
+        // AUTH against a server offering none fails the whole session.
+        assert_eq!(get("MAIL_USERNAME"), Some("null"));
+        assert_eq!(get("MAIL_PASSWORD"), Some("null"));
+        // Mailpit's listener is plaintext; TLS fails closed, and a mail that
+        // fails is a mail the developer never sees.
+        assert_eq!(get("MAIL_SCHEME"), Some("smtp"));
+        assert_eq!(get("MAIL_ENCRYPTION"), Some("null"));
+        // No key appears twice: the pool config would emit two `env[]` lines
+        // and php-fpm takes the last, so a duplicate is a silent coin-flip.
+        let mut names: Vec<_> = env.iter().map(|(n, _)| *n).collect();
+        names.sort_unstable();
+        let before = names.len();
+        names.dedup();
+        assert_eq!(names.len(), before, "duplicate key in laravel_env()");
+    }
+
+    /// The port is READ from the constant, never spelled again. A literal here
+    /// would keep passing on the day the sink moved.
+    #[test]
+    fn the_laravel_env_reads_the_smtp_port_rather_than_restating_it() {
+        let env = laravel_env();
+        let port = env.iter().find(|(n, _)| *n == "MAIL_PORT").unwrap().1.clone();
+        assert_eq!(port.parse::<u16>().unwrap(), MAILPIT_SMTP_PORT);
     }
 
     #[test]
