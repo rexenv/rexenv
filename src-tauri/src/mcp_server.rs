@@ -951,16 +951,45 @@ impl<Rt: tauri::Runtime> user_sites::SiteOps for AppSiteCreator<Rt> {
             // The auto-stop: a bounded timer in the app, which also dies with the
             // app (every tunnel is swept at launch and stopped on quit — #29's
             // family), so an agent-started share can never become a fossil.
+            //
+            // **It ends the share it STARTED, and no other** (ledger #513). The
+            // timer fires up to an hour later, and in that hour the ordinary
+            // sequence is: the agent's share is stopped (by the agent, or it
+            // died), and the PERSON shares the same site again from the Tunnels
+            // page. A stop keyed on the site alone would then end the user's
+            // share at the agent's deadline — rexenv stopping a share on the
+            // user's behalf, which #29 forbids. The public URL is unique per
+            // tunnel, so it is the identity: the timer re-reads the registry
+            // and stops only if the site's live share still carries the URL
+            // this call handed out.
+            let started_url = info.url.clone();
+            let domain = info.domain.clone();
             let app = self.app.clone();
             tokio::spawn(async move {
                 tokio::time::sleep(std::time::Duration::from_secs(minutes * 60)).await;
                 use tauri::Manager;
-                if let (Some(state), Some(tunnels)) = (app.try_state::<AppState>(), app.try_state::<crate::commands::tunnels::Tunnels>()) {
-                    if let Err(e) = crate::commands::tunnels::stop_tunnel(state, tunnels, id.clone()).await {
-                        log::warn!("mcp: the {minutes}-minute share of {id} could not be stopped on time: {e}");
-                    } else {
-                        log::info!("mcp: stopped the {minutes}-minute share of {id} on time");
+                let (Some(state), Some(tunnels)) = (app.try_state::<AppState>(), app.try_state::<crate::commands::tunnels::Tunnels>()) else {
+                    return;
+                };
+                let live = match crate::commands::tunnels::tunnels_status(state, tunnels).await {
+                    Ok(list) => list,
+                    Err(e) => {
+                        log::warn!("mcp: the {minutes}-minute share of {id} could not be checked at its deadline: {e}");
+                        return;
                     }
+                };
+                let live_url = live.iter().find(|t| t.domain == domain).map(|t| t.url.as_str());
+                if !auto_stop_applies(&started_url, live_url) {
+                    log::info!("mcp: the {minutes}-minute share of {id} is not the one running any more — leaving it alone");
+                    return;
+                }
+                let (Some(state), Some(tunnels)) = (app.try_state::<AppState>(), app.try_state::<crate::commands::tunnels::Tunnels>()) else {
+                    return;
+                };
+                if let Err(e) = crate::commands::tunnels::stop_tunnel(state, tunnels, id.clone()).await {
+                    log::warn!("mcp: the {minutes}-minute share of {id} could not be stopped on time: {e}");
+                } else {
+                    log::info!("mcp: stopped the {minutes}-minute share of {id} on time");
                 }
             });
             Ok(info)
@@ -1591,6 +1620,17 @@ impl<Rt: tauri::Runtime> user_sites::ImportOps for AppSiteCreator<Rt> {
 /// label, never a path (a phase label is rexenv's text).
 fn provision_message(st: &crate::commands::site_provision::SiteProvisionState) -> String {
     st.phases.get(st.phase_cursor).map(|p| p.label.clone()).unwrap_or_else(|| st.status.clone())
+}
+
+/// May the agent's auto-stop timer end the site's LIVE share? Only when it is
+/// the share the timer was started for — same public URL. A different URL is a
+/// share somebody else started since (the user, from the Tunnels page), and
+/// `None` is no share at all; both are left alone (#29, #513).
+///
+/// A function rather than an inline `==` so the rule has a name a test can
+/// hold, and so the timer body cannot quietly go back to stopping by site.
+pub(crate) fn auto_stop_applies(started_url: &str, live_url: Option<&str>) -> bool {
+    live_url == Some(started_url)
 }
 
 /// Run EVERY registered tool against `app`'s state with the fixture site id, and
@@ -2462,11 +2502,42 @@ mod tests {
         }
     }
 
-    /// **The Agent access copy says what each level hands over, that publishing
-    /// always asks, that the password dialog still asks, and the residual; the
-    /// refusal, the dial and the section share their names.** D15's consent
-    /// surface — the ONE dial that replaced per-site prompts, so its sentences
-    /// are the whole of what a user reads before turning it up.
+    /// **An agent's auto-stop timer ends the share it STARTED, and no other**
+    /// (#513, the `#29` family).
+    ///
+    /// The timer fires up to an hour after `share {action: "start"}`, and the
+    /// ordinary sequence inside that hour is: the agent's share ends (stopped,
+    /// or cloudflared died), and the PERSON shares the same site again from the
+    /// Tunnels page. The first version stopped by SITE at the deadline, which
+    /// would have ended the user's share — rexenv stopping a share on the
+    /// user's behalf, the thing #29 forbids. The public URL is unique per
+    /// tunnel, so the predicate compares the URL the call handed out with the
+    /// one the site's live share carries at the deadline, and a source guard
+    /// holds the timer body to consulting the registry BEFORE it stops.
+    #[test]
+    fn the_auto_stop_timer_stops_only_the_share_it_started() {
+        assert!(auto_stop_applies("https://abc.trycloudflare.com", Some("https://abc.trycloudflare.com")));
+        assert!(
+            !auto_stop_applies("https://abc.trycloudflare.com", Some("https://xyz.trycloudflare.com")),
+            "a different URL is somebody else's share — the user's, started after the agent's ended"
+        );
+        assert!(!auto_stop_applies("https://abc.trycloudflare.com", None), "no share: nothing to stop");
+
+        let src = crate::core::copy_scan::production_source(include_str!("mcp_server.rs"));
+        let body = src
+            .split("fn share_start<'a>(")
+            .nth(1)
+            .and_then(|b| b.split("\n    fn share_stop").next())
+            .expect("share_start");
+        let read = body.find("tunnels_status(").expect(
+            "the timer no longer re-reads the registry at its deadline — it would stop whatever \
+             share the site has, the user's included",
+        );
+        let gate = body.find("auto_stop_applies(").expect("the timer no longer asks the predicate");
+        let stop = body.find("stop_tunnel(").expect("the timer no longer stops anything");
+        assert!(read < gate && gate < stop, "the registry read and the URL check must come BEFORE the stop");
+    }
+
     /// **An error reply is scrubbed by the one scrubber: the acted site's
     /// docroot, rexenv's own paths and home become labels, and a call that
     /// reached no site still loses rexenv's paths.** The leak `mcp_secret_sweep`
@@ -2491,6 +2562,11 @@ mod tests {
         assert!(acted.peek().is_some(), "the scrub must not consume the feed's target");
     }
 
+    /// **The Agent access copy says what each level hands over, that publishing
+    /// is Full, that the password dialog still asks, and the residual; the
+    /// refusal, the dial and the section share their names.** D15's consent
+    /// surface — the ONE dial that replaced per-site prompts, so its sentences
+    /// are the whole of what a user reads before turning it up.
     #[test]
     fn the_agent_access_copy_says_what_a_level_hands_over() {
         const CARD: &str = include_str!("../../src/components/mcp/AgentsMcpCard.tsx");
