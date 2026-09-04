@@ -154,11 +154,16 @@ pub fn current(conn: &Connection) -> Result<AgentAccess> {
         return Ok(view(AccessLevel::Read, None, None, false));
     }
     if mode == Some(Mode::Days) {
+        // FAIL CLOSED. A 7-day row is only a level for as long as its stamp
+        // says so, and a Days row with NO stamp (blank or absent — a crash
+        // between `set`'s three writes, a hand-edited table) has no "as long
+        // as". The first version fell through to the level in that case, which
+        // is a 7-day setting that never ends — the one shape the duration
+        // exists to rule out. So it reads as expired, and the card says so.
         let now = store::db_now(conn)?;
-        if let Some(until) = &expires_at {
-            if *until <= now {
-                return Ok(view(AccessLevel::Read, mode, expires_at, true));
-            }
+        let unexpired = expires_at.as_deref().is_some_and(|until| !until.trim().is_empty() && until > now.as_str());
+        if !unexpired {
+            return Ok(view(AccessLevel::Read, mode, expires_at, true));
         }
     }
     Ok(view(level, mode, expires_at, false))
@@ -297,6 +302,20 @@ mod tests {
         assert_eq!((a.level, a.expired), (AccessLevel::Read, true));
         assert!(!allows(&c, Scope::Run).unwrap());
         assert!(!end_session_at_launch(&c).unwrap(), "a 7-day setting is not a session's");
+        // A Days row with NO stamp fails CLOSED: blank or absent, it reads as
+        // expired rather than as a level that never ends (5 Sep 2026 audit —
+        // the first version fell through to Full here).
+        for stamp in ["", "   "] {
+            set(&c, AccessLevel::Full, Some(Mode::Days)).unwrap();
+            store::set_setting(&c, EXPIRES_KEY, stamp).unwrap();
+            let a = current(&c).unwrap();
+            assert_eq!((a.level, a.expired), (AccessLevel::Read, true), "stamp {stamp:?} must not be a standing Full");
+            assert!(!allows(&c, Scope::Manage).unwrap());
+        }
+        set(&c, AccessLevel::Full, Some(Mode::Days)).unwrap();
+        store::delete_setting(&c, EXPIRES_KEY).unwrap();
+        let a = current(&c).unwrap();
+        assert_eq!((a.level, a.expired), (AccessLevel::Read, true), "an absent stamp must not be a standing Full");
 
         // Always: survives a launch.
         set(&c, AccessLevel::Full, Some(Mode::Always)).unwrap();
