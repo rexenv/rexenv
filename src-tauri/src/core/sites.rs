@@ -2401,8 +2401,31 @@ pub fn rebuild_configs_for(
         storage_root: None,
         env: Vec::new(),
     });
-    let (nginx_conf, nginx_prefix) =
-        services::write_nginx_config(platform, nginx_http_port, nginx_sites)?;
+    // The page every stopped site answers with, written once for the whole
+    // rebuild and shared by nginx and the edge.
+    let stopped_dir = stopped_page::ensure(platform)?;
+    // **Every stopped site gets a block here, whatever serves it when running.**
+    // nginx has no match for a name it was given no block for, so it answers
+    // from its DEFAULT server — another site — and anything that reaches nginx
+    // without passing the edge (a public tunnel does exactly this, with
+    // `--http-host-header`) would publish a neighbour's site at this address.
+    // Found live by the owner the day after the switch shipped.
+    let stopped_sites: Vec<services::NginxStopped> = sites
+        .iter()
+        .filter(|s| !s.enabled)
+        .map(|s| services::NginxStopped {
+            domain: s.domain.clone(),
+            aliases: aliases.get(&s.id).cloned().unwrap_or_default(),
+            wildcard: matches!(s.multisite, MultisiteMode::Subdomain),
+        })
+        .collect();
+    let (nginx_conf, nginx_prefix) = services::write_nginx_config(
+        platform,
+        nginx_http_port,
+        nginx_sites,
+        stopped_sites,
+        stopped_dir.clone(),
+    )?;
 
     // Every site (nginx- or override-served) gets a Caddy edge route: TLS with the
     // local CA, reverse-proxy to that site's upstream (shared nginx, or its own
@@ -2461,7 +2484,7 @@ pub fn rebuild_configs_for(
             // Written on EVERY rebuild, not only when missing: the page is
             // generated, and "only if absent" is how a wording fix in an update
             // never reaches a machine that already has yesterday's file.
-            stopped_page_dir: stopped_page::ensure(platform)?,
+            stopped_page_dir: stopped_dir,
         },
     )?;
 
@@ -4739,17 +4762,23 @@ mod tests {
         assert!(set_enabled(&conn, "no-such-site", false).unwrap().is_none());
     }
 
-    /// **A stopped site is in NO nginx server block, whatever serves it.**
+    /// **A stopped site gets no SERVING block — and is given a stopped one
+    /// instead, never nothing.**
     ///
-    /// Asserted for both kinds of site, because the two reasons a site can be
-    /// absent from the shared config are independent and a reader who checks
-    /// only the nginx case would be reading half the surface: an override site
-    /// is absent because something else serves it, a stopped site because
-    /// nothing does. The edge is where "stopped" gets its 503
-    /// (`core::stopped_page`) — nginx, being shared, only ever gets the
-    /// absence.
+    /// This predicate answers only the first half: does this site get the
+    /// ordinary `server_name` + `fastcgi_pass` block? A stopped site does not,
+    /// for the same reason an override site does not — nothing here serves it.
+    ///
+    /// The second half is not optional, and is asserted in
+    /// `services::a_stopped_site_answers_for_itself_instead_of_falling_through_to_a_neighbour`:
+    /// **a name with no block at all is answered by nginx's DEFAULT server,
+    /// which is another site.** For one day this code emitted nothing for a
+    /// stopped site, and a public tunnel — which proxies straight to the shared
+    /// nginx, bypassing the edge — published a neighbour's site at the stopped
+    /// site's address. So "absent from the serving list" must always be paired
+    /// with "present in the stopped list".
     #[test]
-    fn a_stopped_site_gets_no_nginx_block_whichever_server_it_uses() {
+    fn a_stopped_site_gets_no_serving_block_whichever_server_it_uses() {
         let conn = db::open_in_memory().unwrap();
         let mut new_ng = sample("NG", "ng.test");
         new_ng.web_server = WebServer::Nginx;

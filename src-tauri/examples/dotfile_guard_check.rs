@@ -73,7 +73,14 @@ async fn main() -> ExitCode {
         storage_root: None,
         aliases: Vec::new(),
     };
-    let (conf, prefix) = services::write_nginx_config(&*plat, HTTP_PORT, vec![site]).unwrap();
+    let (conf, prefix) = services::write_nginx_config(
+        &*plat,
+        HTTP_PORT,
+        vec![site],
+        Vec::new(),
+        rexenv_lib::core::stopped_page::ensure(&*plat).expect("stopped page"),
+    )
+    .unwrap();
     let nginx = services::start_nginx(&*plat, &nginx_bin, &conf, &prefix).expect("start nginx");
     let mut nginx = Reaped::new(nginx, HTTP_PORT, "nginx");
     // Both, and neither is the flat 800ms sleep that used to stand here. The

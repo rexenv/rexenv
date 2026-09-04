@@ -36,7 +36,7 @@ shared process.**
 
 | Leg | Stopped site |
 |---|---|
-| Nginx vhost | not emitted at all — the site has no `server_name` block |
+| Nginx vhost | no SERVING block — replaced by a **stopped block** (503 + the stop page, no PHP). See §5c: emitting nothing was a bug |
 | Caddy route | **kept**, TLS and cert intact, but 503 with rexenv's own stopped PAGE (`core/stopped_page.rs`) instead of `reverse_proxy` |
 | Its OWN backend (FrankenPHP / Apache override) | actually stopped — that process serves one site, so stopping it is exact |
 | Shared nginx, shared php-fpm pool, DB, edge | untouched |
@@ -163,6 +163,36 @@ site's own hostname, and both ways to start it (the app's menu wording and
   site's name is put in a path on disk for no gain. The file is rewritten on
   every config rebuild rather than only when missing, so a wording change in an
   update actually reaches a machine that already has yesterday's copy.
+
+## 5c. The correction: "no block" meant somebody else's site (5 Sep 2026)
+
+Shipped, then found live by the owner the next day: he stopped `ea.test`, shared
+it, and after a couple of reloads the public URL served **a different site**.
+
+The cause is the half of the topology the design skipped. A tunnel does not pass
+the edge — `cloudflared` proxies to the shared nginx with `--http-host-header
+<domain>` — and nginx answers a name it has no server block for from its
+**default server**, which is the first block in the file: another site. So
+"emit nothing for a stopped site" meant "serve a neighbour's site at that
+address", and the tunnel published it to the internet. It is the same
+cross-site fallthrough `override_fallthrough_check` measures, and the reason
+`tunnels.rs` refuses to share override sites — a refusal whose premise this
+feature had quietly recreated.
+
+The fix is a stopped site's own block: `return 503` for every path,
+`error_page 503 /stopped.html` (which keeps the status while serving the page),
+no `fastcgi_pass` in it at all, and every alias plus the subdomain wildcard on
+its `server_name`. One page, two servers — the edge answers it too.
+
+Two things worth keeping from this:
+
+- **An "absent" is not a behaviour.** The question a config change has to answer
+  is not "is this site's block gone" but "what does this tier do with a request
+  it cannot match".
+- **Probe every path that reaches the tier, not only the one you designed.**
+  The live check tested the edge, because that is where the feature's 503 was
+  written; the tunnel's path — straight to nginx — was never requested, and it
+  is now (`site_stop_start_check`, the direct-to-nginx legs).
 
 ## 6. Known edges — how each was settled
 

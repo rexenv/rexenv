@@ -400,6 +400,40 @@ pub struct NginxConfig {
     /// Directory for nginx's writable temp paths (created on start).
     pub temp_root: PathBuf,
     pub sites: Vec<NginxSite>,
+    /// Sites the user STOPPED (v44) — a server block that answers the stopped
+    /// page with 503 and nothing else. See [`NginxStopped`].
+    pub stopped: Vec<NginxStopped>,
+    /// Directory holding `stopped.html` (`core::stopped_page::ensure`).
+    pub stopped_page_dir: PathBuf,
+}
+
+/// A stopped site's presence in the SHARED nginx (v44).
+///
+/// # Why a stopped site still gets a server block
+///
+/// The first cut gave it none, reasoning that the honest 503 belongs at the edge
+/// — and that was wrong in the one way that matters, found by the owner within a
+/// day: **nginx serves the FIRST matching server, and with no match it serves its
+/// default server, which is another site.** Anything that reaches nginx without
+/// going through Caddy therefore got a neighbour's content at the stopped site's
+/// address. A public tunnel does exactly that — `cloudflared` proxies to the
+/// shared nginx with `--http-host-header <domain>` — so sharing a stopped site
+/// published somebody else's site to the internet. That is the same cross-site
+/// fallthrough `override_fallthrough_check` measures for override sites, and the
+/// reason `tunnels.rs` refuses to share those.
+///
+/// So the rule is: **every name rexenv knows must resolve to its OWN answer in
+/// every tier that can be reached directly.** A stopped site's answer is the
+/// stopped page, served here as well as at the edge — one file, two servers.
+#[derive(Debug, Clone)]
+pub struct NginxStopped {
+    pub domain: String,
+    /// Extra hostnames (v42) — they must be covered too, or the alias of a
+    /// stopped site falls through while its primary does not.
+    pub aliases: Vec<String>,
+    /// Subdomain multisite: `*.domain` joins the block, for the same reason the
+    /// serving block does it — otherwise `a.stopped.test` reaches a neighbour.
+    pub wildcard: bool,
 }
 
 /// The `location /` (and any rewrite) block for a site's mode. Single uses plain
@@ -596,6 +630,46 @@ fn server_block(http_port: u16, site: &NginxSite) -> String {
     )
 }
 
+/// A stopped site's server block: 503 with rexenv's stopped page, for every
+/// path, and no PHP anywhere near it.
+///
+/// `error_page 503 /stopped.html` + an `internal` exact location is the shape
+/// that keeps the STATUS while serving the file (verified against the pinned
+/// nginx build before this was written: 503 on `/`, 503 on a deep `.php` path,
+/// the neighbouring site untouched). `return 503` sits in `location /` so every
+/// path — including `/wp-admin/index.php` — lands there rather than in a PHP
+/// handler this block deliberately does not have.
+fn stopped_block(http_port: u16, site: &NginxStopped, page_dir: &Path) -> String {
+    let mut names = vec![site.domain.clone()];
+    if site.wildcard {
+        names.push(format!("*.{}", site.domain));
+    }
+    for alias in &site.aliases {
+        names.push(alias.clone());
+        if site.wildcard {
+            names.push(format!("*.{alias}"));
+        }
+    }
+    format!(
+        "\n\tserver {{\n\
+         \t\tlisten 127.0.0.1:{port};\n\
+         \t\tserver_name {names};\n\
+         \t\tabsolute_redirect off;\n\
+         \t\troot \"{root}\";\n\
+         \t\tlocation = /stopped.html {{\n\
+         \t\t\tinternal;\n\
+         \t\t}}\n\
+         \t\terror_page 503 /stopped.html;\n\
+         \t\tlocation / {{\n\
+         \t\t\treturn 503;\n\
+         \t\t}}\n\
+         \t}}\n",
+        port = http_port,
+        names = names.join(" "),
+        root = page_dir.display(),
+    )
+}
+
 /// Render the shared nginx config: one `http {}` with a `server {}` per site,
 /// each routed by `server_name` and proxying `.php` to php-fpm.
 pub fn generate_nginx_config(cfg: &NginxConfig) -> String {
@@ -641,6 +715,11 @@ pub fn generate_nginx_config(cfg: &NginxConfig) -> String {
     for site in &cfg.sites {
         s.push_str(&server_block(cfg.http_port, site));
     }
+    // Stopped sites LAST is cosmetic — nginx matches by `server_name`, not by
+    // order, and no name can be in both lists (a site is served or stopped).
+    for site in &cfg.stopped {
+        s.push_str(&stopped_block(cfg.http_port, site, &cfg.stopped_page_dir));
+    }
     s.push_str("}\n");
     s
 }
@@ -651,6 +730,8 @@ pub fn write_nginx_config(
     platform: &dyn Platform,
     http_port: u16,
     sites: Vec<NginxSite>,
+    stopped: Vec<NginxStopped>,
+    stopped_page_dir: PathBuf,
 ) -> Result<(PathBuf, PathBuf)> {
     let config_dir = platform.paths().config_dir()?;
     let log_dir = platform.paths().log_dir()?;
@@ -667,6 +748,8 @@ pub fn write_nginx_config(
         access_log: log_dir.join("nginx-access.log"),
         temp_root,
         sites,
+        stopped,
+        stopped_page_dir,
     };
     let conf = config_dir.join("nginx.conf");
     std::fs::write(&conf, generate_nginx_config(&cfg))?;
@@ -1000,6 +1083,8 @@ mod tests {
             error_log: PathBuf::from("/logs/nginx-error.log"),
             access_log: PathBuf::from("/logs/nginx-access.log"),
             temp_root: PathBuf::from("/tmp/rexenv-nginx"),
+            stopped: Vec::new(),
+            stopped_page_dir: PathBuf::from("/appdata/config/stopped"),
             sites: vec![NginxSite {
                 domain: "acme.test".into(),
                 docroot: PathBuf::from("/Sites/acme/public"),
@@ -1058,6 +1143,64 @@ mod tests {
         assert!(
             out.contains("server_name acme.test *.acme.test shop.test *.shop.test;"),
             "a network's alias needs the wildcard, or its sub-sites hit the default server: {out}"
+        );
+    }
+
+    /// **A stopped site has a block of its OWN, because "no block" means
+    /// somebody else's site.**
+    ///
+    /// This is the defect the owner found the day after the switch shipped, and
+    /// it is worth stating plainly because the first design was argued the other
+    /// way: with no `server_name` match, nginx answers from its DEFAULT server —
+    /// the first block in the file, i.e. another site. Everything that reaches
+    /// nginx without passing the edge therefore got a neighbour's content at the
+    /// stopped site's address, and a public tunnel is exactly that path
+    /// (`cloudflared --http-host-header <domain>` → shared nginx). Sharing a
+    /// stopped site published someone else's site to the internet.
+    ///
+    /// So the block exists, it answers 503 with rexenv's own page on EVERY path,
+    /// and it names every hostname the site answers on — an uncovered alias is
+    /// the same hole through a different door.
+    #[test]
+    fn a_stopped_site_answers_for_itself_instead_of_falling_through_to_a_neighbour() {
+        let mut cfg = nginx_cfg(RewriteMode::Single);
+        cfg.stopped = vec![NginxStopped {
+            domain: "stopped.test".into(),
+            aliases: vec!["old-stopped.test".into()],
+            wildcard: false,
+        }];
+        let out = generate_nginx_config(&cfg);
+
+        assert!(
+            out.contains("server_name stopped.test old-stopped.test;"),
+            "every name the stopped site answers on must be on its block, or the alias \
+             falls through while the primary does not: {out}"
+        );
+        let block = out
+            .split("server_name stopped.test old-stopped.test;")
+            .nth(1)
+            .and_then(|b| b.split("\n\t}").next())
+            .expect("the stopped block");
+        assert!(block.contains("return 503;"), "{block}");
+        assert!(block.contains("error_page 503 /stopped.html;"), "{block}");
+        assert!(
+            block.contains("/appdata/config/stopped"),
+            "the block must root at the stopped-page dir: {block}"
+        );
+        // No PHP anywhere near it: a stopped site must not reach a pool, and a
+        // `location ~* \.php$` here would send `/wp-admin/index.php` to one.
+        assert!(!block.contains("fastcgi_pass"), "a stopped site must not reach php-fpm: {block}");
+        // The serving site is untouched — this is a block ALONGSIDE, never a
+        // replacement.
+        assert!(out.contains("server_name acme.test;"), "{out}");
+
+        // Subdomain multisite: the wildcard is on the stopped block too, or
+        // `a.stopped.test` reaches the default server exactly as before.
+        cfg.stopped[0].wildcard = true;
+        let out = generate_nginx_config(&cfg);
+        assert!(
+            out.contains("server_name stopped.test *.stopped.test old-stopped.test *.old-stopped.test;"),
+            "{out}"
         );
     }
 

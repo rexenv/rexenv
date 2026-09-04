@@ -633,6 +633,11 @@ site with a REAL plugin, which is the part the fixtures cannot buy.
 - [ ] **Share a site, then STOP that site** (v44): the Tunnels row grows an amber strip
       saying the link now shows the "site stopped" page — without re-sharing, because the
       warning is derived on each poll. Start the site again and the strip goes away.
+- [ ] **Open the public URL of a STOPPED shared site, and reload it a few times** — it
+      must show rexenv's stop page EVERY time, never another site's content. (This failed
+      on 5 Sep 2026: a tunnel bypasses the edge and nginx answered from its default
+      server — ledger #511. Reload more than once; the first response was a Cloudflare
+      error while the tunnel came up, and the wrong site appeared only afterwards.)
 - [ ] Share a site that is ALREADY stopped: it shares (no refusal) and a toast says what
       the link publishes. `rex tunnel start <domain>` prints the same sentence.
 - [ ] **Filter while a share is live** (19 Aug 2026, #371 — the half L2 cannot reach,

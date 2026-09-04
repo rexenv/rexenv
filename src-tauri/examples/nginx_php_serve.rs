@@ -95,8 +95,14 @@ async fn main() -> ExitCode {
         storage_root: None,
         aliases: Vec::new(),
     };
-    let (conf, prefix) =
-        services::write_nginx_config(&*plat, HTTP_PORT, vec![site, control]).unwrap();
+    let (conf, prefix) = services::write_nginx_config(
+        &*plat,
+        HTTP_PORT,
+        vec![site, control],
+        Vec::new(),
+        rexenv_lib::core::stopped_page::ensure(&*plat).expect("stopped page"),
+    )
+    .unwrap();
     services::test_nginx_config(&*plat, &nginx_bin, &conf, &prefix).expect("nginx -t");
     checks.is("nginx -t accepts the generated config", true, "");
     let nginx = services::start_nginx(&*plat, &nginx_bin, &conf, &prefix).expect("start nginx");

@@ -149,7 +149,7 @@ writer, `store::set_site_enabled`), and the config rebuild reads it:
 
 | Leg | A stopped site |
 |---|---|
-| nginx server block | not emitted at all (`sites::gets_nginx_block`) |
+| nginx server block | no SERVING block (`sites::gets_nginx_block`) — a **stopped block** in its place: `return 503` on every path, the stopped page via `error_page`, no `fastcgi_pass` |
 | Caddy route | **kept**, with its `tls` line and certificate — answers 503 with rexenv's own stopped PAGE (`core/stopped_page.rs`) instead of proxying |
 | its OWN override backend (FrankenPHP/Apache) | actually stopped: `OverrideKind::wanted_by` returns `None`, and `reconcile_overrides` stops what is no longer wanted |
 | shared nginx, php-fpm pools, DB, edge | untouched |
@@ -165,6 +165,16 @@ Two decisions worth keeping:
   `error 503` + `handle_errors { rewrite; file_server }`, which keeps the status.
   One generic file for every stopped site: the hostname is filled in from
   `location.hostname`, so no per-site file has to be rewritten on a rename.
+- **A stopped site still answers in nginx, and that is the correction this
+  design needed.** The first version emitted no block at all, reasoning that the
+  503 belongs at the edge. **nginx answers a name it has no block for from its
+  DEFAULT server — another site** — and the edge is not the only way in: a public
+  tunnel proxies straight to the shared nginx with `--http-host-header`. Sharing
+  a stopped site therefore published a NEIGHBOUR's site to the internet, found
+  live by the owner within a day (ledger #511). The rule that replaced it:
+  **every name rexenv knows must answer for ITSELF in every tier that can be
+  reached directly.** An "absent" is not a behaviour — ask what the tier does
+  with a request it cannot match.
 - **The route stays.** Dropping it hands the browser a TLS failure — or, next to
   a subdomain-multisite block, somebody ELSE's site at this site's address (the
   fallthrough `override_fallthrough_check` measured). A 503 that says the site is

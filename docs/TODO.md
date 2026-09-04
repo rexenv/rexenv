@@ -90,6 +90,15 @@ paying for anyway: **the tick belongs in the commit that does the work.**
         any one site. Also `rex site start|stop --all` and MCP `stack {action:
         start_sites|stop_sites}` — `manage`, not `system`, because no service is touched
         and no password dialog comes.
+  - [x] **A stopped site served its NEIGHBOUR through a tunnel** ✓ 5 Sep 2026, found live
+        by the owner the day after the switch shipped, ledger #511. He stopped `ea.test`,
+        shared it, and the public URL showed a different site. Cause: a tunnel proxies
+        straight to the shared nginx (`--http-host-header`), bypassing the edge where the
+        503 lived — and nginx answers an unmatched name from its DEFAULT server, i.e. the
+        first site in the file. Fix: a stopped site gets its OWN nginx block (`return 503`
+        on every path, `error_page 503 /stopped.html`, no `fastcgi_pass`, aliases and the
+        subdomain wildcard covered). The live check now probes the tunnel's path — a
+        request made straight to nginx — which is the leg it never had.
   - [x] T9 — docs + proof ✓ 4 Sep 2026 — ARCHITECTURE §2 (what stopping a site is and is
         not), DESIGN (two stopped-nesses; a filter tab's count is what clicking it shows;
         a default chosen once), MAP, TESTING, CLI-ROADMAP, SMOKE (two new sections),

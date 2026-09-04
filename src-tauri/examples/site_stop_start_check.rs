@@ -167,11 +167,21 @@ async fn main() -> ExitCode {
     edge = start_edge(&cfg.caddyfile);
 
     let conf_text = std::fs::read_to_string(&cfg.nginx_conf).expect("read nginx conf");
+    // The stopped site has a block of its OWN — not "no block", which is what
+    // this check asserted for one day and what let a tunnel publish a
+    // neighbour's site (nginx answers unmatched names from its DEFAULT server).
+    let stopped_block = conf_text
+        .split(&format!("server_name {STOP};"))
+        .nth(1)
+        .and_then(|b| b.split("\n\t}").next())
+        .unwrap_or("")
+        .to_string();
     checks.is(
-        "the stopped site has no nginx server block, and its neighbour still does",
+        "the stopped site has a 503 block of its own, with no route to PHP",
         conf_text.contains(&format!("server_name {KEEP};"))
-            && !conf_text.contains(&format!("server_name {STOP};")),
-        "the generated shared config still names the stopped site",
+            && stopped_block.contains("return 503;")
+            && !stopped_block.contains("fastcgi_pass"),
+        &format!("stopped block was {stopped_block:?}"),
     );
 
     let stopped = body(STOP, EDGE_HTTPS, &ca.cert_path);
@@ -194,6 +204,33 @@ async fn main() -> ExitCode {
         "the neighbour keeps serving while its neighbour is stopped",
         neighbour.contains(&marker(KEEP)),
         &format!("got {neighbour:?}"),
+    );
+
+    // ── The leg this check was MISSING, and the owner found live ────────────
+    // A public tunnel does not pass the edge: cloudflared proxies straight to
+    // the shared nginx with `--http-host-header <domain>`. With no server block
+    // of its own, a stopped site's Host matched nothing and nginx answered from
+    // its DEFAULT server — a NEIGHBOUR's site, published to the internet at the
+    // stopped site's address. So the direct-to-nginx path is probed here with
+    // exactly the request a tunnel makes.
+    let direct = common::http_get(NGINX_PORT, STOP, "/index.html");
+    checks.is(
+        "a request straight to nginx (what a tunnel sends) gets the stop page, not a neighbour",
+        direct.contains("503") && !direct.contains(&marker(KEEP)),
+        &format!("got {direct:?}"),
+    );
+    checks.is(
+        "…and a deep path does too, rather than reaching PHP",
+        common::http_get(NGINX_PORT, STOP, "/wp-admin/index.php").contains("503"),
+        "a stopped site answered something other than 503 on a deep path",
+    );
+    // The control that makes the two above mean something: the same direct path
+    // still serves the RUNNING site its own content.
+    let direct_keep = common::http_get(NGINX_PORT, KEEP, "/index.html");
+    checks.is(
+        "control: the running site still answers directly on nginx",
+        direct_keep.contains(&marker(KEEP)),
+        &format!("got {direct_keep:?}"),
     );
 
     // ── Leg 3: start it again ───────────────────────────────────────────────
