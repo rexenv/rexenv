@@ -877,17 +877,18 @@ pub fn run() {
             // the CLI one; M1 tools are read-only (list_sites), reached only
             // through ReadCtx. OPT-IN — the socket binds only if the user
             // enabled it in Settings → AI agents (default off).
-            #[cfg(unix)]
-            mcp_server::spawn_if_enabled(app.handle().clone());
-
             // "Allow for this session" means THIS process: end every session
-            // grant the previous launch left behind before any client connects.
+            // grant (and a session-long dial) the previous launch left behind
+            // BEFORE the socket binds and any client can connect — the review
+            // found the bind first, a window the size of the sweep.
             {
                 use tauri::Manager;
                 if let Some(state) = app.try_state::<state::app::AppState>() {
                     commands::mcp::end_session_grants_at_launch(state.inner());
                 }
             }
+            #[cfg(unix)]
+            mcp_server::spawn_if_enabled(app.handle().clone());
 
             // The scratch reaper: collect agent-created sites whose clock ran
             // out — now (catching everything that expired while rexenv was

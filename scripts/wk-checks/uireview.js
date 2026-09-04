@@ -74,7 +74,8 @@ const SCENARIOS = [
   // other fixtures never render (they hardcode `running`).
   ["pills", "view=pills", []],
   // The AI-agents (MCP) card: the status-line states + the concerning-row
-  // (muted-amber) feed treatment + the empty state + off (feed still shown).
+  // (muted-amber) feed treatment + the empty state + off (nothing below the
+  // toggle since D16 — except the dial, when a standing level must be lowerable).
   ["agents-working", "view=agents&astate=working", []],
   ["agents-erroring", "view=agents&astate=erroring", []],
   ["agents-idle-empty", "view=agents&astate=idle&feed=empty", []],
@@ -91,6 +92,9 @@ const SCENARIOS = [
   ["agents-access-read", "view=agents&astate=working", []],
   ["agents-access-full", "view=agents&astate=working&access=full&mode=days", []],
   ["agents-access-expired", "view=agents&astate=working&expired=1", []],
+  // Off with a standing Full · Always: the note under the toggle and the dial
+  // (to lower it) render; Site access and the feed do not.
+  ["agents-off-standing", "view=agents&astate=off&access=full&mode=always", []],
   // The Agent-scratch group: client badge + TTL + last-synced, a moved source,
   // an expired site, an expired one the reaper could not remove — and the two
   // rows that must render as ORDINARY sites (a Kept one, and a user's own site
@@ -509,7 +513,11 @@ const PROBES = {
       if (switches.length !== 1) problems.push(`expected exactly one switch (the endpoint), got ${switches.length}`);
       const dialRadios = document.querySelectorAll('[role="radiogroup"][aria-label="Agent access"] [role="radio"]').length;
       if (p.get("astate") === "off") {
-        if (dialRadios !== 0) problems.push("the dial rendered with the endpoint off");
+        const standing = p.get("access") === "full" || p.get("access") === "changes";
+        if (standing) {
+          if (!text.includes("applies as soon as you turn this on")) problems.push("the standing-level note is missing while off");
+          if (dialRadios !== 3) problems.push("the dial must render while off when a standing level needs lowering");
+        } else if (dialRadios !== 0) problems.push("the dial rendered with the endpoint off");
         if (text.includes("Site access")) problems.push("Site access rendered with the endpoint off");
         if (text.includes("Recent activity")) problems.push("the feed rendered with the endpoint off");
       } else {
@@ -779,7 +787,6 @@ function probeFor(name) {
   if (name.startsWith("adminer-")) return PROBES.adminerVersion;
   if (name.startsWith("tunnels-")) return PROBES.tunnelsFilter;
   if (name === "themes-titles") return PROBES.themeTitles;
-  if (name.startsWith("agents-access")) return PROBES.agentsAccess;
   return null;
 }
 

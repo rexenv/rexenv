@@ -427,9 +427,9 @@ static REGISTRY: &[UserTool] = &[
         name: "mail_inbox",
         description: "The user's whole Mailpit inbox — every message every site on this machine \
                       sent, including password-reset links for their own sites. Takes `action`: \
-                      `list` {query?, unread?, limit?}, `get` {message_id}, `raw` {message_id} need \
-                      the user's `read` permission on rexenv itself (not on a site — the inbox is \
-                      shared) AND the mail switch in rexenv turned on; `mark_read` needs `manage`; \
+                      `list` {query?, unread?, limit?}, `get` {message_id}, `raw` {message_id} are \
+                      reads — free at the Agent access dial's Read, on whenever the endpoint is \
+                      (the inbox is shared, not a site's); `mark_read` needs `manage`; \
                       `delete` {message_ids} and `clear` need `destroy`. For a scratch site's own \
                       mail use mail_list / mail_get, which need no permission.",
         input_schema: || json!({
@@ -2486,6 +2486,9 @@ fn mail_inbox<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::Ac
                     "id": m.id, "from": m.from.address, "to": m.to.into_iter().map(|a| a.address).collect::<Vec<_>>(),
                     "subject": m.subject, "date": m.date,
                     "text": m.text.lines().map(|l| super::view::scrub_log_line(l, &known)).collect::<Vec<_>>().join("\n"),
+                    // HTML-only mail (WooCommerce, most plugins) has no text part;
+                    // the decoded HTML is the readable route, scrubbed line-wise.
+                    "html": m.html.lines().map(|l| super::view::scrub_log_line(l, &known)).collect::<Vec<_>>().join("\n"),
                     // A cookie header's VALUE carries no `cookie:` prefix for the
                     // scrubber to key on, so the name decides (the review's find).
                     "headers": m.headers.into_iter().map(|h| {
@@ -2525,12 +2528,20 @@ const INBOX_NOTE: &str = "This is the whole inbox — every site's mail, the use
 /// to quoted-printable for any long line (HTML mail, the common case). Such a
 /// body is omitted rather than shipped; `get` returns the decoded text.
 fn scrub_raw_source(source: &str, known: &super::view::KnownPaths) -> String {
-    let (headers, body) = match source.find("\n\n") {
+    // RFC 822 source is CRLF-terminated (Mailpit hands it back as sent); a
+    // `\n\n` search never matches `\r\n\r\n`, and a split that silently
+    // fails would treat the whole message as headers and scrub the encoded
+    // body line-wise instead of omitting it. Both line endings, blank line first.
+    let (headers, body) = match source.find("\r\n\r\n").or_else(|| source.find("\n\n")) {
         Some(i) => (&source[..i], &source[i..]),
         None => (source, ""),
     };
-    let lower = headers.to_ascii_lowercase();
-    let encoded = lower.contains("quoted-printable") || lower.contains("base64");
+    // Any part's transfer encoding counts — a multipart message declares it
+    // per part, below the top-level headers (the review's find).
+    let lower = source.to_ascii_lowercase();
+    let encoded = lower
+        .lines()
+        .any(|l| l.trim_start().starts_with("content-transfer-encoding:") && (l.contains("quoted-printable") || l.contains("base64")));
     let mut out: Vec<String> = headers.lines().map(|l| super::view::scrub_log_line(l, known)).collect();
     if encoded {
         out.push(String::new());
@@ -3627,7 +3638,10 @@ pub(crate) mod tests {
         }
         fn raw<'a>(&'a self, id: String) -> OpFuture<'a, Result<String>> {
             self.calls.lock().unwrap().push(format!("mail raw {id}"));
-            Box::pin(async { Ok("Subject: x\nContent-Transfer-Encoding: quoted-printable\nSet-Cookie: a=RAWCOOKIE\n\nkey=3DENCODEDKEY123456789\n".into()) })
+            // CRLF, as Mailpit hands the RFC 822 source back — the split must see it.
+            // Multipart: the encoding sits in a PART's headers, below the blank
+            // line; the body carries no `key=` so only omission can remove it.
+            Box::pin(async { Ok("Subject: x\r\nContent-Type: multipart/alternative; boundary=b1\r\nSet-Cookie: a=RAWCOOKIE\r\n\r\n--b1\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\nSecret: ENCODEDBODY42\r\n--b1--\r\n".into()) })
         }
         fn mark_all_read<'a>(&'a self) -> OpFuture<'a, Result<()>> {
             self.calls.lock().unwrap().push("mail mark_all_read".into());
@@ -4329,12 +4343,13 @@ pub(crate) mod tests {
         let v = mail_inbox(ctx, &json!({ "action": "get", "message_id": "m1" }), &acted).await.unwrap();
         let text = v["result"]["text"].as_str().unwrap();
         assert!(!text.contains("=tok") && !text.contains("WOOKEY"), "a token or a WooCommerce reset key left in the body: {text}");
+        assert!(v["result"]["html"].is_string(), "the decoded HTML route exists for HTML-only mail");
         let headers = v["result"]["headers"].as_array().unwrap();
         assert!(headers.iter().any(|h| h["name"] == "Set-Cookie" && h["value"] == "<redacted>"), "a cookie header value left: {headers:?}");
         assert!(headers.iter().any(|h| h["name"] == "Subject" && h["value"] == "Password Reset"), "a benign header lost: {headers:?}");
         let v = mail_inbox(ctx, &json!({ "action": "raw", "message_id": "m1" }), &acted).await.unwrap();
         let raw = v["result"]["raw"].as_str().unwrap();
-        assert!(!raw.contains("ENCODEDKEY") && raw.contains("encoded body omitted") && !raw.contains("RAWCOOKIE"), "an encoded body or a raw cookie header reached the agent: {raw}");
+        assert!(!raw.contains("ENCODEDBODY42") && raw.contains("encoded body omitted") && !raw.contains("RAWCOOKIE"), "an encoded body or a raw cookie header reached the agent: {raw}");
         let err = mail_inbox(ctx, &json!({ "action": "clear" }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("`destroy`"), "{err}");
         let err = mail_inbox(ctx, &json!({ "action": "mark_read" }), &acted).await.unwrap_err().to_string();

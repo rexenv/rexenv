@@ -590,7 +590,7 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   `revoked_at` instead of DELETE so a revoked grant stays as evidence of what an
   agent could see and until when) · v39 the grants index · v40 `agent_db_grants.auto_granted` (did a PERSON click
   Allow, or did auto-allow answer? Recorded, because auto-allow is session-scoped and will
-  usually be off by the time anyone reads the list). **D16, 4 Sep 2026: v38–v40 are no longer a consent record — the Agent access dial answers reads; `db_query` still writes a row per (site, client) as the RECORD of the principal it provisioned, so a rename cannot orphan the account (#398, #403).** · v41 `sites.starter_db` (did a
+  usually be off by the time anyone reads the list). **D16, 4 Sep 2026: v38–v40 are no longer a consent record — the Agent access dial answers reads; `db_query` still writes a row per (site, principal) — after a successful provision — as the RECORD of the account it made, so a rename cannot orphan the account (#398, #403).** · v41 `sites.starter_db` (did a
   Blank-PHP site ask for a starter database? INTENT, written at the insert, beside
   v19's `db_created` PROVENANCE, written by the job after `CREATE DATABASE` — one
   column could not hold both without lying in the window a failed job leaves the
@@ -993,7 +993,7 @@ IPC surface — which is how a reader ends up designing against a system with on
   dialog, `agent_db_grants` as a grant, and the database auto-allow (#402, #404, #408) were
   retired by D16 (4 Sep 2026)**: the owner's brief was that a local dev tool's reads need
   no door, and the parity auto-allow had already gone the same way (#470). The table
-  survives as the record of which principal was provisioned for which (site, client), so
+  survives as the record of which principal was provisioned for which site (one row per principal, written after the provision), so
   the site's delete path still drops an account made under a domain the site no longer has.
 - **The read-only boundary is a TYPE, and its scope is the handler.** A read handler
   receives a `ReadCtx` (`mcp_server/readctx.rs`) — one private `&AppState`, five read

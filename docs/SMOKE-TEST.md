@@ -1023,11 +1023,10 @@ refused on the row, the log list without paths, the inbox reading at Read with n
 and no ask). What no tier proves is a vetted command actually running on a real WordPress
 under the dial, the raw runner as YOU, and a real reset mail read with its key gone. Set
 up: the stack up, one of your own WordPress sites with real content, the endpoint ON.
-- [ ] **32. Read, then manage, under the right prompts.** Ask: *"list the plugins on
-  `<your WP site>`"* → refused; the prompt says `read` for THAT site with "list its
-  plugins". Allow for this session → the list comes back. Ask it to *activate* one → a
-  SECOND prompt, `manage`, naming the plugin. Allow → activated (check wp-admin).
-  **Tell:** the `read` grant let the activation through (implication runs the wrong way).
+- [ ] **32. Read is free, a change needs the dial (D15/D16).** Ask: *"list the plugins on
+  `<your WP site>`"* → the list comes back with nothing to click. Ask it to *activate*
+  one → refused naming `Agent access` at **Changes**; turn the dial to Changes · This
+  session → activated (check wp-admin). **Tell:** the activation ran at Read.
 - [ ] **33. ⚠ Destroy is never a week, and never quiet.** Ask it to *"delete the plugin
   `hello`"* → a `destroy` prompt with **Allow for this session** and **Don't allow** only.
   Don't allow → plugin still there. Then ask for a live search-replace (`dry_run: false`)

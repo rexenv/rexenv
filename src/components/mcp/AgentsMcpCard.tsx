@@ -171,6 +171,10 @@ export function AgentsMcpCard() {
         />
       </div>
 
+      {/* A standing level above Read must be LOWERABLE while off — the dial is
+          the only control that can, so it renders alone in that case. */}
+      {!enabled && standing && <AgentAccessDial />}
+
       {enabled && (
         <>
           {/* Connect — the next thing a person does, so it comes first. */}

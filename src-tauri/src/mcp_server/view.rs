@@ -298,6 +298,19 @@ impl AgentLogTail {
 /// therefore "rexenv's own paths are removed", never "no path escapes".
 pub struct KnownPaths {
     entries: Vec<(String, &'static str)>,
+    /// The scratch mail tools set this: a scratch site is the agent's own, and
+    /// its reset link is the thing the agent triggered to test — redacting it
+    /// there would break the loop the tools exist for. Everywhere else (the
+    /// user's inbox, logs, wp output) the key is redacted.
+    keep_reset_keys: bool,
+}
+
+impl KnownPaths {
+    /// For the scratch-mail doors only (see the field).
+    pub fn keeping_reset_keys(mut self) -> Self {
+        self.keep_reset_keys = true;
+        self
+    }
 }
 
 impl KnownPaths {
@@ -346,7 +359,7 @@ impl KnownPaths {
         entries.retain(|(p, _)| !p.is_empty() && p != "/");
         entries.sort_by(|a, b| b.0.len().cmp(&a.0.len()).then_with(|| a.0.cmp(&b.0)));
         entries.dedup_by(|a, b| a.0 == b.0);
-        KnownPaths { entries }
+        KnownPaths { entries, keep_reset_keys: false }
     }
 }
 
@@ -370,7 +383,9 @@ impl KnownPaths {
 /// layer, never a "the output is now safe" claim.
 pub fn scrub_log_line(line: &str, known: &KnownPaths) -> String {
     let mut out = redact_token_after(line, "rexenv_login=");
-    out = redact_reset_key(&out);
+    if !known.keep_reset_keys {
+        out = redact_reset_key(&out);
+    }
     out = redact_cookie_header(&out);
     // Longest prefix first (see `KnownPaths`), applied to the accumulating
     // string so an already-labelled path can't be re-matched by a shorter one.
@@ -397,8 +412,15 @@ fn redact_reset_key(line: &str) -> String {
     let mut result = String::new();
     let mut rest = line;
     while let Some(pos) = rest.find("key=") {
-        // `key=` inside a longer parameter name (`apikey=`) still names a key.
+        // A parameter boundary only: `?key=`, `&key=`, `key=` at the start —
+        // not `apikey=`/`monkey=` inside another name (the review found the
+        // first version redacting a plugin's API key from a log line).
+        let at_boundary = pos == 0 || !rest.as_bytes()[pos - 1].is_ascii_alphanumeric();
         result.push_str(&rest[..pos + 4]);
+        if !at_boundary {
+            rest = &rest[pos + 4..];
+            continue;
+        }
         let after = &rest[pos + 4..];
         let end = after
             .find(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '%')))
@@ -635,6 +657,11 @@ mod tests {
             assert!(s.contains("key=<redacted>") && !s.contains("12345"), "reset key survived: {s}");
         }
         assert_eq!(scrub_log_line("sort by key=1 desc", &k), "sort by key=1 desc", "a short benign key= must survive");
+        let api = "plugin log: apikey=AIzaSyLONGGOOGLEKEY1234567 ok";
+        assert_eq!(scrub_log_line(api, &k), api, "`apikey=` is not `key=` — a parameter boundary is required");
+        // The scratch-mail doors keep the key: it is the agent's own site's link.
+        let kept = scrub_log_line("https://p.scratch.rex/wp-login.php?action=rp&key=abcDEF123456xyz78901", &known(&dr).keeping_reset_keys());
+        assert!(kept.contains("key=abcDEF123456xyz78901"), "{kept}");
 
         let cookie =
             scrub_log_line("Set-Cookie: wordpress_logged_in=SECRETVALUE99; Path=/; HttpOnly", &k);

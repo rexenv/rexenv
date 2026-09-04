@@ -393,6 +393,13 @@ mod tests {
         let users: Vec<&str> = rows.iter().filter(|g| g.site_id == site.id).map(|g| g.db_user.as_str()).collect();
         assert_eq!(rows.len(), 2);
         assert!(users.contains(&first.as_str()) && users.contains(&renamed.as_str()), "{users:?}");
+        // The record is written AFTER the provision in db_query — a row must
+        // never name an account that was never made. Source order, pinned.
+        let scratch = include_str!("../mcp_server/scratch.rs");
+        let handler = &scratch[scratch.find("fn db_query<'a>(").unwrap()..];
+        let provision_at = handler.find("agent_db::provision(").expect("the provision call");
+        let record_at = handler.find("agent_db::record_principal(").expect("the record call");
+        assert!(provision_at < record_at, "the provisioning record must follow the provision");
     }
 
     /// **A real site's agent principal can read and can do nothing else, and it

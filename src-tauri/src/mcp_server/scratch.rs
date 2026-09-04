@@ -235,8 +235,8 @@ static REGISTRY: &[ScratchTool] = &[ScratchTool {
     description: "List the mail a scratch site has SENT — password resets, notifications, anything \
                   its code mailed — so you can trigger something and then read it. Takes `site_id` \
                   and an optional `limit`. It returns only messages rexenv can prove came from that \
-                  scratch site: the user's own sites' mail is never included. Needs the mail setting \
-                  turned on in rexenv, and rexenv's mail catcher running.",
+                  scratch site: the user's own sites' mail is never included. Works whenever the \
+                  endpoint is on; needs rexenv's mail catcher running.",
     input_schema: || json!({
         "type": "object",
         "properties": {
@@ -476,7 +476,8 @@ fn mail_get<'a>(
                 scratch.domain()
             )));
         }
-        let known = super::view::KnownPaths::for_site(ctx.platform().paths(), &scratch.site().path);
+        // The agent's own site's reset link is what it triggered to test.
+        let known = super::view::KnownPaths::for_site(ctx.platform().paths(), &scratch.site().path).keeping_reset_keys();
         let body: Vec<String> =
             msg.text.lines().map(|l| super::view::scrub_log_line(l, &known)).collect();
         Ok(json!({

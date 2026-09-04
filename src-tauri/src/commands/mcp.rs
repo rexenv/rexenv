@@ -401,7 +401,6 @@ pub fn agent_site_revoke(state: State<'_, AppState>, id: String) -> Result<()> {
     Ok(())
 }
 
-/// Which auto-allowable scopes are on for THIS session. Session state, so the
 #[cfg(test)]
 mod site_access_tests {
     /// **The launch ends the previous session's grants, and the wiring is in

@@ -1925,8 +1925,8 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   tests; do not reopen). ✓ ticked 30 Aug 2026: the body had said "none" for weeks
   while the box stayed open, which is a row that can never be closed by doing
   anything — exactly the shape that makes the backlog lie about its size.
-- [ ] **MCP parity — every app function drivable by an agent** (`docs/PLAN-mcp-parity.md`,
-  planned 3 Sep 2026, nothing built). The owner's brief: scratch subdomains are a test
+- [x] **MCP parity — every app function drivable by an agent** (`docs/PLAN-mcp-parity.md`,
+  planned 3 Sep 2026; P1–P7 SHIPPED the same day, D15 the dial and D16 the card by 4 Sep — the ✓ lines below). The owner's brief: scratch subdomains are a test
   surface; real work means creating a WordPress / blank-PHP / Laravel site the way the
   Sites page does, switching its PHP or web server, and everything else the app can do —
   through MCP. That REOPENS D3 ("real-site mutation may ship never") and old §3.3's
@@ -1947,7 +1947,7 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     error whose §2.3 trigger fired at M2 (P6), tool annotations never emitted (P6), the
     TTL/cap constants the plan called settings (P4), MCP still blocking long calls while
     the CLI streams (P6), the Laravel trio (P7).
-  - [ ] **P1 — foundation**: `agent_site_grants`, `core::agent_grants::authorize`, the
+  - [x] **P1 — foundation**: `agent_site_grants`, `core::agent_grants::authorize`, the
     `Granted<Scope>` witness, the third registry with the sweep walking a LIST, the
     sub-toggle + generalised grants card, the copy on the must-say list, the
     `run_privileged` ledger row re-scoped.
