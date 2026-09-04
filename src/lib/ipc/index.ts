@@ -2101,7 +2101,7 @@ export async function repoLink(
  *  status line, and the recent activity feed. Off/empty outside Tauri. */
 export async function mcpStatus(): Promise<McpStatus> {
   if (!isTauri())
-    return { enabled: false, access: { level: "read", mode: null, expiresAt: null, expired: false, label: "Agent access", allows: "", levels: [] }, connectCommand: "claude mcp add rexenv -- rex mcp", activity: { kind: "off" }, recent: [] };
+    return { enabled: false, access: { level: "read", mode: null, expiresAt: null, expired: false, label: "Agent access", allows: "", levels: [] }, connectCommand: "claude mcp add rexenv -- rex mcp", connectCommandUser: "claude mcp add --scope user rexenv -- rex mcp", activity: { kind: "off" }, recent: [] };
   return invoke<McpStatus>("mcp_status");
 }
 

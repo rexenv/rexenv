@@ -1513,6 +1513,8 @@ export interface AgentAccess {
 export interface McpStatus {
   enabled: boolean;
   connectCommand: string;
+  /** The same command with `--scope user`: every project on this machine. */
+  connectCommandUser: string;
   activity: ActivityStatus;
   recent: AgentAction[];
   /** The Agent access dial (D15) — level, duration, expiry and Rust's copy. */

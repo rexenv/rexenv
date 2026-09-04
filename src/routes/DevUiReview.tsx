@@ -702,6 +702,7 @@ function mcpStatusMock(): McpStatus {
     // `access=changes|full` turns the dial; default Read, the shipped default.
     access: agentAccessMock(),
     connectCommand: "claude mcp add rexenv -- rex mcp",
+    connectCommandUser: "claude mcp add --scope user rexenv -- rex mcp",
     activity: activityStatusMock(),
     recent,
   };

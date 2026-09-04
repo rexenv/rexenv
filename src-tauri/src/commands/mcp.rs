@@ -23,8 +23,17 @@ const WINDOW_MINS: i64 = 15;
 /// Feed rows the card lists.
 const CARD_LIMIT: usize = 50;
 
-/// The copy-paste connect line the card shows (`rex mcp` is the dumb pipe).
+/// The copy-paste connect lines the card shows (`rex mcp` is the dumb pipe).
+///
+/// TWO, because Claude Code's default is not the one most people want: `claude
+/// mcp add` writes a **local** entry, which is that ONE project directory, and
+/// a developer who set rexenv up in one repo then finds it missing in the next.
+/// `--scope user` writes it once for every project on the machine. Both are
+/// offered rather than one chosen for them: a per-project entry is the right
+/// answer for a shared repo, where a user-scope server nobody else has is a
+/// config other people cannot reproduce.
 const CONNECT_COMMAND: &str = "claude mcp add rexenv -- rex mcp";
+const CONNECT_COMMAND_USER: &str = "claude mcp add --scope user rexenv -- rex mcp";
 
 fn db(state: &AppState) -> Result<std::sync::MutexGuard<'_, rusqlite::Connection>> {
     state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))
@@ -38,8 +47,12 @@ fn db(state: &AppState) -> Result<std::sync::MutexGuard<'_, rusqlite::Connection
 pub struct McpStatus {
     /// Whether the endpoint is actually serving (socket bound) — the toggle state.
     pub enabled: bool,
-    /// The copy-paste connect command for the card.
+    /// The copy-paste connect command for the card — Claude Code's DEFAULT
+    /// scope, which is this project only.
     pub connect_command: &'static str,
+    /// The same, written once for every project on the machine (`--scope
+    /// user`). Both are shown: neither is right for everyone.
+    pub connect_command_user: &'static str,
     /// The derived status the header line renders.
     pub activity: ActivityStatus,
     /// Recent feed rows, newest first, the card lists.
@@ -93,6 +106,7 @@ fn status_snapshot(state: &AppState, limit: usize) -> Result<McpStatus> {
     Ok(McpStatus {
         enabled,
         connect_command: CONNECT_COMMAND,
+        connect_command_user: CONNECT_COMMAND_USER,
         activity,
         recent,
         access,

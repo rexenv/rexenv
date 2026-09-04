@@ -754,7 +754,13 @@ have found it. That is why step 4 is a hold, not a note.
   over an always-on socket (the always-on bug) — not really controlling it.
 - [ ] **2. Enable binds.** Toggle ON → "On — no recent agent activity"; `ls -l
   <socket>` shows `srw-------` (0600); `nc -U <socket>` connects.
-- [ ] **3. Real client.** `claude mcp add rexenv -- rex mcp`, then ask Claude Code
+- [ ] **3. Real client, both scopes.** The card offers two lines: `claude mcp add rexenv
+  -- rex mcp` (this project) and `claude mcp add --scope user rexenv -- rex mcp` (every
+  project on the machine). Run the project one here; later, from a DIFFERENT directory,
+  run the user one and confirm `claude mcp list` finds rexenv there too. **Tell:** only
+  one line on the card — the default scope is per-project, and a developer who set rexenv
+  up in one repo and lost it in the next is the report this step exists to prevent.
+  Then ask Claude Code
   "why is `<site>` 502-ing?" → feed rows appear (list_sites/site_status/tail_log),
   status flips to "Working — …".
 - [ ] **4. Disable drops the socket AND live sessions.** Toggle OFF while the agent

@@ -120,6 +120,7 @@ export function AgentsMcpCard() {
   const status = data ? statusLine(data.activity) : null;
   const rows = data?.recent ?? [];
   const connectCommand = data?.connectCommand ?? "claude mcp add rexenv -- rex mcp";
+  const connectCommandUser = data?.connectCommandUser ?? "claude mcp add --scope user rexenv -- rex mcp";
 
   return (
     <div className="rounded-[13px] border border-rex-border-subtle bg-rex-surface-1 p-5">
@@ -181,12 +182,26 @@ export function AgentsMcpCard() {
           {/* Connect — the next thing a person does, so it comes first. */}
           <div className="mt-3.5 border-t border-rex-border-subtle pt-3.5">
             <div className="text-[0.78125rem] font-medium text-rex-text">Connect an agent</div>
-            <div className="mt-2 flex items-center gap-2 rounded-md border border-rex-border-subtle bg-rex-well px-2.5 py-1.5">
-              <code className="min-w-0 flex-1 truncate font-mono text-[0.6875rem] text-rex-text">
-                {connectCommand}
-              </code>
-              <CopyButton value={connectCommand} />
-            </div>
+            {/* TWO commands, because Claude Code's default is per-project and
+                that is the thing people are surprised by: rexenv set up in one
+                repo, missing in the next. Neither is chosen for them — a
+                shared repo wants the project entry, one machine wants the
+                user one — so both are here with the difference stated. */}
+            {[
+              { label: "In this project", command: connectCommand, what: "Claude Code's default: this folder only." },
+              { label: "In every project", command: connectCommandUser, what: "Written once for you, on this machine." },
+            ].map((row) => (
+              <div key={row.label} className="mt-2">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-[0.71875rem] font-medium text-rex-text">{row.label}</span>
+                  <span className="text-[0.6875rem] text-rex-text-muted">{row.what}</span>
+                </div>
+                <div className="mt-1 flex items-center gap-2 rounded-md border border-rex-border-subtle bg-rex-well px-2.5 py-1.5">
+                  <code className="min-w-0 flex-1 truncate font-mono text-[0.6875rem] text-rex-text">{row.command}</code>
+                  <CopyButton value={row.command} />
+                </div>
+              </div>
+            ))}
             <details className="group mt-2">
               <summary className="flex cursor-pointer list-none items-center gap-1 text-[0.71875rem] text-rex-text-muted hover:text-rex-text">
                 <ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" />
@@ -198,8 +213,10 @@ export function AgentsMcpCard() {
                 </pre>
                 <CopyButton value={CLIENT_JSON} />
               </div>
-              <p className="mt-1.5 text-[0.6875rem] text-rex-text-muted">
-                If <span className="font-mono">rex</span> isn't found, install it from Settings →
+              <p className="mt-1.5 text-[0.6875rem] leading-[1.55] text-rex-text-muted">
+                Put it in <span className="font-mono">.cursor/mcp.json</span> for one project, or{" "}
+                <span className="font-mono">~/.cursor/mcp.json</span> for every project. If{" "}
+                <span className="font-mono">rex</span> isn't found, install it from Settings →
                 General → Command-line tool, then reconnect.
               </p>
             </details>

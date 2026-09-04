@@ -2107,6 +2107,10 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     guard scans `border-rex-*` and refuses `rex-brand`; the `agents-access-*` probe had
     never run (`probeFor` order) and does now. 8 IPC wrappers and 8 commands deleted;
     SMOKE §M1 1, §M2b 13–14, §M3 15–18 (19–22 retired), §P3 35, §P4 38, §P1 23 rewritten.
+    ✓ **Connect scopes (4 Sep 2026):** the card shows `claude mcp add` (this project) and
+    `claude mcp add --scope user` (every project), with the Cursor stanza naming
+    `.cursor/mcp.json` vs `~/.cursor/mcp.json` — Claude Code's default is per-project and
+    the owner hit exactly that. SMOKE 3 covers both scopes.
     ✓ **D17 — publishing is Full (4 Sep 2026, ledger #503; #468/#469/#473/#474 retired,
     #471/#472/#487/#497/#498/#500 re-verdicted):** the owner's ruling — MCP is for the
     user's convenience, so a tunnel does not get a second prompt when the level already

@@ -984,7 +984,7 @@ precheck.
     same power over rexenv and this machine as code you run yourself. Turn this
     off when you're not using it."* The "as rexenv adds…" clause is the hinge: it
     is honest in M1 and stays honest at M2 without an edit.
-- **Copy-paste connect:** the card shows `claude mcp add rexenv -- rex mcp` plus
+- **Copy-paste connect:** the card shows `claude mcp add rexenv -- rex mcp` (this project) AND `claude mcp add --scope user rexenv -- rex mcp` (every project — Claude Code's default is per-project, which is the surprise this pair removes), plus
   the Cursor/VS Code JSON stanza, wired to the existing CLI-install card for the
   "not on PATH" case. Zero new install steps (§2.2).
 - **Connected now — and "connected" vs "connected and working" are distinct.**
