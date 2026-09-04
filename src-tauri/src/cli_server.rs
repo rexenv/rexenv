@@ -970,6 +970,22 @@ where
             .await?;
             to_value(&report)
         }
+        // Start or stop ONE site (v44). The CLI's verb for the switch the Sites
+        // list flips: `rex site stop shop.rex` takes that site off the serving
+        // surface — no server block, a 503 at its address — while the shared web
+        // server and PHP pools keep serving every other site. The reply carries
+        // whether it is actually answering, so a `start` while the stack is down
+        // prints the reason instead of a cheerful lie.
+        "site.enabled" => {
+            let state = app_state(app)?;
+            let report = commands::sites::set_site_enabled(
+                state.clone(),
+                need_str(&args, "id", cmd)?,
+                args.get("enabled").and_then(Value::as_bool).unwrap_or(true),
+            )
+            .await?;
+            to_value(&report)
+        }
         "blueprint.list" => {
             let state = app_state(app)?;
             Ok(json!({ "blueprints": to_value(&commands::blueprints::list_blueprints(state.clone())?)? }))

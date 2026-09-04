@@ -74,7 +74,13 @@ paying for anyway: **the tick belongs in the commit that does the work.**
         decided on the first load that has BOTH facts (an undefined serving map means
         "not asked yet", not "nothing is running") and never re-decided: the 2s poll
         would otherwise move the user's tab the moment they stopped their last site
-  - [ ] T8 — parity: `site_configure` `enabled` action, `site_status`, `rex site start/stop`
+  - [x] T8 — parity ✓ 4 Sep 2026 — `site_configure {action: "enabled"}` on the existing
+        `manage` scope (no new consent surface), reaching the MECHANISM and not the Tauri
+        command, because the command promotes a scratch site and stop-then-start would
+        have been a cap bypass; `AgentSiteView.stopped` + a `StoppedByUser` verdict whose
+        resolution is `AgentOrUser` (the first non-serving state an agent can fix itself);
+        `rex site start|stop <domain>`, whose output says every time that it is not
+        `rex stop`
   - [ ] T9 — docs + a fixture-owned live check (neighbour still 200, stopped site 503)
 
 - [x] **Laravel mail escaped the catch-all entirely** ✓ 4 Sep 2026 — reported by a

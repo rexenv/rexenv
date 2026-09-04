@@ -98,6 +98,8 @@ COMMANDS:
   site xdebug <domain> on|off        Toggle the site's Xdebug debug pool
   site server <domain> nginx|frankenphp|apache   Switch the web server
   site restart <domain> [--pool]     Restart the site's own backend (--pool also bounces its shared PHP pool)
+  site start <domain>                Serve this site again
+  site stop <domain>                 Stop serving THIS site (the shared server and PHP pools keep running)
   site domains <domain> [--add N | --remove N]   Extra hostnames the site answers on
   service restart <nginx|edge|php-8.3>           Bounce one web-tier service on a fresh config
   site rename <domain> <name>        Display name only (domain unchanged)
@@ -710,6 +712,8 @@ fn main() {
             Some("xdebug") => cmd_site_xdebug(&words[2..], json_output),
             Some("server") => cmd_site_server(&words[2..], json_output),
             Some("restart") => cmd_site_restart(&words[2..], json_output),
+            Some("start") => cmd_site_enabled(&words[2..], true, json_output),
+            Some("stop") => cmd_site_enabled(&words[2..], false, json_output),
             Some("domains") => cmd_site_domains(&words[2..], json_output),
             Some("rename") => cmd_site_rename(&words[2..], json_output),
             Some("domain") => cmd_site_domain(&words[2..], json_output),
@@ -1799,7 +1803,7 @@ fn cmd_repo(words: &[String], json_output: bool) {
 /// bash: rex completions bash > /usr/local/etc/bash_completion.d/rex
 fn cmd_completions(shell: Option<&str>) {
     const TOP: &str = "status start stop restart site wp repo php db service logs doctor mail tunnel tld blueprints config version completions help";
-    const SITE: &str = "list create delete info open login logs php xdebug server restart domains rename domain move relink retry env cert";
+    const SITE: &str = "list create delete info open login logs php xdebug server restart start stop domains rename domain move relink retry env cert";
     const DB: &str = "export import reset versions browse";
     const PHP: &str = "list default install uninstall settings";
     const WPA: &str = "plugin theme user search-replace cache-flush cron maintenance core";
@@ -1915,6 +1919,37 @@ fn cmd_site_domains(words: &[String], json_output: bool) {
         println!(
             "\nnote: WordPress sends visitors to {primary} — the extra names reach this site \
              and then redirect there."
+        );
+    }
+}
+
+/// `rex site start|stop <domain>` (v44).
+///
+/// Named `stop` rather than `disable` because it is the same verb the app's own
+/// button uses, and a CLI that renames the app's actions makes the two feel like
+/// different features. What it does not share with `rex stop` — which stops the
+/// whole stack — is said in the output every time, because the two words are one
+/// argument apart and the mistake is silent otherwise.
+fn cmd_site_enabled(words: &[String], enabled: bool, json_output: bool) {
+    let verb = if enabled { "start" } else { "stop" };
+    let site = find_site(words, &format!("rex site {verb} <domain>"));
+    let r = request("site.enabled", json!({ "id": site["id"], "enabled": enabled }));
+    if json_output {
+        return print_json(&r);
+    }
+    let domain = site["domain"].as_str().unwrap_or("?").to_string();
+    // The backend's own words when it has something to say (a started site that
+    // still is not serving); otherwise the fact plus its blast radius.
+    if let Some(note) = r["note"].as_str() {
+        println!("{note}");
+        return;
+    }
+    if enabled {
+        println!("started {domain} — https://{domain} is serving again");
+    } else {
+        println!(
+            "stopped {domain} — https://{domain} now answers \"site stopped\"\n\
+             your other sites keep running (this is not `rex stop`, which stops the whole stack)"
         );
     }
 }

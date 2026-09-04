@@ -1001,6 +1001,12 @@ impl<Rt: tauri::Runtime> user_sites::SiteOps for AppSiteCreator<Rt> {
     fn set_xdebug<'a>(&'a self, id: String, enabled: bool) -> user_sites::OpFuture<'a, crate::error::Result<Option<crate::state::models::Site>>> {
         Box::pin(async move { crate::commands::sites::set_site_xdebug(self.state()?, id, enabled).await })
     }
+    fn set_enabled<'a>(&'a self, id: String, enabled: bool) -> user_sites::OpFuture<'a, crate::error::Result<Option<crate::commands::sites::SiteEnabledReport>>> {
+        // The mechanism, NOT `set_site_enabled`: the Tauri command promotes a
+        // scratch site, so an agent could adopt its own disposable site by
+        // stopping and starting it — a cap bypass with a very plausible face.
+        Box::pin(async move { crate::commands::sites::set_enabled(self.state()?.inner(), &id, enabled).await })
+    }
     fn list_env<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<Vec<crate::commands::sites::EnvVarInput>>> {
         Box::pin(async move { crate::commands::sites::list_site_env(self.state()?, id) })
     }

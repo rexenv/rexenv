@@ -722,7 +722,11 @@ static REGISTRY: &[UserTool] = &[
         description: "Change how one of the user's own sites is set up — the things the site's \
                       Settings tab does. Takes `site_id` and `action`, plus the action's field: \
                       `rename` {name}; `php` {version, a minor like `8.3`}; `server` {server: \
-                      nginx / apache / frankenphp}; `xdebug` {enabled}; `env_set` {key, value} and \
+                      nginx / apache / frankenphp}; `xdebug` {enabled}; `enabled` {enabled: false stops serving \
+                      THIS site — no server block and a 503 at its address, while the shared web \
+                      server and PHP pools keep running for every other site; true serves it \
+                      again, and the reply says whether anything is actually answering}; \
+                      `env_set` {key, value} and \
                       `env_unset` {key} (per-request environment variables — values are never read \
                       back, only the names); `domain` {domain} (changes the primary hostname; on \
                       WordPress rexenv backs the database up to the user's Downloads first and \
@@ -789,12 +793,12 @@ fn configure_params() -> Value {
             "site_id": { "type": "string", "description": "The site's id (from list_sites)." },
             "action": {
                 "type": "string",
-                "enum": ["rename", "php", "server", "xdebug", "env_set", "env_unset", "domain", "add_domain", "remove_domain", "move", "relink", "regenerate_cert"]
+                "enum": ["rename", "php", "server", "xdebug", "env_set", "env_unset", "domain", "add_domain", "remove_domain", "move", "relink", "regenerate_cert", "enabled"]
             },
             "name": { "type": "string", "description": "rename: the new display name." },
             "version": { "type": "string", "description": "php: a minor like `8.3`." },
             "server": { "type": "string", "enum": ["nginx", "apache", "frankenphp"], "description": "server: the web server to switch to." },
-            "enabled": { "type": "boolean", "description": "xdebug: on or off." },
+            "enabled": { "type": "boolean", "description": "xdebug: on or off. enabled: true serves the site, false stops serving it." },
             "key": { "type": "string", "description": "env_set / env_unset: the variable's name." },
             "value": { "type": "string", "description": "env_set: the value." },
             "domain": { "type": "string", "description": "domain / add_domain / remove_domain: the hostname." },
@@ -909,6 +913,15 @@ pub trait SiteOps: Send + Sync {
     fn relink<'a>(&'a self, id: String, path: String) -> OpFuture<'a, Result<Site>>;
     fn regenerate_cert<'a>(&'a self, id: String) -> OpFuture<'a, Result<()>>;
     fn restart<'a>(&'a self, id: String, pool: bool) -> OpFuture<'a, Result<crate::commands::sites::SiteRestartReport>>;
+    /// Serve this site, or stop serving it (v44). The MECHANISM, never the
+    /// Tauri command: that one promotes a scratch site, and an agent that could
+    /// stop-and-start its way to adoption would be free of the disposable cap
+    /// (#214's trap, in its cheapest form yet).
+    fn set_enabled<'a>(
+        &'a self,
+        id: String,
+        enabled: bool,
+    ) -> OpFuture<'a, Result<Option<crate::commands::sites::SiteEnabledReport>>>;
     fn retry<'a>(&'a self, site_id: String) -> OpFuture<'a, Result<crate::commands::site_provision::SiteProvisionState>>;
 }
 
@@ -1481,6 +1494,7 @@ fn site_configure<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed:
             Move(String),
             Relink(String),
             RegenerateCert,
+            Enabled(bool),
         }
         let change = match action {
             "rename" => Change::Rename(str_field(args, "name", action)?.to_string()),
@@ -1510,10 +1524,19 @@ fn site_configure<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed:
             "move" => Change::Move(str_field(args, "dest_parent", action)?.to_string()),
             "relink" => Change::Relink(str_field(args, "path", action)?.to_string()),
             "regenerate_cert" => Change::RegenerateCert,
+            "enabled" => Change::Enabled(
+                args.get("enabled").and_then(Value::as_bool).ok_or_else(|| {
+                    Error::Other(
+                        "site_configure `enabled` needs `enabled` (true to serve the site, \
+                         false to stop serving it)."
+                            .into(),
+                    )
+                })?,
+            ),
             other => {
                 return Err(Error::Other(format!(
                     "`{other}` is not a site_configure action. Use one of: rename, php, server, xdebug, \
-                     env_set, env_unset, domain, add_domain, remove_domain, move, relink, regenerate_cert."
+                     env_set, env_unset, domain, add_domain, remove_domain, move, relink, regenerate_cert, enabled."
                 )))
             }
         };
@@ -1530,6 +1553,9 @@ fn site_configure<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed:
             Change::Move(_) => "move its folder".to_string(),
             Change::Relink(_) => "re-point it at a folder the user moved".to_string(),
             Change::RegenerateCert => "regenerate its certificate".to_string(),
+            Change::Enabled(on) => {
+                if *on { "start serving it".to_string() } else { "stop serving it".to_string() }
+            }
         };
         let claimed = ctx.claim::<scope::Manage>(Some(id), &wanted)?;
         let site = claimed.granted.site().cloned().ok_or_else(|| Error::Other("site_configure needs a site, not the stack.".into()))?;
@@ -1596,6 +1622,20 @@ fn site_configure<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed:
             Change::RegenerateCert => {
                 ops.regenerate_cert(id.clone()).await?;
                 extra.insert("certificate".into(), json!("reissued"));
+            }
+            Change::Enabled(on) => {
+                let report = ops.set_enabled(id.clone(), on).await?;
+                // The honest pair, both from the app: what was recorded, and
+                // whether anything is actually answering. An agent that reported
+                // "started" off the switch alone would tell the user their site
+                // is up while the browser gets a 503 — the same failure the UI
+                // is built to avoid, arriving through a different door.
+                if let Some(r) = report {
+                    extra.insert("serving".into(), json!(r.serving));
+                    if let Some(note) = r.note {
+                        extra.insert("note".into(), json!(note));
+                    }
+                }
             }
         }
         let mut value = site_after(&ctx, &id)?;
@@ -3302,6 +3342,21 @@ pub(crate) mod tests {
             self.calls.lock().unwrap().push(format!("xdebug {id} {enabled}"));
             Box::pin(async { Ok(None) })
         }
+        fn set_enabled<'a>(
+            &'a self,
+            id: String,
+            enabled: bool,
+        ) -> OpFuture<'a, Result<Option<crate::commands::sites::SiteEnabledReport>>> {
+            self.calls.lock().unwrap().push(format!("enabled {id} {enabled}"));
+            Box::pin(async move {
+                Ok(Some(crate::commands::sites::SiteEnabledReport {
+                    enabled,
+                    serving: enabled,
+                    note: None,
+                    own_backend: false,
+                }))
+            })
+        }
         fn list_env<'a>(&'a self, _id: String) -> OpFuture<'a, Result<Vec<crate::commands::sites::EnvVarInput>>> {
             let env = self.env.lock().unwrap().clone();
             Box::pin(async move { Ok(env) })
@@ -3972,6 +4027,15 @@ pub(crate) mod tests {
         run(with("rename", "name", json!("Mine"))).await.unwrap();
         run(with("server", "server", json!("frankenphp"))).await.unwrap();
         run(with("xdebug", "enabled", json!(true))).await.unwrap();
+        // The per-site switch (v44) rides the same `manage` claim — and its
+        // reply carries what actually happened, not the switch echoed back: an
+        // agent telling the user "started" off the flag alone would be claiming
+        // a site is up that the browser answers 503 for.
+        let v = run(with("enabled", "enabled", json!(false))).await.unwrap();
+        assert_eq!(v["action"], "enabled");
+        assert_eq!(v["serving"], json!(false));
+        let err = run(json!({ "site_id": mine.id, "action": "enabled" })).await.unwrap_err().to_string();
+        assert!(err.contains("needs `enabled`"), "{err}");
         let v = run(with("add_domain", "domain", json!("ALSO.rex"))).await.unwrap();
         assert_eq!(v["domains"], json!(["mine.rex", "also.rex"]), "lower-cased, and the whole list comes back");
         run(with("remove_domain", "domain", json!("also.rex"))).await.unwrap();

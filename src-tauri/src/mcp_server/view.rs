@@ -49,6 +49,11 @@ pub struct AgentSiteView {
     /// The docroot is a folder the USER owns (linked or imported): rexenv never
     /// writes into it, `move` refuses it, and deleting the site leaves it.
     pub linked: bool,
+    /// The user STOPPED this site (v44): it is served by nothing and its address
+    /// answers 503, whatever the stack is doing. Distinct from `serving` because
+    /// the reason changes the next move — `site_configure {action: "enabled"}`
+    /// starts this one, while a stack that is down is the user's to start.
+    pub stopped: bool,
 }
 
 impl AgentSiteView {
@@ -70,6 +75,7 @@ impl AgentSiteView {
             aliases,
             setup_complete: s.provisioned,
             linked: s.docroot_managed == Some(false),
+            stopped: !s.enabled,
         }
     }
 }
@@ -101,6 +107,8 @@ pub enum ServingVerdict {
     BackendDown,
     /// The site's setup didn't finish, or it has no working route yet.
     SetupIncomplete,
+    /// The user stopped THIS site (v44) — everything else is fine.
+    StoppedByUser,
     /// A non-rexenv server holds :443.
     EdgeBlocked,
     /// Nothing is serving on :443 (the stack looks stopped).
@@ -117,6 +125,12 @@ pub enum ServingVerdict {
 pub enum Resolution {
     /// Nothing to resolve — it is serving.
     None,
+    /// Either can do it: the agent has a tool for it (with the user's
+    /// permission), and the user has a button. Added with the per-site switch
+    /// (v44) — the first non-serving state in this list an agent can actually
+    /// resolve, and folding it into `UserActionInRexenv` would tell a model to
+    /// go and ask for something it is holding.
+    AgentOrUser,
     /// A human action in the rexenv app (start the stack, resolve a port
     /// conflict, retry setup). An AGENT CANNOT do this.
     UserActionInRexenv,
@@ -131,7 +145,11 @@ impl ServingSignals {
     /// probe's scope (what it can't tell), and who resolves it. Pure (takes the
     /// one `Site` fact it needs, `provisioned`), so it is unit-testable without
     /// any I/O or a `Site` fixture.
-    pub fn classify(&self, provisioned: bool) -> (ServingVerdict, String, Resolution) {
+    pub fn classify(
+        &self,
+        provisioned: bool,
+        enabled: bool,
+    ) -> (ServingVerdict, String, Resolution) {
         use Resolution::*;
         use ServingVerdict::*;
         // 1) Our edge isn't answering for this host (a 204 marker probe the edge
@@ -153,7 +171,20 @@ impl ServingSignals {
                  UserActionInRexenv)
             };
         }
-        // 2) Edge is up and ours. Setup that never finished is the reason first.
+        // 2) The user stopped THIS site. Checked before the backend, and before
+        //    setup, because it is the most specific true thing: everything else
+        //    on the machine is fine and the switch is one call away. Reported as
+        //    BackendDown it would send the agent (or the user) at the stack.
+        if !enabled {
+            return (StoppedByUser,
+                "This site is stopped in rexenv — nothing serves it and its address answers \
+                 \"site stopped\". Nothing else is wrong: rexenv's services and every other site \
+                 are unaffected. Start it with site_configure {action: \"enabled\", enabled: \
+                 true} (needs the user's `manage` permission), or the user can start it from the \
+                 Sites list.".into(),
+                AgentOrUser);
+        }
+        // 3) Edge is up and ours. Setup that never finished is the reason first.
         if !provisioned {
             return (SetupIncomplete,
                 "This site's setup didn't finish (it's marked incomplete) — retry or delete it in \
@@ -161,7 +192,7 @@ impl ServingSignals {
                  partially.".into(),
                 UserActionInRexenv);
         }
-        // 3) Edge up + provisioned: is the site's own backend up, per the stack's
+        // 4) Edge up + provisioned: is the site's own backend up, per the stack's
         //    state? (Read from service_infos — NOT by requesting the site.)
         if self.serving_manager {
             (Serving,
@@ -202,7 +233,7 @@ pub struct AgentSiteStatus {
 
 impl AgentSiteStatus {
     pub fn from_signals(site: &Site, signals: &ServingSignals) -> Self {
-        let (verdict, detail, resolution) = signals.classify(site.provisioned);
+        let (verdict, detail, resolution) = signals.classify(site.provisioned, site.enabled);
         AgentSiteStatus {
             id: site.id.clone(),
             domain: site.domain.clone(),
@@ -488,16 +519,21 @@ mod tests {
             aliases: vec![],
             setup_complete: true,
             linked: false,
+            stopped: false,
         };
         let json = serde_json::to_value(&v).expect("serialise");
         let keys: BTreeSet<&str> =
             json.as_object().expect("object").keys().map(String::as_str).collect();
         // Widened with MCP parity (3 Sep 2026): owner / multisite / xdebug /
         // aliases / setupComplete / linked — each a fact an agent needs to pick
-        // the right tool, none a path or a name of anything on disk.
+        // the right tool, none a path or a name of anything on disk. Widened
+        // again with the per-site switch (v44): `stopped` says the USER stopped
+        // this site, which `serving: false` alone cannot — and the difference
+        // decides whether the next move is one tool call or a request to a human.
         let expected: BTreeSet<&str> = [
             "id", "domain", "name", "type", "phpVersion", "webServer", "serving",
             "owner", "multisite", "xdebug", "aliases", "setupComplete", "linked",
+            "stopped",
         ]
         .into_iter()
         .collect();
@@ -519,14 +555,38 @@ mod tests {
     fn classify_keeps_the_failures_distinct_never_collapsing_to_not_serving() {
         use ServingVerdict::*;
         // edge down (nothing on :443) vs edge blocked (a foreign server on :443)
-        assert_eq!(sig(false, false, false).classify(true).0, EdgeDown);
-        assert_eq!(sig(false, true, false).classify(true).0, EdgeBlocked);
+        assert_eq!(sig(false, false, false).classify(true, true).0, EdgeDown);
+        assert_eq!(sig(false, true, false).classify(true, true).0, EdgeBlocked);
         // edge up + provisioned: backend up (per the stack's own state) = serving;
         // backend down = BackendDown — distinct, different owners.
-        assert_eq!(sig(true, true, true).classify(true).0, Serving);
-        assert_eq!(sig(true, true, false).classify(true).0, BackendDown);
+        assert_eq!(sig(true, true, true).classify(true, true).0, Serving);
+        assert_eq!(sig(true, true, false).classify(true, true).0, BackendDown);
         // setup incomplete beats the backend state, even with the edge up.
-        assert_eq!(sig(true, true, true).classify(false).0, SetupIncomplete);
+        assert_eq!(sig(true, true, true).classify(false, true).0, SetupIncomplete);
+
+        // **A site the user stopped is its own verdict, and it outranks both.**
+        // Reported as BackendDown it would send a model at the stack ("this
+        // site's backend isn't running") when the stack is fine and one call
+        // fixes it; reported as SetupIncomplete it would suggest a Retry that
+        // has nothing to finish. It is also the ONE non-serving state an agent
+        // can resolve itself, which is why its resolution differs.
+        let (verdict, detail, resolution) = sig(true, true, false).classify(true, false);
+        assert_eq!(verdict, StoppedByUser);
+        assert_eq!(resolution, Resolution::AgentOrUser, "this one the agent CAN fix");
+        assert!(detail.contains("site_configure"), "the detail must name the way out: {detail}");
+        assert!(
+            detail.contains("other site") || detail.contains("unaffected"),
+            "the detail must say nothing else is broken, or the model goes looking: {detail}"
+        );
+        // It wins over both neighbours: a stopped site whose backend happens to
+        // be up, and a stopped site whose setup never finished.
+        assert_eq!(sig(true, true, true).classify(true, false).0, StoppedByUser);
+        assert_eq!(sig(true, true, true).classify(false, false).0, StoppedByUser);
+        // …but never over an edge that is down or foreign: those are true of
+        // every site on the machine, and naming this one would be a smaller
+        // truth in front of a bigger one.
+        assert_eq!(sig(false, false, false).classify(true, false).0, EdgeDown);
+        assert_eq!(sig(false, true, false).classify(true, false).0, EdgeBlocked);
     }
 
     #[test]
@@ -539,7 +599,7 @@ mod tests {
             (sig(true, true, false), true),   // backend down
             (sig(true, true, false), false),  // setup incomplete
         ] {
-            let (verdict, detail, resolution) = s.classify(prov);
+            let (verdict, detail, resolution) = s.classify(prov, true);
             assert_ne!(verdict, ServingVerdict::Serving);
             assert_eq!(resolution, Resolution::UserActionInRexenv, "an agent can't fix infra");
             assert!(detail.contains("rexenv"), "{detail}");
@@ -547,7 +607,7 @@ mod tests {
         }
         // The Serving verdict itself states it did NOT run the site (Option A) and
         // points at tail_log for the site's own render errors.
-        let (v, detail, _) = sig(true, true, true).classify(true);
+        let (v, detail, _) = sig(true, true, true).classify(true, true);
         assert_eq!(v, ServingVerdict::Serving);
         assert!(detail.contains("requesting the site"), "must state it didn't run the site: {detail}");
         assert!(detail.contains("tail_log"), "{detail}");
