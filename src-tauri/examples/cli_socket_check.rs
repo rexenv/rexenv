@@ -67,7 +67,7 @@ async fn main() {
     let state = AppState::new(conn, platform, ca);
     let adopted = {
         let mut mgr = state.services.lock().await;
-        mgr.adopt_startup(state.platform.as_ref(), &sites)
+        mgr.adopt_startup(state.platform.as_ref(), &sites, true)
     };
     println!("adopted {adopted} running service(s) (guard closed — nothing stoppable)");
     app.manage(state);

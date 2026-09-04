@@ -23,6 +23,14 @@ pub struct PtyConfig {
     pub shell: String,
     /// Directories prepended to `PATH` (bundled PHP dir, the `wp` wrapper dir, …).
     pub path_prepend: Vec<PathBuf>,
+    /// Extra variables set on the shell, ON TOP of the inherited environment —
+    /// today the mail catch-all's `MAIL_*` (`core::laravel::mail_env`), so
+    /// `php artisan` typed in rexenv's own terminal reaches Mailpit the same way
+    /// a page request does. Empty when the user has turned the catch-all off.
+    ///
+    /// Applied AFTER the inherited vars and before `PATH`/`TERM`, so a value
+    /// here wins over whatever the parent process happened to be started with.
+    pub env: Vec<(String, String)>,
     pub rows: u16,
     pub cols: u16,
 }
@@ -63,6 +71,9 @@ impl TerminalSession {
         cmd.cwd(&cfg.cwd);
         // Inherit the full parent environment, then override PATH + TERM.
         for (k, v) in std::env::vars() {
+            cmd.env(k, v);
+        }
+        for (k, v) in &cfg.env {
             cmd.env(k, v);
         }
         cmd.env("PATH", &new_path);

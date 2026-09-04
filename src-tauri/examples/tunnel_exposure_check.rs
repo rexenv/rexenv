@@ -223,7 +223,7 @@ async fn main() {
     let ports = Ports { http: 8080, https: HTTPS, nginx: services::NGINX_HTTP_PORT };
     let mut mgr = ServiceManager::with_ports(ports);
     let minors = corephp::installed_minors(&conn).expect("php minors");
-    let start = mgr.start_all(&*plat, &ca, &all, &minors, binaries::ADMINER_VERSION).await;
+    let start = mgr.start_all(&*plat, &ca, &all, &minors, binaries::ADMINER_VERSION, true).await;
     // Handed over BEFORE the result is inspected: a partial start leaves
     // children running, and `fail` must be able to stop them.
     *STACK.lock().expect("stack slot") = Some(mgr);

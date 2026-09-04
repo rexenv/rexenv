@@ -35,7 +35,7 @@ async fn main() {
                 "precondition: phase1's mysqld should still be running"
             );
             let mut mgr = ServiceManager::default();
-            let adopted = mgr.adopt_startup(&*plat, &[]);
+            let adopted = mgr.adopt_startup(&*plat, &[], true);
             println!("phase2: adopted {adopted} service(s)");
             assert!(adopted >= 1, "should adopt at least the surviving mysqld");
             let infos = mgr.status(&*plat, &[]);

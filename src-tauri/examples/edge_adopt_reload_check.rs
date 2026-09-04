@@ -68,7 +68,7 @@ async fn main() {
 
     // Fresh manager, like an app relaunch: adopt the survivors (wires `bins`).
     let mut mgr = ServiceManager::default();
-    let adopted = mgr.adopt_startup(&*plat, &[]);
+    let adopted = mgr.adopt_startup(&*plat, &[], true);
     println!("adopted {adopted} service(s)");
     assert!(adopted > 0, "expected to adopt at least the edge");
 

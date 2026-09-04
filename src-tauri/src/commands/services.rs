@@ -61,7 +61,8 @@ fn kind_of(name: &str) -> &'static str {
 type PhpSettingsMap = std::collections::HashMap<String, Vec<(String, String)>>;
 
 /// Snapshot the site list + installed PHP minors + per-version ini settings +
-/// per-site env vars (locking the DB briefly, never across `.await`).
+/// per-site env vars + the mail catch-all (locking the DB briefly, never across
+/// `.await`).
 #[allow(clippy::type_complexity)] // one snapshot tuple, unpacked immediately
 fn start_inputs(
     state: &State<'_, AppState>,
@@ -74,6 +75,7 @@ fn start_inputs(
     std::collections::HashMap<crate::core::db::DbEngine, String>,
     std::collections::HashMap<String, String>,
     String,
+    bool,
 )> {
     let conn = state
         .db
@@ -97,14 +99,19 @@ fn start_inputs(
     // planner and the stager must agree, or login-start's offline guard clears a
     // start against a plan for bytes nobody stages (ledger #175).
     let adminer_version = core::adminer::effective_version(state.platform.as_ref(), &conn);
-    Ok((sites, minors, php_settings, site_env, site_aliases, db_versions, php_patches, adminer_version))
+    // Read HERE with everything else rather than deeper down, for the snapshot
+    // rule above and because the pool manager must never touch SQLite: whether
+    // a site's mail is caught is a user setting, and the pools that are about to
+    // be written have to agree with the one the user last chose.
+    let catch_mail = core::mail::catch_all_enabled(&conn);
+    Ok((sites, minors, php_settings, site_env, site_aliases, db_versions, php_patches, adminer_version, catch_mail))
 }
 
 /// Start the shared stack (MySQL + a php-fpm pool per installed PHP version +
 /// Nginx + Caddy). Downloads binaries on first run; gated on free ports.
 #[tauri::command]
 pub async fn start_services(state: State<'_, AppState>) -> Result<()> {
-    let (sites, php_minors, php_settings, site_env, site_aliases, db_versions, php_patches, adminer_version) =
+    let (sites, php_minors, php_settings, site_env, site_aliases, db_versions, php_patches, adminer_version, catch_mail) =
         start_inputs(&state)?;
     // Phase 0 (UNLOCKED): plan the full binary set, then prefetch every missing
     // one through the download hub — real progress events for the UI, EVERY
@@ -131,7 +138,7 @@ pub async fn start_services(state: State<'_, AppState>) -> Result<()> {
         mgr.set_site_env(site_env);
         mgr.set_site_aliases(site_aliases);
         mgr.set_db_versions(db_versions);
-        mgr.start_core(state.platform.as_ref(), &state.ca, &sites, &php_minors, &adminer_version)
+        mgr.start_core(state.platform.as_ref(), &state.ca, &sites, &php_minors, &adminer_version, catch_mail)
             .await?
     };
     // Phase 2 (UNLOCKED): await readiness concurrently — a slow MySQL/Mailpit/
@@ -274,7 +281,7 @@ pub async fn auto_start_services(app: tauri::AppHandle) {
 /// `Ok(None)` = everything started; `Ok(Some(note))` = started with a caveat
 /// (edge skipped); `Err` = aborted (nothing/partial started, reason inside).
 async fn auto_start_inner(state: &State<'_, AppState>) -> Result<Option<String>> {
-    let (sites, php_minors, php_settings, site_env, site_aliases, db_versions, php_patches, adminer_version) =
+    let (sites, php_minors, php_settings, site_env, site_aliases, db_versions, php_patches, adminer_version, catch_mail) =
         start_inputs(state)?;
     // Guard 1: strictly offline. Every needed binary must already be cached
     // (the decision fn lives in core::downloads with its own test).
@@ -308,7 +315,7 @@ async fn auto_start_inner(state: &State<'_, AppState>) -> Result<Option<String>>
         mgr.set_site_env(site_env);
         mgr.set_site_aliases(site_aliases);
         mgr.set_db_versions(db_versions);
-        mgr.start_core(state.platform.as_ref(), &state.ca, &sites, &php_minors, &adminer_version).await?
+        mgr.start_core(state.platform.as_ref(), &state.ca, &sites, &php_minors, &adminer_version, catch_mail).await?
     };
     core::service_manager::await_ready(checks).await?;
     let plan = {

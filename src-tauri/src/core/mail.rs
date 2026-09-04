@@ -196,6 +196,32 @@ pub fn laravel_env() -> Vec<(&'static str, String)> {
     ]
 }
 
+/// Everything a php-fpm pool needs in order to catch its sites' mail — the
+/// `mail()` shim and the Laravel environment, as ONE value.
+///
+/// One value rather than two setters because they are one fact. A pool that
+/// received the shim and not the environment would catch WordPress and deliver
+/// Laravel; a pool that received the environment while the catch-all was off
+/// would hijack mail the user had just asked to be sent for real. Both are
+/// reachable through two independent setters and neither is reachable through
+/// this.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Catch {
+    /// `php_admin_value[sendmail_path]` — PHP's own `mail()`, which is what
+    /// WordPress uses when nothing has replaced PHPMailer's transport.
+    pub sendmail_path: String,
+    /// `env[…]` — the variables a Laravel app cannot outvote from `.env`.
+    pub env: Vec<(&'static str, String)>,
+}
+
+/// The catch for a given Mailpit binary, or `None` when the user has turned the
+/// catch-all off — in which case a pool gets NEITHER half, and a site's mail
+/// leaves exactly as the site configured it.
+pub fn catch_for(mailpit_bin: Option<&Path>, enabled: bool) -> Option<Catch> {
+    let bin = mailpit_bin.filter(|_| enabled)?;
+    Some(Catch { sendmail_path: sendmail_path(bin), env: laravel_env() })
+}
+
 /// Start the Mailpit server (loopback SMTP + HTTP, persistent DB) via
 /// `ProcessSupervisor`; stdout/stderr go to a per-service log.
 pub fn start(platform: &dyn Platform, mailpit_bin: &Path) -> Result<Child> {

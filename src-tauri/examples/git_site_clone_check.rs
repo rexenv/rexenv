@@ -44,7 +44,7 @@
 //! Everything written lives under this example's own temp root or the sandbox
 //! app-data root; nothing is derived from the real `Paths` (examples/common).
 
-use rexenv_lib::core::{devtools, dotenv, laravel, repo, sites, ssl};
+use rexenv_lib::core::{devtools, dotenv, laravel, mail, repo, sites, ssl};
 use rexenv_lib::state::db;
 use rexenv_lib::state::models::{NewSite, SiteDbEngine, SiteType, WebServer};
 use std::path::{Path, PathBuf};
@@ -283,19 +283,31 @@ fn main() {
             username: "root".into(),
             password: String::new(),
         },
+        true,
     );
     std::fs::write(laravel::env_path(&docroot), &wired).expect("write .env");
-    for want in ["DB_CONNECTION=mysql", "DB_DATABASE=lv_shop_rex", "APP_URL=https://shop.rex", "MAIL_MAILER=log"] {
-        if !wired.contains(want) {
-            ok = fail(&format!(".env is missing {want}"));
+    // `MAIL_MAILER=log` used to be asserted here as "the example's own keys
+    // survive". That reading was the bug (ledger #504): a cloned app whose
+    // `.env` says `log` — or names a real SMTP provider — must still land its
+    // mail in Mailpit, and the file half is what makes the catch survive
+    // `php artisan config:cache`.
+    let mut want: Vec<String> = vec![
+        "DB_CONNECTION=mysql".into(),
+        "DB_DATABASE=lv_shop_rex".into(),
+        "APP_URL=https://shop.rex".into(),
+    ];
+    want.extend(mail::laravel_env().into_iter().map(|(k, v)| format!("{k}={v}")));
+    for w in &want {
+        if !wired.contains(w.as_str()) {
+            ok = fail(&format!(".env is missing {w}"));
         }
     }
-    for unwanted in ["sqlite", "# DB_", "http://localhost"] {
+    for unwanted in ["sqlite", "# DB_", "http://localhost", "MAIL_MAILER=log"] {
         if wired.contains(unwanted) {
             ok = fail(&format!(".env still contains {unwanted:?} — a second answer for a key"));
         }
     }
-    println!("   .env wired, the example's own MAIL_MAILER survived");
+    println!("   .env wired, and its mail points at Mailpit whatever the repo shipped");
 
     // ── 3. A non-empty docroot is refused, and nothing is deleted ───────
     println!("\n=== 3. a docroot with contents is refused ===");

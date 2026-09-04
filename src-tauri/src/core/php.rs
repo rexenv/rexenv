@@ -735,10 +735,12 @@ fn pool_fate(master: MasterSight, serving: bool, starting: bool, misses: u32) ->
 #[derive(Default)]
 pub struct PhpFpmPools {
     pools: Vec<Pool>,
-    /// `php_admin_value[sendmail_path]` baked into every pool's config so site PHP
-    /// `mail()` is routed to Mailpit (§2.2). Set by `ServiceManager` once Mailpit's
-    /// binary is resolved; `None` ⇒ pools use PHP's default sendmail.
-    sendmail_path: Option<String>,
+    /// The mail catch-all baked into every pool's config so a site's mail — PHP
+    /// `mail()` via the shim, a Laravel app via `env[MAIL_*]` — lands in Mailpit
+    /// (§2.2). Set by `ServiceManager` once Mailpit's binary is resolved; `None`
+    /// ⇒ pools mail exactly as each site is configured to, which is what the
+    /// user asked for when they turned the catch-all off.
+    catch: Option<super::mail::Catch>,
     /// Per-minor ini settings (whitelisted, pre-validated — see [`SETTINGS`])
     /// written as `php_value[key]` lines into that pool's config. Set by
     /// `ServiceManager` from the SQLite `php_settings` table.
@@ -773,14 +775,18 @@ impl PhpFpmPools {
     pub fn set_patches(&mut self, patches: std::collections::HashMap<String, String>) {
         self.patches = patches;
     }
-    /// Set the mail-routing shim used when (re)writing pool configs. Applies to
+    /// Set the mail catch-all used when (re)writing pool configs. Applies to
     /// pools started afterward (a running pool keeps its config until restarted).
-    pub fn set_sendmail_path(&mut self, sendmail_path: Option<String>) {
-        self.sendmail_path = sendmail_path;
+    ///
+    /// ONE setter for both halves on purpose: see [`super::mail::Catch`] — a
+    /// pool holding the shim but not the environment catches WordPress and
+    /// delivers Laravel, which is the bug this whole path exists to end.
+    pub fn set_mail_catch(&mut self, catch: Option<super::mail::Catch>) {
+        self.catch = catch;
     }
 
     /// Set the per-minor ini settings used when (re)writing pool configs. Like
-    /// the sendmail shim, applies to pools started afterward — the caller
+    /// the mail catch-all, applies to pools started afterward — the caller
     /// restarts an affected running pool to make new values live.
     pub fn set_settings(
         &mut self,
@@ -806,7 +812,7 @@ impl PhpFpmPools {
             platform,
             minor,
             port,
-            self.sendmail_path.as_deref(),
+            self.catch.as_ref(),
             settings,
         )?;
         let child = services::start_fpm(platform, &bin, &conf)?;
@@ -847,7 +853,7 @@ impl PhpFpmPools {
             platform,
             &format!("{minor}-debug"),
             port,
-            self.sendmail_path.as_deref(),
+            self.catch.as_ref(),
             settings,
         )?;
         let child = services::start_fpm_xdebug(platform, &bin, &conf, &so)?;

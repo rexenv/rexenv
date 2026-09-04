@@ -35,6 +35,34 @@ paying for anyway: **the tick belongs in the commit that does the work.**
 
 ## Now — actionable code/test work
 
+- [x] **Laravel mail escaped the catch-all entirely** ✓ 4 Sep 2026 — reported by a
+  user, reproduced on the dev Mac's own Laravel site, ledger #504. `sendmail_path`
+  catches PHP's `mail()`; Laravel's sendmail transport never reads php.ini
+  (`config/mail.php`: `env('MAIL_SENDMAIL_PATH', '/usr/sbin/sendmail -bs -i')`), so
+  `MAIL_MAILER=sendmail` + `Mail::raw(...)` exited 0, reported success and delivered
+  NOTHING to Mailpit. The catch is `env[MAIL_*]` — Laravel's Dotenv repository is
+  immutable, so a process variable beats the app's own `.env` — carried by the pool,
+  the MCP artisan runner, provisioning and the in-app terminal, plus the `.env` itself
+  for the `config:cache` case. Switch: `mail.catch_all`, absent-as-ON.
+  **Two things only the live run could have told us**, both now pinned by assertions:
+  rexenv's watchdog rewrites a pool config out from under an edit (so the fixture had
+  to be an isolated php-fpm on a spare port, queried by a hand-written FastCGI
+  client), and php-fpm's ini parser reads a bare `null` as the empty string — an
+  unquoted `env[MAIL_URL] = null` is `ERROR: empty value` and the pool never starts.
+
+- [ ] **The same escape exists for WordPress and is NOT fixed yet** (found 4 Sep 2026
+  while proving the row above). A WP site with an SMTP plugin configured — WP Mail
+  SMTP, FluentSMTP, anything hooking `phpmailer_init` and calling `isSMTP()` — opens
+  its own socket, and `sendmail_path` never sees it. Measured on `new.rex` through
+  rexenv's own CLI shim: plain `wp_mail()` → Mailpit; the same call with the site
+  setting `isSMTP()` → nothing in Mailpit. So the ARCHITECTURE promise "every site's
+  mail is CAUGHT, never delivered" is still false for any SMTP-configured WP site.
+  The fix is measured and works: an auto-installed mu-plugin hooking `phpmailer_init`
+  at `PHP_INT_MAX` (so it runs LAST) and calling `isMail()` to force the transport
+  back — verified live, `wp_mail` true, message in Mailpit. Note it is the DELIBERATE
+  inverse of `wp_mailtag`'s fail-closed priority rule, so it needs its own ledger row
+  saying why this one is allowed to win.
+
 - [ ] **~16 flag-taking `rex` commands still ignore what they do not recognise**
   (3 Sep 2026, ledger #463/#466). Done: `site create`, `wp search-replace`,
   `site delete`, `db reset`, `db import`.

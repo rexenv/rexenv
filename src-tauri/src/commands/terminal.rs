@@ -61,12 +61,15 @@ pub async fn terminal_open(
     let minor = php::minor_of(&site.php_version);
     // The patch the site's POOL runs, not the pin. `php -v` in a site's own
     // terminal disagreeing with the site it belongs to is the whole bug.
-    let patch = {
+    let (patch, mail_env) = {
         let conn = state
             .db
             .lock()
             .map_err(|_| Error::Other("database lock poisoned".into()))?;
-        php::patch_to_run(&conn, &minor)?
+        // The catch-all's terminal half. `php artisan` typed here is the most
+        // likely way a developer makes a Laravel site send mail, and it would
+        // otherwise be the one surface that still delivered it for real.
+        (php::patch_to_run(&conn, &minor)?, crate::core::laravel::mail_env(&conn))
     };
 
     let platform = state.platform.as_ref();
@@ -98,6 +101,7 @@ pub async fn terminal_open(
             cwd,
             shell,
             path_prepend: vec![php_dir, wp_dir],
+            env: mail_env,
             rows,
             cols,
         },

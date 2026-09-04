@@ -1,6 +1,11 @@
 //! QA P0-3 check: PHP `mail()` still reaches Mailpit after the pool is
 //! restarted by a settings edit in an ADOPTED session.
 //!
+//! Since 4 Sep 2026 it holds BOTH halves of the catch-all: the `sendmail_path`
+//! shim (WordPress's `mail()`) and `env[MAIL_*]` (Laravel, which never reads
+//! php.ini for its transport — ledger #504). They travel as one value, so a
+//! restart that kept one and lost the other is the failure worth catching.
+//!
 //! The bug: only `start_all` derived the Mailpit sendmail shim into the pools'
 //! session state — a session that ADOPTED a running stack had `None`, so any
 //! pool restart (settings edit, patch bump, watchdog respawn) rewrote that
@@ -90,9 +95,9 @@ async fn main() {
     let minors = vec![MINOR.to_string()];
     // Mirror real app boot: adopt rexenv-owned survivors (e.g. a MySQL that
     // outlived a quit app) so the port gates see them as ours.
-    let pre = a.adopt_startup(&*plat, &all);
+    let pre = a.adopt_startup(&*plat, &all, true);
     println!("session A: adopted {pre} survivor(s), starting core stack…");
-    match a.start_core(&*plat, &ca, &all, &minors, binaries::ADMINER_VERSION).await {
+    match a.start_core(&*plat, &ca, &all, &minors, binaries::ADMINER_VERSION, true).await {
         Ok((_caddyfile, checks)) => await_ready(checks).await.expect("core stack ready"),
         Err(e) => {
             eprintln!("start_core failed: {e}");
@@ -104,7 +109,7 @@ async fn main() {
     //    (A's handles are dropped without stopping anything, like a quit app.)
     std::mem::forget(a);
     let mut b = ServiceManager::with_ports(ports.clone());
-    let adopted = b.adopt_startup(&*plat, &all);
+    let adopted = b.adopt_startup(&*plat, &all, true);
     println!("session B: adopted {adopted} service(s)");
     assert!(adopted > 0, "nothing adopted — stack not up?");
 
@@ -129,6 +134,17 @@ async fn main() {
         "sendmail_path DROPPED from {} after the adopted-session restart",
         conf.display()
     );
+    // BOTH halves, because the catch-all is one fact and a config carrying only
+    // the shim looks entirely correct while every Laravel site on this pool
+    // mails the real internet (ledger #504). Each key is checked, and QUOTED —
+    // a bare `null` is `ERROR: empty value` and the pool would not have started.
+    for (k, v) in mail::laravel_env() {
+        assert!(
+            conf_text.contains(&format!("env[{k}] = \"{v}\"")),
+            "env[{k}] DROPPED from {} after the adopted-session restart",
+            conf.display()
+        );
+    }
     assert!(conf_text.contains("memory_limit"), "new setting missing from config");
     println!("✓ {} keeps sendmail_path alongside the new setting", conf.display());
 

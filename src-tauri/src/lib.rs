@@ -514,7 +514,16 @@ pub fn run() {
                     let state = state::app::AppState::new(conn, platform, ca);
                     {
                         let mut mgr = tauri::async_runtime::block_on(state.services.lock());
-                        let adopted = mgr.adopt_startup(state.platform.as_ref(), &sites);
+                        // The catch-all as the user last left it: an adopted
+                        // session rewrites pool configs on the next restart, and
+                        // a hardcoded `true` here would re-enable catching for
+                        // someone who had deliberately turned it off.
+                        let catch_mail = {
+                            let conn = state.db.lock().expect("database lock poisoned");
+                            core::mail::catch_all_enabled(&conn)
+                        };
+                        let adopted =
+                            mgr.adopt_startup(state.platform.as_ref(), &sites, catch_mail);
                         if adopted > 0 {
                             log::info!("adopted {adopted} running service(s) from a prior session");
                         }

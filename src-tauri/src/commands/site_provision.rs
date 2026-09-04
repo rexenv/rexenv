@@ -907,6 +907,34 @@ fn phase_index(entry: &ProvisionEntry, key: &str) -> usize {
     snapshot(entry).phases.iter().position(|p| p.key == key).unwrap_or(0)
 }
 
+/// The login-shell env a Laravel provisioning step runs with, plus the mail
+/// catch-all (`core::laravel::mail_env`).
+///
+/// Composer sees these too and does not care. Artisan does: `migrate` on a
+/// cloned app can fire model events or seeders that send mail, and a
+/// provisioning run must not be the one path that reaches a real inbox because
+/// the repo shipped a `.env` naming the customer's SMTP provider.
+///
+/// Appended AFTER the shell's own vars so it wins — the same precedence the
+/// pool config relies on.
+fn with_mail_catch(state: &AppState, env: crate::commands::repo::EnvSnapshot) -> crate::commands::repo::EnvSnapshot {
+    let extra = match state.db.lock() {
+        Ok(conn) => core::laravel::mail_env(&conn),
+        // A poisoned lock is not a reason to mail the real world: fall back to
+        // catching, which is this subsystem's safe direction everywhere else.
+        Err(_) => core::mail::laravel_env()
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect(),
+    };
+    if extra.is_empty() {
+        return env;
+    }
+    let mut merged = (*env).clone();
+    merged.extend(extra);
+    std::sync::Arc::new(merged)
+}
+
 async fn drive<R: tauri::Runtime>(
     app: &AppHandle<R>,
     entry: &Arc<ProvisionEntry>,
@@ -1419,7 +1447,7 @@ async fn drive<R: tauri::Runtime>(
             })
             .await
             {
-                Ok(Ok(env)) => env,
+                Ok(Ok(env)) => with_mail_catch(&state, env),
                 Ok(Err(e)) => return JobEnd::Failed(e.to_string()),
                 Err(e) => return JobEnd::Failed(format!("env worker died: {e}")),
             }
@@ -1543,13 +1571,43 @@ async fn drive<R: tauri::Runtime>(
             password: String::new(),
         };
         let app_url = format!("https://{}", site.domain);
+        let catch_mail = match state.db.lock() {
+            Ok(conn) => core::mail::catch_all_enabled(&conn),
+            Err(_) => true,
+        };
         match std::fs::read_to_string(&env_file) {
             Ok(original) => {
-                let wired = core::laravel::wire_env(&original, &app_url, &db_settings);
+                // A cloned repo can ship a committed `.env` holding real
+                // credentials — a database password, an SMTP provider's key —
+                // and this rewrite replaces them. Keep the original beside it
+                // before writing: the values are not recoverable from anywhere
+                // else, and "rexenv overwrote my .env" is only a footnote if the
+                // file it overwrote is still sitting there.
+                //
+                // Written ONCE. A retry that overwrote the backup with the
+                // already-wired file would destroy the very thing it exists to
+                // preserve — the same set-once rule `mu_dir_created` follows.
+                let backup = project.join(".env.rexenv-backup");
+                if !backup.exists() {
+                    if let Err(e) = std::fs::write(&backup, &original) {
+                        log::warn!("laravel: could not back up {} : {e}", env_file.display());
+                    } else {
+                        append_line(app, entry, "kept the original .env as .env.rexenv-backup");
+                    }
+                }
+                let wired = core::laravel::wire_env(&original, &app_url, &db_settings, catch_mail);
                 if let Err(e) = std::fs::write(&env_file, wired) {
                     return JobEnd::Failed(format!("writing {} failed: {e}", env_file.display()));
                 }
-                append_line(app, entry, ".env wired to this site's database and URL");
+                append_line(
+                    app,
+                    entry,
+                    if catch_mail {
+                        ".env wired to this site's database, URL and the Mailpit catch-all"
+                    } else {
+                        ".env wired to this site's database and URL"
+                    },
+                );
             }
             // Both paths guarantee a `.env` by now — Composer's post-create
             // script on a new app, `ensure_env_file` on a clone — so a missing

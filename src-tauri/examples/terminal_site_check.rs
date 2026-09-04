@@ -68,6 +68,9 @@ async fn main() {
     let (tx, rx) = mpsc::channel::<Vec<u8>>();
     let session = TerminalSession::open(
         PtyConfig {
+            // The mail catch-all's terminal half; empty is the honest value for a
+            // probe that never sends mail.
+            env: Vec::new(),
             cwd: site.path.clone().into(),
             shell,
             path_prepend: vec![php_dir, wp_dir],

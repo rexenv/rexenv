@@ -61,7 +61,7 @@ async fn main() {
     // 3) adopt the running services, then stop_all — adopted survivors + the
     //    orphan sweep must be skipped; everything keeps serving.
     let mut mgr = ServiceManager::default();
-    let adopted = mgr.adopt_startup(&*plat, &[]);
+    let adopted = mgr.adopt_startup(&*plat, &[], true);
     println!("adopted {adopted} service(s)");
     mgr.stop_all(&*plat).expect("stop_all");
 

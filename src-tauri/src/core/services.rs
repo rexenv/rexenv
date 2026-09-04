@@ -17,9 +17,11 @@ pub const PHP_FPM_PORT: u16 = 9783;
 
 /// Render a php-fpm config: one foreground `[global]` master + one `[www]` pool
 /// on `127.0.0.1:<port>`. The pool generator is per-version so more versions can
-/// be added later, each on its own port. When `sendmail_path` is `Some`, the pool
-/// pins `php_admin_value[sendmail_path]` so every site's PHP `mail()` is routed
-/// through that shim (Mailpit, §2.2) — sites can't override it (`_admin_`).
+/// be added later, each on its own port. When `catch` is `Some`, the pool pins
+/// BOTH halves of the mail catch-all: `php_admin_value[sendmail_path]`, so every
+/// site's PHP `mail()` goes through the Mailpit shim (§2.2) and sites can't
+/// override it (`_admin_`), and `env[MAIL_*]`, which a Laravel app cannot
+/// outvote from its own `.env` (see [`super::mail::laravel_env`]).
 /// `settings` are the user's whitelisted, pre-validated per-version ini values
 /// (`core::php::SETTINGS`), written as overridable `php_value[key]` lines so
 /// WordPress can still `ini_set()` at runtime.
@@ -27,7 +29,7 @@ pub fn generate_fpm_config(
     port: u16,
     pid_file: &Path,
     log_file: &Path,
-    sendmail_path: Option<&str>,
+    catch: Option<&super::mail::Catch>,
     settings: &[(String, String)],
     mysql_socket: Option<&Path>,
 ) -> String {
@@ -50,8 +52,33 @@ pub fn generate_fpm_config(
     // but preserves the inner single-quoted binary path verbatim, so the shim's
     // space-containing path survives to `sh -c`. (Bare single quotes get eaten by
     // the ini parser, leaving an unquoted path that `sh` splits on the space.)
-    let sendmail = sendmail_path
-        .map(|p| format!("php_admin_value[sendmail_path] = \"{p}\"\n"))
+    let sendmail = catch
+        .map(|c| format!("php_admin_value[sendmail_path] = \"{}\"\n", c.sendmail_path))
+        .unwrap_or_default();
+    // The Laravel half. `env[…]` and not `php_admin_value[…]`, because the
+    // variable has to reach the PROCESS environment: Laravel reads it through
+    // Dotenv's immutable repository, which is what makes it beat the site's own
+    // `.env`. An ini value would be invisible to `env()` and the app would keep
+    // mailing wherever its file said.
+    //
+    // php-fpm's `clear_env` stays at its default (yes), so this is the whole
+    // environment a worker gets — nothing of the user's shell leaks in beside it.
+    //
+    // **Every value is QUOTED, and that is not tidiness.** php-fpm parses this
+    // file with PHP's ini parser, which reads the BARE words `null`, `none`,
+    // `off`, `no` and `false` as the empty string — and an `env[]` whose value
+    // parses empty is a hard `ERROR: empty value` that refuses the whole config
+    // and takes the pool down with it. `MAIL_URL = null` did exactly that,
+    // measured 4 Sep 2026 against a real php-fpm 8.2 before this shipped. In
+    // quotes the parser keeps the four characters, which is what Laravel's
+    // `Env` then maps to a real null.
+    let mail_env: String = catch
+        .map(|c| {
+            c.env
+                .iter()
+                .map(|(k, v)| format!("env[{k}] = \"{v}\"\n"))
+                .collect::<String>()
+        })
         .unwrap_or_default();
     // The `DB_HOST=localhost` free win (Stage 3 D5): PHP treats `localhost`
     // as "use the unix socket", and our static builds compile
@@ -106,6 +133,7 @@ pub fn generate_fpm_config(
          request_terminate_timeout = {terminate}s\n\
          catch_workers_output = yes\n\
          {sendmail}\
+         {mail_env}\
          {socket}\
          {values}",
         pid = pid_file.display(),
@@ -114,16 +142,16 @@ pub fn generate_fpm_config(
 }
 
 /// Write the php-fpm config for `version` (on `port`) under the config dir,
-/// creating the run/log dirs. `sendmail_path` (when set) routes the pool's PHP
-/// `mail()` to Mailpit (§2.2). Returns the config path.
+/// creating the run/log dirs. `catch` (when set) routes the pool's PHP `mail()`
+/// AND its Laravel apps' mail into Mailpit (§2.2). Returns the config path.
 pub fn write_fpm_config(
     platform: &dyn Platform,
     version: &str,
     port: u16,
-    sendmail_path: Option<&str>,
+    catch: Option<&super::mail::Catch>,
     settings: &[(String, String)],
 ) -> Result<PathBuf> {
-    write_fpm_config_named(platform, version, port, sendmail_path, settings, "conf")
+    write_fpm_config_named(platform, version, port, catch, settings, "conf")
 }
 
 /// Like [`write_fpm_config`] but to a `.conf.candidate` file the running pool
@@ -135,9 +163,9 @@ pub fn write_fpm_config_candidate(
     port: u16,
     settings: &[(String, String)],
 ) -> Result<PathBuf> {
-    // No sendmail line: the shim path lives behind the services lock and the
-    // fixed-format line can't be invalidated by user settings — the gate is
-    // about the user's values.
+    // No catch-all lines: the shim path and the MAIL_* set live behind the
+    // services lock and their fixed-format lines can't be invalidated by user
+    // settings — the gate is about the user's values.
     write_fpm_config_named(platform, version, port, None, settings, "conf.candidate")
 }
 
@@ -145,7 +173,7 @@ fn write_fpm_config_named(
     platform: &dyn Platform,
     version: &str,
     port: u16,
-    sendmail_path: Option<&str>,
+    catch: Option<&super::mail::Catch>,
     settings: &[(String, String)],
     ext: &str,
 ) -> Result<PathBuf> {
@@ -159,13 +187,13 @@ fn write_fpm_config_named(
     let conf = config_dir.join(format!("php-fpm-{version}.{ext}"));
     let pid = run_dir.join(format!("php-fpm-{version}.pid"));
     let log = log_dir.join(format!("php-fpm-{version}.log"));
-    // Same fixed-format-line reasoning as sendmail: the candidate (`-t` gate
+    // Same fixed-format-line reasoning as the catch-all: the candidate (`-t` gate
     // for user settings) omits the socket default; the real config gets it.
     let mysql_socket =
         (ext == "conf").then(|| super::database::socket_path(platform)).transpose()?;
     std::fs::write(
         &conf,
-        generate_fpm_config(port, &pid, &log, sendmail_path, settings, mysql_socket.as_deref()),
+        generate_fpm_config(port, &pid, &log, catch, settings, mysql_socket.as_deref()),
     )?;
     Ok(conf)
 }
@@ -831,26 +859,55 @@ mod tests {
         // No user/group: we run as the current user, not root.
         assert!(!cfg.contains("\nuser ="));
         assert!(!cfg.contains("\ngroup ="));
-        // No mail routing unless requested.
+        // No mail routing unless requested — NEITHER half.
         assert!(!cfg.contains("sendmail_path"));
+        assert!(!cfg.contains("env[MAIL_"));
     }
 
+    /// **The catch is one fact, so a pool gets both halves or neither.**
+    ///
+    /// `sendmail_path` catches PHP's own `mail()` — WordPress. `env[MAIL_*]`
+    /// catches Laravel, which never reads php.ini for its transport. A config
+    /// carrying only the first looks completely correct and delivers every
+    /// Laravel site's mail to the real internet, which is the bug measured on
+    /// 4 Sep 2026. Asserting both here is what makes them inseparable.
     #[test]
-    fn fpm_config_pins_sendmail_path_when_given() {
-        let shim = "'/opt/mailpit' sendmail -t -S 127.0.0.1:11025";
+    fn fpm_config_pins_both_halves_of_the_catch_when_given() {
+        let catch = super::super::mail::Catch {
+            sendmail_path: "'/opt/mailpit' sendmail -t -S 127.0.0.1:11025".to_string(),
+            env: super::super::mail::laravel_env(),
+        };
         let cfg = generate_fpm_config(
             9783,
             Path::new("/run/php-fpm-8.3.pid"),
             Path::new("/logs/php-fpm-8.3.log"),
-            Some(shim),
+            Some(&catch),
             &[],
             None,
         );
         // Routed via php_admin_value (sites can't override it), double-quoted so
         // the ini parser preserves the inner single-quoted binary path.
-        assert!(cfg.contains(&format!("php_admin_value[sendmail_path] = \"{shim}\"")));
-        // Sits inside the [www] pool, after the pm.* directives.
+        assert!(cfg.contains(&format!(
+            "php_admin_value[sendmail_path] = \"{}\"",
+            catch.sendmail_path
+        )));
+        // The Laravel half is `env[…]`, not `php_admin_value[…]`: it has to
+        // reach the process environment, which is where Dotenv's immutable
+        // repository looks and why it beats the site's own `.env`.
+        for (k, v) in &catch.env {
+            // QUOTED: php-fpm's ini parser reads a bare `null` as the empty
+            // string and then refuses the config outright ("empty value"),
+            // which takes the pool down — measured 4 Sep 2026 on php-fpm 8.2.
+            assert!(cfg.contains(&format!("env[{k}] = \"{v}\"\n")), "missing env[{k}] in:\n{cfg}");
+        }
+        assert!(
+            !cfg.contains("env[MAIL_URL] = null\n"),
+            "a bare `null` here is `ERROR: empty value` and the pool never starts"
+        );
+        assert!(!cfg.contains("php_admin_value[MAIL_"), "an ini value would be invisible to env()");
+        // Both sit inside the [www] pool, after the pm.* directives.
         assert!(cfg.find("[www]").unwrap() < cfg.find("sendmail_path").unwrap());
+        assert!(cfg.find("[www]").unwrap() < cfg.find("env[MAIL_MAILER]").unwrap());
     }
 
     #[test]

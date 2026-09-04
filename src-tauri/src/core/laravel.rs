@@ -27,6 +27,7 @@ use crate::core::repo::{
 };
 use crate::error::{Error, Result};
 use crate::platform::traits::ProcessSupervisor;
+use rusqlite::Connection;
 
 /// The Composer package a new site is created from. Pinned to the meta-package
 /// rather than a version: `laravel/laravel` IS the skeleton, and Composer
@@ -93,6 +94,33 @@ pub fn create_project(
     Ok(())
 }
 
+/// The MAIL_* environment a rexenv-spawned process gets so a Laravel app's mail
+/// lands in Mailpit — empty when the user has turned the catch-all off.
+///
+/// # Why the CLI needs its own copy of a pool setting
+///
+/// The php-fpm pool carries `env[MAIL_*]`, which covers mail a PAGE REQUEST
+/// sends. Nothing of the pool reaches `php artisan`: a queue worker, a
+/// scheduled command, a `tinker` one-liner and the provisioning steps all run
+/// as fresh processes with the app's own `.env` and nothing else. This is the
+/// same split that bit wp-cli on 25 Aug 2026 — `wp_mail()` caught through the
+/// browser and dropped from the command line, with `true` returned both times —
+/// and it is the same fix: put it in the ONE argv/env builder each surface uses.
+///
+/// Gated on the setting HERE, where a `Connection` exists, rather than inside
+/// `core::mail`: the toggle has to mean the same thing on both surfaces, and a
+/// CLI that ignored it would keep hijacking the mail of a developer who had
+/// just asked to send it for real.
+pub fn mail_env(conn: &Connection) -> Vec<(String, String)> {
+    if !crate::core::mail::catch_all_enabled(conn) {
+        return Vec::new();
+    }
+    crate::core::mail::laravel_env()
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .collect()
+}
+
 /// `php artisan <args…>` in the project root.
 pub fn artisan(
     supervisor: &dyn ProcessSupervisor,
@@ -154,19 +182,33 @@ pub struct DbSettings {
 /// talks to the site's database" must not depend on which shape shipped today.
 /// A commented-out line is replaced in place (not left beside a new one), so the
 /// file never ends up with two answers for one key.
-pub fn wire_env(original: &str, app_url: &str, db: &DbSettings) -> String {
-    crate::core::dotenv::set_keys(
-        original,
-        [
-            ("APP_URL", app_url.to_string()),
-            ("DB_CONNECTION", db.connection.clone()),
-            ("DB_HOST", db.host.clone()),
-            ("DB_PORT", db.port.to_string()),
-            ("DB_DATABASE", db.database.clone()),
-            ("DB_USERNAME", db.username.clone()),
-            ("DB_PASSWORD", db.password.clone()),
-        ],
-    )
+///
+/// # Why the MAIL_* keys are here as well as in the pool
+///
+/// The pool's `env[MAIL_*]` already beats this file at runtime, so writing the
+/// same values looks redundant. It is not, and the case that needs it is
+/// `php artisan config:cache`: a cached config is baked from `env()` AT CACHE
+/// TIME and `env()` is never consulted again, so a site that caches its config
+/// keeps whatever its `.env` said and mails straight past Mailpit. Writing the
+/// file is what makes the catch survive that.
+///
+/// `catch_mail` is the user's setting, threaded in rather than read here — off
+/// means the project's own mail configuration is left exactly as it is, which
+/// is the whole point of the switch.
+pub fn wire_env(original: &str, app_url: &str, db: &DbSettings, catch_mail: bool) -> String {
+    let mut keys = vec![
+        ("APP_URL", app_url.to_string()),
+        ("DB_CONNECTION", db.connection.clone()),
+        ("DB_HOST", db.host.clone()),
+        ("DB_PORT", db.port.to_string()),
+        ("DB_DATABASE", db.database.clone()),
+        ("DB_USERNAME", db.username.clone()),
+        ("DB_PASSWORD", db.password.clone()),
+    ];
+    if catch_mail {
+        keys.extend(crate::core::mail::laravel_env());
+    }
+    crate::core::dotenv::set_keys(original, keys)
 }
 
 /// Raw `php artisan <args…>` for the MCP runner (`site_artisan`) — the
@@ -182,12 +224,16 @@ pub fn wire_env(original: &str, app_url: &str, db: &DbSettings) -> String {
 ///   confirm prompt (`migrate:fresh` in production, `db:wipe`) answers itself
 ///   "no" instead of hanging on the timeout.
 ///
+/// - **`env` outranks the project's `.env`** — see [`mail_env`], the catch-all's
+///   command-line half.
+///
 /// The project root comes from the site row — the caller has already decided
 /// WHICH artisan runs; this only runs it.
 pub fn artisan_raw(
     php: &Path,
     project: &Path,
     args: &[String],
+    env: &[(String, String)],
     timeout: std::time::Duration,
 ) -> Result<std::process::Output> {
     let mut cmd = std::process::Command::new(php);
@@ -195,6 +241,10 @@ pub fn artisan_raw(
         .args(args)
         .arg("--no-interaction")
         .current_dir(project);
+    // Laravel's Dotenv repository is IMMUTABLE, so these beat the project's own
+    // `.env` — which is the whole point: `mail_env` is how a command run against
+    // a site configured for a real SMTP provider still lands in Mailpit.
+    cmd.envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())));
     let what = format!("php artisan {}", args.first().map(String::as_str).unwrap_or(""));
     crate::core::wordpress::run_with_timeout(cmd, timeout, &what)
 }
@@ -367,6 +417,64 @@ mod tests {
     /// in the project directory, puts `--no-interaction` LAST, reads no stdin
     /// and reports a non-zero exit as output rather than an error.** Proven
     /// with a fake "php" that prints its argv and exits 3.
+    /// **`config:cache` is the hole the file half exists to close.**
+    ///
+    /// The pool's `env[MAIL_*]` beats `.env` at runtime, so writing the same
+    /// values into the file looks redundant — until the app caches its config,
+    /// at which point `env()` is never read again and the BAKED value decides
+    /// where mail goes. A wired `.env` is what makes the catch survive that.
+    #[test]
+    fn wiring_points_the_env_file_at_mailpit_so_a_cached_config_bakes_the_catch() {
+        let original = "APP_NAME=Shop\nMAIL_MAILER=smtp\nMAIL_HOST=smtp.mailgun.org\n\
+             MAIL_PORT=587\nMAIL_USERNAME=postmaster@shop.test\nMAIL_PASSWORD=hunter2\n";
+        let out = wire_env(original, "https://shop.rex", &db(), true);
+        assert!(out.contains("MAIL_HOST=127.0.0.1"));
+        assert!(out.contains(&format!("MAIL_PORT={}", crate::core::mail::MAILPIT_SMTP_PORT)));
+        // The real provider's credentials are REPLACED, not left beside the new
+        // values: two answers for one key is how a file starts lying.
+        assert!(!out.contains("smtp.mailgun.org"), "{out}");
+        assert!(!out.contains("hunter2"), "{out}");
+        assert_eq!(out.matches("MAIL_HOST=").count(), 1);
+        // Every key the pool sets, the file sets — a subset here would mean the
+        // cached config and the live config disagreed about where mail goes.
+        for (k, v) in crate::core::mail::laravel_env() {
+            assert!(out.contains(&format!("{k}={v}")), "missing {k} in:\n{out}");
+        }
+    }
+
+    /// **Off means the project's own mail config is left alone — untouched, not
+    /// re-pointed at the provider we guessed it wanted.**
+    ///
+    /// The switch exists for the developer deliberately proving a live SES or
+    /// Postmark integration from a local box. A `wire_env` that "helpfully"
+    /// normalised MAIL_* while off would break exactly that task.
+    #[test]
+    fn wiring_leaves_mail_alone_when_the_catch_all_is_off() {
+        let original = "MAIL_MAILER=ses\nMAIL_HOST=email-smtp.eu-west-1.amazonaws.com\n";
+        let out = wire_env(original, "https://shop.rex", &db(), false);
+        assert!(out.contains("MAIL_MAILER=ses"));
+        assert!(out.contains("email-smtp.eu-west-1.amazonaws.com"));
+        assert!(!out.contains("127.0.0.1:"), "{out}");
+        // The database half still happens: the switch is about mail only.
+        assert!(out.contains("DB_DATABASE=lv_shop_rex"));
+    }
+
+    /// The CLI half answers to the SAME switch as the pool half. A command-line
+    /// runner that always caught would hijack the mail of a developer who had
+    /// just turned catching off, and it would do it on the surface they were
+    /// most likely testing from.
+    #[test]
+    fn the_cli_mail_env_answers_to_the_same_switch_as_the_pool() {
+        let conn = crate::state::db::open_in_memory().unwrap();
+        let on = mail_env(&conn);
+        assert_eq!(on.len(), crate::core::mail::laravel_env().len());
+        assert!(on.iter().any(|(k, v)| k == "MAIL_PORT"
+            && v == &crate::core::mail::MAILPIT_SMTP_PORT.to_string()));
+
+        crate::state::store::set_setting(&conn, crate::core::mail::CATCH_ALL_KEY, "false").unwrap();
+        assert!(mail_env(&conn).is_empty(), "off must add nothing, not add a different sink");
+    }
+
     #[test]
     fn artisan_raw_runs_in_the_project_with_no_interaction_last_and_returns_a_nonzero_exit() {
         let dir = std::env::temp_dir().join(format!("rexenv-laravel-{}-artisan", std::process::id()));
@@ -379,7 +487,7 @@ mod tests {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(&fake_php, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
-        let out = artisan_raw(&fake_php, &dir, &["migrate:status".to_string(), "--pending".to_string()], std::time::Duration::from_secs(10)).unwrap();
+        let out = artisan_raw(&fake_php, &dir, &["migrate:status".to_string(), "--pending".to_string()], &[], std::time::Duration::from_secs(10)).unwrap();
         assert_eq!(out.status.code(), Some(3), "a non-zero exit is an answer");
         let stdout = String::from_utf8_lossy(&out.stdout);
         let lines: Vec<&str> = stdout.lines().collect();
@@ -421,7 +529,7 @@ mod tests {
              # DB_PASSWORD=\n\
              \n\
              SESSION_DRIVER=database\n";
-        let out = wire_env(original, "https://shop.rex", &db());
+        let out = wire_env(original, "https://shop.rex", &db(), true);
 
         assert!(out.contains("DB_CONNECTION=mysql"));
         assert!(!out.contains("sqlite"), "the SQLite default must be gone, not merely overridden below");
@@ -448,7 +556,7 @@ mod tests {
              DB_DATABASE=laravel\n\
              DB_USERNAME=root\n\
              DB_PASSWORD=secret\n";
-        let out = wire_env(original, "https://shop.rex", &db());
+        let out = wire_env(original, "https://shop.rex", &db(), true);
 
         assert_eq!(out.matches("DB_DATABASE=").count(), 1);
         assert!(out.contains("DB_DATABASE=lv_shop_rex"));
@@ -465,7 +573,7 @@ mod tests {
     /// it; the writer must not leave such a line beside its replacement.
     #[test]
     fn wire_env_replaces_an_exported_key_rather_than_appending_beside_it() {
-        let out = wire_env("export DB_HOST=db.internal\n", "https://shop.rex", &db());
+        let out = wire_env("export DB_HOST=db.internal\n", "https://shop.rex", &db(), true);
         assert_eq!(out.matches("DB_HOST=").count(), 1);
         assert!(out.contains("DB_HOST=127.0.0.1"));
         assert!(!out.contains("db.internal"));
@@ -525,7 +633,7 @@ mod tests {
         // DB block is `wire_env`'s job and must not be guessed at here.
         assert!(!seeded.contains("DB_"), "the seed invents no database settings: {seeded}");
         // And it composes: wiring the seed yields a complete local .env.
-        let wired = wire_env(&seeded, "https://shop.rex", &db());
+        let wired = wire_env(&seeded, "https://shop.rex", &db(), true);
         assert!(wired.contains("APP_ENV=local") && wired.contains("DB_DATABASE=lv_shop_rex"));
         std::fs::remove_dir_all(&dir).unwrap();
     }
@@ -595,7 +703,7 @@ mod live_shape_tests {
             username: "root".into(),
             password: String::new(),
         };
-        let out = wire_env(&original, "https://lv.rex", &db);
+        let out = wire_env(&original, "https://lv.rex", &db, true);
         assert!(out.contains("DB_CONNECTION=mysql"));
         assert!(out.contains("DB_DATABASE=wp_lv_rex"));
         assert!(out.contains("APP_URL=https://lv.rex"));

@@ -2248,7 +2248,10 @@ fn site_artisan<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::A
         }
         let printed = argv.join(" ");
         let timeout = std::time::Duration::from_secs(crate::core::scratch::WP_RUN_TIMEOUT_SECS);
-        let out = crate::commands::wordpress::wp_blocking(move || crate::core::laravel::artisan_raw(&php_bin, &project, &argv, timeout)).await?;
+        // The catch-all's agent half: an agent that triggers a notification on
+        // the user's own site must not be able to mail the user's customers.
+        let mail_env = { let conn = ctx.db()?; crate::core::laravel::mail_env(&conn) };
+        let out = crate::commands::wordpress::wp_blocking(move || crate::core::laravel::artisan_raw(&php_bin, &project, &argv, &mail_env, timeout)).await?;
         let known = super::view::KnownPaths::for_site(ctx.state.platform.paths(), &site.path);
         let (stdout, cut_out) = super::scratch::agent_stream(&out.stdout, &known);
         let (stderr, cut_err) = super::scratch::agent_stream(&out.stderr, &known);

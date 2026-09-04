@@ -1186,6 +1186,53 @@ IPC surface — which is how a reader ends up designing against a system with on
 - **Mail:** php-fpm `sendmail_path` (DOUBLE-quoted in the pool ini — the parser strips
   bare quotes and app-data paths contain spaces) → Mailpit's `sendmail -t -S
   127.0.0.1:11025` shim → SMTP sink; inbox UI reads the HTTP API on 18025 (`core/mail.rs`).
+  - **The catch-all is TWO mechanisms, because one framework cannot see the other's.**
+    `sendmail_path` catches PHP's own `mail()` — WordPress, when nothing has replaced
+    PHPMailer's transport. It is **invisible to Laravel**: `config/mail.php` ships
+    `'path' => env('MAIL_SENDMAIL_PATH', '/usr/sbin/sendmail -bs -i')`, so Laravel's
+    sendmail transport never consults php.ini. Measured 4 Sep 2026 on a real site —
+    `MAIL_MAILER=sendmail` + `Mail::raw(...)` exited 0, reported success, and Mailpit
+    received nothing. The Laravel half is therefore `env[MAIL_*]`
+    (`mail::laravel_env`), which works because Laravel's `LoadEnvironmentVariables`
+    builds an **immutable** Dotenv repository: a variable already in the process
+    environment is never overwritten by `.env`, so the catch beats a real
+    `MAIL_HOST=smtp.mailgun.org` in the developer's own file. Both halves travel as ONE
+    value (`mail::Catch`) through one setter — a pool holding the shim but not the
+    environment catches WordPress and delivers Laravel, which is the bug this exists to
+    end.
+  - **Nine keys, because there are nine ways out**, not nine spellings of one:
+    `MAIL_DRIVER` for Laravel ≤ 6, `MAIL_URL` because one DSN overrides host + port +
+    credentials together, `USERNAME`/`PASSWORD` as null so AUTH is not attempted
+    against a server that offers none, `SCHEME`/`ENCRYPTION` because Mailpit's listener
+    is plaintext and a TLS attempt fails closed — and a mail that fails is a mail the
+    developer never sees.
+  - **Every `env[]` value is QUOTED in the pool ini.** php-fpm parses the file with
+    PHP's ini parser, which reads the bare words `null`, `none`, `off`, `no` and
+    `false` as the empty string — and an `env[]` that parses empty is
+    `ERROR: empty value`, which refuses the whole config and the pool never starts.
+    `env[MAIL_URL] = null` did exactly that against a real php-fpm 8.2 (4 Sep 2026)
+    before the quoting landed. Verified the same day over FastCGI that a quoted
+    `env[]` reaches `getenv()`, `$_SERVER` and `$_ENV` alike — the three places
+    Dotenv's adapters look.
+  - **Four surfaces, one switch.** The pool covers a page request. `php artisan` sees
+    none of it — a queue worker, a scheduled command and a `tinker` one-liner are
+    fresh processes with the app's own `.env` — so `laravel::mail_env` puts the same
+    variables on the MCP artisan runner, the provisioning steps and rexenv's in-app
+    terminal. Same split that bit wp-cli on 25 Aug 2026 (`wp_mail()` caught through the
+    browser, dropped from the command line, `true` returned both times); same fix.
+    The user's own iTerm is beyond reach and always will be.
+  - **`.env` is written too, and that is not redundancy** — it is the
+    `php artisan config:cache` case. A cached config is baked from `env()` at cache
+    time and `env()` is never read again, so a site that caches keeps whatever its file
+    said. Provisioning therefore wires MAIL_* into `.env` as well, after keeping the
+    original as `.env.rexenv-backup` (written once — a retry that overwrote the backup
+    with the already-wired file would destroy the thing it exists to preserve).
+  - **The switch** (`mail.catch_all`, `mail::catch_all_enabled`) reads **absent as ON**:
+    a default that read a missing row as off would make "every site's mail is caught"
+    mean "every site created after the user found the switch", and only the exact
+    string `false` opts out. Off is a real task — deliberately proving a live SES or
+    Postmark integration from a local box — and off means the site's own mail
+    configuration is left ALONE, not re-pointed at a sink we guessed it wanted.
   - **Unread is a SERVER-side search, and read state never waits for the poll.** The
     inbox list refetches every 5s, which is the whole design constraint on this screen:
     anything that becomes true only on the next refetch happens somewhere between

@@ -546,9 +546,10 @@ impl ServiceManager {
         sites: &[Site],
         php_minors: &[String],
         adminer_version: &str,
+        catch_mail: bool,
     ) -> Result<()> {
         let (caddyfile, checks) =
-            self.start_core(platform, ca, sites, php_minors, adminer_version).await?;
+            self.start_core(platform, ca, sites, php_minors, adminer_version, catch_mail).await?;
         await_ready(checks).await?;
         if let Some(plan) = self.prepare_edge(platform, caddyfile)? {
             if plan.privileged {
@@ -582,6 +583,13 @@ impl ServiceManager {
         // disagree — and any fallback for "the field was never set" reproduces
         // ledger #175 by downloading inside the services lock.
         adminer_version: &str,
+        // The mail catch-all (`mail::catch_all_enabled`), read by the CALLER
+        // from SQLite. Passed rather than mirrored for the same reason, plus
+        // one this module cares about more: a field would be a snapshot of a
+        // fact the user can change from the Settings screen, and a stale
+        // snapshot here means a pool that keeps hijacking mail the user just
+        // asked to be delivered for real.
+        catch_mail: bool,
     ) -> Result<(PathBuf, Vec<ReadyCheck>)> {
         self.ensure_bins(platform).await?;
         // Manual intervention resets the watchdog's give-up counters.
@@ -608,8 +616,7 @@ impl ServiceManager {
         // it (§2.2): resolves the binary (sets `mailpit_bin`) and starts the sink.
         // The pools only need the BINARY path (sendmail shim), not a ready Mailpit.
         checks.extend(self.spawn_mailpit(platform).await?);
-        let sendmail = self.mailpit_bin.as_ref().map(|b| mail::sendmail_path(b));
-        self.pools.set_sendmail_path(sendmail);
+        self.pools.set_mail_catch(mail::catch_for(self.mailpit_bin.as_deref(), catch_mail));
 
         // PHP-FPM: one pool per installed PHP version (always at least the default,
         // so the single-site path keeps working). Pools own their deterministic ports.
@@ -1686,7 +1693,7 @@ impl ServiceManager {
     /// have rewritten titles — so stops stay graceful); the root edge, invisible
     /// to unprivileged `lsof`, is adopted iff OUR admin unix socket answers.
     /// Returns how many services were adopted.
-    pub fn adopt_startup(&mut self, platform: &dyn Platform, sites: &[Site]) -> u32 {
+    pub fn adopt_startup(&mut self, platform: &dyn Platform, sites: &[Site], catch_mail: bool) -> u32 {
         let marker = match platform.paths().app_data_dir() {
             Ok(p) => p.display().to_string(),
             Err(_) => return 0,
@@ -1704,18 +1711,17 @@ impl ServiceManager {
 
         // Mail routing must survive adoption (QA P0-3): pool restarts (a settings
         // edit, the startup patch bump, a watchdog respawn) rewrite that pool's
-        // fpm config from THIS session's sendmail state — which only the full
+        // fpm config from THIS session's catch state — which only the full
         // start_all path used to set. In an adopted session it was still `None`,
         // so the restarted pool silently lost `php_admin_value[sendmail_path]`
-        // and that minor's `mail()` bypassed Mailpit. Derive the shim from the
+        // and that minor's `mail()` bypassed Mailpit. Derive the catch from the
         // CACHED binary path (sync, no download, no Mailpit process needed —
-        // the shim is a path + fixed SMTP port).
+        // both halves are a path, a fixed SMTP port and a constant env set).
         if self.mailpit_bin.is_none() {
             self.mailpit_bin =
                 binaries::cached_bin(platform, "mailpit", binaries::MAILPIT_VERSION);
         }
-        let sendmail = self.mailpit_bin.as_ref().map(|b| mail::sendmail_path(b));
-        self.pools.set_sendmail_path(sendmail);
+        self.pools.set_mail_catch(mail::catch_for(self.mailpit_bin.as_deref(), catch_mail));
 
         if self.nginx.is_none() {
             if let Some(pid) = owned(self.ports.nginx) {
