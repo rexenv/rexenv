@@ -583,10 +583,12 @@ site with a REAL plugin, which is the part the fixtures cannot buy.
 ## Stopping ONE site (v44) — the shared services must NOT go with it
 - [ ] With at least two sites serving, row menu → **Stop site** on one. Its pill reads
       **Stopped by you**, and the toast says your other sites keep running.
-- [ ] In a browser, the stopped site's URL answers **"This site is stopped in rexenv"** —
-      not a certificate warning, not a 502, and **not another site's content** (the
-      fallthrough this design exists to prevent; the automated proof is
-      `site_stop_start_check`).
+- [ ] In a browser, the stopped site's URL shows rexenv's **"This site is stopped"** page —
+      the brand mark, THIS site's hostname, and both ways to start it — not a certificate
+      warning, not a 502, not Caddy's bare error text, and **not another site's content**
+      (the fallthrough this design exists to prevent; the automated proof is
+      `site_stop_start_check`). Check it in a light-themed browser too: the page follows
+      `prefers-color-scheme`, and it must fetch nothing (no webfont, no remote logo).
 - [ ] The OTHER site still loads, and Services still shows the web tier running. A stopped
       site must never have stopped a php-fpm pool — every site on that PHP version shares it.
 - [ ] **Start site** → it serves again on the SAME certificate (no interstitial, no

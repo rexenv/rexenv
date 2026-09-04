@@ -177,7 +177,8 @@ async fn main() -> ExitCode {
     let stopped = body(STOP, EDGE_HTTPS, &ca.cert_path);
     checks.is(
         "the stopped site answers rexenv's own words, not a proxy error",
-        stopped.contains(proxy::STOPPED_SITE_BODY),
+        stopped.contains(rexenv_lib::core::stopped_page::STOPPED_HEADLINE)
+            && stopped.contains("Nothing is broken"),
         &format!("got {stopped:?}"),
     );
     // The failure this whole design is shaped against: with no block of its own,

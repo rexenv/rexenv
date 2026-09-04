@@ -37,7 +37,7 @@ shared process.**
 | Leg | Stopped site |
 |---|---|
 | Nginx vhost | not emitted at all — the site has no `server_name` block |
-| Caddy route | **kept**, TLS and cert intact, but `respond 503` with an honest body instead of `reverse_proxy` |
+| Caddy route | **kept**, TLS and cert intact, but 503 with rexenv's own stopped PAGE (`core/stopped_page.rs`) instead of `reverse_proxy` |
 | Its OWN backend (FrankenPHP / Apache override) | actually stopped — that process serves one site, so stopping it is exact |
 | Shared nginx, shared php-fpm pool, DB, edge | untouched |
 
@@ -140,6 +140,29 @@ with no UI fails `every_ipc_wrapper_is_actually_called`.
   fixture-owned `examples/` live check registered in `scripts/live-checks.sh`
   (sandbox tier): stop a fixture site, prove the neighbour still answers 200 and
   the stopped one answers 503, start it, prove it answers again.
+
+## 5b. The page a stopped site answers (4 Sep 2026, after review)
+
+The first cut was `respond "This site is stopped in rexenv…" 503`. On screen that
+is one line of monospace on a white page — indistinguishable from a server that
+fell over, which is precisely the reading this feature must not produce: nothing
+is broken, and the way back is a button the reader already owns.
+
+It is now a full page in rexenv's clothes (`core/stopped_page.rs`): the brand
+mark inlined at build time, the app's palette with a light-theme block, the
+site's own hostname, and both ways to start it (the app's menu wording and
+`rex site start <domain>`). Two mechanics worth keeping:
+
+- **A file, not a Caddyfile string.** Caddy cannot `respond` with a file, and a
+  quoted Caddyfile string treats every `{` in the CSS as a placeholder. The edge
+  serves it with `error 503` + `handle_errors { rewrite * /stopped.html;
+  file_server }`, which keeps the status — verified against the pinned Caddy
+  build before the code was written.
+- **One file for every stopped site.** The hostname is the only per-site fact and
+  it comes from `location.hostname`, so nothing is rewritten on a rename, and no
+  site's name is put in a path on disk for no gain. The file is rewritten on
+  every config rebuild rather than only when missing, so a wording change in an
+  update actually reaches a machine that already has yesterday's copy.
 
 ## 6. Known edges — how each was settled
 

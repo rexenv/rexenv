@@ -258,6 +258,14 @@ pub struct CaddyConfig {
     /// Admin API unix socket to bind (`Some` in production via [`admin_socket_path`]).
     /// `None` omits the `admin` directive (Caddy's default TCP admin) — tests only.
     pub admin_socket: Option<PathBuf>,
+    /// Directory holding the stopped-site page (`core::stopped_page::ensure`).
+    /// Every stopped route roots its error handler here.
+    ///
+    /// A directory rather than a file path because that is what `file_server`
+    /// takes, and it holds ONLY that page: the root of a stopped site's block is
+    /// reachable at that site's address, so anything else left in there would be
+    /// published by rexenv on a name the user thinks is switched off.
+    pub stopped_page_dir: PathBuf,
 }
 
 impl Default for CaddyConfig {
@@ -267,15 +275,10 @@ impl Default for CaddyConfig {
             https_port: DEFAULT_HTTPS_PORT,
             routes: Vec::new(),
             admin_socket: None,
+            stopped_page_dir: PathBuf::new(),
         }
     }
 }
-
-/// What a stopped site answers (v44). Plain text, because it is served by the
-/// edge itself with no PHP behind it — and it names the app and the fix, since
-/// the person reading it is a developer wondering why their own site is down.
-pub const STOPPED_SITE_BODY: &str =
-    "This site is stopped in rexenv. Start it from the Sites list to serve it again.";
 
 /// Render the Caddyfile. Explicit per-site `tls` means Caddy never invokes its
 /// internal issuer/ACME (it uses the loaded local-CA certs). Auto-HTTPS is left
@@ -334,11 +337,19 @@ pub fn generate_caddyfile(cfg: &CaddyConfig) -> String {
         if r.stopped {
             // No upstream at all for a stopped site — not an unreachable proxy.
             // A `reverse_proxy` at a dead port answers 502 "Bad Gateway", which
-            // reads as a broken machine; this says what is true and what to do.
-            s.push_str(&format!(
-                "\trespond \"{}\" 503\n",
-                STOPPED_SITE_BODY.replace('"', "\\\"")
-            ));
+            // reads as a broken machine.
+            //
+            // The page is a FILE, served through the error handler, because
+            // Caddy cannot `respond` with one and a Caddyfile string is the
+            // wrong home for HTML — every `{` in its CSS would be read as a
+            // placeholder. `error` + `handle_errors` keeps the 503 status while
+            // the body is the real page (`core::stopped_page`).
+            s.push_str(&format!("\troot * \"{}\"\n", cfg.stopped_page_dir.display()));
+            s.push_str("\terror * \"site stopped\" 503\n");
+            s.push_str("\thandle_errors {\n");
+            s.push_str(&format!("\t\trewrite * {}\n", crate::core::stopped_page::request_path()));
+            s.push_str("\t\tfile_server\n");
+            s.push_str("\t}\n");
         } else {
             s.push_str(&format!("\treverse_proxy {}\n", r.upstream));
         }
@@ -978,6 +989,7 @@ mod tests {
         CaddyConfig {
             http_port: 8080,
             https_port: 8443,
+            stopped_page_dir: "/c/stopped".into(),
             routes: vec![SiteRoute {
                 aliases: Vec::new(),
                 host: "proxytest.test".into(),
@@ -1078,17 +1090,28 @@ mod tests {
             "a stopped site must proxy nowhere:\n{stopped_block}"
         );
         assert!(
-            stopped_block.contains("respond") && stopped_block.contains("503"),
-            "a stopped site must SAY it is stopped, not fail:\n{stopped_block}"
+            stopped_block.contains("503"),
+            "a stopped site must answer 503 — the status is what every non-browser \
+             client reads:\n{stopped_block}"
         );
         assert!(
             stopped_block.contains("tls \"/c/cert.pem\" \"/c/key.pem\""),
             "the certificate must survive being stopped — otherwise starting the site \
              again shows the browser a name it has never been given a cert for:\n{stopped_block}"
         );
-        // The body is the one a developer reads when their own site is down, so
-        // it names the app and the way back.
-        assert!(stopped_block.contains(STOPPED_SITE_BODY), "{stopped_block}");
+        // The body is a PAGE — rexenv's own (`core::stopped_page`), served
+        // through the error handler because Caddy cannot `respond` with a file
+        // and a Caddyfile string cannot hold CSS. Asserted as the three
+        // directives that make it work, since any one of them missing is a
+        // different (and silent) failure: no root = 404 from the handler, no
+        // handle_errors = Caddy's own bare error text, no rewrite = a directory
+        // listing at the address of a site the user believes is switched off.
+        assert!(stopped_block.contains("root * "), "{stopped_block}");
+        assert!(stopped_block.contains("handle_errors"), "{stopped_block}");
+        assert!(
+            stopped_block.contains(&crate::core::stopped_page::request_path()),
+            "{stopped_block}"
+        );
 
         let neighbour = f
             .split("https://neighbour.test {")

@@ -6,7 +6,8 @@
 //! operations so commands/ remain thin.
 
 use crate::core::{
-    adminer, apache, binaries, frankenphp, php, proxy, repo, services, ssl, tld, tunnels,
+    adminer, apache, binaries, frankenphp, php, proxy, repo, services, ssl, stopped_page, tld,
+    tunnels,
 };
 use crate::error::{Error, Result};
 use crate::platform::traits::{Platform, ProcessSupervisor};
@@ -2370,7 +2371,7 @@ pub fn rebuild_configs_for(
         .iter()
         // A site the user STOPPED (v44) gets no server block at all. Not an
         // empty one, not one returning 503: nginx is shared, and the honest
-        // 503 belongs at the edge (`proxy::STOPPED_SITE_BODY`), which is the
+        // 503 page belongs at the edge (`core::stopped_page`), which is the
         // only tier that knows this site by name without also being the tier
         // every other site is served from.
         .filter(|s| gets_nginx_block(s))
@@ -2457,6 +2458,10 @@ pub fn rebuild_configs_for(
             // Bind Caddy's admin API to our unix socket (not TCP :2019) so the root
             // edge exposes no unauthenticated local control surface (task 2.3 / H5).
             admin_socket: Some(proxy::admin_socket_path(platform)?),
+            // Written on EVERY rebuild, not only when missing: the page is
+            // generated, and "only if absent" is how a wording fix in an update
+            // never reaches a machine that already has yesterday's file.
+            stopped_page_dir: stopped_page::ensure(platform)?,
         },
     )?;
 
@@ -4741,7 +4746,7 @@ mod tests {
     /// only the nginx case would be reading half the surface: an override site
     /// is absent because something else serves it, a stopped site because
     /// nothing does. The edge is where "stopped" gets its 503
-    /// (`proxy::STOPPED_SITE_BODY`) — nginx, being shared, only ever gets the
+    /// (`core::stopped_page`) — nginx, being shared, only ever gets the
     /// absence.
     #[test]
     fn a_stopped_site_gets_no_nginx_block_whichever_server_it_uses() {

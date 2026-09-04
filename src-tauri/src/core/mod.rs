@@ -62,6 +62,7 @@ pub mod setup;
 pub mod site_env;
 pub mod site_metrics;
 pub mod sites;
+pub mod stopped_page;
 pub mod ssl;
 pub mod starter;
 pub mod stack_guard;

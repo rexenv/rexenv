@@ -43,6 +43,7 @@ async fn main() {
         aliases: Vec::new(),
     }],
         admin_socket: Some(proxy::admin_socket_path(&*plat).expect("admin socket path")),
+        stopped_page_dir: rexenv_lib::core::stopped_page::ensure(&*plat).expect("stopped page"),
     };
     let caddyfile = proxy::write_caddyfile(&*plat, &cfg).expect("write caddyfile");
     println!("CADDYFILE={}", caddyfile.display());

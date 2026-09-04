@@ -150,12 +150,21 @@ writer, `store::set_site_enabled`), and the config rebuild reads it:
 | Leg | A stopped site |
 |---|---|
 | nginx server block | not emitted at all (`sites::gets_nginx_block`) |
-| Caddy route | **kept**, with its `tls` line and certificate — answers `respond STOPPED_SITE_BODY 503` instead of proxying |
+| Caddy route | **kept**, with its `tls` line and certificate — answers 503 with rexenv's own stopped PAGE (`core/stopped_page.rs`) instead of proxying |
 | its OWN override backend (FrankenPHP/Apache) | actually stopped: `OverrideKind::wanted_by` returns `None`, and `reconcile_overrides` stops what is no longer wanted |
 | shared nginx, php-fpm pools, DB, edge | untouched |
 
 Two decisions worth keeping:
 
+- **The 503 is a page, not a line of text.** The reader is a developer whose own
+  site stopped loading, and a bare `respond` line reads like a server that fell
+  over — the one thing this response must not say. `core/stopped_page.rs` renders
+  rexenv's mark, palette and both ways back, and is WRITTEN to the config dir
+  because Caddy cannot `respond` with a file and a Caddyfile string cannot hold
+  CSS (every `{` would be a placeholder). The edge serves it through
+  `error 503` + `handle_errors { rewrite; file_server }`, which keeps the status.
+  One generic file for every stopped site: the hostname is filled in from
+  `location.hostname`, so no per-site file has to be rewritten on a rename.
 - **The route stays.** Dropping it hands the browser a TLS failure — or, next to
   a subdomain-multisite block, somebody ELSE's site at this site's address (the
   fallthrough `override_fallthrough_check` measured). A 503 that says the site is
