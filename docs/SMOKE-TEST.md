@@ -542,6 +542,32 @@ no SMOKE step today and is covered by `repo_*` examples only.*
       and **deletes nothing** — the captured count is unchanged. Trigger one more
       email afterwards: it is the only unread one, which is the point of it.
 
+## Mail catch-all — the two escapes no automated tier can see (4 Sep 2026)
+
+Ledger #504/#505 prove the mechanisms; these two legs prove they hold on a REAL
+site with a REAL plugin, which is the part the fixtures cannot buy.
+
+- [ ] **WordPress with an SMTP plugin.** On a WP site, install WP Mail SMTP (or
+      FluentSMTP) and configure it for ANY reachable host — the point is that the
+      site is genuinely trying to leave. Trigger a password reset. It lands in
+      **Mail**, not at the provider. Then Settings → Services → **Catch all
+      outgoing mail** OFF, trigger another, and confirm the plugin's own send is
+      attempted instead (its log, or the provider's). Turn it back ON and confirm
+      the third one is caught **without restarting the stack** — the toggle
+      restarts the pools itself, and a leg that quits and relaunches the app
+      would pass while that was broken.
+- [ ] **Laravel with a real MAIL_HOST.** On a Laravel site, edit `.env` by hand to
+      a real provider's SMTP host and credentials. Load a page that mails (or use
+      the site's terminal: `php artisan tinker --execute="Mail::raw('x', fn($m)
+      => $m->to('you@example.test')->subject('smoke'));"`). It arrives in **Mail**
+      — the environment beat the file. Both surfaces, because the pool and the
+      CLI carry the catch separately.
+- [ ] **The stated limit is TRUE, not just printed.** On that Laravel site run
+      `php artisan config:cache`, then mail again. If the site was created by
+      this rexenv its `.env` was already wired, so it still lands in Mailpit; a
+      site whose `.env` predates the feature will NOT, which is exactly what the
+      card says. Confirm the card says it (Settings → Services, catch-all ON).
+
 ## Database (Adminer deep-link)
 - [ ] Site → **Database** tab (or Sites row → Open database) lands **inside the site's DB** (tables listed), no manual login.
 - [ ] **Native confirm works** (ledger #166 leg C — the automated legs prove the panels
