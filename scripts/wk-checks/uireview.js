@@ -87,13 +87,12 @@ const SCENARIOS = [
   ["wppackages-named", "view=wppackages", []],
   ["wppackages-unnamed", "view=wppackages&names=none", []],
   // The Agent access dial (D15): Read by default; `access=full&mode=days` a
-  // 7-day Full; `expired=1` the expired notice. Site access renders its
-  // share-only empty state either way.
+  // 7-day Full; `expired=1` the expired notice.
   ["agents-access-read", "view=agents&astate=working", []],
   ["agents-access-full", "view=agents&astate=working&access=full&mode=days", []],
   ["agents-access-expired", "view=agents&astate=working&expired=1", []],
   // Off with a standing Full · Always: the note under the toggle and the dial
-  // (to lower it) render; Site access and the feed do not.
+  // (to lower it) render; the feed does not.
   ["agents-off-standing", "view=agents&astate=off&access=full&mode=always", []],
   // The Agent-scratch group: client badge + TTL + last-synced, a moved source,
   // an expired site, an expired one the reaper could not remove — and the two
@@ -479,8 +478,8 @@ const PROBES = {
       if (want !== "Read" && !durationShown) problems.push("no duration row above Read");
       if (p.get("expired") === "1" && !text.includes("expired")) problems.push("expired notice missing");
       if (p.get("expired") !== "1" && text.includes("setting expired")) problems.push("expired notice shown while not expired");
-      if (!text.includes("always asks you")) problems.push("the share-always-asks sentence missing");
-      if (!text.includes("Site access")) problems.push("Site access section missing");
+      if (!text.includes("publish a site to the internet")) problems.push("the dial no longer says Full includes publishing (D17)");
+      if (text.includes("Site access")) problems.push("the retired Site access section is back (D17)");
       if (text.includes("without asking")) problems.push("an auto-allow switch survived D15");
       return problems;
     }),
@@ -506,9 +505,9 @@ const PROBES = {
       else if (toggle.getAttribute("aria-checked") !== (p.get("astate") === "off" ? "false" : "true"))
         problems.push("toggle state does not match astate");
       // D16: with the endpoint OFF nothing renders below the toggle — no dial,
-      // no Site access, no feed; the paragraph and the toggle are all there is.
-      // With it ON, the dial (three level radios) and the Site access section
-      // are there, and neither the retired mail nor sites sub-toggle is.
+      // no feed; the paragraph and the toggle are all there is. With it ON,
+      // the dial (three level radios) is there, and no retired section is —
+      // mail, database and (D17) the publish prompt all folded into the dial.
       const switches = [...document.querySelectorAll('[role="switch"]')];
       if (switches.length !== 1) problems.push(`expected exactly one switch (the endpoint), got ${switches.length}`);
       const dialRadios = document.querySelectorAll('[role="radiogroup"][aria-label="Agent access"] [role="radio"]').length;
@@ -518,16 +517,12 @@ const PROBES = {
           if (!text.includes("applies as soon as you turn this on")) problems.push("the standing-level note is missing while off");
           if (dialRadios !== 3) problems.push("the dial must render while off when a standing level needs lowering");
         } else if (dialRadios !== 0) problems.push("the dial rendered with the endpoint off");
-        if (text.includes("Site access")) problems.push("Site access rendered with the endpoint off");
         if (text.includes("Recent activity")) problems.push("the feed rendered with the endpoint off");
       } else {
         if (dialRadios !== 3) problems.push(`expected the Agent access dial's 3 levels, got ${dialRadios}`);
-        if (!text.includes("Site access")) problems.push("the Site access section is missing");
-        if (!text.includes("always asks you")) problems.push("the dial no longer says publishing always asks");
+        if (!text.includes("publish a site to the internet")) problems.push("the dial no longer says Full includes publishing");
       }
-      if (text.includes("scratch-site mail") || text.includes("Database access")) problems.push("a retired section is back");
-      if (!off && !/a request only lasts while rexenv is running/i.test(text))
-        problems.push("the Site access empty state is missing");
+      if (text.includes("scratch-site mail") || text.includes("Database access") || text.includes("Site access")) problems.push("a retired section is back");
       // The feed must show resolved DOMAINS, never a raw UUID site handle (the
       // fix: target_site is a uuid, target_label is the domain shown). This now
       // also covers the case that CANNOT resolve — a reap names a site it just

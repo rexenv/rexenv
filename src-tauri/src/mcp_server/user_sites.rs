@@ -562,16 +562,13 @@ static REGISTRY: &[UserTool] = &[
     },
     UserTool {
         name: "share",
-        description: "Publish one of the user's own sites to the public internet through a \
-                      tunnel, for a limited time — webhook testing (Stripe → local Laravel/WP). \
-                      Takes `site_id` and `action`: `start` {minutes, 1–60, default 30} needs the \
-                      user's `run` permission on that site given by a PERSON — an auto-allowed \
-                      grant is refused, because a public share is not something a toggle should \
-                      answer — and the tunnel stops itself when the minutes run out, or when \
-                      rexenv quits; `stop` needs `manage`; `status` (every live share, or one \
-                      site's with `site_id`) needs `read` — on the site, or on rexenv itself for \
-                      all. The reply carries the public URL. Anyone with the URL reaches the site \
-                      unauthenticated while it is up.",
+        description: "Publish one of the user's own sites to the internet through a Cloudflare quick \
+                      tunnel, or stop and inspect one. Takes `action`: `start` {site_id, minutes?} \
+                      needs `run` — the Agent access dial at Full — and rexenv STOPS the share on \
+                      its own after the minutes asked for (30 by default, 60 at most) and when \
+                      rexenv quits; `stop` {site_id} needs `manage`; `status` {site_id?} needs \
+                      `read`. While it runs, anyone with the URL reaches that site as it is on \
+                      this machine — say so before you start one.",
         input_schema: || json!({
             "type": "object",
             "properties": {
@@ -1128,14 +1125,15 @@ impl<'a> UserCtx<'a> {
             .map_err(|_| Error::Other("the app database lock is poisoned".into()))
     }
 
-    /// The ONLY door to a site or to the stack. In order: the sub-toggle
-    /// (refused by name — the user's switch, not the agent's), then
-    /// `agent_grants::claim_or_ask` under the three locks it needs, which
-    /// refuses a scratch site, runs the gate for `S`, records the ask on
-    /// refusal, and answers with auto-allow only where a variant exists.
+    /// The ONLY door to a site or to the stack: `agent_grants::claim_by_level`,
+    /// which refuses a scratch site (the agent's own — the scratch tools apply)
+    /// and then asks the Agent access dial for `S`. No client, no row, no
+    /// prompt: after D15–D17 the dial answers every scope, publishing included.
     ///
     /// `wanted` is this tool's one-line description of what the agent is trying
-    /// to do, shown in the prompt so the user answers a concrete question.
+    /// to do. It is kept in the signature — and deliberately unused — because
+    /// it is what a future "why was this refused" surface would show, and
+    /// threading it back through fifty call sites is the cost of removing it.
     pub fn claim<S: scope::Marker>(&self, site_id: Option<&str>, wanted: &str) -> Result<Claimed<S>> {
         let _ = wanted;
         let conn = self.db()?;
@@ -1143,20 +1141,6 @@ impl<'a> UserCtx<'a> {
         Ok(Claimed { granted })
     }
 
-    /// The ONE tool still behind a person's click: publishing a site. A `run`
-    /// grant row a person made, session-only, recorded as an ask when missing
-    /// — the P1 machinery, kept for exactly this (D15).
-    pub fn claim_share(&self, site_id: &str, wanted: &str) -> Result<Claimed<scope::Run>> {
-        let conn = self.db()?;
-        // A poisoned lock reads as the SAFE direction: no requests recorded is
-        // a lost prompt, not a lost boundary.
-        let mut requests = self
-            .state
-            .agent_site_requests
-            .lock()
-            .map_err(|_| Error::Other("the app's request list lock is poisoned".into()))?;
-        agent_grants::claim_or_ask::<scope::Run>(&conn, &mut requests, Some(site_id), self.client, wanted)
-    }
 
     /// The re-read before a destructive step (#471's `still_granted`): the user
     /// may have pressed Revoke since the claim.
@@ -2745,11 +2729,12 @@ pub(crate) const SHARE_MAX_MINUTES: u64 = 60;
 pub(crate) const SHARE_DEFAULT_MINUTES: u64 = 30;
 
 /// `share` — D6's reopening conditions, met one by one: real demand (the
-/// owner's brief), a consent (`run` on the site), auto-stop (a bounded timer
-/// the app runs), and — D11 — never auto-allowed. That last one is checked on
-/// the GRANT ROW's `auto_granted`, not on the claim's path: a grant auto-allow
-/// wrote once would satisfy a later claim through the ordinary path, so the
-/// row is the fact that survives (#408's reason for recording it).
+/// owner's brief), a consent (the dial at **Full** — D17 folded publishing into
+/// the level that already says "run commands and code of its choosing … as
+/// you", because asking twice for a thing the level describes was the
+/// complexity the owner asked to remove), and auto-stop (a bounded timer the
+/// app runs, ≤60 minutes, dying with the app like every tunnel). The bound is
+/// not the consent: it holds whatever the level says.
 fn share<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTarget) -> ToolFuture<'a> {
     Box::pin(async move {
         let action = args.get("action").and_then(Value::as_str).ok_or_else(|| Error::Other("share needs an `action`: start, stop or status.".into()))?;
@@ -2779,11 +2764,13 @@ fn share<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTar
                 if !(1..=SHARE_MAX_MINUTES).contains(&minutes) {
                     return Err(Error::Other(format!("share `minutes` must be between 1 and {SHARE_MAX_MINUTES}.")));
                 }
-                let claimed = ctx.claim_share(id, &format!("publish it to the internet for {minutes} minutes"))?;
+                let claimed = ctx.claim::<scope::Run>(Some(id), &format!("publish it to the internet for {minutes} minutes"))?;
                 let site = claimed.granted.site().cloned().ok_or_else(|| Error::Other("share needs a site.".into()))?;
                 acted.set(&site);
+                // The dial can be turned down between the claim and the tunnel:
+                // publishing is the one action where that window is a URL.
                 if !ctx.still_granted(&claimed.granted)? {
-                    return Err(Error::Other("the permission was revoked before the share started — nothing is published.".into()));
+                    return Err(Error::Other("Agent access was turned down before the share started — nothing is published.".into()));
                 }
                 let info = ctx.ops.share_start(site.id.clone(), minutes).await?;
                 Ok(json!({
@@ -3160,10 +3147,10 @@ pub(crate) mod tests {
         }
         assert!(body.contains("pub fn claim<S: scope::Marker>"), "the one door");
         assert!(body.contains("claim_by_level::<S>"), "…and it asks the dial (D15)");
-        // The grant machinery survives for ONE tool: `claim_share` is the only
-        // place `claim_or_ask` is reached from, and share is its only caller.
-        assert_eq!(body.matches("agent_grants::claim_or_ask::<").count(), 1, "a second grant-shaped door appeared");
-        assert_eq!(prod.matches("ctx.claim_share(").count(), 1, "claim_share is share's alone");
+        // The dial is the only door (D17).
+        // D17: there is no second door. Publishing goes through the dial like
+        // everything else, so nothing in this file reaches a grant row.
+        assert!(!prod.contains("claim_or_ask") && !prod.contains("claim_share"), "a grant-shaped door came back");
     }
 
     /// Every parity tool declares its scope, and declares a sweep — the
@@ -3803,10 +3790,6 @@ pub(crate) mod tests {
             [],
         )
         .unwrap();
-    }
-
-    fn asks(state: &AppState) -> Vec<crate::core::agent_grants::GrantRequest> {
-        state.agent_site_requests.lock().unwrap().list().to_vec()
     }
 
     /// **`site_create` refuses a bad request on its shape before asking for
@@ -4475,7 +4458,7 @@ pub(crate) mod tests {
     /// refused even when a later claim finds it — is bounded to 60 minutes, and
     /// `stop` needs only `manage`.**
     #[tokio::test]
-    async fn share_needs_a_persons_run_grant_and_is_bounded() {
+    async fn share_needs_the_dial_at_full_and_is_bounded() {
         let state = app_state();
         switch_on(&state);
         let ops = FakeOps::default();
@@ -4486,22 +4469,14 @@ pub(crate) mod tests {
             let conn = state.db.lock().unwrap();
             store::insert_site(&conn, &site).unwrap();
         }
+        // The minutes bound is a SHAPE refusal — before the dial, whatever it says.
         let err = share(ctx, &json!({ "site_id": site.id, "action": "start", "minutes": 61 }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("between 1 and 60"), "{err}");
-        assert!(share(ctx, &json!({ "site_id": site.id, "action": "start" }), &acted).await.is_err());
-        assert!(asks(&state).iter().any(|r| r.scope == Scope::Run && r.wanted.contains("30 minutes")));
-        // D15: the dial at Full does NOT publish — share keeps a person's click.
-        dial(&state, crate::core::agent_access::AccessLevel::Full);
+        // D17: publishing is `run` — the dial at Full, no prompt, no grant row.
         let err = share(ctx, &json!({ "site_id": site.id, "action": "start" }), &acted).await.unwrap_err().to_string();
-        assert!(err.contains("Site access"), "share still asks a person: {err}");
+        assert!(err.contains("`run`") && err.contains("Full"), "{err}");
         assert!(ops.calls.lock().unwrap().iter().all(|c| !c.starts_with("share start")), "nothing was published");
-        {
-            let conn = state.db.lock().unwrap();
-            for g in store::list_agent_site_grants(&conn).unwrap() {
-                store::revoke_agent_site_grant(&conn, &g.id).unwrap();
-            }
-            store::grant_agent_site(&conn, "g-person", Some(&site.id), "claude-code", "run", 1, false, true).unwrap();
-        }
+        dial(&state, crate::core::agent_access::AccessLevel::Full);
         let v = share(ctx, &json!({ "site_id": site.id, "action": "start", "minutes": 10 }), &acted).await.unwrap();
         assert_eq!(v["url"], "https://abc.trycloudflare.com");
         assert!(v["detail"].as_str().unwrap().contains("10 minutes"));

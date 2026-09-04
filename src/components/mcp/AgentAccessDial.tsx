@@ -22,9 +22,9 @@ const MODES: { mode: AgentAccessMode; label: string; what: string }[] = [
  *  per-site prompts that needed six clicks for one site's ordinary work.
  *
  *  Held by the copy guard in `mcp_server.rs` to the sentences a trim would cut
- *  first: what Read is (free, whenever the endpoint is on), that publishing a
- *  site ALWAYS asks, that the administrator password still asks, and the
- *  residual — code an agent runs in your site runs as you. */
+ *  first: what Read is (free, whenever the endpoint is on), that Full includes
+ *  publishing and that rexenv stops the share, that the administrator password
+ *  still asks, and the residual — code an agent runs in your site runs as you. */
 export function AgentAccessDial() {
   const qc = useQueryClient();
   // Polled like the asks: a 7-day setting expires while the card is open, and
@@ -63,8 +63,9 @@ export function AgentAccessDial() {
       <p className="mt-1 text-[0.75rem] leading-[1.55] text-rex-text-muted">
         How far an agent may go with the sites you made, and with rexenv itself — one setting for
         every site and every agent. <strong className="font-medium text-rex-text">Read is on whenever the endpoint is</strong>.
-        Whatever the level, <strong className="font-medium text-rex-text">publishing a site to the internet always asks you</strong>,
-        and anything that needs an administrator password <strong className="font-medium text-rex-text">still asks you</strong>.
+        At <strong className="font-medium text-rex-text">Full</strong> an agent can also publish a
+        site to the internet — rexenv stops the share within the hour — and anything that needs an
+        administrator password <strong className="font-medium text-rex-text">still asks you</strong>.
         Anything an agent runs inside one of your sites runs as you.
       </p>
 

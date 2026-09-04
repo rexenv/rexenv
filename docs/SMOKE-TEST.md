@@ -749,7 +749,7 @@ because it mocks the IPC command (TESTING.md §1, L2). Nothing above the package
 have found it. That is why step 4 is a hold, not a note.
 - [ ] **1. Default off = no socket, and nothing below the toggle.** Fresh launch, never
   enabled → Settings → AI agents: the paragraph, the toggle OFF, and NOTHING beneath —
-  no status line, no Connect, no dial, no Site access, no feed (D16). `ls -l <socket>` →
+  no status line, no Connect, no dial, no feed (D16). `ls -l <socket>` →
   the file is ABSENT. **Tell #1:** if the socket exists here, the toggle is a label
   over an always-on socket (the always-on bug) — not really controlling it.
 - [ ] **2. Enable binds.** Toggle ON → "On — no recent agent activity"; `ls -l
@@ -939,7 +939,8 @@ turns; the L0/L1/L2 legs (#497, #498) hold the rest.
   border and a filled check on the chosen row, not colour alone (D16 found the first
   version's chosen state was dead CSS) — and NO duration row; Read's sentence names every
   site's mail and the databases, read-only, with password hashes and API keys; the copy
-  says Read is on whenever the endpoint is, that publishing a site always asks, that the
+  says Read is on whenever the endpoint is, that Full also publishes a site and rexenv
+  stops the share within the hour, that the
   administrator password still asks, and that code an agent runs in your site runs as you.
   Ask an agent to list a site's plugins → it works, nothing to click. **Tell:** a prompt
   for a read, or a "Let agents manage my own sites" switch anywhere.
@@ -954,13 +955,13 @@ turns; the L0/L1/L2 legs (#497, #498) hold the rest.
   Ask for the plugin delete → it runs. Set the stamp in the past (`rex config` cannot —
   the keys are refused; use the sqlite shell) → the card shows "Your 7-day setting
   expired", the level reads Read, the delete is refused.
-- [ ] **26. ⚠ What the dial never answers.** At **Full · Always**: ask the agent to share a
-  site → REFUSED, and **Site access** grows a publish prompt with **Allow for this session**
-  and **Don't allow** only. Ask it to set `agent_access_level` through the `settings`
-  tool → refused with the policy's reason, no prompt. Ask it to stop the stack → the
-  macOS password dialog still appears. **Tells — a HOLD:** a share started without the
-  prompt; a 7-day option on the publish prompt; an agent turning the dial; no macOS
-  dialog.
+- [ ] **26. ⚠ What the dial does and does not answer (D17).** At **Full · Always**: ask the
+  agent to share a site → it starts, and the reply says the URL and that rexenv stops it
+  within the minutes asked for; there is NO prompt anywhere, because Full says so. Turn
+  the dial to Changes → the same request is refused naming `run` and Full. Ask it to set
+  `agent_access_level` through the `settings` tool → refused with the policy's reason.
+  Ask it to stop the stack → the macOS password dialog still appears. **Tells — a HOLD:**
+  a share starting below Full; an agent turning the dial; no macOS dialog.
   *23–26 done 4 Sep 2026 on the rebuilt app, the owner turning the dial, Claude Code
   driving `bl.rex`: Read free (plugins/logs/inbox), a change and a destroy refused naming
   the level; Changes → xdebug ran, delete and `wp` refused naming Full, share asked;
@@ -974,7 +975,7 @@ turns; the L0/L1/L2 legs (#497, #498) hold the rest.
 > **D15 note for 27–39:** where a step below says "a prompt for `manage`/`destroy`/`run`
 > → Allow", read: refused naming **Agent access** at Changes/Full → turn the dial (for this
 > session) instead of clicking Allow; "one grant does not cover the other site" legs are
-> moot (the dial is global). The one prompt left is the publish prompt (38). The steps'
+> moot (the dial is global). After D17 there is no prompt at all — publishing is Full. The steps'
 > other tells — what runs, what is refused on shape, what the reply carries — are unchanged.
 
 ### Parity P2 — the site lifecycle on YOUR sites. Ships only if 27–31 pass.
@@ -984,7 +985,8 @@ that need the stack — creating, retrying and restarting a real site — and wh
 MODEL respects the gate. Set up: switch ON, `claude mcp add rexenv -- rex mcp`, the
 stack running, at least one of your own sites. Keep Settings → AI agents visible.
 - [ ] **27. Create, through the prompt.** Ask: *"create a blank PHP site called
-  `agenttest.rex`."* → refused, and **Site access** grows a prompt: the client, **rexenv
+  `agenttest.rex`."* → refused naming `manage` and Changes (D15/D17 leave no prompt: the
+  old text below described **rexenv
   itself** (not a site — there is none yet), `manage`, and "It asked to: create a php
   site `agenttest.rex`". Read the sentence under it: it must say what `manage` allows in
   concrete words AND "runs as you". Click **Allow for 7 days** → the agent's retry creates
@@ -1008,8 +1010,8 @@ stack running, at least one of your own sites. Keep Settings → AI agents visib
   as "no such site".
 - [ ] **30. Delete, and the session boundary.** Ask it to delete `agenttest.rex` → prompt →
   Allow for this session → the site, its folder and its database are gone; the feed
-  shows `site_delete · ok` naming it. Quit and relaunch → Site access lists that grant
-  **Revoked**; ask it to delete anything → refused, prompt again.
+  shows `site_delete · ok` naming it. Quit and relaunch → a session-long dial is back at
+  Read; ask it to delete anything → refused naming Full.
 - [ ] **31. Retry + restart.** Break a create on purpose (stop the database engine, then
   ask for a WordPress site) → the reply says the site exists as "setup incomplete" and
   names `site_retry`. Start the engine, ask it to retry → the site finishes. Ask it to
@@ -1061,13 +1063,12 @@ the human legs. Set up: stack up, switch ON, one of your own sites.
   `.rex`"* → `system` prompt naming the dialog → Allow → the macOS dialog → the file is
   back. Ask it to set `mcp_enabled` through `settings` → refused with the policy's
   reason and NO prompt.
-- [ ] **38. ⚠ Share: a person's click, and it stops itself.** Set the dial to **Full ·
-  Always**. Ask it to *"share `<your site>` for 2 minutes"* → REFUSED — the dial never
-  covers publishing — and **Site access** grows the publish prompt. Allow for this
-  session → the reply has a `trycloudflare` URL that
+- [ ] **38. ⚠ Share: Full covers it, and it stops itself (D17).** Set the dial to **Full ·
+  This session**. Ask it to *"share `<your site>` for 2 minutes"* → it starts with no
+  prompt; the reply has a `trycloudflare` URL that
   loads from your phone. Wait 2 minutes → the Tunnels page shows it stopped, and the
   feed shows no second agent call. **Tells — a HOLD:** the share started without the
-  publish prompt; the tunnel outlives its minutes; quitting rexenv leaves it up.
+  the dial at Changes or below; the tunnel outlives its minutes; quitting rexenv leaves it up.
   *Done 3 Sep 2026, in the other order: a person's session `run` → share started, the
   reply's `trycloudflare` URL, stopped by rexenv at 2m 00s (log), no second agent call,
   URL then 530; grant revoked + switch ON → share refused naming auto-allow, the

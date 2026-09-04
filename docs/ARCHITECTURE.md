@@ -950,8 +950,9 @@ IPC surface — which is how a reader ends up designing against a system with on
   remove — three resolver writes, `system` plus the password dialog); and `open` (the site's
   own URL or folder in the user's browser, editor or Finder, under `manage`; never an
   arbitrary URL or path); and `share` (D6's reopening conditions met one by one: the
-  owner's demand, `run` on the site given by a PERSON — after D15 the ONE thing still
-  behind a click: share keeps the grant-row path, session-only — and a
+  owner's demand, `run` on the site — after D17 that is the DIAL at Full, the level that
+  already says an agent may run code of its choosing as the user; there is no per-call
+  prompt left anywhere in the app — and a
   bounded auto-stop the app runs, ≤60 minutes, dying with the app like every tunnel; `status`
   under `read`), and `blueprints` (save `manage`, delete `destroy`, by NAME, the spec validated
   on shape first), and `repo` (the site's Repo tab — twelve reads under `read` on the site,
@@ -963,10 +964,10 @@ IPC surface — which is how a reader ends up designing against a system with on
   file NAMED, apply and revert `destroy`, the fingerprint binding apply to the previewed
   bytes); and `db_import` (status `read`, start `destroy` — it DROPS the site's database —
   blocking until settled, leftovers deleted by NAME only) — each through a
-  `Granted<S>` scope witness (`core::agent_grants`) — **minted by the Agent access dial (D15,
-  3 Sep 2026)**: one global level, Read / Changes / Full, with a duration (this session, 7
+  `Granted<S>` scope witness (`core::agent_grants`) — **minted by the Agent access dial and
+  nothing else (D15, 3 Sep 2026; D17 took publishing, the last exception)**: one global level, Read / Changes / Full, with a duration (this session, 7
   days, always); `manage` and `system` need Changes, `destroy` and `run` need Full, reads are
-  free whenever MCP is on. Per-site grants survive only for `share` (`claim_share`). Shape refusals
+  free whenever MCP is on. The grant row, the ask list and `authorize` are retired (#468-#474); `agent_site_grants` stays in the schema as history. Shape refusals
   (a bad type, a taken domain, `multisite` on a PHP site) come BEFORE the gate and record no
   ask, so a typo is answered as a typo and never as a permission prompt.
   What a tool may do is decided by **which registry its name came from** —
@@ -1024,7 +1025,7 @@ IPC surface — which is how a reader ends up designing against a system with on
   choke point (`promote_if_scratch`); `set_php_version` deliberately routes around it,
   and a guard asserts it stays that way — an agent promoting its own site would clear the
   expiry and free a cap slot, making switch→create unbounded (ledger #223).
-- **Opt-in twice — the endpoint and the dial — plus one click for publishing; never ambient.**
+- **Opt-in twice — the endpoint and the dial — and nothing else asks; never ambient.**
   `mcp_enabled` (absent = off) BINDS FIRST and persists second, so the toggle can never
   read on while nothing listens; disabling drops the accept loop and every live session
   mid-idle, then unlinks the socket file. **The scratch-mail stamp rides the endpoint**

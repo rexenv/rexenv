@@ -2481,7 +2481,6 @@ mod tests {
     fn the_agent_access_copy_says_what_a_level_hands_over() {
         const CARD: &str = include_str!("../../src/components/mcp/AgentsMcpCard.tsx");
         const DIAL: &str = include_str!("../../src/components/mcp/AgentAccessDial.tsx");
-        const CONSENT: &str = include_str!("../../src/components/mcp/AgentSiteGrants.tsx");
         const REFUSALS: &str = include_str!("core/agent_access.rs");
 
         // The enable-moment paragraph: the refusal is conditional on the dial.
@@ -2489,13 +2488,15 @@ mod tests {
             ("unless you turn Agent access up below", "that the refusal is conditional on the dial the user turns"),
             ("for this session, 7 days or always", "the three durations, so a user knows what they are choosing"),
             ("once you allow changes", "that the residual (#197) reaches the user's own sites once the dial is up"),
-            ("publishing a site to the\n        internet always asks you", "that share stays a click whatever the level"),
+            ("at Full an agent can also publish a site to the internet", "that publishing is IN Full, not a separate ask (D17)"),
+            ("stops any share it starts within the hour", "that a share ends on its own — the bound that makes publishing grantable"),
             ("never\n        asks for your administrator password", "that no level replaces the administrator-password dialog"),
         ];
         // The dial itself.
         const DIAL_MUST_SAY: &[(&str, &str)] = &[
             ("Read is on whenever the endpoint is", "that Read is not a choice — it is what MCP on means"),
-            ("publishing a site to the internet always asks you", "that share stays a click whatever the level"),
+            ("publish a site to the internet", "that Full includes publishing (D17)"),
+            ("stops the share within the hour", "that a share ends on its own"),
             ("still asks you", "that the administrator-password dialog is untouched"),
             ("runs as\n        you", "the residual, on the dial itself"),
             ("switches itself off when you quit rexenv", "what 'this session' means"),
@@ -2503,47 +2504,31 @@ mod tests {
             ("An agent can {l.allows}", "that each level's sentence is rendered from Rust, not retyped"),
             ("agents are back at Read", "what an expired 7-day setting means"),
         ];
-        // The share prompt and its empty state.
-        const CONSENT_MUST_SAY: &[(&str, &str)] = &[
-            ("It asked to:", "the concrete thing the agent tried — the question a person actually answers"),
-            ("Anyone with the link reaches the site", "what publishing means"),
-            ("runs as you", "the residual, in the prompt itself"),
-            ("Allow for this session", "that a session-long yes exists — and no longer one"),
-            ("Don't allow", "that NO is an available answer"),
-            ("revoke it", "that the decision is reversible, at the place they are deciding"),
-            ("only lasts while rexenv is running", "why an expected Allow button may not be there after a restart"),
-            ("always has to\n          ask you", "that publishing is the one thing no dial setting answers"),
-        ];
-        // Whitespace-insensitive, so a JSX re-wrap is not a copy change: the
-        // first version pinned line breaks by accident and a reflow tripped it.
-        // …and over the COMMENT-STRIPPED source, so a doc comment cannot satisfy
-        // a must-say (the review found "runs as you" living in a comment too).
+        // Whitespace-insensitive (a JSX re-wrap is not a copy change) over the
+        // COMMENT-STRIPPED source, so a doc comment cannot satisfy a must-say.
         let squash = |s: &str| crate::core::copy_scan::strip_ts_comments(s).split_whitespace().collect::<Vec<_>>().join(" ");
-        let (card_s, dial_s, consent_s) = (squash(CARD), squash(DIAL), squash(CONSENT));
+        let (card_s, dial_s) = (squash(CARD), squash(DIAL));
         for (phrase, why) in CARD_MUST_SAY {
             assert!(card_s.contains(&squash(phrase)), "the card no longer tells the user {why} (looked for \"{phrase}\")");
         }
         for (phrase, why) in DIAL_MUST_SAY {
             assert!(dial_s.contains(&squash(phrase)), "the dial no longer tells the user {why} (looked for \"{phrase}\")");
         }
-        for (phrase, why) in CONSENT_MUST_SAY {
-            assert!(consent_s.contains(&squash(phrase)), "the Site access copy no longer tells the user {why} (looked for \"{phrase}\")");
-        }
         // No auto-allow switch survived D15 — absent, not hidden.
         let dial_ui = crate::core::copy_scan::strip_ts_comments(DIAL);
-        let consent_ui = crate::core::copy_scan::strip_ts_comments(CONSENT);
-        assert!(!dial_ui.contains("without asking") && !consent_ui.contains("without asking"), "an auto-allow switch is back");
-        assert!(!consent_ui.contains("7 days"), "a week-long publish grant is not on offer");
+
+        assert!(!dial_ui.contains("without asking"), "an auto-allow switch is back");
 
         // The refusal an AGENT reads names the card, the dial and the section
         // by the strings the UI renders — #404's lesson, on comment-stripped
         // source so a doc comment cannot satisfy it.
         let card = crate::core::copy_scan::strip_ts_comments(CARD);
-        assert!(dial_ui.contains("role=\"radiogroup\"") && consent_ui.contains("Site access"), "a scan came back empty");
+        assert!(dial_ui.contains("role=\"radiogroup\""), "a scan came back empty");
         assert!(REFUSALS.contains("AI agents (MCP)") && card.contains("AI agents (MCP)"), "the card heading");
         assert!(REFUSALS.contains("{DIAL_LABEL}") && REFUSALS.contains("pub const DIAL_LABEL: &str = \"Agent access\""), "the refusal names the dial by its constant");
         assert!(dial_ui.contains("a?.label") && dial_ui.contains("{label}"), "the dial renders its heading from the status, not a literal");
-        assert!(include_str!("core/agent_grants.rs").contains("Site access"), "share's refusal names the section");
+        // D17: there is no Site access section — publishing is the dial's Full.
+        assert!(!card_s.contains("Site access") && !dial_s.contains("Site access"), "a retired consent section is back");
         // The level sentences reach the card from Rust (`what_it_allows`) —
         // so there is no TS copy to drift.
         assert!(!dial_ui.contains("delete or reset a site"), "a TS copy of a level sentence appeared");

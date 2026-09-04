@@ -2107,6 +2107,14 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     guard scans `border-rex-*` and refuses `rex-brand`; the `agents-access-*` probe had
     never run (`probeFor` order) and does now. 8 IPC wrappers and 8 commands deleted;
     SMOKE §M1 1, §M2b 13–14, §M3 15–18 (19–22 retired), §P3 35, §P4 38, §P1 23 rewritten.
+    ✓ **D17 — publishing is Full (4 Sep 2026, ledger #503; #468/#469/#473/#474 retired,
+    #471/#472/#487/#497/#498/#500 re-verdicted):** the owner's ruling — MCP is for the
+    user's convenience, so a tunnel does not get a second prompt when the level already
+    says an agent may run code of its choosing as them. `share start` claims `run`; the
+    cap, the auto-stop and the re-read are unchanged. With no per-call consent left, the
+    Site access section, the ask list, five commands, five IPC wrappers, the grant row
+    and `authorize` are retired; `agent_site_grants` stays as history behind a source
+    guard. The card is connect → dial → feed.
     An adversarial review (5 lenses, 34 findings) the same morning fixed: the reset-key
     scrub had NO test and missed WooCommerce's `lost-password/?key=` (now four shapes,
     pinned); cookie header VALUES were not scrubbed (the name decides now); an encoded

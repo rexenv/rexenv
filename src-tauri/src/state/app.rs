@@ -104,10 +104,6 @@ pub struct AppState {
     /// unix-socket `mcp_server` module.
     #[cfg(unix)]
     pub mcp: Mutex<crate::mcp_server::McpControl>,
-    /// Agents' outstanding asks to PUBLISH one of the user's sites (the one
-    /// consent still a click after D15/D16). In memory and session-scoped by
-    /// design: a prompt whose context is gone is not consent.
-    pub agent_site_requests: Mutex<crate::core::agent_grants::GrantRequests>,
 }
 
 impl AppState {
@@ -164,7 +160,6 @@ impl AppState {
             rewrite_active: Mutex::new(None),
             #[cfg(unix)]
             mcp: Mutex::new(crate::mcp_server::McpControl::default()),
-            agent_site_requests: Mutex::new(Default::default()),
         }
     }
 }

@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { cn } from "@/lib/utils";
 import { AgentActivityFeed } from "./AgentActivityFeed";
-import { AgentSiteGrants } from "./AgentSiteGrants";
 import { AgentAccessDial } from "./AgentAccessDial";
 
 /** The connect stanza for editors that read an MCP JSON config (Cursor, VS Code
@@ -69,13 +68,14 @@ function CopyButton({ value }: { value: string }) {
  * (§3.1) reads at the moment of enabling: it sits above the toggle, verbatim and
  * un-collapsed, worded to stay true as more capable tools arrive.
  *
- * D16 (4 Sep 2026): with the endpoint OFF nothing renders below the toggle —
+ * D16/D17 (4 Sep 2026): with the endpoint OFF nothing renders below the toggle —
  * there is nothing to decide about a socket that is not there. With it ON, the
- * order is the order a person needs things: connect an agent, then how far it
- * may go (the Agent access dial), then the one thing that still asks (publishing),
- * then what it did. The mail sub-toggle and the database prompt are gone: both
- * were reads, and Read is what the endpoint being on means — the paragraph above
- * the toggle now carries their honest sentences, held by the copy guard.
+ * card is three things: connect an agent, how far it may go (the Agent access
+ * dial), and what it did. Every per-call prompt is gone — the mail sub-toggle
+ * and the database grant because both were reads, and the publish prompt (D17)
+ * because Full already says an agent may run code of its choosing as the user;
+ * asking twice for a thing the level describes was the complexity to remove.
+ * The paragraph above the toggle carries their honest sentences, copy-guarded.
  *
  * The status line reads from recent call OUTCOMES, never the handshake alone —
  * so it says "working" only while calls succeed, and self-recovers as an error
@@ -148,9 +148,10 @@ export function AgentsMcpCard() {
         unless you turn Agent access up below, for this session, 7 days or always: that refusal
         lives in rexenv, not in the agent's good behaviour. Code running in a scratch site — or
         in one of your sites once you allow changes — runs as you, with your files and your
-        permissions. rexenv never asks for your administrator password on an agent's behalf,
-        publishing a site to the internet always asks you, and every call an agent makes is
-        listed below. Turn this off when you're not using it.
+        permissions. rexenv never asks for your administrator password on an agent's behalf;
+        at Full an agent can also publish a site to the internet, and rexenv stops any share it
+        starts within the hour. Every call an agent makes is listed below. Turn this off when
+        you're not using it.
       </p>
 
       <div className="mt-3.5 flex items-center gap-[14px] border-t border-rex-border-subtle pt-3.5">
@@ -205,7 +206,6 @@ export function AgentsMcpCard() {
           </div>
 
           <AgentAccessDial />
-          <AgentSiteGrants />
 
           {/* Activity — every agent action, none silent. */}
           <div className="mt-3.5 border-t border-rex-border-subtle pt-3.5">

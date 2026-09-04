@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { StartupNotice, AdminerStatus, AppInfo, AgentAction, AgentScope, AgentSiteAsk, AgentSiteGrant, AgentSiteGrantRow, AgentAccess,
+import type { StartupNotice, AdminerStatus, AppInfo, AgentAction, AgentAccess,
   AgentAccessLevel,
   AgentAccessMode, Blueprint, BrowserApp, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoGitOp, RepoJobState, RepoKind, RepoPullRef, RepoStashEntry, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpUpdateOutcome, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteProvisionState, SiteRepoInfo, SiteResources, SiteServing, ResolverPlan, ScratchPackage, TeardownReport, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser, UnresolvableTld } from "@/types";
 import {
@@ -2129,43 +2129,6 @@ export async function agentAccess(): Promise<AgentAccess> {
 /** Turn the dial. A level above Read needs a duration; Read takes none. */
 export async function agentAccessSet(level: AgentAccessLevel, mode: AgentAccessMode | null): Promise<AgentAccess> {
   return invoke<AgentAccess>("agent_access_set", { level, mode });
-}
-
-// ── Site access: the share asks — publishing keeps a person's click (D15) ────
-
-/** The scope asks an agent has made that nobody has answered yet. Recorded on
- *  the refusal path only — an agent cannot ask without first being told no. */
-export async function agentSiteRequests(): Promise<AgentSiteAsk[]> {
-  if (!isTauri()) return [];
-  return invoke<AgentSiteAsk[]>("agent_site_requests");
-}
-
-/** Every scope grant, live and dead, newest first, with the site's domain. */
-export async function agentSiteGrants(): Promise<AgentSiteGrantRow[]> {
-  if (!isTauri()) return [];
-  return invoke<AgentSiteGrantRow[]>("agent_site_grants");
-}
-
-/** Approve one ask for 7 days (`session: false`) or for this session only.
- *  `siteId: null` = the stack (rexenv itself — its inbox, its logs, creating
- *  sites). Refused in Rust for a scratch site, whatever the UI offered. */
-export async function agentSiteGrant(
-  siteId: string | null,
-  client: string,
-  scope: AgentScope,
-  session: boolean,
-): Promise<AgentSiteGrant> {
-  return invoke<AgentSiteGrant>("agent_site_grant", { siteId, client, scope, session });
-}
-
-/** Answer one scope ask with "no". */
-export async function agentSiteDeny(siteId: string | null, client: string, scope: AgentScope): Promise<void> {
-  return invoke<void>("agent_site_deny", { siteId, client, scope });
-}
-
-/** Revoke a scope grant — a timestamp, kept as evidence. */
-export async function agentSiteRevoke(id: string): Promise<void> {
-  return invoke<void>("agent_site_revoke", { id });
 }
 
 /** Clear the feed — the user's own record, theirs to wipe. Returns rows removed. */

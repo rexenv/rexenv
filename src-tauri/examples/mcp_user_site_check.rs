@@ -170,7 +170,6 @@ async fn main() {
         next += 1;
         call(&mut stream, &mut reader, next, name, args)
     };
-    let asks = |state: &AppState| state.agent_site_requests.lock().unwrap().list().to_vec();
 
 
     // 2) The dial at Read (the default): a read is free, a change is refused
@@ -190,10 +189,9 @@ async fn main() {
         let (err, text) = c(tool, args);
         assert!(err && text.contains("`Agent access`") && text.contains(needs), "{tool} at Read must name the dial and {needs}: {text}");
     }
-    assert!(asks(&state).is_empty(), "the dial records no ask");
     let (err, text) = c("site_info", json!({ "site_id": mine.id }));
     assert!(!err, "a read is free at Read: {text}");
-    println!("✓ dial at Read → reads free; every change refuses naming `Agent access` and its level; nothing asked");
+    println!("✓ dial at Read → reads free; every change refuses naming `Agent access` and its level; nothing recorded");
 
     // 3) A SHAPE refusal (taken domain) is refused before the dial is consulted.
     let (err, text) = c("site_create", json!({ "name": "Dup", "domain": "mine.rex", "type": "php", "php": "8.2" }));
@@ -261,7 +259,6 @@ async fn main() {
     //     ask; on the scratch site it names wp_run; site_logs lists the site's
     //     sources with no path and refuses a key outside them; mail_inbox is
     //     refused by the mail switch's own label before any grant is consulted.
-    let asks_before = asks(&state).len();
     let (err, text) = c("wp_plugin", json!({ "site_id": mine.id, "action": "list" }));
     assert!(err && text.contains("not WordPress"), "{text}");
     let (err, text) = c("wp_info", json!({ "site_id": theirs.id, "what": "info" }));
@@ -275,7 +272,6 @@ async fn main() {
     assert!(err && text.contains("scratch"), "{text}");
     let (err, text) = c("composer_link", json!({ "site_id": mine.id, "source": sandbox_root.display().to_string() }));
     assert!(err && text.contains("no composer.json at its project root"), "{text}");
-    assert_eq!(asks(&state).len(), asks_before, "row refusals ask for nothing");
     let (err, text) = c("site_logs", json!({ "site_id": mine.id }));
     assert!(!err, "site_logs under manage (⊃ read): {text}");
     let logs: Value = serde_json::from_str(&text).unwrap();
@@ -294,7 +290,6 @@ async fn main() {
     if !err {
         assert!(text.contains("every site's mail"), "the reply carries the inbox note: {text}");
     }
-    assert_eq!(asks(&state).len(), asks_before, "a read asks for nothing");
     dial(&state, core::agent_access::AccessLevel::Changes);
     println!("✓ wp/artisan/composer tools refuse a PHP/scratch site on the row; site_logs lists keys without paths and refuses a stray key; mail_inbox reads at Read (the dial turned down first) with no switch");
 

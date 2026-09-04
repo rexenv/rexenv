@@ -1453,71 +1453,6 @@ export type AgentOutcome = "ok" | "error" | "denied" | "unknown-tool" | "bad-req
  *  but labelled as ours — and excluded from the header's agent status line. */
 export type FeedActor = "agent" | "rexenv";
 
-/** A scope an agent can be granted on one of the user's own sites, or on the
- *  stack (mirrors `core::agent_grants::Scope`, ranked by blast radius).
- *  `destroy` ⊃ `manage` ⊃ `read`; `run` and `system` stand alone. */
-export type AgentScope = "read" | "manage" | "destroy" | "run" | "system";
-
-/** The Agent access dial (D15, mirrors `core::agent_access`): one global level
- *  for what an agent may do to the sites the user made, plus how long. */
-export type AgentAccessLevel = "read" | "changes" | "full";
-export type AgentAccessMode = "session" | "days" | "always";
-export interface AgentAccess {
-  level: AgentAccessLevel;
-  /** null at Read — a duration belongs to a level above it. */
-  mode: AgentAccessMode | null;
-  expiresAt: string | null;
-  /** A 7-day setting whose stamp passed: shown as such, not silently Read. */
-  expired: boolean;
-  /** The dial's label — the one Rust constant the refusal text also names. */
-  label: string;
-  /** What the CURRENT level hands over, in Rust's words. */
-  allows: string;
-  /** Every level with its sentence — the card renders the choice from these. */
-  levels: { level: AgentAccessLevel; allows: string }[];
-}
-
-/** An agent's outstanding ask for a scope (mirrors `core::agent_grants::GrantRequest`).
- *  Session-scoped in the backend, like the database asks. */
-export interface AgentSiteRequest {
-  /** null = about the stack, not a site. */
-  siteId: string | null;
-  domain: string | null;
-  client: string;
-  scope: AgentScope;
-  /** What the agent was trying to do, in the tool's own words, clamped in Rust. */
-  wanted: string;
-}
-
-/** An ask as the card renders it: the request plus the one sentence saying what
- *  the scope allows, served from Rust (`Scope::what_it_allows`) so it has one
- *  source (mirrors `commands::mcp::AgentSiteAsk`). */
-export interface AgentSiteAsk extends AgentSiteRequest {
-  allows: string;
-}
-
-/** One recorded scope grant (mirrors `state::store::AgentSiteGrant`). Kept after
- *  expiry and revocation, for the same reason the database grants are. */
-export interface AgentSiteGrant {
-  id: string;
-  /** null = a stack-level grant. */
-  siteId: string | null;
-  client: string;
-  scope: AgentScope;
-  grantedAt: string;
-  expiresAt: string;
-  autoGranted: boolean;
-  /** "Allow for this session": ended by the next launch. */
-  session: boolean;
-  revokedAt: string | null;
-}
-
-/** A grant as the list renders it: the row plus the site's CURRENT domain,
- *  resolved at read time; null for a stack grant or a deleted site (mirrors
- *  `commands::mcp::AgentSiteGrantRow`). */
-export interface AgentSiteGrantRow extends AgentSiteGrant {
-  siteLabel: string | null;
-}
 
 export interface AgentAction {
   id: number;
@@ -1553,6 +1488,25 @@ export type ActivityStatus =
   | { kind: "idle" }
   | { kind: "working"; lastTool: string; minutesAgo: number }
   | { kind: "erroring"; errored: number; minutesAgo: number };
+
+/** The Agent access dial (D15, mirrors `core::agent_access`): one global level
+ *  for what an agent may do to the sites the user made, plus how long. */
+export type AgentAccessLevel = "read" | "changes" | "full";
+export type AgentAccessMode = "session" | "days" | "always";
+export interface AgentAccess {
+  level: AgentAccessLevel;
+  /** null at Read — a duration belongs to a level above it. */
+  mode: AgentAccessMode | null;
+  expiresAt: string | null;
+  /** A 7-day setting whose stamp passed: shown as such, not silently Read. */
+  expired: boolean;
+  /** The dial's label — the one Rust constant the refusal text also names. */
+  label: string;
+  /** What the CURRENT level hands over, in Rust's words. */
+  allows: string;
+  /** Every level with its sentence — the card renders the choice from these. */
+  levels: { level: AgentAccessLevel; allows: string }[];
+}
 
 /** The MCP card's whole state in one read, so the header and the feed it shows
  *  come from the same snapshot (mirrors `commands::mcp::McpStatus`). */

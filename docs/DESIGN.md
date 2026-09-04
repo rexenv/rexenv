@@ -44,7 +44,11 @@ the shipped UI toward one.
   concrete question and not an abstract one. **A dial beats a switch plus prompts when
   the prompts are the product:** the first shape (per site × per scope × per client)
   was honest about consent and cost six clicks for one site's ordinary work; the
-  dial's "always" is the same standing yes an auto-allow switch was, said plainly.
+  dial's "always" is the same standing yes an auto-allow switch was, said plainly. **And a
+  level that already describes the risk does not ask again about an instance of it** (D17):
+  publishing a site lives in Full beside "runs code of its choosing as you", because a
+  second prompt for a thing the chosen level spells out is friction the user reads as
+  noise, not as consent.
 - **A chosen-one-of-N control shows its choice the way the New-site type cards do:**
   `border-brand` (+ `shadow-glow-primary`) on the chosen card with a filled
   `CheckCircle2` and a `text-brand-tint` label; a segmented pill (`bg-brand-tint-bg
