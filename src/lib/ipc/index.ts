@@ -992,6 +992,9 @@ export async function mailpitMessageRaw(id: string): Promise<string> {
   return invoke<string>("mailpit_message_raw", { id });
 }
 
+/** Off Tauri, the catch-all is a plain flag so the Settings toggle is drivable. */
+let mockCatchAll = true;
+
 /** Delete all captured messages ("Clear all"). Empties the mock inbox off Tauri. */
 export async function mailpitClear(): Promise<void> {
   if (!isTauri()) {
@@ -1009,6 +1012,25 @@ export async function mailpitDelete(ids: string[]): Promise<void> {
     return;
   }
   await invoke("mailpit_delete", { ids });
+}
+
+/** Whether rexenv forces every site's outgoing mail into Mailpit. */
+export async function mailCatchAll(): Promise<boolean> {
+  if (!isTauri()) return mockCatchAll;
+  return invoke<boolean>("mail_catch_all");
+}
+
+/**
+ * Turn the catch-all on or off. The backend does not merely record it — it
+ * installs or removes the WordPress mu-plugin and restarts the running php-fpm
+ * pools, so the answer on screen is true of the machine before this resolves.
+ */
+export async function setMailCatchAll(enabled: boolean): Promise<void> {
+  if (!isTauri()) {
+    mockCatchAll = enabled;
+    return;
+  }
+  await invoke("set_mail_catch_all", { enabled });
 }
 
 // ── WordPress Manager — plugins (§6.1) ──────────────────────────────────────

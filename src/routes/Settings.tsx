@@ -35,6 +35,8 @@ import {
   getAppInfo,
   getPhpSettings,
   getSetting,
+  mailCatchAll,
+  setMailCatchAll,
   listBlueprints,
   listEditors,
   listPhpVersions,
@@ -1214,6 +1216,58 @@ function ServicePrefsCard() {
   );
 }
 
+/**
+ * The mail catch-all.
+ *
+ * Its own card rather than a row in Service prefs because the copy has to carry
+ * two facts a one-line toggle cannot: turning it OFF lets a local site mail the
+ * real world, and turning it ON is not absolute — a site that has already run
+ * `php artisan config:cache`, an HTTP-API mailer, and the user's own terminal
+ * are all beyond reach. An honest-UI promise: the screen states the limit
+ * instead of letting a developer infer it from a message that reached a customer.
+ *
+ * The backend does not merely record the flip — it installs or removes the
+ * WordPress mu-plugin and restarts the running pools — so the toggle is left in
+ * its pending state until that resolves rather than snapping to a value that is
+ * not yet true of the machine.
+ */
+function MailCatchAllCard() {
+  const qc = useQueryClient();
+  const { data: on } = useQuery({ queryKey: ["mail-catch-all"], queryFn: mailCatchAll });
+  const toggle = useMutation({
+    mutationFn: (next: boolean) => setMailCatchAll(next),
+    onSuccess: (_r, next) => {
+      qc.invalidateQueries({ queryKey: ["mail-catch-all"] });
+      toast.info(
+        next
+          ? "Mail from your sites is caught in Mailpit again."
+          : "Your sites now send mail for real. Anything they mail will leave this Mac.",
+      );
+    },
+    onError: (e) => toastBackendError(e),
+  });
+  const enabled = on ?? true;
+  return (
+    <div className="rounded-[13px] border border-rex-border-subtle bg-rex-surface-1 px-5">
+      <PrefRow
+        title="Catch all outgoing mail"
+        desc="Every site's mail goes to Mailpit instead of the internet — even when a site is configured for a real SMTP provider (a WordPress SMTP plugin, or a Laravel .env). Turn it off only to test a live provider on purpose."
+        on={enabled}
+        onToggle={() => toggle.mutate(!enabled)}
+        label="Catch all outgoing mail"
+      />
+      {enabled ? (
+        <div className="border-b border-rex-border-subtle py-[11px] text-[0.75rem] text-rex-text-muted last:border-b-0">
+          Not everything can be caught: a Laravel app that has run{" "}
+          <span className="font-mono text-[0.6875rem]">php artisan config:cache</span> reads its
+          baked config, a plugin that mails through a provider&rsquo;s HTTP API never touches
+          PHP&rsquo;s mailer, and commands you run in your own terminal are outside rexenv.
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /** Default ports card (UI-only — rexenv's ports are fixed today; see CLAUDE.md). */
 function DefaultPortsCard() {
   const [http, setHttp] = useState("80");
@@ -1656,6 +1710,7 @@ export function Settings() {
             {section === "services" && (
               <>
                 <ServicePrefsCard />
+                <MailCatchAllCard />
                 <DefaultPortsCard />
                 <Card title="PHP versions">
                   <PhpVersionsSetting />

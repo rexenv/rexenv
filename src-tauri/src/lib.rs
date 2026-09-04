@@ -1255,6 +1255,8 @@ pub fn run() {
             commands::mail::mailpit_clear,
             commands::mail::mailpit_mark_all_read,
             commands::mail::mailpit_delete,
+            commands::mail::mail_catch_all,
+            commands::mail::set_mail_catch_all,
             commands::database::databases_status,
             commands::database::start_database,
             commands::database::stop_database,

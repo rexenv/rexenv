@@ -328,6 +328,19 @@ the shipped UI toward one.
   11 Aug). Bordered variants collapse their facing borders into the seam;
   `primary` draws no border at all and needs its own divider. `openin.js` asserts
   a non-transparent `border-left` on every chevron, whatever the variant.
+- **A toggle that promises "everything" states what it cannot reach, on the same
+  screen.** The mail catch-all (Settings → Services) says every site's mail goes
+  to Mailpit — and three routes escape it: a Laravel app that has run
+  `php artisan config:cache` reads its baked config, a plugin mailing through a
+  provider's HTTP API never touches PHP's mailer, and a command in the user's own
+  terminal is outside rexenv entirely. The card carries those three in plain
+  words while the toggle is ON, because the alternative way to learn them is a
+  message that reached a real customer. Same rule as the private-window icon
+  above, from the other end: there the affordance is WITHDRAWN where the promise
+  cannot hold; here it cannot be withdrawn, so the limit is written down. **And
+  the OFF direction gets a sentence too** — "your sites now send mail for real"
+  — since it is the only control in the app whose off position lets a
+  development machine reach a stranger's inbox.
 - **A menu row may carry a SECOND target, under the same seam rule.** `MenuItem`'s
   `action` splits an icon off behind a divider — "open it in that browser's
   private window" — as a sibling button that hovers on its own, so which half is

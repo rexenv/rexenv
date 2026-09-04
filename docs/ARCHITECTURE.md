@@ -1251,6 +1251,14 @@ IPC surface — which is how a reader ends up designing against a system with on
     said. Provisioning therefore wires MAIL_* into `.env` as well, after keeping the
     original as `.env.rexenv-backup` (written once — a retry that overwrote the backup
     with the already-wired file would destroy the thing it exists to preserve).
+  - **The switch does not merely record the flip** (`commands::mail::set_mail_catch_all`):
+    it writes the setting, installs or REMOVES the mu-plugin per site, and
+    restarts the RUNNING php-fpm pools so the rewritten configs are what the
+    workers actually run. A toggle that only wrote the row would be honest about
+    nothing until the next stack restart — a developer switching catching OFF to
+    test a real provider would watch mail keep vanishing into Mailpit with the
+    screen saying it should not. The restart is `restart_pools_for` over the live
+    set, so a settings edit never starts a pool as a side effect.
   - **The switch** (`mail.catch_all`, `mail::catch_all_enabled`) reads **absent as ON**:
     a default that read a missing row as off would make "every site's mail is caught"
     mean "every site created after the user found the switch", and only the exact

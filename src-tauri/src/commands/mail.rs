@@ -104,3 +104,62 @@ pub async fn mailpit_clear(_state: State<'_, AppState>) -> Result<()> {
 pub async fn mailpit_delete(_state: State<'_, AppState>, ids: Vec<String>) -> Result<()> {
     mail::delete(&ids).await
 }
+
+/// Whether rexenv forces every site's outgoing mail into Mailpit.
+#[tauri::command]
+pub fn mail_catch_all(state: State<'_, AppState>) -> Result<bool> {
+    let conn = state
+        .db
+        .lock()
+        .map_err(|_| crate::error::Error::Other("database lock poisoned".into()))?;
+    Ok(mail::catch_all_enabled(&conn))
+}
+
+/// Turn the mail catch-all on or off, and MAKE IT SO — do not merely record it.
+///
+/// A toggle that only wrote the row would be honest about nothing until the next
+/// stack restart: the pools would keep their `env[MAIL_*]`, the mu-plugins would
+/// keep forcing the transport, and a developer who had just switched catching
+/// OFF in order to test a real provider would watch their mail keep vanishing
+/// into Mailpit with a setting on screen saying it should not. So the write is
+/// the smallest part of this:
+///
+/// 1. the setting, first, because everything below reads it;
+/// 2. the WordPress mu-plugin, installed or REMOVED per site (`apply_all`);
+/// 3. the php-fpm pools, restarted so the rewritten configs (with or without
+///    the `env[]` block and the shim) are what the workers actually run.
+///
+/// Only pools that are RUNNING restart — a settings edit never starts a pool as
+/// a side effect (`restart_pools_for` over the live set), and with the stack
+/// down there is nothing to reconcile: the next start writes the configs from
+/// this setting anyway.
+///
+/// What it does NOT reach, and the UI says so: a site that has already run
+/// `php artisan config:cache` (its `.env` is not consulted any more), and any
+/// shell the user opened themselves.
+#[tauri::command]
+pub async fn set_mail_catch_all(state: State<'_, AppState>, enabled: bool) -> Result<()> {
+    let minors = {
+        let conn = state
+            .db
+            .lock()
+            .map_err(|_| crate::error::Error::Other("database lock poisoned".into()))?;
+        crate::state::store::set_setting(
+            &conn,
+            mail::CATCH_ALL_KEY,
+            if enabled { "true" } else { "false" },
+        )?;
+        // The mu-plugin pass runs under the SAME guard, after the write, so it
+        // cannot act on the value the user just replaced.
+        crate::core::wp_mail_catch::apply_all(&conn, &crate::core::sites::list(&conn)?);
+        crate::core::php::installed_minors(&conn)?
+    };
+    let checks = {
+        let mut mgr = state.services.lock().await;
+        mgr.set_mail_catch_from(state.platform.as_ref(), enabled);
+        mgr.restart_pools_for(state.platform.as_ref(), &minors).await?
+    };
+    // Awaited with the lock DROPPED — the locking rule (never hold the services
+    // lock across a wait).
+    crate::core::service_manager::await_ready(checks).await
+}

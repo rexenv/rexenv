@@ -1504,6 +1504,19 @@ impl ServiceManager {
         Ok(checks)
     }
 
+    /// Set the pools' mail catch-all from the CACHED Mailpit binary path.
+    ///
+    /// Sync, no download, no running Mailpit — both halves are a path, a fixed
+    /// SMTP port and a constant env set, which is the same derivation
+    /// `adopt_startup` uses and for the same reason: the caller (a settings
+    /// toggle) must not stream a download while holding the services lock.
+    pub fn set_mail_catch_from(&mut self, platform: &dyn Platform, enabled: bool) {
+        if self.mailpit_bin.is_none() {
+            self.mailpit_bin = binaries::cached_bin(platform, "mailpit", binaries::MAILPIT_VERSION);
+        }
+        self.pools.set_mail_catch(mail::catch_for(self.mailpit_bin.as_deref(), enabled));
+    }
+
     /// Restart every listed minor's live pool (patch bump riding an app release
     /// — Option A). The caller prefetches the new binaries FIRST (download hub,
     /// no lock held) so the stop→ensure gap under the services lock is a cache
