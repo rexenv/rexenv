@@ -39,6 +39,7 @@ async fn main() {
             upstream: "127.0.0.1:9999".into(),
             cert_path: cert.cert_path.clone(),
             key_path: cert.key_path.clone(),
+            stopped: false,
         aliases: Vec::new(),
     }],
         admin_socket: Some(proxy::admin_socket_path(&*plat).expect("admin socket path")),

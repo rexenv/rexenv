@@ -236,6 +236,15 @@ pub struct SiteRoute {
     pub aliases: Vec<String>,
     /// Upstream `host:port` Caddy proxies to (the shared Nginx).
     pub upstream: String,
+    /// The user stopped THIS site (v44). The route is still emitted — with its
+    /// certificate — and answers 503 instead of proxying.
+    ///
+    /// Dropping the route instead would hand the browser a TLS failure or, for
+    /// a neighbouring subdomain-multisite block, someone else's site: a
+    /// "your machine is broken" screen for a state the user deliberately chose.
+    /// A 503 that says so is the honest answer, and keeping the address here is
+    /// also what stops the hostname falling through to a `*.` matcher.
+    pub stopped: bool,
     pub cert_path: PathBuf,
     pub key_path: PathBuf,
 }
@@ -261,6 +270,12 @@ impl Default for CaddyConfig {
         }
     }
 }
+
+/// What a stopped site answers (v44). Plain text, because it is served by the
+/// edge itself with no PHP behind it — and it names the app and the fix, since
+/// the person reading it is a developer wondering why their own site is down.
+pub const STOPPED_SITE_BODY: &str =
+    "This site is stopped in rexenv. Start it from the Sites list to serve it again.";
 
 /// Render the Caddyfile. Explicit per-site `tls` means Caddy never invokes its
 /// internal issuer/ACME (it uses the loaded local-CA certs). Auto-HTTPS is left
@@ -316,7 +331,17 @@ pub fn generate_caddyfile(cfg: &CaddyConfig) -> String {
             s.push_str(&format!("\t@rexenv_probe path {EDGE_PROBE_PATH}\n"));
             s.push_str("\trespond @rexenv_probe 204\n");
         }
-        s.push_str(&format!("\treverse_proxy {}\n", r.upstream));
+        if r.stopped {
+            // No upstream at all for a stopped site — not an unreachable proxy.
+            // A `reverse_proxy` at a dead port answers 502 "Bad Gateway", which
+            // reads as a broken machine; this says what is true and what to do.
+            s.push_str(&format!(
+                "\trespond \"{}\" 503\n",
+                STOPPED_SITE_BODY.replace('"', "\\\"")
+            ));
+        } else {
+            s.push_str(&format!("\treverse_proxy {}\n", r.upstream));
+        }
         s.push_str("}\n");
     }
     s
@@ -960,6 +985,7 @@ mod tests {
                 upstream: "127.0.0.1:9999".into(),
                 cert_path: "/c/cert.pem".into(),
                 key_path: "/c/key.pem".into(),
+                stopped: false,
             }],
             admin_socket: None,
         }
@@ -1009,12 +1035,70 @@ mod tests {
             upstream: "127.0.0.1:9001".into(),
             cert_path: "/c/2.pem".into(),
             key_path: "/c/2.key".into(),
+            stopped: false,
             aliases: Vec::new(),
         });
         let f = generate_caddyfile(&cfg);
         assert!(f.contains("https://proxytest.test {"));
         assert!(f.contains("https://two.test {"));
         assert_eq!(f.matches("reverse_proxy").count(), 2);
+    }
+
+    /// **A stopped site keeps its address and its certificate, and proxies
+    /// nowhere.**
+    ///
+    /// Three things are asserted together because each one alone is the wrong
+    /// shape: no `reverse_proxy` (an upstream is what "stopped" removes), the
+    /// `tls` line still there (a dropped route means a browser interstitial —
+    /// the loudest failure this product has — for a state the user chose), and
+    /// the neighbouring site's block untouched (stopping one site is the whole
+    /// point, and the shared web server serves everyone else).
+    #[test]
+    fn a_stopped_site_answers_503_and_leaves_its_neighbour_alone() {
+        let mut cfg = sample();
+        cfg.routes[0].stopped = true;
+        cfg.routes.push(SiteRoute {
+            host: "neighbour.test".into(),
+            wildcard: false,
+            upstream: "127.0.0.1:9001".into(),
+            cert_path: "/c/2.pem".into(),
+            key_path: "/c/2.key".into(),
+            stopped: false,
+            aliases: Vec::new(),
+        });
+        let f = generate_caddyfile(&cfg);
+
+        let stopped_block = f
+            .split("https://proxytest.test {")
+            .nth(1)
+            .and_then(|b| b.split("\n}").next())
+            .expect("the stopped site still has a block");
+        assert!(
+            !stopped_block.contains("reverse_proxy"),
+            "a stopped site must proxy nowhere:\n{stopped_block}"
+        );
+        assert!(
+            stopped_block.contains("respond") && stopped_block.contains("503"),
+            "a stopped site must SAY it is stopped, not fail:\n{stopped_block}"
+        );
+        assert!(
+            stopped_block.contains("tls \"/c/cert.pem\" \"/c/key.pem\""),
+            "the certificate must survive being stopped — otherwise starting the site \
+             again shows the browser a name it has never been given a cert for:\n{stopped_block}"
+        );
+        // The body is the one a developer reads when their own site is down, so
+        // it names the app and the way back.
+        assert!(stopped_block.contains(STOPPED_SITE_BODY), "{stopped_block}");
+
+        let neighbour = f
+            .split("https://neighbour.test {")
+            .nth(1)
+            .and_then(|b| b.split("\n}").next())
+            .expect("neighbour block");
+        assert!(
+            neighbour.contains("reverse_proxy 127.0.0.1:9001"),
+            "stopping one site changed another one:\n{neighbour}"
+        );
     }
 
     /// Extra domains are ADDRESSES on the site's own block — same cert, same
@@ -1057,6 +1141,7 @@ mod tests {
             upstream: "127.0.0.1:18088".into(),
             cert_path: "/c/a.pem".into(),
             key_path: "/c/a.key".into(),
+            stopped: false,
             aliases: Vec::new(),
         });
         let f = generate_caddyfile(&cfg);
@@ -1085,6 +1170,7 @@ mod tests {
             upstream: "127.0.0.1:18088".into(),
             cert_path: "/c/m.pem".into(),
             key_path: "/c/m.key".into(),
+            stopped: false,
             aliases: Vec::new(),
         });
         let f = generate_caddyfile(&cfg);

@@ -47,7 +47,10 @@ paying for anyway: **the tick belongs in the commit that does the work.**
         backfill (exact, not safe: stopping one site was impossible before the column),
         `set_site_enabled` as the ONE writer, pinned by a source scan that counts writers
         of `sites.enabled` and by a round trip asserting the switch moves no other field
-  - [ ] T2 — `rebuild_configs_for` drops disabled vhosts; `SiteRoute { stopped }` → 503
+  - [x] T2 — the serving surface ✓ 4 Sep 2026 — `gets_nginx_block` (stopped ⇒ no server
+        block in the SHARED nginx at all) + `SiteRoute { stopped }` → the edge answers
+        `respond STOPPED_SITE_BODY 503` while keeping the site's `tls` line, so starting
+        it again is a reload and not a certificate the browser has never seen
   - [ ] T3 — `reconcile_overrides` stops a disabled site's own backend; `site_serving`
         returns `disabled` so "stopped" and "stopped by you" are different words
   - [ ] T4 — `set_site_enabled` command (enable may start the site's PHP pool; disable

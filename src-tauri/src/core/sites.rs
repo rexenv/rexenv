@@ -2172,6 +2172,18 @@ pub(crate) fn is_nginx_served(s: &Site) -> bool {
     !matches!(s.web_server, WebServer::Frankenphp | WebServer::Apache)
 }
 
+/// Does this site get a server block in the SHARED nginx config?
+///
+/// Two independent reasons not to, and they mean different things: an override
+/// site (FrankenPHP/Apache) is served by its own backend, and a site the user
+/// STOPPED (v44) is served by nothing at all. The stopped one is deliberately
+/// answered here rather than by emitting a block that returns an error —
+/// nginx is shared by every site, and the honest "this site is stopped"
+/// response belongs at the edge, which addresses this site by name.
+pub(crate) fn gets_nginx_block(s: &Site) -> bool {
+    s.enabled && is_nginx_served(s)
+}
+
 /// The edge (Caddy) upstream for a site: an override site (FrankenPHP/Apache)
 /// points at its own backend port; every other site goes to the shared nginx.
 fn site_upstream(s: &Site, nginx_http_port: u16) -> String {
@@ -2331,7 +2343,12 @@ pub fn rebuild_configs_for(
     // their own backend process.
     let mut nginx_sites: Vec<services::NginxSite> = sites
         .iter()
-        .filter(|s| is_nginx_served(s))
+        // A site the user STOPPED (v44) gets no server block at all. Not an
+        // empty one, not one returning 503: nginx is shared, and the honest
+        // 503 belongs at the edge (`proxy::STOPPED_SITE_BODY`), which is the
+        // only tier that knows this site by name without also being the tier
+        // every other site is served from.
+        .filter(|s| gets_nginx_block(s))
         .map(|s| nginx_site_for(s, body_limits, site_env, aliases))
         .collect();
     // Internal Adminer vhost (§5.2): served by the default php-fpm pool, rooted at
@@ -2387,6 +2404,10 @@ pub fn rebuild_configs_for(
             upstream: site_upstream(s, nginx_http_port),
             cert_path: cert.cert_path,
             key_path: cert.key_path,
+            // Still a route, still its own certificate — it just answers 503.
+            // The cert is issued either way so that starting the site again is
+            // a config reload and not a certificate the browser has never seen.
+            stopped: !s.enabled,
         });
     }
     // Edge route for the internal Adminer vhost (TLS via local CA → shared nginx).
@@ -2399,6 +2420,8 @@ pub fn rebuild_configs_for(
         upstream: format!("127.0.0.1:{nginx_http_port}"),
         cert_path: adminer_cert.cert_path,
         key_path: adminer_cert.key_path,
+        // The tooling vhost is not a Site and has no switch to stop it.
+        stopped: false,
     });
     let caddyfile = proxy::write_caddyfile(
         platform,
@@ -4651,6 +4674,40 @@ mod tests {
             sites_dir(&conn, &*platform).unwrap(),
             PathBuf::from("/tmp/custom-sites")
         );
+    }
+
+    /// **A stopped site is in NO nginx server block, whatever serves it.**
+    ///
+    /// Asserted for both kinds of site, because the two reasons a site can be
+    /// absent from the shared config are independent and a reader who checks
+    /// only the nginx case would be reading half the surface: an override site
+    /// is absent because something else serves it, a stopped site because
+    /// nothing does. The edge is where "stopped" gets its 503
+    /// (`proxy::STOPPED_SITE_BODY`) — nginx, being shared, only ever gets the
+    /// absence.
+    #[test]
+    fn a_stopped_site_gets_no_nginx_block_whichever_server_it_uses() {
+        let conn = db::open_in_memory().unwrap();
+        let mut new_ng = sample("NG", "ng.test");
+        new_ng.web_server = WebServer::Nginx;
+        let mut new_fp = sample("FP", "fp.test");
+        new_fp.web_server = WebServer::Frankenphp;
+        let mut ng = create(&conn, new_ng).unwrap();
+        let mut fp = create(&conn, new_fp).unwrap();
+        assert!(ng.enabled && fp.enabled, "a site is served the moment it is created");
+
+        assert!(gets_nginx_block(&ng), "a served nginx site has a block");
+        assert!(!gets_nginx_block(&fp), "an override site never had one");
+
+        ng.enabled = false;
+        fp.enabled = false;
+        assert!(!gets_nginx_block(&ng), "the user stopped this site — it must not be served");
+        assert!(!gets_nginx_block(&fp));
+
+        // And starting it again is exactly the flag going back: nothing else on
+        // the row participates in the decision.
+        ng.enabled = true;
+        assert!(gets_nginx_block(&ng));
     }
 
     #[test]
