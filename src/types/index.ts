@@ -552,6 +552,11 @@ export interface SiteResources {
 export interface SiteServing {
   domain: string;
   serving: boolean;
+  /** The user stopped THIS site (v44), as opposed to the stack being down.
+   *  Carried beside `serving` because the two stopped-nesses need different
+   *  words on screen — one word for both sends a user to start a stack that is
+   *  already running. Optional for payloads written before v44. */
+  disabled?: boolean;
 }
 
 /** The Adminer version row (mirrors `commands::database::AdminerStatus`).

@@ -51,8 +51,10 @@ paying for anyway: **the tick belongs in the commit that does the work.**
         block in the SHARED nginx at all) + `SiteRoute { stopped }` → the edge answers
         `respond STOPPED_SITE_BODY 503` while keeping the site's `tls` line, so starting
         it again is a reload and not a certificate the browser has never seen
-  - [ ] T3 — `reconcile_overrides` stops a disabled site's own backend; `site_serving`
-        returns `disabled` so "stopped" and "stopped by you" are different words
+  - [x] T3 — processes and status ✓ 4 Sep 2026 — `OverrideKind::wanted_by` (a stopped
+        site wants no backend; a shared site never had one, so no path here can reach
+        for a php-fpm pool), and `site_serving` returns `disabled` beside `serving` so
+        "the stack is down" and "you stopped this one" stay different answers
   - [ ] T4 — `set_site_enabled` command (enable may start the site's PHP pool; disable
         never stops a shared one), honest report when the stack is down
   - [ ] T5 — row menu + SiteDetail action, copy that separates it from "Stop all"

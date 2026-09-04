@@ -442,6 +442,14 @@ fn default_true() -> bool {
 pub struct SiteServing {
     pub domain: String,
     pub serving: bool,
+    /// The user stopped THIS site (v44) — as opposed to the stack being down.
+    ///
+    /// Carried beside `serving` rather than folded into it because the two
+    /// stopped-nesses are different answers to "why is my site not up", and one
+    /// word for both sends a user to start a stack that is already running. When
+    /// this is true, `serving` is false whatever the stack is doing.
+    #[serde(default)]
+    pub disabled: bool,
 }
 
 /// A PHP version in the installed-versions registry (Phase 2 §1.2). Keyed by the

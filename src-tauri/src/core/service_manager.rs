@@ -211,6 +211,20 @@ impl OverrideKind {
             _ => None,
         }
     }
+    /// Which override backend, if any, this site WANTS running right now.
+    ///
+    /// Two independent nos: a site on the shared web server never had a backend
+    /// of its own, and a site the user STOPPED (v44) wants nothing running. The
+    /// second is the only tier where stopping a site stops a process, and it is
+    /// exact — an override backend serves that one site. The shared php-fpm pool
+    /// is never stopped for the mirror-image reason: it serves every site on its
+    /// PHP minor, so taking it down to stop one site would stop other people's.
+    fn wanted_by(s: &Site) -> Option<OverrideKind> {
+        if !s.enabled {
+            return None;
+        }
+        OverrideKind::of(s.web_server)
+    }
     fn port(&self, domain: &str) -> u16 {
         match self {
             OverrideKind::Frankenphp => frankenphp::site_port(domain),
@@ -910,7 +924,7 @@ impl ServiceManager {
         let desired: HashMap<String, Desired> = sites
             .iter()
             .filter_map(|s| {
-                let kind = OverrideKind::of(s.web_server)?;
+                let kind = OverrideKind::wanted_by(s)?;
                 // The RECORDED backend port (B20 §4), never re-derived — so the
                 // spawned backend and the edge route always agree, even after a
                 // domain change. None (only if a stale nginx row) skips the site.
@@ -2649,7 +2663,12 @@ pub fn site_serving(sites: &[Site], infos: &[ServiceInfo]) -> Vec<SiteServing> {
             };
             SiteServing {
                 domain: s.domain.clone(),
-                serving: edge_up && upstream_up,
+                // A site the user STOPPED (v44) is never serving, whatever the
+                // stack is doing — its nginx block is not generated and its edge
+                // route answers 503, so a true here would be the status line
+                // contradicting the config on disk.
+                serving: s.enabled && edge_up && upstream_up,
+                disabled: !s.enabled,
             }
         })
         .collect()
@@ -3279,6 +3298,39 @@ mod tests {
         assert!(mgr.override_pids().is_empty(), "a shared-site restart started a backend");
     }
 
+    /// **Stopping a site stops its OWN backend, and only its own.**
+    ///
+    /// `reconcile_overrides` starts what is wanted and stops what is not, so
+    /// "wanted" is the whole decision — a stopped override site falling out of
+    /// that map is what makes its FrankenPHP/Apache process go away, and a
+    /// stopped shared site staying out of it is why no pool is touched. Both
+    /// halves are asserted, because the dangerous version of this feature is the
+    /// one that reaches for the shared pool to make something happen.
+    #[test]
+    fn a_stopped_site_wants_its_own_backend_gone_and_no_shared_process_touched() {
+        use crate::state::models::SiteOrigin;
+        let mut fp = crate::state::models::test_site("fp-1", "fp.test", SiteOrigin::User);
+        fp.web_server = WebServer::Frankenphp;
+        let mut ap = crate::state::models::test_site("ap-1", "ap.test", SiteOrigin::User);
+        ap.web_server = WebServer::Apache;
+        let mut ng = crate::state::models::test_site("ng-1", "ng.test", SiteOrigin::User);
+        ng.web_server = WebServer::Nginx;
+
+        assert_eq!(OverrideKind::wanted_by(&fp), Some(OverrideKind::Frankenphp));
+        assert_eq!(OverrideKind::wanted_by(&ap), Some(OverrideKind::Apache));
+        assert_eq!(OverrideKind::wanted_by(&ng), None, "a shared site never had a backend");
+
+        fp.enabled = false;
+        ap.enabled = false;
+        ng.enabled = false;
+        assert_eq!(OverrideKind::wanted_by(&fp), None, "a stopped site must not keep a backend up");
+        assert_eq!(OverrideKind::wanted_by(&ap), None);
+        // The shared site is the important one: it answers None both before and
+        // after, so there is no path here that could ever decide a php-fpm pool
+        // — shared by every site on that PHP minor — should stop.
+        assert_eq!(OverrideKind::wanted_by(&ng), None);
+    }
+
     #[test]
     fn site_serving_reflects_each_sites_own_upstream() {
         use crate::state::models::{MultisiteMode, ServiceStatus, SiteOrigin, SiteType};
@@ -3358,6 +3410,30 @@ mod tests {
         // Nginx down → the nginx site is down; FrankenPHP bypasses nginx, so it's unaffected.
         let m = map(&[caddy(true), nginx(false), si("PHP-FPM 8.3", pool, true), si("FrankenPHP f.test", fpport, true)]);
         assert!(!m["n.test"] && m["f.test"], "nginx down → nginx site down, fp unaffected");
+
+        // **A site the user STOPPED is down with everything else up** (v44), and
+        // it is stopped for a DIFFERENT reason, which the row has to carry: the
+        // config on disk gives it no nginx block and a 503 at the edge, so a
+        // "running" here would be the status line contradicting the config, and
+        // a plain "stopped" would send the user to start a stack that is
+        // already running.
+        let mut stopped = sites.clone();
+        stopped[0].enabled = false;
+        let all_up =
+            [caddy(true), nginx(true), si("PHP-FPM 8.3", pool, true), si("FrankenPHP f.test", fpport, true)];
+        let rows = site_serving(&stopped, &all_up);
+        let n = rows.iter().find(|r| r.domain == "n.test").unwrap();
+        let f = rows.iter().find(|r| r.domain == "f.test").unwrap();
+        assert!(!n.serving && n.disabled, "a stopped site is not serving, and says why");
+        assert!(f.serving && !f.disabled, "stopping one site took its neighbour with it");
+
+        // And with the stack DOWN the two reasons stay distinguishable — the
+        // neighbour is not serving either, but nobody stopped it.
+        let rows = site_serving(&stopped, &[caddy(false), nginx(false)]);
+        let n = rows.iter().find(|r| r.domain == "n.test").unwrap();
+        let f = rows.iter().find(|r| r.domain == "f.test").unwrap();
+        assert!(!n.serving && n.disabled);
+        assert!(!f.serving && !f.disabled, "the stack being down is not the user stopping a site");
     }
 
     #[tokio::test]
