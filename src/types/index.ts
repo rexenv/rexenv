@@ -1453,36 +1453,6 @@ export type AgentOutcome = "ok" | "error" | "denied" | "unknown-tool" | "bad-req
  *  but labelled as ours — and excluded from the header's agent status line. */
 export type FeedActor = "agent" | "rexenv";
 
-/** An agent's outstanding ask to read one real site's database (mirrors
- *  `core::agent_db::GrantRequest`). Session-scoped in the backend: a prompt
- *  whose context is gone is not consent, so these do not survive a quit. */
-export interface AgentDbRequest {
-  siteId: string;
-  domain: string;
-  /** The MCP client's self-reported name — the "who" in the consent question. */
-  client: string;
-}
-
-/** One recorded database grant (mirrors `state::store::AgentDbGrant`). Rows are
- *  KEPT after expiry and revocation: the list answers "what could that agent
- *  see, and until when", which a deleted row cannot. */
-export interface AgentDbGrant {
-  id: string;
-  siteId: string;
-  client: string;
-  /** The database account the grant created, so a revoke drops exactly it. */
-  dbUser: string;
-  grantedAt: string;
-  /** Stored, never a duration added at read time — the dialog promised a date. */
-  expiresAt: string;
-  revokedAt: string | null;
-  /** True when auto-allow produced this grant instead of a person clicking
-   *  Allow. Recorded at grant time — auto-allow is session-scoped, so by the
-   *  time anyone reads this list it is usually off, and asking "is it on now?"
-   *  would answer wrongly for every past row. */
-  autoGranted: boolean;
-}
-
 /** A scope an agent can be granted on one of the user's own sites, or on the
  *  stack (mirrors `core::agent_grants::Scope`, ranked by blast radius).
  *  `destroy` ⊃ `manage` ⊃ `read`; `run` and `system` stand alone. */
@@ -1591,10 +1561,6 @@ export interface McpStatus {
   connectCommand: string;
   activity: ActivityStatus;
   recent: AgentAction[];
-  /** The MAIL sub-toggle (M2b) — off by default and INDEPENDENT of `enabled`:
-   *  turning the endpoint on does not turn mail on. While it is true, every
-   *  scratch site carries rexenv's `From` stamp; while false, none does. */
-  mailEnabled: boolean;
   /** The Agent access dial (D15) — level, duration, expiry and Rust's copy. */
   access: AgentAccess;
 }

@@ -161,22 +161,40 @@ mod tests {
     /// A source guard: the property is "these two call sites both exist", and
     /// the thing that went wrong was one of them never being written.
     #[test]
-    fn a_scratch_site_is_stamped_both_when_the_toggle_flips_and_when_it_is_created() {
+    fn a_scratch_site_is_stamped_both_when_the_endpoint_turns_on_and_when_it_is_created() {
         let toggle = include_str!("../commands/mcp.rs");
         let create = include_str!("../mcp_server/scratch.rs");
+        let launch = include_str!("../mcp_server.rs");
         assert!(
             toggle.contains("wp_mailtag::enable"),
-            "the toggle stopped retro-stamping existing scratch sites — sites made BEFORE mail \
+            "the endpoint stopped retro-stamping existing scratch sites — sites made BEFORE MCP \
              was switched on become permanently unreadable to the agent"
         );
+        // D16: the stamp rides the ENDPOINT. Both moments an existing site can
+        // be reached — the toggle and a launch with MCP already on — must call
+        // the one sync, or a machine upgraded with MCP on keeps unstamped sites.
+        let enable_fn = &toggle[toggle.find("pub fn mcp_set_enabled(").unwrap()..];
+        let enable_fn = &enable_fn[..enable_fn.find("\n}\n").unwrap()];
+        assert!(enable_fn.contains("sync_scratch_mail_stamps(&conn, enable)"), "mcp_set_enabled stopped syncing the stamps");
+        // ORDER, not presence: the sync runs after the bind and after the flag
+        // is persisted, so a failed bind stamps nothing (on/bound/stamped never
+        // diverge). A guard that only found the call would pass a sync moved
+        // above the bind — the review said so.
+        let bind_at = enable_fn.find("mcp_server::start(").expect("the bind");
+        let flag_at = enable_fn.find("MCP_ENABLED_KEY").expect("the flag write");
+        let sync_at = enable_fn.find("sync_scratch_mail_stamps(&conn, enable)").unwrap();
+        assert!(bind_at < sync_at && flag_at < sync_at, "the stamp sync must run after the bind and the flag write");
+        let spawn_fn = &launch[launch.find("pub fn spawn_if_enabled(").unwrap()..];
+        let spawn_fn = &spawn_fn[..spawn_fn.find("\n}\n").unwrap()];
+        assert!(spawn_fn.contains("sync_scratch_mail_stamps(&conn, true)"), "launch with MCP on stopped backfilling the stamps");
         // The CALL, not the definition. The first version of this assertion
         // looked for the bare name and a plant that deleted the call while
         // leaving the helper behind PASSED — a guard that proves a function
         // exists rather than that anything invokes it. Dead code satisfies the
         // weak form; only a call site satisfies this one.
         assert!(
-            create.contains("ctx.stamp_mail_if_enabled(&site)"),
-            "scratch creation stopped stamping — every site made WHILE mail is on becomes \
+            create.contains("ctx.stamp_mail(&site)"),
+            "scratch creation stopped stamping — every site made WHILE the endpoint is on becomes \
              unreadable, and `mail_list` blames the user for the opposite of what happened"
         );
         // Both must also record a mu-dir they created, or teardown leaves it.

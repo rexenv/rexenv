@@ -10,7 +10,7 @@
 //! Unix-only, mirroring the unix-socket `mcp_server` module.
 
 use crate::error::{Error, Result};
-use crate::mcp_server::{self, feed, MCP_ENABLED_KEY, MCP_MAIL_ENABLED_KEY};
+use crate::mcp_server::{self, feed, MCP_ENABLED_KEY};
 use crate::state::app::AppState;
 use crate::state::store;
 use serde::Serialize;
@@ -44,9 +44,6 @@ pub struct McpStatus {
     pub activity: ActivityStatus,
     /// Recent feed rows, newest first, the card lists.
     pub recent: Vec<feed::AgentAction>,
-    /// The MAIL sub-toggle (M2b) — off by default, and independent of
-    /// `enabled`: turning the endpoint on does not turn mail on.
-    pub mail_enabled: bool,
     /// The Agent access dial (D15): level, duration, expiry, and the copy for
     /// what the level hands over — served from Rust so the card, the refusal
     /// and the plan cannot drift (#404).
@@ -92,14 +89,12 @@ fn status_snapshot(state: &AppState, limit: usize) -> Result<McpStatus> {
             }
         }
     };
-    let mail_enabled = mcp_server::mail_enabled(&conn);
     let access = crate::core::agent_access::current(&conn)?;
     Ok(McpStatus {
         enabled,
         connect_command: CONNECT_COMMAND,
         activity,
         recent,
-        mail_enabled,
         access,
     })
 }
@@ -110,79 +105,57 @@ pub fn mcp_status(state: State<'_, AppState>) -> Result<McpStatus> {
     status_snapshot(&state, CARD_LIMIT)
 }
 
-/// Flip the opt-in toggle. Enabling BINDS the socket, and persists "true" only
-/// after the bind succeeds — the toggle never reads on while nothing listens.
-/// Disabling drops every live session, unlinks the socket, and persists "false".
-/// Turn the MAIL sub-toggle on or off — **and put the scratch sites in step with
-/// it**, which is the part that is not a flag flip.
+/// Keep every scratch site's From stamp in step with the MCP endpoint (D16).
 ///
-/// The stamp that makes an agent's own mail findable (`core::wp_mailtag`) is a
-/// file inside each scratch site, so "mail is on" has to mean "every scratch
-/// site carries the stamp". Where that write happens was the real decision:
+/// The stamp (`core::wp_mailtag`) is what lets `mail_list`/`mail_get` tell a
+/// scratch site's mail from the user's; before D16 it rode a separate mail
+/// sub-toggle, and a machine that turned MCP on and never touched that toggle
+/// had agents refused for mail they were entitled to. Now the stamp exists
+/// exactly while the endpoint is on: written for every scratch site when the
+/// endpoint is enabled (and at launch when it already is — the backfill for a
+/// machine upgraded with MCP on), removed when it is disabled. A user-owned
+/// site is never touched — the filter is the RECORDED origin, never the
+/// domain. A site whose folder is gone is skipped with a log; whether one is
+/// really stamped is answered at READ time by a stat.
 ///
-/// - **Not lazily, at the first `mail_list`.** The stamp must exist BEFORE the
-///   mail is sent. Installing it when the agent READS is after the site already
-///   sent, so the canonical loop — trigger a password reset, then read it —
-///   would still miss on the first attempt, silently, looking exactly like a
-///   site that overrode `From`. That turns a permanent confusion into a one-shot
-///   one rather than fixing it.
-/// - **Not at every launch.** That writes a `From`-forcing mu-plugin into a
-///   user's sites even when the feature is off — a behaviour change nobody
-///   asked for.
-/// - **Here, at the toggle**, because this is the consent moment. The write is
-///   tied to the decision that authorises it, the stamp is in place before any
-///   agent connects, and disabling removes it. That yields one statable
-///   invariant — *the stamp exists on every scratch site exactly while this is
-///   on* — which **eliminates "this site predates the feature" as a category**
-///   instead of leaving `mail_list` to report it.
-///
-/// Best-effort per site, and deliberately so: a site whose docroot is gone or
-/// never provisioned is SKIPPED with a log, not an error that blocks the
-/// toggle. Whether any individual site is really stamped is answered at READ
-/// time by a stat (`wp_mailtag::is_installed`), which is live — a count
-/// returned from here would be a snapshot that goes stale the moment a site is
-/// created or deleted.
-#[tauri::command]
-pub fn mcp_set_mail_enabled(state: State<'_, AppState>, enable: bool) -> Result<McpStatus> {
-    {
-        let conn = db(&state)?;
-        store::set_setting(&conn, MCP_MAIL_ENABLED_KEY, if enable { "true" } else { "false" })?;
-        let sites = crate::core::sites::list(&conn)?;
-        let (mut stamped, mut skipped) = (0usize, 0usize);
-        for site in sites.iter().filter(|s| s.is_scratch()) {
-            let docroot = std::path::Path::new(&site.path);
-            if !docroot.is_dir() {
-                // Not provisioned, or its folder is gone. Nothing to stamp, and
-                // nothing wrong — `mail_list` reports this state per site.
-                skipped += 1;
-                continue;
-            }
-            let outcome = if enable {
-                crate::core::wp_mailtag::enable(docroot, site.content_dir_rel(), &site.domain)
-                    .map(|created_dir| {
-                        // v25: record ownership of a dir WE made, so teardown
-                        // removes it — never inferred later from emptiness.
-                        if created_dir {
-                            let _ = store::set_site_mu_dir_created(&conn, &site.id);
-                        }
-                    })
-            } else {
-                crate::core::wp_mailtag::disable(docroot)
-            };
-            match outcome {
-                Ok(()) => stamped += 1,
-                Err(e) => {
-                    skipped += 1;
-                    log::warn!("mcp: mail stamp for {} could not be updated: {e}", site.domain);
+/// Over `&Connection` rather than `State`, so the sandbox examples can call it
+/// without binding the real socket. Returns (updated, skipped).
+pub fn sync_scratch_mail_stamps(conn: &rusqlite::Connection, on: bool) -> (usize, usize) {
+    let sites = match crate::core::sites::list(conn) {
+        Ok(s) => s,
+        Err(e) => {
+            log::warn!("mcp: could not list sites to update mail stamps: {e}");
+            return (0, 0);
+        }
+    };
+    let (mut updated, mut skipped) = (0usize, 0usize);
+    for site in sites.iter().filter(|s| s.is_scratch()) {
+        let docroot = std::path::Path::new(&site.path);
+        if !docroot.is_dir() {
+            skipped += 1;
+            continue;
+        }
+        let outcome = if on {
+            crate::core::wp_mailtag::enable(docroot, site.content_dir_rel(), &site.domain).map(|created_dir| {
+                // v25: record ownership of a dir WE made, so teardown removes
+                // it — never inferred later from emptiness.
+                if created_dir {
+                    let _ = store::set_site_mu_dir_created(conn, &site.id);
                 }
+            })
+        } else {
+            crate::core::wp_mailtag::disable(docroot)
+        };
+        match outcome {
+            Ok(()) => updated += 1,
+            Err(e) => {
+                skipped += 1;
+                log::warn!("mcp: mail stamp for {} could not be updated: {e}", site.domain);
             }
         }
-        log::info!(
-            "mcp: mail {} — {stamped} scratch site(s) updated, {skipped} skipped",
-            if enable { "enabled" } else { "disabled" }
-        );
     }
-    status_snapshot(&state, CARD_LIMIT)
+    log::info!("mcp: scratch mail stamps {} — {updated} site(s) updated, {skipped} skipped", if on { "on" } else { "off" });
+    (updated, skipped)
 }
 
 #[tauri::command]
@@ -210,6 +183,10 @@ pub fn mcp_set_enabled(
     {
         let conn = db(&state)?;
         store::set_setting(&conn, MCP_ENABLED_KEY, if enable { "true" } else { "false" })?;
+        // The stamp rides the endpoint (D16): after a SUCCESSFUL bind, never
+        // before — a failed bind stamps nothing, so on/bound/stamped never
+        // diverge.
+        sync_scratch_mail_stamps(&conn, enable);
     }
     status_snapshot(&state, CARD_LIMIT)
 }
@@ -240,173 +217,12 @@ pub fn agent_activity_clear(state: State<'_, AppState>) -> Result<usize> {
     feed::clear(&conn)
 }
 
-// ── Agent database grants (M3 stage 4) ───────────────────────────────────────
-//
-// The consent surface. `db_query`'s refusal records the ask; these four
-// commands are how a human answers it and how they see, later, what they
-// answered. Everything here is USER-driven — there is no IPC an agent can
-// reach, and no command that grants without a site id and a client name the
-// user was actually shown.
-
-/// The asks an agent has made and nobody has answered yet.
-#[tauri::command]
-pub fn agent_db_requests(
-    state: State<'_, AppState>,
-) -> Result<Vec<crate::core::agent_db::GrantRequest>> {
-    let reqs = state
-        .agent_db_requests
-        .lock()
-        .map_err(|_| crate::error::Error::Other("the agent request list is poisoned".into()))?;
-    Ok(reqs.list().to_vec())
-}
-
-/// Every grant, live and dead, newest first — the answer to "what could that
-/// agent see, and until when".
-#[tauri::command]
-pub fn agent_db_grants(
-    state: State<'_, AppState>,
-) -> Result<Vec<crate::state::store::AgentDbGrant>> {
-    let conn = db(&state)?;
-    crate::state::store::list_agent_db_grants(&conn)
-}
-
-/// Approve one ask: create the read-only principal on the engine and record the
-/// grant with its expiry.
-///
-/// **The principal is created HERE, not on first use.** A grant row whose
-/// database account does not exist would be a UI saying access is live while
-/// every query fails, and the user would have no way to tell which half is
-/// wrong. Provisioning first also means the failure the user sees is "the
-/// database engine is not running" at the moment they clicked, which is the
-/// moment they can do something about it.
-#[tauri::command]
-pub async fn agent_db_grant(
-    state: State<'_, AppState>,
-    site_id: String,
-    client: String,
-) -> Result<crate::state::store::AgentDbGrant> {
-    use crate::core::agent_db::{self, Principal, GRANT_DAYS};
-
-    let site = {
-        let conn = db(&state)?;
-        crate::state::store::get_site(&conn, &site_id)?
-            .ok_or_else(|| crate::error::Error::Other(format!("no site with id {site_id:?}")))?
-    };
-    let engine = crate::core::db::DbEngine::from_site(site.db_engine);
-    let version = super::database::effective_db_version(&state, engine)?;
-    let client_bin = engine
-        .cached_sql_client(state.platform.as_ref(), &version)
-        .ok_or_else(|| {
-            crate::error::Error::Other(format!(
-                "{}'s client is not installed, so the read-only account cannot be created",
-                engine.label()
-            ))
-        })?;
-    let user = agent_db::principal_name(Principal::ReadOnly, &site.domain);
-    agent_db::provision(&client_bin, engine.port(), Principal::ReadOnly, &site.db_name, &user)?;
-
-    let conn = db(&state)?;
-    let grant = crate::state::store::grant_agent_db(
-        &conn,
-        &uuid::Uuid::new_v4().to_string(),
-        &site_id,
-        &client,
-        &user,
-        GRANT_DAYS,
-        false, // a human clicked Allow — this is the command the button calls
-    )?;
-    drop(conn);
-    if let Ok(mut reqs) = state.agent_db_requests.lock() {
-        reqs.answer(&site_id, &client);
-    }
-    Ok(grant)
-}
-
-/// Deny one ask without granting anything. Separate from `agent_db_grant`
-/// because a denial is an answer the user gave, and leaving the prompt up until
-/// it happens to be granted would make "no" the one response the UI cannot
-/// express.
-#[tauri::command]
-pub fn agent_db_deny(state: State<'_, AppState>, site_id: String, client: String) -> Result<()> {
-    let mut reqs = state
-        .agent_db_requests
-        .lock()
-        .map_err(|_| crate::error::Error::Other("the agent request list is poisoned".into()))?;
-    reqs.answer(&site_id, &client);
-    Ok(())
-}
-
-/// Revoke a live grant: stop the access, then record when it stopped.
-///
-/// **In that order, and it matters.** Dropping the account first means a
-/// revocation that fails halfway leaves access already closed and a row that
-/// still says live — visibly wrong, and safe. Recording first would leave a row
-/// saying "revoked" over an account that can still read, which is the same
-/// wrongness pointed the other way: a user told they are safe when they are
-/// not.
-#[tauri::command]
-pub async fn agent_db_revoke(state: State<'_, AppState>, id: String) -> Result<()> {
-    let grant = {
-        let conn = db(&state)?;
-        crate::state::store::get_agent_db_grant(&conn, &id)?
-            .ok_or_else(|| crate::error::Error::Other(format!("no grant with id {id:?}")))?
-    };
-    let site = {
-        let conn = db(&state)?;
-        crate::state::store::get_site(&conn, &grant.site_id)?
-    };
-    // A grant whose site is already gone has nothing to drop — the site delete
-    // took the database and its accounts with it. Recording the revocation is
-    // still right: the row is evidence, and evidence should say it ended.
-    if let Some(site) = site {
-        let engine = crate::core::db::DbEngine::from_site(site.db_engine);
-        let version = super::database::effective_db_version(&state, engine)?;
-        if let Some(client_bin) = engine.cached_sql_client(state.platform.as_ref(), &version) {
-            crate::core::agent_db::deprovision(&client_bin, engine.port(), &grant.db_user)?;
-        }
-    }
-    let conn = db(&state)?;
-    crate::state::store::revoke_agent_db_grant(&conn, &id)?;
-    Ok(())
-}
-
-/// Is auto-allow on for this session? (`core::agent_db::AutoAllow`.)
-///
-/// Session state, so the UI must ASK rather than remember: a fresh launch is
-/// always off, and a toggle left visually on across a restart would be the
-/// worst possible lie for this particular switch.
-#[tauri::command]
-pub fn agent_db_auto_allow(state: State<'_, AppState>) -> Result<bool> {
-    Ok(state
-        .agent_db_auto_allow
-        .lock()
-        .map(|a| a.is_on())
-        .unwrap_or(false))
-}
-
-/// Turn auto-allow on or off for this session.
-///
-/// Switching it OFF does not revoke what it already granted — those are real
-/// grants with real expiries, listed and revocable individually, exactly like
-/// ones a person clicked. Silently revoking them here would make this switch
-/// mean two things at once, and the user would have no way to tell which
-/// access ended because of the toggle and which they ended themselves.
-#[tauri::command]
-pub fn agent_db_set_auto_allow(state: State<'_, AppState>, on: bool) -> Result<bool> {
-    let mut a = state
-        .agent_db_auto_allow
-        .lock()
-        .map_err(|_| crate::error::Error::Other("the auto-allow lock is poisoned".into()))?;
-    a.set(on);
-    log::info!("mcp: database auto-allow {} for this session", if on { "ON" } else { "off" });
-    Ok(a.is_on())
-}
-
 // ── Site access (MCP parity, `docs/PLAN-mcp-parity.md` §3) ─────────────────────
 //
-// The scope-grant consent surface: the same shape as the database one above,
-// generalised. USER-driven throughout — no IPC an agent can reach, and no
-// command that grants without a client name and a scope the user was shown.
+// After D15/D16 the one consent still a click: publishing a site (`share`).
+// The dial answers everything else. USER-driven throughout — no IPC an agent
+// can reach, and no command that grants without a client name and a scope
+// the user was shown.
 
 /// Read the Agent access dial (D15).
 #[tauri::command]

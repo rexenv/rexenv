@@ -590,7 +590,7 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   `revoked_at` instead of DELETE so a revoked grant stays as evidence of what an
   agent could see and until when) · v39 the grants index · v40 `agent_db_grants.auto_granted` (did a PERSON click
   Allow, or did auto-allow answer? Recorded, because auto-allow is session-scoped and will
-  usually be off by the time anyone reads the list). · v41 `sites.starter_db` (did a
+  usually be off by the time anyone reads the list). **D16, 4 Sep 2026: v38–v40 are no longer a consent record — the Agent access dial answers reads; `db_query` still writes a row per (site, client) as the RECORD of the principal it provisioned, so a rename cannot orphan the account (#398, #403).** · v41 `sites.starter_db` (did a
   Blank-PHP site ask for a starter database? INTENT, written at the insert, beside
   v19's `db_created` PROVENANCE, written by the job after `CREATE DATABASE` — one
   column could not hold both without lying in the window a failed job leaves the
@@ -874,9 +874,10 @@ IPC surface — which is how a reader ends up designing against a system with on
   exactly what it got before.
   M3 (database access, agent principals, the first consent dialog)
   SHIPPED 24–25 Aug 2026 (#398–#404) — this bullet said "not built" until 3 Sep 2026,
-  nine days after, while the `db_query` bullet below described the shipped thing. The
-  next stage is parity — every app function behind a scoped grant — planned in
-  `docs/PLAN-mcp-parity.md`, nothing of it built.
+  nine days after, while the `db_query` bullet below described the shipped thing. Parity
+  (`docs/PLAN-mcp-parity.md`) shipped 3 Sep 2026, P1–P7; D15 replaced its per-site grants
+  with one dial the same day, and **D16 (4 Sep 2026) retired M3's consent dialog and the
+  mail sub-toggle** — both were reads, and Read is what the endpoint being on means.
 - **The honest guarantee, first, because it constrains everything below.** This is **not
   a sandbox** (ledger #197). A read tool cannot mutate rexenv's state; an executing tool
   runs the user's own code — `wp eval`, `wp db query`, `wp plugin install --force` — as
@@ -936,8 +937,10 @@ IPC surface — which is how a reader ends up designing against a system with on
   manifest, the source behind the scratch clone's blast-radius rule, the write-back truth
   said in the reply), `site_logs` (every source the site's Logs tab shows, by key
   from the site's own closed list, under `read`) and `mail_inbox` (the user's whole
-  Mailpit inbox: the mail switch by name, THEN `read`/`manage`/`destroy` on rexenv
-  itself — every scope has a stack-level meaning now), and from P4 `stack` — start/stop of
+  Mailpit inbox: `read` on rexenv itself for list/get/raw — free at the dial's Read
+  since D16, no switch in front — `manage`/`destroy` for mark-read/delete/clear; the
+  one scrubber redacts login tokens, WordPress reset keys and cookie headers and the
+  reply says what it does not remove), and from P4 `stack` — start/stop of
   the whole stack under `system` (the ONE arm that reaches `run_privileged`; the macOS
   dialog it raises is a second consent the agent cannot give, and the tool says so), a
   web-tier restart, an engine or the mail catcher under `manage`; `php` (install/uninstall,
@@ -973,33 +976,25 @@ IPC surface — which is how a reader ends up designing against a system with on
   consumer naming "both" registries by hand) is exactly what a third registry would have
   let drift: listed but not swept, or swept but not dispatched. A guard proves the registries are disjoint and, on
   a collision, names the offender and the file it belongs in.
-- **`db_query` is the one tool that reads a site the agent does not own, and it is the
-  only one behind a recorded grant** (M3). Ownership decides the principal, not the
-  domain: a scratch site the agent created gets `rex_agent_*` with `ALL` on its own
-  disposable schema, and the USER's own site gets `rex_ro_*` with `SELECT`, only while
-  `agent_db_grants` holds a live, unrevoked, unexpired grant for THIS client. The
-  decision is one pure function (`core::agent_db::authorize`) that runs before anything
-  is opened, so a refusal never touches the engine. The query itself goes through a
-  native MySQL driver (`core::agent_query`) and never the bundled client — that client
-  interprets `system`/`\!`/`source`/`tee` before the server sees a statement, so feeding
-  a `GRANT SELECT` principal through it would be shell-exec and file-write on a real
-  site. A source guard holds that apart. The grant is created by the USER, in
-  Settings → AI agents: `db_query`'s refusal records the ask (there is no tool that asks
-  without being refused first), the prompt names what is actually in reach — password
-  hashes, tokens in `wp_options` — and the grant expires in 7 days and is revocable
-  there. Requests live in memory only: a prompt whose context is gone is not consent.
-- **Auto-allow answers the database prompt, and nothing else** (`core::agent_db::AutoAllow`).
-  The equivalent of Claude Code's `--dangerously-skip-permissions`, scoped the same way: it
-  skips a **consent prompt**, never a security boundary — the tier rule (an agent cannot
-  change a site the user made) is a rule, not a prompt, and is untouched. **It lives in
-  `AppState`, not in `settings`, so it dies with the process**: a standing "yes" that
-  survives a restart is one somebody enables for an afternoon and still has on a month
-  later, which is exactly when the absence of a prompt reads as "the agent never asked".
-  It does not skip the RECORD — a grant is still written with the same expiry, listed and
-  revocable, flagged `auto_granted` so a user can tell what they approved from what the
-  toggle approved — and the agent is told in the reply, so it can report the access
-  honestly rather than as something a person weighed. Guarded: the gate stays
-  auto-allow-unaware, the ownership gate may not consult it, and exactly ONE call site may.
+- **`db_query` is the one scratch-registry tool that also reaches a site the agent does
+  not own** (M3; D16 changed WHO answers, not WHAT). Ownership decides the principal, not
+  the domain: a scratch site the agent created gets `rex_agent_*` with `ALL` on its own
+  disposable schema, and the USER's own site gets `rex_ro_*` with `SELECT` on that one
+  database — answered by the **Agent access dial at Read**, the dial's floor while the
+  endpoint is on, so there is no prompt, no per-client grant and no expiry in the
+  decision. It is still one pure function (`core::agent_db::authorize`) that runs before
+  anything is opened; the refusal it would give below Read names the dial. The query
+  goes through a native MySQL driver (`core::agent_query`) and never the bundled client —
+  that client interprets `system`/`\!`/`source`/`tee` before the server sees a statement,
+  so feeding a `GRANT SELECT` principal through it would be shell-exec and file-write on a
+  real site. A source guard holds that apart. What the user consented to is said ONCE, in
+  the paragraph above the endpoint toggle — every site's database, read-only, password
+  hashes and API keys included — and pinned there by the copy guard. **The M3 consent
+  dialog, `agent_db_grants` as a grant, and the database auto-allow (#402, #404, #408) were
+  retired by D16 (4 Sep 2026)**: the owner's brief was that a local dev tool's reads need
+  no door, and the parity auto-allow had already gone the same way (#470). The table
+  survives as the record of which principal was provisioned for which (site, client), so
+  the site's delete path still drops an account made under a domain the site no longer has.
 - **The read-only boundary is a TYPE, and its scope is the handler.** A read handler
   receives a `ReadCtx` (`mcp_server/readctx.rs`) — one private `&AppState`, five read
   methods, no mutating method to reach. A source scan over both `tools.rs` and
@@ -1029,15 +1024,20 @@ IPC surface — which is how a reader ends up designing against a system with on
   choke point (`promote_if_scratch`); `set_php_version` deliberately routes around it,
   and a guard asserts it stays that way — an agent promoting its own site would clear the
   expiry and free a cap slot, making switch→create unbounded (ledger #223).
-- **Opt-in, three times, and never ambient.** `mcp_enabled` (absent = off) BINDS FIRST and
-  persists second, so the toggle can never read on while nothing listens; disabling drops
-  the accept loop and every live session mid-idle, then unlinks the socket file. The mail
-  sub-toggle (`mcp_mail_enabled`, default off, independent) also **backfills the
-  filesystem** at the consent moment — writing or removing the `wp_mailtag` stamp on every
-  scratch site — which is what eliminates "this site predates the feature" as a category.
-  Mail's fail-closed direction is stated to the user in those words: the agent **misses
-  its own mail, never sees yours**, and one predicate both filters the list and gates the
-  fetch because Mailpit ids are global. The third consent surface (MCP parity, 3 Sep 2026)
+- **Opt-in twice — the endpoint and the dial — plus one click for publishing; never ambient.**
+  `mcp_enabled` (absent = off) BINDS FIRST and persists second, so the toggle can never
+  read on while nothing listens; disabling drops the accept loop and every live session
+  mid-idle, then unlinks the socket file. **The scratch-mail stamp rides the endpoint**
+  (D16, 4 Sep 2026; the separate mail sub-toggle it rode before was a second consent for
+  a read): `sync_scratch_mail_stamps` writes the `wp_mailtag` stamp into every scratch
+  site after a successful bind and again at launch when MCP is already on — the backfill
+  for a machine upgraded with it on — and removes it at disable, which is what eliminates
+  "this site predates the feature" as a category. The scratch tools' fail-closed
+  direction is unchanged: `mail_list`/`mail_get` return only stamped mail and refuse an
+  unstamped site rather than guess (one predicate filters the list and gates the fetch,
+  because Mailpit ids are global); the whole inbox is `mail_inbox`, a Read, scrubbed and
+  labelled as such. With the endpoint OFF the card renders nothing below the toggle.
+  The second consent surface (MCP parity, 3 Sep 2026)
   is the **Agent access dial** (`core::agent_access`, D15): NOT a switch plus per-site
   prompts — that shape shipped first, and the live run the same day needed six clicks for
   one site's ordinary work — but one global level with a duration. Read (the default, free),

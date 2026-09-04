@@ -198,8 +198,9 @@ static REGISTRY: &[ScratchTool] = &[ScratchTool {
     name: "db_query",
     description: "Run ONE read query against a site's database and get the rows back. On a \
                   scratch site the agent created, this works immediately and may also write. On \
-                  the USER's own site it is READ-ONLY and needs the user's approval first, given \
-                  in the rexenv app and expiring on its own — the agent cannot grant it. Takes \
+                  the USER's own site it is READ-ONLY (a SELECT-only account on that one \
+                  database), allowed by the Agent access dial's Read level — on whenever the \
+                  endpoint is — and every query is listed in the app's activity feed. Takes \
                   `site_id` and `sql`. One statement per call. At most 500 rows come back, and \
                   the reply says so when there were more.",
     input_schema: || json!({
@@ -364,18 +365,7 @@ fn is_from_scratch(from: &crate::core::mail::MailAddress, domain: &str) -> bool 
 
 /// The mail surface's own preconditions, refused in the order that gives the
 /// most actionable answer first — and each naming whose move it is.
-fn mail_preconditions(ctx: &ScratchCtx<'_>, scratch: &ScratchSite) -> Result<()> {
-    {
-        let conn = ctx.db()?;
-        if !crate::mcp_server::mail_enabled(&conn) {
-            return Err(Error::Other(
-                "reading mail is turned off. The person you're working with can switch it on in \
-                 rexenv under Settings → AI agents (MCP) → \"Let agents read scratch-site mail\". \
-                 That is their decision, not something an agent can change."
-                    .into(),
-            ));
-        }
-    }
+fn mail_preconditions(_ctx: &ScratchCtx<'_>, scratch: &ScratchSite) -> Result<()> {
     // The stamp is a STAT, not an inference — which is what lets an empty result
     // be told apart from a site rexenv cannot label. Guessing between those from
     // emptiness alone would teach an agent something false.
@@ -391,8 +381,8 @@ fn mail_preconditions(ctx: &ScratchCtx<'_>, scratch: &ScratchSite) -> Result<()>
     if !crate::core::wp_mailtag::is_installed(docroot, site.content_dir_rel()) {
         return Err(Error::Other(format!(
             "`{}` is not stamping its mail, so rexenv cannot tell its messages from anyone \
-             else's — and it will not guess. Switching \"Let agents read scratch-site mail\" off \
-             and on again in rexenv restamps every scratch site, which fixes it.",
+             else's — and it will not guess. Turning the MCP endpoint off and on again in rexenv \
+             (or relaunching it) restamps every scratch site, which fixes it.",
             scratch.domain()
         )));
     }
@@ -730,23 +720,24 @@ impl<'a> ScratchCtx<'a> {
         crate::core::scratch::claim(&conn, id)
     }
 
-    /// Install the mail stamp on a freshly-created scratch site when the sub-
-    /// toggle is on, so it is readable by the agent that just made it.
+    /// Install the mail stamp on a freshly-created scratch site, so it is
+    /// readable by the agent that just made it (the endpoint being up is the
+    /// condition — D16).
     ///
-    /// The ONE place this happens for new sites; `mcp_set_mail_enabled` is the
-    /// one place it happens for existing ones. Two call sites for one fact is
-    /// how the gap appeared, so each names the other.
-    fn stamp_mail_if_enabled(&self, site: &Site) {
+    /// The ONE place this happens for new sites; `commands::mcp::
+    /// sync_scratch_mail_stamps` is the one place it happens for existing ones
+    /// (at MCP enable and at launch — D16). Two call sites for one fact is how
+    /// the gap appeared, so each names the other. Unconditional: a scratch site
+    /// is only ever created through the endpoint, and the endpoint being up IS
+    /// the condition.
+    fn stamp_mail(&self, site: &Site) {
         let conn = match self.db() {
             Ok(c) => c,
             Err(e) => {
-                log::warn!("mcp: could not check the mail setting for {}: {e}", site.domain);
+                log::warn!("mcp: could not record the mail stamp for {}: {e}", site.domain);
                 return;
             }
         };
-        if !crate::mcp_server::mail_enabled(&conn) {
-            return;
-        }
         let docroot = std::path::Path::new(&site.path);
         match crate::core::wp_mailtag::enable(docroot, site.content_dir_rel(), &site.domain) {
             Ok(created_dir) => {
@@ -759,14 +750,6 @@ impl<'a> ScratchCtx<'a> {
             }
             Err(e) => log::warn!("mcp: mail stamp for {} could not be written: {e}", site.domain),
         }
-    }
-
-    /// Is auto-allow on for this session? (`core::agent_db::AutoAllow`.)
-    ///
-    /// A poisoned lock answers NO. The safe direction for a consent bypass is
-    /// off: a broken lock must not become a standing yes.
-    pub fn auto_allow_on(&self) -> bool {
-        self.state.agent_db_auto_allow.lock().map(|a| a.is_on()).unwrap_or(false)
     }
 
     /// Any site by id, WITHOUT an ownership claim — for `db_query` only.
@@ -930,14 +913,15 @@ fn create_site<'a>(
             crate::core::scratch::scratch_ttl_hours(&conn)
         };
         let site = ctx.create(new, Ownership::Agent { client, ttl_hours }, acted).await?;
-        // Stamp the new site's mail NOW if the sub-toggle is on.
+        // Stamp the new site's mail NOW.
         //
-        // `mcp_set_mail_enabled` stamps every EXISTING scratch site when the
-        // toggle flips, and its doc says that "eliminates 'this site predates
-        // the feature' as a category". It does — and nothing covered the
-        // reverse, so the category it removed came back as a worse one: a site
-        // created AFTER the toggle was never stamped at all, which is every new
-        // scratch site on a machine with mail enabled, i.e. the common case.
+        // `commands::mcp::sync_scratch_mail_stamps` stamps every EXISTING
+        // scratch site when the endpoint turns on (and at launch — D16), and
+        // its doc says that "eliminates 'this site predates the feature' as a
+        // category". It does — and nothing covered the reverse, so the category
+        // it removed came back as a worse one: a site created AFTER the sync
+        // was never stamped at all, which is every new scratch site, i.e. the
+        // common case.
         //
         // The symptom was a refusal that blamed the user for the opposite of
         // what happened: `mail_list` said "this normally means mail was
@@ -947,7 +931,7 @@ fn create_site<'a>(
         // Best-effort, matching the toggle's own policy: a stamp that cannot be
         // written must not fail a site that is otherwise built, and read time
         // answers the truth by a live stat rather than trusting this.
-        ctx.stamp_mail_if_enabled(&site);
+        ctx.stamp_mail(&site);
         let status = ctx.status_of(&site).await;
         let view = AgentScratchSite {
             url: format!("https://{}", site.domain),
@@ -1018,58 +1002,12 @@ fn db_query<'a>(
         acted.set(&site);
 
         let engine = crate::core::db::DbEngine::from_site(site.db_engine);
-        let decision = {
+        // D16: the user's own site is READ-ONLY at the dial's Read level —
+        // free whenever the endpoint is on — through the same pure gate as
+        // before, now over the dial instead of a grant row.
+        let (principal, user) = {
             let conn = ctx.db()?;
-            crate::core::agent_db::authorize(&conn, &site.id, &site.domain, is_scratch, ctx.client)
-        };
-        let mut auto_granted = false;
-        let (principal, user) = match decision {
-            Ok(v) => v,
-            Err(e) if !is_scratch && ctx.auto_allow_on() => {
-                // AUTO-ALLOW. It answers the prompt; it does not skip the
-                // record. A grant row is written exactly as the button writes
-                // one — same principal, same expiry, listed and revocable —
-                // with `auto_granted` set so the list can tell a click from a
-                // toggle. Nothing here widens WHAT is granted: still
-                // `Principal::ReadOnly`, still one database.
-                let _ = e;
-                auto_granted = true;
-                let user = crate::core::agent_db::principal_name(
-                    crate::core::agent_db::Principal::ReadOnly,
-                    &site.domain,
-                );
-                {
-                    let conn = ctx.db()?;
-                    crate::state::store::grant_agent_db(
-                        &conn,
-                        &uuid::Uuid::new_v4().to_string(),
-                        &site.id,
-                        ctx.client,
-                        &user,
-                        crate::core::agent_db::GRANT_DAYS,
-                        true,
-                    )?;
-                }
-                (crate::core::agent_db::Principal::ReadOnly, user)
-            }
-            Err(e) => {
-                // The refusal is also the ASK. Recording it here — on the
-                // refusal path, not on some separate "request access" tool — is
-                // what makes consent impossible to route around: there is no
-                // call an agent can make that asks WITHOUT being refused first,
-                // so the user is never prompted about access that was already
-                // granted by something else.
-                if !is_scratch {
-                    if let Ok(mut reqs) = ctx.state.agent_db_requests.lock() {
-                        reqs.ask(crate::core::agent_db::GrantRequest {
-                            site_id: site.id.clone(),
-                            domain: site.domain.clone(),
-                            client: ctx.client.to_string(),
-                        });
-                    }
-                }
-                return Err(e);
-            }
+            crate::core::agent_db::authorize(&conn, is_scratch, &site.domain)?
         };
 
         // Provisioning is root work and happens per call: the principal may
@@ -1084,20 +1022,17 @@ fn db_query<'a>(
             )))?;
         let port = engine.port();
         crate::core::agent_db::provision(&client, port, principal, &site.db_name, &user)?;
+        // What survives of the grant table is a RECORD of the principal just
+        // provisioned — keyed by (site, principal), written after the
+        // provision succeeded — so the site's delete path can still drop an
+        // account made under a domain the site no longer has (#403).
+        if !is_scratch {
+            let conn = ctx.db()?;
+            crate::core::agent_db::record_principal(&conn, &site.id, ctx.client, &user)?;
+        }
 
         let result = crate::core::agent_query::run_query(port, &user, &site.db_name, sql).await?;
-        let mut value = serde_json::to_value(result).map_err(|e| Error::Other(e.to_string()))?;
-        // Tell the agent the access was not weighed by a person, so it can say
-        // so in its own report instead of presenting it as approved.
-        if auto_granted {
-            if let Some(obj) = value.as_object_mut() {
-                obj.insert(
-                    "consent".into(),
-                    Value::String(crate::core::agent_db::AUTO_GRANTED_NOTE.to_string()),
-                );
-            }
-        }
-        Ok(value)
+        serde_json::to_value(result).map_err(|e| Error::Other(e.to_string()))
     })
 }
 

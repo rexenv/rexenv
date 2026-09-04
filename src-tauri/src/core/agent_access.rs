@@ -84,7 +84,7 @@ impl AccessLevel {
     /// so the prompt, the refusal and the card cannot drift (#404).
     pub fn what_it_allows(self) -> &'static str {
         match self {
-            AccessLevel::Read => "look at any of your sites — status, content, users, logs, mail — and create disposable sites of its own; it cannot change anything you made",
+            AccessLevel::Read => "look at any of your sites — status, content, users, logs, every site's mail (password-reset links included) and their databases, read-only (password hashes and API keys are in there) — and create disposable sites of its own; it cannot change anything you made",
             AccessLevel::Changes => "change how any of your sites is served and what is installed in it — PHP version, web server, Xdebug, plugins and themes on or off, options, restarts, dry runs, blueprints — and start or stop rexenv's stack (macOS still asks for your password)",
             AccessLevel::Full => "do everything Changes allows, and also delete or reset a site and its database, run a live search-replace or a database import, and run commands and code of its choosing in any of your sites, as you",
         }

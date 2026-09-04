@@ -45,6 +45,16 @@ the shipped UI toward one.
   the prompts are the product:** the first shape (per site × per scope × per client)
   was honest about consent and cost six clicks for one site's ordinary work; the
   dial's "always" is the same standing yes an auto-allow switch was, said plainly.
+- **A chosen-one-of-N control shows its choice the way the New-site type cards do:**
+  `border-brand` (+ `shadow-glow-primary`) on the chosen card with a filled
+  `CheckCircle2` and a `text-brand-tint` label; a segmented pill (`bg-brand-tint-bg
+  text-brand-tint` on a `bg-rex-well` track) for a short row of durations. Brand colours
+  are the `brand.*` Tailwind keys — the Agent access dial shipped with `border-rex-brand`
+  / `bg-rex-brand-active`, tokens that exist in tokens.css and emit nothing, and the owner
+  saw a dial with no chosen level (D16, 4 Sep 2026). The token guard refuses `rex-brand`
+  by name now. And **a section whose only content is "nothing yet" does not render when
+  the feature is off**: with the MCP endpoint off, the card is the paragraph and the
+  toggle, nothing else.
 - **The menu-bar menu says when its numbers are old.** The tray never blocks the menu
   bar waiting for the services lock, so a busy lock means the menu shows the PREVIOUS
   snapshot — labelled `· updating…`, never presented as now. Same family as the rule

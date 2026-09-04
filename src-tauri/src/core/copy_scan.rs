@@ -1082,7 +1082,57 @@ const LINK = "https://example.test/a//b";
         out
     }
 
-    /// **A `text-rex-*` / `bg-rex-*` class that names no token generates NOTHING.**
+    /// The keys Tailwind actually defines under `rex.*` — read from
+    /// `tailwind.config.js`, because tokens.css is NOT the authority for what a
+    /// `text-rex-*` class resolves to: `brand.*`, `danger.*`, `status.*` and
+    /// `toggle.*` are separate families whose tokens also live in tokens.css.
+    /// Returns (rex keys, other families' keys → family name).
+    fn tailwind_colour_keys() -> (std::collections::BTreeSet<String>, std::collections::BTreeMap<String, String>) {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().expect("repo root").join("tailwind.config.js");
+        let js = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
+        let mut rex = std::collections::BTreeSet::new();
+        let mut others = std::collections::BTreeMap::new();
+        let mut family: Option<String> = None;
+        let mut depth = 0i32;
+        for raw in js.lines() {
+            let t = raw.trim();
+            if family.is_none() {
+                if let Some(name) = t.strip_suffix(": {") {
+                    if ["rex", "brand", "danger", "status", "toggle"].contains(&name) {
+                        family = Some(name.to_string());
+                        depth = 1;
+                    }
+                }
+                continue;
+            }
+            let fam = family.clone().unwrap();
+            if t == "}" || t == "}," {
+                depth -= 1;
+                if depth == 0 {
+                    family = None;
+                }
+                continue;
+            }
+            if t.ends_with('{') {
+                depth += 1;
+                continue;
+            }
+            if let Some(key) = t.split(':').next() {
+                let key = key.trim().trim_matches('"').to_string();
+                if key.is_empty() || !key.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_') { continue; }
+                if fam == "rex" { rex.insert(key); } else {
+                    let full = if key == "DEFAULT" { fam.clone() } else { format!("{fam}-{key}") };
+                    others.insert(full, fam.clone());
+                }
+            }
+        }
+        assert!(rex.contains("surface-1") && others.contains_key("brand-active"), "tailwind.config.js parsed to nothing usable");
+        (rex, others)
+    }
+
+    /// **A `text-rex-*` / `bg-rex-*` / `border-rex-*` class that names no
+    /// Tailwind `rex.*` key generates NOTHING — and tokens.css is not the
+    /// authority for that.**
     ///
     /// Tailwind emits nothing for a key that is not in the theme, so the element
     /// simply has no colour and inherits — which looks plausible on screen and
@@ -1094,6 +1144,7 @@ const LINK = "https://example.test/a//b";
     fn every_rex_colour_class_names_a_token_that_exists() {
         let (dark, _light) = parse_tokens();
         assert!(dark.contains_key("surface-1"), "tokens.css parsed to nothing usable");
+        let (rex_keys, other_families) = tailwind_colour_keys();
 
         // NO BASELINE HERE, and there was one for exactly one commit. 17 classes
         // named a token that does not exist — `text-rex-text-secondary` x16 (16 of
@@ -1113,8 +1164,28 @@ const LINK = "https://example.test/a//b";
             ("text-status-", "text colour"),
             ("bg-status-", "background"),
             ("border-status-", "border"),
+            // `border-rex-*` joined 4 Sep 2026: the Agent access dial's chosen
+            // state was `border-rex-brand` + `bg-rex-brand-active` — tokens that
+            // EXIST in tokens.css and are NOT `rex.*` Tailwind keys (brand lives
+            // under `brand.*`), so the dial rendered with no chosen state at all
+            // and this guard, checking names against tokens.css, passed.
+            ("border-rex-", "border"),
         ] {
             for (name, file, line) in used_rex_classes(prefix) {
+                // The `rex-*` prefixes resolve through Tailwind's `rex.*` map, and
+                // ONLY that map — a token that exists in tokens.css under another
+                // family (`brand.*`, `danger.*`, `status.*`, `toggle.*`) emits
+                // nothing as `rex-<name>`. The dial's chosen state shipped that
+                // way on 3 Sep 2026 and this guard, checking tokens.css, passed.
+                if prefix.ends_with("rex-") && !rex_keys.contains(&name) {
+                    let utility = prefix.trim_end_matches("rex-");
+                    let hint = match other_families.get(&name) {
+                        Some(fam) => format!("this token belongs to the `{fam}.*` family — write `{utility}{name}`"),
+                        None => "no such key under `rex.*` in tailwind.config.js".to_string(),
+                    };
+                    bad.push(format!("  {file}:{line}  {prefix}{name}  ({role}) — {hint}"));
+                    continue;
+                }
                 if !dark.contains_key(&name) {
                     bad.push(format!(
                         "  {file}:{line}  {prefix}{name}  ({role}) — no `--rex-{name}` in tokens.css"

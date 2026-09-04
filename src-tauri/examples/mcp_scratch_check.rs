@@ -429,24 +429,20 @@ async fn main() {
     }
     println!("✓ set_php_version: {unshipped} refused by name (row untouched), 8.2→8.3 switched, site NOT promoted");
 
-    // 10) M2b — mail. The three states are told apart by a STAT, so they are
+    // 10) M2b — mail. The two states are told apart by a STAT, so they are
     //     provable here without Mailpit; what needs a running Mailpit is the
     //     filter over real messages, and that is stated below rather than faked.
-    let (is_err, text) = call(
-        &mut stream, &mut reader, 80, "mail_list",
-        serde_json::json!({ "site_id": ours.id }),
-    );
-    assert!(is_err, "mail is off by default — reading it must be refused: {text}");
-    assert!(text.contains("turned off"), "names the state: {text}");
-    assert!(text.contains("Settings"), "and where to change it: {text}");
-    assert!(text.contains("not something an agent can change"), "and whose decision: {text}");
-
+    //     D16: there is no mail switch — the stamp rides the endpoint, written
+    //     by `sync_scratch_mail_stamps` at enable and at launch.
     // Enabling BACKFILLS the stamp into every scratch site — the invariant that
     // removes "this site predates the feature" as a category (#226).
-    rexenv_lib::commands::mcp::mcp_set_mail_enabled(app.state::<AppState>(), true)
-        .expect("enable mail");
+    {
+        let state = app.state::<AppState>();
+        let conn = state.db.lock().unwrap();
+        rexenv_lib::commands::mcp::sync_scratch_mail_stamps(&conn, true);
+    }
     let stamp_file = docroot.join("wp-content/mu-plugins/rexenv-scratch-mail.php");
-    assert!(stamp_file.is_file(), "enabling mail did not stamp an existing scratch site");
+    assert!(stamp_file.is_file(), "enabling the endpoint did not stamp an existing scratch site");
     let stamped = std::fs::read_to_string(&stamp_file).unwrap();
     assert!(
         stamped.contains(&rexenv_lib::core::wp_mailtag::stamp_for("probe.scratch.rex")),
@@ -480,12 +476,17 @@ async fn main() {
     assert!(text.contains("not stamping its mail"), "names the state: {text}");
     assert!(text.contains("will not guess"), "and that rexenv refuses to infer: {text}");
 
-    // Disabling removes the stamp everywhere — the other half of the invariant.
-    rexenv_lib::commands::mcp::mcp_set_mail_enabled(app.state::<AppState>(), true).expect("re-enable");
-    assert!(stamp_file.is_file(), "re-enabling did not restamp");
-    rexenv_lib::commands::mcp::mcp_set_mail_enabled(app.state::<AppState>(), false).expect("disable");
-    assert!(!stamp_file.exists(), "disabling left the stamp behind");
-    println!("✓ mail: off-by-default refused, enable stamps ONLY the agent's site, an unstamped site refuses rather than returning nothing, disable removes it");
+    // Disabling the endpoint removes the stamp everywhere — the other half.
+    {
+        let state = app.state::<AppState>();
+        let conn = state.db.lock().unwrap();
+        rexenv_lib::commands::mcp::sync_scratch_mail_stamps(&conn, true);
+        assert!(stamp_file.is_file(), "re-enabling did not restamp");
+        rexenv_lib::commands::mcp::sync_scratch_mail_stamps(&conn, false);
+        assert!(!stamp_file.exists(), "disabling left the stamp behind");
+        rexenv_lib::commands::mcp::sync_scratch_mail_stamps(&conn, true);
+    }
+    println!("✓ mail: the endpoint's sync stamps ONLY the agent's site, an unstamped site refuses rather than returning nothing, off removes it");
 
     // 8) Every call recorded, and using the site kept it alive (#206/#207).
     {

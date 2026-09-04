@@ -676,16 +676,19 @@ function agentAccessMock(): AgentAccess {
   const raw = params.get("access");
   const level: AgentAccessLevel = raw === "changes" || raw === "full" ? raw : "read";
   const m = params.get("mode");
-  const mode: AgentAccessMode | null = level === "read" ? null : m === "days" || m === "always" ? m : "session";
+  // An EXPIRED setting is the shape the backend really returns: level Read,
+  // the stale mode and stamp still on the row (agent_access.rs `current`).
+  const expired = params.get("expired") === "1";
+  const mode: AgentAccessMode | null = expired ? "days" : level === "read" ? null : m === "days" || m === "always" ? m : "session";
   return {
     level,
     mode,
-    expiresAt: mode === "days" ? "2026-09-10 12:00:00" : null,
-    expired: params.get("expired") === "1",
+    expiresAt: expired ? "2026-09-01 00:00:00" : mode === "days" ? "2026-09-10 12:00:00" : null,
+    expired,
     label: "Agent access",
     allows: "",
     levels: [
-      { level: "read", allows: "look at any of your sites — status, content, users, logs, mail — and create disposable sites of its own; it cannot change anything you made" },
+      { level: "read", allows: "look at any of your sites — status, content, users, logs, every site's mail (password-reset links included) and their databases, read-only (password hashes and API keys are in there) — and create disposable sites of its own; it cannot change anything you made" },
       { level: "changes", allows: "change how any of your sites is served and what is installed in it — PHP version, web server, Xdebug, plugins and themes on or off, options, restarts, dry runs, blueprints — and start or stop rexenv's stack (macOS still asks for your password)" },
       { level: "full", allows: "do everything Changes allows, and also delete or reset a site and its database, run a live search-replace or a database import, and run commands and code of its choosing in any of your sites, as you" },
     ],
@@ -696,8 +699,6 @@ function mcpStatusMock(): McpStatus {
   const recent = params.get("feed") === "empty" ? [] : AGENT_ROWS;
   return {
     enabled: params.get("astate") !== "off",
-    // `mail=1` shows the sub-toggle ON; default OFF, which is the shipped default.
-    mailEnabled: params.get("mail") === "1",
     // `access=changes|full` turns the dial; default Read, the shipped default.
     access: agentAccessMock(),
     connectCommand: "claude mcp add rexenv -- rex mcp",

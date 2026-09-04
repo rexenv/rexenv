@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { SlidersHorizontal } from "lucide-react";
+import { CheckCircle2, SlidersHorizontal } from "lucide-react";
 import { agentAccess, agentAccessSet } from "@/lib/ipc";
 import type { AgentAccessLevel, AgentAccessMode } from "@/types";
 import { toastBackendError } from "@/lib/toast";
@@ -61,13 +61,11 @@ export function AgentAccessDial() {
         {label}
       </div>
       <p className="mt-1 text-[0.75rem] leading-[1.55] text-rex-text-muted">
-        How far an agent may go with the sites you made yourself, and with rexenv itself. One
-        setting for every site and every agent. <strong className="font-medium text-rex-text">Read is on whenever the endpoint is</strong>;
-        the two above it are your choice, for as long as you say. Whatever the level,{" "}
-        <strong className="font-medium text-rex-text">publishing a site to the internet always asks you</strong>{" "}
-        (Site access below), and anything that needs an administrator password{" "}
-        <strong className="font-medium text-rex-text">still asks you</strong>. Anything an agent runs inside one of your sites runs as
-        you, with your files and your permissions.
+        How far an agent may go with the sites you made, and with rexenv itself — one setting for
+        every site and every agent. <strong className="font-medium text-rex-text">Read is on whenever the endpoint is</strong>.
+        Whatever the level, <strong className="font-medium text-rex-text">publishing a site to the internet always asks you</strong>,
+        and anything that needs an administrator password <strong className="font-medium text-rex-text">still asks you</strong>.
+        Anything an agent runs inside one of your sites runs as you.
       </p>
 
       <div className="mt-2.5 space-y-1.5" role="radiogroup" aria-label={label}>
@@ -82,50 +80,57 @@ export function AgentAccessDial() {
               disabled={set.isPending}
               onClick={() => choose(l.level)}
               className={cn(
-                "flex w-full items-start gap-3 rounded-md border px-3 py-2 text-left transition-colors",
-                on ? "border-rex-brand-tint-border bg-rex-brand-active" : "border-rex-border-subtle hover:border-rex-border",
+                // The chosen-one-of-N card the rest of the app uses (the New site
+                // type cards): a brand border + glow and a filled check on the
+                // chosen row, a subtle border elsewhere. Brand colours are the
+                // `brand.*` Tailwind keys — `bg-rex-brand-*` does not exist, and
+                // the first version of this dial shipped with exactly that dead
+                // class, which is why nothing looked chosen (4 Sep 2026).
+                "flex w-full items-start gap-3 rounded-[10px] border bg-rex-surface-1 px-3 py-2.5 text-left transition-colors",
+                on ? "border-brand shadow-glow-primary" : "border-rex-border-subtle hover:border-rex-border-strong",
               )}
             >
-              {/* A ring, not a fill: no background token, so the WCAG scan has no
-                  pairing to compute on a dot that carries no text. */}
-              <span
-                className={cn(
-                  "mt-[3px] h-3 w-3 flex-none rounded-full border",
-                  on ? "border-[4px] border-rex-brand" : "border-rex-border",
-                )}
-              />
               <span className="min-w-0 flex-1">
-                <span className="block text-[0.78125rem] font-medium text-rex-text">{LEVEL_LABEL[l.level]}</span>
+                <span className={cn("block text-[0.8125rem] font-semibold", on ? "text-brand-tint" : "text-rex-text")}>{LEVEL_LABEL[l.level]}</span>
                 <span className="mt-0.5 block text-[0.71875rem] leading-[1.55] text-rex-text-muted">An agent can {l.allows}.</span>
               </span>
+              <CheckCircle2
+                className="mt-0.5 h-[19px] w-[19px] flex-none"
+                style={{ color: on ? "var(--rex-brand)" : "var(--rex-border-strong)" }}
+                strokeWidth={2}
+                aria-hidden
+              />
             </button>
           );
         })}
       </div>
 
       {level !== "read" && (
-        <div className="mt-2.5 flex flex-wrap items-center gap-2">
-          <span className="text-[0.71875rem] text-rex-text-muted">For:</span>
-          {MODES.map((m) => {
-            const on = m.mode === mode;
-            return (
-              <button
-                key={m.mode}
-                type="button"
-                role="radio"
-                aria-checked={on}
-                disabled={set.isPending}
-                title={`This ${m.what}.`}
-                onClick={() => set.mutate({ level, mode: m.mode })}
-                className={cn(
-                  "rounded-md border px-2.5 py-1 text-[0.71875rem] transition-colors",
-                  on ? "border-rex-brand-tint-border bg-rex-brand-active text-rex-text" : "border-rex-border-subtle text-rex-text-muted hover:text-rex-text",
-                )}
-              >
-                {m.label}
-              </button>
-            );
-          })}
+        <div className="mt-2.5 flex flex-wrap items-center gap-2.5">
+          <span className="text-[0.71875rem] text-rex-text-muted">Duration</span>
+          {/* The segmented pill the Sites filter uses: one track, the chosen pill tinted. */}
+          <div className="flex rounded-[10px] border border-rex-well-border bg-rex-well p-[3px]" role="radiogroup" aria-label="Duration">
+            {MODES.map((m) => {
+              const on = m.mode === mode;
+              return (
+                <button
+                  key={m.mode}
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  disabled={set.isPending}
+                  title={`This ${m.what}.`}
+                  onClick={() => set.mutate({ level, mode: m.mode })}
+                  className={cn(
+                    "rounded-[8px] px-2.5 py-1 text-[0.71875rem] transition-colors",
+                    on ? "bg-brand-tint-bg font-medium text-brand-tint" : "text-rex-text-muted hover:text-rex-text-bright",
+                  )}
+                >
+                  {m.label}
+                </button>
+              );
+            })}
+          </div>
           <span className="basis-full text-[0.6875rem] leading-[1.55] text-rex-text-muted">
             {mode === "session" && "This switches itself off when you quit rexenv."}
             {mode === "days" && a?.expiresAt && `Expires on its own at ${a.expiresAt} UTC.`}

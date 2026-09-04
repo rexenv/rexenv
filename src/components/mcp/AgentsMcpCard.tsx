@@ -1,14 +1,13 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronRight, Copy } from "lucide-react";
-import { mcpStatus, mcpSetEnabled, mcpSetMailEnabled, agentActivityClear } from "@/lib/ipc";
+import { mcpStatus, mcpSetEnabled, agentActivityClear } from "@/lib/ipc";
 import type { ActivityStatus } from "@/types";
 import { toast, toastBackendError } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { cn } from "@/lib/utils";
 import { AgentActivityFeed } from "./AgentActivityFeed";
-import { AgentDbGrants } from "./AgentDbGrants";
 import { AgentSiteGrants } from "./AgentSiteGrants";
 import { AgentAccessDial } from "./AgentAccessDial";
 
@@ -70,6 +69,14 @@ function CopyButton({ value }: { value: string }) {
  * (§3.1) reads at the moment of enabling: it sits above the toggle, verbatim and
  * un-collapsed, worded to stay true as more capable tools arrive.
  *
+ * D16 (4 Sep 2026): with the endpoint OFF nothing renders below the toggle —
+ * there is nothing to decide about a socket that is not there. With it ON, the
+ * order is the order a person needs things: connect an agent, then how far it
+ * may go (the Agent access dial), then the one thing that still asks (publishing),
+ * then what it did. The mail sub-toggle and the database prompt are gone: both
+ * were reads, and Read is what the endpoint being on means — the paragraph above
+ * the toggle now carries their honest sentences, held by the copy guard.
+ *
  * The status line reads from recent call OUTCOMES, never the handshake alone —
  * so it says "working" only while calls succeed, and self-recovers as an error
  * state ages out of the window (the card polls; the backend does the windowing).
@@ -82,23 +89,11 @@ export function AgentsMcpCard() {
     refetchInterval: 4000, // live feed + self-recovering status line
   });
 
-  const setMailEnabled = useMutation({
-    mutationFn: (on: boolean) => mcpSetMailEnabled(on),
-    onSuccess: (s) => {
-      qc.setQueryData(["mcp-status"], s);
-      toast.success(
-        s.mailEnabled
-          ? "Agents can read scratch-site mail"
-          : "Agents can no longer read any mail",
-      );
-    },
-    onError: (e) => toastBackendError(e),
-  });
-
   const setEnabled = useMutation({
     mutationFn: (on: boolean) => mcpSetEnabled(on),
     onSuccess: (s) => {
       qc.setQueryData(["mcp-status"], s);
+      void qc.invalidateQueries({ queryKey: ["agentAccess"] });
       toast.success(s.enabled ? "MCP endpoint enabled" : "MCP endpoint turned off");
     },
     onError: (e) => toastBackendError(e),
@@ -111,7 +106,17 @@ export function AgentsMcpCard() {
   });
 
   const enabled = data?.enabled ?? false;
-  const mailEnabled = data?.mailEnabled ?? false;
+  const access = data?.access;
+  // A level above Read survives the endpoint being off (it is the user's
+  // setting), so it must be SAID while off — the dial that would show it is
+  // not rendered, and turning the endpoint on would otherwise re-activate it
+  // silently (the review's find).
+  const standing =
+    !enabled && access && access.level !== "read"
+      ? `Agent access is set to ${access.level === "full" ? "Full" : "Changes"}${
+          access.mode === "always" ? " · Always" : access.mode === "days" ? " · 7 days" : ""
+        } and applies as soon as you turn this on.`
+      : null;
   const status = data ? statusLine(data.activity) : null;
   const rows = data?.recent ?? [];
   const connectCommand = data?.connectCommand ?? "claude mcp add rexenv -- rex mcp";
@@ -128,20 +133,24 @@ export function AgentsMcpCard() {
         )}
       </div>
 
-      {/* The residual — verbatim, above the toggle, not behind an expander. */}
+      {/* The residual — verbatim, above the toggle, not behind an expander.
+          Every sentence here is one the copy guard holds, because this is now
+          the ONE paragraph a person reads before handing an agent the inbox
+          and the databases (D16). */}
       <p className="mt-3 text-[0.75rem] leading-[1.55] text-rex-text-muted">
-        Before you turn this on: this lets an AI agent connect to rexenv and use the tools you've
-        enabled. It can look at your sites — their status and their logs — and it can create
-        disposable &ldquo;scratch&rdquo; sites of its own, put code into them and run it. It cannot
-        change or delete the sites you made yourself unless you turn Agent access up below —
-        Changes or Full, for this session, 7 days or always: that refusal lives in
-        rexenv, not in the agent's good behaviour. It can ask to read one of your sites' databases,
-        and only you can say yes — each site separately, expiring on its own, revocable here. But code running in a
-        scratch site — or in one of your sites once you allow changes — runs as you, with your files and
-        your permissions — the same power over this machine as code you run yourself. rexenv never
-        asks for your administrator password on an agent's behalf, publishing a site to the
-        internet always asks you, and every call an agent makes is listed below. Turn this off
-        when you're not using it.
+        Before you turn this on: this lets an AI agent connect to rexenv and use its tools. With
+        the endpoint on, an agent can look at your sites — status, logs, users and content,{" "}
+        <strong className="font-medium text-rex-text">every site's mail</strong> (password-reset
+        links included) and their databases,{" "}
+        <strong className="font-medium text-rex-text">read-only</strong> (password hashes and API
+        keys are in there) — and it can create disposable &ldquo;scratch&rdquo; sites of its own,
+        put code into them and run it. It cannot change or delete the sites you made yourself
+        unless you turn Agent access up below, for this session, 7 days or always: that refusal
+        lives in rexenv, not in the agent's good behaviour. Code running in a scratch site — or
+        in one of your sites once you allow changes — runs as you, with your files and your
+        permissions. rexenv never asks for your administrator password on an agent's behalf,
+        publishing a site to the internet always asks you, and every call an agent makes is
+        listed below. Turn this off when you're not using it.
       </p>
 
       <div className="mt-3.5 flex items-center gap-[14px] border-t border-rex-border-subtle pt-3.5">
@@ -150,6 +159,7 @@ export function AgentsMcpCard() {
           <div className="mt-0.5 text-[0.75rem] text-rex-text-muted">
             Off by default. Enabling opens rexenv's private socket for `rex mcp`; turning it off
             closes it and disconnects any agent.
+            {standing && <span className="block text-rex-text"> {standing}</span>}
           </div>
         </div>
         <StartStopToggle
@@ -161,94 +171,54 @@ export function AgentsMcpCard() {
         />
       </div>
 
-      {/* Mail sub-toggle (M2b, D4) — the SECOND place a user consents to
-          something, and off by default independently of the endpoint. The
-          middle paragraph is the honest core: it explains the mechanism and
-          states the failure direction in the same breath, which is what makes
-          "fail-closed" mean something to someone who has never met the term.
-          Held to that by the copy guard's must-say list. */}
-      <div className="mt-3.5 flex items-start gap-[14px] border-t border-rex-border-subtle pt-3.5">
-        <div className="flex-1">
-          <div className="text-[0.84375rem] font-medium text-rex-text">
-            Let agents read scratch-site mail
+      {enabled && (
+        <>
+          {/* Connect — the next thing a person does, so it comes first. */}
+          <div className="mt-3.5 border-t border-rex-border-subtle pt-3.5">
+            <div className="text-[0.78125rem] font-medium text-rex-text">Connect an agent</div>
+            <div className="mt-2 flex items-center gap-2 rounded-md border border-rex-border-subtle bg-rex-well px-2.5 py-1.5">
+              <code className="min-w-0 flex-1 truncate font-mono text-[0.6875rem] text-rex-text">
+                {connectCommand}
+              </code>
+              <CopyButton value={connectCommand} />
+            </div>
+            <details className="group mt-2">
+              <summary className="flex cursor-pointer list-none items-center gap-1 text-[0.71875rem] text-rex-text-muted hover:text-rex-text">
+                <ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" />
+                Other clients (Cursor, VS Code)
+              </summary>
+              <div className="mt-2 flex items-start gap-2 rounded-md border border-rex-border-subtle bg-rex-well px-2.5 py-2">
+                <pre className="min-w-0 flex-1 overflow-x-auto font-mono text-[0.6875rem] leading-relaxed text-rex-text">
+                  {CLIENT_JSON}
+                </pre>
+                <CopyButton value={CLIENT_JSON} />
+              </div>
+              <p className="mt-1.5 text-[0.6875rem] text-rex-text-muted">
+                If <span className="font-mono">rex</span> isn't found, install it from Settings →
+                General → Command-line tool, then reconnect.
+              </p>
+            </details>
           </div>
-          <div className="mt-1 space-y-1.5 text-[0.75rem] leading-[1.55] text-rex-text-muted">
-            <p>
-              rexenv catches mail from every site in one inbox — yours and the agent's together.
-              With this on, an agent can read only the messages that came{" "}
-              <strong className="font-medium text-rex-text">from a scratch site it created</strong>;
-              your own sites' mail is never returned by those tools, and that includes password-reset
-              links. With this switch on, an agent can also read your whole inbox — every site's
-              mail, password-reset links included — because reading is what Agent access allows
-              whenever the endpoint is on; this switch is the one that opens mail at all.
-            </p>
-            <p>
-              The way rexenv tells them apart is a small plugin it installs into each scratch site,
-              which stamps that site's own address on outgoing mail. If a site's code overrides that
-              stamp, its mail simply stops being visible to the agent — so the failure is that the
-              agent misses its own mail, never that it sees yours.
-            </p>
-            <p>
-              Off by default. Switch it back off at any time and the agent stops reading mail
-              entirely.
-            </p>
+
+          <AgentAccessDial />
+          <AgentSiteGrants />
+
+          {/* Activity — every agent action, none silent. */}
+          <div className="mt-3.5 border-t border-rex-border-subtle pt-3.5">
+            <div className="flex items-center justify-between">
+              <div className="text-[0.78125rem] font-medium text-rex-text">Recent activity</div>
+              {rows.length > 0 && (
+                <Button size="sm" variant="ghost" disabled={clear.isPending} onClick={() => clear.mutate()}>
+                  Clear
+                </Button>
+              )}
+            </div>
+            <div className="mt-1">
+              <AgentActivityFeed rows={rows} empty="No agent activity yet." />
+            </div>
           </div>
-        </div>
-        <StartStopToggle
-          running={mailEnabled}
-          busy={setMailEnabled.isPending}
-          variant="setting"
-          onToggle={() => setMailEnabled.mutate(!mailEnabled)}
-          label="Let agents read scratch-site mail"
-        />
-      </div>
-
-      <AgentAccessDial />
-
-      {/* Connect — copy-paste for the agent's client config (zero new install). */}
-      <div className="mt-3.5 border-t border-rex-border-subtle pt-3.5">
-        <div className="text-[0.78125rem] font-medium text-rex-text">Connect an agent</div>
-        <div className="mt-2 flex items-center gap-2 rounded-md border border-rex-border-subtle bg-rex-well px-2.5 py-1.5">
-          <code className="min-w-0 flex-1 truncate font-mono text-[0.6875rem] text-rex-text">
-            {connectCommand}
-          </code>
-          <CopyButton value={connectCommand} />
-        </div>
-        <details className="group mt-2">
-          <summary className="flex cursor-pointer list-none items-center gap-1 text-[0.71875rem] text-rex-text-muted hover:text-rex-text">
-            <ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" />
-            Other clients (Cursor, VS Code)
-          </summary>
-          <div className="mt-2 flex items-start gap-2 rounded-md border border-rex-border-subtle bg-rex-well px-2.5 py-2">
-            <pre className="min-w-0 flex-1 overflow-x-auto font-mono text-[0.6875rem] leading-relaxed text-rex-text">
-              {CLIENT_JSON}
-            </pre>
-            <CopyButton value={CLIENT_JSON} />
-          </div>
-          <p className="mt-1.5 text-[0.6875rem] text-rex-text-muted">
-            If <span className="font-mono">rex</span> isn't found, install it from Settings →
-            General → Command-line tool, then reconnect.
-          </p>
-        </details>
-      </div>
-
-      <AgentDbGrants />
-      <AgentSiteGrants />
-
-      {/* Activity — every agent action, none silent. */}
-      <div className="mt-3.5 border-t border-rex-border-subtle pt-3.5">
-        <div className="flex items-center justify-between">
-          <div className="text-[0.78125rem] font-medium text-rex-text">Recent activity</div>
-          {rows.length > 0 && (
-            <Button size="sm" variant="ghost" disabled={clear.isPending} onClick={() => clear.mutate()}>
-              Clear
-            </Button>
-          )}
-        </div>
-        <div className="mt-1">
-          <AgentActivityFeed rows={rows} empty="No agent activity yet." />
-        </div>
-      </div>
+        </>
+      )}
     </div>
   );
 }

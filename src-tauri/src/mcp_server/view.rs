@@ -370,6 +370,7 @@ impl KnownPaths {
 /// layer, never a "the output is now safe" claim.
 pub fn scrub_log_line(line: &str, known: &KnownPaths) -> String {
     let mut out = redact_token_after(line, "rexenv_login=");
+    out = redact_reset_key(&out);
     out = redact_cookie_header(&out);
     // Longest prefix first (see `KnownPaths`), applied to the accumulating
     // string so an already-labelled path can't be re-matched by a shorter one.
@@ -377,6 +378,40 @@ pub fn scrub_log_line(line: &str, known: &KnownPaths) -> String {
         out = out.replace(prefix.as_str(), label);
     }
     out
+}
+
+/// A WordPress password-reset key — the one secret every inbox holds, promised
+/// scrubbed since the mail plan (§3.5) and built when D16 made the inbox a Read
+/// (4 Sep 2026). `key=` is redacted when the line is a reset link by any of the
+/// shapes WordPress and WooCommerce write (`wp-login.php?action=rp`,
+/// `action=resetpass`, `lost-password/?key=`), OR when the value is long enough
+/// to be a generated key (`wp_generate_password(20)`) whatever the URL around it
+/// — the review that made mail ambient found the first version keyed on
+/// `action=rp` alone and let a WooCommerce reset through. A short `key=` on a
+/// line with none of those shapes (`?key=1`, a sort key) is left alone.
+fn redact_reset_key(line: &str) -> String {
+    let lower = line.to_ascii_lowercase();
+    let reset_shape = ["action=rp", "action=resetpass", "lost-password", "wp-login.php"]
+        .iter()
+        .any(|m| lower.contains(m));
+    let mut result = String::new();
+    let mut rest = line;
+    while let Some(pos) = rest.find("key=") {
+        // `key=` inside a longer parameter name (`apikey=`) still names a key.
+        result.push_str(&rest[..pos + 4]);
+        let after = &rest[pos + 4..];
+        let end = after
+            .find(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '%')))
+            .unwrap_or(after.len());
+        if reset_shape || end >= 16 {
+            result.push_str("<redacted>");
+        } else {
+            result.push_str(&after[..end]);
+        }
+        rest = &after[end..];
+    }
+    result.push_str(rest);
+    result
 }
 
 /// Replace the token following `marker` (URL-token characters) with `<redacted>`,
@@ -587,6 +622,19 @@ mod tests {
         assert!(!scrubbed.contains(token), "login token survived: {scrubbed}");
         assert!(scrubbed.contains("rexenv_login=<redacted>"), "{scrubbed}");
         assert!(scrubbed.contains("redir=1"), "benign query lost — the scrubber over-reached");
+
+        // A WordPress reset link in each shape the review found (D16): core's
+        // `action=rp`, WooCommerce's `lost-password/?key=`, and a bare long key
+        // with no recognisable URL around it. A short benign `key=` survives.
+        for link in [
+            "https://blog.rex/wp-login.php?action=rp&key=abcDEF123456xyz78901&login=me",
+            "https://shop.rex/my-account/lost-password/?key=WOOKEY1234567890ABCD&id=3",
+            "click https://x.rex/?key=LONGGENERATEDKEY12345678 now",
+        ] {
+            let s = scrub_log_line(link, &k);
+            assert!(s.contains("key=<redacted>") && !s.contains("12345"), "reset key survived: {s}");
+        }
+        assert_eq!(scrub_log_line("sort by key=1 desc", &k), "sort by key=1 desc", "a short benign key= must survive");
 
         let cookie =
             scrub_log_line("Set-Cookie: wordpress_logged_in=SECRETVALUE99; Path=/; HttpOnly", &k);

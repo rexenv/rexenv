@@ -158,109 +158,11 @@ pub fn drop_sql(user: &str) -> String {
     sql
 }
 
-/// Auto-allow: answer the database-consent prompt with "yes" without asking.
-///
-/// The equivalent of Claude Code's own `--dangerously-skip-permissions`, and
-/// scoped the same way: it skips a **consent prompt**, never a security
-/// boundary. The tier rule — an agent may not change a site the user made — is
-/// not a prompt and is untouched by this. Today T1 consent means exactly one
-/// thing, the real-site DB read, so that is exactly what this covers.
-///
-/// **In memory and session-scoped, deliberately, and this is the whole safety
-/// argument.** Every other rexenv setting persists; this one dies with the
-/// process. A standing "yes" that survives a restart is one somebody turns on
-/// for an afternoon and still has on a month later, which is precisely the
-/// state where it does damage — the user no longer remembers it is on, so the
-/// absence of a prompt reads as "the agent did not ask" rather than "I answered
-/// in advance". Losing it on quit is the feature, not a limitation.
-///
-/// What it does NOT do:
-/// - It does not skip the RECORD. A grant is still written to
-///   `agent_db_grants`, with the same expiry, listed and revocable — so "what
-///   could that agent see, and until when" still has an answer.
-/// - It does not hide itself. The grant records `auto_granted`, so a user
-///   reading the list later can tell what they approved from what the toggle
-///   approved, and the agent is told too.
-#[derive(Debug, Default)]
-pub struct AutoAllow(bool);
-
-impl AutoAllow {
-    pub fn is_on(&self) -> bool {
-        self.0
-    }
-
-    pub fn set(&mut self, on: bool) {
-        self.0 = on;
-    }
-}
-
-/// The sentence appended to a `db_query` reply when auto-allow produced the
-/// grant, so the agent can say so in its own report rather than presenting the
-/// access as something the user weighed and approved.
-pub const AUTO_GRANTED_NOTE: &str =
-    "This access was granted automatically because the person you're working with has \
-     auto-allow switched on in rexenv \u{2014} they were not asked about this database. It \
-     is recorded and expires like any other grant, and they can revoke it.";
-
-/// One agent's outstanding ASK to read a real site's database.
-///
-/// **Session-scoped and in memory on purpose.** A request is about a
-/// conversation happening now: an agent asked, the user sees it, the user
-/// answers. Persisting it would mean a request from last Tuesday could be
-/// approved today, granting something nobody remembers being asked — a consent
-/// prompt whose context is gone is not consent. Losing these on quit is the
-/// correct behaviour, not a limitation: the agent asks again, and the user is
-/// asked again while they can still see why.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GrantRequest {
-    pub site_id: String,
-    pub domain: String,
-    pub client: String,
-}
-
-/// The outstanding asks, newest first, deduplicated by (site, client).
-///
-/// A retry loop must not become a list of a hundred identical prompts — the
-/// same agent asking for the same site twice is one question, and answering it
-/// answers both.
-#[derive(Debug, Default)]
-pub struct GrantRequests(Vec<GrantRequest>);
-
-impl GrantRequests {
-    /// Record an ask. Returns whether it was NEW, so a caller can decide
-    /// whether anything needs surfacing.
-    pub fn ask(&mut self, req: GrantRequest) -> bool {
-        if self.0.iter().any(|r| r.site_id == req.site_id && r.client == req.client) {
-            return false;
-        }
-        self.0.insert(0, req);
-        // A cap, because the list is driven by whatever an agent sends. Without
-        // one, an agent asking about invented site ids is a way to grow this
-        // without bound in the app's memory, and to bury a real ask under noise.
-        self.0.truncate(MAX_REQUESTS);
-        true
-    }
-
-    pub fn list(&self) -> &[GrantRequest] {
-        &self.0
-    }
-
-    /// Clear one ask — what answering it (either way) does. Denying and
-    /// granting both remove it, because both are answers.
-    pub fn answer(&mut self, site_id: &str, client: &str) {
-        self.0.retain(|r| !(r.site_id == site_id && r.client == client));
-    }
-}
-
-/// The most outstanding asks kept. Small on purpose: this is a prompt list a
-/// human reads, not a log.
-pub const MAX_REQUESTS: usize = 20;
-
-/// How long a granted read lasts. The number in the consent dialog's own words
-/// — "This access expires in 7 days" — so it lives beside nothing else that
-/// could disagree with it.
-pub const GRANT_DAYS: u32 = 7;
+/// How long the RECORD of a provisioned read-only principal is kept (D16).
+/// Not a consent expiry — consent is the Agent access dial — but the row that
+/// remembers which account was made for which site under which domain, so a
+/// rename cannot orphan it (#403). Ten years is "for the life of the site".
+pub const PROVISION_RECORD_DAYS: u32 = 3650;
 
 /// Who an agent may connect AS for one `db_query` call, decided from recorded
 /// facts alone.
@@ -274,33 +176,45 @@ pub const GRANT_DAYS: u32 = 7;
 /// `is_scratch` is the RECORDED ownership fact (`core::scratch::claim`), never
 /// a domain-suffix guess — a user's own site called `foo.scratch.rex` must not
 /// become writable because its name reads like one.
-pub fn authorize(
-    conn: &rusqlite::Connection,
-    site_id: &str,
-    domain: &str,
-    is_scratch: bool,
-    client: &str,
-) -> Result<(Principal, String)> {
+pub fn authorize(conn: &rusqlite::Connection, is_scratch: bool, domain: &str) -> Result<(Principal, String)> {
     if is_scratch {
         // The agent created it, it is disposable, and it holds nothing the user
         // put there. No consent to ask for — there is no one to ask about.
         return Ok((Principal::Scratch, principal_name(Principal::Scratch, domain)));
     }
-    match crate::state::store::active_agent_db_grant(conn, site_id, client)? {
-        Some(_) => Ok((Principal::ReadOnly, principal_name(Principal::ReadOnly, domain))),
-        // The message is the ONLY thing an agent sees, so it says what is
-        // missing, who has to do it, and where — a bare "denied" teaches an
-        // agent to retry, which is the worst possible response to a consent
-        // boundary. It deliberately does not say "ask the user to approve",
-        // because an agent that relays that becomes the thing doing the asking.
-        None => Err(Error::Other(format!(
-            "reading the database of `{domain}` needs the user's approval, which has not been \
-             given (or has expired). rexenv is asking for it now, in the app: \
-             Settings → \"AI agents (MCP)\" → \"Database access\", where it can be allowed for 7 \
-             days or refused. That section also lists every grant and when it expires. This is \
-             not something the agent can grant itself."
-        ))),
+    // D16: the user's own site is answered by the Agent access dial at Read —
+    // the level every read on their sites needs, and the dial's floor while
+    // the endpoint is on. Still SELECT-only on that one database (#399); the
+    // refusal, should a level below Read ever exist, names the dial.
+    let now = crate::core::agent_access::current(conn)?;
+    if now.level < crate::core::agent_access::AccessLevel::Read {
+        return Err(Error::Other(crate::core::agent_access::refusal(
+            &format!("reading the database of `{domain}`"),
+            crate::core::agent_grants::Scope::Read,
+            &now,
+        )));
     }
+    Ok((Principal::ReadOnly, principal_name(Principal::ReadOnly, domain)))
+}
+
+/// Remember that `user` was provisioned for `site_id` on behalf of `client` —
+/// the D16 meaning of an `agent_db_grants` row: not consent (the dial is), but
+/// the record the site's delete path reads to drop an account made under a
+/// domain the site no longer has (#403). Keyed by (site, PRINCIPAL): a rename
+/// makes a new principal and a new row, the same principal twice makes none,
+/// and an agent varying its `clientInfo` name cannot grow the table (the
+/// review's find — the first version was keyed by client and frozen at the
+/// first name). Call it AFTER the provision succeeded, so a row never names an
+/// account that was never made. Returns whether a row was written.
+pub fn record_principal(conn: &rusqlite::Connection, site_id: &str, client: &str, user: &str) -> Result<bool> {
+    let known = crate::state::store::list_agent_db_grants(conn)?
+        .into_iter()
+        .any(|g| g.site_id == site_id && g.db_user == user);
+    if known {
+        return Ok(false);
+    }
+    crate::state::store::grant_agent_db(conn, &uuid::Uuid::new_v4().to_string(), site_id, client, user, PROVISION_RECORD_DAYS, false)?;
+    Ok(true)
 }
 
 /// Create (or re-grant) one agent principal on a running engine.
@@ -413,49 +327,6 @@ mod tests {
         );
     }
 
-    /// **An agent's retry loop is one prompt, not a hundred — and both answers
-    /// clear it.**
-    ///
-    /// The ask is recorded on the REFUSAL path, so an agent that keeps trying
-    /// keeps hitting the same question. If each attempt appended, a user would
-    /// come back to a wall of identical rows and the real ask underneath
-    /// somebody else's noise; and since the list is driven entirely by what an
-    /// agent sends, an unbounded one is also a way to grow the app's memory
-    /// from outside.
-    #[test]
-    fn repeated_asks_are_one_prompt_and_answering_either_way_clears_it() {
-        let mut reqs = GrantRequests::default();
-        let ask = |site: &str, client: &str| GrantRequest {
-            site_id: site.into(),
-            domain: format!("{site}.rex"),
-            client: client.into(),
-        };
-
-        assert!(reqs.ask(ask("s1", "Claude Code")), "the first ask is new");
-        assert!(!reqs.ask(ask("s1", "Claude Code")), "a retry is the same question");
-        assert_eq!(reqs.list().len(), 1);
-
-        // A different client asking about the same site IS a different
-        // question — that is the re-consent rule, seen from the prompt side.
-        assert!(reqs.ask(ask("s1", "Another Agent")));
-        // …and so is the same client asking about a different site.
-        assert!(reqs.ask(ask("s2", "Claude Code")));
-        assert_eq!(reqs.list().len(), 3);
-        assert_eq!(reqs.list()[0].site_id, "s2", "newest first");
-
-        // Denying clears it, exactly as granting does: a denial is an answer,
-        // and a prompt that only disappears on approval makes "no" the one
-        // response the UI cannot express.
-        reqs.answer("s1", "Another Agent");
-        assert_eq!(reqs.list().len(), 2);
-        assert!(!reqs.list().iter().any(|r| r.client == "Another Agent"));
-
-        // The cap holds against an agent inventing site ids.
-        for i in 0..100 {
-            reqs.ask(ask(&format!("bulk{i}"), "Noisy Agent"));
-        }
-        assert_eq!(reqs.list().len(), MAX_REQUESTS, "the prompt list grew without bound");
-    }
 
     /// **No user-facing message in this module contains a run of spaces.**
     ///
@@ -467,175 +338,61 @@ mod tests {
     /// again to `AUTO_GRANTED_NOTE` — twice is a guard.
     #[test]
     fn the_user_facing_messages_carry_no_accidental_run_of_spaces() {
-        // One constant today; add the next user-facing one here rather than
-        // writing a second test, so the rule stays in one place.
-        assert!(
-            !AUTO_GRANTED_NOTE.contains("  "),
-            "AUTO_GRANTED_NOTE contains a run of spaces — a `\\` continuation is missing, or \
-             adjacent literals were joined without one:\n{AUTO_GRANTED_NOTE}"
-        );
-        // The refusal is built by `format!`, so it is checked through the gate
-        // that produces it rather than as a constant.
+        // The refusal an agent would read below Read (D16 — through the dial's
+        // own text) comes from string continuations, where a stray double
+        // space is the usual slip.
         let conn = crate::state::db::open_in_memory().unwrap();
-        let err = authorize(&conn, "s1", "shop.rex", false, "c").unwrap_err().to_string();
-        assert!(!err.contains("  "), "the consent refusal contains a run of spaces:\n{err}");
+        let r = crate::core::agent_access::refusal("reading the database of `shop.rex`", crate::core::agent_grants::Scope::Read, &crate::core::agent_access::current(&conn).unwrap());
+        assert!(!r.contains("  "), "double space in the refusal: {r}");
     }
 
-    /// **Auto-allow skips the PROMPT and nothing else.**
-    ///
-    /// The dangerous version of this feature is one that reads as "turn off the
-    /// safety". These assertions are the difference: what it may do is answer a
-    /// consent question; what it may not do is widen a privilege, reach a
-    /// second site, outlive the process, or hide that it acted.
-    ///
-    /// The gate function itself is deliberately NOT auto-allow-aware — it
-    /// stays a pure decision over recorded facts, and the bypass lives at the
-    /// one call site that can also record a grant. A flag threaded into
-    /// `authorize` would mean every future reader of the gate has to hold two
-    /// modes in their head.
+    /// **The gate is one pure function over recorded facts: a scratch site is
+    /// its own principal with no consent to ask for; the user's own site is
+    /// the SELECT-only principal at the dial's Read level (D16) — the floor
+    /// while the endpoint is on, so there is no prompt, no row and no client
+    /// in the decision; and the refusal that would fire below Read names the
+    /// dial.**
     #[test]
-    fn auto_allow_answers_the_prompt_without_widening_anything() {
-        let mut a = AutoAllow::default();
-        assert!(!a.is_on(), "auto-allow must default to OFF");
-        a.set(true);
-        assert!(a.is_on());
-        a.set(false);
-        assert!(!a.is_on(), "it must be switchable back off");
-
-        // It is NOT a settings key. Persisting it is the failure mode the
-        // design rejects: a standing yes nobody remembers switching on.
-        let src = include_str!("../state/app.rs");
-        assert!(
-            src.contains("agent_db_auto_allow: Mutex<crate::core::agent_db::AutoAllow>"),
-            "auto-allow must live in AppState (in memory), not in the settings table"
-        );
-        let settings_src = include_str!("settings_access.rs");
-        assert!(
-            !settings_src.contains("auto_allow"),
-            "auto-allow reached the settings policy — if it is a settings KEY it survives a \
-             restart, and a consent bypass that outlives the session is the exact thing this \
-             design refuses"
-        );
-
-        // The gate stays a pure decision: no auto-allow anywhere in it.
-        let me = include_str!("agent_db.rs");
-        // The gate body = from its signature to the next item. Located WITHOUT
-        // any brace character, and that is not fussiness: a `'{'` char literal
-        // in this file is counted by `copy_scan::production_lines`' naive brace
-        // scan, which then closes the `#[cfg(test)]` module early — every test
-        // below reads as production code and the app-schema guard reports this
-        // file for SQL that only exists in tests. Two versions of this test hit
-        // that before the third avoided braces entirely.
-        let gate_start = me.find("pub fn authorize(").expect("the gate");
-        let rest = &me[gate_start + 10..];
-        let gate_end = rest.find("\npub fn ").map(|i| gate_start + 10 + i).unwrap_or(me.len());
-        let gate = &me[gate_start..gate_end];
-        assert!(gate.len() > 200, "the gate body was not located");
-        assert!(
-            !gate.contains("AutoAllow") && !gate.contains("auto_allow"),
-            "the gate became auto-allow-aware — keep the bypass at the call site so the \
-             decision function stays readable as one rule"
-        );
-
-        // The agent is TOLD. Silence here would let it report auto-granted
-        // access as something a person weighed and approved.
-        assert!(AUTO_GRANTED_NOTE.contains("not asked"), "{AUTO_GRANTED_NOTE}");
-        assert!(AUTO_GRANTED_NOTE.contains("revoke"), "{AUTO_GRANTED_NOTE}");
+    fn a_users_site_reads_at_the_dials_read_and_a_scratch_site_writes_its_own() {
+        let conn = crate::state::db::open_in_memory().unwrap();
+        let (p, u) = authorize(&conn, true, "shop.scratch.rex").unwrap();
+        assert_eq!((p, u.as_str()), (Principal::Scratch, principal_name(Principal::Scratch, "shop.scratch.rex").as_str()));
+        let (p, u) = authorize(&conn, false, "shop.rex").unwrap();
+        assert_eq!((p, u.as_str()), (Principal::ReadOnly, principal_name(Principal::ReadOnly, "shop.rex").as_str()));
+        // Every level of the dial answers a read — Read is the floor.
+        for lvl in crate::core::agent_access::LEVELS {
+            let mode = if lvl == crate::core::agent_access::AccessLevel::Read { None } else { Some(crate::core::agent_access::Mode::Always) };
+            crate::core::agent_access::set(&conn, lvl, mode).unwrap();
+            assert_eq!(authorize(&conn, false, "shop.rex").unwrap().0, Principal::ReadOnly, "{lvl:?}");
+        }
+        // The refusal shape, for the day a level below Read exists: the
+        // dial, both levels, where to turn it — never "ask the user".
+        let r = crate::core::agent_access::refusal("reading the database of `shop.rex`", crate::core::agent_grants::Scope::Read, &crate::core::agent_access::current(&conn).unwrap());
+        assert!(r.contains("`Agent access`") && r.contains("AI agents (MCP)") && !r.contains("ask the user"), "{r}");
+        // Nothing here wrote a grant row: consent is not a row any more.
+        assert!(crate::state::store::list_agent_db_grants(&conn).unwrap().is_empty());
     }
 
-    /// **Auto-allow may not touch the tier boundary.**
-    ///
-    /// The boundary — an agent cannot change a site the user made — is a RULE,
-    /// not a prompt, so a "skip the prompts" switch has nothing to say about
-    /// it. Claude Code's own flag is scoped the same way. This asserts the
-    /// executing tools' claim gate never consults it, because the tempting
-    /// future edit is "auto-allow should just let the agent get on with it".
+    /// **The provisioning record is keyed by (site, principal): written once
+    /// per principal, again after a rename made a new one, never for a second
+    /// client name, so the delete path can find every account and an agent
+    /// cannot grow the table by renaming itself.**
     #[test]
-    fn auto_allow_cannot_reach_the_tier_boundary() {
-        let scratch = include_str!("../mcp_server/scratch.rs");
-        let claim = scratch.find("pub fn claim(").expect("the ownership gate");
-        let body = &scratch[claim..claim + 500];
-        assert!(
-            !body.contains("auto_allow"),
-            "the ownership gate consults auto-allow — that turns a consent switch into \
-             permission to mutate the user's own sites, which is a different feature and \
-             not one anybody agreed to"
-        );
-        // Exactly one call site may consult it: db_query's refusal arm.
-        assert_eq!(
-            scratch.matches("ctx.auto_allow_on()").count(),
-            1,
-            "auto-allow is consulted in more than one place — its blast radius is supposed \
-             to be one consent prompt"
-        );
-    }
-
-    /// **A real site is unreadable without a live grant, and a scratch site
-    /// never needs one — decided from the RECORDED ownership fact.**
-    ///
-    /// The gate is one function precisely so this test is the whole story. Note
-    /// what it does not test: nothing about the domain. A user's own site named
-    /// `looks-like.scratch.rex` is a real site here, because `is_scratch` comes
-    /// from `core::scratch::claim` reading the ownership row — the same
-    /// distinction `scratch_delete_site` refuses on, for the same reason.
-    #[test]
-    fn a_real_site_needs_a_live_grant_and_a_scratch_site_never_does() {
-        use crate::state::{db, store};
-        let conn = db::open_in_memory().unwrap();
-        conn.execute(
-            "INSERT INTO sites (id, name, domain, type, status, php_version, web_server, ssl,
-                                path, db_name, db_engine)
-             VALUES ('s1','S','shop.rex','wordpress','stopped','8.3','nginx',1,'/tmp/s','wp_shop','mysql')",
-            [],
-        )
-        .unwrap();
-
-        // No grant: refused, and the refusal NAMES the site and where approval
-        // lives. An agent told only "denied" retries; an agent told what is
-        // missing reports it.
-        let err = authorize(&conn, "s1", "shop.rex", false, "Claude Code").unwrap_err().to_string();
-        assert!(err.contains("shop.rex"), "{err}");
-        // The FULL path, not just "Settings". A pointer that names the app's
-        // settings and not the section is what a person actually fails on:
-        // running §M3 on 25 Aug 2026 the first question back was "where do I
-        // click Allow?", against a message that said "Settings → MCP" while the
-        // card is titled "AI agents (MCP)" and the section "Database access" —
-        // three names for one place. A refusal a human cannot follow is a
-        // broken consent path, not a wording nit.
-        assert!(err.contains("AI agents (MCP)"), "the refusal must name the CARD: {err}");
-        assert!(err.contains("Database access"), "…and the SECTION in it: {err}");
-        assert!(err.contains("7 days"), "…and what allowing actually grants: {err}");
-        assert!(err.contains("not something the agent can grant itself"), "{err}");
-
-        // A scratch site is readable and WRITABLE with no grant at all — there
-        // is no user data in it and nobody to ask.
-        let (p, user) = authorize(&conn, "s2", "tmp.scratch.rex", true, "Claude Code").unwrap();
-        assert_eq!(p, Principal::Scratch);
-        assert_eq!(user, "rex_agent_tmp_scratch_rex");
-
-        // With a live grant the real site opens — READ-ONLY, never Scratch.
-        store::grant_agent_db(&conn, "g1", "s1", "Claude Code", "rex_ro_shop_rex", 7, false).unwrap();
-        let (p, user) = authorize(&conn, "s1", "shop.rex", false, "Claude Code").unwrap();
-        assert_eq!(p, Principal::ReadOnly, "a granted real site must never get a writing principal");
-        assert_eq!(user, "rex_ro_shop_rex");
-
-        // A DIFFERENT client is not covered by it. This is the re-consent rule.
-        assert!(authorize(&conn, "s1", "shop.rex", false, "Another Agent").is_err());
-
-        // Revoking closes it again, without deleting the evidence.
-        store::revoke_agent_db_grant(&conn, "g1").unwrap();
-        assert!(authorize(&conn, "s1", "shop.rex", false, "Claude Code").is_err());
-        assert_eq!(store::list_agent_db_grants(&conn).unwrap().len(), 1);
-
-        // …and so does expiry, which is the same gate reading the same column.
-        store::grant_agent_db(&conn, "g2", "s1", "Claude Code", "rex_ro_shop_rex", 7, false).unwrap();
-        assert!(authorize(&conn, "s1", "shop.rex", false, "Claude Code").is_ok());
-        conn.execute(
-            "UPDATE agent_db_grants SET expires_at = datetime('now','-1 hour') WHERE id='g2'",
-            [],
-        )
-        .unwrap();
-        assert!(authorize(&conn, "s1", "shop.rex", false, "Claude Code").is_err(), "an expired grant still opened the database");
+    fn the_provisioning_record_is_one_row_per_principal_and_a_rename_adds_one() {
+        use crate::state::models::{test_site, SiteOrigin};
+        let conn = crate::state::db::open_in_memory().unwrap();
+        let site = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "shop.rex", SiteOrigin::User);
+        crate::state::store::insert_site(&conn, &site).unwrap();
+        let first = principal_name(Principal::ReadOnly, "shop.rex");
+        assert!(record_principal(&conn, &site.id, "claude-code", &first).unwrap());
+        assert!(!record_principal(&conn, &site.id, "claude-code", &first).unwrap(), "the same principal twice is one row");
+        assert!(!record_principal(&conn, &site.id, "cursor", &first).unwrap(), "a second client name is not a second row");
+        let renamed = principal_name(Principal::ReadOnly, "store.rex");
+        assert!(record_principal(&conn, &site.id, "claude-code", &renamed).unwrap(), "a rename's new principal is recorded");
+        let rows = crate::state::store::list_agent_db_grants(&conn).unwrap();
+        let users: Vec<&str> = rows.iter().filter(|g| g.site_id == site.id).map(|g| g.db_user.as_str()).collect();
+        assert_eq!(rows.len(), 2);
+        assert!(users.contains(&first.as_str()) && users.contains(&renamed.as_str()), "{users:?}");
     }
 
     /// **A real site's agent principal can read and can do nothing else, and it

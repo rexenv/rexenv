@@ -104,16 +104,9 @@ pub struct AppState {
     /// unix-socket `mcp_server` module.
     #[cfg(unix)]
     pub mcp: Mutex<crate::mcp_server::McpControl>,
-    /// Agents' outstanding asks to read a real site's database (MCP M3).
-    /// In memory and session-scoped by design — see `core::agent_db::GrantRequests`:
-    /// a consent prompt whose context is gone is not consent.
-    pub agent_db_requests: Mutex<crate::core::agent_db::GrantRequests>,
-    /// Auto-allow for database consent (session-scoped — see
-    /// `core::agent_db::AutoAllow`). Deliberately NOT a settings row: it must
-    /// not survive a restart.
-    pub agent_db_auto_allow: Mutex<crate::core::agent_db::AutoAllow>,
-    /// Agents' outstanding asks for a SCOPE on the user's own sites or the
-    /// stack (MCP parity). Same lifetime rule as `agent_db_requests`.
+    /// Agents' outstanding asks to PUBLISH one of the user's sites (the one
+    /// consent still a click after D15/D16). In memory and session-scoped by
+    /// design: a prompt whose context is gone is not consent.
     pub agent_site_requests: Mutex<crate::core::agent_grants::GrantRequests>,
 }
 
@@ -171,8 +164,6 @@ impl AppState {
             rewrite_active: Mutex::new(None),
             #[cfg(unix)]
             mcp: Mutex::new(crate::mcp_server::McpControl::default()),
-            agent_db_requests: Mutex::new(Default::default()),
-            agent_db_auto_allow: Mutex::new(Default::default()),
             agent_site_requests: Mutex::new(Default::default()),
         }
     }

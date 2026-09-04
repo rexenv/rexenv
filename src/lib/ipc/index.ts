@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { StartupNotice, AdminerStatus, AppInfo, AgentAction, AgentDbGrant, AgentDbRequest, AgentScope, AgentSiteAsk, AgentSiteGrant, AgentSiteGrantRow, AgentAccess,
+import type { StartupNotice, AdminerStatus, AppInfo, AgentAction, AgentScope, AgentSiteAsk, AgentSiteGrant, AgentSiteGrantRow, AgentAccess,
   AgentAccessLevel,
   AgentAccessMode, Blueprint, BrowserApp, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoGitOp, RepoJobState, RepoKind, RepoPullRef, RepoStashEntry, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpUpdateOutcome, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteProvisionState, SiteRepoInfo, SiteResources, SiteServing, ResolverPlan, ScratchPackage, TeardownReport, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser, UnresolvableTld } from "@/types";
 import {
@@ -2101,19 +2101,12 @@ export async function repoLink(
  *  status line, and the recent activity feed. Off/empty outside Tauri. */
 export async function mcpStatus(): Promise<McpStatus> {
   if (!isTauri())
-    return { enabled: false, mailEnabled: false, access: { level: "read", mode: null, expiresAt: null, expired: false, label: "Agent access", allows: "", levels: [] }, connectCommand: "claude mcp add rexenv -- rex mcp", activity: { kind: "off" }, recent: [] };
+    return { enabled: false, access: { level: "read", mode: null, expiresAt: null, expired: false, label: "Agent access", allows: "", levels: [] }, connectCommand: "claude mcp add rexenv -- rex mcp", activity: { kind: "off" }, recent: [] };
   return invoke<McpStatus>("mcp_status");
 }
 
 /** Flip the opt-in toggle. Enabling BINDS the endpoint's socket (and only then
  *  reads on); disabling drops live sessions and unlinks it. Returns fresh status. */
-/** Turn the MAIL sub-toggle on or off. Not just a flag: enabling installs
- *  rexenv's `From` stamp into every scratch site, disabling removes it — so
- *  "on" means the sites are actually stamped, not that a preference was saved. */
-export async function mcpSetMailEnabled(enable: boolean): Promise<McpStatus> {
-  return invoke<McpStatus>("mcp_set_mail_enabled", { enable });
-}
-
 export async function mcpSetEnabled(enable: boolean): Promise<McpStatus> {
   return invoke<McpStatus>("mcp_set_enabled", { enable });
 }
@@ -2123,48 +2116,6 @@ export async function mcpSetEnabled(enable: boolean): Promise<McpStatus> {
 export async function agentActivity(siteId: string | null, limit: number): Promise<AgentAction[]> {
   if (!isTauri()) return [];
   return invoke<AgentAction[]>("agent_activity", { siteId, limit });
-}
-
-/** The asks an agent has made to read a real site's database that nobody has
- *  answered yet. Recorded on `db_query`'s REFUSAL path, so there is no way for
- *  an agent to ask without first being told no. */
-export async function agentDbRequests(): Promise<AgentDbRequest[]> {
-  if (!isTauri()) return [];
-  return invoke<AgentDbRequest[]>("agent_db_requests");
-}
-
-/** Every database grant, live and dead, newest first. */
-export async function agentDbGrants(): Promise<AgentDbGrant[]> {
-  if (!isTauri()) return [];
-  return invoke<AgentDbGrant[]>("agent_db_grants");
-}
-
-/** Approve one ask: create the read-only account and record the grant. */
-export async function agentDbGrant(siteId: string, client: string): Promise<AgentDbGrant> {
-  return invoke<AgentDbGrant>("agent_db_grant", { siteId, client });
-}
-
-/** Answer one ask with "no". Grants nothing and clears the prompt. */
-export async function agentDbDeny(siteId: string, client: string): Promise<void> {
-  return invoke<void>("agent_db_deny", { siteId, client });
-}
-
-/** Is database auto-allow on for THIS session? Session state, so the UI must ask
- *  rather than remember — a fresh launch is always off. */
-export async function agentDbAutoAllow(): Promise<boolean> {
-  if (!isTauri()) return false;
-  return invoke<boolean>("agent_db_auto_allow");
-}
-
-/** Turn auto-allow on/off for this session. Switching it off does not revoke
- *  what it already granted — those are ordinary grants, revocable one by one. */
-export async function agentDbSetAutoAllow(on: boolean): Promise<boolean> {
-  return invoke<boolean>("agent_db_set_auto_allow", { on });
-}
-
-/** Revoke a live grant — drops the account first, then records when it stopped. */
-export async function agentDbRevoke(id: string): Promise<void> {
-  return invoke<void>("agent_db_revoke", { id });
 }
 
 // ── Agent access (D15): the ONE dial for the user's own sites ─────────────────

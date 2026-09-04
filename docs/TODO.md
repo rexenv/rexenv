@@ -2096,6 +2096,26 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     `system` sits at Changes because the macOS dialog is the second consent; `run` sits at
     Full because it is a shell as the user. Auto-allow and the sites sub-toggle are gone.
     SMOKE §P1 23–26 rewritten; the wk harness has `agents-access-read/full/expired`.
+    ✓ **D16 — the card (4 Sep 2026, ledger #500–#502; #402/#404/#408 retired; #398/#401/
+    #403/#406/#226/#227/#484/#474/#497/#473/#209/#220 re-verdicted):** the owner's brief
+    after seeing the card — off shows nothing below the toggle; the mail sub-toggle is
+    gone (the stamp rides the endpoint: enable after bind, launch backfill, disable
+    removes; the inbox is a Read with the reset-key scrub finally built); the database
+    grant, prompt and auto-allow are gone (`db_query` at the dial's Read, the table kept
+    as the provisioning record); the dial's chosen state was DEAD CSS (`rex-brand-*` is
+    not a Tailwind key) — now the design system's chosen-card pattern, and the token
+    guard scans `border-rex-*` and refuses `rex-brand`; the `agents-access-*` probe had
+    never run (`probeFor` order) and does now. 8 IPC wrappers and 8 commands deleted;
+    SMOKE §M1 1, §M2b 13–14, §M3 15–18 (19–22 retired), §P3 35, §P4 38, §P1 23 rewritten.
+    An adversarial review (5 lenses, 34 findings) the same morning fixed: the reset-key
+    scrub had NO test and missed WooCommerce's `lost-password/?key=` (now four shapes,
+    pinned); cookie header VALUES were not scrubbed (the name decides now); an encoded
+    `raw` body is omitted rather than shipped; the provisioning record was keyed by client
+    and written before the provision (now per principal, after); the token guard was
+    brand-only (now every `rex-*` name against the Tailwind `rex.*` keys); the stamp guard
+    pins order, not presence; a standing level is said under the toggle while off; both
+    copy guards squash comment-stripped source. One reviewer's plant left the dial file
+    with NUL bytes and a changed sentence — found by the guard, rewritten.
     ✓ **D15 live (4 Sep 2026, rebuilt app):** SMOKE 23–26 all seen — every level, every
     duration, the expiry notice, the relaunch sweep, share still a click, the keys refused
     to the agent. Three small fixes from it (share copy, dial polling, post-expiry default).

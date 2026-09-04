@@ -332,8 +332,12 @@ async fn main() {
     // ── The socket, the real dispatch ───────────────────────────────────────
     let app = tauri::test::mock_app();
     app.manage(AppState::new(conn, plat, ca));
-    rexenv_lib::commands::mcp::mcp_set_mail_enabled(app.state::<AppState>(), true)
-        .expect("enable agent mail");
+    {
+        // D16: the stamp rides the endpoint — the same sync the enable path runs.
+        let state = app.state::<AppState>();
+        let conn = state.db.lock().unwrap();
+        rexenv_lib::commands::mcp::sync_scratch_mail_stamps(&conn, true);
+    }
 
     let sock = sandbox_root.join(mcp_server::SOCKET_FILE);
     let listener = mcp_server::bind_socket(&sock).expect("bind the sandbox MCP socket");

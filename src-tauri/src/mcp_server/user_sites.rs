@@ -2456,20 +2456,10 @@ fn mail_inbox<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::Ac
             "delete" => "delete messages from the inbox".to_string(),
             _ => "empty the inbox".to_string(),
         };
-        // The MAIL switch first, by name: it is the user's decision about mail
-        // as such, and a grant cannot stand in for it (D4). Then the grant.
-        {
-            let conn = ctx.db()?;
-            if !crate::mcp_server::mail_enabled(&conn) {
-                return Err(Error::Other(
-                    "reading mail is turned off. The person you're working with can switch it on in \
-                     rexenv under Settings → AI agents (MCP) → \"Let agents read scratch-site mail\" — \
-                     and the inbox additionally needs their `read` permission on rexenv itself. That \
-                     is their decision, not something an agent can change."
-                        .into(),
-                ));
-            }
-        }
+        // D16: the inbox is a READ on rexenv itself — free at the dial's Read
+        // level whenever the endpoint is on; the mail switch that stood in
+        // front of it is gone. The scrub below is the whole of what stands
+        // between a reset link and the agent, and the note says so.
         match scope {
             Scope::Read => { ctx.claim::<scope::Read>(None, &wanted)?; }
             Scope::Manage => { ctx.claim::<scope::Manage>(None, &wanted)?; }
@@ -2496,10 +2486,15 @@ fn mail_inbox<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::Ac
                     "id": m.id, "from": m.from.address, "to": m.to.into_iter().map(|a| a.address).collect::<Vec<_>>(),
                     "subject": m.subject, "date": m.date,
                     "text": m.text.lines().map(|l| super::view::scrub_log_line(l, &known)).collect::<Vec<_>>().join("\n"),
-                    "headers": m.headers.into_iter().map(|h| json!({ "name": h.name, "value": h.value })).collect::<Vec<_>>(),
+                    // A cookie header's VALUE carries no `cookie:` prefix for the
+                    // scrubber to key on, so the name decides (the review's find).
+                    "headers": m.headers.into_iter().map(|h| {
+                        let value = if h.name.eq_ignore_ascii_case("cookie") || h.name.eq_ignore_ascii_case("set-cookie") { "<redacted>".to_string() } else { super::view::scrub_log_line(&h.value, &known) };
+                        json!({ "name": h.name, "value": value })
+                    }).collect::<Vec<_>>(),
                 })
             }
-            "raw" => json!({ "raw": mail.raw(message_id()?).await.map_err(unreachable)?.lines().map(|l| super::view::scrub_log_line(l, &known)).collect::<Vec<_>>().join("\n") }),
+            "raw" => json!({ "raw": scrub_raw_source(&mail.raw(message_id()?).await.map_err(unreachable)?, &known) }),
             "mark_read" => { mail.mark_all_read().await.map_err(unreachable)?; json!({ "markedRead": true }) }
             "delete" => {
                 let ids: Vec<String> = args.get("message_ids").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(String::from).collect()).unwrap_or_default();
@@ -2511,10 +2506,40 @@ fn mail_inbox<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::Ac
             }
             _ => { mail.clear().await.map_err(unreachable)?; json!({ "cleared": true }) }
         };
-        Ok(json!({ "action": action, "result": result }))
+        Ok(json!({ "action": action, "result": result, "note": INBOX_NOTE }))
     })
 }
 
+/// What the inbox reply is, in words: every site's mail, with the token shapes
+/// rexenv knows removed — and no more than that.
+const INBOX_NOTE: &str = "This is the whole inbox — every site's mail, the user's own included. rexenv-issued \
+    login tokens, WordPress password-reset keys and cookie headers are removed from what is shown; \
+    other secrets a message carries (one-time codes, generated passwords) are not, and reading a \
+    message marks it read in the user's inbox. `raw` is the message source with its headers \
+    scrubbed; an encoded body (quoted-printable, base64) is omitted from it, because a line-wise \
+    scrub cannot see through the encoding — use `get` for the decoded text.";
+
+/// The RFC-822 source, scrubbed line by line — with the one honest cut: a
+/// quoted-printable or base64 body is not text, so the scrub cannot see a key
+/// in it, and the review that made the inbox a Read found PHPMailer switches
+/// to quoted-printable for any long line (HTML mail, the common case). Such a
+/// body is omitted rather than shipped; `get` returns the decoded text.
+fn scrub_raw_source(source: &str, known: &super::view::KnownPaths) -> String {
+    let (headers, body) = match source.find("\n\n") {
+        Some(i) => (&source[..i], &source[i..]),
+        None => (source, ""),
+    };
+    let lower = headers.to_ascii_lowercase();
+    let encoded = lower.contains("quoted-printable") || lower.contains("base64");
+    let mut out: Vec<String> = headers.lines().map(|l| super::view::scrub_log_line(l, known)).collect();
+    if encoded {
+        out.push(String::new());
+        out.push("<encoded body omitted — use `get` for the decoded text>".to_string());
+    } else {
+        out.extend(body.lines().map(|l| super::view::scrub_log_line(l, known)));
+    }
+    out.join("\n")
+}
 
 pub(crate) fn stack_scope(action: &str) -> Option<Scope> {
     Some(match action {
@@ -3595,13 +3620,14 @@ pub(crate) mod tests {
                     id: "m1".into(),
                     from: crate::core::mail::MailAddress { name: "WP".into(), address: "wordpress@blog.rex".into() },
                     to: vec![], cc: vec![], subject: "Password Reset".into(), date: "2026-09-03".into(),
-                    text: "Visit https://blog.rex/?rexenv_login=tok to log in".into(), html: String::new(), headers: vec![],
+                    text: "Visit https://blog.rex/?rexenv_login=tok to log in, or https://shop.rex/my-account/lost-password/?key=WOOKEY1234567890ABCD&id=3".into(), html: String::new(),
+                    headers: vec![crate::core::mail::MailHeader { name: "Set-Cookie".into(), value: "wordpress_logged_in=COOKIESECRET; Path=/".into() }, crate::core::mail::MailHeader { name: "Subject".into(), value: "Password Reset".into() }],
                 })
             })
         }
         fn raw<'a>(&'a self, id: String) -> OpFuture<'a, Result<String>> {
             self.calls.lock().unwrap().push(format!("mail raw {id}"));
-            Box::pin(async { Ok("Subject: x\n".into()) })
+            Box::pin(async { Ok("Subject: x\nContent-Transfer-Encoding: quoted-printable\nSet-Cookie: a=RAWCOOKIE\n\nkey=3DENCODEDKEY123456789\n".into()) })
         }
         fn mark_all_read<'a>(&'a self) -> OpFuture<'a, Result<()>> {
             self.calls.lock().unwrap().push("mail mark_all_read".into());
@@ -4294,19 +4320,21 @@ pub(crate) mod tests {
         let err = site_logs(ctx, &json!({ "site_id": site.id, "source": "../etc/passwd" }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("not one of"), "a key outside the site's list is refused before core: {err}");
 
-        // The inbox: the mail switch first, by name; then the stack-level grant.
-        let err = mail_inbox(ctx, &json!({ "action": "list" }), &acted).await.unwrap_err().to_string();
-        assert!(err.contains("Let agents read scratch-site mail"), "{err}");
-        {
-            let conn = state.db.lock().unwrap();
-            store::set_setting(&conn, crate::mcp_server::MCP_MAIL_ENABLED_KEY, "true").unwrap();
-        }
-        // D15: with the mail switch on, the inbox is a read — free.
+        // D16: the inbox is a read — free at the dial's Read, no switch in front.
         let v = mail_inbox(ctx, &json!({ "action": "list", "unread": true }), &acted).await.unwrap();
         let snippet = v["result"]["messages"][0]["snippet"].as_str().unwrap();
         assert!(!snippet.contains("rexenv_login=tok"), "a login token left in a snippet: {snippet}");
+        assert!(!snippet.contains("key=abc") && snippet.contains("key=<redacted>"), "a reset key left in a snippet: {snippet}");
+        assert!(v["note"].as_str().unwrap().contains("every site's mail"), "the inbox note: {v}");
         let v = mail_inbox(ctx, &json!({ "action": "get", "message_id": "m1" }), &acted).await.unwrap();
-        assert!(!v["result"]["text"].as_str().unwrap().contains("=tok"));
+        let text = v["result"]["text"].as_str().unwrap();
+        assert!(!text.contains("=tok") && !text.contains("WOOKEY"), "a token or a WooCommerce reset key left in the body: {text}");
+        let headers = v["result"]["headers"].as_array().unwrap();
+        assert!(headers.iter().any(|h| h["name"] == "Set-Cookie" && h["value"] == "<redacted>"), "a cookie header value left: {headers:?}");
+        assert!(headers.iter().any(|h| h["name"] == "Subject" && h["value"] == "Password Reset"), "a benign header lost: {headers:?}");
+        let v = mail_inbox(ctx, &json!({ "action": "raw", "message_id": "m1" }), &acted).await.unwrap();
+        let raw = v["result"]["raw"].as_str().unwrap();
+        assert!(!raw.contains("ENCODEDKEY") && raw.contains("encoded body omitted") && !raw.contains("RAWCOOKIE"), "an encoded body or a raw cookie header reached the agent: {raw}");
         let err = mail_inbox(ctx, &json!({ "action": "clear" }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("`destroy`"), "{err}");
         let err = mail_inbox(ctx, &json!({ "action": "mark_read" }), &acted).await.unwrap_err().to_string();

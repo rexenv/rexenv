@@ -285,10 +285,15 @@ async fn main() {
     assert!(err && text.contains("not one of"), "{text}");
     let (err, text) = c("site_logs", json!({ "site_id": mine.id, "source": keys[0] }));
     assert!(!err, "a real key tails (the file may be empty in the sandbox): {text}");
+    // D16: the inbox is a read at the dial's Read — no switch, no ask. The
+    // sandbox reaches the REAL Mailpit; if it is down the reply says so.
     let (err, text) = c("mail_inbox", json!({ "action": "list" }));
-    assert!(err && text.contains("Let agents read scratch-site mail"), "{text}");
-    assert_eq!(asks(&state).len(), asks_before, "the mail switch refuses before the grant is even asked for");
-    println!("✓ wp/artisan/composer tools refuse a PHP/scratch site on the row; site_logs lists keys without paths and refuses a stray key; mail_inbox refuses by the mail switch's name");
+    assert!(!err || text.contains("isn't answering"), "the inbox at Read: {text}");
+    if !err {
+        assert!(text.contains("every site's mail"), "the reply carries the inbox note: {text}");
+    }
+    assert_eq!(asks(&state).len(), asks_before, "a read asks for nothing");
+    println!("✓ wp/artisan/composer tools refuse a PHP/scratch site on the row; site_logs lists keys without paths and refuses a stray key; mail_inbox reads at Read with no switch");
 
     // 7) The dial at Full, for this session: the app's full delete runs — the
     //    docroot is gone from disk and the row is gone.

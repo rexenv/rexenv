@@ -80,21 +80,11 @@ const SCENARIOS = [
   ["agents-idle-empty", "view=agents&astate=idle&feed=empty", []],
   ["agents-off", "view=agents&astate=off", []],
   ["agents-site-section", "view=agents&astate=working&site=1", []],
-  // The MAIL sub-toggle (M2b) — three paragraphs above a toggle, so the width
-  // it has to survive is the narrow one. Both states, since "off by default"
-  // is the shipped one and the one a first-time reader meets.
-  // The #301 tell, both variants. The unnamed one renders on no machine any
-  // reviewer owns — a composer.json that could not be read — so a screenshot is
-  // the only way anyone looks at the copy that claims no count.
-  // The :443 notice. `onboarding-clear` is the one that matters: nothing on the
-  // port is the ORDINARY state at onboarding, and it must render NOTHING.
   ["onboarding-clear", "view=onboarding", []],
   ["onboarding-herd", "view=onboarding&edge=herd", []],
   ["onboarding-anon", "view=onboarding&edge=anon", []],
   ["wppackages-named", "view=wppackages", []],
   ["wppackages-unnamed", "view=wppackages&names=none", []],
-  ["agents-mail-off", "view=agents&astate=working", []],
-  ["agents-mail-on", "view=agents&astate=working&mail=1", []],
   // The Agent access dial (D15): Read by default; `access=full&mode=days` a
   // 7-day Full; `expired=1` the expired notice. Site access renders its
   // share-only empty state either way.
@@ -497,29 +487,38 @@ const PROBES = {
       if (!text.includes("AI agents (MCP)")) problems.push("card title missing");
       if (!text.includes("Before you turn this on")) problems.push("enable-moment copy missing");
       const p = new URLSearchParams(location.search);
+      const off = p.get("astate") === "off";
       const amber = document.querySelectorAll('[class*="border-l-status-warning"]').length;
-      if (p.get("feed") === "empty") {
-        if (!text.includes("No agent activity yet")) problems.push("empty state missing");
-      } else if (amber < 1) {
-        problems.push("no muted-amber concerning row rendered");
+      // The feed exists only with the endpoint ON (D16).
+      if (!off) {
+        if (p.get("feed") === "empty") {
+          if (!text.includes("No agent activity yet")) problems.push("empty state missing");
+        } else if (amber < 1) {
+          problems.push("no muted-amber concerning row rendered");
+        }
       }
       const toggle = document.querySelector('[role="switch"]');
       if (!toggle) problems.push("no toggle rendered");
       else if (toggle.getAttribute("aria-checked") !== (p.get("astate") === "off" ? "false" : "true"))
         problems.push("toggle state does not match astate");
-      // D15: the Agent access dial replaced the sites sub-toggle. The dial is
-      // always there (three level radios), the old switch never is, and the
-      // Site access section renders its share-only empty state (the harness
-      // mocks no asks and no grants).
-      const sitesSwitch = [...document.querySelectorAll('[role="switch"]')].find((el) =>
-        (el.getAttribute("aria-label") || "").includes("manage my own sites"),
-      );
-      if (sitesSwitch) problems.push("the retired sites sub-toggle is back");
+      // D16: with the endpoint OFF nothing renders below the toggle — no dial,
+      // no Site access, no feed; the paragraph and the toggle are all there is.
+      // With it ON, the dial (three level radios) and the Site access section
+      // are there, and neither the retired mail nor sites sub-toggle is.
+      const switches = [...document.querySelectorAll('[role="switch"]')];
+      if (switches.length !== 1) problems.push(`expected exactly one switch (the endpoint), got ${switches.length}`);
       const dialRadios = document.querySelectorAll('[role="radiogroup"][aria-label="Agent access"] [role="radio"]').length;
-      if (dialRadios !== 3) problems.push(`expected the Agent access dial's 3 levels, got ${dialRadios}`);
-      if (!text.includes("Site access")) problems.push("the Site access section is missing");
-      if (!text.includes("always asks you")) problems.push("the dial no longer says publishing always asks");
-      if (!text.includes("A request only lasts while rexenv is running"))
+      if (p.get("astate") === "off") {
+        if (dialRadios !== 0) problems.push("the dial rendered with the endpoint off");
+        if (text.includes("Site access")) problems.push("Site access rendered with the endpoint off");
+        if (text.includes("Recent activity")) problems.push("the feed rendered with the endpoint off");
+      } else {
+        if (dialRadios !== 3) problems.push(`expected the Agent access dial's 3 levels, got ${dialRadios}`);
+        if (!text.includes("Site access")) problems.push("the Site access section is missing");
+        if (!text.includes("always asks you")) problems.push("the dial no longer says publishing always asks");
+      }
+      if (text.includes("scratch-site mail") || text.includes("Database access")) problems.push("a retired section is back");
+      if (!off && !/a request only lasts while rexenv is running/i.test(text))
         problems.push("the Site access empty state is missing");
       // The feed must show resolved DOMAINS, never a raw UUID site handle (the
       // fix: target_site is a uuid, target_label is the domain shown). This now
@@ -531,7 +530,7 @@ const PROBES = {
       // it reads as an agent action under a heading about agents — and putting
       // "rexenv" in the client-name slot alone would read as an agent that calls
       // itself rexenv. It must also be LISTED, never filtered out.
-      if (p.get("feed") !== "empty") {
+      if (!off && p.get("feed") !== "empty") {
         if (!text.includes("scratch_reap"))
           problems.push("the rexenv (reaper) row is missing — actor rows must be listed, not hidden");
         if (!text.includes("rexenv · automatic"))
@@ -770,6 +769,7 @@ function probeFor(name) {
   if (name.startsWith("wppackages")) return PROBES.wpPackages;
   if (name.startsWith("dbtab")) return PROBES.dbtab;
   if (name === "pills") return PROBES.pills;
+  if (name.startsWith("agents-access")) return PROBES.agentsAccess;
   if (name.startsWith("agents")) return PROBES.agents;
   if (name === "scratch-rows") return PROBES.scratchGroup;
   if (name.startsWith("provision")) return PROBES.provisionRow;
@@ -779,7 +779,6 @@ function probeFor(name) {
   if (name.startsWith("adminer-")) return PROBES.adminerVersion;
   if (name.startsWith("tunnels-")) return PROBES.tunnelsFilter;
   if (name === "themes-titles") return PROBES.themeTitles;
-  if (name.startsWith("agents-mail")) return PROBES.agents;
   if (name.startsWith("agents-access")) return PROBES.agentsAccess;
   return null;
 }

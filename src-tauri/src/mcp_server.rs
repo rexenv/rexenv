@@ -158,22 +158,6 @@ pub const SOCKET_FILE: &str = "rexenv-mcp.sock";
 /// the setting alone, so the toggle can never read on while nothing listens.
 pub const MCP_ENABLED_KEY: &str = "mcp_enabled";
 
-/// The MAIL sub-toggle (M2b, D4) — a settings row, deliberately not a schema
-/// change: it is user preference, not a fact about a site.
-///
-/// **What the value MEANS is a filesystem state, not just a flag.** While it is
-/// on, every scratch site carries rexenv's `From` stamp; while it is off, none
-/// does. `mcp_set_mail_enabled` is what keeps those two in step — see its doc
-/// for why the backfill happens at the toggle rather than at provision or
-/// lazily at read.
-pub const MCP_MAIL_ENABLED_KEY: &str = "mcp_mail_enabled";
-
-/// Is the mail sub-toggle on? Default OFF (D4): a global inbox carrying real
-/// sites' password-reset links is not a safe ambient default, so mail is opt-in
-/// even once the endpoint itself is enabled.
-pub fn mail_enabled(conn: &rusqlite::Connection) -> bool {
-    matches!(crate::state::store::get_setting(conn, MCP_MAIL_ENABLED_KEY), Ok(Some(v)) if v == "true")
-}
 
 
 /// The MCP revision whose stable JSON-RPC core we implement (docs/PLAN §2.1).
@@ -294,6 +278,12 @@ pub fn spawn_if_enabled(app: tauri::AppHandle) {
             if let Some(state) = app.try_state::<AppState>() {
                 if let Ok(mut ctl) = state.mcp.lock() {
                     ctl.store_handle(tx);
+                }
+                // D16: the stamp rides the endpoint. A machine upgraded with
+                // MCP already on never clicks the toggle, so the backfill for
+                // its existing scratch sites happens here.
+                if let Ok(conn) = state.db.lock() {
+                    crate::commands::mcp::sync_scratch_mail_stamps(&conn, true);
                 }
             }
         }
@@ -2411,38 +2401,17 @@ mod tests {
             // which is the more damaging half — the guarantee is read by people
             // auditing, this paragraph is read by everyone who turns it on.
             ("look at your sites", "that an agent can SEE every site, not only its own (§3.1c)"),
-            // The MAIL sub-toggle's own load-bearing pair (M2b, D4). This is the
-            // SECOND place a user consents to something, and the first one only
-            // stayed honest because a guard forced it — so both halves are
-            // pinned here rather than trusted:
-            //   - the scope claim, which is what the user is actually deciding;
-            //   - the FAIL-CLOSED direction, which is what a trim cuts first as
-            //     "detail" and is the sentence that makes the scope claim
-            //     survivable when a site overrides the stamp.
-            (
-                "your own sites' mail is never returned",
-                "what the mail sub-toggle does NOT expose — the claim being consented to",
-            ),
-            (
-                "misses its own mail, never that it sees yours",
-                "WHICH WAY mail fails when the stamp is overridden (fail-closed, in plain words)",
-            ),
-            // M3. `db_query` makes a REAL site's data reachable for the first
-            // time — read-only, per-site, and only with the user's consent. The
-            // sentence above about what an agent cannot do stayed TRUE (reading
-            // is not changing or deleting), which is exactly why this had to be
-            // added rather than caught: a paragraph that is not false can still
-            // leave the user unaware that their database is reachable at all,
-            // and "still true" is the state in which nobody rewrites anything.
-            (
-                "ask to read one of your sites' databases",
-                "that a REAL site's data is reachable at all (M3) — the paragraph stayed true \
-                 while becoming incomplete, which is the harder drift to notice",
-            ),
-            (
-                "only you can say yes",
-                "WHO decides — the access exists only through a consent the agent cannot give itself",
-            ),
+            // D16 (4 Sep 2026): the mail sub-toggle and the database prompt are
+            // gone — both are READ, and Read is on whenever the endpoint is. The
+            // sentences the old toggle and the old prompt carried were the
+            // deliberately unflattering ones (#226, #402); they move HERE, to the
+            // one paragraph a user reads before turning the endpoint on, because
+            // it is now the only moment they consent to either.
+            ("every site's mail", "that the WHOLE inbox is readable — not only the agent's own sites' mail"),
+            ("password-reset links", "the concrete thing in that inbox a trim drops first"),
+            ("read-only", "the bound that makes a database read a read"),
+            ("password hashes", "WHAT is actually in reach in a database, in the words that make it concrete"),
+            ("API keys", "the second concrete thing — a trim usually keeps one and drops this"),
         ];
         if scratch::registry().is_empty() {
             return; // unreachable in practice — see the note above
@@ -2456,111 +2425,21 @@ mod tests {
                 scratch::registry().len()
             );
         }
-        // The consent DIALOG's own copy (M3), pinned for the reason the two
-        // above are: it is the moment a user hands over a real site's data, and
-        // the obvious edit to a long prompt is to shorten it. The plan drafted
-        // this wording deliberately unflattering — naming password hashes and
-        // API keys rather than saying "read access" — because a prompt that
-        // undersells what it is asking for produces a decision the user
-        // believes they understood. Trimming it back to "Allow X to read Y?"
-        // would pass every other check in this file.
-        const CONSENT: &str = include_str!("../../src/components/mcp/AgentDbGrants.tsx");
-        const CONSENT_MUST_SAY: &[(&str, &str)] = &[
-            ("password hashes", "WHAT is actually in reach, in the words that make it concrete"),
-            ("API keys or tokens", "the second concrete thing — a trim usually keeps one and drops this"),
-            ("cannot modify or delete", "the bound that makes this a read, and the reason it is grantable"),
-            ("expires in 7 days", "that the access ENDS on its own — the promise the stored expiry keeps"),
-            ("revoke it", "that the decision is reversible, at the place they are deciding"),
-            ("Don't allow", "that NO is an available answer, not just closing the prompt"),
-            // The empty state, not the prompt — pinned in the same list because
-            // it answers the question the prompt's ABSENCE raises. A user hunted
-            // for an Allow button twice after restarts had cleared the ask, with
-            // nothing on screen to say that could happen. The behaviour is
-            // correct and invisible; the sentence is what makes it survivable.
-            (
-                "only lasts while rexenv is running",
-                "that a pending request does not survive a quit — the reason an expected \
-                 Allow button is not there",
-            ),
-            // AUTO-ALLOW. Its whole safety case is two sentences, and a trim
-            // that keeps the feature while dropping either of them leaves a
-            // switch that reads as a convenience and behaves as a standing yes.
-            (
-                "not asked",
-                "that auto-allow means the user is NOT ASKED — the thing being given up",
-            ),
-            (
-                "switches itself off when you quit rexenv",
-                "that auto-allow is session-scoped. Without this the user has no reason to \
-                 think it ends, and a consent bypass believed to be permanent is one nobody \
-                 turns off",
-            ),
-            (
-                "cannot modify or delete anything",
-                "that auto-allow does NOT widen what a grant permits — it answers the prompt, \
-                 it does not turn a read into a write",
-            ),
-        ];
-        // The REFUSAL points a human at a place; these are the strings that
-        // place is actually called. Pinned together because the refusal lives in
-        // `core::agent_db` and the labels live in a `.tsx` two directories away,
-        // which is exactly the distance a rename travels without noticing.
-        //
-        // Found by a human failing on it: running §M3 the first question back
-        // was "where do I click Allow?", against a message reading
-        // "Settings → MCP" while the card said "AI agents (MCP)" and the section
-        // said "Database access".
-        // COMMENTS STRIPPED, and that is not hygiene — the first version of this
-        // guard was VACUOUS and a plant proved it: "AI agents (MCP)" appears
-        // twice in the card, once in a doc comment and once in the rendered
-        // heading, so renaming the heading left the comment matching and the
-        // check passed over a UI the refusal could no longer point at. The
-        // scanner-reads-a-comment trap, for the third time in this tree.
-        // `strip_ts_comments`, NOT `production_source` — the first version used
-        // the latter, which removes Rust `#[cfg(test)]` modules and leaves TS
-        // prose entirely intact. A plant renaming the RENDERED heading passed,
-        // because the same words sit in this component's doc comment. The
-        // wrong-stripper bug and the reads-its-own-comment bug, in one line.
+        // The card heading the dial's refusal sends people to (#404's lesson,
+        // kept after D16 retired the database section): COMMENTS STRIPPED, so a
+        // doc comment cannot satisfy it, and a landmark so an empty scan cannot.
         let card = crate::core::copy_scan::strip_ts_comments(include_str!(
             "../../src/components/mcp/AgentsMcpCard.tsx"
         ));
-        let consent_ui = crate::core::copy_scan::strip_ts_comments(CONSENT);
-        // Landmarks, because `strip_ts_comments` returning nothing would make
-        // every `contains` below pass — the empty-scan trap `production_source`
-        // carries a warning about and this guard walked into once already.
         assert!(card.contains("StartStopToggle"), "the card scan came back empty");
-        assert!(consent_ui.contains("AgentDbGrants"), "the consent scan came back empty");
-        const REFUSAL: &str = include_str!("core/agent_db.rs");
-        for (label, source, what) in [
-            (
-                "AI agents (MCP)",
-                card.as_str(),
-                "the card heading the refusal sends people to",
-            ),
-            ("Database access", consent_ui.as_str(), "the section heading inside it"),
-        ] {
-            assert!(
-                source.contains(label),
-                "the refusal message points at \"{label}\" ({what}) but the UI no longer calls \
-                 it that. Rename BOTH, or a user following the refusal lands nowhere — which \
-                 is a broken consent path, not a wording nit."
-            );
-            assert!(
-                REFUSAL.contains(label),
-                "the UI still calls it \"{label}\" ({what}) and the refusal stopped saying so"
-            );
-        }
-        for (phrase, why) in CONSENT_MUST_SAY {
-            assert!(
-                CONSENT.contains(phrase),
-                "the database-consent prompt no longer tells the user {why} (looked for \
-                 \"{phrase}\"). This is the moment a real site's data is handed over; the \
-                 wording is deliberately concrete, and shortening it is the drift to expect."
-            );
-        }
+        assert!(card.contains("AI agents (MCP)"), "the card heading the refusal sends people to was renamed");
+        assert!(include_str!("core/agent_access.rs").contains("AI agents (MCP)"), "the refusal stopped naming the card");
+        // Whitespace-insensitive (a JSX re-wrap is not a copy change) over the
+        // COMMENT-STRIPPED source, so a doc comment cannot satisfy a must-say.
+        let card_squashed = crate::core::copy_scan::strip_ts_comments(CARD).split_whitespace().collect::<Vec<_>>().join(" ");
         for (phrase, why) in MUST_SAY_WHEN_EXECUTING {
             assert!(
-                CARD.contains(phrase),
+                card_squashed.contains(phrase),
                 "the enable-moment copy no longer tells the user {why} (looked for \"{phrase}\"). \
                  The paragraph is what a security-minded user reads AT the moment of enabling; it \
                  has to describe the capability honestly, including that this is a paved road and \
@@ -2635,14 +2514,20 @@ mod tests {
             ("only lasts while rexenv is running", "why an expected Allow button may not be there after a restart"),
             ("always has to\n          ask you", "that publishing is the one thing no dial setting answers"),
         ];
+        // Whitespace-insensitive, so a JSX re-wrap is not a copy change: the
+        // first version pinned line breaks by accident and a reflow tripped it.
+        // …and over the COMMENT-STRIPPED source, so a doc comment cannot satisfy
+        // a must-say (the review found "runs as you" living in a comment too).
+        let squash = |s: &str| crate::core::copy_scan::strip_ts_comments(s).split_whitespace().collect::<Vec<_>>().join(" ");
+        let (card_s, dial_s, consent_s) = (squash(CARD), squash(DIAL), squash(CONSENT));
         for (phrase, why) in CARD_MUST_SAY {
-            assert!(CARD.contains(phrase), "the card no longer tells the user {why} (looked for \"{phrase}\")");
+            assert!(card_s.contains(&squash(phrase)), "the card no longer tells the user {why} (looked for \"{phrase}\")");
         }
         for (phrase, why) in DIAL_MUST_SAY {
-            assert!(DIAL.contains(phrase), "the dial no longer tells the user {why} (looked for \"{phrase}\")");
+            assert!(dial_s.contains(&squash(phrase)), "the dial no longer tells the user {why} (looked for \"{phrase}\")");
         }
         for (phrase, why) in CONSENT_MUST_SAY {
-            assert!(CONSENT.contains(phrase), "the Site access copy no longer tells the user {why} (looked for \"{phrase}\")");
+            assert!(consent_s.contains(&squash(phrase)), "the Site access copy no longer tells the user {why} (looked for \"{phrase}\")");
         }
         // No auto-allow switch survived D15 — absent, not hidden.
         let dial_ui = crate::core::copy_scan::strip_ts_comments(DIAL);

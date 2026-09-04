@@ -737,7 +737,7 @@ hand can prove a spec entry became the item it describes.*
   Hello Dolly / an mu-plugin / a drop-in have no folder: those rows show no button.
 
 ## AI agents (MCP) — opt-in endpoint (ships only if this passes)
-**Covers M1 (1–5), M2a (6–11), M2b (12–14) and M3 (15–21).** HOLDs: 4, 8, 11, 14, 18, 19, 21.
+**Covers M1 (1–5), M2a (6–11), M2b (12–14) and M3 (15–18; 19–22 retired by D16).** HOLDs: 4, 8, 11, 14, 16, 18.
 Socket: `~/Library/Application Support/dev.rexenv.rexenv/config/rexenv-mcp.sock`.
 Run the four functional steps AND eyeball the PACKAGED webview — this project's UI
 bug class lives specifically in WKWebView, not in the dev harness: the residual copy
@@ -747,8 +747,9 @@ not raw UUIDs**.
 *aborting the app on enable* — a crash the WebKit harness certified fine across 10 scenarios
 because it mocks the IPC command (TESTING.md §1, L2). Nothing above the packaged pass could
 have found it. That is why step 4 is a hold, not a note.
-- [ ] **1. Default off = no socket.** Fresh launch, never enabled → Settings → AI
-  agents: toggle OFF, no status line, "No agent activity yet". `ls -l <socket>` →
+- [ ] **1. Default off = no socket, and nothing below the toggle.** Fresh launch, never
+  enabled → Settings → AI agents: the paragraph, the toggle OFF, and NOTHING beneath —
+  no status line, no Connect, no dial, no Site access, no feed (D16). `ls -l <socket>` →
   the file is ABSENT. **Tell #1:** if the socket exists here, the toggle is a label
   over an always-on socket (the always-on bug) — not really controlling it.
 - [ ] **2. Enable binds.** Toggle ON → "On — no recent agent activity"; `ls -l
@@ -850,180 +851,94 @@ here meant it ran only when MCP was enabled. Run it there, before this section.)
   invisible); the refusal names no alternatives; or the scratch site leaves the
   **Agent scratch** group after the switch — that last one is a cap bypass
   (#223), because an adopted site frees a slot.
-- [ ] **13. Mail is off, and says what it would do.** Settings → AI agents: the
-  **"Let agents read scratch-site mail"** toggle is **OFF**. Read its three
-  paragraphs as a first-time user would and confirm all three facts are there:
-  only mail *from a scratch site it created*; **your own sites' mail is never
-  returned**; and if a site overrides the stamp its mail stops being visible, so
-  the agent **misses its own mail rather than seeing yours**. Ask the agent to
-  read mail with the toggle off → refused, naming the setting and that it is
-  *your* decision. **Tell:** copy that states the scope but drops the
-  fail-closed sentence — that is the half a trim removes first, and without it
-  the scope claim has no visible limit.
-- [ ] **14. ⚠ Mail scope — the second HOLD of this section.** Turn the toggle ON.
-  In one of **your own** sites trigger an email (a password reset is the right
-  test — it is the thing that would hurt). Then in the scratch site trigger one
-  too. Ask the agent to list and read the scratch site's mail → it sees its own
-  message. Now ask it to read **your** site's message, by subject and by asking
-  for "all recent mail". **It must not return it.** Then toggle OFF and confirm
-  it can read nothing.
-  **Tells that the boundary is NOT holding — any one is a HOLD:** your site's
-  message appears in a list; the agent can fetch it by id after seeing it in
-  rexenv's own Mail screen; or the agent reports "no mail" for the SCRATCH site
-  while rexenv's Mail screen shows it arrived (that is the stamp not being
-  installed — the reply should say so rather than return an empty list).
-  **⚠ A step-14 failure is a HOLD.** "Your own sites' mail is never returned" is
-  the sentence the user consented to; shipping it false is worse than shipping
-  without M2b.
+- [ ] **13. Mail rides the endpoint (D16).** There is no mail switch. With the endpoint
+  ON, read the paragraph above the toggle as a first-time user would: it must say an
+  agent can read **every site's mail**, **password-reset links included**, and the
+  databases **read-only** with **password hashes** and **API keys** named. Ask the agent
+  to list the scratch site's mail → it works with nothing to click. Turn the endpoint
+  OFF → the socket is gone and nothing renders below the toggle. **Tell:** a "Let agents
+  read scratch-site mail" switch anywhere, or a paragraph that says "your own sites' mail
+  is never returned" — that sentence was true of the scratch tools and is FALSE of the
+  inbox tool, which is why the card no longer says it.
+- [ ] **14. ⚠ Mail scope — the second HOLD of this section.** In one of **your own**
+  sites trigger an email (a password reset is the right test — it is the thing that
+  would hurt). Then in the scratch site trigger one too. Ask the agent to list and read
+  the scratch site's mail (the scratch tools, `mail_list`/`mail_get`) → it sees its own
+  message and **not yours** — the From stamp filters, and an unstamped site is refused
+  rather than returned empty. Then ask it to *"read my inbox"* (`mail_inbox`) → your
+  reset mail IS there — by design at Read — and its text shows `key=<redacted>` and no
+  `rexenv_login=` token; the reply's note says what is and is not removed.
+  **Tells that the boundary is NOT holding — any one is a HOLD:** your site's message
+  appears in the SCRATCH tools' list; the agent reports "no mail" for the scratch site
+  while rexenv's Mail screen shows it arrived (the stamp not installed — the reply should
+  say so); or a reset link in `mail_inbox` carries its `key=`.
 
-### M3 — database access. Ships only if 15–21 pass.
+### M3 — database access. Ships only if 15–18 pass.
 
-Steps 12–14 gate what an agent may read of its OWN sites' mail. This section is
-the first time an agent can read **the data in a site you made yourself** — every
-post, every user row, every option. So the gate is not "does the feature work":
-it is **does each sentence the consent prompt says turn out to be true**, checked
-one at a time, in front of you.
+Steps 12–14 gate what an agent may read of mail. This section is the first time an agent
+can read **the data in a site you made yourself** — every post, every user row, every
+option. Since D16 (4 Sep 2026) that read is answered by the Agent access dial's **Read**
+level — on whenever the endpoint is — with no prompt: the gate is not "does the consent
+flow work", it is **does the paragraph above the toggle tell the truth, and is the read
+really a read**, checked in front of you.
 
 What the automated layers already prove, so you do not re-check it by hand:
-`examples/agent_db_check.rs` (service tier) connects as the real read-only
-principal against a real engine and confirms the SERVER refuses `INSERT`,
-`UPDATE`, `DELETE`, `DROP DATABASE`, `INTO OUTFILE`, a second statement after a
-`;`, `LOAD DATA LOCAL INFILE`, and a sibling database whose name differs only by
-the underscore wildcard. **Run it before this section** — if it fails, these
-steps are theatre. What it cannot see is everything below: whether a model that
-wants to help gets past the gate, whether the prompt tells the truth, and
-whether revoking in the UI actually stops a session that is already running.
+`examples/agent_db_check.rs` (service tier) connects as the real read-only principal
+against a real engine and confirms the SERVER refuses `INSERT`, `UPDATE`, `DELETE`,
+`DROP DATABASE`, `INTO OUTFILE`, a second statement after a `;`, `LOAD DATA LOCAL
+INFILE`, and a sibling database whose name differs only by the underscore wildcard.
+**Run it before this section** — if it fails, these steps are theatre.
 
-*That distinction is not academic here. The live check found two claims in this
-tree false that every unit test had certified — `CLIENT_MULTI_STATEMENTS` was ON
-and unclearable, so `SELECT 1; DROP TABLE x` worked on a scratch site. Assume
-the same about anything below that only a human can see.*
+Set up once: MCP toggle ON, `claude mcp add rexenv -- rex mcp`, at least one of **your
+own** WordPress sites with real content in it, and the database engine running.
 
-Set up once: MCP toggle ON, `claude mcp add rexenv -- rex mcp`, at least one of
-**your own** WordPress sites with real content in it, and the database engine
-running. Keep Settings → AI agents visible — the prompt appears there, not in a
-modal that steals focus.
-
-- [ ] **15. A real site is refused, and the refusal ASKS.** With no grant, ask:
-  *"how many published posts are in `<your own site>`? query the database."* →
-  the call is REFUSED, and Settings → AI agents grows a **Database access**
-  prompt naming the client and that site. The agent must not have read anything.
-  **Then follow the refusal's own directions, literally, without using what you
-  already know about the app.** It names a card and a section; both must exist
-  under those names. This is the step's real content: M3 routes consent through
-  the refusal by design (there is no "request access" tool), so a refusal you
-  cannot follow is the feature's only door, locked. On 25 Aug 2026 this failed —
-  the message said "Settings → MCP" while the card said "AI agents (MCP)" and
-  the section "Database access" (#404).
-  **Tells:** the agent returns a row count (the gate is not gating); or the call
-  is refused and NO prompt appears (then consent is unreachable — the ask is
-  recorded on the refusal path precisely so there is no way to be refused
-  silently); or the prompt names a different site than the one you asked about.
-  **And one that is easy to mistake for a bug:** if you restarted rexenv between
-  the refusal and looking, the prompt is GONE and that is correct — unanswered
-  asks are session-scoped on purpose. Re-run the query to raise it again.
-- [ ] **16. Read the prompt as a first-time user would.** Do not skim it. All six
-  facts must be present: it can read **everything** in that database; **including
-  user password hashes**; **and API keys or tokens in `wp_options`**; it
-  **cannot modify or delete anything**; the access **expires in 7 days**; and you
-  can **revoke it** here. Both buttons are real — **"Allow for 7 days"** and
-  **"Don't allow"**.
-  **Tell:** wording that has been shortened to "Allow X to read Y?" with the
-  concrete nouns gone. A copy guard fails the build on that, so if you are
-  reading a trimmed prompt here, the guard has been weakened too — check why
-  before anything else.
-- [ ] **17. "No" is an answer.** Click **Don't allow** → the prompt disappears and
-  NO grant is listed. Ask the agent to retry → refused again, and the prompt
-  comes back. **Tell:** denying leaves the prompt up, or silently grants; either
-  makes "no" the one response the UI cannot express.
-- [ ] **18. ⚠ Allow, then confirm read-only IN FRONT OF YOU.** Click **Allow for
-  7 days** → the agent's retry now returns the real count, and a grant is listed
-  with "Expires in 7 days". Now ask it to **write**: *"set that site's blog title
-  to 'agent was here' with a SQL UPDATE."* → REFUSED by the server, and the title
-  in WordPress is unchanged. Then ask it to read something sensitive it now
-  legitimately can (*"list the user emails"*) — it should succeed, because that
-  is what you consented to and the prompt said so.
-  **⚠ A step-18 failure is a HOLD.** "It cannot modify or delete anything" is a
-  sentence the user read and clicked Allow under. Shipping it false is worse than
-  shipping without M3 — the grant would be a write grant the user was told was a
-  read.
-- [ ] **19. ⚠ Revoke closes an ALREADY-RUNNING session.** With the same agent
-  still connected and its conversation still open, click **Revoke**. Ask it to
-  run the same query again → it must FAIL. Then check the list: the row is still
-  there, marked **Revoked**, not deleted.
-  **⚠ A step-19 failure is a HOLD**, and note which half failed, because they
-  fail differently. If the query still works, the UI is telling the user they are
-  safe while the agent reads — the worst direction. If the ROW vanished instead
-  of showing Revoked, the feature still works but the list has stopped being able
-  to answer "what could that agent see, and until when", which is the question it
-  exists for.
-- [ ] **20. Scope: one grant is one site, one client, and it survives a restart.**
-  Four checks, all quick: (a) ask about a **different** site of yours → refused,
-  new prompt — a grant is not a blanket. (b) Grant again, then connect a
-  **different** MCP client (Cursor, or `claude mcp add` under another name) and
-  ask about the same site → refused, and the prompt names the NEW client. (c)
-  Quit and relaunch rexenv → the grant is still listed with its expiry, and the
-  agent can still read (grants are stored; only unanswered PROMPTS are
-  session-scoped, so an unanswered prompt disappearing here is correct). (d) The
-  expiry shows a real countdown, not "Expires in 0 days" or a blank.
-  **Tell:** any one of (a) or (b) succeeding is a blanket grant wearing a
-  per-site label.
-- [ ] **22. Auto-allow: it answers the prompt, and it dies with the app.** In
-  **Database access**, read the "Allow database reads without asking" copy — it
-  must say you are **not asked**, that it **switches itself off when you quit
-  rexenv**, and that a grant still cannot modify or delete. Turn it ON, ask the
-  agent to read a site it has no grant for → it succeeds with **no prompt**, the
-  grant appears in the list marked **auto**, and the agent's own reply says the
-  access was granted automatically. Now **quit and relaunch** → the toggle is
-  **OFF**, and a request for **a site with NO existing grant** prompts again.
-  **Not "the same request".** Auto-allow deliberately leaves its grants behind
-  when it switches off, so re-asking about the site it just granted succeeds for
-  THAT reason and proves nothing about the toggle — it looks exactly like the
-  toggle having survived. Walked into on 25 Aug 2026 and briefly read as a
-  design failure; pick a third site.
-  **Tells:** the toggle is still on after a relaunch (it is a settings row, and a
-  consent bypass that outlives the session is the thing this design refuses); the
-  grant is not marked `auto` (then "did I approve this?" has no answer once the
-  toggle is off); the agent's reply presents auto-granted access as approved; or —
-  the serious one — with it ON the agent can now MUTATE one of your own sites.
-  Auto-allow skips a consent PROMPT, never the tier rule, and that failure is a
-  HOLD.
-
-- [ ] **21. ⚠ Deleting the site takes the account with it.** With a live grant on
-  a site, delete that site in rexenv. Then check the engine directly:
+- [ ] **15. A real site reads at Read, with no prompt.** Ask: *"how many published posts
+  are in `<your own site>`? query the database."* → the count comes back; Settings → AI
+  agents shows NO prompt and nothing to click; **Recent activity** lists the call with
+  the SQL as its summary. **Tells:** a prompt appears (a retired consent surface is back);
+  or the call is refused naming a grant.
+- [ ] **16. ⚠ Read-only IN FRONT OF YOU.** Ask it to **write**: *"set that site's blog
+  title to 'agent was here' with a SQL UPDATE."* → REFUSED by the server, and the title
+  in WordPress is unchanged. Then ask it to read something sensitive it legitimately can
+  (*"list the user emails"*) — it succeeds, because the paragraph above the toggle said
+  so in those words. **⚠ A step-16 failure is a HOLD.** "Read-only" is a sentence the
+  user read and turned the endpoint on under.
+- [ ] **17. Off closes it.** With the agent's conversation still open, turn the endpoint
+  OFF → its next query fails (the socket is gone), and nothing renders below the toggle.
+  Turn it back ON → the read works again with no prompt.
+- [ ] **18. ⚠ Deleting the site takes the account with it.** Read a site's database once
+  (that provisions `rex_ro_<slug>` and records it), then delete that site in rexenv. Then
+  check the engine directly:
   ```sh
   "$HOME/Library/Application Support/dev.rexenv.rexenv/bin/mysql-8.4.6/bin/mysql" \
     --no-defaults --protocol=TCP -h 127.0.0.1 -P 13306 -u root -N \
     -e "SELECT user,host FROM mysql.user WHERE user LIKE 'rex\_ro\_%' \
            OR user LIKE 'rex\_agent\_%';"
   ```
-  → **no row for the deleted site.** (Adjust the version in the path if the
-  engine has moved on.)
-  **Run it with `'r%'` in place of `'rex\_ro\_%'` first.** That must print rows —
-  `root`, and a `rex_<slug>` per imported site. An empty result and a BROKEN
-  query look identical, and "no leftover account" is exactly the answer a typo
-  gives you. Verified working 25 Aug 2026 on the dev machine: 15 rows.
-  **Do the same with a SCRATCH site**, not only a granted one: ask the agent to
-  create one, `db_query` it once (that is what provisions the account), delete
-  it, and confirm no `rex_agent_%` row survives. That half is where this step
-  first earned its keep — on 25 Aug 2026 it found the account leaking, because
-  the cleanup read grant rows and a scratch site has none.
-  **⚠ A step-21 failure is a HOLD, and this is the one step here that no
-  automated layer covers at all.** The L1 check proves `DROP USER` works; nothing
-  proves the delete PATH runs it (ledger #403 says so in as many words). It
-  matters because the account name is derived from the domain, exactly like the
-  database name it holds SELECT on — so a leftover account means a site you
-  create later at that domain inherits a grant you gave once, to a site that no
-  longer exists. That is cross-site exposure, the class this project has already
-  been bitten by twice.
+  → **no row for the deleted site.** (Adjust the version in the path if the engine has
+  moved on.) **Run it with `'r%'` in place of `'rex\_ro\_%'` first.** That must print
+  rows — `root`, and a `rex_<slug>` per imported site. An empty result and a BROKEN query
+  look identical. **Do the same with a SCRATCH site**: ask the agent to create one,
+  `db_query` it once, delete it, and confirm no `rex_agent_%` row survives — on 25 Aug
+  2026 that half found the account leaking. **Rename first, then delete**, for one site:
+  the account was made under the old domain and only the recorded row can name it (#403).
+  **⚠ A step-18 failure is a HOLD, and this is the one step here that no automated layer
+  covers at all** — a leftover account means a site you create later at that domain
+  inherits a read you gave once, to a site that no longer exists.
+- *19–22 retired by D16 (4 Sep 2026): revoke, per-site/per-client scope, auto-allow and
+  the consent-prompt wording have no surface any more — the dial is global, reads need
+  no grant, and the one paragraph carries the wording (step 13).*
 
 ### Parity P1 — the Agent access dial (D15, 3 Sep 2026; replaced the switch + per-site prompts the same day)
 The first shape — "Let agents manage my own sites" plus one prompt per site, per scope,
 per client — was honest and cost six clicks for one site's ordinary work (the live run
 that afternoon). What replaced it is ONE dial. These steps are what a person reads and
 turns; the L0/L1/L2 legs (#497, #498) hold the rest.
-- [ ] **23. Read by default, and Read is free.** Fresh launch → Settings → AI agents:
-  **Agent access** shows three levels with **Read** chosen and NO duration row; the copy
+- [ ] **23. Read by default, and Read is free.** Fresh launch, endpoint ON → Settings → AI
+  agents: **Agent access** shows three levels with **Read** chosen — unmistakably: a violet
+  border and a filled check on the chosen row, not colour alone (D16 found the first
+  version's chosen state was dead CSS) — and NO duration row; Read's sentence names every
+  site's mail and the databases, read-only, with password hashes and API keys; the copy
   says Read is on whenever the endpoint is, that publishing a site always asks, that the
   administrator password still asks, and that code an agent runs in your site runs as you.
   Ask an agent to list a site's plugins → it works, nothing to click. **Tell:** a prompt
@@ -1104,10 +1019,10 @@ stack running, at least one of your own sites. Keep Settings → AI agents visib
 
 ### Parity P3 — WordPress on YOUR sites, and the inbox. Ships only if 32–35 pass.
 `mcp_user_site_check` proves the gates over the socket (a PHP site and a scratch site
-refused on the row, the log list without paths, the mail switch refusing by name). What
-no tier proves is a vetted command actually running on a real WordPress under a grant,
-the raw runner as YOU, and the inbox behind two consents. Set up: the stack up, one of
-your own WordPress sites with real content, mail switch OFF.
+refused on the row, the log list without paths, the inbox reading at Read with no switch
+and no ask). What no tier proves is a vetted command actually running on a real WordPress
+under the dial, the raw runner as YOU, and a real reset mail read with its key gone. Set
+up: the stack up, one of your own WordPress sites with real content, the endpoint ON.
 - [ ] **32. Read, then manage, under the right prompts.** Ask: *"list the plugins on
   `<your WP site>`"* → refused; the prompt says `read` for THAT site with "list its
   plugins". Allow for this session → the list comes back. Ask it to *activate* one → a
@@ -1124,13 +1039,12 @@ your own WordPress sites with real content, mail switch OFF.
   --path=/`"* → refused naming `--path`, no prompt. Ask for a user with no password →
   the reply shows a generated password once; the feed row reads `user create` and never
   the value.
-- [ ] **35. ⚠ The inbox is two consents.** Mail switch OFF: *"read my inbox"* → refused
-  naming **"Let agents read scratch-site mail"**, and NO prompt appears in Site access.
-  Turn the switch on, ask again → now a `read` prompt for **rexenv itself**. Read its
-  copy: it must say `read` on rexenv itself is the whole inbox. Don't allow → nothing
-  returned. Allow for this session → your messages come back; open a password-reset
-  mail's text → the `rexenv_login=` token is gone. **Tell — a HOLD:** the inbox readable
-  with the switch off, or a message body carrying a login token.
+- [ ] **35. ⚠ The inbox is a Read (D16).** With the endpoint on and the dial at Read:
+  *"read my inbox"* → your messages come back with no switch and no prompt; the reply's
+  note says every site's mail is there and what is removed. Open a password-reset mail's
+  text → `key=<redacted>` and no `rexenv_login=` token; the `headers` carry no cookie
+  value. Turn the endpoint OFF → nothing. **Tell — a HOLD:** a message body carrying a
+  reset key or a login token, or a "Let agents read scratch-site mail" switch anywhere.
 
 ### Parity P4 — the stack, with the password dialog as the second consent. Ships only if 36–39 pass.
 The sandbox L1 cannot raise a macOS dialog, start a real tunnel or swap a pool. These are
@@ -1141,20 +1055,20 @@ the human legs. Set up: stack up, switch ON, one of your own sites.
   → the call fails, the stack is still up. Retry, enter the password → every site is
   offline; `stack_status` says so. Start it again the same way. **Tells — a HOLD:** no
   macOS dialog (the privileged path was bypassed); the stack stopped under a `manage`
-  grant; a `system` auto-allow switch exists anywhere in Site access. *Done 3 Sep 2026:
+  grant; any "without asking" switch anywhere in the card (D15 removed them). *Done 3 Sep 2026:
   cancelled → "Administrator permission was cancelled", stack up; password → 0 running;
   start → 12 running.*
 - [ ] **37. A resolver write is the same shape.** Ask it to *"repair the resolver for
   `.rex`"* → `system` prompt naming the dialog → Allow → the macOS dialog → the file is
   back. Ask it to set `mcp_enabled` through `settings` → refused with the policy's
   reason and NO prompt.
-- [ ] **38. ⚠ Share: a person's click, and it stops itself.** Turn ON "Allow running code
-  without asking". Ask it to *"share `<your site>` for 2 minutes"* → REFUSED, naming
-  auto-allow; nothing is public. Turn the switch off, revoke that grant, ask again →
-  a `run` prompt → Allow for this session → the reply has a `trycloudflare` URL that
+- [ ] **38. ⚠ Share: a person's click, and it stops itself.** Set the dial to **Full ·
+  Always**. Ask it to *"share `<your site>` for 2 minutes"* → REFUSED — the dial never
+  covers publishing — and **Site access** grows the publish prompt. Allow for this
+  session → the reply has a `trycloudflare` URL that
   loads from your phone. Wait 2 minutes → the Tunnels page shows it stopped, and the
-  feed shows no second agent call. **Tells — a HOLD:** the share started under the
-  auto-allowed grant; the tunnel outlives its minutes; quitting rexenv leaves it up.
+  feed shows no second agent call. **Tells — a HOLD:** the share started without the
+  publish prompt; the tunnel outlives its minutes; quitting rexenv leaves it up.
   *Done 3 Sep 2026, in the other order: a person's session `run` → share started, the
   reply's `trycloudflare` URL, stopped by rexenv at 2m 00s (log), no second agent call,
   URL then 530; grant revoked + switch ON → share refused naming auto-allow, the

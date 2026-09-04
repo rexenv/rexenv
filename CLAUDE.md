@@ -132,7 +132,7 @@ Two rules with teeth, learned the hard way:
 | Valet/Herd database import — dump/restore, provenance, credentials (Stage 2) | `docs/PLAN-valet-herd-db-import.md` |
 | Valet/Herd connection rewrite — diff/consent, backup, connected fact (Stage 3) | `docs/PLAN-valet-herd-rewrite.md` |
 | PHP 7.4 — SHIPPED 15 Aug 2026; where the binary comes from, self-build + hosting, EOL honesty | `docs/PLAN-php-74-support.md` |
-| MCP server — M1/M2a/M2b/M3 ALL SHIPPED; agents drive rexenv, scratch sites, capability tiers, `db_query` behind a grant | `docs/PLAN-mcp-server.md` |
+| MCP server — M1/M2a/M2b/M3 ALL SHIPPED; agents drive rexenv, scratch sites, capability tiers; `db_query` on a user's site is SELECT-only at the Agent access dial's Read (D16 retired the grant) | `docs/PLAN-mcp-server.md` |
 | MCP parity — the leftovers audit + the TODO for making EVERY app function agent-drivable (real sites, scoped grants, third registry) | `docs/PLAN-mcp-parity.md` |
 | `wp dist-archive` — SHIPPED 5 Aug 2026; distributable zip from a repo asset | `docs/PLAN-dist-archive.md` |
 | Menu-bar app (tray) — why the CLI/MCP sockets die with the window, the no-dock-icon ruling and what Accessory costs | `docs/PLAN-menubar-tray.md` |

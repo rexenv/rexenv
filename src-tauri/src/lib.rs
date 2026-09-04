@@ -1254,18 +1254,10 @@ pub fn run() {
             commands::mcp::mcp_status,
             #[cfg(unix)]
             commands::mcp::mcp_set_enabled,
-            commands::mcp::mcp_set_mail_enabled,
             #[cfg(unix)]
             commands::mcp::agent_activity,
             #[cfg(unix)]
             commands::mcp::agent_activity_clear,
-            commands::mcp::agent_db_requests,
-            commands::mcp::agent_db_grants,
-            commands::mcp::agent_db_grant,
-            commands::mcp::agent_db_deny,
-            commands::mcp::agent_db_revoke,
-            commands::mcp::agent_db_auto_allow,
-            commands::mcp::agent_db_set_auto_allow,
             commands::mcp::agent_access_get,
             commands::mcp::agent_access_set,
             commands::mcp::agent_site_requests,

@@ -6,7 +6,7 @@ import { toastBackendError } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 
 /** How a grant stands right now, from the RECORDED columns — the same reading
- *  `AgentDbGrants` does, for the same reason: the backend stores an expiry date
+ *  the database prompt did before D16, for the same reason: the backend stores an expiry date
  *  because the button promised one, and a second clock here would be the one
  *  that drifts. */
 function state(g: AgentSiteGrantRow): { label: string; live: boolean } {
@@ -24,7 +24,7 @@ function state(g: AgentSiteGrantRow): { label: string; live: boolean } {
  *  outward-facing, so it keeps a person's yes — asked for here when an agent
  *  tries, for this session only, listed and revocable.
  *
- *  The same shape as `AgentDbGrants` and for the same reasons (a prompt with no
+ *  The shape the database prompt had before D16, for the same reasons (a prompt with no
  *  history is a decision a user cannot revisit). The wording says the one thing
  *  no setting changes: anything the agent runs in your site runs as you. Held
  *  to that by the copy guard in `mcp_server.rs`. */
@@ -96,11 +96,9 @@ export function AgentSiteGrants() {
 
       {rows.length === 0 && asks.length === 0 && (
         <p className="mt-1.5 text-[0.71875rem] leading-[1.55] text-rex-text-muted">
-          No agent has asked to publish a site. Publishing is the one thing an agent always has to
-          ask you for, whatever Agent access is set to; the ask appears here when it tries.{" "}
-          <strong className="font-medium text-rex-text">A request only lasts while rexenv is running</strong>{" "}
-          — if an agent asked before you last quit, nothing is waiting here now and you'll need to
-          ask it to try again.
+          Publishing a site is the one thing an agent always has to ask you for, whatever Agent
+          access is set to. The ask appears here when it tries, and{" "}
+          <strong className="font-medium text-rex-text">a request only lasts while rexenv is running</strong>.
         </p>
       )}
 

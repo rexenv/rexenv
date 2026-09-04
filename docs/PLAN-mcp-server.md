@@ -539,7 +539,7 @@ The corrected design:
   (Scratch `rex_agent_*` holds `ALL` on its own disposable schema, so it *can*
   drop that schema — harmless, it's disposable; the first draft wrongly said
   "everywhere.")
-- **Real-site `db_query` requires ONE scoped, expiring T1 grant.** The dialog is
+- **Real-site `db_query` requires ONE scoped, expiring T1 grant** — *as designed; RETIRED by D16, 4 Sep 2026 (`PLAN-mcp-parity.md` §7): the Agent access dial's Read answers it, no dialog, no expiry, the table kept only as the record of provisioned principals.* The dialog was
   drafted honestly: *"Allow "Claude Code" to read the database of `mysite.rex`?
   The agent will be able to read everything in it — including user password
   hashes and any API keys or tokens stored in wp_options. It cannot modify or
@@ -1032,13 +1032,13 @@ precheck.
 | Risk | Mitigation |
 |---|---|
 | Prompt-injected agent calls destructive tools | Destructive = scratch-only (origin-gated in core); real-site mutation = T1 or absent; tunnels/system absent from the tool surface |
-| Tool-output secret leak | `Agent*` view types + serialized-**output** planted-fixture sweep (§3.5); log token-scrub; mail behind opt-in |
+| Tool-output secret leak | `Agent*` view types + serialized-**output** planted-fixture sweep (§3.5); log token-scrub; mail behind opt-in *(D16: the inbox is a Read; the scrub gained the reset-key rule and error replies are scrubbed too, #499/#501)* |
 | Auth-prompt fatigue via a tool | No registered tool reaches `run_privileged` — tool-layer test-pinned (§3.3). **NB (§3.1): scratch code can still reach root prompts via the CLI socket — a human still approves each; D7 tracks fully closing it** |
 | `db_query` escapes SELECT via `system`/`tee` or grant wildcards | Native driver (no client-side commands), no `FILE`, `local_infile` off, escaped grant object — L1 adversarial test (§3.6) |
 | `scratch_add_package` reads arbitrary files | Blast-radius validation + plugin/theme-header requirement (§4.4) — unchanged by S1: the clone changed the WRITE direction, not the read direction |
 | An agent's `wp plugin update` destroys the user's checkout | **The clone (S1):** there is no path from the scratch copy back to the source, so no command — vetted or raw — can write to it. Replaces a refusal a raw runner could walk around (§4.4) |
-| Real-site credential harvest via mail/logs | Mail opt-in + the rexenv-created scratch tag, fail-closed (§3.5); log token/cookie scrub |
-| Blanket/standing DB grant | Scoped + expiring + client-change re-consent + feed-surfaced (§3.6) |
+| Real-site credential harvest via mail/logs | Mail opt-in + the rexenv-created scratch tag, fail-closed (§3.5); log token/cookie scrub *(D16: no mail opt-in — the whole inbox is a Read, said in the enable-moment paragraph; reset keys, login tokens and cookie headers scrubbed, encoded raw bodies omitted)* |
+| Blanket/standing DB grant | Scoped + expiring + client-change re-consent + feed-surfaced (§3.6) *(D16: accepted as the dial's Read, by the owner's ruling — still SELECT-only on one database, every query in the feed)* |
 | User renames or shares a scratch site and loses it | User mutation implies Keep; sharing promotes to `origin='user'` (§4.3) |
 | A reap fails and the site is silently stuck expired | Fails safe (site intact), retried at most once per launch, recorded `actor='rexenv'`, surfaced with Retry/Delete (§4.3) |
 | The user edits the plugin and the scratch site doesn't see it | The S1 texture cost, answered in the product not the doc: the sync verb's description states the rhythm, and the scratch card shows source + last-synced (§4.4) |
@@ -1205,7 +1205,11 @@ real thing.
    T0-scratch + RO-real-DB; real-site mutation is M-later and only if demand
    shows. The consent machinery still lands in M3 (the DB grant), so it is an
    extension not a rework.
-4. **D4 — mail. SETTLED: opt-in sub-toggle, default off.** The global inbox
+4. **D4 — mail. SETTLED: opt-in sub-toggle, default off. REVERSED by D16, 4 Sep 2026**
+   (`PLAN-mcp-parity.md` §7): the sub-toggle is gone — the stamp rides the endpoint and the
+   whole inbox is a Read at the Agent access dial's floor, with the reset-key scrub §3.5
+   promised finally built; the fail-closed scratch filter (#225/#227) is unchanged. The
+   original ruling, for the record: The global inbox
    carrying reset links (§3.5) makes ambient T0 mail a credential-harvest pivot;
    the sub-toggle keeps the genuinely-useful WP *and* Laravel mail-testing loop
    available without making it ambient. **Amended 1 Aug 2026:** the scoping was
