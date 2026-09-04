@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, FolderInput, Plus, Globe, FolderOpen, Database, Lock, LockOpen, Trash2, MoreVertical, ArrowDownUp, Pencil, Copy, Code, Link, RefreshCw, Pin as PinIcon, Bot, X, Play, Square } from "lucide-react";
@@ -22,7 +22,7 @@ import { usePreferredBrowser } from "@/lib/useBrowser";
 import { AppIcon } from "@/components/ui/app-icon";
 import { SiteProvisionCard, useSiteProvision } from "@/components/sites/SiteProvisionCard";
 import { useDownloads } from "@/lib/useDownloads";
-import type { DbImportRecord, ScratchPackage, Site, SiteResources } from "@/types";
+import type { DbImportRecord, ScratchPackage, Site, SiteResources, SiteType } from "@/types";
 
 /** **THE scratch predicate — the recorded fact, and nothing else.**
  *
@@ -137,6 +137,17 @@ function Badge({
 }
 
 type Filter = "all" | "running" | "stopped";
+/** The second axis: what KIND of site. `all` plus the three `SiteType`s, which
+ *  is the same set the row avatars already colour — a filter that invented its
+ *  own vocabulary for the letters on screen would be a third thing to learn. */
+type TypeFilter = "all" | SiteType;
+
+const TYPE_LABEL: Record<TypeFilter, string> = {
+  all: "All types",
+  wordpress: "WordPress",
+  laravel: "Laravel",
+  php: "Blank PHP",
+};
 type Sort = "name" | "status" | "recent";
 
 const SORT_LABEL: Record<Sort, string> = {
@@ -150,21 +161,25 @@ const SORT_CYCLE: Record<Sort, Sort> = {
   recent: "name",
 };
 
-/** All / Running / Stopped segmented control with live counts. */
-function FilterTabs({
+/** A segmented control with live counts — status on one axis, site type on the
+ *  other.
+ *
+ *  **Every count is computed against the OTHER control's current selection**
+ *  (see `Sites`), so a tab's number is what clicking it would actually show. A
+ *  count taken over all sites while the list is already filtered puts
+ *  "Laravel 3" directly above an empty list, and the page then argues with
+ *  itself about how many sites the user has. */
+function FilterTabs<K extends string>({
   value,
   onChange,
   counts,
+  tabs,
 }: {
-  value: Filter;
-  onChange: (f: Filter) => void;
-  counts: Record<Filter, number>;
+  value: K;
+  onChange: (f: K) => void;
+  counts: Record<K, number>;
+  tabs: { key: K; label: string }[];
 }) {
-  const tabs: { key: Filter; label: string }[] = [
-    { key: "all", label: "All" },
-    { key: "running", label: "Running" },
-    { key: "stopped", label: "Stopped" },
-  ];
   return (
     <div className="inline-flex items-center gap-1 rounded-[10px] border border-rex-well-border bg-rex-well p-[3px]">
       {tabs.map((t) => (
@@ -620,6 +635,7 @@ export function Sites() {
   const [showNew, setShowNew] = useState(false);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [sort, setSort] = useState<Sort>("name");
   const { data: sites = [], isLoading } = useQuery({
     queryKey: ["sites"],
@@ -730,10 +746,58 @@ export function Sites() {
   const [dupSource, setDupSource] = useState<Site | null>(null);
 
   const running = sites.filter((s) => statusOf(s) === "running").length;
+
+  // **The default view is Running — decided ONCE, and never again.**
+  //
+  // With every site running, an "All" tab and a "Running" tab show the same
+  // list, and the first thing most people want is the sites that are up. But a
+  // machine where nothing is running would then open on an empty page, so the
+  // fallback is All.
+  //
+  // The `once` part is the load-bearing half. The serving map refetches every
+  // two seconds; a default that re-decided on each poll would move the user's
+  // tab out from under them the moment they stopped their last running site —
+  // and stopping a site is now a thing they can do from this very list. So the
+  // decision happens on the first load that has both facts in hand, and any tab
+  // the user touches settles it for the session.
+  const filterDecided = useRef(false);
+  const chooseFilter = (f: Filter) => {
+    filterDecided.current = true;
+    setFilter(f);
+  };
+  useEffect(() => {
+    // `serving` undefined = the first poll has not answered yet. Deciding then
+    // would read "nothing is running" from "we have not asked", and open on All
+    // for a machine where everything is up.
+    if (filterDecided.current || isLoading || !serving) return;
+    filterDecided.current = true;
+    setFilter(sites.some((s) => servingMap.get(s.domain)) ? "running" : "all");
+  }, [isLoading, serving, sites, servingMap]);
+
+  // **Each control counts what the OTHER one has already selected.** The
+  // alternative — both counting all sites — writes a number above a list that
+  // does not contain that many rows, and the page ends up contradicting itself
+  // about how many WordPress sites the user has. So the status tabs count
+  // within the chosen type, and the type tabs count within the chosen status:
+  // every number is exactly what clicking that tab would show.
+  const inType = sites.filter((s) => typeFilter === "all" || s.type === typeFilter);
+  const runningInType = inType.filter((s) => statusOf(s) === "running").length;
   const counts: Record<Filter, number> = {
-    all: sites.length,
-    running,
-    stopped: sites.length - running,
+    all: inType.length,
+    running: runningInType,
+    stopped: inType.length - runningInType,
+  };
+  const inStatus = sites.filter((s) => {
+    const st = statusOf(s);
+    if (filter === "running") return st === "running";
+    if (filter === "stopped") return st !== "running";
+    return true;
+  });
+  const typeCounts: Record<TypeFilter, number> = {
+    all: inStatus.length,
+    wordpress: inStatus.filter((s) => s.type === "wordpress").length,
+    laravel: inStatus.filter((s) => s.type === "laravel").length,
+    php: inStatus.filter((s) => s.type === "php").length,
   };
 
   // Filter (segmented) → search (name/domain) → sort.
@@ -743,6 +807,7 @@ export function Sites() {
       const st = statusOf(s);
       if (filter === "running" && st !== "running") return false;
       if (filter === "stopped" && st === "running") return false;
+      if (typeFilter !== "all" && s.type !== typeFilter) return false;
       // Any name the site answers on: the row's `+N` tooltip shows the extra
       // domains, so typing one of them and getting "No sites match" is the
       // page contradicting itself.
@@ -768,7 +833,7 @@ export function Sites() {
     // already a dependency — depending on the FUNCTION would rebuild this list on
     // every render and defeat the memo. The data is the dependency that matters.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sites, filter, query, sort, servingMap]);
+  }, [sites, filter, typeFilter, query, sort, servingMap]);
 
   // The render split, on the RECORDED fact only (`isScratch`). Counts and the
   // filter stay over ALL sites: a scratch site is a real site, and grouping is
@@ -857,8 +922,28 @@ export function Sites() {
       />
       {!isLoading && sites.length > 0 && (
         <div className="flex flex-none items-center justify-between px-[22px] pb-[9px] pt-[14px]">
-          <FilterTabs value={filter} onChange={setFilter} counts={counts} />
-          <div className="flex items-center gap-[18px] pr-2 font-mono text-[0.625rem] uppercase tracking-[0.1em] text-rex-text-muted">
+          <div className="flex min-w-0 items-center gap-2">
+            <FilterTabs
+              value={filter}
+              onChange={chooseFilter}
+              counts={counts}
+              tabs={[
+                { key: "all", label: "All" },
+                { key: "running", label: "Running" },
+                { key: "stopped", label: "Stopped" },
+              ]}
+            />
+            <FilterTabs
+              value={typeFilter}
+              onChange={setTypeFilter}
+              counts={typeCounts}
+              tabs={(["all", "wordpress", "laravel", "php"] as TypeFilter[]).map((k) => ({
+                key: k,
+                label: TYPE_LABEL[k],
+              }))}
+            />
+          </div>
+          <div className="hidden items-center gap-[18px] pr-2 font-mono text-[0.625rem] uppercase tracking-[0.1em] text-rex-text-muted xl:flex">
             <span className="w-[118px]">Stack</span>
             <span className="w-[88px]">Status</span>
           </div>
@@ -915,8 +1000,21 @@ export function Sites() {
               {query ? `No sites match “${query}”` : "No sites in this view"}
             </div>
             <div className="text-[0.78125rem] text-rex-text-muted">
-              Try a different name, domain, or clear the filter.
+              Try a different name, domain, or clear the filters.
             </div>
+            {/* The way out is a BUTTON, not advice to go and find one: the
+                filters that emptied this list are two controls up, and one of
+                them (Running) can be chosen for the user on first load. */}
+            <button
+              className="mt-1 text-[0.78125rem] text-brand-tint underline decoration-dotted"
+              onClick={() => {
+                chooseFilter("all");
+                setTypeFilter("all");
+                setQuery("");
+              }}
+            >
+              Show all sites
+            </button>
           </div>
         ) : (
           (() => {

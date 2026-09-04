@@ -65,10 +65,15 @@ paying for anyway: **the tick belongs in the commit that does the work.**
         cannot claim "running" while the browser gets a 503. Row menu + site-page button
         + "Stopped by you" pill; `core::sites::set_enabled` refuses a half-provisioned
         site by naming Retry
-  - [ ] T6 — site-type filter (All/WordPress/Laravel/PHP), counts computed against the
-        other filter's selection so no tab's number contradicts the list under it
-  - [ ] T7 — default filter = Running when anything runs, else All; decided ONCE on
-        first load, never re-decided by a 2s poll
+  - [x] T6 — site-type filter ✓ 4 Sep 2026 — All / WordPress / Laravel / Blank PHP beside
+        the status tabs, `FilterTabs` made generic over both; each control's counts are
+        computed against the OTHER's selection, so no tab's number can sit above a list
+        that does not contain that many rows. The empty state offers "Show all sites" as
+        a button rather than advice
+  - [x] T7 — default filter ✓ 4 Sep 2026 — Running when anything is running, else All,
+        decided on the first load that has BOTH facts (an undefined serving map means
+        "not asked yet", not "nothing is running") and never re-decided: the 2s poll
+        would otherwise move the user's tab the moment they stopped their last site
   - [ ] T8 — parity: `site_configure` `enabled` action, `site_status`, `rex site start/stop`
   - [ ] T9 — docs + a fixture-owned live check (neighbour still 200, stopped site 503)
 
