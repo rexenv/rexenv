@@ -634,7 +634,9 @@ site with a REAL plugin, which is the part the fixtures cannot buy.
       saying the link now shows the "site stopped" page — without re-sharing, because the
       warning is derived on each poll. Start the site again and the strip goes away.
 - [ ] **Open the public URL of a STOPPED shared site, and reload it a few times** — it
-      must show rexenv's stop page EVERY time, never another site's content. (This failed
+      must show rexenv's stop page EVERY time, never another site's content, and the page
+      must name the LOCAL site (`ea.test`) with a runnable `rex site start ea.test` — not
+      the trycloudflare hostname the browser is showing (ledger #512). (This failed
       on 5 Sep 2026: a tunnel bypasses the edge and nginx answered from its default
       server — ledger #511. Reload more than once; the first response was a Cloudflare
       error while the tunnel came up, and the wrong site appeared only afterwards.)

@@ -191,6 +191,20 @@ async fn main() -> ExitCode {
             && stopped.contains("Nothing is broken"),
         &format!("got {stopped:?}"),
     );
+    // The page must name the SITE, not the address the request arrived on. Over
+    // a tunnel those differ, and the first version — which read
+    // `location.hostname` in the browser — printed the trycloudflare host and a
+    // `rex site start …trycloudflare.com` nobody could run.
+    checks.is(
+        "the page names the site itself, and offers a command that would work",
+        stopped.contains(STOP) && stopped.contains(&format!("rex site start {STOP}")),
+        &format!("got {stopped:?}"),
+    );
+    checks.is(
+        "…and it asks the browser nothing — no script decides what this page is about",
+        !stopped.contains("location.hostname"),
+        "the page still guesses its own identity from the client",
+    );
     // The failure this whole design is shaped against: with no block of its own,
     // a Host can fall through to another site's — which would publish the
     // neighbour's content at the stopped site's address.
@@ -216,7 +230,10 @@ async fn main() -> ExitCode {
     let direct = common::http_get(NGINX_PORT, STOP, "/index.html");
     checks.is(
         "a request straight to nginx (what a tunnel sends) gets the stop page, not a neighbour",
-        direct.contains("503") && !direct.contains(&marker(KEEP)),
+        direct.contains("503")
+            && direct.contains(rexenv_lib::core::stopped_page::STOPPED_HEADLINE)
+            && direct.contains(STOP)
+            && !direct.contains(&marker(KEEP)),
         &format!("got {direct:?}"),
     );
     checks.is(

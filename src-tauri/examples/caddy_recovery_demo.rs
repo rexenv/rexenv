@@ -28,7 +28,6 @@ async fn main() {
         https_port: 8443,
         routes: Vec::new(),
         admin_socket: Some(sock),
-        stopped_page_dir: rexenv_lib::core::stopped_page::ensure(&*plat).expect("stopped page"),
     }).unwrap();
 
     // Clean slate: clear any pre-existing stray first.

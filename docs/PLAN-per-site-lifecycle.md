@@ -158,11 +158,13 @@ site's own hostname, and both ways to start it (the app's menu wording and
   serves it with `error 503` + `handle_errors { rewrite * /stopped.html;
   file_server }`, which keeps the status — verified against the pinned Caddy
   build before the code was written.
-- **One file for every stopped site.** The hostname is the only per-site fact and
-  it comes from `location.hostname`, so nothing is rewritten on a rename, and no
-  site's name is put in a path on disk for no gain. The file is rewritten on
-  every config rebuild rather than only when missing, so a wording change in an
-  update actually reaches a machine that already has yesterday's copy.
+- **One file PER SITE, with the domain baked in** — corrected 5 Sep 2026, ledger
+  #512. The first cut shared one file and read `location.hostname`, which over a
+  tunnel is the trycloudflare host: the page named something that is not the site
+  and offered a `rex site start …` nobody could run. A page rendered by the
+  server must not ask the client what it is about. Each site's directory is keyed
+  by site id, written by the same rebuild that writes the configs (so a rename
+  lands for free) and swept when the site starts again.
 
 ## 5c. The correction: "no block" meant somebody else's site (5 Sep 2026)
 

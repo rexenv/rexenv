@@ -236,15 +236,16 @@ pub struct SiteRoute {
     pub aliases: Vec<String>,
     /// Upstream `host:port` Caddy proxies to (the shared Nginx).
     pub upstream: String,
-    /// The user stopped THIS site (v44). The route is still emitted — with its
-    /// certificate — and answers 503 instead of proxying.
+    /// The user stopped THIS site (v44): `Some(dir)` is the site's OWN
+    /// stopped-page directory. The route is still emitted — with its
+    /// certificate — and answers 503 from that page instead of proxying.
     ///
     /// Dropping the route instead would hand the browser a TLS failure or, for
     /// a neighbouring subdomain-multisite block, someone else's site: a
     /// "your machine is broken" screen for a state the user deliberately chose.
     /// A 503 that says so is the honest answer, and keeping the address here is
     /// also what stops the hostname falling through to a `*.` matcher.
-    pub stopped: bool,
+    pub stopped: Option<PathBuf>,
     pub cert_path: PathBuf,
     pub key_path: PathBuf,
 }
@@ -258,14 +259,6 @@ pub struct CaddyConfig {
     /// Admin API unix socket to bind (`Some` in production via [`admin_socket_path`]).
     /// `None` omits the `admin` directive (Caddy's default TCP admin) — tests only.
     pub admin_socket: Option<PathBuf>,
-    /// Directory holding the stopped-site page (`core::stopped_page::ensure`).
-    /// Every stopped route roots its error handler here.
-    ///
-    /// A directory rather than a file path because that is what `file_server`
-    /// takes, and it holds ONLY that page: the root of a stopped site's block is
-    /// reachable at that site's address, so anything else left in there would be
-    /// published by rexenv on a name the user thinks is switched off.
-    pub stopped_page_dir: PathBuf,
 }
 
 impl Default for CaddyConfig {
@@ -275,7 +268,6 @@ impl Default for CaddyConfig {
             https_port: DEFAULT_HTTPS_PORT,
             routes: Vec::new(),
             admin_socket: None,
-            stopped_page_dir: PathBuf::new(),
         }
     }
 }
@@ -334,7 +326,7 @@ pub fn generate_caddyfile(cfg: &CaddyConfig) -> String {
             s.push_str(&format!("\t@rexenv_probe path {EDGE_PROBE_PATH}\n"));
             s.push_str("\trespond @rexenv_probe 204\n");
         }
-        if r.stopped {
+        if let Some(page_dir) = &r.stopped {
             // No upstream at all for a stopped site — not an unreachable proxy.
             // A `reverse_proxy` at a dead port answers 502 "Bad Gateway", which
             // reads as a broken machine.
@@ -344,7 +336,7 @@ pub fn generate_caddyfile(cfg: &CaddyConfig) -> String {
             // wrong home for HTML — every `{` in its CSS would be read as a
             // placeholder. `error` + `handle_errors` keeps the 503 status while
             // the body is the real page (`core::stopped_page`).
-            s.push_str(&format!("\troot * \"{}\"\n", cfg.stopped_page_dir.display()));
+            s.push_str(&format!("\troot * \"{}\"\n", page_dir.display()));
             s.push_str("\terror * \"site stopped\" 503\n");
             s.push_str("\thandle_errors {\n");
             s.push_str(&format!("\t\trewrite * {}\n", crate::core::stopped_page::request_path()));
@@ -989,7 +981,6 @@ mod tests {
         CaddyConfig {
             http_port: 8080,
             https_port: 8443,
-            stopped_page_dir: "/c/stopped".into(),
             routes: vec![SiteRoute {
                 aliases: Vec::new(),
                 host: "proxytest.test".into(),
@@ -997,7 +988,7 @@ mod tests {
                 upstream: "127.0.0.1:9999".into(),
                 cert_path: "/c/cert.pem".into(),
                 key_path: "/c/key.pem".into(),
-                stopped: false,
+                stopped: None,
             }],
             admin_socket: None,
         }
@@ -1047,7 +1038,7 @@ mod tests {
             upstream: "127.0.0.1:9001".into(),
             cert_path: "/c/2.pem".into(),
             key_path: "/c/2.key".into(),
-            stopped: false,
+            stopped: None,
             aliases: Vec::new(),
         });
         let f = generate_caddyfile(&cfg);
@@ -1068,14 +1059,14 @@ mod tests {
     #[test]
     fn a_stopped_site_answers_503_and_leaves_its_neighbour_alone() {
         let mut cfg = sample();
-        cfg.routes[0].stopped = true;
+        cfg.routes[0].stopped = Some("/appdata/config/stopped/site-id".into());
         cfg.routes.push(SiteRoute {
             host: "neighbour.test".into(),
             wildcard: false,
             upstream: "127.0.0.1:9001".into(),
             cert_path: "/c/2.pem".into(),
             key_path: "/c/2.key".into(),
-            stopped: false,
+            stopped: None,
             aliases: Vec::new(),
         });
         let f = generate_caddyfile(&cfg);
@@ -1164,7 +1155,7 @@ mod tests {
             upstream: "127.0.0.1:18088".into(),
             cert_path: "/c/a.pem".into(),
             key_path: "/c/a.key".into(),
-            stopped: false,
+            stopped: None,
             aliases: Vec::new(),
         });
         let f = generate_caddyfile(&cfg);
@@ -1193,7 +1184,7 @@ mod tests {
             upstream: "127.0.0.1:18088".into(),
             cert_path: "/c/m.pem".into(),
             key_path: "/c/m.key".into(),
-            stopped: false,
+            stopped: None,
             aliases: Vec::new(),
         });
         let f = generate_caddyfile(&cfg);

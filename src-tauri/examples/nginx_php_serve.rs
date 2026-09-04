@@ -100,7 +100,6 @@ async fn main() -> ExitCode {
         HTTP_PORT,
         vec![site, control],
         Vec::new(),
-        rexenv_lib::core::stopped_page::ensure(&*plat).expect("stopped page"),
     )
     .unwrap();
     services::test_nginx_config(&*plat, &nginx_bin, &conf, &prefix).expect("nginx -t");

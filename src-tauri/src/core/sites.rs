@@ -2401,9 +2401,18 @@ pub fn rebuild_configs_for(
         storage_root: None,
         env: Vec::new(),
     });
-    // The page every stopped site answers with, written once for the whole
-    // rebuild and shared by nginx and the edge.
-    let stopped_dir = stopped_page::ensure(platform)?;
+    // One page per stopped site, with that site's OWN domain baked in — the
+    // page names the site, and a request arriving over a tunnel carries an
+    // address that is not it (the trycloudflare host). Written by this rebuild,
+    // so a rename lands here for free.
+    let stopped_pages = stopped_page::ensure_for(
+        platform,
+        &sites
+            .iter()
+            .filter(|s| !s.enabled)
+            .map(|s| (s.id.clone(), s.domain.clone()))
+            .collect::<Vec<_>>(),
+    )?;
     // **Every stopped site gets a block here, whatever serves it when running.**
     // nginx has no match for a name it was given no block for, so it answers
     // from its DEFAULT server — another site — and anything that reaches nginx
@@ -2413,19 +2422,17 @@ pub fn rebuild_configs_for(
     let stopped_sites: Vec<services::NginxStopped> = sites
         .iter()
         .filter(|s| !s.enabled)
-        .map(|s| services::NginxStopped {
-            domain: s.domain.clone(),
-            aliases: aliases.get(&s.id).cloned().unwrap_or_default(),
-            wildcard: matches!(s.multisite, MultisiteMode::Subdomain),
+        .filter_map(|s| {
+            Some(services::NginxStopped {
+                domain: s.domain.clone(),
+                page_dir: stopped_pages.get(&s.id)?.clone(),
+                aliases: aliases.get(&s.id).cloned().unwrap_or_default(),
+                wildcard: matches!(s.multisite, MultisiteMode::Subdomain),
+            })
         })
         .collect();
-    let (nginx_conf, nginx_prefix) = services::write_nginx_config(
-        platform,
-        nginx_http_port,
-        nginx_sites,
-        stopped_sites,
-        stopped_dir.clone(),
-    )?;
+    let (nginx_conf, nginx_prefix) =
+        services::write_nginx_config(platform, nginx_http_port, nginx_sites, stopped_sites)?;
 
     // Every site (nginx- or override-served) gets a Caddy edge route: TLS with the
     // local CA, reverse-proxy to that site's upstream (shared nginx, or its own
@@ -2453,10 +2460,11 @@ pub fn rebuild_configs_for(
             upstream: site_upstream(s, nginx_http_port),
             cert_path: cert.cert_path,
             key_path: cert.key_path,
-            // Still a route, still its own certificate — it just answers 503.
-            // The cert is issued either way so that starting the site again is
-            // a config reload and not a certificate the browser has never seen.
-            stopped: !s.enabled,
+            // Still a route, still its own certificate — it just answers 503
+            // from THIS site's page. The cert is issued either way so that
+            // starting the site again is a config reload and not a certificate
+            // the browser has never seen.
+            stopped: stopped_pages.get(&s.id).cloned(),
         });
     }
     // Edge route for the internal Adminer vhost (TLS via local CA → shared nginx).
@@ -2470,7 +2478,7 @@ pub fn rebuild_configs_for(
         cert_path: adminer_cert.cert_path,
         key_path: adminer_cert.key_path,
         // The tooling vhost is not a Site and has no switch to stop it.
-        stopped: false,
+        stopped: None,
     });
     let caddyfile = proxy::write_caddyfile(
         platform,
@@ -2484,7 +2492,6 @@ pub fn rebuild_configs_for(
             // Written on EVERY rebuild, not only when missing: the page is
             // generated, and "only if absent" is how a wording fix in an update
             // never reaches a machine that already has yesterday's file.
-            stopped_page_dir: stopped_dir,
         },
     )?;
 

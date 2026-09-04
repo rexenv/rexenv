@@ -403,8 +403,6 @@ pub struct NginxConfig {
     /// Sites the user STOPPED (v44) — a server block that answers the stopped
     /// page with 503 and nothing else. See [`NginxStopped`].
     pub stopped: Vec<NginxStopped>,
-    /// Directory holding `stopped.html` (`core::stopped_page::ensure`).
-    pub stopped_page_dir: PathBuf,
 }
 
 /// A stopped site's presence in the SHARED nginx (v44).
@@ -428,6 +426,9 @@ pub struct NginxConfig {
 #[derive(Debug, Clone)]
 pub struct NginxStopped {
     pub domain: String,
+    /// This site's OWN stopped-page directory (`stopped_page::ensure_for`) — the
+    /// page names the site, so it cannot be shared with another one.
+    pub page_dir: PathBuf,
     /// Extra hostnames (v42) — they must be covered too, or the alias of a
     /// stopped site falls through while its primary does not.
     pub aliases: Vec<String>,
@@ -639,7 +640,7 @@ fn server_block(http_port: u16, site: &NginxSite) -> String {
 /// the neighbouring site untouched). `return 503` sits in `location /` so every
 /// path — including `/wp-admin/index.php` — lands there rather than in a PHP
 /// handler this block deliberately does not have.
-fn stopped_block(http_port: u16, site: &NginxStopped, page_dir: &Path) -> String {
+fn stopped_block(http_port: u16, site: &NginxStopped) -> String {
     let mut names = vec![site.domain.clone()];
     if site.wildcard {
         names.push(format!("*.{}", site.domain));
@@ -666,7 +667,7 @@ fn stopped_block(http_port: u16, site: &NginxStopped, page_dir: &Path) -> String
          \t}}\n",
         port = http_port,
         names = names.join(" "),
-        root = page_dir.display(),
+        root = site.page_dir.display(),
     )
 }
 
@@ -718,7 +719,7 @@ pub fn generate_nginx_config(cfg: &NginxConfig) -> String {
     // Stopped sites LAST is cosmetic — nginx matches by `server_name`, not by
     // order, and no name can be in both lists (a site is served or stopped).
     for site in &cfg.stopped {
-        s.push_str(&stopped_block(cfg.http_port, site, &cfg.stopped_page_dir));
+        s.push_str(&stopped_block(cfg.http_port, site));
     }
     s.push_str("}\n");
     s
@@ -731,7 +732,6 @@ pub fn write_nginx_config(
     http_port: u16,
     sites: Vec<NginxSite>,
     stopped: Vec<NginxStopped>,
-    stopped_page_dir: PathBuf,
 ) -> Result<(PathBuf, PathBuf)> {
     let config_dir = platform.paths().config_dir()?;
     let log_dir = platform.paths().log_dir()?;
@@ -749,7 +749,6 @@ pub fn write_nginx_config(
         temp_root,
         sites,
         stopped,
-        stopped_page_dir,
     };
     let conf = config_dir.join("nginx.conf");
     std::fs::write(&conf, generate_nginx_config(&cfg))?;
@@ -1084,7 +1083,6 @@ mod tests {
             access_log: PathBuf::from("/logs/nginx-access.log"),
             temp_root: PathBuf::from("/tmp/rexenv-nginx"),
             stopped: Vec::new(),
-            stopped_page_dir: PathBuf::from("/appdata/config/stopped"),
             sites: vec![NginxSite {
                 domain: "acme.test".into(),
                 docroot: PathBuf::from("/Sites/acme/public"),
@@ -1166,6 +1164,7 @@ mod tests {
         let mut cfg = nginx_cfg(RewriteMode::Single);
         cfg.stopped = vec![NginxStopped {
             domain: "stopped.test".into(),
+            page_dir: PathBuf::from("/appdata/config/stopped/site-id"),
             aliases: vec!["old-stopped.test".into()],
             wildcard: false,
         }];
@@ -1184,8 +1183,9 @@ mod tests {
         assert!(block.contains("return 503;"), "{block}");
         assert!(block.contains("error_page 503 /stopped.html;"), "{block}");
         assert!(
-            block.contains("/appdata/config/stopped"),
-            "the block must root at the stopped-page dir: {block}"
+            block.contains("/appdata/config/stopped/site-id"),
+            "the block must root at THIS site's own page dir — the page names the site, so a \
+             shared directory would show one site's name at another's address: {block}"
         );
         // No PHP anywhere near it: a stopped site must not reach a pool, and a
         // `location ~* \.php$` here would send `/wp-admin/index.php` to one.

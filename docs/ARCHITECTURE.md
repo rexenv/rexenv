@@ -163,8 +163,14 @@ Two decisions worth keeping:
   because Caddy cannot `respond` with a file and a Caddyfile string cannot hold
   CSS (every `{` would be a placeholder). The edge serves it through
   `error 503` + `handle_errors { rewrite; file_server }`, which keeps the status.
-  One generic file for every stopped site: the hostname is filled in from
-  `location.hostname`, so no per-site file has to be rewritten on a rename.
+  **One page PER SITE, with the domain baked in.** The first cut shared one file
+  and read `location.hostname` in the browser; over a tunnel that is the
+  trycloudflare host, so the page announced a name that is not the site and
+  offered `rex site start <tunnel host>` — a command nobody can run (ledger
+  #512). A page rendered by the server must not ask the client what it is about.
+  Each stopped site's directory is keyed by site id, written by the same rebuild
+  that writes the configs (so a rename lands for free), and swept when the site
+  starts again.
 - **A stopped site still answers in nginx, and that is the correction this
   design needed.** The first version emitted no block at all, reasoning that the
   503 belongs at the edge. **nginx answers a name it has no block for from its

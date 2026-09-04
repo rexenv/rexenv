@@ -19,22 +19,32 @@
 //! which keeps the 503 status (verified against the pinned Caddy build before
 //! this was written: status 503, `Content-Type: text/html`, braces intact).
 //!
-//! # One page for every stopped site
+//! # ONE PAGE PER SITE, with the domain baked in
 //!
-//! The file is generic and the HOSTNAME is filled in by two lines of script from
-//! `location.hostname`, rather than writing one file per stopped site. A file
-//! per site would put the site's name in a path on disk for no gain, and would
-//! have to be re-written on every rename. With scripting off the page still says
-//! everything that matters — the hostname is the one part the reader already
-//! knows, since they typed it.
+//! The first cut was one generic file that filled its hostname in from
+//! `location.hostname`. That is right in a browser typing `ea.test` and WRONG
+//! everywhere else, which the owner found on the first real use: over a public
+//! tunnel the page read `difference-cannon-senior-stones.trycloudflare.com`,
+//! and the command it offered — `rex site start difference-cannon-…` — was one
+//! nobody could run. The lesson is the general one: **a page rendered by the
+//! server must not ask the CLIENT what it is about.** The server knows which
+//! site it stopped; the browser only knows which address it happened to use.
+//!
+//! So each stopped site gets its own file, under its own directory keyed by
+//! site id, with its real primary domain written into the HTML. It costs one
+//! small file per stopped site, written by the same rebuild that writes the
+//! configs — so a rename or a domain change is picked up for free, because the
+//! whole config is regenerated anyway.
 
 use crate::error::Result;
 use crate::platform::traits::Platform;
 use std::path::PathBuf;
 
-/// The directory (under the config dir) holding the page. A directory of its
-/// own because Caddy's `file_server` roots there: anything else beside it would
-/// become reachable at the address of every stopped site.
+/// The parent directory (under the config dir) holding one subdirectory per
+/// stopped site. Each site's own directory is what nginx and Caddy root at, and
+/// it holds ONLY that page: the root of a stopped site's block is reachable at
+/// that site's address, so anything else left beside it would be published by
+/// rexenv on a name the user believes is switched off.
 const DIR: &str = "stopped";
 const FILE: &str = "stopped.html";
 
@@ -50,8 +60,19 @@ pub const STOPPED_HEADLINE: &str = "This site is stopped";
 /// apart. If the asset moves, the BUILD fails, which is the loud failure.
 const LOGO_SVG: &str = include_str!("../../../src/assets/rexenv-logo.svg");
 
-/// Render the page. Pure, so its content is unit-testable without a filesystem.
-pub fn html() -> String {
+/// Minimal HTML escaping for the one value interpolated into the page.
+///
+/// A domain reaching here has already been validated by site creation, so this
+/// is not the guard — it is the habit: a value that ends up between tags is
+/// escaped where it is written, not wherever someone remembers.
+fn esc(v: &str) -> String {
+    v.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+}
+
+/// Render the page for one site. Pure, so its content is unit-testable without
+/// a filesystem.
+pub fn html(domain: &str) -> String {
+    let domain = esc(domain);
     // The logo file carries an XML prolog and an Inkscape comment; inline SVG in
     // HTML wants neither. Cutting at the first `<svg` is exact for this asset
     // and harmless for any replacement that has no prolog.
@@ -160,7 +181,7 @@ pub fn html() -> String {
   <div class="mark">{logo}</div>
   <div class="brand">rexenv</div>
   <h1>{STOPPED_HEADLINE}</h1>
-  <div class="host" id="host">this site</div>
+  <div class="host">{domain}</div>
   <p>
     Nothing is broken. You stopped this one site in rexenv, so it is served by
     nothing — every other site on this machine is still running.
@@ -169,41 +190,56 @@ pub fn html() -> String {
     <h2>Start it again</h2>
     <ol>
       <li>Open rexenv, find the site in <strong>Sites</strong>, and choose <strong>Start site</strong>.</li>
-      <li>Or, in a terminal: <code id="cli">rex site start</code></li>
+      <li>Or, in a terminal: <code>rex site start {domain}</code></li>
     </ol>
   </div>
   <div class="foot">Served by rexenv on this machine · HTTP 503</div>
 </main>
-<script>
-  // The hostname is the ONE per-site fact on this page, filled in here so a
-  // single file can serve every stopped site. With scripting off the fallbacks
-  // above still read correctly.
-  var h = location.hostname;
-  if (h) {{
-    document.getElementById("host").textContent = h;
-    document.getElementById("cli").textContent = "rex site start " + h;
-  }}
-</script>
 </body>
 </html>
 "##
     )
 }
 
-/// Write the page under the config dir and return the DIRECTORY Caddy roots at.
+/// Write the page for every stopped site and return `site id → the directory`
+/// nginx and the edge root at. Directories for sites that are no longer stopped
+/// are removed in the same pass.
 ///
-/// Rewritten on every config rebuild rather than only when missing: the page is
-/// generated, so a rexenv update that changes its wording must reach a machine
-/// whose file was written by the previous version — and "only if absent" is how
-/// that update silently never lands.
-pub fn ensure(platform: &dyn Platform) -> Result<PathBuf> {
-    let dir = platform.paths().config_dir()?.join(DIR);
-    std::fs::create_dir_all(&dir)?;
-    std::fs::write(dir.join(FILE), html())?;
-    Ok(dir)
+/// Rewritten on every config rebuild rather than only when missing, for two
+/// reasons: the page is generated, so a wording change in an update must reach a
+/// machine that already has yesterday's file; and the DOMAIN is baked in, so a
+/// rename has to land here too — which it does for free, because a rename
+/// rebuilds the configs.
+pub fn ensure_for(
+    platform: &dyn Platform,
+    stopped: &[(String, String)],
+) -> Result<std::collections::HashMap<String, PathBuf>> {
+    let root = platform.paths().config_dir()?.join(DIR);
+    std::fs::create_dir_all(&root)?;
+    let mut out = std::collections::HashMap::new();
+    for (id, domain) in stopped {
+        let dir = root.join(id);
+        std::fs::create_dir_all(&dir)?;
+        std::fs::write(dir.join(FILE), html(domain))?;
+        out.insert(id.clone(), dir);
+    }
+    // Sweep the sites that are no longer stopped. Not tidiness for its own sake:
+    // each of these directories is a document root some config once pointed at,
+    // and leaving them accumulating under the config dir makes the next reader
+    // wonder which ones are live.
+    if let Ok(entries) = std::fs::read_dir(&root) {
+        for e in entries.flatten() {
+            let name = e.file_name().to_string_lossy().to_string();
+            if e.path().is_dir() && !out.contains_key(&name) {
+                let _ = std::fs::remove_dir_all(e.path());
+            }
+        }
+    }
+    Ok(out)
 }
 
-/// The path Caddy's error handler rewrites to, relative to [`ensure`]'s dir.
+/// The path Caddy's error handler and nginx's `error_page` rewrite to, relative
+/// to a site's own directory.
 pub fn request_path() -> String {
     format!("/{FILE}")
 }
@@ -221,7 +257,7 @@ mod tests {
     /// back — the app's own words for the menu item, and the CLI verb.
     #[test]
     fn the_stopped_page_says_it_is_deliberate_and_how_to_undo_it() {
-        let page = html();
+        let page = html("ea.test");
         assert!(page.contains(STOPPED_HEADLINE));
         assert!(page.contains("Nothing is broken"), "the page must not read as a crash");
         assert!(
@@ -229,7 +265,32 @@ mod tests {
             "the page must say the rest of the machine is unaffected"
         );
         assert!(page.contains("Start site"), "the app's own menu wording");
-        assert!(page.contains("rex site start"), "the CLI's verb");
+        assert!(page.contains("rex site start ea.test"), "the CLI's verb, with a domain that RUNS");
+    }
+
+    /// **The page names the SITE, never the address the request arrived on.**
+    ///
+    /// The defect this pins, found by the owner on the first real use: the page
+    /// filled its hostname in from `location.hostname`, so over a public tunnel
+    /// it announced `…trycloudflare.com` and offered `rex site start
+    /// …trycloudflare.com` — a command that cannot work. A page rendered by the
+    /// server must not ask the client what it is about.
+    #[test]
+    fn the_page_names_the_site_and_never_guesses_it_from_the_browsers_address() {
+        let page = html("ea.test");
+        assert!(page.contains("ea.test"), "the site's own domain must be IN the page");
+        assert!(
+            page.contains("rex site start ea.test"),
+            "the command has to be one the reader can paste"
+        );
+        assert!(
+            !page.contains("location.hostname"),
+            "the hostname must come from the server, which knows which site it stopped — \
+             not from the browser, which only knows which address it used"
+        );
+        assert!(!page.contains("<script"), "nothing on this page needs scripting any more");
+        // The one interpolated value is escaped where it is written.
+        assert!(html("a<b>.test").contains("a&lt;b&gt;.test"));
     }
 
     /// **It renders standalone: rexenv's mark, rexenv's palette, no network.**
@@ -241,7 +302,7 @@ mod tests {
     /// document must be same-document.
     #[test]
     fn the_page_fetches_nothing_and_carries_the_brand_mark_inline() {
-        let page = html();
+        let page = html("ea.test");
         assert!(page.contains("<svg"), "the brand mark must be inline, not a link");
         // Namespace URIs inside the inlined SVG are not fetches, so the check is
         // on what a browser would actually REQUEST: a src, an href, or a CSS url().
