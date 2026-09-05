@@ -68,3 +68,6 @@ scripts/wk-checks/package-lock.json
 # (`rexenv_<X.Y.Z>_universal.dmg.sha256`). The published asset and the cask are the
 # authoritative copies — a tracked one would be a fourth place for the hash to drift.
 /rexenv_*_universal.dmg.sha256
+
+# Claude Code per-user permissions (the project skills in .claude/skills/ ARE tracked)
+.claude/settings.local.json

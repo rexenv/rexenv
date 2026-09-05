@@ -102,6 +102,7 @@ npx eslint "src/**/*.{ts,tsx}"
 # six of them were stale at once on 21 Aug 2026, none in a way that broke
 # anything and all in the way that costs a reader their trust in the file.
 ./scripts/doc-counts.sh --check
+./scripts/status.py --check
 
 # The L2 probes parse. They only RUN at release time (verify-full.sh / a manual
 # sweep), so an edit that breaks one is invisible until then: a stray backtick
