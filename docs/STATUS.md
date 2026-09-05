@@ -27,38 +27,38 @@ App version **0.5.0** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md`
 
 - `TODO.md:383` PUBLISH-TESTING §B
 - `TODO.md:384` PUBLISH-TESTING §D
-- `TODO.md:407` Flip the release host back when `rexenv/rexenv` goes public
-- `TODO.md:412` The self-update swap probe (T0) and the first real in-app update (T11)
-- `TODO.md:417` PUBLISH-TESTING §K
-- `TODO.md:418` PUBLISH-TESTING §F
-- `TODO.md:419` PUBLISH-TESTING §G
-- `TODO.md:425` Release 5.4 — clean-Mac smoke test
-- `TODO.md:429` Tunnel probe session
-- `TODO.md:433` Intel spot-run
-- `TODO.md:436` The macOS floor is a claim about BOTH slices, and most of it has still never been measured
-- `TODO.md:474` In-app verifies owed
-- `TODO.md:486` PUBLISH-TESTING §E / §L
+- `TODO.md:414` Flip the release host back when `rexenv/rexenv` goes public
+- `TODO.md:420` The self-update swap probe (T0) and the first real in-app update (T11)
+- `TODO.md:425` PUBLISH-TESTING §K
+- `TODO.md:426` PUBLISH-TESTING §F
+- `TODO.md:427` PUBLISH-TESTING §G
+- `TODO.md:433` Release 5.4 — clean-Mac smoke test
+- `TODO.md:437` Tunnel probe session
+- `TODO.md:441` Intel spot-run
+- `TODO.md:444` The macOS floor is a claim about BOTH slices, and most of it has still never been measured
+- `TODO.md:482` In-app verifies owed
+- `TODO.md:494` PUBLISH-TESTING §E / §L
 
 ### Parked (deliberate — needs explicit go; don't pick up silently) — 5
 
-- `TODO.md:492` The live pool swap is still L3
-- `TODO.md:496` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN 25 Aug 2026
-- `TODO.md:505` Install WordPress into an empty LINKED folder
-- `TODO.md:512` Valet compatibility tails
-- `TODO.md:537` `rex` design-first set — ONE item left: raw `wp` passthrough
+- `TODO.md:500` The live pool swap is still L3
+- `TODO.md:504` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN 25 Aug 2026
+- `TODO.md:513` Install WordPress into an empty LINKED folder
+- `TODO.md:520` Valet compatibility tails
+- `TODO.md:545` `rex` design-first set — ONE item left: raw `wp` passthrough
 
 ### Blocked on external work — 4
 
-- `TODO.md:552` Xdebug on PHP 8.0
-- `TODO.md:557` SMAppService privileged helper
-- `TODO.md:559` Developer ID signing + notarization
-- `TODO.md:561` OpenLiteSpeed override server
+- `TODO.md:560` Xdebug on PHP 8.0
+- `TODO.md:565` SMAppService privileged helper
+- `TODO.md:567` Developer ID signing + notarization
+- `TODO.md:569` OpenLiteSpeed override server
 
 ### Phase 4+ (next era) — 3
 
-- `TODO.md:571` Windows platform impls — fill the `todo!()` stubs in
-- `TODO.md:573` Linux platform impls — same, `platform/linux/mod.rs`
-- `TODO.md:574` Public distribution (the open-sourcing half of the old "packaging polish" row)
+- `TODO.md:579` Windows platform impls — fill the `todo!()` stubs in
+- `TODO.md:581` Linux platform impls — same, `platform/linux/mod.rs`
+- `TODO.md:582` Public distribution (the open-sourcing half of the old "packaging polish" row)
 
 ## Claim ledger (`scripts/ledger-tally.sh`)
 

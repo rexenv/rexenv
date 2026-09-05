@@ -105,6 +105,20 @@ id 383250086), cask bumped by `update-cask.yml` (`a7f62c6`, 13:29:12Z — the sc
 seven minutes after publish) to version 0.5.0 / sha256 `86831ecb…`, equal to the local
 hash above. §A is asserted by the owner's publish click, which is the sign-off by rule.
 
+**The cask's quarantine step, measured 6 Sep 2026 — the one gate the dmg cannot show.**
+`brew reinstall --cask --debug rexenv` on a dev Mac, against the published 0.5.0 asset:
+brew propagated quarantine from the cached dmg onto the staged app, copied the xattrs to
+`/Applications/rexenv.app`, then ran `Installing artifact of class
+Cask::Artifact::PostflightSteps`; the installed app ended with **zero**
+`com.apple.quarantine` attributes and `codesign --verify --deep --strict` still passing.
+`spctl -a` still says `rejected` — expected and unchanged: the build is ad-hoc signed,
+not notarized, and removing the quarantine attribute is exactly how it launches anyway.
+**Run this with `--debug`, or it proves nothing:** the ordinary output prints no step
+line at all, so a skipped step and a working one read identically. Services outlived the
+app swap as they must — 16 stack processes still up and a real site answered 200 through
+the edge afterwards. This closes the tap-side fix (`2a5d489`, `postflight_steps` +
+`verified:` dropped) that the 0.5.0 bump's deprecation warnings prompted.
+
 **Sanity after the bump — half done, and why.** `brew audit --cask --online` did NOT run on
 this Mac: Homebrew refuses every `audit` with "Your Command Line Tools are too outdated"
 (CLT for Xcode 26.3 wanted) before touching the cask, so its exit 1 says nothing about

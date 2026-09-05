@@ -402,11 +402,19 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
 - [x] **Cask: `postflight` is deprecated in favour of `postflight_steps`** ✓ 5 Sep 2026 —
   `rexenv/homebrew-tap` `2a5d489` (also drops the deprecated `verified:`): the same xattr call as a declarative `run` step with
   `{{appdir}}` as the install-time token; `brew style` 0 offenses (was 1), the cask loads
-  and `brew info --json=v2` serialises the step. Not yet seen through the sandboxed step
-  runner — the next `brew upgrade --cask rexenv` is that proof.
-- [ ] **Flip the release host back when `rexenv/rexenv` goes public** — three things
-  in ONE commit, or the tap's guard fails the bump: the cask's `url`, its `verified:`,
-  and `SOURCE_REPO` in `update-cask.yml` (all in `rexenv/homebrew-tap`). Then CI's
+  and `brew info --json=v2` serialises the step. **Proven through the real runner
+  6 Sep 2026** by `brew reinstall --cask --debug rexenv` on this Mac: brew propagated
+  quarantine from the cached dmg onto the staged app (`xattr -w com.apple.quarantine
+  0381;6a9c1b6e;;…`), copied the xattrs to `/Applications/rexenv.app`, then ran
+  `Installing artifact of class Cask::Artifact::PostflightSteps` — and the installed
+  app came out with **zero** `com.apple.quarantine` attributes (only
+  `com.apple.provenance`), `codesign --verify --deep --strict` still passing. The
+  plain (non-debug) run prints none of that, which is why the debug log is the
+  evidence: an install that silently skipped the step looks identical.
+- [ ] **Flip the release host back when `rexenv/rexenv` goes public** — two things
+  in ONE commit, or the tap's guard fails the bump: the cask's `url` and `SOURCE_REPO`
+  in `update-cask.yml` (both in `rexenv/homebrew-tap`). It was three until 5 Sep 2026;
+  the cask's `verified:` was the third, dropped when brew 6.0.22 deprecated it. Then CI's
   `release.yml` resumes owning the build, and `docs/RELEASING.md`'s interim section
   is deleted rather than left as a second, wrong set of instructions.
 - [ ] **The self-update swap probe (T0) and the first real in-app update (T11)** —
