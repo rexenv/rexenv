@@ -82,7 +82,7 @@ count in **each** slice separately. A zero on either side is a HOLD — do not r
 is only as complete as its list of payloads, and a payload nobody added is the
 one that ships in one slice.
 
-## A) 🚧 0.5.0 — DRAFT 5 Sep 2026 (tap release id 383250086), §A0 ✅ measured · SMOKE-TEST ✅ asserted by the owner · §A ☐ owed before publish
+## A) ✅ 0.5.0 — PUBLISHED (§A0 ✅ measured · §A ✅ asserted · SMOKE-TEST ✅ asserted, no contemporaneous record)
 
 `rexenv_0.5.0_universal.dmg`, sha256
 `86831ecbeadcc3552748d63134782a040239004a571c3684e7cd652021cdee8e`, 29,002,961 bytes.
@@ -100,9 +100,19 @@ same — so the bytes survived the wire.
 `rexenv` and `rex` both `x86_64 arm64`; `Dist_Archive_Command` ×5 in the arm64 slice
 and ×5 in the x86_64 slice; `codesign --verify --deep --strict` passes on the `.app`.
 
-**Owed before publish:** §A below on the draft's asset (download → quarantine →
-Gatekeeper blocks → `xattr -rd` → launches). Publishing IS the §A sign-off. Then this row
-becomes PUBLISHED with the publish time and the cask commit `update-cask.yml` makes.
+**0.5.0 PUBLISHED 5 Sep 2026, 13:22:19Z** at `homebrew-tap/releases/tag/v0.5.0` (release
+id 383250086), cask bumped by `update-cask.yml` (`a7f62c6`, 13:29:12Z — the scheduled run
+seven minutes after publish) to version 0.5.0 / sha256 `86831ecb…`, equal to the local
+hash above. §A is asserted by the owner's publish click, which is the sign-off by rule.
+
+**Sanity after the bump — half done, and why.** `brew audit --cask --online` did NOT run on
+this Mac: Homebrew refuses every `audit` with "Your Command Line Tools are too outdated"
+(CLT for Xcode 26.3 wanted) before touching the cask, so its exit 1 says nothing about
+the cask. What ran instead: `brew fetch --cask rexenv/tap/rexenv` → `✔︎ Cask rexenv
+(0.5.0)` — the real download through the cask's `url`, sha256-checked by brew against
+the cask, which is the property a user's `brew upgrade` depends on. Re-run the audit
+once the CLT is updated. The fetch also surfaced a tap-side deprecation: `postflight`
+→ `postflight_steps` (`Casks/rexenv.rb:66`), a warning today, tracked in TODO.
 
 ## A) ✅ 0.4.0 — PUBLISHED (§A0 ✅ measured · §A ✅ asserted · SMOKE-TEST ◐ asserted, no contemporaneous record)
 

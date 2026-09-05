@@ -374,6 +374,10 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   Two teeth grown from the first real run: the cask hash bump now compares sha256
   as well as version (a placeholder hash under an unchanged version silently
   skipped), and `brew trust rexenv/tap` is a required user-facing install step.
+- [ ] **Cask: `postflight` is deprecated in favour of `postflight_steps`** — `brew fetch`
+  warned on 5 Sep 2026 (0.5.0 bump), `Casks/rexenv.rb:66` in `rexenv/homebrew-tap`. A
+  warning today; Homebrew removes deprecated DSL on a schedule, and the day it does the
+  cask stops installing. Fix lives in the tap repo, not here.
 - [ ] **Flip the release host back when `rexenv/rexenv` goes public** — three things
   in ONE commit, or the tap's guard fails the bump: the cask's `url`, its `verified:`,
   and `SOURCE_REPO` in `update-cask.yml` (all in `rexenv/homebrew-tap`). Then CI's
