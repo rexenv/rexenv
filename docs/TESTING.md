@@ -188,6 +188,10 @@ it can:
   executed. It now REFUSES when the binary predates the guard's source. Same family as
   `cli_socket_check`'s stale-server trap, and the general rule this layer keeps re-learning:
   **an example that re-executes the app must prove the app is the one you just edited.**
+  And the tier must PRODUCE that app: `live-checks.sh` builds `--examples --bin rexenv`,
+  because `--examples` alone leaves `target/debug/rexenv` unbuilt on a fresh target dir —
+  the 0.5.0 release gate (5 Sep 2026) went red on exactly that, a missing binary, not a
+  failed proof.
   Two fixture-hygiene defects found in the post-0.4.0 review (3 Sep 2026): its three
   stand-ins were reaped by explicit calls placed AFTER the assertions, so an `expect` that
   unwound mid-leg walked past them and left a `sleep 300`, a stand-in tunnel and a real

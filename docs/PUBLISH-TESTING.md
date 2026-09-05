@@ -545,7 +545,7 @@ at least once**, so `/etc/resolver/<tld>` genuinely exists and is theirs.
    Expect ALL FOUR surfaces, and check them in this order:
    - a) the **Sites banner** (ledger #334) — headline naming the SYMPTOM ("Your `.test`
      sites stopped resolving"), body naming Valet or Herd, and the way back ("You can
-     take it back from Import"). Not a toast: it stays.
+     take it back from Settings or Import"). Not a toast: it stays.
    - b) **Dismiss it, then reload the app.** It stays dismissed. Dismissal is **per-TLD**:
      if a second TLD is also drifted, dismissing one must not hide the other.
    - c) **Take that TLD back** (step 6's hand-back, then re-take it) so it reads as ours

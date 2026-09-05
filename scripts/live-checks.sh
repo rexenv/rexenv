@@ -339,8 +339,13 @@ STACKDOWN
   fi
 fi
 
-# Build everything first so per-example runs are launch-only.
-cargo build --examples
+# Build everything first so per-example runs are launch-only. The BIN too:
+# `tunnel_parent_death_check` re-executes `target/debug/rexenv` and REFUSES
+# when it is missing or stale, and `--examples` alone never produces it — on a
+# fresh target dir the sandbox tier failed the 0.5.0 release gate (5 Sep 2026)
+# on a precondition, not a proof. Selecting the bin here makes the tier
+# self-sufficient; the example's own staleness check still stands.
+cargo build --examples --bin rexenv
 
 names="$(echo "$TIERS" | awk -v t="$cmd" 'NF == 2 && $2 == t { print $1 }')"
 

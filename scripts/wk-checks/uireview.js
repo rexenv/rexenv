@@ -624,7 +624,12 @@ const PROBES = {
     else {
       if (!/Your \.test sites stopped resolving/.test(t))
         problems.push(`headline does not name the symptom + TLD: ${JSON.stringify(t.slice(0, 120))}`);
-      if (!/You can take it back from Import\./.test(t))
+      // The approved sentence gained "Settings or" in af09a3f (5 Sep 2026),
+      // when the take-over consent started rendering on Settings too. This
+      // probe still read the old copy and went red on the 0.5.0 release gate —
+      // the wk tier is not in verify.sh, so a copy change lands unchecked
+      // until the next verify-full. Keep this regex WITH the sentence.
+      if (!/You can take it back from Settings or Import\./.test(t))
         problems.push("the approved (redlined) sentence is missing");
       if (!/Valet or Herd/.test(t))
         problems.push("the banner stopped naming who took the file");
