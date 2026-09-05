@@ -23,6 +23,31 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [ ] **In-app self-update — a dmg user has no update path at all**
+  — 6 Sep 2026, planned in `docs/PLAN-self-update.md`; supersedes the Phase 4+ row
+  "Packaging polish: Tauri updater" (`docs/archive/TASKS-RELEASE.md` §6.1), which
+  proposed the wrong mechanism. `brew upgrade --cask rexenv` is the only updater
+  today, so everyone who installed from the dmg re-downloads and drags a new copy
+  over — and that path silently leaves the KeepAlive DNS agent running the OLD
+  binary, which this work also fixes. Thirteen tasks, T0–T12 in the plan.
+  **T0 is a MEASUREMENT and comes first**: whether macOS App Management lets an
+  ad-hoc-signed bundle rename itself in `/Applications` is documented nowhere, and
+  the swap's error handling (and in outcome O4, whether an in-app install ships at
+  all) is a function of the answer.
+  - [ ] T0 — the swap probe on a real Mac; record the outcome letter in the plan
+  - [ ] T1 — `core/app_update.rs` trust core, the shared verify seam, `macho::archs`
+  - [ ] T2 — transport, the launch ride, the 6 h poller, check commands, minimal card
+  - [ ] T3 — the 12th platform trait `AppBundle` (facts, pre-flights, stage, swap, sweep)
+  - [ ] T4 — apply end to end: refusals, hub download, swap, helper, exit through the gate
+  - [ ] T5 — the DNS agent states its build; a stale one is kickstarted at launch
+  - [ ] T6 — the full About card, the one-source consent sentence, copy guard, L2 probe
+  - [ ] T7 — the tray item and the app-menu "Check for Updates…"
+  - [ ] T8 — `rex status` / MCP read field, with no new dispatch arm
+  - [ ] T9 — release flow: the tar.gz asset, the version guard, §A0, and the WRONG docs
+  - [ ] T10 — the runtimes publisher + the tap's `auto_updates true` (other repos)
+  - [ ] T11 — the first real in-app update on a real Mac (0.6.0 → 0.6.1)
+  - [ ] T12 — archive the plan as a design record
+
 - [ ] **~16 flag-taking `rex` commands still ignore what they do not recognise**
   (3 Sep 2026, ledger #463/#466). Done: `site create`, `wp search-replace`,
   `site delete`, `db reset`, `db import`.
@@ -384,6 +409,11 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   and `SOURCE_REPO` in `update-cask.yml` (all in `rexenv/homebrew-tap`). Then CI's
   `release.yml` resumes owning the build, and `docs/RELEASING.md`'s interim section
   is deleted rather than left as a second, wrong set of instructions.
+- [ ] **The self-update swap probe (T0) and the first real in-app update (T11)** —
+  `docs/PLAN-self-update.md` §6.5 and §13. Both need a human at a real Mac: T0
+  measures whether an ad-hoc bundle may rename itself under App Management (nothing
+  documents it, and the plan branches on the answer), T11 is the 0.6.0 → 0.6.1
+  update run on this Mac and on a clean account. Neither can be run by any tier.
 - [ ] **PUBLISH-TESTING §K** — the whole migration as ONE journey (rebuild first).
 - [ ] **PUBLISH-TESTING §F** — resolver takeover/hand-back/drift: clean-VM only.
 - [ ] **PUBLISH-TESTING §G** — `/import` screen packaged GUI pass (only ever
@@ -541,8 +571,12 @@ the first and exits) — its box stayed `[ ]` under a struck-through title, tick
 - [ ] Windows platform impls — fill the `todo!()` stubs in
   `platform/windows/mod.rs` (trait-by-trait; no restructuring required).
 - [ ] Linux platform impls — same, `platform/linux/mod.rs`.
-- [ ] Packaging polish: Tauri updater (keypair, endpoint, `latest.json` —
-  checklist in `docs/archive/TASKS-RELEASE.md` §6.1), public distribution.
+- [ ] Public distribution (the open-sourcing half of the old "packaging polish" row).
+  **The updater half moved out of Phase 4+ on 6 Sep 2026** — it is the "In-app
+  self-update" row under *Now*, planned in `docs/PLAN-self-update.md`, and it does
+  NOT use the Tauri updater the archived §6.1 checklist proposed: that plugin's
+  macOS install deletes its own backup and can run a root `rm -rf` outside
+  `PrivilegeManager`, and its relaunch bypasses this app's ONE quit gate.
 
 ## Known baselines (not bugs)
 
