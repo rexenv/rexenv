@@ -35,15 +35,15 @@ paying for anyway: **the tick belongs in the commit that does the work.**
 
 ## Now — actionable code/test work
 
-- [ ] **Run `wp_info_check` (network tier) to live-prove the database-down leg** —
-  added 5 Sep 2026 with the fix for "WordPress tab + Magic Login vanish after Start
-  all" (`wp_presence` reads `core is-installed`'s stderr; L0 holds the strings, the
-  example holds the real stopped mysqld). Written with the stack UP, so the leg has
-  never run: `scripts/live-checks.sh network` with the stack stopped, or
-  `cargo run --example wp_info_check`. The frontend half (SiteDetail re-asks `wp-info`
-  on not-serving→serving) was **hand-checked by the owner 5 Sep 2026** — Stop all →
-  open a WordPress site → Start all → the tab and Magic Login appear without leaving
-  the page. Only the example leg is still un-run.
+- [x] **Run `wp_info_check` (network tier) to live-prove the database-down leg**
+  ✓ 5 Sep 2026 — ran green with the stack stopped: `wp_info(WordPress, database down)
+  = WpInfo { is_wordpress: true, version: Some("7.1"), multisite: false }`, same
+  version as with mysqld up; Blank-PHP still `false`. Added the same day with the fix
+  for "WordPress tab + Magic Login vanish after Start all" (`wp_presence` reads
+  `core is-installed`'s stderr; L0 holds the strings, the example holds the real
+  stopped mysqld). The frontend half (SiteDetail re-asks `wp-info` on
+  not-serving→serving) was **hand-checked by the owner 5 Sep 2026** — Stop all → open a
+  WordPress site → Start all → the tab and Magic Login appear without leaving the page.
 
 - [x] **A site cannot be stopped on its own; the list cannot be filtered by type**
   ✓ 4 Sep 2026 — every task below shipped (T1–T9, the bulk switch, the stopped-share

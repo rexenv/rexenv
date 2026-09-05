@@ -376,10 +376,11 @@ it can:
   pointed at a closed port, `DB_NAME` at a missing schema, and a Blank-PHP path — all
   three exit 1, so a fixture that checked exit codes would pass on the pre-fix code.
   The example leg is the end-to-end half (`wp_info` itself, a real wp-cli, a real
-  stopped mysqld). **Not live-run yet**: the stack was up when the leg was written,
-  and the network tier assumes it stopped — `docs/TODO.md` carries the row. The
-  user-visible repro (Stop all → open a WordPress site → Start all → tab + Magic Login
-  appear in place) was hand-checked by the owner the same day.
+  stopped mysqld). **Ran green 5 Sep 2026** with the stack stopped — the down leg
+  reports `is_wordpress: true` with the same `version` the up leg read, and the
+  Blank-PHP leg still says `false`, so the pass is not "everything is WordPress now".
+  The user-visible repro (Stop all → open a WordPress site → Start all → tab + Magic
+  Login appear in place) was hand-checked by the owner the same day.
   **The Tunnels filter (`uireview.js`, `tunnels-*`, 19 Aug 2026, #371) is L2 asserting a
   SENTENCE, not a layout.** The feature is a search box; the risk is that filtering out a
   live public URL reads as "nothing is shared". So the fixture carries two live tunnels —
