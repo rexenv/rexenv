@@ -57,7 +57,7 @@ the source stays private, the dmg goes somewhere public.
 
 **Where it goes.** Into a GitHub Release on **`rexenv/homebrew-tap`** — already public,
 already the home of the cask, and same-repo so `update-cask.yml` still needs no secret
-of any kind (`SOURCE_REPO` there points at itself; the cask's `url` +`verified:` match).
+of any kind (`SOURCE_REPO` there points at itself; the cask's `url` names it too).
 
 **And it is built locally, not in CI.** Uploading from this repo to the tap would need a
 cross-repo credential — exactly the PAT this pipeline was designed to avoid (see the note
@@ -147,11 +147,13 @@ release** — which is the property that makes a stolen key survivable. Ledger
    it was walked into by the person who wrote it, in the session he wrote it.
 6. Publish the tap release → **Update cask** picks it up (≤15 min, or Run workflow).
 
-### Going public later — three things flip in one commit
+### Going public later — two things flip in one commit
 
-The cask's `url`, the cask's `verified:`, and `SOURCE_REPO` in `update-cask.yml` must
-all name the same repo; the workflow greps for that and fails loudly if they drift.
-Move all three back to `rexenv/rexenv`, delete the interim releases from the tap (or
+The cask's `url` and `SOURCE_REPO` in `update-cask.yml` must name the same repo; the
+workflow greps the url for `SOURCE_REPO` and fails loudly if they drift. (This said
+"three things" until 5 Sep 2026: the cask's `verified:` was the third, dropped when
+brew 6.0.22 deprecated the parameter for its default URL verification.)
+Move both back to `rexenv/rexenv`, delete the interim releases from the tap (or
 leave them — the cask only names the current version), and this section goes away.
 
 ## Cutting a release (the automated pipeline — for when the repo is public)
