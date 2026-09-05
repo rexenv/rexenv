@@ -464,7 +464,11 @@ Live-proven end to end by `site_stop_start_check`.
   (`LogCategory::Agents`, offered once the file exists) can never say something the
   Settings card does not. Asked for because the card shows twenty rows and the table
   keeps two thousand, and nothing showed the rest. Refusals are WARN lines; the site is
-  named by its domain at the time; rotates at 2 MB keeping one `.1`.
+  named by its domain at the time; rotates at 2 MB keeping one `.1`. **The file is COMMON,
+  not per-site** (the feed is one table, and `list_sites` names no site) — the tab's
+  "Only this site" toggle is a client-side filter by the site's ID (both line shapes),
+  the chip shows `shown/total`, and its empty state says the other lines exist
+  (`agentlog.js`).
 - **rexenv's OWN log is `<log_dir>/rexenv.log`**, in every build, and it has its own
   Logs tab (`LogCategory::App`) — when a service did not start, the reason is there and
   not in that service's empty file. Its own tab because every other source reports what a

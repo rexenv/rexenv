@@ -530,6 +530,15 @@ it can:
   satisfied by a screen that says Live everywhere. Its backend half (dead
   children settled before the snapshot) is an L0 source-ORDER guard, because
   both orders compile and return the same type.
+- **Probe (5 Sep 2026): `agentlog.js`** — the "AI agents (MCP)" Logs tab renders from a
+  mocked `mcp.log`, and **"Only this site" narrows ONE machine-wide file to this site's
+  lines by id in both shapes the writer uses** (`· site domain (id)`, and the bare
+  `· site id` a deleted site leaves) with no cross-match (`(1)` never matches `(12)`), the
+  chip says `3/7`, the WARN line survives (the filter reads the site, not the outcome), the
+  filter survives a poll tick, and a site with no lines gets an empty state that says the
+  other lines exist. What L0 cannot see: the toggle is a VIEW over query data, and only a
+  browser shows it changing the screen and nothing else. Mock lines: `MOCK_MCP_LOG` in
+  `src/lib/ipc/index.ts`, shaped exactly as `feed::render_line` writes (#516).
 - **Probes (2 Sep 2026): `domains.js`** — the Domains card renders the list the
   BACKEND returned rather than local state, and the primary has no Remove. It is
   L2 because the difference is only visible in a browser: a card that kept its

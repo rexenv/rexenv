@@ -879,7 +879,9 @@ YOUR OWN sites in the list. Keep the Sites page visible.
   `origin`. Then open ANY site → Logs → **AI agents (MCP)** (the tab exists now that
   `mcp.log` does): the create is there as one line — `agent <client> ·
   scratch_create_site → ok · site <domain> (<id>)` — with the same local timestamp shape
-  as `rexenv (app)`, and the Settings card's row says the same thing. **Tell:** a line
+  as `rexenv (app)`, and the Settings card's row says the same thing. Press **Only this
+  site** → the chip reads `n/total` and only lines naming this site's domain stay; on a
+  site the agent never touched the pane says the other lines exist. **Tell:** a line
   the card does not have, or a card row the log does not, means the two carriers have
   split; a line carrying a path, a URL or argv text means the writer is no longer the
   feed's.

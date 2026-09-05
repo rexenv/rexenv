@@ -4,6 +4,7 @@ import {
   Download,
   ExternalLink,
   FileText,
+  Filter,
   Pause,
   Play,
   RefreshCw,
@@ -78,6 +79,16 @@ const CATEGORY_TABS: Record<LogCategory, { label: string; shared: boolean; alway
   agents: { label: "AI agents (MCP)", shared: true, always: false },
 };
 
+/** Does one `mcp.log` line belong to `siteId`? The writer names the site as
+ *  `· site <domain> (<id>)` while the row resolves and `· site <id>` once it is
+ *  gone — the ID is the stable half (a domain can be renamed after the line
+ *  was written), so the filter reads the id in either shape and never the
+ *  domain. Anchored so `(1)` cannot match `(12)`. Exported for the L2 probe. */
+export function agentLineIsForSite(line: string, siteId: string): boolean {
+  const id = siteId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?:\\(${id}\\)|· site ${id}(?=\\s|$))`).test(line);
+}
+
 const SELECT_CLS =
   "h-[30px] rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[0.75rem] text-rex-text outline-none transition-colors focus:border-brand disabled:opacity-50";
 
@@ -107,6 +118,11 @@ export function SiteLogs({
   const [selectedTab, setSelectedTab] = useState<LogsSection | null>(null);
   const [sel, setSel] = useState<Partial<Record<LogCategory, string>>>({});
   const [paused, setPaused] = useState(false);
+  // `mcp.log` is ONE machine-wide file (like rexenv.log): every site's agent
+  // activity, plus calls that name no site at all. This narrows the VIEW to
+  // lines naming this site — client-side, by id — and says so in its label,
+  // because a per-site file would have nowhere to put `list_sites`.
+  const [onlyThisSite, setOnlyThisSite] = useState(false);
 
   const { data: targets = [] } = useQuery({
     queryKey: ["log-targets", site.id],
@@ -147,13 +163,17 @@ export function SiteLogs({
   }
   const fileTarget = active === "wordpress" ? null : currentTarget(active);
 
-  // ── File-log tail (Server / Database / Git tabs) — 1s live poll.
-  const { data: fileLines = [], refetch: refetchFile } = useQuery({
+  // ── File-log tail (Server / Database / Git / Agents tabs) — 1s live poll.
+  const { data: rawFileLines = [], refetch: refetchFile } = useQuery({
     queryKey: ["tail-log", fileTarget?.key],
     queryFn: () => tailLog(fileTarget!.key, LOG_LINES),
     enabled: !!fileTarget,
     refetchInterval: paused ? false : 1000,
   });
+  const siteFilterOn = active === "agents" && onlyThisSite;
+  const fileLines = siteFilterOn
+    ? rawFileLines.filter((l) => agentLineIsForSite(l, site.id))
+    : rawFileLines;
 
   // ── WordPress debug log — status-aware (WP_DEBUG / WP_DEBUG_LOG), 2s tail.
   const { data: status } = useQuery({
@@ -285,19 +305,45 @@ export function SiteLogs({
             )}
           </div>
         ) : (
-          <select
-            value={fileTarget?.key ?? ""}
-            onChange={(e) =>
-              setSel((s) => ({ ...s, [active as LogCategory]: e.target.value }))
-            }
-            className={SELECT_CLS}
-          >
-            {(grouped[active as LogCategory] ?? []).map((t) => (
-              <option key={t.key} value={t.key}>
-                {t.label}
-              </option>
-            ))}
-          </select>
+          <div className="flex min-w-0 items-center gap-2">
+            <select
+              value={fileTarget?.key ?? ""}
+              onChange={(e) =>
+                setSel((s) => ({ ...s, [active as LogCategory]: e.target.value }))
+              }
+              className={SELECT_CLS}
+            >
+              {(grouped[active as LogCategory] ?? []).map((t) => (
+                <option key={t.key} value={t.key}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+            {active === "agents" && (
+              <button
+                type="button"
+                onClick={() => setOnlyThisSite((v) => !v)}
+                aria-pressed={onlyThisSite}
+                title={
+                  onlyThisSite
+                    ? `Showing only lines that name ${site.domain} — click to show every site`
+                    : `mcp.log is one file for every site — click to show only ${site.domain}`
+                }
+                className={cn(
+                  ACTION_CLS,
+                  onlyThisSite && "border-brand text-rex-text-bright",
+                )}
+              >
+                <Filter className="h-3.5 w-3.5" />
+                Only this site
+                {onlyThisSite && (
+                  <span className="font-mono text-[0.65625rem] text-rex-text-muted">
+                    {fileLines.length}/{rawFileLines.length}
+                  </span>
+                )}
+              </button>
+            )}
+          </div>
         )}
         <div className="flex flex-none items-center gap-1.5">
           <button
@@ -413,7 +459,18 @@ export function SiteLogs({
         <LogPane lines={fileLines} paused={paused}>
           {fileLines.length === 0 ? (
             <div className="text-rex-text-muted">
-              No log output yet — start the site&apos;s services and traffic will appear here.
+              {siteFilterOn && rawFileLines.length > 0 ? (
+                <>
+                  No agent activity names <span className="font-mono">{site.domain}</span> yet
+                  — the other {rawFileLines.length} lines are for other sites or name no site
+                  at all. Turn off <span className="text-rex-text">Only this site</span> to see
+                  them.
+                </>
+              ) : active === "agents" ? (
+                "No agent activity yet — every MCP call lands here as one line."
+              ) : (
+                "No log output yet — start the site's services and traffic will appear here."
+              )}
             </div>
           ) : null}
         </LogPane>

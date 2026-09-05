@@ -920,6 +920,21 @@ export async function mailpitStatus(): Promise<MailpitStatus> {
 }
 
 /** The log sources selectable for a site. Mock fallback outside Tauri. */
+/** `mcp.log` as the feed's writer renders it (`mcp_server/feed.rs`
+ *  `render_line`): ONE machine-wide file — lines for site 1, for site 2, for a
+ *  site whose row is gone (bare id), and for calls that name no site. The
+ *  "Only this site" filter in `SiteLogs` is proven against exactly this mix
+ *  (`scripts/wk-checks/agentlog.js`); the id shapes match the writer's two. */
+const MOCK_MCP_LOG = [
+  "[2026-09-05][15:24:09][INFO][mcp] agent claude-code · list_sites → ok",
+  "[2026-09-05][15:24:10][INFO][mcp] agent claude-code · site_status → ok · site acme.rex (1)",
+  "[2026-09-05][15:24:11][INFO][mcp] agent claude-code · wp_user user login_url → ok · site acme.rex (1)",
+  "[2026-09-05][15:24:12][WARN][mcp] agent claude-code · site_delete → denied · site portfolio.rex (2) — the Agent access dial is at Read; site_delete needs Full.",
+  "[2026-09-05][15:24:13][INFO][mcp] agent claude-code · wp_run plugin list → ok · site portfolio.rex (2)",
+  "[2026-09-05][15:24:14][INFO][mcp] rexenv rexenv · scratch_reap → ok · site 12",
+  "[2026-09-05][15:24:15][WARN][mcp] agent claude-code · wp_run → error · site acme.rex (1) — `--path` isn't allowed here: rexenv decides which site a command runs against.",
+];
+
 export async function logTargets(siteId: string): Promise<LogTarget[]> {
   if (!isTauri()) {
     const mock = (key: string, label: string, category: LogTarget["category"]): LogTarget => ({
@@ -935,6 +950,7 @@ export async function logTargets(siteId: string): Promise<LogTarget[]> {
       mock("caddy-stdout.log", "Caddy (edge)", "server"),
       mock("mysql-error.log", "MySQL", "database"),
       mock("repo-demo.rex-my-plugin.log", "Git job — my-plugin", "git"),
+      mock("mcp.log", "AI agents (MCP)", "agents"),
     ];
   }
   return invoke<LogTarget[]>("log_targets", { siteId });
@@ -943,6 +959,7 @@ export async function logTargets(siteId: string): Promise<LogTarget[]> {
 /** Last `lines` lines of a log source (polled to follow). Mock outside Tauri. */
 export async function tailLog(key: string, lines: number): Promise<string[]> {
   if (!isTauri()) {
+    if (key === "mcp.log") return MOCK_MCP_LOG.slice(-lines);
     const now = new Date().toLocaleTimeString();
     return Array.from({ length: 12 }, (_, i) => `${now} [${key}] mock log line ${i + 1}`).slice(-lines);
   }
