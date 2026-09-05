@@ -195,6 +195,31 @@ static REGISTRY: &[ScratchTool] = &[ScratchTool {
     summarise: |args| args.get("version").and_then(Value::as_str).map(str::to_string),
     handler: set_php_version,
 }, ScratchTool {
+    name: "scratch_login_url",
+    description: "A one-time link that signs into a scratch site's wp-admin WITHOUT a password — \
+                  rexenv's own magic login, the same one the app's \"Log in as\" button uses. \
+                  Takes `site_id` and an optional `user_id` (omit for the primary administrator). \
+                  Open the link in a browser to land in wp-admin signed in, or fetch it ONCE \
+                  headlessly with a cookie jar and follow the redirect: the cookies it sets are \
+                  the session. Single-use, expires in two minutes, only works from this machine, \
+                  never recorded anywhere, and changes nothing about the account — no password \
+                  is set or reset. Only works on scratch sites the agent created; for one of the \
+                  user's own sites use `wp_user` with action `login_url` (needs their manage grant).",
+    input_schema: || json!({
+        "type": "object",
+        "properties": {
+            "site_id": { "type": "string", "description": "The scratch site's id." },
+            "user_id": { "type": "integer", "description": "A WordPress user id to sign in as. Omit for the primary administrator." }
+        },
+        "required": ["site_id"],
+        "additionalProperties": false
+    }),
+    sweep_args: |id| json!({ "site_id": id }),
+    // A login link is a credential. The feed gets the tool's name and the site
+    // and NOTHING else — the same rule `wp_user`'s `login_url` follows.
+    summarise: |_| None,
+    handler: login_url,
+}, ScratchTool {
     name: "db_query",
     description: "Run ONE read query against a site's database and get the rows back. On a \
                   scratch site the agent created, this works immediately and may also write. On \
@@ -1515,6 +1540,33 @@ mod tests {
     }
 
     #[test]
+    fn a_login_link_carries_its_own_rules_and_never_reaches_the_feed() {
+        // D2 (5 Sep 2026): a link everywhere, never a password. The reply is
+        // pinned here because every rule an agent needs is IN it — a link that
+        // arrived bare would be fetched twice, or ten minutes later, and the
+        // plain page that comes back would read as "login is broken".
+        let v = login_reply("probe.scratch.rex", 1, "tok");
+        assert_eq!(v["url"], "https://probe.scratch.rex/?rexenv_login=tok&rexenv_user=1");
+        assert_eq!(v["singleUse"], true);
+        assert_eq!(v["expiresInSeconds"], crate::core::wp_login::LOGIN_TTL_SECS);
+        let note = v["note"].as_str().unwrap();
+        for must in ["cookie jar", "spent on first use", "No password"] {
+            assert!(note.contains(must), "the note must say `{must}`: {note}");
+        }
+        // The credential never reaches the feed: the summariser is None for an
+        // argument set that CARRIES a url-shaped value, not just for an empty one.
+        let tool = REGISTRY.iter().find(|t| t.name == "scratch_login_url").expect("registered");
+        assert!((tool.summarise)(&json!({ "site_id": "x", "user_id": 3, "url": "https://x/?rexenv_login=tok" })).is_none());
+        // The description states the properties the code enforces (single-use,
+        // TTL, no password, scratch-only with the real-site door named) — the
+        // copy is what a model decides on, so it is guarded like the enable card.
+        for must in ["WITHOUT a password", "Single-use", "two minutes", "never recorded", "wp_user"] {
+            assert!(tool.description.contains(must), "the description must say `{must}`");
+        }
+        assert_eq!(crate::core::wp_login::LOGIN_TTL_SECS, 120, "the description says two minutes");
+    }
+
+    #[test]
     fn the_summary_records_the_verb_and_never_the_values() {
         // The line this column must not cross. `plugin activate acme` is a verb
         // and a VALUE; only the verb is recorded. Values are where the content
@@ -1963,6 +2015,97 @@ pub(super) fn agent_stream(raw: &[u8], known: &super::view::KnownPaths) -> (Stri
 }
 
 /// Switch a scratch site's PHP version — the compatibility matrix's one verb.
+/// The reply for a minted login link — pure, so its shape is pinned by a test
+/// that needs no site. Everything an agent must know to use the link correctly
+/// travels WITH the link: it is spent on first use, it dies in two minutes, and
+/// it works headlessly (the mu-plugin sets the auth cookie and redirects to
+/// wp-admin — `core::wp_login`), so an agent that fetches it twice, or after a
+/// pause, gets a plain WordPress page and must know why.
+fn login_reply(domain: &str, user_id: u64, token: &str) -> Value {
+    json!({
+        "domain": domain,
+        "url": format!("https://{domain}/?rexenv_login={token}&rexenv_user={user_id}"),
+        "userId": user_id,
+        "singleUse": true,
+        "expiresInSeconds": crate::core::wp_login::LOGIN_TTL_SECS,
+        "note": format!(
+            "Open it in a browser to land in wp-admin signed in as user {user_id}, or fetch it ONCE \
+             headlessly with a cookie jar and follow the redirect — the cookies it sets are the \
+             session. The link is spent on first use and expires in {} seconds; ask again for \
+             another. No password was set or changed.",
+            crate::core::wp_login::LOGIN_TTL_SECS
+        ),
+    })
+}
+
+/// D2, settled 5 Sep 2026 by the owner: **a login link everywhere, real site or
+/// scratch, never a password.** The real-site half is `wp_user` → `login_url`
+/// (parity P3, `manage`); this is the scratch half, behind the witness. Same
+/// token (`core::wp_login::issue`: single-use, 120 s, loopback-only — the
+/// tunnel-replay properties are #33/#307) and the same primary-admin rule as the
+/// app's own "Open admin" button, so an agent gets exactly what a click gets.
+fn login_url<'a>(
+    ctx: ScratchCtx<'a>,
+    args: &'a Value,
+    acted: &'a super::feed::ActedTarget,
+) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let id = args
+            .get("site_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| Error::Other("scratch_login_url needs a `site_id`.".into()))?
+            .to_string();
+        let asked_user = args.get("user_id").and_then(Value::as_u64);
+        // THE gate first: the recorded origin, never the name.
+        let scratch = ctx.claim(&id)?;
+        acted.set(scratch.site());
+        let site = scratch.site().clone();
+        // Resolving the tools can DOWNLOAD on first use (minutes), so the
+        // ownership fact is re-read on the far side of it, as `wp_run` does: a
+        // Keep pressed meanwhile makes this the user's site, and their sites
+        // hand out links only through `wp_user` under a grant.
+        let (php_bin, wp_phar) = ctx.wp_tools(&site.php_version).await?;
+        {
+            let conn = ctx.db()?;
+            if !crate::core::scratch::still_the_agents(&conn, scratch.id())? {
+                return Err(Error::Other(format!(
+                    "`{}` is no longer a scratch site — the person you're working with kept it, so \
+                     it is theirs now. A login link into their site comes from `wp_user` (action \
+                     `login_url`) under their manage grant, not from this tool.",
+                    scratch.domain()
+                )));
+            }
+        }
+        let docroot = std::path::PathBuf::from(&site.path);
+        let content_rel = site.content_dir_rel().to_string();
+        let domain = site.domain.clone();
+        let (user_id, token, created_dir) = crate::commands::wordpress::wp_blocking(move || {
+            let user_id = match asked_user {
+                Some(u) => u,
+                None => crate::core::wordpress::primary_admin_id(&php_bin, &wp_phar, &docroot)?,
+            };
+            let (token, created_dir) = crate::core::wp_login::issue(
+                &php_bin,
+                &wp_phar,
+                &docroot,
+                &content_rel,
+                &domain,
+                user_id,
+                crate::core::wp_login::LOGIN_TTL_SECS,
+            )?;
+            Ok((user_id, token, created_dir))
+        })
+        .await?;
+        if created_dir {
+            // v25: a mu-plugins dir WE made is recorded so teardown removes it —
+            // the same fact `stamp_mail` and the app's own button record.
+            let conn = ctx.db()?;
+            let _ = crate::state::store::set_site_mu_dir_created(&conn, &site.id);
+        }
+        Ok(login_reply(&site.domain, user_id, &token))
+    })
+}
+
 fn set_php_version<'a>(
     ctx: ScratchCtx<'a>,
     args: &'a Value,

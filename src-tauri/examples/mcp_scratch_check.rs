@@ -249,7 +249,7 @@ async fn main() {
     for expected in [
         "list_sites", "site_status", "tail_log",
         "scratch_create_site", "scratch_delete_site", "scratch_add_package",
-        "scratch_sync_package", "wp_run",
+        "scratch_sync_package", "wp_run", "scratch_login_url",
     ] {
         assert!(names.contains(&expected), "`{expected}` is not advertised: {names:?}");
     }
@@ -263,6 +263,9 @@ async fn main() {
         (11, "scratch_delete_site", serde_json::json!({ "site_id": theirs.id })),
         (12, "scratch_add_package", serde_json::json!({ "site_id": theirs.id, "source": src.to_string_lossy() })),
         (13, "scratch_sync_package", serde_json::json!({ "site_id": theirs.id, "slug": "acme-blocks" })),
+        // D2 (5 Sep 2026): a login link into the USER's site is `wp_user`'s under
+        // a grant — this tool must refuse by OWNERSHIP, like every other here.
+        (14, "scratch_login_url", serde_json::json!({ "site_id": theirs.id })),
     ] {
         let (is_err, text) = call(&mut stream, &mut reader, id, tool, args);
         assert!(is_err, "`{tool}` on the USER'S site must be refused: {text}");
@@ -273,7 +276,7 @@ async fn main() {
         assert!(!text.contains(&*docroot.to_string_lossy()), "`{tool}` leaked a docroot: {text}");
         assert!(!text.contains(&theirs.db_name), "`{tool}` leaked a db name: {text}");
     }
-    println!("✓ tier boundary — all 4 executing tools refuse the user's own site, by RECORD");
+    println!("✓ tier boundary — all 5 executing tools (incl. scratch_login_url) refuse the user's own site, by RECORD");
 
     // 3) The target screen, over the wire, in the forms an agent would send.
     for (id, argv, must_name) in [
@@ -520,7 +523,7 @@ async fn main() {
 
     println!(
         "✓ mcp_scratch_check green — the executing registry over a real socket: the user's own \
-         site refused by RECORD by all four tools, target-naming argv refused, a real clone that \
+         site refused by RECORD by all five tools (login link included), target-naming argv refused, a real clone that \
          leaves the source byte-identical, a real wp child whose output is scrubbed of rexenv's \
          own paths. NOT covered here (and ◐ in the ledger): the reaper's real delete and its \
          skip-don't-stop leg, which need a provisioned site and a live tunnel; and the mail \

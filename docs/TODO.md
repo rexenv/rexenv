@@ -454,11 +454,12 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
 
 ## Decisions pending (owner)
 
-- [ ] **MCP D2 — `wp_login_url` for scratch sites.** The one open MCP decision;
-  non-blocking (`docs/archive/PLAN-mcp-server.md` §9). Every planned milestone (M1, M2a, M2b, M3)
-  and the parity foundation (P1) shipped; the long evidence row this section carried is in
-  `docs/archive/SHIPPED-2026-09.md`. What is still OWED of MCP is a release gate, not a
-  decision — see the MCP row under *Release gates*.
+- [x] **MCP D2 — `wp_login_url` for scratch sites.** ✓ 5 Sep 2026 — **SETTLED by the owner:
+  a login link everywhere, real or scratch, never a password.** Real sites already had it
+  (`wp_user` → `login_url`, parity P3); `scratch_login_url` lands the scratch half (ledger
+  #515, L0 + `mcp_scratch_check`'s refusal leg; SMOKE §M2a step 7a is the eyes-on leg).
+  Every planned MCP milestone (M1, M2a, M2b, M3) and parity P1–P7 are shipped; what is
+  still OWED of MCP is a release gate — see the MCP row under *Release gates*.
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)
 

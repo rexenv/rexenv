@@ -883,6 +883,16 @@ YOUR OWN sites in the list. Keep the Sites page visible.
   checkout** and ask it to run something that reads your change → it should sync
   first. **Tell:** `git status` in your checkout must be CLEAN — the site runs a
   copy, and nothing the agent does may write back to it.
+- [ ] **7a. Log in without a password (D2, 5 Sep 2026).** Ask: *"give me a login link
+  for that scratch site."* → the reply carries a `https://<scratch>/?rexenv_login=…` link
+  and says it is single-use and expires in two minutes. Open it → **wp-admin, signed in as
+  the primary administrator, no login form.** Open the SAME link again → an ordinary
+  WordPress page (the token was spent). The feed shows `scratch_login_url` with the site
+  and nothing else — no URL, no token. Then ask for a link into one of your OWN sites
+  through the same phrasing → it must come from `wp_user`'s `login_url` and needs your
+  manage grant; with the dial at Read it is refused, naming the dial. **Tell:** a link
+  that logs in twice, a token in the feed, or a password reset appearing in your users
+  list — any one is a HOLD (the promise is "never a password").
 - [ ] **8. ⚠ THE TIER BOUNDARY — the step this section exists for.** Ask, naming one
   of your OWN sites: *"run `wp plugin list` on `<your real site>`"*, then
   *"delete `<your real site>`"*, then *"copy my plugin into `<your real site>`"*.

@@ -1198,7 +1198,12 @@ real thing.
    forced S1 (clone, not symlink — §4.4). A raw-runner decision does not stay
    local to its own tool; it deletes every guarantee elsewhere that depended on
    knowing which commands run.
-2. **D2 — `wp_login_url` scratch-only: include?** Recommend include (cheap,
+2. **D2 — `wp_login_url` scratch-only: include? SETTLED 5 Sep 2026 by the owner, WIDER
+   than asked: a login link EVERYWHERE — real sites through `wp_user` → `login_url`
+   (parity P3, `manage`), scratch sites through `scratch_login_url` (ledger #515) — always
+   rexenv's magic token, never a password set or reset, usable from a browser or
+   headlessly (cookie jar + redirect). The "never real sites" line in §3.5 and §5 is
+   therefore superseded by the parity dial (D15). Original text:** Recommend include (cheap,
    human-in-the-loop useful); drop without argument if it reads as surface for
    surface's sake.
 3. **D3 — real-site mutation (T1). SETTLED: left unpromised.** The plan is
