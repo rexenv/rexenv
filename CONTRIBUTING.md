@@ -97,8 +97,9 @@ because"), its ledger row lands in the SAME commit.
 
 ## Working conventions
 
-- **Plan first.** Non-trivial work starts with a written plan (docs/PLAN-*.md for
-  features); surface assumptions before building. One task at a time.
+- **Plan first.** Non-trivial work starts with a written plan (`docs/PLAN-<feature>.md`
+  while in flight; it moves to `docs/archive/` when shipped); surface assumptions before
+  building. One task at a time. `./scripts/status.py` shows what is open and in flight.
 - **One commit per task**, each leaving verify.sh green. Tick the matching item in
   `docs/TODO.md` with a one-line ✓ evidence note in the same commit.
 - **Live checks are the integration layer.** `src-tauri/examples/*.rs` run against

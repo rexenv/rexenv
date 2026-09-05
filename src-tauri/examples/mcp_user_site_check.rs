@@ -6,7 +6,7 @@
 //!
 //! The companion to `mcp_scratch_check` (the executing registry) and
 //! `mcp_socket_check` (the read registry). This one drives the THIRD registry
-//! (`mcp_server/user_sites.rs`, `docs/PLAN-mcp-parity.md`), so what it checks
+//! (`mcp_server/user_sites.rs`, `docs/archive/PLAN-mcp-parity.md`), so what it checks
 //! is the thing the unit tests' fake app cannot: that the refusals hold when
 //! the call arrives as bytes on a socket through the real dispatch, that a
 //! granted change really runs the app's own command against a real row, and

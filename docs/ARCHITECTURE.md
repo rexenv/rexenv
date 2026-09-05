@@ -134,7 +134,7 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   `{`/`}` — Caddy expands placeholders in quoted strings; control chars) and escape
   `\`/`"`. Plain text in generated configs — not a secrets store.
 
-### Stopping ONE site (v44, `docs/PLAN-per-site-lifecycle.md`)
+### Stopping ONE site (v44, `docs/archive/PLAN-per-site-lifecycle.md`)
 
 Read the topology above and the question answers itself: a default site has **no
 process of its own**. The web server is one shared nginx, and the php-fpm pool is
@@ -425,7 +425,7 @@ Live-proven end to end by `site_stop_start_check`.
   UI uses, so the tray can never be a second answer or a second path. Rebuilt on a ~5s
   tick, and ONLY when the spec actually differs — macOS closes an open menu when its
   items are replaced.
-  `docs/PLAN-menubar-tray.md`.
+  `docs/archive/PLAN-menubar-tray.md`.
 - **Services OUTLIVE the app.** Closing rexenv stops nothing. On launch,
   `adopt_startup()` ADOPTS rexenv-owned survivors as pid-based `Proc::Adopted` handles —
   status/Start all/Stop all treat them like spawned children. Ownership gate = process
@@ -509,7 +509,7 @@ Live-proven end to end by `site_stop_start_check`.
   best-effort GET of `releases/active.php?json` whose ONLY output is a version string per
   minor, rendered beside the pin as `8.3.33 exists`. It selects nothing — `source`,
   `sha256` and the rest of that document are never read, and a guard asserts exactly one
-  field is. This is what shipped INSTEAD of a signed manifest (`docs/PLAN-binary-updates.md`
+  field is. This is what shipped INSTEAD of a signed manifest (`docs/archive/PLAN-binary-updates.md`
   §12): no key, no button, no new trust surface. **The copy is load-bearing** — php.net is
   ahead of static-php.dev (where 8.x actually comes from) by weeks, so a newer patch can
   exist that rexenv cannot install; "exists" stays true where "update available" would not,
@@ -596,7 +596,7 @@ Live-proven end to end by `site_stop_start_check`.
   agent tools and the ini `-t` gate all read it, enforced by a source scan (#353), because
   the pin needs no `Connection` and so compiles anywhere it does not belong. The publish
   side is one command in the runtimes repo (`scripts/publish-manifest.sh`). Ledger
-  #348–#355; design in `docs/PLAN-binary-updates.md`.
+  #348–#355; design in `docs/archive/PLAN-binary-updates.md`.
 - **ADMINER is the SECOND family in that manifest**, and the limits are per family
   (`updates::Family`). Its grant is strictly below PHP's — `Shape::File` →
   `resolve_file`, no chmod, no codesign, never spawned, interpreted by an already-running
@@ -613,7 +613,7 @@ Live-proven end to end by `site_stop_start_check`.
   frame bound. `adminer::effective_version` is the ONE answer to "which Adminer", the row
   lives on the Databases screen (its only entry point), and there is no "exists" chip
   because rexenv downloads Adminer's own release asset. Ledger #361–#369; design in
-  `docs/PLAN-adminer-updates.md`.
+  `docs/archive/PLAN-adminer-updates.md`.
 - **A PHP version resolves to the source that PUBLISHES it.** Most come from
   static-php.dev's bulk builds; the ones nobody publishes portably are built by
   `rexenv/runtimes` CI and hosted as GitHub Release assets (`php_url` /
@@ -623,7 +623,7 @@ Live-proven end to end by `site_stop_start_check`.
   permanent — a rebuild is a NEW tag, never a re-upload, so a pin may 404 but can
   never resolve to different bytes. An EMPTY checksum const reads as unpinned, which
   is what keeps a version wired-but-unresolvable until its artifact exists
-  (`docs/PLAN-php-74-support.md`).
+  (`docs/archive/PLAN-php-74-support.md`).
 - **"In-tree" for a bundle means the load command RESOLVES under the bundle root**,
   not that it starts with `@loader_path/`. Treating the prefix as proof let deps
   spelled `@loader_path/../../../../opt/<formula>/lib/…` through both the rewrite and
@@ -658,7 +658,7 @@ Live-proven end to end by `site_stop_start_check`.
   vhost roots at, so Laravel's `.env` is never a public URL — read ONLY through
   `Site::served_root()`) · v33 `sites.git_url` + `git_ref` (the repository a
   cloned site's code came from; NULL is EXACT for pre-v33 rows because nothing
-  could clone into a docroot before it — `docs/PLAN-git-site-clone.md`) ·
+  could clone into a docroot before it — `docs/archive/PLAN-git-site-clone.md`) ·
   v34 `sites.git_migrate` (NULL = ON; recorded because Retry rebuilds the phase
   list from the row) · v35 `sites.git_build_assets` (NULL = OFF — the opposite
   default, and equally exact: no provisioning ever ran a package manager before it). ·
@@ -686,7 +686,7 @@ Live-proven end to end by `site_stop_start_check`.
   database, not the ServiceManager, because services outlive the app and a stopped site
   that came back on after a relaunch would be the user's decision quietly reversed.
   DEFAULT 1 with no backfill, and that is exact rather than safe: before the column,
-  stopping one site was impossible — `docs/PLAN-per-site-lifecycle.md`).
+  stopping one site was impossible — `docs/archive/PLAN-per-site-lifecycle.md`).
   Per-engine DB versions are settings-KV rows (`db_version_<engine>`), not a migration.
   *(This list read "currently 25" for eight migrations — restored 11 Aug 2026.
   A count is the one part of a list that goes wrong silently, so check it
@@ -989,7 +989,7 @@ IPC surface — which is how a reader ends up designing against a system with on
   M3 (database access, agent principals, the first consent dialog)
   SHIPPED 24–25 Aug 2026 (#398–#404) — this bullet said "not built" until 3 Sep 2026,
   nine days after, while the `db_query` bullet below described the shipped thing. Parity
-  (`docs/PLAN-mcp-parity.md`) shipped 3 Sep 2026, P1–P7; D15 replaced its per-site grants
+  (`docs/archive/PLAN-mcp-parity.md`) shipped 3 Sep 2026, P1–P7; D15 replaced its per-site grants
   with one dial the same day, and **D16 (4 Sep 2026) retired M3's consent dialog and the
   mail sub-toggle** — both were reads, and Read is what the endpoint being on means.
 - **The honest guarantee, first, because it constrains everything below.** This is **not
@@ -1797,7 +1797,7 @@ IPC surface — which is how a reader ends up designing against a system with on
     like every other type.
 - **A SITE from Git** (v33 · `core/sites.rs::{validate_git_source, clone_into_docroot}` +
   the `clone`/`deps`/`finalize` phases in `commands/site_provision.rs` ·
-  `docs/PLAN-git-site-clone.md`): a repository is the **third source for a docroot**,
+  `docs/archive/PLAN-git-site-clone.md`): a repository is the **third source for a docroot**,
   after "rexenv makes it empty" and "the user points at theirs" — not a new site type.
   `NewSite.git_url`/`git_ref`; Laravel and Blank PHP only.
   - **One validator, asked twice.** `validate_git_source` runs in `provision_with`

@@ -1854,7 +1854,7 @@ impl MacosBinaryProvider {
     /// dyld: Library not loaded: @loader_path/../../../../opt/tidy-html5/lib/libtidy.58.dylib
     /// ```
     ///
-    /// Reproduced end to end 14 Aug 2026 (`docs/PLAN-php-74-support.md` §5.2), and
+    /// Reproduced end to end 14 Aug 2026 (`docs/archive/PLAN-php-74-support.md` §5.2), and
     /// the failure is unrecoverable in the field: `resolve_bundle`'s early return
     /// only checks that the `member` file EXISTS, so the dead tree is cached and
     /// every later resolve short-circuits to it. The guard's claimed surface is
@@ -2661,7 +2661,7 @@ mod tests {
     fn an_escaping_loader_path_is_not_mistaken_for_in_tree() {
         let root = Path::new("/cache/php-7.4.33");
         let bin = Path::new("/cache/php-7.4.33/bin/php");
-        // Real strings, read off the bottle (docs/PLAN-php-74-support.md §5.2).
+        // Real strings, read off the bottle (docs/archive/PLAN-php-74-support.md §5.2).
         for dep in [
             "@loader_path/../../../../opt/tidy-html5/lib/libtidy.58.dylib",
             "@loader_path/../../../../opt/openssl@3/lib/libssl.3.dylib",

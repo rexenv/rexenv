@@ -388,7 +388,7 @@ function PhpVersionRow({
           {/* An upstream FACT, not an offer. rexenv installs verified builds
               from static-php.dev, which trails php.net by weeks, so this can
               name a version rexenv has no build of — "exists" stays true where
-              "update available" would not (docs/PLAN-binary-updates.md §13).
+              "update available" would not (docs/archive/PLAN-binary-updates.md §13).
               Suppressed when the Update button already names the same version:
               a chip saying 8.2.32 "exists" next to a button offering 8.2.32
               reads as two different versions, and the whole point of the chip

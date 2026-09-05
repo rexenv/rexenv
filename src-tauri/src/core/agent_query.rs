@@ -1,5 +1,5 @@
 //! The agent read path: a native MySQL connection, never the bundled client
-//! (`docs/PLAN-mcp-server.md` §3.6, M3 stage 2b).
+//! (`docs/archive/PLAN-mcp-server.md` §3.6, M3 stage 2b).
 //!
 //! ## Why this is a deliberate departure from the bundled-client rule
 //!

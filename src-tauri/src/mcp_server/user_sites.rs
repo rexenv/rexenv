@@ -1,6 +1,6 @@
 //! Parity tools — the THIRD registry: tools that act on the USER's own sites
 //! and on the stack, each behind a scope grant the user gave in the app
-//! (`docs/PLAN-mcp-parity.md` §3, `core::agent_grants`).
+//! (`docs/archive/PLAN-mcp-parity.md` §3, `core::agent_grants`).
 //!
 //! **Why a third module, not more rows in `scratch.rs`.** The registry IS the
 //! capability: a `Read` tool's handler holds a `ReadCtx` (no mutator), a

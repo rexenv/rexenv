@@ -231,7 +231,7 @@ pub fn agent_activity_clear(state: State<'_, AppState>) -> Result<usize> {
     feed::clear(&conn)
 }
 
-// ── Agent access — the ONE dial (`docs/PLAN-mcp-parity.md` §7, D15–D17) ───────
+// ── Agent access — the ONE dial (`docs/archive/PLAN-mcp-parity.md` §7, D15–D17) ───────
 //
 // USER-driven: no IPC an agent can reach, and the three settings keys are
 // Denied to the `settings` tool and the CLI. D17 folded the last per-call

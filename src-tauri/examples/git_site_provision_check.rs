@@ -1,5 +1,5 @@
 //! Live check: creating a site FROM A GIT REPOSITORY, end to end through the
-//! REAL provisioning command (`docs/PLAN-git-site-clone.md`, Stages 1–4).
+//! REAL provisioning command (`docs/archive/PLAN-git-site-clone.md`, Stages 1–4).
 //! Run: `cargo run --example git_site_provision_check`
 //!
 //! `git_site_clone_check` (sandbox tier) proves the clone/move/cleanup

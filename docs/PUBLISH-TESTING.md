@@ -514,7 +514,7 @@ de-quarantine), `rex` is on PATH, `--zap` cleans user-level state. Reminder: run
 run against a real root-owned foreign file. Creating one on the dev machine to test was
 deliberately refused. The logic is unit-tested against fixture directories
 (`core::dns::owner_of`) and the ABSENT-file path is live-verified; these two paths are
-fixture-only. Plan: `docs/PLAN-valet-herd-import.md` §4.
+fixture-only. Plan: `docs/archive/PLAN-valet-herd-import.md` §4.
 
 Needs a VM (or a spare macOS account/machine) with **Valet or Herd installed and started
 at least once**, so `/etc/resolver/<tld>` genuinely exists and is theirs.
@@ -661,7 +661,7 @@ exactly with the scan, not that any machine matches the original pass.
    import it on", still shows their pin, and disables its checkbox until you pick one.
    **Needs a fixture project isolated to a minor rexenv genuinely does not ship** —
    this said "a legacy 7.4-isolated project" on the belief 7.4 was unshippable, which
-   `docs/PLAN-php-74-support.md` retired. Check the shipped set first and pick below
+   `docs/archive/PLAN-php-74-support.md` retired. Check the shipped set first and pick below
    it (7.2 today), or this gate silently stops testing the amber branch it names.
 6. **Docroot resolution** — a Laravel/Bedrock row must show `(serving public/)`
    or `(serving web/)`, not the project root. **Two amber "needs attention" cases are

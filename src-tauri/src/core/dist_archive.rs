@@ -144,7 +144,7 @@ pub const DISTIGNORE_STARTER: &str = ".git\n.github\n.gitignore\n.distignore\n\
 /// **This is the feature, not a safety rail around it.** Without the file,
 /// dist-archive archives *everything* — `.git`, `node_modules`, editor
 /// droppings — and reports it as `Success:` with exit 0 (measured; see
-/// `docs/PLAN-dist-archive.md` §1.2). There is no `.gitignore` fallback: that
+/// `docs/archive/PLAN-dist-archive.md` §1.2). There is no `.gitignore` fallback: that
 /// existed before 3.0 and is gone, so the harmful outcome is the DEFAULT one and
 /// it announces itself as a success. A zip like that, uploaded to wp.org or sent
 /// to a client, is worse than no zip.

@@ -17,7 +17,7 @@
 //! # What the signature does and does not buy
 //!
 //! Stated here rather than implied, because the honest limits are the reason this
-//! was argued about for two days (`docs/PLAN-binary-updates.md` §1–§3):
+//! was argued about for two days (`docs/archive/PLAN-binary-updates.md` §1–§3):
 //!
 //! - It DOES defend against the manifest host being compromised on its own — a
 //!   CDN, a mirror, a stolen upload token — and against tampering past TLS.

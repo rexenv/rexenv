@@ -1,5 +1,5 @@
 //! The database principals an MCP agent connects AS — names, and the SQL that
-//! provisions them (`docs/PLAN-mcp-server.md` §3.6, M3 stage 2).
+//! provisions them (`docs/archive/PLAN-mcp-server.md` §3.6, M3 stage 2).
 //!
 //! ## Why this is not `dbmirror`
 //!

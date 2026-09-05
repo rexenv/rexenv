@@ -1,7 +1,12 @@
 # PLAN — the menu-bar app (tray) — rexenv lives in the menu bar, not in the dock
 
-**Status:** planned 31 Aug 2026, not started. Approved shape: **menu-bar only, no dock
-icon** (owner's ruling, 31 Aug 2026).
+**Status: SHIPPED 31 Aug – 1 Sep 2026** — all four phases (A1–A9, B1–B7, C1–C3, D1–D7),
+ledger #436–#441; the second-instance guard (#441, the CLI socket as the lock) landed
+1 Sep. Kept as the design record. **This header said "not started" until 5 Sep 2026**,
+five days after the feature shipped, while §4 below already carried the shipped verdict —
+the same stale-header shape `PLAN-binary-updates.md` and `PLAN-mcp-server.md` paid for.
+Originally: planned 31 Aug 2026. Approved shape: **menu-bar only, no dock icon** (owner's
+ruling, 31 Aug 2026).
 
 ## 1. The problem, stated as the user hit it
 

@@ -551,7 +551,7 @@ const MIGRATIONS: &[&str] = &[
     // their app ships.
     "ALTER TABLE php_versions ADD COLUMN selected_patch TEXT;",
     // v38 — an agent's permission to READ one site's database, recorded with
-    // the clock it dies on (MCP M3, `docs/PLAN-mcp-server.md` §3.6).
+    // the clock it dies on (MCP M3, `docs/archive/PLAN-mcp-server.md` §3.6).
     //
     // A grant is RECORDED, never re-derived. There is no rule that could
     // reconstruct "this user allowed Claude Code to read mysite.rex at 14:02 on
@@ -634,7 +634,7 @@ const MIGRATIONS: &[&str] = &[
         PRIMARY KEY (site_id, domain)
     );",
     // v43 — an agent's permission to ACT on the user's own sites, or on the
-    // stack, by SCOPE (MCP parity, `docs/PLAN-mcp-parity.md` §3).
+    // stack, by SCOPE (MCP parity, `docs/archive/PLAN-mcp-parity.md` §3).
     //
     // v38's `agent_db_grants` generalised, not replaced: that table provisions a
     // database ACCOUNT per grant, which a scope row does not, so the two stay
@@ -683,7 +683,7 @@ const MIGRATIONS: &[&str] = &[
     // PHP minor, so "stop this site" can only mean "take it off the serving
     // surface" — no nginx server block, a Caddy route that keeps its cert and
     // answers 503, and only a site's OWN override backend actually stopped
-    // (`docs/PLAN-per-site-lifecycle.md`).
+    // (`docs/archive/PLAN-per-site-lifecycle.md`).
     //
     // In the DATABASE rather than in the ServiceManager because services outlive
     // the app. A stopped site that came back serving after a relaunch would be

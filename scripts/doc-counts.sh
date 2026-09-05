@@ -133,7 +133,7 @@ expect docs/CLI-ROADMAP.md "$CLI_CMDS commands shipped" "the rex command count"
 # no longer in any source file.
 #
 # The leading boundary is load-bearing: without it a path in the SIBLING repo —
-# `runtimes/docs/<file>`, which `docs/PLAN-adminer-updates.md` legitimately names
+# `runtimes/docs/<file>`, which `docs/archive/PLAN-adminer-updates.md` legitimately names
 # — matches from its `docs/` onward and is reported as dangling. Qualifying such
 # a path with its repo is the fix on the doc side; the boundary is the fix on
 # the scanner side, and both were needed.

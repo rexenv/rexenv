@@ -201,7 +201,7 @@ fn site_of(state: &AppState, site_id: &str) -> Result<crate::state::models::Site
 }
 
 /// The `kind` that means "the SITE's own checkout" rather than a folder under
-/// wp-content (Stage 3 of `docs/PLAN-git-site-clone.md`).
+/// wp-content (Stage 3 of `docs/archive/PLAN-git-site-clone.md`).
 pub(crate) const SITE_KIND: &str = "site";
 
 /// What a repo job operates on: the directory, the name to SHOW, and the slug

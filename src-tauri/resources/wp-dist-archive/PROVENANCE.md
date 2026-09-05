@@ -71,4 +71,4 @@ Measured at v3.1.0, and the feature above it is built around these:
 - **An occupied target path** triggers an interactive prompt that becomes an
   uncaught PHP fatal under a non-TTY.
 
-Full measurements: `docs/PLAN-dist-archive.md` §1.
+Full measurements: `docs/archive/PLAN-dist-archive.md` §1.

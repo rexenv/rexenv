@@ -1,5 +1,5 @@
 //! Live check for **creating a site from a git repository** (Stage 1 of
-//! `docs/PLAN-git-site-clone.md`). Run:
+//! `docs/archive/PLAN-git-site-clone.md`). Run:
 //! `cargo run --example git_site_clone_check`
 //!
 //! Hermetic on purpose: the "remotes" are bare repositories this example builds

@@ -3,7 +3,8 @@
 ⚠️ Everything in this folder is **historical**: phase plans, task logs with "Done when"
 evidence, the founding spec, design briefs, completed reviews, and the shipped-work
 log. It may contradict the current code. **Current truth lives in
-`docs/ARCHITECTURE.md` (how the system works) and `docs/TODO.md` (open work).** Read
+`docs/ARCHITECTURE.md` (how the system works), `docs/TODO.md` (open work) and the generated
+`docs/STATUS.md` (`scripts/status.py`).** Read
 here only to trace *why* a past decision was made or *when/how* something was fixed.
 Two global staleness notes: these files predate the `.test` → `.rex` default-TLD flip
 (every `.test` here would be `.rex` today), and the once-deferred services
@@ -13,6 +14,7 @@ bottle-bundle path — only OpenLiteSpeed remains blocked.
 | File | What it records |
 |------|-----------------|
 | `SHIPPED-2026-07.md` | The June–July 2026 completed-work evidence log (moved out of `docs/TODO.md` when it became open-items-only). |
+| `SHIPPED-2026-09.md` | 21 Aug → 5 Sep 2026: 93 finished blocks moved by `scripts/todo-reconcile.py` (menu-bar tray, per-site lifecycle, MCP M3 + parity P1, `rex` design-first set, Valet tails), plus the original text of rows the 5 Sep reconcile rewrote. |
 | `SHIPPED-2026-08.md` | The August 2026 completed-work evidence log — 57 finished blocks moved out of `docs/TODO.md` by the 21 Aug 2026 reconcile, plus the rows that reconcile found had shipped without ever being ticked. |
 | `PROJECT_SPEC.md` | Founding spec: decisions, feature tiers, phase plan, per-OS divergence notes for the future ports, the naming appendix. |
 | `DESIGN_BRIEF.md` | The prompt blocks that generated the comps in `/design` (repo root — kept there for its relative `support.js` paths). Its Design-DNA section now lives, refreshed, in `docs/DESIGN.md`. |
@@ -30,3 +32,33 @@ bottle-bundle path — only OpenLiteSpeed remains blocked.
 | `TASKS-PHASE3.md` | Phase 3 (WP Manager, Mailpit, Adminer, tunnels, multisite) task log. |
 | `TASKS-FIXES.md` | Pre-release fixes from the audit — all done. |
 | `TASKS-RELEASE.md` | The original limited-distribution .dmg packaging log (historical — predates open-sourcing); open tails tracked in `docs/TODO.md`. |
+
+## Design records — the shipped `PLAN-*.md` files (moved here 5 Sep 2026)
+
+Each was written BEFORE its feature and kept as the record of why it is shaped the way
+it is. The shipped behaviour is described in `docs/ARCHITECTURE.md`; the plan is where
+the rejected options, the measurements and the rulings live. A plan sits in `docs/`
+only while it is in flight (`scripts/status.py` lists those); it moves here when its
+own Status line says shipped. Three headers in this set went stale AFTER shipping
+(binary-updates, mcp-server, menubar-tray) — each says so in its first paragraph, which
+is why a header is checked against the code before it is believed.
+
+| File | What it records |
+|------|-----------------|
+| `PLAN-linked-sites.md` | Stage 0 of the Valet/Herd ladder, shipped as a first-class feature 26 Jul 2026: serve a folder from anywhere on disk (`docroot_managed`), never delete it. |
+| `PLAN-valet-herd-migration.md` | The empirical research behind all four migration stages (Valet/Herd layouts, port conflicts, engine compat, dump flags), against a real messy two-tool install. |
+| `PLAN-valet-herd-import.md` | Stage 1 (26 Jul 2026): read-only scan → review → import; the scan's mess taxonomy and the resolver ownership/takeover design. |
+| `PLAN-valet-herd-db-import.md` | Stage 2 (27 Jul 2026): dump/restore into rexenv, provenance, mirrored credentials; source stays strictly read-only. |
+| `PLAN-valet-herd-rewrite.md` | Stage 3 (28 Jul 2026): the opt-in connection rewrite — diff first, backup, the "connected" fact. |
+| `PLAN-dist-archive.md` | `wp dist-archive` from the RepoPanel (5 Aug 2026): bundle-path ruling, git-only by design. |
+| `PLAN-browser-preference.md` | Preferred browser + real app icons (11 Aug 2026): where the preference is enforced and why. |
+| `PLAN-git-site-clone.md` | Create a site FROM a git repo, Laravel first (11 Aug 2026): clone, `.env`, composer, migrate; the Bedrock break found the day it shipped. |
+| `PLAN-php-74-support.md` | PHP 7.4 (15 Aug 2026): rexenv's OWN build in `rexenv/runtimes`, self-build + hosting, the retired "has no build and never will" claim, EOL honesty. |
+| `PLAN-webview-dialog-proofs.md` | Why the WebKit/wry dialog (#166) and custom-scheme redirect (#40) claims are NOT L2-provable, and where each leg lives instead. |
+| `PLAN-binary-updates.md` | Signed-manifest in-app PHP patch updates (17–18 Aug 2026): the trust model, the key ceremony, the serial/replay gate. |
+| `PLAN-adminer-updates.md` | Adminer as the SECOND manifest family (18 Aug 2026): `updates::Family`, the binding probe. |
+| `PLAN-mcp-server.md` | MCP server M1/M2a/M2b/M3 (30 Jul – 25 Aug 2026): scratch sites, capability tiers, `db_query`; the honest "not a sandbox" guarantee (§6.0). |
+| `PLAN-mcp-parity.md` | MCP parity P1–P7 (3 Sep 2026): every app function agent-drivable on real sites; scopes, the global Agent access dial (D15–D17). |
+| `PLAN-menubar-tray.md` | The menu-bar app (31 Aug – 1 Sep 2026): why the CLI/MCP sockets died with the window, the no-dock-icon ruling, what Accessory costs, the second-instance guard. |
+| `PLAN-per-site-lifecycle.md` | Per-site start/stop + the Sites-page type filter (4 Sep 2026): stopping ONE site is a serving-surface change, not a process one. |
+| `GIT-FEATURE-TEST.md` | The manual checklist for Add plugin/theme from Git (phases 1–5), human-verified 18 Jul 2026; superseded by `docs/SMOKE-TEST.md`'s sections. |

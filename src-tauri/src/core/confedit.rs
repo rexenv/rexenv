@@ -1,5 +1,5 @@
 //! core::confedit — the connection-config rewrite: plan, diff, byte-preserving
-//! apply (Stage 3, `docs/PLAN-valet-herd-rewrite.md` §3).
+//! apply (Stage 3, `docs/archive/PLAN-valet-herd-rewrite.md` §3).
 //!
 //! This is the ONE place in the whole migration that prepares a write inside
 //! the user's project, and three guarantees are structural rather than

@@ -50,8 +50,8 @@ it on (`docs/ARCHITECTURE.md` §8.3).
 - **`docs/CLI-ROADMAP.md`** — the `rex` CLI: shipped command surface + remaining items.
 - **`CLAUDE.md`** — agent router: non-negotiable rules + "for X read Y" index.
 - **`docs/INSTALL.md`** / **`docs/SMOKE-TEST.md`** — user install guide / clean-Mac release checklist.
-- **`docs/PLAN-*.md`** — design records for the larger features (linked sites, the
-  Valet/Herd migration stages); statuses in each header.
+- **`docs/STATUS.md`** — generated (`scripts/status.py`): open work by section, ledger tally, plans in flight.
+- **`docs/archive/PLAN-*.md`** — design records for every shipped feature (why it is shaped the way it is); indexed in `docs/archive/README.md`. A plan lives in `docs/` only while in flight.
 - **`docs/archive/`** — historical: founding spec, design brief, phase task logs, audit record. May contradict current code.
 
 ## Tech stack
@@ -101,9 +101,9 @@ rexenv/
 ├── CONTRIBUTING.md             # build/run · the gate · conventions · deliberate decisions · DCO
 ├── docs/                       # ARCHITECTURE · MAP · TESTING · CLAIM-LEDGER · PORTS
 │   │                           #   TODO · INSTALL · SMOKE-TEST · PUBLISH-TESTING
-│   │                           #   CLI-ROADMAP · SIGNING · DESIGN · PLAN-*.md
+│   │                           #   CLI-ROADMAP · SIGNING · DESIGN · STATUS (generated)
 │   └── archive/                # historical: spec, design brief, task logs, audit,
-│                               #   shipped evidence log — may contradict current code
+│                               #   shipped evidence logs, PLAN-*.md design records — may contradict current code
 ├── package.json · tsconfig.json · vite.config.ts
 ├── tailwind.config.js · postcss.config.js · index.html
 │

@@ -4,7 +4,7 @@
 //!
 //! rexenv pins every binary it runs, and the pin is compiled in. That is what
 //! makes compromising a download host unable to reach an installed user, and
-//! `docs/PLAN-binary-updates.md` §12 rules that it stays that way: **there is no
+//! `docs/archive/PLAN-binary-updates.md` §12 rules that it stays that way: **there is no
 //! signed manifest and no Update button.** The complaint that motivated all of
 //! that analysis was smaller than the machinery it would have needed — *am I on
 //! something stale?* — and it can be answered without moving the security model
@@ -235,7 +235,7 @@ mod tests {
     ///
     /// This is the line the whole read-only ruling rests on: a URL or a digest
     /// read from here would turn a UI hint into a byte selector, and the trust
-    /// analysis (`docs/PLAN-binary-updates.md` §1–§3) would apply again in full.
+    /// analysis (`docs/archive/PLAN-binary-updates.md` §1–§3) would apply again in full.
     /// The sample deliberately carries `source` and `sha256` so the assertion is
     /// about a document that HAS them.
     #[test]

@@ -1,5 +1,5 @@
 //! core::dbimport — reading a site's OWN database connection settings, and the
-//! vocabulary for what we found (Stage 2, `docs/PLAN-valet-herd-db-import.md`).
+//! vocabulary for what we found (Stage 2, `docs/archive/PLAN-valet-herd-db-import.md`).
 //!
 //! The source environment is strictly read-only: this module opens their config
 //! files as text and nothing else. Parsing lives in [`crate::core::phpconf`] —

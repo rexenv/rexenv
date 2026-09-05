@@ -1,5 +1,5 @@
 //! core::dbdump — the preflight gate and the dump itself (Stage 2 step 5,
-//! `docs/PLAN-valet-herd-db-import.md` §5).
+//! `docs/archive/PLAN-valet-herd-db-import.md` §5).
 //!
 //! **The preflight refuses in cost order, and the order is structural.** The
 //! checks that need no connection run first ([`gate`]: is-this-server-us, then

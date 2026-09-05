@@ -105,7 +105,7 @@ browser renders it.
 - [ ] **New site → Blank PHP → Database: None** → the page loads with the "No
       database" panel and NO engine download happened.
 
-## Core: a Laravel site FROM a git repository (`docs/PLAN-git-site-clone.md`)
+## Core: a Laravel site FROM a git repository (`docs/archive/PLAN-git-site-clone.md`)
 
 Only the packaged app can prove this end to end: real event streaming into the
 WKWebView, the real login-shell env (your nvm/ssh-agent), and a real remote.
@@ -937,7 +937,7 @@ here meant it ran only when MCP was enabled. Run it there, before this section.)
   → REFUSED, and the refusal must **name the versions rexenv does have**. Ask for
   whatever `php::unshipped_minor()` currently returns if 7.2 ever ships — this step
   used to say 7.4 on the belief 7.4 was unshippable, and
-  `docs/PLAN-php-74-support.md` retired that. Then ask for 8.1 → it switches, and
+  `docs/archive/PLAN-php-74-support.md` retired that. Then ask for 8.1 → it switches, and
   SiteDetail shows 8.1. First
   switch to a version downloads it, so expect a slow call once.
   **Tells:** it silently uses a different version (an agent would then report a

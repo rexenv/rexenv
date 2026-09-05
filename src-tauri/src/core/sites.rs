@@ -2000,7 +2000,7 @@ pub enum Ownership {
         ttl_hours: i64,
     },
     /// The USER's site, created on their behalf by an agent under a scope grant
-    /// (MCP parity, `docs/PLAN-mcp-parity.md` §4.1). Recorded exactly as `User`
+    /// (MCP parity, `docs/archive/PLAN-mcp-parity.md` §4.1). Recorded exactly as `User`
     /// — `origin='user'`, no client badge, no clock, never reaped — because the
     /// user asked for it (the grant is the asking). What differs is the one
     /// thing a grant is NOT: an administrator password. So it never prompts,

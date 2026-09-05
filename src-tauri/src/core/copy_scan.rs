@@ -604,7 +604,7 @@ const LINK = "https://example.test/a//b";
     ///
     /// "8.4.24 exists · this build pins 8.4.23" survives that. "Update
     /// available" does not — it promises something no button can deliver, and
-    /// there is deliberately no button (`docs/PLAN-binary-updates.md` §12/§13).
+    /// there is deliberately no button (`docs/archive/PLAN-binary-updates.md` §12/§13).
     /// "Up to date" is worse in the other direction: unprovable before the
     /// first successful check, and false whenever static-php lags.
     ///

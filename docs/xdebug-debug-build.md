@@ -92,7 +92,7 @@ shasum -a 256 php-8.3.31-*-xdebug-macos-*.tar.gz   # → the four SHA-256s
    contradiction to be found at upload time, by whoever is reading this line.
    The host is no longer a string that can be wrong: php-debug URLs are built
    from `RUNTIMES_RELEASE_BASE`, the same const the 7.4 artifacts use.
-   The reasons are in `docs/PLAN-php-74-support.md` §6, and the one that
+   The reasons are in `docs/archive/PLAN-php-74-support.md` §6, and the one that
    decided it is that a release there is IMMUTABLE and its tag is never reused, so
    a pinned URL can 404 but can never resolve to different bytes — which is
    exactly what static-php.dev and FrankenPHP cannot promise.

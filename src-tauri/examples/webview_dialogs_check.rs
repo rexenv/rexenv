@@ -6,7 +6,7 @@
 //!
 //! Spawns nothing, binds nothing, writes nothing, and — deliberately — shows
 //! NO dialogs: driving a native NSAlert needs synthetic clicks, which are off
-//! the table on a dev machine (see docs/PLAN-webview-dialog-proofs.md §5).
+//! the table on a dev machine (see docs/archive/PLAN-webview-dialog-proofs.md §5).
 //! What a real WebKit CAN prove headless is the installation mechanics:
 //!
 //!   1. before install, the delegate's class answers none of the three JS

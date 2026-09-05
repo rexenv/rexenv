@@ -74,7 +74,7 @@ pub fn patch_for_minor(minor: &str) -> Option<&'static str> {
 /// Why this is a function and not a `"7.4"` in each test. `7.4` was hardcoded as
 /// this fixture in eight asserts, one live example and two manual steps, on the
 /// strength of a comment saying static-php.dev would never publish it
-/// (`docs/PLAN-php-74-support.md` retires that). The moment 7.4 gains a pinned
+/// (`docs/archive/PLAN-php-74-support.md` retires that). The moment 7.4 gains a pinned
 /// build, `is_outdated_php_cache("php-7.4.33")` keeps **passing** — for the
 /// OPPOSITE reason: 7.4.33 becomes the pinned patch, so "not outdated" is
 /// trivially true and the unpinned-minor branch it was written to cover goes
@@ -116,7 +116,7 @@ pub fn unshipped_patch() -> String {
 /// 2023, 8.1 on 31 Dec 2025, and the app offered both with the same face as 8.4.
 /// Adding 7.4 would have made it a third silently-dead runtime, which
 /// `docs/DESIGN.md`'s "the sentence in front of the button that starts it" rule
-/// forbids (`docs/PLAN-php-74-support.md` §4.3).
+/// forbids (`docs/archive/PLAN-php-74-support.md` §4.3).
 fn security_end(minor: &str) -> Option<&'static str> {
     Some(match minor {
         "7.4" => "2022-11-28",
@@ -1271,7 +1271,7 @@ mod tests {
     fn minors_and_patches_track_pinned_builds() {
         let minors = all_minors();
         // The offered set today. A minor JOINING it is a deliberate pin change
-        // (docs/PLAN-php-74-support.md), so this list is a floor, not a ceiling.
+        // (docs/archive/PLAN-php-74-support.md), so this list is a floor, not a ceiling.
         for want in ["8.0", "8.1", "8.2", "8.3", "8.4", "8.5"] {
             assert!(minors.contains(&want.to_string()), "missing {want}");
         }

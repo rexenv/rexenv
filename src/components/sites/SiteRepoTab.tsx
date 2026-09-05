@@ -1,4 +1,4 @@
-/** The site's OWN checkout — Stage 3 of docs/PLAN-git-site-clone.md.
+/** The site's OWN checkout — Stage 3 of docs/archive/PLAN-git-site-clone.md.
  *
  *  Deliberately the same `RepoPanel` the Plugins/Themes tabs use, pointed one
  *  level up at the project root: branch, dirtiness, ahead/behind, fetch / pull

@@ -1,6 +1,8 @@
 # MCP parity — every rexenv function drivable by an agent
 
-**Status: PLANNED 3 Sep 2026; D8–D13 ALL SETTLED by the owner the same day, on the recommendations (§7); P1 (the foundation) SHIPPED the same day in six commits, ledger #468–#474 — see `docs/TODO.md` for the per-task evidence. Next: P2, the site lifecycle.** This is the TODO list for the MCP
+**Status: SHIPPED 3 Sep 2026, P1–P7.** Planned 3 Sep 2026; D8–D13 settled by the owner the same day, on the recommendations (§7); P1 (the foundation) shipped in six commits, ledger #468–#474 (per-task evidence: `docs/archive/SHIPPED-2026-09.md`). ****P2–P7 ALL SHIPPED 3 Sep 2026** (§5 lists each one's ledger rows; D14–D17 settled 3–4 Sep, the
+one global Agent access dial). What a human still owes is the SMOKE legs, tracked in `docs/TODO.md`
+under *Release gates*. This header said "Next: P2" for two days after P7 shipped.** This is the TODO list for the MCP
 server after every milestone in `docs/PLAN-mcp-server.md` shipped (M1, M2a, M2b, M3).
 It has two halves, and they are different kinds of work:
 

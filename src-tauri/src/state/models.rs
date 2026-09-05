@@ -287,7 +287,7 @@ pub struct Site {
     /// SERVING SURFACE, not to any process: no nginx server block, a Caddy route
     /// that keeps its certificate and answers 503, and only a site's OWN override
     /// backend (FrankenPHP/Apache) actually stopped. See
-    /// `docs/PLAN-per-site-lifecycle.md`.
+    /// `docs/archive/PLAN-per-site-lifecycle.md`.
     ///
     /// Recorded rather than held in memory because services OUTLIVE the app: a
     /// site the user stopped must still be stopped after a relaunch, and the

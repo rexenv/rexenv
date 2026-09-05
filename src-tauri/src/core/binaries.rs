@@ -42,7 +42,7 @@ pub const PHP_DEBUG_XDEBUG_VERSION: &str = "3.4.5";
 ///
 /// **This const replaced a base URL naming `dl.rexenv.dev`, and the replacement
 /// is the point.** B33 moved php-debug hosting to GitHub Releases in
-/// `rexenv/runtimes` (`docs/PLAN-php-74-support.md` §6/§9) and
+/// `rexenv/runtimes` (`docs/archive/PLAN-php-74-support.md` §6/§9) and
 /// `docs/xdebug-debug-build.md` recorded that `dl.rexenv.dev` "is not used" —
 /// while the code went on building every php-debug URL from that dead host. A
 /// doc asserting a state the code contradicts is a shape this project has
@@ -173,7 +173,7 @@ pub const BUNDLED_APR_UTIL_VERSION: &str = "1.6.3";
 /// **This is a DEFAULT, not the law.** Xdebug's own support windows close: 3.1.6
 /// is the last release for PHP 7.4 and no later one will ever exist, so a single
 /// app-wide pin would make `xdebug-7.4` unresolvable by construction the day 7.4
-/// ships (`docs/PLAN-php-74-support.md` §4.6). The per-minor version lives in
+/// ships (`docs/archive/PLAN-php-74-support.md` §4.6). The per-minor version lives in
 /// [`xdebug_bottle`]'s table beside the digests it must agree with — one row, one
 /// version, one pair of hashes, so a minor cannot end up asking for a `.so` that
 /// was never pinned for it.
@@ -708,7 +708,7 @@ const RUNTIMES_RELEASE_BASE: &str = "https://github.com/rexenv/runtimes/releases
 /// publishes 8.x only, and 7.4 is not published anywhere (verified: every
 /// `dl.static-php.dev/.../php-7.4.3*` URL 404s). Those are built by
 /// `rexenv/runtimes` CI and hosted as GitHub Release assets
-/// (`docs/PLAN-php-74-support.md` §2/§6).
+/// (`docs/archive/PLAN-php-74-support.md` §2/§6).
 ///
 /// **The FULL tag lives here and goes into the pinned URL**, rather than a stable
 /// base + a separate version const. Both of rexenv's existing upstreams —
@@ -775,7 +775,7 @@ pub fn install_catalog(cat: crate::core::updates::VersionCatalog) {
 /// Order is load-bearing. A compiled-in pin can never be overridden by a
 /// manifest — so a signed document, however valid, cannot move a version the app
 /// already knows onto different bytes. The catalog may only ADD versions the app
-/// was built before, which is the whole property `docs/PLAN-binary-updates.md`
+/// was built before, which is the whole property `docs/archive/PLAN-binary-updates.md`
 /// §2 calls "the compiled-in pins remain the floor".
 fn php_spec(kind: &str, version: &str, arch: Arch) -> Option<BinarySpec> {
     if let Some(hex) = php_sha256(kind, version, arch) {
@@ -894,7 +894,7 @@ fn php_url(kind: &str, version: &str, arch: Arch) -> String {
 ///
 /// PHP 7.4 is EOL, so there is no php.net release to name: the build takes
 /// `shivammathur/php-src-backports` (vanilla 7.4.33 does not compile against
-/// OpenSSL 3.6). `docs/PLAN-php-74-support.md` §11 states the risk this const
+/// OpenSSL 3.6). `docs/archive/PLAN-php-74-support.md` §11 states the risk this const
 /// answers in its own words — **"the backports branch is one volunteer's rebased
 /// branch; if it stops, the artifact quietly becomes a frozen, known-vulnerable
 /// PHP"** — and a rebased branch is the case where a branch NAME is worth
@@ -1912,7 +1912,7 @@ fn cached_bundle_dir_in(bin_dir: &Path, name: &str, version: &str, member: &str)
 /// - **Each minor's EFFECTIVE patch** — the user's in-app update choice floored
 ///   by the pin (`php::effective_patches`). This is the only thing standing
 ///   between the GC and the tree the user just selected and is serving from; the
-///   8 Aug draft of `docs/PLAN-binary-updates.md` §6 promised "the new tree is
+///   8 Aug draft of `docs/archive/PLAN-binary-updates.md` §6 promised "the new tree is
 ///   not deleted" while the GC was keyed on the pin alone, which is precisely
 ///   what would have deleted it.
 /// - **Every patch a pool is LIVE on.** Not redundant with the above: this block
@@ -3650,7 +3650,7 @@ mod tests {
     /// 7.4's last Xdebug is 3.1.6 and no later one will exist, so a single
     /// constant would make `xdebug-7.4` unresolvable the day 7.4 ships —
     /// silently, because `bundle_manifest` returning None reads exactly like
-    /// "this minor has no Xdebug" (`docs/PLAN-php-74-support.md` §4.6).
+    /// "this minor has no Xdebug" (`docs/archive/PLAN-php-74-support.md` §4.6).
     #[test]
     fn a_minors_xdebug_version_comes_from_its_own_row() {
         // A row frozen OFF the default — the shape 7.4 will have. Built here
@@ -4110,7 +4110,7 @@ mod tests {
     /// 7.4 comes from `shivammathur/php-src-backports`, a REBASED branch, so the
     /// branch name is not an identifier — it is rewritten rather than appended,
     /// and two builds a year apart can share it while sharing no code.
-    /// `docs/PLAN-php-74-support.md` §11 asks for the commit to be recorded in
+    /// `docs/archive/PLAN-php-74-support.md` §11 asks for the commit to be recorded in
     /// the pin comment for exactly that reason.
     ///
     /// It was already in `THIRD-PARTY-NOTICES.md`, which is why this is a
@@ -4231,7 +4231,7 @@ mod tests {
     /// a day. README carried the same claim in its own words.
     ///
     /// The part worth encoding is that **it was flagged in advance and shipped
-    /// anyway**. `docs/PLAN-php-74-support.md` §6.5 named this exact file and line
+    /// anyway**. `docs/archive/PLAN-php-74-support.md` §6.5 named this exact file and line
     /// range, and called it the one item on the plan that a later commit could not
     /// fix. Then the build landed, the docs sweep ran, and the sentence did not
     /// move. So the lesson is not "remember the notices" — an author who had
@@ -4448,7 +4448,7 @@ mod tests {
     /// Two failures in one rule, and each was live at some point:
     ///
     /// - Keying the sweep on the PIN deleted, at the next launch, the exact tree
-    ///   the user just chose and is serving from — `docs/PLAN-binary-updates.md`
+    ///   the user just chose and is serving from — `docs/archive/PLAN-binary-updates.md`
     ///   §6's landmine.
     /// - Keeping the pin unconditionally ALONGSIDE the selection leaked ~180 MB
     ///   per updated minor, forever. A user who updated 8.2 and 8.3 found 358 MB

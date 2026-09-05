@@ -6,7 +6,7 @@
 //! our socket. Tools execute through the same read paths the UI uses, via
 //! `ReadCtx` (see `readctx`), so there is one brain.
 //!
-//! **No SDK** (docs/PLAN-mcp-server.md §2.1): every `rmcp` is edition 2024
+//! **No SDK** (docs/archive/PLAN-mcp-server.md §2.1): every `rmcp` is edition 2024
 //! (rustc ≥ 1.85) and the repo pins 1.77.2, so the server is hand-rolled on
 //! `serde_json`. We implement the **2025-11-25** stable core: `initialize`,
 //! `notifications/initialized`, `tools/list`, `tools/call`, `ping`. Framing is

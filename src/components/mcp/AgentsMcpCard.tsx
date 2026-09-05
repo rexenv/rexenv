@@ -63,7 +63,7 @@ function CopyButton({ value }: { value: string }) {
 
 /**
  * Settings → "AI agents (MCP)" — the developer-facing surface for the opt-in MCP
- * endpoint (docs/PLAN-mcp-server.md §6). The toggle is a REAL control over the
+ * endpoint (docs/archive/PLAN-mcp-server.md §6). The toggle is a REAL control over the
  * socket (enabling binds, disabling drops sessions + unlinks). The residual
  * (§3.1) reads at the moment of enabling: it sits above the toggle, verbatim and
  * un-collapsed, worded to stay true as more capable tools arrive.

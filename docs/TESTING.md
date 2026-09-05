@@ -679,7 +679,7 @@ commands/ 9 — commands/ is 1.7% of tests for ~20 files of orchestration):
   is absent from that harness), so the proofs landed where the subject lives: an L0
   against the real ObjC runtime, `webview_dialogs_check` (L1, real `WKWebView`,
   plant-proven), and SMOKE's drop-table step for the render/eye half.
-  `docs/PLAN-webview-dialog-proofs.md` records the measurement.
+  `docs/archive/PLAN-webview-dialog-proofs.md` records the measurement.
 - Frontend honest-UI surface: StatusPill non-running states, StartStopToggle,
   StatusFooter, Tunnels tri-state — the WKWebView pill-metrics fix was verified once by
   hand and never committed as a check. **Both halves of this bullet have since been

@@ -1634,7 +1634,7 @@ pub fn revoke_agent_db_grant(conn: &Connection, id: &str) -> Result<bool> {
     Ok(n > 0)
 }
 
-// ── Agent SITE grants (v43 — MCP parity, `docs/PLAN-mcp-parity.md` §3) ────────
+// ── Agent SITE grants (v43 — MCP parity, `docs/archive/PLAN-mcp-parity.md` §3) ────────
 
 // `agent_site_grants` (v43) is a RETIRED table (D17, 4 Sep 2026): the Agent
 // access dial answers every scope, publishing included, so no code writes or

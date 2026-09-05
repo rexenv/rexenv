@@ -13,7 +13,7 @@
 //! `prepare_binary_tree` reported success over 49 Mach-Os, and the published
 //! binary died in dyld. Worse, it dies unrecoverably: `resolve_bundle`'s early
 //! return only checks that the `member` file EXISTS, so the dead tree caches and
-//! every later resolve short-circuits to it (`docs/PLAN-php-74-support.md` §5.2/§5.3).
+//! every later resolve short-circuits to it (`docs/archive/PLAN-php-74-support.md` §5.2/§5.3).
 //!
 //! The unit test proves the predicate. This proves the PROVIDER — real Mach-O,
 //! real `install_name_tool`, real `codesign`, real `otool` — because the bug was

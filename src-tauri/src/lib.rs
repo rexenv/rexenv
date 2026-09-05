@@ -48,7 +48,7 @@ pub fn run() {
         // tunnel, no job — so there is nothing to confirm here either; the
         // pause-and-confirm moved to the one place it is true, a real quit
         // (RunEvent::ExitRequested below). The window comes back through the
-        // tray's "Open rexenv". See `docs/PLAN-menubar-tray.md`.
+        // tray's "Open rexenv". See `docs/archive/PLAN-menubar-tray.md`.
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
@@ -129,7 +129,7 @@ pub fn run() {
             // reads as a window belonging to nobody, and leaves the developer
             // hunting the menu bar for a window already on screen.
             // `dock_follows_window` is the ONE place that switch happens; see
-            // `docs/PLAN-menubar-tray.md` §2.
+            // `docs/archive/PLAN-menubar-tray.md` §2.
             //
             // **The policy is set BEFORE any window is shown**, and that
             // ordering is measured rather than reasoned (31 Aug 2026, three
@@ -254,7 +254,7 @@ pub fn run() {
             // both sockets are opened by THIS process a few lines below and
             // both die with it, so a quit takes the whole control plane with
             // it while the services it manages carry on. See
-            // `docs/PLAN-menubar-tray.md`. Failure to build it is logged, not
+            // `docs/archive/PLAN-menubar-tray.md`. Failure to build it is logged, not
             // fatal — an app with no status item is still a working app, and
             // refusing to launch over a missing icon would be worse.
             if let Err(e) = install_tray(app.handle()) {
@@ -1628,7 +1628,7 @@ fn last_spec() -> &'static std::sync::Mutex<Option<core::tray::MenuSpec>> {
 /// Everything here is READ from where the UI reads it — the same
 /// `service_infos` snapshot the Services screen and the footer use, the same
 /// `summarize`, the same sites table, the same settings row. The tray measures
-/// nothing of its own (`docs/PLAN-menubar-tray.md` §3 rule 1).
+/// nothing of its own (`docs/archive/PLAN-menubar-tray.md` §3 rule 1).
 fn tray_model(app: &tauri::AppHandle) -> Option<core::tray::TrayModel> {
     use tauri::Manager;
     // `try_state`, never `state`: the tray is installed before `setup` manages

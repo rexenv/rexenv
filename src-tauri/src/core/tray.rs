@@ -17,7 +17,7 @@
 //! disagree with it. Same reason the status line names services exactly as the
 //! Services screen names them (`Caddy`, not `Edge`): one vocabulary.
 //!
-//! See `docs/PLAN-menubar-tray.md` §3 for the three rules the tray inherits.
+//! See `docs/archive/PLAN-menubar-tray.md` §3 for the three rules the tray inherits.
 
 /// How many sites the **Sites ›** submenu lists before it stops. The menu is a
 /// shortcut, not the Sites screen — a developer with 40 sites gets a menu the
