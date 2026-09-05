@@ -39,24 +39,24 @@ App version **0.4.0** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md`
 
 ### Parked (deliberate — needs explicit go; don't pick up silently) — 5
 
-- `TODO.md:466` The live pool swap is still L3
-- `TODO.md:470` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN 25 Aug 2026
-- `TODO.md:479` Install WordPress into an empty LINKED folder
-- `TODO.md:486` Valet compatibility tails
-- `TODO.md:511` `rex` design-first set — ONE item left: raw `wp` passthrough
+- `TODO.md:467` The live pool swap is still L3
+- `TODO.md:471` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN 25 Aug 2026
+- `TODO.md:480` Install WordPress into an empty LINKED folder
+- `TODO.md:487` Valet compatibility tails
+- `TODO.md:512` `rex` design-first set — ONE item left: raw `wp` passthrough
 
 ### Blocked on external work — 4
 
-- `TODO.md:527` Xdebug on PHP 8.0
-- `TODO.md:532` SMAppService privileged helper
-- `TODO.md:534` Developer ID signing + notarization
-- `TODO.md:536` OpenLiteSpeed override server
+- `TODO.md:528` Xdebug on PHP 8.0
+- `TODO.md:533` SMAppService privileged helper
+- `TODO.md:535` Developer ID signing + notarization
+- `TODO.md:537` OpenLiteSpeed override server
 
 ### Phase 4+ (next era) — 3
 
-- `TODO.md:546` Windows platform impls — fill the `todo!()` stubs in
-- `TODO.md:548` Linux platform impls — same, `platform/linux/mod.rs`
-- `TODO.md:549` Packaging polish: Tauri updater (keypair, endpoint, `latest.json`
+- `TODO.md:547` Windows platform impls — fill the `todo!()` stubs in
+- `TODO.md:549` Linux platform impls — same, `platform/linux/mod.rs`
+- `TODO.md:550` Packaging polish: Tauri updater (keypair, endpoint, `latest.json`
 
 ## Claim ledger (`scripts/ledger-tally.sh`)
 

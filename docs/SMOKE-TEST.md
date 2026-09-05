@@ -889,8 +889,9 @@ YOUR OWN sites in the list. Keep the Sites page visible.
   the primary administrator, no login form.** Open the SAME link again → an ordinary
   WordPress page (the token was spent). The feed shows `scratch_login_url` with the site
   and nothing else — no URL, no token. Then ask for a link into one of your OWN sites
-  through the same phrasing → it must come from `wp_user`'s `login_url` and needs your
-  manage grant; with the dial at Read it is refused, naming the dial. **Tell:** a link
+  through the same phrasing → it comes from `wp_user`'s `login_url` and works with the
+  dial at Read (the default — the owner's ruling: no login, no password, any site); the
+  feed shows `user login_url` and no link. **Tell:** a link
   that logs in twice, a token in the feed, or a password reset appearing in your users
   list — any one is a HOLD (the promise is "never a password").
 - [ ] **8. ⚠ THE TIER BOUNDARY — the step this section exists for.** Ask, naming one

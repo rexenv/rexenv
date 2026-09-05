@@ -1022,8 +1022,9 @@ IPC surface — which is how a reader ends up designing against a system with on
   holds the ten executing ones (`scratch_create_site`, `scratch_delete_site`,
   `scratch_add_package`, `scratch_sync_package`, `wp_run`, `set_php_version`,
   `scratch_login_url` — D2 settled 5 Sep 2026: the app's own magic login, single-use, no
-  password, minted for scratch sites here and for the user's sites through `wp_user`,
-  never in the feed (#515) — `db_query`, `mail_list`, `mail_get`); `mcp_server/user_sites.rs` (MCP parity, 3 Sep 2026) holds the
+  password, minted for scratch sites here and for the user's sites through `wp_user` at
+  Read — the free level, by the owner's ruling: what the session may then do is
+  WordPress's own capability model — never in the feed (#515) — `db_query`, `mail_list`, `mail_get`); `mcp_server/user_sites.rs` (MCP parity, 3 Sep 2026) holds the
   tools that act on the USER's own sites and the stack — `site_create` (`manage` on rexenv
   itself; a WordPress / blank-PHP / Laravel site through the app's own provision job,
   recorded as the USER's via `Ownership::UserByAgent`, which never prompts) and

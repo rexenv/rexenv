@@ -194,11 +194,13 @@ static REGISTRY: &[UserTool] = &[
     UserTool {
         name: "wp_user",
         description: "Users on a WordPress site the user owns. Takes `site_id` and `action`: \
-                      `list` and `super_admins` need `read`; `create` {login, email, role, \
-                      password — omit to have rexenv generate one, returned ONCE}, `set_role` \
-                      {user_id, role}, `login_url` {user_id — omit for the primary administrator; a \
-                      one-time browser link into wp-admin, never recorded}, `super_admin_add` \
-                      {user} need `manage`; `set_password` {user_id, password} and `delete` \
+                      `list`, `super_admins` and `login_url` {user_id — omit for the primary \
+                      administrator; a one-time link that signs into wp-admin WITHOUT a password — \
+                      open it in a browser, or fetch it once headlessly with a cookie jar; single-use, \
+                      expires in two minutes, never recorded, changes nothing about the account} need \
+                      `read`; `create` {login, email, role, password — omit to have rexenv generate \
+                      one, returned ONCE}, `set_role` {user_id, role}, `super_admin_add` {user} need \
+                      `manage`; `set_password` {user_id, password} and `delete` \
                       {user_id, and EXACTLY ONE of reassign (a user id to give their posts to) or \
                       delete_posts: true} need `destroy` — a reset locks a person out, and the \
                       app refuses to delete the primary administrator or a multisite user.",
@@ -1903,8 +1905,15 @@ fn wp_theme<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::Acted
 
 pub(crate) fn wp_user_scope(action: &str) -> Option<Scope> {
     Some(match action {
-        "list" | "super_admins" => Scope::Read,
-        "create" | "set_role" | "login_url" | "super_admin_add" => Scope::Manage,
+        // `login_url` is READ by the owner's ruling (5 Sep 2026, D2 widened):
+        // the point of the MCP server is that an agent gets into any site
+        // without the person logging in for it or a password changing hands,
+        // and Read is the level a fresh install sits at. The link is the app's
+        // own single-use, 120 s, loopback-only token; what the signed-in session
+        // can then do is WordPress's own capability model, not rexenv's dial —
+        // stated in the description so the choice is visible where it is made.
+        "list" | "super_admins" | "login_url" => Scope::Read,
+        "create" | "set_role" | "super_admin_add" => Scope::Manage,
         "set_password" | "delete" => Scope::Destroy,
         _ => return None,
     })
@@ -4287,7 +4296,13 @@ pub(crate) mod tests {
     async fn wp_user_option_and_maintain_claim_per_action_and_keep_secrets_out_of_the_feed() {
         assert_eq!(wp_user_scope("list"), Some(Scope::Read));
         assert_eq!(wp_user_scope("create"), Some(Scope::Manage));
-        assert_eq!(wp_user_scope("login_url"), Some(Scope::Manage));
+        // D2 widened 5 Sep 2026: a login link is Read, the free level — an agent
+        // gets into any site without a person logging in or a password moving.
+        assert_eq!(wp_user_scope("login_url"), Some(Scope::Read));
+        let desc = registry().iter().find(|t| t.name == "wp_user").unwrap().description;
+        for must in ["WITHOUT a password", "single-use", "two minutes", "never recorded"] {
+            assert!(desc.contains(must), "wp_user's description must say `{must}`");
+        }
         assert_eq!(wp_user_scope("set_password"), Some(Scope::Destroy));
         assert_eq!(wp_user_scope("delete"), Some(Scope::Destroy));
         assert_eq!(wp_maintain_scope("core_update"), Some(Scope::Manage));

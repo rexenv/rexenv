@@ -204,7 +204,7 @@ static REGISTRY: &[ScratchTool] = &[ScratchTool {
                   the session. Single-use, expires in two minutes, only works from this machine, \
                   never recorded anywhere, and changes nothing about the account — no password \
                   is set or reset. Only works on scratch sites the agent created; for one of the \
-                  user's own sites use `wp_user` with action `login_url` (needs their manage grant).",
+                  user's own sites use `wp_user` with action `login_url` (Read — no grant needed).",
     input_schema: || json!({
         "type": "object",
         "properties": {
@@ -2071,7 +2071,7 @@ fn login_url<'a>(
                 return Err(Error::Other(format!(
                     "`{}` is no longer a scratch site — the person you're working with kept it, so \
                      it is theirs now. A login link into their site comes from `wp_user` (action \
-                     `login_url`) under their manage grant, not from this tool.",
+                     `login_url`, Read), not from this tool.",
                     scratch.domain()
                 )));
             }

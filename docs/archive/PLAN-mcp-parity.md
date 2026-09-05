@@ -183,7 +183,7 @@ Group into **eight tools with an `action` enum**, all refusing on a scratch site
 | `wp_data` | `db_export` (reply = the path under `~/Downloads`, same contract as the CLI), `content_export`, `search_replace --dry-run` | manage; `db_import`, `site_reset`, `search_replace` live → **destroy** |
 | `wp_network` | `multisite_convert`, `network_sites`, `network_site_create` | manage; `network_site_delete` → destroy |
 | `wp_org_search_plugins/themes`, `wp_org_plugin_icons` | ➕ T0 | `wp_org_search(kind, query)` — network read, no site |
-| `wp_admin_login_url` | 🔑 manage (real) / T0 (scratch) | D2 settled here: **include**, as `wp_user(action: login_url)`; the URL is one-time and is NOT written to the feed's `args_summary` |
+| `wp_admin_login_url` | 🔑 ~~manage~~ **read** (real, owner's ruling 5 Sep 2026) / T0 (scratch: `scratch_login_url`) | D2 settled here: **include**, as `wp_user(action: login_url)`; the URL is one-time and is NOT written to the feed's `args_summary` |
 | `wp_default_creds` | 🚫 | credentials |
 | `wp_run` on a REAL site | 🔑 run | the existing tool, third registry arm, same `WP_TARGET_PARAMS` refusal. D1's permanent refusal becomes "refused unless the user granted `run`" |
 
