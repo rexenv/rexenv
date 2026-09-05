@@ -194,7 +194,7 @@ chosen for exactly this reason.
 `rusqlite` is built with the `bundled` feature, so SQLite itself is compiled
 into the app. SQLite is in the public domain (https://sqlite.org/copyright.html).
 
-## Rust crates (statically linked; 389 external crates, macOS graph)
+## Rust crates (statically linked; 393 external crates, macOS graph)
 
 | Crate | Version | Licence |
 |---|---|---|
@@ -230,6 +230,7 @@ into the app. SQLite is in the public domain (https://sqlite.org/copyright.html)
 | bytecheck | 0.6.12 | MIT |
 | bytecheck_derive | 0.6.12 | MIT |
 | byteorder | 1.5.0 | Unlicense OR MIT |
+| byteorder-lite | 0.1.0 | Unlicense OR MIT |
 | bytes | 1.12.0 | MIT |
 | camino | 1.2.3 | MIT OR Apache-2.0 |
 | cargo-platform | 0.1.9 | MIT OR Apache-2.0 |
@@ -343,6 +344,7 @@ into the app. SQLite is in the public domain (https://sqlite.org/copyright.html)
 | ident_case | 1.0.1 | MIT/Apache-2.0 |
 | idna | 1.1.0 | MIT OR Apache-2.0 |
 | idna_adapter | 1.2.2 | Apache-2.0 OR MIT |
+| image | 0.25.10 | MIT OR Apache-2.0 |
 | indexmap | 1.9.3 | Apache-2.0 OR MIT |
 | indexmap | 2.14.0 | Apache-2.0 OR MIT |
 | infer | 0.19.0 | MIT |
@@ -365,6 +367,7 @@ into the app. SQLite is in the public domain (https://sqlite.org/copyright.html)
 | minimal-lexical | 0.2.1 | MIT/Apache-2.0 |
 | miniz_oxide | 0.8.9 | MIT OR Zlib OR Apache-2.0 |
 | mio | 1.2.1 | MIT |
+| moxcms | 0.8.1 | BSD-3-Clause OR Apache-2.0 |
 | muda | 0.19.3 | Apache-2.0 OR MIT |
 | new_debug_unreachable | 1.0.6 | MIT |
 | nix | 0.28.0 | MIT |
@@ -420,6 +423,7 @@ into the app. SQLite is in the public domain (https://sqlite.org/copyright.html)
 | ptr_meta | 0.1.4 | MIT |
 | ptr_meta_derive | 0.1.4 | MIT |
 | publicsuffix | 2.3.0 | MIT/Apache-2.0 |
+| pxfm | 0.1.30 | BSD-3-Clause OR Apache-2.0 |
 | quick-xml | 0.39.4 | MIT |
 | quinn | 0.11.11 | MIT OR Apache-2.0 |
 | quinn-proto | 0.11.15 | MIT OR Apache-2.0 |
