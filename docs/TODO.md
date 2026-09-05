@@ -6,8 +6,10 @@ month's evidence log (`docs/archive/SHIPPED-2026-07.md`, `-08.md`, `-09.md`) wit
 `reconcile-todo` skill. Tick an item in the commit that does the work, with a one-line
 ✓ evidence note. `scripts/todo-reconcile.py --count` prints the open/ticked tally.
 
-**Reconciled 5 Sep 2026** (HEAD `f1eadac`, after v0.4.0 + 198 commits). Third reconcile;
-each has found the same shapes, so they are the checklist:
+**Reconciled 5 Sep 2026, second pass** (HEAD `369c471`, after v0.4.0 + 205 commits, the
+0.5.0 release cut). Two ticked blocks moved (mcp.log; MCP D2 settled) and the emptied
+*Decisions pending (owner)* section went with them — every MCP decision is now closed.
+Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 - **Ticked rows pile up** — 57 on 21 Aug, 93 on 5 Sep (173 ticked boxes hiding 46 open).
   Now scripted, so the move costs nothing and the rule can hold.
@@ -19,17 +21,7 @@ each has found the same shapes, so they are the checklist:
 - **Shipped narrative inside an open row** — the MCP decisions row ran 530 lines with one
   open decision in it. A row is open for ONE reason; say it in the first line.
 
-
 ## Now — actionable code/test work
-
-- [x] **MCP activity has no log — the Settings card shows twenty rows and nothing shows
-  the rest** ✓ 5 Sep 2026 (user report the same day) — `mcp.log` in the log dir, written
-  by the feed's ONE writer from the row's own values (#516), shown as its own Logs tab
-  "AI agents (MCP)" once it exists (the `rexenv (app)` tab is titled for one file and its
-  test refuses a second), `rex logs mcp.log` tails it. L0 ×4 + `mcp_scratch_check`'s file
-  leg green on the sandbox tier; SMOKE §M2a step 6 gained the eyes-on check. **Common
-  file by ruling** (same day) with an "Only this site" filter on the tab — L2
-  `agentlog.js`.
 
 - [ ] **~16 flag-taking `rex` commands still ignore what they do not recognise**
   (3 Sep 2026, ledger #463/#466). Done: `site create`, `wp search-replace`,
@@ -276,7 +268,6 @@ each has found the same shapes, so they are the checklist:
     the boolean does.
 ### Open work that was living inside ticked rows
 
-
 - [ ] **Radicle-hosted repos are unverified** — same code path as the Bedrock clone that
   was verified and found broken, no live project to hand.
 - [ ] **Why that `rex` instance went deaf was never diagnosed** — the evidence died with
@@ -461,16 +452,6 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   B4 submodule clone, B24 wp-cli `--`, B20/B28/B29/B7 runtime wiring; §L Phase-A
   tcpdump one-off, re-run per reqwest bump).
 
-## Decisions pending (owner)
-
-- [x] **MCP D2 — `wp_login_url` for scratch sites.** ✓ 5 Sep 2026 — **SETTLED by the owner:
-  a login link everywhere, real or scratch, never a password — and at Read, the free
-  level (second ruling the same day).** Real sites already had it (`wp_user` → `login_url`,
-  parity P3, moved from `manage` to `read`); `scratch_login_url` lands the scratch half (ledger
-  #515, L0 + `mcp_scratch_check`'s refusal leg; SMOKE §M2a step 7a is the eyes-on leg).
-  Every planned MCP milestone (M1, M2a, M2b, M3) and parity P1–P7 are shipped; what is
-  still OWED of MCP is a release gate — see the MCP row under *Release gates*.
-
 ## Parked (deliberate — needs explicit go; don't pick up silently)
 
 - [ ] **The live pool swap is still L3.** `php_update_check` proves the chain up
@@ -530,7 +511,6 @@ Shipped 31 Aug – 1 Sep 2026 (Phases A–D, ledger #436–#441; log in
 Nothing open. The second-instance row this section last carried closed with #441
 (`hand_off_to_running_instance`: the CLI socket is the lock; a second launch activates
 the first and exits) — its box stayed `[ ]` under a struck-through title, ticked 5 Sep 2026.
-
 
 ## Blocked on external work
 

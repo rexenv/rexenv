@@ -2888,3 +2888,28 @@ wrong:
 So the rule this file needs is the one CLAUDE.md already states and this file kept
 paying for anyway: **the tick belongs in the commit that does the work.**
 
+
+## Reconcile of 5 Sep 2026
+
+### From “Now — actionable code/test work”
+
+- [x] **MCP activity has no log — the Settings card shows twenty rows and nothing shows
+  the rest** ✓ 5 Sep 2026 (user report the same day) — `mcp.log` in the log dir, written
+  by the feed's ONE writer from the row's own values (#516), shown as its own Logs tab
+  "AI agents (MCP)" once it exists (the `rexenv (app)` tab is titled for one file and its
+  test refuses a second), `rex logs mcp.log` tails it. L0 ×4 + `mcp_scratch_check`'s file
+  leg green on the sandbox tier; SMOKE §M2a step 6 gained the eyes-on check. **Common
+  file by ruling** (same day) with an "Only this site" filter on the tab — L2
+  `agentlog.js`.
+
+
+### From “Decisions pending (owner)”
+
+- [x] **MCP D2 — `wp_login_url` for scratch sites.** ✓ 5 Sep 2026 — **SETTLED by the owner:
+  a login link everywhere, real or scratch, never a password — and at Read, the free
+  level (second ruling the same day).** Real sites already had it (`wp_user` → `login_url`,
+  parity P3, moved from `manage` to `read`); `scratch_login_url` lands the scratch half (ledger
+  #515, L0 + `mcp_scratch_check`'s refusal leg; SMOKE §M2a step 7a is the eyes-on leg).
+  Every planned MCP milestone (M1, M2a, M2b, M3) and parity P1–P7 are shipped; what is
+  still OWED of MCP is a release gate — see the MCP row under *Release gates*.
+
