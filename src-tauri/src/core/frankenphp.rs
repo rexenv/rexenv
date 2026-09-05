@@ -141,13 +141,14 @@ pub fn generate_config(
     port: u16,
     mode: RewriteMode,
     env: &[(String, String)],
+    sendmail_path: Option<&str>,
 ) -> String {
     format!(
         "{{\n\
          \tauto_https off\n\
          \tadmin off\n\
          \tdefault_bind 127.0.0.1\n\
-         \tfrankenphp\n\
+         \tfrankenphp{franken}\n\
          }}\n\
          \n\
          :{port} {{\n\
@@ -158,9 +159,38 @@ pub fn generate_config(
          \t}}\n\
          {body}\
          }}\n",
+        franken = frankenphp_block(sendmail_path),
         root = docroot.display(),
         body = site_body(mode, env),
     )
+}
+
+/// The global `frankenphp { … }` options, or the bare word when there are none.
+///
+/// The mail catch-all's `mail()` half for an override site (ledger #514). A
+/// FrankenPHP site runs the embedded PHP, not a php-fpm pool, so the pool's
+/// `php_admin_value[sendmail_path]` never reaches it; FrankenPHP's own
+/// `php_ini <key> <value>` directive is the equivalent, and it is set here from
+/// the SAME shim string the pool uses (`mail::Catch::sendmail_path`) — one
+/// definition, two renderings.
+///
+/// **The value is wrapped in an inner pair of double quotes, and that is not
+/// tidiness.** Measured 5 Sep 2026 against the pinned 1.12.4 build: the
+/// Caddyfile lexer consumes the outer quotes, and what reaches PHP's ini parser
+/// is `'/App Support/mailpit' sendmail …` — whose BARE single quotes the ini
+/// parser strips, exactly as it does in a pool ini, leaving a path that `sh`
+/// splits at the space. With `\"…\"` inside, the ini parser strips the double
+/// quotes and keeps the single ones, and `ini_get('sendmail_path')` came back
+/// as the shim verbatim; a real `mail()` then ran the fake sendmail at a path
+/// with a space with the right argv.
+fn frankenphp_block(sendmail_path: Option<&str>) -> String {
+    match sendmail_path {
+        None => String::new(),
+        Some(shim) => format!(
+            " {{\n\t\tphp_ini sendmail_path \"\\\"{}\\\"\"\n\t}}",
+            crate::core::site_env::escape_value(shim)
+        ),
+    }
 }
 
 /// Per-site FrankenPHP config path (named per site so several backends coexist).
@@ -188,12 +218,13 @@ pub fn write_config(
     port: u16,
     mode: RewriteMode,
     env: &[(String, String)],
+    sendmail_path: Option<&str>,
 ) -> Result<PathBuf> {
     let conf = config_path(platform, domain)?;
     if let Some(dir) = conf.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    std::fs::write(&conf, generate_config(docroot, port, mode, env))?;
+    std::fs::write(&conf, generate_config(docroot, port, mode, env, sendmail_path))?;
     Ok(conf)
 }
 
@@ -240,9 +271,54 @@ pub fn running(port: u16) -> bool {
 mod tests {
     use super::*;
 
+    /// **The mail catch-all reaches a FrankenPHP backend as `php_ini
+    /// sendmail_path`, with the shim wrapped in an inner pair of double
+    /// quotes — and off means no line at all.** (#514)
+    ///
+    /// The quoting is the load-bearing half, measured against the pinned
+    /// 1.12.4 build: without the inner `\"…\"` PHP's ini parser strips the
+    /// shim's bare single quotes, and a Mailpit under "Application Support"
+    /// becomes a command `sh` splits at the space — `mail()` then runs
+    /// `/Users/x/Application` and nothing is caught. The env half is asserted
+    /// beside it: the same `env` argument that carries a site's own variables
+    /// carries `MAIL_*`, as `env` lines in the `php_server` block.
+    #[test]
+    fn the_catch_all_reaches_a_frankenphp_backend_as_php_ini_and_env() {
+        let shim = super::super::mail::sendmail_path(Path::new("/Users/x/Application Support/mailpit"));
+        let cfg = generate_config(Path::new("/d"), 8200, RewriteMode::Single, &[], Some(&shim));
+        assert!(
+            cfg.contains(&format!("\tfrankenphp {{\n\t\tphp_ini sendmail_path \"\\\"{shim}\\\"\"\n\t}}\n")),
+            "the shim must sit in the global frankenphp block, wrapped in an inner pair of \
+             double quotes:\n{cfg}"
+        );
+        assert!(
+            cfg.contains("\"\\\"'/Users/x/Application Support/mailpit' sendmail"),
+            "the single quotes must reach PHP inside double quotes, or the ini parser eats \
+             them and sh splits the path: {cfg}"
+        );
+        // The env half rides the same `env` lines a site's own variables do —
+        // the caller merges the catch into that list.
+        let env: Vec<(String, String)> = super::super::mail::laravel_env()
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect();
+        let with_env = generate_config(Path::new("/d"), 8200, RewriteMode::Single, &env, Some(&shim));
+        for (k, v) in &env {
+            assert!(with_env.contains(&format!("\t\tenv {k} \"{v}\"\n")), "missing env {k}: {with_env}");
+        }
+        // Off: the bare `frankenphp` word, no php_ini anywhere — the embedded PHP
+        // keeps its own default, exactly as a pool does when the catch is off.
+        let off = generate_config(Path::new("/d"), 8200, RewriteMode::Single, &[], None);
+        assert!(off.contains("\tfrankenphp\n}\n"), "{off}");
+        assert!(!off.contains("php_ini"), "{off}");
+        // And a config with the catch differs from one without, which is what
+        // makes the toggle's `reconcile_override_backends` a respawn.
+        assert_ne!(cfg, off);
+    }
+
     #[test]
     fn config_is_a_loopback_backend_with_no_edge_features() {
-        let cfg = generate_config(Path::new("/Sites/fp/public"), 8200, RewriteMode::Single, &[]);
+        let cfg = generate_config(Path::new("/Sites/fp/public"), 8200, RewriteMode::Single, &[], None);
         // Backend, not edge: no auto-HTTPS, no admin endpoint, loopback only.
         assert!(cfg.contains("auto_https off"));
         assert!(cfg.contains("admin off"));
@@ -265,19 +341,19 @@ mod tests {
     #[test]
     fn env_vars_render_as_a_php_server_block_and_empty_env_is_byte_stable() {
         let env = vec![("API_URL".into(), "https://x.test".into()), ("Q".into(), "say \"hi\"".into())];
-        let single = generate_config(Path::new("/d"), 8200, RewriteMode::Single, &env);
+        let single = generate_config(Path::new("/d"), 8200, RewriteMode::Single, &env, None);
         assert!(single.contains("php_server {"), "got: {single}");
         assert!(single.contains("env API_URL \"https://x.test\""));
         assert!(single.contains("env Q \"say \\\"hi\\\"\""));
 
         // Subdirectory multisite keeps its route rules AND gets the env block.
-        let subdir = generate_config(Path::new("/d"), 8200, RewriteMode::SubdirectoryMultisite, &env);
+        let subdir = generate_config(Path::new("/d"), 8200, RewriteMode::SubdirectoryMultisite, &env, None);
         assert!(subdir.contains("rewrite @wpstrip"));
         assert!(subdir.contains("env API_URL \"https://x.test\""));
 
         // No env → the php_server block still carries the HTTPS map line (and
         // nothing else), and user env lines come AFTER it.
-        let bare = generate_config(Path::new("/d"), 8200, RewriteMode::Single, &[]);
+        let bare = generate_config(Path::new("/d"), 8200, RewriteMode::Single, &[], None);
         assert!(bare.contains("\tphp_server {\n\t\tenv HTTPS {https_on}\n\t}\n"));
         assert!(
             single.find("env HTTPS {https_on}").unwrap()
@@ -290,7 +366,7 @@ mod tests {
         // Root dot-segment (minus /.well-known/) + any nested dot-segment →
         // 404. Two matchers because RE2 has no lookahead; the nested rule also
         // denies /.well-known/.hidden (parity with nginx/Apache).
-        let single = generate_config(Path::new("/d"), 8200, RewriteMode::Single, &[]);
+        let single = generate_config(Path::new("/d"), 8200, RewriteMode::Single, &[], None);
         assert!(single.contains("respond @dot_root 404"), "got: {single}");
         assert!(single.contains("not path_regexp ^/\\.well-known(/|$)"));
         assert!(single.contains("@dot_nested path_regexp ^/.+/\\."));
@@ -298,7 +374,7 @@ mod tests {
         // Subdirectory multisite: inside a route block order is LITERAL — the
         // guard must precede the WP rewrites and php_server.
         let subdir =
-            generate_config(Path::new("/d"), 8200, RewriteMode::SubdirectoryMultisite, &[]);
+            generate_config(Path::new("/d"), 8200, RewriteMode::SubdirectoryMultisite, &[], None);
         let guard = subdir.find("respond @dot_root 404").unwrap();
         assert!(guard > subdir.find("route {").unwrap());
         assert!(guard < subdir.find("@wpadmin").unwrap());
@@ -307,9 +383,9 @@ mod tests {
 
     #[test]
     fn subdirectory_multisite_mirrors_the_nginx_network_rewrites() {
-        let single = generate_config(Path::new("/d"), 8200, RewriteMode::Single, &[]);
-        let subdir = generate_config(Path::new("/d"), 8200, RewriteMode::SubdirectoryMultisite, &[]);
-        let sub = generate_config(Path::new("/d"), 8200, RewriteMode::SubdomainMultisite, &[]);
+        let single = generate_config(Path::new("/d"), 8200, RewriteMode::Single, &[], None);
+        let subdir = generate_config(Path::new("/d"), 8200, RewriteMode::SubdirectoryMultisite, &[], None);
+        let sub = generate_config(Path::new("/d"), 8200, RewriteMode::SubdomainMultisite, &[], None);
 
         // Single + subdomain route like a single site: plain php_server, no rewrites.
         for cfg in [&single, &sub] {
@@ -356,7 +432,7 @@ mod tests {
             RewriteMode::SubdomainMultisite,
             RewriteMode::SubdirectoryMultisite,
         ] {
-            let cfg = generate_config(Path::new("/Sites/fp/public"), 8200, mode, &[]);
+            let cfg = generate_config(Path::new("/Sites/fp/public"), 8200, mode, &[], None);
             let declared: Vec<&str> = cfg
                 .lines()
                 .filter_map(|l| {

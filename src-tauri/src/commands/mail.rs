@@ -139,7 +139,7 @@ pub fn mail_catch_all(state: State<'_, AppState>) -> Result<bool> {
 /// shell the user opened themselves.
 #[tauri::command]
 pub async fn set_mail_catch_all(state: State<'_, AppState>, enabled: bool) -> Result<()> {
-    let minors = {
+    let (minors, sites) = {
         let conn = state
             .db
             .lock()
@@ -149,17 +149,58 @@ pub async fn set_mail_catch_all(state: State<'_, AppState>, enabled: bool) -> Re
             mail::CATCH_ALL_KEY,
             if enabled { "true" } else { "false" },
         )?;
+        let sites = crate::core::sites::list(&conn)?;
         // The mu-plugin pass runs under the SAME guard, after the write, so it
         // cannot act on the value the user just replaced.
-        crate::core::wp_mail_catch::apply_all(&conn, &crate::core::sites::list(&conn)?);
-        crate::core::php::installed_minors(&conn)?
+        crate::core::wp_mail_catch::apply_all(&conn, &sites);
+        (crate::core::php::installed_minors(&conn)?, sites)
     };
     let checks = {
         let mut mgr = state.services.lock().await;
         mgr.set_mail_catch_from(state.platform.as_ref(), enabled);
-        mgr.restart_pools_for(state.platform.as_ref(), &minors).await?
+        let mut checks = mgr.restart_pools_for(state.platform.as_ref(), &minors).await?;
+        // The override backends are the third carrier (#514): a FrankenPHP site
+        // has no pool, so its catch is its own config and process environment,
+        // loaded once at spawn. Reconciling respawns exactly the backends whose
+        // config the flip changed — and nothing while the stack is down.
+        checks.extend(mgr.reconcile_override_backends(state.platform.as_ref(), &sites).await?);
+        checks
     };
     // Awaited with the lock DROPPED — the locking rule (never hold the services
     // lock across a wait).
     crate::core::service_manager::await_ready(checks).await
+}
+
+#[cfg(test)]
+mod tests {
+    /// **The toggle reaches every carrier of the catch, in the order that makes
+    /// the flip TRUE before anything is respawned.** (#504, #514)
+    ///
+    /// Three carriers: the setting (what the next start reads), the pools
+    /// (restarted so the rewritten configs are what the workers run), and the
+    /// override backends (a FrankenPHP site has no pool — its catch is its own
+    /// config and process env, loaded once at spawn). The 5 Sep 2026 audit found
+    /// the third missing: the switch restarted the pools and left every
+    /// FrankenPHP site mailing exactly as before, with the card saying the
+    /// opposite. A source guard because the claim is "the function calls all
+    /// three", which no return value can carry, and because the drift that
+    /// removes one is a tidy-up.
+    #[test]
+    fn the_toggle_reaches_the_setting_the_pools_and_the_override_backends_in_that_order() {
+        let src = crate::core::copy_scan::production_source(include_str!("mail.rs"));
+        let body = src
+            .split("pub async fn set_mail_catch_all(")
+            .nth(1)
+            .and_then(|b| b.split("\n#[").next())
+            .expect("set_mail_catch_all");
+        let setting = body.find("CATCH_ALL_KEY").expect("the setting write");
+        let state = body.find("set_mail_catch_from(").expect("the manager's catch state");
+        let pools = body.find("restart_pools_for(").expect("the pool restart");
+        let overrides = body.find("reconcile_override_backends(").expect(
+            "the toggle no longer reconciles the override backends — a FrankenPHP site keeps \
+             yesterday's catch until the next Stop all → Start (#514)",
+        );
+        assert!(setting < state && state < pools && state < overrides, "the manager must hold the NEW catch before anything is respawned from it");
+        assert!(body.contains("await_ready(checks)"), "the checks of every respawn are awaited with the lock dropped");
+    }
 }

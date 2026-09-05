@@ -443,6 +443,55 @@ impl ServiceManager {
         self.site_aliases = aliases;
     }
 
+    /// The environment an OVERRIDE backend (FrankenPHP/Apache) is spawned with:
+    /// the site's own variables (§1.6) plus the mail catch-all's Laravel half
+    /// (#514), when the catch is on.
+    ///
+    /// An override site has no php-fpm pool, so the pool's `env[MAIL_*]` never
+    /// reaches it — and until 5 Sep 2026 nothing else did: a Laravel site on
+    /// FrankenPHP with a real `MAIL_HOST` in its `.env` delivered for real
+    /// while the Settings card said every site's mail was caught. The catch
+    /// rides the same `env` the site's own variables ride, so it lands in the
+    /// process environment (`getenv`/`$_ENV`, which Laravel's immutable Dotenv
+    /// repository honours) AND in the config's `env` lines. The catch comes
+    /// LAST so it wins a name collision — the whole point of the switch.
+    fn override_env(&self, site_id: &str) -> Vec<(String, String)> {
+        let mut env = self.site_env.get(site_id).cloned().unwrap_or_default();
+        if let Some(catch) = self.pools.mail_catch() {
+            env.retain(|(k, _)| !catch.env.iter().any(|(ck, _)| ck == k));
+            env.extend(catch.env.iter().map(|(k, v)| (k.to_string(), v.clone())));
+        }
+        env
+    }
+
+    /// The `mail()` half for a FrankenPHP backend — the pool's shim string,
+    /// rendered by `frankenphp::generate_config` as `php_ini sendmail_path`
+    /// (#514). `None` when the catch is off, in which case the embedded PHP keeps
+    /// its own default, exactly as a pool does.
+    fn override_sendmail(&self) -> Option<&str> {
+        self.pools.mail_catch().map(|c| c.sendmail_path.as_str())
+    }
+
+    /// Bring the override backends into line with the CURRENT catch state —
+    /// the toggle's third carrier (#514), beside the pools it restarts.
+    ///
+    /// A FrankenPHP backend loads its config once at spawn; `reconcile_overrides`
+    /// compares the config it WOULD write now with the one on disk and respawns
+    /// on a difference, which is exactly what flipping the catch produces (the
+    /// `php_ini` line and the `MAIL_*` env lines come and go). Nothing to do
+    /// while the stack is down: the next start writes every config from the
+    /// setting anyway. Spawns under the lock, returns the checks (M4).
+    pub async fn reconcile_override_backends(
+        &mut self,
+        platform: &dyn Platform,
+        sites: &[Site],
+    ) -> Result<Vec<ReadyCheck>> {
+        if !self.is_running() {
+            return Ok(Vec::new());
+        }
+        self.reconcile_overrides(platform, sites).await
+    }
+
     pub fn set_site_env(&mut self, env: HashMap<String, Vec<(String, String)>>) {
         self.site_env = env;
     }
@@ -937,7 +986,7 @@ impl ServiceManager {
                         port,
                         fpm_port: sites::pool_port_for_site(s),
                         rewrite: sites::rewrite_mode_for(s.multisite),
-                        env: self.site_env.get(&s.id).cloned().unwrap_or_default(),
+                        env: self.override_env(&s.id),
                     },
                 ))
             })
@@ -1044,7 +1093,7 @@ impl ServiceManager {
                 port,
                 sites::pool_port_for_site(site),
                 sites::rewrite_mode_for(site.multisite),
-                &self.site_env.get(&site.id).cloned().unwrap_or_default(),
+                &self.override_env(&site.id),
             )
             .await?;
         Ok((SiteRestartOutcome::Backend { server: kind.label(), port }, vec![check]))
@@ -1222,7 +1271,7 @@ impl ServiceManager {
     ) -> Option<String> {
         match kind {
             OverrideKind::Frankenphp => {
-                Some(frankenphp::generate_config(docroot, port, rewrite, env))
+                Some(frankenphp::generate_config(docroot, port, rewrite, env, self.override_sendmail()))
             }
             OverrideKind::Apache => {
                 // Deterministic bundle dir — the diff must not trigger a resolve.
@@ -1328,7 +1377,10 @@ impl ServiceManager {
         let child = match kind {
             OverrideKind::Frankenphp => {
                 let bin = self.ensure_frankenphp_bin(platform).await?;
-                let conf = frankenphp::write_config(platform, domain, docroot, port, rewrite, env)?;
+                let sendmail = self.override_sendmail().map(str::to_string);
+                let conf = frankenphp::write_config(
+                    platform, domain, docroot, port, rewrite, env, sendmail.as_deref(),
+                )?;
                 frankenphp::start(platform, &bin, domain, &conf, env)?
             }
             OverrideKind::Apache => {
@@ -2050,7 +2102,7 @@ impl ServiceManager {
             if !self.should_restart(&name, &mut events) {
                 continue;
             }
-            let env = self.site_env.get(&site.id).cloned().unwrap_or_default();
+            let env = self.override_env(&site.id);
             let spawned = self
                 .spawn_override(
                     platform,
@@ -3306,6 +3358,56 @@ mod tests {
     /// stopped shared site staying out of it is why no pool is touched. Both
     /// halves are asserted, because the dangerous version of this feature is the
     /// one that reaches for the shared pool to make something happen.
+    /// **An override backend carries the catch-all: `MAIL_*` on its environment
+    /// (LAST, so it beats a site variable of the same name) and the pool's shim
+    /// for FrankenPHP's `php_ini` — and carries NEITHER when the catch is off.**
+    /// (#514)
+    ///
+    /// Both halves are read off ONE value (`PhpFpmPools::mail_catch`), the same
+    /// one the pools render, so a machine cannot end up catching on its pools
+    /// and delivering from its FrankenPHP sites. The name-collision rule is the
+    /// switch's meaning: a site with `MAIL_HOST` in its per-site env is exactly
+    /// the site the catch exists to override.
+    #[test]
+    fn an_override_backend_carries_the_catch_all_and_the_catch_wins_a_collision() {
+        let mut mgr = ServiceManager::default();
+        mgr.site_env.insert(
+            "site-1".into(),
+            vec![("APP_ENV".to_string(), "local".to_string()), ("MAIL_HOST".to_string(), "smtp.real.test".to_string())],
+        );
+        // Off: the site's own env, untouched, and no shim.
+        assert_eq!(
+            mgr.override_env("site-1"),
+            vec![("APP_ENV".to_string(), "local".to_string()), ("MAIL_HOST".to_string(), "smtp.real.test".to_string())]
+        );
+        assert_eq!(mgr.override_sendmail(), None);
+
+        // On: every catch key appended, and the site's MAIL_HOST replaced —
+        // not left beside the catch's, where "which one wins" would be a
+        // property of FrankenPHP's env-line order rather than of this code.
+        let catch = mail::catch_for(Some(std::path::Path::new("/App Support/mailpit")), true).unwrap();
+        mgr.pools.set_mail_catch(Some(catch.clone()));
+        let env = mgr.override_env("site-1");
+        assert_eq!(env[0], ("APP_ENV".to_string(), "local".to_string()), "the site's other vars survive");
+        assert_eq!(env.iter().filter(|(k, _)| k == "MAIL_HOST").count(), 1, "one MAIL_HOST, never two: {env:?}");
+        assert!(env.contains(&("MAIL_HOST".to_string(), "127.0.0.1".to_string())), "{env:?}");
+        for (k, v) in &catch.env {
+            assert!(env.contains(&(k.to_string(), v.clone())), "missing {k}: {env:?}");
+        }
+        assert_eq!(mgr.override_sendmail(), Some(catch.sendmail_path.as_str()));
+        // A site with no env of its own still gets the catch.
+        assert_eq!(mgr.override_env("no-such-site").len(), catch.env.len());
+        // And the catch reaches the FrankenPHP config through `desired_override_config`,
+        // which is what makes a flip of the switch a respawn on reconcile.
+        let platform = override_test_platform("override-catch", None);
+        let on = mgr.desired_override_config(&platform, "fp.test", OverrideKind::Frankenphp, std::path::Path::new("/d"), 8200, 9783, services::RewriteMode::Single, &env).unwrap();
+        assert!(on.contains("php_ini sendmail_path"), "{on}");
+        mgr.pools.set_mail_catch(None);
+        let off = mgr.desired_override_config(&platform, "fp.test", OverrideKind::Frankenphp, std::path::Path::new("/d"), 8200, 9783, services::RewriteMode::Single, &mgr.override_env("site-1")).unwrap();
+        assert!(!off.contains("php_ini") && !off.contains("MAIL_URL"), "{off}");
+        assert_ne!(on, off, "the flip must change the config, or reconcile never respawns");
+    }
+
     #[test]
     fn a_stopped_site_wants_its_own_backend_gone_and_no_shared_process_touched() {
         use crate::state::models::SiteOrigin;

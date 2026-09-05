@@ -579,6 +579,7 @@ async fn main() {
         fp_port,
         rexenv_lib::core::services::RewriteMode::Single,
         &[],
+        None,
     )
     .expect("frankenphp config");
     // Handed to the teardown registry rather than held as a local: `fail()` exits

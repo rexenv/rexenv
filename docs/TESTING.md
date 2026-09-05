@@ -211,6 +211,15 @@ it can:
   the 503 carrying rexenv's own words and NOBODY's marker, the neighbour still answering
   while its neighbour is down, and the site serving again after the switch goes back —
   on the certificate it kept.
+  **`frankenphp_mail_catch_check` (sandbox tier, 5 Sep 2026) is the same shape for the
+  mail catch-all's third carrier.** L0 holds the FrankenPHP config TEXT (`php_ini
+  sendmail_path`, the `MAIL_*` env lines) and the manager's merge; what no string can say
+  is whether the embedded PHP READS them — and the quoting is the whole risk, because the
+  Caddyfile lexer and PHP's ini parser each strip a layer. So it runs the real binary on a
+  fixture port twice: the catch OFF first (no shim, empty `getenv` — the control without
+  which "the shim was there" cannot be told from "this PHP had it anyway"), then ON, and
+  asserts `ini_get` verbatim, `getenv`/`$_ENV`, and a real `mail()` that ran a fake
+  sendmail at a path WITH A SPACE with sendmail's argv and the message on stdin.
   Leg 4 (3 Sep 2026) hands the guard a LIVE stand-in parent with a start time that is not
   its own — the recycled-pid shape, reproduced without recycling a pid — and requires the
   share to end while the stand-in survives. `valet_import_check` gained step 3b the same

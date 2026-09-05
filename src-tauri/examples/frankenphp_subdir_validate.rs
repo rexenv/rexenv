@@ -45,7 +45,7 @@ async fn main() {
 
     let mut ok = true;
     for (name, mode, env) in cases {
-        let cfg = frankenphp::generate_config(&docroot, 8271, mode, env);
+        let cfg = frankenphp::generate_config(&docroot, 8271, mode, env, None);
         let path = tmp.join(format!("{name}.Caddyfile"));
         std::fs::write(&path, &cfg).expect("write config");
         let out = Command::new(&bin)

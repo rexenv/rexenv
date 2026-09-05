@@ -785,6 +785,15 @@ impl PhpFpmPools {
         self.catch = catch;
     }
 
+    /// The catch as it stands — for the OVERRIDE backends (#514), which are not
+    /// pools but must carry the same two halves: `ServiceManager` renders it
+    /// into a FrankenPHP config (`php_ini sendmail_path`) and that backend's
+    /// process environment. One value, read here, so the pools and the override
+    /// sites cannot disagree about whether mail is caught.
+    pub fn mail_catch(&self) -> Option<&super::mail::Catch> {
+        self.catch.as_ref()
+    }
+
     /// Set the per-minor ini settings used when (re)writing pool configs. Like
     /// the mail catch-all, applies to pools started afterward — the caller
     /// restarts an affected running pool to make new values live.

@@ -114,6 +114,7 @@ edge_wire_check sandbox
 fpm_candidate_check sandbox
 frankenphp_edge_serve service
 frankenphp_fetch network
+frankenphp_mail_catch_check sandbox
 frankenphp_serve service
 frankenphp_subdir_validate sandbox
 git_site_clone_check sandbox

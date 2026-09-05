@@ -147,8 +147,15 @@ paying for anyway: **the tick belongs in the commit that does the work.**
   **Still open by design:** an HTTP-API transport (Mailgun's API, SES via the SDK)
   posts with `wp_remote_post`, fires no `phpmailer_init`, and is not caught.
 
-- [ ] **The mail catch-all does not reach a FrankenPHP override site** (found by the
-  5 Sep 2026 audit, read off the code — not yet measured). Both halves ride the php-fpm
+- [x] **The mail catch-all does not reach a FrankenPHP override site** ✓ 5 Sep 2026 (ledger
+  #514) — `ServiceManager::override_env`/`override_sendmail` carry both halves onto the
+  backend, `frankenphp::generate_config` renders the shim as `php_ini sendmail_path`
+  (inner-double-quoted — the bare-single-quote strip measured on 1.12.4 before the code
+  was written), and `set_mail_catch_all` reconciles the override backends after the pools.
+  `frankenphp_mail_catch_check` (sandbox tier) PASSED on its first run against the real
+  binary: negative control first, then `ini_get` verbatim, `getenv`/`$_ENV` carrying
+  `MAIL_*`, and a real `mail()` running a fake sendmail at a path with a space with the
+  right argv and the message. *As found:* (read off the code — not yet measured). Both halves ride the php-fpm
   POOL (`php_admin_value[sendmail_path]` + `env[MAIL_*]`, `mail::Catch`), and a FrankenPHP
   site has no pool: its embedded PHP keeps PHP's default `sendmail_path` (macOS's postfix
   binary, which queues locally), and its process gets only the site's own env

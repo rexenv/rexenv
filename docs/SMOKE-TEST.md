@@ -562,6 +562,13 @@ site with a REAL plugin, which is the part the fixtures cannot buy.
       => $m->to('you@example.test')->subject('smoke'));"`). It arrives in **Mail**
       — the environment beat the file. Both surfaces, because the pool and the
       CLI carry the catch separately.
+- [ ] **A FrankenPHP site is caught too** (#514). Switch a WordPress site's web server
+      to FrankenPHP, trigger a password reset: it lands in **Mail**. Then toggle the
+      catch-all OFF → the site's Services row shows its FrankenPHP backend respawn
+      (the toggle reconciles override backends, not only pools), and a reset now goes
+      to PHP's default sendmail; ON again → caught, again without a stack restart.
+      `frankenphp_mail_catch_check` proves the mechanism on the real binary; this leg
+      proves the toggle drives it on a real site.
 - [ ] **The stated limit is TRUE, not just printed.** On that Laravel site run
       `php artisan config:cache`, then mail again. If the site was created by
       this rexenv its `.env` was already wired, so it still lands in Mailpit; a

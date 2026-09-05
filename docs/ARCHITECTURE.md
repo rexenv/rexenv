@@ -1337,12 +1337,25 @@ IPC surface — which is how a reader ends up designing against a system with on
     terminal. Same split that bit wp-cli on 25 Aug 2026 (`wp_mail()` caught through the
     browser, dropped from the command line, `true` returned both times); same fix.
     The user's own iTerm is beyond reach and always will be.
-  - **Not covered: a FrankenPHP override site** (5 Sep 2026 audit, `docs/TODO.md`). Both
-    halves are properties of the php-fpm POOL, and a FrankenPHP site has none — its
-    embedded PHP keeps the default `sendmail_path` and its process carries only the
-    site's own env — so neither `mail()` nor a Laravel `.env` is caught there. Apache is
-    covered (its `.php` goes to the shared pool). Stated on the Settings card beside the
-    other limits until the override spawn carries the catch.
+  - **A FrankenPHP override site carries the catch itself** (#514, 5 Sep 2026). Both
+    halves were properties of the php-fpm POOL, and a FrankenPHP site has none — for a
+    day the audit found its embedded PHP on the default `sendmail_path` and its process
+    on the site's own env alone, so a Laravel site on FrankenPHP with a real `MAIL_HOST`
+    delivered for real. Now `ServiceManager::override_env` appends `laravel_env` to the
+    backend's spawn env (LAST, so it beats a site variable of the same name — the
+    switch's meaning) and `override_sendmail` hands the SAME shim string to
+    `frankenphp::generate_config`, which renders it as `php_ini sendmail_path` in the
+    global `frankenphp {}` block. **The shim is wrapped in an inner pair of double
+    quotes, and that is measured, not tidy:** the Caddyfile lexer consumes the outer
+    quotes, so what reaches PHP's ini parser is the pool's `'/App Support/mailpit'
+    sendmail …` — whose bare single quotes the ini parser strips, exactly as in a pool
+    ini, leaving a path `sh` splits at the space. With `\"…\"` inside, `ini_get` came
+    back verbatim and a real `mail()` ran a fake sendmail at a path with a space with
+    the right argv (`frankenphp_mail_catch_check`, live on the pinned 1.12.4). The
+    toggle is the third carrier's respawn too: `set_mail_catch_all` reconciles the
+    override backends after the pools, and a flipped catch is a changed config, which
+    is what `reconcile_overrides` respawns on. Apache never needed any of this — its
+    `.php` goes to the shared pool.
   - **`.env` is written too, and that is not redundancy** — it is the
     `php artisan config:cache` case. A cached config is baked from `env()` at cache
     time and `env()` is never read again, so a site that caches keeps whatever its file

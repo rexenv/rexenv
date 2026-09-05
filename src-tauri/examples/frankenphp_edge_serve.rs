@@ -141,7 +141,7 @@ async fn main() {
          this example would be bound here, and SO_REUSEPORT would let ours join it rather \
          than fail",
     )]);
-    let fp_conf = frankenphp::write_config(&*plat, &fp.domain, Path::new(&fp.path), fp_port, RewriteMode::Single, &[]).unwrap();
+    let fp_conf = frankenphp::write_config(&*plat, &fp.domain, Path::new(&fp.path), fp_port, RewriteMode::Single, &[], None).unwrap();
     // Drop-GUARDED, all three. These were raw `Child`s, which Rust does not kill
     // on drop, so any early exit leaked them — and the readiness gates above
     // exit by PANICKING, which made the leak likelier than the flat sleep ever
