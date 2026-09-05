@@ -4,7 +4,11 @@
 //!   - `wordpress::wp_run` returns an `wp option get siteurl` value,
 //!   - `wordpress::wp_json` (typed JSON runner) parses `wp plugin list`.
 //!
-//! Finally a Blank-PHP docroot must report `isWordpress: false`.
+//! Then a Blank-PHP docroot must report `isWordpress: false` — and, with MySQL
+//! STOPPED, the real site must still report `isWordpress: true` + a version:
+//! `core is-installed` exits 1 for a down database exactly as it does for a
+//! non-WordPress path, and reading the exit code alone made every WordPress
+//! site not-WordPress while rexenv's stack was stopped (5 Sep 2026).
 //!
 //! Run (MySQL port :13306 must be free): `cargo run --example wp_info_check`
 
@@ -130,17 +134,37 @@ async fn main() {
     let blank_info = wordpress::wp_info(&php, &wp, &blank).expect("wp_info blank");
     println!("wp_info(Blank-PHP) = {blank_info:?}");
 
+    // 5) The database server DOWN: the files are still WordPress. This is the
+    //    state every site is in while the stack is stopped; the pre-fix answer
+    //    here was `is_wordpress: false`.
     mysqld.stop();
+    for _ in 0..30 {
+        if !database::mysql_running(database::MYSQL_PORT) {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(500));
+    }
+    println!("mysql running={} (stopped on purpose)", database::mysql_running(database::MYSQL_PORT));
+    let down_info = wordpress::wp_info(&php, &wp, &docroot).expect("wp_info with the database down");
+    println!("wp_info(WordPress, database down) = {down_info:?}");
 
     let ok = info.is_wordpress
         && info.version.is_some()
         && !siteurl.trim().is_empty()
         && !plugins.is_empty()
-        && !blank_info.is_wordpress;
+        && !blank_info.is_wordpress
+        && down_info.is_wordpress
+        && down_info.version == info.version;
     if ok {
-        println!("\nOK — JSON bridge returns version + option value + parsed plugin list; Blank-PHP = not WordPress.");
+        println!(
+            "\nOK — JSON bridge returns version + option value + parsed plugin list; Blank-PHP = not WordPress; \
+             database down = still WordPress."
+        );
     } else {
-        eprintln!("\nFAILED — info={info:?} siteurl={siteurl:?} plugins={} blank={blank_info:?}", plugins.len());
+        eprintln!(
+            "\nFAILED — info={info:?} siteurl={siteurl:?} plugins={} blank={blank_info:?} down={down_info:?}",
+            plugins.len()
+        );
         std::process::exit(1);
     }
 }

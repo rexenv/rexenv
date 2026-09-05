@@ -369,6 +369,15 @@ it can:
   or WordPress answers from its 12h timer and the two legs differ by ORDER rather than
   by the grant. A third leg asks a later run whether it still has the capability (it
   must not). **Ran green 19 Aug 2026** and is plant-proven: dropping the flag from `checked_list` fails leg 2 by name while leg 1 stays green. **Cannot prove:** that a premium update INSTALLS — that needs a vendor's real package URL and a licence, so it is `docs/SMOKE-TEST.md`'s leg.
+  **`wp_info_check` (network tier) gained a fifth leg on 5 Sep 2026: MySQL STOPPED, the
+  real site must still be WordPress.** L0 holds the classification
+  (`is_installed_stderr_separates_a_down_database_from_no_wordpress`) over wp-cli
+  2.12.0's own three stderr texts, captured live against a real docroot with `DB_HOST`
+  pointed at a closed port, `DB_NAME` at a missing schema, and a Blank-PHP path — all
+  three exit 1, so a fixture that checked exit codes would pass on the pre-fix code.
+  The example leg is the end-to-end half (`wp_info` itself, a real wp-cli, a real
+  stopped mysqld). **Not live-run yet**: the stack was up when the leg was written,
+  and the network tier assumes it stopped — `docs/TODO.md` carries the row.
   **The Tunnels filter (`uireview.js`, `tunnels-*`, 19 Aug 2026, #371) is L2 asserting a
   SENTENCE, not a layout.** The feature is a search box; the risk is that filtering out a
   live public URL reads as "nothing is shared". So the fixture carries two live tunnels —

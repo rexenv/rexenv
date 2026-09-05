@@ -1118,16 +1118,60 @@ pub struct WpInfo {
     pub multisite: bool,
 }
 
+/// What `core is-installed` said about a docroot — read from its exit status
+/// AND its stderr, because the exit code alone cannot tell these apart.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WpPresence {
+    /// Exit 0: WordPress is on disk and its tables exist.
+    Installed,
+    /// Exit 1 with WordPress's own "Error establishing a database connection":
+    /// the files are there (wp-cli loaded `wp-config.php` and got as far as
+    /// `mysqli_real_connect`), the database server is not. This is what every
+    /// WordPress site says while rexenv's stack is stopped.
+    DbUnreachable,
+    /// Exit 1 for any other reason: no WordPress at the path, or the database
+    /// answers but the install never finished ("Cannot select database", or
+    /// a silent 1 when the tables are missing).
+    Absent,
+}
+
+/// Classify a `core is-installed` run. Measured 5 Sep 2026 against wp-cli 2.12.0
+/// with `DB_HOST` pointed at a closed port: exit 1, and the WordPress sentence
+/// on stderr — the same exit 1 a Blank-PHP docroot ("This does not seem to be a
+/// WordPress installation") and a dropped database ("Cannot select database")
+/// produce. Only the sentence separates "the server is down" from "not
+/// WordPress", so it is the thing this reads.
+fn wp_presence(out: &Output) -> WpPresence {
+    if out.status.success() {
+        return WpPresence::Installed;
+    }
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    if stderr.contains("Error establishing a database connection") {
+        WpPresence::DbUnreachable
+    } else {
+        WpPresence::Absent
+    }
+}
+
 /// Detect WordPress at a docroot via `core is-installed` (presence), `core version`,
 /// and the `MULTISITE` constant. A non-WordPress docroot (e.g. a Blank-PHP site)
 /// reports `is_wordpress: false` rather than erroring.
+///
+/// `core is-installed` is the ONE probe here that needs the database; `core
+/// version` reads `wp-includes/version.php` and `config get` parses
+/// `wp-config.php`, both fine with MySQL down. So a WordPress site whose
+/// database server is unreachable still reports `is_wordpress: true` — with
+/// the stack stopped, the answer used to be `false`, and the WordPress tab and
+/// Magic Login vanished from a site that was WordPress a minute ago (user
+/// report, 5 Sep 2026). Whether the *install* finished cannot be known without
+/// the database, so files-on-disk is the honest answer in that state.
 pub fn wp_info(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<WpInfo> {
     let path = format!("--path={}", docroot.display());
 
-    // `core is-installed` exits 0 only for a present, installed WordPress.
-    let is_wordpress = wp_cli(php_bin, wp_phar, &["core", "is-installed", &path], None)
-        .map(|o| o.status.success())
-        .unwrap_or(false);
+    let presence = wp_cli(php_bin, wp_phar, &["core", "is-installed", &path], None)
+        .map(|o| wp_presence(&o))
+        .unwrap_or(WpPresence::Absent);
+    let is_wordpress = presence != WpPresence::Absent;
     if !is_wordpress {
         return Ok(WpInfo { is_wordpress: false, version: None, multisite: false });
     }
@@ -3595,6 +3639,47 @@ pub fn wp_config_path(docroot: &Path) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+
+    /// `core is-installed` exits 1 for "not WordPress", "database dropped" AND
+    /// "database server down", so a reader of the exit code alone calls every
+    /// WordPress site not-WordPress the moment the stack stops — which is what
+    /// hid the WordPress tab and Magic Login after Start all (5 Sep 2026). The
+    /// three stderr texts below are wp-cli 2.12.0's own, captured against a
+    /// real site with `DB_HOST` pointed at a closed port, `DB_NAME` at a
+    /// missing schema, and a Blank-PHP docroot.
+    #[test]
+    fn is_installed_stderr_separates_a_down_database_from_no_wordpress() {
+        use std::os::unix::process::ExitStatusExt;
+        use std::process::{ExitStatus, Output};
+        let out = |code: i32, stderr: &str| Output {
+            status: ExitStatus::from_raw(code << 8),
+            stdout: Vec::new(),
+            stderr: stderr.as_bytes().to_vec(),
+        };
+
+        assert_eq!(super::wp_presence(&out(0, "")), super::WpPresence::Installed);
+
+        let down = "\nWarning: mysqli_real_connect(): (HY000/2002): Connection refused in \
+                    /Users/x/Sites/tr.rex/wp-includes/class-wpdb.php on line 1990\n\
+                    Error: Error establishing a database connection. This either means that the \
+                    username and password information in your `wp-config.php` file is incorrect or \
+                    that contact with the database server at `127.0.0.1:13307` could not be \
+                    established. This could mean your host\u{2019}s database server is down.\n";
+        assert_eq!(super::wp_presence(&out(1, down)), super::WpPresence::DbUnreachable);
+
+        let dropped = "Error: Cannot select database. The database server could be connected to \
+                       (which means your username and password is okay) but the `wp_tr_rex` \
+                       database could not be selected.\n";
+        assert_eq!(super::wp_presence(&out(1, dropped)), super::WpPresence::Absent);
+
+        let blank = "Error: This does not seem to be a WordPress installation.\n\
+                     The used path is: /Users/x/Sites/abc.rex/\n\
+                     Pass --path=`path/to/wordpress` or run `wp core download`.\n";
+        assert_eq!(super::wp_presence(&out(1, blank)), super::WpPresence::Absent);
+
+        // A silent exit 1 (tables missing, wp-cli says nothing) is not-installed.
+        assert_eq!(super::wp_presence(&out(1, "")), super::WpPresence::Absent);
+    }
 
     /// The refusals `user_delete` can make WITHOUT a WordPress install — the
     /// two that are pure decisions — plus the argv shape, which is where the

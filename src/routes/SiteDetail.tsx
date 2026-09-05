@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toastBackendError } from "@/lib/toast";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -146,6 +146,28 @@ export function SiteDetail() {
     refetchInterval: 2000,
   });
 
+  // When THIS site goes from not-serving to serving while the page is open
+  // (Start all in the footer), ask `wp-info` again. Its answer was taken with
+  // the stack down — a state the backend now reports honestly (files on disk =
+  // WordPress), but "installed", the core version and multisite are only
+  // knowable with the database up, and a 60s staleTime with no focus refetch
+  // means nothing else would re-ask until the user left and came back. That
+  // was the report of 5 Sep 2026: open a WordPress site stopped, Start all,
+  // no WordPress tab and no Magic Login until a navigation. Only a KNOWN
+  // false→true counts: the first poll landing while the page loads must not
+  // cancel and restart the wp-info fetch already in flight.
+  const servingNow: boolean | undefined = serving
+    ? !!serving.find((s) => s.domain === site?.domain)?.serving
+    : undefined;
+  const wasServing = useRef<boolean | undefined>(undefined);
+  useEffect(() => {
+    const was = wasServing.current;
+    wasServing.current = servingNow;
+    if (was === false && servingNow === true && id) {
+      void qc.invalidateQueries({ queryKey: ["wp-info", id] });
+    }
+  }, [servingNow, id, qc]);
+
   const switchPhp = useMutation({
     mutationFn: (version: string) => setSitePhpVersion(id!, version),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["sites"] }),
@@ -211,8 +233,12 @@ export function SiteDetail() {
   // sites list) so the chrome is right immediately; the live answer corrects it
   // the moment it arrives — including the "recorded as WordPress but the
   // install never finished" case, where the tab goes away again.
-  const isWordpress = wpResolved ? !!wp?.isWordpress : site.type === "wordpress";
-  const isServing = !!serving?.find((s) => s.domain === site.domain)?.serving;
+  //
+  // Only a live answer that ARRIVED overrides the recorded type. A failed
+  // fetch (no PHP binary yet, wp-cli wedged) used to count as "resolved" and
+  // read as not-WordPress, hiding the tab on a site nothing had disproved.
+  const isWordpress = wp ? wp.isWordpress : site.type === "wordpress";
+  const isServing = servingNow === true;
   const active: TabKey = tab ?? "overview";
   const tabs: { key: TabKey; label: string; show: boolean }[] = [
     { key: "overview", label: "Overview", show: true },

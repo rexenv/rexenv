@@ -1275,6 +1275,23 @@ IPC surface — which is how a reader ends up designing against a system with on
   "should not exist" extras (verified live) — verdicts derive from PARSED findings,
   never exit codes alone; extras triage as benign only when the basename is known OS
   noise (`.DS_Store`, `._*`, …), and unknown warnings stay loud.
+- **WordPress detection survives a stopped stack** (`core::wordpress::wp_info` +
+  `wp_presence`, 5 Sep 2026): `core is-installed` is the ONE probe of the three that
+  needs the database — `core version` reads `wp-includes/version.php`, `config get`
+  parses `wp-config.php`, both fine with MySQL down — and it exits 1 for "not
+  WordPress", "database dropped" AND "database server unreachable" alike. Reading the
+  exit code alone therefore called every WordPress site not-WordPress the moment the
+  stack stopped, and the SiteDetail page cached that `false` for 60s with no focus
+  refetch, so the report was: open a WordPress site while stopped, Start all, and the
+  WordPress tab and Magic Login stay gone until you navigate away. Two halves now:
+  the backend reads stderr and treats WordPress's own "Error establishing a database
+  connection" sentence as files-present (whether the INSTALL finished is unknowable
+  without the database, so on-disk is the honest answer in that state), and the page
+  re-asks `wp-info` on a KNOWN not-serving→serving transition of that site (the
+  2s `sites-serving` poll it already runs) so version/multisite are re-read with the
+  database up. The tab/Magic Login rule is also `wp ? wp.isWordpress : site.type ===
+  "wordpress"` — only a live answer that ARRIVED overrides the recorded type; a failed
+  fetch used to count as resolved and read as not-WordPress.
 - **Mail:** php-fpm `sendmail_path` (DOUBLE-quoted in the pool ini — the parser strips
   bare quotes and app-data paths contain spaces) → Mailpit's `sendmail -t -S
   127.0.0.1:11025` shim → SMTP sink; inbox UI reads the HTTP API on 18025 (`core/mail.rs`).
