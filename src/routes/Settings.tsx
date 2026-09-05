@@ -7,7 +7,7 @@ import { confirm, Overlay } from "@/components/ui/dialog";
 // being reachable (or public).
 import licenseText from "../../LICENSE?raw";
 import noticesText from "../../THIRD-PARTY-NOTICES.md?raw";
-import { ResolverHandBackRow } from "@/routes/Import";
+import { ResolverConsentFor, ResolverHandBackRow } from "@/routes/Import";
 import { agoLabel } from "@/routes/Sites";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUpRight, Bot, CheckCircle2, ChevronRight, Code, FileText, FolderOpen, Github, Globe, Info, Lock, Server, Settings as SettingsIcon, Shield, ShieldCheck, type LucideIcon } from "lucide-react";
@@ -836,22 +836,41 @@ function DnsSslSetting() {
             </div>
             <div className="mt-2 flex flex-col gap-1.5">
               {unresolvable.map((u) => (
-                <div key={u.tld} className="flex items-center justify-between gap-3">
-                  <span className="font-mono text-[0.71875rem] text-rex-text">
-                    .{u.tld}
-                    <span className="ml-2 text-rex-text-muted">
-                      {/* Two causes, two fixes: telling someone to install a
-                          file another tool already owns sends them in a circle. */}
-                      {u.foreign ? "another tool owns its resolver file" : "no resolver file"}
+                <div key={u.tld} className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-mono text-[0.71875rem] text-rex-text">
+                      .{u.tld}
+                      <span className="ml-2 text-rex-text-muted">
+                        {/* Two causes, two fixes: telling someone to install a
+                            file another tool already owns sends them in a circle. */}
+                        {u.foreign ? "another tool owns its resolver file" : "no resolver file"}
+                      </span>
                     </span>
-                  </span>
-                  <Button
-                    variant="secondary"
-                    disabled={repair.isPending}
-                    onClick={() => repair.mutate(u.tld)}
-                  >
-                    {repair.isPending ? "Repairing…" : "Repair"}
-                  </Button>
+                    {/* Repair puts OUR file back where there is none; it refuses
+                        a foreign file by design, so offering it here for one was
+                        a button that could only fail (5 Sep 2026). A foreign TLD
+                        gets the takeover consent instead — same card as Import. */}
+                    {!u.foreign && (
+                      <Button
+                        variant="secondary"
+                        disabled={repair.isPending}
+                        onClick={() => repair.mutate(u.tld)}
+                      >
+                        {repair.isPending ? "Repairing…" : "Repair"}
+                      </Button>
+                    )}
+                  </div>
+                  {u.foreign && (
+                    <ResolverConsentFor
+                      tld={u.tld}
+                      alternative={
+                        <>
+                          Or keep their file and move these sites to another ending via Change
+                          domain — <span className="font-mono">.rex</span> always works.
+                        </>
+                      }
+                    />
+                  )}
                 </div>
               ))}
             </div>
@@ -1118,6 +1137,24 @@ function DefaultTldCard() {
       </div>
       {policy && !policy.allowed && value !== "" && (
         <div className="mt-2.5 text-[0.71875rem] text-status-error-bright">{policy.reason}</div>
+      )}
+      {/* Saving the default is a setting, not a resolver write — but the FIRST
+          site created under it hits `ensure_resolver`, which refuses a TLD
+          Valet/Herd still owns. Saying so here, with the takeover in reach, beats
+          a create dialog that fails with "rexenv can take that TLD over" and no
+          button (5 Sep 2026). Save stays enabled: the setting is theirs to make. */}
+      {policy?.allowed && (
+        <div className="mt-2.5 empty:hidden">
+          <ResolverConsentFor
+            tld={value}
+            alternative={
+              <>
+                Or leave it alone — new sites under <span className="font-mono">.{value}</span>{" "}
+                won't resolve on this Mac until rexenv answers it.
+              </>
+            }
+          />
+        </div>
       )}
       {policy?.allowed && policy.warn && (
         <div className="mt-2.5 text-[0.71875rem] text-status-warning-bright">

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, FolderInput, Loader2, RefreshCw } from "lucide-react";
 import { TopBar } from "@/components/shell/TopBar";
@@ -12,6 +12,7 @@ import {
   onValetImportRow,
   resolverHandBack,
   resolverTakeOver,
+  resolverTldStatus,
   scanValetImport,
   startServices,
   valetImportCancel,
@@ -530,13 +531,37 @@ export function ImportProgressCard({
  * Their file is shown beside ours verbatim, the checkbox is unticked, and the
  * alternative (import on .rex instead) is stated rather than buried — taking
  * someone's system file is not something to slip past them.
+ *
+ * Exported since 5 Sep 2026 because this card used to exist ONLY here, and
+ * only for TLDs the scan found in Valet's own sites. The refusal it answers
+ * ("… managed by another tool … rexenv can take that TLD over") is raised by
+ * Change domain, by site creation on the default TLD, and by Settings' repair
+ * — and each of those told the user about a button that was on another page,
+ * or on no page at all once Valet had no `.test` site left to list. The card
+ * now renders where the refusal would land; `alternative` is the way out that
+ * fits the caller (import on .rex / pick another ending).
  */
-function ResolverConsent({ tld, onDone }: { tld: ResolverTldStatus; onDone: () => void }) {
+export function ResolverConsent({
+  tld,
+  onDone,
+  alternative,
+}: {
+  tld: ResolverTldStatus;
+  onDone: () => void;
+  alternative?: ReactNode;
+}) {
+  const qc = useQueryClient();
   const [agreed, setAgreed] = useState(false);
   const take = useMutation({
     mutationFn: () => resolverTakeOver(tld.tld),
     onSuccess: () => {
       toast.success(`rexenv now answers .${tld.tld} — Valet's file is backed up.`);
+      // Every reader of who-owns-this-TLD: the scan, the per-TLD status the
+      // dialogs ask, the Settings "can't be resolved" card, the drift banner.
+      void qc.invalidateQueries({ queryKey: ["valet-scan"] });
+      void qc.invalidateQueries({ queryKey: ["resolver-tld-status"] });
+      void qc.invalidateQueries({ queryKey: ["unresolvable-tlds"] });
+      void qc.invalidateQueries({ queryKey: ["resolver-drift"] });
       onDone();
     },
     onError: (e) => toastBackendError(e),
@@ -599,12 +624,49 @@ function ResolverConsent({ tld, onDone }: { tld: ResolverTldStatus; onDone: () =
           {take.isPending ? "Taking over…" : `Take over .${tld.tld}`}
         </Button>
         <span className="text-[0.6875rem] text-rex-text-muted">
-          Or leave it alone and import these sites on <span className="font-mono">.rex</span>{" "}
-          instead — their URLs change, but nothing of Valet's is touched.
+          {alternative ?? (
+            <>
+              Or leave it alone and import these sites on <span className="font-mono">.rex</span>{" "}
+              instead — their URLs change, but nothing of Valet's is touched.
+            </>
+          )}
         </span>
       </div>
     </div>
   );
+}
+
+/**
+ * The consent card for a TLD the user TYPED, looked up on demand: renders the
+ * card only while another tool owns (or has reclaimed) that TLD's resolver
+ * file, and nothing at all otherwise — so a caller can drop it under any TLD
+ * input and let it speak only when there is something to consent to.
+ * `onOwnership` reports whether the TLD is currently blocked, for callers that
+ * gate their own submit on it.
+ */
+export function ResolverConsentFor({
+  tld,
+  alternative,
+  onOwnership,
+}: {
+  tld: string;
+  alternative?: ReactNode;
+  onOwnership?: (blocked: boolean) => void;
+}) {
+  const { data, refetch } = useQuery({
+    queryKey: ["resolver-tld-status", tld],
+    queryFn: () => resolverTldStatus(tld),
+    enabled: tld !== "",
+    // A refused TLD (policy) throws; the caller's own policy feedback covers
+    // that, so this stays silent rather than retrying it.
+    retry: false,
+  });
+  const blocked = data?.owner === "foreign" || data?.owner === "drifted";
+  useEffect(() => {
+    onOwnership?.(blocked);
+  }, [blocked, onOwnership]);
+  if (!data || !blocked) return null;
+  return <ResolverConsent tld={data} onDone={() => void refetch()} alternative={alternative} />;
 }
 
 /**

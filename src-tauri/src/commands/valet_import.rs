@@ -332,6 +332,32 @@ fn resolver_status_for(
     }
 }
 
+/// Who owns ONE TLD's resolver file — the same row the import scan builds for
+/// the TLDs it finds in Valet's config, reachable for a TLD the user typed.
+///
+/// Until 5 Sep 2026 the takeover consent card existed only on the Import page,
+/// and only for TLDs the scan derived from Valet/Herd's own SITES. A user who
+/// had left Valet (or never had a `.test` site there) typed `shop.test` into
+/// Change domain, met "rexenv can take that TLD over", and had no button
+/// anywhere that did — the scan listed nothing, Settings' Repair refused the
+/// foreign file by design. This is the read the dialogs ask before they let
+/// the write happen; the write is still `resolver_take_over`.
+///
+/// Refuses a TLD the policy would refuse: `resolver_path` joins the string
+/// onto `/etc/resolver`, and a read whose content is shown to the user must
+/// not be pointable at an arbitrary file.
+#[tauri::command]
+pub fn resolver_tld_status(state: State<'_, AppState>, tld: String) -> Result<ResolverTldStatus> {
+    let tld = tld.trim().trim_start_matches('.').to_ascii_lowercase();
+    let policy = core::tld::classify(&tld);
+    if !policy.allowed {
+        return Err(Error::Other(policy.reason));
+    }
+    let conn = lock(&state)?;
+    let existing = core::sites::list(&conn)?;
+    Ok(resolver_status_for(&conn, state.platform.as_ref(), &existing, &tld))
+}
+
 /// Take a TLD's resolver file over from Valet/Herd, backing theirs up first.
 /// Consent lives in the UI; this is the operation it authorises.
 #[tauri::command]

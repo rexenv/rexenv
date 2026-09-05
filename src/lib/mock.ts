@@ -2,7 +2,7 @@
  * Mock data for the static shell (Phase 1 task 0.6). Replaced by real IPC data
  * as backend tasks land. Kept in one place so it's easy to delete later.
  */
-import type { AdminerStatus, AppInfo, DbStatus, GlobalStatus, MailDetail, MailList, PhpSetting, PhpVersion, ServiceInfo, Site, SiteServing } from "@/types";
+import type { AdminerStatus, AppInfo, DbStatus, GlobalStatus, MailDetail, MailList, PhpSetting, PhpVersion, ServiceInfo, Site, SiteServing , ResolverTldStatus } from "@/types";
 
 export const mockAppInfo: AppInfo = {
   name: "rexenv",
@@ -253,6 +253,33 @@ export function mockResolverDrift(): string[] {
     .split(",")
     .map((t) => t.trim())
     .filter(Boolean);
+}
+
+/** Who owns a TLD's resolver file, for the dev/WebKit harness: `?foreign=test,dev`
+ *  names TLDs whose `/etc/resolver/<tld>` "belongs to Valet"; anything else is
+ *  `absent`, which MUST render nothing (the consent card is fixture-driven, never
+ *  always-on). A takeover through the mock flips the TLD to `borrowed` for the
+ *  page's lifetime, so the card has to disappear on the same evidence the real
+ *  app would have — a card that hid itself on the click rather than on the
+ *  re-read would pass a frozen fixture. */
+const mockTakenOver = new Set<string>();
+export function mockResolverTldStatus(tld: string): ResolverTldStatus {
+  const foreign = (new URLSearchParams(window.location.search).get("foreign") ?? "")
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
+  const ourContent = "nameserver 127.0.0.1\nport 15353\n";
+  const path = `/etc/resolver/${tld}`;
+  if (mockTakenOver.has(tld)) {
+    return { tld, owner: "borrowed", path, theirContent: "nameserver 127.0.0.1\n", ourContent, rexenvSites: 0 };
+  }
+  if (foreign.includes(tld)) {
+    return { tld, owner: "foreign", path, theirContent: "nameserver 127.0.0.1\n", ourContent, rexenvSites: 0 };
+  }
+  return { tld, owner: "absent", path, theirContent: null, ourContent, rexenvSites: 0 };
+}
+export function mockResolverTakeOver(tld: string): void {
+  mockTakenOver.add(tld);
 }
 
 /** Extra domains per site id, for the dev shell (v42).

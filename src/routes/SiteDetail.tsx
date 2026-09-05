@@ -43,6 +43,7 @@ import { SiteLogs, logLineColor } from "@/components/sites/SiteLogs";
 import { WordPressManager } from "@/components/wordpress/WordPressManager";
 import { SiteAgentActivity } from "@/components/mcp/SiteAgentActivity";
 import { SiteRepoTab } from "@/components/sites/SiteRepoTab";
+import { ResolverConsentFor } from "@/routes/Import";
 import { siteTypeMeta } from "@/lib/siteType";
 import { cn, TECH_INPUT } from "@/lib/utils";
 import { eolNote, eolTag } from "@/lib/php";
@@ -1427,7 +1428,16 @@ function ChangeDomainDialog({ site, onClose }: { site: Site; onClose: () => void
     queryFn: () => tldPolicy(nextTld),
     enabled: nextTld !== "",
   });
-  const valid = wellFormed && next !== site.domain && policy?.allowed === true;
+  // Another tool (Valet/Herd) owns the new TLD's resolver file. The backend
+  // REFUSES the change in that state — correctly, overwriting their file would
+  // make it look like ours and teardown would delete it — but until 5 Sep 2026
+  // the refusal arrived as a toast saying "rexenv can take that TLD over" with
+  // the takeover living on the Import page, and only for TLDs Valet's own
+  // sites used. So the consent card renders HERE, under the input, and the
+  // button waits for it: a click that can only end in that toast is not a
+  // button. (Reported by a user moving a site from .rex to .test after Valet.)
+  const [tldBlocked, setTldBlocked] = useState(false);
+  const valid = wellFormed && next !== site.domain && policy?.allowed === true && !tldBlocked;
   const isWp = site.type === "wordpress";
 
   const change = useMutation({
@@ -1538,6 +1548,20 @@ function ChangeDomainDialog({ site, onClose }: { site: Site; onClose: () => void
             </div>
             {policy && !policy.allowed && (
               <div className="mt-1.5 text-[0.71875rem] text-status-error-bright">{policy.reason}</div>
+            )}
+            {policy?.allowed && (
+              <div className="mt-2.5 empty:hidden">
+                <ResolverConsentFor
+                  tld={nextTld}
+                  onOwnership={setTldBlocked}
+                  alternative={
+                    <>
+                      Or keep their file and use a different ending —{" "}
+                      <span className="font-mono">.rex</span> always works.
+                    </>
+                  }
+                />
+              </div>
             )}
             {policy?.allowed && policy.warn && (
               <div className="mt-1.5 text-[0.71875rem] text-status-warning-bright">

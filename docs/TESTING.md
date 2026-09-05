@@ -381,6 +381,19 @@ it can:
   Blank-PHP leg still says `false`, so the pass is not "everything is WordPress now".
   The user-visible repro (Stop all → open a WordPress site → Start all → tab + Magic
   Login appear in place) was hand-checked by the owner the same day.
+  **`tldconsent.js` (5 Sep 2026) is L2 holding a WHERE, not a what.** The takeover
+  consent existed and worked — on the Import page, for TLDs Valet's own sites used —
+  and a user whose Valet had no `.test` site left met the refusal in Change domain with
+  no button anywhere. The check types `x.test` with `?foreign=test` (the mock's "Valet
+  owns it" fixture) and asserts the card AND a disabled Change button under that input;
+  `x.rex` clears both; consenting clears the card on the re-read (the mock flips the TLD
+  to `borrowed` — a card that hid on the click would pass a frozen fixture); a fresh page
+  with no fixture shows nothing for `.test` (control against always-on); and the same
+  card renders under the default-TLD setting. **Plant-proven**: removing the ownership
+  gate from `valid` fails by name while every other leg stays green. **Cannot prove:**
+  the privileged write (`take_over_resolver`'s backup-then-row-then-write order) — core's
+  L0 and the live leg own that; and the dev machine has no foreign resolver file, so the
+  real `/etc/resolver/test` read behind `resolver_tld_status` rides `docs/SMOKE-TEST.md`.
   **The Tunnels filter (`uireview.js`, `tunnels-*`, 19 Aug 2026, #371) is L2 asserting a
   SENTENCE, not a layout.** The feature is a search box; the risk is that filtering out a
   live public URL reads as "nothing is shared". So the fixture carries two live tunnels —

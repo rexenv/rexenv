@@ -754,6 +754,19 @@ Live-proven end to end by `site_stop_start_check`.
   between the two. `dns::drifted_takeovers` reports a borrowed file another tool
   reclaimed — checked at startup and in `rex doctor`, because our resolver keeps
   answering so every health probe stays green while those sites go dark.
+  **The consent renders where the refusal lands (5 Sep 2026).** The takeover card
+  (`ResolverConsent`: their file beside ours, unticked checkbox, the way out named)
+  lived only on the Import page, and only for TLDs the scan derived from Valet's own
+  SITES — so a user who had left Valet typed `shop.test` into Change domain, got
+  "rexenv can take that TLD over" as a toast, and had no button anywhere that did:
+  the scan listed nothing, and Settings' Repair for a foreign TLD refused by design
+  (a button that could only fail). Now `resolver_tld_status(tld)` answers ownership
+  for a TYPED TLD (policy-gated, since `resolver_path` joins the string onto
+  `/etc/resolver`), and `ResolverConsentFor` drops the card under the Change-domain
+  input (the button waits for it), under the default-TLD setting (the first site
+  created there is what would hit the refusal) and in place of Repair on a foreign
+  row of the "can't be resolved" card. The write is still the one consented
+  `take_over_resolver`; a success invalidates every reader of who-owns-this-TLD.
 - **Valet/Herd import** (`core/valet.rs` + `commands/valet_import.rs`,
   `/import`): a strictly read-only scan of their config, symlink farm and
   per-site confs — nothing of theirs is written, started or stopped, and no file

@@ -8,7 +8,7 @@
  */
 import type { StartupNotice, AdminerStatus, AppInfo, AgentAction, AgentAccess,
   AgentAccessLevel,
-  AgentAccessMode, Blueprint, BrowserApp, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoGitOp, RepoJobState, RepoKind, RepoPullRef, RepoStashEntry, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpUpdateOutcome, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteProvisionState, SiteRepoInfo, SiteResources, SiteServing, ResolverPlan, ScratchPackage, TeardownReport, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser, UnresolvableTld } from "@/types";
+  AgentAccessMode, Blueprint, BrowserApp, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoGitOp, RepoJobState, RepoKind, RepoPullRef, RepoStashEntry, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpUpdateOutcome, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteProvisionState, SiteRepoInfo, SiteResources, SiteServing, ResolverPlan, ResolverTldStatus, ScratchPackage, TeardownReport, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser, UnresolvableTld } from "@/types";
 import {
   mockAppInfo,
   mockDatabases,
@@ -23,6 +23,8 @@ import {
   mockAdminerStatus,
   mockPhpVersions,
   mockResolverDrift,
+  mockResolverTakeOver,
+  mockResolverTldStatus,
   mockServices,
   mockSites,
   mockSitesServing,
@@ -334,9 +336,21 @@ export async function dbImportDeleteLeftover(file: string): Promise<void> {
   return invoke<void>("db_import_delete_leftover", { file });
 }
 
+/** Who owns ONE TLD's resolver file — absent, ours, borrowed, foreign (Valet/
+ *  Herd's), or drifted (borrowed, then reclaimed) — with their file's content
+ *  beside ours, so a dialog can show the takeover consent where the refusal
+ *  would otherwise land. The import scan builds the same row, but only for
+ *  TLDs Valet's own sites use; this answers for a TLD the user typed. Refuses
+ *  a TLD the policy refuses. Outside Tauri: the `?foreign=` fixture. */
+export async function resolverTldStatus(tld: string): Promise<ResolverTldStatus> {
+  if (!isTauri()) return mockResolverTldStatus(tld);
+  return invoke<ResolverTldStatus>("resolver_tld_status", { tld });
+}
+
 /** Take a TLD's /etc/resolver file over from Valet/Herd, backing theirs up
  *  first. Consent belongs to the UI; this performs what it authorised. */
 export async function resolverTakeOver(tld: string): Promise<void> {
+  if (!isTauri()) return mockResolverTakeOver(tld);
   return invoke<void>("resolver_take_over", { tld });
 }
 

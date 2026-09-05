@@ -1120,6 +1120,7 @@ pub fn run() {
             commands::sites::relink_site_docroot,
             commands::sites::inspect_linked_folder,
             commands::valet_import::scan_valet_import,
+            commands::valet_import::resolver_tld_status,
             commands::valet_import::resolver_take_over,
             commands::valet_import::resolver_hand_back,
             commands::valet_import::resolver_drift,

@@ -21,6 +21,7 @@ const CHECKS = [
   "openin.js",
   "phppicker.js",
   "domains.js",
+  "tldconsent.js",
   "tunnelhealth.js",
   "statusagree.js",
   "wpfocus.js",

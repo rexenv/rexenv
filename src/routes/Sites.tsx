@@ -1366,8 +1366,8 @@ export function ResolverDriftBanner() {
         </div>
         <div className="mt-0.5 text-[0.71875rem] leading-[1.5] text-rex-text-muted">
           {single
-            ? `Valet or Herd took ${list}'s resolver file back, so those sites won't load until rexenv takes it over again. You can take it back from Import.`
-            : `Valet or Herd took the resolver files for ${list} back, so those sites won't load until rexenv takes them over again. You can take them back from Import.`}
+            ? `Valet or Herd took ${list}'s resolver file back, so those sites won't load until rexenv takes it over again. You can take it back from Settings or Import.`
+            : `Valet or Herd took the resolver files for ${list} back, so those sites won't load until rexenv takes them over again. You can take them back from Settings or Import.`}
         </div>
       </div>
       <Button variant="secondary" onClick={() => navigate("/import")}>
