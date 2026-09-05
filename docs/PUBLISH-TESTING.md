@@ -82,24 +82,27 @@ count in **each** slice separately. A zero on either side is a HOLD — do not r
 is only as complete as its list of payloads, and a payload nobody added is the
 one that ships in one slice.
 
-## A) 🚧 0.5.0 — BUILT 5 Sep 2026, §A0 ✅ measured · §A ☐ · SMOKE-TEST ☐ (draft not yet created)
+## A) 🚧 0.5.0 — DRAFT 5 Sep 2026 (tap release id 383250086), §A0 ✅ measured · SMOKE-TEST ✅ asserted by the owner · §A ☐ owed before publish
 
 `rexenv_0.5.0_universal.dmg`, sha256
 `86831ecbeadcc3552748d63134782a040239004a571c3684e7cd652021cdee8e`, 29,002,961 bytes.
 Source `2c433ae` — measured: `rex --version` off the bundle prints `rex 0.5.0 (2c433ae)`.
 Built locally per `docs/RELEASING.md`'s interim flow after `verify-full.sh` said
 `verify-full: all green` on that commit (its first two runs were red on the gate's OWN
-tiers, fixed in `2c433ae` itself — see that commit). Tag not yet cut: it waits for §A
-and SMOKE, because a tag is never re-pointed and a fix from either would move the ship
-commit.
+tiers, fixed in `2c433ae` itself — see that commit). SMOKE-TEST run by the owner on
+this dmg, 5 Sep 2026 (asserted, no contemporaneous record — same as 0.4.0). Tag `v0.5.0`
+cut LOCAL on `2c433ae` after that (annotated; not pushed, the pre-push hook refuses `v*`
+while the repo is private). Draft created on the tap the same day: both assets state
+`uploaded`, the dmg's API `digest` equals the local sha256 above — the sidecar says the
+same — so the bytes survived the wire.
 
 **§A0 ✅ run by hand 5 Sep 2026:** clean tree (0 uncommitted), exactly one dmg;
 `rexenv` and `rex` both `x86_64 arm64`; `Dist_Archive_Command` ×5 in the arm64 slice
 and ×5 in the x86_64 slice; `codesign --verify --deep --strict` passes on the `.app`.
 
-**Owed before publish, in this order:** `docs/SMOKE-TEST.md` on this dmg (clean Mac),
-then §A below (quarantine → Gatekeeper → `xattr -rd` → launches). Then the row above
-becomes PUBLISHED with the tap release id and cask commit.
+**Owed before publish:** §A below on the draft's asset (download → quarantine →
+Gatekeeper blocks → `xattr -rd` → launches). Publishing IS the §A sign-off. Then this row
+becomes PUBLISHED with the publish time and the cask commit `update-cask.yml` makes.
 
 ## A) ✅ 0.4.0 — PUBLISHED (§A0 ✅ measured · §A ✅ asserted · SMOKE-TEST ◐ asserted, no contemporaneous record)
 
