@@ -458,6 +458,13 @@ Live-proven end to end by `site_stop_start_check`.
   Beware orphan workers after a SIGKILLed master: title-rewritten fpm/nginx workers can
   hold ports and defeat probes — the health watchdog + `Proc::terminate` guard this;
   check `logs/health.log` first.
+- **What AI agents did is `<log_dir>/mcp.log`** (5 Sep 2026) — the `agent_actions` feed
+  as a file, one line per row, written by the feed's ONE writer from the same clamped
+  values the row gets (#516), so the Logs tab's **"AI agents (MCP)"** tab
+  (`LogCategory::Agents`, offered once the file exists) can never say something the
+  Settings card does not. Asked for because the card shows twenty rows and the table
+  keeps two thousand, and nothing showed the rest. Refusals are WARN lines; the site is
+  named by its domain at the time; rotates at 2 MB keeping one `.1`.
 - **rexenv's OWN log is `<log_dir>/rexenv.log`**, in every build, and it has its own
   Logs tab (`LogCategory::App`) — when a service did not start, the reason is there and
   not in that service's empty file. Its own tab because every other source reports what a
@@ -1174,7 +1181,12 @@ IPC surface — which is how a reader ends up designing against a system with on
   acted on beats what the agent asked for. `args_summary` is clamped **at the writer** to
   two `[a-z][a-z0-9-]{0,19}` tokens — a security property, not tidiness: the charset
   excludes every character a forged `rexenv · automatic` row would need. Cap: 2000 rows,
-  pruned on every write.
+  pruned on every write. **The same writer appends one line to `<log_dir>/mcp.log`**
+  (5 Sep 2026, #516) from the values the INSERT got — actor, client, tool, the clamped
+  summary, outcome, the site's domain, the bounded detail — so the file is the feed's
+  readable form, never a second rendering of a call; the Logs tab shows it as "AI agents
+  (MCP)", and `rex logs mcp.log` tails it. Unset (lib tests, the `rex` process) the
+  table is the only carrier.
 - **One scrubber, and it says what it does not cover.** `view::scrub_log_line` is the
   single redactor (login tokens, cookie values, and rexenv's own path prefixes derived
   from `Paths` rather than a hand list); a guard asserts there is exactly one definition

@@ -70,6 +70,12 @@ const CATEGORY_TABS: Record<LogCategory, { label: string; shared: boolean; alway
   server: { label: "Server (nginx/PHP)", shared: true, always: true },
   database: { label: "Database", shared: true, always: true },
   git: { label: "Git jobs", shared: false, always: false },
+  // The MCP feed as a file (`mcp.log`, written by the feed's one writer). Its
+  // own tab because the `rexenv (app)` tab is titled for ONE file and refuses a
+  // second; shared because the file is machine-wide, so Clear asks first. The
+  // backend offers it only once the file exists — no empty tab on a machine
+  // that never enabled MCP.
+  agents: { label: "AI agents (MCP)", shared: true, always: false },
 };
 
 const SELECT_CLS =
@@ -111,6 +117,7 @@ export function SiteLogs({
     server: [],
     database: [],
     git: [],
+    agents: [],
   };
   for (const t of targets) grouped[t.category]?.push(t);
 

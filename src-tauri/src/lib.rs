@@ -215,6 +215,13 @@ pub fn run() {
                         .timezone_strategy(tauri_plugin_log::TimezoneStrategy::UseLocal)
                         .build(),
                 )?;
+                // The MCP feed's file form lives beside the app log, so the
+                // Logs tab tails it like every other source (its own tab, "AI
+                // agents (MCP)"). Set here and nowhere else: unset, the feed is
+                // table-only, which is what every lib test and `rex` get.
+                if let Ok(dir) = platform.paths().log_dir() {
+                    mcp_server::feed::set_log_path(dir.join(core::logs::MCP_LOG_FILE));
+                }
             }
 
             // Show the window for a launch the USER asked for. Everything

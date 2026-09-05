@@ -17,6 +17,13 @@ use std::path::{Path, PathBuf};
 /// Only ever tail the trailing slice of a file (bounds memory on big access logs).
 const TAIL_CAP_BYTES: u64 = 256 * 1024;
 
+/// The MCP activity log — the FILE form of the `agent_actions` feed, one line
+/// per recorded action, written by the feed's one writer (`mcp_server::feed`)
+/// from the same clamped values the row got. Named HERE, in the module that
+/// tails the directory, so the writer and the viewer cannot spell it two ways
+/// (the app's own log was invisible for a month for exactly that reason, #359).
+pub const MCP_LOG_FILE: &str = "mcp.log";
+
 /// Which Logs-tab category a source belongs to (drives the tab grouping in
 /// the UI; the WordPress debug log is its own tab with dedicated IPC).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -35,6 +42,13 @@ pub enum LogCategory {
     Database,
     /// This site's Git add-job logs (per-site files).
     Git,
+    /// What AI agents did through the MCP endpoint — the `agent_actions` feed
+    /// as a file (`MCP_LOG_FILE`). Its own tab, for the same reason `App` is:
+    /// the `rexenv (app)` tab is titled for ONE file and its test refuses a
+    /// second source there, and "Server" would be a lie about it. Asked for on
+    /// 5 Sep 2026: the Settings card shows the last twenty rows and nothing
+    /// showed the rest.
+    Agents,
 }
 
 /// One selectable log source (a file under `log_dir` + a human label).
@@ -85,6 +99,12 @@ pub fn targets_for_site(site: &Site, log_dir: &Path) -> Vec<LogTarget> {
             "FrankenPHP".into(),
             Server,
         ));
+    }
+    // The agent log appears once there IS one — a site on a machine that never
+    // enabled MCP gets no empty "AI agents" tab. Existence, not the MCP
+    // setting: the log outlives a toggle-off, and what agents DID stays readable.
+    if log_dir.join(MCP_LOG_FILE).is_file() {
+        targets.push(t(MCP_LOG_FILE.into(), "AI agents (MCP)".into(), LogCategory::Agents));
     }
     let prefix = format!("repo-{}-", site.domain);
     if let Ok(entries) = std::fs::read_dir(log_dir) {
@@ -415,6 +435,34 @@ mod tests {
             targets.iter().filter(|t| t.category == LogCategory::App).count(),
             1
         );
+    }
+
+    /// **The agent log is a tab of its own, and only once it exists.** Under
+    /// `App` it would sit beneath a heading naming a different file (the test
+    /// above refuses that); under `Server` the heading would be false of it.
+    /// And the key is the ONE constant the writer uses — a second spelling
+    /// here is the #359 shape again.
+    #[test]
+    fn the_agent_log_gets_its_own_tab_once_it_exists() {
+        let dir = std::env::temp_dir().join(format!("rexenv-logs-mcp-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let before = targets_for_site(&site(WebServer::Nginx), &dir);
+        assert!(
+            !before.iter().any(|t| t.category == LogCategory::Agents),
+            "no agent log on disk, yet a tab was offered"
+        );
+        std::fs::write(dir.join(MCP_LOG_FILE), b"").unwrap();
+        let after = targets_for_site(&site(WebServer::Nginx), &dir);
+        let mcp = after.iter().find(|t| t.key == MCP_LOG_FILE).expect("the agent log is offered");
+        assert_eq!(mcp.category, LogCategory::Agents);
+        assert_eq!(mcp.label, "AI agents (MCP)", "titled like the Settings card it extends");
+        assert_eq!(
+            after.iter().filter(|t| t.category == LogCategory::App).count(),
+            1,
+            "the rexenv (app) tab is still that one file"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     fn site(server: WebServer) -> Site {

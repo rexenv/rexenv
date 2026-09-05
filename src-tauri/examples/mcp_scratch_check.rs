@@ -17,7 +17,9 @@
 //! afterwards (#216/#217); `scratch_sync_package` re-reads only the RECORDED
 //! source; a real `wp` child runs and its output is scrubbed of rexenv's own
 //! paths (#201/#218); and every call lands in the feed while the scratch site's
-//! TTL moves (#206/#207).
+//! TTL moves (#206/#207) — and, since 5 Sep 2026, in the feed's FILE form
+//! (`mcp.log`, #516): one line per row, from the row's values, WARN for a
+//! refusal, no agent text, offered by the Logs tab under its own category.
 //!
 //! M2b adds two more: `set_php_version` refuses an unshipped version BY NAME
 //! and leaves the row untouched, then really switches a warm minor — and the
@@ -224,6 +226,16 @@ async fn main() {
         let conn = state.db.lock().unwrap();
         conn.query_row("SELECT COALESCE(MAX(id),0) FROM agent_actions", [], |r| r.get(0)).unwrap()
     };
+
+    // The feed's FILE form, aimed INSIDE the sandbox — never the user's real
+    // `mcp.log`. Set before the first call so every line below lands here.
+    let mcp_log = {
+        let state = app.state::<AppState>();
+        let dir = state.platform.paths().log_dir().expect("sandbox log dir");
+        std::fs::create_dir_all(&dir).expect("sandbox log dir");
+        dir.join(core::logs::MCP_LOG_FILE)
+    };
+    mcp_server::feed::set_log_path(mcp_log.clone());
 
     // A socket under the sandbox root — never the app's own.
     let sock = sandbox_root.join(mcp_server::SOCKET_FILE);
@@ -520,6 +532,44 @@ async fn main() {
         assert!(theirs_expiry.is_none(), "a refused call gave the user's site an expiry: {theirs_expiry:?}");
     }
     println!("✓ every call recorded and attributed; the scratch TTL moved, the user's site gained none");
+
+    // The same record as a FILE (5 Sep 2026): one line per row, written by the
+    // feed's one writer from the row's own values — so the Logs tab's "AI agents
+    // (MCP)" source can never say something the Settings card does not. Proven
+    // over the real socket path, not by calling `record` directly: the point
+    // is that the SESSION's write reaches the file.
+    {
+        let text = std::fs::read_to_string(&mcp_log).expect("the sandbox mcp.log was written");
+        for tool in ["wp_run", "scratch_add_package", "scratch_delete_site", "scratch_login_url"] {
+            assert!(
+                text.lines().any(|l| l.contains(&format!(" · {tool}")) && l.contains("mcp_scratch_check")),
+                "`{tool}` has no line in mcp.log:\n{text}"
+            );
+        }
+        // A refusal is a WARN line naming the site by DOMAIN, so the Logs tab's
+        // tint and a grep both find it.
+        assert!(
+            text.lines().any(|l| l.contains("[WARN][mcp]") && l.contains("mine.scratch.rex")),
+            "the refused calls on the user's site are not WARN lines naming it:\n{text}"
+        );
+        // Nothing an agent typed reaches the file: no docroot, no db name, and
+        // of the argv only the declared two-token summary — the VALUE the
+        // agent sent with `--path` (`/tmp/elsewhere`) must be absent even though
+        // rexenv's own refusal legitimately names the `--path` FLAG in `detail`
+        // (the first version of this leg asserted on the flag and failed on
+        // the row's own honest text).
+        assert!(!text.contains(&*docroot.to_string_lossy()), "a docroot reached mcp.log:\n{text}");
+        assert!(!text.contains(&theirs.db_name), "a db name reached mcp.log:\n{text}");
+        assert!(!text.contains("/tmp/elsewhere"), "an argv VALUE reached mcp.log:\n{text}");
+        assert!(text.contains(" · wp_run plugin list → error"), "the declared summary is what the argv became:\n{text}");
+        // The Logs tab offers it under its own category now that it exists.
+        let targets = core::logs::targets_for_site(&ours, mcp_log.parent().unwrap());
+        assert!(
+            targets.iter().any(|t| t.key == core::logs::MCP_LOG_FILE && t.category == core::logs::LogCategory::Agents),
+            "the Logs tab does not offer the agent log: {targets:?}"
+        );
+    }
+    println!("✓ mcp.log carries one line per feed row (WARN for refusals, domain not id), no agent text, and the Logs tab offers it");
 
     println!(
         "✓ mcp_scratch_check green — the executing registry over a real socket: the user's own \

@@ -1025,7 +1025,7 @@ export interface MailpitStatus {
  *  "Server (nginx/PHP)" for one afternoon, where the title was simply not true
  *  of it. Adding a member here fails `SiteLogs`'s `CATEGORY_TABS` record until
  *  it has a tab. */
-export type LogCategory = "app" | "server" | "database" | "git";
+export type LogCategory = "app" | "server" | "database" | "git" | "agents";
 
 /** A selectable log source for the Logs viewer (mirrors the Rust LogTarget DTO). */
 export interface LogTarget {

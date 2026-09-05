@@ -22,6 +22,13 @@ each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [x] **MCP activity has no log — the Settings card shows twenty rows and nothing shows
+  the rest** ✓ 5 Sep 2026 (user report the same day) — `mcp.log` in the log dir, written
+  by the feed's ONE writer from the row's own values (#516), shown as its own Logs tab
+  "AI agents (MCP)" once it exists (the `rexenv (app)` tab is titled for one file and its
+  test refuses a second), `rex logs mcp.log` tails it. L0 ×3 + `mcp_scratch_check`'s file
+  leg green on the sandbox tier; SMOKE §M2a step 6 gained the eyes-on check.
+
 - [ ] **~16 flag-taking `rex` commands still ignore what they do not recognise**
   (3 Sep 2026, ledger #463/#466). Done: `site create`, `wp search-replace`,
   `site delete`, `db reset`, `db import`.

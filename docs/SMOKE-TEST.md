@@ -876,7 +876,13 @@ YOUR OWN sites in the list. Keep the Sites page visible.
   ("23h left") and a `.scratch.rex` domain; the feed shows `scratch_create_site`.
   It takes a minute or two (WP download) — a blocking call is expected.
   **Tell:** if it lands in your OWN list with no heading, the group is not reading
-  `origin`.
+  `origin`. Then open ANY site → Logs → **AI agents (MCP)** (the tab exists now that
+  `mcp.log` does): the create is there as one line — `agent <client> ·
+  scratch_create_site → ok · site <domain> (<id>)` — with the same local timestamp shape
+  as `rexenv (app)`, and the Settings card's row says the same thing. **Tell:** a line
+  the card does not have, or a card row the log does not, means the two carriers have
+  split; a line carrying a path, a URL or argv text means the writer is no longer the
+  feed's.
 - [ ] **7. The dev loop.** Ask it to *"copy my plugin at `<path to a real checkout>`
   into that site and activate it."* → the row gains `<slug> · synced just now`;
   `scratch_add_package` then `wp_run` in the feed. Now **edit a file in your

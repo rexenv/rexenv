@@ -41,6 +41,8 @@
 use crate::error::Result;
 use rusqlite::{params, Connection};
 use serde::Serialize;
+use std::path::{Path, PathBuf};
+use std::sync::RwLock;
 
 /// Hard bound on the table — pruned to the newest this-many rows on every write,
 /// so a runaway session can't grow the SQLite file without limit.
@@ -255,6 +257,116 @@ pub struct AgentAction {
     pub concerning: bool,
 }
 
+/// Where the feed's FILE form is written (`core::logs::MCP_LOG_FILE` in the
+/// log dir), set once by the app at startup. Unset — every lib test, and the
+/// `rex` CLI process — means the table is the only carrier, which is how the
+/// feed worked until 5 Sep 2026.
+///
+/// Why a second carrier at all. The Settings card shows the newest twenty rows;
+/// the table holds two thousand; and nothing showed the rest — a person asking
+/// "what did the agent do yesterday" had a database to open. The Logs tab
+/// already tails the log directory, so the honest fix is the feed written as a
+/// log there too. **Written from the ONE writer, from the SAME clamped values
+/// the row gets** — never a second rendering of a call — so the file can never
+/// say something the table does not (`render_line`, ledger #516). Best-effort
+/// like the row: a full disk must not break an agent's session.
+static LOG_PATH: RwLock<Option<PathBuf>> = RwLock::new(None);
+
+/// Rotate at this size — one `.1` kept, like the app log's `KeepSome`. The
+/// table caps ROWS; a file needs a cap on BYTES, or a runaway session grows it
+/// for months.
+const LOG_ROTATE_BYTES: u64 = 2 * 1024 * 1024;
+
+/// Point the feed's file form at `path` (create-on-first-write). Returns the
+/// previous setting. Re-settable so an example can aim it inside its sandbox.
+pub fn set_log_path(path: PathBuf) -> Option<PathBuf> {
+    match LOG_PATH.write() {
+        Ok(mut slot) => slot.replace(path),
+        Err(_) => None,
+    }
+}
+
+/// The file the feed is mirrored to, if the app set one.
+pub fn log_path() -> Option<PathBuf> {
+    LOG_PATH.read().ok().and_then(|p| p.clone())
+}
+
+/// One log line for one recorded action — the file's whole vocabulary, pure so
+/// a test pins it without a disk. Everything in it is a value the ROW carries
+/// (already truncated / clamped by the caller) or rexenv's own: the actor, the
+/// client, the tool, the summary the tool declared (verbs, never values), the
+/// outcome, the site by its domain at the time (the row keeps the id; a log is
+/// a record of what a thing was called when it happened), and the bounded
+/// detail. No argument, no result, no URL reaches this line by construction —
+/// it is built from the same fields the INSERT is.
+struct LogLine<'a> {
+    at: &'a str,
+    actor: FeedActor,
+    client: &'a str,
+    tool: &'a str,
+    summary: Option<&'a str>,
+    outcome: Outcome,
+    /// The site's id and, when the row still resolves, its domain.
+    target: Option<(&'a str, Option<&'a str>)>,
+    detail: Option<&'a str>,
+}
+
+fn render_line(l: &LogLine<'_>) -> String {
+    let level = if l.outcome.is_concerning() { "WARN" } else { "INFO" };
+    let mut line = format!("{}[{level}][mcp] {} {} · {}", l.at, l.actor.as_db(), l.client, l.tool);
+    if let Some(s) = l.summary {
+        line.push(' ');
+        line.push_str(s);
+    }
+    line.push_str(" → ");
+    line.push_str(l.outcome.as_db());
+    if let Some((id, domain)) = l.target {
+        match domain {
+            Some(d) => line.push_str(&format!(" · site {d} ({id})")),
+            None => line.push_str(&format!(" · site {id}")),
+        }
+    }
+    if let Some(d) = l.detail {
+        // One line per action: a multi-line detail would read as several.
+        let flat = d.split_whitespace().collect::<Vec<_>>().join(" ");
+        line.push_str(" — ");
+        line.push_str(&flat);
+    }
+    line
+}
+
+/// The app log's timestamp shape, `[YYYY-MM-DD][HH:MM:SS]`, LOCAL like every
+/// other file in that directory (`lib.rs`: a reader lining two files up should
+/// not do timezone arithmetic). Falls back to UTC, marked, if the local offset
+/// cannot be read — a wrong-but-unmarked hour is the one thing this must not do.
+fn stamp_now() -> String {
+    use time::macros::format_description;
+    let fmt = format_description!("[[[year]-[month]-[day]][[[hour]:[minute]:[second]]");
+    match time::OffsetDateTime::now_local() {
+        Ok(local) => local.format(&fmt).unwrap_or_default(),
+        Err(_) => time::OffsetDateTime::now_utc()
+            .format(&fmt)
+            .map(|s| s + "[UTC]")
+            .unwrap_or_default(),
+    }
+}
+
+/// Append one rendered line, rotating first when the file is over the cap.
+/// Errors are the caller's to log, never to propagate: the ROW is the record,
+/// this is its readable copy.
+fn append_line(path: &Path, line: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    if let Ok(meta) = std::fs::metadata(path) {
+        if meta.len() > LOG_ROTATE_BYTES {
+            let rotated = path.with_extension("log.1");
+            let _ = std::fs::rename(path, rotated);
+        }
+    }
+    let mut f = std::fs::OpenOptions::new().create(true).append(true).open(path)?;
+    f.write_all(line.as_bytes())?;
+    f.write_all(b"\n")
+}
+
 /// Record one action, then prune to the row cap. `client` is the session's
 /// self-reported client name; SQLite stamps `at`.
 pub fn record(conn: &Connection, client: &str, log: &PendingLog) -> Result<()> {
@@ -295,6 +407,29 @@ fn write(conn: &Connection, actor: FeedActor, client: &str, log: &PendingLog) ->
          (SELECT id FROM agent_actions ORDER BY id DESC LIMIT ?1)",
         params![ROW_CAP],
     )?;
+    // The file form, from the values the row just got — after the INSERT, so a
+    // line never describes a row that failed to land. The domain is looked up
+    // through the same connection (still under the caller's lock): the row keeps
+    // the id, the log names what the site was called at the time.
+    if let Some(path) = log_path() {
+        let domain = target
+            .as_deref()
+            .and_then(|id| crate::core::sites::get(conn, id).ok().flatten())
+            .map(|s| s.domain);
+        let line = render_line(&LogLine {
+            at: &stamp_now(),
+            actor,
+            client: &client,
+            tool: &tool,
+            summary: summary.as_deref(),
+            outcome: log.outcome,
+            target: target.as_deref().map(|id| (id, domain.as_deref())),
+            detail: detail.as_deref(),
+        });
+        if let Err(e) = append_line(&path, &line) {
+            log::warn!("mcp: the feed row landed but its log line did not ({}): {e}", path.display());
+        }
+    }
     Ok(())
 }
 
@@ -564,6 +699,96 @@ mod tests {
             detail: detail.map(String::from),
             args_summary: None,
         }
+    }
+
+    /// **The file says exactly what the row says, and nothing a row cannot
+    /// hold.** Pinned on the pure renderer, then on a real write with the path
+    /// set: the line carries actor, client, tool, the declared summary, the
+    /// outcome, the site's DOMAIN (the row keeps the id) and the bounded detail
+    /// — and nothing else, because it is built from the INSERT's own values.
+    /// Plant: a line that carried the raw `args_summary` before the clamp
+    /// (`"DROP TABLE"`) would fail the charset assertion below.
+    #[test]
+    fn the_log_line_is_the_row_and_only_the_row() {
+        let line = render_line(&LogLine {
+            at: "[2026-09-05][15:24:09]",
+            actor: FeedActor::Agent,
+            client: "claude-code",
+            tool: "wp_user",
+            summary: Some("user login_url"),
+            outcome: Outcome::Ok,
+            target: Some(("site-1", Some("tr.rex"))),
+            detail: None,
+        });
+        assert_eq!(line, "[2026-09-05][15:24:09][INFO][mcp] agent claude-code · wp_user user login_url → ok · site tr.rex (site-1)");
+        // A non-ok outcome is a WARN so the Logs tab's tint (and a grep for
+        // `warn`) finds it; a multi-line detail is flattened to ONE line.
+        let line = render_line(&LogLine {
+            at: "[t]",
+            actor: FeedActor::Rexenv,
+            client: "rexenv",
+            tool: "scratch_reap",
+            summary: None,
+            outcome: Outcome::Error,
+            target: Some(("site-2", None)),
+            detail: Some("database drop failed:\n  disk full"),
+        });
+        assert!(line.starts_with("[t][WARN][mcp] rexenv rexenv · scratch_reap → error · site site-2 — database drop failed: disk full"), "{line}");
+        assert!(!line.contains('\n'));
+
+        // The real path: a write with the log set appends the line the row got —
+        // the CLAMPED summary (`?` for the token that did not fit), never the
+        // agent's own text.
+        let dir = std::env::temp_dir().join(format!("rexenv-feed-log-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(crate::core::logs::MCP_LOG_FILE);
+        let previous = set_log_path(path.clone());
+        let conn = mem();
+        let mut l = log("wp_run", None, Outcome::Ok, None);
+        l.args_summary = Some("db DROP TABLE".into());
+        record(&conn, "probe-client", &l).unwrap();
+        if let Some(p) = previous {
+            set_log_path(p);
+        }
+        let text = std::fs::read_to_string(&path).expect("the line was appended");
+        let mine = text.lines().find(|l| l.contains("probe-client")).expect("our line");
+        assert!(mine.contains("agent probe-client · wp_run db ? → ok"), "the clamped summary, as the row has it: {mine}");
+        assert!(!text.contains("DROP"), "agent text reached the file: {text}");
+        assert!(mine.starts_with('['), "stamped: {mine}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **Over the cap, the file rotates to `.1` and starts again** — the table
+    /// caps rows, the file must cap bytes, or a runaway session grows it for
+    /// months (the app log's own reason for rotating).
+    #[test]
+    fn the_file_rotates_at_the_cap_keeping_one_generation() {
+        let dir = std::env::temp_dir().join(format!("rexenv-feed-rotate-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(crate::core::logs::MCP_LOG_FILE);
+        std::fs::write(&path, vec![b'x'; (LOG_ROTATE_BYTES + 1) as usize]).unwrap();
+        append_line(&path, "fresh").unwrap();
+        let rotated = dir.join("mcp.log.1");
+        assert_eq!(std::fs::metadata(&rotated).unwrap().len(), LOG_ROTATE_BYTES + 1, "the old file moved aside whole");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "fresh\n", "the new file holds only the new line");
+        // Under the cap: appended in place, nothing rotated again.
+        append_line(&path, "second").unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "fresh\nsecond\n");
+        assert_eq!(std::fs::metadata(&rotated).unwrap().len(), LOG_ROTATE_BYTES + 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **Unset means no file** — every lib test and the CLI process run this
+    /// way, and a feed write must not create a stray `mcp.log` beside a test.
+    #[test]
+    fn with_no_log_path_the_table_is_the_only_carrier() {
+        let conn = mem();
+        // Not asserting on the global (another test may have set it); asserting
+        // the property the app relies on: `record` succeeds with or without it.
+        record(&conn, "c", &log("list_sites", None, Outcome::Ok, None)).unwrap();
+        assert_eq!(recent(&conn, 10).unwrap().len(), 1);
     }
 
     #[test]

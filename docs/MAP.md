@@ -48,7 +48,7 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
 | `wp dist-archive` — a distributable zip from a repo | `core/dist_archive.rs` (bundled package tree, own TMPDIR, refuses without `.distignore`) | `commands/repo.rs` | ShellRunner | #229–#236; `dist_archive_check`; plan: `PLAN-dist-archive.md` |
 | `.env` read + write (Laravel create, git clone, connection rewrite) | `core/dotenv.rs` (came out of `core/laravel.rs` for its second caller, and immediately caught a duplicate-key bug) | via `core/laravel.rs`, `core/sites.rs` | — | `core::dotenv` unit tests |
 | Add-from-Git + assets (clone, jobs, watchers, link guard) | `core/repo.rs`, `core/devtools.rs` | `commands/repo.rs` (26 cmds; `job_target` resolves the `site` kind to the project root) | ShellRunner | #134–140, #183–185, #284–288; `repo_*_check` |
-| Logs viewer | `core/logs.rs` | `commands/logs.rs` | Paths | #102; `log_tail_check` |
+| Logs viewer (incl. `mcp.log` — the agent feed's file form, `LogCategory::Agents`, offered once it exists) | `core/logs.rs` (`MCP_LOG_FILE` — the ONE spelling), `mcp_server/feed.rs` (`set_log_path`, `render_line`, the append in `write`) | `commands/logs.rs` | Paths | #102; `log_tail_check`; #516 `mcp_scratch_check` |
 | macOS floor a binary DECLARES (`minos`) | `core/macho.rs` | none — read on the failure path by `service_manager::macos_floor_note` | — | #383; diagnosis only, never gates a spawn |
 | Terminal (PTY) | `core/terminal.rs` | `commands/terminal.rs` | ShellRunner | `terminal_check` |
 | Setup / teardown (system changes) | `core/setup.rs` | `commands/system.rs` | PrivilegeManager, CertTrustManager, DnsManager | `system_setup`, `system_teardown` |
