@@ -35,20 +35,19 @@ paying for anyway: **the tick belongs in the commit that does the work.**
 
 ## Now — actionable code/test work
 
-- [ ] **Import scan lists a foreign `/etc/resolver/<tld>` only when Valet/Herd still has
-  a SITE on that TLD** (`valet_import.rs` derives the TLD list from candidates). Found
-  5 Sep 2026 with the user report "domain change .rex → .test refused, no take-over
-  button": the fix put the consent card where the refusal lands (Change domain, the
+- [x] **Import scan lists a foreign `/etc/resolver/<tld>` only when Valet/Herd still has
+  a SITE on that TLD** ✓ 5 Sep 2026 — `dns::foreign_tlds` (every non-ours valid-label
+  file in the resolver dir, L0 `tlds_matching_signature_finds_only_our_files` holds the
+  complement over the same fixture dir) + the takeover records feed the scan's TLD list,
+  and the Import page renders consent cards in its "no sites found" state too. Found the
+  same day with the user report "domain change .rex → .test refused, no take-over
+  button"; the first half put the consent where the refusal lands (Change domain, the
   default-TLD setting, Settings' can't-be-resolved row — `resolver_tld_status` +
-  `ResolverConsentFor`), so the gap is closed for every path that TYPES a TLD. Still
-  open: a leftover Valet file for a TLD nobody uses yet appears on no page until
-  someone types it. Cheap to add — `dns::tlds_matching_signature` already walks the
-  dir; list files that are NOT ours as `foreign` rows in the scan. The shipped half is
-  held at L2 by `scripts/wk-checks/tldconsent.js` (ran green + plant-proven 5 Sep 2026,
-  over the `?foreign=test` mock). **Still owed by hand**: on a Mac where
-  `/etc/resolver/test` really is Valet's, Change domain to `x.test` → card + disabled
-  button → take over (password prompt) → change — the dev machine has no foreign file,
-  so the real read behind `resolver_tld_status` has not been exercised.
+  `ResolverConsentFor`, L2 `scripts/wk-checks/tldconsent.js`, plant-proven). **Still
+  owed by hand**: on a Mac where `/etc/resolver/test` really is Valet's, (a) Import
+  shows the `.test` card with no Valet site listed, (b) Change domain to `x.test` →
+  card + disabled button → take over (password prompt) → change. The dev machine has
+  no foreign resolver file, so neither real read has been exercised.
 
 - [x] **Run `wp_info_check` (network tier) to live-prove the database-down leg**
   ✓ 5 Sep 2026 — ran green with the stack stopped: `wp_info(WordPress, database down)

@@ -767,6 +767,15 @@ Live-proven end to end by `site_stop_start_check`.
   created there is what would hit the refusal) and in place of Repair on a foreign
   row of the "can't be resolved" card. The write is still the one consented
   `take_over_resolver`; a success invalidates every reader of who-owns-this-TLD.
+  **And the import scan lists the FILE, not just their sites** (`dns::foreign_tlds`,
+  same day): its TLD list came from Valet/Herd's candidates alone, so a leftover
+  `/etc/resolver/test` from an uninstalled Valet — no site behind it — appeared on no
+  page at all; now every non-ours valid-label file in the resolver dir and every
+  borrowed TLD is a row, and the Import page renders the consent even in its "no sites
+  found" state, with copy that does not promise "these sites" when there are none.
+  The complement is filtered by the same label rule as ours-by-signature: a name
+  rexenv could never create is a name it must never offer to take over, because the
+  offer ends in a privileged write to that path.
 - **Valet/Herd import** (`core/valet.rs` + `commands/valet_import.rs`,
   `/import`): a strictly read-only scan of their config, symlink farm and
   per-site confs — nothing of theirs is written, started or stopped, and no file

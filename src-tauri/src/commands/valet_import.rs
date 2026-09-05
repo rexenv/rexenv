@@ -121,6 +121,21 @@ pub fn scan_valet_import(state: State<'_, AppState>) -> Result<ImportScan> {
         .flat_map(|c| std::iter::once(&c.domain).chain(c.extra_domains.iter()))
         .filter_map(|d| d.rsplit_once('.').map(|(_, t)| t.to_string()))
         .collect();
+    // …plus every TLD ANOTHER tool has a resolver file for, and every TLD rexenv
+    // has borrowed — whether or not a Valet/Herd site still uses it. Until
+    // 5 Sep 2026 this list came from their SITES alone, so a leftover
+    // `/etc/resolver/test` from an uninstalled Valet appeared on no page:
+    // nothing to import, nothing to consent to, and the first `.test` domain
+    // typed anywhere met the refusal. A borrowed TLD is kept for the mirror
+    // reason — its hand-back row must not vanish the day their last site does.
+    let port = core::dns::DEFAULT_DNS_PORT;
+    tld_names.extend(core::dns::foreign_tlds(platform, port));
+    tld_names.extend(
+        crate::state::store::list_resolver_takeovers(&conn)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|t| t.tld),
+    );
     tld_names.sort();
     tld_names.dedup();
 

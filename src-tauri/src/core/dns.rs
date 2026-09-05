@@ -733,6 +733,39 @@ fn tlds_matching_signature(dir: &std::path::Path, signature: &str) -> Vec<String
     tlds
 }
 
+/// The complement of [`tlds_matching_signature`]: every valid-label file in the
+/// resolver directory that is NOT ours — a different port, extra options, or a
+/// file we cannot read (refusing to classify what we can't inspect as ours is
+/// the safe direction, same as `owner_of`). These are the TLDs another tool
+/// answers on this machine.
+fn tlds_not_matching_signature(dir: &std::path::Path, signature: &str) -> Vec<String> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut tlds: Vec<String> = entries
+        .flatten()
+        .filter(|e| e.path().is_file())
+        .filter(|e| std::fs::read_to_string(e.path()).ok().as_deref() != Some(signature))
+        .filter_map(|e| e.file_name().into_string().ok())
+        .filter(|name| crate::core::tld::is_valid_label(name))
+        .collect();
+    tlds.sort();
+    tlds
+}
+
+/// Every TLD ANOTHER tool has an OS resolver file for on this machine. The
+/// import scan lists these beside the TLDs Valet's own sites use, because a
+/// leftover `/etc/resolver/test` from an uninstalled Valet has no site behind
+/// it and used to appear on no page at all until someone typed a `.test`
+/// domain and met the refusal (5 Sep 2026). Read-only, like the scan.
+pub fn foreign_tlds(platform: &dyn Platform, port: u16) -> Vec<String> {
+    let probe = platform.dns().resolver_path(crate::core::tld::BACKBONE_TLD);
+    let Some(dir) = probe.parent() else {
+        return Vec::new();
+    };
+    tlds_not_matching_signature(dir, &platform.dns().resolver_contents(port))
+}
+
 /// Enumerate every TLD rexenv has an OS resolver file for — the files in the
 /// resolver directory whose content matches our port-`port` signature. The
 /// directory comes from the platform's `resolver_path` so this stays
@@ -1465,6 +1498,16 @@ mod tests {
         assert_eq!(tlds_matching_signature(&dir, &sig), vec!["rex", "test"]);
         // Missing dir → empty, not an error (fresh machine, nothing installed).
         assert!(tlds_matching_signature(&dir.join("nope"), &sig).is_empty());
+
+        // The complement the import scan lists: the two foreign files, and NOT
+        // ours, and NOT the bad-label files either — a name rexenv could never
+        // create is also a name it must never offer to take over (the offer
+        // ends in a privileged write to that path).
+        assert_eq!(tlds_not_matching_signature(&dir, &sig), vec!["dev", "docker"]);
+        assert!(tlds_not_matching_signature(&dir.join("nope"), &sig).is_empty());
+        // A subdirectory is not a resolver file.
+        std::fs::create_dir_all(dir.join("sub")).unwrap();
+        assert_eq!(tlds_not_matching_signature(&dir, &sig), vec!["dev", "docker"]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

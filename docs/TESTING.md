@@ -394,6 +394,11 @@ it can:
   the privileged write (`take_over_resolver`'s backup-then-row-then-write order) — core's
   L0 and the live leg own that; and the dev machine has no foreign resolver file, so the
   real `/etc/resolver/test` read behind `resolver_tld_status` rides `docs/SMOKE-TEST.md`.
+  The scan's side of the same report — a leftover file with no Valet site behind it
+  must become a row — is L0 (`dns::tlds_not_matching_signature`, the complement asserted
+  over the same fixture dir as ours-by-signature, bad-label names excluded from BOTH);
+  the Import page rendering it in the empty state has tsc behind it only, since the
+  harness has no scan mock.
   **The Tunnels filter (`uireview.js`, `tunnels-*`, 19 Aug 2026, #371) is L2 asserting a
   SENTENCE, not a layout.** The feature is a search box; the risk is that filtering out a
   live public URL reads as "nothing is shared". So the fixture carries two live tunnels —

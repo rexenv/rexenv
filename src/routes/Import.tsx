@@ -216,6 +216,37 @@ export function Import() {
   });
 
   const blocked = (data?.tlds ?? []).filter((t) => t.owner === "foreign" || t.owner === "drifted");
+  // A blocked TLD no Valet/Herd site uses any more — the leftover file. The
+  // scan lists it since 5 Sep 2026 (it used to appear nowhere); the card's
+  // copy must not promise "these sites" when there are none.
+  const consentCards = blocked.map((t) => {
+    const theirs = candidates.some((c) => c.domain.endsWith(`.${t.tld}`));
+    return (
+      <ResolverConsent
+        key={t.tld}
+        tld={t}
+        onDone={() => void refetch()}
+        reason={
+          theirs ? undefined : (
+            <>
+              {t.path} still sends <span className="font-mono">.{t.tld}</span> lookups to Valet or
+              Herd, but none of their sites use it now. rexenv sites on{" "}
+              <span className="font-mono">.{t.tld}</span> — or a domain you change to it — can't
+              resolve until rexenv answers it.
+            </>
+          )
+        }
+        alternative={
+          theirs ? undefined : (
+            <>
+              Or leave it alone — nothing needs <span className="font-mono">.{t.tld}</span> yet, and
+              a domain change to it will offer this again.
+            </>
+          )
+        }
+      />
+    );
+  });
 
   return (
     <>
@@ -242,13 +273,19 @@ export function Import() {
             <Loader2 className="h-4 w-4 animate-rex-spin" /> Reading your Valet and Herd setup…
           </div>
         ) : candidates.length === 0 ? (
-          <div className="rounded-xl border border-rex-border bg-rex-surface-1 p-6 text-center">
-            <FolderInput className="mx-auto h-6 w-6 text-rex-text-dim" strokeWidth={1.6} />
-            <div className="mt-2 text-[0.875rem] text-rex-text">No Valet or Herd sites found</div>
-            <div className="mt-1 text-[0.75rem] text-rex-text-muted">
-              rexenv looked in <span className="font-mono">~/.config/valet</span> and Herd's
-              application-support folder. Nothing of theirs was changed.
+          <div className="flex flex-col gap-[14px]">
+            <div className="rounded-xl border border-rex-border bg-rex-surface-1 p-6 text-center">
+              <FolderInput className="mx-auto h-6 w-6 text-rex-text-dim" strokeWidth={1.6} />
+              <div className="mt-2 text-[0.875rem] text-rex-text">No Valet or Herd sites found</div>
+              <div className="mt-1 text-[0.75rem] text-rex-text-muted">
+                rexenv looked in <span className="font-mono">~/.config/valet</span> and Herd's
+                application-support folder. Nothing of theirs was changed.
+              </div>
             </div>
+            {/* No sites, but their resolver file can outlive them — this is the
+                one place a leftover `/etc/resolver/test` shows up before someone
+                types a .test domain. The empty state used to swallow it. */}
+            {consentCards}
           </div>
         ) : (
           <div className="flex flex-col gap-[14px]">
@@ -277,9 +314,7 @@ export function Import() {
               </div>
             ))}
 
-            {blocked.map((t) => (
-              <ResolverConsent key={t.tld} tld={t} onDone={() => void refetch()} />
-            ))}
+            {consentCards}
 
             {progress && (
               <ImportProgressCard
@@ -545,10 +580,14 @@ export function ResolverConsent({
   tld,
   onDone,
   alternative,
+  reason,
 }: {
   tld: ResolverTldStatus;
   onDone: () => void;
   alternative?: ReactNode;
+  /** Replaces the "to serve these sites" sentence when there are no sites —
+   *  a leftover file from an uninstalled Valet has nothing behind it. */
+  reason?: ReactNode;
 }) {
   const qc = useQueryClient();
   const [agreed, setAgreed] = useState(false);
@@ -581,7 +620,8 @@ export function ResolverConsent({
           <div className="mt-1 text-[0.75rem] leading-[1.55] text-rex-text-muted">
             {drifted
               ? `rexenv had taken over ${tld.path}, but it's theirs again — so rexenv .${tld.tld} sites won't resolve until you take it over again or move them to .rex.`
-              : `${tld.path} tells macOS where to send .${tld.tld} lookups. To serve these sites, rexenv needs to answer them instead.`}
+              : (reason ??
+                `${tld.path} tells macOS where to send .${tld.tld} lookups. To serve these sites, rexenv needs to answer them instead.`)}
           </div>
         </div>
       </div>
