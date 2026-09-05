@@ -375,7 +375,7 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   as well as version (a placeholder hash under an unchanged version silently
   skipped), and `brew trust rexenv/tap` is a required user-facing install step.
 - [x] **Cask: `postflight` is deprecated in favour of `postflight_steps`** ✓ 5 Sep 2026 —
-  `rexenv/homebrew-tap` `853e0ea`: the same xattr call as a declarative `run` step with
+  `rexenv/homebrew-tap` `2a5d489` (also drops the deprecated `verified:`): the same xattr call as a declarative `run` step with
   `{{appdir}}` as the install-time token; `brew style` 0 offenses (was 1), the cask loads
   and `brew info --json=v2` serialises the step. Not yet seen through the sandboxed step
   runner — the next `brew upgrade --cask rexenv` is that proof.
