@@ -181,6 +181,9 @@ mod macos {
             self.flush();
         }
         fn flush(&mut self) {
+            if let Some(dir) = self.path.parent() {
+                let _ = std::fs::create_dir_all(dir);
+            }
             if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&self.path) {
                 let _ = f.write_all(self.buf.as_bytes());
             }
@@ -225,15 +228,31 @@ mod macos {
         let mode = args.get(1).map(String::as_str).unwrap_or("");
         let log_path = args.get(2).map(PathBuf::from);
 
-        let Some(log_path) = log_path else {
-            eprintln!(
-                "app_swap_probe is driven by its script — it measures nothing outside a launched .app.\n\n    \
-                 scripts/probes/app-swap-probe.sh              # unquarantined leg\n    \
-                 scripts/probes/app-swap-probe.sh --quarantine # simulate a browser download\n"
-            );
-            return ExitCode::FAILURE;
-        };
+        // A launch that reaches this binary must leave a trace even when it cannot do
+        // the measurement. The 6 Sep 2026 quarantine leg produced NO probe log at all
+        // (`docs/PLAN-self-update.md` §T0), which left two very different explanations —
+        // the probe refused, or `open --args` never delivered the arguments — impossible
+        // to tell apart afterwards. A launch line, written before anything can refuse,
+        // is the difference between a measurement and a guess.
+        let log_path = log_path.unwrap_or_else(fallback_log);
         let mut log = Log::new(log_path);
+        log.line(format!("--- launched: {} ---", now()));
+        log.result("argv", args.join(" "));
+        let exe = std::env::current_exe().unwrap_or_default();
+        log.result("launch_exe", exe.display().to_string());
+        log.result(
+            "launch_translocated",
+            exe.to_string_lossy().contains("/AppTranslocation/").to_string(),
+        );
+        if mode.is_empty() {
+            log.line(
+                "no mode argument — LaunchServices did not deliver `--args`, or this was \
+                 run by hand. The measurement only means something from inside a launched \
+                 .app: scripts/probes/app-swap-probe.sh",
+            );
+            log.line("DONE run=0");
+            return ExitCode::FAILURE;
+        }
 
         match mode {
             "measure" => measure(&mut log),
@@ -449,6 +468,13 @@ mod macos {
             Some(n) => std::io::Error::from_raw_os_error(n),
             None => std::io::Error::other(e.to_string()),
         }
+    }
+
+    /// Where a launch writes when it was given no log path — same directory the script
+    /// uses, so the two runs sit side by side.
+    fn fallback_log() -> PathBuf {
+        let dir = std::env::var("TMPDIR").unwrap_or_else(|_| "/tmp".into());
+        PathBuf::from(dir).join("rexswapprobe").join(format!("probe-nolog-{}.log", std::process::id()))
     }
 
     fn os_version() -> String {

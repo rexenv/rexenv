@@ -180,7 +180,9 @@ wait_for() { # wait_for <marker> <seconds>
   return 1
 }
 
-if wait_for "DONE run=1" 120; then
+# `DONE run=0` is a launch that could not measure (no arguments delivered, or a
+# translocated read-only copy) — still an answer, and still an end of the run.
+if wait_for "DONE run=" 120; then
   echo "run 1 finished."
 else
   echo "run 1 did not finish within 120s — see $LOG (it may not have launched at all)." >&2
@@ -197,7 +199,16 @@ kill "$TCC_PID" 2>/dev/null || true
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo
 echo "=== RESULTS ($LOG) ==="
-grep '^RESULT ' "$LOG" 2>/dev/null || echo "(no results — the probe never ran)"
+if ! grep '^RESULT ' "$LOG" 2>/dev/null; then
+  echo "(nothing in the expected log — looking for a launch that wrote elsewhere)"
+  # A launch that got no arguments writes here instead. Its presence separates "the
+  # probe refused" from "open never delivered --args", which a missing file cannot.
+  for f in "$RUNDIR"/probe-nolog-*.log; do
+    [ -e "$f" ] || continue
+    echo "--- $f ---"
+    cat "$f"
+  done
+fi
 
 echo
 echo "=== TCC lines mentioning app-bundle policy ($TCC_LOG) ==="

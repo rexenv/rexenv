@@ -1,13 +1,13 @@
 # PLAN — in-app self-update: rexenv notices a published release, replaces itself, and reopens
 
-Status: **planned, not started** (6 Sep 2026). Today the only update path is `brew upgrade
---cask rexenv`; a user who installed from the dmg has no path but downloading the next dmg
-and dragging it over. This plan gives the app a signed update channel of its own — a check,
-an offer, a verified download, an atomic bundle swap and a clean reopen — reusing the trust
-machinery `core/updates.rs` already carries for PHP and Adminer. **T0 comes first and is a
-measurement, not code**: whether macOS App Management lets an ad-hoc-signed bundle rename
-itself in `/Applications` is documented nowhere, and the error handling below is a function
-of that answer.
+Status: **T0 measured 6 Sep 2026 — outcome O1; T1 is next.** Today the only update path is
+`brew upgrade --cask rexenv`; a user who installed from the dmg has no path but downloading
+the next dmg and dragging it over. This plan gives the app a signed update channel of its
+own — a check, an offer, a verified download, an atomic bundle swap and a clean reopen —
+reusing the trust machinery `core/updates.rs` already carries for PHP and Adminer.
+**T0 came first and was a measurement, not code**: whether macOS App Management lets an
+ad-hoc-signed bundle rename itself in `/Applications` is documented nowhere, so it was
+measured before the error handling was designed. It can (§T0), so §6 stands as written.
 
 Produced from three independent designs (grain-of-the-codebase, maximal-plugin-reuse,
 risk-first) run against the real files, plus nine read-only research reports whose evidence
@@ -95,10 +95,13 @@ be. So: a separate document, separate serial, separate module; #348/#361 stay in
 
 **P5 — The swap is ours, atomic, and never privileged.** Stage a verified sibling in the
 bundle's own parent directory, then one `renamex_np(RENAME_SWAP)` syscall. Never a write
-inside the launched bundle (EPERM even as root on Tahoe), never a copy-over (produces a
-hybrid — `PUBLISH-TESTING.md:422-428`). Every pre-flight failure is a refusal naming the
-consequence with a copy-paste fix; there is **no admin prompt**, because root does not bypass
-App Management anyway and "system changes only through platform traits" is the rule.
+inside the launched bundle, and never a copy-over. **Not because macOS stops us** — T0
+measured that it does not stop an ad-hoc bundle at all (§T0) — but because replacing a
+running Mach-O in place invalidates the pages the kernel is executing and gets the process
+SIGKILLed, and a copy-over leaves a hybrid of two builds
+(`PUBLISH-TESTING.md:422-428`). Every pre-flight failure is a refusal naming the consequence
+with a copy-paste fix; there is **no admin prompt**, because root would not help and "system
+changes only through platform traits" is the rule.
 
 **P6 — The relaunch goes through the ONE quit gate.** `app.exit(0)`, and the detached
 relauncher is spawned from `RunEvent::Exit` — *after* the gate has already let the quit
@@ -282,9 +285,11 @@ renamex_np("/Applications/rexenv.app", "<stage>/rexenv.app", RENAME_SWAP)
 ```
 
 One syscall. Afterwards the install path holds the new bundle and the staging path holds the
-previous one. `libc::renamex_np` and `RENAME_SWAP` are present in the pinned `libc 0.2`
-(verified in the crate source on this machine). `ENOTSUP`/`EINVAL` → `Unsupported`; `EPERM` →
-`PolicyBlocked` (§6.5 branch O2/O3); anything else → `Other`. **Nothing is deleted on any
+previous one. `libc::renamex_np` and `RENAME_SWAP` are present in the pinned `libc 0.2`, and
+**T0 measured this exact call succeeding on an ad-hoc-signed `.app` in `/Applications` on
+macOS 26.6.2** (§T0). `ENOTSUP`/`EINVAL` → `Unsupported`; `EPERM` → `PolicyBlocked`
+(§6.5 branch O2/O3, which T0 says is not the state of this OS but stays as the handler for
+the one it might become); anything else → `Other`. **Nothing is deleted on any
 failure**, and the running process keeps executing its old inode safely — Apple's own
 guidance is that a rename-based replacement avoids the code-signing crash that an in-place
 overwrite causes.
@@ -332,9 +337,13 @@ appears; the probe then `open`s the swapped copy and records whether the new ver
 a quarantined and an unquarantined leg are run. Nothing but `RexSwapProbe.app` is created or
 removed, and the script refuses if any argument names `rexenv.app`.
 
+**Measured 6 Sep 2026: O1** (§T0). The table stays because the swap rests on undocumented
+behaviour — it is the decision tree for the re-run on the next macOS major, not a question
+still open today.
+
 | Outcome | What the plan becomes |
 |---|---|
-| **O1** both rename shapes work, no notification, clean relaunch | Ship as written; `RENAME_SWAP` primary, no fallback needed. |
+| **O1 ← measured** both rename shapes work, no notification, clean relaunch | Ship as written; `RENAME_SWAP` primary, the rename pair a measured-good fallback. |
 | **O2** `RENAME_SWAP` → EPERM, the rename pair works | Two-rename becomes primary with an explicit restore on the second rename's failure; the window between them is recorded as a 🚫 premise and INSTALL gains the restore recipe. |
 | **O3** both → EPERM (App Management blocks an ad-hoc self-replace) | `cp -R` the installed bundle into staging FIRST (so a restore exists), then `rm -rf` + rename, restoring on failure. Re-probed on the next macOS major; the ledger row states it rests on undocumented behaviour. |
 | **O4** delete-then-create also EPERM | **No in-app install.** The check, the offer, the notification, the trust core, the surfaces and the release flow still ship; the button becomes "Download rexenv X" (the dmg, revealed in Finder) and the drag-replace stays. T3/T4's swap halves are cut. |
@@ -354,8 +363,8 @@ The spine the design was derived from. "core" = `core/app_update.rs` (OS-free), 
 | R3 | `EXDEV` | Sibling staging in the bundle's own parent + a `st_dev` pre-flight | plat facts, core decision | L0; L1 |
 | R4 | Running from the dmg (`EROFS`) | Refuse before download: `/Volumes/` or `MNT_RDONLY` | plat facts | L0; L1 with a fixture image |
 | R5 | Standard user — parent not writable | `access(W_OK)`; the staging `mkdir` is the same write | plat facts | L0; L1 (chmod 555 fixture) |
-| R5b | `EPERM` at the swap despite `W_OK` — App Management | Refuse, **never** retry with privileges; wording set by T0 | plat classifies, core renders | T0 + L3 only |
-| R6 | App Translocation | Refuse on an `/AppTranslocation/` path (no supported detection beyond it) | plat facts | L0; T0 quarantined leg |
+| R5b | `EPERM` at the swap despite `W_OK` — App Management | Refuse, **never** retry with privileges; wording set by T0 | plat classifies, core renders | T0 says this OS does not do it (§T0); the handler stays for the OS that might |
+| R6 | App Translocation | Refuse on an `/AppTranslocation/` path (no supported detection beyond it) | plat facts | **Measured**: T0's quarantine leg translocated, and the probe refused (§T0) |
 | R7 | Opened through a symlink or alias | `canonicalize(exe) == exe` | plat facts | L0; L1 |
 | R8 | Bundle owned by another login (brew installed by another user) | `st_uid == getuid()` | plat facts | L0; L3 |
 | R9 | Multi-user Mac: other users' agents and TCC | No guard possible; each user settles at their next launch via §6.4 | — | 🚫 posture |
@@ -487,7 +496,7 @@ Next free row is **#517**. They land in a new section `## core/app_update.rs + c
 
 | # | Claim | Layer that can prove it |
 |---|---|---|
-| 517 | 🚫 Whether App Management lets an ad-hoc bundle rename itself in /Applications is undocumented — measured by T0, re-measured per macOS major; every update changes the cdhash, so TCC grants are re-asked | T0 + SMOKE |
+| 517 | 🚫 App Management does not protect an ad-hoc bundle at all: on macOS 26.6.2 the app renamed, swapped AND wrote inside its own launched bundle unblocked (§T0). Undocumented in both directions, so re-measured per macOS major — and one more thing notarization would buy. Every update changes the cdhash, so TCC grants are re-asked | T0 (measured 6 Sep 2026) + SMOKE |
 | 518 | The app installs only bytes whose SHA-256 an ed25519-signed document names, verified against the compiled-in key over the exact bytes and re-verified on every read; TLS is transport, never trust | L0 + L1 network |
 | 519 | A descriptor whose serial is not greater than the highest accepted is refused before any write; the high-water mark is its own key, Denied to `rex config` | L0 |
 | 520 | An offer is a LIVE comparison — strictly newer, no prerelease, `minimumSystemVersion` ≤ host, not the skipped version — never a stored flag | L0 |
@@ -654,10 +663,79 @@ run them.
   item and a badge. A quieter option is badge-only; a louder one is a window that opens itself,
   which the Accessory activation policy and Sparkle's convention both argue against.
 
-## §T0 result
+## §T0 result — **O1, measured 6 Sep 2026 on macOS 26.6.2 (25G83)**
 
-**The probe is written and not yet run.** `scripts/probes/app-swap-probe.sh` +
-`src-tauri/examples/app_swap_probe.rs` (tier `demo`).
+**An ad-hoc-signed bundle in `/Applications` can replace itself, and the replacement
+relaunches clean.** Both rename shapes worked, the atomic one included; the swapped-in
+copy is what ran afterwards; no quarantine attribute appeared on it; and nothing on
+screen objected. The design in §6 stands as written — `renamex_np(RENAME_SWAP)` is the
+primary shape and the rename pair is a fallback that is also known to work.
+
+Ordinary leg, `probe-20260906-182007.log` (Apple silicon, uid 503, bundle
+`root:admin 775` parent):
+
+```
+RESULT os=macOS 26.6.2 (25G83)      RESULT start_state_is_v1=true
+RESULT stage_mkdir=ok               RESULT stage_codesign_verify=true
+RESULT rename_aside=ok              RESULT rename_in=ok
+RESULT rename_pair_installed_version=2.0.0
+RESULT rename_restore_out=ok        RESULT rename_restore_in=ok
+RESULT renamex_np_swap=ok           RESULT swap_installed_version=2.0.0
+RESULT swap_staged_version=1.0.0    RESULT swap_installed_codesign=true
+RESULT inplace_open_executable_for_write=ok
+RESULT inplace_create_file=ok
+RESULT installed_is_new_copy=true   RESULT relaunch_helper_spawned=ok
+RESULT relaunch_started=yes         RESULT relaunch_version=2.0.0
+RESULT relaunch_quarantine=none     RESULT relaunch_translocated=false
+```
+
+No notification, no Gatekeeper dialog, and no `kTCCServiceSystemPolicyAppBundles` line
+in the TCC capture.
+
+**Three things this measured that the design had only assumed.**
+
+1. **`renamex_np(RENAME_SWAP)` works on an `.app` directory in `/Applications`** — so the
+   plan's atomic swap is real, and the no-bundle window the plugin's implementation has
+   simply does not exist for us. The rename pair also works, so the fallback in §6.2 is a
+   fallback, not a hope.
+2. **`open` after the parent exits starts the swapped copy**, from the path, with the new
+   version — the relaunch shape in §6.2 confirmed end to end, including that the previous
+   copy sitting in the staging directory did not win the LaunchServices lookup.
+3. **The bundle the app wrote itself carries no quarantine attribute**, so Gatekeeper had
+   nothing to assess and the relaunch was silent. That was inferred from Tauri setting no
+   `LSFileQuarantineEnabled` and from `tar` restoring no xattrs; it is now observed.
+
+**And one finding nobody asked for, which belongs in the security record rather than the
+feature.** `inplace_open_executable_for_write=ok` and `inplace_create_file=ok`: macOS let
+the running app open its OWN executable for writing and create a file inside its launched
+bundle. App Management did not protect this bundle at all. Apple documents that protection
+for apps signed with a Team ID, and an ad-hoc bundle has none — so the reports of `EPERM`
+for in-place bundle writes describe *signed* apps, and rexenv is outside that protection
+in both directions: nothing stops rexenv replacing itself, and nothing stops anything else
+replacing rexenv either. It does not change the design (a rename is still the only safe
+way to replace a *running* Mach-O), and it is one more concrete thing Developer ID signing
+and notarization would buy (`docs/SIGNING.md`). Ledger #517 carries it.
+
+**Quarantine leg (run twice, `--quarantine`): App Translocation, confirmed.** Both runs
+launched — `tccd` recorded `dev.rexenv.rexswapprobe` executing from
+`/private/var/folders/…/T/AppTranslocation/<UUID>/d/RexSwapProbe.app` — and neither
+produced probe output, because the probe refuses to measure when it is not running from
+its install path. That refusal is the correct behaviour and matches R6: a quarantined
+bundle launched through LaunchServices and never Finder-moved runs from a read-only copy,
+which is precisely the state the real pre-flight must refuse rather than work around.
+
+What that leg did **not** produce is the in-app record of its own refusal, because a probe
+that refused and a launch that never received `--args` both left no file at all. Fixed the
+same day: the probe now writes a launch line — argv, exe path, translocated yes/no —
+before anything can refuse, falling back to `probe-nolog-<pid>.log` when it is given no
+log path, and the script prints those files when the expected log is empty. A re-run of
+`--quarantine` will record the refusal in its own words; the translocation answer itself is
+already established from `tccd`.
+
+---
+
+**The probe.** `scripts/probes/app-swap-probe.sh` + `src-tauri/examples/app_swap_probe.rs`
+(tier `demo`).
 
 ```sh
 scripts/probes/app-swap-probe.sh              # the ordinary leg
@@ -679,5 +757,6 @@ apps"** notification, and a **Gatekeeper dialog** on the relaunch. The script pr
 WATCH FOR block before launching and suggests a letter from the errnos at the end — the
 suggestion is arithmetic, the call is yours.
 
-_Fill in below: the run date, the macOS build, the outcome letter, the raw `RESULT` block,
-what was seen on screen, and which parts of §6 were rewritten because of it._
+Re-run it on the next macOS major, and on any release where the swap is touched: this
+whole section rests on undocumented behaviour that Apple is free to change, and the
+failure mode if it does is a user left with an app that will not update.

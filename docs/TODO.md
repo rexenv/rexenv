@@ -34,9 +34,14 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   ad-hoc-signed bundle rename itself in `/Applications` is documented nowhere, and
   the swap's error handling (and in outcome O4, whether an in-app install ships at
   all) is a function of the answer.
-  - [ ] T0 — the swap probe on a real Mac; record the outcome letter in the plan.
-    **Written 6 Sep 2026** (`scripts/probes/app-swap-probe.sh`, example `app_swap_probe`,
-    tier `demo`) — open until it has been RUN and §T0 records what it measured.
+  - [x] T0 — the swap probe on a real Mac ✓ 6 Sep 2026 — **O1** on macOS 26.6.2 (25G83):
+    `renamex_np(RENAME_SWAP)` on an ad-hoc bundle in `/Applications` works, so does the
+    rename pair, the swapped copy relaunches with no quarantine and no dialog, and the
+    quarantine leg translocates exactly as R6 assumes. Recorded in
+    `docs/PLAN-self-update.md` §T0 with the raw results; §6/§7/#517 rewritten to match.
+    Found on the way: App Management does not protect an ad-hoc bundle **at all** —
+    in-place writes into the launched bundle succeeded too, which is a note for
+    `docs/SIGNING.md`'s case rather than a change to the design.
   - [ ] T1 — `core/app_update.rs` trust core, the shared verify seam, `macho::archs`
   - [ ] T2 — transport, the launch ride, the 6 h poller, check commands, minimal card
   - [ ] T3 — the 12th platform trait `AppBundle` (facts, pre-flights, stage, swap, sweep)
