@@ -197,7 +197,35 @@ impl DnsAgentManager for WindowsDnsAgent {
         todo!("windows dns agent")
     }
 }
-
+pub struct WindowsAppBundle;
+impl AppBundle for WindowsAppBundle {
+    fn facts(&self, _exe: &Path) -> Result<BundleFacts> {
+        todo!("windows app bundle facts — self-update is macOS-only today")
+    }
+    fn stage(
+        &self,
+        _facts: &BundleFacts,
+        _archive: &Path,
+        _expect: &StagedExpect,
+    ) -> Result<StagedBundle> {
+        todo!("windows stage a replacement bundle")
+    }
+    fn swap(
+        &self,
+        _installed: &Path,
+        _staged: &StagedBundle,
+    ) -> std::result::Result<SwapReceipt, SwapFailure> {
+        todo!("windows swap the bundle")
+    }
+    fn sweep_leftovers(
+        &self,
+        _parent: &Path,
+        _my_version: &str,
+        _delete_previous: bool,
+    ) -> Result<Vec<Leftover>> {
+        todo!("windows sweep update leftovers")
+    }
+}
 pub struct WindowsPlatform {
     paths: WindowsPaths,
     dns: WindowsDns,
@@ -210,6 +238,7 @@ pub struct WindowsPlatform {
     binaries: WindowsBinaryProvider,
     edge: WindowsEdge,
     dns_agent: WindowsDnsAgent,
+    app_bundle: WindowsAppBundle,
 }
 
 impl WindowsPlatform {
@@ -226,6 +255,7 @@ impl WindowsPlatform {
             binaries: WindowsBinaryProvider,
             edge: WindowsEdge,
             dns_agent: WindowsDnsAgent,
+            app_bundle: WindowsAppBundle,
         }
     }
 }
@@ -269,5 +299,8 @@ impl Platform for WindowsPlatform {
     }
     fn dns_agent(&self) -> &dyn DnsAgentManager {
         &self.dns_agent
+    }
+    fn app_bundle(&self) -> &dyn AppBundle {
+        &self.app_bundle
     }
 }

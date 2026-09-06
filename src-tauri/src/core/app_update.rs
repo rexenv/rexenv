@@ -420,6 +420,143 @@ pub fn auto_check_enabled(conn: &Connection) -> bool {
     }
 }
 
+/// Why the app may not replace itself right now.
+///
+/// A separate type from [`NoOffer`] because they answer different questions: one
+/// is "is there anything newer", the other is "could we install it if there
+/// were". A machine can be perfectly up to date AND unable to update, and a card
+/// that collapses the two tells the second user nothing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Refusal {
+    NotABundle,
+    ReadOnlyVolume { path: String },
+    Translocated { path: String },
+    NotInApplications { parent: String },
+    SymlinkedPath { path: String },
+    ParentNotWritable { parent: String },
+    ForeignOwner { bundle: String },
+    NotEnoughSpace { need: u64, have: u64 },
+}
+
+impl Refusal {
+    /// What the user is told. Every one of these names the CONSEQUENCE and, where
+    /// a fix exists, ends with a `$ ` line — which `toastBackendError` renders as
+    /// a copyable command block.
+    ///
+    /// **None of them is a prompt.** An unwritable folder does not become an
+    /// admin dialog: root does not bypass App Management anyway, a privileged op
+    /// outside `PrivilegeManager` is against the rule this project holds, and the
+    /// plugin's version of exactly this branch is a root `rm -rf` with no backup.
+    /// A refusal with a command in it is a fix the user can read before running.
+    pub fn message(&self) -> String {
+        match self {
+            Self::NotABundle => "rexenv is not running from an app bundle, so there is \
+                 nothing to replace. Open the installed rexenv and update from there."
+                .into(),
+            Self::ReadOnlyVolume { path } => format!(
+                "rexenv is running from a read-only volume ({path}). Drag rexenv.app into \
+                 Applications in Finder, open it from there, then update. Nothing was changed."
+            ),
+            Self::Translocated { path } => format!(
+                "macOS is running rexenv from a temporary read-only copy ({path}), because \
+                 rexenv.app was never moved out of the folder it was downloaded to. Drag \
+                 rexenv.app into Applications in Finder, open it from there, then update."
+            ),
+            Self::NotInApplications { parent } => format!(
+                "rexenv is running from {parent}, not an Applications folder. Move rexenv.app \
+                 into Applications in Finder, open it from there, then update."
+            ),
+            Self::SymlinkedPath { path } => format!(
+                "rexenv was opened through a link ({path}), so the copy that is running and \
+                 the copy that would be replaced may not be the same one. Open the real copy \
+                 and update from there."
+            ),
+            Self::ParentNotWritable { parent } => format!(
+                "rexenv can't replace itself: {parent} is not writable by this account. Ask \
+                 an admin to update rexenv, or take ownership of the folder first:\n\
+                 $ sudo chown -R \"$USER\" {parent}"
+            ),
+            Self::ForeignOwner { bundle } => format!(
+                "{bundle} belongs to another account, so rexenv could not clean up after \
+                 replacing it. Have that account update rexenv, or take ownership first:\n\
+                 $ sudo chown -R \"$USER\" {bundle}"
+            ),
+            Self::NotEnoughSpace { need, have } => format!(
+                "Not enough free space to install the update: it needs about {} MB free and \
+                 there is {} MB. Nothing was downloaded.",
+                need / 1_000_000,
+                have / 1_000_000
+            ),
+        }
+    }
+}
+
+/// May this installation replace itself — decided from facts alone.
+///
+/// Pure, so every branch is testable without a Mac, an installed app or a real
+/// `/Volumes`. The platform gathers the facts; this decides what they mean, and
+/// keeps the two apart because a decision buried in a syscall wrapper is a
+/// decision nobody can drive.
+///
+/// Called BEFORE any byte is downloaded. A refusal that arrives after a 30 MB
+/// download is a refusal that wasted the user's morning.
+///
+/// The space rule wants room for the archive AND the extracted copy AND the
+/// previous bundle, which is why it is three times the archive rather than one.
+pub fn preflight(
+    facts: &crate::platform::traits::BundleFacts,
+    archive_bytes: u64,
+) -> std::result::Result<(), Refusal> {
+    use crate::platform::traits::InstallKind as K;
+    match facts.kind {
+        K::DevBuild => return Err(Refusal::NotABundle),
+        K::DiskImage => {
+            return Err(Refusal::ReadOnlyVolume { path: facts.bundle.display().to_string() })
+        }
+        K::Translocated => {
+            return Err(Refusal::Translocated { path: facts.bundle.display().to_string() })
+        }
+        K::Elsewhere => {
+            return Err(Refusal::NotInApplications { parent: facts.parent.display().to_string() })
+        }
+        K::Applications | K::UserApplications => {}
+    }
+    if facts.read_only {
+        return Err(Refusal::ReadOnlyVolume { path: facts.parent.display().to_string() });
+    }
+    if !facts.canonical {
+        return Err(Refusal::SymlinkedPath { path: facts.bundle.display().to_string() });
+    }
+    if !facts.parent_writable {
+        return Err(Refusal::ParentNotWritable { parent: facts.parent.display().to_string() });
+    }
+    if !facts.owned_by_me {
+        return Err(Refusal::ForeignOwner { bundle: facts.bundle.display().to_string() });
+    }
+    let need = archive_bytes.saturating_mul(3);
+    if facts.free_parent_bytes < need {
+        return Err(Refusal::NotEnoughSpace { need, have: facts.free_parent_bytes });
+    }
+    Ok(())
+}
+
+/// What a staged bundle must be, for THIS app at `version`.
+///
+/// One place, so the swap's idea of "a rexenv bundle" cannot drift from the
+/// running app's. `rex` is in the required list because a bundle without it
+/// silently breaks every terminal the user has open on the CLI.
+pub fn staged_expect(version: &str) -> crate::platform::traits::StagedExpect {
+    use crate::platform::traits::{Arch, StagedExpect};
+    StagedExpect {
+        version: version.to_string(),
+        identifier: "dev.rexenv.rexenv".into(),
+        executable: "rexenv".into(),
+        archs: vec![Arch::X86_64, Arch::Arm64],
+        required_binaries: vec!["rex".into()],
+        codesign: true,
+    }
+}
+
 /// What the check cache holds: when it was taken, and what it found.
 ///
 /// **One key, not two.** A separate timestamp would let a crash between the two
@@ -843,6 +980,122 @@ mod tests {
     /// writes leave "checked just now" sitting over yesterday's answer, which is
     /// the exact dishonesty the line exists to prevent. Writing on failure would
     /// do the same thing without needing a crash.
+    fn facts(kind: crate::platform::traits::InstallKind) -> crate::platform::traits::BundleFacts {
+        crate::platform::traits::BundleFacts {
+            bundle: "/Applications/rexenv.app".into(),
+            parent: "/Applications".into(),
+            kind,
+            homebrew: false,
+            parent_writable: true,
+            owned_by_me: true,
+            read_only: false,
+            canonical: true,
+            free_parent_bytes: 10_000_000_000,
+        }
+    }
+
+    /// Running from a mounted image or a translocated copy is refused BEFORE
+    /// anything is downloaded, and the message is the same one in both cases
+    /// because the user's move is the same: drag it to Applications.
+    ///
+    /// Translocation has no supported detection beyond the path, so the check is
+    /// the path — and the T0 quarantine leg measured that this is exactly the
+    /// state a downloaded-but-never-moved copy launches in.
+    #[test]
+    fn a_volumes_or_translocated_path_is_refused_with_the_move_to_applications_fix() {
+        use crate::platform::traits::InstallKind as K;
+        let mut f = facts(K::DiskImage);
+        f.bundle = "/Volumes/rexenv/rexenv.app".into();
+        let m = preflight(&f, 1).unwrap_err().message();
+        assert!(m.contains("read-only volume") && m.contains("Applications"), "{m}");
+
+        let mut f = facts(K::Translocated);
+        f.bundle = "/private/var/folders/x/T/AppTranslocation/UUID/d/rexenv.app".into();
+        let m = preflight(&f, 1).unwrap_err().message();
+        assert!(m.contains("temporary read-only copy") && m.contains("Finder"), "{m}");
+
+        // A read-only PARENT is the same refusal reached a different way — a
+        // check on the kind alone would miss a read-only mount at /Applications.
+        let mut f = facts(K::Applications);
+        f.read_only = true;
+        assert!(matches!(preflight(&f, 1), Err(Refusal::ReadOnlyVolume { .. })));
+    }
+
+    #[test]
+    fn a_symlink_ancestor_is_refused_because_the_running_copy_may_not_be_the_replaced_one() {
+        let mut f = facts(crate::platform::traits::InstallKind::Applications);
+        f.canonical = false;
+        let m = preflight(&f, 1).unwrap_err().message();
+        assert!(m.contains("through a link"), "{m}");
+    }
+
+    /// The one that must NEVER become a prompt.
+    ///
+    /// The Tauri updater turns exactly this state into `osascript … rm -rf …
+    /// with administrator privileges`, and because Rust folds EACCES and EPERM
+    /// into one error kind it does so for policy refusals privileges cannot fix.
+    /// Here it is a sentence with a command in it, which the user can read
+    /// before running.
+    #[test]
+    fn an_unwritable_parent_is_refused_with_a_chown_fix_never_a_prompt() {
+        let mut f = facts(crate::platform::traits::InstallKind::Applications);
+        f.parent_writable = false;
+        let m = preflight(&f, 1).unwrap_err().message();
+        assert!(m.contains("not writable"), "{m}");
+        assert!(m.contains("\n$ sudo chown"), "the fix must be a copyable command: {m}");
+        for forbidden in ["administrator", "osascript", "privileges", "password"] {
+            assert!(!m.to_lowercase().contains(forbidden), "{m} — this is not a prompt");
+        }
+
+        // A bundle another login owns: an admin could rename it, but nothing
+        // could clean up afterwards, so it is refused with the same shape.
+        let mut f = facts(crate::platform::traits::InstallKind::Applications);
+        f.owned_by_me = false;
+        assert!(preflight(&f, 1).unwrap_err().message().contains("another account"));
+    }
+
+    #[test]
+    fn a_dev_build_or_a_bundle_outside_applications_is_refused_and_the_ordinary_case_is_not() {
+        use crate::platform::traits::InstallKind as K;
+        assert!(matches!(preflight(&facts(K::DevBuild), 1), Err(Refusal::NotABundle)));
+        assert!(matches!(
+            preflight(&facts(K::Elsewhere), 1),
+            Err(Refusal::NotInApplications { .. })
+        ));
+        // Anti-vacuity: the states this refuses are refused because of what they
+        // are, not because `preflight` refuses everything.
+        assert!(preflight(&facts(K::Applications), 1).is_ok());
+        assert!(preflight(&facts(K::UserApplications), 1).is_ok());
+        // Homebrew is not a refusal — the bundle is the user's either way.
+        let mut f = facts(K::Applications);
+        f.homebrew = true;
+        assert!(preflight(&f, 1).is_ok());
+    }
+
+    #[test]
+    fn space_is_checked_for_the_archive_the_copy_and_the_previous_bundle() {
+        let mut f = facts(crate::platform::traits::InstallKind::Applications);
+        f.free_parent_bytes = 100_000_000;
+        // Three times, not once: the archive, what it extracts to, and the
+        // bundle being replaced all sit on that volume at the same moment.
+        assert!(preflight(&f, 30_000_000).is_ok());
+        let m = preflight(&f, 40_000_000).unwrap_err().message();
+        assert!(m.contains("Not enough free space") && m.contains("Nothing was downloaded"), "{m}");
+    }
+
+    #[test]
+    fn what_a_staged_bundle_must_be_is_stated_once_and_includes_the_rex_sidecar() {
+        let e = staged_expect("0.6.0");
+        assert_eq!(e.version, "0.6.0");
+        assert_eq!(e.identifier, "dev.rexenv.rexenv");
+        assert_eq!(e.executable, "rexenv");
+        // A bundle without `rex` silently breaks every terminal the user has
+        // open on the CLI, which is the kind of thing nobody notices in a test.
+        assert!(e.required_binaries.iter().any(|b| b == "rex"));
+        assert_eq!(e.archs.len(), 2, "the shipped bundle is universal");
+        assert!(e.codesign);
+    }
+
     #[test]
     fn the_check_cache_is_one_value_written_only_on_success() {
         let conn = db();

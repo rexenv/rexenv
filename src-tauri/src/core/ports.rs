@@ -495,6 +495,7 @@ mod tests {
             fn dns_agent(&self) -> &dyn DnsAgentManager {
                 unimplemented!()
             }
+        fn app_bundle(&self) -> &dyn AppBundle { unimplemented!() }
         }
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
         let port = listener.local_addr().unwrap().port();

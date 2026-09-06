@@ -2900,6 +2900,7 @@ mod tests {
         fn dns_agent(&self) -> &dyn DnsAgentManager {
             unimplemented!()
         }
+        fn app_bundle(&self) -> &dyn AppBundle { unimplemented!() }
     }
 
     /// Recording supervisor for override-stop tests: configurable
@@ -2961,6 +2962,7 @@ mod tests {
         fn dns_agent(&self) -> &dyn DnsAgentManager {
             unimplemented!()
         }
+        fn app_bundle(&self) -> &dyn AppBundle { unimplemented!() }
     }
     fn override_test_platform(name: &str, master: Option<u32>) -> OverrideTestPlatform {
         let dir = std::env::temp_dir().join(format!("rexenv-ovr-{name}"));
@@ -3041,6 +3043,7 @@ mod tests {
         fn dns_agent(&self) -> &dyn DnsAgentManager {
             unimplemented!()
         }
+        fn app_bundle(&self) -> &dyn AppBundle { unimplemented!() }
     }
     fn adopted_test_platform(
         name: &str,

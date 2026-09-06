@@ -1021,6 +1021,7 @@ mod tests {
             fn dns_agent(&self) -> &dyn DnsAgentManager {
                 unimplemented!()
             }
+        fn app_bundle(&self) -> &dyn crate::platform::traits::AppBundle { unimplemented!() }
         }
 
         let platform = P(
@@ -1176,6 +1177,7 @@ mod tests {
             fn dns_agent(&self) -> &dyn DnsAgentManager {
                 unimplemented!()
             }
+        fn app_bundle(&self) -> &dyn crate::platform::traits::AppBundle { unimplemented!() }
         }
 
         let platform = P(

@@ -3296,6 +3296,7 @@ pub(crate) mod tests {
         fn binaries(&self) -> &dyn crate::platform::traits::BinaryProvider { unimplemented!() }
         fn edge(&self) -> &dyn crate::platform::traits::EdgeSupervisor { unimplemented!() }
         fn dns_agent(&self) -> &dyn crate::platform::traits::DnsAgentManager { unimplemented!() }
+        fn app_bundle(&self) -> &dyn crate::platform::traits::AppBundle { unimplemented!() }
     }
 
     /// The same stub-platform state, for a sibling test module.

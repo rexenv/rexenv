@@ -2726,7 +2726,7 @@ fn extract_tar_gz_member(reader: impl std::io::Read, member: &str, dest: &Path) 
 /// `tar` crate's own extraction guards — so we re-add them (L2, defense-in-depth;
 /// archives are already checksum-pinned): every entry must resolve inside `dest`,
 /// both by path (no `..`/absolute components) and, for links, by target.
-fn extract_tar_gz_tree(reader: impl std::io::Read, dest: &Path) -> Result<()> {
+pub(crate) fn extract_tar_gz_tree(reader: impl std::io::Read, dest: &Path) -> Result<()> {
     extract_tar_gz_tree_filtered(reader, dest, 1, None)
 }
 
@@ -2926,6 +2926,7 @@ mod tests {
         fn shell(&self) -> &dyn crate::platform::traits::ShellRunner { unimplemented!() }
         fn edge(&self) -> &dyn crate::platform::traits::EdgeSupervisor { unimplemented!() }
         fn dns_agent(&self) -> &dyn crate::platform::traits::DnsAgentManager { unimplemented!() }
+        fn app_bundle(&self) -> &dyn crate::platform::traits::AppBundle { unimplemented!() }
     }
 
     /// A throwaway bin dir. Named per-test AND per-pid so two tests in the same

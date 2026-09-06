@@ -1940,6 +1940,7 @@ mod tests {
         fn binaries(&self) -> &dyn BinaryProvider { unimplemented!() }
         fn edge(&self) -> &dyn EdgeSupervisor { unimplemented!() }
         fn dns_agent(&self) -> &dyn DnsAgentManager { unimplemented!() }
+        fn app_bundle(&self) -> &dyn AppBundle { unimplemented!() }
     }
 
     #[test]

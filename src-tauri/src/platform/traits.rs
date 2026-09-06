@@ -634,6 +634,206 @@ pub trait DnsAgentManager: Send + Sync {
     fn uninstall(&self) -> Result<()>;
 }
 
+/// Where the running app is installed, as far as REPLACING it is concerned.
+///
+/// A location, not a verdict: `core::app_update::preflight` decides what each
+/// one means, so the decision is a pure function a test can drive over fixture
+/// facts rather than something only a real Mac can answer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum InstallKind {
+    /// The ordinary case: `/Applications/<name>.app`.
+    Applications,
+    /// `~/Applications/<name>.app` — replaceable, and nobody else's business.
+    UserApplications,
+    /// Not inside a `.app` at all: `cargo run`, or a bare binary. There is no
+    /// bundle to replace.
+    DevBuild,
+    /// Running from a mounted image (`/Volumes/…`) — read-only, and the answer
+    /// is to drag the app to Applications rather than to work around it.
+    DiskImage,
+    /// macOS is running a read-only copy from `…/AppTranslocation/…` because the
+    /// bundle still carries a quarantine attribute and was never Finder-moved.
+    /// There is no supported way to find the original, so the answer is the same
+    /// sentence as `DiskImage`.
+    Translocated,
+    /// A `.app` somewhere else — Downloads, a project folder, a second copy.
+    Elsewhere,
+}
+
+/// What the platform can SEE about the installed bundle. Facts only: no
+/// decision, no message, nothing that needs a policy to state.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BundleFacts {
+    /// `…/rexenv.app`, derived from the running executable.
+    pub bundle: PathBuf,
+    /// The directory the bundle sits in — and therefore where a replacement is
+    /// staged, which is what makes a cross-device rename impossible by
+    /// construction rather than by a check.
+    pub parent: PathBuf,
+    pub kind: InstallKind,
+    /// A Homebrew cask manages this install. Not a refusal — the bundle is the
+    /// user's either way — but the card says `brew upgrade --cask rexenv` also
+    /// works, and the tap's README says what `--greedy` still does.
+    pub homebrew: bool,
+    /// The parent directory is writable by THIS user (`access(W_OK)`), so the
+    /// staging directory and the rename can happen with no privilege at all.
+    pub parent_writable: bool,
+    /// The bundle belongs to this uid. A bundle another login installed can be
+    /// renamed by an admin but its leftovers could never be cleaned up.
+    pub owned_by_me: bool,
+    /// The parent's filesystem is mounted read-only.
+    pub read_only: bool,
+    /// `canonicalize(exe) == exe`: no symlink in the path. A symlinked launch
+    /// means the running exe and the bundle being replaced can disagree.
+    pub canonical: bool,
+    /// Free bytes on the parent's volume.
+    pub free_parent_bytes: u64,
+}
+
+/// What a staged bundle must turn out to BE before anything is swapped.
+///
+/// Passed in rather than read from a constant so the checks can be driven over a
+/// fixture bundle in a test — a verifier that only ever runs against the real
+/// app is a verifier nobody has watched fail.
+#[derive(Debug, Clone)]
+pub struct StagedExpect {
+    /// `CFBundleShortVersionString` must equal this — the version the signed
+    /// descriptor named, so a stale archive is caught before it is installed.
+    pub version: String,
+    /// `CFBundleIdentifier` must equal this.
+    pub identifier: String,
+    /// `CFBundleExecutable` must equal this, and the file must exist: the
+    /// relaunch resolves the binary through this key.
+    pub executable: String,
+    /// Every Mach-O named here must contain exactly these architectures.
+    /// Parameterised because a fixture bundle is single-arch while the shipped
+    /// one is universal.
+    pub archs: Vec<Arch>,
+    /// Files under `Contents/MacOS/` that must be present — the `rex` sidecar,
+    /// whose absence would silently break every terminal after an update.
+    pub required_binaries: Vec<String>,
+    /// Run `codesign --verify --deep --strict`. Off for fixtures that were never
+    /// signed; ON for anything a user would launch.
+    pub codesign: bool,
+}
+
+/// A verified bundle sitting beside the installed one, ready to swap in.
+#[derive(Debug, Clone)]
+pub struct StagedBundle {
+    /// `<stage_dir>/<name>.app`.
+    pub path: PathBuf,
+    /// The staging directory itself — dot-prefixed, so Finder and Spotlight skip
+    /// it, and removed by the sweep once the new app is healthy.
+    pub stage_dir: PathBuf,
+}
+
+/// How the swap happened, and where the previous bundle went.
+#[derive(Debug, Clone)]
+pub struct SwapReceipt {
+    pub installed: PathBuf,
+    /// The PREVIOUS bundle, still on disk. Deleted only once the new app has
+    /// launched and confirmed its own version — never by the process that
+    /// swapped it, which is gone by then and could not honestly watch.
+    pub previous: PathBuf,
+    pub method: SwapMethod,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SwapMethod {
+    /// `renamex_np(RENAME_SWAP)` — one syscall, so there is no moment when the
+    /// install path holds no bundle.
+    AtomicSwap,
+    /// rename-aside then rename-in, with a restore if the second fails. The
+    /// fallback for a filesystem without `RENAME_SWAP`.
+    RenamePair,
+}
+
+/// Why a swap could not happen. The EPERM→`PolicyBlocked` classification is a
+/// macOS fact and lives here; what to SAY about it is `core`'s decision.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SwapFailure {
+    /// `EACCES` — an ordinary permission problem.
+    NotWritable,
+    /// `EPERM` — the kernel refused the operation itself. On macOS this is what
+    /// App Management looks like, and root does not bypass it, so it is never
+    /// retried with privileges.
+    PolicyBlocked,
+    /// `EXDEV`. Impossible with sibling staging, and kept so that a future
+    /// caller staging somewhere else fails loudly rather than silently.
+    CrossDevice,
+    /// `EROFS`.
+    ReadOnly,
+    /// `ENOTSUP`/`EINVAL` — the filesystem has no atomic swap.
+    Unsupported,
+    Other(String),
+}
+
+impl std::fmt::Display for SwapFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NotWritable => write!(f, "the folder is not writable"),
+            Self::PolicyBlocked => write!(f, "macOS refused the operation (operation not permitted)"),
+            Self::CrossDevice => write!(f, "the two paths are on different volumes"),
+            Self::ReadOnly => write!(f, "the volume is read-only"),
+            Self::Unsupported => write!(f, "this filesystem has no atomic swap"),
+            Self::Other(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+/// A bundle left in a staging directory by some earlier update.
+#[derive(Debug, Clone)]
+pub struct Leftover {
+    pub path: PathBuf,
+    /// The version inside it, when its `Info.plist` could be read. The sweep
+    /// classifies by THIS rather than by a marker file: a crash between the swap
+    /// and any write cannot make a version lie about itself.
+    pub version: Option<String>,
+    pub deleted: bool,
+}
+
+/// Replacing the running application bundle with a verified copy of a newer one.
+///
+/// Every method here is a syscall or an OS tool. The DECISIONS — may this be
+/// replaced, what does a refusal say, which leftover is the previous bundle —
+/// live in `core::app_update`, over [`BundleFacts`], so they are provable
+/// without a Mac and without an installed app.
+///
+/// macOS is real; Windows and Linux are `todo!()` until someone ports them,
+/// which is the standing rule for a new capability.
+pub trait AppBundle: Send + Sync {
+    /// What can be seen about the bundle the running executable belongs to.
+    fn facts(&self, exe: &Path) -> Result<BundleFacts>;
+    /// Extract `archive` into a dot-prefixed staging directory beside the
+    /// installed bundle and verify it against `expect`. On ANY failure the
+    /// staging directory is removed and the installed bundle is untouched.
+    fn stage(
+        &self,
+        facts: &BundleFacts,
+        archive: &Path,
+        expect: &StagedExpect,
+    ) -> Result<StagedBundle>;
+    /// Put the staged bundle at the install path and the installed one in
+    /// staging. Atomic where the filesystem allows it; restored on failure where
+    /// it does not. Nothing is deleted on any path.
+    fn swap(
+        &self,
+        installed: &Path,
+        staged: &StagedBundle,
+    ) -> std::result::Result<SwapReceipt, SwapFailure>;
+    /// Classify and optionally remove staging leftovers beside the bundle.
+    /// `delete_previous` is false until the new app is healthy, which is what
+    /// keeps a rollback possible.
+    fn sweep_leftovers(
+        &self,
+        parent: &Path,
+        my_version: &str,
+        delete_previous: bool,
+    ) -> Result<Vec<Leftover>>;
+}
+
 /// Aggregate of every platform capability. `core/` is handed one of these and
 /// never names a concrete OS type.
 pub trait Platform: Send + Sync {
@@ -651,6 +851,8 @@ pub trait Platform: Send + Sync {
     /// User-level supervisor that keeps the DNS resolver alive across app quits
     /// (macOS LaunchAgent KeepAlive).
     fn dns_agent(&self) -> &dyn DnsAgentManager;
+    /// Replacing the app's own bundle (self-update).
+    fn app_bundle(&self) -> &dyn AppBundle;
 }
 
 /// Pick the MASTER from `(pid, ppid)` pairs of processes sharing one listen

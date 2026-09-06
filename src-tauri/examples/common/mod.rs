@@ -700,6 +700,14 @@ impl Platform for SandboxPlatform {
     fn dns_agent(&self) -> &dyn DnsAgentManager {
         self.inner.dns_agent()
     }
+    /// Delegated unchanged, and safely: `AppBundle` only ever touches the paths
+    /// it is HANDED, so a sandboxed example that passes fixture paths stages and
+    /// swaps fixture bundles. There is nothing to redirect — and redirecting it
+    /// would mean the example exercised a different implementation from the one
+    /// that ships, which is the whole thing L1 exists to avoid.
+    fn app_bundle(&self) -> &dyn rexenv_lib::platform::traits::AppBundle {
+        self.inner.app_bundle()
+    }
 }
 
 /// Removes the sandbox tree when the example ends, however it ends.

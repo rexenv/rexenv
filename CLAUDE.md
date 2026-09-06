@@ -37,7 +37,7 @@ headers saying "not started" about shipped features. Derived beats typed.
 
 - `commands/` are **thin** Tauri IPC handlers — translate calls, invoke `core/`, nothing else.
 - `core/` is **platform-agnostic** ("the what") — never imports OS-specific code.
-- ALL OS-specific code lives ONLY in `src-tauri/src/platform/`, behind the 11 Rust traits
+- ALL OS-specific code lives ONLY in `src-tauri/src/platform/`, behind the 12 Rust traits
   in `platform/traits.rs`, impls selected via `#[cfg(target_os)]`. macOS impls are real;
   `windows/`/`linux/` stay `todo!()` — adding an OS = filling stubs, NOT restructuring.
 

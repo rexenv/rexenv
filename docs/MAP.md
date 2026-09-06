@@ -10,7 +10,7 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
 - `src/` (React/TS) calls typed wrappers in `src/lib/ipc/index.ts` — never raw `invoke`.
 - `commands/` = thin Tauri IPC translators; parse args, call `core/`, map errors.
 - `core/` = platform-agnostic domain logic; talks to `platform/` only through traits.
-- `platform/` = ALL OS-specific code behind the 11 traits in `platform/traits.rs`
+- `platform/` = ALL OS-specific code behind the 12 traits in `platform/traits.rs`
   (macOS real; `windows/`/`linux/` are `todo!()` stubs).
 - `state/` = SQLite migrations + the store layer; only `state/` writes SQL.
 
@@ -45,7 +45,7 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
 | Adminer (internal vhost, deep links, console palette) | `core/adminer.rs` (incl. `set_theme`/`write_theme` + the wrapper's `css()` — the console's scheme) | `commands/database.rs` (incl. `adminer_set_theme`) | — | #37–43, #375; `adminer_*_check` (the palette legs live in `adminer_check`) |
 | Valet/Herd migration (scan → import → db copy → rewrite) | `core/valet.rs`; Stage 2: `core/{dbsource,dbcompat,dbdump,dbrestore,dbmirror,dbimport}`; Stage 3: `core/{confedit,confverify,confrewrite}` | `commands/valet_import.rs`, `commands/db_import.rs`, `commands/rewrite.rs` | PrivilegeManager (resolver takeover) | #112–133, #181–182, #186; `valet_scan_check`, `db_dump_check`, `db_restore_check`, `config_rewrite_check` |
 | Signed in-app updates (PHP patches, Adminer) — the trust boundary | `core/updates.rs` (`RELEASE_PUBKEY`, `verify`, serial/replay gate, host allowlist, `Family { Php, Adminer }`) | `commands/php.rs`, `commands/settings.rs` | BinaryProvider | plans: `PLAN-binary-updates.md`, `PLAN-adminer-updates.md`; `php_update_check` (network), `adminer_update_check` |
-| Signed in-app SELF-update (the app's own release) — the trust boundary | `core/app_update.rs` (same `RELEASE_PUBKEY`, own serial, `ALLOWED_RELEASE_PREFIXES`, `offer_for`), `core/macho.rs` (`archs`) | — (T2 adds `commands/app_update.rs`) | — (T3 adds `AppBundle`) | plan: `docs/PLAN-self-update.md`; ledger #517–#522; probe `scripts/probes/app-swap-probe.sh` |
+| Signed in-app SELF-update (the app's own release) — the trust boundary | `core/app_update.rs` (same `RELEASE_PUBKEY`, own serial, `ALLOWED_RELEASE_PREFIXES`, `offer_for`, `preflight`), `core/macho.rs` (`archs`) | `commands/app_update.rs` (state + check; no apply yet) | **`AppBundle`** (`platform/macos/app_bundle.rs`: facts, stage+verify, `renamex_np` swap, leftover sweep) | plan: `docs/PLAN-self-update.md`; ledger #517–#528; `app_update_check` (network), `app_bundle_swap_check` (sandbox), probe `scripts/probes/app-swap-probe.sh` |
 | `wp dist-archive` — a distributable zip from a repo | `core/dist_archive.rs` (bundled package tree, own TMPDIR, refuses without `.distignore`) | `commands/repo.rs` | ShellRunner | #229–#236; `dist_archive_check`; plan: `PLAN-dist-archive.md` |
 | `.env` read + write (Laravel create, git clone, connection rewrite) | `core/dotenv.rs` (came out of `core/laravel.rs` for its second caller, and immediately caught a duplicate-key bug) | via `core/laravel.rs`, `core/sites.rs` | — | `core::dotenv` unit tests |
 | Add-from-Git + assets (clone, jobs, watchers, link guard) | `core/repo.rs`, `core/devtools.rs` | `commands/repo.rs` (26 cmds; `job_target` resolves the `site` kind to the project root) | ShellRunner | #134–140, #183–185, #284–288; `repo_*_check` |

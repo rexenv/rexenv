@@ -659,6 +659,17 @@ because reading the header in Rust is what lets the check live in `core` at all.
 cannot say here: that the live document verifies (T2, network tier), that a real bundle is
 staged and swapped (T3, sandbox tier), or that a real Mac lets it happen (T0/T11, L3).
 
+- `app_bundle_swap_check` (sandbox) — the SWAP, on fixtures: a real `.app` is tarred,
+  extracted through the guarded extractor, verified against its `Info.plist` and Mach-O
+  headers, and exchanged with `renamex_np(RENAME_SWAP)` in a fixture Applications folder.
+  The load-bearing legs are the failures — a wrong version, a missing sidecar and a
+  deliberately thinned bundle are each refused, and the installed bundle is compared BYTE
+  FOR BYTE afterwards, because "every error path leaves the app alone" is the claim a
+  self-updater lives or dies on. The thin fixture is built with `lipo -thin` rather than
+  skipped when the host binary happens to be universal: a leg that only runs on some
+  machines is a leg nobody can rely on. Never touches the real `/Applications`. Does NOT
+  cover the swap against the real bundle (T0's probe, then SMOKE) or the relaunch (T4).
+  Ledger #525–#528.
 - `app_update_check` (network) — the app's OWN update descriptor, fetched from where it is
   published and verified against the key compiled into the running binary: the half a
   user's "Check now" runs, where a publisher signing with a rotated key, or a document

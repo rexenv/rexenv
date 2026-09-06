@@ -6,6 +6,7 @@
 //! as `todo!()` so the architecture is complete and `cargo check` passes.
 
 pub mod activation;
+pub mod app_bundle;
 pub mod parent_death_guard;
 pub mod webview_dialogs;
 
@@ -2101,6 +2102,7 @@ pub struct MacosPlatform {
     binaries: MacosBinaryProvider,
     edge: MacosEdgeDaemon,
     dns_agent: MacosDnsAgent,
+    app_bundle: app_bundle::MacosAppBundle,
 }
 
 impl MacosPlatform {
@@ -2117,6 +2119,7 @@ impl MacosPlatform {
             binaries: MacosBinaryProvider,
             edge: MacosEdgeDaemon,
             dns_agent: MacosDnsAgent,
+            app_bundle: app_bundle::MacosAppBundle,
         }
     }
 }
@@ -2160,6 +2163,9 @@ impl Platform for MacosPlatform {
     }
     fn dns_agent(&self) -> &dyn DnsAgentManager {
         &self.dns_agent
+    }
+    fn app_bundle(&self) -> &dyn AppBundle {
+        &self.app_bundle
     }
 }
 

@@ -19,13 +19,13 @@ commands/   thin translators only — parse args, call core, map errors
         ↓
 core/       platform-agnostic domain logic ("the what") — no OS-specific code, ever
         ↓
-platform/   ALL OS-specific code, behind 11 traits (platform/traits.rs):
+platform/   ALL OS-specific code, behind 12 traits (platform/traits.rs):
             DnsManager · CertTrustManager · PrivilegeManager · ProcessSupervisor ·
             AutostartManager · PermissionManager · ShellRunner · Paths · BinaryProvider ·
-            EdgeSupervisor · DnsAgentManager
+            EdgeSupervisor · DnsAgentManager · AppBundle
 ```
 
-- `platform/macos/mod.rs` — all 11 traits real. `platform/windows/`, `platform/linux/` —
+- `platform/macos/mod.rs` — all 12 traits real. `platform/windows/`, `platform/linux/` —
   every method `todo!()`. Adding an OS = filling stubs, never restructuring.
 - The only non-platform `todo!`-ish code is a defensive `unreachable!` in
   `core/binaries.rs`. `core/`, `commands/`, `state/` are macOS-complete.
@@ -640,8 +640,22 @@ Live-proven end to end by `site_stop_start_check`.
   nothing else: no arch, no identifier. Every failure is a log line and an honest footer —
   `checked N ago` reads ONE stored value written only after a success, so a failed check
   keeps yesterday's timestamp instead of aging into a lie, and nothing ever says "up to
-  date". The swap, the relaunch and the install button are T3/T4/T6 of the plan;
-  ledger #517–#524.
+  date".
+  **The swap** (T3, `AppBundle` — the 12th platform trait) stages a whole new bundle as a
+  SIBLING of the installed one, which makes a cross-device rename impossible by
+  construction rather than by a check, verifies it (version, identifier, executable name,
+  the `rex` sidecar, both architectures in every Mach-O, `codesign --verify --deep
+  --strict`), and exchanges the two paths with ONE `renamex_np(RENAME_SWAP)` — so no
+  instant exists where the install path holds nothing, which is the state a KeepAlive
+  LaunchAgent would respawn into. Nothing is written inside the launched bundle and nothing
+  is copied over it: replacing a running Mach-O in place invalidates pages the kernel is
+  executing, and a copy-over leaves a hybrid of two builds. **The previous bundle stays on
+  disk** until the new app has launched and confirmed its own version, and leftovers are
+  classified by the version INSIDE them rather than by a marker, so a crash between the
+  swap and any write cannot mislead the sweep. **No path here is privileged**: an
+  unwritable folder, a translocated or `/Volumes` launch, a symlinked path or a foreign
+  owner is a refusal that names the consequence and carries a copy-paste fix. The relaunch
+  and the install button are T4/T6; ledger #517–#528.
 - **ADMINER is the SECOND family in that manifest**, and the limits are per family
   (`updates::Family`). Its grant is strictly below PHP's — `Shape::File` →
   `resolve_file`, no chmod, no codesign, never spawned, interpreted by an already-running

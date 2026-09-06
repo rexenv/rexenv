@@ -53,7 +53,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     and the About card; `auto_check_is_read_before_the_request_not_applied_to_the_answer`
     (source scan, plant-proven); `examples/app_update_check.rs` (network) PASSES against
     the real URL and reports the pre-publish state honestly. No install button yet — T6.
-  - [ ] T3 — the 12th platform trait `AppBundle` (facts, pre-flights, stage, swap, sweep)
+  - [x] T3 — the 12th platform trait `AppBundle` (facts, pre-flights, stage, swap, sweep)
+    ✓ 6 Sep 2026 — ledger #525–#528; `renamex_np(RENAME_SWAP)` proven on a fixture bundle
+    by `examples/app_bundle_swap_check.rs` (sandbox, 20 checks, reports `AtomicSwap`); the
+    refusal legs assert the installed bundle is byte-identical afterwards; the thin-bundle
+    leg builds its own `lipo -thin` fixture so it always runs. Trait count 11 → 12 in
+    CLAUDE.md, ARCHITECTURE, MAP and the README tree; windows/linux `todo!()`.
   - [ ] T4 — apply end to end: refusals, hub download, swap, helper, exit through the gate
   - [ ] T5 — the DNS agent states its build; a stale one is kickstarted at launch
   - [ ] T6 — the full About card, the one-source consent sentence, copy guard, L2 probe

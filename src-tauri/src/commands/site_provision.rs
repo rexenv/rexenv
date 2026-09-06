@@ -2514,6 +2514,7 @@ mod tests {
         fn dns_agent(&self) -> &dyn crate::platform::traits::DnsAgentManager {
             unimplemented!()
         }
+        fn app_bundle(&self) -> &dyn crate::platform::traits::AppBundle { unimplemented!() }
     }
 
     /// Drive the REAL `start()` — the whole prepare phase, not a precheck —

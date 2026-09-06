@@ -201,7 +201,35 @@ impl DnsAgentManager for LinuxDnsAgent {
         todo!("linux dns agent")
     }
 }
-
+pub struct LinuxAppBundle;
+impl AppBundle for LinuxAppBundle {
+    fn facts(&self, _exe: &Path) -> Result<BundleFacts> {
+        todo!("linux app bundle facts — self-update is macOS-only today")
+    }
+    fn stage(
+        &self,
+        _facts: &BundleFacts,
+        _archive: &Path,
+        _expect: &StagedExpect,
+    ) -> Result<StagedBundle> {
+        todo!("linux stage a replacement bundle")
+    }
+    fn swap(
+        &self,
+        _installed: &Path,
+        _staged: &StagedBundle,
+    ) -> std::result::Result<SwapReceipt, SwapFailure> {
+        todo!("linux swap the bundle")
+    }
+    fn sweep_leftovers(
+        &self,
+        _parent: &Path,
+        _my_version: &str,
+        _delete_previous: bool,
+    ) -> Result<Vec<Leftover>> {
+        todo!("linux sweep update leftovers")
+    }
+}
 pub struct LinuxPlatform {
     paths: LinuxPaths,
     dns: LinuxDns,
@@ -214,6 +242,7 @@ pub struct LinuxPlatform {
     binaries: LinuxBinaryProvider,
     edge: LinuxEdge,
     dns_agent: LinuxDnsAgent,
+    app_bundle: LinuxAppBundle,
 }
 
 impl LinuxPlatform {
@@ -230,6 +259,7 @@ impl LinuxPlatform {
             binaries: LinuxBinaryProvider,
             edge: LinuxEdge,
             dns_agent: LinuxDnsAgent,
+            app_bundle: LinuxAppBundle,
         }
     }
 }
@@ -273,5 +303,8 @@ impl Platform for LinuxPlatform {
     }
     fn dns_agent(&self) -> &dyn DnsAgentManager {
         &self.dns_agent
+    }
+    fn app_bundle(&self) -> &dyn AppBundle {
+        &self.app_bundle
     }
 }

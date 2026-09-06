@@ -82,6 +82,7 @@ agent_db_check service
 wp_mail_sink_check service
 adopt_check demo
 apache_site_check sandbox
+app_bundle_swap_check sandbox
 app_swap_probe demo
 app_update_check network
 blueprint_check network
