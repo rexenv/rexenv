@@ -972,6 +972,7 @@ written procedure; "manual" means scripted-for-a-human, never remembered.
 | Radicle layout reality (#95) | flagged in code; first real project confirms |
 | Phase-A-never-resolves wire spot-check (#19) | PUBLISH-TESTING §L (added, T13) |
 | **The tray: every click, and closing the window** (#436–#439) | SMOKE-TEST "The menu bar" |
+| Whether an ad-hoc bundle may replace ITSELF under App Management (self-update T0) | `scripts/probes/app-swap-probe.sh` (example `app_swap_probe`, tier `demo`) → `docs/PLAN-self-update.md` §T0 |
 
 **Why the tray's L1 example was planned and then NOT written** (measured before building
 it, the standing first step of §2). `PLAN-menubar-tray.md` D5 proposed

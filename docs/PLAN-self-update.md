@@ -656,5 +656,28 @@ run them.
 
 ## §T0 result
 
-_Not run yet. T0 fills this in with the raw log, the macOS build, the outcome letter, and which
-sections of §6 were rewritten because of it._
+**The probe is written and not yet run.** `scripts/probes/app-swap-probe.sh` +
+`src-tauri/examples/app_swap_probe.rs` (tier `demo`).
+
+```sh
+scripts/probes/app-swap-probe.sh              # the ordinary leg
+scripts/probes/app-swap-probe.sh --quarantine # a browser-downloaded copy (translocation leg)
+```
+
+It builds `/Applications/RexSwapProbe.app` around the probe binary, ad-hoc signs it (no
+Team ID, exactly like rexenv), launches it through LaunchServices, and from inside that
+running app measures, with the errno of each: the staging `mkdir` in `/Applications`, the
+rename-aside/rename-in pair (restored afterwards), `renamex_np(RENAME_SWAP)`, the
+delete-then-create fallback if both renames are refused, two in-place writes into the
+launched bundle as the contrast case, and finally whether `open` starts the swapped copy
+once the parent has exited. A `log stream` on `com.apple.TCC` runs alongside. It creates
+and removes exactly `RexSwapProbe.app` and `/Applications/.rexswapprobe-stage-<pid>`, and
+both the script and the binary abort on any path naming rexenv.
+
+Two things only a human can see, and both change the letter: a **"prevented from modifying
+apps"** notification, and a **Gatekeeper dialog** on the relaunch. The script prints a
+WATCH FOR block before launching and suggests a letter from the errnos at the end — the
+suggestion is arithmetic, the call is yours.
+
+_Fill in below: the run date, the macOS build, the outcome letter, the raw `RESULT` block,
+what was seen on screen, and which parts of §6 were rewritten because of it._

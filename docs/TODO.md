@@ -34,7 +34,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   ad-hoc-signed bundle rename itself in `/Applications` is documented nowhere, and
   the swap's error handling (and in outcome O4, whether an in-app install ships at
   all) is a function of the answer.
-  - [ ] T0 — the swap probe on a real Mac; record the outcome letter in the plan
+  - [ ] T0 — the swap probe on a real Mac; record the outcome letter in the plan.
+    **Written 6 Sep 2026** (`scripts/probes/app-swap-probe.sh`, example `app_swap_probe`,
+    tier `demo`) — open until it has been RUN and §T0 records what it measured.
   - [ ] T1 — `core/app_update.rs` trust core, the shared verify seam, `macho::archs`
   - [ ] T2 — transport, the launch ride, the 6 h poller, check commands, minimal card
   - [ ] T3 — the 12th platform trait `AppBundle` (facts, pre-flights, stage, swap, sweep)
