@@ -14,6 +14,7 @@ import { ArrowUpRight, Bot, CheckCircle2, ChevronRight, Code, FileText, FolderOp
 import { CHECK_INPUT, cn, TECH_INPUT } from "@/lib/utils";
 import { eolNote, eolWhen } from "@/lib/php";
 import { TopBar } from "@/components/shell/TopBar";
+import { fmtBytes } from "@/components/shell/DownloadPanel";
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/ui/copy-button";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
@@ -57,7 +58,7 @@ import {
   scanValetImport,
   dbImportLeftovers,
   dbImportDeleteLeftover,
-  uninstallSystem, phpUpdateApply, phpUpdateCheck } from "@/lib/ipc";
+  uninstallSystem, phpUpdateApply, phpUpdateCheck, appUpdateState, appUpdateCheck } from "@/lib/ipc";
 import { getStoredTheme, setTheme, subscribeTheme, type Theme } from "@/lib/theme";
 import type { AppInfo, Blueprint, MultisiteMode, PhpSetting, PhpVersion } from "@/types";
 
@@ -1590,6 +1591,78 @@ function BuildFactsCard({ info }: { info: AppInfo }) {
 }
 
 /** The About section — identity, version, links, credits. */
+
+/** Settings → About: what the app knows about its own updates.
+ *
+ *  T2 of `docs/PLAN-self-update.md` — the CHECK, not the install. There is no
+ *  Update button here yet, and the card is careful to say what it does and does
+ *  not know rather than filling the gap with a reassuring sentence:
+ *
+ *  - never "up to date" — unprovable before a check has ever succeeded, and
+ *    still only true of the moment the check ran;
+ *  - never "update available" — nothing here can install one yet;
+ *  - "checked N ago" comes from ONE backend value written only on success, so a
+ *    failed check keeps yesterday's timestamp instead of aging into a lie;
+ *  - a check that failed says so, and says what that means for what is on
+ *    screen.
+ *
+ *  The offer line names the version and the size BEFORE any button exists to
+ *  press, which is the order the honest-UI rule asks for. */
+function AppUpdateCard() {
+  const qc = useQueryClient();
+  const { data: st } = useQuery({ queryKey: ["app-update"], queryFn: appUpdateState });
+  const [failed, setFailed] = useState(false);
+
+  const check = useMutation({
+    mutationFn: appUpdateCheck,
+    onMutate: () => setFailed(false),
+    onSuccess: (fresh) => qc.setQueryData(["app-update"], fresh),
+    onError: (e) => {
+      // A failed check must not erase what we already knew, so nothing is
+      // written here — the footer says the check failed and the timestamp keeps
+      // pointing at the last one that did not.
+      setFailed(true);
+      toastBackendError(e);
+    },
+  });
+
+  if (!st?.enabled) return null;
+
+  const offered = st.offered;
+  const footer = failed
+    ? "Couldn't reach the update server just now, so nothing here says whether a newer rexenv exists."
+    : st.checkedAt
+      ? `Release list from rexenv, checked ${agoLabel(st.checkedAt)}.`
+      : "Not checked yet, so nothing here says whether a newer rexenv exists.";
+
+  return (
+    <div
+      className="rounded-[13px] border border-rex-border-subtle bg-rex-surface-1 px-5"
+      data-probe="app-update"
+      data-running={st.running}
+      data-offered={offered?.version ?? ""}
+      data-checked-at={st.checkedAt ?? ""}
+    >
+      <ActionRow
+        title="Updates"
+        desc={
+          offered
+            ? `rexenv ${offered.version} (${fmtBytes(offered.sizeBytes)}) has been published. Installing it from here is not built yet — download the new version to update.`
+            : `rexenv ${st.running} is what you are running.`
+        }
+        busy={check.isPending}
+        label="Check now"
+        busyLabel="Checking…"
+        onClick={() => check.mutate()}
+      />
+      <div className="border-t border-rex-border-subtle py-[13px] text-[0.75rem] leading-[1.5] text-rex-text-muted">
+        {footer}
+      </div>
+    </div>
+  );
+}
+
+
 function AboutSetting() {
   const { data: info } = useQuery({ queryKey: ["app-info"], queryFn: getAppInfo });
   const [showLicenses, setShowLicenses] = useState(false);
@@ -1640,6 +1713,11 @@ function AboutSetting() {
           A calm, fast command room for your local kingdom — every server, site, and database in one place.
         </div>
       </div>
+
+      {/* Updates first, because it is the only card here that can be ACTED on;
+          the build facts below it answer "which build is this?" once you know
+          there is a question. */}
+      <AppUpdateCard />
 
       {/* The build, spelled out and COPYABLE. The header line is for a glance;
           this is for a bug report, where "v0.3.0" alone is not enough to tell

@@ -631,8 +631,17 @@ Live-proven end to end by `site_stop_start_check`.
   three all-digit segments (so a prerelease is not representable rather than filtered),
   floors satisfied, and not the skipped version — which is stored as a VERSION and compared,
   because a "skipped" boolean would hide every later release too. An unreadable host macOS
-  version fails closed. The swap, the relaunch and the surfaces are T3/T4/T6 of the plan;
-  ledger #517–#522.
+  version fails closed.
+  **Cadence and consent** (T2): the check rides the launch sweep — one more GET pair to a
+  host the sweep already talks to — and a 6 h `sleep` loop covers the machine left running,
+  since a menu-bar app outlives its window by design. `app_update_auto_check` is read
+  BEFORE any I/O, so turning it off is a switch on the REQUEST rather than on what is done
+  with the answer, and "Check now" always works. The request carries `rexenv/<version>` and
+  nothing else: no arch, no identifier. Every failure is a log line and an honest footer —
+  `checked N ago` reads ONE stored value written only after a success, so a failed check
+  keeps yesterday's timestamp instead of aging into a lie, and nothing ever says "up to
+  date". The swap, the relaunch and the install button are T3/T4/T6 of the plan;
+  ledger #517–#524.
 - **ADMINER is the SECOND family in that manifest**, and the limits are per family
   (`updates::Family`). Its grant is strictly below PHP's — `Shape::File` →
   `resolve_file`, no chmod, no codesign, never spawned, interpreted by an already-running

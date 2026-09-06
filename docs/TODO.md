@@ -47,7 +47,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     `both_manifest_modules_verify_through_one_seam` (one flipped byte, both documents
     must refuse) and `archs_reads_a_fat_header_and_a_thin_one_and_refuses_everything_else`;
     six settings keys ruled (the signed trio Denied); `updates.rs`'s 17 tests untouched.
-  - [ ] T2 — transport, the launch ride, the 6 h poller, check commands, minimal card
+  - [x] T2 — transport, the launch ride, the 6 h poller, check commands, minimal card
+    ✓ 6 Sep 2026 — ledger #523/#524; `fetch_signed_pair` shared with the PHP manifest
+    (one client, one deadline); `app_update_state`/`app_update_check` + their wrappers
+    and the About card; `auto_check_is_read_before_the_request_not_applied_to_the_answer`
+    (source scan, plant-proven); `examples/app_update_check.rs` (network) PASSES against
+    the real URL and reports the pre-publish state honestly. No install button yet — T6.
   - [ ] T3 — the 12th platform trait `AppBundle` (facts, pre-flights, stage, swap, sweep)
   - [ ] T4 — apply end to end: refusals, hub download, swap, helper, exit through the gate
   - [ ] T5 — the DNS agent states its build; a stale one is kickstarted at launch

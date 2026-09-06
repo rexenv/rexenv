@@ -659,6 +659,18 @@ because reading the header in Rust is what lets the check live in `core` at all.
 cannot say here: that the live document verifies (T2, network tier), that a real bundle is
 staged and swapped (T3, sandbox tier), or that a real Mac lets it happen (T0/T11, L3).
 
+- `app_update_check` (network) — the app's OWN update descriptor, fetched from where it is
+  published and verified against the key compiled into the running binary: the half a
+  user's "Check now" runs, where a publisher signing with a rotated key, or a document
+  whose fields parse but whose version is not offerable, fails and passes every L0 test in
+  the tree. Plants a flipped byte in the REAL document and requires the refusal, accepts
+  into a SANDBOX database (the developer's own high-water mark is never written), replays
+  the same serial to prove the every-launch case is a no-op, and drives the offer rule in
+  both directions against the published release. **Before the first publish it reports
+  "nothing is published yet" and passes** — a check that failed loudly for a document
+  nobody has written yet would be switched off, and then it would be off on the day it
+  mattered; a fetch that fails for any OTHER reason is a failure. Does NOT cover the
+  download, the swap or the relaunch. Ledger #518–#524.
 - `php_update_check` (network) — the in-app PHP update chain end to end against the LIVE signed manifest: verify against the compiled-in key, resolve a patch this build was never made with, download it through the existing digest gate (the first time that gate compares against a network-supplied number), run the interpreter, serve FastCGI from it, and check the selection/floor/revert. Does NOT cover the live pool swap on the production port — that is SMOKE-TEST. Ledger #351.
   tier) sees the texts land** — beside `php` AND `php-fpm`, which are separate
   artifacts published by separate resolves. The field-repair path (a cache

@@ -19,10 +19,17 @@ notarized by Apple), so the **first launch needs one extra click** — see below
 - **Intel or Apple Silicon** — this is a **universal** build, it runs natively on both.
 - An internet connection on **first run** (rexenv downloads its components — PHP,
   Nginx, MySQL, Caddy, etc. — the first time; after that it works offline).
-- After first run, rexenv makes ONE routine outbound request of its own: a small
-  read-only GET to `www.php.net` at launch, so Settings can say whether a newer PHP
-  patch exists. It downloads nothing and installs nothing; if it fails, the row simply
-  says so. Everything else already cached keeps working with no network at all.
+- After first run, rexenv makes a few small read-only requests of its own at launch,
+  and again every six hours if it is left running. None of them downloads or installs
+  anything, and if any of them fails the screen says so rather than guessing:
+  - `www.php.net`, so Settings can say whether a newer PHP patch exists;
+  - two files on `raw.githubusercontent.com/rexenv/runtimes`, the signed list of PHP and
+    Adminer versions rexenv can install;
+  - two more from the same place: the signed record of rexenv's own latest release, so
+    Settings → About can tell you a new version was published.
+
+  You can turn the last one off — **Settings → About**, and "Check now" still works when
+  you ask for it. Everything already cached keeps working with no network at all.
 
 ### "8.4.24 exists" but rexenv is still on 8.4.23 — why that is normal
 
@@ -38,10 +45,9 @@ way for 17 days.
 
 So the Settings row says a patch **exists**, which is true, rather than "update
 available", which would promise something rexenv cannot deliver on the day you read it.
-There is deliberately no update button: every binary rexenv runs is checksum-pinned into
-the app, so a new patch reaches you through a rexenv update, where the pin can be
-verified before it ships. The row is there to answer "am I on something stale?", not to
-offer an install.
+The row is there to answer "am I on something stale?", not to offer an install — and
+when rexenv CAN install a patch (a signed, checksum-verified build it knows about), the
+row grows an Update button beside it. The "exists" line stays for the ones it cannot.
 
 If a patch matters to you urgently — a CVE you are exposed to — that is worth raising as
 an issue rather than waiting: the pin can be moved in a release once a portable build of

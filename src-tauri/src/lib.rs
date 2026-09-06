@@ -767,6 +767,26 @@ pub fn run() {
                             Err(e) => log::info!("php: update manifest check skipped: {e}"),
                         }
 
+                        // The APP's own signed release descriptor, on the same
+                        // best-effort contract and for the same reason the PHP
+                        // manifest is fetched here: a check nobody calls is a
+                        // door with no handle, and `php_update_check` shipped
+                        // exactly that way once. `auto_check_enabled` is read
+                        // BEFORE any I/O, so the setting is a switch on the
+                        // request rather than on what is done with the answer.
+                        // `docs/PLAN-self-update.md` T2.
+                        let auto = state
+                            .db
+                            .lock()
+                            .ok()
+                            .map(|c| core::app_update::auto_check_enabled(&c))
+                            .unwrap_or(true);
+                        if auto {
+                            check_for_app_update(&state).await;
+                        } else {
+                            log::info!("app update: automatic checking is off");
+                        }
+
                         // Ask php.net what PHP has actually released, so the
                         // Settings rows can say "8.3.33 exists · this build pins
                         // 8.3.31". Best-effort and last: it gates nothing, it
@@ -919,6 +939,12 @@ pub fn run() {
             // delete more than the scratch cap in one pass, and every removal is
             // both a feed row and a user-visible summary.
             commands::scratch::spawn(app.handle().clone());
+
+            // Re-check for an app update every 6 hours. A machine left running
+            // for a week would otherwise only ever hear about a release at its
+            // next launch, which for a menu-bar app that outlives its window can
+            // be a long time. Reads the setting on every tick.
+            spawn_app_update_poller(app.handle().clone());
 
             // Health watchdog: every 10s probe every service the manager OWNS and
             // respawn dead ones (bounded attempts) — the UI used to show "running"
@@ -1165,6 +1191,8 @@ pub fn run() {
             commands::php::set_php_version_installed,
             commands::php::set_default_php_version,
             commands::php::php_update_check,
+            commands::app_update::app_update_state,
+            commands::app_update::app_update_check,
             commands::php::php_update_apply,
             commands::database::adminer_status,
             commands::database::adminer_set_theme,
@@ -1516,6 +1544,71 @@ fn login_launch_needs_window(platform: &dyn platform::traits::Platform) -> bool 
 /// with the app for the rest of the session. It gives up loudly rather than
 /// looping forever, because a machine where the agent cannot bind at all has a
 /// different problem and should say so once.
+/// One app-update check: fetch unlocked, accept + record under a brief lock.
+///
+/// Best-effort by contract, exactly like the PHP manifest poll above it — no key
+/// pinned, no network, a stale serial or a bad signature all leave the app
+/// resolving exactly what it resolves today, and every one of them is a log line
+/// rather than anything a user is shown. The timestamp is written only on the
+/// success path, so `checked N ago` can never age a failure into a success.
+async fn check_for_app_update(state: &state::app::AppState) {
+    match core::app_update::fetch().await {
+        Ok((doc, sig)) => {
+            let Ok(conn) = state.db.lock() else {
+                log::warn!("app update: descriptor not stored — db lock");
+                return;
+            };
+            match core::app_update::accept(&conn, &doc, sig.trim()) {
+                Ok(m) => {
+                    let st = core::app_update::state(&conn);
+                    if let Err(e) = core::app_update::store_check(&conn, st.offered.clone()) {
+                        log::warn!("app update: could not record the check: {e}");
+                    }
+                    match (&st.offered, &st.no_offer_reason) {
+                        (Some(o), _) => log::info!(
+                            "app update: {} can be installed (serial {}, {} bytes)",
+                            o.version,
+                            m.serial,
+                            o.size_bytes
+                        ),
+                        (None, Some(why)) => {
+                            log::info!("app update: nothing to offer — {why}")
+                        }
+                        (None, None) => log::info!("app update: nothing to offer"),
+                    }
+                }
+                Err(e) => log::info!("app update: descriptor not accepted: {e}"),
+            }
+        }
+        Err(e) => log::info!("app update: check skipped: {e}"),
+    }
+}
+
+/// Re-check every 6 hours, so a machine left running for a week still hears
+/// about a release.
+///
+/// A `sleep` loop rather than an interval, matching every other periodic task in
+/// this file, and it re-reads the setting on every tick — turning automatic
+/// checking off must stop the NEXT request, not just hide the answer. The first
+/// tick sleeps first: the launch sweep has already checked by then.
+fn spawn_app_update_poller(app: tauri::AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(6 * 60 * 60)).await;
+            let Some(state) = app.try_state::<state::app::AppState>() else { continue };
+            let auto = state
+                .db
+                .lock()
+                .ok()
+                .map(|c| core::app_update::auto_check_enabled(&c))
+                .unwrap_or(false);
+            if auto {
+                check_for_app_update(&state).await;
+            }
+        }
+    });
+}
+
 fn spawn_dns_handoff(app: tauri::AppHandle, port: u16) {
     use tauri::Manager;
     const ATTEMPTS: u32 = 5;
@@ -2089,6 +2182,55 @@ mod tests {
     /// shorter, works on the developer's machine, and silently ignores the
     /// preferred browser — the exact failure `open_external`'s own doc calls
     /// "the thirteenth call site that forgot".
+    /// **The auto-check setting gates the REQUEST, not the answer.**
+    ///
+    /// A setting honoured after the fetch would still send it — the user turned
+    /// the check off and the app kept talking to GitHub anyway, which is the one
+    /// thing the toggle is for. So every call site of the check must be inside a
+    /// branch that read `auto_check_enabled` first, and this reads the source to
+    /// say so, because nothing about the types would stop the other order.
+    ///
+    /// The poller is checked separately from the launch sweep on purpose: they
+    /// are two call sites, and a guard covering one of them while claiming both
+    /// is the shape this project keeps finding as the real defect.
+    #[test]
+    fn auto_check_is_read_before_the_request_not_applied_to_the_answer() {
+        let src = crate::core::copy_scan::production_source(include_str!("lib.rs"));
+        // Assemble the needle so this test cannot convict itself by matching the
+        // literal in its own body (the copy_scan rule).
+        let call = format!("check_for_app_{}", "update(&state)");
+        let gate = format!("auto_check_{}", "enabled(");
+
+        let sites: Vec<usize> = src.match_indices(&call).map(|(i, _)| i).collect();
+        assert_eq!(
+            sites.len(),
+            2,
+            "expected exactly two call sites (the launch sweep and the poller); \
+             a third one needs its own gate and this test needs to know about it"
+        );
+        for at in sites {
+            // The gate must appear in the ~1500 characters before the call —
+            // the same function, not somewhere else in the file.
+            let window = &src[at.saturating_sub(1500)..at];
+            assert!(
+                window.contains(&gate),
+                "a check is fired without reading the auto-check setting first"
+            );
+        }
+        // And the poller must re-read it every tick rather than capturing it
+        // once: turning the setting off must stop the NEXT request.
+        let poller = src
+            .find("fn spawn_app_update_poller")
+            .expect("the poller exists");
+        let body = &src[poller..];
+        assert!(body.contains("sleep"), "sliced the wrong function");
+        let tick = body.find("loop {").expect("the poller loops");
+        assert!(
+            body[tick..tick + 900].contains(&gate),
+            "the poller must read the setting inside its loop, not once at spawn"
+        );
+    }
+
     #[test]
     fn the_tray_acts_only_through_the_commands_the_ui_uses() {
         let src = crate::core::copy_scan::production_source(include_str!("lib.rs"));

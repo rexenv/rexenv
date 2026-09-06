@@ -83,6 +83,7 @@ wp_mail_sink_check service
 adopt_check demo
 apache_site_check sandbox
 app_swap_probe demo
+app_update_check network
 blueprint_check network
 browser_detect_check sandbox
 ca_gen system

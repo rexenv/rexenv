@@ -668,6 +668,37 @@ export interface AppInfo {
   platform: string;
 }
 
+/** A release the app could install, once every rule has been checked against
+ *  THIS build on THIS Mac. A value of this type has been compared live; the
+ *  signed descriptor it came from only means it was signed. */
+export interface AppUpdateOffer {
+  version: string;
+  url: string;
+  sha256: string;
+  sizeBytes: number;
+  notes: string;
+  publishedAt: string;
+}
+
+/** Everything the About card renders about updates.
+ *
+ *  `running` and `offered` are two different facts and stay two fields: one is
+ *  what this process IS, the other is what a verified document says exists. */
+export interface AppUpdateState {
+  running: string;
+  /** A signing key is pinned in this build, so a descriptor can be trusted. */
+  enabled: boolean;
+  autoCheck: boolean;
+  offered: AppUpdateOffer | null;
+  /** Why there is no offer, when there is a stored descriptor to judge.
+   *  `null` when nothing has ever been accepted — a different sentence. */
+  noOfferReason: string | null;
+  /** When the last SUCCESSFUL check ran. Drives "checked N ago", and is absent
+   *  until one succeeds — a failed check may never age into a success. */
+  checkedAt: string | null;
+  skipped: string | null;
+}
+
 /** Which group a service belongs to on the Services screen. */
 export type ServiceKind = "php" | "database" | "mail" | "web";
 

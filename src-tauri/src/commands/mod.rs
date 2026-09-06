@@ -1,6 +1,7 @@
 //! Tauri IPC handlers — THIN. Each command translates an IPC call into a
 //! `core/` call and returns serializable data. No business logic here.
 
+pub mod app_update;
 pub mod blueprints;
 pub mod database;
 pub mod db_import;

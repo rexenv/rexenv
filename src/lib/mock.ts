@@ -2,7 +2,7 @@
  * Mock data for the static shell (Phase 1 task 0.6). Replaced by real IPC data
  * as backend tasks land. Kept in one place so it's easy to delete later.
  */
-import type { AdminerStatus, AppInfo, DbStatus, GlobalStatus, MailDetail, MailList, PhpSetting, PhpVersion, ServiceInfo, Site, SiteServing , ResolverTldStatus } from "@/types";
+import type { AdminerStatus, AppInfo, AppUpdateState, DbStatus, GlobalStatus, MailDetail, MailList, PhpSetting, PhpVersion, ServiceInfo, Site, SiteServing , ResolverTldStatus } from "@/types";
 
 export const mockAppInfo: AppInfo = {
   name: "rexenv",
@@ -152,6 +152,23 @@ export const mockAdminerStatus: AdminerStatus = {
   staged: "5.4.2",
   effective: "5.4.2",
   updatable: "6.0.1",
+};
+
+/** The browser-dev answer for the update card.
+ *
+ *  Deliberately the "nothing to offer, and we looked" state rather than a
+ *  standing offer: a fixture that always offers an update is the friendly-fake
+ *  shape this project keeps getting bitten by — it makes the one state that
+ *  must be right (no button, honest footer) the one nobody ever looks at. The
+ *  dev harness swaps the other states in by query parameter. */
+export const mockAppUpdateState: AppUpdateState = {
+  running: "0.1.0",
+  enabled: true,
+  autoCheck: true,
+  offered: null,
+  noOfferReason: "the newest signed release is 0.1.0 and this is 0.1.0",
+  checkedAt: null,
+  skipped: null,
 };
 
 /** Whitelisted keys + PHP compiled defaults (mirrors core::php::SETTINGS). */

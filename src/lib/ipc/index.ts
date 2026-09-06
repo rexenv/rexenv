@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { StartupNotice, AdminerStatus, AppInfo, AgentAction, AgentAccess,
+import type { StartupNotice, AdminerStatus, AppInfo, AppUpdateState, AgentAction, AgentAccess,
   AgentAccessLevel,
   AgentAccessMode, Blueprint, BrowserApp, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoGitOp, RepoJobState, RepoKind, RepoPullRef, RepoStashEntry, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpUpdateOutcome, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteProvisionState, SiteRepoInfo, SiteResources, SiteServing, ResolverPlan, ResolverTldStatus, ScratchPackage, TeardownReport, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser, UnresolvableTld } from "@/types";
 import {
@@ -21,6 +21,7 @@ import {
   mockSiteDomains,
   mockPhpSettings,
   mockAdminerStatus,
+  mockAppUpdateState,
   mockPhpVersions,
   mockResolverDrift,
   mockResolverTakeOver,
@@ -598,6 +599,23 @@ export async function phpUpdateApply(
 ): Promise<PhpUpdateOutcome> {
   if (!isTauri()) return { patch, restarted: true };
   return invoke<PhpUpdateOutcome>("php_update_apply", { minor, patch });
+}
+
+/** What the About card renders about updates: the running version, a live
+ *  offer if the stored descriptor still passes every rule, and when the last
+ *  successful check ran. Pure reads — this never touches the network, so
+ *  opening Settings does not wait on GitHub. */
+export async function appUpdateState(): Promise<AppUpdateState> {
+  if (!isTauri()) return mockAppUpdateState;
+  return invoke<AppUpdateState>("app_update_state");
+}
+
+/** Check now: fetch the signed release descriptor and answer with the state
+ *  that follows. Best-effort — the caller renders a failure as "couldn't
+ *  check", never as a block, and never as "up to date". */
+export async function appUpdateCheck(): Promise<AppUpdateState> {
+  if (!isTauri()) return mockAppUpdateState;
+  return invoke<AppUpdateState>("app_update_check");
 }
 
 /** The Adminer version row: what is staged, what will run, what is offered. */

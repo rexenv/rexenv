@@ -604,6 +604,26 @@ pub async fn fetch() -> Result<(Vec<u8>, String)> {
             "this build has no PHP update key pinned, so it does not fetch a manifest".into(),
         ));
     }
+    fetch_signed_pair(MANIFEST_URL, MANIFEST_SIG_URL, MAX_DOC).await
+}
+
+/// Fetch a signed document and its detached signature. **Takes no `Connection`**
+/// — the house rule about never holding the database lock across an await, made
+/// structural rather than remembered.
+///
+/// Shared with [`crate::core::app_update`], which polls a second document from
+/// the same host with the same contract: ONE client, ONE total deadline, ONE
+/// user-agent, and a size cap the caller names. A second copy of this would be a
+/// second timeout somebody forgets to set, and the failure mode of that is the
+/// launch sweep hanging on a poll nobody is waiting for.
+///
+/// Deliberately dumb about trust: it returns bytes. Verification lives in each
+/// document's own `accept`, so there is exactly one place that decides.
+pub async fn fetch_signed_pair(
+    doc_url: &'static str,
+    sig_url: &'static str,
+    max_doc: usize,
+) -> Result<(Vec<u8>, String)> {
     static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
     let client = CLIENT.get_or_init(|| {
         reqwest::Client::builder()
@@ -625,13 +645,13 @@ pub async fn fetch() -> Result<(Vec<u8>, String)> {
             return Err(Error::Other(format!("{url} answered {}", res.status())));
         }
         let body = res.bytes().await.map_err(|e| Error::Other(format!("{url}: {e}")))?;
-        if body.len() > MAX_DOC {
+        if body.len() > max_doc {
             return Err(Error::Other(format!("{url} returned {} bytes", body.len())));
         }
         Ok(body.to_vec())
     };
-    let doc = get(MANIFEST_URL).await?;
-    let sig = get(MANIFEST_SIG_URL).await?;
+    let doc = get(doc_url).await?;
+    let sig = get(sig_url).await?;
     let sig = String::from_utf8(sig)
         .map_err(|_| Error::Other("the signature file is not text".into()))?;
     Ok((doc, sig))

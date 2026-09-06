@@ -420,6 +420,110 @@ pub fn auto_check_enabled(conn: &Connection) -> bool {
     }
 }
 
+/// What the check cache holds: when it was taken, and what it found.
+///
+/// **One key, not two.** A separate timestamp would let a crash between the two
+/// writes leave "checked just now" sitting over yesterday's answer, which is
+/// exactly the dishonesty the `checked N ago` line exists to prevent — the rule
+/// `php_upstream` already paid for.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckCache {
+    /// `db_now()` at the moment of a SUCCESSFUL check. Never written on failure,
+    /// so a failed check can never age into a success.
+    pub checked_at: String,
+    /// What that check decided. `None` is a real answer — "we looked, there is
+    /// nothing for this Mac" — and is why the offer is stored rather than
+    /// recomputed: the card must be able to say when it last looked even when
+    /// the descriptor has since been rewritten.
+    pub offered: Option<Offer>,
+}
+
+/// The last check, if one has ever succeeded.
+pub fn cached_check(conn: &Connection) -> Option<CheckCache> {
+    let raw = store::get_setting(conn, CHECK_KEY).ok().flatten()?;
+    serde_json::from_str(&raw).ok()
+}
+
+/// Record a check that SUCCEEDED. Failures write nothing, deliberately.
+pub fn store_check(conn: &Connection, offered: Option<Offer>) -> Result<CheckCache> {
+    let check = CheckCache { checked_at: store::db_now(conn)?, offered };
+    let blob = serde_json::to_string(&check)
+        .map_err(|e| Error::Other(format!("could not cache the update check: {e}")))?;
+    store::set_setting(conn, CHECK_KEY, &blob)?;
+    Ok(check)
+}
+
+/// Fetch the descriptor and its detached signature. **Takes no `Connection`**,
+/// so no caller can hold the database lock across this await.
+///
+/// Verification happens in [`accept`]; this is deliberately dumb about trust.
+pub async fn fetch() -> Result<(Vec<u8>, String)> {
+    if !enabled() {
+        return Err(Error::Other(
+            "this build has no update key pinned, so it does not check for app updates".into(),
+        ));
+    }
+    updates::fetch_signed_pair(APP_MANIFEST_URL, APP_MANIFEST_SIG_URL, MAX_DOC).await
+}
+
+/// Everything the About card renders, in one answer.
+///
+/// `running` and `offered` are two different facts and stay two fields: one is
+/// what this process IS, read from its own `CARGO_PKG_VERSION`, and the other is
+/// what a verified document says exists. Nothing here is composed from what the
+/// UI hopes shipped.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppUpdateState {
+    /// This build. Read from the binary, never from the descriptor.
+    pub running: String,
+    /// Whether this build can trust a descriptor at all (a key is pinned).
+    pub enabled: bool,
+    /// Automatic checking, as the setting says right now.
+    pub auto_check: bool,
+    /// A live offer, if the stored descriptor still passes every rule against
+    /// THIS build on THIS Mac. Recomputed on every call rather than read from
+    /// the cache, so a skip, an OS upgrade or a newer running build changes the
+    /// answer the moment it happens.
+    pub offered: Option<Offer>,
+    /// Why there is no offer, when there is a stored descriptor to judge. `None`
+    /// when nothing has ever been accepted — which is a different sentence, and
+    /// the card says so.
+    pub no_offer_reason: Option<String>,
+    /// When the last SUCCESSFUL check ran (`db_now` format), for `checked N ago`.
+    pub checked_at: Option<String>,
+    /// The version the user skipped, if any.
+    pub skipped: Option<String>,
+}
+
+/// Assemble [`AppUpdateState`] from the database and this machine. Pure reads:
+/// no network, no writes, and every failure degrades to "nothing to offer"
+/// rather than an error, because this feeds a card that must not be able to fail.
+pub fn state(conn: &Connection) -> AppUpdateState {
+    let running = env!("CARGO_PKG_VERSION").to_string();
+    let skipped = skipped_version(conn);
+    let check = cached_check(conn);
+    let mut offered = None;
+    let mut no_offer_reason = None;
+    if let Some(m) = cached(conn) {
+        match offer_for(&m.release, &running, crate::core::macho::host_macos(), skipped.as_deref())
+        {
+            Ok(o) => offered = Some(o),
+            Err(no) => no_offer_reason = Some(no.reason()),
+        }
+    }
+    AppUpdateState {
+        running,
+        enabled: enabled(),
+        auto_check: auto_check_enabled(conn),
+        offered,
+        no_offer_reason,
+        checked_at: check.map(|c| c.checked_at),
+        skipped,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -731,6 +835,56 @@ mod tests {
         // The app's serial is NOT the PHP manifest's serial. Two documents, two
         // high-water marks, and neither may move the other's floor.
         assert_ne!(SERIAL_KEY, "php_update_manifest_serial");
+    }
+
+    /// One value, and only after a success.
+    ///
+    /// Two keys — a timestamp and an answer — would let a crash between the
+    /// writes leave "checked just now" sitting over yesterday's answer, which is
+    /// the exact dishonesty the line exists to prevent. Writing on failure would
+    /// do the same thing without needing a crash.
+    #[test]
+    fn the_check_cache_is_one_value_written_only_on_success() {
+        let conn = db();
+        assert!(cached_check(&conn).is_none(), "nothing checked yet is its own state");
+        assert!(state(&conn).checked_at.is_none());
+
+        let offer = Offer {
+            version: "0.6.0".into(),
+            url: ALLOWED_RELEASE_PREFIXES[0].to_string() + "v0.6.0/x.tar.gz",
+            sha256: "a".repeat(64),
+            size_bytes: 1,
+            notes: String::new(),
+            published_at: String::new(),
+        };
+        let first = store_check(&conn, Some(offer.clone())).unwrap();
+        assert!(!first.checked_at.is_empty());
+        assert_eq!(cached_check(&conn).unwrap().offered, Some(offer));
+
+        // The timestamp and the answer live in ONE row, so no failure can
+        // separate them.
+        let raw = store::get_setting(&conn, CHECK_KEY).unwrap().unwrap();
+        assert!(raw.contains("checkedAt") && raw.contains("offered"), "{raw}");
+        assert_eq!(
+            store::get_setting(&conn, "app_update_checked_at").unwrap(),
+            None,
+            "a second key is what this shape exists to avoid"
+        );
+
+        // A check that finds nothing is still a check that RAN: the timestamp
+        // moves and the offer is cleared, which is why the offer is stored
+        // rather than recomputed.
+        let second = store_check(&conn, None).unwrap();
+        assert!(cached_check(&conn).unwrap().offered.is_none());
+        assert!(!second.checked_at.is_empty());
+
+        // Nothing here writes on failure — there is no path that can: the only
+        // writer takes the answer, and the caller reaches it only after the
+        // fetch and the verification have both succeeded.
+        let unreadable = "not json";
+        store::set_setting(&conn, CHECK_KEY, unreadable).unwrap();
+        assert!(cached_check(&conn).is_none(), "a corrupt cache reads as never-checked");
+        assert!(state(&conn).checked_at.is_none());
     }
 
     #[test]
