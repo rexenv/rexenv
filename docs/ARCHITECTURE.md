@@ -516,7 +516,10 @@ Live-proven end to end by `site_stop_start_check`.
   (`@@HOMEBREW_*@@` placeholders) to `@loader_path`-relative paths into the bundle's
   `lib/`, errors loudly on any dep NOT bundled, and ad-hoc re-signs each Mach-O LAST.
   Resolves stage + atomically publish so a failed prepare can't poison the cache (H4).
-- **`www.php.net` is the ONE read-only egress** (`core/php_upstream.rs`): a launch-time,
+- **`www.php.net` is the ONE read-only egress of the BINARIES layer** (`core/php_upstream.rs`)
+  — it was the app's only routine outbound request when it was written, and since the signed
+  PHP manifest (below) and the app's own update descriptor (below) it is one of three. A
+  launch-time,
   best-effort GET of `releases/active.php?json` whose ONLY output is a version string per
   minor, rendered beside the pin as `8.3.33 exists`. It selects nothing — `source`,
   `sha256` and the rest of that document are never read, and a guard asserts exactly one
@@ -608,6 +611,28 @@ Live-proven end to end by `site_stop_start_check`.
   the pin needs no `Connection` and so compiles anywhere it does not belong. The publish
   side is one command in the runtimes repo (`scripts/publish-manifest.sh`). Ledger
   #348–#355; design in `docs/archive/PLAN-binary-updates.md`.
+- **And the APP can move forward between releases the same way** (`core/app_update.rs`,
+  `docs/PLAN-self-update.md`). A SECOND signed document — `app-manifest.json` + `.sig`, two
+  more files on `rexenv/runtimes`' default branch — names one release: version, artifact URL,
+  SHA-256, size, and the macOS and rexenv floors it needs. It rides the SAME compiled-in
+  `RELEASE_PUBKEY` through the same ed25519 seam (`updates::verify_signed_bytes` — one
+  signature check in the codebase, not two), and repeats the rules that document earned:
+  re-verified on every read, its OWN monotonic serial as rollback protection, and an artifact
+  URL that must sit under a compiled-in `releases/download/` PATH prefix, checked before the
+  redirect because GitHub's last hop is an expiring CDN URL.
+  **Why not a `Family` in the PHP manifest**: that document is locked to artifacts flowing
+  through `binaries::resolve*` (an unknown name there would be chmod-ed, `prepare_binary`-ed
+  and spawned as a service), and the app's grant is strictly larger than PHP's — the same
+  native code as the user, PLUS the binary that re-execs as the DNS agent and the tunnel
+  guard, PLUS the process that enforces the agent dial and `settings_access`. A separate
+  document keeps `only_the_declared_families_are_nameable` intact and carries fields the PHP
+  rows have no slot for.
+  **An offer is a live comparison, never a stored flag**: strictly newer by numeric segment,
+  three all-digit segments (so a prerelease is not representable rather than filtered),
+  floors satisfied, and not the skipped version — which is stored as a VERSION and compared,
+  because a "skipped" boolean would hide every later release too. An unreadable host macOS
+  version fails closed. The swap, the relaunch and the surfaces are T3/T4/T6 of the plan;
+  ledger #517–#522.
 - **ADMINER is the SECOND family in that manifest**, and the limits are per family
   (`updates::Family`). Its grant is strictly below PHP's — `Shape::File` →
   `resolve_file`, no chmod, no codesign, never spawned, interpreted by an already-running

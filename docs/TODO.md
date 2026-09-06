@@ -42,7 +42,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     Found on the way: App Management does not protect an ad-hoc bundle **at all** —
     in-place writes into the launched bundle succeeded too, which is a note for
     `docs/SIGNING.md`'s case rather than a change to the design.
-  - [ ] T1 — `core/app_update.rs` trust core, the shared verify seam, `macho::archs`
+  - [x] T1 — `core/app_update.rs` trust core, the shared verify seam, `macho::archs`
+    ✓ 6 Sep 2026 — ledger #518–#522; 15 L0 tests incl.
+    `both_manifest_modules_verify_through_one_seam` (one flipped byte, both documents
+    must refuse) and `archs_reads_a_fat_header_and_a_thin_one_and_refuses_everything_else`;
+    six settings keys ruled (the signed trio Denied); `updates.rs`'s 17 tests untouched.
   - [ ] T2 — transport, the launch ride, the 6 h poller, check commands, minimal card
   - [ ] T3 — the 12th platform trait `AppBundle` (facts, pre-flights, stage, swap, sweep)
   - [ ] T4 — apply end to end: refusals, hub download, swap, helper, exit through the gate

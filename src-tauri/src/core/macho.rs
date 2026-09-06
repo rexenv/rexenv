@@ -100,6 +100,67 @@ pub fn min_macos(path: &Path) -> Option<(u32, u32, u32)> {
     None
 }
 
+/// CPU types, as Mach-O writes them (the `0x0100_0000` bit is "64-bit").
+const CPU_TYPE_X86_64: u32 = 0x0100_0007;
+const CPU_TYPE_ARM64: u32 = 0x0100_000c;
+
+/// Which architectures `path` actually contains, read from the file's own
+/// headers.
+///
+/// # Why this is not a `lipo -archs` call
+///
+/// The self-update swap must refuse a staged bundle that is not universal —
+/// shipping a thin build to the other half of the userbase turns an update into
+/// a machine that cannot launch its own app. That check runs in `core`, and
+/// `core` may never name an OS or shell out to a macOS tool (ledger #163); a
+/// header read is also L0-testable against synthetic bytes, which `lipo` is not.
+///
+/// `None` means "this file tells us nothing" — not a Mach-O, truncated, or a
+/// 64-bit fat header (`0xcafebabf`), which `lipo` can emit for very large
+/// binaries and which rexenv's own `lipo -create` does not. A caller must treat
+/// `None` as no information, never as a pass.
+pub fn archs(path: &Path) -> Option<Vec<crate::platform::traits::Arch>> {
+    // The fat header is 8 bytes plus 20 per slice; a thin header needs 8. 4 KiB
+    // is enormously more than either and one read either way.
+    let bytes = read_head(path, 4096)?;
+    let magic = u32_be(&bytes, 0)?;
+    let mut out = Vec::new();
+    if magic == FAT_MAGIC {
+        let nfat = u32_be(&bytes, 4)?;
+        // A header claiming thousands of slices is malformed, not interesting.
+        if nfat == 0 || nfat > 32 {
+            return None;
+        }
+        for i in 0..nfat as usize {
+            // fat_arch: cputype, cpusubtype, offset, size, align — big-endian.
+            let cputype = u32_be(&bytes, 8 + i * 20)?;
+            if let Some(a) = arch_of(cputype) {
+                if !out.contains(&a) {
+                    out.push(a);
+                }
+            }
+        }
+    } else if u32_le(&bytes, 0)? == MH_MAGIC_64 {
+        // mach_header_64: magic, cputype, … — little-endian on both our targets.
+        out.push(arch_of(u32_le(&bytes, 4)?)?);
+    } else {
+        return None;
+    }
+    if out.is_empty() {
+        return None;
+    }
+    Some(out)
+}
+
+fn arch_of(cputype: u32) -> Option<crate::platform::traits::Arch> {
+    use crate::platform::traits::Arch;
+    match cputype {
+        CPU_TYPE_X86_64 => Some(Arch::X86_64),
+        CPU_TYPE_ARM64 => Some(Arch::Arm64),
+        _ => None,
+    }
+}
+
 fn read_head(path: &Path, max: usize) -> Option<Vec<u8>> {
     use std::io::Read;
     let mut f = std::fs::File::open(path).ok()?;
@@ -241,6 +302,66 @@ mod tests {
         // Truncated header: the loop must not run off the end or spin.
         std::fs::write(&f, [0xcf, 0xfa, 0xed, 0xfe]).unwrap();
         assert_eq!(min_macos(&f), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// `archs` is the self-update swap's "is this build universal" check
+    /// (`docs/PLAN-self-update.md` §5), and it must be readable from `core`,
+    /// which may not shell out to `lipo`. Synthetic headers, so the two shapes
+    /// that matter are exercised without a 30 MB fixture.
+    #[test]
+    fn archs_reads_a_fat_header_and_a_thin_one_and_refuses_everything_else() {
+        use crate::platform::traits::Arch;
+        let dir = std::env::temp_dir().join(format!("rexenv-archs-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        // fat_header: magic, nfat_arch (big-endian) + one fat_arch per slice
+        // (cputype, cpusubtype, offset, size, align).
+        let mut fat = Vec::new();
+        fat.extend_from_slice(&0xcafe_babeu32.to_be_bytes());
+        fat.extend_from_slice(&2u32.to_be_bytes());
+        for cputype in [0x0100_0007u32, 0x0100_000c] {
+            fat.extend_from_slice(&cputype.to_be_bytes());
+            fat.extend_from_slice(&0u32.to_be_bytes());
+            fat.extend_from_slice(&4096u32.to_be_bytes());
+            fat.extend_from_slice(&1024u32.to_be_bytes());
+            fat.extend_from_slice(&12u32.to_be_bytes());
+        }
+        let f = dir.join("universal");
+        std::fs::write(&f, &fat).unwrap();
+        assert_eq!(archs(&f), Some(vec![Arch::X86_64, Arch::Arm64]));
+
+        // mach_header_64: magic, cputype, … (little-endian).
+        let mut thin = Vec::new();
+        thin.extend_from_slice(&0xfeed_facfu32.to_le_bytes());
+        thin.extend_from_slice(&0x0100_000cu32.to_le_bytes());
+        thin.extend_from_slice(&[0u8; 24]);
+        let t = dir.join("arm64only");
+        std::fs::write(&t, &thin).unwrap();
+        assert_eq!(archs(&t), Some(vec![Arch::Arm64]));
+        // The check the swap actually makes: one slice is not universal.
+        assert_ne!(archs(&t).unwrap().len(), 2);
+
+        // Everything that tells us nothing says so, rather than passing. A
+        // caller must never read `None` as "fine" — a shell script, a truncated
+        // download and a fat header claiming 9000 slices are all "no answer".
+        let s = dir.join("script");
+        std::fs::write(&s, b"#!/bin/sh\n").unwrap();
+        assert_eq!(archs(&s), None);
+        assert_eq!(archs(&dir.join("absent")), None);
+        std::fs::write(&s, &fat[..6]).unwrap();
+        assert_eq!(archs(&s), None);
+        let mut absurd = fat.clone();
+        absurd[4..8].copy_from_slice(&9000u32.to_be_bytes());
+        std::fs::write(&s, &absurd).unwrap();
+        assert_eq!(archs(&s), None);
+        // A fat binary of architectures we do not ship is not our universal.
+        let mut foreign = fat.clone();
+        foreign[8..12].copy_from_slice(&0x0000_000cu32.to_be_bytes()); // 32-bit arm
+        foreign[28..32].copy_from_slice(&0x0000_0007u32.to_be_bytes()); // i386
+        std::fs::write(&s, &foreign).unwrap();
+        assert_eq!(archs(&s), None);
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 

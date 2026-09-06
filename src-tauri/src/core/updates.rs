@@ -414,16 +414,7 @@ pub fn verify(doc: &[u8], sig_hex: &str) -> Result<Manifest> {
 /// keypair and drive this. (Before the key ceremony the same seam existed for the
 /// opposite reason: `verify` refused everything because the const was empty.)
 fn verify_with(pubkey_hex: &str, doc: &[u8], sig_hex: &str) -> Result<Manifest> {
-    let key = unhex(pubkey_hex).ok_or_else(|| {
-        Error::Other(
-            "no PHP update key is pinned in this build, so no manifest can be trusted".into(),
-        )
-    })?;
-    let sig = unhex(sig_hex.trim())
-        .ok_or_else(|| Error::Other("the manifest signature is not hex".into()))?;
-    ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, &key)
-        .verify(doc, &sig)
-        .map_err(|_| Error::Other("the manifest signature does not verify".into()))?;
+    verify_signed_bytes(pubkey_hex, doc, sig_hex)?;
     let mut m: Manifest = serde_json::from_slice(doc)
         .map_err(|e| Error::Other(format!("the manifest did not parse: {e}")))?;
     if newer_app_required(&m.min_app_version) {
@@ -436,8 +427,46 @@ fn verify_with(pubkey_hex: &str, doc: &[u8], sig_hex: &str) -> Result<Manifest> 
     Ok(m)
 }
 
+/// **The ONE ed25519 check in this codebase.** Verify a detached signature over
+/// EXACTLY these bytes against a hex public key.
+///
+/// Shared with [`crate::core::app_update`], which signs a second document — the
+/// app's own release descriptor — with the same key. Two copies of a signature
+/// check is two places for a `map_err` to swallow a failure, and the second copy
+/// is always the one nobody re-reads; `both_manifest_modules_verify_through_one_seam`
+/// plants a flipped byte and requires BOTH callers to refuse it.
+///
+/// Refuses when: no key is pinned, the key or the signature is not hex, or the
+/// signature does not verify. It says nothing about what the bytes MEAN — each
+/// document's own rules (schema, serial, structural limits) belong to its module.
+pub fn verify_signed_bytes(pubkey_hex: &str, doc: &[u8], sig_hex: &str) -> Result<()> {
+    let key = unhex(pubkey_hex).ok_or_else(|| {
+        Error::Other(
+            "no update key is pinned in this build, so no signed document can be trusted".into(),
+        )
+    })?;
+    let sig = unhex(sig_hex.trim())
+        .ok_or_else(|| Error::Other("the signature is not hex".into()))?;
+    ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, &key)
+        .verify(doc, &sig)
+        .map_err(|_| Error::Other("the signature does not verify".into()))
+}
+
+/// The compiled-in key, for the modules that verify a document signed with it.
+pub fn release_pubkey() -> &'static str {
+    RELEASE_PUBKEY
+}
+
+/// `"8.3.10"` → `[8, 3, 10]`. Numeric per segment, because a lexical compare puts
+/// `8.3.9` after `8.3.10` and both this manifest and the app's own versions have
+/// shipped double-digit segments. The ONE version comparator; `core::app_update`
+/// reads it rather than writing a second one.
+pub fn version_segments(v: &str) -> Vec<u32> {
+    segments(v)
+}
+
 /// Whether `required` is newer than this build's own version.
-fn newer_app_required(required: &str) -> bool {
+pub fn newer_app_required(required: &str) -> bool {
     if required.is_empty() {
         return false;
     }

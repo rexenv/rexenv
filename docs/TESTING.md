@@ -646,6 +646,19 @@ commands/ 9 — commands/ is 1.7% of tests for ~20 files of orchestration):
   discharged by FILES on disk, so a manifest arm returning `Some` proves nothing
   about it. L0 covers the derivation (a self-hosted version with no licence pin
   fails by name) and the staleness rule; **only `php_versions_check` (network
+**The app's own update descriptor is L0 today, and deliberately** (`core/app_update.rs`,
+T1 of `docs/PLAN-self-update.md`). Everything a signed release descriptor DECIDES is a pure
+function of the document, this build's version, this Mac's macOS and the skipped version —
+so all of it is L0, driven through a `verify_with`/`accept_with` seam with a generated
+keypair (tests have no private half of the real key and must never have one, which is the
+same reason `core::updates` carries that seam). `both_manifest_modules_verify_through_one_seam`
+plants a flipped byte and requires BOTH documents to refuse it, which is what makes "one
+signature check in the codebase" a checked claim rather than a comment. `macho::archs` — the
+"is this build universal" test the swap will make — is L0 over synthetic Mach-O headers,
+because reading the header in Rust is what lets the check live in `core` at all. What L0
+cannot say here: that the live document verifies (T2, network tier), that a real bundle is
+staged and swapped (T3, sandbox tier), or that a real Mac lets it happen (T0/T11, L3).
+
 - `php_update_check` (network) — the in-app PHP update chain end to end against the LIVE signed manifest: verify against the compiled-in key, resolve a patch this build was never made with, download it through the existing digest gate (the first time that gate compares against a network-supplied number), run the interpreter, serve FastCGI from it, and check the selection/floor/revert. Does NOT cover the live pool swap on the production port — that is SMOKE-TEST. Ledger #351.
   tier) sees the texts land** — beside `php` AND `php-fpm`, which are separate
   artifacts published by separate resolves. The field-repair path (a cache

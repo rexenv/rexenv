@@ -86,6 +86,18 @@ pub const UNVALIDATED_BUT_SAFE: &[(&str, &str)] = &[
         "a boolean read once at launch; a junk value reads as false, which is the safe \
          direction (nothing starts)",
     ),
+    (
+        "app_update_auto_check",
+        "a boolean read before any update I/O. Junk reads as ON, the OPPOSITE of \
+         start_services_on_launch and deliberately: there the safe direction is that \
+         nothing starts, here it is that the user still hears about a security release. \
+         Only the exact string `false` turns it off",
+    ),
+    (
+        "app_update_skipped",
+        "a version string compared LIVE against the offer — junk simply never equals a \
+         version, so the worst a bad value does is nothing",
+    ),
 ];
 
 /// The ruling for `key`. Unknown keys are DENIED — that is the default, and it
@@ -106,9 +118,8 @@ pub fn cli_access(key: &str) -> CliAccess {
     }
     match key {
         // Preferences that reach the raw setter; see UNVALIDATED_BUT_SAFE.
-        "preferred_editor" | "preferred_browser" | "start_services_on_launch" => {
-            CliAccess::ReadWrite
-        }
+        "preferred_editor" | "preferred_browser" | "start_services_on_launch"
+        | "app_update_auto_check" | "app_update_skipped" => CliAccess::ReadWrite,
         // The signed update chain. The serial is the one that matters most:
         // resetting it re-opens a replayed older manifest.
         "php_update_manifest" | "php_update_manifest_sig" => CliAccess::Denied(
@@ -119,6 +130,26 @@ pub fn cli_access(key: &str) -> CliAccess {
             "the update chain's rollback protection: rexenv refuses any manifest whose \
              serial is not greater than the highest already accepted, and writing this \
              key resets that high-water mark",
+        ),
+        // The APP's own update chain (`core::app_update`). Same shape, same
+        // reasons, and a strictly larger grant: these bytes are the process that
+        // enforces every rule on this page.
+        "app_update_release" | "app_update_release_sig" => CliAccess::Denied(
+            "part of the SIGNED app update chain — the descriptor and its signature are \
+             verified together, and they name the bytes rexenv would replace ITSELF with",
+        ),
+        "app_update_release_serial" => CliAccess::Denied(
+            "the app update chain's rollback protection — writing this key re-opens a \
+             replayed older release, which is how a host would hold this Mac on a \
+             superseded build",
+        ),
+        "app_update_check" => CliAccess::ReadOnly(
+            "a cache of the last update check, rewritten on the next one; worth reading \
+             to see when it last ran, not worth hand-writing",
+        ),
+        "app_update_notice" => CliAccess::ReadOnly(
+            "what the previous process recorded before it swapped the bundle; the next \
+             launch consumes it once and reports the version it reads from ITSELF",
         ),
         // Pins and caches: worth reading, not worth writing from a shell.
         "adminer_version" => CliAccess::ReadOnly(
