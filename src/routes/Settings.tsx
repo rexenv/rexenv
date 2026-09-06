@@ -14,7 +14,7 @@ import { ArrowUpRight, Bot, CheckCircle2, ChevronRight, Code, FileText, FolderOp
 import { CHECK_INPUT, cn, TECH_INPUT } from "@/lib/utils";
 import { eolNote, eolWhen } from "@/lib/php";
 import { TopBar } from "@/components/shell/TopBar";
-import { fmtBytes } from "@/components/shell/DownloadPanel";
+import { AppUpdateCard } from "@/components/settings/AppUpdateCard";
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/ui/copy-button";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
@@ -58,10 +58,9 @@ import {
   scanValetImport,
   dbImportLeftovers,
   dbImportDeleteLeftover,
-  uninstallSystem, phpUpdateApply, phpUpdateCheck, appUpdateState, appUpdateCheck,
-  appUpdateReadiness, appUpdateApply } from "@/lib/ipc";
+  uninstallSystem, phpUpdateApply, phpUpdateCheck } from "@/lib/ipc";
 import { getStoredTheme, setTheme, subscribeTheme, type Theme } from "@/lib/theme";
-import type { AppInfo, Blueprint, MultisiteMode, PhpSetting, PhpVersion } from "@/types";
+import type { AppInfo, Blueprint, MultisiteMode, PhpSetting, PhpVersion, DownloadsSnapshot } from "@/types";
 
 const SITES_DIR_KEY = "sites_dir";
 // Mirrors commands::services::AUTO_START_SETTING — the opt-in "run Start all
@@ -1593,129 +1592,15 @@ function BuildFactsCard({ info }: { info: AppInfo }) {
 
 /** The About section — identity, version, links, credits. */
 
-/** Settings → About: what the app knows about its own updates.
- *
- *  T2 of `docs/PLAN-self-update.md` — the CHECK, not the install. There is no
- *  Update button here yet, and the card is careful to say what it does and does
- *  not know rather than filling the gap with a reassuring sentence:
- *
- *  - never "up to date" — unprovable before a check has ever succeeded, and
- *    still only true of the moment the check ran;
- *  - never "update available" — nothing here can install one yet;
- *  - "checked N ago" comes from ONE backend value written only on success, so a
- *    failed check keeps yesterday's timestamp instead of aging into a lie;
- *  - a check that failed says so, and says what that means for what is on
- *    screen.
- *
- *  The offer line names the version and the size BEFORE any button exists to
- *  press, which is the order the honest-UI rule asks for. */
-function AppUpdateCard() {
-  const qc = useQueryClient();
-  const { data: st } = useQuery({ queryKey: ["app-update"], queryFn: appUpdateState });
-  const [failed, setFailed] = useState(false);
-
-  const { data: ready } = useQuery({
-    queryKey: ["app-update-readiness"],
-    queryFn: appUpdateReadiness,
-    // Refuses and the consent sentence both depend on facts about the bundle,
-    // which change when the user moves the app — cheap to re-read on focus.
-    staleTime: 60_000,
-  });
-
-  // The window disappears as part of succeeding, so there is no success toast:
-  // the sentence that names the new version belongs to the NEXT process, which
-  // reads its own version instead of trusting this one's hope.
-  const apply = useMutation({
-    mutationFn: appUpdateApply,
-    onError: (e) => toastBackendError(e),
-  });
-
-  const check = useMutation({
-    mutationFn: appUpdateCheck,
-    onMutate: () => setFailed(false),
-    onSuccess: (fresh) => qc.setQueryData(["app-update"], fresh),
-    onError: (e) => {
-      // A failed check must not erase what we already knew, so nothing is
-      // written here — the footer says the check failed and the timestamp keeps
-      // pointing at the last one that did not.
-      setFailed(true);
-      toastBackendError(e);
-    },
-  });
-
-  if (!st?.enabled) return null;
-
-  const offered = st.offered;
-  const footer = failed
-    ? "Couldn't reach the update server just now, so nothing here says whether a newer rexenv exists."
-    : st.checkedAt
-      ? `Release list from rexenv, checked ${agoLabel(st.checkedAt)}.`
-      : "Not checked yet, so nothing here says whether a newer rexenv exists.";
-
-  return (
-    <div
-      className="rounded-[13px] border border-rex-border-subtle bg-rex-surface-1 px-5"
-      data-probe="app-update"
-      data-running={st.running}
-      data-offered={offered?.version ?? ""}
-      data-checked-at={st.checkedAt ?? ""}
-      data-phase={apply.isPending ? "installing" : offered ? "offered" : "none"}
-    >
-      <ActionRow
-        title="Updates"
-        desc={
-          offered
-            ? `rexenv ${offered.version} (${fmtBytes(offered.sizeBytes)}) has been published.`
-            : `rexenv ${st.running} is what you are running.`
-        }
-        busy={check.isPending}
-        label="Check now"
-        busyLabel="Checking…"
-        onClick={() => check.mutate()}
-      />
-
-      {/* The consent sentence comes from Rust and sits IN FRONT of the button
-          that starts the thing it describes — never beside it, never after. */}
-      {offered && ready?.refusal == null && ready && (
-        <div className="border-t border-rex-border-subtle py-[15px]">
-          <div className="text-[0.75rem] leading-[1.55] text-rex-text-muted">{ready.consent}</div>
-          <button
-            onClick={() => apply.mutate()}
-            disabled={apply.isPending}
-            className="mt-3 flex h-8 items-center gap-[7px] rounded-[9px] border border-rex-border-strong bg-rex-surface-2 px-[13px] text-[0.78125rem] font-medium text-brand-light transition-colors hover:bg-rex-surface-2-hover disabled:opacity-60"
-          >
-            {apply.isPending && (
-              <span className="h-3 w-3 rounded-full border-2 border-brand/30 border-t-brand animate-rex-spin motion-reduce:animate-none" />
-            )}
-            {apply.isPending
-              ? "Installing…"
-              : `Install rexenv ${offered.version} · ${fmtBytes(offered.sizeBytes)}`}
-          </button>
-        </div>
-      )}
-
-      {/* A fix that IS a command is rendered as one, and there is no button:
-          pressing it could not work, and offering it would be a lie. */}
-      {offered && ready?.refusal && (
-        <div className="border-t border-rex-border-subtle py-[15px] text-[0.75rem] leading-[1.55] text-rex-text-muted">
-          {ready.refusal.split("\n$ ")[0]}
-          {ready.refusal.includes("\n$ ") && (
-            <pre className="mt-2 overflow-x-auto rounded-[9px] bg-rex-well px-3 py-2 font-mono text-[0.71875rem] text-rex-text-bright">
-              {ready.refusal.split("\n$ ")[1]}
-            </pre>
-          )}
-        </div>
-      )}
-
-      <div className="border-t border-rex-border-subtle py-[13px] text-[0.75rem] leading-[1.5] text-rex-text-muted">
-        {footer}
-      </div>
-    </div>
-  );
-}
-
-
 function AboutSetting() {
+  // Read the download hub's snapshot PASSIVELY from the cache StatusFooter's
+  // single `useDownloads()` mount keeps fresh — mounting a second one is what
+  // that hook's own doc forbids. An empty snapshot before the footer has seeded
+  // it renders the card without a bar, which is correct: nothing is downloading.
+  const downloads = useQuery<DownloadsSnapshot>({
+    queryKey: ["downloads"],
+    enabled: false,
+  }).data ?? { batch: null, items: [] };
   const { data: info } = useQuery({ queryKey: ["app-info"], queryFn: getAppInfo });
   const [showLicenses, setShowLicenses] = useState(false);
   // A string opens externally (arrow-out icon, URL shown); a function runs
@@ -1769,7 +1654,7 @@ function AboutSetting() {
       {/* Updates first, because it is the only card here that can be ACTED on;
           the build facts below it answer "which build is this?" once you know
           there is a question. */}
-      <AppUpdateCard />
+      <AppUpdateCard downloads={downloads} />
 
       {/* The build, spelled out and COPYABLE. The header line is for a glance;
           this is for a bug report, where "v0.3.0" alone is not enough to tell

@@ -48,6 +48,7 @@
 import { useEffect, useState } from "react";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { mockAdminerStatus, mockPhpVersions } from "@/lib/mock";
+import { AppUpdateCard } from "@/components/settings/AppUpdateCard";
 import { Tunnels as TunnelsScreen } from "@/routes/Tunnels";
 import { ThemesPanel as ThemesScreen } from "@/components/wordpress/WordPressManager";
 import { StatusPill } from "@/components/common/StatusPill";
@@ -913,6 +914,93 @@ export function DevUiReview() {
         // loads. Mocked rather than left to the default arm's throw: the frame
         // catches, so a missing fixture would be invisible here — and the
         // harness's whole point is that an unmocked command says so.
+        // The app-update card. Every state by `?state=`, because a fixture in
+        // one state proves that one state renders — and the states that must be
+        // right (nothing offered, a refusal, a failed check) are exactly the
+        // ones nobody looks at.
+        case "app_update_state": {
+          const running = "0.5.0";
+          const offer = {
+            version: "0.6.0",
+            url: "https://github.com/rexenv/homebrew-tap/releases/download/v0.6.0/x.tar.gz",
+            sha256: "a".repeat(64),
+            sizeBytes: 31_400_000,
+            notes: "",
+            publishedAt: "2026-09-06T00:00:00Z",
+          };
+          const base = {
+            running,
+            enabled: true,
+            autoCheck: true,
+            offered: null,
+            noOfferReason: null,
+            checkedAt: "2026-09-06 09:00:00",
+            skipped: null,
+          };
+          switch (params.get("state")) {
+            case "never-checked":
+              return { ...base, checkedAt: null, noOfferReason: null };
+            case "none":
+              return { ...base, noOfferReason: "the newest signed release is 0.5.0 and this is 0.5.0" };
+            case "offered":
+            case "refused":
+            case "installing":
+              return { ...base, offered: offer };
+            case "skipped":
+              return { ...base, offered: offer, skipped: "0.6.0" };
+            case "dark":
+              return { ...base, enabled: false };
+            default:
+              return { ...base, noOfferReason: "nothing newer" };
+          }
+        }
+        case "app_update_readiness":
+          switch (params.get("state")) {
+            case "refused":
+              return {
+                refusal:
+                  "rexenv can't replace itself: /Applications is not writable by this account. Ask an admin to update rexenv, or take ownership of the folder first:\n$ sudo chown -R \"$USER\" /Applications",
+                consent: "",
+                homebrew: false,
+              };
+            case "offered":
+            case "installing":
+            case "skipped":
+              return {
+                refusal: null,
+                // A FIXTURE sentence, deliberately not the real one. The real
+                // wording lives in `core::app_update::consent_sentence` and
+                // `the_consent_sentence_has_one_source` fails the build if any
+                // .tsx spells it out — a mock that copied it would defeat the
+                // guard it is meant to exercise. What the probe checks is that
+                // the card renders the sentence it was SENT, which is the claim.
+                consent:
+                  "FIXTURE CONSENT: this sentence is served by the backend and rendered verbatim; the card must never author its own.",
+                homebrew: true,
+              };
+            default:
+              return null;
+          }
+        case "downloads_state":
+          if (params.get("state") === "installing") {
+            return {
+              batch: null,
+              items: [
+                {
+                  id: "rexenv-0.6.0",
+                  name: "rexenv",
+                  version: "0.6.0",
+                  label: "rexenv 0.6.0",
+                  phase: "downloading",
+                  downloadedBytes: 12_400_000,
+                  totalBytes: 31_400_000,
+                  bytesPerSec: 2_100_000,
+                  error: null,
+                },
+              ],
+            };
+          }
+          return { batch: null, items: [] };
         case "adminer_set_theme":
           return null;
         case "adminer_status":
@@ -1137,6 +1225,37 @@ export function DevUiReview() {
         </h1>
         {view === "card" && <DbImportCard site={fixtureSite({ dbEngine: params.get("engine") === "mariadb" ? "mariadb" : "mysql" })} />}
         {view === "dbtab" && <DbTabView />}
+        {view === "appupdate" && (
+          // A landmark that renders regardless, so a "no button" leg can tell an
+          // empty state from a broken route.
+          <div data-probe="appupdate-view">
+            <AppUpdateCard
+              downloads={
+                params.get("state") === "installing"
+                  ? {
+                      batch: null,
+                      items: [
+                        {
+                          id: "rexenv-0.6.0",
+                          name: "rexenv",
+                          version: "0.6.0",
+                          label: "rexenv 0.6.0",
+                          phase: "downloading",
+                          downloadedBytes: 12_400_000,
+                          totalBytes: 31_400_000,
+                          bytesPerSec: 2_100_000,
+                          error: null,
+                        },
+                      ],
+                    }
+                  : { batch: null, items: [] }
+              }
+            />
+            <div className="mt-2 text-[0.71875rem] text-rex-text-muted">
+              app-update harness mounted (?state=never-checked|none|offered|skipped|refused|installing|dark)
+            </div>
+          </div>
+        )}
         {view === "sites" && <SitesScaleView />}
         {view === "delete" && <DeleteView />}
         {view === "badges" && <BadgesView />}

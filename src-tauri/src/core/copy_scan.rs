@@ -593,6 +593,107 @@ const LINK = "https://example.test/a//b";
         }
     }
 
+    /// **The app-update card never promises what it cannot measure.**
+    ///
+    /// A sibling of the PHP guard below, scoped to one file and therefore
+    /// stricter: that one bans the phrases only on lines about PHP, because
+    /// "update available" is legitimate elsewhere (WordPress genuinely has an
+    /// updater). Here the whole file is about rexenv's own updates, so the
+    /// phrases are banned outright.
+    ///
+    /// - **"up to date"** is unprovable before a check has ever succeeded, and
+    ///   only ever true of the instant the check ran. The card says when it last
+    ///   looked instead.
+    /// - **"update available"** is the phrase this project already banned once
+    ///   for promising what no button could deliver. Here a button DOES exist,
+    ///   which makes the phrase tempting and still wrong: it says nothing about
+    ///   whether this Mac can install it, and the refusals exist precisely
+    ///   because sometimes it cannot.
+    ///
+    /// The positive half matters as much: the file must still SAY when it last
+    /// checked and still offer an Install, or the ban could be satisfied by a
+    /// card that says nothing at all.
+    #[test]
+    fn the_app_update_card_never_promises_what_it_cannot_measure() {
+        const BANNED: &[&str] =
+            &["update available", "updates available", "up to date", "up-to-date"];
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../src/components/settings/AppUpdateCard.tsx");
+        let raw = std::fs::read_to_string(&path).expect("the update card exists");
+        let text = strip_ts_comments(&raw).to_ascii_lowercase();
+        assert!(text.len() > 500, "the card was emptied or moved — this guard now proves nothing");
+        for b in BANNED {
+            assert!(
+                !text.contains(b),
+                "AppUpdateCard.tsx says {b:?} — it cannot know that, and the footer's \
+                 'checked N ago' is the honest form"
+            );
+        }
+        for must in ["checked ", "install rexenv", "couldn't reach"] {
+            assert!(
+                text.contains(must),
+                "AppUpdateCard.tsx no longer says {must:?} — the ban must not be satisfied \
+                 by a card that says nothing"
+            );
+        }
+    }
+
+    /// **The consent sentence has ONE source, and it is not the TSX.**
+    ///
+    /// The sentence in front of the Install button describes what the click
+    /// does — it downloads, verifies, swaps, quits and reopens, your sites keep
+    /// running, your terminals do not. That is a description of a RULE, and this
+    /// project's honest-UI rule says such a sentence lives beside the rule it
+    /// describes: a copy in the TSX is a copy that drifts the first time the
+    /// behaviour changes, and nothing would fail.
+    ///
+    /// So the card renders a string Rust sent it, and this checks that the
+    /// distinctive phrases exist in `core/app_update.rs` and in no `.tsx` at all.
+    #[test]
+    fn the_consent_sentence_has_one_source() {
+        let core = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/core/app_update.rs"),
+        )
+        .expect("core/app_update.rs");
+        // Distinctive fragments — long enough that nothing else would contain
+        // them by accident, short enough to survive ordinary rewording.
+        let phrases = ["services outlive the app", "close with it", "Apple developer signature"];
+        for p in phrases {
+            assert!(
+                core.contains(p),
+                "the consent sentence no longer says {p:?} — if the wording moved, move this \
+                 guard with it rather than deleting the promise"
+            );
+        }
+
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../src");
+        let mut files = Vec::new();
+        fn walk(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+            let Ok(entries) = std::fs::read_dir(dir) else { return };
+            for e in entries.flatten() {
+                let p = e.path();
+                if p.symlink_metadata().is_ok_and(|m| m.is_dir()) {
+                    walk(&p, out);
+                } else if p.extension().and_then(|x| x.to_str()) == Some("tsx") {
+                    out.push(p);
+                }
+            }
+        }
+        walk(&root, &mut files);
+        assert!(files.len() > 20, "the tsx walk found {} files", files.len());
+        for f in &files {
+            let Ok(raw) = std::fs::read_to_string(f) else { continue };
+            let text = strip_ts_comments(&raw);
+            for p in phrases {
+                assert!(
+                    !text.contains(p),
+                    "{} spells out the consent sentence — it must render the one Rust sends",
+                    f.display()
+                );
+            }
+        }
+    }
+
     /// **The PHP version rows may say a newer patch EXISTS; they may never say
     /// one is AVAILABLE, or that this build is UP TO DATE.**
     ///

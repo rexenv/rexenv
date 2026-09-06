@@ -72,7 +72,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     fixes the manual drag-replace case too. An L1 was MEASURED as buying nothing and
     deliberately not written (`run_agent` is `serve_udp` in a loop, already L0-driven);
     the launchd re-exec half is a SMOKE leg.
-  - [ ] T6 — the full About card, the one-source consent sentence, copy guard, L2 probe
+  - [x] T6 — the full About card, the one-source consent sentence, copy guard, L2 probe
+    ✓ 6 Sep 2026 — ledger #534; `AppUpdateCard.tsx` with skip/undo, hub-driven progress,
+    the Homebrew line and the refusal-as-a-command; `UpdateWatch` toast once per version;
+    a Settings nav badge; two L0 copy guards (both plant-proven); six `appupdate-*` L2
+    scenarios in `uireview.js` — **not** a separate `appupdate.js`, following the Adminer
+    card's precedent, recorded in TESTING §L2.
   - [ ] T7 — the tray item and the app-menu "Check for Updates…"
   - [ ] T8 — `rex status` / MCP read field, with no new dispatch arm
   - [ ] T9 — release flow: the tar.gz asset, the version guard, §A0, and the WRONG docs

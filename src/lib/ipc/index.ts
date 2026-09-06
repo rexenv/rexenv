@@ -636,6 +636,15 @@ export async function appUpdateApply(): Promise<AppUpdateOutcome> {
   return invoke<AppUpdateOutcome>("app_update_apply");
 }
 
+/** Set aside exactly this version, or clear the skip by passing nothing.
+ *
+ *  A VERSION, never a flag: skipping 0.6.0 must not hide 0.6.1, and a boolean
+ *  answers that question once and forever. */
+export async function appUpdateSkip(version?: string): Promise<AppUpdateState> {
+  if (!isTauri()) return { ...mockAppUpdateState, skipped: version ?? null };
+  return invoke<AppUpdateState>("app_update_skip", { version: version ?? null });
+}
+
 /** The Adminer version row: what is staged, what will run, what is offered. */
 export async function adminerStatus(): Promise<AdminerStatus> {
   if (!isTauri()) return mockAdminerStatus;

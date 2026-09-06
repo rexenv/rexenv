@@ -173,3 +173,18 @@ pub fn app_update_readiness(state: State<'_, AppState>) -> Result<Option<ApplyRe
         homebrew: facts.homebrew,
     }))
 }
+
+/// Skip exactly this version, or clear the skip.
+///
+/// The skip is stored as a VERSION and compared live against whatever is
+/// offered, so skipping 0.6.0 cannot hide 0.6.1 — a boolean would answer one
+/// question forever, which is the shape `core::app_update` refuses.
+#[tauri::command]
+pub fn app_update_skip(
+    state: State<'_, AppState>,
+    version: Option<String>,
+) -> Result<core::app_update::AppUpdateState> {
+    let conn = lock(&state)?;
+    core::app_update::set_skipped(&conn, version.as_deref())?;
+    Ok(core::app_update::state(&conn))
+}

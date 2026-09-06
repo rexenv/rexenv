@@ -21,6 +21,7 @@ import {
   onServiceHealth,
   onTrayRoute,
   startupNotices,
+  appUpdateState,
 } from "@/lib/ipc";
 import { toast, toastBackendError } from "@/lib/toast";
 import { Toaster } from "@/components/ui/toaster";
@@ -145,6 +146,39 @@ function FatalError({ message }: { message: string }) {
   );
 }
 
+/** Says once, per app run, that a newer rexenv can be installed.
+ *
+ *  This is a menu-bar app: the window is usually closed, so the card alone can
+ *  go unread for weeks. A toast is the quietest surface that still reaches
+ *  someone — Sparkle's rule for dockless apps is not to steal focus, and an
+ *  `info` toast with an action does not.
+ *
+ *  ONCE per version per run, tracked here rather than persisted: a version the
+ *  user has seen and not acted on should not nag at every navigation, and a
+ *  version they skipped is already withdrawn by the backend, so it never
+ *  arrives. */
+function UpdateWatch() {
+  const navigate = useNavigate();
+  const told = useRef<string | null>(null);
+  const { data: st } = useQuery({
+    queryKey: ["app-update"],
+    queryFn: appUpdateState,
+    // No refetch loop: the launch check and the 6 h poller are the backend's
+    // cadence, and this reads whatever the card's own query already has.
+    staleTime: Infinity,
+  });
+  const offered = st?.offered?.version ?? null;
+  useEffect(() => {
+    if (!offered || told.current === offered) return;
+    told.current = offered;
+    toast.info(`rexenv ${offered} can be installed`, {
+      label: "Open About",
+      onClick: () => navigate("/settings?section=about"),
+    });
+  }, [offered, navigate]);
+  return null;
+}
+
 /** Drains the notices the launch sweeps queued before this window existed.
  *
  *  Runs ONCE per app run, deliberately: the sweeps happen in `setup()`, so an
@@ -214,6 +248,7 @@ export function App() {
       <Toaster />
       <HealthWatch />
       <StartupNoticeHost />
+      <UpdateWatch />
       <AboutMenuWatch />
       <TrayRouteWatch />
     </>

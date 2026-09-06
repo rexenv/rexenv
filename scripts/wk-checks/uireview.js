@@ -123,6 +123,17 @@ const SCENARIOS = [
   ["adminer-current", "view=adminer&adminer=current", []],
   ["adminer-pending", "view=adminer&adminer=pending", []],
   ["adminer-fresh", "view=adminer&adminer=fresh", []],
+  // The app-update card, in every state it can be in. It carries the one
+  // control in this app that replaces the app itself, and what it SAYS is most
+  // of the check: the three states that must be right — never checked, checked
+  // and nothing, and refused — are exactly the ones nobody looks at, so a
+  // fixture in one state would prove the least useful one.
+  ["appupdate-never-checked", "view=appupdate&state=never-checked", []],
+  ["appupdate-none", "view=appupdate&state=none", []],
+  ["appupdate-offered", "view=appupdate&state=offered", []],
+  ["appupdate-skipped", "view=appupdate&state=skipped", []],
+  ["appupdate-refused", "view=appupdate&state=refused", []],
+  ["appupdate-installing", "view=appupdate&state=installing", []],
   // The themes grid labels each card with the theme's own name, the way
   // wp-admin does — and keeps the slug, because that is the folder name and
   // what `theme activate` takes. The third fixture row has no title at all.
@@ -140,6 +151,69 @@ const SCENARIOS = [
 /** Per-scenario layout assertions (beyond the universal overflow probe).
  *  Return a list of problem strings; empty = pass. */
 const PROBES = {
+  // What the update card SAYS, per state. The layout matters less here than the
+  // copy: this is the surface where a reassuring sentence would be a lie, and
+  // the honest ones ("checked 2h ago", "couldn't reach") are what a user needs
+  // when something is wrong. One probe drives every state by re-navigating,
+  // because the states only mean anything against each other.
+  "appupdate-never-checked": async (page) => {
+    const problems = [];
+    const banned = ["up to date", "up-to-date", "update available", "updates available"];
+    const states = {
+      // `mustNot: " ago"` and not "checked": the honest never-checked sentence
+      // is "Not checked YET", which contains the word. What must be absent is a
+      // TIMESTAMP — the card claiming a check that never happened.
+      "never-checked": { button: false, must: ["Not checked yet"], mustNot: [" ago"] },
+      none: { button: false, must: ["is what you are running", "checked "], mustNot: [] },
+      offered: {
+        button: true,
+        // The consent sentence is asserted by its FIXTURE text: the claim is
+        // that the card renders what the backend sent, not that it knows the
+        // real wording — which lives in Rust and is guarded there.
+        must: ["0.6.0", "29.9 MB", "FIXTURE CONSENT", "Skip this version"],
+        mustNot: [],
+      },
+      skipped: { button: false, must: ["was set aside", "Undo"], mustNot: ["Install rexenv"] },
+      refused: {
+        button: false,
+        must: ["not writable", "sudo chown"],
+        mustNot: ["Install rexenv"],
+      },
+      installing: { button: false, must: ["Downloading", "11.8 MB", "29.9 MB"], mustNot: [] },
+    };
+    for (const [state, want] of Object.entries(states)) {
+      await page.goto(`${BASE}/dev/ui-review?view=appupdate&state=${state}`);
+      await page.waitForSelector('[data-probe="appupdate-view"]', { timeout: 5000 });
+      const card = await page.$('[data-probe="app-update"]');
+      if (!card) {
+        problems.push(`${state}: the card did not render`);
+        continue;
+      }
+      const text = (await card.innerText()) || "";
+      const lower = text.toLowerCase();
+      for (const b of banned) {
+        if (lower.includes(b)) problems.push(`${state}: the card says "${b}" — it cannot know that`);
+      }
+      for (const m of want.must) {
+        if (!text.includes(m)) problems.push(`${state}: the card never says "${m}"`);
+      }
+      for (const m of want.mustNot) {
+        if (text.includes(m)) problems.push(`${state}: the card says "${m}" and should not`);
+      }
+      const install = await card.$("text=Install rexenv");
+      if (want.button && !install) problems.push(`${state}: no Install button where one belongs`);
+      if (!want.button && install) {
+        problems.push(`${state}: an Install button that could not work is offered`);
+      }
+      // The phase attribute is what the card believes it is showing; a state
+      // whose copy and phase disagree is the bug this catches.
+      const phase = await card.getAttribute("data-phase");
+      const expected = state === "never-checked" ? "none" : state;
+      if (phase !== expected) problems.push(`${state}: data-phase is "${phase}"`);
+    }
+    return problems;
+  },
+
   // Every chip in a PHP version row must wrap as a UNIT, never internally. A
   // one-line chip is ~18px tall; a badge whose own text broke across two lines
   // roughly doubles that, which is the tell. Same shape as the `pills` height
@@ -784,6 +858,10 @@ function probeFor(name) {
   if (name.startsWith("delete")) return PROBES.deleteGate;
   if (name === "resolver-drift") return PROBES.resolverDrift;
   if (name === "php-versions") return PROBES["php-versions"];
+  // ONE probe drives every app-update state by re-navigating, so it is attached
+  // to the first scenario only — attaching it to all six would run the same
+  // sweep six times per width.
+  if (name === "appupdate-never-checked") return PROBES["appupdate-never-checked"];
   if (name.startsWith("adminer-")) return PROBES.adminerVersion;
   if (name.startsWith("tunnels-")) return PROBES.tunnelsFilter;
   if (name === "themes-titles") return PROBES.themeTitles;

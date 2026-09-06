@@ -49,6 +49,18 @@ the shipped UI toward one.
   publishing a site lives in Full beside "runs code of its choosing as you", because a
   second prompt for a thing the chosen level spells out is friction the user reads as
   noise, not as consent.
+- **"Never checked", "checked and nothing", and "the check failed" are three sentences,
+  not one.** The self-update card says which, from ONE backend value carrying the timestamp
+  and the answer together — so a failed check keeps yesterday's timestamp instead of ageing
+  into a lie. It never says "up to date" (unprovable before a check has ever succeeded, and
+  true only of the instant it ran) and never "update available" (which says nothing about
+  whether THIS Mac can install it — the refusals exist because sometimes it cannot). A
+  refusal renders where the button would have been, with its fix as a copyable command and
+  NO button: offering one that could not work is the lie the whole card is shaped to avoid.
+  The consent sentence in front of the button is served by Rust and rendered verbatim —
+  a sentence describing a rule lives beside the rule, and the DEV harness mocks a fixture
+  sentence rather than the real one so the guard it exercises cannot be defeated by its own
+  fixture (ledger #534).
 - **Two stopped-nesses, two sentences.** A site can be down because rexenv's
   services are stopped, or because the user stopped THAT site (v44). The pill is
   the same shape either way — the site is not serving, and that is one honest

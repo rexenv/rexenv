@@ -6,7 +6,7 @@ import { RexLogo } from "@/components/common/RexLogo";
 import { NAV_ITEMS, type NavItem } from "./nav";
 import { StatusFooter } from "./StatusFooter";
 import { ThemeToggle } from "./ThemeToggle";
-import { databasesStatus, getGlobalStatus, listSites, mailpitMessages, tunnelsStatus } from "@/lib/ipc";
+import { databasesStatus, getGlobalStatus, listSites, mailpitMessages, tunnelsStatus , appUpdateState } from "@/lib/ipc";
 import type { GlobalStatus } from "@/types";
 
 /** Neutral placeholder until the first real `global_status` poll — all-zero so the
@@ -99,7 +99,18 @@ export function Sidebar() {
   const { data: inbox } = useQuery({ queryKey: ["mailpit-messages", ""], queryFn: () => mailpitMessages(""), refetchInterval: 5000 });
   const { data: tunnels = [] } = useQuery({ queryKey: ["tunnels"], queryFn: tunnelsStatus, refetchInterval: 2000 });
 
+  // The update offer, read from the cache the About card and UpdateWatch keep —
+  // never its own poll. A menu-bar app's window is usually closed, so this is
+  // the quiet, always-there surface: a version, not a dot, because "0.6.0" is
+  // the thing a person acts on.
+  const { data: update } = useQuery({
+    queryKey: ["app-update"],
+    queryFn: appUpdateState,
+    staleTime: Infinity,
+  });
+
   const liveBadges: Record<string, { badge?: string; activeDot?: boolean }> = {
+    "/settings": { badge: update?.offered?.version },
     "/sites": { badge: badgeCount(sites.length) },
     "/services": { badge: badgeCount(status.running) },
     "/databases": { badge: badgeCount(dbs.filter((d) => d.running).length) },

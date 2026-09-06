@@ -601,6 +601,15 @@ it can:
   gate (§6). **Bug class:** percentage-height collapse, WebKit metrics overflow,
   states that render wrong or not at all.
 
+**The app-update card's states live in `uireview.js`, not a file of their own** (T6). The
+plan proposed `appupdate.js`; the closest precedent — the Adminer version card, the other
+control in this app that installs bytes the build did not ship with — is a set of scenarios
+in the review sweep, and following it keeps one harness rather than two. Six states at both
+widths, with one probe that re-navigates through all of them: the states only mean anything
+against each other, and the ones that must be right (never checked, checked-and-nothing,
+refused) are exactly the ones nobody looks at. Plant-proven by rendering the Install button
+in every state, which fails the skipped and refused legs.
+
 ### L3 — World (SMOKE-TEST.md, PUBLISH-TESTING.md — scripted manual)
 
 - **Proves:** Gatekeeper/quarantine, privileged prompts, keychain trust, launchd under
