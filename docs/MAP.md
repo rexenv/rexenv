@@ -72,7 +72,7 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
 | Settings | `/settings` | `src/routes/Settings.tsx` |
 | Onboarding | `/onboarding` | `src/routes/Onboarding.tsx` |
 | Dev-only harnesses (tree-shaken from prod) | `/dev/git-panel`, `/dev/ui-review` | `src/routes/DevGitPanel.tsx`, `src/routes/DevUiReview.tsx` |
-| IPC bridge (the ONLY invoke path; 253 exports) | — | `src/lib/ipc/index.ts` |
+| IPC bridge (the ONLY invoke path; 254 exports) | — | `src/lib/ipc/index.ts` |
 | Self-update card (Settings → About) | `/settings?section=about` | `src/components/settings/AppUpdateCard.tsx`; `UpdateWatch` in `src/App.tsx`; Settings nav badge in `Sidebar.tsx`; L2 `uireview.js` `appupdate-*` |
 | Add a plugin/theme — the four sources behind `SourceTabs` | — | `components/wordpress/WordPressManager.tsx` (wp.org search + the shared `WpInstallCard`), `ZipAddPanel.tsx` (Upload zip), `GitAddPanel.tsx` (From Git), `LinkFolderPanel.tsx` (Link folder); probes `wk-checks/{zipinstall,wptoast,check,linkpanel}.js` |
 | Shared UI hooks (editor pick + open, downloads) | — | `src/lib/useEditor.ts`, `src/lib/useDownloads.ts` |

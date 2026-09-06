@@ -22,6 +22,7 @@ import {
   onTrayRoute,
   startupNotices,
   appUpdateState,
+  onCheckUpdatesMenu,
 } from "@/lib/ipc";
 import { toast, toastBackendError } from "@/lib/toast";
 import { Toaster } from "@/components/ui/toaster";
@@ -179,6 +180,36 @@ function UpdateWatch() {
   return null;
 }
 
+/** The app menu's "Check for Updates…": go to the card AND run a check.
+ *
+ *  Both, because someone who chose that item is ASKING — landing them on a card
+ *  showing yesterday's answer would be a menu item that technically worked.
+ *  Mounted at the app root so it fires from any screen. */
+function CheckUpdatesMenuWatch() {
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let disposed = false;
+    void onCheckUpdatesMenu(() => {
+      navigate("/settings?section=about");
+      // Invalidate rather than run the check here: the card owns that mutation
+      // and its failure copy, and a second caller would be a second place that
+      // decides what a failed check looks like.
+      void qc.invalidateQueries({ queryKey: ["app-update"] });
+      void qc.invalidateQueries({ queryKey: ["app-update-readiness"] });
+    }).then((f) => {
+      if (disposed) f();
+      else unlisten = f;
+    });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [navigate, qc]);
+  return null;
+}
+
 /** Drains the notices the launch sweeps queued before this window existed.
  *
  *  Runs ONCE per app run, deliberately: the sweeps happen in `setup()`, so an
@@ -249,6 +280,7 @@ export function App() {
       <HealthWatch />
       <StartupNoticeHost />
       <UpdateWatch />
+      <CheckUpdatesMenuWatch />
       <AboutMenuWatch />
       <TrayRouteWatch />
     </>

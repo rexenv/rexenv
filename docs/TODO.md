@@ -78,7 +78,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     a Settings nav badge; two L0 copy guards (both plant-proven); six `appupdate-*` L2
     scenarios in `uireview.js` — **not** a separate `appupdate.js`, following the Adminer
     card's precedent, recorded in TESTING §L2.
-  - [ ] T7 — the tray item and the app-menu "Check for Updates…"
+  - [x] T7 — the tray item and the app-menu "Check for Updates…"
+    ✓ 6 Sep 2026 — ledger #535; `TrayAction::UpdateTo` from an in-process snapshot
+    (`the_tray_reads_the_offer_from_a_snapshot_never_the_network`, a source scan), the item
+    OPENS the card and the tray's must-not list gains the apply; five tray tests extended
+    plus `the_update_item_is_present_iff_the_model_offers_a_version`; the app menu gains
+    "Check for Updates…" under About, which navigates AND re-checks.
   - [ ] T8 — `rex status` / MCP read field, with no new dispatch arm
   - [ ] T9 — release flow: the tar.gz asset, the version guard, §A0, and the WRONG docs
   - [ ] T10 — the runtimes publisher + the tap's `auto_updates true` (other repos)

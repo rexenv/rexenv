@@ -605,6 +605,31 @@ pub async fn fetch() -> Result<(Vec<u8>, String)> {
     updates::fetch_signed_pair(APP_MANIFEST_URL, APP_MANIFEST_SIG_URL, MAX_DOC).await
 }
 
+/// The offer the TRAY is allowed to read: an in-process snapshot, installed by
+/// every successful check.
+///
+/// The tray must measure nothing and must block on nothing
+/// (`docs/archive/PLAN-menubar-tray.md` §3): its model is assembled every few
+/// seconds on the menu-bar path, and a lock or a network call there is a
+/// centimetre from the user's cursor. A `RwLock` read of a `String` is neither.
+///
+/// It is also deliberately NOT the database. Reading the descriptor would mean
+/// verifying a signature to draw a menu, and a menu that can fail is a menu bar
+/// with nothing in it.
+static OFFER_SNAPSHOT: std::sync::RwLock<Option<Offer>> = std::sync::RwLock::new(None);
+
+/// Publish what the last successful check decided.
+pub fn install_snapshot(offer: Option<Offer>) {
+    if let Ok(mut slot) = OFFER_SNAPSHOT.write() {
+        *slot = offer;
+    }
+}
+
+/// What the last successful check decided, for surfaces that may not block.
+pub fn current_offer() -> Option<Offer> {
+    OFFER_SNAPSHOT.read().ok().and_then(|s| s.clone())
+}
+
 /// Everything the About card renders, in one answer.
 ///
 /// `running` and `offered` are two different facts and stay two fields: one is
@@ -651,6 +676,11 @@ pub fn state(conn: &Connection) -> AppUpdateState {
             Err(no) => no_offer_reason = Some(no.reason()),
         }
     }
+    // Whatever the live rule just decided is what every non-blocking surface
+    // shows. One place computes the offer; the tray, the badge and `rex status`
+    // read this rather than each deciding for themselves.
+    install_snapshot(offered.clone());
+
     AppUpdateState {
         running,
         enabled: enabled(),

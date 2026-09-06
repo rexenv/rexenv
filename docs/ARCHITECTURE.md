@@ -1003,6 +1003,21 @@ editor" → `open -a <editor> <site folder>`, so the folder lands as a PROJECT) 
   scratch is how an app loses the Edit menu it never wrote — Cmd-C/V/Z come from
   the default menu, and nothing else in the app provides them. macOS-only, since
   the app submenu is macOS's; other platforms keep the default menu untouched.
+- **"Check for Updates…" sits under About**, where every Mac app puts it, and does two
+  things: navigates to the card AND re-checks. Someone who chose that item is ASKING, so
+  landing them on yesterday's answer would be a menu item that technically worked. The
+  frontend invalidates rather than calling the check itself — the card owns that mutation
+  and its failure copy, and a second caller would be a second place deciding what a failed
+  check looks like.
+- **The update item is the ONE thing in the menu about the app itself** (ledger #535). It
+  appears only when a verified offer exists, reads `Update to 0.6.0…`, and OPENS Settings →
+  About — the ellipsis is the promise. It never installs: the consent sentence and the button
+  live in one place, and a menu item that skipped them would be a second path past the only
+  sentence telling a user what pressing it costs. The version rides in the item's id, like a
+  site's domain, because the menu is rebuilt every few seconds and an index would act on
+  whatever slid into that position. The model reads an in-process SNAPSHOT the app publishes
+  after every successful check — never the database (drawing a menu must not verify a
+  signature) and never the network.
 - **The click emits `menu://about`, after `show()` + `set_focus()`.** The window
   may be hidden or behind another app; an About that opens out of sight reads as
   a dead menu item. `AboutMenuWatch` (app root, so it works from any screen)

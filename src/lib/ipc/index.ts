@@ -640,6 +640,15 @@ export async function appUpdateApply(): Promise<AppUpdateOutcome> {
  *
  *  A VERSION, never a flag: skipping 0.6.0 must not hide 0.6.1, and a boolean
  *  answers that question once and forever. */
+/** The app menu's "Check for Updates…". Fires with the window already shown —
+ *  a check whose answer lands on a hidden window is a menu item that appears to
+ *  do nothing. */
+export async function onCheckUpdatesMenu(cb: () => void): Promise<() => void> {
+  if (!isTauri()) return () => {};
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen("menu://check-updates", () => cb());
+}
+
 export async function appUpdateSkip(version?: string): Promise<AppUpdateState> {
   if (!isTauri()) return { ...mockAppUpdateState, skipped: version ?? null };
   return invoke<AppUpdateState>("app_update_skip", { version: version ?? null });

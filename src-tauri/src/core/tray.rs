@@ -48,6 +48,14 @@ pub struct TrayModel {
     pub total: u32,
     /// Most-recent-first, already capped or not — `build` caps it.
     pub sites: Vec<TraySite>,
+    /// A version a VERIFIED update offer names, if there is one.
+    ///
+    /// Read from an in-process snapshot the app updates on every successful
+    /// check — never from the database, never from the network. The tray must
+    /// not measure anything and must not block on a lock (`PLAN-menubar-tray.md`
+    /// §3), and a menu that fetched would do both a centimetre from the user's
+    /// cursor.
+    pub update: Option<String>,
     /// The `mcp_enabled` setting, for the checkmark.
     pub mcp_on: bool,
     /// True when the services lock was busy and this model repeats the previous
@@ -118,6 +126,15 @@ pub enum TrayAction {
     /// Show the window on a route.
     Route(TrayRoute),
     ToggleMcp,
+    /// Show the window on Settings → About, where the update lives.
+    ///
+    /// The version rides in the id for the same reason a site's domain does:
+    /// the menu is rebuilt every few seconds, and an index would open whatever
+    /// slid into that position between the render and the click. **This never
+    /// installs** — the consent sentence and the button live in ONE place, and
+    /// a menu item that skipped them would be a second path to the one action
+    /// in this app that replaces the app.
+    UpdateTo(String),
 }
 
 impl TrayAction {
@@ -135,6 +152,7 @@ impl TrayAction {
             TrayAction::ToggleMcp => "tray:mcp".into(),
             TrayAction::OpenSite(d) => format!("tray:site:{d}"),
             TrayAction::Route(r) => format!("tray:route:{}", r.slug()),
+            TrayAction::UpdateTo(v) => format!("tray:update:{v}"),
         }
     }
 
@@ -149,7 +167,14 @@ impl TrayAction {
             "stop-all" => TrayAction::StopAll,
             "mcp" => TrayAction::ToggleMcp,
             other => {
-                if let Some(domain) = other.strip_prefix("site:") {
+                if let Some(version) = other.strip_prefix("update:") {
+                    // An empty version would render "Update to …" naming
+                    // nothing, and route to a card with no offer on it.
+                    if version.is_empty() {
+                        return None;
+                    }
+                    TrayAction::UpdateTo(version.to_string())
+                } else if let Some(domain) = other.strip_prefix("site:") {
                     // An empty domain would build `https://` and open nothing.
                     if domain.is_empty() {
                         return None;
@@ -265,6 +290,20 @@ pub fn bootstrap() -> MenuSpec {
 pub fn build(m: &TrayModel) -> MenuSpec {
     let mut entries = vec![MenuEntry::Label(status_line(m)), MenuEntry::Separator];
 
+    // The update, first: it is the only item here that is about the app itself
+    // rather than the stack, and it is the reason someone opens this menu on a
+    // day when nothing is wrong. It OPENS the card — it does not install, and
+    // the ellipsis says so.
+    if let Some(v) = &m.update {
+        entries.push(MenuEntry::Item {
+            title: format!("Update to {v}…"),
+            action: TrayAction::UpdateTo(v.clone()),
+            enabled: true,
+            checked: None,
+        });
+        entries.push(MenuEntry::Separator);
+    }
+
     // Start all is dead when everything already runs; Stop all when nothing
     // does. Greyed rather than hidden — the menu keeps its shape, so the eye
     // does not have to re-find items between two glances a second apart.
@@ -360,6 +399,10 @@ mod tests {
             total: 12,
             sites: vec![TraySite { domain: "blog.rex".into() }],
             mcp_on: false,
+            // Nothing offered by default: the ordinary menu is the one most
+            // users see, and a fixture that always offers an update would make
+            // every "no update item" assertion below vacuous.
+            update: None,
             stale: false,
         }
     }
@@ -418,6 +461,8 @@ mod tests {
             TrayAction::Route(TrayRoute::Databases),
             TrayAction::Route(TrayRoute::Mail),
             TrayAction::Route(TrayRoute::Tunnels),
+            TrayAction::UpdateTo("0.6.0".into()),
+            TrayAction::UpdateTo("0.10.0".into()),
         ];
         for a in all {
             assert_eq!(TrayAction::parse(&a.id()).as_ref(), Some(&a), "round trip: {a:?}");
@@ -438,6 +483,7 @@ mod tests {
             "tray:site:",        // empty domain → https:// → opens nothing
             "tray:route:",       // empty route
             "tray:route:settings", // a real screen, but not one the tray offers
+            "tray:update:",      // empty version → an item naming nothing
             "TRAY:OPEN",         // ids are not case-folded
         ] {
             assert_eq!(TrayAction::parse(bad), None, "must not parse: {bad:?}");
@@ -554,6 +600,58 @@ mod tests {
         // taking from the front is what makes the cap mean "recent".
         assert!(spec.ids().contains(&"tray:site:s0.rex".to_string()));
         assert!(!spec.ids().contains(&format!("tray:site:s{}.rex", MAX_SITES + 4)));
+    }
+
+    /// **The update item is present exactly when a version is offered, and it
+    /// OPENS the card rather than installing.**
+    ///
+    /// Two failures in one test because they are one decision: an item that
+    /// showed with nothing to install would name nothing, and an item that
+    /// installed would be a second path past the consent sentence — the only
+    /// place the user is told what pressing it costs.
+    #[test]
+    fn the_update_item_is_present_iff_the_model_offers_a_version() {
+        // Item TITLES, not `labels` — that helper collects disabled `Label`
+        // rows, and an update item is an Item.
+        fn titles(spec: &MenuSpec) -> Vec<String> {
+            spec.entries
+                .iter()
+                .filter_map(|e| match e {
+                    MenuEntry::Item { title, .. } => Some(title.clone()),
+                    _ => None,
+                })
+                .collect()
+        }
+
+        let plain = build(&model());
+        assert!(
+            !titles(&plain).iter().any(|t| t.starts_with("Update to")),
+            "an update item with nothing to offer: {:?}",
+            titles(&plain)
+        );
+
+        let mut m = model();
+        m.update = Some("0.6.0".into());
+        let spec = build(&m);
+        let got = titles(&spec);
+        // FIRST item in the menu: it is the one thing here about the app itself
+        // rather than the stack, and it is why someone opens this menu on a day
+        // when nothing is wrong.
+        assert_eq!(got.first().map(String::as_str), Some("Update to 0.6.0…"), "{got:?}");
+        // The ellipsis is the promise: this opens something, it does not do it.
+        assert!(got[0].ends_with('…'));
+
+        let (_, enabled, checked) = item(&spec, &TrayAction::UpdateTo("0.6.0".into()));
+        assert!(enabled);
+        assert_eq!(checked, None, "an update is not a toggle");
+
+        // Ids stay unique with the item present — the version rides in the id,
+        // so two menus a version apart cannot collide either.
+        let mut ids = spec.ids();
+        ids.sort();
+        let before = ids.len();
+        ids.dedup();
+        assert_eq!(ids.len(), before, "duplicate ids with the update item present");
     }
 
     /// The checkmark is bound to the setting, both ways — a toggle that only

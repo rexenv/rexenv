@@ -1259,6 +1259,11 @@ Only runs once a release NEWER than the installed build has been published with 
 descriptor. Before that Settings → About shows the version and no Install button, which is
 itself the first check.
 
+- [ ] **The menu bar offers it, and only opens it.** With a newer release published, the
+  tray menu's FIRST item reads `Update to <version>…`; clicking it shows the window on
+  Settings → About and installs NOTHING. The app menu's "Check for Updates…" (under About)
+  lands on the same card with a fresh check. **Tell:** an item that installs, an item naming
+  no version, or a menu that hangs while it opens — it must read a snapshot, never fetch.
 - [ ] **Dark when current.** On the newest build, Settings → About offers nothing and shows
   no error; the footer says when it last checked. **Tell:** a button that appears and fails,
   or a footer claiming a check that never ran.

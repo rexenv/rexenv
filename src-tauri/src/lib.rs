@@ -1858,7 +1858,17 @@ fn tray_model(app: &tauri::AppHandle) -> Option<core::tray::TrayModel> {
         }
     };
 
-    Some(core::tray::TrayModel { summary, running, total, sites, mcp_on, stale: !fresh })
+    Some(core::tray::TrayModel {
+        summary,
+        running,
+        total,
+        sites,
+        mcp_on,
+        // The snapshot, never a read of the descriptor: drawing a menu must not
+        // verify a signature, and the tray may not block (#437/#438).
+        update: core::app_update::current_offer().map(|o| o.version),
+        stale: !fresh,
+    })
 }
 
 /// Turn a `MenuSpec` into a real menu. The ONLY place Tauri menu types meet the
@@ -2014,6 +2024,16 @@ fn on_tray_click(app: &tauri::AppHandle, id: &str) {
                 log::warn!("tray: could not route to {}: {e}", route.path());
             }
         }
+        // The tray OPENS the update; it never installs one. The consent
+        // sentence and the button live in one place, and a menu item that
+        // skipped them would be a second path to the one action in this app
+        // that replaces the app itself.
+        core::tray::TrayAction::UpdateTo(_) => {
+            show_main_window(app);
+            if let Err(e) = app.emit(TRAY_ROUTE_EVENT, "/settings?section=about") {
+                log::warn!("tray: could not route to the update card: {e}");
+            }
+        }
         core::tray::TrayAction::ToggleMcp => {
             let handle = app.clone();
             tauri::async_runtime::spawn(async move {
@@ -2099,6 +2119,14 @@ pub(crate) fn show_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
 #[cfg(target_os = "macos")]
 pub const ABOUT_MENU_EVENT: &str = "menu://about";
 
+/// The app menu's "Check for Updates…" — id and event.
+///
+/// Separate from the About item because it does something as well as going
+/// somewhere: the frontend navigates to the card AND runs a check, so a user who
+/// came to the menu bar asking gets an answer rather than a screen.
+const CHECK_UPDATES_MENU_ID: &str = "rex-check-updates";
+pub const CHECK_UPDATES_MENU_EVENT: &str = "menu://check-updates";
+
 /// Swap the macOS app menu's predefined About item for one that opens the
 /// app's own About screen.
 ///
@@ -2125,6 +2153,12 @@ fn install_about_menu_item(app: &tauri::AppHandle) -> tauri::Result<()> {
     let about = MenuItem::with_id(app, "rex-about", "About rexenv", true, None::<&str>)?;
     app_menu.remove_at(0)?;
     app_menu.insert(&about, 0)?;
+    // "Check for Updates…" where every Mac app puts it: right under About. The
+    // card can be reached from the tray and from Settings, but this is the item
+    // a person looks for when they came to the menu bar ASKING — and it costs
+    // one line, where its absence costs a support question.
+    let check = MenuItem::with_id(app, CHECK_UPDATES_MENU_ID, "Check for Updates…", true, None::<&str>)?;
+    app_menu.insert(&check, 1)?;
     // Cmd+Q goes through THE quit gate. The predefined Quit item is
     // `terminate:` — the app delegate ends the process and `ExitRequested`
     // is never raised, so the public-share confirm on that event (the "ONE
@@ -2150,6 +2184,16 @@ fn install_about_menu_item(app: &tauri::AppHandle) -> tauri::Result<()> {
             // Same call as the tray's Quit: `exit` raises `ExitRequested`,
             // where the gate lives. Not a second copy of the gate.
             app.exit(0);
+            return;
+        }
+        if event.id() == CHECK_UPDATES_MENU_ID {
+            if let Some(win) = app.get_webview_window("main") {
+                // Show first: a check whose answer lands on a hidden window is
+                // a menu item that appears to do nothing.
+                let _ = win.show();
+                let _ = win.set_focus();
+                let _ = win.emit(CHECK_UPDATES_MENU_EVENT, ());
+            }
             return;
         }
         if event.id() == "rex-about" {
@@ -2378,6 +2422,38 @@ mod tests {
         assert!(handler.contains(&needle), "the apply is not registered at all");
     }
 
+    /// **The tray reads the offer from an in-process snapshot — never the
+    /// database, never the network.**
+    ///
+    /// `tray_model` runs on the menu-bar path every few seconds. A read of the
+    /// signed descriptor would mean verifying a signature to draw a menu (and a
+    /// menu that can fail is a menu bar with nothing in it); a fetch would put a
+    /// network call a centimetre from the user's cursor. Both are the "the tray
+    /// measures nothing, and never blocks" rule (#437/#438).
+    #[test]
+    fn the_tray_reads_the_offer_from_a_snapshot_never_the_network() {
+        let src = crate::core::copy_scan::production_source(include_str!("lib.rs"));
+        let start = src.find("fn tray_model").expect("the model builder exists");
+        let body = &src[start..start + 2500.min(src.len() - start)];
+        assert!(body.contains("TrayModel"), "sliced the wrong function");
+
+        assert!(
+            body.contains(&format!("app_update::current_{}", "offer()")),
+            "the tray must read the published snapshot"
+        );
+        for banned in [
+            format!("app_update::{}", "cached("),
+            format!("app_update::{}", "fetch("),
+            format!("app_update::{}", "state("),
+        ] {
+            assert!(
+                !body.contains(&banned),
+                "tray_model reaches for {banned} — drawing a menu must not verify a \
+                 signature or touch the network"
+            );
+        }
+    }
+
     /// **The auto-check setting gates the REQUEST, not the answer.**
     ///
     /// A setting honoured after the fetch would still send it — the user turned
@@ -2445,6 +2521,11 @@ mod tests {
             assert!(body.contains(must), "the tray must act through {must}");
         }
         for must_not in [
+            // The tray OPENS the update card; it never installs. The consent
+            // sentence and the button live in ONE place, and a menu item that
+            // reached the apply would be a second path past the only sentence
+            // that tells a user what pressing it costs.
+            "app_update_apply",
             // The browser preference lives in open_external, once.
             "shell().open",
             // The MCP flag without the bind: the toggle would read "on" while
