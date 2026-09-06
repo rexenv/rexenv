@@ -148,6 +148,9 @@ Two things worth knowing:
   developer signature yet, so every build is a new identity to the system.
 - **The version that introduced this cannot update itself to it.** The first in-app
   update is from the release AFTER it; before that, use the manual path below.
+- **You can turn the checking off.** Settings → About → Updates → untick *“Check for new
+  releases automatically”*. rexenv then contacts nothing on its own; *Check now* still
+  works, and nothing ever installs without your click either way.
 
 If rexenv cannot replace itself it says why and does not offer the button — for example
 when it is running from the disk image rather than from Applications, or when

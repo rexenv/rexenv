@@ -413,11 +413,26 @@ pub fn set_skipped(conn: &Connection, version: Option<&str>) -> Result<()> {
 /// "nothing starts"; here it is "the user hears about a security release",
 /// because the failure mode of the other direction is a machine that silently
 /// stops being told. Only the exact string `false` turns it off, which is what
-/// the toggle writes.
+/// [`set_auto_check`] writes (and what `rex config set app_update_auto_check`
+/// accepts).
 pub fn auto_check_enabled(conn: &Connection) -> bool {
     match store::get_setting(conn, AUTO_CHECK_KEY).ok().flatten() {
         Some(v) => v.trim() != "false",
         None => true,
+    }
+}
+
+/// Turn automatic checking on or off.
+///
+/// Writes the exact string the reader tests for, and DELETES the row for "on"
+/// rather than writing `"true"`. Absent already means on, so storing the default
+/// would create a second spelling of it — and a key that can be on in two ways is
+/// a key whose reader eventually disagrees with its writer.
+pub fn set_auto_check(conn: &Connection, enabled: bool) -> Result<()> {
+    if enabled {
+        store::delete_setting(conn, AUTO_CHECK_KEY)
+    } else {
+        store::set_setting(conn, AUTO_CHECK_KEY, "false")
     }
 }
 
@@ -1186,6 +1201,35 @@ mod tests {
             assert!(auto_check_enabled(&conn), "{junk:?} should read as on");
         }
         store::set_setting(&conn, AUTO_CHECK_KEY, "false").unwrap();
+        assert!(!auto_check_enabled(&conn));
+    }
+
+    /// "On" is the ABSENCE of the row, not the string `"true"`.
+    ///
+    /// Writing a default would give the key two spellings of on — `"true"` and
+    /// absent — and a reader that only tests for `"false"` agrees with both by
+    /// luck rather than by design. Turning it back on removes the row, so the
+    /// stored state after a round trip is the state a fresh install has.
+    #[test]
+    fn turning_auto_check_back_on_removes_the_row_rather_than_writing_true() {
+        let conn = db();
+        set_auto_check(&conn, false).unwrap();
+        assert_eq!(store::get_setting(&conn, AUTO_CHECK_KEY).unwrap().as_deref(), Some("false"));
+        assert!(!auto_check_enabled(&conn));
+
+        set_auto_check(&conn, true).unwrap();
+        assert_eq!(
+            store::get_setting(&conn, AUTO_CHECK_KEY).unwrap(),
+            None,
+            "on is the absent row a fresh install has, never the string \"true\""
+        );
+        assert!(auto_check_enabled(&conn));
+
+        // Idempotent both ways: the card can fire the same value twice (a double
+        // click, a stale query) and neither direction may error.
+        set_auto_check(&conn, true).unwrap();
+        set_auto_check(&conn, false).unwrap();
+        set_auto_check(&conn, false).unwrap();
         assert!(!auto_check_enabled(&conn));
     }
 

@@ -1240,6 +1240,7 @@ pub fn run() {
             commands::app_update::app_update_apply,
             commands::app_update::app_update_readiness,
             commands::app_update::app_update_skip,
+            commands::app_update::app_update_set_auto_check,
             commands::php::php_update_apply,
             commands::database::adminer_status,
             commands::database::adminer_set_theme,

@@ -188,3 +188,19 @@ pub fn app_update_skip(
     core::app_update::set_skipped(&conn, version.as_deref())?;
     Ok(core::app_update::state(&conn))
 }
+
+/// Turn automatic checking on or off, and answer with the state that follows.
+///
+/// The setting is honoured in `lib.rs` BEFORE any network call — both at launch
+/// and in the poller — so turning this off stops the requests themselves, not
+/// merely the card. Checking by hand keeps working, because a person asking is
+/// not the thing this switch is about.
+#[tauri::command]
+pub fn app_update_set_auto_check(
+    state: State<'_, AppState>,
+    enabled: bool,
+) -> Result<core::app_update::AppUpdateState> {
+    let conn = lock(&state)?;
+    core::app_update::set_auto_check(&conn, enabled)?;
+    Ok(core::app_update::state(&conn))
+}

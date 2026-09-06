@@ -4,9 +4,11 @@ import {
   appUpdateApply,
   appUpdateCheck,
   appUpdateReadiness,
+  appUpdateSetAutoCheck,
   appUpdateSkip,
   appUpdateState,
 } from "@/lib/ipc";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toastBackendError } from "@/lib/toast";
 import { agoLabel } from "@/routes/Sites";
 import { fmtBytes, pctOf, Track } from "@/components/shell/DownloadPanel";
@@ -66,6 +68,12 @@ export function AppUpdateCard({ downloads }: { downloads: DownloadsSnapshot }) {
     },
   });
 
+  const autoCheck = useMutation({
+    mutationFn: appUpdateSetAutoCheck,
+    onSuccess: (fresh) => qc.setQueryData(["app-update"], fresh),
+    onError: (e) => toastBackendError(e),
+  });
+
   const skip = useMutation({
     mutationFn: appUpdateSkip,
     onSuccess: (fresh) => qc.setQueryData(["app-update"], fresh),
@@ -112,6 +120,7 @@ export function AppUpdateCard({ downloads }: { downloads: DownloadsSnapshot }) {
       data-checked-at={st.checkedAt ?? ""}
       data-skipped={st.skipped ?? ""}
       data-phase={phase}
+      data-auto-check={String(st.autoCheck)}
     >
       <div className="flex items-center gap-[14px] border-b border-rex-border-subtle py-[15px] last:border-b-0">
         <div className="flex-1">
@@ -218,6 +227,26 @@ export function AppUpdateCard({ downloads }: { downloads: DownloadsSnapshot }) {
           )}
         </div>
       )}
+
+      {/* The switch that stops the REQUESTS, not just this card — the setting is
+          read in Rust before any network call. It sits beside the footer that
+          reports the last check, because "when did it last look" and "may it
+          look" are the same question asked twice. */}
+      <div className="flex items-start gap-[10px] border-t border-rex-border-subtle py-[13px] text-[0.75rem] leading-[1.5] text-rex-text-muted">
+        <span className="mt-[1px]">
+          <Checkbox
+            id="app-update-auto"
+            checked={st.autoCheck}
+            onCheckedChange={(v) => autoCheck.mutate(v)}
+          />
+        </span>
+        <label htmlFor="app-update-auto" className="flex-1 cursor-pointer">
+          Check for new releases automatically.{" "}
+          {st.autoCheck
+            ? "rexenv asks GitHub every few hours and on launch. Nothing installs without you."
+            : "Turned off — rexenv contacts nothing on its own. \u201cCheck now\u201d still works."}
+        </label>
+      </div>
 
       <div className="border-t border-rex-border-subtle py-[13px] text-[0.75rem] leading-[1.5] text-rex-text-muted">
         {footer}

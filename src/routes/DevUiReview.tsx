@@ -948,6 +948,11 @@ export function DevUiReview() {
               return { ...base, offered: offer };
             case "skipped":
               return { ...base, offered: offer, skipped: "0.6.0" };
+            // Automatic checking OFF, so the L2 sees the sentence that only
+            // renders in that state — and can bind it to `data-auto-check`
+            // rather than to a switch that is always drawn the same way.
+            case "auto-off":
+              return { ...base, autoCheck: false };
             case "dark":
               return { ...base, enabled: false };
             default:

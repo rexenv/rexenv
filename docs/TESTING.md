@@ -604,11 +604,15 @@ it can:
 **The app-update card's states live in `uireview.js`, not a file of their own** (T6). The
 plan proposed `appupdate.js`; the closest precedent — the Adminer version card, the other
 control in this app that installs bytes the build did not ship with — is a set of scenarios
-in the review sweep, and following it keeps one harness rather than two. Six states at both
+in the review sweep, and following it keeps one harness rather than two. Seven states at both
 widths, with one probe that re-navigates through all of them: the states only mean anything
 against each other, and the ones that must be right (never checked, checked-and-nothing,
 refused) are exactly the ones nobody looks at. Plant-proven by rendering the Install button
 in every state, which fails the skipped and refused legs.
+The seventh (`auto-off`, 7 Sep 2026) exists because a checkbox drawn from a constant looks
+identical in a screenshot and does nothing: the probe compares the switch's checked state
+against the card's `data-auto-check` in EVERY state, and asserts the off-copy in the one
+state where the sentence changes.
 
 ### L3 — World (SMOKE-TEST.md, PUBLISH-TESTING.md — scripted manual)
 

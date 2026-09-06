@@ -99,7 +99,17 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     PUBLISH-TESTING §A0-b + §M + summary rows, INSTALL §Updating rewritten. **Owed: the
     first real `pnpm release:mac` end to end — a human gate, and the first release that
     carries a descriptor is where it runs.**
-  - [ ] T10 — the runtimes publisher + the tap's `auto_updates true` (other repos)
+  - [x] T10 — the runtimes publisher + the tap's `auto_updates true` (other repos) ✓ 7 Sep
+    2026: `rexenv/runtimes` branch `app-self-update` (`publish-app-manifest.sh` + its
+    reviewer-gated `workflow_dispatch` workflow + `rexenv/runtimes/docs/APP-MANIFEST.md`), `rexenv/homebrew-tap`
+    branch `app-self-update` (`auto_updates true`, README rewritten, `brew style` clean).
+    Both on BRANCHES; neither `main` touched, the signing workflow never run. Refusals proven
+    live: v0.5.0 has no archive and is refused with the reason; a throwaway key is refused
+    before any download. Ledger #538 (🚫 posture — the guard is in other repos). Also fixed
+    two things found on the way: both publishers now really refuse an unpinned key (`MANIFEST.md`
+    §4 had claimed that for months), and the automatic-check setting finally has a GUI toggle
+    (it was `rex config`-only while a Rust comment described "the toggle"). **Owed: merging
+    both branches — a human gate, and T11 is when the whole chain runs for real.**
   - [ ] T11 — the first real in-app update on a real Mac (0.6.0 → 0.6.1)
   - [ ] T12 — archive the plan as a design record
 

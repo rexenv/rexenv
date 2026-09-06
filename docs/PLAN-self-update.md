@@ -1,6 +1,6 @@
 # PLAN — in-app self-update: rexenv notices a published release, replaces itself, and reopens
 
-Status: **T0 measured 6 Sep 2026 — outcome O1; T1 is next.** Today the only update path is
+Status: **T0–T10 done (7 Sep 2026). T11 (the first real in-app update) and T12 (archive) remain.** Today the only update path is
 `brew upgrade --cask rexenv`; a user who installed from the dmg has no path but downloading
 the next dmg and dragging it over. This plan gives the app a signed update channel of its
 own — a check, an offer, a verified download, an atomic bundle swap and a clean reopen —
@@ -146,7 +146,7 @@ Every line here becomes a ledger row in §12 and a code comment beside the thing
 | `src-tauri/src/platform/macos/app_bundle.rs` (new) | `MacosAppBundle`: bundle facts (`statfs`/`access`/`stat`/`statvfs`, Caskroom probe, translocation and `/Volumes` path tests), staging, Info.plist read, `codesign --verify --deep --strict`, `renamex_np(RENAME_SWAP)`, leftover sweep. |
 | `src-tauri/src/platform/macos/relauncher.rs` (new) | `--relaunch-after <pid> <start-token> <bundle>`: identity check, kqueue `NOTE_EXIT`, then `open '<bundle>'`. 120 s cap. |
 | `src-tauri/src/platform/{windows,linux}/mod.rs` | `AppBundle` stubs — `todo!()`, per the standing rule. |
-| `src-tauri/src/commands/app_update.rs` (new, thin) | `app_update_state`, `app_update_check`, `app_update_apply`, `app_update_skip`, `app_update_unskip`. |
+| `src-tauri/src/commands/app_update.rs` (new, thin) | `app_update_state`, `app_update_check`, `app_update_apply`, `app_update_readiness`, `app_update_skip`, `app_update_set_auto_check`. (Shipped: one skip command taking `Option<String>`, so unskip is the same call with `None` — one writer for one key; and the readiness call the consent sentence is served from.) |
 | `src-tauri/src/main.rs` | Third pre-Tauri dispatch arm: `--relaunch-after`, beside `--dns-agent` and `--tunnel-guard`. |
 | `src-tauri/src/lib.rs` | Launch-sweep check step; 6 h poller; `finish_at_launch`; leftover sweep; relauncher spawn at `RunEvent::Exit`; tray model field; app-menu "Check for Updates…". |
 | `src-tauri/src/core/dns.rs` | The agent answers `TXT _build.rexenv-agent.rex` with `"<version> <commit>"`; `agent_build_identity(port)`. |
@@ -216,8 +216,8 @@ rulings:
 | `app_update_skipped` | A version string, compared LIVE against the offer | ReadWrite + `UNVALIDATED_BUT_SAFE` |
 | `app_update_auto_check` | Absent or junk = on; exactly `"false"` = off | ReadWrite + `UNVALIDATED_BUT_SAFE` |
 
-Commands: `app_update_state`, `app_update_check`, `app_update_apply`, `app_update_skip`,
-`app_update_unskip`. Events: `app-update`, `menu://check-updates`; download progress rides the
+Commands: `app_update_state`, `app_update_check`, `app_update_apply`,
+`app_update_readiness`, `app_update_skip`, `app_update_set_auto_check`. Events: `app-update`, `menu://check-updates`; download progress rides the
 existing `download-progress` hub snapshot (item id `rexenv-<version>`, label `rexenv <version>`).
 Tray id: `tray:update:<version>`. Argv: `--relaunch-after`. Schema stays **v44**.
 
@@ -629,8 +629,26 @@ run them.
   self-verifying, refusing a pubkey mismatch), and a dry run against v0.5.0 refuses cleanly
   because that release has no tar.gz; `rexenv/homebrew-tap` has `auto_updates true`, a rewritten
   README, and `brew style` clean. This repo's commit records both and ticks the row.
-- **Ledger:** #536 (🚫 posture).
+- **Ledger:** #538 (🚫 posture — the guard lives in two other repos, so nothing here can
+  run it; renumbered from #536, which T8 took).
 - **Depends on:** T9.
+- **Done 7 Sep 2026.** `rexenv/runtimes` branch `app-self-update`: `publish-app-manifest.sh`,
+  its `workflow_dispatch` workflow (dry-run default, `manifest-signing`, own concurrency
+  group, reads the document back through the API rather than CDN-cached raw), and
+  `rexenv/runtimes/docs/APP-MANIFEST.md`. `rexenv/homebrew-tap` branch `app-self-update`: `auto_updates true`
+  with the two consequences written down, and the README's "rexenv does not self-update …
+  don't use it" section replaced. Both on BRANCHES — neither `main` was touched and the
+  signing workflow has never run.
+  **Proven live:** the dry run against v0.5.0 refuses cleanly (that release carries no
+  `rexenv_0.5.0_universal.app.tar.gz`), a throwaway key is refused before a byte is
+  downloaded, and `brew style` is clean. The happy path stays unproven until a release
+  carries the archive — that is T11.
+  **Two things this task found that were not in the plan.** (1) `rexenv/runtimes/docs/MANIFEST.md` §4 has
+  been claiming the PHP publisher refuses a key the app does not pin; it did not. Both
+  publishers now do, checked before any download. (2) `app_update_auto_check` was honoured
+  everywhere and settable only from `rex config` — the Rust comment said "what the toggle
+  writes" about a toggle that did not exist. The card now has it, and "on" is the absent
+  row rather than the string `"true"`, so the key has one spelling of on.
 
 ### T11 — The first real in-app update on a real Mac, 0.6.0 → 0.6.1 (HUMAN GATE)
 - **Done when:** PUBLISH-TESTING §M and the SMOKE section are recorded on this Mac and on a

@@ -647,7 +647,9 @@ Live-proven end to end by `site_stop_start_check`.
   host the sweep already talks to — and a 6 h `sleep` loop covers the machine left running,
   since a menu-bar app outlives its window by design. `app_update_auto_check` is read
   BEFORE any I/O, so turning it off is a switch on the REQUEST rather than on what is done
-  with the answer, and "Check now" always works. The request carries `rexenv/<version>` and
+  with the answer, and "Check now" always works. The switch is in the card and in
+  `rex config`; "on" is the ABSENT row a fresh install has, never the string `"true"`,
+  so the key has one spelling of on rather than two for its reader to agree with by luck. The request carries `rexenv/<version>` and
   nothing else: no arch, no identifier. Every failure is a log line and an honest footer —
   `checked N ago` reads ONE stored value written only after a success, so a failed check
   keeps yesterday's timestamp instead of aging into a lie, and nothing ever says "up to

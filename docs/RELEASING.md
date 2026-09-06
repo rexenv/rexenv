@@ -250,6 +250,20 @@ rather than the practice.
 - **A release is not finished when it is published.** The descriptor in `rexenv/runtimes`
   is a second click, and until it happens no installed rexenv is offered anything.
   `scripts/check-app-manifest.sh` is what notices.
+- **The cask declares `auto_updates true`, so `brew upgrade` deliberately SKIPS rexenv.**
+  That is what stops brew and the app from installing over each other. Two consequences
+  worth knowing before someone "fixes" them: `--greedy` and `brew reinstall` still act and
+  install whatever the cask names, so either can move a user BACKWARDS until
+  `update-cask.yml` catches up (minutes); and brew now reads
+  `CFBundleShortVersionString` out of the installed app instead of its own receipt, which
+  is what makes `brew info --cask rexenv` stay honest after an in-app update.
+- **The signing key is pinned in THREE files and they must move together.**
+  `RELEASE_PUBKEY` in `src-tauri/src/core/updates.rs`, and `EXPECTED_PUBKEY` in both
+  `scripts/publish-manifest.sh` and `scripts/publish-app-manifest.sh` on `rexenv/runtimes`.
+  Both publishers refuse to sign with a key the shipped app does not pin, because a wrong
+  key signs perfectly well and publishes a document every install rejects **in silence** —
+  no error, no log, users simply stop being offered anything. Rotation order: ship an app
+  release carrying the new public half FIRST, then update the two publishers, then publish.
 - **§A0's payload list lives in the workflow now.** When something new is compiled
   into the binary, add its per-slice check to the "§A0 artefact integrity" step in
   `release.yml` (and to `docs/PUBLISH-TESTING.md` §A0) in the same commit.

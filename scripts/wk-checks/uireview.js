@@ -134,6 +134,7 @@ const SCENARIOS = [
   ["appupdate-skipped", "view=appupdate&state=skipped", []],
   ["appupdate-refused", "view=appupdate&state=refused", []],
   ["appupdate-installing", "view=appupdate&state=installing", []],
+  ["appupdate-auto-off", "view=appupdate&state=auto-off", []],
   // The themes grid labels each card with the theme's own name, the way
   // wp-admin does — and keeps the slug, because that is the folder name and
   // what `theme activate` takes. The third fixture row has no title at all.
@@ -180,6 +181,13 @@ const PROBES = {
         mustNot: ["Install rexenv"],
       },
       installing: { button: false, must: ["Downloading", "11.8 MB", "29.9 MB"], mustNot: [] },
+      // The one state where the switch's own sentence changes. Asserting the
+      // OFF copy is what makes the checkbox a control rather than decoration.
+      "auto-off": {
+        button: false,
+        must: ["Check for new releases automatically", "contacts nothing on its own"],
+        mustNot: ["asks GitHub"],
+      },
     };
     for (const [state, want] of Object.entries(states)) {
       await page.goto(`${BASE}/dev/ui-review?view=appupdate&state=${state}`);
@@ -208,8 +216,22 @@ const PROBES = {
       // The phase attribute is what the card believes it is showing; a state
       // whose copy and phase disagree is the bug this catches.
       const phase = await card.getAttribute("data-phase");
-      const expected = state === "never-checked" ? "none" : state;
+      const expected = state === "never-checked" || state === "auto-off" ? "none" : state;
       if (phase !== expected) problems.push(`${state}: data-phase is "${phase}"`);
+
+      // The auto-check switch must AGREE with the value the card is rendering
+      // from. A checkbox drawn from a constant looks identical in a screenshot
+      // and does nothing, which is the failure a picture cannot show.
+      const auto = await card.getAttribute("data-auto-check");
+      const box = await card.$("#app-update-auto");
+      if (!box) {
+        problems.push(`${state}: no automatic-check switch on the card`);
+      } else {
+        const checked = await box.isChecked();
+        if (String(checked) !== auto) {
+          problems.push(`${state}: the switch shows ${checked} while the card says ${auto}`);
+        }
+      }
     }
     return problems;
   },

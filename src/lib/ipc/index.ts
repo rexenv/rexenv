@@ -654,6 +654,13 @@ export async function appUpdateSkip(version?: string): Promise<AppUpdateState> {
   return invoke<AppUpdateState>("app_update_skip", { version: version ?? null });
 }
 
+/** Automatic checking on/off. Off stops the REQUESTS, not just the card — the
+ *  setting is read before any network call — and "Check now" still works. */
+export async function appUpdateSetAutoCheck(enabled: boolean): Promise<AppUpdateState> {
+  if (!isTauri()) return { ...mockAppUpdateState, autoCheck: enabled };
+  return invoke<AppUpdateState>("app_update_set_auto_check", { enabled });
+}
+
 /** The Adminer version row: what is staged, what will run, what is offered. */
 export async function adminerStatus(): Promise<AdminerStatus> {
   if (!isTauri()) return mockAdminerStatus;
