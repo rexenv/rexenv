@@ -135,10 +135,41 @@ real HTTPS dev stack.)
 
 ## Updating
 
-To update, quit rexenv and replace `rexenv.app` in Applications with the new
-`.dmg`'s copy (drag over, replace). Your sites, settings, and downloaded
-components are kept (they live in
+**rexenv updates itself.** When a new version is published, Settings → About offers it:
+it downloads the new build, checks its signature and checksum, replaces `rexenv.app` in
+one step, then quits and reopens on the new version. Your sites, databases and DNS keep
+running throughout — services outlive the app — while open terminals and running jobs
+close with it, exactly as they do when you quit. The menu-bar menu shows the same offer,
+and there is a "Check for Updates…" item in the rexenv menu.
+
+Two things worth knowing:
+
+- **macOS may ask again for permissions it had already granted.** rexenv has no Apple
+  developer signature yet, so every build is a new identity to the system.
+- **The version that introduced this cannot update itself to it.** The first in-app
+  update is from the release AFTER it; before that, use the manual path below.
+
+If rexenv cannot replace itself it says why and does not offer the button — for example
+when it is running from the disk image rather than from Applications, or when
+`/Applications` belongs to another account. Each of those comes with the command that
+fixes it.
+
+**Updating by hand** still works and is the fallback: quit rexenv and replace
+`rexenv.app` in Applications with the new `.dmg`'s copy (drag over, replace). Your sites,
+settings, and downloaded components are kept either way (they live in
 `~/Library/Application Support/dev.rexenv.rexenv/`).
+
+**If rexenv will not open after an update**, the copy it replaced is still on disk:
+
+```sh
+mv /Applications/rexenv.app ~/Desktop/rexenv-broken.app
+mv /Applications/.rexenv-update-*/rexenv.app /Applications/rexenv.app
+```
+
+**Installed with Homebrew?** `brew upgrade --cask rexenv` still works, and brew reads the
+app's own version afterwards, so a self-updated copy is not downgraded by a plain
+`brew upgrade`. `brew upgrade --greedy` and `brew reinstall` DO reinstall the cask's
+version over a newer one.
 
 ## Uninstalling — do the in-app step FIRST
 

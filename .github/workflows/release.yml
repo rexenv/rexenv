@@ -37,22 +37,14 @@ jobs:
 
       # ── One version, everywhere. A tag that disagrees with the configs would
       #    ship a dmg whose filename and cask URL never match — fail loudly first.
+      #
+      #    The check itself lives in `scripts/check-versions.sh`, not here: this
+      #    workflow does not run while the repo is private, so for every release
+      #    so far the guard has been in the one place that never executed. The
+      #    local build now runs the same script, and one implementation cannot
+      #    drift from the other.
       - name: Check the tag matches every declared version
-        run: |
-          set -euo pipefail
-          V="${TAG#v}"
-          for f in \
-            "$(jq -r .version src-tauri/tauri.conf.json)" \
-            "$(jq -r .version package.json)" \
-            "$(sed -n 's/^version = "\(.*\)"/\1/p' src-tauri/Cargo.toml | head -1)" \
-            "$(sed -n 's/^version = "\(.*\)"/\1/p' cli/Cargo.toml | head -1)"; do
-            if [ "$f" != "$V" ]; then
-              echo "::error::Version mismatch: tag says $V but a manifest says $f" >&2
-              echo "  tauri.conf.json / package.json / src-tauri/Cargo.toml / cli/Cargo.toml must all be $V" >&2
-              exit 1
-            fi
-          done
-          echo "version check: everything agrees on $V"
+        run: ./scripts/check-versions.sh "${TAG#v}"
 
       - name: Create and push the tag (dispatch path only)
         if: github.event_name == 'workflow_dispatch'
@@ -133,6 +125,13 @@ jobs:
           codesign --verify --deep --strict "$APP"
           echo "§A0: all green"
 
+      # ── The update archive, and §A0 re-run on the bundle that comes back OUT
+      #    of it. `pnpm release:mac` already ran this (release-mac.sh calls it),
+      #    so this step is a no-op that fails loudly if the build did not — one
+      #    implementation, checked from both entry points.
+      - name: Update archive + §A0 on the extracted bundle
+        run: ./scripts/release-assets.sh --check
+
       - name: Draft the release with the dmg attached
         env:
           GH_TOKEN: ${{ github.token }}
@@ -142,11 +141,17 @@ jobs:
           DMG="src-tauri/target/universal-apple-darwin/release/bundle/dmg/rexenv_${V}_universal.dmg"
           shasum -a 256 "$DMG" | awk '{print $1 "  rexenv_'"$V"'_universal.dmg"}' > "rexenv_${V}_universal.dmg.sha256"
           cat "rexenv_${V}_universal.dmg.sha256"
+          # The update archive rides along: an in-app update downloads a
+          # BUNDLE, not a dmg. Its name must never end in `_universal.dmg` —
+          # the tap's update-cask.yml selects the cask's asset by that suffix
+          # and would hash whichever it found first.
+          TAR="src-tauri/target/universal-apple-darwin/release/bundle/macos/rexenv_${V}_universal.app.tar.gz"
           gh release create "$TAG" \
             --draft \
             --verify-tag \
             --title "rexenv $V" \
             --generate-notes \
-            --notes "> ⚠️ Draft until docs/PUBLISH-TESTING.md §A (Apple-Silicon launch gate) passes on this exact dmg. Publishing this release auto-updates the Homebrew cask in rexenv/homebrew-tap." \
-            "$DMG" "rexenv_${V}_universal.dmg.sha256"
+            --notes "> ⚠️ Draft until docs/PUBLISH-TESTING.md §A (Apple-Silicon launch gate) passes on this exact dmg. Publishing this release auto-updates the Homebrew cask in rexenv/homebrew-tap, and is the gate that makes the update archive reachable — a draft's assets 404 for everyone." \
+            "$DMG" "rexenv_${V}_universal.dmg.sha256" \
+            "$TAR" "$TAR.sha256"
           echo "draft release $TAG created — run §A on the attached dmg, then publish it"

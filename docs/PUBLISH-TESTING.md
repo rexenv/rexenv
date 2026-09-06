@@ -82,6 +82,27 @@ count in **each** slice separately. A zero on either side is a HOLD — do not r
 is only as complete as its list of payloads, and a payload nobody added is the
 one that ships in one slice.
 
+### A0-b) The UPDATE archive, and §A0 on what comes back out of it
+
+*Added 6 Sep 2026 with in-app self-update. Scripted — `scripts/release-assets.sh` runs it
+as part of `pnpm release:mac`, and `release.yml` re-runs it with `--check`. It is written
+down here because the reason is not obvious from the script.*
+
+§A0 above checks the `.app` that `tauri build` produced. **That is not what a self-updating
+user receives**: they receive whatever comes back out of `rexenv_<V>_universal.app.tar.gz`.
+Checking one artefact and shipping another is the same gap the cask closes by hashing the
+DOWNLOADED asset rather than the local build.
+
+So the script asserts, on the EXTRACTED bundle: both binaries universal, `Dist_Archive_Command`
+per slice, the update public key per slice (a build whose Intel half cannot verify a
+descriptor silently never updates on Intel), `codesign --verify --deep --strict`, and the
+Info.plist version equal to the release. Plus the archive's own layout — exactly one
+top-level `rexenv.app/` entry and no AppleDouble `._` members, because the in-app extractor
+strips exactly one component and both other shapes produce a broken install.
+
+If it fails, do not publish: the dmg would install fine and every in-app update from it
+would break.
+
 ## A) ✅ 0.5.0 — PUBLISHED (§A0 ✅ measured · §A ✅ asserted · SMOKE-TEST ✅ asserted, no contemporaneous record)
 
 `rexenv_0.5.0_universal.dmg`, sha256
@@ -1131,6 +1152,8 @@ Result: ____ (date, reqwest version).
 | A0 | Artefact integrity, per slice — **0.4.0 `a7aecee7…`** | ✅ passed 27 Aug 2026 (by hand; CI does not run while the repo is private). **0.3.0 `381952fa…` ✅ too, run 31 Aug on the SHIPPED bytes** — downloaded, mounted, checked in place |
 | A | Apple-Silicon ad-hoc launch (de-quarantine → launches) — **on the 0.4.0 dmg `a7aecee7…`** | ✅ **passed 27 Aug 2026**, with `docs/SMOKE-TEST.md` (row S) on the same bytes; publishing was the sign-off. **0.4.0 published 16:37Z; cask bumped 17:43Z and the anonymous download four-way-matched 30 Aug.** 0.3.0's launch half is CLOSED BY RULING (superseded artefact; §A-prev has the reasoning and what it costs), with Gatekeeper's own `spctl` rejection recorded on its shipped bytes |
 | S | `docs/SMOKE-TEST.md` end-to-end on a clean Mac from the built dmg — **the OTHER half of the gate, and it had no row here until 30 Aug 2026** | ✅ passed 27 Aug 2026 on 0.4.0 `a7aecee7…`. Re-run per release: it is the only place the packaged app proves its own flows |
+| A0-b | The UPDATE archive + §A0 on the bundle EXTRACTED from it | ✅ scripted (`scripts/release-assets.sh`, run by `pnpm release:mac` and re-checked in CI). **Green on the existing 0.5.0 build 6 Sep 2026** — the layout guard is plant-proven (a `./`-prefixed archive is refused) |
+| M | **In-app self-update on a real Mac** (0.6.0 → 0.6.1) | 🚧 **publish-blocking from the first release that carries a descriptor.** The apply, the swap, the relaunch, Gatekeeper and App Management on the replaced bundle, the DNS agent's pid changing, and `brew upgrade` doing nothing afterwards. Steps in `docs/SMOKE-TEST.md` §In-app self-update; the swap itself was measured once by `scripts/probes/app-swap-probe.sh` (`docs/PLAN-self-update.md` §T0) |
 | B | Uninstall removes the root :443 daemon | 🚧 do when convenient (tears down your edge) |
 | C | B31 CSP packaged smoke test | ✅ done |
 | D | Full tap install dry-run (after Release + tap push) | 🚧 **`--zap` ONLY** — the install half passed 12 Aug 2026 and the cask has bumped cleanly through 0.1.1 / 0.2.0 / 0.3.0 / 0.4.0 since. The trigger used to read "do once the dmg is released", an event that happened four releases ago |

@@ -90,7 +90,15 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     `every_field_the_status_arm_emits_is_rendered_by_rex_status` binds the two ends a crate
     apart (plant-proven). Owed: a `cli_socket_check` run once the app is next restarted —
     a running OLD app answers without the field, which is expected skew, not a bug.
-  - [ ] T9 — release flow: the tar.gz asset, the version guard, §A0, and the WRONG docs
+  - [x] T9 — release flow: the tar.gz asset, the version guard, §A0, and the WRONG docs
+    ✓ 6 Sep 2026 — ledger #537; `check-versions.sh` (the guard CI has and never ran here —
+    plant-proven), `release-assets.sh` (archive + layout asserts + §A0 on the EXTRACTED
+    bundle, green against the real 0.5.0 build, layout guard plant-proven),
+    `check-app-manifest.sh` (openssl verification proven against a locally-signed fixture);
+    `release.yml` mirrors both. RELEASING steps 1/3/4/5 rewritten and 7/8 added,
+    PUBLISH-TESTING §A0-b + §M + summary rows, INSTALL §Updating rewritten. **Owed: the
+    first real `pnpm release:mac` end to end — a human gate, and the first release that
+    carries a descriptor is where it runs.**
   - [ ] T10 — the runtimes publisher + the tap's `auto_updates true` (other repos)
   - [ ] T11 — the first real in-app update on a real Mac (0.6.0 → 0.6.1)
   - [ ] T12 — archive the plan as a design record
@@ -464,6 +472,11 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   the cask's `verified:` was the third, dropped when brew 6.0.22 deprecated it. Then CI's
   `release.yml` resumes owning the build, and `docs/RELEASING.md`'s interim section
   is deleted rather than left as a second, wrong set of instructions.
+  **The self-update descriptor does NOT move with them** (6 Sep 2026): its URL is compiled
+  into every shipped build, which is exactly why it is a committed file on
+  `rexenv/runtimes` and not a release asset — moving it would strand every copy already
+  installed. What moves is one `TAP_REPO` variable in the runtimes publisher, and the
+  descriptor's `url` field, which is signed data rather than a constant.
 - [ ] **The self-update swap probe (T0) and the first real in-app update (T11)** —
   `docs/PLAN-self-update.md` §6.5 and §13. Both need a human at a real Mac: T0
   measures whether an ad-hoc bundle may rename itself under App Management (nothing

@@ -16,9 +16,11 @@ git push origin v<X.Y.Z>            (or: Actions → "Release" → Run workflow)
         │  version guard: tag == tauri.conf.json == package.json == both Cargo.tomls
         │  scripts/verify.sh (the bar — lib tests + examples + clippy + tsc)
         │  pnpm release:mac   → rexenv_<X.Y.Z>_universal.dmg
-        │  §A0 artefact integrity (per-slice payloads, lipo, codesign) — automated
+        │                     + rexenv_<X.Y.Z>_universal.app.tar.gz (the in-app update)
+        │  §A0 artefact integrity (per-slice payloads, lipo, codesign) — automated,
+        │                     on the .app AND on the bundle extracted from the archive
         ▼
-   DRAFT GitHub Release  ·  dmg + .sha256 attached
+   DRAFT GitHub Release  ·  dmg + tar.gz + both .sha256 attached
         │
         │  ← THE HUMAN GATE: download the dmg, run PUBLISH-TESTING §A
         │    (quarantine → Gatekeeper blocks → xattr -rd → launches).
@@ -95,7 +97,9 @@ The public half is compiled into `core/updates.rs`, so **rotation is an app
 release** — which is the property that makes a stolen key survivable. Ledger
 #348/#350.
 
-1. Bump the version in all four manifests as in step 1 below, and commit.
+1. Bump the version in all four manifests as in step 1 below, and commit, then
+   `./scripts/check-versions.sh` — the guard CI has (and, while this repo is private,
+   never runs). Five releases were cut with nothing checking this.
 2. `./scripts/verify.sh` — the bar, same as in CI. Green verdict = its own
    `verify: all green` line.
 3. `pnpm release:mac` → `src-tauri/target/universal-apple-darwin/release/bundle/dmg/rexenv_<X.Y.Z>_universal.dmg`.
@@ -110,17 +114,31 @@ release** — which is the property that makes a stolen key survivable. Ledger
    runtimes mounted). The previous finished `.dmg` is deliberately NOT deleted, only
    warned about: a build that fails after we removed it would leave you with
    neither, and §A0's "exactly one dmg" check is what the warning is for.
-4. Run `docs/PUBLISH-TESTING.md` **§A0 by hand** — CI normally does it (the per-slice
-   `lipo`/`strings`/`codesign` checks in `release.yml`'s "§A0 artefact integrity" step
-   are the script; copy them). Then **§A**, which was always human-only.
+   **After the build it runs `scripts/release-assets.sh`**, which writes
+   `rexenv_<X.Y.Z>_universal.app.tar.gz` + its `.sha256` — what an in-app update
+   downloads, since a self-update replaces a DIRECTORY and cannot use a dmg — asserts
+   the archive's layout (exactly one top-level `rexenv.app/`, no AppleDouble members;
+   both shapes break the in-app extractor), and re-runs §A0 **on the bundle that comes
+   back out of the archive**, which is the copy an updating user actually receives.
+   Checking the artefact and shipping a different one is the gap that closes.
+4. Run `docs/PUBLISH-TESTING.md` **§A0 by hand** for the .app and the dmg — CI normally
+   does it (the per-slice `lipo`/`strings`/`codesign` checks in `release.yml`'s "§A0
+   artefact integrity" step are the script; copy them). The EXTRACTED-bundle half of §A0
+   already ran in step 3. Then **§A**, which was always human-only.
 5. Release it, draft-first — publishing IS the §A sign-off, that rule does not relax:
    ```sh
    V=<X.Y.Z>
    DMG=src-tauri/target/universal-apple-darwin/release/bundle/dmg/rexenv_${V}_universal.dmg
    shasum -a 256 "$DMG" | awk '{print $1 "  rexenv_'"$V"'_universal.dmg"}' > "rexenv_${V}_universal.dmg.sha256"
+   TAR=src-tauri/target/universal-apple-darwin/release/bundle/macos/rexenv_${V}_universal.app.tar.gz
    gh release create "v$V" --repo rexenv/homebrew-tap --draft \
-     --title "rexenv $V" "$DMG" "rexenv_${V}_universal.dmg.sha256"
+     --title "rexenv $V" "$DMG" "rexenv_${V}_universal.dmg.sha256" \
+     "$TAR" "$TAR.sha256"
    ```
+   (`release-assets.sh` prints this exact line with the paths filled in.) **The new
+   assets must never end in `_universal.dmg`**: the tap's `update-cask.yml` selects the
+   cask's asset by that suffix and `head -1`, so a second match would silently hash the
+   wrong file into the cask.
    **If the create is interrupted while the dmg is uploading, delete the half-asset
    before retrying** (27 Aug 2026, 0.4.0): the draft is created first and the 26 MB
    upload follows, so a killed command leaves an asset in state `starter` holding the
@@ -146,11 +164,27 @@ release** — which is the property that makes a stolen key survivable. Ledger
    and the piped-verdict rule proved that a rule relying on memory is not a control —
    it was walked into by the person who wrote it, in the session he wrote it.
 6. Publish the tap release → **Update cask** picks it up (≤15 min, or Run workflow).
+   Publishing is also what makes the update archive reachable at all: a draft's assets
+   answer 404 for everyone, so the §A gate protects in-app updaters for free.
+7. **`rexenv/runtimes` → Actions → "Publish app update manifest"** — dry run first, then
+   for real. It reads the tap's `releases/latest` (so it can never name a draft or a
+   prerelease), takes the archive's immutable API digest, re-hashes what it downloaded,
+   increments its own serial, signs with the reviewer-gated key and commits
+   `app-manifest.json` + `.sig`. **Until this runs, no installed rexenv is offered
+   anything** — the dmg is downloadable, the cask is bumped, the website is updated, and
+   the feature that just shipped is off. That is the whole reason step 8 exists.
+8. `./scripts/check-app-manifest.sh` — verifies the published descriptor against the key
+   compiled into THIS tree, warns when the tap is ahead of it (the forgotten step 7), and
+   compares the descriptor's sha256 to the published asset's digest.
 
 ### Going public later — two things flip in one commit
 
 The cask's `url` and `SOURCE_REPO` in `update-cask.yml` must name the same repo; the
-workflow greps the url for `SOURCE_REPO` and fails loudly if they drift. (This said
+workflow greps the url for `SOURCE_REPO` and fails loudly if they drift.
+**The self-update descriptor does NOT move with them**: it is a committed file on
+`rexenv/runtimes`, whose URL is compiled into every shipped build and therefore must never
+change — that is why it was not made a release asset. What does move is the descriptor's
+`url` FIELD, which is signed data, and one `TAP_REPO` variable in the runtimes publisher. (This said
 "three things" until 5 Sep 2026: the cask's `verified:` was the third, dropped when
 brew 6.0.22 deprecated the parameter for its default URL verification.)
 Move both back to `rexenv/rexenv`, delete the interim releases from the tap (or
@@ -207,7 +241,15 @@ rather than the practice.
 - **The cask hash comes from the published asset.** `update-cask.yml` downloads what
   users will download and hashes that. Hand-editing the cask from a local build's
   hash reintroduces the exact staleness bug the old staging copy had.
-- **Prereleases don't touch the tap** (`if: !prerelease`) — the cask tracks stable.
+- **Prereleases don't touch the tap** (`if: !prerelease`) — the cask tracks stable, and
+  the update descriptor refuses a non-three-segment version outright, so a prerelease can
+  never be offered in-app either.
+- **No release asset may end in `_universal.dmg` except the dmg.** `update-cask.yml`
+  selects by that suffix with `head -1`; a second match would hash the wrong file into
+  the cask, and every user's `brew install` would fail its checksum.
+- **A release is not finished when it is published.** The descriptor in `rexenv/runtimes`
+  is a second click, and until it happens no installed rexenv is offered anything.
+  `scripts/check-app-manifest.sh` is what notices.
 - **§A0's payload list lives in the workflow now.** When something new is compiled
   into the binary, add its per-slice check to the "§A0 artefact integrity" step in
   `release.yml` (and to `docs/PUBLISH-TESTING.md` §A0) in the same commit.
