@@ -374,7 +374,7 @@ The spine the design was derived from. "core" = `core/app_update.rs` (OS-free), 
 | R13 | Replay of an old signed descriptor | Monotonic serial; version strictly newer; three numeric segments; no prerelease | core | L0 |
 | R14 | Compromised signing key | Not defensible in-app: custody, the click, rotation-by-release | — | 🚫 posture |
 | R15 | Relaunch race with the socket lock; dead stdio | Helper spawned at `Exit`, waits `NOTE_EXIT` + start-token, then `open` | plat + main.rs | L1 sandbox; L3 for `open` |
-| R16 | Live shares, in-flight jobs, terminals, in-process DNS | Shares and jobs **refuse** by name; terminals and in-process DNS **warn** in the consent sentence | commands + core | L0; L2; L3 |
+| R16 | Live shares, in-flight jobs, terminals, in-process DNS | **Changed in T4, and the reason is worth keeping**: an update IS a quit, so it refuses exactly what a quit refuses — live shares, through the SAME confirm the quit gate raises, not a second check. Refusing on jobs would be stricter than Cmd+Q for an identical consequence, which is a rule a user cannot predict; the consent sentence says instead that terminals and running jobs close with it | the quit gate (#436) + the consent sentence | L0 sentence; L3 |
 | R17 | Stale DNS agent after any replacement | The agent's TXT build identity, checked at launch (§6.4) | core/dns + plat | L0; L1 sandbox; L3 |
 | R18 | `--hidden` inherited into a clicked relaunch | The helper never passes `--hidden`; `first_window_decision` still applies at login | plat | L0 argv; L3 |
 | R19 | Dishonest vocabulary | "Update to X (NN MB)" only from a verified offer; "checked N ago" only after a success; a sibling copy guard over the card file | core + copy_scan | L0 |

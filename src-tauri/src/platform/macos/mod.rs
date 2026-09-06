@@ -7,6 +7,7 @@
 
 pub mod activation;
 pub mod app_bundle;
+pub mod relauncher;
 pub mod parent_death_guard;
 pub mod webview_dialogs;
 

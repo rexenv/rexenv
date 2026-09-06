@@ -670,6 +670,14 @@ staged and swapped (T3, sandbox tier), or that a real Mac lets it happen (T0/T11
   machines is a leg nobody can rely on. Never touches the real `/Applications`. Does NOT
   cover the swap against the real bundle (T0's probe, then SMOKE) or the relaunch (T4).
   Ledger #525–#528.
+- `app_relaunch_check` (sandbox) — the ORDERING that makes a self-update safe: the helper
+  opens the new bundle only after the process that swapped it is gone. No unit test can see
+  it (it needs two real processes, a real pid and the kernel's own exit notification), and
+  it is exactly the race `AppHandle::restart` creates against the single-instance socket
+  (#441). Runs the REAL app binary in relauncher mode and refuses a stale one, because
+  `cargo run --example` does not rebuild it — the failure `tunnel_parent_death_check`
+  records, where both plants came back green against yesterday's build. **Plant-proven**:
+  deleting the wait makes the ordering leg fail. Ledger #531.
 - `app_update_check` (network) — the app's OWN update descriptor, fetched from where it is
   published and verified against the key compiled into the running binary: the half a
   user's "Check now" runs, where a publisher signing with a rotated key, or a document

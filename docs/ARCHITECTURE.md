@@ -654,8 +654,21 @@ Live-proven end to end by `site_stop_start_check`.
   classified by the version INSIDE them rather than by a marker, so a crash between the
   swap and any write cannot mislead the sweep. **No path here is privileged**: an
   unwritable folder, a translocated or `/Volumes` launch, a symlinked path or a foreign
-  owner is a refusal that names the consequence and carries a copy-paste fix. The relaunch
-  and the install button are T4/T6; ledger #517–#528.
+  owner is a refusal that names the consequence and carries a copy-paste fix.
+  **The relaunch** (T4) is a QUIT: `app_update_apply` ends in `app.exit(0)`, so
+  `ExitRequested` runs the same live-share confirm every other quit passes through, and
+  `RunEvent::Exit` — reached only once that gate agreed — spawns a detached helper
+  (`--relaunch-after <pid> <token> <bundle>`, the self-exec shape the DNS agent and tunnel
+  guard already use). The helper waits on kqueue `NOTE_EXIT` for THAT pid, identity-checked
+  by its start token, then `open`s the bundle PATH. `AppHandle::restart` is never called: it
+  skips the gate on the main thread, can be cancelled off it (leaving every later quit a
+  silent relaunch), and spawns the child before exiting — which races the single-instance
+  socket. Waiting removes that race instead of arguing about it. An apply does NOT refuse a
+  busy app, deliberately: an update IS a quit, and refusing here would be stricter than
+  Cmd+Q for an identical consequence — the consent sentence says instead that terminals and
+  jobs close with it. At the next launch `finish_at_launch` reports the version the new
+  process reads from ITSELF, sweeps the leftovers, and only then deletes the previous
+  bundle. Ledger #517–#532.
 - **ADMINER is the SECOND family in that manifest**, and the limits are per family
   (`updates::Family`). Its grant is strictly below PHP's — `Shape::File` →
   `resolve_file`, no chmod, no codesign, never spawned, interpreted by an already-running

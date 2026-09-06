@@ -699,6 +699,28 @@ export interface AppUpdateState {
   skipped: string | null;
 }
 
+/** What an apply actually did — measured by the backend, never inferred.
+ *
+ *  `swapped` and the relaunch are separate claims: the relaunch happens after
+ *  the call returns, through the quit gate, and the gate may say no. */
+export interface AppUpdateOutcome {
+  swapped: boolean;
+  version: string;
+}
+
+/** Whether this installation can take the offered update, and the sentence
+ *  shown above the button.
+ *
+ *  Both come from Rust: a consent sentence copied into the TSX is a copy that
+ *  drifts from the rule it describes. */
+export interface AppUpdateReadiness {
+  /** `null` when the update can be installed; otherwise why it cannot, with a
+   *  copy-paste fix on the last line where one exists. */
+  refusal: string | null;
+  consent: string;
+  homebrew: boolean;
+}
+
 /** Which group a service belongs to on the Services screen. */
 export type ServiceKind = "php" | "database" | "mail" | "web";
 

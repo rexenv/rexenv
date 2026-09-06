@@ -171,6 +171,9 @@ export const mockAppUpdateState: AppUpdateState = {
   skipped: null,
 };
 
+/** Nothing offered in the browser mock, so nothing to be ready for. */
+export const mockAppUpdateReadiness = null;
+
 /** Whitelisted keys + PHP compiled defaults (mirrors core::php::SETTINGS). */
 export const mockPhpSettings: PhpSetting[] = [
   { key: "memory_limit", value: null, default: "128M" },

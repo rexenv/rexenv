@@ -29,6 +29,8 @@ pub use macos::webview_dialogs::install_js_dialog_panels;
 /// outside `platform/` may name a concrete OS type.
 #[cfg(target_os = "macos")]
 pub use macos::parent_death_guard::run as run_tunnel_guard;
+#[cfg(target_os = "macos")]
+pub use macos::relauncher::run as run_relauncher;
 
 /// A process's start-time token — the guard's second identity for its parent.
 /// Re-exported for the live check that spawns guards by hand.

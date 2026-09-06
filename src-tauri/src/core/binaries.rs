@@ -2413,7 +2413,7 @@ pub async fn http_get(url: &str) -> Result<Vec<u8>> {
 /// `checksum` is given (verification costs no extra read) and reporting byte
 /// progress into the download hub under `item`. The whole body never sits in
 /// memory — peak RAM is one chunk. On any failure `dest` is removed.
-async fn download(
+pub(crate) async fn download(
     url: &str,
     dest: &Path,
     checksum: Option<&Checksum>,

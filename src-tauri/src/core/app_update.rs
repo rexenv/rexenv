@@ -57,6 +57,7 @@ use crate::error::{Error, Result};
 use crate::state::store;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 
 /// Where the descriptor lives: two files on `rexenv/runtimes`' default branch,
 /// the same repo and the same shape as the PHP manifest.
@@ -661,6 +662,219 @@ pub fn state(conn: &Connection) -> AppUpdateState {
     }
 }
 
+/// The flag that turns this binary into the detached relauncher.
+///
+/// A cross-version contract: the OLD app spawns it after the swap, so the copy
+/// that runs it is the one being replaced. Renaming it would mean the version
+/// being replaced cannot start the version replacing it.
+pub const RELAUNCH_FLAG: &str = "--relaunch-after";
+
+/// What the relauncher needs, parsed here so the parsing is OS-free and testable.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RelaunchArgs {
+    /// The pid to wait for — the process doing the swap.
+    pub parent: u32,
+    /// That pid's start token. A pid the kernel recycled between the spawn and
+    /// the wait wears a different one, and the helper treats a mismatch as
+    /// "already gone" rather than waiting on a stranger — the same registration
+    /// gap the tunnel guard closes the same way.
+    pub parent_start: String,
+    /// The bundle to open. A PATH, never a bundle id: the previous copy is
+    /// still on disk in the staging directory at that moment, and `open -b`
+    /// would be free to choose it.
+    pub bundle: PathBuf,
+}
+
+/// `["…", "--relaunch-after", "<pid>", "<token>", "<bundle>"]` → args.
+pub fn parse_relaunch_args(argv: &[String]) -> Option<RelaunchArgs> {
+    let at = argv.iter().position(|a| a == RELAUNCH_FLAG)?;
+    let parent = argv.get(at + 1)?.parse().ok()?;
+    let parent_start = argv.get(at + 2)?.clone();
+    let bundle = PathBuf::from(argv.get(at + 3)?);
+    if parent == 0 || parent_start.is_empty() || bundle.as_os_str().is_empty() {
+        return None;
+    }
+    Some(RelaunchArgs { parent, parent_start, bundle })
+}
+
+/// What the process that swapped the bundle leaves behind for the NEXT one.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateNotice {
+    pub from: String,
+    pub to: String,
+    pub at: String,
+}
+
+/// The sentence shown ABOVE the button, served from here so there is ONE source
+/// for it.
+///
+/// A consent sentence copied into the TSX is a copy that drifts from the rule it
+/// describes — this project has a guard about exactly that. It names what will
+/// happen in the order it happens, including the part users care about most:
+/// their sites keep serving, because services outlive the app.
+pub fn consent_sentence(offer: &Offer, homebrew: bool) -> String {
+    let mb = (offer.size_bytes as f64 / 1_000_000.0).round() as u64;
+    let mut s = format!(
+        "Downloads rexenv {} ({mb} MB), checks its signature and checksum, replaces \
+         rexenv.app in one step, then quits and reopens on {}. Your sites, databases and \
+         DNS keep running throughout — services outlive the app. Open terminals and \
+         running jobs close with it, exactly as they do when you quit.",
+        offer.version, offer.version
+    );
+    if homebrew {
+        s.push_str(
+            " Installed with Homebrew — `brew upgrade --cask rexenv` also works, and brew \
+             sees this version afterwards.",
+        );
+    }
+    // Ad-hoc signing means every build has a new identity, so anything macOS
+    // granted THIS copy is asked again. Saying it before the click is the
+    // difference between a surprise and a decision.
+    s.push_str(
+        " macOS may ask again for permissions it had granted this copy: rexenv has no \
+         Apple developer signature yet, so each build is a new identity to it.",
+    );
+    s
+}
+
+/// Where a downloaded artifact is kept: per-version, under app data, so a
+/// resumed download finds its own partial and two versions never collide.
+pub fn artifact_path(platform: &dyn crate::platform::traits::Platform, offer: &Offer) -> Result<PathBuf> {
+    let dir = platform.paths().app_data_dir()?.join("updates").join(&offer.version);
+    std::fs::create_dir_all(&dir)?;
+    let name = offer.url.rsplit('/').next().unwrap_or("rexenv.app.tar.gz");
+    Ok(dir.join(name))
+}
+
+/// Download the artifact the signed descriptor names, verifying its digest as
+/// the bytes arrive.
+///
+/// Reports into the ONE download hub, so the footer indicator and the download
+/// panel show it with no new UI — and `retry_download` can resume it, which is
+/// why the item name is the app's own.
+pub async fn download_artifact(
+    platform: &dyn crate::platform::traits::Platform,
+    offer: &Offer,
+) -> Result<PathBuf> {
+    let dest = artifact_path(platform, offer)?;
+    let id = crate::core::downloads::item_id("rexenv", &offer.version);
+    crate::core::downloads::hub().item_started("rexenv", &offer.version);
+    let sum = crate::core::binaries::Checksum::Sha256(offer.sha256.clone());
+    match crate::core::binaries::download(&offer.url, &dest, Some(&sum), Some(&id)).await {
+        Ok(()) => {
+            // `item_done` is the DOWNLOAD's end, not the update's — the stage
+            // and swap that follow are fast and local, and a bar that sat at
+            // 100% through them would be claiming work it was not doing.
+            crate::core::downloads::hub().item_done(&id);
+            Ok(dest)
+        }
+        Err(e) => {
+            crate::core::downloads::hub().item_failed(&id, &e.to_string());
+            Err(e)
+        }
+    }
+}
+
+/// Install a downloaded artifact: verify the staged bundle and swap it in.
+///
+/// Synchronous and holds no lock — the caller has already awaited the download,
+/// and everything here is local filesystem work. Every failure before the swap
+/// leaves the installed bundle exactly as it was; the swap itself is atomic.
+pub fn install_downloaded(
+    platform: &dyn crate::platform::traits::Platform,
+    offer: &Offer,
+    archive: &Path,
+) -> Result<crate::platform::traits::SwapReceipt> {
+    let exe = std::env::current_exe()?;
+    let facts = platform.app_bundle().facts(&exe)?;
+    preflight(&facts, offer.size_bytes).map_err(|r| Error::Other(r.message()))?;
+
+    let staged = platform.app_bundle().stage(&facts, archive, &staged_expect(&offer.version))?;
+    let receipt = platform
+        .app_bundle()
+        .swap(&facts.bundle, &staged)
+        .map_err(|f| Error::Other(format!(
+            "could not put rexenv {} in place ({f}). The rexenv you were running is still \
+             installed and untouched.",
+            offer.version
+        )))?;
+
+    // The KeepAlive DNS agent is still executing the OLD binary from an inode
+    // that no longer has a name. launchd re-execs the plist's PATH, which now
+    // holds the new build, so a kickstart is all it takes — and it costs a
+    // sub-second gap in `.rex` resolution rather than a reload that would make
+    // macOS post a Background Items notification.
+    if let Err(e) = platform.dns_agent().kickstart() {
+        log::warn!("app update: could not restart the DNS agent onto the new build: {e}");
+    }
+    Ok(receipt)
+}
+
+/// Record what this process is about to do, for the NEXT one to report.
+pub fn store_notice(conn: &Connection, to: &str) -> Result<()> {
+    let notice = UpdateNotice {
+        from: env!("CARGO_PKG_VERSION").to_string(),
+        to: to.to_string(),
+        at: store::db_now(conn)?,
+    };
+    let blob = serde_json::to_string(&notice)
+        .map_err(|e| Error::Other(format!("could not record the update: {e}")))?;
+    store::set_setting(conn, NOTICE_KEY, &blob)
+}
+
+/// Consume the notice a previous process left, and say what actually happened.
+///
+/// **The version reported is the one this process reads from ITSELF**, never the
+/// one the marker hoped for: if they disagree the update did not take, and the
+/// user is told that instead of being congratulated on a version they are not
+/// running. Measured, not assumed — the same rule the PHP update's outcome
+/// follows.
+///
+/// Also sweeps the leftovers, and this is the ONLY place the previous bundle is
+/// deleted: reaching here means this build launched, opened its database and is
+/// running, which is the closest thing to "healthy" anything can honestly
+/// report about itself.
+pub fn finish_at_launch(
+    conn: &Connection,
+    platform: &dyn crate::platform::traits::Platform,
+) -> Option<(&'static str, String)> {
+    let raw = store::get_setting(conn, NOTICE_KEY).ok().flatten()?;
+    let _ = store::delete_setting(conn, NOTICE_KEY);
+    let notice: UpdateNotice = serde_json::from_str(&raw).ok()?;
+    let running = env!("CARGO_PKG_VERSION");
+
+    if let Ok(exe) = std::env::current_exe() {
+        if let Ok(facts) = platform.app_bundle().facts(&exe) {
+            // `delete_previous` only when the update took: if we are somehow
+            // running the OLD build, the copy in staging may be the way back.
+            let took = notice.to == running;
+            match platform.app_bundle().sweep_leftovers(&facts.parent, running, took) {
+                Ok(swept) if !swept.is_empty() => {
+                    log::info!("app update: swept {} leftover(s)", swept.len())
+                }
+                Err(e) => log::warn!("app update: could not sweep leftovers: {e}"),
+                _ => {}
+            }
+        }
+    }
+
+    if notice.to == running {
+        Some(("info", format!("rexenv is now {running} (updated from {}).", notice.from)))
+    } else {
+        Some((
+            // `warn` is reserved for something the app DID on the user's behalf,
+            // which a half-completed update is.
+            "warn",
+            format!(
+                "The update to rexenv {} did not take — this is still {running}. The previous \
+                 copy was kept.",
+                notice.to
+            ),
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1094,6 +1308,76 @@ mod tests {
         assert!(e.required_binaries.iter().any(|b| b == "rex"));
         assert_eq!(e.archs.len(), 2, "the shipped bundle is universal");
         assert!(e.codesign);
+    }
+
+    /// The sentence after an update names what this build IS, not what the
+    /// marker hoped for. A user congratulated on a version they are not running
+    /// is worse than no message: it stops them looking.
+    #[test]
+    fn an_update_notice_reports_the_version_this_build_actually_is() {
+        let conn = db();
+        let platform = crate::platform::current();
+        assert!(finish_at_launch(&conn, &*platform).is_none(), "no marker, nothing to say");
+
+        // The update took: the marker names what this build reports about itself.
+        store_notice(&conn, env!("CARGO_PKG_VERSION")).unwrap();
+        let (level, msg) = finish_at_launch(&conn, &*platform).expect("a notice");
+        assert_eq!(level, "info");
+        assert!(msg.contains(env!("CARGO_PKG_VERSION")), "{msg}");
+        // Consumed once — a notice repeated at every launch is noise.
+        assert!(finish_at_launch(&conn, &*platform).is_none());
+
+        // The update did NOT take: say so, and say what is actually running.
+        store_notice(&conn, "99.0.0").unwrap();
+        let (level, msg) = finish_at_launch(&conn, &*platform).expect("a notice");
+        assert_eq!(level, "warn", "something the app did on the user's behalf half-happened");
+        assert!(msg.contains("did not take") && msg.contains(env!("CARGO_PKG_VERSION")), "{msg}");
+        assert!(msg.contains("previous copy was kept"), "the way back must be named: {msg}");
+    }
+
+    /// The consent sentence says what the click DOES, in the order it happens,
+    /// and it lives here rather than in the TSX so there is one source for it.
+    #[test]
+    fn the_consent_sentence_names_the_size_the_quit_and_what_keeps_running() {
+        let offer = Offer {
+            version: "0.6.0".into(),
+            url: ALLOWED_RELEASE_PREFIXES[0].to_string() + "v0.6.0/x.tar.gz",
+            sha256: "a".repeat(64),
+            size_bytes: 31_000_000,
+            notes: String::new(),
+            published_at: String::new(),
+        };
+        let s = consent_sentence(&offer, false);
+        assert!(s.contains("0.6.0") && s.contains("31 MB"), "{s}");
+        assert!(s.contains("signature") && s.contains("checksum"), "{s}");
+        // The two things a user actually worries about: does my stack go down,
+        // and what closes.
+        assert!(s.contains("keep running"), "{s}");
+        assert!(s.contains("close with it"), "{s}");
+        // Ad-hoc signing means every build is a new identity to macOS, so the
+        // re-prompt is named BEFORE the click rather than discovered after it.
+        assert!(s.contains("permissions"), "{s}");
+        assert!(!s.contains("brew"), "no Homebrew line when this is not a cask install");
+        assert!(consent_sentence(&offer, true).contains("brew upgrade --cask rexenv"));
+    }
+
+    #[test]
+    fn the_relaunch_flag_round_trips_and_refuses_a_malformed_invocation() {
+        let argv: Vec<String> = ["rexenv", RELAUNCH_FLAG, "4242", "TOKEN", "/Applications/x.app"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let got = parse_relaunch_args(&argv).expect("parses");
+        assert_eq!(got.parent, 4242);
+        assert_eq!(got.parent_start, "TOKEN");
+        assert_eq!(got.bundle, PathBuf::from("/Applications/x.app"));
+        // A malformed invocation must open NOTHING rather than fall back to a
+        // default — this flag is a cross-version contract, written by the build
+        // being replaced and read by the one replacing it.
+        for bad in [&argv[..3], &argv[..4]] {
+            assert!(parse_relaunch_args(bad).is_none());
+        }
+        assert!(parse_relaunch_args(&argv[..1]).is_none());
     }
 
     #[test]

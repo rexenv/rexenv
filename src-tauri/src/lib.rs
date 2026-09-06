@@ -404,6 +404,19 @@ pub fn run() {
                     // the resolve path BEFORE anything resolves — so a patch the
                     // user selected is resolvable offline, exactly like a pin.
                     core::updates::install_cached(&conn);
+                    // Did a self-update just happen? The answer is the version
+                    // THIS binary reads from itself, never the one the marker
+                    // hoped for — and this is the only place the previous
+                    // bundle is deleted, because reaching here means this build
+                    // launched and opened its database, which is the closest
+                    // thing to "healthy" a process can honestly say about
+                    // itself. `docs/PLAN-self-update.md` T4.
+                    if let Some((level, message)) =
+                        core::app_update::finish_at_launch(&conn, &*platform)
+                    {
+                        log::info!("app update: {message}");
+                        notices.push(level, message);
+                    }
                     // B20 §4 Phase B: record each existing override site's port
                     // BEFORE any site is read or adopted. One-time + idempotent;
                     // non-colliding sites keep their exact current port (the
@@ -1193,6 +1206,8 @@ pub fn run() {
             commands::php::php_update_check,
             commands::app_update::app_update_state,
             commands::app_update::app_update_check,
+            commands::app_update::app_update_apply,
+            commands::app_update::app_update_readiness,
             commands::php::php_update_apply,
             commands::database::adminer_status,
             commands::database::adminer_set_theme,
@@ -1379,6 +1394,29 @@ pub fn run() {
                 tauri::RunEvent::Exit => {
                     commands::repo::cancel_all_on_exit(app);
                     commands::tunnels::kill_all_on_exit(app);
+                    // A self-update quits and reopens, and THIS is where the
+                    // reopen is arranged — after the gate above has already let
+                    // the quit through. Spawning it any earlier would leave a
+                    // helper waiting on a pid that a cancelled quit keeps alive.
+                    // The helper waits for this pid to be gone before it opens
+                    // the bundle, which is what keeps the single-instance socket
+                    // out of the race `AppHandle::restart` would create.
+                    let pending = RELAUNCH_AFTER_EXIT.lock().ok().and_then(|mut s| s.take());
+                    if let Some(bundle) = pending {
+                        let platform = platform::current();
+                        match platform.app_bundle().spawn_relauncher(&bundle) {
+                            Ok(()) => log::info!(
+                                "app update: reopening {} once this process exits",
+                                bundle.display()
+                            ),
+                            // Nothing is lost: the update is installed, and the
+                            // next ordinary launch runs it.
+                            Err(e) => log::warn!(
+                                "app update: could not spawn the relauncher ({e}) — rexenv \
+                                 is updated and will run the new build the next time it opens"
+                            ),
+                        }
+                    }
                 }
                 _ => {}
             }
@@ -1544,6 +1582,25 @@ fn login_launch_needs_window(platform: &dyn platform::traits::Platform) -> bool 
 /// with the app for the rest of the session. It gives up loudly rather than
 /// looping forever, because a machine where the agent cannot bind at all has a
 /// different problem and should say so once.
+/// The bundle a completed swap wants reopened, set by `app_update_apply` and
+/// read by the exit hook.
+///
+/// A cell rather than an argument because the two ends are a command and a
+/// runtime event with nothing between them. It is read in `RunEvent::Exit` —
+/// AFTER the quit gate has already agreed — so a user who answers "Keep
+/// sharing" to the confirm leaves no helper waiting on a pid that is not going
+/// to die, and the swapped bundle simply takes effect at the next ordinary
+/// launch.
+static RELAUNCH_AFTER_EXIT: std::sync::Mutex<Option<std::path::PathBuf>> =
+    std::sync::Mutex::new(None);
+
+/// Record that this process, when it exits, should be reopened at `bundle`.
+pub fn relaunch_after_exit(bundle: std::path::PathBuf) {
+    if let Ok(mut slot) = RELAUNCH_AFTER_EXIT.lock() {
+        *slot = Some(bundle);
+    }
+}
+
 /// One app-update check: fetch unlocked, accept + record under a brief lock.
 ///
 /// Best-effort by contract, exactly like the PHP manifest poll above it — no key
@@ -2182,6 +2239,113 @@ mod tests {
     /// shorter, works on the developer's machine, and silently ignores the
     /// preferred browser — the exact failure `open_external`'s own doc calls
     /// "the thirteenth call site that forgot".
+    /// **The updater never calls Tauri's restart, and the relaunch goes through
+    /// the ONE quit gate.**
+    ///
+    /// `AppHandle::restart` on the main thread skips `ExitRequested` and `Exit`
+    /// entirely — the live-share confirm, the tunnel kill and the repo-job
+    /// cancel all live in those events (#436). Off the main thread it can be
+    /// cancelled by `prevent_exit` and leave a thread sleeping forever with
+    /// `restart_on_exit` latched, so the NEXT quit silently relaunches instead.
+    /// And it spawns the child before exiting, which races the single-instance
+    /// socket (#441).
+    ///
+    /// None of that is visible in a type, so it is read out of the source.
+    #[test]
+    fn the_app_updater_never_calls_tauri_restart_and_exits_through_the_one_gate() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        // Needles assembled, so this test cannot convict itself.
+        let banned = [
+            format!("app_handle.{}", "restart()"),
+            format!("app.{}", "restart()"),
+            format!("request_{}", "restart()"),
+            format!("process::{}", "restart("),
+        ];
+        let mut scanned = 0usize;
+        for dir in ["src", "examples"] {
+            let mut stack = vec![root.join(dir)];
+            while let Some(d) = stack.pop() {
+                let Ok(entries) = std::fs::read_dir(&d) else { continue };
+                for e in entries.flatten() {
+                    let p = e.path();
+                    if p.is_dir() {
+                        stack.push(p);
+                    } else if p.extension().and_then(|x| x.to_str()) == Some("rs") {
+                        let Ok(text) = std::fs::read_to_string(&p) else { continue };
+                        let prod = crate::core::copy_scan::production_source(&text);
+                        scanned += 1;
+                        for needle in &banned {
+                            assert!(
+                                !prod.contains(needle.as_str()),
+                                "{} calls {needle} — the relaunch must go through app.exit(0) \
+                                 so the quit gate runs",
+                                p.display()
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        assert!(scanned > 100, "the scan only read {scanned} files — it stopped working");
+
+        // And the apply must END in the gate rather than in an exit of its own.
+        let cmd = crate::core::copy_scan::production_source(include_str!(
+            "commands/app_update.rs"
+        ));
+        assert!(cmd.contains("app_update_apply"), "sliced the wrong file");
+        assert!(
+            cmd.contains(&format!("app.{}", "exit(0)")),
+            "the apply must quit through app.exit(0), which raises ExitRequested"
+        );
+        assert!(
+            !cmd.contains(&format!("std::process::{}", "exit(")),
+            "a bare process::exit would skip every exit hook, including the relaunch"
+        );
+    }
+
+    /// **An update is applied only from a GUI click.**
+    ///
+    /// Self-update replaces the process that enforces the agent-access dial and
+    /// `settings_access`; the relaunch kills the caller's socket mid-call, so an
+    /// agent could never observe the result of what it asked for; and this tree
+    /// already runs `cloudflared --no-autoupdate` for the same class of reason.
+    #[test]
+    fn the_app_updater_installs_only_from_the_gui() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let needle = format!("app_update_{}", "apply");
+        for path in ["src/cli_server.rs", "src/mcp_server.rs"] {
+            let text = std::fs::read_to_string(root.join(path)).expect(path);
+            assert!(
+                !crate::core::copy_scan::production_source(&text).contains(&needle),
+                "{path} reaches the apply — install is a GUI click"
+            );
+        }
+        let mut stack = vec![root.join("src/mcp_server")];
+        let mut scanned = 0usize;
+        while let Some(d) = stack.pop() {
+            let Ok(entries) = std::fs::read_dir(&d) else { continue };
+            for e in entries.flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    stack.push(p);
+                } else if p.extension().and_then(|x| x.to_str()) == Some("rs") {
+                    let Ok(text) = std::fs::read_to_string(&p) else { continue };
+                    scanned += 1;
+                    assert!(
+                        !crate::core::copy_scan::production_source(&text).contains(&needle),
+                        "{} reaches the apply — install is a GUI click",
+                        p.display()
+                    );
+                }
+            }
+        }
+        assert!(scanned > 0, "the MCP scan read no files");
+        // Anti-vacuity: the needle DOES appear where the click lives, so a typo
+        // in it could not make this pass everywhere.
+        let handler = crate::core::copy_scan::production_source(include_str!("lib.rs"));
+        assert!(handler.contains(&needle), "the apply is not registered at all");
+    }
+
     /// **The auto-check setting gates the REQUEST, not the answer.**
     ///
     /// A setting honoured after the fetch would still send it — the user turned

@@ -59,7 +59,13 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     refusal legs assert the installed bundle is byte-identical afterwards; the thin-bundle
     leg builds its own `lipo -thin` fixture so it always runs. Trait count 11 → 12 in
     CLAUDE.md, ARCHITECTURE, MAP and the README tree; windows/linux `todo!()`.
-  - [ ] T4 — apply end to end: refusals, hub download, swap, helper, exit through the gate
+  - [x] T4 — apply end to end: refusals, hub download, swap, helper, exit through the gate
+    ✓ 6 Sep 2026 — ledger #529–#532; `app_update_apply` (GUI only, source-scanned) ends in
+    `app.exit(0)` so the quit gate runs, and the relauncher is spawned in `RunEvent::Exit`
+    AFTER the gate agreed; `examples/app_relaunch_check.rs` (sandbox) proves the ordering
+    against the REAL app binary and is plant-proven. **Deviation from the plan, recorded in
+    §7 R16**: an apply does not refuse a busy app — an update IS a quit, and refusing would
+    be stricter than Cmd+Q for the same consequence.
   - [ ] T5 — the DNS agent states its build; a stale one is kickstarted at launch
   - [ ] T6 — the full About card, the one-source consent sentence, copy guard, L2 probe
   - [ ] T7 — the tray item and the app-menu "Check for Updates…"

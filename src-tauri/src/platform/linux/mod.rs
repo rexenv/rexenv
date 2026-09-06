@@ -221,6 +221,9 @@ impl AppBundle for LinuxAppBundle {
     ) -> std::result::Result<SwapReceipt, SwapFailure> {
         todo!("linux swap the bundle")
     }
+    fn spawn_relauncher(&self, _bundle: &Path) -> Result<()> {
+        todo!("linux relauncher")
+    }
     fn sweep_leftovers(
         &self,
         _parent: &Path,

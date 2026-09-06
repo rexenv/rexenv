@@ -161,6 +161,9 @@ pub fn label_for(name: &str, version: &str) -> String {
         "postgres" => format!("PostgreSQL {}", minor(version)),
         "mailpit" => "Mailpit (mail catcher)".into(),
         "adminer" => "Adminer (DB browser)".into(),
+        // The app updating ITSELF rides the same hub as every pinned binary, so
+        // the footer indicator and the download panel show it with no new UI.
+        "rexenv" => format!("rexenv {version}"),
         "wp-cli" => "WP-CLI".into(),
         "frankenphp" => "FrankenPHP".into(),
         "cloudflared" => "cloudflared (tunnels)".into(),

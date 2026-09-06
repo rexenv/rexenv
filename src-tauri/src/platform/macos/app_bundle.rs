@@ -385,6 +385,34 @@ impl AppBundle for MacosAppBundle {
         }
     }
 
+    fn spawn_relauncher(&self, bundle: &Path) -> Result<()> {
+        // Our own binary, re-executed in relauncher mode — the same self-exec
+        // shape the DNS agent and the tunnel guard use, so there is no second
+        // artifact to ship, sign and keep in step.
+        //
+        // It is spawned from the OLD inode (this process is the one being
+        // replaced), which is why `--relaunch-after` is a cross-version
+        // contract: the version being replaced starts the version replacing it.
+        let exe = std::env::current_exe()?;
+        let me = std::process::id();
+        let start = super::process_start_token(me).ok_or_else(|| {
+            Error::Other(format!("could not read this process's start time (pid {me})"))
+        })?;
+        // Detached and silent, and NOT reaped: unlike the tunnel guard this
+        // helper is meant to outlive us by design — we are about to exit, and
+        // launchd reaps it.
+        std::process::Command::new(exe)
+            .arg(crate::core::app_update::RELAUNCH_FLAG)
+            .arg(me.to_string())
+            .arg(start)
+            .arg(bundle)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()?;
+        Ok(())
+    }
+
     fn sweep_leftovers(
         &self,
         parent: &Path,

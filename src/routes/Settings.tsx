@@ -58,7 +58,8 @@ import {
   scanValetImport,
   dbImportLeftovers,
   dbImportDeleteLeftover,
-  uninstallSystem, phpUpdateApply, phpUpdateCheck, appUpdateState, appUpdateCheck } from "@/lib/ipc";
+  uninstallSystem, phpUpdateApply, phpUpdateCheck, appUpdateState, appUpdateCheck,
+  appUpdateReadiness, appUpdateApply } from "@/lib/ipc";
 import { getStoredTheme, setTheme, subscribeTheme, type Theme } from "@/lib/theme";
 import type { AppInfo, Blueprint, MultisiteMode, PhpSetting, PhpVersion } from "@/types";
 
@@ -1613,6 +1614,22 @@ function AppUpdateCard() {
   const { data: st } = useQuery({ queryKey: ["app-update"], queryFn: appUpdateState });
   const [failed, setFailed] = useState(false);
 
+  const { data: ready } = useQuery({
+    queryKey: ["app-update-readiness"],
+    queryFn: appUpdateReadiness,
+    // Refuses and the consent sentence both depend on facts about the bundle,
+    // which change when the user moves the app — cheap to re-read on focus.
+    staleTime: 60_000,
+  });
+
+  // The window disappears as part of succeeding, so there is no success toast:
+  // the sentence that names the new version belongs to the NEXT process, which
+  // reads its own version instead of trusting this one's hope.
+  const apply = useMutation({
+    mutationFn: appUpdateApply,
+    onError: (e) => toastBackendError(e),
+  });
+
   const check = useMutation({
     mutationFn: appUpdateCheck,
     onMutate: () => setFailed(false),
@@ -1642,12 +1659,13 @@ function AppUpdateCard() {
       data-running={st.running}
       data-offered={offered?.version ?? ""}
       data-checked-at={st.checkedAt ?? ""}
+      data-phase={apply.isPending ? "installing" : offered ? "offered" : "none"}
     >
       <ActionRow
         title="Updates"
         desc={
           offered
-            ? `rexenv ${offered.version} (${fmtBytes(offered.sizeBytes)}) has been published. Installing it from here is not built yet — download the new version to update.`
+            ? `rexenv ${offered.version} (${fmtBytes(offered.sizeBytes)}) has been published.`
             : `rexenv ${st.running} is what you are running.`
         }
         busy={check.isPending}
@@ -1655,6 +1673,40 @@ function AppUpdateCard() {
         busyLabel="Checking…"
         onClick={() => check.mutate()}
       />
+
+      {/* The consent sentence comes from Rust and sits IN FRONT of the button
+          that starts the thing it describes — never beside it, never after. */}
+      {offered && ready?.refusal == null && ready && (
+        <div className="border-t border-rex-border-subtle py-[15px]">
+          <div className="text-[0.75rem] leading-[1.55] text-rex-text-muted">{ready.consent}</div>
+          <button
+            onClick={() => apply.mutate()}
+            disabled={apply.isPending}
+            className="mt-3 flex h-8 items-center gap-[7px] rounded-[9px] border border-rex-border-strong bg-rex-surface-2 px-[13px] text-[0.78125rem] font-medium text-brand-light transition-colors hover:bg-rex-surface-2-hover disabled:opacity-60"
+          >
+            {apply.isPending && (
+              <span className="h-3 w-3 rounded-full border-2 border-brand/30 border-t-brand animate-rex-spin motion-reduce:animate-none" />
+            )}
+            {apply.isPending
+              ? "Installing…"
+              : `Install rexenv ${offered.version} · ${fmtBytes(offered.sizeBytes)}`}
+          </button>
+        </div>
+      )}
+
+      {/* A fix that IS a command is rendered as one, and there is no button:
+          pressing it could not work, and offering it would be a lie. */}
+      {offered && ready?.refusal && (
+        <div className="border-t border-rex-border-subtle py-[15px] text-[0.75rem] leading-[1.55] text-rex-text-muted">
+          {ready.refusal.split("\n$ ")[0]}
+          {ready.refusal.includes("\n$ ") && (
+            <pre className="mt-2 overflow-x-auto rounded-[9px] bg-rex-well px-3 py-2 font-mono text-[0.71875rem] text-rex-text-bright">
+              {ready.refusal.split("\n$ ")[1]}
+            </pre>
+          )}
+        </div>
+      )}
+
       <div className="border-t border-rex-border-subtle py-[13px] text-[0.75rem] leading-[1.5] text-rex-text-muted">
         {footer}
       </div>

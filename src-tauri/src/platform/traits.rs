@@ -832,6 +832,11 @@ pub trait AppBundle: Send + Sync {
         my_version: &str,
         delete_previous: bool,
     ) -> Result<Vec<Leftover>>;
+    /// Spawn the detached helper that reopens `bundle` once THIS process is
+    /// gone. Called from the exit hook, after the quit gate has already let the
+    /// quit through — so a cancelled quit leaves no helper waiting on a pid that
+    /// is not going to die.
+    fn spawn_relauncher(&self, bundle: &Path) -> Result<()>;
 }
 
 /// Aggregate of every platform capability. `core/` is handed one of these and

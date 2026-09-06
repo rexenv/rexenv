@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { StartupNotice, AdminerStatus, AppInfo, AppUpdateState, AgentAction, AgentAccess,
+import type { StartupNotice, AdminerStatus, AppInfo, AppUpdateState, AppUpdateOutcome, AppUpdateReadiness, AgentAction, AgentAccess,
   AgentAccessLevel,
   AgentAccessMode, Blueprint, BrowserApp, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoGitOp, RepoJobState, RepoKind, RepoPullRef, RepoStashEntry, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpUpdateOutcome, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteProvisionState, SiteRepoInfo, SiteResources, SiteServing, ResolverPlan, ResolverTldStatus, ScratchPackage, TeardownReport, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser, UnresolvableTld } from "@/types";
 import {
@@ -22,6 +22,7 @@ import {
   mockPhpSettings,
   mockAdminerStatus,
   mockAppUpdateState,
+  mockAppUpdateReadiness,
   mockPhpVersions,
   mockResolverDrift,
   mockResolverTakeOver,
@@ -616,6 +617,23 @@ export async function appUpdateState(): Promise<AppUpdateState> {
 export async function appUpdateCheck(): Promise<AppUpdateState> {
   if (!isTauri()) return mockAppUpdateState;
   return invoke<AppUpdateState>("app_update_check");
+}
+
+/** Whether this installation can take the offered update, and the consent
+ *  sentence to show above the button. `null` when nothing is offered. */
+export async function appUpdateReadiness(): Promise<AppUpdateReadiness | null> {
+  if (!isTauri()) return mockAppUpdateReadiness;
+  return invoke<AppUpdateReadiness | null>("app_update_readiness");
+}
+
+/** Install the offered release and quit, so the new build reopens.
+ *
+ *  The window goes away as part of succeeding, so this resolves and then the
+ *  process ends — the "updated to X" sentence belongs to the NEXT process,
+ *  which reads its own version rather than trusting this one's hope. */
+export async function appUpdateApply(): Promise<AppUpdateOutcome> {
+  if (!isTauri()) return { swapped: true, version: "0.0.0" };
+  return invoke<AppUpdateOutcome>("app_update_apply");
 }
 
 /** The Adminer version row: what is staged, what will run, what is offered. */

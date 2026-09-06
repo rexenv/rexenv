@@ -217,6 +217,9 @@ impl AppBundle for WindowsAppBundle {
     ) -> std::result::Result<SwapReceipt, SwapFailure> {
         todo!("windows swap the bundle")
     }
+    fn spawn_relauncher(&self, _bundle: &Path) -> Result<()> {
+        todo!("windows relauncher")
+    }
     fn sweep_leftovers(
         &self,
         _parent: &Path,
