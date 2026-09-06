@@ -28,6 +28,33 @@ use tokio::net::UdpSocket;
 /// OS resolver config (task 2.2) points `.rex` (and any configured TLD) lookups here.
 pub const DEFAULT_DNS_PORT: u16 = 15353;
 
+/// The ONE name that answers something other than "loopback": a TXT record
+/// naming the build the running agent IS.
+///
+/// # Why the agent has to be able to say this
+///
+/// The resolver is a per-user LaunchAgent running `<app binary> --dns-agent`,
+/// and it OUTLIVES the app by design. When the bundle is replaced — by a
+/// self-update, or by a user dragging a new copy over the old one — launchd's
+/// process keeps executing the OLD inode, which no longer has a name. Nothing
+/// noticed: `install()` skips the reload when the plist bytes are unchanged (and
+/// they are: the path did not move), and the health watchdog only kicks when the
+/// probe FAILS — which it does not, because the old agent answers perfectly well.
+///
+/// So the app could not tell a current agent from a stale one, and after every
+/// manual update the resolver quietly stayed on the previous build until the
+/// next reboot. The fix is for the agent to say who it is, and for the app to
+/// ask: a MEASUREMENT, not a proxy like comparing file timestamps.
+///
+/// Loopback-only, like every other answer here, and it carries a version and a
+/// commit — nothing about the machine, the user or the sites.
+pub const BUILD_IDENTITY_NAME: &str = "_build.rexenv-agent.rex.";
+
+/// What this build answers on [`BUILD_IDENTITY_NAME`].
+pub fn build_identity() -> String {
+    format!("{} {}", env!("CARGO_PKG_VERSION"), env!("REXENV_GIT_COMMIT"))
+}
+
 /// TTL (seconds) on answers. Short, since these are local and may change.
 const ANSWER_TTL: u32 = 60;
 
@@ -62,6 +89,15 @@ impl DnsHandler {
         let mut answers: Vec<Record> = Vec::new();
         if !is_query {
             header.set_response_code(ResponseCode::Refused);
+        } else if qtype == RecordType::TXT && name.to_ascii() == BUILD_IDENTITY_NAME {
+            // The ONE name that is not "everything is loopback": which build is
+            // answering. See BUILD_IDENTITY_NAME for why the agent must be able
+            // to say this at all.
+            answers.push(Record::from_rdata(
+                name.clone(),
+                0, // never cached: the answer changes the moment the agent restarts
+                RData::TXT(hickory_proto::rr::rdata::TXT::new(vec![build_identity()])),
+            ));
         } else if qtype == RecordType::A {
             // ANY name → loopback. No TLD check here on purpose: only queries
             // for TLDs with an installed OS resolver file ever arrive, so the
@@ -267,6 +303,59 @@ pub fn answers_as_ours(port: u16) -> bool {
                 .any(|r| matches!(r.data(), Some(RData::A(A(ip))) if *ip == Ipv4Addr::LOCALHOST)))
     };
     probe().unwrap_or(false)
+}
+
+/// Ask the resolver on loopback `port` which build it is.
+///
+/// `None` means it did not answer the question — either nothing is there, or it
+/// is an agent from before this existed, and BOTH mean "not this build". A
+/// caller must never read `None` as "current".
+///
+/// Same shape as [`answers_as_ours`]: one UDP query, a short timeout, no
+/// dependency on anything the agent cannot answer from a constant.
+pub fn agent_build_identity(port: u16) -> Option<String> {
+    use hickory_proto::op::{Message, Query};
+    use hickory_proto::serialize::binary::{BinDecodable, BinEncodable};
+
+    let name = Name::from_ascii(BUILD_IDENTITY_NAME).ok()?;
+    let mut msg = Message::new();
+    msg.set_id(0x7e7f)
+        .set_message_type(MessageType::Query)
+        .set_op_code(OpCode::Query)
+        .set_recursion_desired(true)
+        .add_query(Query::query(name, RecordType::TXT));
+    let bytes = msg.to_bytes().ok()?;
+
+    let probe = || -> std::io::Result<Option<String>> {
+        let sock = std::net::UdpSocket::bind((Ipv4Addr::LOCALHOST, 0))?;
+        sock.set_read_timeout(Some(std::time::Duration::from_millis(500)))?;
+        sock.send_to(&bytes, (Ipv4Addr::LOCALHOST, port))?;
+        let mut buf = [0u8; 512];
+        let (n, _) = sock.recv_from(&mut buf)?;
+        let Ok(reply) = Message::from_bytes(&buf[..n]) else { return Ok(None) };
+        if reply.id() != 0x7e7f {
+            return Ok(None);
+        }
+        Ok(reply.answers().iter().find_map(|r| match r.data() {
+            Some(RData::TXT(txt)) => Some(
+                txt.iter()
+                    .map(|b| String::from_utf8_lossy(b).to_string())
+                    .collect::<Vec<_>>()
+                    .join(""),
+            ),
+            _ => None,
+        }))
+    };
+    probe().ok().flatten().filter(|s| !s.is_empty())
+}
+
+/// Is the resolver on `port` running a DIFFERENT build from this one?
+///
+/// The pure decision, so the rule is testable without a socket. `None` — the
+/// agent did not answer the question — counts as stale: an agent from before
+/// this existed is by definition an older build.
+pub fn agent_is_stale(answered: Option<&str>) -> bool {
+    answered != Some(build_identity().as_str())
 }
 
 /// Install the OS resolver file for `tld` (pointing at our resolver on `port`)
@@ -1542,5 +1631,56 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(50)).await;
         let dead = tokio::task::spawn_blocking(move || answers_as_ours(port)).await.unwrap();
         assert!(!dead, "a dead port must not read as ours");
+    }
+
+    /// **A resolver that cannot say which build it is counts as stale.**
+    ///
+    /// The whole point of the question: an agent from before this existed
+    /// answers A records perfectly and is still the wrong binary, so `None` must
+    /// read as "not this build" rather than as "fine". Getting that backwards
+    /// would make the guard silently do nothing on exactly the machines it was
+    /// written for — the ones that updated from an older rexenv.
+    #[test]
+    fn an_agent_that_cannot_name_its_build_is_stale_and_so_is_a_different_one() {
+        assert!(agent_is_stale(None), "no answer means an older agent, never 'current'");
+        assert!(agent_is_stale(Some("")), "an empty answer names no build");
+        assert!(agent_is_stale(Some("0.0.1 deadbee")));
+        // Only the exact pair this build reports about itself is current — the
+        // version alone is not enough, because two builds of one version differ.
+        assert!(agent_is_stale(Some(env!("CARGO_PKG_VERSION"))));
+        assert!(!agent_is_stale(Some(&build_identity())));
+        assert!(
+            build_identity().contains(env!("CARGO_PKG_VERSION")),
+            "the identity must carry the version a user can read off the About card"
+        );
+    }
+
+    /// The agent answers the question over a REAL socket, and answering it does
+    /// not disturb the answer everything else depends on.
+    #[tokio::test]
+    async fn the_resolver_names_its_build_and_still_sends_every_name_to_loopback() {
+        let svc = DnsService::start(0).await.unwrap();
+        let port = svc.addr().port();
+
+        let identity = tokio::task::spawn_blocking(move || agent_build_identity(port))
+            .await
+            .unwrap();
+        assert_eq!(identity.as_deref(), Some(build_identity().as_str()));
+        let stale = tokio::task::spawn_blocking(move || {
+            agent_is_stale(agent_build_identity(port).as_deref())
+        })
+        .await
+        .unwrap();
+        assert!(!stale, "a resolver from THIS build must not read as stale");
+
+        // The TXT arm must not have stolen the A arm: every other name still
+        // answers loopback, which is the resolver's entire job.
+        let still_ours = tokio::task::spawn_blocking(move || answers_as_ours(port)).await.unwrap();
+        assert!(still_ours, "the build-identity answer broke ordinary resolution");
+
+        svc.stop();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let gone = tokio::task::spawn_blocking(move || agent_build_identity(port)).await.unwrap();
+        assert!(gone.is_none(), "a dead port names no build");
     }
 }

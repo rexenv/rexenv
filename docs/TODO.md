@@ -66,7 +66,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     against the REAL app binary and is plant-proven. **Deviation from the plan, recorded in
     §7 R16**: an apply does not refuse a busy app — an update IS a quit, and refusing would
     be stricter than Cmd+Q for the same consequence.
-  - [ ] T5 — the DNS agent states its build; a stale one is kickstarted at launch
+  - [x] T5 — the DNS agent states its build; a stale one is kickstarted at launch
+    ✓ 6 Sep 2026 — ledger #533; a TXT answer on `_build.rexenv-agent.rex` and
+    `agent_is_stale` (silence reads as stale, which is what every pre-T5 agent does);
+    fixes the manual drag-replace case too. An L1 was MEASURED as buying nothing and
+    deliberately not written (`run_agent` is `serve_udp` in a loop, already L0-driven);
+    the launchd re-exec half is a SMOKE leg.
   - [ ] T6 — the full About card, the one-source consent sentence, copy guard, L2 probe
   - [ ] T7 — the tray item and the app-menu "Check for Updates…"
   - [ ] T8 — `rex status` / MCP read field, with no new dispatch arm

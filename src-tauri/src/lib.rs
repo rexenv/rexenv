@@ -329,6 +329,37 @@ pub fn run() {
                         up
                     })
             };
+            // **Is the agent that is answering THIS build?** It outlives the app,
+            // so after any bundle replacement — a self-update, or a user dragging
+            // a new copy over the old one — launchd's process is still executing
+            // the OLD inode. Nothing above notices: the plist is byte-identical
+            // (the path did not move) so `install` skips the reload, and the
+            // watchdog only kicks when the probe FAILS, which it does not,
+            // because a stale agent answers perfectly well.
+            //
+            // Asking it who it is turns that into a measurement. `None` — an
+            // agent from before this question existed — counts as stale, which is
+            // the honest reading: it is by definition an older build.
+            // `docs/PLAN-self-update.md` T5, ledger #533.
+            if agent_up {
+                let answered = core::dns::agent_build_identity(dns_port);
+                if core::dns::agent_is_stale(answered.as_deref()) {
+                    log::info!(
+                        "dns: the resolver agent is running {} but this build is {} — \
+                         kickstarting it",
+                        answered.as_deref().unwrap_or("an older build"),
+                        core::dns::build_identity()
+                    );
+                    // In place (`launchctl kickstart -k`), never unload/load: a
+                    // reload re-registers with Background Task Management and
+                    // macOS posts an "App Background Activity" notification each
+                    // time. Costs a sub-second gap in `.rex` resolution.
+                    if let Err(e) = platform.dns_agent().kickstart() {
+                        log::warn!("dns: could not kickstart the stale resolver agent: {e}");
+                    }
+                }
+            }
+
             let dns_state = if agent_up {
                 log::info!("dns: resolver agent serving on udp {dns_port} (survives app quits)");
                 state::app::DnsState::new(None, state::app::DnsMode::Agent)

@@ -293,6 +293,17 @@ Live-proven end to end by `site_stop_start_check`.
   the current binary (dev ↔ installed hand off); if the agent can't come up, fall back
   to the legacy IN-PROCESS task (`DnsState { service, mode: Agent | InProcess | Down }`)
   so DNS never regresses — Settings surfaces the degraded mode (`dns_status.mode`).
+- **The agent SAYS which build it is, and a stale one is kickstarted** (`_build.rexenv-agent.rex`
+  TXT, ledger #533). Refreshing the plist is not enough, and the gap was invisible: after any
+  bundle replacement — a self-update, or a user dragging a new copy over the old one — the
+  path did not move, so the plist is byte-identical and `install` skips the reload, while the
+  watchdog only kicks when the probe FAILS, which it does not, because the OLD binary answers
+  A records perfectly from an inode that no longer has a name. So the agent answers one TXT
+  name with `<version> <commit>` (TTL 0, loopback like everything else, nothing about the
+  machine), the app asks at launch, and a mismatch — **including no answer at all, which is
+  what every rexenv shipped before this does** — is `kickstart -k`ed in place. In place, never
+  unload/load: a reload re-registers with Background Task Management and macOS posts an "App
+  Background Activity" notification each time. Costs a sub-second `.rex` resolution gap.
 - **A lost startup race is undone afterwards** (`spawn_dns_handoff`, ledger #442). The
   fallback above used to be unreachable in practice: the app was launched by hand long
   after login, when the agent already answered. **Start on login made both start

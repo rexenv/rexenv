@@ -1248,6 +1248,54 @@ the human legs. Set up: stack up, switch ON, one of your own sites.
   `composer.json` byte-identical. Composer's log carried the source's absolute path — fixed the
   same run (labelled `<source>` before the scrub).*
 
+## In-app self-update — the replace and the relaunch, which no tier can run (6 Sep 2026)
+
+*The half nothing below L3 can see: a real bundle replacing itself in `/Applications`, macOS
+deciding whether to allow it, and launchd re-execing the agent that outlives the app. The
+probe measured the swap once on this Mac (`docs/PLAN-self-update.md` §T0); this is the same
+question asked of a real rexenv, on a real release, with a real user's approval state.*
+
+Only runs once a release NEWER than the installed build has been published with its signed
+descriptor. Before that Settings → About shows the version and no Install button, which is
+itself the first check.
+
+- [ ] **Dark when current.** On the newest build, Settings → About offers nothing and shows
+  no error; the footer says when it last checked. **Tell:** a button that appears and fails,
+  or a footer claiming a check that never ran.
+- [ ] **The offer arrives on its own.** With a newer release published, launch rexenv and
+  open About without pressing anything: the version and size are named before any click, and
+  the consent sentence is above the button. **Tell:** a button with no sentence, or a size
+  that disagrees with the release asset.
+- [ ] **A real update applies.** Press Install. Expect real bytes in the footer's download
+  indicator, then the app quits and reopens on the new version — About and `rex --version`
+  agree, and the startup notice names the version the NEW process read from itself.
+  **Tell:** two `rexenv.app` copies afterwards; a notice naming a version About disagrees with.
+- [ ] **THE LEG NOTHING AUTOMATED CAN PROVE — Gatekeeper and App Management on the replaced
+  bundle.** No "rexenv is damaged", no "cannot be opened", no "prevented from modifying apps"
+  notification, and `xattr -l /Applications/rexenv.app` shows no quarantine attribute.
+  **Tell:** any of those dialogs — the update installed and the app will not start.
+- [ ] **Services and DNS survive it.** Sites keep answering across the whole thing; after the
+  relaunch `rex status` reads `answering (agent, udp 15353)`, the DNS agent's pid has CHANGED
+  (`pgrep -f -- --dns-agent`), and `rexenv.log` carries the "kickstarting it" line naming the
+  old build. **Tell:** the same agent pid as before — launchd re-exec did not happen and the
+  resolver is running the previous binary.
+- [ ] **The previous copy is cleaned up, but only after a healthy launch.** `ls -a
+  /Applications` shows no `.rexenv-update-*` directory once the new build has opened.
+  **Tell:** a leftover that survives two launches.
+- [ ] **A public share is live.** Start a share, then press Install: the quit confirm names
+  the share count exactly as Cmd+Q does. Choose "Keep sharing" → the app stays up, the card
+  says the update is installed and takes effect when rexenv next opens, and NO relauncher is
+  left behind (`pgrep -f -- --relaunch-after` is empty). **Tell:** a relaunch that happens
+  anyway, or a helper still waiting.
+- [ ] **Offline.** Disconnect and press Check now: the card says the check could not run and
+  keeps the previous timestamp. **Tell:** "up to date", or a timestamp that moved.
+- [ ] **Homebrew coexistence.** On a cask-installed copy the consent sentence mentions
+  `brew upgrade --cask rexenv`; after a self-update `brew upgrade` (no flags) does nothing.
+  **Tell:** brew downgrading the app it just found newer.
+- [ ] **Which permissions come back.** Note every macOS prompt that reappears after the
+  update (an ad-hoc build is a new identity each time). Record them here — the consent
+  sentence promises this, and the list is what makes it honest.
+
 ## Robustness (spot-check) — §2
 - [ ] Quit with another app on :443, relaunch → a clear "port in use" message (no crash).
 - [ ] Cancel an admin prompt once → a clear "permission cancelled, try again" state; retry works.

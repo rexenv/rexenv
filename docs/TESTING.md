@@ -1016,7 +1016,25 @@ written procedure; "manual" means scripted-for-a-human, never remembered.
 | Radicle layout reality (#95) | flagged in code; first real project confirms |
 | Phase-A-never-resolves wire spot-check (#19) | PUBLISH-TESTING §L (added, T13) |
 | **The tray: every click, and closing the window** (#436–#439) | SMOKE-TEST "The menu bar" |
+| `launchctl kickstart -k` re-execs the REPLACED DNS agent binary (#533) | SMOKE-TEST §In-app self-update |
 | Whether an ad-hoc bundle may replace ITSELF under App Management (self-update T0) | `scripts/probes/app-swap-probe.sh` (example `app_swap_probe`, tier `demo`) → `docs/PLAN-self-update.md` §T0 |
+
+**Why the DNS agent's build-identity check has no L1 example, measured before writing
+one** (T5 of `docs/PLAN-self-update.md`, the same first step §2 requires). The claim is
+"the agent says which build it is, and the app kickstarts a stale one". The tempting L1
+was: spawn the real app binary in `--dns-agent` mode and ask it. It buys nothing. The agent
+is `run_agent()`, whose entire body is `serve_udp(DEFAULT_DNS_PORT)` in a retry loop — the
+SAME function, handler and answer the L0 test drives through `DnsService::start(0)`. The
+only differences are the port and the process, and neither is what the claim is about. To
+run it on a fixture port at all, production would need an environment variable that exists
+for the test — new public surface for a fact already proven, which is the trade the tray's
+example was rejected over.
+
+What genuinely cannot be seen below L3 is the OTHER half: that `launchctl kickstart -k`
+makes launchd re-exec the replaced binary, so the agent that comes back is the new build.
+That needs a real LaunchAgent and a real bundle replacement, and it is a SMOKE-TEST leg.
+The split is therefore L0 for the rule and the answer, L3 for launchd — stated here rather
+than left as a gap somebody later reads as an oversight.
 
 **Why the tray's L1 example was planned and then NOT written** (measured before building
 it, the standing first step of §2). `PLAN-menubar-tray.md` D5 proposed
