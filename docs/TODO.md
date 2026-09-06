@@ -84,7 +84,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     OPENS the card and the tray's must-not list gains the apply; five tray tests extended
     plus `the_update_item_is_present_iff_the_model_offers_a_version`; the app menu gains
     "Check for Updates…" under About, which navigates AND re-checks.
-  - [ ] T8 — `rex status` / MCP read field, with no new dispatch arm
+  - [x] T8 — `rex status` / MCP read field, with no new dispatch arm
+    ✓ 6 Sep 2026 — ledger #536; the `status` payload and `stack_status` gain `update` from
+    the in-process snapshot; `rex update` recorded in CLI-ROADMAP as deliberately NOT built;
+    `every_field_the_status_arm_emits_is_rendered_by_rex_status` binds the two ends a crate
+    apart (plant-proven). Owed: a `cli_socket_check` run once the app is next restarted —
+    a running OLD app answers without the field, which is expected skew, not a bug.
   - [ ] T9 — release flow: the tar.gz asset, the version guard, §A0, and the WRONG docs
   - [ ] T10 — the runtimes publisher + the tap's `auto_updates true` (other repos)
   - [ ] T11 — the first real in-app update on a real Mac (0.6.0 → 0.6.1)

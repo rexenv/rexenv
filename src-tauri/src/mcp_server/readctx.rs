@@ -66,6 +66,16 @@ pub struct StackSnapshot {
     pub default_tld: String,
     pub cli_installed: bool,
     pub cli_current: bool,
+    /// A newer rexenv a VERIFIED offer names, if there is one.
+    ///
+    /// A Read, and only a Read: there is no MCP tool that installs it. A
+    /// self-update replaces the process that enforces the agent-access dial and
+    /// `settings_access`, so an agent asking for one would be asking to replace
+    /// the thing that bounds it; and the relaunch kills the socket the answer
+    /// would come back on, so it could never observe the result anyway. Telling
+    /// it that a newer version exists costs nothing and saves it reporting a
+    /// bug that is already fixed (ledger #530).
+    pub app_update: Option<String>,
 }
 
 /// What `inspect_folder` learned — the dialog's `LinkedFolderInfo` minus the two
@@ -167,6 +177,9 @@ impl<'a> ReadCtx<'a> {
             default_tld,
             cli_installed: cli.as_ref().is_some_and(|c| c.installed),
             cli_current: cli.as_ref().is_some_and(|c| c.current),
+            // The published snapshot, like the tray reads: no verify, no
+            // network, and no database read on a status call.
+            app_update: crate::core::app_update::current_offer().map(|o| o.version),
         })
     }
 

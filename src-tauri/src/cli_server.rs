@@ -511,7 +511,20 @@ where
             let dns = app
                 .try_state::<crate::state::app::DnsState>()
                 .map(|dns| commands::system::dns_status(state.clone(), dns));
-            Ok(json!({ "services": to_value(&services)?, "dns": to_value(&dns)? }))
+            // The app-update offer, as a READ. No new dispatch arm and no `rex
+            // update` verb: install stays a GUI click, because a self-update
+            // replaces the process that enforces the agent dial and
+            // `settings_access`, and the relaunch kills this very socket
+            // mid-call — the caller could never observe the result of what it
+            // asked for. Read from the in-process snapshot, like the tray.
+            let update = crate::core::app_update::current_offer().map(|o| {
+                json!({ "version": o.version, "sizeBytes": o.size_bytes })
+            });
+            Ok(json!({
+                "services": to_value(&services)?,
+                "dns": to_value(&dns)?,
+                "update": update,
+            }))
         }
         // Global lifecycle — exactly the footer buttons. `rex restart` is the
         // CLI sending `stop` then `start`; no third code path exists.
@@ -2060,6 +2073,53 @@ mod tests {
     /// ways, and three of them defeat a strict scan: multi-line `request(\n
     /// "x.y", …)`, computed names (`format!("tunnel.{act}")`), and genuinely
     /// dynamic ones (`request(step, …)` where `step` came from a slice). A
+    /// **Every top-level key the `status` arm emits is READ by the CLI.**
+    ///
+    /// The payload is built here and rendered a crate away, so a field added to
+    /// one end and not the other is invisible: the server sends it, `rex status`
+    /// silently ignores it, and the only symptom is a line nobody sees. That is
+    /// the same one-fact-in-two-places shape this tree keeps finding, and it
+    /// already happened once in the other direction — `phpUpdateCheck` shipped
+    /// as a command nothing called.
+    #[test]
+    fn every_field_the_status_arm_emits_is_rendered_by_rex_status() {
+        let server = crate::core::copy_scan::production_source(include_str!("cli_server.rs"));
+        let at = server.find(r#""status" =>"#).expect("the status arm exists");
+        let arm = &server[at..at + 1200.min(server.len() - at)];
+        assert!(arm.contains("services_status"), "sliced the wrong arm");
+
+        // The keys the arm puts on the wire, read out of the json! literal.
+        let mut keys: Vec<&str> = Vec::new();
+        for line in arm.lines() {
+            let t = line.trim();
+            if let Some(rest) = t.strip_prefix('"') {
+                if let Some((k, tail)) = rest.split_once('"') {
+                    if tail.trim_start().starts_with(':') && !k.is_empty() {
+                        keys.push(k);
+                    }
+                }
+            }
+        }
+        keys.sort();
+        keys.dedup();
+        assert!(
+            keys.contains(&"services") && keys.contains(&"dns") && keys.contains(&"update"),
+            "the status payload no longer carries the keys this guard was written for: {keys:?}"
+        );
+
+        let cli = include_str!("../../cli/src/main.rs");
+        let start = cli.find("fn cmd_status").expect("rex status exists");
+        let end = cli[start..].find("\nfn ").map(|i| start + i).unwrap_or(cli.len());
+        let printer = &cli[start..end];
+        for k in keys {
+            assert!(
+                printer.contains(&format!("data[\"{k}\"]")),
+                "the status arm sends {k:?} and `rex status` never reads it — a field on \
+                 the wire that renders nowhere is a line nobody sees"
+            );
+        }
+    }
+
     /// strict rule reported ten false positives on a tree with zero real ones,
     /// and a guard that cries wolf gets an allow-list that swallows the next
     /// real case.

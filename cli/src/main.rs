@@ -3539,6 +3539,15 @@ fn cmd_status(json_output: bool) {
             if ca { "trusted" } else { "NOT TRUSTED" },
         );
     }
+    // One line, and only when there IS one — an update line on every status
+    // call would be noise on the 99 runs where nothing is offered. It names
+    // where to go rather than what to type: `rex` deliberately has no way to
+    // install one (ledger #530).
+    if let Some(u) = data["update"].as_object() {
+        if let Some(v) = u["version"].as_str() {
+            println!("update   rexenv {v} can be installed from Settings → About");
+        }
+    }
     let Some(services) = data["services"].as_array() else {
         return println!("(no services reported)");
     };

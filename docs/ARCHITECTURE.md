@@ -679,7 +679,14 @@ Live-proven end to end by `site_stop_start_check`.
   Cmd+Q for an identical consequence — the consent sentence says instead that terminals and
   jobs close with it. At the next launch `finish_at_launch` reports the version the new
   process reads from ITSELF, sweeps the leftovers, and only then deletes the previous
-  bundle. Ledger #517–#532.
+  bundle.
+  **The check is a read everywhere; the install is a click and nowhere else.** `rex status`
+  prints one line naming the version when a verified offer exists, `--json` and the MCP
+  `stack_status` tool carry the same field, and all three read the in-process snapshot — a
+  status call verifies no signature and touches no network. There is no `rex update` and no
+  MCP tool that installs: an agent asking for one would be asking to replace the process
+  that enforces the dial that bounds it, and the relaunch kills the socket its answer would
+  return on. Ledger #517–#536.
 - **ADMINER is the SECOND family in that manifest**, and the limits are per family
   (`updates::Family`). Its grant is strictly below PHP's — `Shape::File` →
   `resolve_file`, no chmod, no codesign, never spawned, interpreted by an already-running
