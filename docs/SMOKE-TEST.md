@@ -1275,18 +1275,34 @@ itself the first check.
   indicator, then the app quits and reopens on the new version — About and `rex --version`
   agree, and the startup notice names the version the NEW process read from itself.
   **Tell:** two `rexenv.app` copies afterwards; a notice naming a version About disagrees with.
-- [ ] **THE LEG NOTHING AUTOMATED CAN PROVE — Gatekeeper and App Management on the replaced
+  ◐ 7 Sep 2026 — the apply, the quit and the reopen ran twice and everything measurable
+  agreed: `CFBundleShortVersionString` 0.6.1, cdhash `e7036221…` → `ce45c7a5…` (a different
+  bundle, not a rewritten one), still universal, codesign valid, `rex 0.6.1 (f748698)` equal
+  to About, one `rexenv.app`. **Open for one clause only: nobody read the startup notice.**
+  A box is not ticked by the parts of it that were watched.
+- [x] **THE LEG NOTHING AUTOMATED CAN PROVE — Gatekeeper and App Management on the replaced
   bundle.** No "rexenv is damaged", no "cannot be opened", no "prevented from modifying apps"
   notification, and `xattr -l /Applications/rexenv.app` shows no quarantine attribute.
   **Tell:** any of those dialogs — the update installed and the app will not start.
-- [ ] **Services and DNS survive it.** Sites keep answering across the whole thing; after the
+  ✓ 7 Sep 2026, macOS 26.6.2, **twice** (0.6.0 → 0.6.1, then again after a brew downgrade put
+  0.6.0 back): the owner reports no dialog of any kind either time, and the replaced bundle
+  carries no quarantine xattr with `codesign --verify --deep --strict` still valid. This is
+  §T0's measurement holding for a real release rather than a probe.
+- [x] **Services and DNS survive it.** Sites keep answering across the whole thing; after the
   relaunch `rex status` reads `answering (agent, udp 15353)`, the DNS agent's pid has CHANGED
   (`pgrep -f -- --dns-agent`), and `rexenv.log` carries the "kickstarting it" line naming the
   old build. **Tell:** the same agent pid as before — launchd re-exec did not happen and the
   resolver is running the previous binary.
-- [ ] **The previous copy is cleaned up, but only after a healthy launch.** `ls -a
+  ✓ 7 Sep 2026, all three clauses: `answering (agent, udp 15353)`; the agent pid changed on
+  every swap (43710 → 47967 → 65661); and the log carries four kickstart lines, including
+  `the resolver agent is running 0.6.1 f748698 but this build is 0.6.0 55eae12 — kickstarting
+  it` — the agent NEWER than the app, after the brew downgrade, so the check is a mismatch
+  test and not a "less than" one. MySQL, MariaDB, seven php-fpm pools, Nginx, Caddy and
+  Mailpit kept their pids throughout.
+- [x] **The previous copy is cleaned up, but only after a healthy launch.** `ls -a
   /Applications` shows no `.rexenv-update-*` directory once the new build has opened.
   **Tell:** a leftover that survives two launches.
+  ✓ 7 Sep 2026, checked after each of the two updates: none.
 - [ ] **A public share is live.** Start a share, then press Install: the quit confirm names
   the share count exactly as Cmd+Q does. Choose "Keep sharing" → the app stays up, the card
   says the update is installed and takes effect when rexenv next opens, and NO relauncher is
@@ -1297,15 +1313,24 @@ itself the first check.
 - [ ] **Homebrew coexistence.** On a cask-installed copy the consent sentence mentions
   `brew upgrade --cask rexenv`; after a self-update **`brew upgrade` with NO cask named**
   does nothing. **Tell:** brew touching rexenv in the unnamed form.
+  ✓ 7 Sep 2026: `brew upgrade --dry-run` does not list rexenv — the unnamed form leaves it
+  alone, as `auto_updates` promises. The consent-sentence half (a cask-installed copy naming
+  `brew upgrade --cask rexenv`) is NOT yet observed.
   **Do not test this with `brew upgrade --cask rexenv`** — naming a cask is an explicit
   request and Homebrew honours it regardless of `auto_updates`, so the named form really
   does reinstall whatever the local tap checkout says, and on a stale checkout that is a
   silent downgrade. Measured 7 Sep 2026: it put 0.6.0 back over a self-updated 0.6.1 and
   printed `Upgraded 1 requested outdated package`. That is not a bug to file; it is the
   reason this line now says which command to run.
-- [ ] **Which permissions come back.** Note every macOS prompt that reappears after the
+- [x] **Which permissions come back.** Note every macOS prompt that reappears after the
   update (an ad-hoc build is a new identity each time). Record them here — the consent
   sentence promises this, and the list is what makes it honest.
+  ✓ 7 Sep 2026, on this Mac, across two updates: **none**. No prompt was seen by the owner
+  and `log show --predicate 'subsystem == "com.apple.TCC"'` records none for rexenv in the
+  window. **Do not turn this into a promise.** It is one Mac whose grants were already
+  settled; the consent sentence keeps warning because a machine that has not yet granted a
+  permission, or a macOS that keys a grant more strictly, will ask again. Re-record per
+  macOS major.
 
 ## Robustness (spot-check) — §2
 - [ ] Quit with another app on :443, relaunch → a clear "port in use" message (no crash).

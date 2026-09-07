@@ -160,11 +160,28 @@ path the tap README promises. Corrected in three places that all carried the sam
 sentence — the cask comment, the tap README (`626d1df`) and `docs/RELEASING.md` — plus the
 SMOKE leg, which now names the command to run and the command not to.
 
-**Legs of §M still UNRECORDED** (the owner ran the update; these were not observed or not
-reported, and an unobserved leg is not a passed one): whether any Gatekeeper / App
-Management dialog appeared, which macOS permission prompts came back after the identity
-change, the startup notice's wording, the tray `Update to …` item, the offline check, and
-the public-share "Keep sharing" path. They stay open in `docs/SMOKE-TEST.md`.
+**Run a second time, after the brew downgrade** — 0.6.0 → 0.6.1 again, which is why the
+numbers above have a third column in the log: the DNS agent went 43710 → 47967 → 65661, one
+re-exec per swap. **The owner reports no dialog of any kind on either update**, and
+`log show --predicate 'subsystem == "com.apple.TCC"'` records no prompt for rexenv in the
+window — so the two legs that most needed a human closed here: Gatekeeper / App Management
+on the replaced bundle, and which permissions come back. Both are recorded in
+`docs/SMOKE-TEST.md` with the caveat they deserve: one Mac, grants already settled, re-record
+per macOS major.
+
+`rexenv.log` carries the kickstart line four times, including
+`the resolver agent is running 0.6.1 f748698 but this build is 0.6.0 55eae12 — kickstarting
+it` — the agent NEWER than the app, after the downgrade. T5's check is a mismatch test, not
+a "less than" one, and only a downgrade could show that.
+
+`brew upgrade --dry-run` does not list rexenv: the unnamed form really does leave it alone,
+which is the half of `auto_updates` that works as documented.
+
+**Legs of §M still open, and open honestly:** the startup notice's wording (the apply itself
+is measured; nobody read the notice), the tray `Update to …` item, whether the offer arrives
+with no click at all, "dark when current" as the CARD renders it, the offline check, the
+public-share "Keep sharing" path, and the consent sentence's Homebrew line on a
+cask-installed copy. A box is not ticked by the parts of it that were watched.
 
 ## A) ✅ 0.6.0 — PUBLISHED (§A0 ✅ measured · §A ✅ asserted · §M waits for 0.6.1 by construction)
 

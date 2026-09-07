@@ -124,10 +124,15 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     silently put 0.6.0 back over the self-updated 0.6.1. Three docs said otherwise and all
     three were ours; corrected in the cask comment, the tap README (`626d1df`) and
     `docs/RELEASING.md`, and the SMOKE leg now names which command to run.
-    **Still owed (unobserved, not passed):** the Gatekeeper/App-Management dialog leg, which
-    permission prompts returned after the identity change, the startup notice, the tray
-    `Update to …` item, the offline check, and the public-share "Keep sharing" path — all
-    still ticked open in `docs/SMOKE-TEST.md`.
+    **Ran a SECOND time** after the brew downgrade, and the owner reports **no dialog on
+    either update**, with the TCC log recording no prompt — which closes the two legs that
+    most needed a human (Gatekeeper/App Management on the replaced bundle; which permissions
+    come back), plus services-and-DNS-survive-it, leftover cleanup, and the unnamed
+    `brew upgrade` leaving rexenv alone. Five SMOKE boxes ticked with evidence.
+    **Still owed (unobserved, not passed):** the startup notice's wording, the tray
+    `Update to …` item, whether the offer arrives with no click, "dark when current" as the
+    CARD renders it, the offline check, the public-share "Keep sharing" path, and the consent
+    sentence's Homebrew line — all still open in `docs/SMOKE-TEST.md`.
   - [x] T12 — archive the plan as a design record ✓ 7 Sep 2026: `git mv` to
     `docs/archive/PLAN-self-update.md`, its Status line rewritten to say what IS proven
     (26 L0 in the module, four examples, seven L2 states, both publishers' refusals) and
