@@ -1317,8 +1317,9 @@ itself the first check.
   keeps the previous timestamp. **Tell:** "up to date", or a timestamp that moved — **or a
   spinner that never stops**, which is what this leg caught on 7 Sep 2026: over 40 seconds
   of "Checking…" under a 15-second client timeout that never fired. The seam now enforces its
-  own 12-second deadline (ledger #540), so the answer is late at worst, never absent. Re-run
-  this leg against the fix and time it.
+  own deadline (ledger #540) and the button gets a SHORTER one than the poller — **6 seconds**
+  — so the answer is late at worst, never absent. Re-run this leg against the fix and time it:
+  it should say it could not reach the server within about six seconds.
 - [ ] **Homebrew coexistence.** On a cask-installed copy the consent sentence mentions
   `brew upgrade --cask rexenv`; after a self-update **`brew upgrade` with NO cask named**
   does nothing. **Tell:** brew touching rexenv in the unnamed form.

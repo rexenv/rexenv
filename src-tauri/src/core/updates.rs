@@ -604,7 +604,7 @@ pub async fn fetch() -> Result<(Vec<u8>, String)> {
             "this build has no PHP update key pinned, so it does not fetch a manifest".into(),
         ));
     }
-    fetch_signed_pair(MANIFEST_URL, MANIFEST_SIG_URL, MAX_DOC).await
+    fetch_signed_pair(MANIFEST_URL, MANIFEST_SIG_URL, MAX_DOC, BACKGROUND_DEADLINE).await
 }
 
 /// Fetch a signed document and its detached signature. **Takes no `Connection`**
@@ -623,6 +623,7 @@ pub async fn fetch_signed_pair(
     doc_url: &'static str,
     sig_url: &'static str,
     max_doc: usize,
+    deadline: std::time::Duration,
 ) -> Result<(Vec<u8>, String)> {
     // A deadline this function ENFORCES, over the client's own. `binaries.rs`
     // learned in B34 that reqwest's `Client::timeout` is not a guarantee you can
@@ -635,7 +636,12 @@ pub async fn fetch_signed_pair(
     //
     // Total, not per-request: the pair is two GETs, and "up to 30 seconds" is not
     // a different answer from "forever" to someone holding a mouse.
-    const PAIR_DEADLINE: std::time::Duration = std::time::Duration::from_secs(12);
+    //
+    // Which deadline is the CALLER's to choose, because the two callers are not
+    // alike: a six-hourly poller can afford to wait, and a person who just
+    // pressed a button cannot. One timeout serving both was the original mistake
+    // under the "nobody is waiting on this" comment — the poller was the only
+    // caller in mind, and the button arrived later.
 
     static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
     let client = CLIENT.get_or_init(|| {
@@ -663,7 +669,7 @@ pub async fn fetch_signed_pair(
         }
         Ok(body.to_vec())
     };
-    bounded(PAIR_DEADLINE, doc_url, async move {
+    bounded(deadline, doc_url, async move {
         let doc = get(doc_url).await?;
         let sig = get(sig_url).await?;
         let sig = String::from_utf8(sig)
@@ -672,6 +678,17 @@ pub async fn fetch_signed_pair(
     })
     .await
 }
+
+/// What a person pressing "Check now" is allowed to wait before being told the
+/// server did not answer. Two ~1 KB files over TLS take well under a second on a
+/// working connection; this is not a performance budget, it is the point at which
+/// silence stops being informative.
+pub const INTERACTIVE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(6);
+
+/// What the background poller and the launch sweep are allowed to wait. Longer,
+/// because nobody is looking and a slow network should still produce an answer
+/// rather than a failure the user later sees as "couldn't check".
+pub const BACKGROUND_DEADLINE: std::time::Duration = std::time::Duration::from_secs(12);
 
 /// Run `fut`, or give up saying so.
 ///
@@ -1414,6 +1431,44 @@ mod tests {
     ///
     /// Tested against a future that never completes, because that is exactly the
     /// case no reachable host can produce and the only one that matters.
+    /// **The button does not inherit the poller's patience.**
+    ///
+    /// The two callers are a person and a six-hourly loop, and the whole of
+    /// #540 is that one deadline was serving both. A source scan, because the
+    /// distinction lives in which constant each call site passes and nothing in
+    /// a type can hold it: the day someone "simplifies" this back to one
+    /// constant, the button silently gets the long wait again and no test fails.
+    #[test]
+    fn the_interactive_check_and_the_poller_do_not_share_a_deadline() {
+        assert!(
+            INTERACTIVE_DEADLINE < BACKGROUND_DEADLINE,
+            "a person waits less than a loop nobody is watching"
+        );
+
+        let cmd = crate::core::copy_scan::production_source(include_str!(
+            "../commands/app_update.rs"
+        ));
+        assert!(cmd.contains("app_update_check"), "sliced the wrong file");
+        assert!(
+            cmd.contains("INTERACTIVE_DEADLINE"),
+            "the command a button calls must pass the interactive deadline"
+        );
+        assert!(
+            !cmd.contains("BACKGROUND_DEADLINE"),
+            "the interactive path must not wait as long as the poller"
+        );
+
+        let lib = crate::core::copy_scan::production_source(include_str!("../lib.rs"));
+        assert!(
+            lib.contains("BACKGROUND_DEADLINE"),
+            "the poller must pass the background deadline"
+        );
+        assert!(
+            !lib.contains("INTERACTIVE_DEADLINE"),
+            "nothing unattended should be cut off at the button's deadline"
+        );
+    }
+
     #[tokio::test]
     async fn a_fetch_that_never_answers_ends_anyway_and_says_so() {
         // A short REAL deadline rather than a paused clock: `start_paused` needs

@@ -650,8 +650,9 @@ Live-proven end to end by `site_stop_start_check`.
   with the answer, and "Check now" always works. The switch is in the card and in
   `rex config`; "on" is the ABSENT row a fresh install has, never the string `"true"`,
   so the key has one spelling of on rather than two for its reader to agree with by luck. The request carries `rexenv/<version>` and
-  nothing else: no arch, no identifier. The fetch enforces its OWN total deadline over reqwest's (12s for the pair, ledger #540):
-a client timeout is not a guarantee, and a person watching a spinner is the caller the
+  nothing else: no arch, no identifier. The fetch enforces its OWN total deadline over reqwest's, and the CALLER chooses it —
+6s when a person pressed "Check now", 12s for the poller and the launch sweep (ledger #540).
+A client timeout is not a guarantee, and a person watching a spinner is the caller the
 original "nobody is waiting on this" comment forgot. Every failure is a log line and an
 honest footer —
   `checked N ago` reads ONE stored value written only after a success, so a failed check

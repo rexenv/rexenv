@@ -61,7 +61,26 @@ async fn main() -> ExitCode {
     );
 
     // ── 2. Fetch the real thing ──────────────────────────────────────────────
-    let fetched = app_update::fetch().await;
+    //
+    // The INTERACTIVE deadline, because a person is running this example and
+    // watching it — the same choice the "Check now" button makes, so what this
+    // measures is what a user's press measures.
+    let started = std::time::Instant::now();
+    let fetched = app_update::fetch(updates::INTERACTIVE_DEADLINE).await;
+    // The deadline is a promise about the WORST case, so bound the check on it
+    // whichever way the fetch went: the failure this guards (#540) was a fetch
+    // that never returned at all, and a check that only looks at the happy path
+    // would have passed straight through it.
+    checks.is(
+        "the fetch answered within the deadline a button is allowed to wait",
+        started.elapsed() <= updates::INTERACTIVE_DEADLINE + std::time::Duration::from_secs(2),
+        &format!(
+            "took {:?}, and the button's ceiling is {:?} — reqwest's own client timeout \
+             was trusted here once and did not fire",
+            started.elapsed(),
+            updates::INTERACTIVE_DEADLINE
+        ),
+    );
     let (doc, sig) = match fetched {
         Ok(pair) => pair,
         Err(e) => {

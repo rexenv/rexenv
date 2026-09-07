@@ -1642,7 +1642,7 @@ pub fn relaunch_after_exit(bundle: std::path::PathBuf) {
 /// rather than anything a user is shown. The timestamp is written only on the
 /// success path, so `checked N ago` can never age a failure into a success.
 async fn check_for_app_update(state: &state::app::AppState) {
-    match core::app_update::fetch().await {
+    match core::app_update::fetch(core::updates::BACKGROUND_DEADLINE).await {
         Ok((doc, sig)) => {
             let Ok(conn) = state.db.lock() else {
                 log::warn!("app update: descriptor not stored — db lock");

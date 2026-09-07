@@ -610,14 +610,20 @@ pub fn store_check(conn: &Connection, offered: Option<Offer>) -> Result<CheckCac
 /// Fetch the descriptor and its detached signature. **Takes no `Connection`**,
 /// so no caller can hold the database lock across this await.
 ///
+/// The `deadline` is the caller's, and the choice is not cosmetic: a person who
+/// pressed "Check now" gets [`updates::INTERACTIVE_DEADLINE`], the poller gets
+/// [`updates::BACKGROUND_DEADLINE`]. Passing it in rather than picking one here
+/// is what stops the button inheriting the poller's patience, which is precisely
+/// what happened (ledger #540).
+///
 /// Verification happens in [`accept`]; this is deliberately dumb about trust.
-pub async fn fetch() -> Result<(Vec<u8>, String)> {
+pub async fn fetch(deadline: std::time::Duration) -> Result<(Vec<u8>, String)> {
     if !enabled() {
         return Err(Error::Other(
             "this build has no update key pinned, so it does not check for app updates".into(),
         ));
     }
-    updates::fetch_signed_pair(APP_MANIFEST_URL, APP_MANIFEST_SIG_URL, MAX_DOC).await
+    updates::fetch_signed_pair(APP_MANIFEST_URL, APP_MANIFEST_SIG_URL, MAX_DOC, deadline).await
 }
 
 /// The offer the TRAY is allowed to read: an in-process snapshot, installed by

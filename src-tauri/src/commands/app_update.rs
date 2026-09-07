@@ -40,7 +40,11 @@ pub fn app_update_state(state: State<'_, AppState>) -> Result<core::app_update::
 pub async fn app_update_check(
     state: State<'_, AppState>,
 ) -> Result<core::app_update::AppUpdateState> {
-    let (doc, sig) = core::app_update::fetch().await?;
+    // A person is watching this one, so it gets the short deadline. The poller
+    // in `lib.rs` gets the long one — the distinction that did not exist when a
+    // single client timeout served both (ledger #540).
+    let (doc, sig) =
+        core::app_update::fetch(core::updates::INTERACTIVE_DEADLINE).await?;
     let conn = lock(&state)?;
     // A serial we already have is not an error — it is the ordinary answer on
     // every check after the first, and `accept` says so by writing nothing.
