@@ -103,6 +103,69 @@ strips exactly one component and both other shapes produce a broken install.
 If it fails, do not publish: the dmg would install fine and every in-app update from it
 would break.
 
+## A) ✅ 0.6.1 — PUBLISHED, and the release the updater was finally RUN on
+
+`rexenv_0.6.1_universal.dmg`, sha256
+`c427e9e6b034bac2be4801b1f81ef4afbd5823e0bd0c7078c7de4b6b7ffb9f46`, 29,143,794 bytes.
+Update archive `rexenv_0.6.1_universal.app.tar.gz`, sha256
+`39f5044969575c83b9e4ca0cacd3202c2b29551c9ae78cef840dedd4697777fc`, 28,735,832 bytes.
+Source `f748698`, clean tree, `verify: all green`. **§A0 ✅ by hand:** one dmg, both
+binaries `x86_64 arm64`, `Dist_Archive_Command` ×5 and `RELEASE_PUBKEY` ×2 in EACH slice,
+codesign valid, Info.plist 0.6.1. (The About page's changelog URL is not visible to
+`strings` on the binary — Tauri brotli-compresses embedded web assets — so it was checked
+in `dist/assets/`, which is the artefact that gets embedded.)
+
+**PUBLISHED 7 Sep 2026, 09:35:43Z** (release id 383967598). Cask bumped to 0.6.1 /
+`c427e9e6…`. Descriptor published from `rexenv/runtimes`: **serial 1 → 2**, naming 0.6.1,
+`check-app-manifest: all green` from this tree.
+
+**A CDN lesson, free:** `check-app-manifest.sh` run immediately after the publish still
+read **serial 1 / 0.6.0** — `raw.githubusercontent.com` caches for a few minutes. That is
+exactly why the workflow reads its own result back through the **API** rather than raw; had
+it checked raw it would fail on every successful run. The same delay also produced a live
+demonstration of the forgotten-second-click warning, firing correctly for a state that was
+only briefly true.
+
+### §M — the update itself, MEASURED (the T11 gate)
+
+The installed copy was 0.6.0; the owner opened Settings → About and pressed Install.
+Before and after, on the same Mac:
+
+| | before | after |
+|---|---|---|
+| `CFBundleShortVersionString` | 0.6.0 | **0.6.1** |
+| cdhash | `e7036221…` | **`ce45c7a5…`** — a genuinely different bundle, not a rewritten one |
+| `codesign --verify --deep --strict` | valid | **valid** |
+| quarantine xattr | none | **none** |
+| `lipo -archs` | — | **`x86_64 arm64`** — universal survived the swap |
+| `rex --version` | `rex 0.6.0 (55eae12)` | **`rex 0.6.1 (f748698)`**, agreeing with About |
+| DNS agent | pid 43710 | **pid 47967, running from the NEW bundle** |
+| `.rex` resolution | 127.0.0.1 | **127.0.0.1** |
+| `.rexenv-update-*` leftovers | none | **none** — swept after the healthy launch |
+
+`rex status` afterwards printed `update   rexenv 0.6.1 can be installed from Settings →
+About` once a newer build existed again (see below), which is #536's read-everywhere claim
+demonstrated on a real machine rather than in a test. **Services outlived all of it** —
+MySQL, MariaDB, seven php-fpm pools, Nginx, Caddy and Mailpit were still running with the
+same pids afterwards.
+
+**The finding, and it was ours: `auto_updates` does NOT stop `brew upgrade --cask rexenv`.**
+Run as part of this gate, the named form reinstalled 0.6.0 over the self-updated 0.6.1 and
+reported `Upgraded 1 requested outdated package` — no mention of going backwards. Homebrew
+skips auto-updating casks when upgrading *everything*; naming one is an explicit request it
+honours. It also installs what the **local tap checkout** says, which on that Mac was a
+release behind, so "the window is only minutes" was too comfortable a sentence. Nothing
+broke: the app offered 0.6.1 again at its next check, which incidentally proved the recovery
+path the tap README promises. Corrected in three places that all carried the same wrong
+sentence — the cask comment, the tap README (`626d1df`) and `docs/RELEASING.md` — plus the
+SMOKE leg, which now names the command to run and the command not to.
+
+**Legs of §M still UNRECORDED** (the owner ran the update; these were not observed or not
+reported, and an unobserved leg is not a passed one): whether any Gatekeeper / App
+Management dialog appeared, which macOS permission prompts came back after the identity
+change, the startup notice's wording, the tray `Update to …` item, the offline check, and
+the public-share "Keep sharing" path. They stay open in `docs/SMOKE-TEST.md`.
+
 ## A) ✅ 0.6.0 — PUBLISHED (§A0 ✅ measured · §A ✅ asserted · §M waits for 0.6.1 by construction)
 
 `rexenv_0.6.0_universal.dmg`, sha256
@@ -1211,7 +1274,7 @@ Result: ____ (date, reqwest version).
 | A | Apple-Silicon ad-hoc launch (de-quarantine → launches) — **on the 0.4.0 dmg `a7aecee7…`** | ✅ **passed 27 Aug 2026**, with `docs/SMOKE-TEST.md` (row S) on the same bytes; publishing was the sign-off. **0.4.0 published 16:37Z; cask bumped 17:43Z and the anonymous download four-way-matched 30 Aug.** 0.3.0's launch half is CLOSED BY RULING (superseded artefact; §A-prev has the reasoning and what it costs), with Gatekeeper's own `spctl` rejection recorded on its shipped bytes |
 | S | `docs/SMOKE-TEST.md` end-to-end on a clean Mac from the built dmg — **the OTHER half of the gate, and it had no row here until 30 Aug 2026** | ✅ passed 27 Aug 2026 on 0.4.0 `a7aecee7…`. Re-run per release: it is the only place the packaged app proves its own flows |
 | A0-b | The UPDATE archive + §A0 on the bundle EXTRACTED from it | ✅ scripted (`scripts/release-assets.sh`, run by `pnpm release:mac` and re-checked in CI). **Green on the existing 0.5.0 build 6 Sep 2026** — the layout guard is plant-proven (a `./`-prefixed archive is refused) |
-| M | **In-app self-update on a real Mac** (0.6.0 → 0.6.1) | 🚧 **publish-blocking from the first release that carries a descriptor.** The apply, the swap, the relaunch, Gatekeeper and App Management on the replaced bundle, the DNS agent's pid changing, and `brew upgrade` doing nothing afterwards. Steps in `docs/SMOKE-TEST.md` §In-app self-update; the swap itself was measured once by `scripts/probes/app-swap-probe.sh` (`docs/archive/PLAN-self-update.md` §T0) |
+| M | **In-app self-update on a real Mac** (0.6.0 → 0.6.1) | ◐ **RAN 7 Sep 2026 on 0.6.0 → 0.6.1** — the apply, the swap, the relaunch, the changed cdhash, no quarantine, `rex --version` agreeing with About, the DNS agent re-execed from the new bundle (pid changed), leftovers swept, services outlived it, and the descriptor chain end to end. Details in §A 0.6.1. **Still owed, and honestly so:** whether any Gatekeeper/App-Management dialog appeared, which permission prompts returned, the startup notice, the tray item, the offline check and the public-share path — the update was run, those legs were not observed. It also produced the release’s one real finding: `auto_updates` does not stop `brew upgrade --cask rexenv` |
 | B | Uninstall removes the root :443 daemon | 🚧 do when convenient (tears down your edge) |
 | C | B31 CSP packaged smoke test | ✅ done |
 | D | Full tap install dry-run (after Release + tap push) | 🚧 **`--zap` ONLY** — the install half passed 12 Aug 2026 and the cask has bumped cleanly through 0.1.1 / 0.2.0 / 0.3.0 / 0.4.0 since. The trigger used to read "do once the dmg is released", an event that happened four releases ago |

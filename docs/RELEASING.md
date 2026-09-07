@@ -252,13 +252,17 @@ rather than the practice.
 - **A release is not finished when it is published.** The descriptor in `rexenv/runtimes`
   is a second click, and until it happens no installed rexenv is offered anything.
   `scripts/check-app-manifest.sh` is what notices.
-- **The cask declares `auto_updates true`, so `brew upgrade` deliberately SKIPS rexenv.**
-  That is what stops brew and the app from installing over each other. Two consequences
-  worth knowing before someone "fixes" them: `--greedy` and `brew reinstall` still act and
-  install whatever the cask names, so either can move a user BACKWARDS until
-  `update-cask.yml` catches up (minutes); and brew now reads
-  `CFBundleShortVersionString` out of the installed app instead of its own receipt, which
-  is what makes `brew info --cask rexenv` stay honest after an in-app update.
+- **The cask declares `auto_updates true`, so a PLAIN `brew upgrade` skips rexenv** — that
+  is what stops brew and the app from installing over each other. Three things to know
+  before someone "fixes" this: **naming the cask overrides it** (`brew upgrade --cask
+  rexenv` acts, because an explicit request is not the case `auto_updates` covers), so do
+  `--greedy` and `reinstall`; all of them install whatever the user's **local tap
+  checkout** names, so any of them can move someone BACKWARDS — measured 7 Sep 2026, the
+  named form put 0.6.0 back over a self-updated 0.6.1 and called it an upgrade; and brew
+  reads `CFBundleShortVersionString` out of the installed app instead of its own receipt,
+  which is what makes `brew info --cask rexenv` stay honest after an in-app update.
+  This bullet, the cask's comment and the tap README all said "with or without a cask
+  named" until the release that tested it.
 - **The signing key is pinned in THREE files and they must move together.**
   `RELEASE_PUBKEY` in `src-tauri/src/core/updates.rs`, and `EXPECTED_PUBKEY` in both
   `scripts/publish-manifest.sh` and `scripts/publish-app-manifest.sh` on `rexenv/runtimes`.

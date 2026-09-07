@@ -1295,8 +1295,14 @@ itself the first check.
 - [ ] **Offline.** Disconnect and press Check now: the card says the check could not run and
   keeps the previous timestamp. **Tell:** "up to date", or a timestamp that moved.
 - [ ] **Homebrew coexistence.** On a cask-installed copy the consent sentence mentions
-  `brew upgrade --cask rexenv`; after a self-update `brew upgrade` (no flags) does nothing.
-  **Tell:** brew downgrading the app it just found newer.
+  `brew upgrade --cask rexenv`; after a self-update **`brew upgrade` with NO cask named**
+  does nothing. **Tell:** brew touching rexenv in the unnamed form.
+  **Do not test this with `brew upgrade --cask rexenv`** — naming a cask is an explicit
+  request and Homebrew honours it regardless of `auto_updates`, so the named form really
+  does reinstall whatever the local tap checkout says, and on a stale checkout that is a
+  silent downgrade. Measured 7 Sep 2026: it put 0.6.0 back over a self-updated 0.6.1 and
+  printed `Upgraded 1 requested outdated package`. That is not a bug to file; it is the
+  reason this line now says which command to run.
 - [ ] **Which permissions come back.** Note every macOS prompt that reappears after the
   update (an ad-hoc build is a new identity each time). Record them here — the consent
   sentence promises this, and the list is what makes it honest.

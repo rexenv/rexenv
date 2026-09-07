@@ -110,22 +110,24 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     §4 had claimed that for months), and the automatic-check setting finally has a GUI toggle
     (it was `rex config`-only while a Rust comment described "the toggle"). **Owed: merging
     both branches — a human gate, and T11 is when the whole chain runs for real.**
-  - [ ] T11 — the first real in-app update on a real Mac (0.6.0 → 0.6.1). **The only task
-    left, and the only one no amount of code can close**: it needs two published releases to
-    exist. Steps are `docs/PUBLISH-TESTING.md` §M and `docs/SMOKE-TEST.md` §In-app
-    self-update; the design record's §T11 says what each step is for. Both branches are
-    MERGED (7 Sep 2026, fast-forward): `rexenv/runtimes` main `03878b8` carries the publisher
-    + its workflow (visible in Actions as "Publish app update manifest"), `rexenv/homebrew-tap`
-    main `8c2b156` carries `auto_updates true`. **0.6.0 built and DRAFTED** 7 Sep 2026
-    (`55eae12`, dmg `be81bd17…`, the first release carrying an update archive `48cafbf9…`;
-    §A0 green by hand including the per-slice `RELEASE_PUBKEY`; draft id 383939490, all four
-    assets' digests match) — which also closed T9's owed first full `pnpm release:mac`.
-    **0.6.0 PUBLISHED 08:46:07Z**, cask bumped to
-    0.6.0/`be81bd17…` with `auto_updates true` intact, and the descriptor published —
-    serial 1, commit `1b8d502` on runtimes, `check-app-manifest: all green` from this tree.
-    The first dry run caught a real bug that only Linux shows (`tar | head -1` + `pipefail`;
-    fixed `ee71943`) — nothing was signed by it. Still owed: cut 0.6.1 and run §M against it,
-    which is the whole of T11.
+  - [ ] T11 — the first real in-app update on a real Mac — **RAN 7 Sep 2026, 0.6.0 → 0.6.1;
+    open only for the legs nobody watched**:
+    both releases built, published, cask-bumped and descriptor-signed (serials 1 and 2), and
+    the update applied from Settings → About. Measured after: version 0.6.1, cdhash changed
+    (`e7036221…` → `ce45c7a5…`), codesign valid, no quarantine, still universal,
+    `rex 0.6.1 (f748698)` agreeing with About, DNS agent re-execed from the NEW bundle
+    (pid 43710 → 47967) with `.rex` still resolving, leftovers swept, and every stack service
+    still running. `rex status` prints the offer line (#536 live). Full record:
+    `docs/PUBLISH-TESTING.md` §A 0.6.1.
+    **Found by running it:** `auto_updates` does NOT stop `brew upgrade --cask rexenv` —
+    naming a cask is an explicit request Homebrew honours, and on a stale tap checkout it
+    silently put 0.6.0 back over the self-updated 0.6.1. Three docs said otherwise and all
+    three were ours; corrected in the cask comment, the tap README (`626d1df`) and
+    `docs/RELEASING.md`, and the SMOKE leg now names which command to run.
+    **Still owed (unobserved, not passed):** the Gatekeeper/App-Management dialog leg, which
+    permission prompts returned after the identity change, the startup notice, the tray
+    `Update to …` item, the offline check, and the public-share "Keep sharing" path — all
+    still ticked open in `docs/SMOKE-TEST.md`.
   - [x] T12 — archive the plan as a design record ✓ 7 Sep 2026: `git mv` to
     `docs/archive/PLAN-self-update.md`, its Status line rewritten to say what IS proven
     (26 L0 in the module, four examples, seven L2 states, both publishers' refusals) and
