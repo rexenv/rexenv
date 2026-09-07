@@ -113,9 +113,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   - [ ] T11 — the first real in-app update on a real Mac (0.6.0 → 0.6.1). **The only task
     left, and the only one no amount of code can close**: it needs two published releases to
     exist. Steps are `docs/PUBLISH-TESTING.md` §M and `docs/SMOKE-TEST.md` §In-app
-    self-update; the design record's §T11 says what each step is for. Also owed here:
-    merging the two branches (`rexenv/runtimes`, `rexenv/homebrew-tap`), and the first full
-    `pnpm release:mac` end to end.
+    self-update; the design record's §T11 says what each step is for. Both branches are
+    MERGED (7 Sep 2026, fast-forward): `rexenv/runtimes` main `03878b8` carries the publisher
+    + its workflow (visible in Actions as "Publish app update manifest"), `rexenv/homebrew-tap`
+    main `8c2b156` carries `auto_updates true`. Still owed here: the first full
+    `pnpm release:mac` end to end, then 0.6.0 and 0.6.1.
   - [x] T12 — archive the plan as a design record ✓ 7 Sep 2026: `git mv` to
     `docs/archive/PLAN-self-update.md`, its Status line rewritten to say what IS proven
     (26 L0 in the module, four examples, seven L2 states, both publishers' refusals) and
