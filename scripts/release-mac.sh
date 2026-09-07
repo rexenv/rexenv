@@ -105,5 +105,5 @@ npx tauri build --target universal-apple-darwin "$@"
 
 # The update archive, its sidecar, and §A0 re-run on the bundle that comes back
 # OUT of that archive — which is what a self-updating user actually receives.
-# `docs/PLAN-self-update.md` T9.
+# `docs/archive/PLAN-self-update.md` T9.
 exec "$(dirname "$0")/release-assets.sh"

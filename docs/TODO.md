@@ -24,7 +24,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 ## Now — actionable code/test work
 
 - [ ] **In-app self-update — a dmg user has no update path at all**
-  — 6 Sep 2026, planned in `docs/PLAN-self-update.md`; supersedes the Phase 4+ row
+  — 6 Sep 2026, planned in `docs/archive/PLAN-self-update.md`; supersedes the Phase 4+ row
   "Packaging polish: Tauri updater" (`docs/archive/TASKS-RELEASE.md` §6.1), which
   proposed the wrong mechanism. `brew upgrade --cask rexenv` is the only updater
   today, so everyone who installed from the dmg re-downloads and drags a new copy
@@ -38,7 +38,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     `renamex_np(RENAME_SWAP)` on an ad-hoc bundle in `/Applications` works, so does the
     rename pair, the swapped copy relaunches with no quarantine and no dialog, and the
     quarantine leg translocates exactly as R6 assumes. Recorded in
-    `docs/PLAN-self-update.md` §T0 with the raw results; §6/§7/#517 rewritten to match.
+    `docs/archive/PLAN-self-update.md` §T0 with the raw results; §6/§7/#517 rewritten to match.
     Found on the way: App Management does not protect an ad-hoc bundle **at all** —
     in-place writes into the launched bundle succeeded too, which is a note for
     `docs/SIGNING.md`'s case rather than a change to the design.
@@ -110,8 +110,19 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     §4 had claimed that for months), and the automatic-check setting finally has a GUI toggle
     (it was `rex config`-only while a Rust comment described "the toggle"). **Owed: merging
     both branches — a human gate, and T11 is when the whole chain runs for real.**
-  - [ ] T11 — the first real in-app update on a real Mac (0.6.0 → 0.6.1)
-  - [ ] T12 — archive the plan as a design record
+  - [ ] T11 — the first real in-app update on a real Mac (0.6.0 → 0.6.1). **The only task
+    left, and the only one no amount of code can close**: it needs two published releases to
+    exist. Steps are `docs/PUBLISH-TESTING.md` §M and `docs/SMOKE-TEST.md` §In-app
+    self-update; the design record's §T11 says what each step is for. Also owed here:
+    merging the two branches (`rexenv/runtimes`, `rexenv/homebrew-tap`), and the first full
+    `pnpm release:mac` end to end.
+  - [x] T12 — archive the plan as a design record ✓ 7 Sep 2026: `git mv` to
+    `docs/archive/PLAN-self-update.md`, its Status line rewritten to say what IS proven
+    (26 L0 in the module, four examples, seven L2 states, both publishers' refusals) and
+    what is not (the chain end to end), the archive README row and the CLAUDE.md router
+    parenthetical, and all 19 citing files repointed. Archived ahead of T11 deliberately —
+    the code is finished, and leaving a plan "in flight" for weeks over a gate that needs a
+    release to exist makes `status.py` lie about what is being worked on.
 
 - [ ] **~16 flag-taking `rex` commands still ignore what they do not recognise**
   (3 Sep 2026, ledger #463/#466). Done: `site create`, `wp search-replace`,
@@ -488,7 +499,7 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   installed. What moves is one `TAP_REPO` variable in the runtimes publisher, and the
   descriptor's `url` field, which is signed data rather than a constant.
 - [ ] **The self-update swap probe (T0) and the first real in-app update (T11)** —
-  `docs/PLAN-self-update.md` §6.5 and §13. Both need a human at a real Mac: T0
+  `docs/archive/PLAN-self-update.md` §6.5 and §13. Both need a human at a real Mac: T0
   measures whether an ad-hoc bundle may rename itself under App Management (nothing
   documents it, and the plan branches on the answer), T11 is the 0.6.0 → 0.6.1
   update run on this Mac and on a clean account. Neither can be run by any tier.
@@ -651,7 +662,7 @@ the first and exits) — its box stayed `[ ]` under a struck-through title, tick
 - [ ] Linux platform impls — same, `platform/linux/mod.rs`.
 - [ ] Public distribution (the open-sourcing half of the old "packaging polish" row).
   **The updater half moved out of Phase 4+ on 6 Sep 2026** — it is the "In-app
-  self-update" row under *Now*, planned in `docs/PLAN-self-update.md`, and it does
+  self-update" row under *Now*, planned in `docs/archive/PLAN-self-update.md`, and it does
   NOT use the Tauri updater the archived §6.1 checklist proposed: that plugin's
   macOS install deletes its own backup and can run a root `rm -rf` outside
   `PrivilegeManager`, and its relaunch bypasses this app's ONE quit gate.

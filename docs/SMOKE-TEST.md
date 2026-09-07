@@ -1252,7 +1252,7 @@ the human legs. Set up: stack up, switch ON, one of your own sites.
 
 *The half nothing below L3 can see: a real bundle replacing itself in `/Applications`, macOS
 deciding whether to allow it, and launchd re-execing the agent that outlives the app. The
-probe measured the swap once on this Mac (`docs/PLAN-self-update.md` §T0); this is the same
+probe measured the swap once on this Mac (`docs/archive/PLAN-self-update.md` §T0); this is the same
 question asked of a real rexenv, on a real release, with a real user's approval state.*
 
 Only runs once a release NEWER than the installed build has been published with its signed

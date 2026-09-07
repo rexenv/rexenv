@@ -60,5 +60,6 @@ is why a header is checked against the code before it is believed.
 | `PLAN-mcp-server.md` | MCP server M1/M2a/M2b/M3 (30 Jul – 25 Aug 2026): scratch sites, capability tiers, `db_query`; the honest "not a sandbox" guarantee (§6.0). |
 | `PLAN-mcp-parity.md` | MCP parity P1–P7 (3 Sep 2026): every app function agent-drivable on real sites; scopes, the global Agent access dial (D15–D17). |
 | `PLAN-menubar-tray.md` | The menu-bar app (31 Aug – 1 Sep 2026): why the CLI/MCP sockets died with the window, the no-dock-icon ruling, what Accessory costs, the second-instance guard. |
+| `PLAN-self-update.md` | In-app self-update (6–7 Sep 2026): why `tauri-plugin-updater` was rejected, the second signed document sharing one key, the `renamex_np(RENAME_SWAP)` bundle exchange, the kqueue relauncher, the 30-row failure catalogue. **Archived with its last task still owed** — §T11, the first real 0.6.0 → 0.6.1 update on a Mac, is a human gate that needs a published release to exist; read §T11 before the first release that carries a descriptor. |
 | `PLAN-per-site-lifecycle.md` | Per-site start/stop + the Sites-page type filter (4 Sep 2026): stopping ONE site is a serving-surface change, not a process one. |
 | `GIT-FEATURE-TEST.md` | The manual checklist for Add plugin/theme from Git (phases 1–5), human-verified 18 Jul 2026; superseded by `docs/SMOKE-TEST.md`'s sections. |

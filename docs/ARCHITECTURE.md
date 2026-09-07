@@ -623,7 +623,7 @@ Live-proven end to end by `site_stop_start_check`.
   side is one command in the runtimes repo (`scripts/publish-manifest.sh`). Ledger
   #348–#355; design in `docs/archive/PLAN-binary-updates.md`.
 - **And the APP can move forward between releases the same way** (`core/app_update.rs`,
-  `docs/PLAN-self-update.md`). A SECOND signed document — `app-manifest.json` + `.sig`, two
+  `docs/archive/PLAN-self-update.md`). A SECOND signed document — `app-manifest.json` + `.sig`, two
   more files on `rexenv/runtimes`' default branch — names one release: version, artifact URL,
   SHA-256, size, and the macOS and rexenv floors it needs. It rides the SAME compiled-in
   `RELEASE_PUBKEY` through the same ed25519 seam (`updates::verify_signed_bytes` — one

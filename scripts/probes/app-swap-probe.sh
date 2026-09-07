@@ -1,5 +1,5 @@
 #!/bin/bash
-# T0 of docs/PLAN-self-update.md — build a throwaway ad-hoc-signed app in /Applications,
+# T0 of docs/archive/PLAN-self-update.md — build a throwaway ad-hoc-signed app in /Applications,
 # launch it the way Finder does, and let it measure whether it can replace ITSELF.
 #
 #   scripts/probes/app-swap-probe.sh                # the ordinary leg
@@ -225,7 +225,7 @@ SWAP="$(r renamex_np_swap)"; ASIDE="$(r rename_aside)"; IN="$(r rename_in)"
 RELAUNCH="$(r relaunch_started)"; MKDIR="$(r stage_mkdir)"; TRANS="$(r translocated)"
 
 echo
-echo "=== SUGGESTED OUTCOME (docs/PLAN-self-update.md §6.5) ==="
+echo "=== SUGGESTED OUTCOME (docs/archive/PLAN-self-update.md §6.5) ==="
 if [ "$TRANS" = "true" ]; then
   echo "  translocated launch — this leg measured the refusal path (R6), not the swap."
 elif [ "${MKDIR:-}" != "ok" ]; then
@@ -246,7 +246,7 @@ else
   echo "       the check, the offer and the release flow still do."
 fi
 echo
-echo "Record the letter, the raw log and the macOS build in docs/PLAN-self-update.md §T0,"
+echo "Record the letter, the raw log and the macOS build in docs/archive/PLAN-self-update.md §T0,"
 echo "then rewrite §6 to match what was measured."
 
 if [ "$KEEP" = "1" ]; then

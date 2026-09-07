@@ -1,4 +1,4 @@
-//! T0 of `docs/PLAN-self-update.md` — **a measurement, not a test.**
+//! T0 of `docs/archive/PLAN-self-update.md` — **a measurement, not a test.**
 //!
 //! # The question, and why it cannot be answered by reading
 //!
@@ -13,7 +13,7 @@
 //! reason the plugin's own updater turns a policy refusal into a root `rm -rf`.
 //!
 //! So this probe measures, on a throwaway bundle, what the plan's error handling has to
-//! be designed against. `docs/PLAN-self-update.md` §6.5 lists seven outcomes (O1–O7) and
+//! be designed against. `docs/archive/PLAN-self-update.md` §6.5 lists seven outcomes (O1–O7) and
 //! what each one changes; the run's job is to say which letter is true on this Mac.
 //!
 //! # Run it through the script, never by hand
@@ -43,7 +43,7 @@
 //!
 //! 1. Who am I: exe path, bundle version, translocation, quarantine, owner.
 //! 2. `mkdir` a staging dir in `/Applications` — the writability probe the real
-//!    pre-flight uses (a failure here is `docs/PLAN-self-update.md` R5/O7).
+//!    pre-flight uses (a failure here is `docs/archive/PLAN-self-update.md` R5/O7).
 //! 3. Build a v2 copy of the bundle in staging (copy, bump the plist, re-ad-hoc-sign).
 //! 4. **rename-aside + rename-in**, then restore — the two-syscall shape.
 //! 5. **`renamex_np(RENAME_SWAP)`** — the atomic shape the plan prefers. Left swapped
@@ -230,7 +230,7 @@ mod macos {
 
         // A launch that reaches this binary must leave a trace even when it cannot do
         // the measurement. The 6 Sep 2026 quarantine leg produced NO probe log at all
-        // (`docs/PLAN-self-update.md` §T0), which left two very different explanations —
+        // (`docs/archive/PLAN-self-update.md` §T0), which left two very different explanations —
         // the probe refused, or `open --args` never delivered the arguments — impossible
         // to tell apart afterwards. A launch line, written before anything can refuse,
         // is the difference between a measurement and a guess.
@@ -280,7 +280,7 @@ mod macos {
         ExitCode::SUCCESS
     }
 
-    /// Run 1: every measurement, in the order `docs/PLAN-self-update.md` §6.2 performs
+    /// Run 1: every measurement, in the order `docs/archive/PLAN-self-update.md` §6.2 performs
     /// them, so a refusal is recorded at the same point the real code would meet it.
     fn measure(log: &mut Log) -> ExitCode {
         let exe = std::env::current_exe().unwrap_or_default();

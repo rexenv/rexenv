@@ -340,7 +340,7 @@ pub fn run() {
             // Asking it who it is turns that into a measurement. `None` — an
             // agent from before this question existed — counts as stale, which is
             // the honest reading: it is by definition an older build.
-            // `docs/PLAN-self-update.md` T5, ledger #533.
+            // `docs/archive/PLAN-self-update.md` T5, ledger #533.
             if agent_up {
                 let answered = core::dns::agent_build_identity(dns_port);
                 if core::dns::agent_is_stale(answered.as_deref()) {
@@ -441,7 +441,7 @@ pub fn run() {
                     // bundle is deleted, because reaching here means this build
                     // launched and opened its database, which is the closest
                     // thing to "healthy" a process can honestly say about
-                    // itself. `docs/PLAN-self-update.md` T4.
+                    // itself. `docs/archive/PLAN-self-update.md` T4.
                     if let Some((level, message)) =
                         core::app_update::finish_at_launch(&conn, &*platform)
                     {
@@ -818,7 +818,7 @@ pub fn run() {
                         // exactly that way once. `auto_check_enabled` is read
                         // BEFORE any I/O, so the setting is a switch on the
                         // request rather than on what is done with the answer.
-                        // `docs/PLAN-self-update.md` T2.
+                        // `docs/archive/PLAN-self-update.md` T2.
                         let auto = state
                             .db
                             .lock()

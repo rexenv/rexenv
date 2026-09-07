@@ -14,7 +14,7 @@
 //!   survives until it is told the new app is healthy.
 //!
 //! T0 measured that macOS PERMITS this on a real ad-hoc bundle in
-//! `/Applications` (`docs/PLAN-self-update.md` §T0). This is the other half:
+//! `/Applications` (`docs/archive/PLAN-self-update.md` §T0). This is the other half:
 //! that rexenv's own code does it correctly, and — the part that matters more —
 //! that every failure leaves the installed bundle exactly as it was.
 //!

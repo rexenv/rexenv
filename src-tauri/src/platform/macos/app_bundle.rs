@@ -1,6 +1,6 @@
 //! macOS: replacing the app's own bundle.
 //!
-//! T3 of `docs/PLAN-self-update.md`. Syscalls and OS tools only — every decision
+//! T3 of `docs/archive/PLAN-self-update.md`. Syscalls and OS tools only — every decision
 //! about what the facts MEAN lives in `core::app_update`, so it can be driven
 //! over fixture facts by a test that has no Mac, no installed app and no
 //! `/Volumes`.

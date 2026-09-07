@@ -1,8 +1,20 @@
 # PLAN — in-app self-update: rexenv notices a published release, replaces itself, and reopens
 
-Status: **T0–T10 done (7 Sep 2026). T11 (the first real in-app update) and T12 (archive) remain.** Today the only update path is
-`brew upgrade --cask rexenv`; a user who installed from the dmg has no path but downloading
-the next dmg and dragging it over. This plan gives the app a signed update channel of its
+Status: **SHIPPED in code, 6–7 September 2026 — T0–T10, ledger #517–#538. Archived here ahead
+of T11, which is the one thing still owed.** Every layer that can be proven without a
+published release is proven: 26 L0 tests in `core/app_update.rs` alone (plus the source scans
+in `lib.rs` and the `AppBundle` unit tests), four live-check examples (`app_update_check`,
+`app_bundle_swap_check`, `app_relaunch_check`, the `app_swap_probe` measurement), seven L2
+card states, and both publishers' refusals exercised against the real tap. What is NOT proven
+is the whole chain running once end to end — a signed descriptor naming a real archive, a
+real download, a real swap, a real relaunch on a real Mac. That needs a release to exist
+(0.6.0, then 0.6.1), so it is a human gate, it stays OPEN as its own `docs/TODO.md` row and as
+`docs/PUBLISH-TESTING.md` §M, and this file is archived without it rather than left in flight
+for weeks pretending the code is unfinished. **Read §T11 before the first release that
+carries a descriptor: the plan is archived, the gate is not.**
+
+Before this: the only update path was `brew upgrade --cask rexenv`; a user who installed from
+the dmg had no path but downloading the next dmg and dragging it over. This plan gives the app a signed update channel of its
 own — a check, an offer, a verified download, an atomic bundle swap and a clean reopen —
 reusing the trust machinery `core/updates.rs` already carries for PHP and Adminer.
 **T0 came first and was a measurement, not code**: whether macOS App Management lets an
@@ -529,7 +541,7 @@ run them.
   relaunch result are pasted into this file as **§T0 result** with the macOS build; the
   outcome letter (O1–O7) is recorded and the affected sections of §6 are rewritten to match.
 - **Files:** `scripts/probes/app-swap-probe.sh`, `src-tauri/examples/app_swap_probe.rs`,
-  `scripts/live-checks.sh`, `docs/PLAN-self-update.md`, `docs/TESTING.md`
+  `scripts/live-checks.sh`, `docs/archive/PLAN-self-update.md`, `docs/TESTING.md`
 - **Docs:** TESTING §5 manual row; the tier line; this plan's §T0.
 - **Ledger:** #517 (forward-recorded 🚫 posture).
 
@@ -659,6 +671,13 @@ run them.
   `brew upgrade` doing nothing on the brew account. Every ledger row from #517 gets its final
   verdict.
 - **Depends on:** T5, T6, T7, T8, T9, T10.
+- **Before it can run at all** (7 Sep 2026 — written down because this plan is archived and
+  the gate is not): merge the two branches, both named `app-self-update`, one on
+  `rexenv/runtimes` and one on `rexenv/homebrew-tap`; then cut 0.6.0 the ordinary way and
+  publish the descriptor for it, which gives installs something to update FROM; then cut
+  0.6.1, which is the first version any copy can be offered. **0.6.0 cannot update itself to
+  itself** — the version that introduces the feature is never the version that exercises it,
+  which is why this gate needs two releases and not one.
 
 ### T12 — Archive the plan as a design record
 - **Done when:** the Status line reads shipped with the row range and the live proof; the file

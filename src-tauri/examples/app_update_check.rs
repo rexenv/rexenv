@@ -21,7 +21,7 @@
 //! # Before the first publish, "nothing is published yet" is a PASS
 //!
 //! The descriptor does not exist until the release flow publishes one (T9/T10 of
-//! `docs/PLAN-self-update.md`). Until then this check reports that plainly and
+//! `docs/archive/PLAN-self-update.md`). Until then this check reports that plainly and
 //! exits 0 — the same shape `php_update_check` uses for "nothing to apply". A
 //! check that failed loudly for a document nobody has written yet would be
 //! turned off, and then it would be off on the day it mattered.

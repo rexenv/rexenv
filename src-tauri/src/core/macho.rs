@@ -306,7 +306,7 @@ mod tests {
     }
 
     /// `archs` is the self-update swap's "is this build universal" check
-    /// (`docs/PLAN-self-update.md` §5), and it must be readable from `core`,
+    /// (`docs/archive/PLAN-self-update.md` §5), and it must be readable from `core`,
     /// which may not shell out to `lipo`. Synthetic headers, so the two shapes
     /// that matter are exercised without a 30 MB fixture.
     #[test]

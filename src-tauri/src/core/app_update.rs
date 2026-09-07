@@ -49,7 +49,7 @@
 //! key survivable — and the reason the public half is a `const` and not a
 //! setting.
 //!
-//! The design record is `docs/PLAN-self-update.md`; the swap and relaunch this
+//! The design record is `docs/archive/PLAN-self-update.md`; the swap and relaunch this
 //! descriptor eventually drives live behind the `AppBundle` platform trait (T3).
 
 use crate::core::updates;

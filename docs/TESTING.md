@@ -660,7 +660,7 @@ commands/ 9 — commands/ is 1.7% of tests for ~20 files of orchestration):
   about it. L0 covers the derivation (a self-hosted version with no licence pin
   fails by name) and the staleness rule; **only `php_versions_check` (network
 **The app's own update descriptor is L0 today, and deliberately** (`core/app_update.rs`,
-T1 of `docs/PLAN-self-update.md`). Everything a signed release descriptor DECIDES is a pure
+T1 of `docs/archive/PLAN-self-update.md`). Everything a signed release descriptor DECIDES is a pure
 function of the document, this build's version, this Mac's macOS and the skipped version —
 so all of it is L0, driven through a `verify_with`/`accept_with` seam with a generated
 keypair (tests have no private half of the real key and must never have one, which is the
@@ -1030,10 +1030,10 @@ written procedure; "manual" means scripted-for-a-human, never remembered.
 | Phase-A-never-resolves wire spot-check (#19) | PUBLISH-TESTING §L (added, T13) |
 | **The tray: every click, and closing the window** (#436–#439) | SMOKE-TEST "The menu bar" |
 | `launchctl kickstart -k` re-execs the REPLACED DNS agent binary (#533) | SMOKE-TEST §In-app self-update |
-| Whether an ad-hoc bundle may replace ITSELF under App Management (self-update T0) | `scripts/probes/app-swap-probe.sh` (example `app_swap_probe`, tier `demo`) → `docs/PLAN-self-update.md` §T0 |
+| Whether an ad-hoc bundle may replace ITSELF under App Management (self-update T0) | `scripts/probes/app-swap-probe.sh` (example `app_swap_probe`, tier `demo`) → `docs/archive/PLAN-self-update.md` §T0 |
 
 **Why the DNS agent's build-identity check has no L1 example, measured before writing
-one** (T5 of `docs/PLAN-self-update.md`, the same first step §2 requires). The claim is
+one** (T5 of `docs/archive/PLAN-self-update.md`, the same first step §2 requires). The claim is
 "the agent says which build it is, and the app kickstarts a stale one". The tempting L1
 was: spawn the real app binary in `--dns-agent` mode and ask it. It buys nothing. The agent
 is `run_agent()`, whose entire body is `serve_udp(DEFAULT_DNS_PORT)` in a retry loop — the
