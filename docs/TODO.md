@@ -35,9 +35,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   click on the tile/row still opens the built-in tab. Found on the way: the `/Applications` + `~/Applications` bundle search
   inherited from editors/browsers detects NO terminal on a stock Mac —
   Terminal.app lives on the sealed system volume since macOS 11.
-  **Not verified live for the flag-driven apps** (Ghostty, WezTerm, kitty,
-  Alacritty, Warp): only Terminal.app and iTerm are installed on the dev Mac, and
-  those two are the `Folder` shape — the others rest on their documented cwd flags.
+  Verified live 7 Sep 2026 for the `Folder` shape (Terminal.app + iTerm: the
+  spawned shells' `cwd` read back with `lsof` sat in the site folder).
+  **Still unmeasured for the flag-driven apps** (Ghostty, WezTerm, kitty,
+  Alacritty) and Warp — none are installed on the dev Mac, so they rest on their
+  documented cwd flags until someone runs one.
 
 - [ ] **In-app self-update — a dmg user has no update path at all**
   — 6 Sep 2026, planned in `docs/archive/PLAN-self-update.md`; supersedes the Phase 4+ row
