@@ -697,6 +697,10 @@ export interface AppUpdateState {
    *  until one succeeds — a failed check may never age into a success. */
   checkedAt: string | null;
   skipped: string | null;
+  /** A version already swapped onto disk that this process is not running — an
+   *  update whose quit the user cancelled ("Keep sharing"). While it is set the
+   *  card offers no button: the work is done and only a restart is left. */
+  installedPending: string | null;
 }
 
 /** What an apply actually did — measured by the backend, never inferred.

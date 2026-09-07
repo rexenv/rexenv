@@ -609,6 +609,11 @@ widths, with one probe that re-navigates through all of them: the states only me
 against each other, and the ones that must be right (never checked, checked-and-nothing,
 refused) are exactly the ones nobody looks at. Plant-proven by rendering the Install button
 in every state, which fails the skipped and refused legs.
+An eighth (`installed-pending`, 7 Sep 2026) covers the state §M found missing: an update
+whose quit the user cancelled. **Adding a scenario does not add an assertion** — `probeFor`
+attaches the app-update probe to the `appupdate-never-checked` name alone, and that one probe
+walks every state, so a plant checked with `ONLY=appupdate-installed-pending` passes while
+doing nothing. Plant with `ONLY=appupdate`.
 The seventh (`auto-off`, 7 Sep 2026) exists because a checkbox drawn from a constant looks
 identical in a screenshot and does nothing: the probe compares the switch's checked state
 against the card's `data-auto-check` in EVERY state, and asserts the off-copy in the one

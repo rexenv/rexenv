@@ -1308,6 +1308,11 @@ itself the first check.
   says the update is installed and takes effect when rexenv next opens, and NO relauncher is
   left behind (`pgrep -f -- --relaunch-after` is empty). **Tell:** a relaunch that happens
   anyway, or a helper still waiting.
+  ◐ 7 Sep 2026 — **run, and it found the bug this leg exists for.** The quit confirm and the
+  "Keep sharing" choice worked, and no relaunch happened; the card then said **nothing at
+  all** and offered Install again, as if the update had not been made. Fixed the same day
+  (ledger #539) — re-run this leg on the next release to close it, and watch for the sentence
+  naming the restart.
 - [ ] **Offline.** Disconnect and press Check now: the card says the check could not run and
   keeps the previous timestamp. **Tell:** "up to date", or a timestamp that moved.
 - [ ] **Homebrew coexistence.** On a cask-installed copy the consent sentence mentions

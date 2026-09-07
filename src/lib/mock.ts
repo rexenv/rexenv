@@ -169,6 +169,7 @@ export const mockAppUpdateState: AppUpdateState = {
   noOfferReason: "the newest signed release is 0.1.0 and this is 0.1.0",
   checkedAt: null,
   skipped: null,
+  installedPending: null,
 };
 
 /** Nothing offered in the browser mock, so nothing to be ready for. */

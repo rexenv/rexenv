@@ -135,6 +135,7 @@ const SCENARIOS = [
   ["appupdate-refused", "view=appupdate&state=refused", []],
   ["appupdate-installing", "view=appupdate&state=installing", []],
   ["appupdate-auto-off", "view=appupdate&state=auto-off", []],
+  ["appupdate-installed-pending", "view=appupdate&state=installed-pending", []],
   // The themes grid labels each card with the theme's own name, the way
   // wp-admin does — and keeps the slug, because that is the folder name and
   // what `theme activate` takes. The third fixture row has no title at all.
@@ -183,6 +184,14 @@ const PROBES = {
       installing: { button: false, must: ["Downloading", "11.8 MB", "29.9 MB"], mustNot: [] },
       // The one state where the switch's own sentence changes. Asserting the
       // OFF copy is what makes the checkbox a control rather than decoration.
+      // Installed, quit cancelled. The assertion that matters is the ABSENCE of
+      // a button: the bytes are already in /Applications, and a second Install
+      // would re-download them.
+      "installed-pending": {
+        button: false,
+        must: ["is installed", "next time rexenv opens", "keep rexenv running"],
+        mustNot: ["Skip this version"],
+      },
       "auto-off": {
         button: false,
         must: ["Check for new releases automatically", "contacts nothing on its own"],
@@ -216,7 +225,12 @@ const PROBES = {
       // The phase attribute is what the card believes it is showing; a state
       // whose copy and phase disagree is the bug this catches.
       const phase = await card.getAttribute("data-phase");
-      const expected = state === "never-checked" || state === "auto-off" ? "none" : state;
+      const expected =
+        state === "never-checked" || state === "auto-off"
+          ? "none"
+          : state === "installed-pending"
+            ? "installed"
+            : state;
       if (phase !== expected) problems.push(`${state}: data-phase is "${phase}"`);
 
       // The auto-check switch must AGREE with the value the card is rendering

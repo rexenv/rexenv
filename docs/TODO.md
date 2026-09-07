@@ -129,10 +129,14 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     most needed a human (Gatekeeper/App Management on the replaced bundle; which permissions
     come back), plus services-and-DNS-survive-it, leftover cleanup, and the unnamed
     `brew upgrade` leaving rexenv alone. Five SMOKE boxes ticked with evidence.
-    **Still owed (unobserved, not passed):** the startup notice's wording, the tray
-    `Update to …` item, whether the offer arrives with no click, "dark when current" as the
-    CARD renders it, the offline check, the public-share "Keep sharing" path, and the consent
-    sentence's Homebrew line — all still open in `docs/SMOKE-TEST.md`.
+    **§M found a bug, which is the point of a human gate**: with a tunnel up, Install →
+    "Keep sharing" installed the update and then said NOTHING — the card offered Install
+    again, as if it had not happened. The plan specified that state and it was never built.
+    Fixed 7 Sep 2026, ledger #539 (read from the notice row the swap writes, so it survives
+    the window closing; suppresses the offer and clears the tray), L0 + L2, plant-proven.
+    Tray item, no-click offer and the startup notice (`rexenv 0.6.1`) all confirmed good.
+    **Still owed:** "dark when current" as the CARD renders it, the offline check, the
+    consent sentence's Homebrew line, and a re-run of the public-share leg against the fix.
   - [x] T12 — archive the plan as a design record ✓ 7 Sep 2026: `git mv` to
     `docs/archive/PLAN-self-update.md`, its Status line rewritten to say what IS proven
     (26 L0 in the module, four examples, seven L2 states, both publishers' refusals) and

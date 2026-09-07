@@ -177,11 +177,23 @@ a "less than" one, and only a downgrade could show that.
 `brew upgrade --dry-run` does not list rexenv: the unnamed form really does leave it alone,
 which is the half of `auto_updates` that works as documented.
 
-**Legs of §M still open, and open honestly:** the startup notice's wording (the apply itself
-is measured; nobody read the notice), the tray `Update to …` item, whether the offer arrives
-with no click at all, "dark when current" as the CARD renders it, the offline check, the
-public-share "Keep sharing" path, and the consent sentence's Homebrew line on a
-cask-installed copy. A box is not ticked by the parts of it that were watched.
+**§M found a real bug, which is what a human gate is for.** With a tunnel up, Install →
+"Keep sharing" left the new bundle installed and the process on the old build — and the card
+said nothing, offering Install again as though the update had not happened. The plan
+specified that state (§8: *"…takes effect when rexenv next opens"*); it was never built,
+because the apply assumes the window goes away as part of succeeding, which is true of every
+path except the one a person can choose. Fixed the same day: the state is read from the
+notice row the swap already writes, so it survives the window closing, suppresses the offer
+and clears the tray. Ledger #539, L0 + L2, plant-proven.
+
+**Also observed on this run:** the tray's `Update to …` item behaved (opened About, installed
+nothing), the offer arrived with no click, and the startup notice read `rexenv 0.6.1` —
+agreeing with About and with `rex --version`.
+
+**Legs of §M still open:** "dark when current" as the CARD renders it, the offline check,
+the consent sentence's Homebrew line on a cask-installed copy, and the public-share path —
+which RAN but is left open on purpose, since what it proved is that the state it checks did
+not exist. Re-run it on the next release against the fix.
 
 ## A) ✅ 0.6.0 — PUBLISHED (§A0 ✅ measured · §A ✅ asserted · §M waits for 0.6.1 by construction)
 

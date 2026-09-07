@@ -97,13 +97,15 @@ export function AppUpdateCard({ downloads }: { downloads: DownloadsSnapshot }) {
   const installing = apply.isPending || item?.phase === "downloading" || item?.phase === "preparing";
   const phase = installing
     ? "installing"
-    : st.skipped && st.skipped === offered?.version
-      ? "skipped"
-      : ready?.refusal
-        ? "refused"
-        : offered
-          ? "offered"
-          : "none";
+    : st.installedPending
+      ? "installed"
+      : st.skipped && st.skipped === offered?.version
+        ? "skipped"
+        : ready?.refusal
+          ? "refused"
+          : offered
+            ? "offered"
+            : "none";
 
   const footer = failed
     ? "Couldn't reach the update server just now, so nothing here says whether a newer rexenv exists."
@@ -121,6 +123,7 @@ export function AppUpdateCard({ downloads }: { downloads: DownloadsSnapshot }) {
       data-skipped={st.skipped ?? ""}
       data-phase={phase}
       data-auto-check={String(st.autoCheck)}
+      data-installed-pending={st.installedPending ?? ""}
     >
       <div className="flex items-center gap-[14px] border-b border-rex-border-subtle py-[15px] last:border-b-0">
         <div className="flex-1">
@@ -132,6 +135,12 @@ export function AppUpdateCard({ downloads }: { downloads: DownloadsSnapshot }) {
                 {" · "}
                 <span className="font-mono">{fmtBytes(offered.sizeBytes)}</span> has been
                 published.
+              </>
+            ) : st.installedPending ? (
+              <>
+                rexenv{" "}
+                <span className="font-mono text-rex-text-bright">{st.installedPending}</span> is
+                installed — it takes effect the next time rexenv opens.
               </>
             ) : (
               <>
@@ -195,6 +204,19 @@ export function AppUpdateCard({ downloads }: { downloads: DownloadsSnapshot }) {
               Skip this version
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Installed, quit cancelled. The swap already happened, so there is no
+          button: pressing one would re-download bytes that are on disk. The card
+          says what is true and what closes it — the ONLY state whose fix is
+          "quit and open it again". Read from a stored row, so closing the window
+          does not lose it. */}
+      {phase === "installed" && (
+        <div className="border-t border-rex-border-subtle py-[15px] text-[0.75rem] leading-[1.55] text-rex-text-muted">
+          You chose to keep rexenv running, so the new version is waiting rather than lost.
+          Quit rexenv and open it again when you are ready — nothing needs downloading a second
+          time, and your sites, databases and DNS keep running either way.
         </div>
       )}
 

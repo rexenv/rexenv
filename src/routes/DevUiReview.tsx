@@ -936,6 +936,7 @@ export function DevUiReview() {
             noOfferReason: null,
             checkedAt: "2026-09-06 09:00:00",
             skipped: null,
+            installedPending: null,
           };
           switch (params.get("state")) {
             case "never-checked":
@@ -953,6 +954,17 @@ export function DevUiReview() {
             // rather than to a switch that is always drawn the same way.
             case "auto-off":
               return { ...base, autoCheck: false };
+            // Installed, but the quit was cancelled — "Keep sharing" at the quit
+            // gate. The bytes are in /Applications and this process is still the
+            // old build, which is the state that rendered as a fresh offer until
+            // a §M run walked into it.
+            case "installed-pending":
+              return {
+                ...base,
+                offered: null,
+                installedPending: "0.6.0",
+                noOfferReason: "rexenv 0.6.0 is installed and takes effect when rexenv next opens",
+              };
             case "dark":
               return { ...base, enabled: false };
             default:

@@ -673,6 +673,9 @@ pub struct AppUpdateState {
     pub checked_at: Option<String>,
     /// The version the user skipped, if any.
     pub skipped: Option<String>,
+    /// A version already swapped onto disk that this process is not running —
+    /// an update whose quit was cancelled. `None` in every ordinary state.
+    pub installed_pending: Option<String>,
 }
 
 /// Assemble [`AppUpdateState`] from the database and this machine. Pure reads:
@@ -684,6 +687,28 @@ pub fn state(conn: &Connection) -> AppUpdateState {
     let check = cached_check(conn);
     let mut offered = None;
     let mut no_offer_reason = None;
+    // An update already on disk outranks any offer: the work is done, and the
+    // only thing left is a restart. Offering Install again would re-download and
+    // re-swap bytes that are already in place.
+    let pending = installed_pending(conn);
+    if let Some(ref to) = pending {
+        // The tray reads this snapshot too, so it must stop offering a version
+        // already sitting in /Applications — otherwise the menu keeps inviting a
+        // second install of the same bytes.
+        install_snapshot(None);
+        return AppUpdateState {
+            running,
+            enabled: enabled(),
+            auto_check: auto_check_enabled(conn),
+            offered: None,
+            no_offer_reason: Some(format!(
+                "rexenv {to} is installed and takes effect when rexenv next opens"
+            )),
+            checked_at: check.map(|c| c.checked_at),
+            skipped,
+            installed_pending: pending.clone(),
+        };
+    }
     if let Some(m) = cached(conn) {
         match offer_for(&m.release, &running, crate::core::macho::host_macos(), skipped.as_deref())
         {
@@ -704,6 +729,7 @@ pub fn state(conn: &Connection) -> AppUpdateState {
         no_offer_reason,
         checked_at: check.map(|c| c.checked_at),
         skipped,
+        installed_pending: None,
     }
 }
 
@@ -866,6 +892,24 @@ pub fn store_notice(conn: &Connection, to: &str) -> Result<()> {
     let blob = serde_json::to_string(&notice)
         .map_err(|e| Error::Other(format!("could not record the update: {e}")))?;
     store::set_setting(conn, NOTICE_KEY, &blob)
+}
+
+/// The version a swap already put on disk that THIS process is not running.
+///
+/// The notice row is written before the exit and consumed at the next launch, so
+/// finding one while still running the old build means exactly one thing: the
+/// bundle was replaced and the quit did not happen. That is not hypothetical —
+/// it is what "Keep sharing" does at the quit gate, and it is the state the card
+/// showed nothing about until 7 Sep 2026, when a §M run pressed Install with a
+/// tunnel up and got its Install button back as if nothing had occurred.
+///
+/// Read from the stored row rather than remembered in the mutation's result, so
+/// closing and reopening the window still shows it, and so a second Install
+/// cannot be offered for work already done.
+pub fn installed_pending(conn: &Connection) -> Option<String> {
+    let raw = store::get_setting(conn, NOTICE_KEY).ok().flatten()?;
+    let notice: UpdateNotice = serde_json::from_str(&raw).ok()?;
+    (notice.to != env!("CARGO_PKG_VERSION")).then_some(notice.to)
 }
 
 /// Consume the notice a previous process left, and say what actually happened.
@@ -1202,6 +1246,56 @@ mod tests {
         }
         store::set_setting(&conn, AUTO_CHECK_KEY, "false").unwrap();
         assert!(!auto_check_enabled(&conn));
+    }
+
+    /// **A swap whose quit was cancelled is a state, not a fresh offer.**
+    ///
+    /// Pressing Install with a tunnel up and choosing "Keep sharing" leaves the
+    /// new bundle in `/Applications` and this process on the old build. Until
+    /// 7 Sep 2026 the card read that as "an update is available" and showed the
+    /// button again — inviting a second download of bytes already on disk, and
+    /// saying nothing about the restart that was the only thing left. Found by
+    /// the §M gate doing exactly that.
+    ///
+    /// The signal is the notice row the swap already writes, so it survives the
+    /// window being closed, and it OUTRANKS the offer rather than sitting beside
+    /// it.
+    #[test]
+    fn an_installed_update_whose_quit_was_cancelled_outranks_the_offer() {
+        let conn = db();
+        let running = env!("CARGO_PKG_VERSION");
+
+        // Nothing stored: no pending install, and the offer logic is untouched.
+        assert_eq!(installed_pending(&conn), None);
+
+        // A notice naming THIS build is the ordinary post-relaunch state, and
+        // must not be mistaken for a pending one.
+        store_notice(&conn, running).unwrap();
+        assert_eq!(
+            installed_pending(&conn),
+            None,
+            "a notice naming the running version is a completed update, not a waiting one"
+        );
+
+        // A notice naming a DIFFERENT version means the bytes are on disk and
+        // this process is not them.
+        store_notice(&conn, "99.0.0").unwrap();
+        assert_eq!(installed_pending(&conn).as_deref(), Some("99.0.0"));
+
+        let st = state(&conn);
+        assert_eq!(st.installed_pending.as_deref(), Some("99.0.0"));
+        assert!(st.offered.is_none(), "no button may be offered for work already done");
+        assert!(
+            st.no_offer_reason.as_deref().is_some_and(|r| r.contains("next opens")),
+            "the reason must name the restart, not sound like a failure: {:?}",
+            st.no_offer_reason
+        );
+        // And the surface every non-blocking reader shares agrees.
+        assert!(current_offer().is_none(), "the tray must stop offering it too");
+
+        // Junk in the row degrades to "nothing pending" rather than to a panic.
+        store::set_setting(&conn, NOTICE_KEY, "{not json").unwrap();
+        assert_eq!(installed_pending(&conn), None);
     }
 
     /// "On" is the ABSENCE of the row, not the string `"true"`.

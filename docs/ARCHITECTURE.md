@@ -654,6 +654,12 @@ Live-proven end to end by `site_stop_start_check`.
   `checked N ago` reads ONE stored value written only after a success, so a failed check
   keeps yesterday's timestamp instead of aging into a lie, and nothing ever says "up to
   date".
+  **A cancelled quit is a state, not a non-event** (7 Sep 2026, found by §M): the swap has
+  already happened when the quit gate asks, so choosing "Keep sharing" leaves the new bundle
+  on disk under the old process. The card reads that from the notice row the swap writes —
+  which is why it survives the window being closed — suppresses the offer, empties the tray
+  snapshot, and says the only true thing left: it takes effect the next time rexenv opens.
+  Ledger #539.
   **The swap** (T3, `AppBundle` — the 12th platform trait) stages a whole new bundle as a
   SIBLING of the installed one, which makes a cross-device rename impossible by
   construction rather than by a check, verifies it (version, identifier, executable name,
