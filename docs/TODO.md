@@ -677,9 +677,17 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
 
 Shipped 31 Aug – 1 Sep 2026 (Phases A–D, ledger #436–#441; log in
 `docs/archive/SHIPPED-2026-09.md`, design record `docs/archive/PLAN-menubar-tray.md`).
-Nothing open. The second-instance row this section last carried closed with #441
+The second-instance row this section last carried closed with #441
 (`hand_off_to_running_instance`: the CLI socket is the lock; a second launch activates
 the first and exits) — its box stayed `[ ]` under a struck-through title, ticked 5 Sep 2026.
+
+- [ ] **Hold the tray menu open while the stack MOVES** (L3, ledger #437) — the 5s tick
+  now writes titles/enabled/checkmarks onto the live items and rebuilds only when a row
+  appears or disappears, so an open menu should update without closing. Fixed 8 Sep 2026
+  after the menu was reported closing itself seconds after being opened; the 1 Sep walk
+  missed it because a 15s hold on an IDLE stack is the case where nothing moves. Owed:
+  the two `docs/SMOKE-TEST.md` boxes — a ~30s hold during a start (numbers move, menu
+  stays open) and **About rexenv** from the tray with the window CLOSED.
 
 ## Blocked on external work
 

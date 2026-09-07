@@ -430,12 +430,20 @@ Live-proven end to end by `site_stop_start_check`.
   purpose: SecurityAgent is a separate process and fronts itself.
   The MENU itself is data: `core/tray.rs` is a pure `TrayModel -> MenuSpec` with no
   Tauri types, and `lib.rs` only renders it — status line, Start/Stop all, a capped
-  Sites submenu, the five routes, the MCP checkmark, Open, Quit. It measures nothing:
-  the verdict and count come from `commands::system::summarize` (the sidebar footer's
-  own function) over a `try_lock` snapshot, and every click goes through the command the
-  UI uses, so the tray can never be a second answer or a second path. Rebuilt on a ~5s
-  tick, and ONLY when the spec actually differs — macOS closes an open menu when its
-  items are replaced.
+  Sites submenu, the five routes, the MCP checkmark, About, Open, Quit. It measures
+  nothing: the verdict and count come from `commands::system::summarize` (the sidebar
+  footer's own function) over a `try_lock` snapshot, and every click goes through the
+  command the UI uses, so the tray can never be a second answer or a second path. About
+  raises the app menu's own `menu://about` event, because two doors must not become two
+  About screens — and it is in the tray at all because a window-less rexenv is Accessory
+  and has no app menu to reach. Refreshed on a ~5s tick in THREE gears, because macOS
+  closes an open menu the moment its items are replaced: identical spec → nothing; same
+  SHAPE (`MenuSpec::same_shape` — same ids, same tree) → the titles, enabled flags and
+  checkmarks are written onto the LIVE items, which an open menu survives; a row added or
+  removed → a real rebuild, which no open menu can survive and no API can avoid. "Only
+  rebuild when the spec differs" was the first attempt and was not enough: the status
+  line moves on its own (the count, the `· updating…` suffix), so a menu held open closed
+  itself a few seconds later — reported from the developer's machine, 8 Sep 2026.
   `docs/archive/PLAN-menubar-tray.md`.
 - **Services OUTLIVE the app.** Closing rexenv stops nothing. On launch,
   `adopt_startup()` ADOPTS rexenv-owned survivors as pid-based `Proc::Adopted` handles —

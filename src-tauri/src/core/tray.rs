@@ -126,6 +126,10 @@ pub enum TrayAction {
     /// Show the window on a route.
     Route(TrayRoute),
     ToggleMcp,
+    /// Show the window on the About panel — the same one the app menu's
+    /// "About rexenv" opens, through the SAME event, so the two can never
+    /// drift into two different About screens.
+    About,
     /// Show the window on Settings → About, where the update lives.
     ///
     /// The version rides in the id for the same reason a site's domain does:
@@ -150,6 +154,7 @@ impl TrayAction {
             TrayAction::StartAll => "tray:start-all".into(),
             TrayAction::StopAll => "tray:stop-all".into(),
             TrayAction::ToggleMcp => "tray:mcp".into(),
+            TrayAction::About => "tray:about".into(),
             TrayAction::OpenSite(d) => format!("tray:site:{d}"),
             TrayAction::Route(r) => format!("tray:route:{}", r.slug()),
             TrayAction::UpdateTo(v) => format!("tray:update:{v}"),
@@ -166,6 +171,7 @@ impl TrayAction {
             "start-all" => TrayAction::StartAll,
             "stop-all" => TrayAction::StopAll,
             "mcp" => TrayAction::ToggleMcp,
+            "about" => TrayAction::About,
             other => {
                 if let Some(version) = other.strip_prefix("update:") {
                     // An empty version would render "Update to …" naming
@@ -235,6 +241,78 @@ impl MenuSpec {
         walk(&self.entries, &mut out);
         out
     }
+
+    /// True when `other` differs from `self` only in things a RENDERED menu can
+    /// be edited into — an item's title, its enabled flag, a checkmark's value.
+    ///
+    /// This exists because of a bug a user could see: macOS closes an open menu
+    /// the moment its items are replaced, and the tray rebuilds every 5s, so a
+    /// menu held open under the cursor slammed shut as soon as any number in it
+    /// moved — and the status line moves constantly (the count, and the
+    /// `updating…` suffix a busy lock adds). Same shape ⇒ the caller edits the
+    /// live items in place and the menu stays open; different shape (a site
+    /// added, an update offer appearing) ⇒ a real rebuild, which is rare enough
+    /// to be survivable.
+    ///
+    /// Shape is deliberately STRICT about anything a click can land on: the id,
+    /// whether an item is a checkmark, the tree itself. Two same-shape menus
+    /// carry the same ids in the same places, so an in-place edit can never
+    /// leave a row whose title says one thing and whose id does another.
+    pub fn same_shape(&self, other: &MenuSpec) -> bool {
+        fn walk(a: &[MenuEntry], b: &[MenuEntry]) -> bool {
+            a.len() == b.len()
+                && a.iter().zip(b).all(|(x, y)| match (x, y) {
+                    // A label's text is editable, so any label matches any label.
+                    (MenuEntry::Label(_), MenuEntry::Label(_)) => true,
+                    (MenuEntry::Separator, MenuEntry::Separator) => true,
+                    (
+                        MenuEntry::Item { action: a1, checked: c1, .. },
+                        MenuEntry::Item { action: a2, checked: c2, .. },
+                    ) => a1 == a2 && c1.is_some() == c2.is_some(),
+                    // A submenu's own title is not reachable through the flat
+                    // leaf list below, so it counts as shape.
+                    (
+                        MenuEntry::Submenu { title: t1, entries: e1 },
+                        MenuEntry::Submenu { title: t2, entries: e2 },
+                    ) => t1 == t2 && walk(e1, e2),
+                    _ => false,
+                })
+        }
+        walk(&self.entries, &other.entries)
+    }
+
+    /// Every editable leaf, in the pre-order a renderer walks the tree in —
+    /// labels and items; separators are skipped, nothing on one can change.
+    ///
+    /// Pairs with `same_shape`: two specs of the same shape yield lists of the
+    /// same length that line up one-for-one, which is what lets the caller edit
+    /// rendered row *n* from spec leaf *n* without threading ids back out of
+    /// the renderer.
+    pub fn editable(&self) -> Vec<Editable<'_>> {
+        fn walk<'a>(entries: &'a [MenuEntry], out: &mut Vec<Editable<'a>>) {
+            for e in entries {
+                match e {
+                    MenuEntry::Label(text) => out.push(Editable::Label(text)),
+                    MenuEntry::Separator => {}
+                    MenuEntry::Item { title, enabled, checked, .. } => {
+                        out.push(Editable::Item { title, enabled: *enabled, checked: *checked })
+                    }
+                    MenuEntry::Submenu { entries, .. } => walk(entries, out),
+                }
+            }
+        }
+        let mut out = Vec::new();
+        walk(&self.entries, &mut out);
+        out
+    }
+}
+
+/// What an in-place edit may change on one rendered row. Borrowed from the spec
+/// — a view of it, never a second copy that could disagree with it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Editable<'a> {
+    Label(&'a str),
+    Item { title: &'a str, enabled: bool, checked: Option<bool> },
 }
 
 /// The status line: what the stack is doing, in one disabled row.
@@ -372,6 +450,16 @@ pub fn build(m: &TrayModel) -> MenuSpec {
         checked: Some(m.mcp_on),
     });
     entries.push(MenuEntry::Separator);
+    // About sits with Open and Quit rather than beside the update line: it is a
+    // question about the APP (version, build), and the app menu that answers it
+    // is unreachable while the window is closed — which, for a menu-bar app, is
+    // most of the time.
+    entries.push(MenuEntry::Item {
+        title: "About rexenv".into(),
+        action: TrayAction::About,
+        enabled: true,
+        checked: None,
+    });
     entries.push(MenuEntry::Item {
         title: "Open rexenv".into(),
         action: TrayAction::Open,
@@ -454,6 +542,7 @@ mod tests {
             TrayAction::StartAll,
             TrayAction::StopAll,
             TrayAction::ToggleMcp,
+            TrayAction::About,
             TrayAction::OpenSite("blog.rex".into()),
             TrayAction::OpenSite("my.long.sub.domain.test".into()),
             TrayAction::Route(TrayRoute::Sites),
@@ -694,6 +783,125 @@ mod tests {
         let spec = build(&m);
         assert!(item(&spec, &TrayAction::Open).1);
         assert!(item(&spec, &TrayAction::Quit).1);
+    }
+
+    /// **About is in the tray because the app menu is not always there.** With
+    /// the window closed rexenv is an Accessory app: no dock tile, no menu bar
+    /// of its own, so the app menu's "About rexenv" cannot be reached at all —
+    /// and the version is what a user goes looking for before filing anything.
+    /// It sits with Open and Quit, the two items that are always present.
+    #[test]
+    fn about_is_offered_in_every_state_next_to_open_and_quit() {
+        let mut m = model();
+        m.sites.clear();
+        m.summary = "stopped";
+        m.running = 0;
+        for update in [None, Some("9.9.9".to_string())] {
+            m.update = update;
+            let spec = build(&m);
+            let (title, enabled, checked) = item(&spec, &TrayAction::About);
+            assert_eq!(title, "About rexenv");
+            assert!(enabled, "About never depends on the stack");
+            assert_eq!(checked, None);
+            // Directly above Open: the closing group is About / Open / Quit,
+            // and a user reaching for the bottom of the menu finds all three.
+            let ids = spec.ids();
+            let tail: Vec<&str> = ids.iter().rev().take(3).rev().map(String::as_str).collect();
+            assert_eq!(tail, ["tray:about", "tray:open", "tray:quit"], "{ids:?}");
+        }
+    }
+
+    /// **The menu-closes-itself bug, as a test.** macOS shuts an open menu the
+    /// moment its items are replaced, so the 5s tick may only replace them when
+    /// the menu's SHAPE changed. Everything that moves on its own — the running
+    /// count, the `updating…` suffix, the greyed Start/Stop, the MCP checkmark
+    /// — must stay same-shape, or the menu hides itself under the cursor a few
+    /// seconds after being opened.
+    #[test]
+    fn a_menu_whose_numbers_moved_keeps_its_shape_so_it_can_be_edited_in_place() {
+        let base = build(&model());
+        for mutate in [
+            (|m: &mut TrayModel| m.stale = true) as fn(&mut TrayModel),
+            |m| {
+                m.summary = "partial";
+                m.running = 4;
+            },
+            |m| {
+                m.summary = "stopped";
+                m.running = 0;
+            },
+            |m| m.mcp_on = true,
+        ] {
+            let mut m = model();
+            mutate(&mut m);
+            let other = build(&m);
+            assert_ne!(base, other, "the fixture must actually change the menu");
+            assert!(
+                base.same_shape(&other),
+                "a rebuild would close the open menu: {:?}",
+                other.entries
+            );
+            assert_eq!(base.editable().len(), other.editable().len());
+        }
+    }
+
+    /// The other half: a change that ADDS or REMOVES a row is not editable in
+    /// place — no API adds a row to an open menu — so it must report a
+    /// different shape and take the rebuild. A `same_shape` that answered true
+    /// here would leave the menu showing a site that is gone, or hiding one
+    /// that exists, under an id that belongs to neither.
+    #[test]
+    fn a_menu_that_gained_or_lost_a_row_reports_a_different_shape() {
+        let base = build(&model());
+
+        let mut added = model();
+        added.update = Some("0.7.0".into());
+        assert!(!base.same_shape(&build(&added)), "an update offer adds two rows");
+
+        let mut site = model();
+        site.sites.push(TraySite { domain: "shop.rex".into() });
+        assert!(!base.same_shape(&build(&site)), "a new site adds a submenu row");
+
+        let mut none = model();
+        none.sites.clear();
+        assert!(!base.same_shape(&build(&none)), "the submenu became a label");
+
+        // Two menus of the same length whose ids differ are NOT the same shape:
+        // editing in place would write one site's name over another's id.
+        let mut renamed = model();
+        renamed.sites = vec![TraySite { domain: "other.rex".into() }];
+        assert!(!base.same_shape(&build(&renamed)), "a renamed site changes an id");
+
+        assert!(!base.same_shape(&bootstrap()));
+    }
+
+    /// `editable` is the list the in-place edit walks against the rendered rows,
+    /// so it must skip exactly what the renderer skips — separators (nothing on
+    /// one can change) and a submenu's own row (its title is shape) — and it
+    /// must descend into submenus, where the site rows live.
+    #[test]
+    fn the_editable_list_covers_every_row_that_can_change_and_nothing_else() {
+        let mut m = model();
+        m.sites = vec![TraySite { domain: "a.rex".into() }, TraySite { domain: "b.rex".into() }];
+        let spec = build(&m);
+        let editable = spec.editable();
+
+        let separators = spec.entries.iter().filter(|e| matches!(e, MenuEntry::Separator)).count();
+        assert!(separators > 0);
+        let all_rows = spec.ids().len() + labels(&spec).len();
+        assert_eq!(editable.len(), all_rows, "every item and label, no separators");
+
+        // The status line comes first, and the site rows are in there.
+        assert!(matches!(editable[0], Editable::Label(t) if t.starts_with("All running")));
+        assert!(
+            editable.iter().any(|e| matches!(e, Editable::Item { title, .. } if *title == "a.rex")),
+            "submenu rows must be editable too: {editable:?}"
+        );
+        // The MCP row keeps its checkmark through the flattening — an edit that
+        // lost it would render a toggle that never shows its state.
+        assert!(editable
+            .iter()
+            .any(|e| matches!(e, Editable::Item { title, checked: Some(_), .. } if *title == "MCP server")));
     }
 
     /// Every route the menu offers maps to a real `src/routes/` path. Cheap

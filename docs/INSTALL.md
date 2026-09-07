@@ -78,7 +78,8 @@ After you do this **once**, rexenv opens normally (double-click) from then on.
 
 rexenv is a **menu-bar app**: the crowned-R icon in your menu bar is its home, and it
 has **no dock icon**. Click the icon for the menu — the stack's status, Start/Stop all,
-your recent sites, and **Open rexenv** for the window.
+your recent sites, **About rexenv** for the version and licences, and **Open rexenv**
+for the window.
 
 **Closing the window does not quit rexenv**, and that is deliberate: `rex` on the
 command line and the AI-agent (MCP) endpoint are remote controls for the running app, so

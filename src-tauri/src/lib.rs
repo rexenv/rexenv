@@ -1517,7 +1517,7 @@ fn install_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     // `refresh_tray` right after `manage` swaps in the real menu.
     let spec = tray_model(app).map_or_else(core::tray::bootstrap, |m| core::tray::build(&m));
     let menu = render_menu(app, &spec)?;
-    *last_spec().lock().unwrap_or_else(|e| e.into_inner()) = Some(spec);
+    *last_menu().lock().unwrap_or_else(|e| e.into_inner()) = Some((spec, menu.clone()));
 
     TrayIconBuilder::with_id(TRAY_ID)
         .icon(Image::from_bytes(MENUBAR_ICON)?)
@@ -1527,11 +1527,12 @@ fn install_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
         .on_menu_event(|app, event| on_tray_click(app, event.id().as_ref()))
         .build(app)?;
 
-    // Keep it current. ~5s, coalesced, and a rebuild only happens when the menu
-    // would actually READ differently (`refresh_tray` compares specs) — macOS
-    // closes an open menu when its items are replaced, so an unconditional
-    // rebuild every tick would slam the menu shut under the user's cursor once
-    // every five seconds. The tick is also the ONLY trigger: hooking every
+    // Keep it current. ~5s, coalesced. macOS closes an open menu when its items
+    // are REPLACED, so the tick almost never replaces them: `refresh_tray`
+    // skips a spec that reads the same and EDITS the live items when only the
+    // numbers moved — an unconditional rebuild slammed the menu shut under the
+    // cursor of anyone who held it open for five seconds, which is how this was
+    // reported. The tick is also the ONLY trigger: hooking every
     // path that can change a service state means every one of them must
     // remember, which is the "whole-surface claim that checks one place"
     // failure this project keeps a ledger about. Five seconds of staleness in
@@ -1805,13 +1806,18 @@ pub const HIDDEN_LAUNCH_FLAG: &str = "--hidden";
 /// The tray icon's id — also how `refresh_tray` finds it again.
 const TRAY_ID: &str = "main";
 
-/// The last spec rendered, so a tick that changes nothing does not rebuild the
-/// menu (and close it in the user's face). `Mutex` rather than app state: the
-/// tray is installed before anything can ask for it, and this is the only
-/// reader.
-fn last_spec() -> &'static std::sync::Mutex<Option<core::tray::MenuSpec>> {
-    static LAST: std::sync::OnceLock<std::sync::Mutex<Option<core::tray::MenuSpec>>> =
-        std::sync::OnceLock::new();
+/// The last spec rendered AND the menu it produced — so a tick can (a) skip a
+/// menu that would read identically and (b) EDIT one that differs only in its
+/// numbers, instead of replacing it.
+///
+/// The menu handle is kept for the second half: macOS closes an open menu the
+/// moment its items are replaced, and Tauri's `TrayIcon` has no getter for the
+/// menu it was given, so the only way to reach those items again is to have
+/// kept them. `Mutex` rather than app state: the tray is installed before
+/// anything can ask for it, and this is the only reader.
+type LastMenu = Option<(core::tray::MenuSpec, tauri::menu::Menu<tauri::Wry>)>;
+fn last_menu() -> &'static std::sync::Mutex<LastMenu> {
+    static LAST: std::sync::OnceLock<std::sync::Mutex<LastMenu>> = std::sync::OnceLock::new();
     LAST.get_or_init(|| std::sync::Mutex::new(None))
 }
 
@@ -1931,11 +1937,23 @@ fn render_menu(
     Menu::with_items(app, &refs)
 }
 
-/// Rebuild the tray menu if — and only if — it would read differently.
+/// Bring the tray menu up to date — by EDITING it where that is possible, and
+/// only rebuilding when it is not.
 ///
-/// The comparison is the point. macOS closes an open menu when its items are
-/// replaced, so a rebuild on every tick would shut the menu under the cursor of
-/// anyone who held it open for more than five seconds.
+/// Two rules, and the second one is a bug a user reported: macOS closes an open
+/// menu the moment its items are replaced. The tick runs every 5s and the
+/// status line moves constantly (the running count, and the `updating…` suffix
+/// a busy services lock adds), so "rebuild whenever the spec differs" slammed
+/// the menu shut under the cursor of anyone reading it — the menu appeared to
+/// hide itself a few seconds after being opened.
+///
+/// So:
+/// 1. identical spec → do nothing;
+/// 2. same SHAPE (`MenuSpec::same_shape` — same ids, same tree) → set the
+///    titles, enabled flags and checkmarks on the LIVE items, which macOS
+///    renders without disturbing an open menu;
+/// 3. anything else (a site added, an update offer appearing) → a real rebuild.
+///    Rare, and there is no way to add a row to an open menu anyway.
 fn refresh_tray(app: &tauri::AppHandle) {
     // No state yet: leave whatever is up. Replacing a menu with the bootstrap
     // one would be a menu going BACKWARDS in front of the user.
@@ -1943,13 +1961,33 @@ fn refresh_tray(app: &tauri::AppHandle) {
         return;
     };
     let spec = core::tray::build(&model);
-    {
-        let mut last = last_spec().lock().unwrap_or_else(|e| e.into_inner());
-        if last.as_ref() == Some(&spec) {
-            return;
+
+    // Decide under the lock, act after it: applying the edits can wait on the
+    // main thread (which is inside a menu-tracking loop for exactly as long as
+    // the menu is open), and holding a lock across that wait is the thing this
+    // project's locking rule exists to forbid.
+    let previous = {
+        let mut last = last_menu().lock().unwrap_or_else(|e| e.into_inner());
+        match last.as_ref() {
+            Some((old, _)) if old == &spec => return,
+            Some((old, menu)) if old.same_shape(&spec) => {
+                let menu = menu.clone();
+                *last = Some((spec.clone(), menu.clone()));
+                Some(menu)
+            }
+            _ => None,
         }
-        *last = Some(spec.clone());
+    };
+    if let Some(menu) = previous {
+        match edit_menu_in_place(&menu, &spec) {
+            Ok(()) => return,
+            // The shape said these lined up and they did not. Fall through to a
+            // rebuild rather than leaving a menu half-edited — a row showing
+            // one service's title over another's id is worse than a flicker.
+            Err(e) => log::warn!("tray: could not edit the menu in place ({e}) — rebuilding"),
+        }
     }
+
     let Some(tray) = app.tray_by_id(TRAY_ID) else {
         return;
     };
@@ -1958,12 +1996,73 @@ fn refresh_tray(app: &tauri::AppHandle) {
         // working with older numbers, which is strictly better than a status
         // item with no menu at all.
         Ok(menu) => {
-            if let Err(e) = tray.set_menu(Some(menu)) {
+            if let Err(e) = tray.set_menu(Some(menu.clone())) {
                 log::warn!("tray: could not swap the menu: {e}");
+                return;
             }
+            *last_menu().lock().unwrap_or_else(|e| e.into_inner()) = Some((spec, menu));
         }
         Err(e) => log::warn!("tray: could not rebuild the menu: {e}"),
     }
+}
+
+/// Write a spec's editable fields onto an ALREADY RENDERED menu of the same
+/// shape. Called only after `same_shape`, so the walks line up one-for-one;
+/// every mismatch is still checked and returns an error, because a wrong
+/// pairing here would put one row's title on another row's id.
+fn edit_menu_in_place(
+    menu: &tauri::menu::Menu<tauri::Wry>,
+    spec: &core::tray::MenuSpec,
+) -> Result<(), String> {
+    use tauri::menu::MenuItemKind;
+
+    fn rows(
+        kinds: Vec<MenuItemKind<tauri::Wry>>,
+        out: &mut Vec<MenuItemKind<tauri::Wry>>,
+    ) -> tauri::Result<()> {
+        for k in kinds {
+            match k {
+                // Separators carry nothing that can change; a submenu's own
+                // row is shape, and `MenuSpec::editable` skips both. Its
+                // children are walked in place, which is the same pre-order.
+                MenuItemKind::Predefined(_) => {}
+                MenuItemKind::Submenu(sub) => rows(sub.items()?, out)?,
+                other => out.push(other),
+            }
+        }
+        Ok(())
+    }
+
+    let mut live = Vec::new();
+    rows(menu.items().map_err(|e| e.to_string())?, &mut live).map_err(|e| e.to_string())?;
+    let want = spec.editable();
+    if live.len() != want.len() {
+        return Err(format!("{} live rows vs {} in the spec", live.len(), want.len()));
+    }
+    for (row, entry) in live.iter().zip(want) {
+        match (row, entry) {
+            (MenuItemKind::MenuItem(it), core::tray::Editable::Label(text)) => {
+                it.set_text(text).map_err(|e| e.to_string())?;
+            }
+            (
+                MenuItemKind::MenuItem(it),
+                core::tray::Editable::Item { title, enabled, checked: None },
+            ) => {
+                it.set_text(title).map_err(|e| e.to_string())?;
+                it.set_enabled(enabled).map_err(|e| e.to_string())?;
+            }
+            (
+                MenuItemKind::Check(it),
+                core::tray::Editable::Item { title, enabled, checked: Some(on) },
+            ) => {
+                it.set_text(title).map_err(|e| e.to_string())?;
+                it.set_enabled(enabled).map_err(|e| e.to_string())?;
+                it.set_checked(on).map_err(|e| e.to_string())?;
+            }
+            _ => return Err("a live row and its spec entry are of different kinds".into()),
+        }
+    }
+    Ok(())
 }
 
 /// Dispatch a click. Every arm goes through the SAME entry point the UI uses —
@@ -2035,6 +2134,16 @@ fn on_tray_click(app: &tauri::AppHandle, id: &str) {
             show_main_window(app);
             if let Err(e) = app.emit(TRAY_ROUTE_EVENT, "/settings?section=about") {
                 log::warn!("tray: could not route to the update card: {e}");
+            }
+        }
+        // The app menu's About, reachable without the app menu: with the
+        // window closed rexenv is Accessory and has no menu bar of its own, so
+        // the tray is the ONLY way to the version and the licences. Same event
+        // as the app-menu item — one About screen, two doors.
+        core::tray::TrayAction::About => {
+            show_main_window(app);
+            if let Err(e) = app.emit(ABOUT_MENU_EVENT, ()) {
+                log::warn!("tray: could not open About: {e}");
             }
         }
         core::tray::TrayAction::ToggleMcp => {
@@ -2119,7 +2228,10 @@ pub(crate) fn show_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
 }
 
 /// Event the frontend listens for to open Settings → About.
-#[cfg(target_os = "macos")]
+///
+/// Not macOS-gated even though the app-menu item that first raised it is: the
+/// tray's own **About rexenv** raises the SAME event on every platform, because
+/// two ways in must not become two About screens.
 pub const ABOUT_MENU_EVENT: &str = "menu://about";
 
 /// The app menu's "Check for Updates…" — id and event.

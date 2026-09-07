@@ -698,6 +698,13 @@ hand can prove a spec entry became the item it describes.*
   added (2 Sep 2026), so the policy and the tile are two different facts.
 - [ ] Clicking the icon opens the MENU (not the window). **Open rexenv** brings the
   window to the FRONT — in front of a full-screen browser, not behind it.
+- [ ] **Hold the menu open for ~30 seconds** (the refresh tick is 5s) while the stack is
+  mid-start, so the status line and the greyed Start/Stop actually move. The numbers must
+  change UNDER the open menu and the menu must stay open. It closing itself is the bug
+  in-place editing exists for (reported 8 Sep 2026, ledger #437).
+- [ ] **About rexenv** in the menu → the window comes up on the About screen, with the
+  version. Do it with the window CLOSED: that is the state where the app menu's own About
+  does not exist, and the only reason this item is in the tray.
 - [ ] **Close the window** (red button) → the app stays alive: `rex status` still
   answers and an MCP client keeps working. This is the whole point of the feature.
 - [ ] The status line matches the sidebar footer for the same moment — same verdict,

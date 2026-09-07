@@ -104,6 +104,12 @@ the shipped UI toward one.
   above it: a number whose freshness the user cannot see is a claim, and the claim is
   part of the copy. It also caps the Sites submenu and SAYS what it hid ("…and 5 more"),
   because a truncated list that looks complete is how someone concludes a site is gone.
+- **An open menu is not redrawn under the cursor.** The tray refreshes every 5s, and
+  macOS closes an open menu when its items are replaced — so a moving number (the count,
+  the `· updating…` suffix) used to shut the menu in the user's face a few seconds after
+  they opened it. The numbers are now written onto the live items instead, and a rebuild
+  happens only when a ROW appears or disappears. The honest-UI half: nothing is frozen to
+  keep the menu still — it keeps updating, it just stops slamming.
 - **"Saved" and "now running" are different sentences, and a toast may only write the
   one the backend measured.** The PHP Update toast said "PHP 8.2 is now on 8.2.32" from
   a bare `Ok(())` — true when a pool was running, a claim about a process that does not
