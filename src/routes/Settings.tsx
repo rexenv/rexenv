@@ -10,7 +10,7 @@ import noticesText from "../../THIRD-PARTY-NOTICES.md?raw";
 import { ResolverConsentFor, ResolverHandBackRow } from "@/routes/Import";
 import { agoLabel } from "@/routes/Sites";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUpRight, Bot, CheckCircle2, ChevronRight, Code, FileText, FolderOpen, Github, Globe, Info, Lock, Server, Settings as SettingsIcon, Shield, ShieldCheck, type LucideIcon } from "lucide-react";
+import { ArrowUpRight, Bot, CheckCircle2, ChevronRight, Code, FileText, FolderOpen, Github, Globe, Info, Lock, ScrollText, Server, Settings as SettingsIcon, Shield, ShieldCheck, type LucideIcon } from "lucide-react";
 import { CHECK_INPUT, cn, TECH_INPUT } from "@/lib/utils";
 import { eolNote, eolWhen } from "@/lib/php";
 import { TopBar } from "@/components/shell/TopBar";
@@ -1590,6 +1590,17 @@ function BuildFactsCard({ info }: { info: AppInfo }) {
   );
 }
 
+/**
+ * Where a user reads what changed.
+ *
+ * The website's changelog, not a GitHub releases page: `rexenv/rexenv` is private
+ * (its release page is a 404 to anyone not signed in) and the tap's releases page
+ * is an artefact list, not a changelog. This link therefore does NOT move when the
+ * repo goes public — which is the point of pointing at the site rather than at
+ * whichever repo happens to host releases this month.
+ */
+const CHANGELOG_URL = "https://rexenv.rex.bd/docs/changelog/";
+
 /** The About section — identity, version, links, credits. */
 
 function AboutSetting() {
@@ -1668,6 +1679,12 @@ function AboutSetting() {
           "var(--rex-accent-blue)",
           "Documentation",
           "https://rexenv.rex.bd/docs",
+        )}
+        {linkRow(
+          <ScrollText className="h-[17px] w-[17px]" strokeWidth={1.7} />,
+          "var(--rex-accent-periwinkle)",
+          "Changelog",
+          CHANGELOG_URL,
         )}
         {linkRow(
           <Github className="h-[17px] w-[17px]" strokeWidth={1.7} />,

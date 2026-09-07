@@ -186,7 +186,9 @@ workflow greps the url for `SOURCE_REPO` and fails loudly if they drift.
 change — that is why it was not made a release asset. What does move is the descriptor's
 `url` FIELD, which is signed data, and one `TAP_REPO` variable in the runtimes publisher. (This said
 "three things" until 5 Sep 2026: the cask's `verified:` was the third, dropped when
-brew 6.0.22 deprecated the parameter for its default URL verification.)
+brew 6.0.22 deprecated the parameter for its default URL verification. The About page's
+Changelog link is deliberately NOT one of these: it points at the website, which does not
+move with the repo.)
 Move both back to `rexenv/rexenv`, delete the interim releases from the tap (or
 leave them — the cask only names the current version), and this section goes away.
 
