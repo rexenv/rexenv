@@ -654,18 +654,24 @@ pub async fn fetch_signed_pair(
             .build()
             .expect("update manifest client")
     });
+    // The pattern throughout: log the URL and the library's own words, return the
+    // sentence. Two audiences, two texts, one failure.
     let get = |url: &'static str| async move {
-        let res = client
-            .get(url)
-            .send()
-            .await
-            .map_err(|e| Error::Other(format!("could not reach {url}: {e}")))?;
+        let res = client.get(url).send().await.map_err(|e| {
+            log::warn!("update fetch: {url}: {e}");
+            Error::Other(FetchFailure::Unreachable.message())
+        })?;
         if !res.status().is_success() {
-            return Err(Error::Other(format!("{url} answered {}", res.status())));
+            log::warn!("update fetch: {url} answered {}", res.status());
+            return Err(Error::Other(FetchFailure::Status(res.status().as_u16()).message()));
         }
-        let body = res.bytes().await.map_err(|e| Error::Other(format!("{url}: {e}")))?;
+        let body = res.bytes().await.map_err(|e| {
+            log::warn!("update fetch: {url}: reading the body failed: {e}");
+            Error::Other(FetchFailure::Unreadable.message())
+        })?;
         if body.len() > max_doc {
-            return Err(Error::Other(format!("{url} returned {} bytes", body.len())));
+            log::warn!("update fetch: {url} returned {} bytes, over the {max_doc} cap", body.len());
+            return Err(Error::Other(FetchFailure::Unreadable.message()));
         }
         Ok(body.to_vec())
     };
@@ -677,6 +683,45 @@ pub async fn fetch_signed_pair(
         Ok((doc, sig))
     })
     .await
+}
+
+/// Why a document fetch failed, in the only three shapes a reader can act on.
+///
+/// The URL is deliberately NOT one of them. It is compiled into the binary, the
+/// user cannot change it, and pasting it into a dialog turns "no internet" into
+/// something that looks like a bug in rexenv —
+/// `https://raw.githubusercontent.com/…/app-manifest.json: error sending request
+/// for url (https://raw.githubusercontent.com/…/app-manifest.json)` was what a
+/// user actually saw on 7 Sep 2026, with the URL twice and reqwest's internals
+/// once. The URL and the raw error go to the LOG, where the person debugging
+/// wants them; the sentence goes to the screen.
+#[derive(Debug, Clone, PartialEq)]
+pub enum FetchFailure {
+    /// Nothing answered: no route, no DNS, a wedged connect, or our own deadline.
+    Unreachable,
+    /// Something answered, with a status that is not success. 404 is its own
+    /// sentence because it is a real and expected state — nothing published yet.
+    Status(u16),
+    /// Something answered and it was not a document we can use.
+    Unreadable,
+}
+
+impl FetchFailure {
+    /// The sentence a user reads. No URL, no library names, no error codes.
+    pub fn message(&self) -> String {
+        match self {
+            Self::Unreachable => "rexenv couldn't reach the update server. Check your \
+                 internet connection and try again."
+                .to_string(),
+            Self::Status(404) => "The update server has nothing published yet.".to_string(),
+            Self::Status(code) => {
+                format!("The update server answered {code}, so rexenv could not check just now.")
+            }
+            Self::Unreadable => {
+                "The update server sent something rexenv could not read.".to_string()
+            }
+        }
+    }
 }
 
 /// What a person pressing "Check now" is allowed to wait before being told the
@@ -704,10 +749,13 @@ pub async fn bounded<T>(
 ) -> Result<T> {
     match tokio::time::timeout(deadline, fut).await {
         Ok(r) => r,
-        Err(_) => Err(Error::Other(format!(
-            "{what} did not answer within {}s",
-            deadline.as_secs()
-        ))),
+        Err(_) => {
+            // The deadline expiring and the connection failing are the same event
+            // to a user — nothing answered — so they read the same sentence. The
+            // difference, which only matters when debugging, is in the log.
+            log::warn!("update fetch: {what} did not answer within {}s", deadline.as_secs());
+            Err(Error::Other(FetchFailure::Unreachable.message()))
+        }
     }
 }
 
@@ -1431,6 +1479,54 @@ mod tests {
     ///
     /// Tested against a future that never completes, because that is exactly the
     /// case no reachable host can produce and the only one that matters.
+    /// **No failure sentence carries a URL, a library name, or an error code
+    /// the reader cannot act on.**
+    ///
+    /// What a user saw on 7 Sep 2026 was
+    /// `https://raw.githubusercontent.com/…/app-manifest.json: error sending
+    /// request for url (https://raw.githubusercontent.com/…/app-manifest.json)`
+    /// — the URL twice and reqwest's internals once, for what was simply "no
+    /// internet". The URL is compiled in; a user cannot change it, and seeing it
+    /// makes a network problem look like a bug in rexenv.
+    #[test]
+    fn a_failed_check_reads_like_a_sentence_and_not_like_a_stack_trace() {
+        let all = [
+            FetchFailure::Unreachable,
+            FetchFailure::Status(404),
+            FetchFailure::Status(500),
+            FetchFailure::Unreadable,
+        ];
+        for f in &all {
+            let m = f.message();
+            for leak in ["http", "://", "raw.githubusercontent", "reqwest", "error sending"] {
+                assert!(
+                    !m.to_lowercase().contains(leak),
+                    "{f:?} leaks {leak:?} into what a user reads: {m}"
+                );
+            }
+            assert!(m.ends_with('.'), "{f:?} is not a sentence: {m}");
+            assert!(m.len() > 25, "{f:?} says too little to act on: {m}");
+        }
+
+        // 404 is a STATE, not a fault: nothing is published yet, which is exactly
+        // what the first release looked like. It must not read as an error the
+        // user should do something about.
+        let missing = FetchFailure::Status(404).message();
+        assert!(
+            missing.contains("nothing published"),
+            "404 must name the state rather than the number: {missing}"
+        );
+        assert!(!missing.contains("404"), "the number helps nobody here: {missing}");
+
+        // And the two that mean "nothing answered" agree, because to a user they
+        // are the same event.
+        assert_eq!(
+            FetchFailure::Unreachable.message(),
+            FetchFailure::Unreachable.message()
+        );
+        assert!(FetchFailure::Unreachable.message().contains("internet connection"));
+    }
+
     /// **The button does not inherit the poller's patience.**
     ///
     /// The two callers are a person and a six-hourly loop, and the whole of
@@ -1480,10 +1576,14 @@ mod tests {
         let err = bounded(short, "the update server", never)
             .await
             .expect_err("a future that never completes must not return Ok");
+        // The deadline and a failed connect are ONE event to the reader — nothing
+        // answered — so they read the same sentence; which of the two it was
+        // lives in the log, where the person debugging wants it.
         let msg = err.to_string();
-        assert!(
-            msg.contains("did not answer within") && msg.contains("the update server"),
-            "the message must name the wait and the subject, not read as a network error: {msg}"
+        assert_eq!(
+            msg,
+            FetchFailure::Unreachable.message(),
+            "a deadline must not produce its own dialect of failure"
         );
         assert!(start.elapsed() >= short, "the deadline is what ended it");
 

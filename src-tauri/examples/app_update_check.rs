@@ -88,7 +88,14 @@ async fn main() -> ExitCode {
             // TLS, a 500, a timeout — is a real failure and must not be filed
             // under "not published yet", which is the shape that turns a check
             // into a thing that always passes.
-            let missing = e.to_string().contains("404");
+            // Matched against the SENTENCE the user reads, not against "404":
+            // the number stopped appearing when those messages were written for
+            // people rather than for logs (ledger #540), and a check keyed to a
+            // string the product no longer produces is a check that silently
+            // always fails — or, worse here, always passes.
+            let missing = e
+                .to_string()
+                .contains(&updates::FetchFailure::Status(404).message());
             checks.is(
                 "the descriptor is either published or cleanly absent",
                 missing,
