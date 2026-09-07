@@ -1329,6 +1329,8 @@ pub fn run() {
             commands::logs::wp_debug_log_clear,
             commands::logs::wp_debug_log_download,
             commands::terminal::terminal_open,
+            commands::terminal::terminal_open_external,
+            commands::terminal::list_terminals,
             commands::terminal::terminal_write,
             commands::terminal::terminal_resize,
             commands::terminal::terminal_close,

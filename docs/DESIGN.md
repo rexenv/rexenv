@@ -359,7 +359,11 @@ the shipped UI toward one.
   `SplitButton`/`QuickTile` drop the chevron entirely when the menu is empty
   (`useBrowserMenu`/`useEditorMenu` return undefined below two apps) — a control
   that opens a one-item menu can't change anything, and the seam it adds reads as
-  a promise the machine can't keep. The two halves are SIBLING buttons: a nested
+  a promise the machine can't keep. The terminal chevron (`useTerminalMenu`) is
+  the exception that states the rule: its menu is not "the same action, elsewhere"
+  but a DIFFERENT destination — the plain click opens rexenv's built-in Terminal
+  tab, the menu opens the folder in the user's own terminal app — so one entry is
+  already a choice, and it shows. The two halves are SIBLING buttons: a nested
   `<button>` is invalid HTML and WKWebView drops the inner click. **Every chevron
   carries a visible SEAM** — the divider is the affordance, not decoration: the
   quick-link tiles shipped without one and read as a single wide button with an

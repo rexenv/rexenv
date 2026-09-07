@@ -379,6 +379,28 @@ pub trait ShellRunner: Send + Sync {
         Err(crate::error::Error::Unsupported("open_in_browser"))
     }
 
+    /// Terminal emulators installed on this machine ("Open in terminal", the
+    /// chevron beside the built-in Terminal), detection-ordered like
+    /// [`Self::detect_editors`]. Default: none — Windows/Linux fill this in
+    /// Phase 4.
+    fn detect_terminals(&self) -> Vec<TerminalApp> {
+        Vec::new()
+    }
+
+    /// Open a NEW window of the terminal with [`TerminalApp::id`], with `path`
+    /// as its working directory (macOS: `open -a <app> <dir>` for apps that take
+    /// a folder as a document, `open -na <app> --args <cwd flag> <dir>` for the
+    /// rest). Errors if the terminal is not installed.
+    ///
+    /// `path` is a DIRECTORY resolved on the backend side (the site docroot or a
+    /// plugin/theme folder) — the frontend passes ids, never a path, so this can
+    /// never be pointed at an arbitrary place on disk. Implementations MUST
+    /// reject a `path` that is not an existing directory: `open -a <term> <file>`
+    /// would hand the file to the terminal as a *script to run*.
+    fn open_in_terminal(&self, _terminal_id: &str, _path: &std::path::Path) -> Result<()> {
+        Err(crate::error::Error::Unsupported("open_in_terminal"))
+    }
+
     /// The user's REAL shell environment (PATH, SSH_AUTH_SOCK, …), resolved by
     /// running their login shell the way a terminal would. A Finder-launched
     /// app inherits the bare launchd environment — Homebrew's shellenv lives in
@@ -451,6 +473,19 @@ pub struct EditorApp {
     /// Stable key stored as the `preferred_editor` setting (e.g. "vscode").
     pub id: String,
     /// Display name (e.g. "Visual Studio Code").
+    pub name: String,
+    /// The app's OWN icon as a `data:image/png;base64,…` URI, or `None` when it
+    /// couldn't be read (see [`BrowserApp::icon`] — same rule, same fallback).
+    pub icon: Option<String>,
+}
+
+/// A detected terminal emulator (`ShellRunner::detect_terminals`).
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalApp {
+    /// Stable key passed back to `ShellRunner::open_in_terminal` (e.g. "iterm").
+    pub id: String,
+    /// Display name (e.g. "iTerm").
     pub name: String,
     /// The app's OWN icon as a `data:image/png;base64,…` URI, or `None` when it
     /// couldn't be read (see [`BrowserApp::icon`] — same rule, same fallback).

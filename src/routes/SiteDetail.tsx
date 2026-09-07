@@ -31,7 +31,7 @@ import { usePreferredBrowser } from "@/lib/useBrowser";
 import { AppIcon } from "@/components/ui/app-icon";
 import { Menu } from "@/components/ui/menu";
 import { SplitButton } from "@/components/ui/split-button";
-import { BROWSER_MENU_WIDTH, useBrowserMenu, useEditorMenu } from "@/components/ui/open-in";
+import { BROWSER_MENU_WIDTH, useBrowserMenu, useEditorMenu, useTerminalMenu } from "@/components/ui/open-in";
 import { StatusPill } from "@/components/common/StatusPill";
 import { useSiteEnabled } from "@/lib/useSiteEnabled";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
@@ -545,6 +545,7 @@ function Overview({
   });
   const editor = usePreferredEditor();
   const editorMenu = useEditorMenu(site.path);
+  const terminalMenu = useTerminalMenu(site.id);
   const browser = usePreferredBrowser();
   const browserMenu = useBrowserMenu(url);
   const adminMenu = useBrowserMenu(() => magicLoginUrl(site));
@@ -710,6 +711,8 @@ function Overview({
               iconColor="text-brand-tint"
               label="Terminal"
               onClick={onTerminal}
+              menu={terminalMenu}
+              menuLabel="Open this folder in one of your own terminals"
             />
             <QuickTile
               icon={<FolderOpen className="h-4 w-4" />}

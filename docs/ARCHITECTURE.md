@@ -987,6 +987,34 @@ editor" → `open -a <editor> <site folder>`, so the folder lands as a PROJECT) 
 - **A chosen browser takes URLs only.** `open -a <browser> <path>` displays a
   local FILE, so `open_in_browser` refuses anything that isn't `http(s)` before
   it even looks the browser up (CLAIM-LEDGER #301).
+- **A third kind of app: the user's own terminal.** `ShellRunner::detect_terminals`
+  scans the same folders for a small `TERMINALS` table, and the chevron beside
+  every built-in Terminal control opens that folder in one of them. It is not a
+  choice between equals like the browser/editor menus — the plain click still
+  opens rexenv's built-in tab, and the menu is a different destination — so this
+  menu appears even with ONE app detected, and there is no `preferred_terminal`
+  setting to drift out of date. That shell is the user's plain login shell: no
+  bundled PHP dir, no `wp` wrapper on PATH, so `php -v` there answers with
+  whatever their machine has. The built-in tab stays the one that answers with
+  the SITE's PHP version.
+- **The bundle search includes `/System/Applications/Utilities`** for one app
+  every Mac has and no Mac can move: Terminal.app. Since macOS 11 the stock apps
+  live on the sealed system volume, so the `/Applications` + `~/Applications`
+  search that serves editors and browsers reported "no terminal installed" on a
+  stock machine (CLAIM-LEDGER #541).
+- **A chosen terminal takes a DIRECTORY only.** `open -a Terminal <file>` runs
+  the file as a script, so `open_in_terminal` refuses anything that is not an
+  existing directory before it even looks the terminal up — the same shape as the
+  browser's http(s)-only guard. The directory itself is resolved in the BACKEND
+  from the site id (and the plugin/theme slug); no path crosses IPC.
+- **How a terminal is told where to start is per-app and honest.** Terminal.app
+  and iTerm take the folder as a document argument; the rest get their documented
+  cwd flag through `open -na … --args`, where `-n` is load-bearing for the same
+  reason as the private-window flags — macOS drops `--args` for an already-running
+  app, and a dropped `--working-directory` opens a window in `$HOME` under a
+  control that said "this plugin's folder". An app whose cwd handling we have not
+  established is simply left out of the table: a missing row costs a menu entry, a
+  wrong row costs a command typed in the wrong directory.
 - **The chevron next to "Open in browser" is one-time.** It opens THIS url
   elsewhere and changes no setting — the default moves in Settings only.
 - **Each row of that menu has a SECOND target: the same url in that browser's
@@ -2161,6 +2189,13 @@ plugin's directory; the rows that can only be folderless (must-use, drop-in) do 
 show the button at all. It is a SEPARATE session from the site's own shell, not a `cd`
 typed into it: that shell may be mid-`composer install`, and the keystrokes would have
 gone to composer.
+
+The same two entry points also carry a chevron that opens that folder in the
+user's OWN terminal app instead (`terminal_open_external`) — the site's quick
+tile and each plugin/theme row. It resolves the directory through exactly the
+same `asset_cwd` path, so the two destinations can never disagree about which
+folder "this plugin" means; what it does NOT carry is the bundled PHP and the
+`wp` wrapper, because that shell is spawned by the terminal app, not by us.
 
 **The session outlives its React component** (`SiteTerminal.tsx`) — the same rule the
 services follow. A tab switch unmounts the component, and the first version killed the

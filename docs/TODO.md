@@ -23,6 +23,21 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [x] **"Open in terminal" — the chevron beside every built-in Terminal control**
+  ✓ 7 Sep 2026 — ledger #541. `ShellRunner::detect_terminals` / `open_in_terminal`
+  + a macOS `TERMINALS` table (Terminal, iTerm, Warp, Ghostty, WezTerm, kitty,
+  Alacritty) with a per-app `TermLaunch` (folder document vs a documented cwd flag
+  through `open -na … --args`); `list_terminals` + `terminal_open_external` resolve
+  the directory backend-side from the site id (+ plugin/theme slug), so no path
+  crosses IPC. UI: the site's Terminal quick tile and every plugin/theme row's
+  terminal button (`AssetTerminalButton`). The plain click still opens the built-in
+  tab. Found on the way: the `/Applications` + `~/Applications` bundle search
+  inherited from editors/browsers detects NO terminal on a stock Mac —
+  Terminal.app lives on the sealed system volume since macOS 11.
+  **Not verified live for the flag-driven apps** (Ghostty, WezTerm, kitty,
+  Alacritty, Warp): only Terminal.app and iTerm are installed on the dev Mac, and
+  those two are the `Folder` shape — the others rest on their documented cwd flags.
+
 - [ ] **In-app self-update — a dmg user has no update path at all**
   — 6 Sep 2026, planned in `docs/archive/PLAN-self-update.md`; supersedes the Phase 4+ row
   "Packaging polish: Tauri updater" (`docs/archive/TASKS-RELEASE.md` §6.1), which

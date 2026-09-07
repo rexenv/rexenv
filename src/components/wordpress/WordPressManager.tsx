@@ -2,9 +2,11 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { useNavigate } from "react-router-dom";
 import { toast, toastBackendError } from "@/lib/toast";
 import { confirm, PromptDialog } from "@/components/ui/dialog";
+import { Menu } from "@/components/ui/menu";
+import { useTerminalMenu } from "@/components/ui/open-in";
 import { confirmPhraseMatches, TypeToConfirm } from "@/components/ui/type-to-confirm";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowUpCircle, Check, Download, ExternalLink, FileUp, Globe, Loader2, Lock, LogIn, Network, Palette, Plus, RefreshCw, Replace, RotateCcw, Eye, EyeOff, KeyRound, Search, Shield, Star, TerminalSquare, Trash2, UserPlus, X } from "lucide-react";
+import { AlertTriangle, ArrowUpCircle, Check, ChevronDown, Download, ExternalLink, FileUp, Globe, Loader2, Lock, LogIn, Network, Palette, Plus, RefreshCw, Replace, RotateCcw, Eye, EyeOff, KeyRound, Search, Shield, Star, TerminalSquare, Trash2, UserPlus, X } from "lucide-react";
 import { CHECK_INPUT, cn, TECH_INPUT } from "@/lib/utils";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import {
@@ -107,6 +109,58 @@ type SubTab = "plugins" | "themes" | "users" | "network" | "tools";
 
 const BTN =
   "rounded-md border border-rex-border bg-rex-surface-2 px-2.5 py-1 text-[0.75rem] text-rex-text transition-colors hover:border-brand disabled:cursor-not-allowed disabled:opacity-40";
+
+/** The terminal control on a plugin/theme row: the icon opens rexenv's built-in
+ *  Terminal tab in that folder, the chevron beside it opens the SAME folder in
+ *  one of the user's own terminal apps. The chevron disappears when the machine
+ *  has no terminal we can drive (never on macOS — Terminal.app is not
+ *  removable), leaving the plain button the row always had. */
+function AssetTerminalButton({
+  siteId,
+  kind,
+  name,
+  onTerminal,
+}: {
+  siteId: string;
+  kind: "plugin" | "theme";
+  /** The asset's FOLDER name — the same slug the backend resolves the directory
+   *  from, not the display title. */
+  name: string;
+  onTerminal: () => void;
+}) {
+  const menu = useTerminalMenu(siteId, { kind, name });
+  const label = `Open a terminal in ${name}'s folder`;
+  if (!menu) {
+    return (
+      <button className={BTN} onClick={onTerminal} title={label} aria-label={label}>
+        <TerminalSquare className="h-3.5 w-3.5" />
+      </button>
+    );
+  }
+  return (
+    <div className="flex items-stretch rounded-md border border-rex-border bg-rex-surface-2 text-rex-text transition-colors hover:border-brand">
+      <button onClick={onTerminal} title={label} aria-label={label} className="px-2.5 py-1">
+        <TerminalSquare className="h-3.5 w-3.5" />
+      </button>
+      <Menu
+        align="right"
+        trigger={
+          <button
+            title={`Open ${name}'s folder in your own terminal`}
+            aria-label={`Open ${name}'s folder in your own terminal`}
+            // Same seam as the quick-tile chevron: without the divider it reads
+            // as decoration on one wide button.
+            className="flex h-full items-center rounded-r-md border-l border-rex-border px-1 text-rex-text-muted transition-colors hover:bg-rex-hover hover:text-rex-text"
+          >
+            <ChevronDown className="h-3 w-3" strokeWidth={2} />
+          </button>
+        }
+      >
+        {menu}
+      </Menu>
+    </div>
+  );
+}
 
 /** Row-selection checkbox — big enough to hit, pointer cursor. */
 /** One queued install target in the tag-style Add bar (plugins & themes).
@@ -2818,6 +2872,7 @@ export function ThemesPanel({ siteId }: { siteId: string }) {
             <Fragment key={t.name}>
             <ThemeCard
               t={t}
+              siteId={siteId}
               git={gitDirs.has(t.name)}
               unmanaged={unmanagedSet.has(t.name)}
               onGitClick={() =>
@@ -2850,6 +2905,7 @@ export function ThemesPanel({ siteId }: { siteId: string }) {
 
 function ThemeCard({
   t,
+  siteId,
   git,
   unmanaged,
   onGitClick,
@@ -2861,6 +2917,9 @@ function ThemeCard({
   onDelete,
 }: {
   t: WpTheme;
+  /** The site the card belongs to — the terminal chevron resolves the theme's
+   *  folder from it backend-side. */
+  siteId: string;
   git?: boolean;
   unmanaged?: boolean;
   onGitClick?: () => void;
@@ -2973,14 +3032,7 @@ function ThemeCard({
               <ArrowUpCircle className="h-3.5 w-3.5" />
             </button>
           )}
-          <button
-            className={BTN}
-            onClick={onTerminal}
-            title={`Open a terminal in ${t.name}'s folder`}
-            aria-label={`Open a terminal in ${t.name}'s folder`}
-          >
-            <TerminalSquare className="h-3.5 w-3.5" />
-          </button>
+          <AssetTerminalButton siteId={siteId} kind="theme" name={t.name} onTerminal={onTerminal} />
           <button
             className={BTN + " hover:border-status-error-border hover:text-status-error-bright disabled:hover:border-rex-border disabled:hover:text-rex-text"}
             disabled={busy || active}
@@ -3571,6 +3623,7 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
             <Fragment key={p.name}>
             <PluginRow
               p={p}
+              siteId={siteId}
               git={gitDirs.has(p.name)}
               unmanaged={unmanagedSet.has(p.name)}
               onGitClick={() =>
@@ -3785,6 +3838,7 @@ function ProgressBar({ fraction, className }: { fraction: number; className?: st
 
 function PluginRow({
   p,
+  siteId,
   git,
   unmanaged,
   onGitClick,
@@ -3800,6 +3854,9 @@ function PluginRow({
   onDelete,
 }: {
   p: WpPlugin;
+  /** The site the row belongs to — the terminal chevron resolves the plugin's
+   *  folder from it backend-side. */
+  siteId: string;
   git?: boolean;
   unmanaged?: boolean;
   onGitClick?: () => void;
@@ -3934,14 +3991,7 @@ function PluginRow({
           have no folder of their own — offering a terminal "in this plugin"
           would land somewhere that isn't it. */}
       {!immutable && (
-        <button
-          className={BTN}
-          onClick={onTerminal}
-          title={`Open a terminal in ${p.name}'s folder`}
-          aria-label={`Open a terminal in ${p.name}'s folder`}
-        >
-          <TerminalSquare className="h-3.5 w-3.5" />
-        </button>
+        <AssetTerminalButton siteId={siteId} kind="plugin" name={p.name} onTerminal={onTerminal} />
       )}
       <button
         className={cn(

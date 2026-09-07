@@ -1022,6 +1022,13 @@ export interface EditorApp {
   icon: string | null; // the app's own icon as a data: URI, null when unreadable
 }
 
+/** A detected terminal emulator (mirrors the Rust TerminalApp DTO). */
+export interface TerminalApp {
+  id: string; // stable key passed back to terminal_open_external
+  name: string; // display name, e.g. "iTerm"
+  icon: string | null; // the app's own icon as a data: URI, null when unreadable
+}
+
 /** A detected web browser (mirrors the Rust BrowserApp DTO). */
 export interface BrowserApp {
   id: string; // stable key stored as the preferred_browser setting

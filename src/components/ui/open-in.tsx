@@ -1,10 +1,12 @@
 import type { ReactNode } from "react";
-import { Code, Globe } from "lucide-react";
+import { Code, Globe, TerminalSquare } from "lucide-react";
 import { AppIcon } from "@/components/ui/app-icon";
 import { IncognitoIcon } from "@/components/common/IncognitoIcon";
 import { MenuItem } from "@/components/ui/menu";
 import { openUrlIn, useBrowsers, usePreferredBrowser } from "@/lib/useBrowser";
 import { openSiteInEditor, useEditors, usePreferredEditor } from "@/lib/useEditor";
+import { openInTerminal, useTerminalApps } from "@/lib/useTerminalApp";
+import type { TerminalAsset } from "@/lib/ipc";
 import type { BrowserApp } from "@/types";
 
 /** Width for a chevron menu built by {@link useBrowserMenu}. Wider than the
@@ -89,6 +91,33 @@ export function useEditorMenu(path: string): ReactNode | undefined {
       {e.id === current?.id && (
         <span className="flex-none text-[0.6875rem] text-rex-text-muted">default</span>
       )}
+    </MenuItem>
+  ));
+}
+
+/**
+ * The chevron menu beside every built-in Terminal control: the same folder in
+ * one of the user's OWN terminal apps.
+ *
+ * Unlike the browser/editor menus this one appears even with a single app,
+ * because it is not a choice BETWEEN equals — the plain click opens rexenv's
+ * built-in tab and the menu is a different destination entirely. (On macOS the
+ * list is never empty anyway: Terminal.app cannot be uninstalled.)
+ *
+ * That shell is the user's plain login shell, with no bundled PHP and no `wp`
+ * wrapper on PATH — the built-in tab stays the one that answers with the SITE's
+ * PHP version.
+ */
+export function useTerminalMenu(siteId: string, asset?: TerminalAsset): ReactNode | undefined {
+  const terminals = useTerminalApps();
+  if (terminals.length === 0) return undefined;
+  return terminals.map((t) => (
+    <MenuItem
+      key={t.id}
+      icon={<AppIcon icon={t.icon} fallback={<TerminalSquare className="h-4 w-4" />} />}
+      onSelect={() => openInTerminal(t, siteId, asset)}
+    >
+      <span className="flex-1 truncate">{t.name}</span>
     </MenuItem>
   ));
 }

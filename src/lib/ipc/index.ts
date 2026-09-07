@@ -8,7 +8,7 @@
  */
 import type { StartupNotice, AdminerStatus, AppInfo, AppUpdateState, AppUpdateOutcome, AppUpdateReadiness, AgentAction, AgentAccess,
   AgentAccessLevel,
-  AgentAccessMode, Blueprint, BrowserApp, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoGitOp, RepoJobState, RepoKind, RepoPullRef, RepoStashEntry, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpUpdateOutcome, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteProvisionState, SiteRepoInfo, SiteResources, SiteServing, ResolverPlan, ResolverTldStatus, ScratchPackage, TeardownReport, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser, UnresolvableTld } from "@/types";
+  AgentAccessMode, Blueprint, BrowserApp, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoGitOp, RepoJobState, RepoKind, RepoPullRef, RepoStashEntry, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpUpdateOutcome, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteProvisionState, SiteRepoInfo, SiteResources, SiteServing, ResolverPlan, ResolverTldStatus, ScratchPackage, TeardownReport, TerminalApp, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser, UnresolvableTld } from "@/types";
 import {
   mockAppInfo,
   mockDatabases,
@@ -782,7 +782,28 @@ export async function revealPath(path: string): Promise<void> {
   await invoke("reveal_path", { path });
 }
 
-/** Which plugin/theme folder a terminal should open in. Only the kind + slug
+/** Terminal emulators installed on this machine, detection-ordered. Empty
+ *  outside Tauri. Same shape as {@link listEditors}. */
+export async function listTerminals(): Promise<TerminalApp[]> {
+  if (!isTauri()) return [];
+  return invoke<TerminalApp[]>("list_terminals");
+}
+
+/** Open the site's folder — or one plugin/theme's folder — in the user's OWN
+ *  terminal app, instead of the built-in Terminal tab. Only ids cross IPC: the
+ *  backend resolves the directory from the site's recorded path, so nothing here
+ *  names a folder. That shell is the user's plain login shell — no bundled PHP
+ *  or `wp` wrapper on PATH, unlike the built-in tab. */
+export async function openInTerminalApp(
+  terminalId: string,
+  siteId: string,
+  asset?: TerminalAsset,
+): Promise<void> {
+  if (!isTauri()) throw new Error("Opening a terminal requires the rexenv desktop app.");
+  await invoke("terminal_open_external", { terminalId, siteId, asset });
+}
+
+/** Which plugin/theme folder a terminal should open in./** Which plugin/theme folder a terminal should open in. Only the kind + slug
  *  cross IPC — the backend resolves the directory against the site's recorded
  *  content dir, so no path is ever named from here. */
 export interface TerminalAsset {

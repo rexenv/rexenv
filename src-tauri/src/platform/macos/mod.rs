@@ -1317,6 +1317,19 @@ impl PermissionManager for MacosPermissions {
     }
 }
 
+/// How a terminal app is told which directory to open in
+/// (`MacosShell::TERMINALS`).
+#[derive(Debug, Clone, Copy)]
+enum TermLaunch {
+    /// The app takes the directory as a document: `open -a <app> <dir>`.
+    Folder,
+    /// One `--flag=<dir>` token: `open -na <app> --args --flag=<dir>`.
+    FlagEq(&'static str),
+    /// Fixed argv, then the directory as its own token:
+    /// `open -na <app> --args <args…> <dir>`.
+    Args(&'static [&'static str]),
+}
+
 pub struct MacosShell;
 impl ShellRunner for MacosShell {
     fn run(&self, command: &str, args: &[String]) -> Result<String> {
@@ -1438,6 +1451,63 @@ impl ShellRunner for MacosShell {
         } else {
             std::process::Command::new("open").args(["-a", app, url]).status()?
         };
+        if status.success() {
+            Ok(())
+        } else {
+            Err(Error::Other(format!("`open -a {app}` failed: {status}")))
+        }
+    }
+
+    fn detect_terminals(&self) -> Vec<crate::platform::traits::TerminalApp> {
+        MacosShell::TERMINALS
+            .iter()
+            .filter(|(_, _, app, _)| Self::app_installed(app))
+            .map(|(id, name, app, _)| crate::platform::traits::TerminalApp {
+                id: (*id).to_string(),
+                name: (*name).to_string(),
+                icon: Self::app_icon_data_uri(app),
+            })
+            .collect()
+    }
+
+    fn open_in_terminal(&self, terminal_id: &str, path: &Path) -> Result<()> {
+        // Directories only. `open -a Terminal <file>` RUNS the file as a script
+        // — the one mistake this control must not make. Checked before the
+        // lookup so the refusal never depends on what is installed.
+        if !path.is_dir() {
+            return Err(Error::Other(format!(
+                "refusing to open a terminal at {} — only an existing directory is a working \
+                 directory (a terminal handed a file would run it)",
+                path.display()
+            )));
+        }
+        let dir = path
+            .to_str()
+            .ok_or_else(|| Error::Other(format!("path is not valid UTF-8: {}", path.display())))?;
+        let (_, name, app, launch) = MacosShell::TERMINALS
+            .iter()
+            .find(|(id, _, _, _)| *id == terminal_id)
+            .ok_or_else(|| Error::Other(format!("unknown terminal: {terminal_id}")))?;
+        if !Self::app_installed(app) {
+            return Err(Error::Other(format!("{name} is not installed anymore")));
+        }
+        let mut cmd = std::process::Command::new("open");
+        match launch {
+            TermLaunch::Folder => {
+                cmd.args(["-a", app, dir]);
+            }
+            // `-n` is load-bearing: for an ALREADY-RUNNING app macOS drops
+            // `--args` entirely, and the new window would open in $HOME.
+            TermLaunch::FlagEq(flag) => {
+                cmd.args(["-na", app, "--args", &format!("{flag}={dir}")]);
+            }
+            TermLaunch::Args(args) => {
+                cmd.args(["-na", app, "--args"]);
+                cmd.args(*args);
+                cmd.arg(dir);
+            }
+        }
+        let status = cmd.status()?;
         if status.success() {
             Ok(())
         } else {
@@ -1619,20 +1689,53 @@ impl MacosShell {
         ("tor", "Tor Browser", "Tor Browser", "org.torproject.torbrowser", None),
     ];
 
-    /// The `.app` bundle directory for a bundle NAME, searched in the two places
+    /// Terminal emulators we can detect: (stable id, display name, .app bundle
+    /// name, how it is told which directory to start in). Ordered by rough
+    /// popularity; Terminal.app is first because every Mac has it.
+    ///
+    /// The last field is the honest part. `Folder` means the app takes a
+    /// directory as a plain document argument (`open -a <app> <dir>`), which is
+    /// how Terminal.app and iTerm open a window already `cd`-ed there — both
+    /// verified on a real install. The flag variants come from each app's
+    /// documented command line and are used with `-n`, because `open -a <app>
+    /// --args …` DROPS the arguments when the app is already running (the same
+    /// trap the private-window browser flags hit) — a dropped `--working-
+    /// directory` would open a window in the user's HOME under a control that
+    /// said "this plugin's folder". An app whose cwd handling we do not know is
+    /// simply not on this list: a missing row costs a menu entry, a wrong row
+    /// costs the user a command typed in the wrong directory.
+    const TERMINALS: &'static [(&'static str, &'static str, &'static str, TermLaunch)] = &[
+        ("terminal", "Terminal", "Terminal", TermLaunch::Folder),
+        ("iterm", "iTerm", "iTerm", TermLaunch::Folder),
+        ("warp", "Warp", "Warp", TermLaunch::Folder),
+        ("ghostty", "Ghostty", "Ghostty", TermLaunch::FlagEq("--working-directory")),
+        ("wezterm", "WezTerm", "WezTerm", TermLaunch::Args(&["start", "--cwd"])),
+        ("kitty", "kitty", "kitty", TermLaunch::Args(&["--directory"])),
+        ("alacritty", "Alacritty", "Alacritty", TermLaunch::Args(&["--working-directory"])),
+    ];
+
+    /// The `.app` bundle directory for a bundle NAME, searched in the places
     /// [`Self::app_installed`] accepts.
+    ///
+    /// `/System/Applications/Utilities` is on the list for ONE app that every
+    /// Mac has and no Mac can move: Terminal.app. Since macOS 11 the stock apps
+    /// live on the sealed system volume, so a search of `/Applications` +
+    /// `~/Applications` alone reports "no terminal installed" on a machine whose
+    /// terminal is the one Apple shipped.
     fn app_bundle_path(app: &str) -> Option<PathBuf> {
         let bundle = format!("{app}.app");
-        let system = Path::new("/Applications").join(&bundle);
-        if system.exists() {
-            return Some(system);
+        for dir in ["/Applications", "/System/Applications/Utilities", "/System/Applications"] {
+            let candidate = Path::new(dir).join(&bundle);
+            if candidate.exists() {
+                return Some(candidate);
+            }
         }
         directories::BaseDirs::new()
             .map(|b| b.home_dir().join("Applications").join(&bundle))
             .filter(|p| p.exists())
     }
 
-    /// An app bundle exists in /Applications or ~/Applications.
+    /// An app bundle exists in one of the searched application folders.
     fn app_installed(app: &str) -> bool {
         Self::app_bundle_path(app).is_some()
     }
@@ -2173,6 +2276,54 @@ impl Platform for MacosPlatform {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A terminal is handed a DIRECTORY or nothing. `open -a Terminal <file>`
+    /// RUNS the file — the one mistake this control must not make — so the
+    /// refusal is checked before the app lookup, and therefore holds for a
+    /// terminal that is not installed too.
+    #[test]
+    fn open_in_terminal_refuses_anything_that_is_not_a_directory() {
+        let shell = MacosShell;
+        let file = std::env::temp_dir().join(format!("rexenv-term-guard-{}.sh", std::process::id()));
+        std::fs::write(&file, b"#!/bin/sh\necho nope\n").expect("write temp file");
+
+        // A real, installed terminal (Terminal.app is on every Mac) — so this
+        // proves the GUARD, not a missing app.
+        let err = shell.open_in_terminal("terminal", &file).unwrap_err().to_string();
+        assert!(err.contains("only an existing directory"), "{err}");
+
+        // A path that does not exist at all is the same refusal, not a spawn.
+        let ghost = file.with_extension("missing");
+        assert!(shell.open_in_terminal("terminal", &ghost).is_err());
+
+        // The directory check runs BEFORE the id lookup: an unknown terminal
+        // with a file path must not be able to reach the spawn either.
+        let err = shell.open_in_terminal("no-such-terminal", &file).unwrap_err().to_string();
+        assert!(err.contains("only an existing directory"), "{err}");
+
+        // A directory gets past the guard and fails only on the unknown id —
+        // the guard is not passing everything.
+        let err = shell
+            .open_in_terminal("no-such-terminal", &std::env::temp_dir())
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("unknown terminal"), "{err}");
+
+        std::fs::remove_file(&file).ok();
+    }
+
+    /// Terminal.app lives on the sealed system volume since macOS 11. The
+    /// two-folder search this file used for editors and browsers reported "no
+    /// terminal installed" on a stock Mac; every Mac must detect at least it.
+    #[test]
+    fn detect_terminals_finds_the_stock_terminal_app() {
+        let found = MacosShell.detect_terminals();
+        assert!(
+            found.iter().any(|t| t.id == "terminal"),
+            "Terminal.app not detected: {:?}",
+            found.iter().map(|t| &t.id).collect::<Vec<_>>()
+        );
+    }
 
     #[test]
     fn attribute_holder_names_the_owning_app() {
