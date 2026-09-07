@@ -30,8 +30,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   through `open -na … --args`); `list_terminals` + `terminal_open_external` resolve
   the directory backend-side from the site id (+ plugin/theme slug), so no path
   crosses IPC. UI: the site's Terminal quick tile and every plugin/theme row's
-  terminal button (`AssetTerminalButton`). The plain click still opens the built-in
-  tab. Found on the way: the `/Applications` + `~/Applications` bundle search
+  terminal button (`AssetTerminalButton`), and the Terminal tab's own toolbar
+  (a plain list — no OS default terminal to back a default click). The plain
+  click on the tile/row still opens the built-in tab. Found on the way: the `/Applications` + `~/Applications` bundle search
   inherited from editors/browsers detects NO terminal on a stock Mac —
   Terminal.app lives on the sealed system volume since macOS 11.
   **Not verified live for the flag-driven apps** (Ghostty, WezTerm, kitty,

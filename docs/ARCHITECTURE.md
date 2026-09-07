@@ -2190,9 +2190,12 @@ show the button at all. It is a SEPARATE session from the site's own shell, not 
 typed into it: that shell may be mid-`composer install`, and the keystrokes would have
 gone to composer.
 
-The same two entry points also carry a chevron that opens that folder in the
-user's OWN terminal app instead (`terminal_open_external`) — the site's quick
-tile and each plugin/theme row. It resolves the directory through exactly the
+The same folder can also be opened in the user's OWN terminal app
+(`terminal_open_external`), from three places: the site's quick tile, each
+plugin/theme row, and the Terminal tab's own toolbar — where it is a plain
+"Open in terminal" list rather than a split button, because there is no
+OS-level default terminal for a plain click to stand behind (the way the
+`https` handler backs "Open in browser"). It resolves the directory through exactly the
 same `asset_cwd` path, so the two destinations can never disagree about which
 folder "this plugin" means; what it does NOT carry is the bundled PHP and the
 `wp` wrapper, because that shell is spawned by the terminal app, not by us.

@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { Terminal as XTerm } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
-import { Eraser, RotateCw, TerminalSquare } from "lucide-react";
+import { ChevronDown, Eraser, RotateCw, TerminalSquare } from "lucide-react";
 import { Placeholder } from "@/components/common/Placeholder";
+import { Menu } from "@/components/ui/menu";
+import { useTerminalMenu } from "@/components/ui/open-in";
 import {
   closeTerminal,
   isTauri,
@@ -239,6 +241,12 @@ export function SiteTerminal({ siteId, asset }: { siteId: string; asset?: Termin
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, restartN]);
 
+  // The SAME folder this shell is in, opened in the user's own terminal app —
+  // the shell here keeps running. No default click: unlike "Open in browser"
+  // there is no OS-level "default terminal" to stand behind one, so the whole
+  // button opens the list.
+  const terminalMenu = useTerminalMenu(siteId, asset);
+
   const restart = () => {
     const entry = live.get(key);
     if (entry) {
@@ -266,6 +274,23 @@ export function SiteTerminal({ siteId, asset }: { siteId: string; asset?: Termin
           {asset ? `${asset.kind}: ${asset.name} · bundled php + wp on PATH` : "bundled php + wp on PATH"}
         </span>
         <div className="flex items-center gap-2">
+          {terminalMenu && (
+            <Menu
+              align="right"
+              trigger={
+                <button
+                  title="Open this folder in one of your own terminals"
+                  className="flex items-center gap-1.5 rounded-lg border border-rex-border bg-rex-surface-2 px-2.5 py-1.5 text-[0.75rem] text-rex-text transition-colors hover:border-brand"
+                >
+                  <TerminalSquare className="h-3.5 w-3.5" />
+                  Open in terminal
+                  <ChevronDown className="h-3 w-3 text-rex-text-muted" strokeWidth={2} />
+                </button>
+              }
+            >
+              {terminalMenu}
+            </Menu>
+          )}
           <button
             onClick={() => live.get(key)?.term.clear()}
             className="flex items-center gap-1.5 rounded-lg border border-rex-border bg-rex-surface-2 px-2.5 py-1.5 text-[0.75rem] text-rex-text transition-colors hover:border-brand"
