@@ -120,8 +120,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     (`55eae12`, dmg `be81bd17…`, the first release carrying an update archive `48cafbf9…`;
     §A0 green by hand including the per-slice `RELEASE_PUBKEY`; draft id 383939490, all four
     assets' digests match) — which also closed T9's owed first full `pnpm release:mac`.
-    Still owed: publish 0.6.0 (that click IS §A), run the runtimes publisher for it, then
-    cut 0.6.1 and run §M against it.
+    **0.6.0 PUBLISHED 08:46:07Z**, cask bumped to
+    0.6.0/`be81bd17…` with `auto_updates true` intact, and the descriptor published —
+    serial 1, commit `1b8d502` on runtimes, `check-app-manifest: all green` from this tree.
+    The first dry run caught a real bug that only Linux shows (`tar | head -1` + `pipefail`;
+    fixed `ee71943`) — nothing was signed by it. Still owed: cut 0.6.1 and run §M against it,
+    which is the whole of T11.
   - [x] T12 — archive the plan as a design record ✓ 7 Sep 2026: `git mv` to
     `docs/archive/PLAN-self-update.md`, its Status line rewritten to say what IS proven
     (26 L0 in the module, four examples, seven L2 states, both publishers' refusals) and

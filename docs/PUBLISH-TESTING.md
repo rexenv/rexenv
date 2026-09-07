@@ -103,7 +103,7 @@ strips exactly one component and both other shapes produce a broken install.
 If it fails, do not publish: the dmg would install fine and every in-app update from it
 would break.
 
-## A) 🚧 0.6.0 — DRAFTED, NOT PUBLISHED (§A0 ✅ measured · §A owed · SMOKE-TEST owed)
+## A) ✅ 0.6.0 — PUBLISHED (§A0 ✅ measured · §A ✅ asserted · §M waits for 0.6.1 by construction)
 
 `rexenv_0.6.0_universal.dmg`, sha256
 `be81bd17ed93d1afc6fbbe1cb860f8ee27e45beb8d977acf87df3b76461e5c6e`, 29,154,116 bytes.
@@ -132,12 +132,34 @@ satisfies its Designated Requirement; Info.plist `0.6.0`, `LSMinimumSystemVersio
 back OUT of the archive (universal, per-slice payload and key, codesign, version), plus the
 archive layout: exactly one top-level `rexenv.app/`, no AppleDouble members.
 
-**Still owed on this release, in order:** §A (Apple-Silicon de-quarantine → launch) —
-**publishing the draft IS that sign-off**; then the tap's `update-cask.yml` bump; then
-`rexenv/runtimes` → Actions → **Publish app update manifest** (dry run, then for real),
-without which no installed copy is offered anything; then
-`./scripts/check-app-manifest.sh`. §M (the update itself) cannot run on 0.6.0 at all —
-an install is only ever offered something NEWER, so it waits for 0.6.1.
+**0.6.0 PUBLISHED 7 Sep 2026, 08:46:07Z** at `homebrew-tap/releases/tag/v0.6.0` (release
+id 383939490). §A is asserted by the owner's publish click, which is the sign-off by rule.
+Cask bumped by `update-cask.yml` (run 34102469402, triggered by hand rather than waiting
+for the 15-minute poll) to version 0.6.0 / sha256 `be81bd17…`, equal to the local hash.
+`auto_updates true` survived the bump, which is the property that stops brew and the app
+installing over each other.
+
+**The descriptor — the second click, done.** `rexenv/runtimes` → "Publish app update
+manifest", dry run first (run 34103119789) then for real (34103284349, commit `1b8d502`):
+**serial 0 → 1**, naming 0.6.0, sha256 `48cafbf9…` re-hashed from a fresh download rather
+than taken from the API, signed with `faa52f96…` — the log's own words, *"matches the key
+shipped builds pin"*, so the reviewer-gated environment really does hold the key this
+binary trusts. The run read the committed document back through the API and compared it
+byte-for-byte with what it signed. Verified from this side too:
+`check-app-manifest: signature OK — serial 1 names rexenv 0.6.0` /
+`the named asset exists and its digest matches` / `all green`.
+
+**The first dry run FAILED, and that is the whole reason it exists.** `tar -tzf … | head -1`
+in the publisher: head closes the pipe after one line, GNU tar takes the write error and
+exits 2, and `set -o pipefail` killed the job — `tar: stdout: write error`, nothing else.
+bsdtar on macOS ignores it, so the line passed every local test; the script is written on
+a Mac and runs on ubuntu-latest. Fixed in `ee71943` (list once into a variable, and ask
+`jq` for `first(...)` rather than truncating its output, which carried the same hazard).
+No document was signed and nothing was published by the failed run.
+
+**§M cannot run on 0.6.0 at all** — an install is only ever offered something NEWER, so
+the update itself waits for 0.6.1. That is not a gap in this release; it is what "the
+version that introduces a feature cannot use it" means.
 
 ## A) ✅ 0.5.0 — PUBLISHED (§A0 ✅ measured · §A ✅ asserted · SMOKE-TEST ✅ asserted, no contemporaneous record)
 
