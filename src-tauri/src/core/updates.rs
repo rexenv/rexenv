@@ -624,6 +624,19 @@ pub async fn fetch_signed_pair(
     sig_url: &'static str,
     max_doc: usize,
 ) -> Result<(Vec<u8>, String)> {
+    // A deadline this function ENFORCES, over the client's own. `binaries.rs`
+    // learned in B34 that reqwest's `Client::timeout` is not a guarantee you can
+    // rest a UI on — a wedged connect or a resolver that never answers can sit
+    // inside `send()` past it — and wrapped every attempt in `send_bounded` for
+    // exactly that reason. This seam was written later and did not inherit the
+    // lesson: on 7 Sep 2026 a §M offline check spun for over 40 seconds with a
+    // 15-second client timeout that never fired, because the caller was a person
+    // watching a spinner and nothing above could cut it off.
+    //
+    // Total, not per-request: the pair is two GETs, and "up to 30 seconds" is not
+    // a different answer from "forever" to someone holding a mouse.
+    const PAIR_DEADLINE: std::time::Duration = std::time::Duration::from_secs(12);
+
     static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
     let client = CLIENT.get_or_init(|| {
         reqwest::Client::builder()
@@ -650,11 +663,35 @@ pub async fn fetch_signed_pair(
         }
         Ok(body.to_vec())
     };
-    let doc = get(doc_url).await?;
-    let sig = get(sig_url).await?;
-    let sig = String::from_utf8(sig)
-        .map_err(|_| Error::Other("the signature file is not text".into()))?;
-    Ok((doc, sig))
+    bounded(PAIR_DEADLINE, doc_url, async move {
+        let doc = get(doc_url).await?;
+        let sig = get(sig_url).await?;
+        let sig = String::from_utf8(sig)
+            .map_err(|_| Error::Other("the signature file is not text".into()))?;
+        Ok((doc, sig))
+    })
+    .await
+}
+
+/// Run `fut`, or give up saying so.
+///
+/// Separate and generic so the deadline can be PROVEN without a network: an L0
+/// hands it a future that never finishes, which is the case that matters and the
+/// one no reachable host can reproduce. The message names the wait, because
+/// "could not reach X" and "X never answered in 12s" send a reader to different
+/// places.
+pub async fn bounded<T>(
+    deadline: std::time::Duration,
+    what: &str,
+    fut: impl std::future::Future<Output = Result<T>>,
+) -> Result<T> {
+    match tokio::time::timeout(deadline, fut).await {
+        Ok(r) => r,
+        Err(_) => Err(Error::Other(format!(
+            "{what} did not answer within {}s",
+            deadline.as_secs()
+        ))),
+    }
 }
 
 /// Load the cached catalog into the resolve path. Called at launch, before
@@ -1363,6 +1400,42 @@ mod tests {
         };
         assert_eq!(half.newer_than(Family::Php, binaries::PHP_VERSION, "arm64"), None);
         assert_eq!(half.newer_than(Family::Adminer, "5.4.2", "arm64").as_deref(), Some("6.0.1"));
+    }
+
+    /// **A check a person is watching must always end.**
+    ///
+    /// `binaries.rs` proved in B34 that reqwest's own `Client::timeout` is not a
+    /// guarantee — a wedged connect or a resolver that never answers can outlive
+    /// it — and wrapped every download attempt in `send_bounded`. This seam was
+    /// written later and trusted the client instead, until a §M offline check
+    /// spun past 40 seconds with a 15-second client timeout that never fired
+    /// (7 Sep 2026). The deadline is now enforced HERE, above whatever the HTTP
+    /// stack is doing.
+    ///
+    /// Tested against a future that never completes, because that is exactly the
+    /// case no reachable host can produce and the only one that matters.
+    #[tokio::test]
+    async fn a_fetch_that_never_answers_ends_anyway_and_says_so() {
+        // A short REAL deadline rather than a paused clock: `start_paused` needs
+        // tokio's `test-util` feature, and 50ms proves the same two things in
+        // milliseconds — that the bound fires, and what it says when it does.
+        let short = std::time::Duration::from_millis(50);
+        let never = std::future::pending::<Result<u8>>();
+        let start = std::time::Instant::now();
+        let err = bounded(short, "the update server", never)
+            .await
+            .expect_err("a future that never completes must not return Ok");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("did not answer within") && msg.contains("the update server"),
+            "the message must name the wait and the subject, not read as a network error: {msg}"
+        );
+        assert!(start.elapsed() >= short, "the deadline is what ended it");
+
+        // A future that DOES finish passes through untouched — a bound that
+        // swallowed results would be worse than no bound.
+        let passed = bounded(short, "x", async { Ok(7u8) }).await;
+        assert!(matches!(passed, Ok(7)));
     }
 
 }

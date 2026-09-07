@@ -135,8 +135,14 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     Fixed 7 Sep 2026, ledger #539 (read from the notice row the swap writes, so it survives
     the window closing; suppresses the offer and clears the tray), L0 + L2, plant-proven.
     Tray item, no-click offer and the startup notice (`rexenv 0.6.1`) all confirmed good.
-    **Still owed:** "dark when current" as the CARD renders it, the offline check, the
-    consent sentence's Homebrew line, and a re-run of the public-share leg against the fix.
+    The offline leg found a SECOND bug: "Check now" with no network spun past 40 seconds
+    and never returned — reqwest's `Client::timeout` did not fire, the same trap `binaries.rs`
+    already knew as B34 and this seam did not inherit. Fixed with an enforced 12-second
+    deadline over the whole pair, covering the PHP manifest too since they share the seam;
+    ledger #540, plant-proven (without it the L0 hangs past 45s).
+    **Still owed:** "dark when current" as the CARD renders it, the consent sentence's
+    Homebrew line, and a re-run of BOTH fixed legs — public-share and offline — against the
+    fixes, which wants the next release.
   - [x] T12 — archive the plan as a design record ✓ 7 Sep 2026: `git mv` to
     `docs/archive/PLAN-self-update.md`, its Status line rewritten to say what IS proven
     (26 L0 in the module, four examples, seven L2 states, both publishers' refusals) and
