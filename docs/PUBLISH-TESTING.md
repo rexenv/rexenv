@@ -103,6 +103,42 @@ strips exactly one component and both other shapes produce a broken install.
 If it fails, do not publish: the dmg would install fine and every in-app update from it
 would break.
 
+## A) 🚧 0.6.0 — DRAFTED, NOT PUBLISHED (§A0 ✅ measured · §A owed · SMOKE-TEST owed)
+
+`rexenv_0.6.0_universal.dmg`, sha256
+`be81bd17ed93d1afc6fbbe1cb860f8ee27e45beb8d977acf87df3b76461e5c6e`, 29,154,116 bytes.
+Update archive `rexenv_0.6.0_universal.app.tar.gz`, sha256
+`48cafbf9cb58aa5e54430940c4fb03d4b34e0831c1e6ed2790183952af0ac4ae`, 28,749,924 bytes —
+**the first release to carry one**, and what an in-app update actually downloads.
+Source `55eae12`, tree clean (0 uncommitted). Built 7 Sep 2026 by `pnpm release:mac`
+after `verify.sh` said `verify: all green` on that commit — **the first full run of that
+script end to end**, which is the item `docs/TODO.md` had been carrying as owed since T9.
+Tag `v0.6.0` cut LOCAL on `55eae12` (annotated; not pushed — the pre-push hook refuses
+`v*` while the repo is private, and pushing one would spend 10×-billed macOS minutes
+building a dmg nobody can download).
+
+Draft on the tap, release id **383939490**, all four assets state `uploaded`; the API
+`digest` of the dmg and of the archive each equal the local sha256 above, so the bytes
+survived the wire.
+
+**§A0 ✅ run by hand 7 Sep 2026:** clean tree, exactly one dmg; `rexenv` and `rex` both
+`x86_64 arm64`; `Dist_Archive_Command` ×5 in EACH slice; **`RELEASE_PUBKEY` ×2 in each
+slice** — new this release, and the one that matters most here, because a build whose
+Intel half cannot verify a descriptor would silently never update on Intel while looking
+perfect on the Mac that built it; `codesign --verify --deep --strict` valid on disk and
+satisfies its Designated Requirement; Info.plist `0.6.0`, `LSMinimumSystemVersion` 15.0.
+
+**§A0-b ✅ (scripted):** `release-assets: all green` — §A0 re-run on the bundle that comes
+back OUT of the archive (universal, per-slice payload and key, codesign, version), plus the
+archive layout: exactly one top-level `rexenv.app/`, no AppleDouble members.
+
+**Still owed on this release, in order:** §A (Apple-Silicon de-quarantine → launch) —
+**publishing the draft IS that sign-off**; then the tap's `update-cask.yml` bump; then
+`rexenv/runtimes` → Actions → **Publish app update manifest** (dry run, then for real),
+without which no installed copy is offered anything; then
+`./scripts/check-app-manifest.sh`. §M (the update itself) cannot run on 0.6.0 at all —
+an install is only ever offered something NEWER, so it waits for 0.6.1.
+
 ## A) ✅ 0.5.0 — PUBLISHED (§A0 ✅ measured · §A ✅ asserted · SMOKE-TEST ✅ asserted, no contemporaneous record)
 
 `rexenv_0.5.0_universal.dmg`, sha256

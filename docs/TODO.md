@@ -96,9 +96,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     bundle, green against the real 0.5.0 build, layout guard plant-proven),
     `check-app-manifest.sh` (openssl verification proven against a locally-signed fixture);
     `release.yml` mirrors both. RELEASING steps 1/3/4/5 rewritten and 7/8 added,
-    PUBLISH-TESTING §A0-b + §M + summary rows, INSTALL §Updating rewritten. **Owed: the
-    first real `pnpm release:mac` end to end — a human gate, and the first release that
-    carries a descriptor is where it runs.**
+    PUBLISH-TESTING §A0-b + §M + summary rows, INSTALL §Updating rewritten. ✓ **the first full `pnpm release:mac`
+    ran end to end 7 Sep 2026** on the 0.6.0 build: dmg + archive produced, `release-assets:
+    all green`, §A0 green by hand on both the built and the extracted bundle.
   - [x] T10 — the runtimes publisher + the tap's `auto_updates true` (other repos) ✓ 7 Sep
     2026: `rexenv/runtimes` branch `app-self-update` (`publish-app-manifest.sh` + its
     reviewer-gated `workflow_dispatch` workflow + `rexenv/runtimes/docs/APP-MANIFEST.md`), `rexenv/homebrew-tap`
@@ -116,8 +116,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     self-update; the design record's §T11 says what each step is for. Both branches are
     MERGED (7 Sep 2026, fast-forward): `rexenv/runtimes` main `03878b8` carries the publisher
     + its workflow (visible in Actions as "Publish app update manifest"), `rexenv/homebrew-tap`
-    main `8c2b156` carries `auto_updates true`. Still owed here: the first full
-    `pnpm release:mac` end to end, then 0.6.0 and 0.6.1.
+    main `8c2b156` carries `auto_updates true`. **0.6.0 built and DRAFTED** 7 Sep 2026
+    (`55eae12`, dmg `be81bd17…`, the first release carrying an update archive `48cafbf9…`;
+    §A0 green by hand including the per-slice `RELEASE_PUBKEY`; draft id 383939490, all four
+    assets' digests match) — which also closed T9's owed first full `pnpm release:mac`.
+    Still owed: publish 0.6.0 (that click IS §A), run the runtimes publisher for it, then
+    cut 0.6.1 and run §M against it.
   - [x] T12 — archive the plan as a design record ✓ 7 Sep 2026: `git mv` to
     `docs/archive/PLAN-self-update.md`, its Status line rewritten to say what IS proven
     (26 L0 in the module, four examples, seven L2 states, both publishers' refusals) and
