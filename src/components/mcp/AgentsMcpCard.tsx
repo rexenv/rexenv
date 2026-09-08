@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronRight, Copy } from "lucide-react";
-import { mcpStatus, mcpSetEnabled, agentActivityClear } from "@/lib/ipc";
+import { mcpStatus, mcpSetEnabled, agentActivityClear, agentAccessSet } from "@/lib/ipc";
 import type { ActivityStatus } from "@/types";
 import { toast, toastBackendError } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
@@ -99,6 +99,26 @@ export function AgentsMcpCard() {
     onError: (e) => toastBackendError(e),
   });
 
+  // Folded by default: the feed is a LOG, read when something is being looked
+  // into, and open it pushed the toggle and the dial off a 900px window.
+  const [showActivity, setShowActivity] = useState(false);
+
+  // The ONLY reason a level above Read is reachable while the endpoint is off:
+  // it is the user's setting, it survives the socket, and it applies the moment
+  // the toggle goes on. The DIAL does not render there any more — three level
+  // cards and a duration row are a decision about a socket that is not open —
+  // but the standing sentence keeps its way down, or the setting would be
+  // un-lowerable without first turning the endpoint back on.
+  const toRead = useMutation({
+    mutationFn: () => agentAccessSet("read", null),
+    onSuccess: (a) => {
+      qc.setQueryData(["agentAccess"], a);
+      void qc.invalidateQueries({ queryKey: ["mcp-status"] });
+      toast.success("Agent access is back at Read");
+    },
+    onError: (e) => toastBackendError(e),
+  });
+
   const clear = useMutation({
     mutationFn: agentActivityClear,
     onSuccess: () => qc.invalidateQueries({ queryKey: ["mcp-status"] }),
@@ -161,7 +181,19 @@ export function AgentsMcpCard() {
           <div className="mt-0.5 text-[0.75rem] text-rex-text-muted">
             Off by default. Enabling opens rexenv's private socket for `rex mcp`; turning it off
             closes it and disconnects any agent.
-            {standing && <span className="block text-rex-text"> {standing}</span>}
+            {standing && (
+              <span className="mt-1 block text-rex-text">
+                {standing}{" "}
+                <button
+                  type="button"
+                  disabled={toRead.isPending}
+                  onClick={() => toRead.mutate()}
+                  className="font-medium text-brand-light underline-offset-2 transition-opacity hover:underline disabled:opacity-50"
+                >
+                  Set it back to Read
+                </button>
+              </span>
+            )}
           </div>
         </div>
         <StartStopToggle
@@ -172,10 +204,6 @@ export function AgentsMcpCard() {
           label="Enable the MCP endpoint"
         />
       </div>
-
-      {/* A standing level above Read must be LOWERABLE while off — the dial is
-          the only control that can, so it renders alone in that case. */}
-      {!enabled && standing && <AgentAccessDial />}
 
       {enabled && (
         <>
@@ -224,19 +252,42 @@ export function AgentsMcpCard() {
 
           <AgentAccessDial />
 
-          {/* Activity — every agent action, none silent. */}
+          {/* Activity — every agent action, none silent, but FOLDED. Fifty
+              rows of a live feed pushed the two controls that matter (the
+              toggle and the dial) off the screen, and a log nobody scrolled to
+              is not read more often for being open. Folded is not hidden: the
+              header states the COUNT, so the feed's existence and its size are
+              on screen whether or not the rows are — which is what "every call
+              an agent makes is listed below" promises. */}
           <div className="mt-3.5 border-t border-rex-border-subtle pt-3.5">
-            <div className="flex items-center justify-between">
-              <div className="text-[0.78125rem] font-medium text-rex-text">Recent activity</div>
-              {rows.length > 0 && (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                aria-expanded={showActivity}
+                onClick={() => setShowActivity((v) => !v)}
+                className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-[0.78125rem] font-medium text-rex-text transition-colors hover:text-rex-text-bright"
+              >
+                <ChevronRight
+                  className={cn("h-3.5 w-3.5 flex-none text-rex-text-muted transition-transform", showActivity && "rotate-90")}
+                />
+                Recent activity
+                <span className="font-normal text-rex-text-muted">
+                  {rows.length === 0
+                    ? "· nothing yet"
+                    : `· ${rows.length} call${rows.length === 1 ? "" : "s"}`}
+                </span>
+              </button>
+              {showActivity && rows.length > 0 && (
                 <Button size="sm" variant="ghost" disabled={clear.isPending} onClick={() => clear.mutate()}>
                   Clear
                 </Button>
               )}
             </div>
-            <div className="mt-1">
-              <AgentActivityFeed rows={rows} empty="No agent activity yet." />
-            </div>
+            {showActivity && (
+              <div className="mt-1">
+                <AgentActivityFeed rows={rows} empty="No agent activity yet." />
+              </div>
+            )}
           </div>
         </>
       )}

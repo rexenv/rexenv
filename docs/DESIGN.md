@@ -352,6 +352,31 @@ the shipped UI toward one.
   decides what to render (`wp-info` boots WP-CLI three times), render from what we
   already recorded (`site.type`) and let the live answer correct it — the fix for
   pop-in is an earlier true source, not a placeholder.
+- **A log may be FOLDED, but its size stays on screen.** Settings › AI agents
+  kept a live feed of every agent call open under the two controls that matter
+  (the endpoint toggle and the Agent access dial) and pushed them off a 900px
+  window; a log nobody scrolls to is not read more often for being open. It is
+  now behind a disclosure whose header carries the count — "Recent activity · 12
+  calls", or "· nothing yet". The count is the part that cannot be folded: the
+  consent paragraph promises "every call an agent makes is listed below", and a
+  fold that hid whether there were any calls at all would quietly stop being
+  that promise. Same reason Clear only appears with the rows — a button that
+  empties a list you cannot see is a button pressed by accident.
+- **With the endpoint OFF the Agent access dial is gone, but its way DOWN is
+  not.** Three level cards and a duration row are a decision about a socket that
+  is not open. What cannot go is lowerability: a level above Read is the user's
+  setting, it survives the socket, and it applies the moment the toggle goes on
+  — so the standing sentence under the toggle ("Agent access is set to Full ·
+  Always and applies as soon as you turn this on") carries a "Set it back to
+  Read" button. Hiding the whole thing would make the setting un-lowerable
+  without first turning the endpoint back on, which is the one order of
+  operations nobody should have to perform to REDUCE access.
+- **A setting's heading carries the ANSWER.** "Agent access" over three cards
+  made a reader walk all three to find the lit one; the heading now ends in a
+  chip stating the standing level and its duration ("Changes · 7 days"),
+  derived from the same status the cards render. And the way DOWN sits with the
+  ways up: "Back to Read now" under the duration, because someone looking to
+  stop an agent looks for a button that says stop, not for the top of a list.
 - **An icon-only control needs three things, or it is a rebus.** The conventional
   glyph (gear = settings, trash = remove, star = default — not an invented one), a
   `title` AND an `aria-label` naming the version it acts on, and a printed LEGEND

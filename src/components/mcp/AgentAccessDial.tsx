@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, SlidersHorizontal } from "lucide-react";
+import { CheckCircle2, Eye, Pencil, SlidersHorizontal, Zap } from "lucide-react";
 import { agentAccess, agentAccessSet } from "@/lib/ipc";
 import type { AgentAccessLevel, AgentAccessMode } from "@/types";
 import { toastBackendError } from "@/lib/toast";
@@ -9,6 +9,12 @@ import { cn } from "@/lib/utils";
  *  Rust (`AgentAccess.levels`), so there is one source for what a level hands
  *  over; only the one-word labels live here. */
 const LEVEL_LABEL: Record<AgentAccessLevel, string> = { read: "Read", changes: "Changes", full: "Full" };
+
+/** One glyph per level, so the LADDER is visible before any sentence is read:
+ *  an eye that only looks, a pencil that changes what is there, a bolt that
+ *  also reaches the internet. Icons order the three; they never replace the
+ *  sentence, which is the thing a person consents to. */
+const LEVEL_ICON: Record<AgentAccessLevel, typeof Eye> = { read: Eye, changes: Pencil, full: Zap };
 
 /** The three durations a level above Read can have (D15). */
 const MODES: { mode: AgentAccessMode; label: string; what: string }[] = [
@@ -56,9 +62,31 @@ export function AgentAccessDial() {
 
   return (
     <div className="mt-3.5 border-t border-rex-border-subtle pt-3.5">
-      <div className="flex items-center gap-1.5 text-[0.84375rem] font-medium text-rex-text">
-        <SlidersHorizontal className="h-3.5 w-3.5 text-rex-text-muted" />
-        {label}
+      {/* The heading carries the ANSWER, not just the question. "Agent access"
+          alone made a reader walk three cards to find which one was lit; the
+          chip states the standing setting — level and how long it lasts — in
+          the place the eye lands first. It is derived from the same status the
+          cards render, never typed twice. */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <div className="flex items-center gap-1.5 text-[0.84375rem] font-medium text-rex-text">
+          <SlidersHorizontal className="h-3.5 w-3.5 text-rex-text-muted" />
+          {label}
+        </div>
+        <span
+          className={cn(
+            "ml-auto flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-[0.6875rem] font-medium",
+            level === "read"
+              ? "border-rex-border-strong bg-rex-well text-rex-text-muted"
+              : "border-brand/40 bg-brand/10 text-brand",
+          )}
+        >
+          {(() => {
+            const Icon = LEVEL_ICON[level];
+            return <Icon className="h-3 w-3" strokeWidth={2} />;
+          })()}
+          {LEVEL_LABEL[level]}
+          {level !== "read" && mode && ` · ${MODES.find((m) => m.mode === mode)?.label ?? ""}`}
+        </span>
       </div>
       <p className="mt-1 text-[0.75rem] leading-[1.55] text-rex-text-muted">
         How far an agent may go with the sites you made, and with rexenv itself — one setting for
@@ -69,9 +97,10 @@ export function AgentAccessDial() {
         Anything an agent runs inside one of your sites runs as you.
       </p>
 
-      <div className="mt-2.5 space-y-1.5" role="radiogroup" aria-label={label}>
+      <div className="mt-2.5 space-y-1" role="radiogroup" aria-label={label}>
         {levels.map((l) => {
           const on = l.level === level;
+          const Icon = LEVEL_ICON[l.level];
           return (
             <button
               key={l.level}
@@ -87,16 +116,29 @@ export function AgentAccessDial() {
                 // `brand.*` Tailwind keys — `bg-rex-brand-*` does not exist, and
                 // the first version of this dial shipped with exactly that dead
                 // class, which is why nothing looked chosen (4 Sep 2026).
-                "flex w-full items-start gap-3 rounded-[10px] border bg-rex-surface-1 px-3 py-2.5 text-left transition-colors",
+                "flex w-full items-center gap-2.5 rounded-[10px] border bg-rex-surface-1 px-2.5 py-2 text-left transition-colors",
                 on ? "border-brand shadow-glow-primary" : "border-rex-border-subtle hover:border-rex-border-strong",
               )}
             >
+              <Icon
+                className={cn("h-[15px] w-[15px] flex-none", on ? "text-brand" : "text-rex-text-muted")}
+                strokeWidth={1.8}
+                aria-hidden
+              />
+              {/* Name and sentence on ONE line at the width this card has: the
+                  three sentences are what the user consents to, so they are not
+                  truncated — they wrap under the name, without the second block
+                  of padding the two-line version spent on nothing. */}
               <span className="min-w-0 flex-1">
-                <span className={cn("block text-[0.8125rem] font-semibold", on ? "text-brand-tint" : "text-rex-text")}>{LEVEL_LABEL[l.level]}</span>
-                <span className="mt-0.5 block text-[0.71875rem] leading-[1.55] text-rex-text-muted">An agent can {l.allows}.</span>
+                <span className={cn("text-[0.8125rem] font-semibold", on ? "text-brand-tint" : "text-rex-text")}>
+                  {LEVEL_LABEL[l.level]}
+                </span>
+                <span className="ml-2 text-[0.71875rem] leading-[1.5] text-rex-text-muted">
+                  An agent can {l.allows}.
+                </span>
               </span>
               <CheckCircle2
-                className="mt-0.5 h-[19px] w-[19px] flex-none"
+                className="h-[17px] w-[17px] flex-none"
                 style={{ color: on ? "var(--rex-brand)" : "var(--rex-border-strong)" }}
                 strokeWidth={2}
                 aria-hidden
@@ -107,8 +149,13 @@ export function AgentAccessDial() {
       </div>
 
       {level !== "read" && (
-        <div className="mt-2.5 flex flex-wrap items-center gap-2.5">
-          <span className="text-[0.71875rem] text-rex-text-muted">Duration</span>
+        // Indented under the cards, with a rule down its left: the duration
+        // belongs to the level just chosen, and as a free-standing row it read
+        // as a fourth setting of its own.
+        <div className="ml-[7px] mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 border-l border-rex-border-subtle py-0.5 pl-3">
+          <span className="text-[0.71875rem] text-rex-text-muted">
+            {LEVEL_LABEL[level]} lasts
+          </span>
           {/* The segmented pill the Sites filter uses: one track, the chosen pill tinted. */}
           <div className="flex rounded-[10px] border border-rex-well-border bg-rex-well p-[3px]" role="radiogroup" aria-label="Duration">
             {MODES.map((m) => {
@@ -137,6 +184,17 @@ export function AgentAccessDial() {
             {mode === "days" && a?.expiresAt && `Expires on its own at ${a.expiresAt} UTC.`}
             {mode === "always" && "Stays until you change it here."}
           </span>
+          {/* The way DOWN, next to the ways up. Read is reachable by clicking
+              its card, but a person looking for "stop this now" looks for a
+              button that says so, not for the top of a list of three. */}
+          <button
+            type="button"
+            disabled={set.isPending}
+            onClick={() => choose("read")}
+            className="basis-full text-left text-[0.6875rem] font-medium text-rex-text-muted underline-offset-2 transition-colors hover:text-rex-text hover:underline disabled:opacity-50"
+          >
+            Back to Read now
+          </button>
         </div>
       )}
 
