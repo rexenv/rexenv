@@ -123,6 +123,7 @@ const SCENARIOS = [
   ["adminer-current", "view=adminer&adminer=current", []],
   ["adminer-pending", "view=adminer&adminer=pending", []],
   ["adminer-fresh", "view=adminer&adminer=fresh", []],
+  ["adminer-updating", "view=adminer&adminer=updating", []],
   // The app-update card, in every state it can be in. It carries the one
   // control in this app that replaces the app itself, and what it SAYS is most
   // of the check: the three states that must be right — never checked, checked
@@ -414,8 +415,32 @@ const PROBES = {
   // The Adminer card tells the truth about three different facts: what is
   // SERVING, what will run, and what is offered. They are separate on purpose —
   // conflating "chosen" with "serving" is how a pending restage renders as done.
-  adminerVersion: async (page) =>
-    page.evaluate(() => {
+  // The RUNNING state is the one that shipped wrong, and it is only reachable by
+  // pressing the button — every other scenario renders a screen at rest. So this
+  // probe clicks, and measures the control before and after: a label that
+  // collapses to "…" is invisible to any assertion about text, and its width
+  // collapse is the part the eye actually notices.
+  adminerVersion: async (page, name) => {
+    let before = null;
+    if (name === "adminer-updating") {
+      before = await page.evaluate(() => {
+        const b = document.querySelector('[data-probe="adminer-version"] button');
+        return b ? { w: b.getBoundingClientRect().width, text: b.textContent.trim() } : null;
+      });
+      await page.click('[data-probe="adminer-version"] button');
+      // The mutation never settles in this fixture; wait for the control to
+      // actually enter its running state rather than racing the re-render.
+      await page
+        .waitForFunction(
+          () => {
+            const b = document.querySelector('[data-probe="adminer-version"] button');
+            return !!b && b.disabled;
+          },
+          { timeout: 4000 }
+        )
+        .catch(() => {});
+    }
+    return page.evaluate((before) => {
       const problems = [];
       const card = document.querySelector('[data-probe="adminer-version"]');
       if (!card) return ["the Adminer version card rendered nothing"];
@@ -423,8 +448,10 @@ const PROBES = {
       const staged = card.dataset.staged;
       const effective = card.dataset.effective;
       const updatable = card.dataset.updatable;
+      // Matches the resting AND the running label: the control does not stop
+      // being the update button while it is doing the update.
       const button = [...card.querySelectorAll("button")].find((b) =>
-        /^Update to /.test((b.textContent || "").trim())
+        /^Updat(e|ing) to /.test((b.textContent || "").trim())
       );
 
       // A button appears IF AND ONLY IF a verified manifest offers something.
@@ -452,8 +479,30 @@ const PROBES = {
       // Adminer has ONE fact, not two. An "exists" chip here would be a
       // falsehood: rexenv downloads Adminer's own release asset.
       if (/exists/.test(text)) problems.push(`an "exists" chip on a row with one fact: "${text}"`);
+
+      // Mid-update, the control still has to SAY something and still has to be
+      // the same size. The bug this covers: the label became a bare "…", so the
+      // button lost both its sentence and its width and read as an empty box at
+      // the one moment it had news.
+      if (before) {
+        if (!button) {
+          problems.push(`the update button vanished mid-update — the row now reads "${text}"`);
+        } else {
+          const label = button.textContent.trim();
+          const now = button.getBoundingClientRect().width;
+          if (!button.disabled) problems.push("the update button is still clickable while updating");
+          if (!label.includes(updatable))
+            problems.push(`updating ${updatable}, and the button does not name it: "${label}"`);
+          if (!button.querySelector("svg")) problems.push("the running button has no spinner");
+          if (now < before.w * 0.8)
+            problems.push(
+              `the button collapsed from ${Math.round(before.w)}px ("${before.text}") to ${Math.round(now)}px ("${label}")`
+            );
+        }
+      }
       return problems;
-    }),
+    }, before);
+  },
   // Onboarding's :443 notice. The clear case is the load-bearing one: reporting
   // "nothing is answering" as a problem at onboarding — where the stack has not
   // started — is the same fault the import path shipped, in a new place.

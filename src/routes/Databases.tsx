@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, ArrowUpRight, Database, TableProperties } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Database, Loader2, TableProperties } from "lucide-react";
 import { TopBar } from "@/components/shell/TopBar";
 import { Placeholder } from "@/components/common/Placeholder";
 import { StatusPill } from "@/components/common/StatusPill";
@@ -209,11 +209,28 @@ export function AdminerVersionCard() {
           <Button
             variant="ghost"
             disabled={update.isPending}
+            aria-busy={update.isPending}
             onClick={() => update.mutate(st.updatable!)}
-            title={`Download Adminer ${st.updatable}, check it still binds to rexenv's login gate and frame protections, and restage the console onto it.`}
-            className="text-brand-light hover:text-brand-light"
+            title={
+              update.isPending
+                ? `Downloading Adminer ${st.updatable} and checking it still binds to rexenv's login gate and frame protections.`
+                : `Download Adminer ${st.updatable}, check it still binds to rexenv's login gate and frame protections, and restage the console onto it.`
+            }
+            className="gap-2 text-brand-light hover:text-brand-light"
           >
-            {update.isPending ? "…" : `Update to ${st.updatable}`}
+            {/* The running state keeps the SENTENCE, not just the verb. A label
+                that collapses to "…" loses the version being installed and takes
+                the button's width with it, so the control the eye was resting on
+                becomes an empty box the moment it is used — the one moment it
+                has something to say. Same spinner the rest of the app uses. */}
+            {update.isPending ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-rex-spin" />
+                Updating to {st.updatable}…
+              </>
+            ) : (
+              `Update to ${st.updatable}`
+            )}
           </Button>
         )}
       </div>

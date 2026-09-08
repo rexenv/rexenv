@@ -601,6 +601,19 @@ it can:
   gate (§6). **Bug class:** percentage-height collapse, WebKit metrics overflow,
   states that render wrong or not at all.
 
+**A state you can only reach by PRESSING something needs a fixture that presses** (8 Sep
+2026, #542). The Adminer card had four scenarios and all four rendered a screen AT REST, so
+the running Update button — which swapped its label for a bare `…` and collapsed to the width
+of an ellipsis — was never looked at by anything, and arrived as a user's screenshot. The
+fifth scenario, `adminer-updating`, clicks the button; its fixture answers
+`adminer_update_apply` with a promise that NEVER settles, because a fixture that resolves
+immediately cannot hold an in-flight control on screen long enough to assert against. It also
+measures: the probe records the button's width before the click and compares after, since the
+collapse is the half a user notices and no assertion about text can see it. Plant-proven four
+ways — the old `…` label, a label without the version, a correct label without the spinner,
+and a CSS-only collapse (132px → 44px) with the text fully right, which only the width rule
+catches.
+
 **The app-update card's states live in `uireview.js`, not a file of their own** (T6). The
 plan proposed `appupdate.js`; the closest precedent — the Adminer version card, the other
 control in this app that installs bytes the build did not ship with — is a set of scenarios

@@ -324,6 +324,17 @@ the shipped UI toward one.
   premium plugins. The durable half is the rule, not the plumbing: a row's update
   claim is checked against the version on disk (`verdict`), so no source — stale
   cache, in-flight check, a plugin's own updater caching for hours — can render one.
+- **A control that is working still has to SAY what it is working on — and stay the
+  size it was.** Adminer's Update button swapped its whole label for a bare `…` while
+  the download ran, so the one moment it had news is the moment it stopped speaking:
+  the version being installed vanished, the button shrank to the width of an ellipsis,
+  and the row read as an empty box next to the word "Adminer" (reported from a
+  screenshot, which is how every defect in this family has arrived). The running label
+  keeps the sentence and gains a spinner — `Updating to 6.0.1…` — because a busy
+  control's job is to name the work, not to hide it. Sizes matter as much as words
+  here: the collapse is what the eye actually notices, and no assertion about TEXT
+  would have caught it, which is why the probe measures the button before and after
+  the click.
 - **A floor may sit on the spinner, never on the work.** Operations too fast to see
   (the `/import` rescan) get a ~550ms minimum spin so the click reads as an action —
   paired with the real timestamp of what's on screen (`scanned 12s ago`), so the proof

@@ -908,8 +908,9 @@ export function DevUiReview() {
         // `versions.some(…)` threw — the whole view rendered nothing.
         case "php_update_check":
           return mockPhpVersions;
-        // The Adminer version card. Four states via `?adminer=`, because a
-        // fixture in one state proves that one state renders.
+        // The Adminer version card. Five states via `?adminer=`, because a
+        // fixture in one state proves that one state renders — and the fifth is
+        // the RUNNING one, the state a resting fixture can never reach.
         // The Database tab's frame writes the console's palette before it
         // loads. Mocked rather than left to the default arm's throw: the frame
         // catches, so a missing fixture would be invisible here — and the
@@ -1033,10 +1034,20 @@ export function DevUiReview() {
             // from "staged, and it is 5.4.2".
             case "fresh":
               return { staged: null, effective: "5.4.2", updatable: "6.0.1" };
+            // Mid-update. Same offer as the default arm — what differs is that
+            // `adminer_update_apply` below never settles, so the probe can click
+            // the button and read the state it is stuck in. Every other Adminer
+            // fixture renders a RESTING screen, which is exactly why the running
+            // one shipped as an empty box: no fixture ever reached it.
+            case "updating":
+              return mockAdminerStatus;
             default:
               return mockAdminerStatus;
           }
         case "adminer_update_apply":
+          // Never settles, so the running state stays on screen to be read. A
+          // fixture that resolves immediately cannot show an in-flight control.
+          if (params.get("adminer") === "updating") return new Promise<never>(() => {});
           return {
             staged: String((args as Record<string, unknown> | undefined)?.version ?? ""),
             effective: String((args as Record<string, unknown> | undefined)?.version ?? ""),
