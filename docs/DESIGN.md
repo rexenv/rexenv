@@ -352,6 +352,22 @@ the shipped UI toward one.
   decides what to render (`wp-info` boots WP-CLI three times), render from what we
   already recorded (`site.type`) and let the live answer correct it — the fix for
   pop-in is an earlier true source, not a placeholder.
+- **An icon-only control needs three things, or it is a rebus.** The conventional
+  glyph (gear = settings, trash = remove, star = default — not an invented one), a
+  `title` AND an `aria-label` naming the version it acts on, and a printed LEGEND
+  under the list. Settings › Services › PHP versions is the case that set the rule
+  (8 Sep 2026): seven rows each carrying four grey text buttons — "Make default",
+  "Installed", "Settings", "Remove" — wrapped to two lines apiece, and "Installed"
+  was a WORD sitting in the button row that could not be pressed. State moved to a
+  dot, verbs moved to icons, and the row fits one line. The legend is not
+  redundant with the tooltips: hover text only reaches the reader who already
+  suspects what the icon does. Two controls stay WORDED on purpose — Install and
+  Update, the only ones that download ~100 MB and restart a pool serving live
+  sites, and the Update button names the version it moves to.
+- **A control that cannot act is absent, not greyed.** The default PHP version
+  shows no star and no trash — something has to serve new sites. One disabled
+  trash among seven live ones asks the reader to work out why; a missing one asks
+  nothing.
 - **A button that hands work to another app wears THAT app's icon, extracted, or
   its own glyph — never an invented one.** "Open in browser" and "Open in editor"
   show the real icon of the app the click will use, read off the installed bundle

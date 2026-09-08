@@ -10,7 +10,7 @@ import noticesText from "../../THIRD-PARTY-NOTICES.md?raw";
 import { ResolverConsentFor, ResolverHandBackRow } from "@/routes/Import";
 import { agoLabel } from "@/routes/Sites";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUpRight, Bot, CheckCircle2, ChevronRight, Code, FileText, FolderOpen, Github, Globe, Info, Lock, ScrollText, Server, Settings as SettingsIcon, Shield, ShieldCheck, type LucideIcon } from "lucide-react";
+import { ArrowUpCircle, ArrowUpRight, Bot, CheckCircle2, ChevronRight, Code, Download, FileText, FolderOpen, Github, Globe, Info, Lock, ScrollText, Server, Settings as SettingsIcon, Settings2, Shield, ShieldCheck, Star, Trash2, type LucideIcon } from "lucide-react";
 import { CHECK_INPUT, cn, TECH_INPUT } from "@/lib/utils";
 import { eolNote, eolWhen } from "@/lib/php";
 import { TopBar } from "@/components/shell/TopBar";
@@ -325,6 +325,51 @@ function GeneralPrefsCard() {
   );
 }
 
+/**
+ * One icon-only action in a PHP row.
+ *
+ * Icon-only because the four text buttons this replaces ("Make default",
+ * "Settings", "Remove", plus an "Installed" word that was not a control at
+ * all) read as one undifferentiated grey sentence and pushed every row to two
+ * lines. An icon carries the verb faster ONLY if it is the conventional one —
+ * gear for settings, trash for remove, star for default — and only if the
+ * label still exists for the reader who is unsure: `title` on hover, and
+ * `aria-label` for anyone who never sees the icon at all.
+ */
+function PhpIconAction({
+  icon,
+  label,
+  danger,
+  active,
+  disabled,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  danger?: boolean;
+  active?: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        "flex h-[26px] w-[26px] flex-none items-center justify-center rounded-[7px] text-rex-text-muted transition-colors",
+        "hover:bg-rex-hover hover:text-rex-text disabled:pointer-events-none disabled:opacity-40",
+        active && "bg-rex-hover text-rex-text",
+        danger && "hover:text-status-error-bright",
+      )}
+    >
+      {icon}
+    </button>
+  );
+}
+
 function PhpVersionRow({
   v,
   busy,
@@ -346,9 +391,10 @@ function PhpVersionRow({
     <div className="border-b border-rex-border-subtle last:border-b-0">
       {/* flex-wrap: at the 980px min window the action cluster is wider than
           the row can spare — let it reflow under the version name instead of
-          crushing it. */}
+          crushing it. The icon cluster is narrow enough that the ordinary row
+          now stays on ONE line, which is the whole point of the icons. */}
       <div
-        className="flex flex-wrap items-center gap-3 py-2.5"
+        className="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-2"
         // The L2 harness asserts PER STATE (post-update, button-and-chip,
         // chip-only, not-installed) and cannot tell the rows apart from text —
         // "8.2.32" appears in a chip, a button and a tooltip.
@@ -358,6 +404,21 @@ function PhpVersionRow({
         data-upstream={v.upstream ?? ""}
         data-installed={v.installed ? "1" : ""}
       >
+        {/* Installed/not is a STATE, so it reads as one: a dot, not the word
+            "Installed" sitting in the button row pretending to be pressable.
+            The dot is titled, because a colour alone is not a fact anyone can
+            read off a screenshot. */}
+        <span
+          title={
+            v.installed
+              ? `PHP ${v.minor} is installed and runs its own php-fpm pool.`
+              : `PHP ${v.minor} is not installed.`
+          }
+          className={cn(
+            "h-[7px] w-[7px] flex-none rounded-full",
+            v.installed ? "bg-status-running" : "border border-rex-border-strong",
+          )}
+        />
         {/* A FLEX row with wrapping, not inline spans with `ml-2`. Five chips
             never fit 9rem, and as inline content the badges wrapped INTERNALLY —
             "EOL" on one line and "November 2022" on the next, each carrying half
@@ -407,7 +468,11 @@ function PhpVersionRow({
             </span>
           )}
           {v.isDefault && (
-            <span className="whitespace-nowrap rounded border border-brand/40 bg-brand/10 px-1.5 py-0.5 text-[0.625rem] font-medium text-brand">
+            <span
+              title="New sites use this version unless they pick their own."
+              className="flex items-center gap-1 whitespace-nowrap rounded border border-brand/40 bg-brand/10 px-1.5 py-0.5 text-[0.625rem] font-medium text-brand"
+            >
+              <Star className="h-[9px] w-[9px] fill-current" strokeWidth={2} />
               Default
             </span>
           )}
@@ -424,50 +489,68 @@ function PhpVersionRow({
           )}
         </div>
         {v.installed ? (
-          <>
+          <div className="flex flex-none items-center gap-1">
             {/* The one control that installs bytes this build was not shipped
                 with. Present ONLY when a VERIFIED manifest offers a newer patch
                 for a minor the user actually has — never for `upstream`, which
                 is php.net saying a release exists and which rexenv may have no
-                build of. No auto-update, ever: this restarts a pool that is
-                serving the user's sites, so it stays a button they press. */}
+                build of. Stays a WORDED button among the icons on purpose: it
+                is the only action here that downloads ~100 MB and restarts a
+                pool serving live sites, and it names the version it will move
+                to. No auto-update, ever. */}
             {v.updatable && (
               <Button
-                variant="ghost"
+                size="sm"
+                variant="secondary"
                 disabled={busy}
                 onClick={onUpdate}
                 title={`Download PHP ${v.updatable}, restart the ${v.minor} pool onto it, and put it back on ${v.patch} if it does not come up. Your sites keep their ${v.minor} setting either way.`}
-                className="text-brand-light hover:text-brand-light"
+                className="mr-1 h-[26px] gap-1.5 px-2.5 text-[0.75rem] text-brand-light"
               >
-                {busy ? "…" : `Update to ${v.updatable}`}
+                <ArrowUpCircle className="h-3.5 w-3.5" strokeWidth={1.8} />
+                {busy ? "…" : v.updatable}
               </Button>
             )}
-            {/* New sites use the default version; let the user move it (§4.4). */}
+            {/* New sites use the default version; let the user move it (§4.4).
+                The default row keeps its chip and shows NO star button — there
+                is nothing to press, and a lit star that does nothing is the
+                oldest way to lie about a control. */}
             {!v.isDefault && (
-              <Button variant="ghost" disabled={busy} onClick={onMakeDefault}>
-                {busy ? "…" : "Make default"}
-              </Button>
-            )}
-            <span className="text-[0.71875rem] text-status-running-bright">Installed</span>
-            <Button variant="ghost" onClick={onExpand}>
-              <ChevronRight
-                className={cn("h-3.5 w-3.5 transition-transform", expanded && "rotate-90")}
+              <PhpIconAction
+                icon={<Star className="h-[15px] w-[15px]" strokeWidth={1.7} />}
+                label={`Make PHP ${v.minor} the default for new sites`}
+                disabled={busy}
+                onClick={onMakeDefault}
               />
-              Settings
-            </Button>
+            )}
+            <PhpIconAction
+              icon={<Settings2 className="h-[15px] w-[15px]" strokeWidth={1.7} />}
+              label={`PHP ${v.minor} settings — memory_limit, upload size, execution time`}
+              active={expanded}
+              onClick={onExpand}
+            />
+            {/* The default cannot be removed: something has to serve new sites.
+                Hidden rather than disabled — a greyed trash on one row out of
+                seven asks the reader to work out why. */}
             {!v.isDefault && (
-              <Button
-                variant="ghost"
+              <PhpIconAction
+                icon={<Trash2 className="h-[15px] w-[15px]" strokeWidth={1.7} />}
+                label={`Remove PHP ${v.minor} and stop its pool`}
+                danger
                 disabled={busy}
                 onClick={() => onToggle(false)}
-                className="hover:text-status-error-bright"
-              >
-                {busy ? "…" : "Remove"}
-              </Button>
+              />
             )}
-          </>
+          </div>
         ) : (
-          <Button variant="primary" disabled={busy} onClick={() => onToggle(true)}>
+          <Button
+            size="sm"
+            variant="primary"
+            disabled={busy}
+            onClick={() => onToggle(true)}
+            className="h-[26px] flex-none gap-1.5 px-2.5 text-[0.75rem]"
+          >
+            <Download className="h-3.5 w-3.5" strokeWidth={1.8} />
             {busy ? "…" : "Install"}
           </Button>
         )}
@@ -656,7 +739,22 @@ export function PhpVersionsSetting() {
           onExpand={() => setExpanded((e) => (e === v.minor ? null : v.minor))}
         />
       ))}
-      <div className="mt-2.5 text-[0.6875rem] text-rex-text-muted">
+      {/* The legend, not a tooltip. Icons are only faster than words once the
+          reader has met them; hover text reaches the person who already
+          suspects what the icon does, and nobody else. Three icons, named
+          once, under the rows they belong to. */}
+      <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[0.6875rem] text-rex-text-muted">
+        <span className="flex items-center gap-1.5">
+          <Star className="h-3 w-3" strokeWidth={1.7} /> make default
+        </span>
+        <span className="flex items-center gap-1.5">
+          <Settings2 className="h-3 w-3" strokeWidth={1.7} /> ini settings
+        </span>
+        <span className="flex items-center gap-1.5">
+          <Trash2 className="h-3 w-3" strokeWidth={1.7} /> remove
+        </span>
+      </div>
+      <div className="mt-1.5 text-[0.6875rem] text-rex-text-muted">
         Installed versions each run a php-fpm pool; new sites use the default. A site can pick its own
         version in its detail view.
       </div>
