@@ -50,11 +50,20 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     guarded by `laravel_postgres_check` (red on disagreement with the record).
     Remaining after the unblock: `confedit` rewrite paths for a linked PG project,
     `php artisan migrate` proven live.
-  - [ ] **Unblock (b)/(c): a PHP build with a working `pdo_pgsql`** — in
-    `rexenv/runtimes`: add it to the static-php-cli extension set, rebuild the
-    seven versions, republish, bump the pins + checksums here, then flip
-    `PDO_PGSQL_IN_BUNDLED_PHP` (the refusal opens and the example turns from
-    proving the gap into proving the feature). Same pipeline as PHP 7.4.
+  - [ ] **Unblock (b)/(c): a PHP build with a working `pdo_pgsql`** — WRITTEN
+    and locally proven 9 Sep 2026, not yet run in CI and not yet released.
+    `rexenv/runtimes` `scripts/build-php.sh` + `.github/workflows/php.yml` build
+    8.x here (spc 2.8.5) with the bulk extension set **plus `pdo_pgsql`**, gated
+    on (i) extension PARITY against `docs/bulk-modules-8.x.txt`, generated from a
+    shipped bulk binary — self-hosting's real risk is a capability a user had
+    yesterday — and (ii) a REAL PostgreSQL connection through PDO, because
+    `php -m` and `PDO::getAvailableDrivers()` both reported support the upstream
+    artifact did not have. Local proof: PHP 8.3.33 arm64, 64 modules, parity
+    green, connected + wrote + read back on PostgreSQL 18.6.
+    Remaining here: run the workflow (one version, publish off, then the matrix),
+    then in rexenv bump `php_url` + the twelve `PHP_*_SHA256` pins to the release,
+    flip `PDO_PGSQL_IN_BUNDLED_PHP`, and let `laravel_postgres_check` turn from
+    proving the gap into proving the feature.
   - [ ] **(c) Blank PHP starter** — blocked by the same gap (`db.php` returns a
     PDO). Then: PG dialect for `core/starter.rs`'s `seed_sql` (no `USE`, no
     `AUTO_INCREMENT`/`ENGINE=`), the `db.php` DSN, and the seeded page's prose

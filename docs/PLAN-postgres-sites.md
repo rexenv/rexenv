@@ -141,9 +141,15 @@ insert (a PostgreSQL Laravel/PHP site cannot be created), and GUARDED by
 `examples/laravel_postgres_check`, which goes red on disagreement with the record
 rather than on the bug going away.
 
-**The unblock is one job in `rexenv/runtimes`**: add `pdo_pgsql` to the static-php-cli
-extension set, rebuild the seven versions, republish, bump the pins here — the same
-pipeline that added PHP 7.4. Then flip the constant: the refusal opens, the example
+**The unblock is one job in `rexenv/runtimes`, and it is now written** (9 Sep 2026,
+`scripts/build-php.sh` + `.github/workflows/php.yml`, commit `8b9d18d` there): 8.x is
+built with the bulk extension set plus `pdo_pgsql`, gated on extension parity with the
+upstream builds it replaces AND on a real PostgreSQL connection through PDO — the two
+checks that would have caught this, since `php -m` and `PDO::getAvailableDrivers()`
+both reported support the upstream artifact did not have. Proven on this laptop
+(PHP 8.3.33 arm64, 64 modules, parity green, connected/wrote/read back on PostgreSQL
+18.6) before being wired to CI; not yet run there, not yet released. Then flip the
+constant: the refusal opens, the example
 turns from proving the gap into proving the feature, and the rest of (b) is the
 `.env` work below. Still to do after that: `confedit`'s rewrite paths for a linked
 PG project, and `php artisan migrate` proven against a real cluster.
