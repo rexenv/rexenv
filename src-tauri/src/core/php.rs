@@ -17,6 +17,43 @@ use crate::state::{models::{PhpVersion, PhpVersionView}, store};
 use rusqlite::Connection;
 
 
+/// **Whether the bundled PHP can reach PostgreSQL through PDO.** `false` today,
+/// and this constant is the RECORD of a measurement rather than a guess.
+///
+/// Measured 9 Sep 2026 against real clusters (PostgreSQL 16.14, 17.10 and 18.6,
+/// `examples/laravel_postgres_check`), with the rexenv-bundled static PHP 8.3
+/// and 8.4:
+///
+/// - `pg_connect()` (ext/pgsql) connects and queries — fine.
+/// - the bundled `psql` connects — fine, which is why every site-DB operation
+///   in `core::postgres` works.
+/// - **`new PDO("pgsql:…")` does not.** The TCP connection is accepted (the
+///   server logs `connection received`) and the client then never sends its
+///   startup packet, so the server closes it on `authentication_timeout` — 60
+///   seconds later, as `SQLSTATE[08006] server closed the connection
+///   unexpectedly`. `PGCONNECT_TIMEOUT` does not shorten it.
+/// - the same PDO call from a Homebrew PHP 8.2, against the same server,
+///   connects instantly. So this is rexenv's PHP build, not PostgreSQL.
+///
+/// The build tells the same story from the other side: `php -m` lists `pgsql`
+/// and NOT `pdo_pgsql`, `php --ri pdo_pgsql` says the extension is not present,
+/// and `extension_loaded("pdo_pgsql")` is `false` — **while
+/// `PDO::getAvailableDrivers()` advertises `pgsql`**. A driver that claims to
+/// exist and then stalls for a minute is the worst of the three possible
+/// states: "no driver" would have failed instantly and named itself.
+///
+/// What it costs: Laravel's `pgsql` connection and the Blank-PHP starter's
+/// `db.php` both go through PDO, so a PostgreSQL-backed site of either type is
+/// broken until the runtime is rebuilt with a working `pdo_pgsql`
+/// (`rexenv/runtimes`, the static-php-cli extension set — the same pipeline
+/// that added 7.4). `core::sites::ensure_engine_supports` refuses those sites
+/// while this is `false`, so the gap is a refusal at create time rather than a
+/// site that provisions cleanly and cannot talk to its database.
+///
+/// **Flipping this to `true` is the whole unblock**: the refusal opens, and
+/// `laravel_postgres_check` goes from proving the gap to proving the feature.
+pub const PDO_PGSQL_IN_BUNDLED_PHP: bool = false;
+
 /// Base for per-version FPM ports: `9700 + major*10 + minor`, so 8.1 → 9781,
 /// 8.2 → 9782, 8.3 → 9783 (keeps the Phase-1 port for 8.3).
 const FPM_PORT_BASE: u16 = 9700;

@@ -162,14 +162,41 @@ pub fn ensure_env_file(project: &Path) -> Result<crate::core::dotenv::EnvOrigin>
 /// The database connection a site's `.env` must describe.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DbSettings {
-    /// `mysql` — both engines rexenv ships speak the MySQL protocol, and
-    /// Laravel has no separate `mariadb` driver before 11.x.
+    /// Laravel's driver name: `mysql` for both MySQL-protocol engines (Laravel
+    /// has no separate `mariadb` driver before 11.x), `pgsql` for PostgreSQL.
     pub connection: String,
     pub host: String,
     pub port: u16,
     pub database: String,
     pub username: String,
     pub password: String,
+}
+
+impl DbSettings {
+    /// The settings for a site on `engine` — derived from the engine rather
+    /// than typed at the call site, because three values move together and
+    /// getting one of them wrong is silent: a `pgsql` connection on port 13306
+    /// reaches MySQL, which answers the handshake with something libpq cannot
+    /// read, and the error a developer sees names neither engine.
+    ///
+    /// The superuser differs too (`root` vs `postgres`) — trust auth, no
+    /// password, exactly what each engine's datadir was initialized with in
+    /// `core::database::initialize` / `core::postgres::initialize`.
+    pub fn for_engine(engine: crate::core::db::DbEngine, database: String) -> DbSettings {
+        use crate::core::db::DbEngine;
+        let (connection, username) = match engine {
+            DbEngine::Postgres => ("pgsql", "postgres"),
+            _ => ("mysql", "root"),
+        };
+        DbSettings {
+            connection: connection.into(),
+            host: "127.0.0.1".into(),
+            port: engine.port(),
+            database,
+            username: username.into(),
+            password: String::new(),
+        }
+    }
 }
 
 /// Point a freshly created `.env` at the site: its database and its URL.
@@ -495,6 +522,30 @@ mod tests {
         assert_eq!(&lines[1..], &[dir.join("artisan").display().to_string().as_str(), "migrate:status", "--pending", "--no-interaction"]);
         assert!(!stdout.contains("read:"), "stdin is /dev/null — nothing was read");
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn the_engine_decides_driver_port_and_superuser_together() {
+        use crate::core::db::DbEngine;
+        // Three values that must move as one: a `pgsql` connection on 13306
+        // reaches MySQL, whose handshake libpq cannot read, and the error names
+        // neither engine.
+        let pg = DbSettings::for_engine(DbEngine::Postgres, "lv_shop_rex".into());
+        assert_eq!((pg.connection.as_str(), pg.port, pg.username.as_str()), ("pgsql", 15432, "postgres"));
+
+        // Laravel has no `mariadb` driver before 11.x, so both MySQL-protocol
+        // engines are `mysql` — differing only in the port.
+        for (engine, port) in [(DbEngine::Mysql, 13306), (DbEngine::Mariadb, 13307)] {
+            let s = DbSettings::for_engine(engine, "lv_shop_rex".into());
+            assert_eq!((s.connection.as_str(), s.port, s.username.as_str()), ("mysql", port, "root"));
+        }
+
+        // And the wired `.env` carries one answer per key — a leftover
+        // `DB_CONNECTION=sqlite` from the skeleton would send the app at a file.
+        let wired = wire_env("DB_CONNECTION=sqlite\nDB_HOST=x\n", "https://s.rex", &pg, false);
+        assert_eq!(wired.matches("DB_CONNECTION=").count(), 1);
+        assert!(wired.contains("DB_CONNECTION=pgsql") && !wired.contains("sqlite"));
+        assert!(wired.contains("DB_PORT=15432") && wired.contains("DB_USERNAME=postgres"));
     }
 
     fn db() -> DbSettings {

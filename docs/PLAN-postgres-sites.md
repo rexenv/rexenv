@@ -1,7 +1,9 @@
 # PostgreSQL as a site database — Laravel and Blank PHP, never WordPress
 
-**Status: step (a) SHIPPED 9 Sep 2026 (ledger #543, #544; L1 `postgres_site_db_check`
-green against real PostgreSQL 18.6.0). Steps (b)-(d) open.** Planned against `40a30aa`.
+**Status: step (a) SHIPPED 9 Sep 2026 (ledger #543, #544). Steps (b)-(d) BLOCKED on
+the runtime — the bundled PHP has no working `pdo_pgsql` (§b, measured; ledger #545),
+so a PostgreSQL site of any type is refused at create until `rexenv/runtimes` rebuilds
+PHP.** Planned against `40a30aa`.
 
 Today a site's database engine is `mysql | mariadb` and nothing else. PostgreSQL
 ships, starts, has a version picker and an Adminer button — as a *standalone*
@@ -113,10 +115,40 @@ real site row. **No behaviour change for existing sites** — that is the bar fo
 L1: `examples/postgres_site_db_check.rs` (service tier) — create → seed a table →
 size → export → drop, against the real server and the real `psql`/`pg_dump`.
 
-**(b) Laravel.** `DB_CONNECTION=pgsql`, port, user in the generated and rewritten
-`.env`; `core/laravel.rs` migrations against PG; `confedit` rewrite paths.
+**(b) Laravel — BLOCKED 9 Sep 2026, and the blocker is not in this repo.**
+What landed: `DbSettings::for_engine(engine, database)` takes driver, port and
+superuser from the engine as one decision (`pgsql` / 15432 / `postgres`, vs
+`mysql` / 13306-13307 / `root`) instead of three literals typed beside one derived
+value at the provisioning call site (#546).
 
-**(c) Blank PHP starter.** PG dialect for `seed_sql` (`SERIAL`/`GENERATED`, no
+What stopped it: **Laravel's `pgsql` driver is PDO, and the PHP rexenv ships cannot
+connect through it.** Measured against real clusters (PostgreSQL 16.14, 17.10, 18.6):
+
+| Client | Result |
+|---|---|
+| bundled `psql` | connects — which is why step (a) works |
+| bundled PHP, `pg_connect()` (ext/pgsql) | connects and queries |
+| bundled PHP, `new PDO("pgsql:…")` | **socket accepted, startup packet never sent** → the server closes it on `authentication_timeout` (60s stock) as `SQLSTATE[08006] server closed the connection unexpectedly`; `PGCONNECT_TIMEOUT` does not shorten it |
+| Homebrew PHP 8.2, same server | connects instantly |
+
+The build says the same thing: `extension_loaded("pdo_pgsql")` is **false on all
+seven** bundled versions, while `PDO::getAvailableDrivers()` advertises `pgsql` on
+six of them. A driver that claims to exist and then stalls for a minute is worse
+than no driver — no driver fails instantly and names itself.
+
+So the gap is RECORDED (`core::php::PDO_PGSQL_IN_BUNDLED_PHP`), REFUSED at the site
+insert (a PostgreSQL Laravel/PHP site cannot be created), and GUARDED by
+`examples/laravel_postgres_check`, which goes red on disagreement with the record
+rather than on the bug going away.
+
+**The unblock is one job in `rexenv/runtimes`**: add `pdo_pgsql` to the static-php-cli
+extension set, rebuild the seven versions, republish, bump the pins here — the same
+pipeline that added PHP 7.4. Then flip the constant: the refusal opens, the example
+turns from proving the gap into proving the feature, and the rest of (b) is the
+`.env` work below. Still to do after that: `confedit`'s rewrite paths for a linked
+PG project, and `php artisan migrate` proven against a real cluster.
+
+**(c) Blank PHP starter — blocked by the same runtime gap** (`db.php` returns a PDO). PG dialect for `seed_sql` (`SERIAL`/`GENERATED`, no
 `ENGINE=`, no `USE`), `db.php` DSN, and the `index.php` prose that names the user.
 
 **(d) UI + lifecycle gating.** Site-type-gated option in `NewSiteDialog`, TS union,

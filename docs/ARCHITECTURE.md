@@ -63,8 +63,10 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
                 php-fpm pool 9774 / 978x (ONE pool per PHP minor, not per site)
                      ▼
                 WordPress → the site's DB ENGINE: MySQL :13306 or MariaDB :13307
-                (PostgreSQL :15432 backs Laravel / Blank PHP sites only — WordPress
-                on it is refused in core, `wpdb` speaks MySQL alone;
+                (PostgreSQL :15432 hosts site databases at the rexenv layer, but no
+                site can use one yet: WordPress never can (`wpdb` speaks MySQL
+                alone) and Laravel / Blank PHP cannot until the bundled PHP has a
+                working `pdo_pgsql` — measured, refused in core, ledger #545;
                 per-site `sites.db_engine`, chosen at create, immutable after —
                 the DB lives in that engine's datadir). PostgreSQL :15432 and
                 Redis :16379 are optional engines on the Databases page.

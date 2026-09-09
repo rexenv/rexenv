@@ -156,6 +156,16 @@ it can:
   the bug class was eliminated — a line in a log nobody reads, on a run that passed. **This layer caught
   the most bugs this month.** Discipline: `common::sandbox` + `common::Reaped` +
   fixture ports (`examples/common/mod.rs` — read its invariant first).
+  **`laravel_postgres_check` (network tier, 9 Sep 2026, ledger #545) is the same
+  layer answering a question that KILLED a feature step.** Laravel on PostgreSQL
+  needs PDO, and the bundled static PHP's `pdo_pgsql` is not loaded on any of the
+  seven versions while `PDO::getAvailableDrivers()` advertises `pgsql` on six —
+  so a connection is accepted and then stalls until the server's
+  `authentication_timeout` closes it. No L0 test could have found that, and no
+  amount of reading `php -m` decides it either (the module list and the driver
+  list disagree). Like `wp_dns_check`, it is written to go red on DISAGREEMENT
+  with what the code records (`core::php::PDO_PGSQL_IN_BUNDLED_PHP`), so it
+  proves the gap today and proves the feature the day the runtime is rebuilt.
   **`postgres_site_db_check` (network tier, 9 Sep 2026) is this layer answering a
   question no Rust test can**: `psql` returns exit **0** after a script whose every
   statement failed, unless `ON_ERROR_STOP=1` is set — an import that silently imported

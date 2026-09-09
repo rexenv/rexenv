@@ -38,12 +38,27 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     (network tier) all green against real PostgreSQL 18.6.0 — including a broken
     dump REFUSED, which is the leg the whole flag exists for. No behaviour change
     for existing sites: `SiteDbEngine::Postgres` is representable but not offered.
-  - [ ] **(b) Laravel** — `DB_CONNECTION=pgsql`, port 15432, user `postgres` in the
-    generated and rewritten `.env` (`core/laravel.rs`, `core/confedit.rs`), and
-    `php artisan migrate` proven against PG.
-  - [ ] **(c) Blank PHP starter** — PG dialect for `core/starter.rs`'s `seed_sql`
-    (no `USE`, no `AUTO_INCREMENT`/`ENGINE=`), the `db.php` DSN, and the seeded
-    page's prose (it names user `root` today).
+  - [ ] **(b) Laravel — BLOCKED on the runtime, not on this repo** (9 Sep 2026,
+    ledger #545). Landed: `DbSettings::for_engine` — driver, port and superuser
+    taken from the engine as one decision (#546). Stopped by: **the bundled PHP
+    has no working `pdo_pgsql`** — `extension_loaded` is false on all seven
+    versions while `PDO::getAvailableDrivers()` advertises `pgsql` on six, and a
+    real `new PDO("pgsql:…")` accepts the socket, never sends its startup packet
+    and is closed by the server on `authentication_timeout` (measured against
+    PostgreSQL 16/17/18; a Homebrew PHP connects instantly to the same server).
+    Recorded in `core::php::PDO_PGSQL_IN_BUNDLED_PHP`, refused at the site insert,
+    guarded by `laravel_postgres_check` (red on disagreement with the record).
+    Remaining after the unblock: `confedit` rewrite paths for a linked PG project,
+    `php artisan migrate` proven live.
+  - [ ] **Unblock (b)/(c): a PHP build with a working `pdo_pgsql`** — in
+    `rexenv/runtimes`: add it to the static-php-cli extension set, rebuild the
+    seven versions, republish, bump the pins + checksums here, then flip
+    `PDO_PGSQL_IN_BUNDLED_PHP` (the refusal opens and the example turns from
+    proving the gap into proving the feature). Same pipeline as PHP 7.4.
+  - [ ] **(c) Blank PHP starter** — blocked by the same gap (`db.php` returns a
+    PDO). Then: PG dialect for `core/starter.rs`'s `seed_sql` (no `USE`, no
+    `AUTO_INCREMENT`/`ENGINE=`), the `db.php` DSN, and the seeded page's prose
+    (it names user `root` today).
   - [ ] **(d) UI + lifecycle gating** — the option in `NewSiteDialog` for Laravel /
     Blank PHP only, the TS union, Postgres added to the download + Start-all gates
     when a site uses it (`core/downloads.rs`, `core/service_manager.rs` ask only

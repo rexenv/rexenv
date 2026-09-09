@@ -275,14 +275,10 @@ fn main() {
     let wired = laravel::wire_env(
         &original,
         "https://shop.rex",
-        &laravel::DbSettings {
-            connection: "mysql".into(),
-            host: "127.0.0.1".into(),
-            port: 13306,
-            database: "lv_shop_rex".into(),
-            username: "root".into(),
-            password: String::new(),
-        },
+        &laravel::DbSettings::for_engine(
+            rexenv_lib::core::db::DbEngine::Mysql,
+            "lv_shop_rex".into(),
+        ),
         true,
     );
     std::fs::write(laravel::env_path(&docroot), &wired).expect("write .env");

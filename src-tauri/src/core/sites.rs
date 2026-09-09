@@ -123,14 +123,37 @@ fn ensure_server_runs_php(server: WebServer, php_version: &str) -> Result<()> {
 /// MCP `create_site` tool both parse the engine out of a string and reach this
 /// function with whatever the caller sent.
 ///
-/// Laravel and Blank PHP have no such constraint: `pgsql` is a first-class
-/// Laravel driver and a PDO DSN prefix (docs/PLAN-postgres-sites.md).
+/// Laravel and Blank PHP have no such constraint from the FRAMEWORK: `pgsql` is
+/// a first-class Laravel driver and a PDO DSN prefix. They are refused for a
+/// different, temporary reason — [`crate::core::php::PDO_PGSQL_IN_BUNDLED_PHP`]
+/// is `false`, so PDO cannot reach PostgreSQL from the PHP rexenv ships
+/// (docs/PLAN-postgres-sites.md §b). Two refusals, two lifetimes: one is
+/// permanent and about WordPress, one lifts when the runtime is rebuilt.
 fn ensure_engine_supports(site_type: SiteType, engine: SiteDbEngine) -> Result<()> {
-    if site_type == SiteType::Wordpress && engine == SiteDbEngine::Postgres {
+    if engine != SiteDbEngine::Postgres {
+        return Ok(());
+    }
+    if site_type == SiteType::Wordpress {
         return Err(Error::Other(
             "WordPress cannot run on PostgreSQL — core's database layer speaks MySQL only. \
              Use MySQL or MariaDB for a WordPress site; PostgreSQL is available for Laravel \
              and Blank PHP sites."
+                .into(),
+        ));
+    }
+    // …and for the two types that COULD use it, the blocker is the runtime, not
+    // the framework: Laravel's `pgsql` driver and the Blank-PHP starter's
+    // `db.php` both go through PDO, and the bundled PHP's `pdo_pgsql` does not
+    // connect (measured — see the constant). Refusing at create time is the
+    // honest shape: the alternative is a site that provisions cleanly, gets a
+    // database and an `.env`, and then hangs for 60 seconds on its first query
+    // with an error that names neither PHP nor rexenv.
+    if !crate::core::php::PDO_PGSQL_IN_BUNDLED_PHP {
+        return Err(Error::Other(
+            "PostgreSQL sites need PDO, and the PHP rexenv ships cannot reach PostgreSQL \
+             through it yet (its `pdo_pgsql` advertises itself and then stalls — measured \
+             against PostgreSQL 16, 17 and 18). Use MySQL or MariaDB for now; PostgreSQL \
+             is available on the Databases page and through Adminer meanwhile."
                 .into(),
         ));
     }
@@ -2535,7 +2558,7 @@ mod tests {
     use crate::state::models::{SiteDbEngine, SiteType, WebServer};
 
     #[test]
-    fn wordpress_on_postgres_is_refused_at_the_insert_chokepoint() {
+    fn postgres_is_refused_at_the_insert_chokepoint_for_two_different_reasons() {
         // Not in the dialog: `rex site create --db postgres` and the MCP
         // create_site tool both parse the engine out of a string and land here.
         let err = ensure_engine_supports(SiteType::Wordpress, SiteDbEngine::Postgres)
@@ -2543,15 +2566,33 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("PostgreSQL"), "{msg}");
         assert!(msg.contains("MariaDB"), "the refusal must name what to use instead: {msg}");
+        assert!(
+            !msg.contains("pdo_pgsql") && !msg.contains("stalls"),
+            "WordPress is refused for its OWN reason, not the runtime's: {msg}"
+        );
 
-        // Everything else stands: WP on either MySQL-protocol engine, and the
-        // two site types PostgreSQL exists for.
+        // Laravel and Blank PHP are refused too, for the OTHER reason — and the
+        // two refusals must not be confused, because only one of them lifts.
+        // This assertion is written against the constant rather than against
+        // today's value, so flipping the runtime record opens the door here and
+        // this test follows it instead of failing.
+        for t in [SiteType::Laravel, SiteType::Php] {
+            let r = ensure_engine_supports(t, SiteDbEngine::Postgres);
+            if crate::core::php::PDO_PGSQL_IN_BUNDLED_PHP {
+                assert!(r.is_ok(), "{t:?} on PostgreSQL must be allowed once PDO works");
+            } else {
+                let m = r.expect_err("PostgreSQL needs PDO, which this PHP lacks").to_string();
+                assert!(m.contains("PDO"), "the refusal must name the reason: {m}");
+                assert!(m.contains("MySQL") || m.contains("MariaDB"), "and a way forward: {m}");
+            }
+        }
+
+        // Nothing else changed: every MySQL-protocol pairing stays allowed.
         for (t, e) in [
             (SiteType::Wordpress, SiteDbEngine::Mysql),
             (SiteType::Wordpress, SiteDbEngine::Mariadb),
-            (SiteType::Laravel, SiteDbEngine::Postgres),
-            (SiteType::Php, SiteDbEngine::Postgres),
             (SiteType::Laravel, SiteDbEngine::Mysql),
+            (SiteType::Php, SiteDbEngine::Mariadb),
         ] {
             assert!(ensure_engine_supports(t, e).is_ok(), "{t:?} + {e:?} must be allowed");
         }

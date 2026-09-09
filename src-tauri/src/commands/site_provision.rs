@@ -1563,14 +1563,7 @@ async fn drive<R: tauri::Runtime>(
             }
         }
         let env_file = core::laravel::env_path(&project);
-        let db_settings = core::laravel::DbSettings {
-            connection: "mysql".into(),
-            host: "127.0.0.1".into(),
-            port: engine.port(),
-            database: site.db_name.clone(),
-            username: "root".into(),
-            password: String::new(),
-        };
+        let db_settings = core::laravel::DbSettings::for_engine(engine, site.db_name.clone());
         let app_url = format!("https://{}", site.domain);
         let catch_mail = match state.db.lock() {
             Ok(conn) => core::mail::catch_all_enabled(&conn),

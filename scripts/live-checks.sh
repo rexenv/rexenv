@@ -124,6 +124,7 @@ frankenphp_subdir_validate sandbox
 git_site_clone_check sandbox
 git_site_provision_check network
 health_watchdog_check service
+laravel_postgres_check network
 linked_site_check sandbox
 log_tail_check service
 mail_adopt_settings_check system
