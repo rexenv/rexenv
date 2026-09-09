@@ -163,7 +163,7 @@ async fn main() {
     // docroot DIRECTLY in the Sites folder, so parent() IS the user's
     // Sites dir — an earlier version of this line deleted every site.
     let _ = std::fs::remove_dir_all(&docroot);
-    let _ = database::drop_database(
+    let _ = rexenv_lib::core::db::DbEngine::Mysql.drop_database(
         &db_client,
         database::MYSQL_PORT,
         &wordpress::db_name_for(SiteType::Wordpress, &domain),

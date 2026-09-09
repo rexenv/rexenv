@@ -158,6 +158,7 @@ php_tools_check network
 php_versions_check network
 php_update_check network
 port_check sandbox
+postgres_site_db_check network
 prefetch_responsiveness_check network
 priv_check system
 ready_split_check service

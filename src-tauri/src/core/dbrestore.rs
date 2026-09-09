@@ -97,19 +97,24 @@ pub fn prepare_target(
     name: &str,
 ) -> Result<()> {
     if recorded.ours {
-        crate::core::database::drop_database(client, port, name)?;
+        client.engine().drop_database(client, port, name)?;
     }
-    crate::core::database::create_database(client, port, name)
+    client.engine().create_database(client, port, name)
 }
 
 /// Drop a failed restore's database — only if the record says we made it. The
 /// check lives HERE, not at call sites: there is no drop-on-cleanup path that
 /// doesn't consult the witness.
-pub fn cleanup_failed(recorded: &Recorded, client: &SqlClient, port: u16, name: &str) -> Result<bool> {
+pub fn cleanup_failed(
+    recorded: &Recorded,
+    client: &SqlClient,
+    port: u16,
+    name: &str,
+) -> Result<bool> {
     if !recorded.ours {
         return Ok(false);
     }
-    crate::core::database::drop_database(client, port, name)?;
+    client.engine().drop_database(client, port, name)?;
     Ok(true)
 }
 

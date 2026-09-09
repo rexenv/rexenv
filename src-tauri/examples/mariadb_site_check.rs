@@ -15,7 +15,7 @@
 //!   6. Drop the check database, stop the engine child, remove the docroot.
 
 use rexenv_lib::core::db::DbEngine;
-use rexenv_lib::core::{binaries, database, ports, wordpress};
+use rexenv_lib::core::{binaries, ports, wordpress};
 use rexenv_lib::platform;
 use std::path::Path;
 use std::thread;
@@ -98,11 +98,11 @@ async fn main() {
         ok &= iok && sok && siteurl == format!("https://{DOMAIN}");
 
         println!("\n=== export via mariadb-dump + import back ===");
-        match database::export_to_downloads(&dump_bin, engine.port(), DOMAIN, DB) {
+        match engine.export_to_downloads(&dump_bin, engine.port(), DOMAIN, DB) {
             Ok(path) => {
                 let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
                 println!("  exported {} ({size} bytes)", path.display());
-                let import = database::import_from_file(&client, engine.port(), DB, &path);
+                let import = engine.import_from_file(&client, engine.port(), DB, &path);
                 println!("  re-import → {:?}", import.as_ref().map(|_| "ok").map_err(|e| e.to_string()));
                 ok &= size > 10_000 && import.is_ok();
                 let _ = std::fs::remove_file(&path);
@@ -130,7 +130,7 @@ async fn main() {
     }
 
     // Cleanup: drop the check DB, stop the engine, remove the docroot.
-    let _ = database::drop_database(&client, engine.port(), DB);
+    let _ = engine.drop_database(&client, engine.port(), DB);
     let _ = engine.stop(&*plat, pid);
     let _ = child.wait();
     let _ = std::fs::remove_dir_all(&docroot);

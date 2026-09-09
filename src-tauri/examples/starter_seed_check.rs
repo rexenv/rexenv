@@ -101,7 +101,7 @@ async fn main() -> ExitCode {
     };
 
     // ── 1. create + seed ────────────────────────────────────────────────────
-    if let Err(e) = database::create_database(&client, PORT, DB) {
+    if let Err(e) = DbEngine::Mysql.create_database(&client, PORT, DB) {
         eprintln!("create database failed: {e}");
         return ExitCode::FAILURE;
     }

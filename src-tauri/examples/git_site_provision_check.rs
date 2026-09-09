@@ -449,7 +449,7 @@ async fn main() -> std::process::ExitCode {
         let state = handle.state::<AppState>();
         let conn = state.db.lock().unwrap();
         if let Ok(Some(site)) = sites::get(&conn, &id) {
-            let _ = database::drop_database(&mysql, database::MYSQL_PORT, &site.db_name);
+            let _ = rexenv_lib::core::db::DbEngine::Mysql.drop_database(&mysql, database::MYSQL_PORT, &site.db_name);
             let plat = rexenv_lib::platform::current();
             match sites::teardown(&conn, &*plat, &id) {
                 Ok(t) if t.existed => {

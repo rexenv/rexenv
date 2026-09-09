@@ -147,15 +147,16 @@ pub(crate) fn mysql_exec(client: &SqlClient, port: u16, sql: &str, what: &str) -
 /// to a PATH `mysqldump` — absent in a Finder-launched app (same rationale as
 /// [`create_database`]). Returns the destination path. Requires the server to
 /// be running. `dump` is the dump BINARY.
-pub fn export_to_downloads(dump: &Path, port: u16, domain: &str, name: &str) -> Result<PathBuf> {
+///
+/// `pub(crate)`: the ONE way in from outside this crate is
+/// [`crate::core::db::DbEngine`]'s method of the same name, which dispatches on
+/// the client's engine. Since PostgreSQL joined the site engines, a caller that
+/// reaches for `database::` by name is choosing a wire protocol by hand — the
+/// #329 lesson (a type sees every caller; a grep sees its pattern) applied to
+/// the module boundary.
+pub(crate) fn export_to_downloads(dump: &Path, port: u16, domain: &str, name: &str) -> Result<PathBuf> {
     validate_db_name(name)?;
-    let downloads = crate::core::downloads::user_downloads_dir()?;
-    let mut dest = downloads.join(format!("{domain}-db.sql"));
-    let mut n = 1;
-    while dest.exists() {
-        dest = downloads.join(format!("{domain}-db-{n}.sql"));
-        n += 1;
-    }
+    let dest = dump_dest(domain)?;
     // --result-file (not shell redirection): no shell involved, so a Downloads
     // path with spaces can't break, and mysqldump writes the file itself.
     // Deliberately NOT client_base_args, because the dump tools don't honor
@@ -188,12 +189,34 @@ pub fn export_to_downloads(dump: &Path, port: u16, domain: &str, name: &str) -> 
     Ok(dest)
 }
 
+/// The Downloads path an export writes to: `<domain>-db.sql`, numbered on
+/// collision (same convention as the debug-log download). Shared with
+/// `core::postgres`'s export so the two engines cannot drift into two naming
+/// conventions for the same button.
+pub(crate) fn dump_dest(domain: &str) -> Result<PathBuf> {
+    let downloads = crate::core::downloads::user_downloads_dir()?;
+    let mut dest = downloads.join(format!("{domain}-db.sql"));
+    let mut n = 1;
+    while dest.exists() {
+        dest = downloads.join(format!("{domain}-db-{n}.sql"));
+        n += 1;
+    }
+    Ok(dest)
+}
+
 /// Import a `.sql` dump into database `name` via the bundled `mysql` client,
 /// feeding the file over **stdin** (no shell, no quoting problems — same
 /// rationale as `--result-file` in [`export_to_downloads`]). DESTRUCTIVE: the
 /// dump executes as-is, so tables it contains overwrite existing ones; the
 /// caller owns the confirm/backup UX. Requires the MySQL server to be running.
-pub fn import_from_file(client: &SqlClient, port: u16, name: &str, file: &Path) -> Result<()> {
+///
+/// `pub(crate)`: the ONE way in from outside this crate is
+/// [`crate::core::db::DbEngine`]'s method of the same name, which dispatches on
+/// the client's engine. Since PostgreSQL joined the site engines, a caller that
+/// reaches for `database::` by name is choosing a wire protocol by hand — the
+/// #329 lesson (a type sees every caller; a grep sees its pattern) applied to
+/// the module boundary.
+pub(crate) fn import_from_file(client: &SqlClient, port: u16, name: &str, file: &Path) -> Result<()> {
     validate_db_name(name)?;
     let f = std::fs::File::open(file)
         .map_err(|e| Error::Other(format!("open {}: {e}", file.display())))?;
@@ -222,7 +245,14 @@ pub fn import_from_file(client: &SqlClient, port: u16, name: &str, file: &Path) 
 /// WP-CLI's `wp db create` shells out to whatever `mysql` is on PATH — a
 /// Finder-launched app has the bare launchd PATH (no Homebrew), so rexenv
 /// must always use its own client from the extracted MySQL tree.
-pub fn create_database(client: &SqlClient, port: u16, name: &str) -> Result<()> {
+///
+/// `pub(crate)`: the ONE way in from outside this crate is
+/// [`crate::core::db::DbEngine`]'s method of the same name, which dispatches on
+/// the client's engine. Since PostgreSQL joined the site engines, a caller that
+/// reaches for `database::` by name is choosing a wire protocol by hand — the
+/// #329 lesson (a type sees every caller; a grep sees its pattern) applied to
+/// the module boundary.
+pub(crate) fn create_database(client: &SqlClient, port: u16, name: &str) -> Result<()> {
     validate_db_name(name)?;
     mysql_exec(
         client,
@@ -235,7 +265,14 @@ pub fn create_database(client: &SqlClient, port: u16, name: &str) -> Result<()> 
 /// Drop a site's database if it exists (site teardown). Same strict name rule
 /// as [`create_database`] — the caller passes only a name derived from the
 /// site's validated domain, so an arbitrary/other database can't be named.
-pub fn drop_database(client: &SqlClient, port: u16, name: &str) -> Result<()> {
+///
+/// `pub(crate)`: the ONE way in from outside this crate is
+/// [`crate::core::db::DbEngine`]'s method of the same name, which dispatches on
+/// the client's engine. Since PostgreSQL joined the site engines, a caller that
+/// reaches for `database::` by name is choosing a wire protocol by hand — the
+/// #329 lesson (a type sees every caller; a grep sees its pattern) applied to
+/// the module boundary.
+pub(crate) fn drop_database(client: &SqlClient, port: u16, name: &str) -> Result<()> {
     validate_db_name(name)?;
     mysql_exec(
         client,
@@ -249,7 +286,14 @@ pub fn drop_database(client: &SqlClient, port: u16, name: &str) -> Result<()> {
 /// `information_schema` query on the bundled client — backs the per-site "DB
 /// size" number on the Sites page (a REAL per-site figure even for sites that
 /// share nginx + a php-fpm pool). Requires the server to be running.
-pub fn db_sizes(client: &SqlClient, port: u16) -> Result<Vec<(String, u64)>> {
+///
+/// `pub(crate)`: the ONE way in from outside this crate is
+/// [`crate::core::db::DbEngine`]'s method of the same name, which dispatches on
+/// the client's engine. Since PostgreSQL joined the site engines, a caller that
+/// reaches for `database::` by name is choosing a wire protocol by hand — the
+/// #329 lesson (a type sees every caller; a grep sees its pattern) applied to
+/// the module boundary.
+pub(crate) fn db_sizes(client: &SqlClient, port: u16) -> Result<Vec<(String, u64)>> {
     let out = std::process::Command::new(client.path())
         .args(client_base_args(port))
         .args([

@@ -75,7 +75,7 @@ async fn main() {
     // an example's derived path took out the whole Sites folder).
     let db_name = wordpress::db_name_for(SiteType::Wordpress, domain);
     assert_eq!(db_name, "wp_wptools_test", "the fixture database name drifted — refusing to drop");
-    database::drop_database(&db_client, database::MYSQL_PORT, &db_name).expect("drop fixture db");
+    rexenv_lib::core::db::DbEngine::Mysql.drop_database(&db_client, database::MYSQL_PORT, &db_name).expect("drop fixture db");
 
     let site = sites::provision(
         &conn,

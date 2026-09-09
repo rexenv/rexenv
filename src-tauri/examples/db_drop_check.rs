@@ -74,16 +74,16 @@ async fn main() {
     let name = wordpress::db_name_for(SiteType::Wordpress, "dropcheck.test");
     assert_eq!(name, "wp_dropcheck_test");
 
-    database::create_database(&db_client, port, &name).expect("create");
+    rexenv_lib::core::db::DbEngine::Mysql.create_database(&db_client, port, &name).expect("create");
     assert!(db_exists(db_client.path(), port, &name), "database missing after create");
     println!("created {name} ✓");
 
-    database::drop_database(&db_client, port, &name).expect("drop");
+    rexenv_lib::core::db::DbEngine::Mysql.drop_database(&db_client, port, &name).expect("drop");
     assert!(!db_exists(db_client.path(), port, &name), "database still there after drop");
     println!("dropped {name} ✓");
 
     // Dropping a nonexistent DB is a clean no-op (IF EXISTS).
-    database::drop_database(&db_client, port, &name).expect("re-drop is a no-op");
+    rexenv_lib::core::db::DbEngine::Mysql.drop_database(&db_client, port, &name).expect("re-drop is a no-op");
     println!("re-drop no-op ✓");
 
     if let Some(child) = &started {

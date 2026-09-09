@@ -71,7 +71,7 @@ async fn main() {
         .sql_client_bins(&*plat, rexenv_lib::core::binaries::MYSQL_VERSION)
         .await
         .expect("bundled MySQL client");
-    database::create_database(&client, PORT, DB).expect("create the imported copy");
+    rexenv_lib::core::db::DbEngine::Mysql.create_database(&client, PORT, DB).expect("create the imported copy");
 
     // ── the fixture site: a root-case wp-config pointing at "their" server ──
     let project = sandbox.root().join("project");

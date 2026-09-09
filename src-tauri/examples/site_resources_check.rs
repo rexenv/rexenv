@@ -6,7 +6,7 @@
 //!       assert its requests show up in the 60s activity window.
 //! Read-mostly: the only mutation is the config regen + reload (idempotent).
 
-use rexenv_lib::core::{binaries, database, db::DbEngine, services, site_metrics, sites, ssl};
+use rexenv_lib::core::{binaries, db::DbEngine, services, site_metrics, sites, ssl};
 use rexenv_lib::platform;
 use rexenv_lib::state::db;
 
@@ -29,7 +29,7 @@ async fn main() {
     let client = DbEngine::Mysql
         .cached_sql_client(&*plat, binaries::MYSQL_VERSION)
         .expect("bundled MySQL client cached (Start all downloads it)");
-    let sizes = database::db_sizes(&client, DbEngine::Mysql.port()).unwrap();
+    let sizes = DbEngine::Mysql.db_sizes(&client, DbEngine::Mysql.port()).unwrap();
     println!("== db sizes ==");
     for (name, bytes) in &sizes {
         println!("{name:<30} {:>8.1} MB", *bytes as f64 / 1e6);

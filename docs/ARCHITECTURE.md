@@ -63,7 +63,9 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
                 php-fpm pool 9774 / 978x (ONE pool per PHP minor, not per site)
                      ▼
                 WordPress → the site's DB ENGINE: MySQL :13306 or MariaDB :13307
-                (per-site `sites.db_engine`, chosen at create, immutable after —
+                (PostgreSQL :15432 backs Laravel / Blank PHP sites only — WordPress
+                on it is refused in core, `wpdb` speaks MySQL alone;
+                per-site `sites.db_engine`, chosen at create, immutable after —
                 the DB lives in that engine's datadir). PostgreSQL :15432 and
                 Redis :16379 are optional engines on the Databases page.
 ```
@@ -1445,12 +1447,22 @@ IPC surface — which is how a reader ends up designing against a system with on
   PATH `mysql`/`mysqldump` that a Finder-launched app doesn't have (bare launchd PATH).
   Any DB feature must use the bundled clients with shell-free I/O — `--result-file`
   for output, stdin for input — never `wp db …`, never shell redirection (app-data
-  paths contain spaces). **Engine- and version-aware since the per-site engine work:**
-  `core/database.rs` fns take the client/dump BINARY (not a tree) — MariaDB speaks the
-  same protocol, only the binaries and port differ — and every site DB op resolves
-  them via `DbEngine::sql_client_bins(platform, effective_version)` from the site's
-  `db_engine` + the engine's selected version, so the client always matches the
-  running server. Status polls use `cached_sql_client` (strictly offline — never a
+  paths contain spaces). **Engine-dispatched since PostgreSQL joined the site
+  engines (9 Sep 2026, `docs/PLAN-postgres-sites.md`):** the five site-DB operations
+  — create / drop / import / export / sizes — are METHODS ON `DbEngine`, and
+  `core/database.rs`'s free functions are `pub(crate)` so nothing outside the crate
+  can pick a wire protocol by hand. MySQL and MariaDB share one implementation
+  (same protocol, same flags, same SQL — only binaries and port differ); PostgreSQL
+  has its own in `core/postgres.rs`, because it has no `CREATE DATABASE IF NOT
+  EXISTS`, needs `WITH (FORCE)` to drop a database something is connected to, quotes
+  identifiers with `"`, and — the one that produces a WRONG answer rather than an
+  error — **`psql` exits 0 on SQL errors unless `ON_ERROR_STOP=1` is set**, so every
+  `psql` invocation carries it. The `SqlClient` type carries the engine it was
+  resolved for and the ops dispatch on THAT, so a `psql` handed to a MySQL op is a
+  named refusal rather than a subprocess failing on foreign flags. Clients and dump
+  tools still come from `DbEngine::sql_client_bins(platform, effective_version)` —
+  the site's `db_engine` + the engine's selected version, so the client always
+  matches the running server. Status polls use `cached_sql_client` (strictly offline — never a
   download from a poll). Start-all spawns MariaDB exactly when some site's database
   lives there; per-site Adminer deep links carry the site's engine (the wrapper's
   loopback gate covers both ports).

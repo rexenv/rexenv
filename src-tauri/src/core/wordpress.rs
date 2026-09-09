@@ -3342,7 +3342,9 @@ pub fn install_wordpress(php_bin: &Path, wp_phar: &Path, opts: &WpInstall) -> Re
         .rsplit_once(':')
         .and_then(|(_, p)| p.parse().ok())
         .unwrap_or(super::database::MYSQL_PORT);
-    super::database::create_database(opts.db_client, port, opts.db_name)?;
+    opts.db_client
+        .engine()
+        .create_database(opts.db_client, port, opts.db_name)?;
 
     // 4) Install (single-site) if not already installed.
     let installed = wp_cli(php_bin, wp_phar, &["core", "is-installed", &path], None)
@@ -3583,7 +3585,7 @@ pub fn reset_site(
     db_port: u16,
 ) -> Result<()> {
     // 1) Erase: drop the database with the bundled client (PATH-safe).
-    super::database::drop_database(db_client, db_port, db_name)?;
+    db_client.engine().drop_database(db_client, db_port, db_name)?;
 
     // 2) Clear multisite constants — best effort per constant (`wp config
     //    delete` errors on one that isn't defined, which is the common case).

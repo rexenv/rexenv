@@ -173,7 +173,7 @@ pub async fn sites_resources(state: State<'_, AppState>) -> Result<Vec<SiteResou
             .filter_map(|e| {
                 let version = super::database::effective_db_version(&state, e).ok()?;
                 let client = e.cached_sql_client(state.platform.as_ref(), &version)?;
-                let sizes = core::database::db_sizes(&client, e.port()).ok()?;
+                let sizes = e.db_sizes(&client, e.port()).ok()?;
                 Some((e.key(), sizes.into_iter().collect()))
             })
             .collect();
@@ -1525,7 +1525,7 @@ pub async fn change_site_domain(
         let dump = {
             let (old, db) = (old_domain.clone(), site.db_name.clone());
             super::wordpress::wp_blocking(move || {
-                core::database::export_to_downloads(&dump_bin, engine.port(), &old, &db)
+                engine.export_to_downloads(&dump_bin, engine.port(), &old, &db)
             })
             .await
             .map_err(|e| Error::Other(format!("domain unchanged — the safety backup failed: {e}")))?
@@ -1814,7 +1814,7 @@ pub(crate) async fn delete_site_owned(
         let (db_client, _) =
             engine.sql_client_bins(state.platform.as_ref(), &engine_version).await?;
         if want_db_drop {
-            core::database::drop_database(&db_client, engine.port(), &site.db_name)?;
+            engine.drop_database(&db_client, engine.port(), &site.db_name)?;
         }
         if let Some(user) = &mirrored_user {
             core::dbmirror::drop_mirrored(&db_client, engine.port(), user)?;

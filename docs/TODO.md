@@ -23,6 +23,33 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [ ] **PostgreSQL as a site database — Laravel and Blank PHP** (`docs/PLAN-postgres-sites.md`).
+  PostgreSQL ships, starts, has a version picker and Adminer — but no site can be
+  BACKED by it, so a Laravel developer who works in `pgsql` cannot create the site
+  they work on (rexenv can already IMPORT one: `dbimport.rs` reads
+  `DB_CONNECTION=pgsql` out of a project's `.env`). WordPress stays MySQL-only
+  forever — `wpdb` speaks nothing else, refused in core (ledger #543).
+  - [x] **(a) Engine-dispatched site-DB layer + the PostgreSQL ops** ✓ 9 Sep 2026 —
+    ledger #544, #543, #329 amended. The five site-DB ops (create/drop/import/
+    export/sizes) are `DbEngine` methods, `core/database.rs`'s are `pub(crate)`,
+    `SqlClient` carries its engine; `core/postgres.rs` gained the PG side
+    (`ON_ERROR_STOP=1` on every `psql`, two-step create, `WITH (FORCE)` drop,
+    `pg_dump` export, `pg_database_size` sizes). L1 `postgres_site_db_check`
+    (network tier) all green against real PostgreSQL 18.6.0 — including a broken
+    dump REFUSED, which is the leg the whole flag exists for. No behaviour change
+    for existing sites: `SiteDbEngine::Postgres` is representable but not offered.
+  - [ ] **(b) Laravel** — `DB_CONNECTION=pgsql`, port 15432, user `postgres` in the
+    generated and rewritten `.env` (`core/laravel.rs`, `core/confedit.rs`), and
+    `php artisan migrate` proven against PG.
+  - [ ] **(c) Blank PHP starter** — PG dialect for `core/starter.rs`'s `seed_sql`
+    (no `USE`, no `AUTO_INCREMENT`/`ENGINE=`), the `db.php` DSN, and the seeded
+    page's prose (it names user `root` today).
+  - [ ] **(d) UI + lifecycle gating** — the option in `NewSiteDialog` for Laravel /
+    Blank PHP only, the TS union, Postgres added to the download + Start-all gates
+    when a site uses it (`core/downloads.rs`, `core/service_manager.rs` ask only
+    about MariaDB today), the per-site Adminer link and the sizes list
+    (`commands/sites.rs` still queries `[Mysql, Mariadb]` literally).
+
 - [x] **"Open in terminal" — the chevron beside every built-in Terminal control**
   ✓ 7 Sep 2026 — ledger #541. `ShellRunner::detect_terminals` / `open_in_terminal`
   + a macOS `TERMINALS` table (Terminal, iTerm, Warp, Ghostty, WezTerm, kitty,

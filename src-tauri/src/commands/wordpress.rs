@@ -877,7 +877,7 @@ pub async fn wp_db_export(state: State<'_, AppState>, id: String) -> Result<Stri
     let version = super::database::effective_db_version(&state, engine)?;
     let (_, dump) = engine.sql_client_bins(state.platform.as_ref(), &version).await?;
     wp_blocking(move || {
-        core::database::export_to_downloads(&dump, engine.port(), &site.domain, &site.db_name)
+        engine.export_to_downloads(&dump, engine.port(), &site.domain, &site.db_name)
             .map(|p| p.to_string_lossy().into_owned())
     })
     .await
@@ -924,7 +924,7 @@ pub async fn wp_db_import(state: State<'_, AppState>, id: String, path: String) 
     let version = super::database::effective_db_version(&state, engine)?;
     let (client, _) = engine.sql_client_bins(state.platform.as_ref(), &version).await?;
     wp_blocking(move || {
-        core::database::import_from_file(&client, engine.port(), &site.db_name, &file)
+        engine.import_from_file(&client, engine.port(), &site.db_name, &file)
     })
     .await
 }

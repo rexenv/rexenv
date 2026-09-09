@@ -87,7 +87,7 @@ async fn main() {
         .sql_client_bins(&*plat, rexenv_lib::core::binaries::MYSQL_VERSION)
         .await
         .expect("bundled MySQL client");
-    database::create_database(&client, PORT, DB).expect("create source db");
+    rexenv_lib::core::db::DbEngine::Mysql.create_database(&client, PORT, DB).expect("create source db");
     // A latin1 column and a BLOB, populated with bytes that are NOT valid UTF-8
     // — which is what a real WordPress database holds and what a real mysqldump
     // then writes. Reading that artifact as text failed a 2 GB migration AFTER

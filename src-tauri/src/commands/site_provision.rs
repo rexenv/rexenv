@@ -25,7 +25,7 @@
 use crate::commands::repo::{shell_env, EnvSnapshot, RepoJobs};
 use crate::commands::wordpress::{composer_tools, wp_tools};
 use crate::core::db::DbEngine;
-use crate::core::{self, blueprints, database, downloads, repo, service_manager, sites, wordpress};
+use crate::core::{self, blueprints, downloads, repo, service_manager, sites, wordpress};
 use crate::error::{Error, Result};
 use crate::state::app::AppState;
 use crate::state::models::{Blueprint, MultisiteMode, NewSite, Site, SiteType, WebServer};
@@ -1318,7 +1318,7 @@ async fn drive<R: tauri::Runtime>(
         // mysql that a Finder-launched app doesn't have).
         let port = engine.port();
         let (dbc, dbn) = (db_client.clone(), site.db_name.clone());
-        match tauri::async_runtime::spawn_blocking(move || database::create_database(&dbc, port, &dbn))
+        match tauri::async_runtime::spawn_blocking(move || engine.create_database(&dbc, port, &dbn))
             .await
         {
             Ok(Ok(())) => {}
@@ -1510,7 +1510,7 @@ async fn drive<R: tauri::Runtime>(
         enter_phase(app, entry, ix);
         let port = engine.port();
         let (dbc, dbn) = (db_client.clone(), site.db_name.clone());
-        match tauri::async_runtime::spawn_blocking(move || database::create_database(&dbc, port, &dbn))
+        match tauri::async_runtime::spawn_blocking(move || engine.create_database(&dbc, port, &dbn))
             .await
         {
             Ok(Ok(())) => {}
@@ -1566,7 +1566,7 @@ async fn drive<R: tauri::Runtime>(
         let db_settings = core::laravel::DbSettings {
             connection: "mysql".into(),
             host: "127.0.0.1".into(),
-            port,
+            port: engine.port(),
             database: site.db_name.clone(),
             username: "root".into(),
             password: String::new(),
@@ -1759,7 +1759,7 @@ async fn drive<R: tauri::Runtime>(
         // invocations, and splitting them would only add a window in which the
         // database exists with no table for the page to read.
         match tauri::async_runtime::spawn_blocking(move || {
-            database::create_database(&dbc, port, &dbn)?;
+            engine.create_database(&dbc, port, &dbn)?;
             core::starter::seed(&dbc, port, &dbn)
         })
         .await

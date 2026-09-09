@@ -29,12 +29,26 @@ use std::process::Child;
 /// client as its own type, that call does not compile, which is the guard a
 /// review comment provably was not.
 #[derive(Debug, Clone)]
-pub struct SqlClient(PathBuf);
+pub struct SqlClient {
+    path: PathBuf,
+    engine: DbEngine,
+}
 
 impl SqlClient {
     /// The binary's path — for spawning and for error messages.
     pub fn path(&self) -> &Path {
-        &self.0
+        &self.path
+    }
+
+    /// The engine this client speaks to. Every site-DB operation dispatches on
+    /// THIS, not on the caller's engine argument: since PostgreSQL joined the
+    /// site engines the path alone no longer says which SQL dialect and which
+    /// flags the binary accepts, and `psql` handed to `mysql_exec` would fail
+    /// somewhere inside a subprocess with a message about neither. One field,
+    /// one place to catch the mismatch, instead of eight call sites each
+    /// trusting an argument.
+    pub fn engine(&self) -> DbEngine {
+        self.engine
     }
 
     /// Test-only constructor (fixture clients at nonexistent paths, refusal
@@ -42,7 +56,13 @@ impl SqlClient {
     /// [`DbEngine::sql_client_bins`] / [`DbEngine::cached_sql_client`].
     #[cfg(test)]
     pub(crate) fn test_at(path: impl Into<PathBuf>) -> SqlClient {
-        SqlClient(path.into())
+        SqlClient::test_at_engine(path, DbEngine::Mysql)
+    }
+
+    /// Test-only constructor naming the engine (the dispatch tests).
+    #[cfg(test)]
+    pub(crate) fn test_at_engine(path: impl Into<PathBuf>, engine: DbEngine) -> SqlClient {
+        SqlClient { path: path.into(), engine }
     }
 }
 
@@ -230,7 +250,15 @@ impl DbEngine {
         match engine {
             SiteDbEngine::Mysql => DbEngine::Mysql,
             SiteDbEngine::Mariadb => DbEngine::Mariadb,
+            SiteDbEngine::Postgres => DbEngine::Postgres,
         }
+    }
+
+    /// Whether this engine can back a SITE (as opposed to running standalone on
+    /// the Databases page). Redis cannot: it is not a SQL store and there is no
+    /// `db_name` in it to create, dump or drop.
+    pub fn hosts_site_databases(&self) -> bool {
+        matches!(self, DbEngine::Mysql | DbEngine::Mariadb | DbEngine::Postgres)
     }
 
     /// Resolve the bundled SQL `(client, dump)` binaries for site DB
@@ -245,11 +273,24 @@ impl DbEngine {
         match self {
             DbEngine::Mysql => {
                 let base = binaries::resolve_dir(platform, "mysql", version).await?;
-                Ok((SqlClient(database::mysql_client_bin(&base)), base.join("bin/mysqldump")))
+                Ok((
+                    SqlClient { path: database::mysql_client_bin(&base), engine: *self },
+                    base.join("bin/mysqldump"),
+                ))
             }
             DbEngine::Mariadb => {
                 let base = binaries::resolve_bundle(platform, "mariadb", version).await?;
-                Ok((SqlClient(mariadb::mariadb_client_bin(&base)), mariadb::mariadb_dump_bin(&base)))
+                Ok((
+                    SqlClient { path: mariadb::mariadb_client_bin(&base), engine: *self },
+                    mariadb::mariadb_dump_bin(&base),
+                ))
+            }
+            DbEngine::Postgres => {
+                let base = binaries::resolve_dir(platform, "postgres", version).await?;
+                Ok((
+                    SqlClient { path: postgres::psql_bin(&base), engine: *self },
+                    postgres::pg_dump_bin(&base),
+                ))
             }
             other => Err(Error::Other(format!(
                 "{} does not host site databases",
@@ -268,9 +309,14 @@ impl DbEngine {
             DbEngine::Mariadb => {
                 bin_dir.join(format!("mariadb-{version}")).join("bin/mariadb")
             }
-            _ => return None,
+            DbEngine::Postgres => {
+                postgres::psql_bin(&bin_dir.join(format!("postgres-{version}")))
+            }
+            DbEngine::Redis => return None,
         };
-        client.is_file().then_some(SqlClient(client))
+        client
+            .is_file()
+            .then_some(SqlClient { path: client, engine: *self })
     }
 
     /// Whether the engine's datadir FOR A VERSION was ever initialized — the
@@ -283,7 +329,8 @@ impl DbEngine {
         match self {
             DbEngine::Mysql => database::is_initialized(&datadir),
             DbEngine::Mariadb => mariadb::is_initialized(&datadir),
-            _ => false,
+            DbEngine::Postgres => postgres::is_initialized(&datadir),
+            DbEngine::Redis => false,
         }
     }
 
@@ -358,6 +405,113 @@ impl DbEngine {
     pub fn running(&self) -> bool {
         ports::is_listening(self.port())
     }
+
+    // --- site-database operations ------------------------------------------
+    //
+    // The five things rexenv does to a SITE's database. They were free
+    // functions in `core::database` called by name from eight places, which was
+    // honest while every site engine spoke the MySQL protocol and MariaDB was a
+    // different path to the same client. PostgreSQL is the first site engine
+    // with its own client, dump tool and DDL (docs/PLAN-postgres-sites.md §2),
+    // so the choice moves here — beside `start`, `data_dir` and `server_binary`,
+    // which already dispatch — and the callers stop naming an engine's module.
+    //
+    // The PORT stays a parameter, deliberately. `self.port()` is the engine's
+    // production port, and the live examples run their own fixture server on a
+    // private one (13396-13399) precisely so a check can never touch the
+    // owner's real databases — folding the port in here would have quietly
+    // pointed every one of them at the real MySQL.
+
+    /// The client must speak for THIS engine. Not reachable through the public
+    /// constructors (both stamp the engine they resolved for) — it is the
+    /// backstop that makes "dispatch on the client's engine" true rather than
+    /// merely intended.
+    fn expect_client(&self, client: &SqlClient) -> Result<()> {
+        if client.engine() == *self {
+            return Ok(());
+        }
+        Err(Error::Other(format!(
+            "{} client used for a {} operation",
+            client.engine().label(),
+            self.label()
+        )))
+    }
+
+    /// Create the site's database if it doesn't exist.
+    pub fn create_database(&self, client: &SqlClient, port: u16, name: &str) -> Result<()> {
+        self.expect_client(client)?;
+        match self {
+            DbEngine::Mysql | DbEngine::Mariadb => database::create_database(client, port, name),
+            DbEngine::Postgres => postgres::create_database(client, port, name),
+            DbEngine::Redis => Err(self.not_a_site_engine()),
+        }
+    }
+
+    /// Drop the site's database if it exists (site teardown).
+    pub fn drop_database(&self, client: &SqlClient, port: u16, name: &str) -> Result<()> {
+        self.expect_client(client)?;
+        match self {
+            DbEngine::Mysql | DbEngine::Mariadb => database::drop_database(client, port, name),
+            DbEngine::Postgres => postgres::drop_database(client, port, name),
+            DbEngine::Redis => Err(self.not_a_site_engine()),
+        }
+    }
+
+    /// Import a `.sql` dump into database `name`. DESTRUCTIVE — the caller owns
+    /// the confirm/backup UX.
+    pub fn import_from_file(
+        &self,
+        client: &SqlClient,
+        port: u16,
+        name: &str,
+        file: &Path,
+    ) -> Result<()> {
+        self.expect_client(client)?;
+        match self {
+            DbEngine::Mysql | DbEngine::Mariadb => {
+                database::import_from_file(client, port, name, file)
+            }
+            DbEngine::Postgres => postgres::import_from_file(client, port, name, file),
+            DbEngine::Redis => Err(self.not_a_site_engine()),
+        }
+    }
+
+    /// Export database `name` into the user's Downloads folder. `dump` is the
+    /// dump BINARY from [`sql_client_bins`](Self::sql_client_bins) — a separate
+    /// argument because it is a different executable from the client, in both
+    /// engine families.
+    pub fn export_to_downloads(
+        &self,
+        dump: &Path,
+        port: u16,
+        domain: &str,
+        name: &str,
+    ) -> Result<PathBuf> {
+        match self {
+            DbEngine::Mysql | DbEngine::Mariadb => {
+                database::export_to_downloads(dump, port, domain, name)
+            }
+            DbEngine::Postgres => postgres::export_to_downloads(dump, port, domain, name),
+            DbEngine::Redis => Err(self.not_a_site_engine()),
+        }
+    }
+
+    /// Disk size of every database in this engine, in bytes.
+    pub fn db_sizes(&self, client: &SqlClient, port: u16) -> Result<Vec<(String, u64)>> {
+        self.expect_client(client)?;
+        match self {
+            DbEngine::Mysql | DbEngine::Mariadb => database::db_sizes(client, port),
+            DbEngine::Postgres => postgres::db_sizes(client, port),
+            DbEngine::Redis => Err(self.not_a_site_engine()),
+        }
+    }
+
+    /// The refusal every site-DB op gives for an engine that hosts none — the
+    /// same sentence `sql_client_bins` has always answered with, so a caller
+    /// that reaches an op some other way reads the same explanation.
+    fn not_a_site_engine(&self) -> Error {
+        Error::Other(format!("{} does not host site databases", self.label()))
+    }
 }
 
 #[cfg(test)]
@@ -386,6 +540,47 @@ mod tests {
         assert!(ok.exists(), "a successful init keeps the datadir");
 
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn a_site_op_refuses_a_client_from_another_engine() {
+        // The dispatch rests on the client carrying its engine, so the mismatch
+        // has to fail HERE, by name, rather than inside a subprocess that was
+        // handed flags from the wrong vendor. Not reachable through the public
+        // constructors — that is the point: this is the backstop that makes the
+        // claim true rather than merely intended.
+        let psql = SqlClient::test_at_engine("/nonexistent/psql", DbEngine::Postgres);
+        let err = DbEngine::Mysql
+            .create_database(&psql, 13306, "shop")
+            .expect_err("a psql client must not run a MySQL create");
+        let msg = err.to_string();
+        assert!(msg.contains("PostgreSQL") && msg.contains("MySQL"), "{msg}");
+
+        let my = SqlClient::test_at_engine("/nonexistent/mysql", DbEngine::Mysql);
+        assert!(DbEngine::Postgres.drop_database(&my, 15432, "shop").is_err());
+        assert!(DbEngine::Postgres.db_sizes(&my, 15432).is_err());
+    }
+
+    #[test]
+    fn redis_hosts_no_site_database() {
+        // Every site-DB op answers with the one sentence sql_client_bins has
+        // always given, so a caller reaching an op some other way reads the same
+        // explanation rather than a subprocess failure.
+        let client = SqlClient::test_at_engine("/nonexistent", DbEngine::Redis);
+        let err = DbEngine::Redis.create_database(&client, 16379, "shop").unwrap_err();
+        assert!(err.to_string().contains("does not host site databases"), "{err}");
+        assert!(!DbEngine::Redis.hosts_site_databases());
+        for e in [DbEngine::Mysql, DbEngine::Mariadb, DbEngine::Postgres] {
+            assert!(e.hosts_site_databases(), "{} must host site databases", e.key());
+        }
+    }
+
+    #[test]
+    fn a_sites_engine_maps_to_its_service() {
+        use crate::state::models::SiteDbEngine;
+        assert_eq!(DbEngine::from_site(SiteDbEngine::Mysql), DbEngine::Mysql);
+        assert_eq!(DbEngine::from_site(SiteDbEngine::Mariadb), DbEngine::Mariadb);
+        assert_eq!(DbEngine::from_site(SiteDbEngine::Postgres), DbEngine::Postgres);
     }
 
     #[test]

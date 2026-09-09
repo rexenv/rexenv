@@ -90,7 +90,7 @@ async fn main() {
         .await
         .expect("bundled MySQL client");
 
-    database::create_database(&client, PORT, SRC_DB).unwrap();
+    rexenv_lib::core::db::DbEngine::Mysql.create_database(&client, PORT, SRC_DB).unwrap();
     let mut seed = format!(
         "USE {SRC_DB}; CREATE TABLE wp_posts (id INT PRIMARY KEY, title VARCHAR(64)); \
          CREATE TABLE wp_options (id INT PRIMARY KEY, v VARCHAR(64));"

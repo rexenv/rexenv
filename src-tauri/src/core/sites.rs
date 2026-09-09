@@ -12,7 +12,7 @@ use crate::core::{
 use crate::error::{Error, Result};
 use crate::platform::traits::{Platform, ProcessSupervisor};
 use crate::state::models::{
-    MultisiteMode, NewSite, ServiceStatus, Site, SiteOrigin, SiteType, WebServer,
+    MultisiteMode, NewSite, ServiceStatus, Site, SiteDbEngine, SiteOrigin, SiteType, WebServer,
 };
 use crate::state::store;
 use rusqlite::Connection;
@@ -111,6 +111,30 @@ fn ensure_server_runs_php(server: WebServer, php_version: &str) -> Result<()> {
         php::minor_of(php_version),
         php::minor_of(embedded),
     )))
+}
+
+/// WordPress may never be backed by PostgreSQL — refused HERE, at the one
+/// function every site insert passes through, not in the New-site dialog.
+///
+/// `wpdb` speaks mysqli / PDO-MySQL and nothing else: a WordPress site on
+/// PostgreSQL is not a limited site, it is a site whose first query fails, with
+/// a database already created and a docroot already written. The UI simply not
+/// offering the pair is not the guard — `rex site create --db postgres` and the
+/// MCP `create_site` tool both parse the engine out of a string and reach this
+/// function with whatever the caller sent.
+///
+/// Laravel and Blank PHP have no such constraint: `pgsql` is a first-class
+/// Laravel driver and a PDO DSN prefix (docs/PLAN-postgres-sites.md).
+fn ensure_engine_supports(site_type: SiteType, engine: SiteDbEngine) -> Result<()> {
+    if site_type == SiteType::Wordpress && engine == SiteDbEngine::Postgres {
+        return Err(Error::Other(
+            "WordPress cannot run on PostgreSQL — core's database layer speaks MySQL only. \
+             Use MySQL or MariaDB for a WordPress site; PostgreSQL is available for Laravel \
+             and Blank PHP sites."
+                .into(),
+        ));
+    }
+    Ok(())
 }
 
 /// The per-site override backend port for `server`, or `None` for nginx (which
@@ -430,6 +454,7 @@ fn create_recording_ownership(
     validate_docroot_path(&new.path)?;
     ensure_server_available(new.web_server)?;
     ensure_server_runs_php(new.web_server, &new.php_version)?;
+    ensure_engine_supports(new.site_type, new.db_engine)?;
     if let Some(owner) = domain_taken_by(conn, &new.domain)? {
         return Err(Error::Other(format!(
             "{} already reaches the site \"{owner}\" — one hostname can only reach one site",
@@ -2507,7 +2532,30 @@ pub fn rebuild_configs_for(
 mod tests {
     use super::*;
     use crate::state::db;
-    use crate::state::models::{SiteType, WebServer};
+    use crate::state::models::{SiteDbEngine, SiteType, WebServer};
+
+    #[test]
+    fn wordpress_on_postgres_is_refused_at_the_insert_chokepoint() {
+        // Not in the dialog: `rex site create --db postgres` and the MCP
+        // create_site tool both parse the engine out of a string and land here.
+        let err = ensure_engine_supports(SiteType::Wordpress, SiteDbEngine::Postgres)
+            .expect_err("WordPress on PostgreSQL must be refused");
+        let msg = err.to_string();
+        assert!(msg.contains("PostgreSQL"), "{msg}");
+        assert!(msg.contains("MariaDB"), "the refusal must name what to use instead: {msg}");
+
+        // Everything else stands: WP on either MySQL-protocol engine, and the
+        // two site types PostgreSQL exists for.
+        for (t, e) in [
+            (SiteType::Wordpress, SiteDbEngine::Mysql),
+            (SiteType::Wordpress, SiteDbEngine::Mariadb),
+            (SiteType::Laravel, SiteDbEngine::Postgres),
+            (SiteType::Php, SiteDbEngine::Postgres),
+            (SiteType::Laravel, SiteDbEngine::Mysql),
+        ] {
+            assert!(ensure_engine_supports(t, e).is_ok(), "{t:?} + {e:?} must be allowed");
+        }
+    }
 
     const WP_PHASES: &[&str] =
         &["prepare", "fetch", "db", "core_download", "configure", "core_install", "serve"];

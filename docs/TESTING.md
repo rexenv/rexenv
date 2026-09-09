@@ -156,6 +156,15 @@ it can:
   the bug class was eliminated — a line in a log nobody reads, on a run that passed. **This layer caught
   the most bugs this month.** Discipline: `common::sandbox` + `common::Reaped` +
   fixture ports (`examples/common/mod.rs` — read its invariant first).
+  **`postgres_site_db_check` (network tier, 9 Sep 2026) is this layer answering a
+  question no Rust test can**: `psql` returns exit **0** after a script whose every
+  statement failed, unless `ON_ERROR_STOP=1` is set — an import that silently imported
+  nothing while reporting success. L0 pins the flag in the argv array; only the real
+  `psql` can show what happens without it, so the check feeds a deliberately broken
+  dump and REQUIRES the refusal. Same run, same reason: `CREATE DATABASE` twice (PG has
+  no `IF NOT EXISTS`, so idempotence is ours), `pg_dump` → re-import into a second
+  database, `WITH (FORCE)` drop, and `db_sizes` excluding template databases. First run
+  9 Sep 2026: all green.
   **`starter_seed_check` (sandbox tier, 27 Aug 2026, ledger #429) is the smallest case
   for why this layer exists at all.** The Blank-PHP starter's seed is idempotent because
   of one SQL clause — `WHERE NOT EXISTS` — and whether a server agrees with a piece of

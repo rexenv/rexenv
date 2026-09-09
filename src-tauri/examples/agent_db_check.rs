@@ -108,8 +108,8 @@ async fn main() {
     // ── fixture ──────────────────────────────────────────────────────────────
     // Fixture-owned names, dropped at the end. Nothing here touches a real
     // site's database: both names are this example's own.
-    database::create_database(&client, port, DB).expect("create the probe db");
-    database::create_database(&client, port, SIBLING).expect("create the sibling db");
+    rexenv_lib::core::db::DbEngine::Mysql.create_database(&client, port, DB).expect("create the probe db");
+    rexenv_lib::core::db::DbEngine::Mysql.create_database(&client, port, SIBLING).expect("create the sibling db");
     root_sql(client.path(), port, &format!(
         "CREATE TABLE IF NOT EXISTS `{DB}`.t (id INT PRIMARY KEY, v VARCHAR(32)); \
          DELETE FROM `{DB}`.t; INSERT INTO `{DB}`.t VALUES (1,'one'),(2,'two');"
@@ -233,8 +233,8 @@ async fn main() {
     }
 
     // ── teardown: only what this fixture created ─────────────────────────────
-    database::drop_database(&client, port, DB).expect("drop the probe db");
-    database::drop_database(&client, port, SIBLING).expect("drop the sibling db");
+    rexenv_lib::core::db::DbEngine::Mysql.drop_database(&client, port, DB).expect("drop the probe db");
+    rexenv_lib::core::db::DbEngine::Mysql.drop_database(&client, port, SIBLING).expect("drop the sibling db");
     if let Some(child) = &started {
         let _ = database::stop(&*plat, child.id());
         println!("stopped the engine this check started");

@@ -62,12 +62,25 @@ str_enum!(MultisiteMode {
 });
 
 str_enum!(
-    /// Which SQL engine backs a site's WordPress database — chosen at create,
-    /// immutable after (the DB lives in that engine's datadir). Both speak the
-    /// MySQL protocol; only the port and bundled client binaries differ.
+    /// Which SQL engine backs a site's database — chosen at create, immutable
+    /// after (the DB lives in that engine's datadir).
+    ///
+    /// `Mysql`/`Mariadb` speak the same wire protocol, take the same client
+    /// flags and the same SQL; only the port and the bundled binaries differ,
+    /// which is why MariaDB cost nothing to add. **`Postgres` is the first one
+    /// that does not**: different client, different dump tool, different DDL
+    /// (see `docs/PLAN-postgres-sites.md`), so every site-DB operation
+    /// dispatches on the engine rather than assuming one — through
+    /// [`crate::core::db::DbEngine`]'s methods, never a bare
+    /// `core::database::*` call.
+    ///
+    /// **WordPress is never `Postgres`** — `wpdb` speaks mysqli/PDO-MySQL only,
+    /// so the pair is a broken site rather than a limited one; Laravel and
+    /// Blank PHP have no such constraint.
     SiteDbEngine {
         Mysql => "mysql",
         Mariadb => "mariadb",
+        Postgres => "postgres",
     }
 );
 
