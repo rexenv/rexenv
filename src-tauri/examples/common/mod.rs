@@ -45,6 +45,21 @@
 //! that generates configs or spawns services. The deliberate exceptions are
 //! documented on [`sandbox`] itself.
 //!
+//! ## …and a gap the "mutable exception" note missed: the app DELETES from that cache
+//!
+//! The shared binary cache is called a deliberate mutable exception above —
+//! examples add to it. What that missed is the other direction: the app REMOVES
+//! from it. `gc_outdated_php_caches` sweeps every PHP tree the registry does not
+//! select, at every launch. So an example that resolves `binaries::PHP_VERSION`
+//! (the PIN) on a machine whose registry selects a newer patch — an ordinary
+//! in-app PHP update — has downloaded a tree the app is entitled to delete, and
+//! may delete between two phases of the same run. On 10 Sep 2026 that killed
+//! `laravel_postgres_check` mid-`composer create-project`: `No such file or
+//! directory`, exit 127, an error naming nothing. The app was right and the
+//! check was the odd one out. An example in that position must verify the binary
+//! is still there and NAME the sweep, rather than failing inside somebody else's
+//! subprocess.
+//!
 //! ## …and the gap `sandbox` does NOT close: PORTS
 //!
 //! **`sandbox` covers paths and says nothing about ports**, and every

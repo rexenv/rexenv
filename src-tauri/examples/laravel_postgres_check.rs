@@ -43,6 +43,34 @@ mod common;
 
 const DB: &str = "rex_lvpg_check";
 
+/// Refuse, by name, if the tree this check is about to run has been swept.
+///
+/// **rexenv deletes superseded PHP trees at launch** (`gc_outdated_php_caches`)
+/// — the keep-set is what the registry says each minor should RUN, unioned with
+/// the live pool masters. This example runs `binaries::PHP_VERSION`, the PIN,
+/// which on a machine whose registry selects a NEWER patch (an in-app update:
+/// 8.3.31 → 8.3.32) is exactly what the sweep is for. So the tree can vanish
+/// between one phase of this check and the next, and on 10 Sep 2026 it did:
+/// mid-`composer create-project`, whose post-install script re-execs php, giving
+/// `No such file or directory` and exit 127 — an error naming nothing.
+///
+/// The app is right and this check is the odd one out, so the fix is here: say
+/// what happened instead of dying inside somebody else's subprocess.
+fn php_still_there(php: &Path, phase: &str) -> bool {
+    if php.is_file() {
+        return true;
+    }
+    eprintln!(
+        "\n✗ the PHP this check was using is GONE before {phase}:\n  {}\n  \
+         rexenv sweeps superseded PHP trees when it launches, and this one is the PIN — \
+         if the app's registry selects a newer patch for this minor, the pin is superseded \
+         BY DEFINITION. Quit rexenv (or stop editing src-tauri, which restarts it) and \
+         re-run.",
+        php.display()
+    );
+    false
+}
+
 /// `php -r <code>` with a bounded wait, returning (ok, stdout+stderr).
 fn php_says(php: &Path, code: &str) -> (bool, String) {
     let out = std::process::Command::new(php)
@@ -129,8 +157,10 @@ async fn main() {
              in_array('pgsql', PDO::getAvailableDrivers()) ? 'advertised' : 'not-advertised';",
         );
         let loaded = said.starts_with("loaded");
-        let minor = php::minor_of(v);
-        let recorded = php::pdo_pgsql_supported(&minor);
+        // Asked with the EXACT version: the record is per patch, because rexenv
+        // runs patches it did not build (ledger #550). Passing the minor here
+        // was this example's own version of that bug, and it caught it.
+        let recorded = php::pdo_pgsql_supported(v);
         println!("  php {v}: {said}  (recorded: {recorded})");
         // Disagreement in EITHER direction is the failure. A minor that quietly
         // gains the driver matters as much as one that loses it: the first means
@@ -138,7 +168,7 @@ async fn main() {
         // allowing sites that will stall.
         if loaded != recorded {
             eprintln!(
-                "    ✗ php {v} disagrees with core::php::pdo_pgsql_supported(\"{minor}\") = {recorded}"
+                "    ✗ php {v} disagrees with core::php::pdo_pgsql_supported(\"{v}\") = {recorded}"
             );
             ok = false;
         }
@@ -174,7 +204,7 @@ async fn main() {
     let waited = started.elapsed();
     println!("  php {v} · PDO pgsql → {pdo_said}  ({}s)", waited.as_secs());
     let connected = pdo_said.starts_with("connected");
-    let recorded = php::pdo_pgsql_supported(&php::minor_of(v));
+    let recorded = php::pdo_pgsql_supported(v);
     if connected != recorded {
         eprintln!("    ✗ the connection disagrees with the record for this minor ({recorded})");
         ok = false;
@@ -224,6 +254,10 @@ async fn main() {
     // skeleton left on sqlite — each of which PDO alone would sail past.
     if recorded {
         println!("\n=== composer create-project + artisan migrate on PostgreSQL ===");
+        if !php_still_there(php_bin, "the Laravel legs") {
+            server.reap();
+            std::process::exit(1);
+        }
         let composer = binaries::resolve_file(&*plat, "composer", binaries::COMPOSER_VERSION)
             .await
             .expect("composer phar");
@@ -322,7 +356,7 @@ async fn main() {
     println!(
         "\n{}",
         if ok {
-            if php::pdo_pgsql_supported(&php::minor_of(binaries::PHP_VERSION)) {
+            if php::pdo_pgsql_supported(binaries::PHP_VERSION) {
                 "laravel on postgres: all green"
             } else {
                 "laravel on postgres: the gap is still real — recorded, refused at create, unchanged"

@@ -156,6 +156,18 @@ it can:
   the bug class was eliminated — a line in a log nobody reads, on a run that passed. **This layer caught
   the most bugs this month.** Discipline: `common::sandbox` + `common::Reaped` +
   fixture ports (`examples/common/mod.rs` — read its invariant first).
+  **A live check runs beside a REAL app, and the app manages the same cache.**
+  `laravel_postgres_check` died mid-`composer create-project` with
+  `No such file or directory`, exit 127, and the app was right: rexenv sweeps
+  superseded PHP trees at launch (`gc_outdated_php_caches`), the check runs the
+  PIN, and on a machine whose registry selects a newer patch the pin IS
+  superseded. Two dev restarts, two sweeps, both in the log by name. The lesson is
+  not about the sweep — it is that **`common::sandbox` redirects paths and says
+  nothing about the shared binary cache**, which the module doc already calls a
+  deliberate mutable exception. A check that depends on a cache entry the app is
+  entitled to delete must say so when it goes: the phase gate now names the sweep
+  instead of dying inside somebody else's subprocess.
+
   **`laravel_postgres_check` (network tier, 9-10 Sep 2026, ledger #545) is the
   same layer answering a question that first KILLED a feature step and then
   cleared it.** Laravel on PostgreSQL needs PDO, and the static-php.dev builds'
