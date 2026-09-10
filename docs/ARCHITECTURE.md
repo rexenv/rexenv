@@ -974,6 +974,22 @@ honest footer —
   `database/database.sqlite` and the site's MySQL database would otherwise stay
   empty. `db_created` is recorded at create so delete drops that database
   (non-WordPress types drop only on that explicit provenance).
+  **"Installed" means `vendor/autoload.php` too** (`laravel::is_installed`):
+  Composer extracts `artisan` and `public/index.php` before it resolves anything,
+  so a `create-project` that fails leaves a skeleton with no dependencies, and a
+  Retry used to read that as "already present" and fail forever. A Retry now
+  empties the folder first — only when rexenv made it (`docroot_managed`) and it is
+  exactly a failed skeleton (`laravel::is_failed_skeleton`: the skeleton's own
+  `composer.json` name, no `vendor/` at all) — so `create-project` runs again on
+  the site's CURRENT PHP. The case that found it: on PHP 8.0/8.1 Composer resolves
+  Laravel 9/10, whose framework releases are all blocked by Packagist security
+  advisories; `repo::map_composer_error` names that (package + "switch the site's
+  PHP") ahead of its PHP-version branch, and rexenv does not turn the block off.
+- **A create refused for its SHAPE leaves nothing behind.** `sites::provision_with`
+  runs `refuse_unbuildable` (server available, server runs this PHP, engine
+  supported on the effective patch) before it makes the docroot, writes the
+  Blank-PHP page or issues the certificate; the insert chokepoint runs it again for
+  every other path. Before 11 Sep 2026 only the chokepoint did, after all three.
 - `AppState` (`state/app.rs`) = db + platform + monitor + CA + ServiceManager + Terminals/
   Tunnels registries, **field-level locks** (see §5 locking rule).
 - Every service start is gated by `core/ports::ensure_free`; a conflict names the holding

@@ -69,7 +69,7 @@ COMMANDS:
   site open <domain>    Open https://<domain> in the browser
   site login <domain>   Open a logged-in wp-admin (magic link; --print to not open)
   site create <domain> [--name N] [--type wordpress|php|laravel] [--php 8.3]
-              [--server nginx|frankenphp|apache] [--db mysql|mariadb]
+              [--server nginx|frankenphp|apache] [--db mysql|mariadb|postgres]
               [--blueprint <name>] [--multisite subdomain|subdirectory]
               [--path <folder>]
                 Create a site (defaults mirror the app's New Site dialog;

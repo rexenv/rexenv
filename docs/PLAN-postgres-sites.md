@@ -185,6 +185,14 @@ and the MCP `create_site` tool in the same commit that made it representable, an
 exposures started. The guard sits in `sites::create_recording_ownership`, the one
 function every site insert passes through.
 
+**Correction, 11 Sep 2026:** "reachable from the MCP tool" was true of the HANDLER
+and false of the TOOL. `site_create`'s input schema still listed
+`["mysql", "mariadb"]`, and a client that validates against the schema (Claude
+Code does) could not send `postgres` at all — so agents could neither create a
+PostgreSQL site nor, for that matter, test this refusal. The handler's tests call
+it directly, past the schema, which is why they passed. Pinned now by
+`site_create_schema_offers_every_site_engine` (ledger #555).
+
 
 ---
 

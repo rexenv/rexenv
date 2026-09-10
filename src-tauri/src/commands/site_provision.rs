@@ -1479,6 +1479,18 @@ async fn drive<R: tauri::Runtime>(
                 // `create-project` would refuse the non-empty directory anyway.
                 finish_phase(app, entry, progress, ix, "skipped", Some("Laravel app already present"));
             } else {
+                // A retry after `create-project` died past extraction (an
+                // advisory-blocked framework, a dropped download): the skeleton
+                // is on disk with no `vendor/`, Composer refuses a non-empty
+                // target, and the skeleton was resolved for the PHP the site had
+                // THEN. Cleared only when rexenv made the folder and it is
+                // exactly that shape — see `laravel::is_failed_skeleton`.
+                if site.docroot_managed == Some(true) && core::laravel::is_failed_skeleton(&project) {
+                    append_line(app, entry, "── clearing the unfinished Laravel install a failed attempt left");
+                    if let Err(e) = core::laravel::clear_failed_skeleton(&project) {
+                        return JobEnd::Failed(format!("could not clear the unfinished Laravel install: {e}"));
+                    }
+                }
                 let (a2, e2, env2) = (app.clone(), entry.clone(), env.clone());
                 let (p2, c2, d2) = (php_bin.clone(), composer_phar.clone(), project.clone());
                 let created = tauri::async_runtime::spawn_blocking(move || {

@@ -478,6 +478,20 @@ pub fn create(conn: &Connection, new: NewSite) -> Result<Site> {
 /// means "the caller asked to link a folder" — re-running the rule here read
 /// every cloned site as also-linked and refused it. The rule belongs where its
 /// inputs still mean what they say.
+/// The refusals that depend only on WHAT is asked for — server, PHP, engine —
+/// never on the disk. Pure, so `provision_with` can run them before it creates
+/// anything and the insert chokepoint can run them again for every other path.
+fn refuse_unbuildable(conn: &Connection, new: &NewSite) -> Result<()> {
+    ensure_server_available(new.web_server)?;
+    ensure_server_runs_php(new.web_server, &new.php_version)?;
+    // The patch this site will really run — the user's selection floored by the
+    // pin — because the PostgreSQL rule is a fact about the ARTIFACT, and the
+    // row stores only the minor.
+    let php_patch = crate::core::php::effective_patch(conn, &new.php_version)?
+        .unwrap_or_else(|| new.php_version.clone());
+    ensure_engine_supports(new.site_type, new.db_engine, &php_patch)
+}
+
 fn create_recording_ownership(
     conn: &Connection,
     new: NewSite,
@@ -487,14 +501,7 @@ fn create_recording_ownership(
 ) -> Result<Site> {
     validate_domain(&new.domain)?;
     validate_docroot_path(&new.path)?;
-    ensure_server_available(new.web_server)?;
-    ensure_server_runs_php(new.web_server, &new.php_version)?;
-    // The patch this site will really run — the user's selection floored by the
-    // pin — because the PostgreSQL rule is a fact about the ARTIFACT, and the
-    // row stores only the minor.
-    let php_patch = crate::core::php::effective_patch(conn, &new.php_version)?
-        .unwrap_or_else(|| new.php_version.clone());
-    ensure_engine_supports(new.site_type, new.db_engine, &php_patch)?;
+    refuse_unbuildable(conn, &new)?;
     if let Some(owner) = domain_taken_by(conn, &new.domain)? {
         return Err(Error::Other(format!(
             "{} already reaches the site \"{owner}\" — one hostname can only reach one site",
@@ -2124,6 +2131,14 @@ pub fn provision_with(
     // docroot and the certificate exist, so a bad repo URL, or an agent asking
     // for one, leaves nothing to clean up.
     let git = validate_git_source(&new, &ownership)?;
+    // The site-SHAPE refusals, here for the same reason. They also run inside
+    // `create_recording_ownership` — the insert chokepoint, which every path
+    // reaches — but that is AFTER this function has made the folder, written a
+    // Blank-PHP starter page into it and issued a certificate. Found by the site
+    // matrix on 11 Sep 2026: every refused WordPress/PostgreSQL create left an
+    // empty folder in the user's Sites directory, and every refused Blank-PHP
+    // one left an `index.php` in it.
+    refuse_unbuildable(conn, &new)?;
 
     // A caller-supplied path means LINK: adopt the folder as-is. Nothing is
     // created and nothing is written into it — not even the Blank-PHP probe
@@ -2573,6 +2588,54 @@ mod tests {
     use super::*;
     use crate::state::db;
     use crate::state::models::{SiteDbEngine, SiteType, WebServer};
+
+    /// **A create refused for its shape leaves nothing behind — no folder, no
+    /// starter page.** The refusal used to live only at the insert chokepoint,
+    /// which `provision_with` reaches AFTER making the docroot, writing the
+    /// Blank-PHP page and issuing the certificate; the site matrix of 11 Sep 2026
+    /// found eleven such folders in its Sites directory. The CA is a literal on
+    /// purpose: a green run returns before the certificate step, and a run with
+    /// the early refusal removed fails there on the empty CA instead of signing.
+    /// **Planting costs one directory**, measured: `ensure_site_cert` makes
+    /// `certs/refused-wordpress.rex/` in the REAL app data before it reads the
+    /// CA — remove it after a plant.
+    #[test]
+    fn a_site_refused_for_its_shape_leaves_no_folder_behind() {
+        let conn = db::open_in_memory().unwrap();
+        let platform = crate::platform::current();
+        let root = std::env::temp_dir().join(format!("rexenv-refused-shape-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        store::set_setting(&conn, SITES_DIR_KEY, &root.display().to_string()).unwrap();
+        let ca = ssl::LocalCa {
+            cert_pem: String::new(),
+            key_pem: String::new(),
+            cert_path: std::path::PathBuf::from("/dev/null"),
+            key_path: std::path::PathBuf::from("/dev/null"),
+        };
+        for (site_type, php) in [(SiteType::Wordpress, "8.4"), (SiteType::Php, "7.4"), (SiteType::Laravel, "7.4")] {
+            let domain = format!("refused-{}.rex", site_type.as_db());
+            let new = NewSite {
+                name: domain.clone(),
+                domain: domain.clone(),
+                site_type,
+                php_version: php.into(),
+                web_server: WebServer::Nginx,
+                path: String::new(),
+                db_engine: SiteDbEngine::Postgres,
+                git_url: String::new(),
+                git_ref: None,
+                git_migrate: true,
+                git_build_assets: false,
+                starter_db: site_type == SiteType::Php,
+            };
+            let err = provision_with(&conn, &*platform, &ca, new, Ownership::User).unwrap_err().to_string();
+            assert!(err.contains("PostgreSQL"), "refused for the shape, not something later: {err}");
+            assert!(!root.join(&domain).exists(), "{site_type:?} on {php}: the refused create left {domain}/ behind");
+        }
+        assert!(list(&conn).unwrap().is_empty());
+        std::fs::remove_dir_all(&root).unwrap();
+    }
 
     #[test]
     fn postgres_is_refused_at_the_insert_chokepoint_for_two_different_reasons() {

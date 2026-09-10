@@ -34,12 +34,64 @@ use rusqlite::Connection;
 /// resolves the current stable release of it.
 pub const SKELETON_PACKAGE: &str = "laravel/laravel";
 
-/// Has a Laravel app actually been installed into `project`? The two markers
-/// detection uses for a LINKED project (`core::sites::detect`), asked here of a
-/// project we just wrote — so "installed" means the same thing whether the app
-/// arrived from Composer or from the user's disk.
+/// Has a Laravel app actually been installed into `project` — the skeleton AND
+/// its dependencies?
+///
+/// It used to ask only for the two markers linked-project detection uses
+/// (`artisan`, `public/index.php`). Those are extracted BEFORE Composer resolves
+/// anything, so a `create-project` that then fails leaves both behind with no
+/// `vendor/` — measured 11 Sep 2026 on PHP 8.1, where Laravel 10's framework
+/// releases are advisory-blocked. The retry then read the dead skeleton as
+/// "already present", skipped the install, and failed later on every attempt,
+/// whatever PHP the user had switched to. Detection of a LINKED folder is a
+/// different question (is this a Laravel project at all?) and keeps its own
+/// markers.
 pub fn is_installed(project: &Path) -> bool {
-    project.join("artisan").is_file() && project.join("public/index.php").is_file()
+    project.join("artisan").is_file()
+        && project.join("public/index.php").is_file()
+        && project.join("vendor/autoload.php").is_file()
+}
+
+/// Is `project` exactly what a FAILED `composer create-project laravel/laravel`
+/// leaves: the skeleton, with no dependencies installed?
+///
+/// Deliberately narrow, because the answer licenses deleting the folder's
+/// contents ([`clear_failed_skeleton`]): the skeleton's own `composer.json`
+/// name, an `artisan`, and no `vendor/` at all. A folder a person had started
+/// working in — their own package name, or an installed `vendor/` — is not one.
+pub fn is_failed_skeleton(project: &Path) -> bool {
+    if !project.join("artisan").is_file() || project.join("vendor").exists() {
+        return false;
+    }
+    std::fs::read_to_string(project.join("composer.json"))
+        .ok()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .and_then(|v| v.get("name").and_then(|n| n.as_str()).map(|n| n == SKELETON_PACKAGE))
+        .unwrap_or(false)
+}
+
+/// Empty a folder [`is_failed_skeleton`] recognises, so `create-project` (which
+/// refuses a non-empty target) can run again on the site's CURRENT PHP. The
+/// folder itself stays: it is the site's recorded path. Refuses anything else.
+/// Callers must also hold that rexenv created the folder (`docroot_managed`).
+pub fn clear_failed_skeleton(project: &Path) -> Result<()> {
+    if !is_failed_skeleton(project) {
+        return Err(Error::Other(format!(
+            "{} is not a failed Laravel install — leaving it untouched",
+            project.display()
+        )));
+    }
+    for entry in std::fs::read_dir(project)? {
+        let entry = entry?;
+        // `file_type` does not follow symlinks: a link is removed as a link,
+        // never walked into.
+        if entry.file_type()?.is_dir() {
+            std::fs::remove_dir_all(entry.path())?;
+        } else {
+            std::fs::remove_file(entry.path())?;
+        }
+    }
+    Ok(())
 }
 
 /// `composer create-project laravel/laravel <project>` — the app itself.
@@ -689,21 +741,59 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
+    /// **"Installed" means the skeleton AND its dependencies; a skeleton without
+    /// `vendor/` is what a failed `create-project` leaves, and only THAT shape
+    /// may be cleared for a retry.** The failed shape is the one measured on
+    /// 11 Sep 2026 (PHP 8.1, advisory-blocked Laravel 10): `artisan`,
+    /// `public/index.php`, the skeleton's `composer.json`, no `vendor/`.
     #[test]
-    fn is_installed_wants_both_markers_the_linked_project_detector_wants() {
+    fn a_skeleton_without_dependencies_is_not_installed_and_only_it_may_be_cleared() {
         let dir = std::env::temp_dir()
             .join(format!("rexenv-laravel-{}-installed", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
 
         assert!(!is_installed(&dir));
+        assert!(!is_failed_skeleton(&dir), "an empty folder is nothing to clear");
         std::fs::write(dir.join("artisan"), "#!/usr/bin/env php").unwrap();
         assert!(!is_installed(&dir), "artisan alone is a half-written project");
         std::fs::create_dir_all(dir.join("public")).unwrap();
         std::fs::write(dir.join("public/index.php"), "<?php").unwrap();
+        assert!(!is_installed(&dir), "no vendor/ — the shape a failed create-project leaves");
+
+        // Not the skeleton's own manifest → a person's project → never cleared.
+        std::fs::write(dir.join("composer.json"), r#"{"name": "acme/shop"}"#).unwrap();
+        assert!(!is_failed_skeleton(&dir));
+        assert!(clear_failed_skeleton(&dir).is_err());
+        assert!(dir.join("artisan").is_file(), "a refused clear touched nothing");
+
+        // The skeleton's manifest, no vendor/ → the failed install.
+        std::fs::write(dir.join("composer.json"), r#"{"name": "laravel/laravel"}"#).unwrap();
+        assert!(is_failed_skeleton(&dir));
+
+        // Any vendor/ at all → dependencies were (at least partly) installed →
+        // not ours to clear, even though autoload.php is missing.
+        std::fs::create_dir_all(dir.join("vendor")).unwrap();
+        assert!(!is_failed_skeleton(&dir));
+        assert!(!is_installed(&dir));
+        std::fs::write(dir.join("vendor/autoload.php"), "<?php").unwrap();
         assert!(is_installed(&dir));
+        std::fs::remove_dir_all(dir.join("vendor")).unwrap();
+
+        // Cleared: contents gone, the folder (the site's recorded path) kept, and
+        // a symlink inside removed as a link — its target survives.
+        let outside = dir.with_extension("outside");
+        let _ = std::fs::remove_dir_all(&outside);
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("keep.txt"), "mine").unwrap();
+        std::os::unix::fs::symlink(&outside, dir.join("linked")).unwrap();
+        clear_failed_skeleton(&dir).unwrap();
+        assert!(dir.is_dir());
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 0);
+        assert!(outside.join("keep.txt").is_file(), "a link is never walked into");
 
         std::fs::remove_dir_all(&dir).unwrap();
+        std::fs::remove_dir_all(&outside).unwrap();
     }
 }
 

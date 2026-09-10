@@ -85,7 +85,7 @@ static REGISTRY: &[UserTool] = &[
                       log in), `php` (a blank PHP site) or `laravel` (a fresh skeleton). Takes \
                       `name`, `domain` (a full hostname like `shop.rex`), `type`, and optionally \
                       `php` (a minor like `8.3`), `server` (nginx / apache / frankenphp), \
-                      `db_engine` (mysql / mariadb), `blueprint` (a saved blueprint's name), and for \
+                      `db_engine` (mysql / mariadb / postgres — not for WordPress), `blueprint` (a saved blueprint's name), and for \
                       WordPress `wp` ({title, admin_user, admin_email, admin_password, language}) \
                       and `multisite` (subdomain / subdirectory); for a blank PHP site `starter_db` \
                       (true creates a database with a sample table). Needs the user's `manage` \
@@ -824,7 +824,7 @@ fn create_params() -> Value {
             "type": { "type": "string", "enum": ["wordpress", "php", "laravel"] },
             "php": { "type": "string", "description": "PHP minor, e.g. `8.3`. Defaults to rexenv's default." },
             "server": { "type": "string", "enum": ["nginx", "apache", "frankenphp"], "description": "Defaults to nginx." },
-            "db_engine": { "type": "string", "enum": ["mysql", "mariadb"], "description": "Defaults to mysql." },
+            "db_engine": { "type": "string", "enum": ["mysql", "mariadb", "postgres"], "description": "Defaults to mysql. `postgres` is for `php` and `laravel` sites on a PHP build with pdo_pgsql — WordPress cannot use it, and the refusal says why." },
             "blueprint": { "type": "string", "description": "The NAME of a saved blueprint (WordPress only)." },
             "multisite": { "type": "string", "enum": ["subdomain", "subdirectory"], "description": "WordPress only: convert to a network after install." },
             "starter_db": { "type": "boolean", "description": "Blank PHP only: create a database with a sample table and a db.php." },
@@ -1237,7 +1237,7 @@ fn plan_create(ctx: &UserCtx<'_>, args: &Value) -> Result<CreatePlan> {
     };
     let db_engine = match str_arg("db_engine") {
         Some(e) => SiteDbEngine::parse_db(e)
-            .map_err(|_| Error::Other(format!("`{e}` is not a database engine here — use `mysql` or `mariadb`.")))?,
+            .map_err(|_| Error::Other(format!("`{e}` is not a database engine here — use `mysql`, `mariadb` or `postgres`.")))?,
         None => SiteDbEngine::Mysql,
     };
     let multisite = match str_arg("multisite") {
@@ -2256,7 +2256,7 @@ fn laravel_precheck(ctx: &UserCtx<'_>, site_id: &str, tool: &str) -> Result<Site
     }
     if !crate::core::laravel::is_installed(std::path::Path::new(&site.path)) {
         return Err(Error::Other(format!(
-            "`{}` has not finished installing — there is no artisan in its project yet. Check site_status; site_retry re-runs a failed install.",
+            "`{}` has not finished installing — its project has no artisan or no installed dependencies (vendor/) yet. Check site_status; site_retry re-runs a failed install.",
             site.domain
         )));
     }
@@ -3929,6 +3929,34 @@ pub(crate) mod tests {
     /// anything, asks for `manage` on rexenv itself when the shape is fine,
     /// and — granted — runs the app's own create as the USER's site, returning
     /// the admin credentials once.**
+    /// **`site_create`'s `db_engine` enum offers exactly the engines a site can
+    /// be created on.** PostgreSQL sites shipped on 10 Sep 2026 with the handler
+    /// parsing `postgres` and the schema still listing two engines — a client
+    /// that validates against the schema (Claude Code does) could not send it,
+    /// so the agent surface silently lacked the feature. Found by the site
+    /// matrix run, not by a test: the handler's tests passed because they call
+    /// the handler directly, past the schema.
+    #[test]
+    fn site_create_schema_offers_every_site_engine() {
+        let offered: Vec<String> = create_params()["properties"]["db_engine"]["enum"]
+            .as_array()
+            .expect("db_engine is an enum")
+            .iter()
+            .map(|v| v.as_str().unwrap().to_string())
+            .collect();
+        // Exhaustive on purpose: a fourth engine fails to COMPILE here until
+        // someone decides whether the agent may create sites on it.
+        let every = |e: SiteDbEngine| match e {
+            SiteDbEngine::Mysql | SiteDbEngine::Mariadb | SiteDbEngine::Postgres => e.as_db().to_string(),
+        };
+        let expected: Vec<String> =
+            [SiteDbEngine::Mysql, SiteDbEngine::Mariadb, SiteDbEngine::Postgres].into_iter().map(every).collect();
+        assert_eq!(offered, expected);
+        for o in &offered {
+            assert!(SiteDbEngine::parse_db(o).is_ok(), "the schema offers {o} and the handler cannot parse it");
+        }
+    }
+
     #[tokio::test]
     async fn site_create_refuses_shape_before_the_gate_and_asks_after_it() {
         let state = app_state();
@@ -4864,6 +4892,12 @@ pub(crate) mod tests {
 
         std::fs::write(dir.join("artisan"), "#!/usr/bin/env php").unwrap();
         std::fs::write(dir.join("public/index.php"), "<?php").unwrap();
+        // The shape a failed `create-project` leaves (ledger #557): artisan with
+        // no dependencies cannot run, so it is still unfinished.
+        let err = site_artisan(ctx, &json!({ "site_id": lv.id, "args": ["migrate"] }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("not finished installing") && err.contains("vendor/"), "{err}");
+        std::fs::create_dir_all(dir.join("vendor")).unwrap();
+        std::fs::write(dir.join("vendor/autoload.php"), "<?php").unwrap();
         let err = site_artisan(ctx, &json!({ "site_id": lv.id, "args": ["migrate", "--seed"] }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("`run`"), "{err}");
         std::fs::remove_dir_all(&dir).unwrap();

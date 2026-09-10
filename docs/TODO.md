@@ -19,8 +19,15 @@
   take milliseconds rather than minutes, the `migrations` table asked of the
   cluster, and the delete required to complete.
 
-- [ ] **A Laravel site on an older supported PHP fails to install, for a reason
-  that is not rexenv's** — found by the check above on 10 Sep 2026. On PHP 8.1,
+- [x] **A Laravel site on an older supported PHP fails to install, for a reason
+  that is not rexenv's** ✓ 11 Sep 2026 — ledger #557, option one plus the retry
+  it needed. The failure now names the advisory-blocked package and says to switch
+  PHP; and switching then Retry now WORKS — it could not before, because the failed
+  `create-project` left a skeleton with no `vendor/` that the job read as
+  "already present". `site_matrix_check` (ALL PASS, 63 combinations) walks it on
+  8.0.30 and 8.1.34: fail named → PHP 8.5 → retry → ok. The dialog still does not
+  warn before the click (Composer's answer is not known until it is asked).
+  Found by the check above on 10 Sep 2026. On PHP 8.1,
   `composer create-project laravel/laravel` resolves to Laravel 10 (13 requires
   `^8.3`), whose framework releases are blocked by Composer's security advisories,
   so the install dies in a wall of Composer text at 58%. The site is created and

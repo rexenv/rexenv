@@ -182,6 +182,20 @@ it can:
   subject also publishes, ask what the subject would still say if the thing were
   broken.**
 
+  **`site_matrix_check` (network tier, 11 Sep 2026, ledger #555-#557) walks the
+  whole space instead of sampling it**: every pinned PHP × {Blank PHP, WordPress,
+  Laravel} × {MySQL, MariaDB, PostgreSQL} — 63 combinations in about five minutes —
+  through `site_provision_job`, a front-page request on the site's own PHP build,
+  the site's database asked of the CLUSTER, and `delete_site`. Refused combinations
+  are asserted refused, fast, and leaving no folder. Its first run found three
+  defects no per-part check could have picked, because each lives on a
+  combination nobody chose: a refused create leaving its folder behind, a Laravel
+  Retry that could never recover from a failed `create-project`, and the MCP tool
+  unable to ask for PostgreSQL at all. **It also failed 19 healthy sites on its
+  own bug** — matching the starter page's error `class` name, which is in the
+  page's stylesheet too — so a red matrix row is read against the saved page
+  before it is believed.
+
   **`postgres_site_lifecycle_check` (network tier, 10 Sep 2026, ledger #550/#551)
   is the answer to a question the other checks could not be asked**: not "does
   each part work" but "does the app use the right part". It drives

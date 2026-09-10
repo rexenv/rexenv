@@ -179,6 +179,7 @@ seed_and_list system
 server_switch_serve service
 service_manager_demo system
 site_cert_gen system
+site_matrix_check network
 site_provision_check network
 site_resources_check stack
 site_stop_start_check sandbox

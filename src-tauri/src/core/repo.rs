@@ -2190,6 +2190,31 @@ fn step_verdict(
 /// version and missing extensions — both statements about OUR bundled PHP.
 pub fn map_composer_error(tail: &[String]) -> Error {
     let joined = tail.join("\n");
+    // Packagist's security-advisory block, checked FIRST. Its output also
+    // carries "requires php" / "your php version" lines (Composer explains why
+    // the newer, unblocked releases did not fit either), so the PHP-version
+    // branch below matched it and told the user the REPO wanted a different PHP
+    // — half true, and silent about the reason that decides the fix. Found by
+    // the site matrix on 11 Sep 2026: `composer create-project laravel/laravel`
+    // on PHP 8.0 and 8.1 resolves Laravel 9 / 10, whose framework releases are
+    // all advisory-blocked. rexenv does NOT turn the block off: that would
+    // install a framework with known, unpatched vulnerabilities to make a
+    // progress bar reach 100%.
+    if let Some(line) = tail.iter().find(|l| l.contains("affected by security advisories")) {
+        let package = line
+            .split_once("found ")
+            .and_then(|(_, rest)| rest.split_once('['))
+            .map(|(name, _)| name.trim())
+            .filter(|n| n.contains('/'))
+            .unwrap_or("a required package");
+        return Error::Other(format!(
+            "Composer refused to install {package}: every release of it that runs on this \
+             PHP has a published security advisory, and Composer blocks those. The patched \
+             releases need a newer PHP — switch the site's PHP version (Site → Settings) \
+             and retry.\n{}",
+            line.trim()
+        ));
+    }
     if joined.contains("your php version") || joined.to_lowercase().contains("requires php") {
         return Error::Other(format!(
             "Composer refused: the repo requires a PHP version this site \
@@ -2326,6 +2351,34 @@ mod tests {
         // an action that is not "try again".
         let php: Vec<String> = vec!["  - Root composer.json requires php ^9.0 but your php version (8.3.31) does not satisfy that requirement.".into()];
         assert!(super::map_composer_error(&php).to_string().contains("PHP version"));
+    }
+
+    /// **An advisory-blocked install names the blocked package and the fix, and
+    /// is not mistaken for a plain PHP-version refusal.** The tail is REAL —
+    /// `composer create-project laravel/laravel` on PHP 8.0.30, 11 Sep 2026
+    /// (site matrix). It carries `your php version` lines AFTER the advisory,
+    /// which is exactly what sent it down the PHP-version branch before.
+    #[test]
+    fn an_advisory_blocked_install_says_so_before_it_says_php_version() {
+        let tail: Vec<String> = [
+            "Cannot use laravel/laravel's latest version v13.10.1 as it requires php ^8.3 which is not satisfied by your platform.",
+            "Installing laravel/laravel (v9.5.2)",
+            "Your requirements could not be resolved to an installable set of packages.",
+            "  Problem 1",
+            "    - Root composer.json requires laravel/framework ^9.19, found laravel/framework[v9.19.0, ..., v9.52.22] but these were not loaded, because they are affected by security advisories (\"PKSA-m5cs-t1y6-qpcs\", \"PKSA-3r5d-mb8f-1qw9\"). Go to https://packagist.org/security-advisories/ to find advisory details.",
+            "  Problem 2",
+            "    - illuminate/console[v10.0.0, ..., v10.49.0] require php ^8.1 -> your php version (8.0.30) does not satisfy that requirement.",
+            "    - symfony/process[v6.4.33, ..., v6.4.45] require php >=8.1 -> your php version (8.0.30) does not satisfy that requirement.",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        let msg = super::map_composer_error(&tail).to_string();
+        assert!(msg.contains("security advisory"), "the reason that decides the fix: {msg}");
+        assert!(msg.contains("laravel/framework"), "name the blocked package: {msg}");
+        assert!(msg.contains("switch the site's PHP version"), "the action: {msg}");
+        assert!(msg.contains("PKSA-m5cs-t1y6-qpcs"), "Composer's own words survive, for searching: {msg}");
+        assert!(!msg.contains("the repo requires"), "not the PHP-version sentence: {msg}");
     }
 
     use super::*;
