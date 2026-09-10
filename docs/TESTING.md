@@ -168,6 +168,20 @@ it can:
   entitled to delete must say so when it goes: the phase gate now names the sweep
   instead of dying inside somebody else's subprocess.
 
+  **`postgres_site_lifecycle_check` (network tier, 10 Sep 2026, ledger #550/#551)
+  is the answer to a question the other checks could not be asked**: not "does
+  each part work" but "does the app use the right part". It drives
+  `site_provision_job` and `delete_site` for a real PostgreSQL Laravel site and
+  takes its PHP from the REGISTRY — which is where both of that day's defects
+  lived, and why four green checks did not see them. Two of its legs are shaped by
+  the failures rather than by the feature: the settle wait is BOUNDED, because a
+  missing driver busy-loops and "never finishes" is not something an unbounded
+  wait can report; and the refusal leg asserts a time limit, because that refusal
+  used to be a four-minute hang. **Its first red run taught it one more thing**:
+  it said only `settled failed@58`, so it now keeps the job's streamed lines —
+  a check whose failure does not name itself is the report shape this whole
+  feature has been fixing.
+
   **`laravel_postgres_check` (network tier, 9-10 Sep 2026, ledger #545) is the
   same layer answering a question that first KILLED a feature step and then
   cleared it.** Laravel on PostgreSQL needs PDO, and the static-php.dev builds'

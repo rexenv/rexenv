@@ -1,3 +1,23 @@
+- [x] **Live-check a PostgreSQL site end to end — provision, delete** ✓ 10 Sep 2026
+  — `examples/postgres_site_lifecycle_check` (network tier, ALL PASS). Drives the
+  APP (`site_provision_job` → `delete_site`) and takes its PHP from the registry,
+  which is the seam #550 and #551 lived in: four green checks missed them because
+  each interrogated the parts, and the app was wrong about which part it would
+  use. Legs shaped by the failures: a BOUNDED settle wait, a refusal asserted to
+  take milliseconds rather than minutes, the `migrations` table asked of the
+  cluster, and the delete required to complete.
+
+- [ ] **A Laravel site on an older supported PHP fails to install, for a reason
+  that is not rexenv's** — found by the check above on 10 Sep 2026. On PHP 8.1,
+  `composer create-project laravel/laravel` resolves to Laravel 10 (13 requires
+  `^8.3`), whose framework releases are blocked by Composer's security advisories,
+  so the install dies in a wall of Composer text at 58%. The site is created and
+  badged "setup incomplete", which is honest but tells the user nothing they can
+  act on. Options: name it in the failure summary ("Laravel's supported releases
+  need PHP 8.3+; this site is on 8.1"), or let the create dialog say so before the
+  click. NOT `--no-security-blocking`: shipping known-vulnerable framework
+  releases to make an install succeed is the wrong trade.
+
 # TODO — the single active-work file
 
 Everything open lives here, and ONLY open work lives here. Shipped rows move to the
