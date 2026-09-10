@@ -19,12 +19,18 @@ not part of WP-CLI, so rexenv carries it rather than resolving it from a machine
 it does not control — the tree is compiled into the app binary and written out on
 first use. It is listed in its own section below.
 
-**2. PHP 7.4.33 (15 Aug 2026) and nginx 1.30.4 (31 Aug 2026) — rexenv builds
-them, hosts them, and is therefore their distributor.** static-php.dev publishes
-no PHP 7.4 and never did, so rexenv builds it (`rexenv/runtimes`,
-static-php-cli, from `shivammathur/php-src-backports`) and hosts the four
-artifacts as immutable GitHub Release assets that the app then downloads. nginx
-joined for a different reason — upstream's darwin builds moved to a macOS 26
+**2. PHP 7.4.33 (15 Aug 2026), PHP 8.1-8.5 (10 Sep 2026) and nginx 1.30.4
+(31 Aug 2026) — rexenv builds them, hosts them, and is therefore their
+distributor.** static-php.dev publishes no PHP 7.4 and never did, so rexenv
+builds it (`rexenv/runtimes`, static-php-cli, from
+`shivammathur/php-src-backports`) and hosts the four artifacts as immutable
+GitHub Release assets that the app then downloads. **8.1 through 8.5 joined for
+a different reason: upstream's builds ship `pgsql` and no `pdo_pgsql`**, while
+their PDO advertises `pgsql` — so a PDO connection is accepted and then stalls
+until PostgreSQL closes it, which is every Laravel `pgsql` app. Ours add the
+driver and prove it in CI against a real cluster; 8.0 remains upstream's, since
+it aborts on x86_64 in a way nobody has explained and is EOL. nginx joined for
+yet another reason — upstream's darwin builds moved to a macOS 26
 deployment target, which would have locked out every Intel user below macOS 26 —
 and it carries the same obligations. Every other row in
 `docs/PORTS.md` names somebody else's build; this one names ours. The PHP
@@ -134,6 +140,36 @@ asserted in the build, not assumed.
 refuses to resolve an artifact served from rexenv's own infrastructure unless a
 licence archive is pinned beside it — build 1 of this release shipped without
 one and the app would not load it, which is how the rule proved itself.
+
+## PHP 8.1-8.5 — rexenv's own builds (downloaded at runtime, distributed BY US)
+
+Same standing as the 7.4 row below, for a different reason: these versions ARE
+published upstream, and the upstream build has a hole. `pdo_pgsql` is absent
+while `PDO::getAvailableDrivers()` lists `pgsql`, so a Laravel app on PostgreSQL
+connects to nothing and stalls until the server times it out.
+
+| | |
+|---|---|
+| Artifacts | `php-{8.1.34,8.2.31,8.3.31,8.4.23,8.5.8}-{cli,fpm}-macos-{aarch64,x86_64}.tar.gz` |
+| Built by | `rexenv/runtimes` (public), static-php-cli 2.8.5, GitHub Actions |
+| Source | php.net release tarballs, fetched and pinned by static-php-cli |
+| Release | `php-8x-1` — immutable, never re-uploaded; a rebuild is the next build number |
+| Pinned in | `core/binaries.rs` (`PHP_8_*_SHA256`, `php_self_hosted_tag`) |
+| Licence | **PHP License 3.01** (`licenses/PHP-3.01.txt`) |
+
+Two build gates decide whether these ship: **extension parity** with the upstream
+build each one replaces, per minor, against a module list generated from the
+artifact rexenv actually shipped — self-hosting's real risk is a capability a
+user had yesterday — and a **real PostgreSQL connection through PDO**, because
+`php -m` and `PDO::getAvailableDrivers()` both reported PostgreSQL support in the
+artifact that had none.
+
+**PHP 8.0.30 is NOT ours** and still comes from static-php.dev, so it has no
+working `pdo_pgsql`. It builds and passes every gate on arm64 and aborts on
+x86_64 inside static-php-cli's own sanity check, reproducibly and unexplained;
+it has been end-of-life since Nov 2023. Statically linked dependencies' licences
+travel the same way as for 7.4 below, as `licenses-php-<version>-<arch>.tar.gz`
+in the same release.
 
 ## PHP 7.4.33 — rexenv's own build (downloaded at runtime, distributed BY US)
 

@@ -124,12 +124,17 @@ fn ensure_server_runs_php(server: WebServer, php_version: &str) -> Result<()> {
 /// function with whatever the caller sent.
 ///
 /// Laravel and Blank PHP have no such constraint from the FRAMEWORK: `pgsql` is
-/// a first-class Laravel driver and a PDO DSN prefix. They are refused for a
-/// different, temporary reason — [`crate::core::php::PDO_PGSQL_IN_BUNDLED_PHP`]
-/// is `false`, so PDO cannot reach PostgreSQL from the PHP rexenv ships
-/// (docs/PLAN-postgres-sites.md §b). Two refusals, two lifetimes: one is
-/// permanent and about WordPress, one lifts when the runtime is rebuilt.
-fn ensure_engine_supports(site_type: SiteType, engine: SiteDbEngine) -> Result<()> {
+/// a first-class Laravel driver and a PDO DSN prefix. They are refused only on a
+/// PHP MINOR whose build cannot reach PostgreSQL through PDO
+/// ([`crate::core::php::pdo_pgsql_supported`] — 7.4 and 8.0 today). **Two
+/// refusals, two lifetimes and two subjects**: WordPress's is permanent and
+/// about `wpdb`; this one is about the runtime the site happens to run, and the
+/// same site on 8.1 is fine (docs/PLAN-postgres-sites.md §b).
+fn ensure_engine_supports(
+    site_type: SiteType,
+    engine: SiteDbEngine,
+    php_version: &str,
+) -> Result<()> {
     if engine != SiteDbEngine::Postgres {
         return Ok(());
     }
@@ -141,21 +146,24 @@ fn ensure_engine_supports(site_type: SiteType, engine: SiteDbEngine) -> Result<(
                 .into(),
         ));
     }
-    // …and for the two types that COULD use it, the blocker is the runtime, not
-    // the framework: Laravel's `pgsql` driver and the Blank-PHP starter's
-    // `db.php` both go through PDO, and the bundled PHP's `pdo_pgsql` does not
-    // connect (measured — see the constant). Refusing at create time is the
-    // honest shape: the alternative is a site that provisions cleanly, gets a
-    // database and an `.env`, and then hangs for 60 seconds on its first query
-    // with an error that names neither PHP nor rexenv.
-    if !crate::core::php::PDO_PGSQL_IN_BUNDLED_PHP {
-        return Err(Error::Other(
-            "PostgreSQL sites need PDO, and the PHP rexenv ships cannot reach PostgreSQL \
-             through it yet (its `pdo_pgsql` advertises itself and then stalls — measured \
-             against PostgreSQL 16, 17 and 18). Use MySQL or MariaDB for now; PostgreSQL \
-             is available on the Databases page and through Adminer meanwhile."
-                .into(),
-        ));
+    // …and for the two types that COULD use it, the remaining blocker is the
+    // RUNTIME rather than the framework: Laravel's `pgsql` driver and the
+    // Blank-PHP starter's `db.php` both go through PDO, and the builds for 7.4
+    // and 8.0 have no working `pdo_pgsql` (measured — see
+    // `php::pdo_pgsql_supported`). Refusing at create time is the honest shape:
+    // the alternative is a site that provisions cleanly, gets a database and an
+    // `.env`, and then hangs on its first query with an error naming neither PHP
+    // nor rexenv. The refusal names the WAY OUT, because unlike the WordPress
+    // one there is one: choose a newer PHP.
+    let minor = crate::core::php::minor_of(php_version);
+    if !crate::core::php::pdo_pgsql_supported(&minor) {
+        return Err(Error::Other(format!(
+            "PHP {minor} cannot reach PostgreSQL — a PostgreSQL site talks to its database \
+             through PDO, and the {minor} build rexenv ships has no working `pdo_pgsql` \
+             (it advertises the driver and then stalls; measured against PostgreSQL 16, 17 \
+             and 18). Use PHP {} or newer for this site, or MySQL/MariaDB on {minor}.",
+            crate::core::php::oldest_pdo_pgsql_minor()
+        )));
     }
     Ok(())
 }
@@ -477,7 +485,7 @@ fn create_recording_ownership(
     validate_docroot_path(&new.path)?;
     ensure_server_available(new.web_server)?;
     ensure_server_runs_php(new.web_server, &new.php_version)?;
-    ensure_engine_supports(new.site_type, new.db_engine)?;
+    ensure_engine_supports(new.site_type, new.db_engine, &new.php_version)?;
     if let Some(owner) = domain_taken_by(conn, &new.domain)? {
         return Err(Error::Other(format!(
             "{} already reaches the site \"{owner}\" — one hostname can only reach one site",
@@ -2561,7 +2569,7 @@ mod tests {
     fn postgres_is_refused_at_the_insert_chokepoint_for_two_different_reasons() {
         // Not in the dialog: `rex site create --db postgres` and the MCP
         // create_site tool both parse the engine out of a string and land here.
-        let err = ensure_engine_supports(SiteType::Wordpress, SiteDbEngine::Postgres)
+        let err = ensure_engine_supports(SiteType::Wordpress, SiteDbEngine::Postgres, "8.4.23")
             .expect_err("WordPress on PostgreSQL must be refused");
         let msg = err.to_string();
         assert!(msg.contains("PostgreSQL"), "{msg}");
@@ -2570,31 +2578,49 @@ mod tests {
             !msg.contains("pdo_pgsql") && !msg.contains("stalls"),
             "WordPress is refused for its OWN reason, not the runtime's: {msg}"
         );
+        // …and it holds on a PHP that CAN reach PostgreSQL — the WordPress
+        // refusal must not be quietly resting on the runtime one.
+        assert!(crate::core::php::pdo_pgsql_supported("8.4"));
 
-        // Laravel and Blank PHP are refused too, for the OTHER reason — and the
-        // two refusals must not be confused, because only one of them lifts.
-        // This assertion is written against the constant rather than against
-        // today's value, so flipping the runtime record opens the door here and
-        // this test follows it instead of failing.
+        // The second refusal has a different subject: the PHP MINOR, not the
+        // site type. Both types are allowed on a runtime with the driver and
+        // refused on one without, and the two messages must not be confusable —
+        // only one of them names a way forward, because only one has one.
         for t in [SiteType::Laravel, SiteType::Php] {
-            let r = ensure_engine_supports(t, SiteDbEngine::Postgres);
-            if crate::core::php::PDO_PGSQL_IN_BUNDLED_PHP {
-                assert!(r.is_ok(), "{t:?} on PostgreSQL must be allowed once PDO works");
-            } else {
-                let m = r.expect_err("PostgreSQL needs PDO, which this PHP lacks").to_string();
+            for good in ["8.1.34", "8.5.8"] {
+                assert!(
+                    ensure_engine_supports(t, SiteDbEngine::Postgres, good).is_ok(),
+                    "{t:?} on PostgreSQL must be allowed on PHP {good}"
+                );
+            }
+            for bad in ["7.4.33", "8.0.30"] {
+                let m = ensure_engine_supports(t, SiteDbEngine::Postgres, bad)
+                    .expect_err("PostgreSQL needs PDO, which this build lacks")
+                    .to_string();
                 assert!(m.contains("PDO"), "the refusal must name the reason: {m}");
-                assert!(m.contains("MySQL") || m.contains("MariaDB"), "and a way forward: {m}");
+                assert!(
+                    m.contains(&crate::core::php::oldest_pdo_pgsql_minor()),
+                    "and the version that works: {m}"
+                );
+                assert!(
+                    m.contains(&crate::core::php::minor_of(bad)),
+                    "and the one the site is on: {m}"
+                );
             }
         }
 
-        // Nothing else changed: every MySQL-protocol pairing stays allowed.
+        // Nothing else changed: every MySQL-protocol pairing stays allowed, on
+        // every runtime — including the two with no PostgreSQL driver, since
+        // that is exactly what they are still good for.
         for (t, e) in [
             (SiteType::Wordpress, SiteDbEngine::Mysql),
             (SiteType::Wordpress, SiteDbEngine::Mariadb),
             (SiteType::Laravel, SiteDbEngine::Mysql),
             (SiteType::Php, SiteDbEngine::Mariadb),
         ] {
-            assert!(ensure_engine_supports(t, e).is_ok(), "{t:?} + {e:?} must be allowed");
+            for v in ["7.4.33", "8.0.30", "8.4.23"] {
+                assert!(ensure_engine_supports(t, e, v).is_ok(), "{t:?} + {e:?} on {v}");
+            }
         }
     }
 

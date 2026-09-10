@@ -260,41 +260,50 @@ const GHCR_ANON_AUTH: &[(&str, &str)] = &[("Authorization", "Bearer QQ==")];
 const CADDY_2_11_4_MAC_ARM64_SHA512: &str = "3190ae0df98b59ab4b6021556fa35adc3c526a4f3e138776b0eaec8a037cc26121cbbb1ad53453f565551b47d37d5ba4755e2c2c3652256737fe2ce9e53c8ec0";
 const CADDY_2_11_4_MAC_AMD64_SHA512: &str = "e04eb10f9ce7e2e079bc9bff1bd5d3a3164888d1edbb1a49e5d15be4eab691b57e89ed36bb29c65ba43f1ba8d9279e0967b1003991c13fe4cb78384c3caf25de";
 
-// static-php.dev "bulk" build SHA-256 (computed at pin time — source publishes
-// no checksums; downloaded and hashed each artifact). The bulk build includes
-// mysqli (required by WordPress) + a wide extension set, unlike "common".
-// One digest per version × {cli,fpm} × {arm64,amd64}; both arches pinned together.
-// NOTE: upstream REBUILDS these artifacts in place (same URL, new bytes) — a
-// sudden checksum mismatch in the wild usually means a rebuild, not tampering.
-// On mismatch: download, verify (`php -v` version + `php -m` has mysqli, Mach-O
-// arch), then re-pin. 8.2/8.3 re-pinned 2026-07-05 after the 2026-07-01 rebuild.
-// 8.0.30 / 8.4.23 / 8.5.8 pinned 2026-07-11: all 12 artifacts downloaded, hashed,
-// extracted, and RUN (arm64 native + x86_64 under Rosetta) — version + mysqli +
-// Mach-O arch verified on every one before pinning.
+// PHP artifact digests. **8.0.30 is static-php.dev's; 8.1-8.5 are OURS** since
+// 10 Sep 2026 (release `php-8x-1`, immutable) — see `php_self_hosted_tag` for
+// why, in one line: the bulk builds' `pdo_pgsql` does not exist while their PDO
+// says it does.
+//
+// The two sources differ in a way that matters to whoever re-pins:
+//
+// - **Ours cannot change under a pin.** A rebuild is a new tag, never a
+//   re-upload, so a stale digest 404s rather than silently fetching new bytes.
+//   Re-pinning means bumping the tag AND all four digests for that version.
+// - **static-php.dev REBUILDS in place** (same URL, new bytes), so a sudden
+//   mismatch there usually means a rebuild rather than tampering. On mismatch:
+//   download, verify (`php -v` version + `php -m` has mysqli, Mach-O arch), then
+//   re-pin. 8.2/8.3 were re-pinned 2026-07-05 after the 2026-07-01 rebuild;
+//   8.0.30 was pinned 2026-07-11, downloaded, hashed, extracted and RUN.
+//
+// One digest per version × {cli,fpm} × {arm64,amd64}; both arches pinned
+// together. The 8.1-8.5 rows below were taken from `php-8x-1`'s own SHA256SUMS,
+// whose artifacts CI had already run: parity against the bulk module list for
+// that minor, and a live PostgreSQL connection through PDO.
 const PHP_8_0_30_CLI_MAC_ARM64_SHA256: &str = "13c77c837cd50c027e1c614c192b25205123311a30d2335e9a3c8f82d23acb9a";
 const PHP_8_0_30_CLI_MAC_AMD64_SHA256: &str = "b025f2c343916dd97d4cad543f0cc4c07ac882af10bc72773ad27ab8f6c9f59a";
 const PHP_8_0_30_FPM_MAC_ARM64_SHA256: &str = "e91bc2624c4469ceb0d7f7d93d643e1aebadd451556b0b1cc8d5142531b14138";
 const PHP_8_0_30_FPM_MAC_AMD64_SHA256: &str = "ec02cd54162c190c0029ddccbc382e21442b4941aedef9455b8d6fd32bc472d5";
-const PHP_8_1_34_CLI_MAC_ARM64_SHA256: &str = "b721271659d6e3448c29c0dc5755ffc4b8a1498c4709e1aba6602cfb584a84e4";
-const PHP_8_1_34_CLI_MAC_AMD64_SHA256: &str = "5fe69256365f96a270e34208ec574be7012c8c08a23bdf52948d0d16d4d8ec6a";
-const PHP_8_1_34_FPM_MAC_ARM64_SHA256: &str = "c5faad9eac5ce9753c30a17fb2a2023dcf72e5b367e0ac76b81d006647ea0e52";
-const PHP_8_1_34_FPM_MAC_AMD64_SHA256: &str = "eab87df298d83c8182f296e3f56ac4025cdb2a74baa4b6587d27ea39ac31b5e6";
-const PHP_8_2_31_CLI_MAC_ARM64_SHA256: &str = "f4ed44af2ad24588ba2ac1934bfaf794a923dd629fbc8958e37caabef9a592aa";
-const PHP_8_2_31_CLI_MAC_AMD64_SHA256: &str = "5e38df46d55b058765ea81c54b5368ce951cf2974591f42377d41b78426b75e0";
-const PHP_8_2_31_FPM_MAC_ARM64_SHA256: &str = "d2041fbb23cdfcedd4561edc76be81e2d2ea07e4e0d9a2033f224ef5a30954f1";
-const PHP_8_2_31_FPM_MAC_AMD64_SHA256: &str = "33984f891a586baa98ac847a224d050f294278dbc8953e84c2358aef1949c395";
-const PHP_8_3_31_CLI_MAC_ARM64_SHA256: &str = "8dd2089ced9f07165fe7d8c1789810547e27936b9d3b3075f91cf608dbf65bb9";
-const PHP_8_3_31_CLI_MAC_AMD64_SHA256: &str = "a3b39184563f7e53b7d53df94ec38ac02d69388aefec5bf7b5fd82d6061cc753";
-const PHP_8_3_31_FPM_MAC_ARM64_SHA256: &str = "1995f59e7eecfd7897e837929bdeb45fc277bad3d0375a228eaa74c0862188cb";
-const PHP_8_3_31_FPM_MAC_AMD64_SHA256: &str = "33e10b2eac7a478f913ed6ce6bfd7c10e0b8177ebf26747e9c8175408308d3eb";
-const PHP_8_4_23_CLI_MAC_ARM64_SHA256: &str = "4a5dca6df0211f7fb21425cf1c867968b2dfb7c079f98cf37770c5728e0bf709";
-const PHP_8_4_23_CLI_MAC_AMD64_SHA256: &str = "be88a71134d43e8800946f8372da931ee1796c400a1fb4cf2afd718644251ffc";
-const PHP_8_4_23_FPM_MAC_ARM64_SHA256: &str = "1a417db44f0eb0b40a9f8cd862f24ecfabdea87f85863f30d218c4876bb688ef";
-const PHP_8_4_23_FPM_MAC_AMD64_SHA256: &str = "67bbb7f2b2543d45c8a4ab0e4759fbd956530e87fba47a00505c06f09c9b9950";
-const PHP_8_5_8_CLI_MAC_ARM64_SHA256: &str = "5e5032e8244a2367b1e8a9c70ff6f793dee7433966c9291da85fadf2167cd55f";
-const PHP_8_5_8_CLI_MAC_AMD64_SHA256: &str = "d5a9a505ebce66c7f6b4f4e16629c36f385f2d360df915875722d67fe8bb2161";
-const PHP_8_5_8_FPM_MAC_ARM64_SHA256: &str = "1d994fbc4e49015a7cd4ad4fcb7c03e7e219f65fdb14e5e33ef1c44d928368e9";
-const PHP_8_5_8_FPM_MAC_AMD64_SHA256: &str = "57cdce953a8392e655a800908eb5e8fa61e2b7d795b8e7d3f354b3d81939563d";
+const PHP_8_1_34_CLI_MAC_ARM64_SHA256: &str = "d5cf4e5e8454063359636bdaff76b31e7d10785396b771db414bad6a365e2b1e";
+const PHP_8_1_34_CLI_MAC_AMD64_SHA256: &str = "8d7be487d7632e8a2bd73d2e6e91b1a0d3e3af24199dfd56c025566842438b49";
+const PHP_8_1_34_FPM_MAC_ARM64_SHA256: &str = "28e1bfe7cbd50cf676f10dedc7d57beb35ae522c00783195bdd6cb855048e6aa";
+const PHP_8_1_34_FPM_MAC_AMD64_SHA256: &str = "d78b66564994b40de72dc0978852675b5aa2514cb342998e71d63fb80fcf8caa";
+const PHP_8_2_31_CLI_MAC_ARM64_SHA256: &str = "b788fa8fe3285a1e22e4fc6316734c3dcbecfd64868799bbfe9a79e4086dc775";
+const PHP_8_2_31_CLI_MAC_AMD64_SHA256: &str = "3217e9e060b8a2aff51ecab194238e9133378497814a6d086db469cf411ed840";
+const PHP_8_2_31_FPM_MAC_ARM64_SHA256: &str = "b30abb8188b04ef41561be9402378fbca3dede6e0d007d6ae01d7ba79c04a561";
+const PHP_8_2_31_FPM_MAC_AMD64_SHA256: &str = "5989a9709b9b9b3934393658f4ac15507bd2eadb54893e50271b5f9a4669149c";
+const PHP_8_3_31_CLI_MAC_ARM64_SHA256: &str = "e070ccae9b7f0a85b9b8831e60722ad95936a63be1c0c99e2d0ecf4427bac940";
+const PHP_8_3_31_CLI_MAC_AMD64_SHA256: &str = "c8ef0c39dc79785dbf1b9d9f203cf89be7f1c939b0707463b0a429293a904c50";
+const PHP_8_3_31_FPM_MAC_ARM64_SHA256: &str = "dc97df7e160669a7bc4c5b6c569b18241b3c89e2ae9050037768b9ee626a8d9d";
+const PHP_8_3_31_FPM_MAC_AMD64_SHA256: &str = "59269e47b2f6ac61dc8a351e656b77317d33a37ef9e7c9f1477abee93245c376";
+const PHP_8_4_23_CLI_MAC_ARM64_SHA256: &str = "e5dc56483e4b7079ea97e5d0ce0c8fa4cb08fafe0e631211061ab56c09b5c3ac";
+const PHP_8_4_23_CLI_MAC_AMD64_SHA256: &str = "13a587dd1294393d2c551e5199fbe46498bfcd95464edb4a0704c9a6358736ce";
+const PHP_8_4_23_FPM_MAC_ARM64_SHA256: &str = "1ff2990b87e9d3575def5115be7b078ae6f1c497acc9abc0b37cfa329287ce7e";
+const PHP_8_4_23_FPM_MAC_AMD64_SHA256: &str = "7cb7430ebb7590de27234465ea8484b20cecdccc5c1b47189fb31bc2a743185c";
+const PHP_8_5_8_CLI_MAC_ARM64_SHA256: &str = "5d3e7fd0327a7bffac368c1b9bfe49b516fc286fc56798a57832a576239cb1e7";
+const PHP_8_5_8_CLI_MAC_AMD64_SHA256: &str = "b3d42449ccaff704d3d7a19e1128b1941265898368dbd18eae4fb2ba19c715db";
+const PHP_8_5_8_FPM_MAC_ARM64_SHA256: &str = "9ab05b8eeb926dca0abad31f36ac274e755816748f19651be7625ab52ed5c841";
+const PHP_8_5_8_FPM_MAC_AMD64_SHA256: &str = "8555e1ac42e71586e42435f1b1379f20b7da4c8068e9c376fb3a956b80df0923";
 
 // nginx — OURS since 30 Aug 2026 (`rexenv/runtimes`, release `nginx-1.30.4-2`,
 // immutable), and the reason is the macOS FLOOR, not the version.
@@ -725,6 +734,25 @@ fn php_self_hosted_tag(version: &str) -> Option<&'static str> {
         // JIT that cannot allocate on Apple Silicon, and -4 was short 5 of the
         // extensions the 8.x rows carry.
         "7.4.33" => Some("php-7.4.33-6"),
+
+        // 8.1-8.5 are ALSO ours now, and for a reason that has nothing to do
+        // with availability: static-php.dev's bulk builds ship `pgsql` and NO
+        // `pdo_pgsql`, while their PDO advertises `pgsql` — so a PDO connection
+        // is accepted and then stalls until PostgreSQL closes it. Laravel's
+        // `pgsql` driver IS that call (ledger #545). These builds add the driver
+        // and PROVE it in CI by connecting to a real cluster, and they hold
+        // extension PARITY with the artifacts they replace as a build gate, per
+        // minor, against a module list generated from the shipped bulk binary.
+        //
+        // **8.0.30 is deliberately NOT here.** It builds and passes every gate on
+        // arm64 and aborts on x86_64 inside static-php-cli's own sanity check
+        // (`php -n -r 'echo "hello";'` exits 6 with no output), reproducibly, with
+        // three different extension subsets excluded in turn. Cause unknown, EOL
+        // since Nov 2023, and half an architecture is not shippable — so it keeps
+        // coming from static-php.dev, without a PDO PostgreSQL driver. That is
+        // the whole reason `php::pdo_pgsql_supported` answers per MINOR.
+        "8.1.34" | "8.2.31" | "8.3.31" | "8.4.23" | "8.5.8" => Some("php-8x-1"),
+
         _ => None,
     }
 }
@@ -933,6 +961,16 @@ const NGINX_1_30_4_LICENSES_MAC_ARM64_SHA256: &str = "517f6656ae4bae3f1aa29e64ce
 const NGINX_1_30_4_LICENSES_MAC_AMD64_SHA256: &str = "cbf546b81a7b02bd9e71e50f0ef1a1da549e527c7e528e346514b511bc1f9d2b";
 const PHP_7_4_33_LICENSES_MAC_ARM64_SHA256: &str = "d8fd80a258f1d8e6609d3e0e95a3b62e5c30820a3dba8e0390c78e4494491478";
 const PHP_7_4_33_LICENSES_MAC_AMD64_SHA256: &str = "fa1ae808cb2febdb01e2df2975b0618dba4c0caff39f51161328ee97c2b60ba2";
+const PHP_8_1_34_LICENSES_MAC_ARM64_SHA256: &str = "e49599567c488a722622eb7f6f4a78c7a2ca31fd171a5a7da49fcfb7a17be794";
+const PHP_8_1_34_LICENSES_MAC_AMD64_SHA256: &str = "ecfac260e467d742939c47dad2c70cb1e0ffe0d639e6c2d7c43ff89e6dc91350";
+const PHP_8_2_31_LICENSES_MAC_ARM64_SHA256: &str = "d684160288599e8af0dcac7b91fdfbef0353227de29fbad17a8107a3e581279a";
+const PHP_8_2_31_LICENSES_MAC_AMD64_SHA256: &str = "920a14c68219a17bb9fd3588684faaf1bcab01b4afb68d3accce126618200711";
+const PHP_8_3_31_LICENSES_MAC_ARM64_SHA256: &str = "2f6dfa384863f4a227c1fdb0d771ba8506cac47de4acc245074161bb8b57d094";
+const PHP_8_3_31_LICENSES_MAC_AMD64_SHA256: &str = "23f058e11c11036dd8484c976f784d03b287bf2a05097c7bdc4acbcd5c580975";
+const PHP_8_4_23_LICENSES_MAC_ARM64_SHA256: &str = "a1c7f34d023632ba01ebfb3b1daa4432657115e8b86ddc2772ef21a19fd5441f";
+const PHP_8_4_23_LICENSES_MAC_AMD64_SHA256: &str = "7ce92e3991fe4a14bfa1484296238e86dc8fef5a7325e104331222892d0ec64c";
+const PHP_8_5_8_LICENSES_MAC_ARM64_SHA256: &str = "98da381d2df3c89485753a8d0bbe4f41aa0f3e4b36f7666a69e7bb7032220f5a";
+const PHP_8_5_8_LICENSES_MAC_AMD64_SHA256: &str = "f151b6a47c1e9629fc928dd56cbd9c7da5a3fdde1fca5e4027b14a01635be2ab";
 
 /// Directory inside a published cache dir holding the artifact's licence texts.
 /// Matches the tarball's own top-level dir, so extraction is `strip = 0`.
@@ -1028,16 +1066,49 @@ fn licenses_spec(url: &str, name: &str, version: &str, arch: Arch) -> Result<Opt
     // Keyed on (name, version): two different artifacts are now self-built, and
     // keying on the version alone would have made "1.30.4" answer for whatever
     // else ever carries that number.
-    let (arm, amd) = match (name, version) {
+    // …and the FILE NAME travels with the digests. A release carrying ONE
+    // artifact can call its licences `licenses-<arch>.tar.gz`; `php-8x-1` holds
+    // five versions, so theirs are `licenses-php-<version>-<arch>.tar.gz`. That
+    // is a property of each release, not a convention — deriving one name for
+    // all of them would 404 half the tree, and only on a machine that had not
+    // cached PHP yet.
+    let (arm, amd, file) = match (name, version) {
         ("php", "7.4.33") | ("php-fpm", "7.4.33") => (
             PHP_7_4_33_LICENSES_MAC_ARM64_SHA256,
             PHP_7_4_33_LICENSES_MAC_AMD64_SHA256,
+            format!("licenses-{}.tar.gz", php_arch(arch)),
+        ),
+        ("php", "8.1.34") | ("php-fpm", "8.1.34") => (
+            PHP_8_1_34_LICENSES_MAC_ARM64_SHA256,
+            PHP_8_1_34_LICENSES_MAC_AMD64_SHA256,
+            format!("licenses-php-8.1.34-{}.tar.gz", php_arch(arch)),
+        ),
+        ("php", "8.2.31") | ("php-fpm", "8.2.31") => (
+            PHP_8_2_31_LICENSES_MAC_ARM64_SHA256,
+            PHP_8_2_31_LICENSES_MAC_AMD64_SHA256,
+            format!("licenses-php-8.2.31-{}.tar.gz", php_arch(arch)),
+        ),
+        ("php", "8.3.31") | ("php-fpm", "8.3.31") => (
+            PHP_8_3_31_LICENSES_MAC_ARM64_SHA256,
+            PHP_8_3_31_LICENSES_MAC_AMD64_SHA256,
+            format!("licenses-php-8.3.31-{}.tar.gz", php_arch(arch)),
+        ),
+        ("php", "8.4.23") | ("php-fpm", "8.4.23") => (
+            PHP_8_4_23_LICENSES_MAC_ARM64_SHA256,
+            PHP_8_4_23_LICENSES_MAC_AMD64_SHA256,
+            format!("licenses-php-8.4.23-{}.tar.gz", php_arch(arch)),
+        ),
+        ("php", "8.5.8") | ("php-fpm", "8.5.8") => (
+            PHP_8_5_8_LICENSES_MAC_ARM64_SHA256,
+            PHP_8_5_8_LICENSES_MAC_AMD64_SHA256,
+            format!("licenses-php-8.5.8-{}.tar.gz", php_arch(arch)),
         ),
         ("nginx", "1.30.4") => (
             NGINX_1_30_4_LICENSES_MAC_ARM64_SHA256,
             NGINX_1_30_4_LICENSES_MAC_AMD64_SHA256,
+            format!("licenses-{}.tar.gz", php_arch(arch)),
         ),
-        _ => ("", ""),
+        _ => ("", "", String::new()),
     };
     let hex = match arch {
         Arch::Arm64 => arm,
@@ -1058,8 +1129,7 @@ fn licenses_spec(url: &str, name: &str, version: &str, arch: Arch) -> Result<Opt
         return Err(missing());
     }
     Ok(Some(BinarySpec {
-        url: sibling_url(url, &format!("licenses-{}.tar.gz", php_arch(arch)))
-            .ok_or_else(missing)?,
+        url: sibling_url(url, &file).ok_or_else(missing)?,
         checksum: Checksum::Sha256(hex.to_string()),
         archive: Archive::TarGzTree,
         member: LICENSES_DIR,
@@ -3785,8 +3855,13 @@ mod tests {
         std::fs::remove_file(dir.join(PIN_MARKER)).unwrap();
         assert!(php_self_hosted_tag("7.4.33").is_some());
         assert!(!cache_matches_pin(&dir, "7.4.33", &pin), "self-hosted, unmarked → refetch");
-        assert!(php_self_hosted_tag(PHP_VERSION).is_none());
-        assert!(cache_matches_pin(&dir, PHP_VERSION, &pin), "upstream, unmarked → grandfathered");
+        // The upstream half is ASKED for, not spelled: `PHP_VERSION` was the
+        // literal here until the default minor became one of ours (10 Sep 2026),
+        // at which point this test asserted the two halves of an asymmetry using
+        // the same side twice.
+        let upstream = upstream_php_version();
+        assert!(php_self_hosted_tag(upstream).is_none());
+        assert!(cache_matches_pin(&dir, upstream, &pin), "upstream, unmarked → grandfathered");
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -3831,6 +3906,18 @@ mod tests {
     /// So the source branch is asserted DIRECTLY, on the pure URL builder, while
     /// the version is still unresolvable. It cannot wait for the pin: by then the
     /// mistake has already shipped.
+    /// A PHP version that still comes from static-php.dev — read from the table
+    /// rather than named, because which versions are ours changes (7.4 in Aug
+    /// 2026, then 8.1-8.5 in Sep) and every test that spelled one asserted a
+    /// stale fact the day after it moved.
+    fn upstream_php_version() -> &'static str {
+        PHP_VERSIONS
+            .iter()
+            .copied()
+            .find(|v| php_self_hosted_tag(v).is_none())
+            .expect("at least one PHP version still comes from upstream")
+    }
+
     #[test]
     fn a_self_hosted_php_never_points_at_static_php_dev() {
         for kind in ["cli", "fpm"] {
@@ -3847,8 +3934,12 @@ mod tests {
                 let tag = php_self_hosted_tag("7.4.33").expect("7.4.33 is self-hosted");
                 assert!(url.contains(&format!("/releases/download/{tag}/")), "{url}");
                 assert!(url.ends_with(&format!("php-7.4.33-{kind}-macos-{}.tar.gz", php_arch(arch))));
-                // A version static-php.dev DOES publish still comes from there.
-                assert!(php_url(kind, PHP_VERSION, arch).contains("dl.static-php.dev"));
+                // A version we do NOT self-host still comes from static-php.dev.
+                // Read from the table rather than named: `PHP_VERSION` was the
+                // literal here and stopped being true the day the default minor
+                // became one of ours (10 Sep 2026) — the same
+                // spelled-vs-asked mistake the tag comment above records.
+                assert!(php_url(kind, upstream_php_version(), arch).contains("dl.static-php.dev"));
             }
         }
         // It RESOLVES now — the artifact exists (first pinned 14 Aug 2026; the
@@ -4345,7 +4436,10 @@ mod tests {
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
 
-        let upstream = php_url("cli", PHP_VERSION, Arch::Arm64);
+        // Asked for, not spelled: `PHP_VERSION` was the literal until the
+        // default minor became one of ours (10 Sep 2026), which turned the
+        // "nothing owed" half of this test into a second copy of the other half.
+        let upstream = php_url("cli", upstream_php_version(), Arch::Arm64);
         let ours = php_url("cli", "7.4.33", Arch::Arm64);
 
         // Upstream's build: nothing owed, so an empty dir is fine.

@@ -1,9 +1,10 @@
 # PostgreSQL as a site database — Laravel and Blank PHP, never WordPress
 
-**Status: step (a) SHIPPED 9 Sep 2026 (ledger #543, #544). Steps (b)-(d) BLOCKED on
-the runtime — the bundled PHP has no working `pdo_pgsql` (§b, measured; ledger #545),
-so a PostgreSQL site of any type is refused at create until `rexenv/runtimes` rebuilds
-PHP.** Planned against `40a30aa`.
+**Status: step (a) SHIPPED 9 Sep 2026 (ledger #543, #544). The runtime blocker found
+in step (b) is FIXED — rexenv now builds PHP 8.1-8.5 itself with a working
+`pdo_pgsql` (`rexenv/runtimes` release `php-8x-1`, 10 Sep 2026; ledger #545), so a
+PostgreSQL site is allowed on 8.1+ and refused on 7.4/8.0 naming the version to use.
+Remaining: the rest of (b), then (c) and (d).** Planned against `40a30aa`.
 
 Today a site's database engine is `mysql | mariadb` and nothing else. PostgreSQL
 ships, starts, has a version picker and an Adminer button — as a *standalone*

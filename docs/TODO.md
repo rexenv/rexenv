@@ -38,34 +38,24 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     (network tier) all green against real PostgreSQL 18.6.0 — including a broken
     dump REFUSED, which is the leg the whole flag exists for. No behaviour change
     for existing sites: `SiteDbEngine::Postgres` is representable but not offered.
-  - [ ] **(b) Laravel — BLOCKED on the runtime, not on this repo** (9 Sep 2026,
-    ledger #545). Landed: `DbSettings::for_engine` — driver, port and superuser
-    taken from the engine as one decision (#546). Stopped by: **the bundled PHP
-    has no working `pdo_pgsql`** — `extension_loaded` is false on all seven
-    versions while `PDO::getAvailableDrivers()` advertises `pgsql` on six, and a
-    real `new PDO("pgsql:…")` accepts the socket, never sends its startup packet
-    and is closed by the server on `authentication_timeout` (measured against
-    PostgreSQL 16/17/18; a Homebrew PHP connects instantly to the same server).
-    Recorded in `core::php::PDO_PGSQL_IN_BUNDLED_PHP`, refused at the site insert,
-    guarded by `laravel_postgres_check` (red on disagreement with the record).
-    Remaining after the unblock: `confedit` rewrite paths for a linked PG project,
-    `php artisan migrate` proven live.
-  - [ ] **Unblock (b)/(c): a PHP build with a working `pdo_pgsql`** — WRITTEN
-    and locally proven 9 Sep 2026, not yet run in CI and not yet released.
-    `rexenv/runtimes` `scripts/build-php.sh` + `.github/workflows/php.yml` build
-    8.x here (spc 2.8.5) with the bulk extension set **plus `pdo_pgsql`**, gated
-    on (i) extension PARITY against `docs/bulk-modules-8.x.txt`, generated from a
-    shipped bulk binary — self-hosting's real risk is a capability a user had
-    yesterday — and (ii) a REAL PostgreSQL connection through PDO, because
-    `php -m` and `PDO::getAvailableDrivers()` both reported support the upstream
-    artifact did not have. Local proof: PHP 8.3.33 arm64, 64 modules, parity
-    green, connected + wrote + read back on PostgreSQL 18.6.
-    Remaining here: run the workflow (one version, publish off, then the matrix),
-    then in rexenv bump `php_url` + the twelve `PHP_*_SHA256` pins to the release,
-    flip `PDO_PGSQL_IN_BUNDLED_PHP`, and let `laravel_postgres_check` turn from
-    proving the gap into proving the feature.
-  - [ ] **(c) Blank PHP starter** — blocked by the same gap (`db.php` returns a
-    PDO). Then: PG dialect for `core/starter.rs`'s `seed_sql` (no `USE`, no
+  - [ ] **(b) Laravel** — the runtime blocker is GONE (10 Sep 2026, ledger #545):
+    `rexenv/runtimes` builds 8.1-8.5 with a working `pdo_pgsql` (release
+    `php-8x-1`), rexenv pins them, and `laravel_postgres_check` now proves a full
+    PDO session on every one instead of proving the gap. 8.0/7.4 stay without the
+    driver, so `php::pdo_pgsql_supported` answers per MINOR and a PostgreSQL site
+    on those is refused naming the version to use. Landed earlier:
+    `DbSettings::for_engine` (#546). **Remaining**: `confedit`'s rewrite paths for
+    a linked PG project, and `php artisan migrate` proven live against a real
+    cluster (the example stops at PDO today).
+  - [x] **Unblock (b)/(c): a PHP build with a working `pdo_pgsql`** ✓ 10 Sep 2026
+    — `rexenv/runtimes` release `php-8x-1` (8.1.34/8.2.31/8.3.31/8.4.23/8.5.8,
+    cli+fpm, both arches, immutable), built by `scripts/build-php.sh` +
+    `.github/workflows/php.yml`, gated on extension parity per minor AND a real
+    PostgreSQL connection through PDO. Pinned here (20 artifact digests + 10
+    licence digests, `php_self_hosted_tag`). **8.0.30 excluded**: passes every
+    gate on arm64, aborts on x86_64 in spc's own sanity check across four runs
+    with three extension subsets excluded in turn — unexplained, EOL Nov 2023.
+  - [ ] **(c) Blank PHP starter** — unblocked with (b) on PHP 8.1+. PG dialect for `core/starter.rs`'s `seed_sql` (no `USE`, no
     `AUTO_INCREMENT`/`ENGINE=`), the `db.php` DSN, and the seeded page's prose
     (it names user `root` today).
   - [ ] **(d) UI + lifecycle gating** — the option in `NewSiteDialog` for Laravel /

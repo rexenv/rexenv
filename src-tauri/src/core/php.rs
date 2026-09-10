@@ -17,42 +17,68 @@ use crate::state::{models::{PhpVersion, PhpVersionView}, store};
 use rusqlite::Connection;
 
 
-/// **Whether the bundled PHP can reach PostgreSQL through PDO.** `false` today,
-/// and this constant is the RECORD of a measurement rather than a guess.
+/// **Whether the PHP rexenv ships for `minor` can reach PostgreSQL through PDO.**
 ///
-/// Measured 9 Sep 2026 against real clusters (PostgreSQL 16.14, 17.10 and 18.6,
-/// `examples/laravel_postgres_check`), with the rexenv-bundled static PHP 8.3
-/// and 8.4:
+/// A per-MINOR answer, because it is per-minor in fact: rexenv builds 8.1-8.5
+/// itself (`rexenv/runtimes`, release `php-8x-1`) precisely to have this driver,
+/// and 7.4 and 8.0 still come from builds that lack it.
+///
+/// # What "lacks it" turned out to mean
+///
+/// Measured 9 Sep 2026 against real clusters (PostgreSQL 16.14, 17.10, 18.6)
+/// with the static-php.dev bulk artifacts rexenv shipped at the time:
 ///
 /// - `pg_connect()` (ext/pgsql) connects and queries — fine.
-/// - the bundled `psql` connects — fine, which is why every site-DB operation
-///   in `core::postgres` works.
+/// - the bundled `psql` connects — fine, which is why every site-DB operation in
+///   `core::postgres` works whatever this says.
 /// - **`new PDO("pgsql:…")` does not.** The TCP connection is accepted (the
 ///   server logs `connection received`) and the client then never sends its
 ///   startup packet, so the server closes it on `authentication_timeout` — 60
 ///   seconds later, as `SQLSTATE[08006] server closed the connection
 ///   unexpectedly`. `PGCONNECT_TIMEOUT` does not shorten it.
 /// - the same PDO call from a Homebrew PHP 8.2, against the same server,
-///   connects instantly. So this is rexenv's PHP build, not PostgreSQL.
+///   connects instantly.
 ///
-/// The build tells the same story from the other side: `php -m` lists `pgsql`
-/// and NOT `pdo_pgsql`, `php --ri pdo_pgsql` says the extension is not present,
-/// and `extension_loaded("pdo_pgsql")` is `false` — **while
+/// The build says the same from the other side: `php -m` lists `pgsql` and NOT
+/// `pdo_pgsql`, `extension_loaded("pdo_pgsql")` is `false` — **while
 /// `PDO::getAvailableDrivers()` advertises `pgsql`**. A driver that claims to
-/// exist and then stalls for a minute is the worst of the three possible
-/// states: "no driver" would have failed instantly and named itself.
+/// exist and then stalls for a minute is the worst of the three possible states:
+/// "no driver" would have failed instantly and named itself.
 ///
-/// What it costs: Laravel's `pgsql` connection and the Blank-PHP starter's
-/// `db.php` both go through PDO, so a PostgreSQL-backed site of either type is
-/// broken until the runtime is rebuilt with a working `pdo_pgsql`
-/// (`rexenv/runtimes`, the static-php-cli extension set — the same pipeline
-/// that added 7.4). `core::sites::ensure_engine_supports` refuses those sites
-/// while this is `false`, so the gap is a refusal at create time rather than a
-/// site that provisions cleanly and cannot talk to its database.
+/// Laravel's `pgsql` connection and the Blank-PHP starter's `db.php` both go
+/// through PDO, so `core::sites::ensure_engine_supports` refuses a
+/// PostgreSQL-backed site on a minor this answers `false` for — a refusal at
+/// create time rather than a site that provisions cleanly and cannot talk to its
+/// database.
 ///
-/// **Flipping this to `true` is the whole unblock**: the refusal opens, and
-/// `laravel_postgres_check` goes from proving the gap to proving the feature.
-pub const PDO_PGSQL_IN_BUNDLED_PHP: bool = false;
+/// **7.4 and 8.0 are `false` and are expected to stay that way.** 7.4 has no
+/// upstream build at all and ours was never built with the driver; 8.0 could not
+/// be built here (it aborts on x86_64 inside static-php-cli's own sanity check,
+/// reproducibly and unexplained) and has been EOL since Nov 2023, so it remains
+/// static-php.dev's — see `binaries::php_self_hosted_tag`.
+pub fn pdo_pgsql_supported(minor: &str) -> bool {
+    !matches!(minor, "7.4" | "8.0")
+}
+
+/// The oldest PHP minor whose bundled build can reach PostgreSQL through PDO —
+/// for the sentence a refusal shows someone whose site is on an older one.
+pub fn oldest_pdo_pgsql_minor() -> String {
+    binaries::PHP_VERSIONS
+        .iter()
+        .map(|v| minor_of(v))
+        .filter(|m| pdo_pgsql_supported(m))
+        .min_by(|a, b| {
+            let key = |m: &str| {
+                let mut it = m.split('.');
+                (
+                    it.next().unwrap_or_default().parse::<u32>().unwrap_or(0),
+                    it.next().unwrap_or_default().parse::<u32>().unwrap_or(0),
+                )
+            };
+            key(a).cmp(&key(b))
+        })
+        .unwrap_or_else(|| "8.1".to_string())
+}
 
 /// Base for per-version FPM ports: `9700 + major*10 + minor`, so 8.1 → 9781,
 /// 8.2 → 9782, 8.3 → 9783 (keeps the Phase-1 port for 8.3).
@@ -1110,6 +1136,33 @@ impl Drop for PhpFpmPools {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pdo_pgsql_is_answered_per_minor_and_the_oldest_one_is_derived() {
+        // The two rexenv does not build with the driver, and the ones it does.
+        for no in ["7.4", "8.0"] {
+            assert!(!pdo_pgsql_supported(no), "{no} has no working pdo_pgsql");
+        }
+        for yes in ["8.1", "8.2", "8.3", "8.4", "8.5"] {
+            assert!(pdo_pgsql_supported(yes), "{yes} is one of ours (release php-8x-1)");
+        }
+
+        // The oldest is COMPUTED from the version table, not typed: a future
+        // release that drops 8.1 or adds 8.6 must move this sentence without
+        // anyone remembering to, since it is what refusals tell users to use.
+        let oldest = oldest_pdo_pgsql_minor();
+        assert!(pdo_pgsql_supported(&oldest));
+        assert_eq!(oldest, "8.1");
+        assert!(
+            binaries::PHP_VERSIONS
+                .iter()
+                .map(|v| minor_of(v))
+                .filter(|m| pdo_pgsql_supported(m))
+                .all(|m| m >= oldest),
+            "nothing supported is older than the one we name"
+        );
+    }
+
     use crate::state::db;
 
     fn pairs(kv: &[(&str, &str)]) -> Vec<(String, String)> {

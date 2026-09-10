@@ -156,16 +156,22 @@ it can:
   the bug class was eliminated — a line in a log nobody reads, on a run that passed. **This layer caught
   the most bugs this month.** Discipline: `common::sandbox` + `common::Reaped` +
   fixture ports (`examples/common/mod.rs` — read its invariant first).
-  **`laravel_postgres_check` (network tier, 9 Sep 2026, ledger #545) is the same
-  layer answering a question that KILLED a feature step.** Laravel on PostgreSQL
-  needs PDO, and the bundled static PHP's `pdo_pgsql` is not loaded on any of the
-  seven versions while `PDO::getAvailableDrivers()` advertises `pgsql` on six —
-  so a connection is accepted and then stalls until the server's
-  `authentication_timeout` closes it. No L0 test could have found that, and no
-  amount of reading `php -m` decides it either (the module list and the driver
-  list disagree). Like `wp_dns_check`, it is written to go red on DISAGREEMENT
-  with what the code records (`core::php::PDO_PGSQL_IN_BUNDLED_PHP`), so it
-  proves the gap today and proves the feature the day the runtime is rebuilt.
+  **`laravel_postgres_check` (network tier, 9-10 Sep 2026, ledger #545) is the
+  same layer answering a question that first KILLED a feature step and then
+  cleared it.** Laravel on PostgreSQL needs PDO, and the static-php.dev builds'
+  `pdo_pgsql` was loaded on none of the seven versions while
+  `PDO::getAvailableDrivers()` advertised `pgsql` on six — so a connection was
+  accepted and then stalled until the server's `authentication_timeout` closed
+  it. No L0 test could have found that, and no amount of reading `php -m` decides
+  it either: the module list and the driver list disagreed, and the driver list
+  was the one that lied. rexenv now builds 8.1-8.5 itself with the driver, so the
+  check asks EVERY installed minor against what `core::php::pdo_pgsql_supported`
+  records and goes red on DISAGREEMENT in either direction — a minor that gains
+  the driver matters as much as one that loses it, because the first means
+  refusing sites that would work. On a minor that has it, the leg is a
+  Laravel-shaped session (connect, DDL, prepared insert, read back), not a
+  handshake; on one that does not, it asserts the FAILURE SHAPE — a stall the
+  server ends, which is what makes a developer blame PostgreSQL.
   **`postgres_site_db_check` (network tier, 9 Sep 2026) is this layer answering a
   question no Rust test can**: `psql` returns exit **0** after a script whose every
   statement failed, unless `ON_ERROR_STOP=1` is set — an import that silently imported
