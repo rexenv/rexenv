@@ -1,5 +1,5 @@
 //! Manual check: the PostgreSQL site-database path against the REAL `psql` and
-//! `pg_dump` (docs/PLAN-postgres-sites.md step a).
+//! `pg_dump` (docs/archive/PLAN-postgres-sites.md step a).
 //! Run: `cargo run --example postgres_site_db_check`
 //!
 //! PostgreSQL is the first site engine that is not MySQL-with-another-name, so

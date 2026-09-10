@@ -426,7 +426,7 @@ impl DbEngine {
     // functions in `core::database` called by name from eight places, which was
     // honest while every site engine spoke the MySQL protocol and MariaDB was a
     // different path to the same client. PostgreSQL is the first site engine
-    // with its own client, dump tool and DDL (docs/PLAN-postgres-sites.md §2),
+    // with its own client, dump tool and DDL (docs/archive/PLAN-postgres-sites.md §2),
     // so the choice moves here — beside `start`, `data_dir` and `server_binary`,
     // which already dispatch — and the callers stop naming an engine's module.
     //

@@ -129,7 +129,7 @@ fn ensure_server_runs_php(server: WebServer, php_version: &str) -> Result<()> {
 /// ([`crate::core::php::pdo_pgsql_supported`] — 7.4 and 8.0 today). **Two
 /// refusals, two lifetimes and two subjects**: WordPress's is permanent and
 /// about `wpdb`; this one is about the runtime the site happens to run, and the
-/// same site on 8.1 is fine (docs/PLAN-postgres-sites.md §b).
+/// same site on 8.1 is fine (docs/archive/PLAN-postgres-sites.md §b).
 fn ensure_engine_supports(
     site_type: SiteType,
     engine: SiteDbEngine,

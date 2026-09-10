@@ -101,7 +101,7 @@ pub fn stop(platform: &dyn Platform, pid: u32) -> Result<()> {
 }
 
 // ---------------------------------------------------------------------------
-// Site databases (PLAN-postgres-sites §3). Every function here is reached only
+// Site databases (docs/archive/PLAN-postgres-sites.md §3). Every function here is reached only
 // through `DbEngine`'s methods, which dispatch on the CLIENT's engine — a
 // `psql` can never arrive at `database::mysql_exec`, nor a `mysql` here.
 // ---------------------------------------------------------------------------

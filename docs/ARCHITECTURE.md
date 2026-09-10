@@ -1474,7 +1474,7 @@ IPC surface — which is how a reader ends up designing against a system with on
   Any DB feature must use the bundled clients with shell-free I/O — `--result-file`
   for output, stdin for input — never `wp db …`, never shell redirection (app-data
   paths contain spaces). **Engine-dispatched since PostgreSQL joined the site
-  engines (9 Sep 2026, `docs/PLAN-postgres-sites.md`):** the five site-DB operations
+  engines (9 Sep 2026, `docs/archive/PLAN-postgres-sites.md`):** the five site-DB operations
   — create / drop / import / export / sizes — are METHODS ON `DbEngine`, and
   `core/database.rs`'s free functions are `pub(crate)` so nothing outside the crate
   can pick a wire protocol by hand. MySQL and MariaDB share one implementation

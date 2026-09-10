@@ -69,7 +69,7 @@ str_enum!(
     /// flags and the same SQL; only the port and the bundled binaries differ,
     /// which is why MariaDB cost nothing to add. **`Postgres` is the first one
     /// that does not**: different client, different dump tool, different DDL
-    /// (see `docs/PLAN-postgres-sites.md`), so every site-DB operation
+    /// (see `docs/archive/PLAN-postgres-sites.md`), so every site-DB operation
     /// dispatches on the engine rather than assuming one — through
     /// [`crate::core::db::DbEngine`]'s methods, never a bare
     /// `core::database::*` call.

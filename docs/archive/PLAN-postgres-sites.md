@@ -8,6 +8,13 @@ All four steps are done — and the FIRST REAL SITE found two defects the same d
 (#550, #551), both in code that compiled and passed every test: see §6.**
 Planned against `40a30aa`.
 
+**Archived 11 Sep 2026.** Since the status above: rexenv pins `php-8x-3..7` (the
+`-1`/`-2` builds lacked `mb_split`, `imageavif`, `qdbm`/`lz4`/`zstd`; #553); the
+update manifest carries those builds with their licences and was published as
+serial 5 (#554); `site_matrix_check` walks every PHP × site type × engine through
+the app and found three more defects (#555-#557), and driving the same matrix
+through the real app over MCP found a fourth (#558). §5 carries a correction.
+
 Today a site's database engine is `mysql | mariadb` and nothing else. PostgreSQL
 ships, starts, has a version picker and an Adminer button — as a *standalone*
 engine on the Databases page. No site can be backed by it: `DbEngine::from_site`

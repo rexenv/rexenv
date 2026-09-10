@@ -1,5 +1,5 @@
 //! Live check: a **PostgreSQL-backed site through the app's own path** — create,
-//! then delete (`docs/PLAN-postgres-sites.md`; ledger #550, #551).
+//! then delete (`docs/archive/PLAN-postgres-sites.md`; ledger #550, #551).
 //! Run: `cargo run --example postgres_site_lifecycle_check`
 //!
 //! # Why this exists, and why the other four checks did not catch what it does

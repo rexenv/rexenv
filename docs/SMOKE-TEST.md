@@ -105,7 +105,7 @@ browser renders it.
 - [ ] **New site → Blank PHP → Database: None** → the page loads with the "No
       database" panel and NO engine download happened.
 
-## Core: a PostgreSQL-backed site (`docs/PLAN-postgres-sites.md`)
+## Core: a PostgreSQL-backed site (`docs/archive/PLAN-postgres-sites.md`)
 
 The automated tiers cover the engine, the dialect and every installed PHP binary.
 What only the app can show is **which** PHP a site actually runs, and that is
