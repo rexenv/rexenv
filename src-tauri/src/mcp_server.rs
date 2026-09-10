@@ -1056,7 +1056,14 @@ impl<Rt: tauri::Runtime> user_sites::SiteOps for AppSiteCreator<Rt> {
     }
     fn retry<'a>(&'a self, site_id: String) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::site_provision::SiteProvisionState>> {
         Box::pin(async move {
-            crate::commands::site_provision::site_provision_retry(self.app.clone(), self.state()?, self.jobs()?, site_id).await
+            let started =
+                crate::commands::site_provision::site_provision_retry(self.app.clone(), self.state()?, self.jobs()?, site_id)
+                    .await?;
+            // The tool answers with the OUTCOME. `site_provision_retry` returns the
+            // job's first snapshot — right for the card, which streams — and
+            // handing that back told an agent `running` with every phase pending.
+            let jobs = self.jobs()?;
+            crate::commands::site_provision::settle(&jobs, &started.id, None).await
         })
     }
 
@@ -2567,6 +2574,28 @@ mod tests {
     /// refusal, the dial and the section share their names.** D15's consent
     /// surface — the ONE dial that replaced per-site prompts, so its sentences
     /// are the whole of what a user reads before turning it up.
+    #[test]
+    /// **The MCP retry op answers with the SETTLED job.** Pinned in source
+    /// because the op needs a running app to call: `site_provision_retry` alone
+    /// returns the first snapshot, and that is what the tool replied on
+    /// 11 Sep 2026 — `running`, every phase pending — while its description
+    /// promised it blocks until the job settles.
+    fn the_retry_op_answers_with_the_settled_job_not_the_first_snapshot() {
+        let src = include_str!("mcp_server.rs");
+        let body = src
+            .split("fn retry<'a>(&'a self, site_id: String)")
+            .nth(1)
+            .expect("the retry op")
+            .split("fn multisite_convert")
+            .next()
+            .unwrap();
+        assert!(body.contains("site_provision_retry("), "the op starts the app's own retry");
+        assert!(
+            body.contains("site_provision::settle("),
+            "the op must wait for the job to settle before answering"
+        );
+    }
+
     #[test]
     fn the_agent_access_copy_says_what_a_level_hands_over() {
         const CARD: &str = include_str!("../../src/components/mcp/AgentsMcpCard.tsx");

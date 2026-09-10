@@ -1164,7 +1164,9 @@ stack running, at least one of your own sites. Keep Settings → AI agents visib
   names `site_retry`. Start the engine, ask it to retry → the site finishes. Ask it to
   restart the site → the reply says which of the three outcomes happened (backend /
   shared / refused) and how many sites share the pool; with `pool: true` it names them.
-  **Tell:** the reply carries a local log path or a port number.
+  **Tell:** the reply carries a local log path or a port number — or the retry reply
+  says `status: "running"` with phases pending. It must be the settled outcome (ledger
+  #559: until 11 Sep 2026 it was the job's first snapshot, and the agent had to poll).
 
 ### Parity P3 — WordPress on YOUR sites, and the inbox. Ships only if 32–35 pass.
 `mcp_user_site_check` proves the gates over the socket (a PHP site and a scratch site

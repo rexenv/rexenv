@@ -919,21 +919,9 @@ pub(crate) async fn create_site_owned_with<R: tauri::Runtime>(
     // running prepare INLINE buys), so its `CreateFailure` carries no site id.
     let snap = super::site_provision::start(&app, state, jobs, site, wp, blueprint_id, ownership)
         .map_err(|error| CreateFailure { site_id: None, error })?;
-    let mut last = (usize::MAX, u8::MAX);
-    let settled = loop {
-        let st = super::site_provision::state_of(jobs, &snap.id)
-            .map_err(|error| CreateFailure { site_id: None, error })?;
-        if let Some(report) = on_progress {
-            if (st.phase_cursor, st.pct) != last {
-                last = (st.phase_cursor, st.pct);
-                report(&st);
-            }
-        }
-        if st.status != "running" {
-            break st;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-    };
+    let settled = super::site_provision::settle(jobs, &snap.id, on_progress)
+        .await
+        .map_err(|error| CreateFailure { site_id: None, error })?;
     if settled.status == "ok" {
         let conn = state
             .db

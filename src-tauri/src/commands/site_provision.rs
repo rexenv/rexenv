@@ -776,6 +776,36 @@ pub fn state_of(jobs: &ProvisionJobs, id: &str) -> Result<SiteProvisionState> {
         .ok_or_else(|| Error::Other(format!("no provision job {id}")))
 }
 
+/// Wait for a provision job to leave `running` and return its SETTLED state,
+/// reporting each change of phase or percentage to `on_progress` on the way.
+///
+/// The one wait for every caller that answers with an outcome. It was a loop
+/// inside `commands::sites::create_site_owned_with` only, so the MCP `site_retry`
+/// tool — whose description promised "blocks until it settles" — returned the
+/// job's FIRST snapshot instead: on 11 Sep 2026 a real retry replied
+/// `status: "running"` with every phase pending, and the agent had to poll
+/// `site_info` to learn whether its retry had worked.
+pub(crate) async fn settle(
+    jobs: &ProvisionJobs,
+    id: &str,
+    on_progress: Option<&(dyn Fn(&SiteProvisionState) + Sync)>,
+) -> Result<SiteProvisionState> {
+    let mut last = (usize::MAX, u8::MAX);
+    loop {
+        let st = state_of(jobs, id)?;
+        if let Some(report) = on_progress {
+            if (st.phase_cursor, st.pct) != last {
+                last = (st.phase_cursor, st.pct);
+                report(&st);
+            }
+        }
+        if st.status != "running" {
+            return Ok(st);
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    }
+}
+
 /// The most recent provision job (optionally for one domain), running or
 /// settled — lets the Sites route / reopened dialog re-adopt the card.
 #[tauri::command]
@@ -2595,5 +2625,70 @@ mod tests {
             "the user path must still install the resolver — otherwise the agent test proves nothing"
         );
         assert!(calls[0].contains("resolver") || !calls[0].is_empty(), "escalated to install it");
+    }
+
+    /// **`settle` answers with the job's SETTLED state — not the snapshot it
+    /// found — and reports every phase/percentage change on the way.** The
+    /// shape of the defect it fixes: the MCP retry returned `running` with every
+    /// phase pending, because only the create path had a wait.
+    #[tokio::test]
+    async fn settle_waits_for_the_job_to_leave_running_and_reports_each_change() {
+        let jobs = ProvisionJobs::default();
+        let entry = Arc::new(ProvisionEntry {
+            id: "job-settle".into(),
+            seq: 0,
+            domain: "settle.rex".into(),
+            wp_opts: Default::default(),
+            blueprint: None,
+            cancel: repo::CancelToken::new(),
+            running: AtomicBool::new(true),
+            timed_out: AtomicBool::new(false),
+            log_path: std::env::temp_dir().join("rexenv-settle-probe.log"),
+            state: Mutex::new(SiteProvisionState {
+                id: "job-settle".into(),
+                domain: "settle.rex".into(),
+                site_id: Some("site-settle".into()),
+                phases: Vec::new(),
+                phase_cursor: 1,
+                pct: 10,
+                status: "running".into(),
+                summary: None,
+                error: None,
+                log_key: "settle".into(),
+                download_ids: Vec::new(),
+                serving_blocked: false,
+                serving_holder: None,
+                serving_app: None,
+                assets_warning: None,
+            }),
+        });
+        jobs.jobs.lock().unwrap().insert("job-settle".into(), entry.clone());
+
+        let worker = entry.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+            {
+                let mut s = worker.state.lock().unwrap();
+                s.phase_cursor = 2;
+                s.pct = 60;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+            let mut s = worker.state.lock().unwrap();
+            s.pct = 100;
+            s.status = "ok".into();
+        });
+
+        let seen = std::sync::Mutex::new(Vec::new());
+        let settled = {
+            let report = |st: &SiteProvisionState| seen.lock().unwrap().push((st.phase_cursor, st.pct));
+            settle(&jobs, "job-settle", Some(&report)).await.unwrap()
+        };
+        assert_eq!(settled.status, "ok", "the settled state, not the first snapshot");
+        assert_eq!(settled.pct, 100);
+        let seen = seen.into_inner().unwrap();
+        assert_eq!(seen.first(), Some(&(1, 10)), "the starting state is reported");
+        assert!(seen.contains(&(2, 60)), "the phase change is reported: {seen:?}");
+        assert_eq!(seen.last(), Some(&(2, 100)), "and the end: {seen:?}");
+        assert!(settle(&jobs, "no-such-job", None).await.is_err(), "an unknown job is an error, not a wait");
     }
 }

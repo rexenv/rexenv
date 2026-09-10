@@ -1213,7 +1213,9 @@ IPC surface — which is how a reader ends up designing against a system with on
   on the site; twelve actions, each exactly one app command — rename, php, server, xdebug,
   env set/unset as a merge whose VALUES never come back, domain change, extra domains,
   move, relink, cert), `site_restart` (#444's three outcomes in words, ports dropped) and
-  `site_retry` (the job's own text through the one scrubber), and from P3 the grouped
+  `site_retry` (the job's own text through the one scrubber, and the SETTLED outcome —
+  `site_provision::settle`, the wait `create_site_owned_with` also uses; until 11 Sep 2026
+  it answered with the job's first snapshot, `running`, #559), and from P3 the grouped
   WordPress tools on the user's own sites — `wp_info` (nine reads under `read`),
   `wp_plugin` and `wp_theme` (the scope decided PER ACTION from one table: `list` reads,
   `delete` destroys, the rest manage; a scratch or non-WordPress site refused BEFORE any
