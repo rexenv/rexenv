@@ -1,10 +1,10 @@
 # PostgreSQL as a site database — Laravel and Blank PHP, never WordPress
 
-**Status: steps (a), (b) and (c) SHIPPED (9-10 Sep 2026; ledger #543-#548). The runtime
+**Status: SHIPPED (9-10 Sep 2026; ledger #543-#549). The runtime
 blocker found in step (b) is FIXED — rexenv now builds PHP 8.1-8.5 itself with a working
 `pdo_pgsql` (`rexenv/runtimes` release `php-8x-1`, 10 Sep 2026; ledger #545), so a
 PostgreSQL site is allowed on 8.1+ and refused on 7.4/8.0 naming the version to use.
-Remaining: (d) the UI plus lifecycle gating.**
+All four steps are done.**
 Planned against `40a30aa`.
 
 Today a site's database engine is `mysql | mariadb` and nothing else. PostgreSQL
@@ -164,10 +164,13 @@ host+port under a `mysql` line points a MySQL client at PostgreSQL). And
 **(c) Blank PHP starter — SHIPPED 10 Sep 2026** (ledger #548). PG dialect for `seed_sql` (`SERIAL`/`GENERATED`, no
 `ENGINE=`, no `USE`), `db.php` DSN, and the `index.php` prose that names the user.
 
-**(d) UI + lifecycle gating.** Site-type-gated option in `NewSiteDialog`, TS union,
-backend refusal for WordPress × Postgres (CLI/MCP reach the same payload — the UI is
-not the guard), Postgres added to the download and start-all gates when a site uses it,
-per-site Adminer link, sizes list.
+**(d) UI + lifecycle gating — SHIPPED 10 Sep 2026** (ledger #549). The option is
+gated on what core would accept and RESET when it stops being legal; the download
+planner and Start-all ask about both optional engines in one loop; the sizes query
+asks `hosts_site_databases`; the UI's engine ternaries became one table. What the
+work actually was: not adding a case, but finding the four places written for
+exactly two engines — two of which failed silently (a size that is never there, a
+site served with nothing listening on its port).
 
 ## 5. The invariant this feature adds
 

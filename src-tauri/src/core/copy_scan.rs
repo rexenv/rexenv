@@ -638,6 +638,50 @@ const LINK = "https://example.test/a//b";
         }
     }
 
+    /// **The New-site dialog renders core's PostgreSQL rules, it does not
+    /// restate them.**
+    ///
+    /// Two conditions decide whether a site may be PostgreSQL-backed — the site
+    /// type (`wpdb` speaks MySQL alone) and whether the chosen PHP's build has a
+    /// working `pdo_pgsql` — and both live in `sites::ensure_engine_supports`.
+    /// The second one MOVES: 7.4 and 8.0 have no driver, every minor rexenv
+    /// builds itself does, and the day `rexenv/runtimes` publishes an 8.0 with it
+    /// that set changes again. A list of minors written into the dialog would be
+    /// a second copy free to disagree — the exact shape that made the Xdebug
+    /// toggle hardcode `minor === "8.0"` (ledger #378) — and the copy that moves
+    /// last is the one a user meets, as an option that produces an error.
+    ///
+    /// So: the dialog must READ `postgresSupported`, and must not compare a PHP
+    /// version to a literal anywhere near the engine choice.
+    #[test]
+    fn the_new_site_dialog_reads_postgres_support_rather_than_deciding_it() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../src/components/sites/NewSiteDialog.tsx");
+        let raw = std::fs::read_to_string(&path).expect("the New-site dialog exists");
+        let text = strip_ts_comments(&raw);
+        assert!(text.len() > 1000, "the dialog was emptied or moved — this guard proves nothing");
+
+        assert!(
+            text.contains("postgresSupported"),
+            "the dialog no longer reads core's answer — if the option moved, move this guard"
+        );
+        // The banned shape, in the forms a hand-rolled rule would take. Comments
+        // are stripped first: this file's own prose names those versions.
+        for banned in ["phpVersion === \"8.", "phpVersion === \"7.", "phpVersion >= \"8."] {
+            assert!(
+                !text.contains(banned),
+                "NewSiteDialog.tsx decides a PHP capability from a version literal ({banned:?}) \
+                 — that is a second copy of a core rule, and it will disagree"
+            );
+        }
+        // …and the option itself must still be gated on something, or the ban is
+        // satisfied by a dialog that offers PostgreSQL unconditionally.
+        assert!(
+            text.contains("postgresOffered && <option value=\"postgres\">"),
+            "the PostgreSQL option is no longer gated on postgresOffered"
+        );
+    }
+
     /// **The consent sentence has ONE source, and it is not the TSX.**
     ///
     /// The sentence in front of the Install button describes what the click

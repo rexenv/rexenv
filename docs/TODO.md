@@ -23,7 +23,8 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
-- [ ] **PostgreSQL as a site database — Laravel and Blank PHP** (`docs/PLAN-postgres-sites.md`).
+- [x] **PostgreSQL as a site database — Laravel and Blank PHP** ✓ 10 Sep 2026,
+  steps (a)-(d) (`docs/PLAN-postgres-sites.md`; ledger #543-#549).
   PostgreSQL ships, starts, has a version picker and Adminer — but no site can be
   BACKED by it, so a Laravel developer who works in `pgsql` cannot create the site
   they work on (rexenv can already IMPORT one: `dbimport.rs` reads
@@ -67,11 +68,13 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     hides the last difference (MySQL selects with `USE`, PostgreSQL by connecting).
     L1 `starter_seed_check` runs its legs on BOTH engines, plus a sixth that RUNS
     the generated `db.php` — `php -l` cannot see a driver that parses and stalls.
-  - [ ] **(d) UI + lifecycle gating** — the option in `NewSiteDialog` for Laravel /
-    Blank PHP only, the TS union, Postgres added to the download + Start-all gates
-    when a site uses it (`core/downloads.rs`, `core/service_manager.rs` ask only
-    about MariaDB today), the per-site Adminer link and the sizes list
-    (`commands/sites.rs` still queries `[Mysql, Mariadb]` literally).
+  - [x] **(d) UI + lifecycle gating** ✓ 10 Sep 2026 — ledger #549. The option is
+    offered only where core would accept it (`postgresSupported` carried on the
+    PHP row, as `xdebugSupported` is) and reset when it stops being legal; the
+    download planner and Start-all ask about BOTH optional engines in one loop;
+    the Sites page's size query asks `hosts_site_databases` instead of a literal
+    `[Mysql, Mariadb]`; and the UI's five `dbEngine === "mariadb" ? …` ternaries
+    became one `lib/dbEngines.ts` table (label/port/user/driver).
 
 - [x] **"Open in terminal" — the chevron beside every built-in Terminal control**
   ✓ 7 Sep 2026 — ledger #541. `ShellRunner::detect_terminals` / `open_in_terminal`

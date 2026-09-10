@@ -662,13 +662,21 @@ impl ServiceManager {
         // MySQL — the site stack needs it (started via the DB engine manager).
         checks.extend(self.spawn_db(platform, DbEngine::Mysql).await?);
 
-        // MariaDB — required exactly when some site's database lives there
-        // (it stays a user-toggled optional engine otherwise).
-        if sites
-            .iter()
-            .any(|s| matches!(s.db_engine, crate::state::models::SiteDbEngine::Mariadb))
-        {
-            checks.extend(self.spawn_db(platform, DbEngine::Mariadb).await?);
+        // MariaDB and PostgreSQL — started exactly when some site's database
+        // lives there; both stay user-toggled optional engines otherwise, which
+        // is why neither is `DbEngine::required()`.
+        //
+        // One loop, because the pair is one rule: when PostgreSQL became a site
+        // engine this asked only about MariaDB, so a PostgreSQL site would come
+        // up served but with nothing listening on 15432 — a site whose first
+        // query fails on a stack the footer calls "all running".
+        for (site_engine, engine) in [
+            (crate::state::models::SiteDbEngine::Mariadb, DbEngine::Mariadb),
+            (crate::state::models::SiteDbEngine::Postgres, DbEngine::Postgres),
+        ] {
+            if sites.iter().any(|s| s.db_engine == site_engine) {
+                checks.extend(self.spawn_db(platform, engine).await?);
+            }
         }
 
         // Adminer docroot (§5.2): download + stage the interpreter's copy so the

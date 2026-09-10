@@ -261,7 +261,7 @@ the shipped UI toward one.
 - **A field the user can see and cannot use is either a choice or nothing.** The New
   Site dialog's Database field rendered a flat, unclickable "None" for Blank PHP — a
   control that looked like the other two beside it and answered nothing. It is now a
-  real choice for that type (MySQL / MariaDB / None, MySQL default), and the answer is
+  real choice for that type (MySQL / MariaDB / PostgreSQL / None, MySQL default), and the answer is
   load-bearing: picking an engine gets the site a database, a seeded table and a
   generated `db.php`; picking None skips the ~600 MB engine download. The note under it
   says which of the two the click will do, because "MySQL" alone does not tell a first
@@ -496,8 +496,14 @@ The comps predate the real architecture. Correct as shipped:
 - **Web-server picker offers Nginx / FrankenPHP / Apache** (comps show
   Apache / OpenLiteSpeed as the pair): Apache since shipped; OLS is blocked
   upstream — no macOS binary exists (`docs/TODO.md` Blocked).
-- **DB engines: MySQL / MariaDB per site + PostgreSQL / Redis** (comps predate
-  MariaDB/Redis shipping).
+- **DB engines: MySQL / MariaDB / PostgreSQL per site + Redis standalone** (comps
+  predate MariaDB/Redis shipping; PostgreSQL became a SITE engine 10 Sep 2026).
+  **An option a site cannot have is not shown**: PostgreSQL is absent for
+  WordPress (`wpdb` speaks MySQL alone) and on a PHP whose build has no working
+  `pdo_pgsql` — and the field says WHY in the second case, because a control that
+  quietly has fewer options than it did on another site reads as a bug. The first
+  case says nothing: telling a WordPress user about a PHP version answers a
+  question they cannot ask.
 - **Databases screen stays ENGINE-focused** — one row per engine with status +
   CPU/RAM + start/stop + Browse. The comp's per-schema re-model (schema rows,
   per-row export/import/drop) was **deliberately not adopted** (decision recorded

@@ -164,11 +164,17 @@ pub async fn sites_resources(state: State<'_, AppState>) -> Result<Vec<SiteResou
 
     // DB sizes: one query per RUNNING site engine — resolved strictly from the
     // already-published cache (never a download from a status poll). Kept as
-    // one map per engine: the same db name could exist in both engines, and a
+    // one map per engine: the same db name could exist in more than one, and a
     // site must read its own engine's number.
+    //
+    // The engine list is ASKED for (`hosts_site_databases`) rather than spelled.
+    // It was a literal `[Mysql, Mariadb]`, so when PostgreSQL became a site
+    // engine every PG-backed site's size silently read as "—" on the Sites page:
+    // no error, no log line, just a number that is never there.
     let db_sizes: std::collections::HashMap<&'static str, std::collections::HashMap<String, u64>> =
-        [DbEngine::Mysql, DbEngine::Mariadb]
+        DbEngine::ALL
             .into_iter()
+            .filter(|e| e.hosts_site_databases())
             .filter(|e| e.running())
             .filter_map(|e| {
                 let version = super::database::effective_db_version(&state, e).ok()?;

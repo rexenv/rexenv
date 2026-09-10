@@ -272,6 +272,7 @@ pub fn plan_for_start_with(
         ("adminer", adminer_version),
     ];
     let mariadb_version = db_ver(DbEngine::Mariadb);
+    let postgres_version = db_ver(DbEngine::Postgres);
     let mut minors = php_minors.to_vec();
     let default_minor = php::minor_of(binaries::PHP_VERSION);
     if !minors.contains(&default_minor) {
@@ -288,8 +289,23 @@ pub fn plan_for_start_with(
     if sites.iter().any(|s| matches!(s.web_server, WebServer::Apache)) {
         set.push(("httpd", binaries::HTTPD_VERSION));
     }
-    if sites.iter().any(|s| matches!(s.db_engine, crate::state::models::SiteDbEngine::Mariadb)) {
-        set.push(("mariadb", &mariadb_version));
+    // The OPTIONAL engines, planned exactly when some site's database lives in
+    // one. Both are user-toggled services otherwise, and planning them
+    // unconditionally would download hundreds of megabytes for a stack that will
+    // never start them.
+    //
+    // Kept as a list rather than two `if`s: the pair has already drifted once —
+    // PostgreSQL became a site engine and this planner still asked only about
+    // MariaDB, which meant Start-all would spawn an engine whose binary nobody
+    // had fetched, inside the services lock, where a download is exactly what
+    // must not happen (ledger #175).
+    for (engine, name, version) in [
+        (crate::state::models::SiteDbEngine::Mariadb, "mariadb", &mariadb_version),
+        (crate::state::models::SiteDbEngine::Postgres, "postgres", &postgres_version),
+    ] {
+        if sites.iter().any(|s| s.db_engine == engine) {
+            set.push((name, version));
+        }
     }
     let mut plan: Vec<PlannedBinary> = set
         .into_iter()
@@ -864,6 +880,52 @@ mod tests {
             git_build_assets: None,
             starter_db: None,
             enabled: true,
+        }
+    }
+
+    /// Both optional engines are planned exactly when a site uses them — and
+    /// the pair is asserted TOGETHER, because the bug this replaces was one of
+    /// them being asked about and the other not.
+    #[test]
+    fn an_optional_engine_is_downloaded_exactly_when_a_site_uses_it() {
+        use crate::state::models::SiteDbEngine;
+        let plat = crate::platform::current();
+        let empty = std::collections::HashMap::new();
+        let names = |sites: &[Site]| -> Vec<String> {
+            plan_for_start_with(
+                &*plat,
+                sites,
+                &["8.3".into()],
+                &empty,
+                &PatchMap::new(),
+                binaries::ADMINER_VERSION,
+            )
+                .into_iter()
+                .map(|b| b.name)
+                .collect()
+        };
+
+        let mut site = site(WebServer::Nginx);
+        // MySQL is the required engine: always planned, never conditional.
+        site.db_engine = SiteDbEngine::Mysql;
+        let base = names(&[site.clone()]);
+        assert!(base.contains(&"mysql".to_string()));
+        assert!(!base.contains(&"mariadb".to_string()), "{base:?}");
+        assert!(!base.contains(&"postgres".to_string()), "{base:?}");
+
+        for (engine, name) in
+            [(SiteDbEngine::Mariadb, "mariadb"), (SiteDbEngine::Postgres, "postgres")]
+        {
+            site.db_engine = engine;
+            let with = names(&[site.clone()]);
+            assert!(
+                with.contains(&name.to_string()),
+                "a {name} site must plan {name} — Start-all spawns it inside the services \
+                 lock, where a download is exactly what must not happen: {with:?}"
+            );
+            // …and only that one: the other optional engine stays unplanned.
+            let other = if name == "mariadb" { "postgres" } else { "mariadb" };
+            assert!(!with.contains(&other.to_string()), "{with:?}");
         }
     }
 

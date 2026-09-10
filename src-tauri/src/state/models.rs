@@ -567,6 +567,19 @@ pub struct PhpVersionView {
     /// receives no further security fixes, and the UI must say so before the
     /// user picks it — rexenv shipped 8.0 and 8.1 silently for years.
     pub eol_since: Option<&'static str>,
+    /// Whether a site on this minor may choose PostgreSQL —
+    /// `php::pdo_pgsql_supported`, carried for exactly the reason
+    /// `xdebug_supported` is: the alternative is the New-site dialog deciding it
+    /// from a literal list of minors, which is a second copy of a core rule that
+    /// is free to disagree with it. It WILL move — the day `rexenv/runtimes`
+    /// publishes an 8.0 with the driver, or a new minor arrives — and the copy
+    /// that moves last is the one a user meets.
+    ///
+    /// `false` means a PostgreSQL site on this PHP is refused at create
+    /// (`sites::ensure_engine_supports`), so the dialog must not offer what the
+    /// backend will reject: an option that produces an error message is worse
+    /// than an option that is not there.
+    pub postgres_supported: bool,
 }
 
 /// A git-sourced wp-content dir's provenance (add-from-Git): which repo/ref a

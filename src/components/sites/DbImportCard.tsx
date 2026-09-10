@@ -10,6 +10,7 @@
  * drift apart from now on.
  */
 import { useEffect, useState } from "react";
+import { engineFacts, engineLabel, enginePort } from "@/lib/dbEngines";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, Database, Loader2, Undo2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -76,13 +77,17 @@ function bytes(n: number): string {
  *  line while the file might still say `root` gave incomplete instructions. */
 function connectionSnippet(site: Site, dbName: string, mirrored: string | null): string[] {
   if (site.type === "laravel") {
-    const lines = [`DB_HOST=127.0.0.1`, `DB_PORT=${site.dbEngine === "mariadb" ? 13307 : 13306}`];
+    const lines = [
+      `DB_CONNECTION=${engineFacts(site.dbEngine).driver}`,
+      `DB_HOST=127.0.0.1`,
+      `DB_PORT=${enginePort(site.dbEngine)}`,
+    ];
     if (mirrored) lines.push(`DB_USERNAME=${mirrored}`);
-    else lines.push(`DB_USERNAME=root`, `DB_PASSWORD=`);
+    else lines.push(`DB_USERNAME=${engineFacts(site.dbEngine).user}`, `DB_PASSWORD=`);
     if (dbName) lines.push(`DB_DATABASE=${dbName}`);
     return lines;
   }
-  const port = site.dbEngine === "mariadb" ? 13307 : 13306;
+  const port = enginePort(site.dbEngine);
   const lines = [`define( 'DB_HOST', '127.0.0.1:${port}' );`];
   if (mirrored) lines.push(`define( 'DB_USER', '${mirrored}' );`);
   else lines.push(`define( 'DB_USER', 'root' );`, `define( 'DB_PASSWORD', '' );`);
@@ -399,7 +404,7 @@ export function DbImportCard({ site }: { site: Site }) {
                   <span className="font-mono text-[0.78125rem]">{record.dbName}</span>{" "}
                   ({record.tableCount} tables, {bytes(record.sizeBytes)}) was copied from{" "}
                   {record.sourceLabel} into rexenv's{" "}
-                  {site.dbEngine === "mariadb" ? "MariaDB" : "MySQL"}.
+                  {engineLabel(site.dbEngine)}.
                 </p>
                 <SkippedTables tables={record.skippedTables} />
                 {preview === undefined && (

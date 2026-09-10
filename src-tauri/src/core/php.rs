@@ -459,6 +459,7 @@ pub fn list_versions(
                 xdebug_unavailable_reason: binaries::xdebug_unavailable_reason(&v.minor),
                 xdebug_version: binaries::xdebug_version_for(&v.minor),
                 eol_since: eol_since(&v.minor),
+                postgres_supported: pdo_pgsql_supported(&v.minor),
                 // What the live pool is EXECUTING, said only when it differs from
                 // what this minor SHOULD be running — i.e. a restart is still
                 // pending. A pool already on the chosen patch is not a

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { engineLabel, enginePort } from "@/lib/dbEngines";
 import { toastBackendError } from "@/lib/toast";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -998,9 +999,9 @@ function SettingsTab({ site }: { site: Site }) {
           {hasDb && (
             <InfoRow label="Database engine">
               <span className="font-mono text-[0.78125rem]">
-                {site.dbEngine === "mariadb" ? "MariaDB" : "MySQL"}
+                {engineLabel(site.dbEngine)}
                 <span className="ml-2 text-rex-text-muted">
-                  127.0.0.1:{site.dbEngine === "mariadb" ? 13307 : 13306}
+                  127.0.0.1:{enginePort(site.dbEngine)}
                 </span>
               </span>
             </InfoRow>

@@ -114,8 +114,10 @@ export interface ScratchPackage {
 /** Who a site belongs to (mirrors the Rust SiteOrigin). */
 export type SiteOrigin = "user" | "agent";
 
-/** SQL engine backing a site's database (mirrors the Rust SiteDbEngine). */
-export type SiteDbEngine = "mysql" | "mariadb";
+/** SQL engine backing a site's database (mirrors the Rust SiteDbEngine).
+ *  What each one is called and where it listens lives in `@/lib/dbEngines` —
+ *  never as a ternary at a call site. */
+export type SiteDbEngine = "mysql" | "mariadb" | "postgres";
 
 /** WordPress multisite mode (mirrors the Rust MultisiteMode). */
 export type MultisiteMode = "none" | "subdomain" | "subdirectory";
@@ -645,6 +647,15 @@ export interface PhpVersion {
    *  still supported. Computed in core against today, so it becomes true on the
    *  day it becomes true — never a stored flag someone has to remember to flip. */
   eolSince: string | null;
+  /** Can a site on this minor pick PostgreSQL? Derived in core
+   *  (`php::pdo_pgsql_supported`) and carried for the same reason
+   *  `xdebugSupported` is: a list of minors written here would be a second copy
+   *  of a core rule, free to disagree with it — and this one moves (7.4 and 8.0
+   *  have no working `pdo_pgsql`; every version rexenv builds itself does).
+   *  `false` means the backend REFUSES such a site, so the dialog must not
+   *  offer it: an option that produces an error is worse than one that is
+   *  absent. */
+  postgresSupported: boolean;
 }
 
 /** One editable per-version PHP ini setting (mirrors the Rust PhpSettingView).

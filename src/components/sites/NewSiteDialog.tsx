@@ -240,6 +240,20 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
   // creates. Everywhere else it is either required (WordPress, Laravel) or
   // absent, and this one expression decides both what renders and what is sent.
   const starterDbOffered = siteType === "php" && source === "new";
+  // PostgreSQL: never for WordPress, and only on a PHP that can reach it — the
+  // flag comes from core (`php::pdo_pgsql_supported`), never from a list of
+  // minors written here, which is the second-copy shape ledger #545 and the
+  // Xdebug toggle before it both paid for.
+  const postgresOffered =
+    siteType !== "wordpress" &&
+    (installed.find((v) => v.minor === phpVersion)?.postgresSupported ?? false);
+  // …and a choice that stops being legal must not survive as a silent payload.
+  // Switching to WordPress, or to a PHP without the driver, with PostgreSQL
+  // already picked would otherwise send an engine the backend refuses — the
+  // dialog would look fine and the job would fail at prepare.
+  useEffect(() => {
+    if (!postgresOffered && dbEngine === "postgres") setDbEngine("mysql");
+  }, [postgresOffered, dbEngine]);
   const create = useMutation({
     mutationFn: () =>
       siteProvisionJob(
@@ -361,6 +375,7 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
               setWebServer={setWebServer}
               dbEngine={dbEngine}
               setDbEngine={setDbEngine}
+              postgresOffered={postgresOffered}
               needsDb={siteType !== "php" && !adopting}
               starterDbOffered={starterDbOffered}
               starterDb={starterDb}
@@ -705,6 +720,9 @@ function Step2(p: {
   /** Blank PHP in a folder rexenv creates: the Database field is a choice,
    *  MySQL / MariaDB / None, rather than a fixed engine or a dead "None". */
   starterDbOffered: boolean;
+  /** Whether PostgreSQL is a legal choice for THIS site — the site type and the
+   *  chosen PHP together (see the Database field). */
+  postgresOffered: boolean;
   starterDb: boolean;
   setStarterDb: (v: boolean) => void;
   source: DocrootSource;
@@ -907,7 +925,14 @@ function Step2(p: {
         {/* Engine is chosen at create and immutable after — the database
             lives in that engine's datadir. For a Blank PHP site the same field
             also answers WHETHER: None is a real option there, and the only one
-            that skips the database engine download entirely. */}
+            that skips the database engine download entirely.
+
+            PostgreSQL is offered only where the backend will ACCEPT it —
+            never WordPress (`wpdb` speaks MySQL alone) and only on a PHP whose
+            build has a working `pdo_pgsql` (`postgresSupported`, derived in
+            core). Both rules live in `sites::ensure_engine_supports`; this
+            renders them rather than restating them, so an option that would
+            come back as an error is simply not there. */}
         <Field label="Database">
           {p.needsDb || p.starterDbOffered ? (
             <select
@@ -921,6 +946,7 @@ function Step2(p: {
             >
               <option value="mysql">MySQL</option>
               <option value="mariadb">MariaDB</option>
+              {p.postgresOffered && <option value="postgres">PostgreSQL</option>}
               {p.starterDbOffered && <option value="none">None</option>}
             </select>
           ) : (
@@ -935,6 +961,18 @@ function Step2(p: {
           than discovered after it — the site's first page is not a phpinfo dump
           but real rows out of this database, and the engine is a download the
           None option skips. */}
+      {/* Why PostgreSQL is missing, said where it would have been — a control
+          that silently has fewer options than it did on another site reads as a
+          bug. Only shown for the type that COULD have it: telling a WordPress
+          user about a PHP version would be answering a question they cannot
+          ask. */}
+      {(p.needsDb || p.starterDbOffered) && p.siteType !== "wordpress" && !p.postgresOffered && (
+        <div className="-mt-1 text-[0.6875rem] leading-[1.5] text-rex-text-muted">
+          PostgreSQL needs PDO, and the PHP {p.phpVersion} build has no working{" "}
+          <span className="font-mono text-rex-text-bright">pdo_pgsql</span> — pick a newer PHP
+          above to use it.
+        </div>
+      )}
       {p.starterDbOffered && (
         <div className="-mt-1 text-[0.6875rem] leading-[1.5] text-rex-text-muted">
           {p.starterDb ? (
