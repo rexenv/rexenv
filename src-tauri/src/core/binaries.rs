@@ -1017,6 +1017,12 @@ const PHP_8_5_8_LICENSES_MAC_AMD64_SHA256: &str = "f151b6a47c1e9629fc928dd56cbd9
 /// Matches the tarball's own top-level dir, so extraction is `strip = 0`.
 pub const LICENSES_DIR: &str = "licenses";
 
+/// The manifest artifact NAME carrying those texts for a PHP version rexenv
+/// serves. One constant, because the publisher in `rexenv/runtimes` writes this
+/// exact string and a typo either side is an update that resolves its
+/// interpreter and then refuses on licences.
+pub const LICENSES_ARTIFACT: &str = "php-licenses";
+
 /// The licence-text download for an artifact **rexenv is the distributor of**,
 /// or `None` when somebody else distributes it.
 ///
@@ -1167,6 +1173,32 @@ fn licenses_spec(url: &str, name: &str, version: &str, arch: Arch) -> Result<Opt
         ))
     };
     if hex.is_empty() {
+        // Not pinned — ask the verified catalog, the same precedence `php_spec`
+        // uses and for the same reason. The manifest now carries rexenv's OWN
+        // builds for the versions it publishes (upstream's have no `pdo_pgsql`),
+        // and a version that arrives that way has no compiled-in licence digest
+        // by construction: it did not exist when this binary was built. Without
+        // this arm the update would resolve the interpreter and then hard-error
+        // on its licences — an offer that cannot be installed.
+        //
+        // The refusal below still stands when the catalog has nothing either:
+        // an artifact rexenv serves without its licence texts is a licence
+        // violation, and "we could not find them" is not a reason to ship it.
+        let arch_s = crate::core::updates::catalog_arch(arch);
+        if crate::core::updates::nameable(LICENSES_ARTIFACT) {
+            if let Some(a) = CATALOG
+                .read()
+                .ok()
+                .and_then(|g| g.as_ref()?.artifact(LICENSES_ARTIFACT, version, arch_s).cloned())
+            {
+                return Ok(Some(BinarySpec {
+                    url: a.url,
+                    checksum: Checksum::Sha256(a.sha256),
+                    archive: Archive::TarGzTree,
+                    member: LICENSES_DIR,
+                }));
+            }
+        }
         return Err(missing());
     }
     Ok(Some(BinarySpec {
@@ -4203,6 +4235,52 @@ mod tests {
     /// Asserted by installing a catalog directly — the TYPE is the proof (only
     /// `updates::verify` builds one in a shipping build), so this tests the
     /// PRECEDENCE, not the verification, which `core::updates` covers.
+    /// **A version the manifest ADDS still cannot ship without its licences.**
+    ///
+    /// The manifest carries rexenv's own builds for the versions it publishes —
+    /// upstream's have no `pdo_pgsql` — and such a version has no compiled-in
+    /// licence digest by construction: it did not exist when this binary was
+    /// built. So the licences must come from the same document, and if they do
+    /// not, the artifact must REFUSE to resolve rather than install without
+    /// them. Both halves are asserted, because each without the other is a
+    /// different bug: the fallback alone would let a silent omission through,
+    /// and the refusal alone would make every manifest-supplied update fail.
+    #[test]
+    fn a_manifest_version_of_ours_brings_its_licences_or_does_not_resolve() {
+        let added = "8.3.99";
+        let ours = format!("{RUNTIMES_RELEASE_BASE}/php-8x-9/php-{added}-cli-macos-aarch64.tar.gz");
+        let lic = format!("{RUNTIMES_RELEASE_BASE}/php-8x-9/licenses-php-{added}-aarch64.tar.gz");
+
+        // Without a licence entry: the refusal, naming what to do about it.
+        let cat = crate::core::updates::catalog_for_tests(&[(
+            "php", added, "arm64", &ours, &"a".repeat(64),
+        )]);
+        install_catalog(cat);
+        let err = licenses_spec(&ours, "php", added, Arch::Arm64)
+            .expect_err("a self-distributed artifact with no licences must refuse");
+        assert!(err.to_string().contains("licence"), "{err}");
+
+        // With one: it resolves, from the SAME release as the bytes.
+        let cat = crate::core::updates::catalog_for_tests(&[
+            ("php", added, "arm64", &ours, &"a".repeat(64)),
+            (LICENSES_ARTIFACT, added, "arm64", &lic, &"b".repeat(64)),
+        ]);
+        install_catalog(cat);
+        let spec = licenses_spec(&ours, "php", added, Arch::Arm64)
+            .expect("licences in the catalog resolve")
+            .expect("a self-distributed artifact owes licences");
+        assert_eq!(spec.url, lic);
+        assert_eq!(spec.member, LICENSES_DIR);
+
+        // …and nothing changed for an artifact somebody else distributes.
+        let theirs = php_url("cli", upstream_php_version(), Arch::Arm64);
+        assert!(
+            licenses_spec(&theirs, "php", upstream_php_version(), Arch::Arm64)
+                .expect("upstream owes nothing")
+                .is_none()
+        );
+    }
+
     #[test]
     fn a_catalog_can_add_a_version_but_never_override_a_pin() {
         let pinned = PHP_VERSION;

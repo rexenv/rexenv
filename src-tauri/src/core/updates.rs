@@ -146,7 +146,18 @@ impl Family {
     /// The family an artifact name belongs to, or `None` — the name allowlist.
     pub fn of_name(name: &str) -> Option<Family> {
         match name {
-            "php" | "php-fpm" => Some(Family::Php),
+            // `php-licenses` is not a runtime — it is the licence texts that MUST
+            // travel with an artifact rexenv distributes (PHP License 3.01 §2 and
+            // every statically-linked dependency's own terms). It joins the
+            // allowlist because the manifest now carries rexenv's OWN builds for
+            // the versions it publishes: upstream's have no `pdo_pgsql`, so an
+            // update that took theirs would hand a working PostgreSQL site a PHP
+            // that cannot reach its database. Serving our bytes makes rexenv the
+            // distributor of them, and `licenses_spec` refuses to resolve a
+            // self-distributed artifact whose licences it cannot name — so
+            // without this entry the manifest could offer a version that hard
+            // errors on install.
+            "php" | "php-fpm" | "php-licenses" => Some(Family::Php),
             "adminer" => Some(Family::Adminer),
             _ => None,
         }
