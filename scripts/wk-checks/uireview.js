@@ -350,9 +350,13 @@ const PROBES = {
         const updatable = row.dataset.updatable;
         const upstream = row.dataset.upstream;
         const text = (row.innerText || "").replace(/\s+/g, " ");
-        const button = [...row.querySelectorAll("button")].find((b) =>
-          /^Update to /.test((b.textContent || "").trim())
-        );
+        // STRUCTURAL, not by label. This matched `/^Update to /`, which the
+        // button stopped saying long ago — and the mismatch survived because no
+        // fixture row set `updatable`, so this branch had never executed. The
+        // probe's own "that branch is unchecked" note was printing all along;
+        // adding the fixture is what made it fail, which is the point of adding
+        // it (10 Sep 2026).
+        const button = row.querySelector('[data-probe="php-update"]');
         const chip = [...row.querySelectorAll('[data-probe="php-row-chips"] > span')].find((c) =>
           /exists$/.test((c.textContent || "").trim())
         );
@@ -385,6 +389,18 @@ const PROBES = {
         // correct pool amber is how a successful update read as a failure.
         if (!updatable && !upstream && / serving /.test(` ${text} `))
           problems.push(`${minor}: nothing pending, yet the row reports "serving" — ${text.slice(0, 70)}`);
+        // An update that REMOVES something must SAY so where it is offered, and
+        // it must say it visibly: the sentence is in a tooltip, but a tooltip
+        // nobody hovers is not a tell. The chip is what makes the offer look
+        // different from an ordinary one.
+        const cost = row.querySelector('[data-update-cost]');
+        if (cost) {
+          seen.add("update-with-a-cost");
+          if (!button)
+            problems.push(`${minor}: a cost chip with no update to pay for it`);
+          if (!(cost.getAttribute("title") || "").includes("PostgreSQL"))
+            problems.push(`${minor}: the cost chip carries no sentence — the chip alone says what, not why`);
+        }
         if (updatable && installed) seen.add(upstream === updatable ? "button-only" : "button-and-chip");
         else if (upstream) seen.add("chip-only");
         else if (installed) seen.add("settled");
@@ -393,7 +409,14 @@ const PROBES = {
       // The fixture must actually carry every state, or each branch above is a
       // rule nothing exercises. This is the assert that made the mock honest:
       // before it, every row was installed and none was post-update.
-      for (const want of ["button-only", "button-and-chip", "chip-only", "settled", "not-installed"]) {
+      for (const want of [
+        "button-only",
+        "button-and-chip",
+        "chip-only",
+        "settled",
+        "not-installed",
+        "update-with-a-cost",
+      ]) {
         if (!seen.has(want)) problems.push(`the fixture has no "${want}" row — that branch is unchecked`);
       }
       // NOT checked here, and said out loud rather than implied: whether the

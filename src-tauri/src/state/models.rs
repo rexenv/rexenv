@@ -580,6 +580,22 @@ pub struct PhpVersionView {
     /// backend will reject: an option that produces an error message is worse
     /// than an option that is not there.
     pub postgres_supported: bool,
+    /// What applying `updatable` would COST, as the sentence to show — or `None`
+    /// when it costs nothing.
+    ///
+    /// An update offer is normally strictly better, and this row exists because
+    /// one kind is not: the patch on offer comes from static-php.dev, and those
+    /// builds have no working `pdo_pgsql`, so moving a minor rexenv builds
+    /// (8.1-8.5) onto upstream's newer patch REMOVES the PostgreSQL driver from
+    /// every site on it. That is invisible in the offer itself — a version
+    /// number is a version number — and the failure it produces is a site
+    /// hanging on its first query, which is what shipped once already (#550).
+    ///
+    /// Says what it costs; does not refuse. It is the user's machine and there
+    /// are good reasons to take a security patch — but "8.3.33" alone is not a
+    /// sentence anybody can weigh, and a cost discovered afterwards is not a
+    /// choice they made.
+    pub update_cost: Option<String>,
 }
 
 /// A git-sourced wp-content dir's provenance (add-from-Git): which repo/ref a

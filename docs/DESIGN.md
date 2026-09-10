@@ -258,6 +258,16 @@ the shipped UI toward one.
   it". `composer install` deliberately has no opt-out: `vendor/` is gitignored, so
   offering to skip it would be offering to create a site that 500s — an option that can
   only produce a broken site is not a choice, it is a trap.
+- **An offer that takes something away is not the same offer, and must not look
+  like one.** Every update button in this app means "strictly better" except one:
+  a PHP patch from upstream has no PostgreSQL driver, so updating a minor rexenv
+  builds removes it from every site on that version. A version number cannot show
+  that, so the row carries a visible **costs PostgreSQL** chip and the sentence —
+  which sites, and what stops working — in the button's own title. A tooltip
+  nobody hovers is not a tell; the chip is what makes the offer read differently.
+  It does not refuse: the machine is the user's, a security patch is a real
+  reason, and the honest thing is to let them weigh it rather than decide for
+  them. What is not acceptable is a cost discovered afterwards (ledger #552).
 - **A field the user can see and cannot use is either a choice or nothing.** The New
   Site dialog's Database field rendered a flat, unclickable "None" for Blank PHP — a
   control that looked like the other two beside it and answered nothing. It is now a

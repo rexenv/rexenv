@@ -487,6 +487,20 @@ function PhpVersionRow({
               EOL {eolWhen(v.eolSince)}
             </span>
           )}
+          {/* An update that TAKES SOMETHING AWAY gets a visible tell, not just a
+              tooltip: the offer beside it is a version number, which looks
+              identical whether it is strictly better or not. The sentence comes
+              from core — one source, because the rule (upstream's builds have no
+              PostgreSQL driver) is not obvious enough to restate here. */}
+          {v.updateCost && (
+            <span
+              className="whitespace-nowrap rounded border border-status-warning-border bg-status-warning-bg px-1.5 py-0.5 text-[0.625rem] font-medium text-status-warning-bright"
+              title={v.updateCost}
+              data-update-cost="postgres"
+            >
+              costs PostgreSQL
+            </span>
+          )}
         </div>
         {v.installed ? (
           <div className="flex flex-none items-center gap-1">
@@ -504,7 +518,21 @@ function PhpVersionRow({
                 variant="secondary"
                 disabled={busy}
                 onClick={onUpdate}
-                title={`Download PHP ${v.updatable}, restart the ${v.minor} pool onto it, and put it back on ${v.patch} if it does not come up. Your sites keep their ${v.minor} setting either way.`}
+                title={
+                  // The cost, when there is one, goes in front of the mechanics:
+                  // an update that REMOVES something is not the same offer, and
+                  // the sentence is core's (`php::update_cost`) rather than a
+                  // second copy of the rule living here.
+                  (v.updateCost ? `${v.updateCost}\n\n` : "") +
+                  `Download PHP ${v.updatable}, restart the ${v.minor} pool onto it, and put it back on ${v.patch} if it does not come up. Your sites keep their ${v.minor} setting either way.`
+                }
+                // Selected STRUCTURALLY by the WebKit probe. It matched
+                // `/^Update to /` on the label, which this button has not said
+                // for some time — and nothing noticed, because no fixture row
+                // carried `updatable`, so the branch never ran. A guard that
+                // cannot fire and is wrong about what it looks for is two
+                // defects agreeing with each other (ledger #337's shape).
+                data-probe="php-update"
                 className="mr-1 h-[26px] gap-1.5 px-2.5 text-[0.75rem] text-brand-light"
               >
                 <ArrowUpCircle className="h-3.5 w-3.5" strokeWidth={1.8} />

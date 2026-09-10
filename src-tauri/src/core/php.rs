@@ -358,6 +358,53 @@ pub fn patch_to_run(conn: &Connection, minor: &str) -> Result<String> {
         .ok_or_else(|| Error::Other(format!("unknown PHP version: {minor}")))
 }
 
+/// The domains of PostgreSQL-backed sites on `minor` — what an update to a patch
+/// without the driver would break, named so the warning can be specific.
+fn postgres_sites_on(conn: &Connection, minor: &str) -> Vec<String> {
+    crate::core::sites::list(conn)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|s| {
+            s.php_version == minor
+                && s.db_engine == crate::state::models::SiteDbEngine::Postgres
+        })
+        .map(|s| s.domain)
+        .collect()
+}
+
+/// What applying `updatable` would cost, as the sentence to show — `None` when
+/// it costs nothing.
+///
+/// **The one source for that sentence.** It lives here rather than in the
+/// Settings row for the reason this project keeps relearning: a copy in the TSX
+/// is free to disagree with the rule, and the rule here is not obvious enough to
+/// restate — an update offer that REMOVES a capability looks exactly like one
+/// that does not.
+pub fn update_cost(current: &str, updatable: Option<&str>, pg_sites: &[String]) -> Option<String> {
+    let target = updatable?;
+    // Only a move FROM a build with the driver TO one without it costs anything.
+    // The reverse (upstream → ours) is a gain, and neither-has-it is no change.
+    if !pdo_pgsql_supported(current) || pdo_pgsql_supported(target) {
+        return None;
+    }
+    Some(match pg_sites {
+        [] => format!(
+            "PHP {target} is upstream's build and cannot reach PostgreSQL — no site here uses \
+             it, but PostgreSQL will stop being offered for new sites on this version."
+        ),
+        [one] => format!(
+            "PHP {target} is upstream's build and cannot reach PostgreSQL. {one} uses a \
+             PostgreSQL database and would stop reaching it."
+        ),
+        many => format!(
+            "PHP {target} is upstream's build and cannot reach PostgreSQL. {} sites here use \
+             PostgreSQL databases ({}) and would stop reaching them.",
+            many.len(),
+            many.join(", ")
+        ),
+    })
+}
+
 /// The registry's default minor, or `None` when nothing is marked default.
 ///
 /// Its own accessor because three callers wanted only this and reached for
@@ -477,6 +524,13 @@ pub fn list_versions(
                     crate::core::updates::Family::Php,
                     &effective,
                     arch,
+                ),
+                update_cost: update_cost(
+                    &effective,
+                    catalog
+                        .newer_than(crate::core::updates::Family::Php, &effective, arch)
+                        .as_deref(),
+                    &postgres_sites_on(conn, &v.minor),
                 ),
                 patch: effective,
                 minor: v.minor,
@@ -1127,6 +1181,46 @@ impl Drop for PhpFpmPools {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_update_that_removes_postgresql_says_so_and_names_the_sites() {
+        // The case: a minor rexenv builds (8.3.32, driver) with upstream's next
+        // patch on offer (8.3.33, no driver). That is the ONLY direction that
+        // costs anything.
+        let none: [String; 0] = [];
+        let cost = update_cost("8.3.32", Some("8.3.33"), &none).expect("a cost");
+        assert!(cost.contains("8.3.33") && cost.contains("PostgreSQL"), "{cost}");
+        assert!(cost.contains("no site here uses it"), "with no sites, say so: {cost}");
+
+        // With sites, it names them — a warning a user cannot check is a warning
+        // they will click past.
+        let one = update_cost("8.3.32", Some("8.3.33"), &["shop.rex".to_string()]).unwrap();
+        assert!(one.contains("shop.rex"), "{one}");
+        let two = update_cost(
+            "8.3.32",
+            Some("8.3.33"),
+            &["shop.rex".to_string(), "api.rex".to_string()],
+        )
+        .unwrap();
+        assert!(two.contains("2 sites") && two.contains("shop.rex") && two.contains("api.rex"));
+
+        // Nothing to say in every other direction:
+        assert_eq!(update_cost("8.3.32", None, &none), None, "no offer, no cost");
+        assert_eq!(
+            update_cost("8.0.30", Some("8.0.31"), &none),
+            None,
+            "neither build has the driver — the update takes nothing away"
+        );
+        assert_eq!(
+            update_cost("8.3.33", Some("8.3.34"), &none),
+            None,
+            "already on a build without it"
+        );
+        // …and a move that GAINS the driver is not a cost. Constructed with real
+        // versions: 8.1.34 is ours, so an offer of it from an upstream patch is
+        // the shape a future release creates.
+        assert_eq!(update_cost("8.1.33", Some("8.1.34"), &none), None, "a gain is not a cost");
+    }
 
     #[test]
     fn pdo_pgsql_is_answered_per_patch_because_rexenv_runs_patches_it_did_not_build() {

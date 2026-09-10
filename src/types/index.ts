@@ -656,6 +656,13 @@ export interface PhpVersion {
    *  offer it: an option that produces an error is worse than one that is
    *  absent. */
   postgresSupported: boolean;
+  /** What applying `updatable` would COST, as the sentence to show — null when
+   *  it costs nothing. Derived in core (`php::update_cost`), never written here:
+   *  the rule is that a patch from static-php.dev has no PostgreSQL driver, so
+   *  moving a minor rexenv builds onto upstream's newer patch REMOVES it from
+   *  every site on that version — invisible in the offer itself, since a version
+   *  number is a version number. It states the cost and does not refuse. */
+  updateCost: string | null;
 }
 
 /** One editable per-version PHP ini setting (mirrors the Rust PhpSettingView).

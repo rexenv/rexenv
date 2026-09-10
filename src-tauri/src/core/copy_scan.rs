@@ -653,6 +653,44 @@ const LINK = "https://example.test/a//b";
     ///
     /// So: the dialog must READ `postgresSupported`, and must not compare a PHP
     /// version to a literal anywhere near the engine choice.
+    /// **The cost of an update is core's sentence, not the row's.**
+    ///
+    /// An offer that REMOVES a capability looks exactly like one that does not —
+    /// a version number is a version number. The rule behind it (a patch from
+    /// static-php.dev has no PostgreSQL driver, so moving a minor rexenv builds
+    /// onto upstream's newer patch takes it away from every site on that version)
+    /// is not obvious enough to restate in a component, and a restatement is free
+    /// to drift the day the rule changes — which it will, every time a release
+    /// adds a version rexenv builds.
+    #[test]
+    fn the_update_cost_sentence_lives_in_core() {
+        let core = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/core/php.rs"),
+        )
+        .expect("core/php.rs");
+        assert!(
+            core.contains("cannot reach PostgreSQL"),
+            "core no longer writes the cost sentence — if the wording moved, move this guard"
+        );
+
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../src/routes/Settings.tsx");
+        let raw = std::fs::read_to_string(&path).expect("the Settings route exists");
+        let text = strip_ts_comments(&raw);
+        assert!(text.len() > 1000, "Settings.tsx was emptied or moved");
+        assert!(
+            text.contains("v.updateCost"),
+            "the row no longer renders core's sentence — the tell is the whole point"
+        );
+        // The banned shape: the component deciding, or restating, the RULE.
+        for banned in ["pdo_pgsql", "upstream's build", "no PostgreSQL driver"] {
+            assert!(
+                !text.contains(banned),
+                "Settings.tsx restates the update-cost rule ({banned:?}) — one source, in core"
+            );
+        }
+    }
+
     #[test]
     fn the_new_site_dialog_reads_postgres_support_rather_than_deciding_it() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))

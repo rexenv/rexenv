@@ -1,3 +1,15 @@
+- [x] **A newer upstream PHP patch silently removes PostgreSQL from a minor**
+  ✓ 10 Sep 2026 — ledger #552, option (b) as planned. The update row now carries
+  what applying it would COST, computed in core and naming the sites that would
+  stop reaching their database, shown as a visible chip plus the sentence in the
+  button's title. It states the cost and does not refuse: it is the user's
+  machine and a security patch is a real reason to take one. Option (a) —
+  serving OUR artifact through the manifest — stays unbuilt and blocked on
+  licences (a catalog-supplied version has no pinned licence digest, and
+  `licenses_spec` requires one for any self-distributed URL, so it would
+  hard-error at resolve; the manifest would need a `php-licenses` artifact and
+  both publishers taught about it).
+
 - [x] **Live-check a PostgreSQL site end to end — provision, delete** ✓ 10 Sep 2026
   — `examples/postgres_site_lifecycle_check` (network tier, ALL PASS). Drives the
   APP (`site_provision_job` → `delete_site`) and takes its PHP from the registry,

@@ -591,7 +591,10 @@ function BadgesView() {
  *  fit.
  *
  *  The fixture is the WORST case on purpose — a row carrying every chip at once —
- *  because the common case is exactly what hid this. */
+ *  because the common case is exactly what hid this. The 8.3 row gained a SIXTH
+ *  chip on 10 Sep 2026, "costs PostgreSQL", which is the one that most deserves
+ *  to be measured here: it appears only beside an Update button, i.e. exactly
+ *  when the column is at its most crowded. */
 function PhpVersionsView() {
   return (
     <div className="flex flex-col gap-4">
