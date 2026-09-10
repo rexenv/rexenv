@@ -23,6 +23,21 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [ ] **A newer upstream PHP patch silently removes PostgreSQL from a minor**
+  (ledger #550). The driver comes from artifacts rexenv builds, and the signed
+  update manifest offers upstream's newer patches for the same minor — so the day
+  php.net ships 8.3.33, a machine that updates loses `pdo_pgsql` and the New-site
+  dialog quietly stops offering PostgreSQL for 8.3. Closed for today's patches by
+  `php-8x-2` (8.2.32/8.3.32 pinned to our builds), but the shape returns with the
+  next release. Two candidate fixes, neither built: **(a)** teach the manifest to
+  carry OUR artifact for a version we publish — blocked on licences, since
+  `licenses_spec` requires a pinned licence digest for any self-distributed URL
+  and a catalog-supplied version has none, so it would hard-error at resolve
+  (the manifest would need a `php-licenses` artifact and both publishers taught
+  about it); **(b)** have the update offer say what it COSTS — "8.3.33 has no
+  PostgreSQL driver; this site uses one" — which is smaller, honest, and does not
+  need a new artifact kind. (b) first.
+
 - [ ] **Live-check a PostgreSQL site end to end — provision, serve, delete**
   (`docs/PLAN-postgres-sites.md`). Two defects shipped past 1,159 green tests and
   four live checks on 10 Sep 2026, and BOTH were found by running the app for

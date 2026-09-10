@@ -2602,9 +2602,10 @@ mod tests {
                     "{t:?} on PostgreSQL must be allowed on PHP {good}"
                 );
             }
-            // 8.3.32 is the one that hung a real provision: a patch of a minor
-            // whose OTHER patch (8.3.31, ours) does have the driver.
-            for bad in ["7.4.33", "8.0.30", "8.3.32"] {
+            // A patch NEWER than our pin for a minor that otherwise has the
+            // driver — the shape that hung a real provision (#550), and the one
+            // an in-app update recreates the day upstream ships 8.3.33.
+            for bad in ["7.4.33", "8.0.30", "8.3.33"] {
                 let m = ensure_engine_supports(t, SiteDbEngine::Postgres, bad)
                     .expect_err("PostgreSQL needs PDO, which this build lacks")
                     .to_string();
@@ -2626,7 +2627,7 @@ mod tests {
             (SiteType::Laravel, SiteDbEngine::Mysql),
             (SiteType::Php, SiteDbEngine::Mariadb),
         ] {
-            for v in ["7.4.33", "8.0.30", "8.3.32", "8.4.23"] {
+            for v in ["7.4.33", "8.0.30", "8.3.33", "8.4.23"] {
                 assert!(ensure_engine_supports(t, e, v).is_ok(), "{t:?} + {e:?} on {v}");
             }
         }

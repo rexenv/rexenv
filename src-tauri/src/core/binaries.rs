@@ -17,17 +17,27 @@ use std::sync::atomic::{AtomicU64, Ordering};
 pub const CADDY_VERSION: &str = "2.11.4";
 /// Default PHP version (static-php build; provides `php` cli and `php-fpm`).
 /// Used where a single version is implied (Phase 1 paths). Must be in [`PHP_VERSIONS`].
-pub const PHP_VERSION: &str = "8.3.31";
+pub const PHP_VERSION: &str = "8.3.32";
 /// All PHP versions with pinned static-php "bulk" builds (one minor each, newest
 /// last). The per-version FPM pool manager + UI (Phase 2 §1.2/§1.5) install from
 /// this set; each caches independently under `bin_dir/php-<version>/`.
-/// **Not all from one source.** 8.x are static-php.dev's bulk builds; **7.4.33 is
-/// OURS** — static-php.dev publishes no 7.4 and never did, so rexenv builds it
-/// (`rexenv/runtimes`) and hosts it as an immutable release asset. `php_url`
-/// picks the source; this list only says which versions exist.
+/// **Not all from one source, and only one of them is somebody else's now.**
+/// 8.0.30 is static-php.dev's bulk build; **7.4.33 and 8.1-8.5 are OURS**
+/// (`rexenv/runtimes`, immutable release assets) — 7.4 because nobody publishes
+/// a portable one, the 8.x rows because the bulk builds' `pdo_pgsql` does not
+/// connect. `php_url` picks the source; this list only says which versions exist.
 /// 7.4 and 8.0 are both upstream-EOL and say so in the UI (`php::eol_since`).
+///
+/// **8.2 and 8.3 pin `.32` rather than `.31`, and that is a fix rather than a
+/// bump.** Both patches exist upstream and the signed update manifest offers
+/// them, so a machine that took the in-app update was running static-php.dev's
+/// `.32` — no PostgreSQL driver — while rexenv judged the minor by OUR `.31`.
+/// A pin beats the catalog (`php_spec` asks the compiled-in table first), so
+/// pinning the same version numbers to our own build is what makes an updated
+/// machine get the driver too. The digests differ from upstream's for the same
+/// version string, which is exactly what `cache_matches_pin` exists to notice.
 pub const PHP_VERSIONS: &[&str] =
-    &["7.4.33", "8.0.30", "8.1.34", "8.2.31", "8.3.31", "8.4.23", "8.5.8"];
+    &["7.4.33", "8.0.30", "8.1.34", "8.2.32", "8.3.32", "8.4.23", "8.5.8"];
 /// PHP minor used for the **debug build** (Xdebug compiled in) that backs the §8.2
 /// per-site Xdebug debug pool. The stock static-php "bulk" builds ship NO Xdebug
 /// and a static PHP can't `dlopen` an external `xdebug.so` (§8.1), so this is a
@@ -288,14 +298,14 @@ const PHP_8_1_34_CLI_MAC_ARM64_SHA256: &str = "d5cf4e5e8454063359636bdaff76b31e7
 const PHP_8_1_34_CLI_MAC_AMD64_SHA256: &str = "8d7be487d7632e8a2bd73d2e6e91b1a0d3e3af24199dfd56c025566842438b49";
 const PHP_8_1_34_FPM_MAC_ARM64_SHA256: &str = "28e1bfe7cbd50cf676f10dedc7d57beb35ae522c00783195bdd6cb855048e6aa";
 const PHP_8_1_34_FPM_MAC_AMD64_SHA256: &str = "d78b66564994b40de72dc0978852675b5aa2514cb342998e71d63fb80fcf8caa";
-const PHP_8_2_31_CLI_MAC_ARM64_SHA256: &str = "b788fa8fe3285a1e22e4fc6316734c3dcbecfd64868799bbfe9a79e4086dc775";
-const PHP_8_2_31_CLI_MAC_AMD64_SHA256: &str = "3217e9e060b8a2aff51ecab194238e9133378497814a6d086db469cf411ed840";
-const PHP_8_2_31_FPM_MAC_ARM64_SHA256: &str = "b30abb8188b04ef41561be9402378fbca3dede6e0d007d6ae01d7ba79c04a561";
-const PHP_8_2_31_FPM_MAC_AMD64_SHA256: &str = "5989a9709b9b9b3934393658f4ac15507bd2eadb54893e50271b5f9a4669149c";
-const PHP_8_3_31_CLI_MAC_ARM64_SHA256: &str = "e070ccae9b7f0a85b9b8831e60722ad95936a63be1c0c99e2d0ecf4427bac940";
-const PHP_8_3_31_CLI_MAC_AMD64_SHA256: &str = "c8ef0c39dc79785dbf1b9d9f203cf89be7f1c939b0707463b0a429293a904c50";
-const PHP_8_3_31_FPM_MAC_ARM64_SHA256: &str = "dc97df7e160669a7bc4c5b6c569b18241b3c89e2ae9050037768b9ee626a8d9d";
-const PHP_8_3_31_FPM_MAC_AMD64_SHA256: &str = "59269e47b2f6ac61dc8a351e656b77317d33a37ef9e7c9f1477abee93245c376";
+const PHP_8_2_32_CLI_MAC_ARM64_SHA256: &str = "7793a3b003d18445a8aaf382be1593ee37bfc07b7e768ca5214d1d7dfbe312a5";
+const PHP_8_2_32_CLI_MAC_AMD64_SHA256: &str = "fe14fa41249de9d67cf00fdcee1217d93be1ab4df4ae0f8ae92813efeab30c86";
+const PHP_8_2_32_FPM_MAC_ARM64_SHA256: &str = "d632c4e8be367accd032abd4e284ef7c038d043ab749ef52c9324ea47596eb0e";
+const PHP_8_2_32_FPM_MAC_AMD64_SHA256: &str = "5fb6513a9597b73f4b89011010b3a5f15a8026cbc2815c5dc5c033e0295c1ea0";
+const PHP_8_3_32_CLI_MAC_ARM64_SHA256: &str = "6f6bc9e6c831221397a1bd0b02bb5a9aff83ca145210fbaf64088aee61825ed3";
+const PHP_8_3_32_CLI_MAC_AMD64_SHA256: &str = "104b116ac8566e722f1e4baf8cdffd248a294bab0292dfcede0612dcdc6d6b89";
+const PHP_8_3_32_FPM_MAC_ARM64_SHA256: &str = "7ba9f955b74739f8abbdf32e802aa7768823085f27dcc82bad4a9ece59f76946";
+const PHP_8_3_32_FPM_MAC_AMD64_SHA256: &str = "9818c7a7101ae4a85b99cbb69e743080e2f6cb7214aaeba9020d61bc5ac36b06";
 const PHP_8_4_23_CLI_MAC_ARM64_SHA256: &str = "e5dc56483e4b7079ea97e5d0ce0c8fa4cb08fafe0e631211061ab56c09b5c3ac";
 const PHP_8_4_23_CLI_MAC_AMD64_SHA256: &str = "13a587dd1294393d2c551e5199fbe46498bfcd95464edb4a0704c9a6358736ce";
 const PHP_8_4_23_FPM_MAC_ARM64_SHA256: &str = "1ff2990b87e9d3575def5115be7b078ae6f1c497acc9abc0b37cfa329287ce7e";
@@ -751,7 +761,10 @@ fn php_self_hosted_tag(version: &str) -> Option<&'static str> {
         // since Nov 2023, and half an architecture is not shippable — so it keeps
         // coming from static-php.dev, without a PDO PostgreSQL driver. That is
         // the whole reason `php::pdo_pgsql_supported` answers per MINOR.
-        "8.1.34" | "8.2.31" | "8.3.31" | "8.4.23" | "8.5.8" => Some("php-8x-1"),
+        "8.1.34" | "8.4.23" | "8.5.8" => Some("php-8x-1"),
+        // -2 adds the patches upstream had already moved to, so a machine that
+        // took an in-app PHP update is not left on a build without the driver.
+        "8.2.32" | "8.3.32" => Some("php-8x-2"),
 
         _ => None,
     }
@@ -991,10 +1004,10 @@ const PHP_7_4_33_LICENSES_MAC_ARM64_SHA256: &str = "d8fd80a258f1d8e6609d3e0e95a3
 const PHP_7_4_33_LICENSES_MAC_AMD64_SHA256: &str = "fa1ae808cb2febdb01e2df2975b0618dba4c0caff39f51161328ee97c2b60ba2";
 const PHP_8_1_34_LICENSES_MAC_ARM64_SHA256: &str = "e49599567c488a722622eb7f6f4a78c7a2ca31fd171a5a7da49fcfb7a17be794";
 const PHP_8_1_34_LICENSES_MAC_AMD64_SHA256: &str = "ecfac260e467d742939c47dad2c70cb1e0ffe0d639e6c2d7c43ff89e6dc91350";
-const PHP_8_2_31_LICENSES_MAC_ARM64_SHA256: &str = "d684160288599e8af0dcac7b91fdfbef0353227de29fbad17a8107a3e581279a";
-const PHP_8_2_31_LICENSES_MAC_AMD64_SHA256: &str = "920a14c68219a17bb9fd3588684faaf1bcab01b4afb68d3accce126618200711";
-const PHP_8_3_31_LICENSES_MAC_ARM64_SHA256: &str = "2f6dfa384863f4a227c1fdb0d771ba8506cac47de4acc245074161bb8b57d094";
-const PHP_8_3_31_LICENSES_MAC_AMD64_SHA256: &str = "23f058e11c11036dd8484c976f784d03b287bf2a05097c7bdc4acbcd5c580975";
+const PHP_8_2_32_LICENSES_MAC_ARM64_SHA256: &str = "f4e1d635299d8b18e2374d1b6107e3b31c1fbe97315586a6ee9f18a666482c85";
+const PHP_8_2_32_LICENSES_MAC_AMD64_SHA256: &str = "edaa84a36443d96ac0932b740121ee5889b0503ca803e83c599c410d13803844";
+const PHP_8_3_32_LICENSES_MAC_ARM64_SHA256: &str = "e38de5015a43837fc8a46fb28cc0c1592b3b5b26fa5c7eacf788447e6023363f";
+const PHP_8_3_32_LICENSES_MAC_AMD64_SHA256: &str = "8ee4384e9c10c151feebfdc9f7e4a9c21a48782dd48833f9bb7addebbca7e1b8";
 const PHP_8_4_23_LICENSES_MAC_ARM64_SHA256: &str = "a1c7f34d023632ba01ebfb3b1daa4432657115e8b86ddc2772ef21a19fd5441f";
 const PHP_8_4_23_LICENSES_MAC_AMD64_SHA256: &str = "7ce92e3991fe4a14bfa1484296238e86dc8fef5a7325e104331222892d0ec64c";
 const PHP_8_5_8_LICENSES_MAC_ARM64_SHA256: &str = "98da381d2df3c89485753a8d0bbe4f41aa0f3e4b36f7666a69e7bb7032220f5a";
@@ -1111,15 +1124,15 @@ fn licenses_spec(url: &str, name: &str, version: &str, arch: Arch) -> Result<Opt
             PHP_8_1_34_LICENSES_MAC_AMD64_SHA256,
             format!("licenses-php-8.1.34-{}.tar.gz", php_arch(arch)),
         ),
-        ("php", "8.2.31") | ("php-fpm", "8.2.31") => (
-            PHP_8_2_31_LICENSES_MAC_ARM64_SHA256,
-            PHP_8_2_31_LICENSES_MAC_AMD64_SHA256,
-            format!("licenses-php-8.2.31-{}.tar.gz", php_arch(arch)),
+        ("php", "8.2.32") | ("php-fpm", "8.2.32") => (
+            PHP_8_2_32_LICENSES_MAC_ARM64_SHA256,
+            PHP_8_2_32_LICENSES_MAC_AMD64_SHA256,
+            format!("licenses-php-8.2.32-{}.tar.gz", php_arch(arch)),
         ),
-        ("php", "8.3.31") | ("php-fpm", "8.3.31") => (
-            PHP_8_3_31_LICENSES_MAC_ARM64_SHA256,
-            PHP_8_3_31_LICENSES_MAC_AMD64_SHA256,
-            format!("licenses-php-8.3.31-{}.tar.gz", php_arch(arch)),
+        ("php", "8.3.32") | ("php-fpm", "8.3.32") => (
+            PHP_8_3_32_LICENSES_MAC_ARM64_SHA256,
+            PHP_8_3_32_LICENSES_MAC_AMD64_SHA256,
+            format!("licenses-php-8.3.32-{}.tar.gz", php_arch(arch)),
         ),
         ("php", "8.4.23") | ("php-fpm", "8.4.23") => (
             PHP_8_4_23_LICENSES_MAC_ARM64_SHA256,
@@ -1199,10 +1212,10 @@ fn php_sha256(kind: &str, version: &str, arch: Arch) -> Option<&'static str> {
         ("fpm", "8.0.30") => (PHP_8_0_30_FPM_MAC_ARM64_SHA256, PHP_8_0_30_FPM_MAC_AMD64_SHA256),
         ("cli", "8.1.34") => (PHP_8_1_34_CLI_MAC_ARM64_SHA256, PHP_8_1_34_CLI_MAC_AMD64_SHA256),
         ("fpm", "8.1.34") => (PHP_8_1_34_FPM_MAC_ARM64_SHA256, PHP_8_1_34_FPM_MAC_AMD64_SHA256),
-        ("cli", "8.2.31") => (PHP_8_2_31_CLI_MAC_ARM64_SHA256, PHP_8_2_31_CLI_MAC_AMD64_SHA256),
-        ("fpm", "8.2.31") => (PHP_8_2_31_FPM_MAC_ARM64_SHA256, PHP_8_2_31_FPM_MAC_AMD64_SHA256),
-        ("cli", "8.3.31") => (PHP_8_3_31_CLI_MAC_ARM64_SHA256, PHP_8_3_31_CLI_MAC_AMD64_SHA256),
-        ("fpm", "8.3.31") => (PHP_8_3_31_FPM_MAC_ARM64_SHA256, PHP_8_3_31_FPM_MAC_AMD64_SHA256),
+        ("cli", "8.2.32") => (PHP_8_2_32_CLI_MAC_ARM64_SHA256, PHP_8_2_32_CLI_MAC_AMD64_SHA256),
+        ("fpm", "8.2.32") => (PHP_8_2_32_FPM_MAC_ARM64_SHA256, PHP_8_2_32_FPM_MAC_AMD64_SHA256),
+        ("cli", "8.3.32") => (PHP_8_3_32_CLI_MAC_ARM64_SHA256, PHP_8_3_32_CLI_MAC_AMD64_SHA256),
+        ("fpm", "8.3.32") => (PHP_8_3_32_FPM_MAC_ARM64_SHA256, PHP_8_3_32_FPM_MAC_AMD64_SHA256),
         ("cli", "8.4.23") => (PHP_8_4_23_CLI_MAC_ARM64_SHA256, PHP_8_4_23_CLI_MAC_AMD64_SHA256),
         ("fpm", "8.4.23") => (PHP_8_4_23_FPM_MAC_ARM64_SHA256, PHP_8_4_23_FPM_MAC_AMD64_SHA256),
         ("cli", "8.5.8") => (PHP_8_5_8_CLI_MAC_ARM64_SHA256, PHP_8_5_8_CLI_MAC_AMD64_SHA256),
@@ -3444,13 +3457,13 @@ mod tests {
     #[test]
     fn manifest_pins_php_cli_and_fpm() {
         let cli = manifest("php", PHP_VERSION, "macos", Arch::Arm64).unwrap();
-        assert!(cli.url.ends_with("php-8.3.31-cli-macos-aarch64.tar.gz"));
+        assert!(cli.url.ends_with(&format!("php-{PHP_VERSION}-cli-macos-aarch64.tar.gz")), "{}", cli.url);
         assert_eq!(cli.member, "php");
         assert!(matches!(cli.checksum, Checksum::Sha256(_)));
         assert_eq!(checksum_hex(&cli.checksum).len(), 64); // SHA-256 hex
 
         let fpm = manifest("php-fpm", PHP_VERSION, "macos", Arch::X86_64).unwrap();
-        assert!(fpm.url.ends_with("php-8.3.31-fpm-macos-x86_64.tar.gz"));
+        assert!(fpm.url.ends_with(&format!("php-{PHP_VERSION}-fpm-macos-x86_64.tar.gz")), "{}", fpm.url);
         assert_eq!(fpm.member, "php-fpm");
         assert_ne!(checksum_hex(&cli.checksum), checksum_hex(&fpm.checksum));
     }

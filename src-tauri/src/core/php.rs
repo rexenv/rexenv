@@ -1131,14 +1131,16 @@ mod tests {
     #[test]
     fn pdo_pgsql_is_answered_per_patch_because_rexenv_runs_patches_it_did_not_build() {
         // The versions rexenv builds itself (release php-8x-1) have the driver.
-        for yes in ["8.1.34", "8.2.31", "8.3.31", "8.4.23", "8.5.8"] {
+        for yes in ["8.1.34", "8.2.32", "8.3.32", "8.4.23", "8.5.8"] {
             assert!(pdo_pgsql_supported(yes), "{yes} is one of ours");
         }
-        // Upstream's do not — including 8.3.32, which is a NEWER patch of a minor
-        // whose pinned patch is ours. That pair is the whole reason this is not
-        // a per-minor answer: the update manifest offers 8.3.32, a machine on it
-        // was told PostgreSQL was fine, and the site hung (#550).
-        for no in ["7.4.33", "8.0.30", "8.3.32", "8.2.32", "8.4.24"] {
+        // Upstream's do not — including patches NEWER than our pins, which is
+        // the case that made this per-patch: the update manifest offers them, a
+        // machine that took one was told PostgreSQL was fine, and the site hung
+        // (#550). 8.3.32 WAS that version and is now ours, which is the fix; a
+        // future 8.3.33 puts the machine right back there, so the shape is
+        // asserted with the versions upstream will publish next.
+        for no in ["7.4.33", "8.0.30", "8.3.33", "8.2.33", "8.4.24", "8.5.9"] {
             assert!(!pdo_pgsql_supported(no), "{no} is not a build rexenv made");
         }
         // 7.4 is OURS and still has no driver: the answer must come from the
