@@ -29,7 +29,10 @@ if (is_file(__DIR__ . '/db.php')) {
         // interpolated into SQL, so it is filtered anyway. Identifiers cannot be
         // bound as parameters; this is the substitute.
         $table = preg_replace('/[^A-Za-z0-9_]/', '', (string) $db['table']);
-        $rows  = $pdo->query("SELECT `id`, `title`, `note`, `created_at` FROM `{$table}` ORDER BY `id`")
+        // Unquoted identifiers: MySQL quotes with backticks and PostgreSQL with
+        // double quotes, and every name here is plain lowercase, which both
+        // accept bare. One query for both engines beats a quoting branch.
+        $rows  = $pdo->query("SELECT id, title, note, created_at FROM {$table} ORDER BY id")
             ->fetchAll();
     } catch (Throwable $e) {
         $dbError = $e->getMessage();
@@ -277,8 +280,8 @@ $docroot = (string) ($_SERVER['DOCUMENT_ROOT'] ?? __DIR__);
     <div class="body">
       <p>
         This site was created without one. rexenv can create a database, seed a sample
-        table and generate the connection for you — pick MySQL or MariaDB in the
-        <b>Database</b> field when you create a Blank PHP site.
+        table and generate the connection for you — pick MySQL, MariaDB or PostgreSQL
+        in the <b>Database</b> field when you create a Blank PHP site.
       </p>
       <p>To wire one up by hand, a <code>db.php</code> next to this file is all it takes:</p>
       <pre>&lt;?php

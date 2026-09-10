@@ -496,6 +496,30 @@ impl DbEngine {
         }
     }
 
+    /// Run one SQL script INSIDE `database` — the starter seed's one need, and
+    /// the one place the two engines differ in a way a caller should not know
+    /// about: MySQL selects the database with a `USE` statement prepended to the
+    /// script, PostgreSQL by connecting to it. The script itself is the caller's
+    /// (and is dialect-specific — see `core::starter`).
+    pub fn exec_in_database(
+        &self,
+        client: &SqlClient,
+        port: u16,
+        database: &str,
+        sql: &str,
+        what: &str,
+    ) -> Result<()> {
+        self.expect_client(client)?;
+        database::validate_db_name(database)?;
+        match self {
+            DbEngine::Mysql | DbEngine::Mariadb => {
+                database::mysql_exec(client, port, &format!("USE `{database}`; {sql}"), what)
+            }
+            DbEngine::Postgres => postgres::psql_exec(client, port, database, sql, what),
+            DbEngine::Redis => Err(self.not_a_site_engine()),
+        }
+    }
+
     /// Disk size of every database in this engine, in bytes.
     pub fn db_sizes(&self, client: &SqlClient, port: u16) -> Result<Vec<(String, u64)>> {
         self.expect_client(client)?;

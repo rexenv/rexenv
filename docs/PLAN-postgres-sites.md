@@ -1,10 +1,10 @@
 # PostgreSQL as a site database — Laravel and Blank PHP, never WordPress
 
-**Status: steps (a) and (b) SHIPPED (9-10 Sep 2026; ledger #543-#547). The runtime
+**Status: steps (a), (b) and (c) SHIPPED (9-10 Sep 2026; ledger #543-#548). The runtime
 blocker found in step (b) is FIXED — rexenv now builds PHP 8.1-8.5 itself with a working
 `pdo_pgsql` (`rexenv/runtimes` release `php-8x-1`, 10 Sep 2026; ledger #545), so a
 PostgreSQL site is allowed on 8.1+ and refused on 7.4/8.0 naming the version to use.
-Remaining: (c) the Blank-PHP starter, and (d) the UI plus lifecycle gating.**
+Remaining: (d) the UI plus lifecycle gating.**
 Planned against `40a30aa`.
 
 Today a site's database engine is `mysql | mariadb` and nothing else. PostgreSQL
@@ -161,7 +161,7 @@ host+port under a `mysql` line points a MySQL client at PostgreSQL). And
 `artisan migrate` is proven live: `composer create-project`, the wired `.env`,
 `migrate --force`, and the `migrations` table found by asking the cluster.
 
-**(c) Blank PHP starter — blocked by the same runtime gap** (`db.php` returns a PDO). PG dialect for `seed_sql` (`SERIAL`/`GENERATED`, no
+**(c) Blank PHP starter — SHIPPED 10 Sep 2026** (ledger #548). PG dialect for `seed_sql` (`SERIAL`/`GENERATED`, no
 `ENGINE=`, no `USE`), `db.php` DSN, and the `index.php` prose that names the user.
 
 **(d) UI + lifecycle gating.** Site-type-gated option in `NewSiteDialog`, TS union,

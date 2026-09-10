@@ -58,9 +58,15 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     licence digests, `php_self_hosted_tag`). **8.0.30 excluded**: passes every
     gate on arm64, aborts on x86_64 in spc's own sanity check across four runs
     with three extension subsets excluded in turn — unexplained, EOL Nov 2023.
-  - [ ] **(c) Blank PHP starter** — unblocked with (b) on PHP 8.1+. PG dialect for `core/starter.rs`'s `seed_sql` (no `USE`, no
-    `AUTO_INCREMENT`/`ENGINE=`), the `db.php` DSN, and the seeded page's prose
-    (it names user `root` today).
+  - [x] **(c) Blank PHP starter** ✓ 10 Sep 2026 — ledger #548. `seed_sql` is per
+    dialect (PG: `IDENTITY`, `VALUES … AS seed(t, n)`, double quotes; no `USE`,
+    no `ENGINE=`/`CHARSET=`), `db.php` carries `driver` beside `engine` and builds
+    the right DSN (`charset` stays MySQL-only), the page's `SELECT` is unquoted so
+    one query parses on both, and the seeded connection row names the site's own
+    port and user instead of a shared lie about `root`. `DbEngine::exec_in_database`
+    hides the last difference (MySQL selects with `USE`, PostgreSQL by connecting).
+    L1 `starter_seed_check` runs its legs on BOTH engines, plus a sixth that RUNS
+    the generated `db.php` — `php -l` cannot see a driver that parses and stalls.
   - [ ] **(d) UI + lifecycle gating** — the option in `NewSiteDialog` for Laravel /
     Blank PHP only, the TS union, Postgres added to the download + Start-all gates
     when a site uses it (`core/downloads.rs`, `core/service_manager.rs` ask only

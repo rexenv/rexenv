@@ -1753,7 +1753,7 @@ async fn drive<R: tauri::Runtime>(
         // database exists with no table for the page to read.
         match tauri::async_runtime::spawn_blocking(move || {
             engine.create_database(&dbc, port, &dbn)?;
-            core::starter::seed(&dbc, port, &dbn)
+            core::starter::seed(engine, &dbc, port, &dbn)
         })
         .await
         {

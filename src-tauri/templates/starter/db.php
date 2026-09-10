@@ -7,13 +7,16 @@
  * database (the Database tab in rexenv still opens it); it only makes the
  * generated index.php fall back to its "no database" panel.
  *
- * The credentials are the local-dev ones every rexenv engine runs with: loopback
- * only, root, no password. That is safe HERE — the engine listens on 127.0.0.1
- * and nothing else — and is exactly what you must not copy to a server.
+ * The credentials are the local-dev ones this engine runs with: loopback only,
+ * its superuser, no password. That is safe HERE — the engine listens on
+ * 127.0.0.1 and nothing else — and is exactly what you must not copy to a server.
  */
 
 const REXENV_DB = [
+    // 'engine' is the name a human reads; 'driver' is the one PDO takes. They
+    // are not the same string ('PostgreSQL' vs 'pgsql'), so both are written.
     'engine'   => '{{ENGINE}}',
+    'driver'   => '{{DRIVER}}',
     'host'     => '{{HOST}}',
     'port'     => {{PORT}},
     'database' => '{{DATABASE}}',
@@ -23,12 +26,21 @@ const REXENV_DB = [
     'table'    => '{{TABLE}}',
 ];
 
-$dsn = sprintf(
-    'mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4',
-    REXENV_DB['host'],
-    REXENV_DB['port'],
-    REXENV_DB['database']
-);
+// `charset` is a MySQL DSN parameter and PostgreSQL's driver rejects it; PG
+// takes its client encoding from the database, which rexenv creates as UTF8.
+$dsn = REXENV_DB['driver'] === 'pgsql'
+    ? sprintf(
+        'pgsql:host=%s;port=%d;dbname=%s',
+        REXENV_DB['host'],
+        REXENV_DB['port'],
+        REXENV_DB['database']
+    )
+    : sprintf(
+        'mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4',
+        REXENV_DB['host'],
+        REXENV_DB['port'],
+        REXENV_DB['database']
+    );
 
 // Exceptions rather than silent false returns: a dev environment should say
 // what went wrong on the first line it goes wrong on.

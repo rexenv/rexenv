@@ -181,7 +181,8 @@ it can:
   no `IF NOT EXISTS`, so idempotence is ours), `pg_dump` → re-import into a second
   database, `WITH (FORCE)` drop, and `db_sizes` excluding template databases. First run
   9 Sep 2026: all green.
-  **`starter_seed_check` (sandbox tier, 27 Aug 2026, ledger #429) is the smallest case
+  **`starter_seed_check` (sandbox tier, 27 Aug 2026, ledger #429; a second engine
+  and a sixth leg on 10 Sep, #548) is the smallest case
   for why this layer exists at all.** The Blank-PHP starter's seed is idempotent because
   of one SQL clause — `WHERE NOT EXISTS` — and whether a server agrees with a piece of
   SQL is not a question a string comparison in Rust can answer. L0 proves the page and
@@ -189,6 +190,15 @@ it can:
   rows and that the developer's own row survives a third one. The same run `php -l`s
   both generated files under the bundled PHP: a generated page with a syntax error
   cannot report itself, because PHP never reaches the code that renders the error card.
+  **It now runs those legs TWICE — a sandbox mysqld and a sandbox PostgreSQL — because
+  the starter's DDL is two scripts, not one with swapped quotes** (`AUTO_INCREMENT`/
+  `ENGINE=` vs `IDENTITY`/`VALUES`), and a script only a Rust test has read is a script
+  no server has agreed to. **And `php -l` was not enough for the last step**: a `db.php`
+  naming a driver the PHP lacks parses perfectly and then stalls for a minute (#545), so
+  the sixth leg RUNS the generated file and requires a row back. The fixture substitutes
+  only the port — driver, user and DSN shape stay what a real site gets — and asserts
+  `for_engine` still answers with the production port, so the substitution cannot hide a
+  wrong one.
   **`macos_floor_check` (network tier, 30 Aug 2026, ledger #433) is what a DERIVED
   assertion buys over a recorded table, and it paid on the first run.** PORTS.md carried a
   `minos` table and a hand-maintained rule — the stated floor equals the max across the

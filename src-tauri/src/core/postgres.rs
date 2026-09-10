@@ -130,7 +130,12 @@ fn connect_timeout_env() -> (&'static str, &'static str) {
 /// statement failed, so without it a restore that imported nothing would report
 /// success — the one failure in this feature that produces a wrong answer
 /// instead of an error. It is pinned by a test for that reason.
-pub(crate) fn psql_base_args(port: u16, dbname: &str) -> [String; 9] {
+///
+/// `pub` rather than `pub(crate)` so a live check can query the fixture server
+/// on the production argv instead of hand-rolling one — the same reason
+/// `database::client_base_args` is public (a check that builds its own flags is
+/// checking something the app does not do).
+pub fn psql_base_args(port: u16, dbname: &str) -> [String; 9] {
     [
         "--no-psqlrc".into(),
         "--set".into(),
