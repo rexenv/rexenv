@@ -168,6 +168,20 @@ it can:
   entitled to delete must say so when it goes: the phase gate now names the sweep
   instead of dying inside somebody else's subprocess.
 
+  **A gate is only as good as the thing it compares** (ledger #553, 10 Sep 2026).
+  The PHP builds rexenv publishes are gated on extension parity with the upstream
+  artifact each replaces — and that gate compared `php -m`, a list of NAMES. Our
+  `mbstring` and upstream's `mbstring` are the same name and not the same
+  extension: static-php-cli builds the regex half separately, PHP folds it into
+  mbstring's name, and ours did not have it. Every Laravel `artisan` command on
+  every site died on `mb_split`, behind a module list that matched perfectly. The
+  gate compares `get_defined_functions()` against the upstream artifact now.
+  Twice in two days the same shape — `PDO::getAvailableDrivers()` advertising a
+  driver that was not there, then a module name covering functions that were not
+  there — so the rule to carry forward is: **when a check compares a list the
+  subject also publishes, ask what the subject would still say if the thing were
+  broken.**
+
   **`postgres_site_lifecycle_check` (network tier, 10 Sep 2026, ledger #550/#551)
   is the answer to a question the other checks could not be asked**: not "does
   each part work" but "does the app use the right part". It drives
