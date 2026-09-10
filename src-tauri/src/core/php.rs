@@ -17,65 +17,53 @@ use crate::state::{models::{PhpVersion, PhpVersionView}, store};
 use rusqlite::Connection;
 
 
-/// **Whether the PHP rexenv ships for `minor` can reach PostgreSQL through PDO.**
+/// **Whether the PHP a site would actually RUN can reach PostgreSQL through PDO.**
 ///
-/// A per-MINOR answer, because it is per-minor in fact: rexenv builds 8.1-8.5
-/// itself (`rexenv/runtimes`, release `php-8x-1`) precisely to have this driver,
-/// and 7.4 and 8.0 still come from builds that lack it.
+/// Takes the exact patch, because that is the level the fact lives at: rexenv
+/// builds 8.1-8.5 itself to have `pdo_pgsql` (`rexenv/runtimes`, release
+/// `php-8x-1`), and rexenv also RUNS patches it did not build — the signed
+/// update manifest offers static-php.dev's newer patches for the same minor.
+/// Asking per minor said "8.3 is fine" about a machine running 8.3.32, and the
+/// site it allowed hung on its first migration (ledger #550).
 ///
-/// # What "lacks it" turned out to mean
+/// # What "cannot reach it" looks like, measured
 ///
-/// Measured 9 Sep 2026 against real clusters (PostgreSQL 16.14, 17.10, 18.6)
-/// with the static-php.dev bulk artifacts rexenv shipped at the time:
+/// 9 Sep 2026 against real clusters (PostgreSQL 16.14, 17.10, 18.6) on the
+/// static-php.dev artifacts rexenv shipped at the time:
 ///
 /// - `pg_connect()` (ext/pgsql) connects and queries — fine.
 /// - the bundled `psql` connects — fine, which is why every site-DB operation in
 ///   `core::postgres` works whatever this says.
-/// - **`new PDO("pgsql:…")` does not.** The TCP connection is accepted (the
-///   server logs `connection received`) and the client then never sends its
-///   startup packet, so the server closes it on `authentication_timeout` — 60
-///   seconds later, as `SQLSTATE[08006] server closed the connection
-///   unexpectedly`. `PGCONNECT_TIMEOUT` does not shorten it.
-/// - the same PDO call from a Homebrew PHP 8.2, against the same server,
-///   connects instantly.
+/// - **`new PDO("pgsql:…")` does not.** `php -m` lists `pgsql` and NOT
+///   `pdo_pgsql`, `extension_loaded("pdo_pgsql")` is `false` — **while
+///   `PDO::getAvailableDrivers()` advertises `pgsql`**. The connection is
+///   accepted and the startup packet never sent, so it ends at the server's
+///   `authentication_timeout`; on 8.3.32 it does so while SPINNING at 100% CPU,
+///   which defeats an idle-output watchdog as well as the user's patience.
 ///
-/// The build says the same from the other side: `php -m` lists `pgsql` and NOT
-/// `pdo_pgsql`, `extension_loaded("pdo_pgsql")` is `false` — **while
-/// `PDO::getAvailableDrivers()` advertises `pgsql`**. A driver that claims to
-/// exist and then stalls for a minute is the worst of the three possible states:
-/// "no driver" would have failed instantly and named itself.
-///
-/// Laravel's `pgsql` connection and the Blank-PHP starter's `db.php` both go
-/// through PDO, so `core::sites::ensure_engine_supports` refuses a
-/// PostgreSQL-backed site on a minor this answers `false` for — a refusal at
-/// create time rather than a site that provisions cleanly and cannot talk to its
-/// database.
-///
-/// **7.4 and 8.0 are `false` and are expected to stay that way.** 7.4 has no
-/// upstream build at all and ours was never built with the driver; 8.0 could not
-/// be built here (it aborts on x86_64 inside static-php-cli's own sanity check,
-/// reproducibly and unexplained) and has been EOL since Nov 2023, so it remains
-/// static-php.dev's — see `binaries::php_self_hosted_tag`.
-pub fn pdo_pgsql_supported(minor: &str) -> bool {
-    !matches!(minor, "7.4" | "8.0")
+/// A driver that claims to exist and then hangs is the worst of the three
+/// possible states: "no driver" would have failed instantly and named itself.
+pub fn pdo_pgsql_supported(patch: &str) -> bool {
+    binaries::php_has_pdo_pgsql(patch)
 }
 
-/// The oldest PHP minor whose bundled build can reach PostgreSQL through PDO —
-/// for the sentence a refusal shows someone whose site is on an older one.
+/// The oldest PHP minor rexenv can currently run with a PostgreSQL driver — for
+/// the sentence a refusal shows someone whose site is on an older one.
+///
+/// Computed from the version table against each minor's EFFECTIVE patch where a
+/// connection is available, and from the pins otherwise, so it names something
+/// the user can actually select.
 pub fn oldest_pdo_pgsql_minor() -> String {
     binaries::PHP_VERSIONS
         .iter()
+        .filter(|v| pdo_pgsql_supported(v))
         .map(|v| minor_of(v))
-        .filter(|m| pdo_pgsql_supported(m))
-        .min_by(|a, b| {
-            let key = |m: &str| {
-                let mut it = m.split('.');
-                (
-                    it.next().unwrap_or_default().parse::<u32>().unwrap_or(0),
-                    it.next().unwrap_or_default().parse::<u32>().unwrap_or(0),
-                )
-            };
-            key(a).cmp(&key(b))
+        .min_by_key(|m| {
+            let mut it = m.split('.');
+            (
+                it.next().unwrap_or_default().parse::<u32>().unwrap_or(0),
+                it.next().unwrap_or_default().parse::<u32>().unwrap_or(0),
+            )
         })
         .unwrap_or_else(|| "8.1".to_string())
 }
@@ -459,7 +447,9 @@ pub fn list_versions(
                 xdebug_unavailable_reason: binaries::xdebug_unavailable_reason(&v.minor),
                 xdebug_version: binaries::xdebug_version_for(&v.minor),
                 eol_since: eol_since(&v.minor),
-                postgres_supported: pdo_pgsql_supported(&v.minor),
+                // The EFFECTIVE patch, not the minor: this row's whole point is
+                // to answer for what will actually run (ledger #550).
+                postgres_supported: pdo_pgsql_supported(&effective),
                 // What the live pool is EXECUTING, said only when it differs from
                 // what this minor SHOULD be running — i.e. a restart is still
                 // pending. A pool already on the chosen patch is not a
@@ -1139,28 +1129,33 @@ mod tests {
     use super::*;
 
     #[test]
-    fn pdo_pgsql_is_answered_per_minor_and_the_oldest_one_is_derived() {
-        // The two rexenv does not build with the driver, and the ones it does.
-        for no in ["7.4", "8.0"] {
-            assert!(!pdo_pgsql_supported(no), "{no} has no working pdo_pgsql");
+    fn pdo_pgsql_is_answered_per_patch_because_rexenv_runs_patches_it_did_not_build() {
+        // The versions rexenv builds itself (release php-8x-1) have the driver.
+        for yes in ["8.1.34", "8.2.31", "8.3.31", "8.4.23", "8.5.8"] {
+            assert!(pdo_pgsql_supported(yes), "{yes} is one of ours");
         }
-        for yes in ["8.1", "8.2", "8.3", "8.4", "8.5"] {
-            assert!(pdo_pgsql_supported(yes), "{yes} is one of ours (release php-8x-1)");
+        // Upstream's do not — including 8.3.32, which is a NEWER patch of a minor
+        // whose pinned patch is ours. That pair is the whole reason this is not
+        // a per-minor answer: the update manifest offers 8.3.32, a machine on it
+        // was told PostgreSQL was fine, and the site hung (#550).
+        for no in ["7.4.33", "8.0.30", "8.3.32", "8.2.32", "8.4.24"] {
+            assert!(!pdo_pgsql_supported(no), "{no} is not a build rexenv made");
         }
+        // 7.4 is OURS and still has no driver: the answer must come from the
+        // artifact, not from "did we build it".
+        assert!(crate::core::binaries::php_self_hosted_tag_is_some("7.4.33"));
 
-        // The oldest is COMPUTED from the version table, not typed: a future
-        // release that drops 8.1 or adds 8.6 must move this sentence without
-        // anyone remembering to, since it is what refusals tell users to use.
+        // The oldest is COMPUTED from the version table, not typed: it is what
+        // refusals tell users to switch to, so a release that drops 8.1 or adds
+        // 8.6 must move the sentence without anyone remembering to.
         let oldest = oldest_pdo_pgsql_minor();
-        assert!(pdo_pgsql_supported(&oldest));
         assert_eq!(oldest, "8.1");
         assert!(
             binaries::PHP_VERSIONS
                 .iter()
-                .map(|v| minor_of(v))
-                .filter(|m| pdo_pgsql_supported(m))
-                .all(|m| m >= oldest),
-            "nothing supported is older than the one we name"
+                .filter(|v| pdo_pgsql_supported(v))
+                .all(|v| minor_of(v) >= oldest),
+            "nothing supported is older than the minor we name"
         );
     }
 

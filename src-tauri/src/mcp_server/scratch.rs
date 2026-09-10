@@ -1036,6 +1036,21 @@ fn db_query<'a>(
             crate::core::agent_db::authorize(&conn, is_scratch, &site.domain)?
         };
 
+        // Agent database access is MySQL's grant model — `CREATE USER … IDENTIFIED
+        // BY`, `GRANT SELECT ON db.*`, and a native MySQL driver in
+        // `core::agent_query`. None of it exists for PostgreSQL, and reaching
+        // this far with one would hand psql the MySQL flag array (ledger #551).
+        // Refused where the agent can read it, rather than failing inside a
+        // subprocess with a message about neither the site nor the engine.
+        if !engine.is_mysql_family() {
+            return Err(Error::Other(format!(
+                "{} sites have no agent database access yet — the read path is MySQL's grant \
+                 model end to end. The site's own tools still work; use the Database tab or \
+                 Adminer for its data.",
+                engine.label()
+            )));
+        }
+
         // Provisioning is root work and happens per call: the principal may
         // have been dropped by a revoke since the last one, and re-stating the
         // grant is cheaper than a liveness check that could be wrong.

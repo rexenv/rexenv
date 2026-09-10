@@ -1822,11 +1822,20 @@ pub(crate) async fn delete_site_owned(
         if want_db_drop {
             engine.drop_database(&db_client, engine.port(), &site.db_name)?;
         }
-        if let Some(user) = &mirrored_user {
-            core::dbmirror::drop_mirrored(&db_client, engine.port(), user)?;
-        }
-        for user in &agent_users {
-            core::agent_db::deprovision(&db_client, engine.port(), user)?;
+        // Account cleanup is MySQL's, in MySQL's syntax: rexenv has never created
+        // a mirrored user or an agent principal in PostgreSQL, so there is
+        // nothing to drop there — and attempting it hands psql the MySQL flag
+        // array and fails the whole delete on
+        // `unrecognized option '--no-defaults'`, which is what deleting the
+        // first PostgreSQL site did (ledger #551). Skipped, not attempted: the
+        // engine cannot hold these accounts, so this is not a gap being ignored.
+        if engine.is_mysql_family() {
+            if let Some(user) = &mirrored_user {
+                core::dbmirror::drop_mirrored(&db_client, engine.port(), user)?;
+            }
+            for user in &agent_users {
+                core::agent_db::deprovision(&db_client, engine.port(), user)?;
+            }
         }
     }
 

@@ -23,8 +23,24 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [ ] **Live-check a PostgreSQL site end to end — provision, serve, delete**
+  (`docs/PLAN-postgres-sites.md`). Two defects shipped past 1,159 green tests and
+  four live checks on 10 Sep 2026, and BOTH were found by running the app for
+  real: a PHP capability judged per minor while the machine ran a patch rexenv
+  did not build (#550 — `artisan migrate` at 99% CPU for four minutes), and the
+  site-delete path handing psql the MySQL flag array (#551 — `unrecognized
+  option '--no-defaults'`). The existing checks were each right about their own
+  layer: `laravel_postgres_check` asked every installed binary directly, so it was
+  correct about all of them while the app was wrong about WHICH one it would run.
+  What is missing is a check that provisions a real PG-backed Laravel site through
+  the app's own path and then deletes it — the seam where a per-minor answer and a
+  MySQL-only cleanup both become visible. Sandbox tier is not enough: it needs the
+  registry's selected patch, which is the thing that lied.
+
 - [x] **PostgreSQL as a site database — Laravel and Blank PHP** ✓ 10 Sep 2026,
-  steps (a)-(d) (`docs/PLAN-postgres-sites.md`; ledger #543-#549).
+  steps (a)-(d) (`docs/PLAN-postgres-sites.md`; ledger #543-#549), **plus two
+  defects the first real site found the same day** (#550, #551) — see the live
+  check queued above, which is what would have found them first.
   PostgreSQL ships, starts, has a version picker and Adminer — but no site can be
   BACKED by it, so a Laravel developer who works in `pgsql` cannot create the site
   they work on (rexenv can already IMPORT one: `dbimport.rs` reads

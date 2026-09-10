@@ -757,6 +757,34 @@ fn php_self_hosted_tag(version: &str) -> Option<&'static str> {
     }
 }
 
+/// Whether the PHP artifact for this EXACT version has a working `pdo_pgsql`.
+///
+/// **Per PATCH, not per minor, and that distinction cost a hung provision.**
+/// The record started as "8.1+ has the driver", which is true of the artifacts
+/// rexenv BUILDS — and rexenv also runs patches it did not build: the signed
+/// update manifest offers static-php.dev's newer patches for the same minor, so
+/// a machine on 8.3 can be running 8.3.32 (upstream, no driver) while 8.3.31
+/// (ours, has it) is what the minor was judged by. On 10 Sep 2026 that is
+/// exactly what happened: the New-site dialog offered PostgreSQL for PHP 8.3, a
+/// Laravel site was created, and `artisan migrate` sat at 99% CPU for four
+/// minutes — the same missing driver as ledger #545, in its worst shape yet,
+/// because this build BUSY-LOOPS rather than idling, so even the step's
+/// no-output watchdog cannot fire.
+///
+/// So the question is asked of the artifact, here, beside the pins that decide
+/// which artifact that is — `php_self_hosted_tag` says whose build a version is,
+/// and only the 8.x releases we build carry the driver (our 7.4 does not).
+pub fn php_has_pdo_pgsql(version: &str) -> bool {
+    php_self_hosted_tag(version).is_some_and(|_| !version.starts_with("7."))
+}
+
+/// Test helper: whether a version is one rexenv builds. Exists so a test can
+/// state "ours, and still without the driver" about 7.4 rather than implying it.
+#[cfg(test)]
+pub(crate) fn php_self_hosted_tag_is_some(version: &str) -> bool {
+    php_self_hosted_tag(version).is_some()
+}
+
 /// The verified manifest catalog this process is running with.
 ///
 /// A [`VersionCatalog`] can only be built by `updates::verify`, and its field is

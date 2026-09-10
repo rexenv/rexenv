@@ -254,6 +254,20 @@ impl DbEngine {
         }
     }
 
+    /// Whether this engine speaks the MySQL wire protocol — i.e. takes the
+    /// `client_base_args` flags, MySQL's `CREATE USER … IDENTIFIED BY` / `GRANT`
+    /// syntax, and the mysqldump family.
+    ///
+    /// Exists because "site engine" and "MySQL-protocol engine" stopped being
+    /// the same set when PostgreSQL arrived, and several paths mean the second
+    /// while saying the first. Deleting a PostgreSQL site ran the agent-principal
+    /// cleanup against its own client and got
+    /// `psql: unrecognized option '--no-defaults'` — the MySQL flag array handed
+    /// to psql, in a path whose SQL PostgreSQL could not have run either.
+    pub fn is_mysql_family(&self) -> bool {
+        matches!(self, DbEngine::Mysql | DbEngine::Mariadb)
+    }
+
     /// Whether this engine can back a SITE (as opposed to running standalone on
     /// the Databases page). Redis cannot: it is not a SQL store and there is no
     /// `db_name` in it to create, dump or drop.
@@ -672,9 +686,17 @@ mod tests {
     }
 
     #[test]
-    fn running_false_on_closed_port() {
-        // Nothing should be listening on a DB port during a unit test run.
-        assert!(!DbEngine::Postgres.running());
+    fn running_reads_a_port_rather_than_a_flag() {
+        // This asserted `!DbEngine::Postgres.running()` — "nothing should be
+        // listening on a DB port during a unit test run" — which was true only
+        // while PostgreSQL was an engine nobody actually ran. A PostgreSQL-backed
+        // site keeps it up, so the test failed on a correct machine (10 Sep
+        // 2026): it was asserting the developer's environment, not the code.
+        //
+        // What it can honestly prove is the probe's direction, on a port that
+        // cannot be in use. Everything else about `running()` — that it reads a
+        // live port instead of a stored flag — is settled by its one line.
+        assert!(!ports::is_listening(9), "the discard port is not a listener");
     }
 
     #[test]

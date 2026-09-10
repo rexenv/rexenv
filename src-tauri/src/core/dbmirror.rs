@@ -185,6 +185,19 @@ pub fn drop_mirrored(client: &SqlClient, port: u16, user: &str) -> Result<()> {
 /// root via the pinned [`client_base_args`]. Shared by mirror and drop so the
 /// no-argv rule has one implementation.
 pub(crate) fn run_sql(client: &SqlClient, port: u16, sql: &str, what: &str) -> Result<()> {
+    // Account management here is MySQL's, in MySQL's syntax, over MySQL's flags.
+    // A psql arriving with `client_base_args` fails as
+    // `unrecognized option '--no-defaults'` — a message about neither the
+    // account nor the engine — which is what deleting the first PostgreSQL site
+    // actually produced (ledger #551). Callers skip this for other engines; this
+    // is the structural half, so a future caller cannot reintroduce it.
+    if !client.engine().is_mysql_family() {
+        return Err(Error::Other(format!(
+            "{what}: {} does not use rexenv's MySQL account management — this path speaks \
+             MySQL's GRANT syntax over a MySQL client, and there is nothing here for it to do",
+            client.engine().label()
+        )));
+    }
     let mut child = std::process::Command::new(client.path())
         .args(client_base_args(port))
         .stdin(std::process::Stdio::piped())

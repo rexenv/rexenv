@@ -133,7 +133,7 @@ fn ensure_server_runs_php(server: WebServer, php_version: &str) -> Result<()> {
 fn ensure_engine_supports(
     site_type: SiteType,
     engine: SiteDbEngine,
-    php_version: &str,
+    php_patch: &str,
 ) -> Result<()> {
     if engine != SiteDbEngine::Postgres {
         return Ok(());
@@ -155,13 +155,17 @@ fn ensure_engine_supports(
     // `.env`, and then hangs on its first query with an error naming neither PHP
     // nor rexenv. The refusal names the WAY OUT, because unlike the WordPress
     // one there is one: choose a newer PHP.
-    let minor = crate::core::php::minor_of(php_version);
-    if !crate::core::php::pdo_pgsql_supported(&minor) {
+    //
+    // The PATCH decides it, not the minor: rexenv runs patches it did not build
+    // (the update manifest offers upstream's newer ones), and asking per minor
+    // said "8.3 is fine" about a machine running 8.3.32 — the site was created
+    // and `artisan migrate` then spun at 100% CPU for minutes (ledger #550).
+    if !crate::core::php::pdo_pgsql_supported(php_patch) {
         return Err(Error::Other(format!(
-            "PHP {minor} cannot reach PostgreSQL — a PostgreSQL site talks to its database \
-             through PDO, and the {minor} build rexenv ships has no working `pdo_pgsql` \
-             (it advertises the driver and then stalls; measured against PostgreSQL 16, 17 \
-             and 18). Use PHP {} or newer for this site, or MySQL/MariaDB on {minor}.",
+            "PHP {php_patch} cannot reach PostgreSQL — a PostgreSQL site talks to its \
+             database through PDO, and that build has no working `pdo_pgsql` (it advertises \
+             the driver and then hangs; measured against PostgreSQL 16, 17 and 18). Use PHP \
+             {} or newer for this site, or MySQL/MariaDB on this one.",
             crate::core::php::oldest_pdo_pgsql_minor()
         )));
     }
@@ -485,7 +489,12 @@ fn create_recording_ownership(
     validate_docroot_path(&new.path)?;
     ensure_server_available(new.web_server)?;
     ensure_server_runs_php(new.web_server, &new.php_version)?;
-    ensure_engine_supports(new.site_type, new.db_engine, &new.php_version)?;
+    // The patch this site will really run — the user's selection floored by the
+    // pin — because the PostgreSQL rule is a fact about the ARTIFACT, and the
+    // row stores only the minor.
+    let php_patch = crate::core::php::effective_patch(conn, &new.php_version)?
+        .unwrap_or_else(|| new.php_version.clone());
+    ensure_engine_supports(new.site_type, new.db_engine, &php_patch)?;
     if let Some(owner) = domain_taken_by(conn, &new.domain)? {
         return Err(Error::Other(format!(
             "{} already reaches the site \"{owner}\" — one hostname can only reach one site",
@@ -2580,7 +2589,7 @@ mod tests {
         );
         // …and it holds on a PHP that CAN reach PostgreSQL — the WordPress
         // refusal must not be quietly resting on the runtime one.
-        assert!(crate::core::php::pdo_pgsql_supported("8.4"));
+        assert!(crate::core::php::pdo_pgsql_supported("8.4.23"));
 
         // The second refusal has a different subject: the PHP MINOR, not the
         // site type. Both types are allowed on a runtime with the driver and
@@ -2593,7 +2602,9 @@ mod tests {
                     "{t:?} on PostgreSQL must be allowed on PHP {good}"
                 );
             }
-            for bad in ["7.4.33", "8.0.30"] {
+            // 8.3.32 is the one that hung a real provision: a patch of a minor
+            // whose OTHER patch (8.3.31, ours) does have the driver.
+            for bad in ["7.4.33", "8.0.30", "8.3.32"] {
                 let m = ensure_engine_supports(t, SiteDbEngine::Postgres, bad)
                     .expect_err("PostgreSQL needs PDO, which this build lacks")
                     .to_string();
@@ -2602,10 +2613,7 @@ mod tests {
                     m.contains(&crate::core::php::oldest_pdo_pgsql_minor()),
                     "and the version that works: {m}"
                 );
-                assert!(
-                    m.contains(&crate::core::php::minor_of(bad)),
-                    "and the one the site is on: {m}"
-                );
+                assert!(m.contains(bad), "and the build the site is on: {m}");
             }
         }
 
@@ -2618,7 +2626,7 @@ mod tests {
             (SiteType::Laravel, SiteDbEngine::Mysql),
             (SiteType::Php, SiteDbEngine::Mariadb),
         ] {
-            for v in ["7.4.33", "8.0.30", "8.4.23"] {
+            for v in ["7.4.33", "8.0.30", "8.3.32", "8.4.23"] {
                 assert!(ensure_engine_supports(t, e, v).is_ok(), "{t:?} + {e:?} on {v}");
             }
         }

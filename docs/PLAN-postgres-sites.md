@@ -4,7 +4,8 @@
 blocker found in step (b) is FIXED — rexenv now builds PHP 8.1-8.5 itself with a working
 `pdo_pgsql` (`rexenv/runtimes` release `php-8x-1`, 10 Sep 2026; ledger #545), so a
 PostgreSQL site is allowed on 8.1+ and refused on 7.4/8.0 naming the version to use.
-All four steps are done.**
+All four steps are done — and the FIRST REAL SITE found two defects the same day
+(#550, #551), both in code that compiled and passed every test: see §6.**
 Planned against `40a30aa`.
 
 Today a site's database engine is `mysql | mariadb` and nothing else. PostgreSQL
@@ -183,3 +184,37 @@ and the MCP `create_site` tool in the same commit that made it representable, an
 "unreachable today because no screen offers it" is exactly how the last two cross-site
 exposures started. The guard sits in `sites::create_recording_ownership`, the one
 function every site insert passes through.
+
+
+---
+
+## 6. What the first real site found, on the day it shipped
+
+Two defects, one command apart, neither reachable by any test that existed.
+
+**#550 — a capability judged per MINOR, on a machine running a patch we did not
+build.** The dialog offered PostgreSQL for PHP 8.3 because rexenv builds 8.3.31
+with `pdo_pgsql`. The machine was running **8.3.32** — static-php.dev's, offered
+through the signed update manifest, without the driver. `artisan migrate --force`
+then spun at 99% CPU for 3m46s: on that build the missing driver busy-loops
+rather than idling, so even the step's no-output watchdog cannot fire.
+
+The lesson is not "check the patch". It is that **`laravel_postgres_check` was
+right and still did not help**: it asks every installed binary directly, so it was
+correct about all seven while the app was wrong about which one it would run. A
+check that interrogates the parts cannot catch a wrong answer about which part is
+used. That is what the queued provision-and-delete check is for.
+
+**#551 — "site engine" and "MySQL-protocol engine" are not the same set.** One
+command later, `rex site delete` failed with
+`psql: unrecognized option '--no-defaults'`. rexenv's mirrored users and agent
+principals are MySQL's grant model end to end, and the delete path ran that
+cleanup against the site's own client whatever the engine was. Now skipped for
+engines that cannot hold such accounts, refused inside `dbmirror::run_sql` so a
+future caller cannot reintroduce it, and refused with a readable sentence where an
+agent asks for database access.
+
+Both are the same shape as the four found in step (d) — code written when there
+were two engines, correct for two, silently wrong for three. The difference is
+that step (d)'s were found by reading and these two were found by using, which is
+the argument for the live check rather than another unit test.
