@@ -153,16 +153,35 @@ connects to nothing and stalls until the server times it out.
 | Artifacts | `php-{8.1.34,8.2.32,8.3.32,8.4.23,8.5.8}-{cli,fpm}-macos-{aarch64,x86_64}.tar.gz` |
 | Built by | `rexenv/runtimes` (public), static-php-cli 2.8.5, GitHub Actions |
 | Source | php.net release tarballs, fetched and pinned by static-php-cli |
-| Release | `php-8x-1` (8.1.34, 8.4.23, 8.5.8) and `php-8x-2` (8.2.32, 8.3.32) — immutable, never re-uploaded; a rebuild is the next build number. The second release exists because upstream had already moved those two minors on, and a machine that took the in-app update would otherwise have been running a build without the driver |
+| Release | One per version — `php-8x-3` (8.1.34), `php-8x-4` (8.2.32), `php-8x-5` (8.3.32), `php-8x-6` (8.4.23), `php-8x-7` (8.5.8) — immutable, never re-uploaded; a rebuild is the next build number. `php-8x-1` and `php-8x-2` are superseded and still published: those builds lacked mbstring's regex half and gd's avif, which a module list cannot see |
 | Pinned in | `core/binaries.rs` (`PHP_8_*_SHA256`, `php_self_hosted_tag`) |
 | Licence | **PHP License 3.01** (`licenses/PHP-3.01.txt`) |
 
-Two build gates decide whether these ship: **extension parity** with the upstream
-build each one replaces, per minor, against a module list generated from the
-artifact rexenv actually shipped — self-hosting's real risk is a capability a
-user had yesterday — and a **real PostgreSQL connection through PDO**, because
-`php -m` and `PDO::getAvailableDrivers()` both reported PostgreSQL support in the
-artifact that had none.
+Four build gates decide whether these ship, and each exists because the one
+before it missed something:
+
+1. **module parity** with the upstream build each replaces, per minor, from a
+   list generated off the shipped artifact;
+2. **function parity** — `get_defined_functions()` diffed against upstream's
+   build of the same version. A module list is a list of NAMES: our `mbstring`
+   and theirs were the same name and 16 functions apart, and every Laravel
+   `artisan` command died on `mb_split` behind a perfect module diff;
+3. **configure-flag parity** — read out of both binaries' own `Configure
+   Command`. It found `qdbm` (a dba handler) and Redis's ZSTD/LZ4 compressors,
+   neither of which is a module name or a function name;
+4. a **real PostgreSQL connection through PDO**, because `php -m` and
+   `PDO::getAvailableDrivers()` both reported PostgreSQL support in the artifact
+   that had none.
+
+**Why upstream's PDO says `pgsql` and then hangs**, since it is the reason this
+build exists: static-php-cli offers swoole's coroutine HOOK for PostgreSQL, and
+it is mutually exclusive with the real extension — *"swoole-hook-pgsql provides
+pdo_pgsql, if you enable pgsql hook for swoole, you must remove pdo_pgsql
+extension"*. Upstream takes the hook, which only works inside a Swoole
+coroutine; ordinary PHP connects to nothing and waits. rexenv takes the real
+extension and gives up two coroutine constants (`SWOOLE_HOOK_PDO_PGSQL`,
+`SWOOLE_HOOK_PDO_SQLITE`) — the only difference between these builds and
+upstream's, and a deliberate one.
 
 **PHP 8.0.30 is NOT ours** and still comes from static-php.dev, so it has no
 working `pdo_pgsql`. It builds and passes every gate on arm64 and aborts on
