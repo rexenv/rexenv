@@ -1,10 +1,11 @@
 //! Manual check: **can the PHP rexenv ships reach PostgreSQL at all?**
 //! Run: `cargo run --example laravel_postgres_check`
 //!
-//! Laravel's `pgsql` connection and the Blank-PHP starter's `db.php` both go
-//! through PDO, so step (b) of docs/PLAN-postgres-sites.md rests entirely on one
-//! fact about a bundled binary — exactly the kind of fact only this layer can
-//! establish. Measured 9 Sep 2026 on static-php.dev's builds, the answer was NO:
+//! Two things, in order: **can this PHP reach PostgreSQL through PDO**, and
+//! **does a real Laravel app migrate onto it**. The first is a fact about a
+//! bundled binary that only this layer can establish; the second is the feature.
+//!
+//! Measured 9 Sep 2026 on static-php.dev's builds, the answer to the first was NO:
 //!
 //!   - `pg_connect()` (ext/pgsql) connects and queries;
 //!   - the bundled `psql` connects (which is why every op in `core::postgres`
@@ -32,6 +33,7 @@
 //! database dropped before the server is stopped.
 
 use rexenv_lib::core::db::DbEngine;
+use rexenv_lib::core::repo::CancelToken;
 use rexenv_lib::core::{binaries, laravel, php};
 use std::path::Path;
 use std::thread;
@@ -204,14 +206,115 @@ async fn main() {
         ok &= work_ok && said == "from pdo";
     }
 
-    // What provisioning would write, whatever the runtime does — the values are
+    // What provisioning writes, whatever the runtime does — the values are
     // rexenv's own and are settled (ledger #546).
     let settings = laravel::DbSettings::for_engine(engine, DB.to_string());
     println!(
-        "\n  .env would say DB_CONNECTION={} DB_PORT={} DB_USERNAME={}",
+        "\n  .env says DB_CONNECTION={} DB_PORT={} DB_USERNAME={}",
         settings.connection, settings.port, settings.username
     );
     ok &= settings.connection == "pgsql" && settings.port == port && settings.username == "postgres";
+
+    // ── the actual feature: a real Laravel app, migrated onto PostgreSQL ─────
+    //
+    // PDO connecting is necessary and not sufficient. `artisan migrate` is what
+    // a developer does in the first minute, it goes through Laravel's OWN pgsql
+    // driver (schema grammar, not just a connection), and it is the step that
+    // would expose a wrong port, a wrong superuser or a `DB_CONNECTION` the
+    // skeleton left on sqlite — each of which PDO alone would sail past.
+    if recorded {
+        println!("\n=== composer create-project + artisan migrate on PostgreSQL ===");
+        let composer = binaries::resolve_file(&*plat, "composer", binaries::COMPOSER_VERSION)
+            .await
+            .expect("composer phar");
+        let project = std::env::temp_dir().join(format!("rexenv-lvpg-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&project);
+        std::fs::create_dir_all(&project).unwrap();
+        let cancel = CancelToken::default();
+        let mut line = |l: &str| println!("    {l}");
+        // Composer needs a HOME to put its cache in; the sandbox platform gives
+        // this example everything else, but composer reads the environment.
+        let env = vec![(
+            "COMPOSER_HOME".to_string(),
+            plat.paths()
+                .app_data_dir()
+                .expect("sandbox app-data")
+                .join("composer-home")
+                .display()
+                .to_string(),
+        )];
+        let created = laravel::create_project(
+            plat.supervisor(),
+            php_bin,
+            &composer,
+            &project,
+            &env,
+            &cancel,
+            &mut line,
+        );
+        println!("  create-project → {:?}", created.as_ref().map(|_| "ok").map_err(|e| e.to_string()));
+        ok &= created.is_ok();
+
+        if created.is_ok() {
+            // The skeleton's OWN post-create script already ran
+            // `artisan migrate --graceful` against `database/database.sqlite`,
+            // before rexenv gets to wire anything — so that file is legitimately
+            // populated by now, and "the sqlite is empty" is not the assertion.
+            // (Provisioning has the same shape: create-project, then wire, then
+            // migrate.) What must hold is that it does not grow AFTER the wiring:
+            // that is what tells our migrate from the skeleton's.
+            let sqlite = project.join("database/database.sqlite");
+            let sqlite_before = std::fs::metadata(&sqlite).map(|m| m.len()).unwrap_or(0);
+
+            let env_file = laravel::env_path(&project);
+            let original = std::fs::read_to_string(&env_file).expect("the skeleton writes .env");
+            let wired = laravel::wire_env(&original, "https://lvpg.rex", &settings, true);
+            std::fs::write(&env_file, &wired).expect("write .env");
+            // One answer per key, and the skeleton's own sqlite gone: a leftover
+            // would send `migrate` at a FILE, where it would succeed while doing
+            // nothing to the database the site was given.
+            ok &= wired.matches("DB_CONNECTION=").count() == 1
+                && wired.contains("DB_CONNECTION=pgsql")
+                && !wired.contains("DB_CONNECTION=sqlite");
+
+            let migrated = laravel::artisan(
+                plat.supervisor(),
+                php_bin,
+                &project,
+                &["migrate", "--force"],
+                &env,
+                &cancel,
+                &mut line,
+            );
+            println!("  artisan migrate → {:?}", migrated.as_ref().map(|_| "ok").map_err(|e| e.to_string()));
+            ok &= migrated.is_ok();
+
+            // Ask the CLUSTER, not artisan: `migrate` exiting 0 against the
+            // wrong target (a stray sqlite file, another database) looks
+            // identical from the app's side. Laravel's own bookkeeping table is
+            // the thing to find, in THIS database.
+            let (found_ok, found) = php_says(
+                php_bin,
+                &format!(
+                    "$p = new PDO('pgsql:host=127.0.0.1;port={port};dbname={DB}', 'postgres', ''); \
+                     echo $p->query(\"SELECT count(*) FROM information_schema.tables \
+                     WHERE table_schema='public' AND table_name='migrations'\")->fetchColumn();"
+                ),
+            );
+            println!("  migrations table in {DB} → {found}");
+            ok &= found_ok && found == "1";
+
+            // …and OUR migrate went to PostgreSQL rather than to that file: it
+            // is the same size as the skeleton left it. A `.env` still on sqlite
+            // would have made `migrate` succeed here while touching nothing in
+            // the database the site was given — success in the log, an empty
+            // database on disk.
+            let sqlite_after = std::fs::metadata(&sqlite).map(|m| m.len()).unwrap_or(0);
+            println!("  skeleton sqlite {sqlite_before} → {sqlite_after} bytes (must not grow)");
+            ok &= sqlite_after == sqlite_before;
+        }
+        let _ = std::fs::remove_dir_all(&project);
+    }
 
     let _ = engine.drop_database(&client, port, DB);
     server.reap();

@@ -38,15 +38,18 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     (network tier) all green against real PostgreSQL 18.6.0 — including a broken
     dump REFUSED, which is the leg the whole flag exists for. No behaviour change
     for existing sites: `SiteDbEngine::Postgres` is representable but not offered.
-  - [ ] **(b) Laravel** — the runtime blocker is GONE (10 Sep 2026, ledger #545):
-    `rexenv/runtimes` builds 8.1-8.5 with a working `pdo_pgsql` (release
-    `php-8x-1`), rexenv pins them, and `laravel_postgres_check` now proves a full
-    PDO session on every one instead of proving the gap. 8.0/7.4 stay without the
-    driver, so `php::pdo_pgsql_supported` answers per MINOR and a PostgreSQL site
-    on those is refused naming the version to use. Landed earlier:
-    `DbSettings::for_engine` (#546). **Remaining**: `confedit`'s rewrite paths for
-    a linked PG project, and `php artisan migrate` proven live against a real
-    cluster (the example stops at PDO today).
+  - [x] **(b) Laravel** ✓ 10 Sep 2026 — ledger #545, #546, #547. `DbSettings::for_engine`
+    takes driver/port/superuser from the engine as one decision; the runtime
+    blocker is gone (rexenv builds 8.1-8.5 with `pdo_pgsql`) and
+    `php::pdo_pgsql_supported` answers per MINOR, so a PostgreSQL site is refused
+    on 7.4/8.0 naming the version that works. The one-click config rewrite now
+    REFUSES a config whose `DB_CONNECTION` is not the engine's driver rather than
+    moving host+port under it (#547) — a closed key set cannot express a driver
+    change, and half the change is worse than none. Proven live
+    (`laravel_postgres_check`): every installed minor against the record, a full
+    PDO session, then `composer create-project` → wired `.env` → `artisan migrate
+    --force` → the `migrations` table found in the PostgreSQL database by asking
+    the cluster, with the skeleton's sqlite unchanged.
   - [x] **Unblock (b)/(c): a PHP build with a working `pdo_pgsql`** ✓ 10 Sep 2026
     — `rexenv/runtimes` release `php-8x-1` (8.1.34/8.2.31/8.3.31/8.4.23/8.5.8,
     cli+fpm, both arches, immutable), built by `scripts/build-php.sh` +

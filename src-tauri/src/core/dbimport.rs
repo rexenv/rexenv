@@ -43,6 +43,20 @@ impl Driver {
             Driver::Sqlite => "SQLite",
         }
     }
+
+    /// The driver a config MUST name for a site whose database lives in
+    /// `engine`. `Sqlite` is deliberately not reachable here: no engine rexenv
+    /// runs is a file.
+    ///
+    /// Lives beside `from_dotenv` rather than at the one call site because it is
+    /// the same fact from the other direction — one place that knows which
+    /// `DB_CONNECTION` values belong to which server.
+    pub fn for_engine(engine: crate::core::db::DbEngine) -> Driver {
+        match engine {
+            crate::core::db::DbEngine::Postgres => Driver::Postgres,
+            _ => Driver::MysqlFamily,
+        }
+    }
 }
 
 /// Where the settings came from — named in the UI so the user can check us.
@@ -497,6 +511,27 @@ $table_prefix = 'wp_';
             read_dotenv("DB_CONNECTION=mysql\nDB_USERNAME=u\n", env_src()),
             Err(Unreadable::MissingKey { .. })
         ));
+    }
+
+    #[test]
+    fn a_configs_driver_must_match_the_engine_its_database_lives_in() {
+        use crate::core::db::DbEngine;
+        // Both MySQL-protocol engines are one driver — Laravel has no `mariadb`
+        // value before 11.x, and the wire is the same either way.
+        assert_eq!(Driver::for_engine(DbEngine::Mysql), Driver::MysqlFamily);
+        assert_eq!(Driver::for_engine(DbEngine::Mariadb), Driver::MysqlFamily);
+        assert_eq!(Driver::for_engine(DbEngine::Postgres), Driver::Postgres);
+
+        // …and the mapping agrees with what a `.env` is allowed to say, in both
+        // directions: every value `from_dotenv` accepts for a server engine is
+        // one `for_engine` can produce. A driver nothing maps to would make the
+        // rewrite refusal unreachable for a config it should refuse.
+        for v in ["mysql", "mariadb"] {
+            assert_eq!(Driver::from_dotenv(v), Some(Driver::MysqlFamily), "{v}");
+        }
+        for v in ["pgsql", "postgres", "postgresql"] {
+            assert_eq!(Driver::from_dotenv(v), Some(Driver::Postgres), "{v}");
+        }
     }
 
     #[test]

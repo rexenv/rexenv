@@ -148,6 +148,29 @@ fn resolve(state: &State<'_, AppState>, site_id: &str) -> Result<Resolution> {
     }
 
     let engine = DbEngine::from_site(site.db_engine);
+
+    // The config's DRIVER must be the one this site's database actually speaks.
+    // Same shape as the rename refusal above, and the same reason: `RewriteKey`
+    // is a closed set — Host, Port, User — so a driver change is unrepresentable
+    // here, and rewriting host+port WITHOUT it produces the worst kind of
+    // success. A `.env` still saying `DB_CONNECTION=mysql`, pointed at 15432,
+    // sends a MySQL client at PostgreSQL: the handshake is unreadable to both
+    // sides and the error names neither, exactly the shape ledger #546 exists
+    // to prevent one layer down. Tell-only, naming both halves.
+    if conn.driver != dbimport::Driver::for_engine(engine) {
+        return Ok(Resolution::Refused {
+            reason: format!(
+                "this site's database lives in {}, but the config says {} — the one-click \
+                 change covers the host, port and user, not the driver. Set \
+                 `DB_CONNECTION` yourself (the Database tab has the connection lines), \
+                 then run this again.",
+                engine.label(),
+                conn.driver.label()
+            ),
+            file: Some(file.display().to_string()),
+        });
+    }
+
     let port = engine.port();
     let reserved = RESERVED_USERS.iter().any(|r| r.eq_ignore_ascii_case(&conn.user));
     let creates_user = reserved.then(|| dbmirror::dedicated_user_name(&site.domain));

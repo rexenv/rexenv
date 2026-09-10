@@ -1,10 +1,11 @@
 # PostgreSQL as a site database — Laravel and Blank PHP, never WordPress
 
-**Status: step (a) SHIPPED 9 Sep 2026 (ledger #543, #544). The runtime blocker found
-in step (b) is FIXED — rexenv now builds PHP 8.1-8.5 itself with a working
+**Status: steps (a) and (b) SHIPPED (9-10 Sep 2026; ledger #543-#547). The runtime
+blocker found in step (b) is FIXED — rexenv now builds PHP 8.1-8.5 itself with a working
 `pdo_pgsql` (`rexenv/runtimes` release `php-8x-1`, 10 Sep 2026; ledger #545), so a
 PostgreSQL site is allowed on 8.1+ and refused on 7.4/8.0 naming the version to use.
-Remaining: the rest of (b), then (c) and (d).** Planned against `40a30aa`.
+Remaining: (c) the Blank-PHP starter, and (d) the UI plus lifecycle gating.**
+Planned against `40a30aa`.
 
 Today a site's database engine is `mysql | mariadb` and nothing else. PostgreSQL
 ships, starts, has a version picker and an Adminer button — as a *standalone*
@@ -116,7 +117,8 @@ real site row. **No behaviour change for existing sites** — that is the bar fo
 L1: `examples/postgres_site_db_check.rs` (service tier) — create → seed a table →
 size → export → drop, against the real server and the real `psql`/`pg_dump`.
 
-**(b) Laravel — BLOCKED 9 Sep 2026, and the blocker is not in this repo.**
+**(b) Laravel — SHIPPED 10 Sep 2026** (blocked for a day on the runtime; that
+story is kept below because it is the expensive half).
 What landed: `DbSettings::for_engine(engine, database)` takes driver, port and
 superuser from the engine as one decision (`pgsql` / 15432 / `postgres`, vs
 `mysql` / 13306-13307 / `root`) instead of three literals typed beside one derived
@@ -152,8 +154,12 @@ both reported support the upstream artifact did not have. Proven on this laptop
 18.6) before being wired to CI; not yet run there, not yet released. Then flip the
 constant: the refusal opens, the example
 turns from proving the gap into proving the feature, and the rest of (b) is the
-`.env` work below. Still to do after that: `confedit`'s rewrite paths for a linked
-PG project, and `php artisan migrate` proven against a real cluster.
+`.env` work below. **Both closed 10 Sep 2026.** The rewrite path does not need a `DB_CONNECTION`
+key — it needs to REFUSE a config whose driver is not the engine's, which is what
+it now does (#547; a closed key set cannot express a driver change, and moving
+host+port under a `mysql` line points a MySQL client at PostgreSQL). And
+`artisan migrate` is proven live: `composer create-project`, the wired `.env`,
+`migrate --force`, and the `migrations` table found by asking the cluster.
 
 **(c) Blank PHP starter — blocked by the same runtime gap** (`db.php` returns a PDO). PG dialect for `seed_sql` (`SERIAL`/`GENERATED`, no
 `ENGINE=`, no `USE`), `db.php` DSN, and the `index.php` prose that names the user.
