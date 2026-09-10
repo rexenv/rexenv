@@ -105,6 +105,33 @@ browser renders it.
 - [ ] **New site → Blank PHP → Database: None** → the page loads with the "No
       database" panel and NO engine download happened.
 
+## Core: a PostgreSQL-backed site (`docs/PLAN-postgres-sites.md`)
+
+The automated tiers cover the engine, the dialect and every installed PHP binary.
+What only the app can show is **which** PHP a site actually runs, and that is
+where both of this feature's shipped defects lived (ledger #550, #551): the
+dialog offered PostgreSQL for a minor judged by a build the machine was not
+running, and deleting the first such site handed psql MySQL's flags. First passed
+by hand 10 Sep 2026.
+
+- [ ] **New site → Laravel → PHP 8.1 or newer → Database: PostgreSQL** → Create.
+      The card runs `migrations` and **finishes** — a hang here is the driver, not
+      the migration (a PHP without `pdo_pgsql` busy-loops rather than failing).
+- [ ] Site loads at `https://<name>.rex` and Site info reads
+      **PostgreSQL · 127.0.0.1:15432** — not MySQL, not 13306.
+- [ ] `.env` in the project says `DB_CONNECTION=pgsql`, `DB_PORT=15432`,
+      `DB_USERNAME=postgres`.
+- [ ] Site → **Database** tab opens Adminer on that database, and the Sites row
+      shows a real **DB size** rather than `—`.
+- [ ] **Set the site's PHP to 7.4 or 8.0 in the New-site dialog instead:**
+      PostgreSQL is **absent** from the Database field and a line underneath says
+      why. Switch to WordPress: absent, and NO such line (a WordPress user cannot
+      act on a PHP version).
+- [ ] **Delete the site** → it completes, the database is gone from Adminer, and
+      no error mentions `--no-defaults`.
+- [ ] **Blank PHP → Database: PostgreSQL** → the starter page's Sample data card
+      reads **connected** with four rows, and `db.php` says `'driver' => 'pgsql'`.
+
 ## Core: a Laravel site FROM a git repository (`docs/archive/PLAN-git-site-clone.md`)
 
 Only the packaged app can prove this end to end: real event streaming into the
