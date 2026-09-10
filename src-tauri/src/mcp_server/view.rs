@@ -412,6 +412,30 @@ impl KnownPaths {
 /// never chose. The tools' scope limits (closed log source, tail-only, line and
 /// byte caps) and their notes are the rest of the defence; this is one honest
 /// layer, never a "the output is now safe" claim.
+/// The reason a provision job gave, fit for a tool reply.
+///
+/// The create error is written for a person at the app
+/// (`commands::sites::create_site_owned_with`): the job's reason, then "the site
+/// stays listed as setup incomplete — Retry it from the app", then `full log:`
+/// and a local path. An agent gets the reason — the one part that says what to
+/// change — with those two wrapper lines dropped and every remaining line through
+/// [`scrub_log_line`]. Both create tools used to drop the WHOLE text to keep that
+/// path out, which also kept out the reason, and sent the agent to a log tool
+/// that never held it.
+pub fn create_failure_reason(error: &str, known: &KnownPaths) -> String {
+    error
+        .lines()
+        .filter(|l| {
+            let t = l.trim_start();
+            !t.starts_with("full log:") && !t.starts_with("the site stays listed as")
+        })
+        .map(|l| scrub_log_line(l, known))
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string()
+}
+
 pub fn scrub_log_line(line: &str, known: &KnownPaths) -> String {
     let mut out = redact_token_after(line, "rexenv_login=");
     if !known.keep_reset_keys {

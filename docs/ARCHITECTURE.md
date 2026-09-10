@@ -1182,6 +1182,13 @@ IPC surface — which is how a reader ends up designing against a system with on
   weeks: that binder returns a tokio listener and panics off-runtime, which was a
   packaged-build enable crash. The *convention* is shared; the binder is its own, and a
   test pins that binding needs no ambient runtime.
+- **A create that half-builds tells the agent WHY.** `site_create` and `scratch_create_site`
+  name the site that now exists (so the agent does not make another) AND carry the
+  provision job's own reason through `view::create_failure_reason` — the app's
+  `full log:` path and its "Retry it from the app" line dropped, every other line
+  through the path scrubber. Until 11 Sep 2026 both dropped the whole error to keep that
+  path out and pointed at `tail_log`, which reads only a WordPress debug log, so no tool
+  held the reason at all (ledger #558).
 - **Three registries, and the registry IS the capability.** `mcp_server/tools.rs` holds the
   eleven read-only tools (`list_sites` — widened with parity to carry owner / multisite /
   xdebug / aliases / setup-complete / linked, `site_status`, `tail_log`, and from parity

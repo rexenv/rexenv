@@ -652,7 +652,13 @@ impl<'a> ScratchCtx<'a> {
             }
             Err(failure) => {
                 let conn = self.db().ok();
-                Err(translate_create_failure(&domain, failure, conn.as_deref(), acted))
+                Err(translate_create_failure(
+                    &domain,
+                    failure,
+                    conn.as_deref(),
+                    self.state.platform.paths(),
+                    acted,
+                ))
             }
         }
     }
@@ -858,21 +864,27 @@ fn translate_create_failure(
     domain: &str,
     failure: crate::commands::sites::CreateFailure,
     conn: Option<&rusqlite::Connection>,
+    paths: &dyn crate::platform::traits::Paths,
     acted: &super::feed::ActedTarget,
 ) -> Error {
     let Some(id) = failure.site_id else {
         return failure.error;
     };
+    let mut docroot = String::new();
     if let Some(conn) = conn {
         if let Ok(Some(site)) = crate::state::store::get_site(conn, &id) {
+            docroot = site.path.clone();
             acted.set(&site);
         }
     }
+    // The job's reason, never its log path (`view::create_failure_reason`).
+    let known = super::view::KnownPaths::for_site(paths, &docroot);
+    let reason = super::view::create_failure_reason(&failure.error.to_string(), &known);
     Error::Other(format!(
-        "`{domain}` was created but its setup did not finish, so it is not usable yet. It exists \
-         (id `{id}`) and the person you're working with can see it in rexenv listed as \"setup \
-         incomplete\", where they can retry or remove it — retrying needs them, not you. You can \
-         read what went wrong with tail_log, or clear it away with scratch_delete_site and try \
+        "`{domain}` was created but its setup did not finish, so it is not usable yet. What \
+         failed:\n{reason}\n\nIt exists (id `{id}`) and the person you're working with can see \
+         it in rexenv listed as \"setup incomplete\", where they can retry or remove it — \
+         retrying needs them, not you. You can clear it away with scratch_delete_site and try \
          again."
     ))
 }
@@ -1196,12 +1208,19 @@ mod tests {
             "probe.scratch.rex",
             crate::commands::sites::CreateFailure {
                 site_id: Some(row.id.clone()),
-                error: Error::Other("failed at core_download".into()),
+                error: Error::Other(
+                    "site create probe.scratch.rex at \"core_download\": failed at core_download\n  the \
+                     site stays listed as \"setup incomplete\" — Retry it from the app, or delete it\n  \
+                     full log: /tmp/rexenv-probe.log"
+                        .into(),
+                ),
             },
             Some(&conn),
+            crate::platform::current().paths(),
             &acted,
         );
         let msg = err.to_string();
+        assert!(msg.contains("failed at core_download"), "the job's own reason: {msg}");
         assert!(msg.contains("probe.scratch.rex"), "names the site: {msg}");
         assert!(msg.contains(&row.id), "gives the id the agent can act on: {msg}");
         assert!(msg.contains("was created"), "does not read as nothing happened: {msg}");
@@ -1225,6 +1244,7 @@ mod tests {
                 error: Error::Other("`probe.scratch.rex` already exists. Pick a different name.".into()),
             },
             None,
+            crate::platform::current().paths(),
             &acted,
         );
         assert!(err.to_string().contains("Pick a different name"), "the refusal stands alone");

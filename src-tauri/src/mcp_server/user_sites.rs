@@ -1344,26 +1344,40 @@ fn plan_create(ctx: &UserCtx<'_>, args: &Value) -> Result<CreatePlan> {
 
 /// A create failure, translated for an agent — the scratch tool's shape, with
 /// the parity tools' names for the way forward.
+///
+/// **The job's own reason is IN the reply, through the path scrubber.** It used
+/// to be dropped whole (the text can name a local log file) and the agent was
+/// sent to `tail_log` — which reads only a WordPress debug log, so no tool
+/// anywhere held the reason. Found 11 Sep 2026 driving the site matrix through
+/// this tool: a Laravel create on PHP 8.1 failed with a sentence naming the
+/// advisory-blocked package and the fix, and the agent was told only "setup did
+/// not finish". `site_retry` already returned its error through the same
+/// scrubber; this is that, for the first attempt.
 fn translate_create_failure(
     domain: &str,
     failure: crate::commands::sites::CreateFailure,
     conn: Option<&rusqlite::Connection>,
+    paths: &dyn crate::platform::traits::Paths,
     acted: &super::feed::ActedTarget,
 ) -> Error {
     let Some(id) = failure.site_id else {
         return failure.error;
     };
+    let mut docroot = String::new();
     if let Some(conn) = conn {
         if let Ok(Some(site)) = crate::state::store::get_site(conn, &id) {
+            docroot = site.path.clone();
             acted.set(&site);
         }
     }
+    let known = super::view::KnownPaths::for_site(paths, &docroot);
+    let reason = super::view::create_failure_reason(&failure.error.to_string(), &known);
     Error::Other(format!(
-        "`{domain}` was created but its setup did not finish, so it is not usable yet. It exists \
-         (id `{id}`) and the person you're working with can see it in rexenv listed as \"setup \
-         incomplete\", where they can retry or remove it. You can read what went wrong with \
-         tail_log, retry it with site_retry, or remove it with site_delete (which needs their \
-         `destroy` permission)."
+        "`{domain}` was created but its setup did not finish, so it is not usable yet. What \
+         failed:\n{reason}\n\nIt exists (id `{id}`) and the person you're working with can see \
+         it in rexenv listed as \"setup incomplete\", where they can retry or remove it. You can \
+         retry it with site_retry (after changing what the reason names, e.g. site_configure \
+         `php`), or remove it with site_delete (which needs their `destroy` permission)."
     ))
 }
 
@@ -1396,7 +1410,13 @@ fn site_create<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::Ac
             }
             Err(failure) => {
                 let conn = ctx.db().ok();
-                return Err(translate_create_failure(&domain, failure, conn.as_deref(), acted));
+                return Err(translate_create_failure(
+                    &domain,
+                    failure,
+                    conn.as_deref(),
+                    ctx.state.platform.paths(),
+                    acted,
+                ));
             }
         };
         // The multisite conversion is a SECOND operation on a site that now
@@ -3955,6 +3975,43 @@ pub(crate) mod tests {
         for o in &offered {
             assert!(SiteDbEngine::parse_db(o).is_ok(), "the schema offers {o} and the handler cannot parse it");
         }
+    }
+
+    /// **A half-built create hands the agent the job's OWN reason, without the
+    /// app's log path or its app-only advice.** The error shape is the real one
+    /// `create_site_owned_with` writes; the reason is the one a Laravel create on
+    /// PHP 8.1 gave on 11 Sep 2026, which the reply used to replace with "setup
+    /// did not finish" and a pointer to a log tool that never held it.
+    #[test]
+    fn a_half_built_create_hands_the_agent_the_jobs_own_reason_without_the_log_path() {
+        let conn = crate::state::db::open_in_memory().unwrap();
+        let mut row = test_site("bbbbbbbb-bbbb-4ccc-8ddd-eeeeeeeeeeee", "shop.rex", SiteOrigin::User);
+        row.provisioned = false;
+        store::insert_site(&conn, &row).unwrap();
+        let platform = crate::platform::current();
+        let log = platform.paths().app_data_dir().unwrap().join("logs/provision/shop.rex.log");
+        let error = format!(
+            "site create shop.rex at \"installing Laravel\": composer create-project failed: Composer \
+             refused to install laravel/framework: every release of it that runs on this PHP has a \
+             published security advisory, and Composer blocks those.\n  the site stays listed as \
+             \"setup incomplete\" — Retry it from the app, or delete it\n  full log: {}",
+            log.display()
+        );
+        let acted = super::super::feed::ActedTarget::default();
+        let msg = translate_create_failure(
+            "shop.rex",
+            crate::commands::sites::CreateFailure { site_id: Some(row.id.clone()), error: Error::Other(error) },
+            Some(&conn),
+            platform.paths(),
+            &acted,
+        )
+        .to_string();
+        assert!(msg.contains("laravel/framework") && msg.contains("security advisory"), "the reason: {msg}");
+        assert!(!msg.contains("full log:"), "no log line: {msg}");
+        assert!(!msg.contains(&log.display().to_string()), "no local path: {msg}");
+        assert!(!msg.contains("Retry it from the app"), "the app's advice is not the agent's: {msg}");
+        assert!(msg.contains("site_retry") && msg.contains(&row.id), "the agent's way forward: {msg}");
+        assert_eq!(acted.take().as_deref(), Some(row.id.as_str()));
     }
 
     #[tokio::test]
