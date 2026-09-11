@@ -2,7 +2,7 @@
   "name": "rexenv",
   "private": true,
   "license": "Apache-2.0",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
