@@ -681,7 +681,9 @@ static REGISTRY: &[UserTool] = &[
                       a Local site on `.local` comes back re-homed onto the default TLD, its old \
                       name in `renamedFrom`; reads their config, runs nothing) and `drift` (TLDs another tool has taken back) need `read` on \
                       rexenv itself; `run` {domains: [...], php?: {domain: minor}, domain?: {domain: the name a re-homed site imports under}, \
-                      import_databases?} imports the named sites — their folders are LINKED, never \
+                      import_databases?, connect_local? — Local rows only: point each at its \
+                      copied database by editing its wp-config, backed up and revertable, which \
+                      also needs `destroy` on rexenv itself} imports the named sites — their folders are LINKED, never \
                       moved, and a database import is a COPY of theirs — and needs `run` on rexenv \
                       itself; `cancel` needs `manage`; `take_over` {tld} / `hand_back` {tld} rewrite \
                       the OS resolver for that TLD (root — macOS asks the user for their password) \
@@ -694,6 +696,7 @@ static REGISTRY: &[UserTool] = &[
                 "php": { "type": "object", "additionalProperties": { "type": "string" } },
                 "domain": { "type": "object", "additionalProperties": { "type": "string" } },
                 "import_databases": { "type": "boolean" },
+                "connect_local": { "type": "boolean" },
                 "tld": { "type": "string" }
             },
             "required": ["action"],
@@ -3315,6 +3318,13 @@ fn valet_import<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::
             _ => format!("{} the resolver for `.{}` (macOS will also ask for your password)", action.replace('_', " "), str_field(args, "tld", action)?.trim_start_matches('.')),
         };
         claim_stack(&ctx, scope, &wanted)?;
+        // Connecting edits the user's own wp-config — the write `connection_rewrite`
+        // `apply` gates behind `destroy`. `run` alone must not reach it by a flag
+        // (ledger #576).
+        let connect_local = action == "run" && args.get("connect_local").and_then(Value::as_bool).unwrap_or(false);
+        if connect_local {
+            claim_stack(&ctx, Scope::Destroy, "connect the imported Local sites to their copies (edits each site's wp-config — backed up, revertable)")?;
+        }
         let known = super::view::KnownPaths::for_site(ctx.state.platform.paths(), "");
         let scrub = |s: &str| super::view::scrub_log_line(s, &known);
         let im = ctx.import;
@@ -3331,10 +3341,10 @@ fn valet_import<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::
             "drift" => json!({ "driftedTlds": im.valet_drift().await? }),
             "run" => {
                 let php: std::collections::HashMap<String, String> = args.get("php").and_then(Value::as_object).map(|m| m.iter().filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string()))).collect()).unwrap_or_default();
-                let r = im.valet_run(crate::commands::valet_import::ImportRequest { domains, php, import_databases: args.get("import_databases").and_then(Value::as_bool).unwrap_or(false), domain: args.get("domain").and_then(Value::as_object).map(|m| m.iter().filter_map(|(k, v)| v.as_str().map(|s| (k.trim().to_ascii_lowercase(), s.to_string()))).collect()).unwrap_or_default() }).await?;
+                let r = im.valet_run(crate::commands::valet_import::ImportRequest { domains, php, import_databases: args.get("import_databases").and_then(Value::as_bool).unwrap_or(false), connect_local, domain: args.get("domain").and_then(Value::as_object).map(|m| m.iter().filter_map(|(k, v)| v.as_str().map(|s| (k.trim().to_ascii_lowercase(), s.to_string()))).collect()).unwrap_or_default() }).await?;
                 json!({
-                    "imported": r.imported, "failed": r.failed, "skipped": r.skipped, "dbImported": r.db_imported, "dbFailed": r.db_failed,
-                    "outcomes": r.outcomes.iter().map(|o| json!({ "domain": o.domain, "status": o.status, "reason": o.reason.as_deref().map(scrub), "siteId": o.site_id, "db": o.db.as_deref().map(scrub) })).collect::<Vec<_>>(),
+                    "imported": r.imported, "failed": r.failed, "skipped": r.skipped, "dbImported": r.db_imported, "dbFailed": r.db_failed, "connected": r.connected, "connectFailed": r.connect_failed,
+                    "outcomes": r.outcomes.iter().map(|o| json!({ "domain": o.domain, "status": o.status, "reason": o.reason.as_deref().map(scrub), "siteId": o.site_id, "db": o.db.as_deref().map(scrub), "connect": o.connect.as_deref().map(scrub) })).collect::<Vec<_>>(),
                     "serving": r.serving.as_ref().map(|s| json!({ "kind": s.kind, "holder": s.holder, "app": s.app })),
                 })
             }
@@ -4188,7 +4198,7 @@ pub(crate) mod tests {
         fn valet_drift<'a>(&'a self) -> OpFuture<'a, Result<Vec<String>>> { Box::pin(async { Ok(vec!["test".into()]) }) }
         fn valet_run<'a>(&'a self, request: crate::commands::valet_import::ImportRequest) -> OpFuture<'a, Result<crate::commands::valet_import::ImportResult>> {
             self.calls.lock().unwrap().push(format!("valet run {} db={}", request.domains.join(","), request.import_databases));
-            Box::pin(async { Ok(crate::commands::valet_import::ImportResult { outcomes: vec![], imported: 1, failed: 0, skipped: 0, db_imported: 0, db_failed: 0, serving: None }) })
+            Box::pin(async { Ok(crate::commands::valet_import::ImportResult { outcomes: vec![], imported: 1, failed: 0, skipped: 0, db_imported: 0, db_failed: 0, connected: 0, connect_failed: 0, serving: None }) })
         }
         fn valet_cancel<'a>(&'a self) -> OpFuture<'a, Result<()>> { Box::pin(async { Ok(()) }) }
         fn resolver_take_over<'a>(&'a self, tld: String) -> OpFuture<'a, Result<()>> { self.calls.lock().unwrap().push(format!("resolver take_over {tld}")); Box::pin(async { Ok(()) }) }
@@ -5251,6 +5261,31 @@ pub(crate) mod tests {
         for c in ["repo tools true", &format!("repo add {} plugin https://github.com/acme/acme.git true", site.id), &format!("repo link {} theme /Users/somebody/Projects/acme", site.id), &format!("repo git {} plugin acme pull false", site.id)] {
             assert!(calls.iter().any(|x| x == c), "missing {c} in {calls:?}");
         }
+    }
+
+    /// **Connecting Local sites from the import claims `destroy`, before the run**
+    /// (ledger #576). `connection_rewrite apply` — the write into the user's own
+    /// wp-config — is `destroy`; the import's `run` must not reach the same write
+    /// through a flag. A source guard rather than a dial test: under today's dial
+    /// `run` and `destroy` open at the same level, so a behavioural test would
+    /// pass whether or not the claim exists — the day they diverge is the day
+    /// this matters, and nothing would notice.
+    #[test]
+    fn connecting_local_sites_from_the_import_claims_destroy_first() {
+        let src = crate::core::copy_scan::production_source(include_str!("user_sites.rs"));
+        let body = src
+            .split("fn valet_import<'a>")
+            .nth(1)
+            .and_then(|b| b.split("\nfn ").next())
+            .expect("valet_import handler");
+        let flag = body.find("\"connect_local\"").expect("the handler no longer reads connect_local");
+        let claim = body[flag..]
+            .find("claim_stack(&ctx, Scope::Destroy")
+            .map(|i| flag + i)
+            .expect("connect_local no longer claims destroy — `run` alone would edit a wp-config");
+        assert!(body[flag..claim].contains("if connect_local"), "the destroy claim is not conditioned on the flag");
+        let run = body.find("im.valet_run(").expect("the run call");
+        assert!(claim < run, "destroy is claimed AFTER the import runs — the write would already have happened");
     }
 
     /// **The migration surfaces: scan/drift `read`, import `run`, resolver

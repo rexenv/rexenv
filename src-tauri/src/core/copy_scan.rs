@@ -723,6 +723,14 @@ const LINK = "https://example.test/a//b";
             !sites.contains("still reads and writes the old one"),
             "the Sites badge asserts what the site reads — it has no preview to know, and for Local it is false"
         );
+        // The Import screen's outcome pill had the same unconditional claim.
+        let import = strip_ts_comments(
+            &std::fs::read_to_string(dir.join("routes/Import.tsx")).expect("the Import route exists"),
+        );
+        assert!(
+            !import.contains("still reads the old one"),
+            "the Import outcome pill asserts what the site reads — false for a Local site"
+        );
     }
 
     #[test]

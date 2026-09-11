@@ -1005,6 +1005,15 @@ honest footer —
   import, connect, both sites 200 on `.rex` with `signin+http`, revert, both 500 again
   — run over MCP on `ab12.local` and `tr.local` (the renamed `local_tr_local_rex`
   copy), 12 Sep 2026.
+  **The batch can connect Local rows itself** (`ImportRequest.connect_local`, #576):
+  after a LOCAL row's database settles `imported`, the run calls the SAME
+  `rewrite_preview` → `rewrite_apply(fingerprint)` the Database tab calls (backup
+  first, sign-in verified, revertable), and the row reports `connect`. Local rows
+  only — a Valet/Herd site keeps reading its old server, so its connect stays the
+  per-site opt-in Stage 3 settled. The screen ticks "also connect Local sites" by
+  default, saying on the box that it edits wp-config; the wire default is off, and
+  over MCP the flag additionally claims `destroy` (what `connection_rewrite apply`
+  needs), so `run` alone can never reach a project write.
 - **Database import copies their database and RECORDS what it did** (Stage 2:
   `core/{dbsource,dbcompat,dbdump,dbrestore,dbmirror,dbimport}`, v19 `sites.db_created`,
   v20 `db_imports`). Their side is read-only: engines identified from the pre-auth

@@ -565,6 +565,14 @@ pub struct ImportRequest {
     /// required for one whose picked name is taken (`domain_choice`).
     #[serde(default)]
     pub domain: std::collections::HashMap<String, String>,
+    /// After a LOCAL row's database is copied, connect the site to the copy —
+    /// the Stage 3 rewrite the Database tab runs (its wp-config edited, backed
+    /// up first, revertable). Local rows only: a Local site reads NO database
+    /// under rexenv until connected (ledger #575), while a Valet/Herd site keeps
+    /// reading its old server, so theirs stays a per-site choice. The screen
+    /// ticks this; the wire default stays off (ledger #576).
+    #[serde(default)]
+    pub connect_local: bool,
 }
 
 /// What happened to one row. Terminal — every requested domain gets exactly one.
@@ -586,6 +594,9 @@ pub struct ImportOutcome {
     /// The hostname the site was created under when it isn't `domain` — a
     /// re-homed row given another name. `domain` stays the row's scan key.
     pub served_as: Option<String>,
+    /// Connect outcome when `connect_local` applied to this row: `connected` ·
+    /// `failed: …` · `skipped: …`. `None` = not asked (or not a Local row).
+    pub connect: Option<String>,
 }
 
 /// The end-of-run summary.
@@ -599,6 +610,10 @@ pub struct ImportResult {
     /// Databases that came over / didn't, when `import_databases` was on.
     pub db_imported: usize,
     pub db_failed: usize,
+    /// Local sites connected to their copies / that didn't, when `connect_local`
+    /// was on.
+    pub connected: usize,
+    pub connect_failed: usize,
     /// Checked ONCE at the end: why the imported sites will not load yet, or
     /// `None` when they will. See [`ServingCaveat`].
     pub serving: Option<ServingCaveat>,
@@ -655,8 +670,8 @@ pub struct ImportProgress {
     /// preparation steps that belong to no single site.
     pub index: usize,
     pub domain: Option<String>,
-    /// `scanning` · `resolvers` · `php` · `site` · `database` · `checking` ·
-    /// `done`.
+    /// `scanning` · `resolvers` · `php` · `site` · `database` · `connecting` ·
+    /// `checking` · `done`.
     pub stage: String,
     /// The running job's own step label, verbatim.
     pub detail: Option<String>,
@@ -941,6 +956,27 @@ pub async fn valet_import_run<R: tauri::Runtime>(
                 _ => "skipped: the site itself didn't import".to_string(),
             });
         }
+        // Opt-in connect, LOCAL rows only, after the database settled (ledger
+        // #576): the same preview → fingerprint → apply the Database tab runs,
+        // backed up and revertable — a Local site loads nothing under rexenv
+        // until it happens (#575). Continue on failure like everything else here.
+        match connect_decision(request.connect_local, c.source, row.db.as_deref()) {
+            None => {}
+            Some(Err(why)) => row.connect = Some(format!("skipped: {why}")),
+            Some(Ok(())) => {
+                batch.tick(
+                    "connecting",
+                    index,
+                    Some(&c.domain),
+                    Some("connecting the site to its copy".into()),
+                    batch.db_share(100).min(99),
+                );
+                row.connect = Some(match &row.site_id {
+                    Some(site_id) => connect_one(&app, &state, &provision, site_id).await,
+                    None => "skipped: the site itself didn't import".into(),
+                });
+            }
+        }
         if row.domain != key {
             row.served_as = Some(std::mem::replace(&mut row.domain, key));
         }
@@ -1003,6 +1039,11 @@ pub async fn valet_import_run<R: tauri::Runtime>(
         .iter()
         .filter(|o| o.db.as_deref().is_some_and(|d| d.starts_with("failed")))
         .count();
+    let connected = outcomes.iter().filter(|o| o.connect.as_deref() == Some("connected")).count();
+    let connect_failed = outcomes
+        .iter()
+        .filter(|o| o.connect.as_deref().is_some_and(|d| d.starts_with("failed")))
+        .count();
     Ok(ImportResult {
         outcomes,
         imported,
@@ -1010,6 +1051,8 @@ pub async fn valet_import_run<R: tauri::Runtime>(
         skipped: skipped_n,
         db_imported,
         db_failed,
+        connected,
+        connect_failed,
         // Only a caveat when something actually came over — "your sites won't
         // load" about zero sites is noise.
         serving: (imported > 0).then(|| serving_caveat(&state, wire)).flatten(),
@@ -1057,6 +1100,66 @@ fn caveat_for(
                 fix: help.free_command,
             })
         }
+    }
+}
+
+/// Whether the batch connects this row, and if it can't, why (ledger #576).
+/// `None` = not applicable — the batch wasn't asked, or the row isn't Local
+/// (a Valet/Herd site keeps reading its old server, so its connect stays the
+/// per-site choice the Stage 3 rules made it). Pure.
+fn connect_decision(
+    requested: bool,
+    source: SourceKind,
+    db: Option<&str>,
+) -> Option<std::result::Result<(), String>> {
+    if !requested || source != SourceKind::Local {
+        return None;
+    }
+    Some(match db {
+        Some("imported") => Ok(()),
+        Some(other) => Err(format!("its database didn't come over ({other})")),
+        None => Err("its database wasn't copied (\"also copy databases\" was off)".into()),
+    })
+}
+
+/// Connect ONE freshly imported site to its copied database through the SAME
+/// rewrite commands the Database tab calls — preview, then apply against that
+/// preview's fingerprint — so there is no second rewrite path to drift. The
+/// apply backs the config up first and verifies the sign-in; any refusal comes
+/// back as the row's reason.
+async fn connect_one<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    state: &State<'_, AppState>,
+    provision: &State<'_, crate::commands::site_provision::ProvisionJobs>,
+    site_id: &str,
+) -> String {
+    use crate::commands::rewrite::{RewriteApplied, RewritePreview};
+    use tauri::Manager as _;
+    let Some(tunnels) = app.try_state::<crate::commands::tunnels::Tunnels>() else {
+        return "failed: tunnel registry not ready".into();
+    };
+    let fingerprint =
+        match crate::commands::rewrite::rewrite_preview(state.clone(), site_id.to_string()).await {
+            Ok(RewritePreview::Ready { fingerprint, .. }) => fingerprint,
+            Ok(RewritePreview::Refused { reason, .. }) => return format!("skipped: {reason}"),
+            Err(e) => return format!("failed: {e}"),
+        };
+    match crate::commands::rewrite::rewrite_apply(
+        state.clone(),
+        provision.clone(),
+        tunnels,
+        site_id.to_string(),
+        fingerprint,
+    )
+    .await
+    {
+        Ok(RewriteApplied::Applied { .. }) => "connected".into(),
+        Ok(RewriteApplied::FileChanged { message } | RewriteApplied::EngineStopped { message }) => {
+            format!("failed: {message}")
+        }
+        Ok(RewriteApplied::VerifyFailed { reason, message }) => format!("failed: {message} ({reason})"),
+        Ok(RewriteApplied::Refused { reason, .. }) => format!("skipped: {reason}"),
+        Err(e) => format!("failed: {e}"),
     }
 }
 
@@ -1236,6 +1339,7 @@ fn skipped(domain: &str, reason: &str) -> ImportOutcome {
         log_key: None,
         db: None,
         served_as: None,
+        connect: None,
     }
 }
 
@@ -1290,6 +1394,7 @@ async fn import_one<R: tauri::Runtime>(
                 log_key: None,
                 db: None,
                 served_as: None,
+                connect: None,
             }
         }
     };
@@ -1316,6 +1421,7 @@ async fn import_one<R: tauri::Runtime>(
                     log_key: Some(snap.log_key.clone()),
                     db: None,
                     served_as: None,
+                    connect: None,
                 }
             }
         }
@@ -1366,6 +1472,7 @@ async fn import_one<R: tauri::Runtime>(
         log_key: Some(settled.log_key.clone()),
         db: None,
         served_as: None,
+        connect: None,
     }
 }
 
@@ -1579,6 +1686,30 @@ mod folding_a_link_farm {
         let shop = candidate("shop.test", "/p/shop", SiteStatus::Importable);
         assert!(choose_domain(&shop, Some(&"other.test".to_string()), &taken, &none).is_err());
         assert_eq!(choose_domain(&shop, None, &taken, &none).unwrap(), "shop.test");
+    }
+
+    /// The batch connects a row ONLY when asked, ONLY for a Local row, and ONLY
+    /// once its database came over — anything else is not attempted, and a
+    /// Local row that can't be connected says why (ledger #576).
+    #[test]
+    fn the_batch_connects_only_local_rows_whose_database_came_over() {
+        assert_eq!(connect_decision(false, SourceKind::Local, Some("imported")), None, "not asked");
+        for kind in [SourceKind::Valet, SourceKind::Herd] {
+            assert_eq!(
+                connect_decision(true, kind, Some("imported")),
+                None,
+                "a {kind:?} site keeps reading its old server — its connect stays per-site"
+            );
+        }
+        assert_eq!(connect_decision(true, SourceKind::Local, Some("imported")), Some(Ok(())));
+        match connect_decision(true, SourceKind::Local, Some("failed: server not running")) {
+            Some(Err(why)) => assert!(why.contains("didn't come over"), "{why}"),
+            other => panic!("{other:?}"),
+        }
+        match connect_decision(true, SourceKind::Local, None) {
+            Some(Err(why)) => assert!(why.contains("also copy databases"), "{why}"),
+            other => panic!("{other:?}"),
+        }
     }
 
     /// A pin rexenv doesn't ship is imported ONLY on an explicit choice — the

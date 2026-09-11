@@ -583,7 +583,7 @@ function ImportBarHost() {
     {
       progress: { stage: "site", index: 2, total: 2, done: 1, pct: 55, domain: "two.test", detail: "linking the folder" },
       outcomes: {
-        "one.test": { domain: "one.test", status: "imported", reason: null, siteId: "1", logKey: null, db: null, servedAs: null },
+        "one.test": { domain: "one.test", status: "imported", reason: null, siteId: "1", logKey: null, db: null, servedAs: null, connect: null },
       },
     },
     // The failure: `done` moves, the percentage must NOT go backwards, and the
@@ -591,8 +591,8 @@ function ImportBarHost() {
     {
       progress: { stage: "site", index: 2, total: 2, done: 2, pct: 55, domain: "two.test", detail: "database import failed: connection refused" },
       outcomes: {
-        "one.test": { domain: "one.test", status: "imported", reason: null, siteId: "1", logKey: null, db: null, servedAs: null },
-        "two.test": { domain: "two.test", status: "failed", reason: "database import failed: connection refused", siteId: null, logKey: "import-two.log", db: null, servedAs: null },
+        "one.test": { domain: "one.test", status: "imported", reason: null, siteId: "1", logKey: null, db: null, servedAs: null, connect: null },
+        "two.test": { domain: "two.test", status: "failed", reason: "database import failed: connection refused", siteId: null, logKey: "import-two.log", db: null, servedAs: null, connect: null },
       },
     },
   ] as const;

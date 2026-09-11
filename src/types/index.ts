@@ -275,6 +275,9 @@ export interface ImportRequest {
   importDatabases?: boolean;
   /** Per-row hostname for a re-homed row, keyed by its scanned domain. */
   domain?: Record<string, string>;
+  /** After a LOCAL row's database is copied, connect the site to the copy
+   *  (edits its wp-config — backed up, revertable). Local rows only. */
+  connectLocal?: boolean;
 }
 
 /** What happened to one row — terminal; every requested domain gets exactly one. */
@@ -292,6 +295,9 @@ export interface ImportOutcome {
   db: string | null;
   /** The name the site was created under when the row was given another one. */
   servedAs: string | null;
+  /** Connect outcome when connectLocal applied: `connected` · `failed: …` ·
+   *  `skipped: …`. Null when not asked or not a Local row. */
+  connect: string | null;
 }
 
 /** Where a running import is right now — the screen's only in-flight signal.
@@ -310,7 +316,15 @@ export interface ImportProgress {
    *  preparation steps that belong to no single site. */
   index: number;
   domain: string | null;
-  stage: "scanning" | "resolvers" | "php" | "site" | "database" | "checking" | "done";
+  stage:
+    | "scanning"
+    | "resolvers"
+    | "php"
+    | "site"
+    | "database"
+    | "connecting"
+    | "checking"
+    | "done";
   /** The running job's own step label, verbatim. */
   detail: string | null;
   /** The current site's own fraction, 0..100 (provision, plus its database
@@ -329,6 +343,9 @@ export interface ImportResult {
   /** Databases that came over / didn't, when importDatabases was on. */
   dbImported: number;
   dbFailed: number;
+  /** Local sites connected to their copies / that weren't, when connectLocal was on. */
+  connected: number;
+  connectFailed: number;
   /** Checked once at the end: why the imported sites won't load yet, or null
    *  when they will. `kind: "stopped"` means nothing is listening on :443 —
    *  which HERE means rexenv's own stack isn't running, because importing never

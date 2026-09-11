@@ -99,9 +99,22 @@ function statusPill(c: ImportCandidate, outcome?: ImportOutcome) {
           : "border-rex-border-strong bg-rex-surface-2 text-rex-text-muted";
     // The database's own outcome, when databases were requested — the honest
     // reason travels in the string after the colon.
+    // What the site reads is NOT asserted here: a Valet/Herd site keeps its old
+    // server until connected, a Local site reads none (ledger #575).
     const db = outcome.db
       ? outcome.db === "imported"
-        ? { label: "DB copied", title: "The database was copied — the site still reads the old one until you switch it (Database tab)." }
+        ? outcome.connect === "connected"
+          ? {
+              label: "DB connected",
+              title:
+                "The database was copied and the site now reads the copy — its wp-config was edited (backed up; revert it on the site's Database tab).",
+            }
+          : {
+              label: "DB copied",
+              title: outcome.connect
+                ? `The database was copied, but the site wasn't connected to it — ${outcome.connect}`
+                : "The database was copied — the site isn't connected to it yet (its Database tab shows what it reads now and switches it).",
+            }
         : outcome.db.startsWith("failed")
           ? { label: "DB failed", title: outcome.db }
           : { label: "DB skipped", title: outcome.db }
@@ -186,6 +199,12 @@ export function Import() {
   // still reads the old engine, which is the surprise, not the copy. Visible
   // and untickable before the run, so it stays a choice.
   const [withDatabases, setWithDatabases] = useState(true);
+  // ON by default, for LOCAL rows only (owner, 12 Sep 2026): a Local site loads
+  // nothing under rexenv until connected, so an import that stops at the copy
+  // leaves a broken site. It edits their wp-config, so it is said on the box and
+  // stays untickable; Valet/Herd sites keep their per-site choice.
+  const [connectLocal, setConnectLocal] = useState(true);
+  const hasLocal = (data?.candidates ?? []).some((c) => c.source === "local");
   const [progress, setProgress] = useState<ImportProgress | null>(null);
 
   const candidates = useMemo(() => data?.candidates ?? [], [data]);
@@ -241,6 +260,7 @@ export function Import() {
             .map((c) => [c.domain, typedName(c, namePick[c.domain])]),
         ),
         importDatabases: withDatabases,
+        connectLocal: withDatabases && connectLocal,
       }),
     onMutate: () => {
       setOutcomes({});
@@ -259,6 +279,8 @@ export function Import() {
         bits.push(`${r.dbImported} database${r.dbImported === 1 ? "" : "s"} copied`);
         if (r.dbFailed) bits.push(`${r.dbFailed} database${r.dbFailed === 1 ? "" : "s"} failed`);
       }
+      if (r.connected) bits.push(`${r.connected} connected`);
+      if (r.connectFailed) bits.push(`${r.connectFailed} not connected`);
       if (r.failed) toast.error(bits.join(", "));
       else toast.success(bits.join(", "));
       // TWO situations, not one. Until 13 Aug 2026 both read "another app is
@@ -554,7 +576,9 @@ export function Import() {
                       <span
                         className={cn(
                           "flex-none rounded-full border px-2 py-1 font-mono text-[0.625rem]",
-                          pill.db.label === "DB copied"
+                          pill.db.label === "DB connected"
+                            ? "border-status-running-border bg-status-running-bg text-status-running-bright"
+                            : pill.db.label === "DB copied"
                             ? "border-status-warning-border bg-status-warning-bg text-status-warning-bright"
                             : pill.db.label === "DB failed"
                               ? "border-status-error-border bg-status-error-bg text-status-error-bright"
@@ -628,6 +652,29 @@ export function Import() {
                 ⓘ
               </span>
             </label>
+            {hasLocal && (
+              <label
+                className={cn(
+                  "flex cursor-pointer items-center gap-1.5 text-[0.75rem] text-rex-text-muted",
+                  !withDatabases && "opacity-50",
+                )}
+              >
+                <input
+                  type="checkbox"
+                  className={CHECK_INPUT}
+                  checked={withDatabases && connectLocal}
+                  disabled={running || !withDatabases}
+                  onChange={(e) => setConnectLocal(e.target.checked)}
+                />
+                also connect Local sites
+                <span
+                  className="cursor-help"
+                  title="A Local site can't load under rexenv until it reads the copied database. This edits each Local site's wp-config to point at the copy — the file is backed up first, and the site's Database tab reverts it in one click. While connected, Local serves the site from rexenv's copy too. Valet and Herd sites are never connected here."
+                >
+                  ⓘ
+                </span>
+              </label>
+            )}
             <Button
               variant="primary"
               disabled={picked.size === 0 || running}
@@ -717,8 +764,8 @@ export function ImportProgressCard({
   const failed = settled.filter((o) => o.status === "failed").length;
   const skipped = settled.filter((o) => o.status === "skipped").length;
   const headline =
-    p.stage === "site" || p.stage === "database"
-      ? `${p.stage === "database" ? "Copying the database for" : "Importing"} ${p.domain ?? ""}`
+    p.stage === "site" || p.stage === "database" || p.stage === "connecting"
+      ? `${p.stage === "database" ? "Copying the database for" : p.stage === "connecting" ? "Connecting" : "Importing"} ${p.domain ?? ""}`
       : p.stage === "scanning"
         ? "Reading your Valet, Herd and Local setup"
         : p.stage === "resolvers"

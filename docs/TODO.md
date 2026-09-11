@@ -86,9 +86,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     in the bottom bar meant scrolling back to the top to watch the batch. The progress
     card now renders in the same bar below the scrolling list. tsc + eslint; not yet
     seen in a packaged build.
-  - [ ] **"Also connect Local sites" in the import batch** — owner, 12 Sep 2026: a Local
+  - [x] **"Also connect Local sites" in the import batch** ✓ 12 Sep 2026 — owner: a Local
     site can't load under rexenv until connected, so the batch offers the connect (ticked
-    by default, Local rows only — Valet/Herd keep their per-site opt-in).
+    by default, Local rows only — Valet/Herd keep their per-site opt-in). Ledger #576;
+    `the_batch_connects_only_local_rows_whose_database_came_over`,
+    `connecting_local_sites_from_the_import_claims_destroy_first` (both plant-proven).
+    The batch connecting a real Local import is still to be run (L1).
   - [ ] **Import is its own page, not a card inside Settings → DNS & SSL** — owner, 12 Sep
     2026: a sidebar entry; DNS & SSL keeps only DNS/SSL items (the importable-sites nudge
     and the leftover-dumps card move out).
