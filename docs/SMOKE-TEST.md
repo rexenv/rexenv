@@ -43,6 +43,13 @@ nothing.** The silent case is the one that ships to everybody.
 
 ## Cold first run (downloads + system setup) — also exercises §2.4
 - [ ] On first use the app downloads its components (PHP, Nginx, MySQL, Caddy, WP-CLI…) with visible progress.
+- [ ] **Leave the Install step early.** (Added 11 Sep 2026 — users reported it.) Click
+  Continue while the components are still downloading, finish the wizard, and on "Create
+  your first site" create one straight away. The footer's download indicator must count
+  up to its total and disappear (or show a failed row WITH Retry). **Tell:** a row reading
+  `queued` that never moves, a counter stuck short of its total, and no Retry — fixed
+  only by quitting the app. That was a planned row whose resolve returned through the
+  cache hit (#566).
 - [ ] Admin prompt for the `.rex` DNS resolver appears and is accepted (`/etc/resolver/rex`; NO `/etc/resolver/test` on a fresh machine).
 - [ ] Keychain prompt to trust the local CA appears and is accepted.
 - [ ] Admin prompt for the edge to bind ports 80/443 appears and is accepted.

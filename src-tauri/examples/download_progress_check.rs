@@ -163,4 +163,30 @@ async fn main() {
     println!(
         "OK — streamed {max_bytes} bytes to disk with live progress (rate observed: {saw_rate})"
     );
+
+    // Leg 2 — the first-run race (11 Sep 2026). An action PLANNED this binary
+    // while it was still missing; by the time its batch begins it has landed, so
+    // the real resolver returns through its cache hit, which reports nothing to
+    // the hub. That row used to read `queued` until the app restarted. It must
+    // settle, and the batch must reach its total.
+    let stale_plan = vec![downloads::PlannedBinary {
+        name: "wp-cli".into(),
+        version: binaries::WP_CLI_VERSION.into(),
+        cached: false,
+    }];
+    downloads::prefetch(&*plat, "Create site", &stale_plan)
+        .await
+        .expect("a cache hit resolves");
+    let snap = downloads::hub().snapshot();
+    let id = downloads::item_id("wp-cli", binaries::WP_CLI_VERSION);
+    let row = snap.items.iter().find(|i| i.id == id).expect("the planned row");
+    assert_eq!(
+        row.phase,
+        Phase::Cached,
+        "a stale plan's cache hit left the row {:?} — the first-run `queued` forever",
+        row.phase
+    );
+    let batch = snap.batch.expect("the Create site batch");
+    assert_eq!((batch.done, batch.total), (1, 1), "the batch counter stopped short: {batch:?}");
+    println!("OK — a batch planned before its binary landed settles on the cache hit ({batch:?})");
 }

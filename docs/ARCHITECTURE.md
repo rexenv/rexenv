@@ -477,6 +477,15 @@ Live-proven end to end by `site_stop_start_check`.
   `start_database`, `start_mail`, `set_php_version_installed`, `create_site`,
   `set_site_web_server`, `set_site_php_version`, `delete_site`, `set_db_engine_version`.
   Add new binary-resolving commands to this list.
+- **A planned download row never outlives its resolve** (`Hub::item_settled`, called
+  by `prefetch` for each item the moment its resolve returns). The resolvers' early
+  returns — the cache hit, a failure before the first byte — report nothing, and a
+  batch plans rows `Pending`. Until 11 Sep 2026 that left first-run users with rows
+  reading `queued` and no Retry until a restart: the Install step's downloads were
+  still running when they clicked on to "Create your first site", that create
+  planned them as missing, they landed while its certificate was issued, and the
+  new batch's resolves were cache hits. Settling never overwrites what a resolver
+  did report (`Done` stays `Done`; its own failure text stays).
 - Long-running children spawn via `ProcessSupervisor::spawn_logged` →
   `<log_dir>/<svc>-stdout.log`. `stop` escalates to SIGKILL after a grace window (L3).
   Beware orphan workers after a SIGKILLed master: title-rewritten fpm/nginx workers can

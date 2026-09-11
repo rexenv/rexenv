@@ -32,6 +32,21 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   true by `mcp_server/parity.rs` (#560): its table now has no `Gap` row, and a new command
   fails the build until someone rules on it.
 
+- [x] **First-run downloads stuck at `queued` after leaving the Install step** ✓ 11 Sep 2026 —
+  reported by users: skip ahead in the wizard while the core binaries download, and rows on
+  the main screen froze as `queued` with no Retry until the app restarted. A batch planned
+  a binary as missing (typically "Create your first site"), it finished before that batch
+  began, and the resolve returned through its cache hit, which reports nothing. `prefetch`
+  now settles each row the moment its resolve returns (`Hub::item_settled`, #566); L0 in
+  `core::downloads`, L1 leg 2 of `download_progress_check`. **Not verified by hand yet**:
+  the wizard on fresh app data.
+
+- [ ] **`system_setup` blocks a runtime worker for the whole privileged prompt** — 11 Sep 2026,
+  found diagnosing the row above (bug B). It is `async` but calls `run_system_setup`
+  directly, so the resolver admin prompt and the keychain dialog hold a tokio worker until
+  the user answers; first-run downloads on that worker can pause meanwhile (they resume, a
+  pause, not the stuck row above). Fix: `spawn_blocking` with `platform::current()`.
+
 - [x] **Deleting or renaming a site left its job logs behind** ✓ 11 Sep 2026 — found by the
   live MCP test: its deleted fixture sites' provision logs stayed, and the machine held
   logs for 284 deleted domains. `logs::remove_run_logs` now runs from `teardown` and

@@ -470,6 +470,21 @@ pub async fn prefetch(
     action: &str,
     plan: &[PlannedBinary],
 ) -> Result<()> {
+    prefetch_on(hub(), action, plan, |p| resolve_any(platform, &p.name, &p.version)).await
+}
+
+/// [`prefetch`] against a given hub and resolver — the seam its settle rule is
+/// tested through, with resolvers shaped like the real ones' early returns.
+async fn prefetch_on<'a, F, Fut>(
+    hub: &Hub,
+    action: &str,
+    plan: &'a [PlannedBinary],
+    resolve: F,
+) -> Result<()>
+where
+    F: Fn(&'a PlannedBinary) -> Fut,
+    Fut: std::future::Future<Output = Result<()>>,
+{
     let missing: Vec<&PlannedBinary> = plan.iter().filter(|p| !p.cached).collect();
     // Nothing to download → no batch, no events: warm-cache actions (every site
     // create / PHP switch after first run) stay UI-silent. Cached rows are only
@@ -477,18 +492,26 @@ pub async fn prefetch(
     if missing.is_empty() {
         return Ok(());
     }
-    hub().begin_batch(action, &plan.iter().map(PlannedBinary::planned).collect::<Vec<_>>());
+    hub.begin_batch(action, &plan.iter().map(PlannedBinary::planned).collect::<Vec<_>>());
+    // Each resolve settles its OWN row the moment it returns — not when its
+    // pair-mate does, which for a 600 MB MySQL tree is minutes of a finished
+    // row still reading `queued`. See `Hub::item_settled` for why at all.
+    let settled = |p: &'a PlannedBinary| {
+        let resolving = resolve(p);
+        async move {
+            let r = resolving.await;
+            hub.item_settled(&item_id(&p.name, &p.version), &r);
+            r
+        }
+    };
     let mut failures: Vec<String> = Vec::new();
     for pair in missing.chunks(PREFETCH_CONCURRENCY) {
         // Bounded fan-out without spawning (platform is a borrow): the pair's
         // futures interleave on this task — downloads are IO-bound.
         let results: Vec<(&PlannedBinary, Result<()>)> = match pair {
-            [a] => vec![(a, resolve_any(platform, &a.name, &a.version).await)],
+            [a] => vec![(a, settled(a).await)],
             [a, b] => {
-                let (ra, rb) = tokio::join!(
-                    resolve_any(platform, &a.name, &a.version),
-                    resolve_any(platform, &b.name, &b.version),
-                );
+                let (ra, rb) = tokio::join!(settled(a), settled(b));
                 vec![(a, ra), (b, rb)]
             }
             _ => unreachable!("chunks({PREFETCH_CONCURRENCY})"),
@@ -668,6 +691,41 @@ impl Hub {
         });
     }
 
+    /// A planned item's resolve RETURNED: settle its row, whatever the resolver
+    /// itself reported.
+    ///
+    /// Every resolver has early returns that tell the hub nothing — a cache hit,
+    /// and failures before the first byte (no manifest, wrong shape). A row a
+    /// batch planned as missing is `Pending` until someone reports on it, so the
+    /// first-run path left rows reading `queued` until the app restarted: the
+    /// Install step's downloads were still running when the user clicked on to
+    /// "Create your first site", that create PLANNED them as missing, they
+    /// finished while its certificate was issued, `begin_batch` swept the
+    /// finished rows and re-added them `Pending`, and each resolve then returned
+    /// through its cache hit. No Retry either — the button reads `failed`
+    /// (reported by first-run users, 11 Sep 2026). Settled here, where every
+    /// batch is driven, so no resolver's early return can leave a row behind.
+    ///
+    /// Never overwrites what the resolver did report: a `Done` stays `Done`, and
+    /// its own failure message beats this generic one.
+    pub fn item_settled(&self, id: &str, outcome: &Result<()>) {
+        self.mutate(|s| {
+            Self::with_item(s, id, |i| match outcome {
+                Ok(()) if i.snap.phase == Phase::Pending => i.snap.phase = Phase::Cached,
+                Ok(()) if !i.snap.phase.is_complete() => {
+                    i.snap.phase = Phase::Done;
+                    i.snap.bytes_per_sec = None;
+                }
+                Err(e) if i.snap.phase != Phase::Failed => {
+                    i.snap.phase = Phase::Failed;
+                    i.snap.bytes_per_sec = None;
+                    i.snap.error = Some(e.to_string());
+                }
+                _ => {}
+            });
+        });
+    }
+
     /// Current full state (batch progress + all item rows).
     pub fn snapshot(&self) -> Snapshot {
         let s = self.state.lock().unwrap_or_else(|p| p.into_inner());
@@ -797,6 +855,57 @@ mod tests {
         h.item_done("nginx-1.30.3");
         let b = h.snapshot().batch.unwrap();
         assert_eq!((b.done, b.total), (1, 2));
+    }
+
+    /// **A planned row never outlives its resolve.** The first-run shape: an
+    /// action plans `mysql` as missing while First-run setup is still fetching
+    /// it, the download finishes before that action's batch begins, and its
+    /// resolve returns through the cache hit — which reports nothing.
+    #[tokio::test]
+    async fn a_planned_row_is_settled_when_its_resolve_returns_even_through_an_early_return() {
+        let h = fresh();
+        h.begin_batch("First-run setup", &[planned("mysql", "8.4.6", false)]);
+        h.item_started("mysql", "8.4.6");
+        h.item_done("mysql-8.4.6");
+        let plan = vec![
+            PlannedBinary { name: "mysql".into(), version: "8.4.6".into(), cached: false },
+            PlannedBinary { name: "nginx".into(), version: "1.30.3".into(), cached: false },
+        ];
+        // The real resolvers' silent returns: a cache hit, and a failure before
+        // any byte. Neither touches the hub.
+        let out = prefetch_on(&h, "Create site", &plan, |p| async move {
+            if p.name == "mysql" {
+                Ok(())
+            } else {
+                Err(Error::Other("no binary manifest for nginx 1.30.3".into()))
+            }
+        })
+        .await;
+        assert!(out.is_err(), "the failure is still returned");
+        let s = h.snapshot();
+        let row = |id: &str| s.items.iter().find(|i| i.id == id).expect("a row").clone();
+        assert_eq!(row("mysql-8.4.6").phase, Phase::Cached, "a cache hit settles — never `queued` until restart");
+        let nginx = row("nginx-1.30.3");
+        assert_eq!(nginx.phase, Phase::Failed, "a failure before any byte gets the row the Retry button reads");
+        assert!(nginx.error.as_deref().unwrap_or_default().contains("no binary manifest"), "{nginx:?}");
+        assert!(!s.items.iter().any(|i| i.phase == Phase::Pending), "{:?}", s.items);
+        let b = s.batch.expect("the batch");
+        assert_eq!((b.done, b.total), (1, 2), "the counter moves past the settled row");
+    }
+
+    #[test]
+    fn settling_never_overwrites_what_the_resolver_reported() {
+        let h = fresh();
+        h.item_started("caddy", "2.11.4");
+        h.item_failed("caddy-2.11.4", "checksum mismatch for https://x");
+        h.item_settled("caddy-2.11.4", &Err(Error::Other("gave up".into())));
+        let i = h.snapshot().items[0].clone();
+        assert_eq!(i.error.as_deref(), Some("checksum mismatch for https://x"), "the resolver's own reason stays");
+
+        h.item_started("nginx", "1.30.3");
+        h.item_done("nginx-1.30.3");
+        h.item_settled("nginx-1.30.3", &Ok(()));
+        assert_eq!(h.snapshot().items[1].phase, Phase::Done, "a real download is not relabelled `cached`");
     }
 
     #[test]
