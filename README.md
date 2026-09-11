@@ -174,6 +174,7 @@ rexenv/
         │   ├── dns.rs · tld.rs · ssl.rs · firefox.rs      # resolver + TLD policy, CA
         │   ├── tunnels.rs · wp_tunnel.rs                  # cloudflared shares + URL rewrite
         │   ├── valet.rs        # read-only Valet/Herd discovery (import Stage 1)
+        │   ├── localwp.rs      # read-only Local (WP Engine) discovery — the registry, re-homing .local
         │   ├── dbsource.rs · dbcompat.rs · dbdump.rs · dbrestore.rs · dbmirror.rs · dbimport.rs
         │   ├── agent_db.rs      # MCP agent DB principals (names + provisioning SQL)
         │   ├── agent_query.rs   # MCP agent DB reads — native driver, never the bundled client

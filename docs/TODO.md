@@ -34,7 +34,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   (`.local` re-homed to the default TLD, the per-site mysqld found through Local's
   registry, the copy's URLs re-homed, a PHP picker). Owner questions in §9.
   - [x] T0 — the plan + this row ✓ 11 Sep 2026 — `docs/PLAN-local-import.md`
-  - [ ] T1 — `core/localwp.rs` read-only discovery + `SourceKind::Local`
+  - [x] T1 — `core/localwp.rs` read-only discovery + `SourceKind::Local` ✓ 11 Sep 2026 —
+    ledger #570/#571; 5 L0 fixture tests incl.
+    `scan_surfaces_every_kind_of_site_and_rehomes_before_anyone_sees_it` (both plants fail it)
   - [ ] T2 — scan integration, TS types, Import/Sites/Settings copy, MCP description
   - [ ] T3 — PHP picker for rows pinned to a version rexenv doesn't ship
   - [ ] T4 — Local database source (registry port + socket) in the db import

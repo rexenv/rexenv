@@ -31,6 +31,8 @@ use std::path::{Path, PathBuf};
 pub enum SourceKind {
     Valet,
     Herd,
+    /// Local (WP Engine) — discovered by `core::localwp`, not by this module.
+    Local,
 }
 
 impl SourceKind {
@@ -38,6 +40,7 @@ impl SourceKind {
         match self {
             SourceKind::Valet => "Valet",
             SourceKind::Herd => "Herd",
+            SourceKind::Local => "Local",
         }
     }
 }
@@ -67,6 +70,8 @@ pub enum Origin {
     Parked,
     /// A per-site nginx conf with no site behind it.
     ConfigOnly,
+    /// An entry in Local's `sites.json`, by its registry id.
+    Local { id: String },
 }
 
 /// Why a row can't be imported as-is. The caller adds the reasons that need
@@ -104,6 +109,9 @@ pub struct DiscoveredSite {
     /// The same domain also exists in the other tool.
     pub also_in: Option<SourceKind>,
     pub status: SiteStatus,
+    /// The hostname the source served it under, when rexenv can't use that one
+    /// (`ea.local` → `ea.rex`). Only Local rows are ever re-homed.
+    pub renamed_from: Option<String>,
 }
 
 /// The whole read-only picture.
@@ -357,6 +365,7 @@ pub fn scan_source(kind: SourceKind, dir: &Path) -> (Source, Vec<DiscoveredSite>
                 proxy_to: parse_proxy_target(&text),
                 also_in: None,
                 status: SiteStatus::Unsupported(String::new()),
+                renamed_from: None,
             };
             r.status = SiteStatus::Unsupported(match &r.proxy_to {
                 Some(to) => format!("a {} proxy to {to}, not a site", kind.label()),
@@ -417,6 +426,7 @@ fn row(
         proxy_to,
         also_in: None,
         status,
+        renamed_from: None,
     }
 }
 

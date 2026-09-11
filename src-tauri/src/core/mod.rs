@@ -71,6 +71,7 @@ pub mod starter;
 pub mod stack_guard;
 pub mod terminal;
 pub mod tld;
+pub mod localwp;
 pub mod valet;
 pub mod tray;
 pub mod tunnels;
