@@ -676,9 +676,10 @@ static REGISTRY: &[UserTool] = &[
     },
     UserTool {
         name: "valet_import",
-        description: "Bring sites over from Laravel Valet or Herd. Takes `action`: `scan` (what \
-                      Valet/Herd serve on this machine and which TLDs they own — reads their config, \
-                      runs nothing) and `drift` (TLDs another tool has taken back) need `read` on \
+        description: "Bring sites over from Laravel Valet, Herd or Local (WP Engine). Takes `action`: \
+                      `scan` (what Valet/Herd/Local serve on this machine and which TLDs they own — \
+                      a Local site on `.local` comes back re-homed onto the default TLD, its old \
+                      name in `renamedFrom`; reads their config, runs nothing) and `drift` (TLDs another tool has taken back) need `read` on \
                       rexenv itself; `run` {domains: [...], php?: {domain: minor}, \
                       import_databases?} imports the named sites — their folders are LINKED, never \
                       moved, and a database import is a COPY of theirs — and needs `run` on rexenv \
@@ -3301,13 +3302,13 @@ fn valet_import<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::
         let scope = valet_scope(action).ok_or_else(|| Error::Other(format!("`{action}` is not a valet_import action. Use scan, drift, run, cancel, take_over or hand_back.")))?;
         let domains: Vec<String> = args.get("domains").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(|d| d.trim().to_ascii_lowercase()).filter(|d| !d.is_empty()).collect()).unwrap_or_default();
         let wanted = match action {
-            "scan" => "scan Valet/Herd for sites to import".to_string(),
+            "scan" => "scan Valet, Herd and Local for sites to import".to_string(),
             "drift" => "check the resolvers".to_string(),
             "run" => {
                 if domains.is_empty() {
                     return Err(Error::Other("valet_import `run` needs `domains` — the sites to import, from `scan`.".into()));
                 }
-                format!("import {} from Valet/Herd", domains.join(", "))
+                format!("import {} from Valet, Herd or Local", domains.join(", "))
             }
             "cancel" => "cancel the running import".to_string(),
             _ => format!("{} the resolver for `.{}` (macOS will also ask for your password)", action.replace('_', " "), str_field(args, "tld", action)?.trim_start_matches('.')),
@@ -3321,7 +3322,7 @@ fn valet_import<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::
                 let scan = im.valet_scan().await?;
                 json!({
                     "sources": scan.sources.iter().map(|s| json!({ "kind": s.kind, "tld": s.tld, "loopback": s.loopback, "parked": s.parked.len() })).collect::<Vec<_>>(),
-                    "candidates": scan.candidates.iter().map(|c| json!({ "name": c.name, "domain": c.domain, "source": c.source, "siteType": c.site_type, "label": c.label, "docrootRel": c.docroot_rel, "phpMinor": c.php_minor, "phpTarget": c.php_target, "secured": c.secured, "proxyTo": c.proxy_to, "alsoIn": c.also_in })).collect::<Vec<_>>(),
+                    "candidates": scan.candidates.iter().map(|c| json!({ "name": c.name, "domain": c.domain, "source": c.source, "siteType": c.site_type, "label": c.label, "docrootRel": c.docroot_rel, "phpMinor": c.php_minor, "phpTarget": c.php_target, "secured": c.secured, "proxyTo": c.proxy_to, "alsoIn": c.also_in, "renamedFrom": c.renamed_from })).collect::<Vec<_>>(),
                     "tlds": scan.tlds.iter().map(|t| json!({ "tld": t.tld, "owner": t.owner, "rexenvSites": t.rexenv_sites })).collect::<Vec<_>>(),
                     "availablePhp": scan.available_php,
                 })

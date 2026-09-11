@@ -37,7 +37,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   - [x] T1 — `core/localwp.rs` read-only discovery + `SourceKind::Local` ✓ 11 Sep 2026 —
     ledger #570/#571; 5 L0 fixture tests incl.
     `scan_surfaces_every_kind_of_site_and_rehomes_before_anyone_sees_it` (both plants fail it)
-  - [ ] T2 — scan integration, TS types, Import/Sites/Settings copy, MCP description
+  - [x] T2 — scan integration, TS types, Import/Sites/Settings copy, MCP description
+    ✓ 11 Sep 2026 — `already_here_matches_the_folder_before_the_name`,
+    `a_name_an_earlier_row_claims_is_refused_not_duplicated`; ARCHITECTURE §8 Local bullet
   - [ ] T3 — PHP picker for rows pinned to a version rexenv doesn't ship
   - [ ] T4 — Local database source (registry port + socket) in the db import
   - [ ] T5 — URL re-home pass on rexenv's copy

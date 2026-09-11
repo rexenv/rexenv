@@ -47,6 +47,9 @@ pub struct ImportCandidate {
     pub secured: bool,
     pub proxy_to: Option<String>,
     pub also_in: Option<SourceKind>,
+    /// The name the source served it under, when rexenv can't use that one
+    /// (`ea.local` → `ea.rex`). Local rows only (ledger #571).
+    pub renamed_from: Option<String>,
     pub has_custom_valet_driver: bool,
     /// Other names Valet/Herd serves this SAME folder under, folded into this
     /// row (v42 extra domains).
@@ -99,16 +102,35 @@ pub fn scan_valet_import(state: State<'_, AppState>) -> Result<ImportScan> {
         .home_dir()
         .to_path_buf();
 
-    let found = core::valet::discover(&home);
+    let mut found = core::valet::discover(&home);
     let available: Vec<String> = core::php::all_minors();
     let existing = core::sites::list(&conn)?;
+    // Local's rows arrive already re-homed onto the default TLD (`.local` is
+    // refused by policy), so the scan needs the setting — read here, where the
+    // connection is, keeping `core::localwp` pure.
+    let default_tld = core::sites::default_tld(&conn)?;
+    let local_rows = match core::localwp::discover(&home, &default_tld) {
+        Some((source, rows)) => {
+            found.sources.push(source);
+            rows
+        }
+        None => Vec::new(),
+    };
 
     let candidates = found
         .sites
         .into_iter()
         .map(|s| enrich(&conn, platform, &existing, &available, s))
         .collect::<Vec<_>>();
-    let (candidates, folded) = fold_same_folder(candidates);
+    // Folding is a Valet link-farm concept (several names, one folder); Local
+    // registers one name per site, so its rows join after the fold.
+    let (mut candidates, folded) = fold_same_folder(candidates);
+    for s in local_rows {
+        let c = enrich(&conn, platform, &existing, &available, s);
+        let c = refuse_a_taken_name(&candidates, c);
+        candidates.push(c);
+    }
+    candidates.sort_by(|a, b| a.domain.cmp(&b.domain));
 
     // Every TLD any importable row is served on — including one that appears
     // only in a stray conf, which the config never mentions, and one that only
@@ -229,6 +251,59 @@ fn fold_same_folder(candidates: Vec<ImportCandidate>) -> (Vec<ImportCandidate>, 
     (out, notes)
 }
 
+/// A hostname reaches exactly one site. A row whose name an EARLIER row already
+/// claims is refused with the reason rather than listed twice: two rows with
+/// one name would import the first and fail the second at the end of the batch,
+/// and the screen keys its rows by domain.
+fn refuse_a_taken_name(earlier: &[ImportCandidate], mut c: ImportCandidate) -> ImportCandidate {
+    if let Some(other) = earlier.iter().find(|o| o.domain == c.domain) {
+        c.status = SiteStatus::Unsupported(format!(
+            "{} also has a site called {} in another folder — rexenv can give a name to only \
+             one site, so import that one, or rename this site in {} first",
+            other.source.label(),
+            c.domain,
+            c.source.label()
+        ));
+        c.serve_path = None;
+    }
+    c
+}
+
+/// Whether rexenv already has this row — by FOLDER first, then by name.
+///
+/// Folder first because a re-homed Local row can't be matched by name (rexenv
+/// serves it under a name the source never used), and a Valet site whose domain
+/// was later changed in rexenv is still that folder: by name alone both read as
+/// "overlaps an existing site", which sends the user hunting for a conflict that
+/// is really their own earlier import.
+///
+/// A NAME match on a re-homed row is not "already imported" — rexenv picked that
+/// name, some other rexenv site has it, and that is a collision to resolve.
+fn already_here(
+    existing: &[crate::state::models::Site],
+    serve: &std::path::Path,
+    domain: &str,
+    renamed_from: Option<&str>,
+) -> Option<SiteStatus> {
+    let canon = |p: &std::path::Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
+    let want = canon(serve);
+    if existing
+        .iter()
+        .any(|e| canon(std::path::Path::new(&e.path)) == want || canon(&e.served_root()) == want)
+    {
+        return Some(SiteStatus::AlreadyImported);
+    }
+    let e = existing.iter().find(|e| e.domain.eq_ignore_ascii_case(domain))?;
+    Some(match renamed_from {
+        Some(from) => SiteStatus::NeedsAttention(format!(
+            "rexenv would serve {from} as {domain}, but another rexenv site already has that \
+             name ({}) — rename one of them first",
+            e.path
+        )),
+        None => SiteStatus::AlreadyImported,
+    })
+}
+
 /// Add the judgements that need our own state to one scanned row.
 fn enrich(
     conn: &rusqlite::Connection,
@@ -251,6 +326,7 @@ fn enrich(
         secured: s.secured,
         proxy_to: s.proxy_to,
         also_in: s.also_in,
+        renamed_from: s.renamed_from,
         has_custom_valet_driver: false,
         status: s.status,
         extra_domains: Vec::new(),
@@ -258,10 +334,6 @@ fn enrich(
 
     // A filesystem-level refusal (missing folder, proxy) already decided this.
     if matches!(c.status, SiteStatus::Unsupported(_)) {
-        return c;
-    }
-    if existing.iter().any(|e| e.domain.eq_ignore_ascii_case(&c.domain)) {
-        c.status = SiteStatus::AlreadyImported;
         return c;
     }
 
@@ -280,6 +352,11 @@ fn enrich(
     c.site_type = Some(detected.site_type);
     c.label = Some(detected.label.to_string());
     c.has_custom_valet_driver = core::sites::has_custom_valet_driver(&root);
+
+    if let Some(status) = already_here(existing, &serve, &c.domain, c.renamed_from.as_deref()) {
+        c.status = status;
+        return c;
+    }
 
     // The served folder is what gets stored, so it must pass the link
     // preflight — overlap with an existing site, blast radius, our app data.
@@ -658,7 +735,7 @@ pub async fn valet_import_run<R: tauri::Runtime>(
         with_db: request.import_databases,
         last: std::sync::atomic::AtomicU8::new(0),
     };
-    batch.tick("scanning", 0, None, Some("re-reading your Valet and Herd setup".into()), 0);
+    batch.tick("scanning", 0, None, Some("re-reading your Valet, Herd and Local setup".into()), 0);
 
     // Re-scan rather than trusting the list we were handed: the screen's rows
     // are a suggestion, and the folders may have changed since it rendered.
@@ -668,7 +745,7 @@ pub async fn valet_import_run<R: tauri::Runtime>(
 
     for domain in &request.domains {
         let Some(c) = scan.candidates.iter().find(|c| &c.domain == domain).cloned() else {
-            outcomes.push(skipped(domain, "it's no longer in Valet/Herd"));
+            outcomes.push(skipped(domain, "it's no longer in Valet, Herd or Local"));
             continue;
         };
         match &c.status {
@@ -1238,6 +1315,7 @@ mod folding_a_link_farm {
             secured: false,
             proxy_to: None,
             also_in: None,
+            renamed_from: None,
             has_custom_valet_driver: false,
             extra_domains: Vec::new(),
             status,
@@ -1271,6 +1349,60 @@ mod folding_a_link_farm {
         // The unrelated project is untouched and carries no extras.
         let other = out.iter().find(|c| c.domain == "other.test").expect("other.test");
         assert!(other.extra_domains.is_empty());
+    }
+
+    /// Already-imported is decided by FOLDER first, so a re-homed Local site
+    /// (imported as `ea.rex`, scanned again as `ea.local` → `ea.rex`) and a Valet
+    /// site whose domain was since changed in rexenv both read "already here";
+    /// and a name rexenv PICKED that another site holds is a collision, never
+    /// "already imported".
+    #[test]
+    fn already_here_matches_the_folder_before_the_name() {
+        use crate::state::models::{test_site, SiteOrigin};
+        let dir = std::env::temp_dir().join(format!("rexenv-already-here-{}", std::process::id()));
+        let (ea, other) = (dir.join("ea/app/public"), dir.join("other"));
+        std::fs::create_dir_all(&ea).unwrap();
+        std::fs::create_dir_all(&other).unwrap();
+        let mut imported = test_site("s1", "renamed-in-rexenv.rex", SiteOrigin::User);
+        imported.path = ea.display().to_string();
+        let mut taken = test_site("s2", "shop.rex", SiteOrigin::User);
+        taken.path = other.display().to_string();
+        let existing = vec![imported, taken];
+
+        // Same folder, any name: already here.
+        assert_eq!(already_here(&existing, &ea, "ea.rex", Some("ea.local")), Some(SiteStatus::AlreadyImported));
+        // A symlinked route to the same folder is the same folder.
+        let link = dir.join("link");
+        let _ = std::os::unix::fs::symlink(&ea, &link);
+        assert_eq!(already_here(&existing, &link, "x.test", None), Some(SiteStatus::AlreadyImported));
+        // A different folder whose re-homed name another site holds: a collision.
+        let fresh = dir.join("fresh");
+        std::fs::create_dir_all(&fresh).unwrap();
+        match already_here(&existing, &fresh, "shop.rex", Some("shop.local")) {
+            Some(SiteStatus::NeedsAttention(r)) => assert!(r.contains("shop.local") && r.contains("rename"), "{r}"),
+            s => panic!("a picked name that is taken must need attention, got {s:?}"),
+        }
+        // …while a name the SOURCE chose keeps today's reading.
+        assert_eq!(already_here(&existing, &fresh, "shop.rex", None), Some(SiteStatus::AlreadyImported));
+        assert_eq!(already_here(&existing, &fresh, "new.rex", None), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A Local row whose name an earlier row claims is refused, named, and made
+    /// unrunnable (no served folder) — never listed twice.
+    #[test]
+    fn a_name_an_earlier_row_claims_is_refused_not_duplicated() {
+        let valet = candidate("shop.test", "/p/valet-shop", SiteStatus::Importable);
+        let mut local = candidate("shop.test", "/p/local-shop", SiteStatus::Importable);
+        local.source = SourceKind::Local;
+        let out = refuse_a_taken_name(std::slice::from_ref(&valet), local);
+        match &out.status {
+            SiteStatus::Unsupported(r) => assert!(r.contains("Valet") && r.contains("Local"), "{r}"),
+            s => panic!("{s:?}"),
+        }
+        assert!(out.serve_path.is_none(), "a refused row must not be runnable");
+        let fine = refuse_a_taken_name(&[valet], candidate("other.test", "/p/o", SiteStatus::Importable));
+        assert_eq!(fine.status, SiteStatus::Importable);
     }
 
     /// A row that needs attention keeps its own line and its own reason — it is

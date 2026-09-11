@@ -163,7 +163,7 @@ export interface TeardownReport {
 }
 
 /** Which tool a discovered site came from. */
-export type ImportSource = "valet" | "herd";
+export type ImportSource = "valet" | "herd" | "local";
 
 /** Why a discovered row can or can't be imported (mirrors the Rust SiteStatus,
  *  an internally-tagged enum). */
@@ -206,6 +206,9 @@ export interface ImportCandidate {
   proxyTo: string | null;
   /** The same domain also exists in the other tool. */
   alsoIn: ImportSource | null;
+  /** The hostname the source served it under when rexenv can't use it — a
+   *  Local site on `.local` imports as `<name>.<default TLD>`. */
+  renamedFrom: string | null;
   hasCustomValetDriver: boolean;
   status: ImportStatus;
 }

@@ -1270,10 +1270,10 @@ function ReapBanner() {
 }
 
 /**
- * "Import from Valet or Herd" nudge.
+ * "Import from Valet, Herd or Local" nudge.
  *
  * Only appears when a scan would ACTUALLY find something, so a user with
- * neither tool never sees it, and it is dismissible so it can't nag someone who
+ * none of those tools never sees it, and it is dismissible so it can't nag someone who
  * has already decided. Most useful on an empty site list — which is exactly
  * when a Valet user is wondering where their sites are.
  */
@@ -1385,10 +1385,10 @@ function ImportBanner() {
       <FolderInput className="h-4 w-4 flex-none text-brand" strokeWidth={1.7} />
       <div className="min-w-0 flex-1">
         <div className="text-[0.8125rem] text-rex-text">
-          {ready} site{ready === 1 ? "" : "s"} found in Valet or Herd
+          {ready} site{ready === 1 ? "" : "s"} found in Valet, Herd or Local
         </div>
         <div className="text-[0.71875rem] text-rex-text-muted">
-          Import them where they already live — nothing is copied, and your Valet setup is left
+          Import them where they already live — nothing is copied, and your old setup is left
           untouched.
         </div>
       </div>

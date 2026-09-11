@@ -22,8 +22,15 @@ import type {
   ImportCandidate,
   ImportOutcome,
   ImportProgress,
+  ImportSource,
   ResolverTldStatus,
 } from "@/types";
+
+const SOURCE_LABEL: Record<ImportSource, string> = {
+  valet: "Valet",
+  herd: "Herd",
+  local: "Local",
+};
 
 /** How old the list on screen is. The rescan itself is too fast to see, so
  *  this — a real timestamp of the data being rendered — is what proves it ran. */
@@ -88,10 +95,10 @@ function statusPill(c: ImportCandidate, outcome?: ImportOutcome) {
 }
 
 /**
- * Import sites from Valet or Herd.
+ * Import sites from Valet, Herd or Local.
  *
- * The scan is strictly read-only — their config, symlinks and per-site confs
- * are read, nothing of theirs is written, started or stopped, and no file
+ * The scan is strictly read-only — their config, symlinks, per-site confs and
+ * Local's site registry are read, nothing of theirs is written, started or stopped, and no file
  * inside a project is opened. Everything the list can't import is still SHOWN
  * with its reason, because a site the user can see in Herd but not here would
  * make them doubt the whole list.
@@ -251,7 +258,7 @@ export function Import() {
   return (
     <>
       <TopBar
-        title="Import from Valet or Herd"
+        title="Import from Valet, Herd or Local"
         subtitle={
           isLoading
             ? "Scanning…"
@@ -270,16 +277,18 @@ export function Import() {
       <div className="min-h-0 flex-1 overflow-auto p-[18px]">
         {isLoading ? (
           <div className="flex items-center gap-2 text-[0.8125rem] text-rex-text-muted">
-            <Loader2 className="h-4 w-4 animate-rex-spin" /> Reading your Valet and Herd setup…
+            <Loader2 className="h-4 w-4 animate-rex-spin" /> Reading your Valet, Herd and Local setup…
           </div>
         ) : candidates.length === 0 ? (
           <div className="flex flex-col gap-[14px]">
             <div className="rounded-xl border border-rex-border bg-rex-surface-1 p-6 text-center">
               <FolderInput className="mx-auto h-6 w-6 text-rex-text-dim" strokeWidth={1.6} />
-              <div className="mt-2 text-[0.875rem] text-rex-text">No Valet or Herd sites found</div>
+              <div className="mt-2 text-[0.875rem] text-rex-text">
+                No Valet, Herd or Local sites found
+              </div>
               <div className="mt-1 text-[0.75rem] text-rex-text-muted">
-                rexenv looked in <span className="font-mono">~/.config/valet</span> and Herd's
-                application-support folder. Nothing of theirs was changed.
+                rexenv looked in <span className="font-mono">~/.config/valet</span> and in Herd's and
+                Local's application-support folders. Nothing of theirs was changed.
               </div>
             </div>
             {/* No sites, but their resolver file can outlive them — this is the
@@ -296,7 +305,7 @@ export function Import() {
               >
                 <div className="flex items-baseline justify-between gap-3">
                   <span className="text-[0.84375rem] font-medium text-rex-text">
-                    {s.kind === "herd" ? "Herd" : "Valet"}
+                    {SOURCE_LABEL[s.kind]}
                   </span>
                   <span className="truncate font-mono text-[0.6875rem] text-rex-text-muted">
                     {s.home}
@@ -417,9 +426,17 @@ export function Import() {
                             {c.label}
                           </span>
                         )}
+                        {c.renamedFrom && (
+                          <span
+                            className="flex-none font-mono text-[0.625rem] text-rex-text-muted"
+                            title={`${SOURCE_LABEL[c.source]} served this as ${c.renamedFrom}; rexenv can't use that name, so it imports as ${c.domain}.`}
+                          >
+                            was {c.renamedFrom}
+                          </span>
+                        )}
                         {c.alsoIn && (
                           <span className="flex-none text-[0.625rem] text-rex-text-muted">
-                            also in {c.alsoIn === "herd" ? "Herd" : "Valet"}
+                            also in {SOURCE_LABEL[c.alsoIn]}
                           </span>
                         )}
                       </div>
@@ -466,8 +483,8 @@ export function Import() {
 
             <div className="text-[0.6875rem] leading-[1.55] text-rex-text-muted">
               Importing links each folder where it already is — nothing is copied or moved, and
-              deleting a site in rexenv never deletes your folder. Your Valet and Herd setup is
-              left exactly as it is, so you can go back at any time. Databases are COPIED, never
+              deleting a site in rexenv never deletes your folder. Your Valet, Herd and Local setup
+              is left exactly as it is, so you can go back at any time. Databases are COPIED, never
               moved — the old one is only read, and each site keeps using it until you switch it
               over on its Database tab.
             </div>
@@ -513,7 +530,7 @@ export function ImportProgressCard({
     p.stage === "site" || p.stage === "database"
       ? `${p.stage === "database" ? "Copying the database for" : "Importing"} ${p.domain ?? ""}`
       : p.stage === "scanning"
-        ? "Reading your Valet and Herd setup"
+        ? "Reading your Valet, Herd and Local setup"
         : p.stage === "resolvers"
           ? "Making these domains resolve to rexenv"
           : p.stage === "php"

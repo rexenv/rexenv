@@ -943,6 +943,19 @@ honest footer —
   and CONTINUE-ON-FAILURE, with resolver consent and `php::set_installed` +
   prefetch settled BEFORE the loop. `examples/valet_scan_check` fingerprints
   their trees before and after to prove the scan wrote nothing.
+- **Local import** (`core/localwp.rs`; the same `/import` screen, scan and run —
+  design record `docs/PLAN-local-import.md`). Local keeps a REGISTRY
+  (`~/Library/Application Support/Local/sites.json`), not a symlink farm; the scan
+  reads it plus existence probes of `<folder>/app/public` — never Local's
+  `site-statuses.json` (a label about what runs, the DBngin lesson) and never a file
+  inside the project (#570). `.local` is refused by TLD policy (Bonjour), so a site on
+  a refused TLD is RE-HOMED onto the default TLD in the scan itself (`ea.local` →
+  `ea.rex`, shown on the row as "was ea.local"), before `enrich` or site creation see
+  it (#571); an allowed TLD keeps its name. Multisite networks list as unsupported.
+  Already-imported is decided by FOLDER first for every source (a re-homed name
+  cannot be matched by name, and a Valet site whose domain was later changed in
+  rexenv is still that folder); a Local row whose name a Valet/Herd row already
+  claims is refused rather than listed twice.
 - **Database import copies their database and RECORDS what it did** (Stage 2:
   `core/{dbsource,dbcompat,dbdump,dbrestore,dbmirror,dbimport}`, v19 `sites.db_created`,
   v20 `db_imports`). Their side is read-only: engines identified from the pre-auth

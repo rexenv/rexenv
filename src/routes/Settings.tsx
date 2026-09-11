@@ -1989,10 +1989,10 @@ function BorrowedResolverCard() {
         <div className="flex items-center justify-between gap-4 rounded-lg border border-rex-border-subtle px-3 py-2.5">
           <div className="min-w-0">
             <div className="text-[0.78125rem] text-rex-text">
-              {importable} site{importable === 1 ? "" : "s"} in Valet or Herd can be imported
+              {importable} site{importable === 1 ? "" : "s"} in Valet, Herd or Local can be imported
             </div>
             <div className="mt-0.5 text-[0.71875rem] text-rex-text-muted">
-              Served where they already live; your Valet setup is left untouched.
+              Served where they already live; your old setup is left untouched.
             </div>
           </div>
           <Button variant="secondary" onClick={() => navigate("/import")}>
