@@ -92,9 +92,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     `the_batch_connects_only_local_rows_whose_database_came_over`,
     `connecting_local_sites_from_the_import_claims_destroy_first` (both plant-proven).
     The batch connecting a real Local import is still to be run (L1).
-  - [ ] **Import is its own page, not a card inside Settings → DNS & SSL** — owner, 12 Sep
-    2026: a sidebar entry; DNS & SSL keeps only DNS/SSL items (the importable-sites nudge
-    and the leftover-dumps card move out).
+  - [x] **Import is its own page, not a card inside Settings → DNS & SSL** ✓ 12 Sep 2026 —
+    owner: a sidebar entry (`nav.ts`); DNS & SSL keeps only the borrowed-resolver
+    hand-back rows — the importable-sites nudge is gone and the leftover-dumps card moved
+    to the Import page. tsc + eslint; not yet seen in a packaged build.
   - [x] **Q3 — choose the domain for a re-homed row** ✓ 12 Sep 2026 — `domain_choice` +
     the row's name field (label on the re-homed TLD, live-checked against
     `takenDomains`); `choose_domain` re-validates in the run —

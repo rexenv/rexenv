@@ -323,7 +323,10 @@ quit Herd" with the copy-paste quit command the existing detection already produ
 ## 7. UI
 
 **Route `/import`, no permanent nav item** — migration is a near-one-time action and a
-permanent nav slot would misrepresent it. Entry points:
+permanent nav slot would misrepresent it. *(REVERSED 12 Sep 2026 by the owner: with
+Local joining Valet and Herd, Import is a sidebar page of its own, and the Settings →
+DNS & SSL card that held its entry point is gone — importing is not part of DNS & SSL.
+The reasoning below is kept as the record.)* Entry points:
 
 - **A Sites-page affordance**, shown only when a scan would actually find something, and
   most prominent where it is most useful — an empty or near-empty site list is exactly

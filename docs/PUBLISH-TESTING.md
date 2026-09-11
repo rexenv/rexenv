@@ -925,8 +925,10 @@ exactly with the scan, not that any machine matches the original pass.
 11. **Cancel** — the button sits beside the progress bar (moved off the header bar
     with the card). With several selected, cancel mid-run: the current site
     finishes, the rest report `skipped`, and no half-created site appears.
-12. **Settings → DNS & SSL** — the "N sites can be imported" row appears and
-    navigates to `/import`.
+12. **Sidebar → Import** opens `/import` from anywhere. **Settings → DNS & SSL** shows
+    nothing about importing any more (no "N sites can be imported" row, no leftover
+    dumps) — only the borrowed-resolver hand-back rows, which are DNS. Owner, 12 Sep
+    2026: import was a card inside DNS & SSL, and it is not part of DNS & SSL.
 13. **Banner dismissal** — Dismiss on Sites, reload the app, it stays dismissed.
 
 **CLEAN-VM only** (cannot be exercised here):
@@ -1020,10 +1022,11 @@ never starts or stops their database server, so step 2 is yours.**
    datadir is overkill — check table counts via any client, or just that the site still
    works when pointed at it).
 9. Cancel path: start an import, cancel during the copy. Expect "cancelled", no artifact
-   left (Settings shows no leftover), site row unchanged, DBngin untouched.
+   left (the Import page shows no leftover), site row unchanged, DBngin untouched.
 10. Failure keep: stop DBngin's MySQL MID-copy (this is the one legitimate way to kill a
-    dump). Expect a frozen failed state naming the kept dump file; Settings →
-    "Leftover database dumps" lists it with a working Delete.
+    dump). Expect a frozen failed state naming the kept dump file; the Import page's
+    "Leftover database dumps" lists it with a working Delete (it lived in Settings →
+    DNS & SSL until 12 Sep 2026).
 11. Batch: `/import` → tick "also copy databases" → import a small WP site. Expect the
     per-row "DB copied" chip, and a site with no database config to read "DB skipped"
     with the reason — never a failure.

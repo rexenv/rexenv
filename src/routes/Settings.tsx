@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { toast, toastBackendError } from "@/lib/toast";
 import { confirm, Overlay } from "@/components/ui/dialog";
 // Bundled verbatim at build time (`?raw`) so the app can show its own legal
@@ -56,8 +56,6 @@ import {
   trustLocalCa,
   wpCliPackages,
   scanValetImport,
-  dbImportLeftovers,
-  dbImportDeleteLeftover,
   uninstallSystem, phpUpdateApply, phpUpdateCheck } from "@/lib/ipc";
 import { getStoredTheme, setTheme, subscribeTheme, type Theme } from "@/lib/theme";
 import type { AppInfo, Blueprint, MultisiteMode, PhpSetting, PhpVersion, DownloadsSnapshot } from "@/types";
@@ -1032,7 +1030,6 @@ function DnsSslSetting() {
         />
       </div>
       <BorrowedResolverCard />
-      <LeftoverDumpsCard />
       <FirefoxTrustCard />
       {msg && <Notice>{msg}</Notice>}
     </>
@@ -1931,75 +1928,18 @@ export function Settings() {
  * import: someone who took `.test` over months ago should be able to find the
  * "hand it back" button without remembering which screen took it.
  */
-/** Dumps kept by failed database imports. They contain a full copy of a
- *  database, so they are LISTED here and deletable — never a file someone
- *  finds later. A successful import deletes its own dump. */
-function LeftoverDumpsCard() {
-  const qc = useQueryClient();
-  const { data: dumps = [] } = useQuery({
-    queryKey: ["db-import-leftovers"],
-    queryFn: dbImportLeftovers,
-  });
-  const remove = useMutation({
-    mutationFn: (file: string) => dbImportDeleteLeftover(file),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["db-import-leftovers"] }),
-    onError: (e) => toastBackendError(e),
-  });
-  if (dumps.length === 0) return null;
-  const total = dumps.reduce((n, d) => n + d.sizeBytes, 0);
-  return (
-    <div className="mt-3 rounded-lg border border-rex-border-subtle px-3 py-2.5">
-      <div className="text-[0.78125rem] text-rex-text">
-        Leftover database dumps: {dumps.length} file{dumps.length === 1 ? "" : "s"},{" "}
-        {(total / (1024 * 1024)).toFixed(1)} MB
-      </div>
-      <div className="mt-0.5 text-[0.71875rem] text-rex-text-muted">
-        Kept by database imports that didn't finish, so the copy stays diagnosable.
-        Each contains a full copy of a database. Retrying an import replaces its file;
-        delete them here when you're done with them.
-      </div>
-      <div className="mt-2 flex flex-col gap-1">
-        {dumps.map((d) => (
-          <div key={d.file} className="flex items-center justify-between gap-3">
-            <span className="min-w-0 truncate font-mono text-[0.71875rem] text-rex-text-muted">
-              {d.file} · {(d.sizeBytes / (1024 * 1024)).toFixed(1)} MB
-            </span>
-            <Button size="sm" variant="ghost" onClick={() => remove.mutate(d.file)}>
-              Delete
-            </Button>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function BorrowedResolverCard() {
-  const navigate = useNavigate();
+  // DNS only: the resolver files rexenv borrowed. The "N sites can be imported"
+  // nudge and the leftover-dumps card that used to sit beside this moved to the
+  // Import page (owner, 12 Sep 2026) — importing is not part of DNS & SSL.
   const { data } = useQuery({ queryKey: ["valet-scan"], queryFn: scanValetImport });
   const borrowed = (data?.tlds ?? []).filter((t) => t.owner === "borrowed" || t.owner === "drifted");
-  const importable = (data?.candidates ?? []).filter((c) => c.status.status === "importable").length;
-  if (borrowed.length === 0 && importable === 0) return null;
+  if (borrowed.length === 0) return null;
   return (
     <div className="mt-3 flex flex-col gap-2">
       {borrowed.map((t) => (
         <ResolverHandBackRow key={t.tld} tld={t} />
       ))}
-      {importable > 0 && (
-        <div className="flex items-center justify-between gap-4 rounded-lg border border-rex-border-subtle px-3 py-2.5">
-          <div className="min-w-0">
-            <div className="text-[0.78125rem] text-rex-text">
-              {importable} site{importable === 1 ? "" : "s"} in Valet, Herd or Local can be imported
-            </div>
-            <div className="mt-0.5 text-[0.71875rem] text-rex-text-muted">
-              Served where they already live; your old setup is left untouched.
-            </div>
-          </div>
-          <Button variant="secondary" onClick={() => navigate("/import")}>
-            Review import
-          </Button>
-        </div>
-      )}
     </div>
   );
 }

@@ -942,7 +942,12 @@ honest footer —
   ORDINARY create path per site (`site_provision::start` + poll), sequentially
   and CONTINUE-ON-FAILURE, with resolver consent and `php::set_installed` +
   prefetch settled BEFORE the loop. `examples/valet_scan_check` fingerprints
-  their trees before and after to prove the scan wrote nothing.
+  their trees before and after to prove the scan wrote nothing. Import is its own
+  sidebar page (`nav.ts`) since 12 Sep 2026 — the owner reversed the original "no
+  permanent nav item" decision once Local joined, and removed the entry point that sat
+  inside Settings → DNS & SSL. DNS & SSL now carries only DNS: the borrowed-resolver
+  hand-back rows; the leftover-dumps card lives on the Import page with the imports
+  that leave it.
 - **Local import** (`core/localwp.rs`; the same `/import` screen, scan and run —
   design record `docs/PLAN-local-import.md`). Local keeps a REGISTRY
   (`~/Library/Application Support/Local/sites.json`), not a symlink farm; the scan

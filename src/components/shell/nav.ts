@@ -1,5 +1,6 @@
 import {
   Database,
+  FolderInput,
   Globe,
   Mail,
   Server,
@@ -25,6 +26,9 @@ export const NAV_ITEMS: NavItem[] = [
   { to: "/sites", label: "Sites", icon: Globe, group: "Environment" },
   { to: "/services", label: "Services", icon: Server, group: "Environment" },
   { to: "/databases", label: "Databases", icon: Database, group: "Environment" },
+  // Its own page since 12 Sep 2026 (owner): it was a card inside Settings → DNS &
+  // SSL, and bringing sites over from Valet, Herd or Local is not part of DNS & SSL.
+  { to: "/import", label: "Import", icon: FolderInput, group: "Environment" },
   { to: "/mail", label: "Mail", icon: Mail, group: "Network" },
   { to: "/tunnels", label: "Tunnels", icon: Share2, group: "Network" },
   { to: "/settings", label: "Settings", icon: SlidersHorizontal, group: "Environment", footer: true },

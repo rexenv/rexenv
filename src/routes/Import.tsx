@@ -8,6 +8,8 @@ import { toast, toastBackendError } from "@/lib/toast";
 import { CHECK_INPUT, TECH_INPUT, cn } from "@/lib/utils";
 import { Track } from "@/components/shell/DownloadPanel";
 import {
+  dbImportDeleteLeftover,
+  dbImportLeftovers,
   onValetImportProgress,
   onValetImportRow,
   resolverHandBack,
@@ -384,6 +386,7 @@ export function Import() {
                 one place a leftover `/etc/resolver/test` shows up before someone
                 types a .test domain. The empty state used to swallow it. */}
             {consentCards}
+            <LeftoverDumpsCard />
           </div>
         ) : (
           <div className="flex flex-col gap-[14px]">
@@ -609,6 +612,7 @@ export function Import() {
               moved — the old one is only read, and each site keeps using it until you switch it
               over on its Database tab.
             </div>
+            <LeftoverDumpsCard />
           </div>
         )}
       </div>
@@ -688,6 +692,50 @@ export function Import() {
         </div>
       )}
     </>
+  );
+}
+
+/** Dumps kept by failed database imports. They contain a full copy of a
+ *  database, so they are LISTED and deletable — never a file someone finds
+ *  later. A successful import deletes its own dump. Lived in Settings → DNS &
+ *  SSL until 12 Sep 2026; it belongs with the imports that leave it. */
+function LeftoverDumpsCard() {
+  const qc = useQueryClient();
+  const { data: dumps = [] } = useQuery({
+    queryKey: ["db-import-leftovers"],
+    queryFn: dbImportLeftovers,
+  });
+  const remove = useMutation({
+    mutationFn: (file: string) => dbImportDeleteLeftover(file),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["db-import-leftovers"] }),
+    onError: (e) => toastBackendError(e),
+  });
+  if (dumps.length === 0) return null;
+  const total = dumps.reduce((n, d) => n + d.sizeBytes, 0);
+  return (
+    <div className="rounded-xl border border-rex-border bg-rex-surface-1 px-4 py-3">
+      <div className="text-[0.78125rem] text-rex-text">
+        Leftover database dumps: {dumps.length} file{dumps.length === 1 ? "" : "s"},{" "}
+        {(total / (1024 * 1024)).toFixed(1)} MB
+      </div>
+      <div className="mt-0.5 text-[0.71875rem] text-rex-text-muted">
+        Kept by database imports that didn't finish, so the copy stays diagnosable.
+        Each contains a full copy of a database. Retrying an import replaces its file;
+        delete them here when you're done with them.
+      </div>
+      <div className="mt-2 flex flex-col gap-1">
+        {dumps.map((d) => (
+          <div key={d.file} className="flex items-center justify-between gap-3">
+            <span className="min-w-0 truncate font-mono text-[0.71875rem] text-rex-text-muted">
+              {d.file} · {(d.sizeBytes / (1024 * 1024)).toFixed(1)} MB
+            </span>
+            <Button size="sm" variant="ghost" onClick={() => remove.mutate(d.file)}>
+              Delete
+            </Button>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
