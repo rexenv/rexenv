@@ -3050,3 +3050,62 @@ paying for anyway: **the tick belongs in the commit that does the work.**
   plain (non-debug) run prints none of that, which is why the debug log is the
   evidence: an install that silently skipped the step looks identical.
 
+
+## Reconcile of 11 Sep 2026
+
+### From “Now — actionable code/test work”
+
+- [x] **MCP parity gaps — the 30 app commands an agent could not reach** ✓ 11 Sep 2026 —
+  all closed the day they were found, in four commits: the mail catch-all, TLD status and
+  policy, open in terminal (#561); the stack health reads, two re-ruled `Never` with the
+  reason (#562); WordPress releases + WP-CLI packages, log clearing, a repo watch's log
+  (#563); engine versions, Adminer, downloads, start-at-login and the :443 edge conflict
+  (#564). Found by asking, per command, whether an agent can do what the app does, and kept
+  true by `mcp_server/parity.rs` (#560): its table now has no `Gap` row, and a new command
+  fails the build until someone rules on it.
+
+- [x] **First-run downloads stuck at `queued` after leaving the Install step** ✓ 11 Sep 2026 —
+  reported by users: skip ahead in the wizard while the core binaries download, and rows on
+  the main screen froze as `queued` with no Retry until the app restarted. A batch planned
+  a binary as missing (typically "Create your first site"), it finished before that batch
+  began, and the resolve returned through its cache hit, which reports nothing. `prefetch`
+  now settles each row the moment its resolve returns (`Hub::item_settled`, #566); L0 in
+  `core::downloads`, L1 leg 2 of `download_progress_check`. **Not verified by hand yet**:
+  the wizard on fresh app data.
+
+- [x] **`system_setup` blocked a runtime worker for the whole privileged prompt** ✓ 11 Sep 2026
+  — found diagnosing the row above (bug B). It was `async` but called `run_system_setup`
+  directly, so the resolver admin prompt and the keychain dialog held a tokio worker until
+  the user answered; first-run downloads on that worker could pause meanwhile. It now runs
+  in `spawn_blocking` on the app's own state (#567). Source guard only — no test can answer
+  a real prompt.
+
+- [x] **The other commands that wait on a privileged prompt** ✓ 11 Sep 2026 — found fixing
+  the row above. The re-scan corrected this row's own list: `trust_ca_in_firefox` raises no
+  prompt, and `remove_resolver`, `cli_install`, `resolver_hand_back`, `valet_import_run` and
+  Start/Stop all (the edge daemon's install/bootout) were missing. Every prompt call now goes
+  through `core::prompt::while_prompting` from an async caller; `repair_resolver`,
+  `remove_resolver` and `trust_local_ca` became `async`. A guard derives the prompt
+  primitives from `core/` and fails on an unwrapped call or a sync command (#568).
+
+- [x] **Three commands held the database lock across a privileged prompt** ✓ 11 Sep 2026 —
+  found in the same re-scan. `uninstall_system` (`run_system_teardown(&conn, …)`),
+  `resolver_take_over` and `resolver_hand_back` locked `state.db` and kept it while the admin
+  dialog was open, so every command that needs the database waited on the user. The three
+  core operations now take `&Mutex<Connection>` and lock per step — plan, the dialog
+  unlocked, record (#569); L0 fakes check the lock at the moment each dialog is asked.
+
+- [x] **Deleting or renaming a site left its job logs behind** ✓ 11 Sep 2026 — found by the
+  live MCP test: its deleted fixture sites' provision logs stayed, and the machine held
+  logs for 284 deleted domains. `logs::remove_run_logs` now runs from `teardown` and
+  `change_site_domain` for every run-log family, never taking a living neighbour whose
+  domain extends the name; the #302 guard detects new families by their `format!` (#565).
+  Logs already orphaned are not swept retroactively — on the dev machine they were removed
+  by hand the same day (467 files, none named like a living site).
+
+- [x] **`logs::targets_for_site` listed Git job logs by plain prefix** ✓ 11 Sep 2026 — found
+  writing #565. `repo-foo.rex-` also matches `foo.rex-2.rex`'s logs, so `foo.rex`'s Logs
+  tab — and MCP `site_logs` under `read` on `foo.rex` only — could open a neighbour's Git
+  job output. Both callers now pass the other sites' domains (`sites::other_domains`) and
+  the listing uses #565's longest-domain rule.
+
