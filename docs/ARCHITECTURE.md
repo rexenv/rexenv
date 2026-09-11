@@ -995,6 +995,16 @@ honest footer —
   the Database panel and the job's settle line say "can't load until you connect it"
   instead of "still reads its old database", and the Sites badge asserts neither (#575).
   Measured on two real imports, 12 Sep 2026.
+  **Once connected, Local serves the site from rexenv's copy too** — the linked folder
+  is shared, so Local's own PHP reads the rewritten wp-config and signs in to
+  `127.0.0.1:13306` as the dedicated user while rexenv's MySQL runs; its pages then
+  link to the `.rex` name (measured through Local's own ports: 200, 32 `ab12.rex`
+  links, 0 `ab12.local`). It does NOT break in Local, as an earlier explanation
+  assumed; it follows the copy. Revert restores the byte-identical wp-config and Local
+  reads its own database again (same probe: 0 `.rex`, 32 `.local`). Round trip —
+  import, connect, both sites 200 on `.rex` with `signin+http`, revert, both 500 again
+  — run over MCP on `ab12.local` and `tr.local` (the renamed `local_tr_local_rex`
+  copy), 12 Sep 2026.
 - **Database import copies their database and RECORDS what it did** (Stage 2:
   `core/{dbsource,dbcompat,dbdump,dbrestore,dbmirror,dbimport}`, v19 `sites.db_created`,
   v20 `db_imports`). Their side is read-only: engines identified from the pre-auth
