@@ -1203,7 +1203,16 @@ IPC surface — which is how a reader ends up designing against a system with on
   (#561): `stack` `catch_mail` (manage) / `stop_catching_mail` (system — every site's mail
   goes to real addresses) with `stack_status.mailCatchAll`; `tld` `status` / `policy`
   (read; owner and site count, never the resolver file's path or contents); `open`
-  `terminal` (the site's own folder by site id).
+  `terminal` (the site's own folder by site id). Then the health reads (#562):
+  `stack_status` gains the running build (`app`), start-at-login, unresolvable TLDs,
+  Firefox trust (counts only) and FrankenPHP's PHP; `site_info` gains the site's
+  resources from the Sites page's own computation — minus the database size, because
+  that runs a database client and a read tool runs nothing (`resources_of`'s
+  `include_db_sizes`). Both computations moved into core (`core::app_info`,
+  `core::site_metrics::resources_of`) rather than the read bridge reaching
+  `commands::`: the M1 boundary test failed the first version that did. `init_error` and `startup_notices` were re-ruled `Never`: with no
+  AppState the server answers "still starting", and reading the notices drains the
+  person's toasts.
 - **Three registries, and the registry IS the capability.** `mcp_server/tools.rs` holds the
   eleven read-only tools (`list_sites` — widened with parity to carry owner / multisite /
   xdebug / aliases / setup-complete / linked, `site_status`, `tail_log`, and from parity

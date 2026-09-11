@@ -121,95 +121,13 @@ pub fn all_site_domains(
 /// - Every WP/Laravel site: REAL MySQL database disk size.
 /// - Shared sites: ACTIVITY (requests + bytes over the last 60s window, from
 ///   the shared nginx access log) — never a fabricated per-site CPU/RAM.
-#[derive(Debug, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SiteResources {
-    pub id: String,
-    pub domain: String,
-    /// True for a FrankenPHP-override site (own process → real CPU/RAM);
-    /// false ⇒ shared nginx + pool (activity metrics only).
-    pub dedicated: bool,
-    pub cpu_percent: Option<f32>,
-    pub ram_mb: Option<u64>,
-    /// Requests / sent bytes in the last 60s (shared nginx sites only —
-    /// override sites bypass nginx).
-    pub requests_per_min: Option<u64>,
-    pub bytes_per_min: Option<u64>,
-    /// MySQL database size in bytes (`None`: no DB / MySQL not running).
-    pub db_size_bytes: Option<u64>,
-}
+pub use crate::core::site_metrics::SiteResources;
 
-/// Per-site resources for the Sites page — one monitor source of truth
-/// (`Monitor::tree`) for the dedicated numbers, the shared nginx access log
-/// for activity, one `information_schema` query for DB sizes.
+/// Per-site resources for the Sites page — `core::site_metrics::resources_of`,
+/// the one computation, with the database sizes the page shows.
 #[tauri::command]
 pub async fn sites_resources(state: State<'_, AppState>) -> Result<Vec<SiteResources>> {
-    let sites = {
-        let conn = lock(&state)?;
-        core::sites::list(&conn)?
-    };
-
-    // FrankenPHP override backends (domain → pid). try_lock: during a long
-    // start/stop just omit the dedicated numbers for one poll.
-    let override_pids: std::collections::HashMap<String, u32> = state
-        .services
-        .try_lock()
-        .map(|mgr| mgr.override_pids().into_iter().collect())
-        .unwrap_or_default();
-
-    // Activity per host from the shared nginx access log (last 60s).
-    let access_log = state.platform.paths().log_dir()?.join("nginx-access.log");
-    let activity =
-        core::site_metrics::activity_by_host(&access_log, time::OffsetDateTime::now_utc());
-
-    // DB sizes: one query per RUNNING site engine — resolved strictly from the
-    // already-published cache (never a download from a status poll). Kept as
-    // one map per engine: the same db name could exist in more than one, and a
-    // site must read its own engine's number.
-    //
-    // The engine list is ASKED for (`hosts_site_databases`) rather than spelled.
-    // It was a literal `[Mysql, Mariadb]`, so when PostgreSQL became a site
-    // engine every PG-backed site's size silently read as "—" on the Sites page:
-    // no error, no log line, just a number that is never there.
-    let db_sizes: std::collections::HashMap<&'static str, std::collections::HashMap<String, u64>> =
-        DbEngine::ALL
-            .into_iter()
-            .filter(|e| e.hosts_site_databases())
-            .filter(|e| e.running())
-            .filter_map(|e| {
-                let version = super::database::effective_db_version(&state, e).ok()?;
-                let client = e.cached_sql_client(state.platform.as_ref(), &version)?;
-                let sizes = e.db_sizes(&client, e.port()).ok()?;
-                Some((e.key(), sizes.into_iter().collect()))
-            })
-            .collect();
-
-    let mut monitor = state
-        .monitor
-        .lock()
-        .map_err(|_| Error::Other("monitor lock poisoned".into()))?;
-    monitor.refresh_processes();
-
-    Ok(sites
-        .into_iter()
-        .map(|s| {
-            let tree = override_pids.get(&s.domain).and_then(|pid| monitor.tree(*pid));
-            let act = activity.get(&s.domain);
-            SiteResources {
-                dedicated: matches!(s.web_server, WebServer::Frankenphp | WebServer::Apache),
-                cpu_percent: tree.map(|t| t.cpu_percent),
-                ram_mb: tree.map(|t| t.ram_mb),
-                requests_per_min: act.map(|a| a.requests),
-                bytes_per_min: act.map(|a| a.bytes),
-                db_size_bytes: db_sizes
-                    .get(DbEngine::from_site(s.db_engine).key())
-                    .and_then(|m| m.get(&s.db_name))
-                    .copied(),
-                id: s.id,
-                domain: s.domain,
-            }
-        })
-        .collect())
+    core::site_metrics::resources_of(state.inner(), true)
 }
 
 /// Rename a site's display name (domain/docroot/DB/certs unchanged); returns the

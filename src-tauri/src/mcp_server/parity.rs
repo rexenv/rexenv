@@ -98,7 +98,7 @@ mod tests {
         // ── php
         ("list_php_versions", Tool("stack_status")),
         ("get_php_settings", Tool("php_settings")),
-        ("frankenphp_embedded_php", Gap("which PHP FrankenPHP embeds — no read tool carries it")),
+        ("frankenphp_embedded_php", Tool("stack_status")),
         // ── repo
         ("repo_run_offered_steps", Tool("repo")),
         ("repo_watch_log", Gap("a watch's own log — `repo` lists watches, not what they printed")),
@@ -127,18 +127,20 @@ mod tests {
         ("set_site_enabled", Tool("site_configure")),
         ("set_all_sites_enabled", Tool("stack")),
         ("keep_site", Never("Keep is the person's act by definition (#213)")),
-        ("sites_resources", Gap("per-site CPU and memory — no read tool carries it")),
+        // Without the database size: that runs a client per engine, and the read
+        // tools run nothing (`commands::sites::resources_of`'s flag; db_query asks).
+        ("sites_resources", Tool("site_info")),
         // ── system
         ("global_status", Tool("stack_status")),
         ("dns_status", Tool("stack_status")),
         ("cli_status", Tool("stack_status")),
-        ("app_info", Gap("the app's version and build — no read tool carries it")),
-        ("autostart_status", Gap("start-at-login state — parity §4.4 planned it under stack_status; not built")),
+        ("app_info", Tool("stack_status")),
+        ("autostart_status", Tool("stack_status")),
         ("set_autostart", Gap("parity §4.4 planned `settings(action: autostart)` (system); not built")),
-        ("init_error", Gap("why the app failed to start its stack — no read tool carries it")),
-        ("startup_notices", Gap("the notices the app raised at launch — no read tool carries them")),
-        ("unresolvable_tlds", Gap("sites on a TLD this machine cannot resolve — no read tool carries them")),
-        ("firefox_trust_status", Gap("whether Firefox trusts the local CA — no read tool carries it")),
+        ("init_error", Never("when init fails there is no AppState, and the MCP server answers every call \"rexenv is still starting\" — an agent can never observe a value to read")),
+        ("startup_notices", Never("reading DRAINS the queue the person's screen toasts from — an agent read would take the notice from them; the same facts are in rexenv.log, which site_logs reads")),
+        ("unresolvable_tlds", Tool("stack_status")),
+        ("firefox_trust_status", Tool("stack_status")),
         ("setup_edge_conflict", Gap("parity §4.4 planned `stack(action: resolve_edge_conflict)` (system); not built")),
         ("open_external", Never("an arbitrary URL opener (parity §4.4); `open` is site-scoped")),
         ("cli_install", Never(AMPLIFIER)),

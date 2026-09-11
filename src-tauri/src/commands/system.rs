@@ -6,42 +6,7 @@ use crate::state::app::AppState;
 use serde::Serialize;
 use tauri::State;
 
-/// Mirrors the frontend `AppInfo` type in `src/types/index.ts`.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AppInfo {
-    pub name: String,
-    pub version: String,
-    pub tauri_version: String,
-    /// Human-readable OS + CPU, e.g. `macOS · Apple silicon` — derived from the
-    /// build target, not hardcoded, so it stays correct on Windows/Linux/Intel.
-    pub platform: String,
-    /// Short git commit this binary was built from, `-dirty` when the tree had
-    /// uncommitted changes, `unknown` outside a checkout. Answers "is the app
-    /// I'm running the code I just fixed?" — which once cost a whole
-    /// misdiagnosis to work out by hand.
-    pub commit: String,
-    /// UTC build timestamp.
-    pub built_at: String,
-}
-
-/// A friendly "OS · CPU" label from the compile-time target (`std::env::consts`).
-fn platform_label() -> String {
-    let os = match std::env::consts::OS {
-        "macos" => "macOS",
-        "windows" => "Windows",
-        "linux" => "Linux",
-        other => other,
-    };
-    let arch = match (std::env::consts::OS, std::env::consts::ARCH) {
-        ("macos", "aarch64") => "Apple silicon",
-        ("macos", "x86_64") => "Intel",
-        (_, "aarch64") => "ARM64",
-        (_, "x86_64") => "x64",
-        (_, other) => other,
-    };
-    format!("{os} · {arch}")
-}
+pub use crate::core::app_info::AppInfo;
 
 /// Round-trip smoke test for the typed IPC bridge (Phase 1 task 0.5).
 /// A foreign proxy already answering `:443`, for the ONBOARDING warning — or
@@ -90,14 +55,7 @@ pub async fn setup_edge_conflict(
 
 #[tauri::command]
 pub fn app_info() -> AppInfo {
-    AppInfo {
-        name: "rexenv".into(),
-        version: env!("CARGO_PKG_VERSION").to_string(),
-        tauri_version: tauri::VERSION.to_string(),
-        platform: platform_label(),
-        commit: env!("REXENV_GIT_COMMIT").to_string(),
-        built_at: env!("REXENV_BUILT_AT").to_string(),
-    }
+    core::app_info::current()
 }
 
 /// TLDs a site ANSWERS on that this machine cannot resolve, each flagged with

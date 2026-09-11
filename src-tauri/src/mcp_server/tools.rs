@@ -95,8 +95,11 @@ static REGISTRY: &[ReadTool] = &[
                       (type, PHP, server, owner, extra domains, whether setup finished, whether the \
                       folder is the user's own), the serving verdict site_status gives, the \
                       database engine, when it was made, its HTTPS certificate (validity, days \
-                      left, names) and — for a scratch site — the packages the agent added and \
-                      when each was last synced. Runs nothing. Takes `site_id`.",
+                      left, names), its resources (CPU and memory for a dedicated backend, \
+                      requests and bytes in the last minute — no database size, which would \
+                      mean running a database client; ask db_query) and — for a scratch site — \
+                      the packages the agent added and when each was last synced. Runs nothing. \
+                      Takes `site_id`.",
         input_schema: site_id_param,
         sweep_args: |id| json!({ "site_id": id }),
         summarise: |_| None,
@@ -127,7 +130,11 @@ static REGISTRY: &[ReadTool] = &[
                       server, PHP pools, databases, mail) with whether it is running and its port; \
                       whether rexenv's own edge and DNS are answering; whether the resolver file \
                       and the local CA are in place; PHP versions installed and the default; the \
-                      default TLD; whether the `rex` CLI is on PATH. Runs nothing, requests no \
+                      default TLD; whether the `rex` CLI is on PATH; whether mail is caught \
+                      (`mailCatchAll`); the running build (`app`: version, commit, build time); \
+                      whether rexenv starts at login; TLDs a site uses that this machine cannot \
+                      resolve; whether Firefox trusts the local CA (counts only); and the PHP \
+                      FrankenPHP embeds. Runs nothing, requests no \
                       site. When something is down, the user's Start button in rexenv (or the \
                       `stack` tool under their `system` permission) is the way forward.",
         input_schema: no_params,
@@ -350,6 +357,8 @@ fn site_info<'a>(
             obj.insert("createdAt".into(), json!(site.created_at));
             obj.insert("certificate".into(), cert.unwrap_or(Value::Null));
             obj.insert("packages".into(), Value::Array(packages));
+            let resources = ctx.resources_of(&site)?;
+            obj.insert("resources".into(), serde_json::to_value(resources).map_err(|e| Error::Other(e.to_string()))?);
         }
         Ok(value)
     })

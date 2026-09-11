@@ -80,6 +80,32 @@ pub struct StackSnapshot {
     /// it that a newer version exists costs nothing and saves it reporting a
     /// bug that is already fixed (ledger #530).
     pub app_update: Option<String>,
+    /// The build that is answering — version, commit, build time, platform. The
+    /// question "is the app I'm talking to the code that was just fixed?" once
+    /// cost a whole misdiagnosis; an agent can ask it now.
+    pub app: core::app_info::AppInfo,
+    /// Whether rexenv starts at login (`None` when the platform cannot say).
+    pub autostart: Option<bool>,
+    /// TLDs a site answers on that this machine cannot resolve, and whether
+    /// another tool owns the resolver file (`foreign`) or it is missing.
+    pub unresolvable_tlds: Vec<UnresolvableTldView>,
+    /// Firefox: installed, how many profiles, how many already trust the
+    /// local CA. Counts only — never a profile path, never the CA's path.
+    pub firefox: crate::core::firefox::FirefoxTrust,
+    /// The PHP minor FrankenPHP embeds, which a FrankenPHP site runs whatever
+    /// its own PHP setting says.
+    pub frankenphp_php: String,
+}
+
+/// One TLD a site answers on that this machine cannot resolve. The read
+/// bridge's own shape: `commands::system` has the app's, and this file may not
+/// reach `commands::` (the M1 boundary).
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnresolvableTldView {
+    pub tld: String,
+    /// Another tool owns the resolver file, rather than it being absent.
+    pub foreign: bool,
 }
 
 /// What `inspect_folder` learned — the dialog's `LinkedFolderInfo` minus the two
@@ -135,6 +161,14 @@ impl<'a> ReadCtx<'a> {
         core::ssl::site_cert_info(self.state.platform.paths(), &site.domain)
     }
 
+    /// This site's resources — the Sites page's own numbers (CPU and memory for a
+    /// dedicated backend, requests and bytes in the last minute), from the same
+    /// computation. `None` if the site is not in it. WITHOUT the database size:
+    /// that runs a database client, and a read tool runs nothing.
+    pub fn resources_of(&self, site: &Site) -> Result<Option<core::site_metrics::SiteResources>> {
+        Ok(core::site_metrics::resources_of(self.state, false)?.into_iter().find(|r| r.id == site.id))
+    }
+
     /// The packages an agent added to a SCRATCH site (v29) — empty for the
     /// user's own sites, which have none by construction.
     pub fn scratch_packages_of(&self, site: &Site) -> Result<Vec<crate::state::models::ScratchPackage>> {
@@ -168,8 +202,12 @@ impl<'a> ReadCtx<'a> {
             .collect();
         let default_tld = core::sites::default_tld(&conn)?;
         let mail_catch_all = core::mail::catch_all_enabled(&conn);
-        drop(conn);
         let platform = self.state.platform.as_ref();
+        let unresolvable_tlds = core::dns::unresolvable_tlds_in_use(&conn, platform, core::dns::DEFAULT_DNS_PORT)
+            .into_iter()
+            .map(|(tld, foreign)| UnresolvableTldView { tld, foreign })
+            .collect();
+        drop(conn);
         let cli = core::cli::status(platform).ok();
         Ok(StackSnapshot {
             services: services.into_iter().map(|s| StackService { name: s.name, running: s.running, port: s.port, optional: s.optional }).collect(),
@@ -186,6 +224,11 @@ impl<'a> ReadCtx<'a> {
             // The published snapshot, like the tray reads: no verify, no
             // network, and no database read on a status call.
             app_update: crate::core::app_update::current_offer().map(|o| o.version),
+            app: core::app_info::current(),
+            autostart: platform.autostart().is_enabled().ok(),
+            unresolvable_tlds,
+            firefox: core::firefox::status(platform.cert_trust().firefox_profiles_root().as_deref()),
+            frankenphp_php: core::php::minor_of(core::binaries::FRANKENPHP_EMBEDDED_PHP),
         })
     }
 
@@ -346,5 +389,60 @@ impl<'a> ReadCtx<'a> {
     /// without any tool hearing about it.
     pub fn known_paths(&self, site: &Site) -> super::view::KnownPaths {
         super::view::KnownPaths::for_site(self.state.platform.paths(), &site.path)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn state() -> AppState {
+        let conn = crate::state::db::open_in_memory().unwrap();
+        let ca = core::ssl::LocalCa {
+            cert_pem: String::new(),
+            key_pem: String::new(),
+            cert_path: std::path::PathBuf::from("/dev/null"),
+            key_path: std::path::PathBuf::from("/dev/null"),
+        };
+        AppState::new(conn, crate::platform::current(), ca)
+    }
+
+    /// **`stack_status` carries the health reads the app shows — the running
+    /// build, start-at-login, unresolvable TLDs, Firefox trust, FrankenPHP's
+    /// PHP, the mail catch-all — and no path.** Parity gaps closed 11 Sep 2026
+    /// (#562); the build is THIS build, so the answer cannot be a stale copy.
+    #[test]
+    fn stack_status_reports_the_build_and_the_health_reads_without_a_path() {
+        let st = state();
+        let snap = ReadCtx::new(&st).stack_snapshot().unwrap();
+        let v = serde_json::to_value(&snap).unwrap();
+        assert_eq!(v["app"]["version"], env!("CARGO_PKG_VERSION"));
+        assert!(v["app"]["commit"].as_str().is_some_and(|c| !c.is_empty()), "{v}");
+        assert_eq!(v["frankenphpPhp"], serde_json::json!(core::php::minor_of(core::binaries::FRANKENPHP_EMBEDDED_PHP)));
+        assert!(v["unresolvableTlds"].is_array());
+        for k in ["installed", "profiles", "forced"] {
+            assert!(v["firefox"].get(k).is_some(), "firefox.{k} missing: {v}");
+        }
+        assert!(v.get("autostart").is_some() && v["mailCatchAll"].is_boolean(), "{v}");
+        let text = v.to_string();
+        assert!(!text.contains("caPath") && !text.contains("/dev/null"), "no CA path: {text}");
+    }
+
+    /// **An agent's resources read never runs a database client.** The Sites
+    /// page's sizes come from one client run per engine; the read tools run
+    /// nothing, so the agent's call passes `include_db_sizes: false` and its
+    /// database size is always absent — pinned in source and in the result.
+    #[test]
+    fn an_agents_resources_read_never_runs_a_database_client() {
+        let st = state();
+        let site = crate::state::models::test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "blog.rex", crate::state::models::SiteOrigin::User);
+        crate::state::store::insert_site(&st.db.lock().unwrap(), &site).unwrap();
+        let r = ReadCtx::new(&st).resources_of(&site).unwrap().expect("the site's row");
+        assert_eq!(r.id, site.id);
+        assert_eq!(r.db_size_bytes, None, "the agent read must not have asked a database");
+        let me = include_str!("readctx.rs");
+        let body = &me[me.find("pub fn resources_of(").expect("the method")..];
+        let body = &body[..body.find("\n    }\n").unwrap()];
+        assert!(body.contains("resources_of(self.state, false)"), "the agent read passes include_db_sizes: false");
     }
 }

@@ -13,6 +13,121 @@ use std::path::Path;
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 
+/// One site's numbers for the Sites page, explicit about what each IS:
+/// - FrankenPHP-override sites: REAL CPU/RAM from their own backend's process
+///   tree (same `Monitor::tree` source as the Services rows / footer).
+/// - Every site with a database: its REAL disk size, from its own engine.
+/// - Shared sites: ACTIVITY (requests + bytes over the last 60s window, from
+///   the shared nginx access log) — never a fabricated per-site CPU/RAM.
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SiteResources {
+    pub id: String,
+    pub domain: String,
+    /// True for a FrankenPHP-override site (own process → real CPU/RAM);
+    /// false ⇒ shared nginx + pool (activity metrics only).
+    pub dedicated: bool,
+    pub cpu_percent: Option<f32>,
+    pub ram_mb: Option<u64>,
+    /// Requests / sent bytes in the last 60s (shared nginx sites only —
+    /// override sites bypass nginx).
+    pub requests_per_min: Option<u64>,
+    pub bytes_per_min: Option<u64>,
+    /// Database size in bytes (`None`: no DB, its engine not running, or not asked).
+    pub db_size_bytes: Option<u64>,
+}
+
+/// Every site's resources — the ONE computation behind the Sites page
+/// (`commands::sites::sites_resources`) and the MCP `site_info` read.
+///
+/// `include_db_sizes` is the one difference, and it is a promise rather than a
+/// preference: the sizes come from running a database CLIENT per engine, and the
+/// MCP read tools run nothing. The agent's read passes `false` and gets every
+/// other number; `db_query` is where it asks a database a question.
+///
+/// In core rather than `commands::sites` (moved 11 Sep 2026) because the MCP
+/// read bridge may reach `core::` and never `commands::`.
+pub fn resources_of(
+    state: &crate::state::app::AppState,
+    include_db_sizes: bool,
+) -> crate::error::Result<Vec<SiteResources>> {
+    use crate::core::db::DbEngine;
+    use crate::error::Error;
+    use crate::state::models::WebServer;
+
+    let sites = {
+        let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
+        crate::core::sites::list(&conn)?
+    };
+
+    // FrankenPHP override backends (domain → pid). try_lock: during a long
+    // start/stop just omit the dedicated numbers for one poll.
+    let override_pids: HashMap<String, u32> = state
+        .services
+        .try_lock()
+        .map(|mgr| mgr.override_pids().into_iter().collect())
+        .unwrap_or_default();
+
+    // Activity per host from the shared nginx access log (last 60s).
+    let access_log = state.platform.paths().log_dir()?.join("nginx-access.log");
+    let activity = activity_by_host(&access_log, OffsetDateTime::now_utc());
+
+    // DB sizes: one query per RUNNING site engine — resolved strictly from the
+    // already-published cache (never a download from a status poll). Kept as
+    // one map per engine: the same db name could exist in more than one, and a
+    // site must read its own engine's number.
+    //
+    // The engine list is ASKED for (`hosts_site_databases`) rather than spelled.
+    // It was a literal `[Mysql, Mariadb]`, so when PostgreSQL became a site
+    // engine every PG-backed site's size silently read as "—" on the Sites page:
+    // no error, no log line, just a number that is never there.
+    let db_sizes: HashMap<&'static str, HashMap<String, u64>> = if !include_db_sizes {
+        HashMap::new()
+    } else {
+        DbEngine::ALL
+            .into_iter()
+            .filter(|e| e.hosts_site_databases())
+            .filter(|e| e.running())
+            .filter_map(|e| {
+                let version = {
+                    let conn = state.db.lock().ok()?;
+                    e.effective_version(&conn)
+                };
+                let client = e.cached_sql_client(state.platform.as_ref(), &version)?;
+                let sizes = e.db_sizes(&client, e.port()).ok()?;
+                Some((e.key(), sizes.into_iter().collect()))
+            })
+            .collect()
+    };
+
+    let mut monitor = state
+        .monitor
+        .lock()
+        .map_err(|_| Error::Other("monitor lock poisoned".into()))?;
+    monitor.refresh_processes();
+
+    Ok(sites
+        .into_iter()
+        .map(|s| {
+            let tree = override_pids.get(&s.domain).and_then(|pid| monitor.tree(*pid));
+            let act = activity.get(&s.domain);
+            SiteResources {
+                dedicated: matches!(s.web_server, WebServer::Frankenphp | WebServer::Apache),
+                cpu_percent: tree.map(|t| t.cpu_percent),
+                ram_mb: tree.map(|t| t.ram_mb),
+                requests_per_min: act.map(|a| a.requests),
+                bytes_per_min: act.map(|a| a.bytes),
+                db_size_bytes: db_sizes
+                    .get(DbEngine::from_site(s.db_engine).key())
+                    .and_then(|m| m.get(&s.db_name))
+                    .copied(),
+                id: s.id,
+                domain: s.domain,
+            }
+        })
+        .collect())
+}
+
 /// Attribution window for "per minute" activity numbers.
 pub const ACTIVITY_WINDOW_SECS: u64 = 60;
 

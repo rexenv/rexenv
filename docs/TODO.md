@@ -23,8 +23,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
-- [ ] **MCP parity gaps — 25 app commands an agent cannot reach yet** (30 at first; the mail
-  catch-all, the two TLD reads and the external terminal closed 11 Sep 2026, ledger #561). Found 11 Sep 2026
+- [ ] **MCP parity gaps — 17 app commands an agent cannot reach yet** (30 at first; the mail
+  catch-all, the two TLD reads and the external terminal closed 11 Sep 2026, ledger #561;
+  the stack health reads the same day, #562 — six reached, two re-ruled `Never` with the reason). Found 11 Sep 2026
   by asking, per command, whether an agent can do what the app does; now kept true by
   `mcp_server/parity.rs` (ledger #560), whose `Gap` rows ARE this list — the test fails
   on a new command until someone rules on it. Grouped by what a tool would look like:
@@ -33,9 +34,6 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   - **Downloads** (a `downloads` tool, manage): `core_binaries_plan`, `downloads_state`,
     `prefetch_core_binaries`, `retry_download`.
   - **Logs** (destroy): `log_clear`, `wp_debug_log_clear`.
-  - **Stack health reads** (fold into `stack_status`): `app_info`, `autostart_status`,
-    `init_error`, `startup_notices`, `unresolvable_tlds`, `firefox_trust_status`,
-    `frankenphp_embedded_php`, `sites_resources`.
   - **System** (system): `set_autostart`, `setup_edge_conflict`.
   - **WordPress** (`wp_info` `what`): `wp_core_versions`, `wp_cli_packages`.
   - **Repo** (`repo`, read): `repo_watch_log`.
