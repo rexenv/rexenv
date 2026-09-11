@@ -48,6 +48,10 @@ pub struct ImportCandidate {
     /// ships — the one decision the screen can take on the row itself (a
     /// version picker). The run refuses such a row without an explicit choice.
     pub php_choice: bool,
+    /// The name rexenv PICKED for a re-homed row (`tr.local` → `tr.test`) already
+    /// belongs to another rexenv site — the other choice the screen can take on
+    /// the row (a name field). The run refuses such a row without a free name.
+    pub domain_choice: bool,
     pub secured: bool,
     pub proxy_to: Option<String>,
     pub also_in: Option<SourceKind>,
@@ -93,6 +97,10 @@ pub struct ImportScan {
     pub tlds: Vec<ResolverTldStatus>,
     /// PHP minors we ship, for the "not available — pick one" control.
     pub available_php: Vec<String>,
+    /// Every hostname rexenv already answers on (domains and extra domains),
+    /// lowercased — so the name field of a `domain_choice` row can say "taken"
+    /// as it is typed. A hint only: the run checks again (`choose_domain`).
+    pub taken_domains: Vec<String>,
 }
 
 /// Scan for Valet/Herd sites. Read-only: nothing of theirs is written, started
@@ -174,7 +182,20 @@ pub fn scan_valet_import(state: State<'_, AppState>) -> Result<ImportScan> {
     if let Some(first) = sources.first_mut() {
         first.notes.extend(folded);
     }
-    Ok(ImportScan { sources, candidates, tlds, available_php: available })
+    let mut taken_domains: Vec<String> = existing
+        .iter()
+        .map(|s| s.domain.to_ascii_lowercase())
+        .chain(
+            crate::state::store::all_site_aliases(&conn)
+                .unwrap_or_default()
+                .into_values()
+                .flatten()
+                .map(|d| d.to_ascii_lowercase()),
+        )
+        .collect();
+    taken_domains.sort();
+    taken_domains.dedup();
+    Ok(ImportScan { sources, candidates, tlds, available_php: available, taken_domains })
 }
 
 /// Fold rows that serve the SAME folder into one, carrying the others as extra
@@ -328,6 +349,7 @@ fn enrich(
         php_minor: s.php_minor.clone(),
         php_target: None,
         php_choice: false,
+        domain_choice: false,
         secured: s.secured,
         proxy_to: s.proxy_to,
         also_in: s.also_in,
@@ -358,9 +380,21 @@ fn enrich(
     c.label = Some(detected.label.to_string());
     c.has_custom_valet_driver = core::sites::has_custom_valet_driver(&root);
 
-    if let Some(status) = already_here(existing, &serve, &c.domain, c.renamed_from.as_deref()) {
-        c.status = status;
-        return c;
+    // A name REXENV picked that another site holds is a choice the user makes on
+    // the row (`domain_choice`), so the remaining checks still run: the row must
+    // be otherwise ready the moment a free name is typed, not reveal its next
+    // problem only then.
+    let mut name_taken: Option<String> = None;
+    match already_here(existing, &serve, &c.domain, c.renamed_from.as_deref()) {
+        Some(SiteStatus::NeedsAttention(reason)) if c.renamed_from.is_some() => {
+            c.domain_choice = true;
+            name_taken = Some(reason);
+        }
+        Some(status) => {
+            c.status = status;
+            return c;
+        }
+        None => {}
     }
 
     // The served folder is what gets stored, so it must pass the link
@@ -369,6 +403,8 @@ fn enrich(
         Ok(canon) => c.serve_path = Some(canon.display().to_string()),
         Err(e) => {
             c.status = SiteStatus::NeedsAttention(e.to_string());
+            // No name typed on the row fixes a folder the link preflight refused.
+            c.domain_choice = false;
             return c;
         }
     }
@@ -399,6 +435,13 @@ fn enrich(
              running PHP — check the folder rexenv detected is the one Valet served"
                 .into(),
         );
+        // Not a choice the row can take: nothing picked or typed makes this safe.
+        c.php_choice = false;
+        c.domain_choice = false;
+    } else if let Some(reason) = name_taken {
+        if matches!(c.status, SiteStatus::Importable) {
+            c.status = SiteStatus::NeedsAttention(reason);
+        }
     }
     c
 }
@@ -518,6 +561,10 @@ pub struct ImportRequest {
     /// copy is a READ of theirs — the old database is never written or moved.
     #[serde(default)]
     pub import_databases: bool,
+    /// Per-row hostname, keyed by the row's scanned domain, for a re-homed row —
+    /// required for one whose picked name is taken (`domain_choice`).
+    #[serde(default)]
+    pub domain: std::collections::HashMap<String, String>,
 }
 
 /// What happened to one row. Terminal — every requested domain gets exactly one.
@@ -536,6 +583,9 @@ pub struct ImportOutcome {
     /// `skipped` (site import failed, or the site has no database to read).
     /// Carries the honest reason after a colon.
     pub db: Option<String>,
+    /// The hostname the site was created under when it isn't `domain` — a
+    /// re-homed row given another name. `domain` stays the row's scan key.
+    pub served_as: Option<String>,
 }
 
 /// The end-of-run summary.
@@ -747,7 +797,14 @@ pub async fn valet_import_run<R: tauri::Runtime>(
     // are a suggestion, and the folders may have changed since it rendered.
     let scan = scan_valet_import(state.clone())?;
     let mut outcomes: Vec<ImportOutcome> = Vec::new();
-    let mut queue: Vec<(ImportCandidate, String)> = Vec::new();
+    // (row, PHP minor, the hostname the site is created under)
+    let mut queue: Vec<(ImportCandidate, String, String)> = Vec::new();
+    // Who owns a hostname right now — asked per typed name, lock held only for
+    // the lookup. Names this batch already claimed are the other half.
+    let taken = |d: &str| {
+        state.db.lock().ok().and_then(|conn| core::sites::domain_taken_by(&conn, d).ok().flatten())
+    };
+    let mut claimed: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     for domain in &request.domains {
         let Some(c) = scan.candidates.iter().find(|c| &c.domain == domain).cloned() else {
@@ -778,15 +835,23 @@ pub async fn valet_import_run<R: tauri::Runtime>(
                 continue;
             }
         };
+        let target = match choose_domain(&c, request.domain.get(domain), &taken, &claimed) {
+            Ok(name) => name,
+            Err(why) => {
+                outcomes.push(skipped(domain, &why));
+                continue;
+            }
+        };
+        claimed.insert(target.clone());
         let _ = serve;
-        queue.push((c, php));
+        queue.push((c, php, target));
     }
 
     // Resolver files first, so any password prompt happens at ONE predictable
     // moment instead of surprising the user midway through the batch.
     let mut tlds: Vec<String> = queue
         .iter()
-        .flat_map(|(c, _)| std::iter::once(&c.domain).chain(c.extra_domains.iter()))
+        .flat_map(|(c, _, target)| std::iter::once(target).chain(c.extra_domains.iter()))
         .filter_map(|d| d.rsplit_once('.').map(|(_, t)| t.to_string()))
         .collect();
     tlds.sort();
@@ -822,7 +887,7 @@ pub async fn valet_import_run<R: tauri::Runtime>(
     // PHP registry BEFORE any create: a site on a minor that isn't marked
     // installed serves once and then dies at the next Start-all — and can't be
     // cleaned up afterwards, because removal refuses a minor a site is using.
-    let mut minors: Vec<String> = queue.iter().map(|(_, p)| p.clone()).collect();
+    let mut minors: Vec<String> = queue.iter().map(|(_, p, _)| p.clone()).collect();
     minors.sort();
     minors.dedup();
     {
@@ -844,8 +909,8 @@ pub async fn valet_import_run<R: tauri::Runtime>(
             .await?;
     }
 
-    let queue_had_aliases = queue.iter().any(|(c, _)| !c.extra_domains.is_empty());
-    for (i, (c, php)) in queue.into_iter().enumerate() {
+    let queue_had_aliases = queue.iter().any(|(c, _, _)| !c.extra_domains.is_empty());
+    for (i, (c, php, target)) in queue.into_iter().enumerate() {
         let index = i + 1;
         if jobs.cancel.load(Ordering::SeqCst) {
             let row = skipped(&c.domain, "cancelled before this site was started");
@@ -854,6 +919,10 @@ pub async fn valet_import_run<R: tauri::Runtime>(
             batch.done += 1;
             continue;
         }
+        // The row stays keyed by its scanned name (the screen's key); the site
+        // is created under the name chosen for it.
+        let key = c.domain.clone();
+        let c = ImportCandidate { domain: target, ..c };
         batch.tick("site", index, Some(&c.domain), Some("starting".into()), 0);
         let mut row = import_one(&app, &state, &provision, &c, &php, &batch, index).await;
         // Opt-in database import, per site, CONTINUE ON FAILURE exactly like
@@ -871,6 +940,9 @@ pub async fn valet_import_run<R: tauri::Runtime>(
                 }
                 _ => "skipped: the site itself didn't import".to_string(),
             });
+        }
+        if row.domain != key {
+            row.served_as = Some(std::mem::replace(&mut row.domain, key));
         }
         let _ = app.emit(import_event(), row.clone());
         outcomes.push(row);
@@ -1099,6 +1171,56 @@ fn choose_php(
     Ok(php)
 }
 
+/// The hostname one requested row is created under, or why it can't be.
+///
+/// A row rexenv RE-HOMED (`renamed_from`) may be given another name — that name
+/// was rexenv's pick, not the source's — and one whose pick another rexenv site
+/// already holds (`domain_choice`) MUST be: until 12 Sep 2026 such a row had no
+/// way out at all, and the owner's `tr.local` could not be imported because a
+/// `tr.test` existed. A Valet/Herd name is the source's own and is kept.
+///
+/// The typed name gets the backend's own checks here, whatever the screen
+/// already said: the hostname validator (TLD policy included), every name a
+/// rexenv site answers on (`taken`), and names claimed earlier in this batch.
+fn choose_domain(
+    c: &ImportCandidate,
+    chosen: Option<&String>,
+    taken: &dyn Fn(&str) -> Option<String>,
+    claimed: &std::collections::HashSet<String>,
+) -> std::result::Result<String, String> {
+    use crate::core::sites::{normalize_hostname, validate_domain};
+    let name = match chosen {
+        Some(raw) => {
+            let d = normalize_hostname(raw);
+            if c.renamed_from.is_none() && d != c.domain {
+                return Err(format!(
+                    "{} serves this site as {}, and an import keeps that name — only a site \
+                     rexenv had to rename can be given another",
+                    c.source.label(),
+                    c.domain
+                ));
+            }
+            validate_domain(&d).map_err(|e| e.to_string())?;
+            d
+        }
+        None if c.domain_choice => {
+            return Err(format!(
+                "{} already belongs to another rexenv site — choose another name to import \
+                 this one under",
+                c.domain
+            ))
+        }
+        None => c.domain.clone(),
+    };
+    if let Some(owner) = taken(&name) {
+        return Err(format!("{name} already belongs to the rexenv site \"{owner}\""));
+    }
+    if claimed.contains(&name) {
+        return Err(format!("another site in this import is already taking {name}"));
+    }
+    Ok(name)
+}
+
 /// Stop after the site currently being imported.
 #[tauri::command]
 pub fn valet_import_cancel(jobs: State<'_, ImportJobs>) {
@@ -1113,6 +1235,7 @@ fn skipped(domain: &str, reason: &str) -> ImportOutcome {
         site_id: None,
         log_key: None,
         db: None,
+        served_as: None,
     }
 }
 
@@ -1166,6 +1289,7 @@ async fn import_one<R: tauri::Runtime>(
                 site_id: None,
                 log_key: None,
                 db: None,
+                served_as: None,
             }
         }
     };
@@ -1191,6 +1315,7 @@ async fn import_one<R: tauri::Runtime>(
                     site_id: None,
                     log_key: Some(snap.log_key.clone()),
                     db: None,
+                    served_as: None,
                 }
             }
         }
@@ -1240,6 +1365,7 @@ async fn import_one<R: tauri::Runtime>(
         site_id: settled.site_id.clone(),
         log_key: Some(settled.log_key.clone()),
         db: None,
+        served_as: None,
     }
 }
 
@@ -1345,6 +1471,7 @@ mod folding_a_link_farm {
             php_minor: None,
             php_target: None,
             php_choice: false,
+            domain_choice: false,
             secured: false,
             proxy_to: None,
             also_in: None,
@@ -1419,6 +1546,39 @@ mod folding_a_link_farm {
         assert_eq!(already_here(&existing, &fresh, "shop.rex", None), Some(SiteStatus::AlreadyImported));
         assert_eq!(already_here(&existing, &fresh, "new.rex", None), None);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A re-homed row whose picked name is taken imports only under a name that
+    /// is typed, valid, free and not already claimed in the batch — and a name
+    /// the SOURCE chose is never renamed (#Q3, 12 Sep 2026: `tr.local` vs `tr.test`).
+    #[test]
+    fn a_rehomed_row_takes_a_typed_name_only_when_it_is_valid_free_and_unclaimed() {
+        use std::collections::HashSet;
+        let taken = |d: &str| (d == "tr.test").then(|| "Trial".to_string());
+        let none = HashSet::new();
+        let mut tr = candidate("tr.test", "/p/tr", SiteStatus::NeedsAttention("taken".into()));
+        tr.renamed_from = Some("tr.local".into());
+        tr.domain_choice = true;
+
+        let e = choose_domain(&tr, None, &taken, &none).unwrap_err();
+        assert!(e.contains("tr.test") && e.contains("choose"), "no name typed must refuse, naming why: {e}");
+        let e = choose_domain(&tr, Some(&"tr.test".to_string()), &taken, &none).unwrap_err();
+        assert!(e.contains("Trial"), "a taken name names its owner: {e}");
+        assert!(choose_domain(&tr, Some(&"tr_x.test".to_string()), &taken, &none).is_err(), "invalid label");
+        assert!(choose_domain(&tr, Some(&"tr.local".to_string()), &taken, &none).is_err(), "a refused TLD");
+        assert_eq!(
+            choose_domain(&tr, Some(&" TR-Local.test. ".to_string()), &taken, &none).unwrap(),
+            "tr-local.test",
+            "normalised like every other hostname"
+        );
+        let claimed: HashSet<String> = ["tr-local.test".to_string()].into();
+        let e = choose_domain(&tr, Some(&"tr-local.test".to_string()), &taken, &claimed).unwrap_err();
+        assert!(e.contains("this import"), "{e}");
+
+        // A Valet/Herd row keeps the source's name.
+        let shop = candidate("shop.test", "/p/shop", SiteStatus::Importable);
+        assert!(choose_domain(&shop, Some(&"other.test".to_string()), &taken, &none).is_err());
+        assert_eq!(choose_domain(&shop, None, &taken, &none).unwrap(), "shop.test");
     }
 
     /// A pin rexenv doesn't ship is imported ONLY on an explicit choice — the
@@ -1511,7 +1671,7 @@ mod cancel_lands_between_sites {
             .expect("valet_import_run");
 
         // The read exists, at the top of the loop, before anything is started.
-        let loop_at = run.find("for (i, (c, php)) in queue").expect("the per-site loop");
+        let loop_at = run.find("for (i, (c, php, target)) in queue").expect("the per-site loop");
         let read_at = run[loop_at..]
             .find("jobs.cancel.load(")
             .map(|i| loop_at + i)

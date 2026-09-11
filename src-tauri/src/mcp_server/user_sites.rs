@@ -680,7 +680,7 @@ static REGISTRY: &[UserTool] = &[
                       `scan` (what Valet/Herd/Local serve on this machine and which TLDs they own — \
                       a Local site on `.local` comes back re-homed onto the default TLD, its old \
                       name in `renamedFrom`; reads their config, runs nothing) and `drift` (TLDs another tool has taken back) need `read` on \
-                      rexenv itself; `run` {domains: [...], php?: {domain: minor}, \
+                      rexenv itself; `run` {domains: [...], php?: {domain: minor}, domain?: {domain: the name a re-homed site imports under}, \
                       import_databases?} imports the named sites — their folders are LINKED, never \
                       moved, and a database import is a COPY of theirs — and needs `run` on rexenv \
                       itself; `cancel` needs `manage`; `take_over` {tld} / `hand_back` {tld} rewrite \
@@ -692,6 +692,7 @@ static REGISTRY: &[UserTool] = &[
                 "action": { "type": "string", "enum": ["scan", "drift", "run", "cancel", "take_over", "hand_back"] },
                 "domains": { "type": "array", "items": { "type": "string" } },
                 "php": { "type": "object", "additionalProperties": { "type": "string" } },
+                "domain": { "type": "object", "additionalProperties": { "type": "string" } },
                 "import_databases": { "type": "boolean" },
                 "tld": { "type": "string" }
             },
@@ -3322,7 +3323,7 @@ fn valet_import<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::
                 let scan = im.valet_scan().await?;
                 json!({
                     "sources": scan.sources.iter().map(|s| json!({ "kind": s.kind, "tld": s.tld, "loopback": s.loopback, "parked": s.parked.len() })).collect::<Vec<_>>(),
-                    "candidates": scan.candidates.iter().map(|c| json!({ "name": c.name, "domain": c.domain, "source": c.source, "siteType": c.site_type, "label": c.label, "docrootRel": c.docroot_rel, "phpMinor": c.php_minor, "phpTarget": c.php_target, "secured": c.secured, "proxyTo": c.proxy_to, "alsoIn": c.also_in, "renamedFrom": c.renamed_from, "phpChoice": c.php_choice })).collect::<Vec<_>>(),
+                    "candidates": scan.candidates.iter().map(|c| json!({ "name": c.name, "domain": c.domain, "source": c.source, "siteType": c.site_type, "label": c.label, "docrootRel": c.docroot_rel, "phpMinor": c.php_minor, "phpTarget": c.php_target, "secured": c.secured, "proxyTo": c.proxy_to, "alsoIn": c.also_in, "renamedFrom": c.renamed_from, "phpChoice": c.php_choice, "domainChoice": c.domain_choice })).collect::<Vec<_>>(),
                     "tlds": scan.tlds.iter().map(|t| json!({ "tld": t.tld, "owner": t.owner, "rexenvSites": t.rexenv_sites })).collect::<Vec<_>>(),
                     "availablePhp": scan.available_php,
                 })
@@ -3330,7 +3331,7 @@ fn valet_import<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::
             "drift" => json!({ "driftedTlds": im.valet_drift().await? }),
             "run" => {
                 let php: std::collections::HashMap<String, String> = args.get("php").and_then(Value::as_object).map(|m| m.iter().filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string()))).collect()).unwrap_or_default();
-                let r = im.valet_run(crate::commands::valet_import::ImportRequest { domains, php, import_databases: args.get("import_databases").and_then(Value::as_bool).unwrap_or(false) }).await?;
+                let r = im.valet_run(crate::commands::valet_import::ImportRequest { domains, php, import_databases: args.get("import_databases").and_then(Value::as_bool).unwrap_or(false), domain: args.get("domain").and_then(Value::as_object).map(|m| m.iter().filter_map(|(k, v)| v.as_str().map(|s| (k.trim().to_ascii_lowercase(), s.to_string()))).collect()).unwrap_or_default() }).await?;
                 json!({
                     "imported": r.imported, "failed": r.failed, "skipped": r.skipped, "dbImported": r.db_imported, "dbFailed": r.db_failed,
                     "outcomes": r.outcomes.iter().map(|o| json!({ "domain": o.domain, "status": o.status, "reason": o.reason.as_deref().map(scrub), "siteId": o.site_id, "db": o.db.as_deref().map(scrub) })).collect::<Vec<_>>(),
@@ -4182,7 +4183,7 @@ pub(crate) mod tests {
     impl ImportOps for FakeOps {
         fn valet_scan<'a>(&'a self) -> OpFuture<'a, Result<crate::commands::valet_import::ImportScan>> {
             self.calls.lock().unwrap().push("valet scan".into());
-            Box::pin(async { Ok(crate::commands::valet_import::ImportScan { sources: vec![], candidates: vec![], tlds: vec![], available_php: vec!["8.3".into()] }) })
+            Box::pin(async { Ok(crate::commands::valet_import::ImportScan { sources: vec![], candidates: vec![], tlds: vec![], available_php: vec!["8.3".into()], taken_domains: vec![] }) })
         }
         fn valet_drift<'a>(&'a self) -> OpFuture<'a, Result<Vec<String>>> { Box::pin(async { Ok(vec!["test".into()]) }) }
         fn valet_run<'a>(&'a self, request: crate::commands::valet_import::ImportRequest) -> OpFuture<'a, Result<crate::commands::valet_import::ImportResult>> {

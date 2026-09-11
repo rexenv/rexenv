@@ -979,6 +979,14 @@ honest footer —
   restored database name (PHP keeps the first definition; wp-config still names
   Local's socket), `--skip-plugins --skip-themes`. It runs before the import is
   recorded, and `siteurl` must re-read as `https://<new>` or the job fails (#573).
+  A re-homed row whose PICKED name another rexenv site already holds (`tr.local` →
+  `tr.test` with a `tr.test` site present) carries `domain_choice` and gets a name field
+  on the row — the label only, on the row's re-homed TLD, checked live against the
+  scan's `takenDomains` and the other rows. The run's `choose_domain` re-checks with the
+  backend's own hostname validator, `domain_taken_by` and the names this batch already
+  claimed, and refuses the row without a name. Only a re-homed row can be renamed (a
+  Valet/Herd name is the source's own). The outcome keeps the row's scanned name as its
+  key and reports `servedAs`. Before 12 Sep 2026 such a row had no way out at all.
 - **Database import copies their database and RECORDS what it did** (Stage 2:
   `core/{dbsource,dbcompat,dbdump,dbrestore,dbmirror,dbimport}`, v19 `sites.db_created`,
   v20 `db_imports`). Their side is read-only: engines identified from the pre-auth

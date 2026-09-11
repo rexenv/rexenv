@@ -201,6 +201,9 @@ export interface ImportCandidate {
   /** Needs attention ONLY because the pinned PHP isn't shipped — the row gets
    *  a version picker, and imports only once one is chosen. */
   phpChoice: boolean;
+  /** The name rexenv picked for a re-homed row belongs to another rexenv site —
+   *  the row gets a name field and imports only once a free name is typed. */
+  domainChoice: boolean;
   secured: boolean;
   /** Other names Valet/Herd serves this SAME folder under, folded into this row
    *  and imported as the site's extra domains (v42). One project — one folder,
@@ -247,6 +250,9 @@ export interface ImportScan {
   candidates: ImportCandidate[];
   tlds: ResolverTldStatus[];
   availablePhp: string[];
+  /** Every hostname rexenv answers on, lowercased — the name field's live
+   *  "taken" check. A hint: the run checks again. */
+  takenDomains: string[];
 }
 
 /** What handing a resolver file back actually did (mirrors ResolverPlan). */
@@ -267,6 +273,8 @@ export interface ImportRequest {
   /** After each site imports, also run its database import. The screen ticks
    *  this by default; the old database is only ever read. */
   importDatabases?: boolean;
+  /** Per-row hostname for a re-homed row, keyed by its scanned domain. */
+  domain?: Record<string, string>;
 }
 
 /** What happened to one row — terminal; every requested domain gets exactly one. */
@@ -282,6 +290,8 @@ export interface ImportOutcome {
   /** Database outcome when importDatabases was on: `imported` · `failed: …` ·
    *  `skipped: …`. Null when databases weren't requested. */
   db: string | null;
+  /** The name the site was created under when the row was given another one. */
+  servedAs: string | null;
 }
 
 /** Where a running import is right now — the screen's only in-flight signal.

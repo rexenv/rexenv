@@ -5,7 +5,7 @@ import { TopBar } from "@/components/shell/TopBar";
 import { Button } from "@/components/ui/button";
 import { confirm } from "@/components/ui/dialog";
 import { toast, toastBackendError } from "@/lib/toast";
-import { CHECK_INPUT, cn } from "@/lib/utils";
+import { CHECK_INPUT, TECH_INPUT, cn } from "@/lib/utils";
 import { Track } from "@/components/shell/DownloadPanel";
 import {
   onValetImportProgress,
@@ -22,6 +22,7 @@ import type {
   ImportCandidate,
   ImportOutcome,
   ImportProgress,
+  ImportScan,
   ImportSource,
   ResolverTldStatus,
 } from "@/types";
@@ -43,11 +44,49 @@ function ago(at: number, now: number): string {
 }
 
 /** A row can be ticked only when importing it needs no further decision — or
- *  when the one decision it needs (a PHP version rexenv ships, in place of a
- *  pin it doesn't) has been made on the row. Never a silent substitute. */
-function selectable(c: ImportCandidate, phpPick: Record<string, string>): boolean {
+ *  when every decision it needs has been made on the row: a PHP version rexenv
+ *  ships in place of a pin it doesn't, a free name in place of a taken one.
+ *  Never a silent substitute. */
+function selectable(
+  c: ImportCandidate,
+  phpPick: Record<string, string>,
+  nameOk: (c: ImportCandidate) => boolean,
+): boolean {
   if (!c.servePath) return false;
-  return c.status.status === "importable" || (c.phpChoice && !!phpPick[c.domain]);
+  if (c.status.status === "importable") return true;
+  if (!c.phpChoice && !c.domainChoice) return false;
+  return (!c.phpChoice || !!phpPick[c.domain]) && (!c.domainChoice || nameOk(c));
+}
+
+const tldOf = (domain: string) => domain.slice(domain.lastIndexOf(".") + 1);
+
+/** The full name typed for a row: the label the user typed, on the row's own
+ *  (re-homed, policy-allowed) TLD. */
+const typedName = (c: ImportCandidate, label: string) =>
+  `${label.trim().toLowerCase()}.${tldOf(c.domain)}`;
+
+/** Why the name typed for a `domainChoice` row can't be used, or null when it
+ *  can. Checked against every name rexenv answers on and every other row in the
+ *  list; the run checks again with the backend's own hostname validator. */
+function nameProblem(
+  c: ImportCandidate,
+  labels: Record<string, string>,
+  scan: ImportScan | undefined,
+): string | null {
+  const label = (labels[c.domain] ?? "").trim().toLowerCase();
+  if (!label) return "type a name";
+  if (!label.split(".").every((p) => /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(p)))
+    return "use a–z, 0–9 and - (not at either end)";
+  const full = typedName(c, label);
+  if (scan?.takenDomains.includes(full)) return `${full} is already a rexenv site`;
+  if (scan?.candidates.some((o) => o.domain === full)) return `another row in this list is ${full}`;
+  if (
+    Object.entries(labels).some(
+      ([d, l]) => d !== c.domain && l.trim() !== "" && `${l.trim().toLowerCase()}.${tldOf(d)}` === full,
+    )
+  )
+    return `another row is already taking ${full}`;
+  return null;
 }
 
 function statusPill(c: ImportCandidate, outcome?: ImportOutcome) {
@@ -67,7 +106,10 @@ function statusPill(c: ImportCandidate, outcome?: ImportOutcome) {
           ? { label: "DB failed", title: outcome.db }
           : { label: "DB skipped", title: outcome.db }
       : null;
-    return { label: outcome.status, tone, title: outcome.reason ?? undefined, db };
+    const title = outcome.servedAs
+      ? [`imported as ${outcome.servedAs}`, outcome.reason].filter(Boolean).join(" — ")
+      : (outcome.reason ?? undefined);
+    return { label: outcome.status, tone, title, db };
   }
   switch (c.status.status) {
     case "importable":
@@ -134,6 +176,9 @@ export function Import() {
   // EMPTY: the row stays unticked until someone picks, so no version is ever
   // chosen for them.
   const [phpPick, setPhpPick] = useState<Record<string, string>>({});
+  // Per-row name LABEL for a re-homed row whose picked name is taken. Starts
+  // empty for the same reason: nobody's site gets a name they didn't type.
+  const [namePick, setNamePick] = useState<Record<string, string>>({});
   const [outcomes, setOutcomes] = useState<Record<string, ImportOutcome>>({});
   const [running, setRunning] = useState(false);
   // ON by default: rexenv is the whole stack, so someone migrating off Valet
@@ -145,9 +190,16 @@ export function Import() {
 
   const candidates = useMemo(() => data?.candidates ?? [], [data]);
   const ready = useMemo(
-    () => candidates.filter((c) => selectable(c, phpPick)).map((c) => c.domain),
-    [candidates, phpPick],
+    () =>
+      candidates
+        .filter((c) => selectable(c, phpPick, (x) => nameProblem(x, namePick, data) === null))
+        .map((c) => c.domain),
+    [candidates, phpPick, namePick, data],
   );
+  const isReady = (c: ImportCandidate) =>
+    selectable(c, phpPick, (x) => nameProblem(x, namePick, data) === null);
+  const chosenName = (c: ImportCandidate) =>
+    c.domainChoice && namePick[c.domain] ? typedName(c, namePick[c.domain]) : c.domain;
 
   // Drop selections for rows a rescan removed, so the count can't lie.
   useEffect(() => {
@@ -183,6 +235,11 @@ export function Import() {
       valetImportRun({
         domains: [...picked].sort(),
         php: Object.fromEntries(Object.entries(phpPick).filter(([d]) => picked.has(d))),
+        domain: Object.fromEntries(
+          candidates
+            .filter((c) => c.domainChoice && picked.has(c.domain) && namePick[c.domain])
+            .map((c) => [c.domain, typedName(c, namePick[c.domain])]),
+        ),
         importDatabases: withDatabases,
       }),
     onMutate: () => {
@@ -391,7 +448,7 @@ export function Import() {
                 // showing the pre-run "ready" it no longer means.
                 const live =
                   running && picked.has(c.domain) && !outcomes[c.domain]
-                    ? progress?.domain === c.domain
+                    ? progress?.domain === c.domain || progress?.domain === chosenName(c)
                       ? { label: "importing…", waiting: false }
                       : { label: "waiting", waiting: true }
                     : null;
@@ -404,15 +461,25 @@ export function Import() {
                       title: live.waiting ? undefined : (progress?.detail ?? undefined),
                       db: null,
                     }
-                  : c.phpChoice && phpPick[c.domain] && !outcomes[c.domain]
+                  : c.status.status === "needsAttention" && !outcomes[c.domain] && isReady(c)
                     ? {
                         label: "ready",
                         tone: "border-status-running-border bg-status-running-bg text-status-running-bright",
-                        title: `Imports on PHP ${phpPick[c.domain]} instead of ${c.phpMinor ?? "its pinned version"} — check the site works on it.`,
+                        title:
+                          "Imports " +
+                          [
+                            c.domainChoice ? `as ${chosenName(c)}` : null,
+                            c.phpChoice
+                              ? `on PHP ${phpPick[c.domain]} instead of ${c.phpMinor ?? "its pinned version"} — check the site works on it`
+                              : null,
+                          ]
+                            .filter(Boolean)
+                            .join(", ") +
+                          ".",
                         db: null,
                       }
                     : statusPill(c, outcomes[c.domain]);
-                const can = selectable(c, phpPick) && !running;
+                const can = isReady(c) && !running;
                 return (
                   <div
                     key={c.domain}
@@ -423,7 +490,7 @@ export function Import() {
                       className={CHECK_INPUT}
                       checked={picked.has(c.domain)}
                       disabled={!can}
-                      title={selectable(c, phpPick) ? undefined : pill.title}
+                      title={isReady(c) ? undefined : pill.title}
                       onChange={() =>
                         setPicked((s) => {
                           const n = new Set(s);
@@ -461,6 +528,22 @@ export function Import() {
                         {c.servePath ?? c.path ?? "—"}
                         {c.docrootRel ? ` (serving ${c.docrootRel}/)` : ""}
                       </div>
+                      {c.domainChoice && c.servePath && !outcomes[c.domain] && (
+                        <NameChoice
+                          row={c}
+                          label={namePick[c.domain] ?? ""}
+                          problem={nameProblem(c, namePick, data)}
+                          disabled={running}
+                          onChange={(v) => {
+                            setNamePick((p) => {
+                              const n = { ...p };
+                              if (v) n[c.domain] = v;
+                              else delete n[c.domain];
+                              return n;
+                            });
+                          }}
+                        />
+                      )}
                       {pill.title && (
                         <div className="mt-0.5 text-[0.6875rem] text-rex-text-muted">
                           {pill.title}
@@ -540,6 +623,47 @@ export function Import() {
         )}
       </div>
     </>
+  );
+}
+
+/**
+ * The name field of a re-homed row whose picked name another rexenv site holds.
+ * Only the LABEL is typed: the TLD is the row's own re-homed one, which the
+ * policy already allows, so the field can't invent a TLD rexenv would refuse.
+ * The problem shows once something is typed — an empty field is a question, not
+ * an error.
+ */
+function NameChoice({
+  row,
+  label,
+  problem,
+  disabled,
+  onChange,
+}: {
+  row: ImportCandidate;
+  label: string;
+  problem: string | null;
+  disabled: boolean;
+  onChange: (label: string) => void;
+}) {
+  const suggestion = `${(row.renamedFrom ?? row.domain).split(".")[0]}-local`;
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+      <span className="text-[0.6875rem] text-rex-text-muted">import as</span>
+      <input
+        {...TECH_INPUT}
+        aria-label={`Name to import ${row.renamedFrom ?? row.domain} under`}
+        value={label}
+        placeholder={suggestion}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-[24px] w-40 rounded border border-rex-border bg-rex-surface-2 px-1.5 font-mono text-[0.6875rem] text-rex-text outline-none transition-colors focus:border-brand disabled:opacity-50"
+      />
+      <span className="font-mono text-[0.6875rem] text-rex-text-muted">.{tldOf(row.domain)}</span>
+      {label.trim() !== "" && problem && (
+        <span className="text-[0.6875rem] text-status-error-bright">{problem}</span>
+      )}
+    </div>
   );
 }
 

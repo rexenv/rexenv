@@ -70,9 +70,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   - [x] **Owner decisions — plan §9** ✓ 12 Sep 2026 — Q1 declined (collision-renamed
     Local copies stay tell-only; the 28 Jul ruling holds), Q2 parked (row under Parked),
     Q3 approved — needed now: `tr.local` could not import because `tr.test` exists.
-  - [ ] **Q3 — choose the domain for a re-homed row** — a Local row whose re-homed name
-    another rexenv site holds is needs-attention with no way out on the screen; give it
-    a per-row domain field, checked live, and refuse it in the run without one.
+  - [x] **Q3 — choose the domain for a re-homed row** ✓ 12 Sep 2026 — `domain_choice` +
+    the row's name field (label on the re-homed TLD, live-checked against
+    `takenDomains`); `choose_domain` re-validates in the run —
+    `a_rehomed_row_takes_a_typed_name_only_when_it_is_valid_free_and_unclaimed`
   - [ ] **The import action bar is reachable from anywhere in a long list** — owner,
     12 Sep 2026: selecting a row near the bottom meant scrolling back to the top to press
     Import.
