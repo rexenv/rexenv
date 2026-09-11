@@ -963,9 +963,12 @@ honest footer —
   The database import finds a Local site's data through Local's REGISTRY, not
   wp-config's literal host (#572): when the served folder is a registered Local
   site's `app/public` AND the config host is a bare `localhost` (Local's socket), the
-  source is that site's own mysqld — its TCP port for the pre-auth probe, its socket
-  (a 0600 defaults file with `protocol=SOCKET`) for sign-in and dump, both re-read
-  from `sites.json` on every run. An explicit host or port always wins. A stopped
+  source is that site's own mysqld, reached over its SOCKET for the pre-auth probe,
+  the sign-in and the dump (a 0600 defaults file with `protocol=SOCKET`), re-read
+  from `sites.json` on every run. Not TCP: Local's mysqld answers a connect from
+  127.0.0.1 with ERR 1130 IN PLACE of its handshake (`skip-name-resolve`,
+  `root@localhost` only) — the first real Local import died unidentified on exactly
+  that, 11 Sep 2026; the port is used only when no socket file exists. An explicit host or port always wins. A stopped
   Local site fails with "start it in Local" — Local runs a site's database only while
   that site is started, and rexenv never starts it. `app/sql/local.sql` is never used
   (a stale snapshot). A Local copy then gets a sixth job phase, `urls` (`skipped` for

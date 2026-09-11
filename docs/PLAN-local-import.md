@@ -63,11 +63,16 @@ The config's `localhost` means "Local's socket for this site". Probing
 `127.0.0.1:3306` would find nothing — or worse, somebody's Homebrew MySQL, which may
 well hold a database called `local`. So the database import asks Local's registry:
 **when a site's docroot is a Local site's `app/public` AND its config host is
-`localhost`**, the source is that site's mysqld — TCP port for the pre-auth handshake
-probe (identity, no credentials), and **the socket for the authenticated preflight and
-dump** (it is how WordPress itself signs in there; with `skip-name-resolve`, a
-`root@localhost` account is not guaranteed to match a TCP login from 127.0.0.1 —
-unverified, so the socket avoids depending on it). Both are RE-READ from the registry
+`localhost`**, the source is that site's mysqld — reached over **its socket for the
+pre-auth probe, the preflight and the dump** (it is how WordPress itself signs in
+there). *Corrected 11 Sep 2026 after the first real import failed:* this line used to
+send the PROBE over TCP and only the sign-in over the socket, on the guess that
+`skip-name-resolve` would only bite at login. Measured on Local 10.1.2 / MySQL 8.4.0,
+it bites before that — a TCP connect from 127.0.0.1 gets ERR 1130 ("Host '127.0.0.1'
+is not allowed to connect") in place of the handshake, so the probe could never learn
+the server's version and the job refused it as unidentifiable. Over the socket the
+same server greets as `8.4.0` and the bundled 8.4.6 client signs in. The TCP port is
+now only the fallback when no socket file exists. Both are RE-READ from the registry
 on every run, like the credentials are re-read from wp-config: nothing about their
 setup is cached. An explicit `host:port` in wp-config always wins — a user who pointed
 a Local site at DBngin meant it.

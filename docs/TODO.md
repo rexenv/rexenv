@@ -58,6 +58,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     wp-config byte-identical); ledger #570 → ✅, #573 L1
   - [x] T7 — ARCHITECTURE §8, ledger rows, PUBLISH-TESTING §N ✓ 11 Sep 2026 — ARCHITECTURE
     and ledger #570–#573 landed with T1–T6; §N written (steps N0–N9) + its summary row
+  - [x] **fix: a Local site's server is identified over its SOCKET** ✓ 11 Sep 2026 — the
+    owner's first real import (`ab12.local`) failed "couldn't tell which database server
+    this is": Local's mysqld answers TCP from 127.0.0.1 with ERR 1130 before its
+    handshake. `probe_socket` +
+    `a_socket_probe_reads_the_handshake_and_keeps_a_refusal_in_the_servers_words`; the
+    refusal now carries the server's own words; ledger #572 updated with the measurement
   - [ ] **PUBLISH-TESTING §N — the live pass on a STARTED Local site** (owner-run: rexenv
     never starts Local's servers). Closes #572's L3 half (Local's real mysqld + socket).
   - [ ] **Owner decisions — plan §9**: Q1 DB_NAME in the rewrite (every Local db is

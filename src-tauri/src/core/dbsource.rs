@@ -266,8 +266,12 @@ fn probe_addr(addr: &SocketAddr) -> Probe {
         Err(e) => return Probe::NotListening(e.to_string()),
     };
     let _ = stream.set_read_timeout(Some(READ_TIMEOUT));
-    // Read only the greeting. We never write, so the server sees a client that
-    // connected and went away — the cheapest possible visit.
+    read_greeting(&mut stream)
+}
+
+/// Read only the greeting. We never write, so the server sees a client that
+/// connected and went away — the cheapest possible visit.
+fn read_greeting(stream: &mut impl Read) -> Probe {
     let mut buf = [0u8; 256];
     let n = match stream.read(&mut buf) {
         Ok(n) => n,
@@ -276,6 +280,75 @@ fn probe_addr(addr: &SocketAddr) -> Probe {
         Err(_) => return Probe::Listening(Identity::Unknown { note: None }),
     };
     Probe::Listening(identity_from_greeting(&buf[..n]))
+}
+
+/// Probe a MySQL-protocol server through its unix SOCKET — same greeting, same
+/// parse, never authenticates.
+///
+/// For a server that turns TCP away before it identifies itself. Local's
+/// per-site mysqld runs `skip-name-resolve` with only `root@localhost`, so a TCP
+/// connect from 127.0.0.1 gets an ERR packet (1130, "Host '127.0.0.1' is not
+/// allowed to connect") IN PLACE of the handshake, while the socket — the route
+/// its WordPress uses — greets normally. Measured on Local 10.1.2 / MySQL 8.4.0,
+/// 11 Sep 2026: the first Local import on a real site died on exactly this, with
+/// the TCP-only probe reporting an unidentifiable server.
+pub fn probe_socket(path: &Path) -> Probe {
+    let mut stream = match std::os::unix::net::UnixStream::connect(path) {
+        Ok(s) => s,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Probe::NotListening("there's no socket file there — the server isn't running".into())
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::ConnectionRefused => {
+            return Probe::NotListening("the socket file is there, but nothing is listening on it".into())
+        }
+        Err(e) => return Probe::NotListening(e.to_string()),
+    };
+    let _ = stream.set_read_timeout(Some(READ_TIMEOUT));
+    read_greeting(&mut stream)
+}
+
+#[cfg(test)]
+mod socket_probe_tests {
+    use super::*;
+
+    /// A socket probe reads the greeting a TCP one would — the version off the
+    /// wire — and an ERR packet in its place keeps the server's own words.
+    #[test]
+    fn a_socket_probe_reads_the_handshake_and_keeps_a_refusal_in_the_servers_words() {
+        use std::io::Write;
+        let dir = std::env::temp_dir().join(format!("rexenv-sockprobe-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // A space in the path, as Local's "Application Support" has.
+        let path = dir.join("my sql.sock");
+        let listener = std::os::unix::net::UnixListener::bind(&path).unwrap();
+        let server = std::thread::spawn(move || {
+            let packet = |payload: &[u8]| {
+                let mut p = vec![payload.len() as u8, 0, 0, 0];
+                p.extend_from_slice(payload);
+                p
+            };
+            let (mut a, _) = listener.accept().unwrap();
+            a.write_all(&packet(b"\x0a8.4.0\x00salt")).unwrap();
+            let (mut b, _) = listener.accept().unwrap();
+            b.write_all(&packet(b"\xff\x6a\x04Host '127.0.0.1' is not allowed to connect to this MySQL server"))
+                .unwrap();
+        });
+
+        match probe_socket(&path) {
+            Probe::Listening(Identity::Handshake { vendor, version }) => {
+                assert_eq!((vendor, version.as_str()), (Vendor::Mysql, "8.4.0"))
+            }
+            p => panic!("the socket greeting was not read: {p:?}"),
+        }
+        match probe_socket(&path) {
+            Probe::Listening(Identity::Unknown { note: Some(n) }) => assert!(n.contains("not allowed"), "{n}"),
+            p => panic!("a refusal lost the server's words: {p:?}"),
+        }
+        server.join().unwrap();
+        assert!(matches!(probe_socket(&dir.join("absent.sock")), Probe::NotListening(_)));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
 
 /// Parse a MySQL-protocol initial handshake (or the error packet a server sends

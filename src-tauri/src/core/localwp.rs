@@ -299,7 +299,9 @@ pub struct LocalDb {
     pub site_name: String,
     /// Their hostname (`ea.local`) — what the copy's URLs say.
     pub domain: String,
-    /// TCP port — used for the pre-auth handshake probe only.
+    /// TCP port — the fallback route when no socket file exists. Local's mysqld
+    /// answers a TCP connect from 127.0.0.1 with ERR 1130 before its handshake,
+    /// so with a socket present nothing is sent here at all.
     pub port: u16,
     /// The socket WordPress itself signs in through (Local's `[client]` group
     /// and generated php.ini both point there).
@@ -328,8 +330,8 @@ pub fn db_source_for(home: &Path, docroot: &Path) -> Option<LocalDb> {
     }
     Some(LocalDb {
         port: site.mysql_port?,
-        // Local's own "Database" tab shows this path; not observed live on the
-        // dev machine (both sites halted — the file exists only while running).
+        // Observed live 11 Sep 2026 (Local 10.1.2, a started site): the socket
+        // is here, and exists only while that site runs.
         socket: dir.join("run").join(&site.id).join("mysql").join("mysqld.sock"),
         site_name: site.name,
         domain: site.domain,

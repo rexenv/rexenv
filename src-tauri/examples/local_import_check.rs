@@ -25,7 +25,7 @@ use rexenv_lib::core::db::DbEngine;
 use rexenv_lib::core::dbcompat::{compat, Source, Target, Version};
 use rexenv_lib::core::dbdump::{self, LiveCheck};
 use rexenv_lib::core::dbimport::{ConfigSource, DbConnection, Driver};
-use rexenv_lib::core::dbsource::Vendor;
+use rexenv_lib::core::dbsource::{self, Identity, Probe, Vendor};
 use rexenv_lib::core::{binaries, database, wordpress};
 use std::path::Path;
 use std::time::Duration;
@@ -122,6 +122,12 @@ async fn main() -> std::process::ExitCode {
         "control: the TCP defaults file on the same dead port does NOT sign in",
         !matches!(control, Ok(LiveCheck::Ready { .. })),
         &format!("{control:?}"),
+    );
+    let id = dbsource::probe_socket(&socket);
+    check.is(
+        "the pre-auth probe identifies the server over its socket (Local refuses TCP before greeting)",
+        matches!(&id, Probe::Listening(Identity::Handshake { vendor: Vendor::Mysql, .. })),
+        &format!("{id:?}"),
     );
 
     // ── B. the URL pass on a copy whose wp-config signs in nowhere (#573) ─────

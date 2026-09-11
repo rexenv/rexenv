@@ -356,7 +356,16 @@ async fn run<R: tauri::Runtime>(
         }
     }
 
-    let identity = match dbsource::probe(&conn_info.host, conn_info.port) {
+    // A Local site's server is identified over its SOCKET: Local's mysqld turns a
+    // TCP connect from 127.0.0.1 away with ERR 1130 before its handshake
+    // (`skip-name-resolve`, `root@localhost` only), so a TCP probe can never
+    // learn what it is — the first real Local import died here, 11 Sep 2026.
+    // The TCP port is the route only when no socket file exists.
+    let probed = match local.as_ref().filter(|l| l.socket.exists()) {
+        Some(l) => dbsource::probe_socket(&l.socket),
+        None => dbsource::probe(&conn_info.host, conn_info.port),
+    };
+    let identity = match probed {
         dbsource::Probe::Listening(id) => id,
         // Named for Local, because the generic "start it (DBngin, Herd…)" points
         // at the wrong app — and Local runs a site's database only while that
@@ -420,8 +429,17 @@ async fn run<R: tauri::Runtime>(
         // honest default is the verdict's own explanation.
         return Err(Error::Other(v.explain()));
     }
-    let cleared = dbdump::gate(self_import, &verdict, false)
-        .map_err(|r| Error::Other(r.message()))?;
+    let cleared = dbdump::gate(self_import, &verdict, false).map_err(|r| {
+        let mut m = r.message();
+        // The server's own words, when it sent some in place of a greeting. The
+        // generic refusal says the server "didn't identify itself"; the Local
+        // failure of 11 Sep 2026 had the actual reason ("Host '127.0.0.1' is not
+        // allowed to connect") sitting in the job log while the card said less.
+        if let Identity::Unknown { note: Some(n) } = &identity {
+            m.push_str(&format!(" The server said: \"{n}\"."));
+        }
+        Error::Other(m)
+    })?;
 
     // Tools for the SOURCE vendor (client pairing is a hard invariant).
     let source_vendor = src_vendor.expect("gate passed implies identified");
@@ -790,6 +808,12 @@ mod local_source_wiring {
         );
         // A stopped Local site is named as Local's, not DBngin's.
         assert!(src.contains("Start \\\"{}\\\" in Local"), "the Local-named unreachable message is gone");
+        // And a Local server is IDENTIFIED over its socket: its TCP port answers
+        // 127.0.0.1 with ERR 1130 in place of the handshake (measured 11 Sep 2026).
+        assert!(
+            src.contains("Some(l) => dbsource::probe_socket(&l.socket)"),
+            "the Local branch no longer probes the socket — a real Local import then dies unidentified"
+        );
     }
 
     /// Ledger #573 — the URL pass is handed OUR engine's port and the database
