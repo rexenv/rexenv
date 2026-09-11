@@ -464,11 +464,14 @@ static REGISTRY: &[UserTool] = &[
                       serving — EVERY one of the user's sites at once, leaving rexenv's services \
                       running (a stopped site answers a `site stopped` page; the stack is \
                       untouched, so this is `manage`, not `system`). A stopped web tier is every site down: prefer \
-                      `restart` to stopping.",
+                      `restart` to stopping. `catch_mail` makes every site's outgoing mail land in \
+                      Mailpit (`manage`); `stop_catching_mail` lets every site on this machine send \
+                      REAL mail to real addresses, so it needs `system`. Whether mail is caught now: \
+                      stack_status `mailCatchAll`.",
         input_schema: || json!({
             "type": "object",
             "properties": {
-                "action": { "type": "string", "enum": ["start", "stop", "restart", "start_database", "stop_database", "start_mail", "stop_mail", "start_sites", "stop_sites"] },
+                "action": { "type": "string", "enum": ["start", "stop", "restart", "start_database", "stop_database", "start_mail", "stop_mail", "start_sites", "stop_sites", "catch_mail", "stop_catching_mail"] },
                 "service": { "type": "string", "description": "restart: nginx / edge / php-<minor>; start_database / stop_database: mysql / mariadb / postgres." }
             },
             "required": ["action"],
@@ -527,11 +530,14 @@ static REGISTRY: &[UserTool] = &[
                       or rex doctor would tell you is missing); `remove` takes rexenv's own file for \
                       a TLD no site uses back out. All three write under /etc/resolver, so they \
                       need `system` on rexenv itself AND macOS asks the user for their password — a \
-                      dialog the agent cannot answer. The current default is in stack_status.",
+                      dialog the agent cannot answer. Two reads need only `read`: `status` (whose \
+                      resolver file the TLD has — rexenv's, another tool's, or none — and how many \
+                      sites use it) and `policy` (whether rexenv accepts the TLD at all, and why \
+                      not). The current default is in stack_status.",
         input_schema: || json!({
             "type": "object",
             "properties": {
-                "action": { "type": "string", "enum": ["set", "repair", "remove"] },
+                "action": { "type": "string", "enum": ["set", "repair", "remove", "status", "policy"] },
                 "tld": { "type": "string" }
             },
             "required": ["action", "tld"],
@@ -547,14 +553,16 @@ static REGISTRY: &[UserTool] = &[
         description: "Open one of the user's own sites on THEIR screen: `target` `browser` (the \
                       site's URL in their preferred browser, or `app` = a browser id; `private` for \
                       a private window), `editor` (the site's folder in their preferred editor, or \
-                      `app` = an editor id) or `finder` (reveal the folder). Takes `site_id`. Needs \
-                      `manage` on the site. Never an arbitrary URL or path — only this site's.",
+                      `app` = an editor id), `finder` (reveal the folder) or `terminal` (the site's \
+                      folder in their own terminal app — `app` = a terminal id, else the first one \
+                      found; a plain login shell, not rexenv's). Takes `site_id`. Needs `manage` on \
+                      the site. Never an arbitrary URL or path — only this site's.",
         input_schema: || json!({
             "type": "object",
             "properties": {
                 "site_id": { "type": "string" },
-                "target": { "type": "string", "enum": ["browser", "editor", "finder"] },
-                "app": { "type": "string", "description": "A browser or editor id from the user's installed apps; omit for their preference." },
+                "target": { "type": "string", "enum": ["browser", "editor", "finder", "terminal"] },
+                "app": { "type": "string", "description": "A browser, editor or terminal id from the user's installed apps; omit for their preference." },
                 "private": { "type": "boolean" }
             },
             "required": ["site_id", "target"],
@@ -1019,6 +1027,10 @@ pub trait StackOps: Send + Sync {
         &'a self,
         enabled: bool,
     ) -> OpFuture<'a, Result<crate::commands::sites::BulkEnabledReport>>;
+    /// The mail catch-all switch — the app's own toggle, which rewrites every
+    /// carrier of it (the pools' env, the WordPress mu-plugin, the override
+    /// backends) and restarts what it must. Never a raw settings write.
+    fn set_mail_catch_all<'a>(&'a self, enabled: bool) -> OpFuture<'a, Result<()>>;
 }
 
 /// The app's own machine-wide settings and the open-in-app verbs
@@ -1040,6 +1052,12 @@ pub trait SystemOps: Send + Sync {
     fn editors<'a>(&'a self) -> OpFuture<'a, Vec<crate::platform::traits::EditorApp>>;
     fn open_in_editor<'a>(&'a self, editor_id: String, path: String) -> OpFuture<'a, Result<()>>;
     fn reveal_path<'a>(&'a self, path: String) -> OpFuture<'a, Result<()>>;
+    /// Whose resolver file a TLD has, and how many sites use it — read-only.
+    fn resolver_tld_status<'a>(&'a self, tld: String) -> OpFuture<'a, Result<crate::commands::valet_import::ResolverTldStatus>>;
+    fn terminals<'a>(&'a self) -> OpFuture<'a, Vec<crate::platform::traits::TerminalApp>>;
+    /// The site's OWN folder in the person's terminal app — the app resolves the
+    /// folder from the site id, so no path crosses from the agent.
+    fn open_in_terminal<'a>(&'a self, site_id: String, terminal_id: String) -> OpFuture<'a, Result<()>>;
 }
 
 /// The app's own git/asset operations (`commands::repo`), runtime-erased.
@@ -2621,6 +2639,11 @@ fn scrub_raw_source(source: &str, known: &super::view::KnownPaths) -> String {
 pub(crate) fn stack_scope(action: &str) -> Option<Scope> {
     Some(match action {
         "start" | "stop" => Scope::System,
+        // Turning the catch-all OFF is not a service change: every site on the
+        // machine starts sending real mail to real people, from whatever data is
+        // in it. The safe direction is `manage`; this one is machine-wide.
+        "stop_catching_mail" => Scope::System,
+        "catch_mail" => Scope::Manage,
         // `start_sites` / `stop_sites` touch no service and raise no password
         // dialog — they are the Sites page's bulk switch, so they sit with the
         // other `manage` arms and NOT with the stack's own start/stop.
@@ -2638,7 +2661,7 @@ pub(crate) fn stack_scope(action: &str) -> Option<Scope> {
 fn stack<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::ActedTarget) -> ToolFuture<'a> {
     Box::pin(async move {
         let action = args.get("action").and_then(Value::as_str).ok_or_else(|| Error::Other("stack needs an `action`.".into()))?;
-        let scope = stack_scope(action).ok_or_else(|| Error::Other(format!("`{action}` is not a stack action. Use start, stop, restart, start_database, stop_database, start_mail, stop_mail, start_sites or stop_sites.")))?;
+        let scope = stack_scope(action).ok_or_else(|| Error::Other(format!("`{action}` is not a stack action. Use start, stop, restart, start_database, stop_database, start_mail, stop_mail, start_sites, stop_sites, catch_mail or stop_catching_mail.")))?;
         let service = args.get("service").and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty());
         let wanted = match action {
             "start" => "start rexenv's whole stack (macOS will also ask for your password)".to_string(),
@@ -2653,6 +2676,8 @@ fn stack<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::ActedTa
             }
             "start_mail" => "start the mail catcher".to_string(),
             "stop_mail" => "stop the mail catcher".to_string(),
+            "catch_mail" => "catch every site's outgoing mail in Mailpit".to_string(),
+            "stop_catching_mail" => "stop catching mail — every site on this machine will send REAL mail to real addresses".to_string(),
             "start_sites" => "serve every one of the user's sites again".to_string(),
             _ => "stop serving every one of the user's sites (rexenv's services keep running)".to_string(),
         };
@@ -2674,6 +2699,11 @@ fn stack<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::ActedTa
             "stop_database" => { st.stop_database(service.unwrap().to_string()).await?; json!({ "stopped": service }) }
             "start_mail" => { st.start_mail().await?; json!({ "started": "mail" }) }
             "stop_mail" => { st.stop_mail().await?; json!({ "stopped": "mail" }) }
+            act @ ("catch_mail" | "stop_catching_mail") => {
+                let on = act == "catch_mail";
+                st.set_mail_catch_all(on).await?;
+                json!({ "mailCatchAll": on })
+            }
             act @ ("start_sites" | "stop_sites") => {
                 let on = act == "start_sites";
                 let r = st.set_all_sites_enabled(on).await?;
@@ -2776,11 +2806,26 @@ fn tld<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::ActedTarg
     Box::pin(async move {
         let action = args.get("action").and_then(Value::as_str).ok_or_else(|| Error::Other("tld needs an `action`.".into()))?;
         let tld = str_field(args, "tld", action)?.trim_start_matches('.').to_ascii_lowercase();
+        // The two reads: no resolver write, no prompt, so `read` is enough.
+        match action {
+            "policy" => {
+                ctx.claim::<scope::Read>(None, &format!("check whether rexenv accepts `.{tld}`"))?;
+                return Ok(json!({ "action": action, "result": crate::commands::settings::tld_policy(tld) }));
+            }
+            "status" => {
+                ctx.claim::<scope::Read>(None, &format!("read whose resolver file `.{tld}` has"))?;
+                let s = ctx.sys.resolver_tld_status(tld).await?;
+                // The owner and the site count, never the file's path or contents:
+                // the read tools' rule is what the answer needs, not where it lives.
+                return Ok(json!({ "action": action, "result": { "tld": s.tld, "owner": s.owner, "rexenvSites": s.rexenv_sites } }));
+            }
+            _ => {}
+        }
         let wanted = match action {
             "set" => format!("make `.{tld}` the default TLD and install its resolver (macOS will also ask for your password)"),
             "repair" => format!("put back the resolver file for `.{tld}` (macOS will also ask for your password)"),
             "remove" => format!("remove rexenv's resolver file for `.{tld}` (macOS will also ask for your password)"),
-            other => return Err(Error::Other(format!("`{other}` is not a tld action. Use set, repair or remove."))),
+            other => return Err(Error::Other(format!("`{other}` is not a tld action. Use set, repair, remove, status or policy."))),
         };
         ctx.claim::<scope::System>(None, &wanted)?;
         let result = match action {
@@ -2795,9 +2840,9 @@ fn tld<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::ActedTarg
 fn open<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTarget) -> ToolFuture<'a> {
     Box::pin(async move {
         let id = args.get("site_id").and_then(Value::as_str).ok_or_else(|| Error::Other("open needs a `site_id`.".into()))?;
-        let target = args.get("target").and_then(Value::as_str).ok_or_else(|| Error::Other("open needs `target`: browser, editor or finder.".into()))?;
-        if !matches!(target, "browser" | "editor" | "finder") {
-            return Err(Error::Other(format!("`{target}` is not an open target. Use browser, editor or finder.")));
+        let target = args.get("target").and_then(Value::as_str).ok_or_else(|| Error::Other("open needs `target`: browser, editor, finder or terminal.".into()))?;
+        if !matches!(target, "browser" | "editor" | "finder" | "terminal") {
+            return Err(Error::Other(format!("`{target}` is not an open target. Use browser, editor, finder or terminal.")));
         }
         let app = args.get("app").and_then(Value::as_str).map(str::to_string);
         let private = args.get("private").and_then(Value::as_bool).unwrap_or(false);
@@ -2830,6 +2875,16 @@ fn open<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTarg
                 // The site's OWN folder — never a path the agent chose.
                 sys.open_in_editor(chosen.clone(), site.path.clone()).await?;
                 json!({ "editor": chosen })
+            }
+            "terminal" => {
+                let terminals = sys.terminals().await;
+                let chosen = match app {
+                    Some(w) => terminals.iter().find(|t| t.id == w).map(|t| t.id.clone()).ok_or_else(|| Error::Other(format!("`{w}` is not an installed terminal. Installed: {}.", terminals.iter().map(|t| t.id.as_str()).collect::<Vec<_>>().join(", "))))?,
+                    None => terminals.first().map(|t| t.id.clone()).ok_or_else(|| Error::Other("no terminal app was detected on this machine.".into()))?,
+                };
+                // By site id: the app resolves the folder, as it does for the UI.
+                sys.open_in_terminal(site.id.clone(), chosen.clone()).await?;
+                json!({ "terminal": chosen })
             }
             _ => { sys.reveal_path(site.path.clone()).await?; json!({ "revealed": true }) }
         };
@@ -3808,6 +3863,7 @@ pub(crate) mod tests {
                 })
             })
         }
+        fn set_mail_catch_all<'a>(&'a self, enabled: bool) -> OpFuture<'a, Result<()>> { self.calls.lock().unwrap().push(format!("mail catch {enabled}")); Box::pin(async { Ok(()) }) }
     }
 
     impl SystemOps for FakeOps {
@@ -3835,6 +3891,25 @@ pub(crate) mod tests {
         }
         fn open_in_editor<'a>(&'a self, editor_id: String, path: String) -> OpFuture<'a, Result<()>> { self.calls.lock().unwrap().push(format!("open editor {editor_id} {path}")); Box::pin(async { Ok(()) }) }
         fn reveal_path<'a>(&'a self, path: String) -> OpFuture<'a, Result<()>> { self.calls.lock().unwrap().push(format!("reveal {path}")); Box::pin(async { Ok(()) }) }
+        fn resolver_tld_status<'a>(&'a self, tld: String) -> OpFuture<'a, Result<crate::commands::valet_import::ResolverTldStatus>> {
+            self.calls.lock().unwrap().push(format!("tld status {tld}"));
+            // A real status carries the file's path and both files' contents; the
+            // tool must hand back neither.
+            Box::pin(async move {
+                Ok(crate::commands::valet_import::ResolverTldStatus {
+                    tld,
+                    owner: "ours".into(),
+                    path: "/etc/resolver/rex".into(),
+                    their_content: Some("nameserver 10.9.8.7".into()),
+                    our_content: "nameserver 127.0.0.1\nport 15353".into(),
+                    rexenv_sites: 2,
+                })
+            })
+        }
+        fn terminals<'a>(&'a self) -> OpFuture<'a, Vec<crate::platform::traits::TerminalApp>> {
+            Box::pin(async { vec![crate::platform::traits::TerminalApp { id: "iterm".into(), name: "iTerm".into(), icon: None }] })
+        }
+        fn open_in_terminal<'a>(&'a self, site_id: String, terminal_id: String) -> OpFuture<'a, Result<()>> { self.calls.lock().unwrap().push(format!("open terminal {site_id} {terminal_id}")); Box::pin(async { Ok(()) }) }
     }
 
     fn fake_job(op: &str) -> crate::commands::repo::RepoJobState {
@@ -4583,6 +4658,10 @@ pub(crate) mod tests {
         assert_eq!(stack_scope("stop"), Some(Scope::System));
         assert_eq!(stack_scope("restart"), Some(Scope::Manage));
         assert_eq!(stack_scope("stop_database"), Some(Scope::Manage));
+        // The catch-all: catching is the safe direction; releasing sends every
+        // site's mail to real addresses, machine-wide.
+        assert_eq!(stack_scope("catch_mail"), Some(Scope::Manage));
+        assert_eq!(stack_scope("stop_catching_mail"), Some(Scope::System));
         // The source: `start_all(`/`stop_all(` appear ONCE each in production
         // code, inside `stack`, and the arm that reaches them claims `System`.
         let me = include_str!("user_sites.rs");
@@ -4603,6 +4682,10 @@ pub(crate) mod tests {
         let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
         let err = stack(ctx, &json!({ "action": "start" }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("`system`") && err.contains("rexenv itself"), "{err}");
+        // At Read the refusal is the dial's own sentence — it names the scope,
+        // not the action — and releasing mail must need the machine-wide one.
+        let err = stack(ctx, &json!({ "action": "stop_catching_mail" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("`system`"), "releasing every site's mail needs system: {err}");
         let err = stack(ctx, &json!({ "action": "stop_database", "service": "redis" }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("not a database engine"), "{err}");
         dial(&state, crate::core::agent_access::AccessLevel::Changes);
@@ -4613,11 +4696,15 @@ pub(crate) mod tests {
         let v = stack(ctx, &json!({ "action": "start_database", "service": "mysql" }), &acted).await.unwrap();
         assert_eq!(v["result"]["started"], "mysql");
         stack(ctx, &json!({ "action": "stop_mail" }), &acted).await.unwrap();
+        let v = stack(ctx, &json!({ "action": "stop_catching_mail" }), &acted).await.unwrap();
+        assert_eq!(v["result"]["mailCatchAll"], false);
+        let v = stack(ctx, &json!({ "action": "catch_mail" }), &acted).await.unwrap();
+        assert_eq!(v["result"]["mailCatchAll"], true);
         dial(&state, crate::core::agent_access::AccessLevel::Changes);
         let v = stack(ctx, &json!({ "action": "stop" }), &acted).await.unwrap();
         assert_eq!(v["result"]["stopped"], true);
         let calls = ops.calls.lock().unwrap().clone();
-        for c in ["stack restart nginx", "db start mysql", "mail stop", "stack stop"] {
+        for c in ["stack restart nginx", "db start mysql", "mail stop", "mail catch false", "mail catch true", "stack stop"] {
             assert!(calls.iter().any(|x| x == c), "missing {c} in {calls:?}");
         }
         assert_eq!(calls.iter().filter(|x| *x == "stack start").count(), 1, "start ran once, under Changes");
@@ -4675,6 +4762,16 @@ pub(crate) mod tests {
         assert!(err.contains("`system`"), "{err}");
         // tld: every action names the password dialog in its ask.
         assert!(tld(ctx, &json!({ "action": "repair", "tld": ".Test" }), &acted).await.is_err());
+        // …except the two reads, which need only `read`: the policy, and whose
+        // resolver file a TLD has — owner and site count, never the file's path
+        // or either file's contents.
+        let v = tld(ctx, &json!({ "action": "policy", "tld": ".Rex" }), &acted).await.unwrap();
+        assert_eq!(v["result"]["allowed"], true, "{v}");
+        let v = tld(ctx, &json!({ "action": "status", "tld": "rex" }), &acted).await.unwrap();
+        assert_eq!(v["result"]["owner"], "ours");
+        assert_eq!(v["result"]["rexenvSites"], 2);
+        let text = v.to_string();
+        assert!(!text.contains("/etc/resolver") && !text.contains("nameserver"), "no path, no file contents: {text}");
         // php: manage for install, system for default.
         {
             let conn = state.db.lock().unwrap();
@@ -4697,7 +4794,11 @@ pub(crate) mod tests {
         assert!(err.contains("not an installed browser") && err.contains("chrome"), "{err}");
         open(ctx, &json!({ "site_id": site.id, "target": "editor" }), &acted).await.unwrap();
         open(ctx, &json!({ "site_id": site.id, "target": "finder" }), &acted).await.unwrap();
-        let err = open(ctx, &json!({ "site_id": site.id, "target": "terminal" }), &acted).await.unwrap_err().to_string();
+        let v = open(ctx, &json!({ "site_id": site.id, "target": "terminal" }), &acted).await.unwrap();
+        assert_eq!(v["result"]["terminal"], "iterm", "the first detected terminal when none is named");
+        let err = open(ctx, &json!({ "site_id": site.id, "target": "terminal", "app": "hyper" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("not an installed terminal") && err.contains("iterm"), "{err}");
+        let err = open(ctx, &json!({ "site_id": site.id, "target": "notepad" }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("not an open target"), "{err}");
         dial(&state, crate::core::agent_access::AccessLevel::Changes);
         let v = settings(ctx, &json!({ "key": "preferred_browser", "value": "chrome" }), &acted).await.unwrap();
@@ -4707,7 +4808,7 @@ pub(crate) mod tests {
         let v = php(ctx, &json!({ "action": "default", "minor": "8.4" }), &acted).await.unwrap();
         assert_eq!(v["result"]["default"], "8.4");
         let calls = ops.calls.lock().unwrap().clone();
-        for c in ["php installed 8.4 true", "php settings 8.3 memory_limit=768M", "open browser chrome https://blog.rex true", &format!("open editor phpstorm {}", site.path), &format!("reveal {}", site.path), "setting preferred_browser=chrome", "tld set dev", "php default 8.4"] {
+        for c in ["php installed 8.4 true", "php settings 8.3 memory_limit=768M", "open browser chrome https://blog.rex true", &format!("open editor phpstorm {}", site.path), &format!("reveal {}", site.path), &format!("open terminal {} iterm", site.id), "tld status rex", "setting preferred_browser=chrome", "tld set dev", "php default 8.4"] {
             assert!(calls.iter().any(|x| x == c), "missing {c} in {calls:?}");
         }
     }

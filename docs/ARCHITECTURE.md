@@ -1198,7 +1198,12 @@ IPC surface — which is how a reader ends up designing against a system with on
   post-parity commands had arrived with no one asking what an agent may do with them;
   the first run ruled 95 of the 238 commands (the other 143 the MCP source reaches
   directly): 32 reachable through a tool, 33 never, 30 gaps (#560). Counted off the table,
-  not typed — the parity plan's own tool counts were wrong twice for that reason.
+  not typed — the parity plan's own tool counts were wrong twice for that reason. Closing a
+  gap is building its tool — the guard then demands the row go. The first four, same day
+  (#561): `stack` `catch_mail` (manage) / `stop_catching_mail` (system — every site's mail
+  goes to real addresses) with `stack_status.mailCatchAll`; `tld` `status` / `policy`
+  (read; owner and site count, never the resolver file's path or contents); `open`
+  `terminal` (the site's own folder by site id).
 - **Three registries, and the registry IS the capability.** `mcp_server/tools.rs` holds the
   eleven read-only tools (`list_sites` — widened with parity to carry owner / multisite /
   xdebug / aliases / setup-complete / linked, `site_status`, `tail_log`, and from parity

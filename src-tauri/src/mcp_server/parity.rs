@@ -87,8 +87,7 @@ mod tests {
         ("wp_debug_log_download", Never("returns a path for a Save dialog; an agent reads the log with tail_log")),
         // ── mail
         ("mailpit_status", Tool("stack_status")),
-        ("mail_catch_all", Gap("the mail catch-all switch — added after parity; no tool reads it")),
-        ("set_mail_catch_all", Gap("the mail catch-all switch — added after parity; no tool sets it")),
+        ("mail_catch_all", Tool("stack_status")),
         // ── mcp
         ("agent_activity", Tool("agent_activity")),
         ("mcp_status", Never("an agent talking to this server already has the answer; the switch is the person's (D16)")),
@@ -111,7 +110,6 @@ mod tests {
         // `sites_dir` is a gated setter, and `settings_access::cli_access` makes every
         // gated key ReadWrite — so `settings_get` reads it.
         ("sites_folder", Tool("settings_get")),
-        ("tld_policy", Gap("classify a TLD before setting it — `tld set` refuses by the policy, nothing reads it first")),
         // ── site_provision
         ("site_provision_job", Never(JOBS)),
         ("site_provision_active", Never(JOBS)),
@@ -154,10 +152,6 @@ mod tests {
         ("terminal_write", Never(PTY)),
         ("terminal_resize", Never(PTY)),
         ("terminal_close", Never(PTY)),
-        ("list_terminals", Never(PTY)),
-        ("terminal_open_external", Gap("open the person's Terminal app at a site folder, as `open` does for an editor or Finder — added after parity")),
-        // ── valet_import
-        ("resolver_tld_status", Gap("per-TLD resolver health — `tld` repairs a resolver but cannot report one")),
         // ── wordpress
         ("wp_core_versions", Gap("parity §4.2 folded it into `wp_info`; its `what` enum does not offer it")),
         ("wp_cli_packages", Gap("parity §4.2 folded it into `wp_info`; its `what` enum does not offer it")),

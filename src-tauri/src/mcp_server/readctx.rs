@@ -62,6 +62,10 @@ pub struct StackSnapshot {
     pub resolver_installed: bool,
     pub ca_trusted: bool,
     pub mail_running: bool,
+    /// Whether every site's outgoing mail is caught in Mailpit (`true`, the
+    /// default) or sent for real. Changed with `stack` `catch_mail` /
+    /// `stop_catching_mail`.
+    pub mail_catch_all: bool,
     pub php: Vec<StackPhp>,
     pub default_tld: String,
     pub cli_installed: bool,
@@ -163,6 +167,7 @@ impl<'a> ReadCtx<'a> {
             .map(|v| StackPhp { minor: v.minor, installed: v.installed, default: v.is_default })
             .collect();
         let default_tld = core::sites::default_tld(&conn)?;
+        let mail_catch_all = core::mail::catch_all_enabled(&conn);
         drop(conn);
         let platform = self.state.platform.as_ref();
         let cli = core::cli::status(platform).ok();
@@ -173,6 +178,7 @@ impl<'a> ReadCtx<'a> {
             resolver_installed: platform.dns().resolver_path(core::tld::BACKBONE_TLD).exists(),
             ca_trusted: platform.cert_trust().is_trusted(&self.state.ca.cert_path),
             mail_running: core::mail::running(),
+            mail_catch_all,
             php,
             default_tld,
             cli_installed: cli.as_ref().is_some_and(|c| c.installed),

@@ -1308,6 +1308,9 @@ impl<Rt: tauri::Runtime> user_sites::StackOps for AppSiteCreator<Rt> {
             crate::commands::sites::set_all_enabled(self.state()?.inner(), enabled).await
         })
     }
+    fn set_mail_catch_all<'a>(&'a self, enabled: bool) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::mail::set_mail_catch_all(self.state()?, enabled).await })
+    }
 }
 
 impl<Rt: tauri::Runtime> user_sites::SystemOps for AppSiteCreator<Rt> {
@@ -1354,6 +1357,15 @@ impl<Rt: tauri::Runtime> user_sites::SystemOps for AppSiteCreator<Rt> {
     }
     fn reveal_path<'a>(&'a self, path: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
         Box::pin(async move { crate::commands::system::reveal_path(self.state()?, path) })
+    }
+    fn resolver_tld_status<'a>(&'a self, tld: String) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::valet_import::ResolverTldStatus>> {
+        Box::pin(async move { crate::commands::valet_import::resolver_tld_status(self.state()?, tld) })
+    }
+    fn terminals<'a>(&'a self) -> user_sites::OpFuture<'a, Vec<crate::platform::traits::TerminalApp>> {
+        Box::pin(async move { self.state().map(crate::commands::terminal::list_terminals).unwrap_or_default() })
+    }
+    fn open_in_terminal<'a>(&'a self, site_id: String, terminal_id: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::terminal::terminal_open_external(self.state()?, site_id, terminal_id, None) })
     }
 }
 
