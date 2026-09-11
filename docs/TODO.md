@@ -23,6 +23,27 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [ ] **MCP parity gaps — 30 app commands an agent cannot reach yet.** Found 11 Sep 2026
+  by asking, per command, whether an agent can do what the app does; now kept true by
+  `mcp_server/parity.rs` (ledger #560), whose `Gap` rows ARE this list — the test fails
+  on a new command until someone rules on it. Grouped by what a tool would look like:
+  - **Engines + Adminer** (`stack`, system): `db_engine_versions`, `set_db_engine_version`,
+    `adminer_status`, `adminer_update_check`, `adminer_update_apply`, `adminer_set_theme`.
+  - **Downloads** (a `downloads` tool, manage): `core_binaries_plan`, `downloads_state`,
+    `prefetch_core_binaries`, `retry_download`.
+  - **Logs** (destroy): `log_clear`, `wp_debug_log_clear`.
+  - **Mail catch-all** (read + manage): `mail_catch_all`, `set_mail_catch_all`.
+  - **Stack health reads** (fold into `stack_status`): `app_info`, `autostart_status`,
+    `init_error`, `startup_notices`, `unresolvable_tlds`, `firefox_trust_status`,
+    `frankenphp_embedded_php`, `sites_resources`.
+  - **System** (system): `set_autostart`, `setup_edge_conflict`.
+  - **TLDs** (`tld`, read): `resolver_tld_status`, `tld_policy`.
+  - **WordPress** (`wp_info` `what`): `wp_core_versions`, `wp_cli_packages`.
+  - **Repo** (`repo`, read): `repo_watch_log`.
+  - **Open** (`open`, manage — or rule it `Never`): `terminal_open_external`.
+  Each row closes by building the tool (the guard then demands the row be deleted) or by
+  re-ruling it `Never` with the reason.
+
 - [ ] **In-app self-update — a dmg user has no update path at all**
   — 6 Sep 2026, planned in `docs/archive/PLAN-self-update.md`; supersedes the Phase 4+ row
   "Packaging polish: Tauri updater" (`docs/archive/TASKS-RELEASE.md` §6.1), which

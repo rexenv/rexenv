@@ -74,6 +74,7 @@
 // `pub` because the feed's read/clear API (`feed::recent`, `feed::clear`) is the
 // surface the Settings card's IPC consumes; `record` is the server's own write.
 pub mod feed;
+mod parity;
 mod readctx;
 mod scratch;
 mod tools;
@@ -2285,6 +2286,8 @@ mod tests {
             ("readctx", include_str!("mcp_server/readctx.rs")),
             ("view", include_str!("mcp_server/view.rs")),
             ("feed", include_str!("mcp_server/feed.rs")),
+            // Test-only: the command-by-command parity guard, not a registry.
+            ("parity", include_str!("mcp_server/parity.rs")),
         ];
         let mut registries = 0;
         for (module, src) in sources {

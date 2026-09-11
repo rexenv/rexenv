@@ -1189,6 +1189,16 @@ IPC surface — which is how a reader ends up designing against a system with on
   through the path scrubber. Until 11 Sep 2026 both dropped the whole error to keep that
   path out and pointed at `tail_log`, which reads only a WordPress debug log, so no tool
   held the reason at all (ledger #558).
+- **Parity is a test, not a table in a plan.** `mcp_server/parity.rs` derives which
+  registered commands the MCP source reaches (`commands::<module>::<name>`, as a call or a
+  function value) and demands a written ruling for every other one: the `Tool` that reaches
+  the same core function, the reason it is `Never` a tool, or a known `Gap` (the TODO row).
+  A new command cannot ship unruled, and a ruling for a command that no longer exists — or
+  that the MCP source now reaches — fails as stale. Built 11 Sep 2026 after fifteen
+  post-parity commands had arrived with no one asking what an agent may do with them;
+  the first run ruled 95 of the 238 commands (the other 143 the MCP source reaches
+  directly): 32 reachable through a tool, 33 never, 30 gaps (#560). Counted off the table,
+  not typed — the parity plan's own tool counts were wrong twice for that reason.
 - **Three registries, and the registry IS the capability.** `mcp_server/tools.rs` holds the
   eleven read-only tools (`list_sites` — widened with parity to carry owner / multisite /
   xdebug / aliases / setup-complete / linked, `site_status`, `tail_log`, and from parity
