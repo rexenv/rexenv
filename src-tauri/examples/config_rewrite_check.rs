@@ -18,7 +18,11 @@
 //!   5. a REVERTED config can no longer mint a proof (WrongTarget — it points
 //!      at the old server again);
 //!   6. re-scanning the REWRITTEN config lands `SelfImport::ThisSite` — the
-//!      §7 self-source guard closes over the rewrite's own output.
+//!      §7 self-source guard closes over the rewrite's own output;
+//!   7. a COLLISION-RENAMED copy (the config says `local`, the copy is the
+//!      fixture database) connects when the plan also moves the database name
+//!      — and, the control, the same rewrite without the name cannot mint a
+//!      proof (ledger #574; before 12 Sep 2026 this case was tell-only).
 
 use rexenv_lib::core::confedit::{self, RewritePlan};
 use rexenv_lib::core::confrewrite::{self, FileEditedReason, RevertCheck};
@@ -203,6 +207,63 @@ async fn main() {
         "the reverted file fails WrongTarget — no proof without the rewrite",
         matches!(after, Err(VerifyFail::WrongTarget { port: 3306, .. })),
         &format!("{after:?}"),
+    );
+
+    // ── 7. a collision-renamed copy connects by renaming the config too ─────
+    // The Local shape: every site's config names `local`, so the second import
+    // restores under another name. Here the copy is DB and the config says
+    // `local`, signing in as root with a password, over Local's socket host.
+    const RENAMED_DOMAIN: &str = "rwcheck-local.test";
+    let renamed = sandbox.root().join("project-renamed");
+    std::fs::create_dir_all(&renamed).unwrap();
+    let renamed_config = renamed.join("wp-config.php");
+    let renamed_original = format!(
+        "<?php\n\
+         define( 'DB_NAME', 'local' );\n\
+         define( 'DB_USER', 'root' );\n\
+         define( 'DB_PASSWORD', '{THEIR_PASSWORD}' );\n\
+         define( 'DB_HOST', 'localhost' );\n\
+         $table_prefix = 'wp_';\n"
+    );
+    let renamed_user = dbmirror::dedicated_user_name(RENAMED_DOMAIN);
+    dbmirror::mirror_dedicated(&client, PORT, DB, RENAMED_DOMAIN, THEIR_PASSWORD)
+        .expect("dedicated user for the renamed site");
+
+    // Control first: host + user only leaves `local` in the file — no proof.
+    let no_name = RewritePlan::wp(&format!("127.0.0.1:{PORT}"), Some(&renamed_user)).expect("plan");
+    let without = confedit::rewrite(&renamed_original, &no_name).expect("rewrite");
+    std::fs::write(&renamed_config, &without.new_content).unwrap();
+    let control = confverify::verify_signin(&*plat, &client, &renamed, &scratch, PORT, DB)
+        .expect("verify runs");
+    check(
+        &mut ok,
+        "control: without the name the rewritten config still says `local` and mints no proof",
+        control.is_err(),
+        &format!("{control:?}"),
+    );
+
+    let with_name = RewritePlan::wp(&format!("127.0.0.1:{PORT}"), Some(&renamed_user))
+        .expect("plan")
+        .with_database(DB)
+        .expect("a valid database name");
+    let renamed_rewrite = confedit::rewrite(&renamed_original, &with_name).expect("rewrite");
+    check(
+        &mut ok,
+        "the renamed diff moves DB_NAME to the copy and still carries no secret",
+        renamed_rewrite.diff.iter().any(|d| d.text.contains(&format!("'DB_NAME', '{DB}'")))
+            && renamed_rewrite.diff.iter().all(|d| !d.text.contains(THEIR_PASSWORD)),
+        &format!("{:?}", renamed_rewrite.diff),
+    );
+    std::fs::write(&renamed_config, &renamed_original).unwrap();
+    confrewrite::atomic_write_preserving_mode(&renamed_config, &renamed_rewrite.new_content)
+        .expect("atomic write");
+    let renamed_proof = confverify::verify_signin(&*plat, &client, &renamed, &scratch, PORT, DB)
+        .expect("verify runs");
+    check(
+        &mut ok,
+        "a collision-renamed copy connects: the proof mints against the renamed file",
+        matches!(&renamed_proof, Ok(p) if !p.http_confirmed()),
+        &format!("{renamed_proof:?}"),
     );
 
     mysqld.reap();

@@ -6,9 +6,10 @@
 //! behavioural:
 //!
 //! 1. **No password can be staged.** [`RewriteKey`] is a CLOSED enum — Host,
-//!    Port, User — with no password variant, and [`RewritePlan`]'s fields are
-//!    private behind shape-specific constructors. No plan, diff, or write can
-//!    contain a password change, whatever future code does.
+//!    Port, User, Name — with no password variant, and [`RewritePlan`]'s fields
+//!    are private behind shape-specific constructors. No plan, diff, or write
+//!    can contain a password change, whatever future code does. (`Name` — the
+//!    database NAME, never a secret — joined 12 Sep 2026, ledger #574.)
 //! 2. **The diff IS the write.** [`rewrite`] produces the new file content and
 //!    derives the diff FROM those bytes; the caller writes
 //!    [`Rewrite::new_content`] verbatim (after checking the on-disk file still
@@ -48,12 +49,17 @@ pub enum RewriteKey {
     Host,
     Port,
     User,
+    /// The database NAME, for a copy restored under another name than the
+    /// config's (`local` → `local_tr_local_rex`). A name is not a secret, so
+    /// adding it keeps every diff secret-free (ledger #574).
+    Name,
 }
 
 impl RewriteKey {
     /// Exhaustive by construction: adding a variant breaks this constant (and
     /// the tests pinned to it) at compile time.
-    pub const ALL: [RewriteKey; 3] = [RewriteKey::Host, RewriteKey::Port, RewriteKey::User];
+    pub const ALL: [RewriteKey; 4] =
+        [RewriteKey::Host, RewriteKey::Port, RewriteKey::User, RewriteKey::Name];
 
     /// The literal key this maps to in a `.env` file.
     pub fn env_name(self) -> &'static str {
@@ -61,6 +67,7 @@ impl RewriteKey {
             RewriteKey::Host => "DB_HOST",
             RewriteKey::Port => "DB_PORT",
             RewriteKey::User => "DB_USERNAME",
+            RewriteKey::Name => "DB_DATABASE",
         }
     }
 
@@ -72,6 +79,7 @@ impl RewriteKey {
             RewriteKey::Host => Some("DB_HOST"),
             RewriteKey::Port => None,
             RewriteKey::User => Some("DB_USER"),
+            RewriteKey::Name => Some("DB_NAME"),
         }
     }
 }
@@ -130,6 +138,16 @@ impl RewritePlan {
             changes.push((RewriteKey::User, checked_value(RewriteKey::User, u)?));
         }
         Ok(Self { shape: ConfigShape::DotEnv, changes })
+    }
+
+    /// Also point the config at a database under another NAME — the copy was
+    /// restored as `name` because the config's own name was taken on rexenv's
+    /// engine. The norm for Local, where every site's database is `local`;
+    /// until 12 Sep 2026 such a copy could only be connected by hand
+    /// (ledger #574). Same charset check as every other value.
+    pub fn with_database(mut self, name: &str) -> Result<Self> {
+        self.changes.push((RewriteKey::Name, checked_value(RewriteKey::Name, name)?));
+        Ok(self)
     }
 
     pub fn shape(&self) -> ConfigShape {
@@ -502,7 +520,7 @@ mod tests {
         // maps to a password-ish name in either shape. If someone adds a
         // Password variant back, this test — and the exhaustive matches in
         // env_name/wp_name — fail before any code could stage one.
-        assert_eq!(RewriteKey::ALL.len(), 3);
+        assert_eq!(RewriteKey::ALL.len(), 4);
         for k in RewriteKey::ALL {
             for name in [Some(k.env_name()), k.wp_name()].into_iter().flatten() {
                 let lower = name.to_lowercase();
@@ -756,15 +774,57 @@ mod tests {
         let env = "DB_HOST=old\nDB_PORT=3306\nDB_USERNAME=root\nDB_PASSWORD=hunter2\n";
         let wp = "<?php define('DB_HOST','old'); define('DB_USER','root');\n\
                   define('DB_PASSWORD','hunter2');";
+        let env = format!("{env}DB_DATABASE=local\n");
+        let wp = format!("{wp}\ndefine('DB_NAME','local');");
         for (original, plan) in [
-            (env, RewritePlan::env("127.0.0.1", 13306, Some("rex_ea")).unwrap()),
-            (wp, RewritePlan::wp("127.0.0.1:13306", Some("rex_ea")).unwrap()),
+            (env.as_str(), RewritePlan::env("127.0.0.1", 13306, Some("rex_ea")).unwrap()),
+            (wp.as_str(), RewritePlan::wp("127.0.0.1:13306", Some("rex_ea")).unwrap()),
+            (
+                env.as_str(),
+                RewritePlan::env("127.0.0.1", 13306, Some("rex_ea")).unwrap().with_database("local_ea").unwrap(),
+            ),
+            (
+                wp.as_str(),
+                RewritePlan::wp("127.0.0.1:13306", Some("rex_ea")).unwrap().with_database("local_ea").unwrap(),
+            ),
         ] {
             let r = rewrite(original, &plan).unwrap();
             for d in &r.diff {
                 assert!(!d.text.contains("hunter2"), "a secret reached the diff: {:?}", d.text);
                 assert!(!d.text.to_lowercase().contains("password"), "{:?}", d.text);
             }
+        }
+    }
+
+    /// A collision-renamed copy connects by moving the config's database NAME
+    /// too — and only its value bytes change (ledger #574). The name gets the
+    /// same charset check as every other value the editor writes.
+    #[test]
+    fn a_renamed_copy_moves_only_the_database_name_bytes() {
+        let wp = "<?php\ndefine( 'DB_NAME', 'local' );\ndefine( 'DB_USER', 'root' );\n\
+                  define( 'DB_PASSWORD', 'root' );\ndefine( 'DB_HOST', 'localhost' );\n";
+        let plan = RewritePlan::wp("127.0.0.1:13306", Some("rex_tr_local_rex"))
+            .unwrap()
+            .with_database("local_tr_local_rex")
+            .unwrap();
+        let r = rewrite(wp, &plan).unwrap();
+        assert_eq!(
+            r.new_content,
+            "<?php\ndefine( 'DB_NAME', 'local_tr_local_rex' );\ndefine( 'DB_USER', 'rex_tr_local_rex' );\n\
+             define( 'DB_PASSWORD', 'root' );\ndefine( 'DB_HOST', '127.0.0.1:13306' );\n"
+        );
+        assert_eq!(r.diff.len(), 6, "three lines out, three in: {:?}", r.diff);
+
+        let env = "DB_CONNECTION=mysql\nDB_HOST=127.0.0.1\nDB_PORT=3306\nDB_DATABASE=local\nDB_USERNAME=app\n";
+        let plan = RewritePlan::env("127.0.0.1", 13306, None).unwrap().with_database("local_2").unwrap();
+        let r = rewrite(env, &plan).unwrap();
+        assert_eq!(
+            r.new_content,
+            "DB_CONNECTION=mysql\nDB_HOST=127.0.0.1\nDB_PORT=13306\nDB_DATABASE=local_2\nDB_USERNAME=app\n"
+        );
+
+        for bad in ["my db", "x'y", ""] {
+            assert!(RewritePlan::wp("127.0.0.1:13306", None).unwrap().with_database(bad).is_err(), "{bad:?}");
         }
     }
 }

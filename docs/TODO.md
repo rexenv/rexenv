@@ -70,6 +70,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   - [x] **Owner decisions — plan §9** ✓ 12 Sep 2026 — Q1 declined (collision-renamed
     Local copies stay tell-only; the 28 Jul ruling holds), Q2 parked (row under Parked),
     Q3 approved — needed now: `tr.local` could not import because `tr.test` exists.
+  - [x] **Q1 reversed — the one-click connect covers a renamed database** ✓ 12 Sep 2026 —
+    owner, after `tr.local` was restored as `local_tr_local_rex` and its connect refused.
+    `RewriteKey::Name` + `RewritePlan::with_database`, the refusal gone; ledger #574;
+    `a_renamed_copy_moves_only_the_database_name_bytes`,
+    `a_renamed_copy_reaches_the_plan_instead_of_a_refusal` (plant-proven),
+    `config_rewrite_check` step 7 (renamed copy connects; without the name, no proof)
   - [x] **Q3 — choose the domain for a re-homed row** ✓ 12 Sep 2026 — `domain_choice` +
     the row's name field (label on the re-homed TLD, live-checked against
     `takenDomains`); `choose_domain` re-validates in the run —

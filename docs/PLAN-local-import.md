@@ -200,8 +200,10 @@ snapshots, multisite re-homing, and any "clean up Local" affordance.
 
 ## 9. Questions for the owner (the build proceeds on the stated interim)
 
-**Ruled 12 Sep 2026:** Q1 **declined** — collision-renamed Local copies stay tell-only,
-the 28 Jul ruling holds. Q2 **parked** (a `docs/TODO.md` Parked row). Q3 **approved and
+**Ruled 12 Sep 2026:** Q1 **declined, then reversed the same day** — after the owner's
+second Local import (`tr.local`, restored as `local_tr_local_rex`) showed the refusal in
+practice: the site could not load at all until someone edited `DB_NAME` by hand.
+`RewriteKey::Name` now carries the rename (ledger #574). Q2 **parked** (a `docs/TODO.md` Parked row). Q3 **approved and
 needed now**: the owner's `tr.local` could not be imported at all because `tr.test`
 already existed (their default TLD is `.test`), and the row offered no way to pick
 another name. The original questions follow as asked.

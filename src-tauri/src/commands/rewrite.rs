@@ -131,27 +131,21 @@ fn resolve(state: &State<'_, AppState>, site_id: &str) -> Result<Resolution> {
     };
     let file = PathBuf::from(conn.source.path());
 
-    // A collision-renamed import (their `ea` restored as `ea_2`): the closed
-    // key vocabulary cannot express a database rename, so the one-click
-    // change would connect the site to a database that isn't its copy.
-    // Tell-only, honestly.
-    if conn.database != record.db_name {
-        return Ok(Resolution::Refused {
-            reason: format!(
-                "this site's rexenv copy is named `{}`, but the config names `{}` — the \
-                 one-click change doesn't cover a database rename, so use the connection \
-                 lines on the Database tab instead.",
-                record.db_name, conn.database
-            ),
-            file: Some(file.display().to_string()),
-        });
-    }
+    // A collision-renamed import (their `local` restored as `local_tr_local_rex`
+    // — the NORM for Local, where every site's database is called `local`): the
+    // plan moves the config's database NAME to the copy as well. Until 12 Sep
+    // 2026 this refused to tell-only, a ruling called permanent on the evidence
+    // of zero collisions across a dozen Valet sites; the second Local import on
+    // the owner's machine hit it at once, and the owner reversed it (ledger
+    // #574). A name is not a secret, so the diff stays secret-free, and the
+    // sign-in verification below already expects the copy's name.
+    let rename = (conn.database != record.db_name).then(|| record.db_name.clone());
 
     let engine = DbEngine::from_site(site.db_engine);
 
     // The config's DRIVER must be the one this site's database actually speaks.
-    // Same shape as the rename refusal above, and the same reason: `RewriteKey`
-    // is a closed set — Host, Port, User — so a driver change is unrepresentable
+    // `RewriteKey` is a closed set — Host, Port, User, Name — so a driver
+    // change is unrepresentable
     // here, and rewriting host+port WITHOUT it produces the worst kind of
     // success. A `.env` still saying `DB_CONNECTION=mysql`, pointed at 15432,
     // sends a MySQL client at PostgreSQL: the handshake is unreadable to both
@@ -161,7 +155,7 @@ fn resolve(state: &State<'_, AppState>, site_id: &str) -> Result<Resolution> {
         return Ok(Resolution::Refused {
             reason: format!(
                 "this site's database lives in {}, but the config says {} — the one-click \
-                 change covers the host, port and user, not the driver. Set \
+                 change covers the host, port, user and database name, not the driver. Set \
                  `DB_CONNECTION` yourself (the Database tab has the connection lines), \
                  then run this again.",
                 engine.label(),
@@ -182,6 +176,10 @@ fn resolve(state: &State<'_, AppState>, site_id: &str) -> Result<Resolution> {
         ConfigSource::DotEnv { .. } => {
             RewritePlan::env("127.0.0.1", port, creates_user.as_deref())?
         }
+    };
+    let plan = match &rename {
+        Some(name) => plan.with_database(name)?,
+        None => plan,
     };
 
     let original = std::fs::read_to_string(&file)
@@ -652,6 +650,29 @@ mod crash_ordering {
         body.find(needle)
             .unwrap_or_else(|| panic!("`{needle}` is no longer in this function — the step it \
                                        represents moved, so re-read what the ordering protects"))
+    }
+
+    /// **A collision-renamed copy is connected by renaming the config, not
+    /// refused** (ledger #574). The refusal this replaces was ruled permanent
+    /// on 28 Jul 2026 and reversed on 12 Sep 2026, when every second Local
+    /// import met it. The guard pins BOTH halves: the refusal is gone, and the
+    /// rename reaches the plan — a `rename` computed and never applied would
+    /// connect the site to a database that isn't its copy, and the sign-in
+    /// check would then fail the apply with no explanation of why.
+    #[test]
+    fn a_renamed_copy_reaches_the_plan_instead_of_a_refusal() {
+        let body = body_of("fn resolve(");
+        assert!(
+            !body.contains("doesn't cover a database rename"),
+            "the tell-only rename refusal is back in `resolve`"
+        );
+        let computed = at(&body, "conn.database != record.db_name");
+        let applied = at(&body, "plan.with_database(name)");
+        assert!(computed < applied, "the rename must be computed before it is applied to the plan");
+        assert!(
+            at(&body, "confedit::rewrite(&original, &plan)") > applied,
+            "the diff must be produced from the plan AFTER the rename is added, or the preview omits it"
+        );
     }
 
     /// **Apply is ordered so every crash window leaves the ORIGINAL

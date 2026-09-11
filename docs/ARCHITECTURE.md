@@ -1002,7 +1002,10 @@ honest footer —
   Drop-deleted), never logged, never persisted.
 - **The connection rewrite writes ONE user file, provably** (Stage 3:
   `core/{confedit,confverify,confrewrite}`, `commands/rewrite.rs`, v21/v22).
-  `RewriteKey` is a closed enum (Host/Port/User) — no password key exists, so no plan,
+  `RewriteKey` is a closed enum (Host/Port/User/Name — Name, the database NAME, added
+  12 Sep 2026 so a collision-renamed copy such as a second Local site's
+  `local_<domain>` connects in one click instead of tell-only; ledger #574) — no
+  password key exists, so no plan,
   diff or write can stage one; wp-config edits are OUR value-span editor (not wp-cli:
   the preview must BE the write). The diff is derived from the produced bytes; apply
   is gated on a whole-file sha256 fingerprint from preview time; writes refuse MORE

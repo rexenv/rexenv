@@ -163,7 +163,9 @@ the config, never by editing the config's password to match an account.
   (`core::phpconf`) still.
 - **Bedrock and friends**: the `.env` path (already how Stage 2 read them).
 - **Collision-renamed imports (their `myblog` restored as `myblog_2`) → tell-only,
-  PERMANENTLY — settled 28 Jul 2026.** The closed key vocabulary deliberately
+  PERMANENTLY — settled 28 Jul 2026.** *(REVERSED 12 Sep 2026 — every Local site's
+  database is `local`, so the second Local import always collides; `RewriteKey::Name`
+  now carries the rename, ledger #574. The reasoning below is kept as the record.)* The closed key vocabulary deliberately
   cannot express a database rename, and that stays: zero collisions across the
   the dozen real WordPress sites on the reference install, the tell-only floor already
   prints the correct renamed line, and widening a deliberately tight three-key
