@@ -28,6 +28,20 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [ ] **Import sites from Local (WP Engine/Flywheel)** — 11 Sep 2026, planned in
+  `docs/PLAN-local-import.md`. The third migration source after Valet/Herd, under the
+  same read-only/link-in-place/copy-the-database rules; what differs is recorded there
+  (`.local` re-homed to the default TLD, the per-site mysqld found through Local's
+  registry, the copy's URLs re-homed, a PHP picker). Owner questions in §9.
+  - [x] T0 — the plan + this row ✓ 11 Sep 2026 — `docs/PLAN-local-import.md`
+  - [ ] T1 — `core/localwp.rs` read-only discovery + `SourceKind::Local`
+  - [ ] T2 — scan integration, TS types, Import/Sites/Settings copy, MCP description
+  - [ ] T3 — PHP picker for rows pinned to a version rexenv doesn't ship
+  - [ ] T4 — Local database source (registry port + socket) in the db import
+  - [ ] T5 — URL re-home pass on rexenv's copy
+  - [ ] T6 — `local_scan_check` example
+  - [ ] T7 — ARCHITECTURE §8, ledger rows, PUBLISH-TESTING §N
+
 - [ ] **In-app self-update — a dmg user has no update path at all**
   — 6 Sep 2026, planned in `docs/archive/PLAN-self-update.md`; supersedes the Phase 4+ row
   "Packaging polish: Tauri updater" (`docs/archive/TASKS-RELEASE.md` §6.1), which
