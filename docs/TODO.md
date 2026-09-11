@@ -82,6 +82,16 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     panel said the site still read its old one. Ledger #575;
     `only_a_local_sites_socket_config_reaches_nothing_under_rexenv`,
     `the_import_panel_never_claims_a_local_site_reads_its_old_database`
+  - [x] **The import progress stays on screen too** ✓ 12 Sep 2026 — owner: pressing Import
+    in the bottom bar meant scrolling back to the top to watch the batch. The progress
+    card now renders in the same bar below the scrolling list. tsc + eslint; not yet
+    seen in a packaged build.
+  - [ ] **"Also connect Local sites" in the import batch** — owner, 12 Sep 2026: a Local
+    site can't load under rexenv until connected, so the batch offers the connect (ticked
+    by default, Local rows only — Valet/Herd keep their per-site opt-in).
+  - [ ] **Import is its own page, not a card inside Settings → DNS & SSL** — owner, 12 Sep
+    2026: a sidebar entry; DNS & SSL keeps only DNS/SSL items (the importable-sites nudge
+    and the leftover-dumps card move out).
   - [x] **Q3 — choose the domain for a re-homed row** ✓ 12 Sep 2026 — `domain_choice` +
     the row's name field (label on the re-homed TLD, live-checked against
     `takenDomains`); `choose_domain` re-validates in the run —

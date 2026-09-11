@@ -392,15 +392,6 @@ export function Import() {
 
             {consentCards}
 
-            {progress && (
-              <ImportProgressCard
-                progress={progress}
-                running={running}
-                outcomes={outcomes}
-                onCancel={() => void valetImportCancel().catch(toastBackendError)}
-              />
-            )}
-
             <div className="overflow-hidden rounded-xl border border-rex-border bg-rex-surface-1">
               <div className="flex items-center gap-3 border-b border-rex-border-subtle px-4 py-2.5">
                 <input
@@ -597,12 +588,24 @@ export function Import() {
           </div>
         )}
       </div>
-      {/* The action bar lives OUTSIDE the scrolling list, so it is on screen
-          wherever the list is scrolled to. It used to sit in the list's own
-          header: with a long list, ticking a row near the bottom meant
-          scrolling all the way back up to press Import (owner, 12 Sep 2026). */}
-      {!isLoading && candidates.length > 0 && (
-        <div className="flex flex-none flex-wrap items-center gap-3 border-t border-rex-border bg-rex-surface-1 px-[18px] py-2.5">
+      {/* The action bar — and the batch's progress — live OUTSIDE the scrolling
+          list, so both are on screen wherever the list is scrolled to. The bar
+          used to sit in the list's own header (ticking a row near the bottom
+          meant scrolling back up to press Import), and the progress card at the
+          top of the list (pressing Import at the bottom meant scrolling back up
+          to see what it was doing) — owner, 12 Sep 2026, both. */}
+      {!isLoading && (candidates.length > 0 || progress) && (
+        <div className="flex flex-none flex-col gap-2.5 border-t border-rex-border bg-rex-surface-1 px-[18px] py-2.5">
+          {progress && (
+            <ImportProgressCard
+              progress={progress}
+              running={running}
+              outcomes={outcomes}
+              onCancel={() => void valetImportCancel().catch(toastBackendError)}
+            />
+          )}
+          {candidates.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3">
           <span className="text-[0.75rem] text-rex-text-muted">
             {picked.size > 0
               ? `${picked.size} of ${ready.length} ready selected`
@@ -633,6 +636,8 @@ export function Import() {
               {running ? "Importing…" : `Import ${picked.size || ""}`.trim()}
             </Button>
           </div>
+        </div>
+          )}
         </div>
       )}
     </>
