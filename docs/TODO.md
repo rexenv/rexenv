@@ -52,7 +52,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     `the_override_names_our_copy_and_holds_no_secret`,
     `a_copy_moves_to_https_on_the_new_name_bare_name_last`,
     `the_url_pass_writes_only_the_copy_this_job_restored`. L1 owed (T6)
-  - [ ] T6 — `local_scan_check` example
+  - [x] T6 — the two L1 examples ✓ 11 Sep 2026 — `local_scan_check` (sandbox, PASS on the
+    real install: 20,340 entries unchanged) + `local_import_check` (network, PASS: socket
+    login past a dead TCP port, URL pass on PHP 8.x and 7.4, serialized length repaired,
+    wp-config byte-identical); ledger #570 → ✅, #573 L1
   - [ ] T7 — ARCHITECTURE §8, ledger rows, PUBLISH-TESTING §N
 
 - [ ] **In-app self-update — a dmg user has no update path at all**

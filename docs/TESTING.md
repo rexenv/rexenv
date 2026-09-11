@@ -182,6 +182,21 @@ it can:
   subject also publishes, ask what the subject would still say if the thing were
   broken.**
 
+  **`local_scan_check` (sandbox tier) and `local_import_check` (network tier), 11 Sep
+  2026, ledger #570/#572/#573, are the Local import's L1 pair, split by what each can
+  reach.** The scan check runs against the REAL Local install and fingerprints
+  `~/Local Sites` and Local's registry files — but not Local's app-data
+  subdirectories, because a running Local rewrites its Electron caches on its own
+  clock, and a read-only proof that fails for someone else's writes teaches people to
+  ignore it. The import check cannot use Local at all — rexenv never starts Local's
+  servers — so a sandbox mysqld plays Local's per-site server and every leg carries a
+  negative control: the socket login is proven with a defaults file whose TCP port is
+  DEAD (the TCP file on that port must fail), and the URL pass runs against a real
+  WordPress whose wp-config names Local's `localhost` / `root` / `root` / `local`,
+  which plain wp-cli is asserted unable to reach — so reaching the copy can only be the
+  override's doing, on PHP 8.x and again on 7.4 (Notice vs Warning on the
+  redefinition). What both leave to `docs/PUBLISH-TESTING.md` §N is Local's real mysqld.
+
   **`site_matrix_check` (network tier, 11 Sep 2026, ledger #555-#557) walks the
   whole space instead of sampling it**: every pinned PHP × {Blank PHP, WordPress,
   Laravel} × {MySQL, MariaDB, PostgreSQL} — 63 combinations in about five minutes —

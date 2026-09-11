@@ -126,6 +126,8 @@ git_site_provision_check network
 health_watchdog_check service
 laravel_postgres_check network
 linked_site_check sandbox
+local_import_check network
+local_scan_check sandbox
 log_tail_check service
 mail_adopt_settings_check system
 mail_api_check service
