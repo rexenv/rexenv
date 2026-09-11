@@ -50,6 +50,11 @@ nothing.** The silent case is the one that ships to everybody.
   `queued` that never moves, a counter stuck short of its total, and no Retry — fixed
   only by quitting the app. That was a planned row whose resolve returned through the
   cache hit (#566).
+- [ ] **Leave the admin prompt open for a minute on the Domains step** while downloads are
+  still running (open the footer later, or watch the Install rows before continuing). The
+  byte counts must keep moving while the dialog sits there. **Tell:** progress that
+  freezes exactly while a password or keychain dialog is open and jumps on as soon as it
+  is answered — the prompt waiting on a runtime worker again (#567).
 - [ ] Admin prompt for the `.rex` DNS resolver appears and is accepted (`/etc/resolver/rex`; NO `/etc/resolver/test` on a fresh machine).
 - [ ] Keychain prompt to trust the local CA appears and is accepted.
 - [ ] Admin prompt for the edge to bind ports 80/443 appears and is accepted.

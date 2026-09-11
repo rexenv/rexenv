@@ -455,12 +455,25 @@ pub async fn cli_install(state: State<'_, AppState>) -> Result<core::cli::CliSta
 
 /// Run first-run system setup (§3.4): install the `.rex` backbone OS resolver (one admin
 /// prompt) + trust the local CA (native keychain dialog). Idempotent — safe to
-/// re-run. Backs the Onboarding "Set up domains & SSL" step. `async` so the blocking
-/// privileged prompts run off the UI thread (same handling as `start_services`).
+/// re-run. Backs the Onboarding "Set up domains & SSL" step.
+///
+/// The prompts wait for the user, and `run_system_setup` waits with them on a
+/// plain thread. `async` alone kept that wait off the UI thread but ON a tokio
+/// worker, for as long as the dialogs stayed open — and the first-run downloads
+/// the Install step started run on those workers, so they could sit still until
+/// the user answered (found 11 Sep 2026, diagnosing #566). Off the runtime now,
+/// like `wp_blocking`.
 #[tauri::command]
-pub async fn system_setup(state: State<'_, AppState>) -> Result<()> {
-    core::setup::run_system_setup(state.platform.as_ref())?;
-    Ok(())
+pub async fn system_setup(app: tauri::AppHandle) -> Result<()> {
+    tauri::async_runtime::spawn_blocking(move || {
+        // `try_state`, not `state`: AppState is absent after a failed init (#178),
+        // and a panic on this thread would surface as a bare JoinError.
+        let state = tauri::Manager::try_state::<AppState>(&app)
+            .ok_or_else(|| Error::Other("rexenv did not finish starting — restart the app".into()))?;
+        core::setup::run_system_setup(state.platform.as_ref()).map(drop)
+    })
+    .await
+    .map_err(|e| Error::Other(format!("system setup task failed: {e}")))?
 }
 
 /// Re-trust the local CA in the user trust store (macOS login keychain — shows the
@@ -614,6 +627,30 @@ pub async fn uninstall_system(
 
 #[cfg(test)]
 mod tests {
+
+    /// #567 — **first-run system setup waits on its prompts OFF the async
+    /// runtime.** The admin prompt and the keychain dialog stay open as long as
+    /// the user takes; called straight from the `async fn`, that wait held a tokio
+    /// worker the Install step's downloads share. No test can answer a real
+    /// prompt, so the shape is asserted: the call sits inside `spawn_blocking`.
+    #[test]
+    fn system_setup_waits_on_its_prompts_off_the_async_runtime() {
+        let src = crate::core::copy_scan::production_source(include_str!("system.rs"));
+        let body = src
+            .split("pub async fn system_setup(")
+            .nth(1)
+            .and_then(|b| b.split("\n#[tauri::command]").next())
+            .expect("system_setup");
+        let blocking = body.find("spawn_blocking(").expect(
+            "system_setup no longer uses spawn_blocking — its prompts would hold a runtime worker \
+             (and the first-run downloads on it) until the user answers",
+        );
+        let call = body.find("run_system_setup(").expect("system_setup no longer calls run_system_setup");
+        assert!(
+            call > blocking,
+            "run_system_setup is called before/outside spawn_blocking, i.e. on the runtime worker"
+        );
+    }
 
     /// #178 — **the state a failed startup still has to answer from is ALWAYS
     /// managed, so reading it can never panic.**

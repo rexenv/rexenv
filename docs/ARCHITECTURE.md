@@ -485,7 +485,11 @@ Live-proven end to end by `site_stop_start_check`.
   still running when they clicked on to "Create your first site", that create
   planned them as missing, they landed while its certificate was issued, and the
   new batch's resolves were cache hits. Settling never overwrites what a resolver
-  did report (`Done` stays `Done`; its own failure text stays).
+  did report (`Done` stays `Done`; its own failure text stays). The same wizard's
+  Domains step waits on its admin prompt and keychain dialog inside `spawn_blocking`
+  (`system_setup`, #567): as a plain call in the `async fn` that wait held a tokio
+  worker — one the Install step's downloads share — for as long as the dialog stayed
+  open. Other prompt-owning commands still wait on a worker or the main thread (TODO).
 - Long-running children spawn via `ProcessSupervisor::spawn_logged` →
   `<log_dir>/<svc>-stdout.log`. `stop` escalates to SIGKILL after a grace window (L3).
   Beware orphan workers after a SIGKILLed master: title-rewritten fpm/nginx workers can

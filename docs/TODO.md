@@ -41,11 +41,20 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   `core::downloads`, L1 leg 2 of `download_progress_check`. **Not verified by hand yet**:
   the wizard on fresh app data.
 
-- [ ] **`system_setup` blocks a runtime worker for the whole privileged prompt** — 11 Sep 2026,
-  found diagnosing the row above (bug B). It is `async` but calls `run_system_setup`
-  directly, so the resolver admin prompt and the keychain dialog hold a tokio worker until
-  the user answers; first-run downloads on that worker can pause meanwhile (they resume, a
-  pause, not the stuck row above). Fix: `spawn_blocking` with `platform::current()`.
+- [x] **`system_setup` blocked a runtime worker for the whole privileged prompt** ✓ 11 Sep 2026
+  — found diagnosing the row above (bug B). It was `async` but called `run_system_setup`
+  directly, so the resolver admin prompt and the keychain dialog held a tokio worker until
+  the user answered; first-run downloads on that worker could pause meanwhile. It now runs
+  in `spawn_blocking` on the app's own state (#567). Source guard only — no test can answer
+  a real prompt.
+
+- [ ] **The other commands that wait on a privileged prompt** — 11 Sep 2026, found fixing
+  the row above; not the first-run path, so not folded in. ASYNC, holding a worker while the
+  dialog is open: `uninstall_system`, `resolver_take_over`, `add_site_domain` /
+  `change_site_domain` / `site_provision_retry` (only when a new TLD needs its resolver
+  file). SYNC, so Tauri runs them on the MAIN thread and the whole window freezes until
+  the dialog is answered: `trust_local_ca`, `repair_resolver`, `trust_ca_in_firefox`.
+  Found by scanning `commands/` for the prompt-owning calls; re-scan before fixing.
 
 - [x] **Deleting or renaming a site left its job logs behind** ✓ 11 Sep 2026 — found by the
   live MCP test: its deleted fixture sites' provision logs stayed, and the machine held

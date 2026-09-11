@@ -6,68 +6,68 @@ App version **0.6.1** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md`
 
 ### Now — actionable code/test work — 12
 
-- `TODO.md:44` `system_setup` blocks a runtime worker for the whole privileged prompt
-- `TODO.md:64` In-app self-update — a dmg user has no update path at all
-- `TODO.md:192` ~16 flag-taking `rex` commands still ignore what they do not recognise
-- `TODO.md:207` A public tunnel for `mstest.rex` was running that this session never started
-- `TODO.md:234` The pinned wp-cli phar (2.12.0) is not PHP 8.5-clean
-- `TODO.md:268` Private-window flags for Arc, ChatGPT Atlas, Orion
-- `TODO.md:277` Windows/Linux: `detect_browsers`/`open_in_browser` are the default empty stubs
-- `TODO.md:284` Eliminate the bug class: bundled PHP with curl's THREADED resolver
-- `TODO.md:359` Option, not a commitment: a self-built nginx (deployment target 12) would drop the app floor from 15 to 14
-- `TODO.md:363` PHP 7.4 — the five residuals of a shipped feature
-- `TODO.md:437` Radicle-hosted repos are unverified
-- `TODO.md:439` Why that `rex` instance went deaf was never diagnosed
+- `TODO.md:51` The other commands that wait on a privileged prompt
+- `TODO.md:73` In-app self-update — a dmg user has no update path at all
+- `TODO.md:201` ~16 flag-taking `rex` commands still ignore what they do not recognise
+- `TODO.md:216` A public tunnel for `mstest.rex` was running that this session never started
+- `TODO.md:243` The pinned wp-cli phar (2.12.0) is not PHP 8.5-clean
+- `TODO.md:277` Private-window flags for Arc, ChatGPT Atlas, Orion
+- `TODO.md:286` Windows/Linux: `detect_browsers`/`open_in_browser` are the default empty stubs
+- `TODO.md:293` Eliminate the bug class: bundled PHP with curl's THREADED resolver
+- `TODO.md:368` Option, not a commitment: a self-built nginx (deployment target 12) would drop the app floor from 15 to 14
+- `TODO.md:372` PHP 7.4 — the five residuals of a shipped feature
+- `TODO.md:446` Radicle-hosted repos are unverified
+- `TODO.md:448` Why that `rex` instance went deaf was never diagnosed
 
 ### Ledger-driven proof backlog — 2
 
-- `TODO.md:452` `wp_plugins_check` failed its deactivate assertion once and has not reproduced — the product-bug flag raise…
-- `TODO.md:504` Bedrock live provision — the committed example (#35), deliberately not built
+- `TODO.md:461` `wp_plugins_check` failed its deactivate assertion once and has not reproduced — the product-bug flag raise…
+- `TODO.md:513` Bedrock live provision — the committed example (#35), deliberately not built
 
 ### Release gates (human, scripted — see the docs named) — 13
 
-- `TODO.md:524` PUBLISH-TESTING §B
-- `TODO.md:525` PUBLISH-TESTING §D
-- `TODO.md:543` Flip the release host back when `rexenv/rexenv` goes public
-- `TODO.md:554` The self-update swap probe (T0) and the first real in-app update (T11)
-- `TODO.md:559` PUBLISH-TESTING §K
-- `TODO.md:560` PUBLISH-TESTING §F
-- `TODO.md:561` PUBLISH-TESTING §G
-- `TODO.md:567` Release 5.4 — clean-Mac smoke test
-- `TODO.md:571` Tunnel probe session
-- `TODO.md:575` Intel spot-run
-- `TODO.md:578` The macOS floor is a claim about BOTH slices, and most of it has still never been measured
-- `TODO.md:616` In-app verifies owed
-- `TODO.md:628` PUBLISH-TESTING §E / §L
+- `TODO.md:533` PUBLISH-TESTING §B
+- `TODO.md:534` PUBLISH-TESTING §D
+- `TODO.md:552` Flip the release host back when `rexenv/rexenv` goes public
+- `TODO.md:563` The self-update swap probe (T0) and the first real in-app update (T11)
+- `TODO.md:568` PUBLISH-TESTING §K
+- `TODO.md:569` PUBLISH-TESTING §F
+- `TODO.md:570` PUBLISH-TESTING §G
+- `TODO.md:576` Release 5.4 — clean-Mac smoke test
+- `TODO.md:580` Tunnel probe session
+- `TODO.md:584` Intel spot-run
+- `TODO.md:587` The macOS floor is a claim about BOTH slices, and most of it has still never been measured
+- `TODO.md:625` In-app verifies owed
+- `TODO.md:637` PUBLISH-TESTING §E / §L
 
 ### Parked (deliberate — needs explicit go; don't pick up silently) — 5
 
-- `TODO.md:634` The live pool swap is still L3
-- `TODO.md:638` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN 25 Aug 2026
-- `TODO.md:647` Install WordPress into an empty LINKED folder
-- `TODO.md:654` Valet compatibility tails
-- `TODO.md:679` `rex` design-first set — ONE item left: raw `wp` passthrough
+- `TODO.md:643` The live pool swap is still L3
+- `TODO.md:647` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN 25 Aug 2026
+- `TODO.md:656` Install WordPress into an empty LINKED folder
+- `TODO.md:663` Valet compatibility tails
+- `TODO.md:688` `rex` design-first set — ONE item left: raw `wp` passthrough
 
 ### Menu-bar app — 1
 
-- `TODO.md:692` Hold the tray menu open while the stack MOVES
+- `TODO.md:701` Hold the tray menu open while the stack MOVES
 
 ### Blocked on external work — 4
 
-- `TODO.md:702` Xdebug on PHP 8.0
-- `TODO.md:707` SMAppService privileged helper
-- `TODO.md:709` Developer ID signing + notarization
-- `TODO.md:711` OpenLiteSpeed override server
+- `TODO.md:711` Xdebug on PHP 8.0
+- `TODO.md:716` SMAppService privileged helper
+- `TODO.md:718` Developer ID signing + notarization
+- `TODO.md:720` OpenLiteSpeed override server
 
 ### Phase 4+ (next era) — 3
 
-- `TODO.md:721` Windows platform impls — fill the `todo!()` stubs in
-- `TODO.md:723` Linux platform impls — same, `platform/linux/mod.rs`
-- `TODO.md:724` Public distribution (the open-sourcing half of the old "packaging polish" row)
+- `TODO.md:730` Windows platform impls — fill the `todo!()` stubs in
+- `TODO.md:732` Linux platform impls — same, `platform/linux/mod.rs`
+- `TODO.md:733` Public distribution (the open-sourcing half of the old "packaging polish" row)
 
 ## Claim ledger (`scripts/ledger-tally.sh`)
 
-**✅ 487 · ◐ 51 · 🔨 11 · 🚫 17** of 566 rows, plus 15 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432, #486, #541).
+**✅ 488 · ◐ 51 · 🔨 11 · 🚫 17** of 567 rows, plus 15 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432, #486, #541).
 
 ## Plans in flight (`docs/PLAN-*.md`) and their own Status line
 
