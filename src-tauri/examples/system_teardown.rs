@@ -16,7 +16,9 @@ fn main() {
             return;
         }
     };
-    match setup::run_system_teardown(&conn, &*plat) {
+    // Teardown takes the database itself and locks it per step, never across its
+    // prompts (#569).
+    match setup::run_system_teardown(&std::sync::Mutex::new(conn), &*plat) {
         Ok(r) => println!(
             "system teardown OK — removed {:?}, restored {:?}, left alone {:?}, backup missing {:?}; CA untrusted",
             r.removed, r.restored, r.left_alone, r.backup_missing

@@ -377,9 +377,9 @@ pub fn resolver_tld_status(state: State<'_, AppState>, tld: String) -> Result<Re
 /// Consent lives in the UI; this is the operation it authorises.
 #[tauri::command]
 pub async fn resolver_take_over(state: State<'_, AppState>, tld: String) -> Result<()> {
-    let conn = lock(&state)?;
+    // `&state.db`, not a guard: the lock is taken per step, never across the prompt (#569).
     core::prompt::while_prompting(|| {
-        core::dns::take_over_resolver(&conn, state.platform.as_ref(), &tld, core::dns::DEFAULT_DNS_PORT)
+        core::dns::take_over_resolver(&state.db, state.platform.as_ref(), &tld, core::dns::DEFAULT_DNS_PORT)
     })
 }
 
@@ -389,9 +389,8 @@ pub async fn resolver_hand_back(
     state: State<'_, AppState>,
     tld: String,
 ) -> Result<core::dns::ResolverPlan> {
-    let conn = lock(&state)?;
     core::prompt::while_prompting(|| {
-        core::dns::hand_back_resolver(&conn, state.platform.as_ref(), &tld, core::dns::DEFAULT_DNS_PORT)
+        core::dns::hand_back_resolver(&state.db, state.platform.as_ref(), &tld, core::dns::DEFAULT_DNS_PORT)
     })
 }
 

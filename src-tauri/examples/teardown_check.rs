@@ -58,7 +58,7 @@ fn main() {
     } else {
         println!("\n── Running run_system_teardown (enter your macOS password if prompted) ──");
         let conn = db::open_for_platform(plat.paths()).expect("app database");
-        match setup::run_system_teardown(&conn, &*plat) {
+        match setup::run_system_teardown(&std::sync::Mutex::new(conn), &*plat) {
             Ok(r) => println!(
                 "teardown returned Ok — removed {:?}, restored {:?}, left alone {:?}",
                 r.removed, r.restored, r.left_alone

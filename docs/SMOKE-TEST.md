@@ -59,7 +59,10 @@ nothing.** The silent case is the one that ships to everybody.
   local CA (or Repair a TLD's resolver): while the keychain/admin dialog is open, the app
   window must still scroll, switch screens and show live status. **Tell:** a beachball or
   a window that ignores clicks until the dialog is answered — a prompting command running
-  on the main thread (#568).
+  on the main thread (#568). **Same check with a dialog that touches the database**:
+  Import → take over a Valet/Herd TLD (or hand one back). While its admin prompt is open,
+  the Sites list and status must still load. **Tell:** screens that spin until the prompt
+  is answered — the database locked across the dialog (#569).
 - [ ] Admin prompt for the `.rex` DNS resolver appears and is accepted (`/etc/resolver/rex`; NO `/etc/resolver/test` on a fresh machine).
 - [ ] Keychain prompt to trust the local CA appears and is accepted.
 - [ ] Admin prompt for the edge to bind ports 80/443 appears and is accepted.

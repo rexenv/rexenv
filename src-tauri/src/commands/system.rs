@@ -626,11 +626,9 @@ pub async fn uninstall_system(
             mgr.stop_all(state.platform.as_ref())?;
         }
     }
-    let conn = state
-        .db
-        .lock()
-        .map_err(|_| Error::Other("database lock poisoned".into()))?;
-    core::prompt::while_prompting(|| core::setup::run_system_teardown(&conn, state.platform.as_ref()))
+    // The database, not a guard on it: teardown locks it per step and never across
+    // its prompts (#569).
+    core::prompt::while_prompting(|| core::setup::run_system_teardown(&state.db, state.platform.as_ref()))
 }
 
 #[cfg(test)]

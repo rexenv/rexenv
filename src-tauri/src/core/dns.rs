@@ -527,7 +527,7 @@ pub fn backup_path(platform: &dyn Platform, tld: &str) -> Result<std::path::Path
 /// nothing on disk changed. Refuses a file we can't read — we will not replace
 /// what we cannot restore.
 pub fn take_over_resolver(
-    conn: &rusqlite::Connection,
+    db: &std::sync::Mutex<rusqlite::Connection>,
     platform: &dyn Platform,
     tld: &str,
     port: u16,
@@ -552,8 +552,12 @@ pub fn take_over_resolver(
     // Born 0600 (B6); re-hardens an existing file before overwriting, which is
     // what a re-takeover after they reclaimed the TLD does.
     platform.permissions().write_private(&backup, original.as_bytes())?;
+    // The record lands under a lock RELEASED before the privileged write: the
+    // admin dialog stays open as long as the user takes, and holding the
+    // database across it made every command that reads it wait on the user
+    // (#569).
     crate::state::store::insert_resolver_takeover(
-        conn,
+        &*db_lock(db)?,
         tld,
         &original,
         &backup.display().to_string(),
@@ -561,11 +565,20 @@ pub fn take_over_resolver(
 
     if let Err(e) = configure_resolver(platform, tld, port) {
         // Roll back together — the row owns the file.
-        let _ = crate::state::store::delete_resolver_takeover(conn, tld);
+        if let Ok(conn) = db_lock(db) {
+            let _ = crate::state::store::delete_resolver_takeover(&conn, tld);
+        }
         let _ = std::fs::remove_file(&backup);
         return Err(e);
     }
     Ok(())
+}
+
+/// The app database, locked for ONE step — never across a privileged prompt.
+pub(crate) fn db_lock(
+    db: &std::sync::Mutex<rusqlite::Connection>,
+) -> Result<std::sync::MutexGuard<'_, rusqlite::Connection>> {
+    db.lock().map_err(|_| Error::Other("database lock poisoned".into()))
 }
 
 /// What teardown (or a hand-back) should do about our resolver files, decided
@@ -666,27 +679,31 @@ pub fn finish_resolver_teardown(
 /// rexenv". Refuses a TLD we never borrowed — handing back a file we created
 /// ourselves would just be deleting it under a friendlier name.
 pub fn hand_back_resolver(
-    conn: &rusqlite::Connection,
+    db: &std::sync::Mutex<rusqlite::Connection>,
     platform: &dyn Platform,
     tld: &str,
     port: u16,
 ) -> Result<ResolverPlan> {
-    if crate::state::store::get_resolver_takeover(conn, tld)?.is_none() {
-        return Err(Error::Other(format!(
-            "rexenv didn't take .{tld} over from anything, so there's nothing to hand back."
-        )));
-    }
-    let full = plan_resolver_teardown(conn, platform, port)?;
-    // Narrow the whole-system plan to this one TLD.
-    let only = |v: &[String]| -> Vec<String> {
-        if v.iter().any(|t| t == tld) { vec![tld.to_string()] } else { Vec::new() }
-    };
-    let plan = ResolverPlan {
-        remove: only(&full.remove),
-        restore: full.restore.into_iter().filter(|(t, _)| t == tld).collect(),
-        drop_records: vec![tld.to_string()],
-        backup_missing: only(&full.backup_missing),
-        reclaimed: only(&full.reclaimed),
+    // Planned under the lock, which is released before the prompt below (#569).
+    let plan = {
+        let conn = db_lock(db)?;
+        if crate::state::store::get_resolver_takeover(&conn, tld)?.is_none() {
+            return Err(Error::Other(format!(
+                "rexenv didn't take .{tld} over from anything, so there's nothing to hand back."
+            )));
+        }
+        let full = plan_resolver_teardown(&conn, platform, port)?;
+        // Narrow the whole-system plan to this one TLD.
+        let only = |v: &[String]| -> Vec<String> {
+            if v.iter().any(|t| t == tld) { vec![tld.to_string()] } else { Vec::new() }
+        };
+        ResolverPlan {
+            remove: only(&full.remove),
+            restore: full.restore.into_iter().filter(|(t, _)| t == tld).collect(),
+            drop_records: vec![tld.to_string()],
+            backup_missing: only(&full.backup_missing),
+            reclaimed: only(&full.reclaimed),
+        }
     };
 
     let mut cmds = Vec::new();
@@ -699,7 +716,7 @@ pub fn hand_back_resolver(
     if !cmds.is_empty() {
         platform.privileges().run_privileged(&cmds.join(" ; "))?;
     }
-    finish_resolver_teardown(conn, platform, &plan)?;
+    finish_resolver_teardown(&*db_lock(db)?, platform, &plan)?;
     Ok(plan)
 }
 
@@ -1119,7 +1136,7 @@ mod tests {
             Cancelled,
             RealPerms,
         );
-        let conn = crate::state::db::open_in_memory().unwrap();
+        let conn = std::sync::Mutex::new(crate::state::db::open_in_memory().unwrap());
 
         let err = take_over_resolver(&conn, &platform, "test", 15353)
             .expect_err("a cancelled prompt must fail the takeover");
@@ -1140,7 +1157,7 @@ mod tests {
             "the rollback left our backup behind"
         );
         assert!(
-            crate::state::store::get_resolver_takeover(&conn, "test").unwrap().is_none(),
+            crate::state::store::get_resolver_takeover(&conn.lock().unwrap(), "test").unwrap().is_none(),
             "the rollback left the record behind — teardown would later 'restore' from a backup \
              that no longer exists"
         );
@@ -1275,7 +1292,7 @@ mod tests {
             RootWrites(their_file.clone()),
             NoBackup,
         );
-        let conn = crate::state::db::open_in_memory().unwrap();
+        let conn = std::sync::Mutex::new(crate::state::db::open_in_memory().unwrap());
 
         take_over_resolver(&conn, &platform, "test", 15353)
             .expect_err("a backup that cannot be written must fail the takeover");
@@ -1285,6 +1302,161 @@ mod tests {
             "root replaced the user's resolver file even though the backup failed. There is now \
              no copy of what was there, so nothing can give it back — which is why the backup \
              lands FIRST rather than being rolled back afterwards"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// #569 — **a takeover and a hand-back never hold the database lock across
+    /// the admin prompt.** The dialog stays open as long as the user takes; with
+    /// the lock held, every command that reads the database waited on the user.
+    /// The fake root checks the lock at the moment it is asked.
+    #[test]
+    fn takeover_and_hand_back_prompt_without_holding_the_database_lock() {
+        use crate::platform::traits::{
+            AutostartManager, BinaryProvider, CertTrustManager, DnsAgentManager, DnsManager,
+            EdgeSupervisor, Paths, PermissionManager, Platform, PrivilegeManager,
+            ProcessSupervisor, ShellRunner,
+        };
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::{Arc, Mutex};
+
+        let root = std::env::temp_dir().join(format!("rexenv-dns569-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let their_file = root.join("resolver-test");
+        const THEIRS: &str = "nameserver 127.0.0.1\nport 53\n";
+        std::fs::write(&their_file, THEIRS).unwrap();
+
+        struct TmpPaths(std::path::PathBuf);
+        impl Paths for TmpPaths {
+            fn app_data_dir(&self) -> Result<std::path::PathBuf> {
+                Ok(self.0.clone())
+            }
+            fn config_dir(&self) -> Result<std::path::PathBuf> {
+                Ok(self.0.join("config"))
+            }
+            fn log_dir(&self) -> Result<std::path::PathBuf> {
+                Ok(self.0.join("logs"))
+            }
+            fn bin_dir(&self) -> Result<std::path::PathBuf> {
+                Ok(self.0.join("bin"))
+            }
+            fn hosts_file(&self) -> std::path::PathBuf {
+                self.0.join("hosts")
+            }
+        }
+        struct TmpDns(std::path::PathBuf);
+        impl DnsManager for TmpDns {
+            fn resolver_path(&self, _tld: &str) -> std::path::PathBuf {
+                self.0.clone()
+            }
+            fn resolver_contents(&self, port: u16) -> String {
+                format!("nameserver 127.0.0.1\nport {port}\n")
+            }
+            fn install_command(&self, _tld: &str, _port: u16) -> String {
+                "install".into()
+            }
+            fn uninstall_command(&self, _tlds: &[String]) -> String {
+                "uninstall".into()
+            }
+            fn restore_command(&self, _restores: &[(String, std::path::PathBuf)]) -> String {
+                "restore".into()
+            }
+        }
+        /// Root that notes whether the database was free when it was asked.
+        struct LockProbe {
+            db: Arc<Mutex<rusqlite::Connection>>,
+            file: std::path::PathBuf,
+            prompts: Arc<AtomicUsize>,
+            held: Arc<AtomicUsize>,
+        }
+        impl PrivilegeManager for LockProbe {
+            fn run_privileged(&self, script: &str) -> Result<String> {
+                self.prompts.fetch_add(1, Ordering::SeqCst);
+                if self.db.try_lock().is_err() {
+                    self.held.fetch_add(1, Ordering::SeqCst);
+                }
+                if script == "install" {
+                    std::fs::write(&self.file, "nameserver 127.0.0.1\nport 15353\n")?;
+                }
+                Ok(String::new())
+            }
+        }
+        struct RealPerms;
+        impl PermissionManager for RealPerms {
+            fn set_executable(&self, _p: &std::path::Path) -> Result<()> {
+                Ok(())
+            }
+            fn set_private(&self, _p: &std::path::Path) -> Result<()> {
+                Ok(())
+            }
+            fn write_private(&self, path: &std::path::Path, contents: &[u8]) -> Result<()> {
+                std::fs::write(path, contents)?;
+                Ok(())
+            }
+        }
+        struct P(TmpPaths, TmpDns, LockProbe, RealPerms);
+        impl Platform for P {
+            fn paths(&self) -> &dyn Paths {
+                &self.0
+            }
+            fn dns(&self) -> &dyn DnsManager {
+                &self.1
+            }
+            fn privileges(&self) -> &dyn PrivilegeManager {
+                &self.2
+            }
+            fn permissions(&self) -> &dyn PermissionManager {
+                &self.3
+            }
+            fn supervisor(&self) -> &dyn ProcessSupervisor {
+                unimplemented!()
+            }
+            fn cert_trust(&self) -> &dyn CertTrustManager {
+                unimplemented!()
+            }
+            fn autostart(&self) -> &dyn AutostartManager {
+                unimplemented!()
+            }
+            fn shell(&self) -> &dyn ShellRunner {
+                unimplemented!()
+            }
+            fn binaries(&self) -> &dyn BinaryProvider {
+                unimplemented!()
+            }
+            fn edge(&self) -> &dyn EdgeSupervisor {
+                unimplemented!()
+            }
+            fn dns_agent(&self) -> &dyn DnsAgentManager {
+                unimplemented!()
+            }
+            fn app_bundle(&self) -> &dyn crate::platform::traits::AppBundle {
+                unimplemented!()
+            }
+        }
+
+        let db = Arc::new(Mutex::new(crate::state::db::open_in_memory().unwrap()));
+        let prompts = Arc::new(AtomicUsize::new(0));
+        let held = Arc::new(AtomicUsize::new(0));
+        let platform = P(
+            TmpPaths(root.clone()),
+            TmpDns(their_file.clone()),
+            LockProbe { db: db.clone(), file: their_file.clone(), prompts: prompts.clone(), held: held.clone() },
+            RealPerms,
+        );
+
+        take_over_resolver(&db, &platform, "test", 15353).expect("the takeover");
+        assert!(crate::state::store::get_resolver_takeover(&db.lock().unwrap(), "test").unwrap().is_some());
+        let plan = hand_back_resolver(&db, &platform, "test", 15353).expect("the hand-back");
+        assert_eq!(plan.restore.len(), 1, "their file is put back: {plan:?}");
+        assert!(crate::state::store::get_resolver_takeover(&db.lock().unwrap(), "test").unwrap().is_none());
+
+        assert_eq!(prompts.load(Ordering::SeqCst), 2, "one prompt each way");
+        assert_eq!(
+            held.load(Ordering::SeqCst),
+            0,
+            "the database was locked while the admin prompt was open — every command that reads \
+             it waits on the user"
         );
         let _ = std::fs::remove_dir_all(&root);
     }

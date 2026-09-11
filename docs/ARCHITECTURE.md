@@ -500,8 +500,11 @@ Live-proven end to end by `site_stop_start_check`.
   multi-threaded runtime (the worker's queue moves to another thread) and a plain
   call anywhere else. `every_prompt_call_waits_off_the_runtime` DERIVES the prompt
   primitives from `core/` and fails the build for an unwrapped call or a sync
-  command that prompts. Three commands still hold the DATABASE lock across the
-  prompt (`uninstall_system`, `resolver_take_over`, `resolver_hand_back`) — TODO.
+  command that prompts. **Nor is the database locked across a prompt** (#569):
+  `dns::take_over_resolver`, `dns::hand_back_resolver` and `setup::run_system_teardown`
+  take `&Mutex<Connection>` and lock it per step — plan, then the dialog with the lock
+  released, then record — where they used to be handed a held guard, so every command
+  that reads the database waited on the user for as long as the dialog stayed open.
 - Long-running children spawn via `ProcessSupervisor::spawn_logged` →
   `<log_dir>/<svc>-stdout.log`. `stop` escalates to SIGKILL after a grace window (L3).
   Beware orphan workers after a SIGKILLed master: title-rewritten fpm/nginx workers can

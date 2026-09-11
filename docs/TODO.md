@@ -56,11 +56,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   `remove_resolver` and `trust_local_ca` became `async`. A guard derives the prompt
   primitives from `core/` and fails on an unwrapped call or a sync command (#568).
 
-- [ ] **Three commands hold the database lock across a privileged prompt** — 11 Sep 2026,
+- [x] **Three commands held the database lock across a privileged prompt** ✓ 11 Sep 2026 —
   found in the same re-scan. `uninstall_system` (`run_system_teardown(&conn, …)`),
-  `resolver_take_over` and `resolver_hand_back` lock `state.db` and keep it while the admin
-  dialog is open, so every command that needs the database waits on the user. Fix: split
-  each core operation into plan (locked) → prompt (unlocked) → record (locked).
+  `resolver_take_over` and `resolver_hand_back` locked `state.db` and kept it while the admin
+  dialog was open, so every command that needs the database waited on the user. The three
+  core operations now take `&Mutex<Connection>` and lock per step — plan, the dialog
+  unlocked, record (#569); L0 fakes check the lock at the moment each dialog is asked.
 
 - [x] **Deleting or renaming a site left its job logs behind** ✓ 11 Sep 2026 — found by the
   live MCP test: its deleted fixture sites' provision logs stayed, and the machine held

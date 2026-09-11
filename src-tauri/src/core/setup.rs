@@ -69,7 +69,7 @@ pub fn run_system_setup(platform: &dyn Platform) -> Result<ssl::LocalCa> {
 /// unload + remove the DNS LaunchAgent (unprivileged) so no resolver process is
 /// left behind pointing at nothing.
 pub fn run_system_teardown(
-    conn: &rusqlite::Connection,
+    db: &std::sync::Mutex<rusqlite::Connection>,
     platform: &dyn Platform,
 ) -> Result<TeardownReport> {
     let ca = ssl::load_or_create(platform.paths(), platform.permissions())?;
@@ -89,7 +89,11 @@ pub fn run_system_teardown(
     //    get THEIR file put back instead. Once we take a file over it carries
     //    our signature, so without this the sweep would delete it and the user
     //    would be left with neither their config nor ours (v18).
-    let plan = dns::plan_resolver_teardown(conn, platform, dns::DEFAULT_DNS_PORT)?;
+    //
+    // Planned under the database lock, which is RELEASED before the prompt: the
+    // admin dialog (and the keychain one below) stays open as long as the user
+    // takes, and every command that reads the database waited on it (#569).
+    let plan = dns::plan_resolver_teardown(&*dns::db_lock(db)?, platform, dns::DEFAULT_DNS_PORT)?;
     if !plan.remove.is_empty() {
         root_cmds.push(platform.dns().uninstall_command(&plan.remove));
     }
@@ -101,7 +105,7 @@ pub fn run_system_teardown(
     }
     // Records + their backups die together, and only after the root step
     // actually succeeded.
-    dns::finish_resolver_teardown(conn, platform, &plan)?;
+    dns::finish_resolver_teardown(&*dns::db_lock(db)?, platform, &plan)?;
     let report = TeardownReport {
         removed: plan.remove.clone(),
         restored: plan.restore.iter().map(|(t, _)| t.clone()).collect(),
@@ -114,6 +118,253 @@ pub fn run_system_teardown(
     // best-effort: teardown must not add a prompt for harmless litter.
     super::cli::remove_symlink_best_effort(platform);
     Ok(report)
+}
+
+// Its own `#[cfg(test)]` module, not the macOS-gated one below: this test runs on
+// fakes, and `copy_scan::production_source` strips only `#[cfg(test)]` — inside
+// `cfg(all(test, …))` the prompt guard read it as production code.
+#[cfg(test)]
+mod lock_tests {
+    use super::*;
+
+    /// #569 — **teardown never holds the database lock across its prompts**: the
+    /// root one (restore/remove the resolver files) or the keychain one (untrust
+    /// the CA). Both stay open as long as the user takes; with the lock held,
+    /// every command that reads the database waited on the user.
+    #[test]
+    fn teardown_prompts_without_holding_the_database_lock() {
+        use crate::platform::traits::{
+            AutostartManager, BinaryProvider, CertTrustManager, DnsAgentManager, DnsManager,
+            EdgeSupervisor, Paths, PermissionManager, PrivilegeManager, ProcessSupervisor,
+            ShellRunner,
+        };
+        use std::path::{Path, PathBuf};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::{Arc, Mutex};
+
+        let root = std::env::temp_dir().join(format!("rexenv-teardown569-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("config")).unwrap();
+
+        struct TmpPaths(PathBuf);
+        impl Paths for TmpPaths {
+            fn app_data_dir(&self) -> Result<PathBuf> {
+                Ok(self.0.clone())
+            }
+            fn config_dir(&self) -> Result<PathBuf> {
+                Ok(self.0.join("config"))
+            }
+            fn log_dir(&self) -> Result<PathBuf> {
+                Ok(self.0.join("logs"))
+            }
+            fn bin_dir(&self) -> Result<PathBuf> {
+                Ok(self.0.join("bin"))
+            }
+            fn hosts_file(&self) -> PathBuf {
+                self.0.join("hosts")
+            }
+        }
+        struct TmpDns(PathBuf);
+        impl DnsManager for TmpDns {
+            fn resolver_path(&self, tld: &str) -> PathBuf {
+                self.0.join(format!("resolver-{tld}"))
+            }
+            fn resolver_contents(&self, port: u16) -> String {
+                format!("nameserver 127.0.0.1\nport {port}\n")
+            }
+            fn install_command(&self, _tld: &str, _port: u16) -> String {
+                "install".into()
+            }
+            fn uninstall_command(&self, _tlds: &[String]) -> String {
+                "uninstall".into()
+            }
+            fn restore_command(&self, _restores: &[(String, PathBuf)]) -> String {
+                "restore".into()
+            }
+        }
+        /// Every dialog — root or keychain — notes whether the database was free.
+        #[derive(Clone)]
+        struct Probe {
+            db: Arc<Mutex<rusqlite::Connection>>,
+            asked: Arc<AtomicUsize>,
+            held: Arc<AtomicUsize>,
+        }
+        impl Probe {
+            fn ask(&self) {
+                self.asked.fetch_add(1, Ordering::SeqCst);
+                if self.db.try_lock().is_err() {
+                    self.held.fetch_add(1, Ordering::SeqCst);
+                }
+            }
+        }
+        impl PrivilegeManager for Probe {
+            fn run_privileged(&self, _script: &str) -> Result<String> {
+                self.ask();
+                Ok(String::new())
+            }
+        }
+        struct Trust(Probe);
+        impl CertTrustManager for Trust {
+            fn trust_ca(&self, _ca: &Path) -> Result<()> {
+                Ok(())
+            }
+            fn untrust_ca(&self, _ca: &Path) -> Result<()> {
+                self.0.ask();
+                Ok(())
+            }
+        }
+        struct NoEdge;
+        impl EdgeSupervisor for NoEdge {
+            fn is_installed(&self) -> bool {
+                false
+            }
+            fn is_enabled(&self) -> bool {
+                true
+            }
+            fn plist_path(&self) -> PathBuf {
+                PathBuf::new()
+            }
+            fn wrapper_path(&self) -> PathBuf {
+                PathBuf::new()
+            }
+            fn daemon_binary_path(&self) -> PathBuf {
+                PathBuf::new()
+            }
+            fn plist_contents(&self, _w: &Path, _l: &Path) -> String {
+                String::new()
+            }
+            fn wrapper_contents(&self, _c: &Path, _f: &Path, _s: &Path, _a: &Path) -> String {
+                String::new()
+            }
+            fn install_command(&self, _c: &Path, _w: &Path, _p: &Path) -> String {
+                String::new()
+            }
+            fn start_command(&self) -> String {
+                String::new()
+            }
+            fn stop_command(&self) -> String {
+                String::new()
+            }
+            fn uninstall_command(&self) -> String {
+                String::new()
+            }
+        }
+        struct NoAgent;
+        impl DnsAgentManager for NoAgent {
+            fn is_installed(&self) -> bool {
+                false
+            }
+            fn plist_path(&self) -> Result<PathBuf> {
+                Ok(PathBuf::new())
+            }
+            fn plist_contents(&self, _e: &Path, _l: &Path) -> String {
+                String::new()
+            }
+            fn install(&self, _e: &Path, _l: &Path) -> Result<()> {
+                Ok(())
+            }
+            fn kickstart(&self) -> Result<()> {
+                Ok(())
+            }
+            fn uninstall(&self) -> Result<()> {
+                Ok(())
+            }
+        }
+        struct RealPerms;
+        impl PermissionManager for RealPerms {
+            fn set_executable(&self, _p: &Path) -> Result<()> {
+                Ok(())
+            }
+            fn set_private(&self, _p: &Path) -> Result<()> {
+                Ok(())
+            }
+            fn write_private(&self, path: &Path, contents: &[u8]) -> Result<()> {
+                std::fs::write(path, contents)?;
+                Ok(())
+            }
+        }
+        struct P(TmpPaths, TmpDns, Probe, Trust, NoEdge, NoAgent, RealPerms);
+        impl Platform for P {
+            fn paths(&self) -> &dyn Paths {
+                &self.0
+            }
+            fn dns(&self) -> &dyn DnsManager {
+                &self.1
+            }
+            fn privileges(&self) -> &dyn PrivilegeManager {
+                &self.2
+            }
+            fn cert_trust(&self) -> &dyn CertTrustManager {
+                &self.3
+            }
+            fn edge(&self) -> &dyn EdgeSupervisor {
+                &self.4
+            }
+            fn dns_agent(&self) -> &dyn DnsAgentManager {
+                &self.5
+            }
+            fn permissions(&self) -> &dyn PermissionManager {
+                &self.6
+            }
+            fn supervisor(&self) -> &dyn ProcessSupervisor {
+                unimplemented!()
+            }
+            fn autostart(&self) -> &dyn AutostartManager {
+                unimplemented!()
+            }
+            fn shell(&self) -> &dyn ShellRunner {
+                unimplemented!()
+            }
+            fn binaries(&self) -> &dyn BinaryProvider {
+                unimplemented!()
+            }
+            fn app_bundle(&self) -> &dyn crate::platform::traits::AppBundle {
+                unimplemented!()
+            }
+        }
+
+        let db = Arc::new(Mutex::new(crate::state::db::open_in_memory().unwrap()));
+        // A borrowed TLD: ours on disk now, their file kept in our backup — so the
+        // root step has real work (a restore) and the record must go afterwards.
+        const THEIRS: &str = "nameserver 127.0.0.1\nport 53\n";
+        let backup = root.join("backup-test");
+        std::fs::write(&backup, THEIRS).unwrap();
+        std::fs::write(root.join("resolver-test"), "nameserver 127.0.0.1\nport 15353\n").unwrap();
+        crate::state::store::insert_resolver_takeover(
+            &db.lock().unwrap(),
+            "test",
+            THEIRS,
+            &backup.display().to_string(),
+        )
+        .unwrap();
+
+        let probe = Probe { db: db.clone(), asked: Arc::new(AtomicUsize::new(0)), held: Arc::new(AtomicUsize::new(0)) };
+        let platform = P(
+            TmpPaths(root.clone()),
+            TmpDns(root.clone()),
+            probe.clone(),
+            Trust(probe.clone()),
+            NoEdge,
+            NoAgent,
+            RealPerms,
+        );
+
+        let report = run_system_teardown(&db, &platform).expect("teardown");
+        assert_eq!(report.restored, vec!["test".to_string()], "their file is put back: {report:?}");
+        assert!(
+            crate::state::store::get_resolver_takeover(&db.lock().unwrap(), "test").unwrap().is_none(),
+            "the record goes once the root step succeeded"
+        );
+        assert_eq!(probe.asked.load(Ordering::SeqCst), 2, "the root prompt and the keychain prompt");
+        assert_eq!(
+            probe.held.load(Ordering::SeqCst),
+            0,
+            "the database was locked while a teardown dialog was open — every command that reads \
+             it waits on the user"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
 }
 
 #[cfg(all(test, target_os = "macos"))]
