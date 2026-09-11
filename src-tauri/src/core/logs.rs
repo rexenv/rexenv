@@ -68,8 +68,11 @@ pub struct LogTarget {
 /// uses the FrankenPHP override — its per-site backend log. `log_dir` is
 /// scanned for the site's Git add-job logs (`repo-<domain>-<dir>.log`, one per
 /// cloned asset — "view the last job's log" with no new IPC); a nonexistent
-/// dir simply adds none.
-pub fn targets_for_site(site: &Site, log_dir: &Path) -> Vec<LogTarget> {
+/// dir simply adds none. `other_domains` is every other site's domain: without
+/// it a neighbour whose domain extends this one (`acme.test-2.test`) would have
+/// its Git logs listed here — and this list is the closed set of keys MCP
+/// `site_logs` lets an agent holding `read` on THIS site open (#565).
+pub fn targets_for_site(site: &Site, log_dir: &Path, other_domains: &[String]) -> Vec<LogTarget> {
     let minor = php::minor_of(&site.php_version);
     let t = |key: String, label: String, category: LogCategory| LogTarget {
         path: log_dir.join(&key).to_string_lossy().into_owned(),
@@ -111,7 +114,7 @@ pub fn targets_for_site(site: &Site, log_dir: &Path) -> Vec<LogTarget> {
         let mut repo_keys: Vec<String> = entries
             .flatten()
             .filter_map(|e| e.file_name().into_string().ok())
-            .filter(|n| n.starts_with(&prefix) && n.ends_with(".log"))
+            .filter(|n| n.starts_with(&prefix) && is_run_log_of(n, &site.domain, other_domains))
             .collect();
         repo_keys.sort();
         for key in repo_keys {
@@ -496,7 +499,7 @@ mod tests {
     /// 18 Aug 2026, because the plugin that writes it was debug-build-only.
     #[test]
     fn the_logs_tab_names_the_file_the_app_writes() {
-        let targets = targets_for_site(&site(WebServer::Nginx), Path::new("/tmp"));
+        let targets = targets_for_site(&site(WebServer::Nginx), Path::new("/tmp"), &[]);
         let written = format!("{}.log", crate::APP_LOG_STEM);
         let app = targets.iter().find(|t| t.key == written);
         let Some(app) = app else {
@@ -530,13 +533,13 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("rexenv-logs-mcp-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        let before = targets_for_site(&site(WebServer::Nginx), &dir);
+        let before = targets_for_site(&site(WebServer::Nginx), &dir, &[]);
         assert!(
             !before.iter().any(|t| t.category == LogCategory::Agents),
             "no agent log on disk, yet a tab was offered"
         );
         std::fs::write(dir.join(MCP_LOG_FILE), b"").unwrap();
-        let after = targets_for_site(&site(WebServer::Nginx), &dir);
+        let after = targets_for_site(&site(WebServer::Nginx), &dir, &[]);
         let mcp = after.iter().find(|t| t.key == MCP_LOG_FILE).expect("the agent log is offered");
         assert_eq!(mcp.category, LogCategory::Agents);
         assert_eq!(mcp.label, "AI agents (MCP)", "titled like the Settings card it extends");
@@ -585,7 +588,7 @@ mod tests {
 
     #[test]
     fn targets_use_site_php_version_and_omit_frankenphp_for_nginx() {
-        let t = targets_for_site(&site(WebServer::Nginx), Path::new("/nonexistent"));
+        let t = targets_for_site(&site(WebServer::Nginx), Path::new("/nonexistent"), &[]);
         let keys: Vec<&str> = t.iter().map(|x| x.key.as_str()).collect();
         assert!(keys.contains(&"php-fpm-8.2.log")); // the site's minor
         assert!(keys.contains(&"nginx-access.log"));
@@ -596,7 +599,7 @@ mod tests {
 
     #[test]
     fn targets_carry_category_and_absolute_path() {
-        let t = targets_for_site(&site(WebServer::Nginx), Path::new("/logs"));
+        let t = targets_for_site(&site(WebServer::Nginx), Path::new("/logs"), &[]);
         let by_key = |k: &str| t.iter().find(|x| x.key == k).unwrap();
         assert_eq!(by_key("nginx-access.log").category, LogCategory::Server);
         assert_eq!(by_key("caddy-stdout.log").category, LogCategory::Server);
@@ -612,7 +615,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("repo-acme.test-my-plugin.log"), "x").unwrap();
-        let t = targets_for_site(&site(WebServer::Nginx), &dir);
+        let t = targets_for_site(&site(WebServer::Nginx), &dir, &[]);
         let repo = t.iter().find(|x| x.key.starts_with("repo-")).unwrap();
         assert_eq!(repo.category, LogCategory::Git);
         let _ = std::fs::remove_dir_all(&dir);
@@ -633,7 +636,7 @@ mod tests {
 
     #[test]
     fn targets_include_frankenphp_backend_for_override_sites() {
-        let t = targets_for_site(&site(WebServer::Frankenphp), Path::new("/nonexistent"));
+        let t = targets_for_site(&site(WebServer::Frankenphp), Path::new("/nonexistent"), &[]);
         assert!(t.iter().any(|x| x.key == "frankenphp-acme.test-stdout.log"));
     }
 
@@ -645,7 +648,10 @@ mod tests {
         std::fs::write(dir.join("repo-acme.test-my-plugin.log"), "x").unwrap();
         std::fs::write(dir.join("repo-other.test-thing.log"), "x").unwrap(); // other site
         std::fs::write(dir.join("nginx-error.log"), "x").unwrap(); // not a repo log
-        let t = targets_for_site(&site(WebServer::Nginx), &dir);
+        // A living neighbour whose domain EXTENDS this one: its log also starts
+        // `repo-acme.test-`, which a prefix match listed as acme's (#565).
+        std::fs::write(dir.join("repo-acme.test-2.test-thing.log"), "x").unwrap();
+        let t = targets_for_site(&site(WebServer::Nginx), &dir, &["acme.test-2.test".to_string()]);
         let repo: Vec<&LogTarget> =
             t.iter().filter(|x| x.key.starts_with("repo-")).collect();
         assert_eq!(repo.len(), 1);

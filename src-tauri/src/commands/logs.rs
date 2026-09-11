@@ -21,7 +21,12 @@ fn get_site(state: &State<'_, AppState>, site_id: &str) -> Result<Site> {
 /// pool, DB error log, and its FrankenPHP backend when overridden).
 #[tauri::command]
 pub fn log_targets(state: State<'_, AppState>, site_id: String) -> Result<Vec<LogTarget>> {
-    Ok(core::logs::targets_for_site(&get_site(&state, &site_id)?, &state.platform.paths().log_dir()?))
+    let site = get_site(&state, &site_id)?;
+    let others = {
+        let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
+        core::sites::other_domains(&conn, &site.id)?
+    };
+    Ok(core::logs::targets_for_site(&site, &state.platform.paths().log_dir()?, &others))
 }
 
 /// The last `lines` lines of the log identified by `key` (a file name within the

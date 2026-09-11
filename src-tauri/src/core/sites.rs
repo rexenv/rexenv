@@ -650,6 +650,13 @@ pub fn starter_db_refusal(site_type: SiteType, linked_path: &str, cloning: bool)
 }
 
 /// All sites, newest first.
+/// Every site's domain except `id`'s — what [`crate::core::logs::is_run_log_of`]
+/// needs to tell this site's Git job logs from a neighbour's whose domain
+/// extends its name.
+pub fn other_domains(conn: &Connection, id: &str) -> Result<Vec<String>> {
+    Ok(list(conn)?.into_iter().filter(|s| s.id != id).map(|s| s.domain).collect())
+}
+
 pub fn list(conn: &Connection) -> Result<Vec<Site>> {
     store::list_sites(conn)
 }

@@ -563,7 +563,7 @@ async fn main() {
         assert!(!text.contains("/tmp/elsewhere"), "an argv VALUE reached mcp.log:\n{text}");
         assert!(text.contains(" · wp_run plugin list → error"), "the declared summary is what the argv became:\n{text}");
         // The Logs tab offers it under its own category now that it exists.
-        let targets = core::logs::targets_for_site(&ours, mcp_log.parent().unwrap());
+        let targets = core::logs::targets_for_site(&ours, mcp_log.parent().unwrap(), &[]);
         assert!(
             targets.iter().any(|t| t.key == core::logs::MCP_LOG_FILE && t.category == core::logs::LogCategory::Agents),
             "the Logs tab does not offer the agent log: {targets:?}"

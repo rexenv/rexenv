@@ -2549,7 +2549,13 @@ fn site_logs<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::Acte
         // The site's OWN target list, from core — the same one its Logs tab
         // shows — is the closed set of keys this tool will tail. A key outside
         // it (another site's, a made-up one) is refused before core is asked.
-        let targets = crate::core::logs::targets_for_site(&site, &log_dir);
+        // The other sites' domains keep a neighbour whose domain extends this
+        // one out of that set (#565) — its Git logs also start `repo-<this>-`.
+        let others = {
+            let conn = ctx.state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
+            crate::core::sites::other_domains(&conn, &site.id)?
+        };
+        let targets = crate::core::logs::targets_for_site(&site, &log_dir, &others);
         let known = super::view::KnownPaths::for_site(ctx.state.platform.paths(), &site.path);
         let scrub = |v: Vec<String>| v.iter().map(|l| super::view::scrub_log_line(l, &known)).collect::<Vec<_>>();
         let value = match source {

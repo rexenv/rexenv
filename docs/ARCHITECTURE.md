@@ -859,8 +859,10 @@ honest footer —
   until 11 Sep 2026: one dev machine still held 284 deleted sites' provision
   logs. Ownership is not a prefix match — domains contain `-`, so
   `repo-foo.rex-` also starts `foo.rex-2.rex`'s logs; a job-id run must be 8
-  hex, and a Git run goes to the LONGEST living domain it reads as.
-  (`logs::targets_for_site` still lists Git logs by plain prefix — see TODO.)
+  hex, and a Git run goes to the LONGEST living domain it reads as. The same
+  rule decides which Git logs `logs::targets_for_site` LISTS for a site — the
+  closed key set MCP `site_logs` opens under `read` on that site — so a
+  neighbour's Git output is not one of them.
 - **Resolver files can be BORROWED, and must be returnable** (v18
   `resolver_takeovers`). Ownership of `/etc/resolver/<tld>` is content equality
   (`resolver_contents` doubles as the signature), which has a sharp
