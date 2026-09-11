@@ -74,9 +74,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     the row's name field (label on the re-homed TLD, live-checked against
     `takenDomains`); `choose_domain` re-validates in the run —
     `a_rehomed_row_takes_a_typed_name_only_when_it_is_valid_free_and_unclaimed`
-  - [ ] **The import action bar is reachable from anywhere in a long list** — owner,
-    12 Sep 2026: selecting a row near the bottom meant scrolling back to the top to press
-    Import.
+  - [x] **The import action bar is reachable from anywhere in a long list** ✓ 12 Sep 2026
+    — owner: selecting a row near the bottom meant scrolling back to the top to press
+    Import. The count, "also copy databases" and Import now sit in a bar below the
+    scrolling list (outside it), so they never scroll away. tsc + eslint; not yet seen in
+    a packaged build.
 
 - [ ] **In-app self-update — a dmg user has no update path at all**
   — 6 Sep 2026, planned in `docs/archive/PLAN-self-update.md`; supersedes the Phase 4+ row

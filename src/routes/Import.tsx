@@ -416,31 +416,6 @@ export function Import() {
                 <span className="text-[0.75rem] text-rex-text-muted">
                   {picked.size > 0 ? `${picked.size} selected` : "Select sites to import"}
                 </span>
-                <div className="ml-auto flex items-center gap-3">
-                  <label className="flex cursor-pointer items-center gap-1.5 text-[0.75rem] text-rex-text-muted">
-                    <input
-                      type="checkbox"
-                      className={CHECK_INPUT}
-                      checked={withDatabases}
-                      disabled={running}
-                      onChange={(e) => setWithDatabases(e.target.checked)}
-                    />
-                    also copy databases
-                    <span
-                      className="cursor-help"
-                      title="After each site imports, rexenv copies its database too (a read — the old database is never touched). The site keeps using the OLD database until you switch it over; each site's Database tab shows the exact change."
-                    >
-                      ⓘ
-                    </span>
-                  </label>
-                  <Button
-                    variant="primary"
-                    disabled={picked.size === 0 || running}
-                    onClick={() => run.mutate()}
-                  >
-                    {running ? "Importing…" : `Import ${picked.size || ""}`.trim()}
-                  </Button>
-                </div>
               </div>
               {candidates.map((c) => {
                 // While the batch runs, a picked row that hasn't settled says
@@ -622,6 +597,44 @@ export function Import() {
           </div>
         )}
       </div>
+      {/* The action bar lives OUTSIDE the scrolling list, so it is on screen
+          wherever the list is scrolled to. It used to sit in the list's own
+          header: with a long list, ticking a row near the bottom meant
+          scrolling all the way back up to press Import (owner, 12 Sep 2026). */}
+      {!isLoading && candidates.length > 0 && (
+        <div className="flex flex-none flex-wrap items-center gap-3 border-t border-rex-border bg-rex-surface-1 px-[18px] py-2.5">
+          <span className="text-[0.75rem] text-rex-text-muted">
+            {picked.size > 0
+              ? `${picked.size} of ${ready.length} ready selected`
+              : `${ready.length} ready to import`}
+          </span>
+          <div className="ml-auto flex items-center gap-3">
+            <label className="flex cursor-pointer items-center gap-1.5 text-[0.75rem] text-rex-text-muted">
+              <input
+                type="checkbox"
+                className={CHECK_INPUT}
+                checked={withDatabases}
+                disabled={running}
+                onChange={(e) => setWithDatabases(e.target.checked)}
+              />
+              also copy databases
+              <span
+                className="cursor-help"
+                title="After each site imports, rexenv copies its database too (a read — the old database is never touched). The site keeps using the OLD database until you switch it over; each site's Database tab shows the exact change."
+              >
+                ⓘ
+              </span>
+            </label>
+            <Button
+              variant="primary"
+              disabled={picked.size === 0 || running}
+              onClick={() => run.mutate()}
+            >
+              {running ? "Importing…" : `Import ${picked.size || ""}`.trim()}
+            </Button>
+          </div>
+        </div>
+      )}
     </>
   );
 }
