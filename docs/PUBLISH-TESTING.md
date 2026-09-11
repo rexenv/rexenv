@@ -1289,7 +1289,13 @@ Result: ____ (date, reqwest version).
 
 ---
 
-## N) 🚧 Local import — live pass against a STARTED Local site (owner-run)
+## N) ✅ Local import — live pass against a STARTED Local site (owner-run)
+
+**PASSED 12 Sep 2026**, owner-run on `ab12.local` (Local 10.1.2, MySQL 8.4.0) at
+`805ee0d`. Its first attempt is why §2b of the plan changed: the TCP probe met ERR 1130
+before Local's handshake and the job refused the server as unidentifiable; after the
+socket-probe fix the copy came over (12 tables), the URL pass moved `ab12.local` →
+`https://ab12.rex` (13 replacements), and the owner reported the rest of the pass fine.
 
 What neither layer below this can give (`docs/PLAN-local-import.md` §7): Local's
 REAL per-site mysqld (`skip-name-resolve`, the socket where Local's docs place it),
@@ -1371,5 +1377,5 @@ started IN Local — a button rexenv never presses.
 | K | The whole migration as ONE journey (seams + reversibility) | 🚧 rebuild, then run |
 | F | Resolver TAKEOVER + RESTORE — clean-VM only (fixture-tested, never live-run) | 🚧 **publish-blocking, and it was missing from this table until 21 Aug 2026** |
 | G | `/import` screen — packaged-app GUI pass | 🚧 **publish-blocking, and it was missing from this table until 21 Aug 2026** |
-| N | Local import: live pass on a STARTED Local site + the packaged screen's Local rows | 🚧 owner-run — rexenv never starts Local's servers, so no agent can run it |
+| N | Local import: live pass on a STARTED Local site + the packaged screen's Local rows | ✅ passed 12 Sep 2026 (owner-run, `ab12.local`) |
 | L | Offline/timeout behaviour of the update check | 🟢 nice-to-have (no row here before 21 Aug 2026) |

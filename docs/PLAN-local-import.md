@@ -200,6 +200,12 @@ snapshots, multisite re-homing, and any "clean up Local" affordance.
 
 ## 9. Questions for the owner (the build proceeds on the stated interim)
 
+**Ruled 12 Sep 2026:** Q1 **declined** — collision-renamed Local copies stay tell-only,
+the 28 Jul ruling holds. Q2 **parked** (a `docs/TODO.md` Parked row). Q3 **approved and
+needed now**: the owner's `tr.local` could not be imported at all because `tr.test`
+already existed (their default TLD is `.test`), and the row offered no way to pick
+another name. The original questions follow as asked.
+
 - **Q1 — the database name.** Every Local site's database is `local`, so the second
   Local import collides and is restored as `local_<domain>`. The Stage 3 rewrite made
   collision-renames **tell-only permanently** (28 Jul 2026), on the evidence of zero

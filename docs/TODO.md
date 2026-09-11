@@ -64,10 +64,18 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     handshake. `probe_socket` +
     `a_socket_probe_reads_the_handshake_and_keeps_a_refusal_in_the_servers_words`; the
     refusal now carries the server's own words; ledger #572 updated with the measurement
-  - [ ] **PUBLISH-TESTING §N — the live pass on a STARTED Local site** (owner-run: rexenv
-    never starts Local's servers). Closes #572's L3 half (Local's real mysqld + socket).
-  - [ ] **Owner decisions — plan §9**: Q1 DB_NAME in the rewrite (every Local db is
-    `local`, so 2nd+ imports are tell-only today), Q2 multisite, Q3 per-row domain edit.
+  - [x] **PUBLISH-TESTING §N — the live pass on a STARTED Local site** ✓ 12 Sep 2026 —
+    owner-run on `ab12.local` (Local 10.1.2, MySQL 8.4.0): "live test done, sob thik
+    achhe". Closes #572's L3 half.
+  - [x] **Owner decisions — plan §9** ✓ 12 Sep 2026 — Q1 declined (collision-renamed
+    Local copies stay tell-only; the 28 Jul ruling holds), Q2 parked (row under Parked),
+    Q3 approved — needed now: `tr.local` could not import because `tr.test` exists.
+  - [ ] **Q3 — choose the domain for a re-homed row** — a Local row whose re-homed name
+    another rexenv site holds is needs-attention with no way out on the screen; give it
+    a per-row domain field, checked live, and refuse it in the run without one.
+  - [ ] **The import action bar is reachable from anywhere in a long list** — owner,
+    12 Sep 2026: selecting a row near the bottom meant scrolling back to the top to press
+    Import.
 
 - [ ] **In-app self-update — a dmg user has no update path at all**
   — 6 Sep 2026, planned in `docs/archive/PLAN-self-update.md`; supersedes the Phase 4+ row
@@ -642,6 +650,10 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)
 
+- [ ] **Import Local multisite networks** — `docs/PLAN-local-import.md` §9 Q2, parked by
+  the owner 12 Sep 2026 ("pore korbo"). Listed as unsupported today; re-homing a network
+  means `DOMAIN_CURRENT_SITE` in wp-config (a project write the rewrite contract can't
+  express) plus every row of `wp_blogs`.
 - [ ] **The live pool swap is still L3.** `php_update_check` proves the chain up
   to "a pool on the new patch answers on a FIXTURE port". Stopping the running
   master on the PRODUCTION port and reverting when it does not come back needs
