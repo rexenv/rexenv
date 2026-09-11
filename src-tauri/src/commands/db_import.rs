@@ -78,11 +78,14 @@ pub struct DbImportJobState {
     pub result: Option<DbImportRecord>,
 }
 
-const PHASES: [(&str, &str, u8); 5] = [
+const PHASES: [(&str, &str, u8); 6] = [
     ("check", "checking the source database", 10),
     ("dump", "copying the database out", 40),
     ("engine", "starting rexenv's database", 10),
-    ("restore", "restoring the copy", 35),
+    ("restore", "restoring the copy", 30),
+    // Local copies only (`skipped` otherwise): the copy's URLs move to the
+    // name rexenv serves (ledger #573).
+    ("urls", "updating the copy's URLs", 5),
     ("settle", "finishing up", 5),
 ];
 
@@ -130,11 +133,22 @@ fn phase_progress(entry: &Entry, idx: usize, frac: f64) {
     st.pct = st.pct.max(floor + add).min(99);
 }
 
+/// Mark a phase that does not apply to this job. It stays `skipped` through
+/// `enter_phase` and a successful settle — a success must not claim work that
+/// never ran.
+fn skip_phase(entry: &Entry, idx: usize) {
+    let mut st = entry.state.lock().expect("db import state lock");
+    if let Some(p) = st.phases.get_mut(idx) {
+        p.status = "skipped".into();
+    }
+}
+
 fn settle(entry: &Entry, status: &str, error: Option<String>, kept: Option<String>, result: Option<DbImportRecord>) {
     let mut st = entry.state.lock().expect("db import state lock");
     let cursor = st.phase_cursor;
     for (i, p) in st.phases.iter_mut().enumerate() {
         match status {
+            "ok" if p.status == "skipped" => {}
             "ok" => p.status = "ok".into(),
             _ if i == cursor => p.status = status.to_string(),
             _ if p.status == "pending" => p.status = "skipped".into(),
@@ -632,6 +646,45 @@ async fn run<R: tauri::Runtime>(
     log_line(app, entry, &format!("fed {fed} bytes"));
     let verified = dbrestore::verify_complete(&tgt_client, target_engine.port(), &name, &manifest)?;
 
+    // ── urls: a Local copy moves to the name rexenv serves ─────────────────
+    //
+    // A Local database says `http://ea.local`; served at `https://ea.rex`,
+    // WordPress would redirect every request back to a name rexenv doesn't
+    // answer. The pass writes ONLY the copy this job just restored — `name` on
+    // OUR engine's port, through a require file naming nothing else — and runs
+    // BEFORE the import is recorded, so a copy whose siteurl still reads the old
+    // name fails the job instead of settling as an import that looks fine and
+    // isn't (ledger #573). Retry re-imports from scratch.
+    enter_phase(entry, 4);
+    emit(app, entry);
+    match &local {
+        Some(l) => {
+            let (php_bin, wp_phar) =
+                crate::commands::wordpress::wp_tools(state, &site.php_version).await?;
+            let replaced = core::wordpress::rehome_urls_on_copy(
+                platform,
+                &php_bin,
+                &wp_phar,
+                Path::new(&site.path),
+                &dest_dir,
+                target_engine.port(),
+                &name,
+                &l.domain,
+                &site.domain,
+            )?;
+            log_line(
+                app,
+                entry,
+                &format!(
+                    "URLs: {} → https://{} in rexenv's copy ({replaced} replacements; Local's \
+                     own database is untouched)",
+                    l.domain, site.domain
+                ),
+            );
+        }
+        None => skip_phase(entry, 4),
+    }
+
     // ── settle: finish, RECORD, then mirror, drop the artifact ─────────────
     //
     // Record-first, like the Stage 3 rewrite (`rewrite.rs`) and for the same
@@ -643,7 +696,7 @@ async fn run<R: tauri::Runtime>(
     // names the user it is ABOUT to create; a mirror that then fails leaves a
     // record over-claiming a user that does not exist, which the delete's
     // `DROP USER IF EXISTS` tolerates — the safe direction.
-    enter_phase(entry, 4);
+    enter_phase(entry, 5);
     emit(app, entry);
     let intended_user = (!dbmirror::is_reserved(&conn_info.user)).then(|| conn_info.user.clone());
     let record = {
@@ -737,6 +790,40 @@ mod local_source_wiring {
         );
         // A stopped Local site is named as Local's, not DBngin's.
         assert!(src.contains("Start \\\"{}\\\" in Local"), "the Local-named unreachable message is gone");
+    }
+
+    /// Ledger #573 — the URL pass is handed OUR engine's port and the database
+    /// this job restored, never the source's; it runs after the copy is proven
+    /// whole and before the import is recorded.
+    #[test]
+    fn the_url_pass_writes_only_the_copy_this_job_restored() {
+        let src = crate::core::copy_scan::production_source(include_str!("db_import.rs"));
+        assert_eq!(src.matches("rehome_urls_on_copy(").count(), 1, "one URL pass, in `run`");
+        let at = src.find("rehome_urls_on_copy(").unwrap();
+        let args = &src[at..at + src[at..].find(")?;").expect("the call's end")];
+        assert!(args.contains("target_engine.port()"), "not pointed at OUR engine: {args}");
+        assert!(args.contains("&name,"), "not pointed at the restored copy: {args}");
+        assert!(!args.contains("conn_info"), "the SOURCE's address reached the URL pass: {args}");
+        assert!(
+            src.find("dbrestore::verify_complete(").unwrap() < at,
+            "the URL pass must run only AFTER the copy is proven whole"
+        );
+        assert!(
+            at < src.find("dbrestore::finish(").unwrap(),
+            "the URL pass must run BEFORE the import is recorded, or a failed pass settles as imported"
+        );
+    }
+
+    /// Every phase weight still sums to the whole bar, and a skipped phase is
+    /// never repainted `ok` by a success.
+    #[test]
+    fn the_phases_sum_to_the_bar_and_a_skip_survives_success() {
+        assert_eq!(super::PHASES.iter().map(|p| p.2 as u32).sum::<u32>(), 100);
+        let src = crate::core::copy_scan::production_source(include_str!("db_import.rs"));
+        let settle = &src[src.find("fn settle(").unwrap()..];
+        let skip_arm = settle.find("\"ok\" if p.status == \"skipped\"").expect("the skip-preserving arm is gone");
+        let ok_arm = settle.find("\"ok\" => p.status").expect("the ok arm");
+        assert!(skip_arm < ok_arm, "the skip arm must come first or `ok` repaints it");
     }
 }
 

@@ -155,8 +155,13 @@ picker starts empty and the row stays unticked until a version is chosen.
   socket-capable defaults file, the Local-named "start it in Local" status.
 - **T5** `feat(db-import)` — the URL re-home pass on rexenv's copy (`--require`
   override), sixth phase.
-- **T6** `test(examples)` — `local_scan_check` (real `~/Local Sites`, read-only
-  fingerprint), tier + TESTING.
+- **T6** `test(examples)` — TWO examples, split by tier (found while building T5:
+  installing a real WordPress is `wp core download`, i.e. network):
+  `local_scan_check` (sandbox — the real `~/Local Sites` and Local's app data,
+  read-only fingerprint, #570's L1) and `local_import_check` (network — a sandbox
+  mysqld plays Local's server: sign-in over its SOCKET through the new defaults file
+  (#572's half that needs no started Local), and the URL pass against a real
+  WordPress whose wp-config names a dead socket and `root`/`root`, #573's L1).
 - **T7** `docs` — ARCHITECTURE §8, ledger rows, PUBLISH-TESTING §N (the live pass that
   needs a Local site STARTED — a button only the owner presses), TODO tick.
 

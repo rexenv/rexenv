@@ -968,7 +968,14 @@ honest footer —
   from `sites.json` on every run. An explicit host or port always wins. A stopped
   Local site fails with "start it in Local" — Local runs a site's database only while
   that site is started, and rexenv never starts it. `app/sql/local.sql` is never used
-  (a stale snapshot).
+  (a stale snapshot). A Local copy then gets a sixth job phase, `urls` (`skipped` for
+  every other import, and a success never repaints it `ok`): `http(s)://old` →
+  `https://new`, the JSON-escaped spelling, then the bare name, through wp-cli's
+  serialization-aware `search-replace --all-tables` — against rexenv's COPY only, via a
+  0600 `--require` file defining our engine's address, passwordless root and the
+  restored database name (PHP keeps the first definition; wp-config still names
+  Local's socket), `--skip-plugins --skip-themes`. It runs before the import is
+  recorded, and `siteurl` must re-read as `https://<new>` or the job fails (#573).
 - **Database import copies their database and RECORDS what it did** (Stage 2:
   `core/{dbsource,dbcompat,dbdump,dbrestore,dbmirror,dbimport}`, v19 `sites.db_created`,
   v20 `db_imports`). Their side is read-only: engines identified from the pre-auth

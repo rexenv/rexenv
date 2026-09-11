@@ -48,7 +48,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     `the_defaults_file_signs_in_over_tcp_or_a_socket_never_both`,
     `the_registry_is_consulted_only_behind_the_localhost_rule`. Live dump from a STARTED
     Local site still owed (PUBLISH-TESTING, T7)
-  - [ ] T5 — URL re-home pass on rexenv's copy
+  - [x] T5 — URL re-home pass on rexenv's copy ✓ 11 Sep 2026 — ledger #573;
+    `the_override_names_our_copy_and_holds_no_secret`,
+    `a_copy_moves_to_https_on_the_new_name_bare_name_last`,
+    `the_url_pass_writes_only_the_copy_this_job_restored`. L1 owed (T6)
   - [ ] T6 — `local_scan_check` example
   - [ ] T7 — ARCHITECTURE §8, ledger rows, PUBLISH-TESTING §N
 

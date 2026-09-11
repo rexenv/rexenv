@@ -2674,6 +2674,156 @@ pub fn search_replace(
         .map_err(|e| Error::Other(format!("search-replace count: {e} (output: {out:?})")))
 }
 
+/// The search-replace passes that move a COPIED database from the hostname its
+/// source served to the one rexenv serves: `http://old` and `https://old` →
+/// `https://new` (rexenv serves every site over HTTPS), the same in WordPress's
+/// JSON-escaped `http:\/\/` spelling, then the bare `old` → `new` LAST when the
+/// name itself changed — Change domain's shape. A pair that would replace a
+/// string with itself is dropped. Pure.
+pub fn url_rehome_pairs(from: &str, to: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    for scheme in ["http", "https"] {
+        out.push((format!("{scheme}://{from}"), format!("https://{to}")));
+        out.push((format!("{scheme}:\\/\\/{from}"), format!("https:\\/\\/{to}")));
+    }
+    if from != to {
+        out.push((from.to_string(), to.to_string()));
+    }
+    out.retain(|(a, b)| a != b);
+    out
+}
+
+/// The `--require` file that points ONE wp-cli run at rexenv's copy of a site's
+/// database (ledger #573).
+///
+/// The site's own wp-config.php still names the database it was copied from —
+/// a Local site's says `localhost` with `root`/`root`, which on rexenv's engine
+/// signs in nowhere — and editing their file to reach our copy is exactly the
+/// write the connection rewrite exists to make opt-in. wp-cli loads a require
+/// file before WordPress and before wp-config, and PHP keeps the FIRST
+/// definition of a constant (a redefinition is a Notice on 7.x, a Warning on
+/// 8.x, never fatal), so these four win for this run only. It names rexenv's
+/// passwordless root, so there is no secret in it at all. Pure.
+pub fn copy_db_override(port: u16, db_name: &str) -> String {
+    format!(
+        "<?php\n\
+         // Written by rexenv for one wp-cli run against rexenv's COPY of this site's\n\
+         // database, and deleted when that run ends. The site's wp-config.php still\n\
+         // names the database it was copied from; the first definition wins.\n\
+         error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING);\n\
+         define('DB_HOST', '127.0.0.1:{port}');\n\
+         define('DB_USER', 'root');\n\
+         define('DB_PASSWORD', '');\n\
+         define('DB_NAME', '{}');\n",
+        db_name.replace('\\', "\\\\").replace('\'', "\\'")
+    )
+}
+
+/// Move rexenv's copy of a site's database onto the hostname rexenv serves it
+/// under, and prove it moved: every [`url_rehome_pairs`] pass through wp-cli's
+/// serialization-aware `search-replace --all-tables`, then `siteurl` re-read
+/// and required to be `https://<to>`. Returns the replacement count.
+///
+/// Reaches the copy ONLY through [`copy_db_override`] (0600, deleted on every
+/// exit path), with `--skip-plugins --skip-themes` so the site's own code does
+/// not run beyond WordPress's bootstrap. Nothing is written into the project.
+#[allow(clippy::too_many_arguments)]
+pub fn rehome_urls_on_copy(
+    platform: &dyn crate::platform::traits::Platform,
+    php_bin: &Path,
+    wp_phar: &Path,
+    docroot: &Path,
+    scratch_dir: &Path,
+    port: u16,
+    db_name: &str,
+    from: &str,
+    to: &str,
+) -> Result<u64> {
+    crate::core::database::validate_db_name(db_name)?;
+    std::fs::create_dir_all(scratch_dir)?;
+    let file = scratch_dir.join(".copy-db-override.php");
+    platform.permissions().write_private(&file, copy_db_override(port, db_name).as_bytes())?;
+    struct Gone<'a>(&'a Path);
+    impl Drop for Gone<'_> {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(self.0);
+        }
+    }
+    let _gone = Gone(&file);
+
+    let require = format!("--require={}", file.display());
+    let path = format!("--path={}", docroot.display());
+    let tail = ["--skip-plugins", "--skip-themes", require.as_str(), path.as_str()];
+    let last_line = |s: &str| s.trim().lines().last().unwrap_or("").trim().to_string();
+
+    let mut total = 0u64;
+    for (a, b) in url_rehome_pairs(from, to) {
+        let mut args: Vec<&str> =
+            vec!["search-replace", a.as_str(), b.as_str(), "--all-tables", "--format=count"];
+        args.extend(tail);
+        let out = wp_cli_checked(php_bin, wp_phar, &args, None)?;
+        total += last_line(&out).parse::<u64>().map_err(|e| {
+            Error::Other(format!("search-replace count: {e} (output: {out:?})"))
+        })?;
+    }
+
+    let mut args: Vec<&str> = vec!["option", "get", "siteurl"];
+    args.extend(tail);
+    let siteurl = last_line(&wp_cli_checked(php_bin, wp_phar, &args, None)?);
+    let want = format!("https://{to}");
+    if siteurl != want && !siteurl.starts_with(&format!("{want}/")) {
+        return Err(Error::Other(format!(
+            "rexenv updated the copy's URLs, but its siteurl still reads `{siteurl}` rather \
+             than `{want}` — the site would redirect to a name rexenv doesn't serve. Retry \
+             re-imports the database from scratch."
+        )));
+    }
+    Ok(total)
+}
+
+#[cfg(test)]
+mod copy_rehome_tests {
+    use super::*;
+
+    /// The schemes move to HTTPS on the new name, the escaped spelling too, and
+    /// the bare name goes LAST (earlier, it would turn `http://ea.local` into
+    /// `http://ea.rex` and the scheme passes would never match).
+    #[test]
+    fn a_copy_moves_to_https_on_the_new_name_bare_name_last() {
+        let p = url_rehome_pairs("ea.local", "ea.rex");
+        assert_eq!(p[0], ("http://ea.local".to_string(), "https://ea.rex".to_string()));
+        assert!(p.contains(&("http:\\/\\/ea.local".to_string(), "https:\\/\\/ea.rex".to_string())));
+        assert!(p.contains(&("https://ea.local".to_string(), "https://ea.rex".to_string())));
+        assert_eq!(p.last(), Some(&("ea.local".to_string(), "ea.rex".to_string())));
+
+        // A kept name only upgrades the scheme; no pair replaces a string with itself.
+        assert_eq!(
+            url_rehome_pairs("shop.test", "shop.test"),
+            vec![
+                ("http://shop.test".to_string(), "https://shop.test".to_string()),
+                ("http:\\/\\/shop.test".to_string(), "https:\\/\\/shop.test".to_string()),
+            ]
+        );
+    }
+
+    /// The override names rexenv's engine and the copy — and nothing that is a
+    /// secret, because rexenv's root has none (ledger #573).
+    #[test]
+    fn the_override_names_our_copy_and_holds_no_secret() {
+        let php = copy_db_override(13306, "local_ea_rex");
+        assert!(php.starts_with("<?php\n"));
+        assert!(php.contains("define('DB_HOST', '127.0.0.1:13306');"), "{php}");
+        assert!(php.contains("define('DB_NAME', 'local_ea_rex');"), "{php}");
+        assert!(php.contains("define('DB_USER', 'root');"), "{php}");
+        assert!(php.contains("define('DB_PASSWORD', '');"), "{php}");
+        assert_eq!(php.matches("define(").count(), 4, "exactly the four connection constants: {php}");
+        assert!(
+            php.find("error_reporting(").unwrap() < php.find("define(").unwrap(),
+            "the redefinition notices are silenced before they can fire"
+        );
+    }
+}
+
 /// Regenerate permalinks (`wp rewrite flush`).
 pub fn rewrite_flush(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<String> {
     wp_run(php_bin, wp_phar, docroot, &["rewrite", "flush"])
