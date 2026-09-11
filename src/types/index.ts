@@ -406,6 +406,9 @@ export type RewritePreview =
       laravelCacheWarning: boolean;
       /** Where the site will connect, e.g. "127.0.0.1:13306". */
       target: string;
+      /** The config still names Local's own server, which rexenv can't reach —
+       *  until this is applied the site reads NO database. */
+      oldDatabaseUnreachable: boolean;
     }
   | { status: "refused"; reason: string; file: string | null };
 

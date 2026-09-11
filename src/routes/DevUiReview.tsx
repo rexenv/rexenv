@@ -168,6 +168,9 @@ function preview(): RewritePreview {
     backupExists: params.get("backup") === "1",
     laravelCacheWarning: params.get("cache") === "1",
     target: "127.0.0.1:13306",
+    // `local=1`: a Local import, whose config reaches no database under rexenv
+    // until connected — the panel must say so instead of "still reads the old one".
+    oldDatabaseUnreachable: params.get("local") === "1",
   };
 }
 

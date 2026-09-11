@@ -756,7 +756,20 @@ async fn run<R: tauri::Runtime>(
     let _ = std::fs::remove_file(&artifact);
     let _ = std::fs::remove_file(dbdump::manifest_path(&dest_dir, &site.domain));
     settle(entry, "ok", None, None, Some(record));
-    log_line(app, entry, "imported — the site still reads its old database (see the summary)");
+    log_line(
+        app,
+        entry,
+        match &local {
+            // A Local site's config names Local's own server, which rexenv can't
+            // reach: it does not keep reading an old database, it reads NONE
+            // until connected (ledger #575).
+            Some(_) => {
+                "imported — this Local site can't load under rexenv until it is connected to \
+                 the copy (its Database tab): its config still names Local's own database server"
+            }
+            None => "imported — the site still reads its old database (see the summary)",
+        },
+    );
     Ok(())
 }
 

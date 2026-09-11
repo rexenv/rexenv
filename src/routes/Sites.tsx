@@ -424,7 +424,7 @@ export function SiteRow({
            disagree, because neither computes anything. */
         <span
           className="flex-none whitespace-nowrap rounded-full border border-status-warning-border bg-status-warning-bg px-2 py-1 font-mono text-[0.625rem] text-status-warning-bright"
-          title="A copy of this site's database is on rexenv's engine, but the site still reads and writes the old one — they drift apart until you switch it over (see the site's Database tab)."
+          title="A copy of this site's database is on rexenv's engine, but the site isn't connected to it yet — its Database tab says what the site reads now and switches it over."
         >
           DB imported
         </span>

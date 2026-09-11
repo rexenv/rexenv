@@ -293,6 +293,20 @@ pub fn overrides_config(config_host: &str, config_port: u16) -> bool {
     config_host.trim().eq_ignore_ascii_case("localhost") && config_port == 3306
 }
 
+/// Whether a site's config reaches ONLY Local's own server — which rexenv
+/// cannot reach — so that under rexenv, until the connection is rewritten, the
+/// site reads NO database at all (ledger #575).
+///
+/// The reason it matters: a Valet or Herd import keeps reading its old server
+/// (DBngin, Homebrew) until it is connected, and the interim copy says so. A
+/// Local site's `localhost` lands on rexenv's own socket instead
+/// (`mysqli.default_socket`), where Local's `root`/`root` is refused — so that
+/// same sentence would be false, and the site shows WordPress's database error.
+/// Measured 12 Sep 2026 on two real Local imports: both served 500s.
+pub fn config_reaches_only_local(home: &Path, config_host: &str, config_port: u16, docroot: &Path) -> bool {
+    overrides_config(config_host, config_port) && db_source_for(home, docroot).is_some()
+}
+
 /// A Local site's own database server, as the registry places it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LocalDb {
@@ -530,6 +544,19 @@ mod tests {
         assert!(!overrides_config("localhost", 10003), "an explicit port is a choice");
         assert!(!overrides_config("db.internal", 3306));
         assert!(!overrides_config("", 3306));
+    }
+
+    /// Only a registered Local docroot whose config says a bare `localhost`
+    /// reaches nothing under rexenv (ledger #575) — an explicit host, or a
+    /// folder Local doesn't know, is a server rexenv can still reach.
+    #[test]
+    fn only_a_local_sites_socket_config_reaches_nothing_under_rexenv() {
+        let registry = format!("{{{}}}", site_json("aaa", "ea", "ea.local", "8.2.1", 10003, ""));
+        let home = Home::new("reach").registry(&registry).wordpress("ea");
+        let doc = home.0.join("Local Sites/ea/app/public");
+        assert!(config_reaches_only_local(&home.0, "localhost", 3306, &doc));
+        assert!(!config_reaches_only_local(&home.0, "127.0.0.1", 3306, &doc), "an explicit TCP host is reachable");
+        assert!(!config_reaches_only_local(&home.0, "localhost", 3306, &home.0.join("elsewhere")), "not a Local site");
     }
 
     /// The database lookup matches a docroot to ITS Local site — through a

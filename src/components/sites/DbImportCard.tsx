@@ -410,13 +410,29 @@ export function DbImportCard({ site }: { site: Site }) {
                 {preview === undefined && (
                   <p>Checking which database the site's config points at…</p>
                 )}
-                {preview?.status === "ready" && preview.diff.length > 0 && (
-                  <p>
-                    <strong>This site still reads and writes the old database</strong> —
-                    and from now on the copy and the original drift apart: changes made
-                    on the site go to the old one, and nothing updates the copy.
-                  </p>
-                )}
+                {preview?.status === "ready" &&
+                  preview.diff.length > 0 &&
+                  !preview.oldDatabaseUnreachable && (
+                    <p>
+                      <strong>This site still reads and writes the old database</strong> —
+                      and from now on the copy and the original drift apart: changes made
+                      on the site go to the old one, and nothing updates the copy.
+                    </p>
+                  )}
+                {/* A Local site does NOT keep reading its old database: its
+                    config names Local's own server, which rexenv can't reach, so
+                    it reads none (ledger #575). The sentence above would be false
+                    — measured on two real Local imports that both served 500s. */}
+                {preview?.status === "ready" &&
+                  preview.diff.length > 0 &&
+                  preview.oldDatabaseUnreachable && (
+                    <p>
+                      <strong>This site can't load under rexenv until you connect it</strong>{" "}
+                      — its config still names Local's own database server, which only Local
+                      can reach, so until the change below is applied it shows WordPress's
+                      database error here. The site keeps working in Local.
+                    </p>
+                  )}
                 {preview?.status === "ready" && preview.diff.length === 0 && (
                   /* The honest sentence for this state: the FILE is proven
                      (it points at the copy); the CONNECTION is not. Which

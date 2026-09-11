@@ -987,6 +987,14 @@ honest footer —
   claimed, and refuses the row without a name. Only a re-homed row can be renamed (a
   Valet/Herd name is the source's own). The outcome keeps the row's scanned name as its
   key and reports `servedAs`. Before 12 Sep 2026 such a row had no way out at all.
+  **Until connected, a Local import reads NO database** — unlike a Valet/Herd import,
+  which keeps reading DBngin/Homebrew: its `localhost` lands on rexenv's own socket
+  (`mysqli.default_socket`), where Local's `root`/`root` is refused, so the site serves
+  WordPress's database error. The rewrite preview carries that derived fact
+  (`oldDatabaseUnreachable` — a registered Local docroot + a bare-`localhost` config),
+  the Database panel and the job's settle line say "can't load until you connect it"
+  instead of "still reads its old database", and the Sites badge asserts neither (#575).
+  Measured on two real imports, 12 Sep 2026.
 - **Database import copies their database and RECORDS what it did** (Stage 2:
   `core/{dbsource,dbcompat,dbdump,dbrestore,dbmirror,dbimport}`, v19 `sites.db_created`,
   v20 `db_imports`). Their side is read-only: engines identified from the pre-auth

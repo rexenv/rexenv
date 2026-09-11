@@ -76,6 +76,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     `a_renamed_copy_moves_only_the_database_name_bytes`,
     `a_renamed_copy_reaches_the_plan_instead_of_a_refusal` (plant-proven),
     `config_rewrite_check` step 7 (renamed copy connects; without the name, no proof)
+  - [x] **fix: a Local import no longer claims it "still reads its old database"** ✓ 12 Sep
+    2026 — found by migrating `ab12.local`/`tr.local` over MCP: both served WordPress's
+    database error (Local's `root`/`root` refused on rexenv's socket) while the log and
+    panel said the site still read its old one. Ledger #575;
+    `only_a_local_sites_socket_config_reaches_nothing_under_rexenv`,
+    `the_import_panel_never_claims_a_local_site_reads_its_old_database`
   - [x] **Q3 — choose the domain for a re-homed row** ✓ 12 Sep 2026 — `domain_choice` +
     the row's name field (label on the re-homed TLD, live-checked against
     `takenDomains`); `choose_domain` re-validates in the run —

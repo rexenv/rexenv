@@ -58,8 +58,9 @@ impl MirrorOutcome {
             MirrorOutcome::RefusedReserved { user } => format!(
                 "This site connects as `{user}`, which rexenv never creates or alters on \
                  its own engine — changing it would break every database operation rexenv \
-                 performs. When you point the site at rexenv's database, also set its \
-                 user to `root` with an empty password (rexenv's local-dev default)."
+                 performs. Connecting it from its Database tab creates a dedicated \
+                 account for this site holding the same password instead, so the password \
+                 line never changes."
             ),
         }
     }
@@ -397,7 +398,10 @@ mod tests {
         }
         let msg = MirrorOutcome::RefusedReserved { user: "root".into() }.message("ea");
         assert!(msg.contains("never creates or alters"), "{msg}");
-        assert!(msg.contains("empty password"), "{msg}");
+        // The Stage 2 interim advice ("set the user to root with an empty
+        // password") outlived Stage 3's dedicated account; the message now
+        // points at the connect that makes that edit unnecessary.
+        assert!(msg.contains("dedicated") && msg.contains("Database tab"), "{msg}");
     }
 
     #[test]

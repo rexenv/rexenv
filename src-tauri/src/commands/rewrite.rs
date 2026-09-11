@@ -80,6 +80,10 @@ pub enum RewritePreview {
         laravel_cache_warning: bool,
         /// Where the site will connect: "127.0.0.1:13306".
         target: String,
+        /// The config still names Local's own server, which rexenv can't
+        /// reach — so until this change is applied the site reads NO database
+        /// (it does not "keep reading the old one"). Ledger #575.
+        old_database_unreachable: bool,
     },
     /// Downgraded to tell-only, with the reason. Never a guess.
     #[serde(rename = "refused", rename_all = "camelCase")]
@@ -238,6 +242,14 @@ pub async fn rewrite_preview(
                 backup_exists,
                 laravel_cache_warning: laravel_cache_present(&r.conn.source),
                 target: format!("127.0.0.1:{}", r.engine.port()),
+                old_database_unreachable: directories::BaseDirs::new().is_some_and(|b| {
+                    core::localwp::config_reaches_only_local(
+                        b.home_dir(),
+                        &r.conn.host,
+                        r.conn.port,
+                        Path::new(&r.site.path),
+                    )
+                }),
             })
         }
     }

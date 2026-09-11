@@ -691,6 +691,40 @@ const LINK = "https://example.test/a//b";
         }
     }
 
+    /// **A Local import's panel never says the site still reads its old
+    /// database** (ledger #575). That sentence is true of a Valet/Herd import
+    /// and false of a Local one, whose config reaches nothing under rexenv — two
+    /// real Local imports served WordPress's database error while the job log
+    /// and the panel both said "still reads its old database". The panel reads
+    /// the backend's `oldDatabaseUnreachable`; the Sites badge, which has no
+    /// preview to read, asserts neither.
+    #[test]
+    fn the_import_panel_never_claims_a_local_site_reads_its_old_database() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../src");
+        let card = strip_ts_comments(
+            &std::fs::read_to_string(dir.join("components/sites/DbImportCard.tsx")).expect("the card exists"),
+        );
+        assert!(card.len() > 1000, "the card was emptied or moved — this guard proves nothing");
+        let still = card
+            .find("This site still reads and writes the old database")
+            .expect("the Valet/Herd sentence is gone — if it was reworded, move this guard");
+        assert!(
+            card[still.saturating_sub(200)..still].contains("!preview.oldDatabaseUnreachable"),
+            "the old-database sentence is no longer gated on the backend's Local fact"
+        );
+        assert!(
+            card.contains("This site can't load under rexenv until you connect it"),
+            "the Local site's own sentence is gone"
+        );
+        let sites = strip_ts_comments(
+            &std::fs::read_to_string(dir.join("routes/Sites.tsx")).expect("the Sites route exists"),
+        );
+        assert!(
+            !sites.contains("still reads and writes the old one"),
+            "the Sites badge asserts what the site reads — it has no preview to know, and for Local it is false"
+        );
+    }
+
     #[test]
     fn the_new_site_dialog_reads_postgres_support_rather_than_deciding_it() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
