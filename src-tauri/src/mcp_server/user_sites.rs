@@ -128,7 +128,7 @@ static REGISTRY: &[UserTool] = &[
                       WordPress.org), `primary_admin`, `core_versions` (the WordPress releases the \
                       version switch can install, from WordPress.org — a network read) and \
                       `cli_packages` (the global WP-CLI packages this machine's shell adds, the \
-                      home folder shown as `<home>`). Every read boots the site's own code through \
+                      home folder shown as `~`). Every read boots the site's own code through \
                       wp-cli, as the user, so it needs the user's `read` permission on that site. \
                       Refused on a scratch site (use wp_run there) and on a non-WordPress site.",
         input_schema: || json!({
@@ -3813,13 +3813,14 @@ pub(crate) mod tests {
         }
         fn cli_packages<'a>(&'a self) -> OpFuture<'a, Result<Option<crate::commands::wordpress::WpCliPackagesView>>> {
             self.calls.lock().unwrap().push("wp cli_packages".into());
-            // The real directory is under the person's REAL home — the one the
-            // scrubber knows. A made-up `/Users/somebody` here passed the fixture
-            // while proving nothing about what production would send.
-            let home = directories::BaseDirs::new().map(|b| b.home_dir().display().to_string()).unwrap_or_default();
+            // Production's shape: `core::wp_packages` abbreviates the home to `~`
+            // before any caller sees it. Two fixtures before this one were not
+            // that shape — a made-up `/Users/somebody`, then the real home spelt
+            // out — and the tool description promised `<home>` off the second
+            // until a live call on 11 Sep 2026 answered `~/.wp-cli/packages`.
             Box::pin(async move {
                 Ok(Some(crate::commands::wordpress::WpCliPackagesView {
-                    dir: format!("{home}/.wp-cli/packages"),
+                    dir: "~/.wp-cli/packages".into(),
                     names: vec!["wp-cli/doctor-command".into()],
                 }))
             })
@@ -4651,7 +4652,7 @@ pub(crate) mod tests {
         assert_eq!(v["result"]["names"], json!(["wp-cli/doctor-command"]));
         let home = directories::BaseDirs::new().map(|b| b.home_dir().display().to_string()).expect("a home dir");
         assert!(!v.to_string().contains(&home), "the packages dir carried the home path: {v}");
-        assert_eq!(v["result"]["dir"], "<home>/.wp-cli/packages", "scrubbed to the label, the rest kept: {v}");
+        assert_eq!(v["result"]["dir"], "~/.wp-cli/packages", "the path as the user knows it: {v}");
         let v = wp_info(ctx, &json!({ "site_id": wp_site.id, "what": "debug", "flag": "SCRIPT_DEBUG" }), &acted).await.unwrap();
         assert_eq!(v["result"]["flag"], "SCRIPT_DEBUG");
         let v = wp_info(ctx, &json!({ "site_id": wp_site.id, "what": "checksums" }), &acted).await.unwrap();
