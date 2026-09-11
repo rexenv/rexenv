@@ -767,6 +767,11 @@ export function DevGitPanel() {
         // SiteRow (badge check) pulls the editor prefs:
         case "list_editors":
           return [];
+        // The Terminal chevron (7 Sep) reads this on every site page. Without a
+        // case the default below answered `1`, and `1.map` crashed the page —
+        // three wk-checks red for four days before a release gate ran them.
+        case "list_terminals":
+          return [];
         case "get_setting":
           return null;
         case "site_provision_cancel":

@@ -1210,6 +1210,9 @@ export function DevUiReview() {
           return null;
         case "list_editors":
           return params.get("view") === "openin" ? mockEditors() : [];
+        // The Terminal chevron's app list — an array, or the menu's `.map` crashes.
+        case "list_terminals":
+          return [];
         case "list_browsers":
           return mockBrowsers();
         case "get_setting":

@@ -665,8 +665,16 @@ const PROBES = {
       if (text.includes("without asking")) problems.push("an auto-allow switch survived D15");
       return problems;
     }),
-  agents: async (page) =>
-    page.evaluate(() => {
+  agents: async (page) => {
+    // "Recent activity" is FOLDED by default since fdfc88c (8 Sep) — the rows and
+    // the empty state are not in the page until it is opened. Open it first, so
+    // the checks below read the feed rather than failing on a fold.
+    const fold = page.locator('button[aria-expanded="false"]', { hasText: "Recent activity" });
+    if (await fold.count()) {
+      await fold.first().click();
+      await page.locator('button[aria-expanded="true"]', { hasText: "Recent activity" }).waitFor();
+    }
+    return page.evaluate(() => {
       const problems = [];
       const text = document.body.textContent || "";
       if (!text.includes("AI agents (MCP)")) problems.push("card title missing");
@@ -697,8 +705,13 @@ const PROBES = {
         const standing = p.get("access") === "full" || p.get("access") === "changes";
         if (standing) {
           if (!text.includes("applies as soon as you turn this on")) problems.push("the standing-level note is missing while off");
-          if (dialRadios !== 3) problems.push("the dial must render while off when a standing level needs lowering");
-        } else if (dialRadios !== 0) problems.push("the dial rendered with the endpoint off");
+          // fdfc88c: the DIAL no longer renders while off; its way DOWN does, as a
+          // button beside the standing sentence — or the level is un-lowerable
+          // without turning the endpoint back on.
+          if (![...document.querySelectorAll("button")].some((b) => (b.textContent || "").trim() === "Set it back to Read"))
+            problems.push("a standing level above Read has no way down while the endpoint is off");
+        }
+        if (dialRadios !== 0) problems.push("the dial rendered with the endpoint off");
         if (text.includes("Recent activity")) problems.push("the feed rendered with the endpoint off");
       } else {
         if (dialRadios !== 3) problems.push(`expected the Agent access dial's 3 levels, got ${dialRadios}`);
@@ -724,7 +737,8 @@ const PROBES = {
           problems.push("a reap's deleted target does not read as '(deleted site)'");
       }
       return problems;
-    }),
+    });
+  },
 
   // The Agent-scratch group's ONE rule, checked on rendered text: what is
   // agent-flavoured is decided by the RECORDED origin, never by the domain.
