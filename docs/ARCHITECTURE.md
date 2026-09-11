@@ -851,6 +851,16 @@ honest footer —
   `sites_dir` setting — pointing the Sites folder at `~/code` silently made an
   unrelated project deletable. `teardown` returns `{ existed, docroot_removed }`
   so "your folder is still there" is never ambiguous.
+- **Delete and rename sweep every file named after the site — including its
+  job logs.** Fixed-name files (override configs/logs, the tunnel log) have a
+  `log_path(domain)` owner; the per-RUN logs (`site-provision-`, `wp-install-`,
+  `db-import-`, `repo-` + `<domain>-<run>.log`) are `logs::RUN_LOG_FAMILIES`,
+  removed by `logs::remove_run_logs` from both sweeps. They were in neither
+  until 11 Sep 2026: one dev machine still held 284 deleted sites' provision
+  logs. Ownership is not a prefix match — domains contain `-`, so
+  `repo-foo.rex-` also starts `foo.rex-2.rex`'s logs; a job-id run must be 8
+  hex, and a Git run goes to the LONGEST living domain it reads as.
+  (`logs::targets_for_site` still lists Git logs by plain prefix — see TODO.)
 - **Resolver files can be BORROWED, and must be returnable** (v18
   `resolver_takeovers`). Ownership of `/etc/resolver/<tld>` is content equality
   (`resolver_contents` doubles as the signature), which has a sharp

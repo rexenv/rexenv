@@ -123,6 +123,53 @@ pub fn targets_for_site(site: &Site, log_dir: &Path) -> Vec<LogTarget> {
     targets
 }
 
+/// The logs a site's JOBS write, one file per run, `<family><domain>-<run>.log`:
+/// provisioning, the WordPress install and a database import (the run is the
+/// job id's first 8 hex), and a Git job (the run is the asset's folder name,
+/// free text). Named after a site AND a run, so no `log_path(domain)` owns them,
+/// and they were in neither the delete nor the rename sweep until 11 Sep 2026 —
+/// 284 deleted sites' provision logs were still in one machine's app-data.
+/// `every_per_site_artifact_is_swept_by_both_sweeps` fails when a new
+/// `format!` builds a run log whose family is not listed here.
+pub const RUN_LOG_FAMILIES: [&str; 4] = ["site-provision-", "wp-install-", "db-import-", "repo-"];
+
+/// Whether the file `name` is one of `domain`'s run logs.
+///
+/// A plain prefix match is wrong: domains may contain `-`, so `foo.rex-2.rex`'s
+/// logs also start with `repo-foo.rex-`, and deleting `foo.rex` would take a
+/// living neighbour's files. A job-id run must be exactly 8 hex, which no
+/// neighbour's `2.rex-<id>` can be. A Git run is free text, so there the LONGEST
+/// domain wins: a name that also reads as one of `other_domains` (a longer one)
+/// belongs to that site.
+pub fn is_run_log_of(name: &str, domain: &str, other_domains: &[String]) -> bool {
+    let Some(stem) = name.strip_suffix(".log") else { return false };
+    RUN_LOG_FAMILIES.iter().any(|family| {
+        let Some(named) = stem.strip_prefix(family) else { return false };
+        let Some(run) = named.strip_prefix(domain).and_then(|r| r.strip_prefix('-')) else {
+            return false;
+        };
+        if *family == "repo-" {
+            !other_domains
+                .iter()
+                .any(|d| d.len() > domain.len() && named.starts_with(d.as_str()) && named[d.len()..].starts_with('-'))
+        } else {
+            run.len() == 8 && run.bytes().all(|b| b.is_ascii_hexdigit())
+        }
+    })
+}
+
+/// Remove every run log of `domain` (best-effort, like the rest of a sweep).
+/// `other_domains` are the sites that still exist — see [`is_run_log_of`].
+pub fn remove_run_logs(platform: &dyn Platform, domain: &str, other_domains: &[String]) {
+    let Ok(dir) = platform.paths().log_dir() else { return };
+    let Ok(entries) = std::fs::read_dir(&dir) else { return };
+    for name in entries.flatten().filter_map(|e| e.file_name().into_string().ok()) {
+        if is_run_log_of(&name, domain, other_domains) {
+            let _ = std::fs::remove_file(dir.join(name));
+        }
+    }
+}
+
 /// A log key is a plain file name within `log_dir`: ends in `.log`, no path
 /// separators or `..` (so the UI can never escape the log directory).
 fn is_safe_key(key: &str) -> bool {
@@ -406,6 +453,42 @@ pub fn wp_debug_log_download(docroot: &Path, content_rel: &str, domain: &str) ->
 mod tests {
     use super::*;
     use crate::state::models::{MultisiteMode, ServiceStatus, Site, SiteOrigin, SiteType, WebServer};
+
+    /// A site's run logs are its own and never a neighbour's whose domain
+    /// extends it — the difference between sweeping a deleted site's logs and
+    /// deleting a living site's.
+    #[test]
+    fn a_run_log_belongs_to_its_site_and_never_to_a_neighbour_that_extends_its_name() {
+        let neighbours = vec!["foo.rex-2.rex".to_string()];
+        for own in [
+            "site-provision-foo.rex-0a1b2c3d.log",
+            "wp-install-foo.rex-0a1b2c3d.log",
+            "db-import-foo.rex-0a1b2c3d.log",
+            "repo-foo.rex-my-plugin.log",
+            "repo-foo.rex-my-plugin-watch.log",
+        ] {
+            assert!(is_run_log_of(own, "foo.rex", &neighbours), "{own} is foo.rex's");
+        }
+        for not_own in [
+            // The neighbour's, which a prefix match would have taken.
+            "site-provision-foo.rex-2.rex-0a1b2c3d.log",
+            "repo-foo.rex-2.rex-my-plugin.log",
+            // Another domain that merely starts the same.
+            "wp-install-foo.rexx-0a1b2c3d.log",
+            // Fixed-name per-site files have their own owners; shared logs none.
+            "tunnel-foo.rex.log",
+            "frankenphp-foo.rex-stdout.log",
+            "nginx-error.log",
+            // Not a run id, not a log.
+            "db-import-foo.rex-notanid.log",
+            "site-provision-foo.rex-0a1b2c3d.txt",
+        ] {
+            assert!(!is_run_log_of(not_own, "foo.rex", &neighbours), "{not_own} is not foo.rex's");
+        }
+        // With the neighbour gone, a Git log that reads as either is the
+        // deleted site's to sweep — nobody else is left to own it.
+        assert!(is_run_log_of("repo-foo.rex-2.rex-my-plugin.log", "foo.rex", &[]));
+    }
 
     /// **The Logs tab offers the file the app actually writes.** Two independent
     /// spellings of one name is how a viewer ends up permanently empty while

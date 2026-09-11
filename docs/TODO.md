@@ -32,6 +32,19 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   true by `mcp_server/parity.rs` (#560): its table now has no `Gap` row, and a new command
   fails the build until someone rules on it.
 
+- [x] **Deleting or renaming a site left its job logs behind** ✓ 11 Sep 2026 — found by the
+  live MCP test: its deleted fixture sites' provision logs stayed, and the machine held
+  logs for 284 deleted domains. `logs::remove_run_logs` now runs from `teardown` and
+  `change_site_domain` for every run-log family, never taking a living neighbour whose
+  domain extends the name; the #302 guard detects new families by their `format!` (#565).
+  Logs already orphaned are not swept retroactively.
+
+- [ ] **`logs::targets_for_site` lists Git job logs by plain prefix** — 11 Sep 2026, found
+  writing #565. `repo-foo.rex-` also matches `foo.rex-2.rex`'s logs, so `foo.rex`'s Logs
+  tab — and MCP `site_logs` under `read` on `foo.rex` only — can open a neighbour's Git
+  job output. Needs the other sites' domains (the #565 longest-domain rule); the callers
+  hold no connection today, which is why it was not folded in.
+
 - [ ] **In-app self-update — a dmg user has no update path at all**
   — 6 Sep 2026, planned in `docs/archive/PLAN-self-update.md`; supersedes the Phase 4+ row
   "Packaging polish: Tauri updater" (`docs/archive/TASKS-RELEASE.md` §6.1), which

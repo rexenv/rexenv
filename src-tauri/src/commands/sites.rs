@@ -1552,6 +1552,13 @@ pub async fn change_site_domain(
     if let Ok(log) = core::tunnels::log_path(state.platform.as_ref(), &old_domain) {
         let _ = std::fs::remove_file(log);
     }
+    // The old name's job logs. The site is listed under its NEW domain here, so
+    // a new name that extends the old one (`foo.rex` → `foo.rex-2.rex`) keeps
+    // its own files; no list, no sweep.
+    if let Some(sites) = lock(&state).ok().and_then(|conn| core::sites::list(&conn).ok()) {
+        let others: Vec<String> = sites.into_iter().map(|s| s.domain).collect();
+        core::logs::remove_run_logs(state.platform.as_ref(), &old_domain, &others);
+    }
 
     Ok(DomainChange { site: updated, backup_path, replacements })
 }

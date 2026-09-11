@@ -1476,6 +1476,14 @@ pub fn teardown(conn: &Connection, platform: &dyn Platform, id: &str) -> Result<
     if let Ok(log) = tunnels::log_path(platform, &site.domain) {
         let _ = std::fs::remove_file(log);
     }
+    // The job logs, one per run (provisioning, WordPress install, database
+    // import, Git jobs). The row is already gone, so `list` is every OTHER site
+    // — a neighbour whose domain extends this one keeps its files. No list, no
+    // sweep: guessing without the neighbours could take theirs.
+    if let Ok(others) = list(conn) {
+        let others: Vec<String> = others.into_iter().map(|s| s.domain).collect();
+        crate::core::logs::remove_run_logs(platform, &site.domain, &others);
+    }
 
     // Remove the docroot, but only if it's under a managed sites dir — the
     // configured one, the current default, OR the legacy app-data default (so
@@ -4227,6 +4235,54 @@ mod tests {
                 );
             }
         }
+
+        // Run logs have no `log_path(domain)` owner — one file per site AND per
+        // run — so they are detected by the name BUILDER instead: a `format!`
+        // literal shaped `<family>{domain}-{run}….log`. Every family found must
+        // be one `logs::RUN_LOG_FAMILIES` knows, and both sweeps must call the
+        // one remover. 284 deleted sites' provision logs were still on disk
+        // when this landed (11 Sep 2026).
+        let mut families: Vec<String> = Vec::new();
+        for sub in ["src/core", "src/commands"] {
+            let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(sub);
+            for entry in std::fs::read_dir(&dir).expect("source dir").flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+                    continue;
+                }
+                let Ok(text) = std::fs::read_to_string(&path) else { continue };
+                let body = crate::core::copy_scan::production_source(&text);
+                for literal in body.split("format!(\"").skip(1).filter_map(|s| s.split('"').next()) {
+                    let Some(open) = literal.find('{') else { continue };
+                    let (family, rest) = literal.split_at(open);
+                    let run_shaped = literal.ends_with(".log")
+                        && family.ends_with('-')
+                        && (rest.starts_with("{}-{") || rest.starts_with("{domain}-{"));
+                    if run_shaped && !families.iter().any(|f| f == family) {
+                        families.push(family.to_string());
+                    }
+                }
+            }
+        }
+        families.sort();
+        assert!(
+            families.len() >= 4,
+            "the scan found run-log families {families:?} — it has stopped working (expected at \
+             least site-provision, wp-install, db-import and repo)"
+        );
+        for family in &families {
+            assert!(
+                crate::core::logs::RUN_LOG_FAMILIES.contains(&family.as_str()),
+                "a `format!` builds `{family}<domain>-<run>.log`, and `logs::RUN_LOG_FAMILIES` does \
+                 not list it: deleting or renaming a site leaves those files behind forever"
+            );
+        }
+        for (what, body) in [("teardown", teardown), ("change_site_domain", rename)] {
+            assert!(
+                body.contains("logs::remove_run_logs("),
+                "{what} never removes the site's run logs (`logs::remove_run_logs`)"
+            );
+        }
     }
 
     #[test]
@@ -4249,6 +4305,25 @@ mod tests {
         ];
         for p in &artifacts {
             std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, "x").unwrap();
+        }
+        // The job logs, one per run — in neither sweep until 11 Sep 2026 — and
+        // a living neighbour whose domain extends this one, whose logs stay.
+        let log_dir = platform.paths().log_dir().unwrap();
+        create(&conn, sample("Neighbour", "teardown.test-2.test")).unwrap();
+        let run_logs = [
+            "site-provision-teardown.test-0a1b2c3d.log",
+            "wp-install-teardown.test-0a1b2c3d.log",
+            "db-import-teardown.test-0a1b2c3d.log",
+            "repo-teardown.test-my-plugin.log",
+        ]
+        .map(|n| log_dir.join(n));
+        let neighbour_logs = [
+            "site-provision-teardown.test-2.test-0a1b2c3d.log",
+            "repo-teardown.test-2.test-my-plugin.log",
+        ]
+        .map(|n| log_dir.join(n));
+        for p in run_logs.iter().chain(&neighbour_logs) {
             std::fs::write(p, "x").unwrap();
         }
 
@@ -4296,6 +4371,13 @@ mod tests {
         assert!(!backup_file.exists(), "the backup file must go with its row");
         for p in &artifacts {
             assert!(!p.exists(), "orphaned artifact left behind: {}", p.display());
+        }
+        for p in &run_logs {
+            assert!(!p.exists(), "a run log outlived its site: {}", p.display());
+        }
+        for p in &neighbour_logs {
+            assert!(p.exists(), "deleting a site took a living neighbour's log: {}", p.display());
+            let _ = std::fs::remove_file(p);
         }
         // Deleting again is a no-op.
         assert!(!teardown(&conn, &*platform, &site.id).unwrap().existed);
