@@ -56,7 +56,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     real install: 20,340 entries unchanged) + `local_import_check` (network, PASS: socket
     login past a dead TCP port, URL pass on PHP 8.x and 7.4, serialized length repaired,
     wp-config byte-identical); ledger #570 → ✅, #573 L1
-  - [ ] T7 — ARCHITECTURE §8, ledger rows, PUBLISH-TESTING §N
+  - [x] T7 — ARCHITECTURE §8, ledger rows, PUBLISH-TESTING §N ✓ 11 Sep 2026 — ARCHITECTURE
+    and ledger #570–#573 landed with T1–T6; §N written (steps N0–N9) + its summary row
+  - [ ] **PUBLISH-TESTING §N — the live pass on a STARTED Local site** (owner-run: rexenv
+    never starts Local's servers). Closes #572's L3 half (Local's real mysqld + socket).
+  - [ ] **Owner decisions — plan §9**: Q1 DB_NAME in the rewrite (every Local db is
+    `local`, so 2nd+ imports are tell-only today), Q2 multisite, Q3 per-row domain edit.
 
 - [ ] **In-app self-update — a dmg user has no update path at all**
   — 6 Sep 2026, planned in `docs/archive/PLAN-self-update.md`; supersedes the Phase 4+ row

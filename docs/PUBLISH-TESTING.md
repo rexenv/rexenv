@@ -1289,6 +1289,64 @@ Result: ____ (date, reqwest version).
 
 ---
 
+## N) 🚧 Local import — live pass against a STARTED Local site (owner-run)
+
+What neither layer below this can give (`docs/PLAN-local-import.md` §7): Local's
+REAL per-site mysqld (`skip-name-resolve`, the socket where Local's docs place it),
+a real Local WordPress database, and the packaged `/import` screen with Local rows.
+The sandbox examples prove the socket sign-in and the URL pass against a mysqld and
+a WordPress rexenv started itself; this pass is the Local half, and it needs a site
+started IN Local — a button rexenv never presses.
+
+### Safety — read before N0
+
+- **Nothing of Local's is written.** The scan reads `sites.json`; the database copy
+  is a non-locking read of the site's mysqld while Local runs it; the URL pass
+  writes rexenv's COPY only.
+- **Writes into the project only at N7**, and only if you press Connect (backed up,
+  one-click revert — the §J machinery).
+- **Persists on our side until N9:** the site row, the copy, a `rex_<slug>` user if
+  you connect.
+
+### Preconditions
+
+1. Build at the commit under test; start the rexenv stack.
+2. **Keep Local RUNNING** — unlike Herd in §K, Local must stay open: the site's
+   database lives inside it. Check Services shows rexenv's edge green: Local's router
+   can hold `:80`/`:443` in "Site Domains" mode; if it does, switch Local's router to
+   "localhost" mode for this pass and record that you did.
+3. Pick a SINGLE-site Local site whose content you'd shrug at losing.
+
+### Steps
+
+- **N0** — Import → a **Local** source card naming Local's app-data folder, with the
+  note that `.local` sites import on `.rex` and each copied database has its URLs
+  updated (rexenv's copy only). Multisite rows read "can't import" with the reason.
+  **Expect** every Local site you have is a row — count them against Local's sidebar.
+- **N1** — the chosen row shows `<name>.rex` and **"was <name>.local"**. If its PHP
+  isn't shipped, the row has a picker: it stays unticked until you choose; choose →
+  "ready".
+- **N2** — with the site STOPPED in Local, import it with "also copy databases".
+  **Expect** the site imports and the DB fails with *"… Local runs a site's database
+  only while that site is started. Start "<name>" in Local, then retry"* — not
+  DBngin's wording.
+- **N3** — **start the site in Local.** Record
+  `ls ~/Library/Application\ Support/Local/run/<id>/mysql/` (is `mysqld.sock` there?).
+- **N4** — SiteDetail → Database → Import database. **Expect** ok; the job log says
+  *"is a Local site: its database is Local's own server for it (127.0.0.1:<port>,
+  signed in over its socket)"* and *"URLs: <name>.local → https://<name>.rex in
+  rexenv's copy"*. The source label reads *Local's "<name>" site — MySQL <v> at …*.
+- **N5** — rexenv's Adminer: the copy's `siteurl`/`home` are `https://<name>.rex`.
+  Local's own Adminer (Local → Database): still `http://<name>.local`.
+- **N6** — Rescan → the row reads **already here** (folder match, not name).
+- **N7** — Database tab → connect. First Local import (db `local`): the 2-key diff
+  (host, user → `rex_<slug>`), no password line. Open `https://<name>.rex` — it loads
+  and does NOT redirect to `.local`. *(A second Local import restores as
+  `local_<domain>` and gets the tell-only block — plan §9 Q1, expected today.)*
+- **N8** — Revert the connection; open the site in Local — it still works there.
+- **N9** — delete the rexenv site (revert-then-delete default). `~/Local Sites/<name>`
+  is untouched; Local's site still starts and serves.
+
 ## Publish-blocking summary
 
 > **This table is the thing a release-day reader clears, so it has to be the WHOLE set.**
@@ -1313,4 +1371,5 @@ Result: ____ (date, reqwest version).
 | K | The whole migration as ONE journey (seams + reversibility) | 🚧 rebuild, then run |
 | F | Resolver TAKEOVER + RESTORE — clean-VM only (fixture-tested, never live-run) | 🚧 **publish-blocking, and it was missing from this table until 21 Aug 2026** |
 | G | `/import` screen — packaged-app GUI pass | 🚧 **publish-blocking, and it was missing from this table until 21 Aug 2026** |
+| N | Local import: live pass on a STARTED Local site + the packaged screen's Local rows | 🚧 owner-run — rexenv never starts Local's servers, so no agent can run it |
 | L | Offline/timeout behaviour of the update check | 🟢 nice-to-have (no row here before 21 Aug 2026) |
