@@ -279,14 +279,16 @@ pub async fn add_site_domain(
     // record for the same reason: declining the prompt must change nothing.
     {
         let tld = core::sites::domain_tld(&domain)?;
-        core::dns::ensure_resolver(
-            state.platform.as_ref(),
-            &tld,
-            core::dns::DEFAULT_DNS_PORT,
-            // A user typing a hostname into the app or `rex`: prompting is the
-            // point, exactly as it is for a new site or a domain change.
-            core::dns::ResolverPrompt::Allow,
-        )?;
+        core::prompt::while_prompting(|| {
+            core::dns::ensure_resolver(
+                state.platform.as_ref(),
+                &tld,
+                core::dns::DEFAULT_DNS_PORT,
+                // A user typing a hostname into the app or `rex`: prompting is the
+                // point, exactly as it is for a new site or a domain change.
+                core::dns::ResolverPrompt::Allow,
+            )
+        })?;
     }
     let (added, site, sites, aliases) = {
         let conn = lock(&state)?;
@@ -1400,13 +1402,15 @@ pub async fn change_site_domain(
     // resolve. First use of a TLD = one privileged prompt; no-op otherwise.
     // BEFORE the backup/search-replace, so declining the prompt changes nothing.
     let new_tld = core::sites::domain_tld(&domain)?;
-    core::dns::ensure_resolver(
-        state.platform.as_ref(),
-        &new_tld,
-        core::dns::DEFAULT_DNS_PORT,
-        // A user typing a new domain in the app: prompting is the point.
-        core::dns::ResolverPrompt::Allow,
-    )?;
+    core::prompt::while_prompting(|| {
+        core::dns::ensure_resolver(
+            state.platform.as_ref(),
+            &new_tld,
+            core::dns::DEFAULT_DNS_PORT,
+            // A user typing a new domain in the app: prompting is the point.
+            core::dns::ResolverPrompt::Allow,
+        )
+    })?;
 
     // The site's EXTRA domains (v42) travel with the cert: the new primary's
     // certificate must still cover every name the site answers on, or the alias

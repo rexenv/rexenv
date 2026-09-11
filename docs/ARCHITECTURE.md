@@ -489,7 +489,19 @@ Live-proven end to end by `site_stop_start_check`.
   Domains step waits on its admin prompt and keychain dialog inside `spawn_blocking`
   (`system_setup`, #567): as a plain call in the `async fn` that wait held a tokio
   worker — one the Install step's downloads share — for as long as the dialog stayed
-  open. Other prompt-owning commands still wait on a worker or the main thread (TODO).
+  open.
+- **Every call that can raise a privileged prompt waits off the runtime, from an
+  async caller** (`core::prompt::while_prompting`, #568). The admin-password and
+  keychain dialogs stay open as long as the user takes; the platform call waits with
+  them on a plain thread. In an `async fn` that wait held a tokio worker — and every
+  task queued on it; in a SYNC command Tauri ran it on the main thread and the
+  whole window froze (`repair_resolver`, `remove_resolver`, `trust_local_ca` were
+  sync until 11 Sep 2026). `while_prompting` is `block_in_place` on the
+  multi-threaded runtime (the worker's queue moves to another thread) and a plain
+  call anywhere else. `every_prompt_call_waits_off_the_runtime` DERIVES the prompt
+  primitives from `core/` and fails the build for an unwrapped call or a sync
+  command that prompts. Three commands still hold the DATABASE lock across the
+  prompt (`uninstall_system`, `resolver_take_over`, `resolver_hand_back`) — TODO.
 - Long-running children spawn via `ProcessSupervisor::spawn_logged` →
   `<log_dir>/<svc>-stdout.log`. `stop` escalates to SIGKILL after a grace window (L3).
   Beware orphan workers after a SIGKILLed master: title-rewritten fpm/nginx workers can

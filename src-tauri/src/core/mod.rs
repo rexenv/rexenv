@@ -53,6 +53,7 @@ pub mod phpconf;
 pub mod ports;
 pub mod postgres;
 pub mod proc;
+pub mod prompt;
 pub mod proxy;
 pub mod redis;
 pub mod repo;

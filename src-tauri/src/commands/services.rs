@@ -157,7 +157,9 @@ pub async fn start_services(state: State<'_, AppState>) -> Result<()> {
             // Start the root edge under launchd KeepAlive so it stays up across any
             // death/sleep/reboot. First run installs the daemon (one admin prompt);
             // later starts just enable + kickstart. `caddy_bin` is the install SOURCE.
-            core::proxy::start_edge_daemon(state.platform.as_ref(), &plan.caddy_bin, &plan.caddyfile)?;
+            core::prompt::while_prompting(|| {
+                core::proxy::start_edge_daemon(state.platform.as_ref(), &plan.caddy_bin, &plan.caddyfile)
+            })?;
             state.services.lock().await.set_edge_daemon();
         } else {
             let child = core::proxy::start(state.platform.as_ref(), &plan.caddy_bin, &plan.caddyfile)?;
@@ -231,7 +233,7 @@ pub async fn stop_services(state: State<'_, AppState>) -> Result<()> {
     // cancelled prompt errors out here with nothing stopped (all-or-nothing).
     // Runs with the services lock free (M4), like the privileged start.
     if need_bootout {
-        core::proxy::stop_edge_daemon(state.platform.as_ref())?;
+        core::prompt::while_prompting(|| core::proxy::stop_edge_daemon(state.platform.as_ref()))?;
     }
     // Phase 3 (locked): stop the rest. stop_all sees the Daemon handle and skips
     // the admin-API edge stop (the daemon edge is already down).

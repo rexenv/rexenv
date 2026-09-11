@@ -1368,10 +1368,10 @@ impl<Rt: tauri::Runtime> user_sites::SystemOps for AppSiteCreator<Rt> {
         Box::pin(async move { crate::commands::settings::set_default_tld(self.state()?, tld) })
     }
     fn repair_resolver<'a>(&'a self, tld: String) -> user_sites::OpFuture<'a, crate::error::Result<String>> {
-        Box::pin(async move { crate::commands::system::repair_resolver(self.state()?, tld) })
+        Box::pin(async move { crate::commands::system::repair_resolver(self.state()?, tld).await })
     }
     fn remove_resolver<'a>(&'a self, tld: String) -> user_sites::OpFuture<'a, crate::error::Result<bool>> {
-        Box::pin(async move { crate::commands::system::remove_resolver(self.state()?, tld) })
+        Box::pin(async move { crate::commands::system::remove_resolver(self.state()?, tld).await })
     }
     fn set_php_installed<'a>(&'a self, minor: String, installed: bool) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
         Box::pin(async move { crate::commands::php::set_php_version_installed(self.state()?, minor, installed).await })

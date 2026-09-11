@@ -106,7 +106,7 @@ pub struct UnresolvableTld {
 /// obvious second caller, and a repair button there must not be a second
 /// implementation of this rule.
 #[tauri::command]
-pub fn repair_resolver(state: State<'_, AppState>, tld: String) -> Result<String> {
+pub async fn repair_resolver(state: State<'_, AppState>, tld: String) -> Result<String> {
     let tld = tld.trim().trim_start_matches('.').to_ascii_lowercase();
     let in_use = {
         let conn = state
@@ -122,13 +122,17 @@ pub fn repair_resolver(state: State<'_, AppState>, tld: String) -> Result<String
             in_use.iter().map(|t| format!(".{t}")).collect::<Vec<_>>().join(", ")
         )));
     }
-    core::dns::ensure_resolver(
-        state.platform.as_ref(),
-        &tld,
-        core::dns::DEFAULT_DNS_PORT,
-        // The user asked for exactly this; prompting is the point.
-        core::dns::ResolverPrompt::Allow,
-    )?;
+    // `async` + `while_prompting`: as a sync command this ran on the MAIN thread,
+    // and the whole window froze for as long as the admin prompt stayed open.
+    core::prompt::while_prompting(|| {
+        core::dns::ensure_resolver(
+            state.platform.as_ref(),
+            &tld,
+            core::dns::DEFAULT_DNS_PORT,
+            // The user asked for exactly this; prompting is the point.
+            core::dns::ResolverPrompt::Allow,
+        )
+    })?;
     Ok(tld)
 }
 
@@ -140,7 +144,7 @@ pub fn repair_resolver(state: State<'_, AppState>, tld: String) -> Result<String
 /// domain must not raise a password prompt for housekeeping — so this is the
 /// explicit verb (`rex tld --remove <tld>`).
 #[tauri::command]
-pub fn remove_resolver(state: State<'_, AppState>, tld: String) -> Result<bool> {
+pub async fn remove_resolver(state: State<'_, AppState>, tld: String) -> Result<bool> {
     let tld = tld.trim().trim_start_matches('.').to_ascii_lowercase();
     if tld == core::tld::BACKBONE_TLD {
         return Err(Error::Other(format!(
@@ -160,7 +164,9 @@ pub fn remove_resolver(state: State<'_, AppState>, tld: String) -> Result<bool> 
              (`rex site domains <site>` lists them)"
         )));
     }
-    core::dns::remove_resolver(state.platform.as_ref(), &tld, core::dns::DEFAULT_DNS_PORT)
+    core::prompt::while_prompting(|| {
+        core::dns::remove_resolver(state.platform.as_ref(), &tld, core::dns::DEFAULT_DNS_PORT)
+    })
 }
 
 /// Startup init outcome, ALWAYS managed — unlike `AppState`, which is absent when
@@ -449,7 +455,7 @@ pub fn cli_status(state: State<'_, AppState>) -> Result<core::cli::CliStatus> {
 /// Returns the refreshed status so the card updates in one round-trip.
 #[tauri::command]
 pub async fn cli_install(state: State<'_, AppState>) -> Result<core::cli::CliStatus> {
-    core::cli::install(state.platform.as_ref())?;
+    core::prompt::while_prompting(|| core::cli::install(state.platform.as_ref()))?;
     core::cli::status(state.platform.as_ref())
 }
 
@@ -478,9 +484,11 @@ pub async fn system_setup(app: tauri::AppHandle) -> Result<()> {
 
 /// Re-trust the local CA in the user trust store (macOS login keychain — shows the
 /// native auth dialog, no root). Idempotent: re-adding an already-trusted cert is fine.
+/// `async` so the dialog's wait is not on the main thread (a sync command froze the
+/// whole window until it was answered).
 #[tauri::command]
-pub fn trust_local_ca(state: State<'_, AppState>) -> Result<()> {
-    core::ssl::trust_ca(state.platform.as_ref(), &state.ca)
+pub async fn trust_local_ca(state: State<'_, AppState>) -> Result<()> {
+    core::prompt::while_prompting(|| core::ssl::trust_ca(state.platform.as_ref(), &state.ca))
 }
 
 /// Firefox trust state for the Settings SSL card, plus the CA file path for the
@@ -622,7 +630,7 @@ pub async fn uninstall_system(
         .db
         .lock()
         .map_err(|_| Error::Other("database lock poisoned".into()))?;
-    core::setup::run_system_teardown(&conn, state.platform.as_ref())
+    core::prompt::while_prompting(|| core::setup::run_system_teardown(&conn, state.platform.as_ref()))
 }
 
 #[cfg(test)]

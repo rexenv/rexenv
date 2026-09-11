@@ -189,6 +189,7 @@ rexenv/
         │   ├── mail.rs · adminer.rs · logs.rs · terminal.rs · monitor.rs
         │   ├── macho.rs      # the macOS version a pinned binary DECLARES (minos); which archs it holds
         │   ├── blueprints.rs · setup.rs · ports.rs · stack_guard.rs · cli.rs
+        │   ├── prompt.rs       # while_prompting — an admin/keychain dialog never holds the async runtime
         │   ├── downloads.rs    # download-manager hub (prefetch-before-lock)
         │   └── binaries.rs     # BinaryProvider: pinned manifest, checksum, prepare
         │

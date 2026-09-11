@@ -616,7 +616,9 @@ impl ServiceManager {
         await_ready(checks).await?;
         if let Some(plan) = self.prepare_edge(platform, caddyfile)? {
             if plan.privileged {
-                proxy::start_edge_daemon(platform, &plan.caddy_bin, &plan.caddyfile)?;
+                crate::core::prompt::while_prompting(|| {
+                    proxy::start_edge_daemon(platform, &plan.caddy_bin, &plan.caddyfile)
+                })?;
                 self.set_edge_daemon();
             } else {
                 let child = proxy::start(platform, &plan.caddy_bin, &plan.caddyfile)?;

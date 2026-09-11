@@ -55,6 +55,11 @@ nothing.** The silent case is the one that ships to everybody.
   byte counts must keep moving while the dialog sits there. **Tell:** progress that
   freezes exactly while a password or keychain dialog is open and jumps on as soon as it
   is answered — the prompt waiting on a runtime worker again (#567).
+- [ ] **A dialog never freezes the window.** (Added 11 Sep 2026.) Settings → re-trust the
+  local CA (or Repair a TLD's resolver): while the keychain/admin dialog is open, the app
+  window must still scroll, switch screens and show live status. **Tell:** a beachball or
+  a window that ignores clicks until the dialog is answered — a prompting command running
+  on the main thread (#568).
 - [ ] Admin prompt for the `.rex` DNS resolver appears and is accepted (`/etc/resolver/rex`; NO `/etc/resolver/test` on a fresh machine).
 - [ ] Keychain prompt to trust the local CA appears and is accepted.
 - [ ] Admin prompt for the edge to bind ports 80/443 appears and is accepted.

@@ -378,12 +378,9 @@ pub fn resolver_tld_status(state: State<'_, AppState>, tld: String) -> Result<Re
 #[tauri::command]
 pub async fn resolver_take_over(state: State<'_, AppState>, tld: String) -> Result<()> {
     let conn = lock(&state)?;
-    core::dns::take_over_resolver(
-        &conn,
-        state.platform.as_ref(),
-        &tld,
-        core::dns::DEFAULT_DNS_PORT,
-    )
+    core::prompt::while_prompting(|| {
+        core::dns::take_over_resolver(&conn, state.platform.as_ref(), &tld, core::dns::DEFAULT_DNS_PORT)
+    })
 }
 
 /// Give a borrowed resolver file back.
@@ -393,12 +390,9 @@ pub async fn resolver_hand_back(
     tld: String,
 ) -> Result<core::dns::ResolverPlan> {
     let conn = lock(&state)?;
-    core::dns::hand_back_resolver(
-        &conn,
-        state.platform.as_ref(),
-        &tld,
-        core::dns::DEFAULT_DNS_PORT,
-    )
+    core::prompt::while_prompting(|| {
+        core::dns::hand_back_resolver(&conn, state.platform.as_ref(), &tld, core::dns::DEFAULT_DNS_PORT)
+    })
 }
 
 /// TLDs we borrowed whose file another tool has since reclaimed — the silent
@@ -731,11 +725,9 @@ pub async fn valet_import_run<R: tauri::Runtime>(
         ) {
             core::dns::ResolverOwner::Ours => {}
             core::dns::ResolverOwner::Absent => {
-                core::dns::configure_resolver(
-                    state.platform.as_ref(),
-                    tld,
-                    core::dns::DEFAULT_DNS_PORT,
-                )?;
+                core::prompt::while_prompting(|| {
+                    core::dns::configure_resolver(state.platform.as_ref(), tld, core::dns::DEFAULT_DNS_PORT)
+                })?;
             }
             // The screen asks for consent before getting here; refusing beats
             // quietly taking a file we were never given permission to take.

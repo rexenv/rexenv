@@ -48,13 +48,19 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   in `spawn_blocking` on the app's own state (#567). Source guard only — no test can answer
   a real prompt.
 
-- [ ] **The other commands that wait on a privileged prompt** — 11 Sep 2026, found fixing
-  the row above; not the first-run path, so not folded in. ASYNC, holding a worker while the
-  dialog is open: `uninstall_system`, `resolver_take_over`, `add_site_domain` /
-  `change_site_domain` / `site_provision_retry` (only when a new TLD needs its resolver
-  file). SYNC, so Tauri runs them on the MAIN thread and the whole window freezes until
-  the dialog is answered: `trust_local_ca`, `repair_resolver`, `trust_ca_in_firefox`.
-  Found by scanning `commands/` for the prompt-owning calls; re-scan before fixing.
+- [x] **The other commands that wait on a privileged prompt** ✓ 11 Sep 2026 — found fixing
+  the row above. The re-scan corrected this row's own list: `trust_ca_in_firefox` raises no
+  prompt, and `remove_resolver`, `cli_install`, `resolver_hand_back`, `valet_import_run` and
+  Start/Stop all (the edge daemon's install/bootout) were missing. Every prompt call now goes
+  through `core::prompt::while_prompting` from an async caller; `repair_resolver`,
+  `remove_resolver` and `trust_local_ca` became `async`. A guard derives the prompt
+  primitives from `core/` and fails on an unwrapped call or a sync command (#568).
+
+- [ ] **Three commands hold the database lock across a privileged prompt** — 11 Sep 2026,
+  found in the same re-scan. `uninstall_system` (`run_system_teardown(&conn, …)`),
+  `resolver_take_over` and `resolver_hand_back` lock `state.db` and keep it while the admin
+  dialog is open, so every command that needs the database waits on the user. Fix: split
+  each core operation into plan (locked) → prompt (unlocked) → record (locked).
 
 - [x] **Deleting or renaming a site left its job logs behind** ✓ 11 Sep 2026 — found by the
   live MCP test: its deleted fixture sites' provision logs stayed, and the machine held

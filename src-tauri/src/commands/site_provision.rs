@@ -578,12 +578,14 @@ pub(crate) fn start<R: tauri::Runtime>(
     // is REQUIRED so a future one cannot be silent about it, and the job phases
     // downstream reach no privileged op (proven by
     // `an_agent_create_never_reaches_a_privileged_prompt`).
-    core::dns::ensure_resolver(
-        state.platform.as_ref(),
-        &site_tld,
-        core::dns::DEFAULT_DNS_PORT,
-        ownership.resolver_prompt(),
-    )?;
+    core::prompt::while_prompting(|| {
+        core::dns::ensure_resolver(
+            state.platform.as_ref(),
+            &site_tld,
+            core::dns::DEFAULT_DNS_PORT,
+            ownership.resolver_prompt(),
+        )
+    })?;
 
     // Refused HERE, before the row exists, so the caller gets a prepare-phase
     // error with nothing created rather than a half-site to clean up.
@@ -693,12 +695,14 @@ pub async fn site_provision_retry<R: tauri::Runtime>(
     // Retry is a USER action — the Retry button in the app, or the CLI. (No
     // agent tool retries: a scratch create that failed leaves a site the user
     // can retry or delete, and the agent is told exactly that.)
-    core::dns::ensure_resolver(
-        state.platform.as_ref(),
-        &site_tld,
-        core::dns::DEFAULT_DNS_PORT,
-        core::dns::ResolverPrompt::Allow,
-    )?;
+    core::prompt::while_prompting(|| {
+        core::dns::ensure_resolver(
+            state.platform.as_ref(),
+            &site_tld,
+            core::dns::DEFAULT_DNS_PORT,
+            core::dns::ResolverPrompt::Allow,
+        )
+    })?;
     let docroot = PathBuf::from(&site.path);
     // Re-ensure prepare's artifacts — but ONLY for a docroot we own. A linked
     // site's folder is the user's: creating it, or dropping our starter page

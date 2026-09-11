@@ -1736,13 +1736,13 @@ where
         // door than "repair what my sites need".
         "tld.repair" => {
             let state = app_state(app)?;
-            let tld = commands::system::repair_resolver(state.clone(), need_str(&args, "tld", cmd)?)?;
+            let tld = commands::system::repair_resolver(state.clone(), need_str(&args, "tld", cmd)?).await?;
             Ok(json!({ "tld": tld }))
         }
         "tld.remove" => {
             let state = app_state(app)?;
             let tld = need_str(&args, "tld", cmd)?;
-            let removed = commands::system::remove_resolver(state.clone(), tld.clone())?;
+            let removed = commands::system::remove_resolver(state.clone(), tld.clone()).await?;
             Ok(json!({ "tld": tld, "removed": removed }))
         }
         "version" => Ok(to_value(&commands::system::app_info())?),
