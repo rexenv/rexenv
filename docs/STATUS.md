@@ -28,41 +28,41 @@ App version **0.7.0** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md`
 - `TODO.md:491` PUBLISH-TESTING §B
 - `TODO.md:492` PUBLISH-TESTING §D
 - `TODO.md:510` Flip the release host back when `rexenv/rexenv` goes public
-- `TODO.md:521` The self-update swap probe (T0) and the first real in-app update (T11)
-- `TODO.md:526` PUBLISH-TESTING §K
-- `TODO.md:527` PUBLISH-TESTING §F
-- `TODO.md:528` PUBLISH-TESTING §G
-- `TODO.md:534` Release 5.4 — clean-Mac smoke test
-- `TODO.md:538` Tunnel probe session
-- `TODO.md:542` Intel spot-run
-- `TODO.md:545` The macOS floor is a claim about BOTH slices, and most of it has still never been measured
-- `TODO.md:583` In-app verifies owed
-- `TODO.md:595` PUBLISH-TESTING §E / §L
+- `TODO.md:524` The self-update swap probe (T0) and the first real in-app update (T11)
+- `TODO.md:529` PUBLISH-TESTING §K
+- `TODO.md:530` PUBLISH-TESTING §F
+- `TODO.md:531` PUBLISH-TESTING §G
+- `TODO.md:537` Release 5.4 — clean-Mac smoke test
+- `TODO.md:541` Tunnel probe session
+- `TODO.md:545` Intel spot-run
+- `TODO.md:548` The macOS floor is a claim about BOTH slices, and most of it has still never been measured
+- `TODO.md:586` In-app verifies owed
+- `TODO.md:598` PUBLISH-TESTING §E / §L
 
 ### Parked (deliberate — needs explicit go; don't pick up silently) — 5
 
-- `TODO.md:601` The live pool swap is still L3
-- `TODO.md:605` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN 25 Aug 2026
-- `TODO.md:614` Install WordPress into an empty LINKED folder
-- `TODO.md:621` Valet compatibility tails
-- `TODO.md:646` `rex` design-first set — ONE item left: raw `wp` passthrough
+- `TODO.md:604` The live pool swap is still L3
+- `TODO.md:608` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN 25 Aug 2026
+- `TODO.md:617` Install WordPress into an empty LINKED folder
+- `TODO.md:624` Valet compatibility tails
+- `TODO.md:649` `rex` design-first set — ONE item left: raw `wp` passthrough
 
 ### Menu-bar app — 1
 
-- `TODO.md:659` Hold the tray menu open while the stack MOVES
+- `TODO.md:662` Hold the tray menu open while the stack MOVES
 
 ### Blocked on external work — 4
 
-- `TODO.md:669` Xdebug on PHP 8.0
-- `TODO.md:674` SMAppService privileged helper
-- `TODO.md:676` Developer ID signing + notarization
-- `TODO.md:678` OpenLiteSpeed override server
+- `TODO.md:672` Xdebug on PHP 8.0
+- `TODO.md:677` SMAppService privileged helper
+- `TODO.md:679` Developer ID signing + notarization
+- `TODO.md:681` OpenLiteSpeed override server
 
 ### Phase 4+ (next era) — 3
 
-- `TODO.md:688` Windows platform impls — fill the `todo!()` stubs in
-- `TODO.md:690` Linux platform impls — same, `platform/linux/mod.rs`
-- `TODO.md:691` Public distribution (the open-sourcing half of the old "packaging polish" row)
+- `TODO.md:691` Windows platform impls — fill the `todo!()` stubs in
+- `TODO.md:693` Linux platform impls — same, `platform/linux/mod.rs`
+- `TODO.md:694` Public distribution (the open-sourcing half of the old "packaging polish" row)
 
 ## Claim ledger (`scripts/ledger-tally.sh`)
 

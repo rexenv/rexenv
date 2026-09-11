@@ -30,7 +30,8 @@ git push origin v<X.Y.Z>            (or: Actions → "Release" → Run workflow)
         │
         ▼
 rexenv/homebrew-tap .github/workflows/update-cask.yml
-        │  polls every 15 min (or Actions → "Update cask" → Run workflow for now):
+        │  needs a trigger for a release in ANOTHER repo — see "Going public later"
+        │  (today, releases are published in the tap and fire its own event):
         │  latest PUBLISHED release ≠ cask version → downloads the asset, sha256s it,
         │  rewrites version + sha256, pushes — with the tap's own built-in token
         ▼
@@ -41,8 +42,14 @@ rexenv/homebrew-tap .github/workflows/update-cask.yml
 uses the built-in `GITHUB_TOKEN`, so the pipeline needs **no PAT, no deploy key, no
 stored secret**. Pushing from this repo to the tap would need a cross-repo credential:
 the org has deploy keys disabled, and GitHub has no API to mint a PAT — so it would be
-a hand-made token that expires and silently breaks releases. The cost of the swap is
-latency (≤15 min, or instant via Run workflow), which a release does not care about.
+a hand-made token that expires and silently breaks releases.
+
+**The trigger is the release itself, not a clock** (11 Sep 2026). `update-cask.yml` used
+to poll on a `*/15` cron; GitHub runs schedules when it has capacity, and that day the
+runs landed 4.5 hours apart while a published 0.7.0 sat unshipped. It now runs on the
+tap's own `release: published` — a human publishing is an event that starts workflows,
+so still no credential — and checks out the default branch explicitly, because on a
+release event the checkout is the tag, a detached HEAD the bump cannot push from.
 Verified 2026-08-08: the tap workflow's explicit `permissions: contents: write` is
 granted (`Contents: write` in the run log) even though the org default is read.
 
@@ -163,7 +170,8 @@ release** — which is the property that makes a stolen key survivable. Ledger
    down on its own once it is public. It exists because this paragraph is a memory,
    and the piped-verdict rule proved that a rule relying on memory is not a control —
    it was walked into by the person who wrote it, in the session he wrote it.
-6. Publish the tap release → **Update cask** picks it up (≤15 min, or Run workflow).
+6. Publish the tap release → **Update cask** runs on that publish and bumps the cask
+   within a minute (Actions → Update cask → Run workflow if it did not).
    Publishing is also what makes the update archive reachable at all: a draft's assets
    answer 404 for everyone, so the §A gate protects in-app updaters for free.
 7. **`rexenv/runtimes` → Actions → "Publish app update manifest"** — dry run first, then
@@ -191,6 +199,11 @@ Changelog link is deliberately NOT one of these: it points at the website, which
 move with the repo.)
 Move both back to `rexenv/rexenv`, delete the interim releases from the tap (or
 leave them — the cask only names the current version), and this section goes away.
+**And restore a trigger in the same change**: `update-cask.yml` fires on the TAP's own
+`release: published`, and a release in `rexenv/rexenv` is an event in another repo that
+never reaches it. Without a new trigger (a schedule — slow, see above — or a
+`repository_dispatch` sent from `release.yml` with a token) the cask would simply stop
+moving, with every workflow green.
 
 ## Cutting a release (the automated pipeline — for when the repo is public)
 
@@ -216,8 +229,9 @@ leave them — the cask only names the current version), and this section goes a
 3. Wait for the draft release. Download the attached dmg and run
    `docs/PUBLISH-TESTING.md` **§A** on it (§A0 already ran in CI). Record the pass
    next to the dmg's sha256 in that doc.
-4. **Publish** the release. The tap picks it up within 15 minutes — or immediately
-   from `rexenv/homebrew-tap` → Actions → **Update cask** → *Run workflow*.
+4. **Publish** the release. The tap sees NO event for a release here unless going
+   public restored a trigger (above); until then, `rexenv/homebrew-tap` → Actions →
+   **Update cask** → *Run workflow*.
 5. Sanity check: `brew update && brew audit --cask --online rexenv/tap/rexenv`,
    or the full §D dry-run for a first-time setup.
 

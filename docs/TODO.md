@@ -509,7 +509,10 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   skipped), and `brew trust rexenv/tap` is a required user-facing install step.
 - [ ] **Flip the release host back when `rexenv/rexenv` goes public** — two things
   in ONE commit, or the tap's guard fails the bump: the cask's `url` and `SOURCE_REPO`
-  in `update-cask.yml` (both in `rexenv/homebrew-tap`). It was three until 5 Sep 2026;
+  in `update-cask.yml` (both in `rexenv/homebrew-tap`). **Plus a trigger** (11 Sep 2026):
+  the bump now fires on the tap's OWN `release: published`, which a release in
+  `rexenv/rexenv` never sends — restore a schedule or a `repository_dispatch`, or the cask
+  stops moving with everything green (`docs/RELEASING.md`, "Going public later"). It was three until 5 Sep 2026;
   the cask's `verified:` was the third, dropped when brew 6.0.22 deprecated it. Then CI's
   `release.yml` resumes owning the build, and `docs/RELEASING.md`'s interim section
   is deleted rather than left as a second, wrong set of instructions.

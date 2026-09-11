@@ -27,8 +27,10 @@ live today. Do not invent a third.
    `docs/PUBLISH-TESTING.md` §A0/§A before publishing. Both, in that order.
 7. Tag the commit being SHIPPED — annotated, message says what changed since the
    last tag (`git log --oneline <last-tag>..HEAD` is the source).
-8. Draft release → owner publishes → the tap's **Update cask** picks it up
-   (≤15 min). Sanity: `brew audit --cask --online rexenv/tap/rexenv`.
+8. Draft release → owner publishes → the tap's **Update cask** runs on that
+   publish (a minute; Run workflow if not). Then `rexenv/runtimes` → "Publish app
+   update manifest" and `scripts/check-app-manifest.sh`. Sanity:
+   `brew audit --cask --online rexenv/tap/rexenv`.
 
 ## Do not
 
