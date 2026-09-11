@@ -1214,7 +1214,12 @@ IPC surface — which is how a reader ends up designing against a system with on
   `wp_info` `core_versions` (WordPress.org releases) and `cli_packages` (the directory as
   `<home>/…`); `site_logs` `clear` — `destroy`, because the server, PHP and database logs
   are shared and clearing one empties every site's lines; and `repo` `watch_log`, only for
-  a watch running on THAT site, lines scrubbed. `init_error` and `startup_notices` were re-ruled `Never`: with no
+  a watch running on THAT site, lines scrubbed. The last eleven (#564) are `stack` actions
+  scoped per action: reads `adminer`, `downloads`, `edge_conflict`; manage
+  `adminer_update_check`, `adminer_theme`, `prefetch`, `retry_download`; system
+  `set_engine_version` (a running engine restarts and every site on it is offline meanwhile),
+  `adminer_update_apply`, `autostart`; with `stack_status.engines` naming the offered and
+  selected versions. The table has no `Gap` row since. `init_error` and `startup_notices` were re-ruled `Never`: with no
   AppState the server answers "still starting", and reading the notices drains the
   person's toasts.
 - **Three registries, and the registry IS the capability.** `mcp_server/tools.rs` holds the

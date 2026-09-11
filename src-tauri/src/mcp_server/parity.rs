@@ -39,7 +39,11 @@ mod tests {
         Tool(&'static str),
         /// Never a tool, and why — the reason is the decision.
         Never(&'static str),
-        /// Should be reachable and is not yet. `docs/TODO.md` carries the list.
+        /// Should be reachable and is not yet — with a `docs/TODO.md` row. Unused
+        /// since 11 Sep 2026, when the last of the first thirty closed (#564); kept
+        /// because it is the honest answer for the next command that arrives
+        /// before its tool does, and removing it would make "not yet" unsayable.
+        #[allow(dead_code)]
         Gap(&'static str),
     }
     use Disposition::*;
@@ -65,17 +69,7 @@ mod tests {
         ("list_blueprints", Tool("blueprints_list")),
         // ── database
         ("databases_status", Tool("stack_status")),
-        ("db_engine_versions", Gap("which version of each engine is installed and selected — no read tool carries it")),
-        ("set_db_engine_version", Gap("switch an engine's version — parity §4.3 planned it under `stack` (system); not built")),
-        ("adminer_status", Gap("whether Adminer is installed and at which version — no read tool carries it")),
-        ("adminer_update_check", Gap("parity §4.3 planned it under `stack` (system); not built")),
-        ("adminer_update_apply", Gap("parity §4.3 planned it under `stack` (system); not built")),
-        ("adminer_set_theme", Gap("cosmetic; parity §4.3 planned it as manage; not built")),
-        // ── downloads
-        ("core_binaries_plan", Gap("which binaries are cached and which a start would fetch — no read tool carries it")),
-        ("downloads_state", Gap("in-flight downloads — no read tool carries them")),
-        ("prefetch_core_binaries", Gap("parity §4.3 planned a `downloads` tool (manage); not built")),
-        ("retry_download", Gap("parity §4.3 planned a `downloads` tool (manage); not built")),
+        ("db_engine_versions", Tool("stack_status")),
         // ── logs
         ("log_targets", Tool("site_logs")),
         ("tail_log", Tool("site_logs")),
@@ -133,12 +127,10 @@ mod tests {
         ("cli_status", Tool("stack_status")),
         ("app_info", Tool("stack_status")),
         ("autostart_status", Tool("stack_status")),
-        ("set_autostart", Gap("parity §4.4 planned `settings(action: autostart)` (system); not built")),
         ("init_error", Never("when init fails there is no AppState, and the MCP server answers every call \"rexenv is still starting\" — an agent can never observe a value to read")),
         ("startup_notices", Never("reading DRAINS the queue the person's screen toasts from — an agent read would take the notice from them; the same facts are in rexenv.log, which site_logs reads")),
         ("unresolvable_tlds", Tool("stack_status")),
         ("firefox_trust_status", Tool("stack_status")),
-        ("setup_edge_conflict", Gap("parity §4.4 planned `stack(action: resolve_edge_conflict)` (system); not built")),
         ("open_external", Never("an arbitrary URL opener (parity §4.4); `open` is site-scoped")),
         ("cli_install", Never(AMPLIFIER)),
         ("system_setup", Never(AMPLIFIER)),

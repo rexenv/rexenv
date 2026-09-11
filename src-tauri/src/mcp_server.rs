@@ -1323,6 +1323,39 @@ impl<Rt: tauri::Runtime> user_sites::StackOps for AppSiteCreator<Rt> {
     fn set_mail_catch_all<'a>(&'a self, enabled: bool) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
         Box::pin(async move { crate::commands::mail::set_mail_catch_all(self.state()?, enabled).await })
     }
+    fn set_engine_version<'a>(&'a self, key: String, version: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::database::set_db_engine_version(self.state()?, key, version).await })
+    }
+    fn adminer_status<'a>(&'a self) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::database::AdminerStatus>> {
+        Box::pin(async move { crate::commands::database::adminer_status(self.state()?) })
+    }
+    fn adminer_update_check<'a>(&'a self) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::database::AdminerStatus>> {
+        Box::pin(async move { crate::commands::database::adminer_update_check(self.state()?).await })
+    }
+    fn adminer_update_apply<'a>(&'a self, version: String) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::database::AdminerStatus>> {
+        Box::pin(async move { crate::commands::database::adminer_update_apply(self.state()?, version).await })
+    }
+    fn adminer_set_theme<'a>(&'a self, theme: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::database::adminer_set_theme(self.state()?, theme) })
+    }
+    fn downloads<'a>(&'a self) -> user_sites::OpFuture<'a, crate::error::Result<(Vec<crate::commands::downloads::PlannedInfo>, crate::core::downloads::Snapshot)>> {
+        Box::pin(async move {
+            let plan = crate::commands::downloads::core_binaries_plan(self.state()?)?;
+            Ok((plan, crate::commands::downloads::downloads_state()))
+        })
+    }
+    fn prefetch<'a>(&'a self) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::downloads::prefetch_core_binaries(self.state()?).await })
+    }
+    fn retry_download<'a>(&'a self, name: String, version: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::downloads::retry_download(self.state()?, name, version).await })
+    }
+    fn set_autostart<'a>(&'a self, enabled: bool) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::system::set_autostart(self.state()?, enabled) })
+    }
+    fn edge_conflict<'a>(&'a self) -> user_sites::OpFuture<'a, crate::error::Result<Option<crate::commands::system::SetupEdgeConflict>>> {
+        Box::pin(async move { crate::commands::system::setup_edge_conflict(self.state()?).await })
+    }
 }
 
 impl<Rt: tauri::Runtime> user_sites::SystemOps for AppSiteCreator<Rt> {

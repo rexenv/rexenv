@@ -473,12 +473,24 @@ static REGISTRY: &[UserTool] = &[
                       `restart` to stopping. `catch_mail` makes every site's outgoing mail land in \
                       Mailpit (`manage`); `stop_catching_mail` lets every site on this machine send \
                       REAL mail to real addresses, so it needs `system`. Whether mail is caught now: \
-                      stack_status `mailCatchAll`.",
+                      stack_status `mailCatchAll`. Reads under `read`: `adminer` (its version and \
+                      any update), `downloads` (the binaries a start needs, which are cached, and \
+                      what is downloading), `edge_conflict` (what, if anything, answers :443 in \
+                      front of rexenv, and the command that frees it). Under `manage`: \
+                      `adminer_update_check`, `adminer_theme` {theme: dark / light}, `prefetch` \
+                      (download everything a start needs), `retry_download` {name, version}. \
+                      Under `system`: `set_engine_version` {service, version — offered versions are \
+                      in stack_status `engines`; a running engine restarts and its sites are \
+                      offline meanwhile}, `adminer_update_apply` {version}, `autostart` {enabled}.",
         input_schema: || json!({
             "type": "object",
             "properties": {
-                "action": { "type": "string", "enum": ["start", "stop", "restart", "start_database", "stop_database", "start_mail", "stop_mail", "start_sites", "stop_sites", "catch_mail", "stop_catching_mail"] },
-                "service": { "type": "string", "description": "restart: nginx / edge / php-<minor>; start_database / stop_database: mysql / mariadb / postgres." }
+                "action": { "type": "string", "enum": ["start", "stop", "restart", "start_database", "stop_database", "start_mail", "stop_mail", "start_sites", "stop_sites", "catch_mail", "stop_catching_mail", "set_engine_version", "adminer", "adminer_update_check", "adminer_update_apply", "adminer_theme", "downloads", "prefetch", "retry_download", "autostart", "edge_conflict"] },
+                "service": { "type": "string", "description": "restart: nginx / edge / php-<minor>; start_database / stop_database / set_engine_version: mysql / mariadb / postgres." },
+                "version": { "type": "string", "description": "set_engine_version, adminer_update_apply, retry_download." },
+                "name": { "type": "string", "description": "retry_download: the binary's name." },
+                "theme": { "type": "string", "enum": ["dark", "light"] },
+                "enabled": { "type": "boolean", "description": "autostart." }
             },
             "required": ["action"],
             "additionalProperties": false
@@ -1046,6 +1058,21 @@ pub trait StackOps: Send + Sync {
     /// carrier of it (the pools' env, the WordPress mu-plugin, the override
     /// backends) and restarts what it must. Never a raw settings write.
     fn set_mail_catch_all<'a>(&'a self, enabled: bool) -> OpFuture<'a, Result<()>>;
+    /// Switch a database engine's version — the Databases picker's own command:
+    /// prefetched, recorded, and a RUNNING engine restarted on it.
+    fn set_engine_version<'a>(&'a self, key: String, version: String) -> OpFuture<'a, Result<()>>;
+    fn adminer_status<'a>(&'a self) -> OpFuture<'a, Result<crate::commands::database::AdminerStatus>>;
+    fn adminer_update_check<'a>(&'a self) -> OpFuture<'a, Result<crate::commands::database::AdminerStatus>>;
+    fn adminer_update_apply<'a>(&'a self, version: String) -> OpFuture<'a, Result<crate::commands::database::AdminerStatus>>;
+    fn adminer_set_theme<'a>(&'a self, theme: String) -> OpFuture<'a, Result<()>>;
+    /// The core binary plan (what a start needs, and what is cached) and the
+    /// download hub's live state.
+    fn downloads<'a>(&'a self) -> OpFuture<'a, Result<(Vec<crate::commands::downloads::PlannedInfo>, crate::core::downloads::Snapshot)>>;
+    fn prefetch<'a>(&'a self) -> OpFuture<'a, Result<()>>;
+    fn retry_download<'a>(&'a self, name: String, version: String) -> OpFuture<'a, Result<()>>;
+    fn set_autostart<'a>(&'a self, enabled: bool) -> OpFuture<'a, Result<()>>;
+    /// A foreign listener answering :443 in front of rexenv's edge, attributed.
+    fn edge_conflict<'a>(&'a self) -> OpFuture<'a, Result<Option<crate::commands::system::SetupEdgeConflict>>>;
 }
 
 /// The app's own machine-wide settings and the open-in-app verbs
@@ -2692,6 +2719,13 @@ pub(crate) fn stack_scope(action: &str) -> Option<Scope> {
         // in it. The safe direction is `manage`; this one is machine-wide.
         "stop_catching_mail" => Scope::System,
         "catch_mail" => Scope::Manage,
+        // Reads that run nothing and change nothing.
+        "adminer" | "downloads" | "edge_conflict" => Scope::Read,
+        // User-level, reversible, no service a site depends on goes down.
+        "adminer_update_check" | "adminer_theme" | "prefetch" | "retry_download" => Scope::Manage,
+        // Machine-wide: an engine's version restarts every site on it; Adminer's
+        // version and start-at-login are the app's own configuration.
+        "set_engine_version" | "adminer_update_apply" | "autostart" => Scope::System,
         // `start_sites` / `stop_sites` touch no service and raise no password
         // dialog — they are the Sites page's bulk switch, so they sit with the
         // other `manage` arms and NOT with the stack's own start/stop.
@@ -2709,7 +2743,7 @@ pub(crate) fn stack_scope(action: &str) -> Option<Scope> {
 fn stack<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::ActedTarget) -> ToolFuture<'a> {
     Box::pin(async move {
         let action = args.get("action").and_then(Value::as_str).ok_or_else(|| Error::Other("stack needs an `action`.".into()))?;
-        let scope = stack_scope(action).ok_or_else(|| Error::Other(format!("`{action}` is not a stack action. Use start, stop, restart, start_database, stop_database, start_mail, stop_mail, start_sites, stop_sites, catch_mail or stop_catching_mail.")))?;
+        let scope = stack_scope(action).ok_or_else(|| Error::Other(format!("`{action}` is not a stack action. Use start, stop, restart, start_database, stop_database, start_mail, stop_mail, start_sites, stop_sites, catch_mail, stop_catching_mail, set_engine_version, adminer, adminer_update_check, adminer_update_apply, adminer_theme, downloads, prefetch, retry_download, autostart or edge_conflict.")))?;
         let service = args.get("service").and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty());
         let wanted = match action {
             "start" => "start rexenv's whole stack (macOS will also ask for your password)".to_string(),
@@ -2726,6 +2760,34 @@ fn stack<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::ActedTa
             "stop_mail" => "stop the mail catcher".to_string(),
             "catch_mail" => "catch every site's outgoing mail in Mailpit".to_string(),
             "stop_catching_mail" => "stop catching mail — every site on this machine will send REAL mail to real addresses".to_string(),
+            "set_engine_version" => {
+                let s = service.ok_or_else(|| Error::Other("stack `set_engine_version` needs `service` (mysql, mariadb or postgres) and `version`.".into()))?;
+                if !matches!(s, "mysql" | "mariadb" | "postgres") {
+                    return Err(Error::Other(format!("`{s}` is not a database engine here — use mysql, mariadb or postgres.")));
+                }
+                format!(
+                    "switch the {s} engine to {} — if it is running it restarts, and every site on it is offline meanwhile",
+                    str_field(args, "version", action)?
+                )
+            }
+            "adminer" => "read Adminer's version and any update".to_string(),
+            "adminer_update_check" => "check for an Adminer update".to_string(),
+            "adminer_update_apply" => format!("update Adminer to {}", str_field(args, "version", action)?),
+            "adminer_theme" => {
+                let t = str_field(args, "theme", action)?;
+                if !matches!(t, "dark" | "light") {
+                    return Err(Error::Other(format!("`{t}` is not an Adminer theme — use dark or light.")));
+                }
+                format!("set Adminer's theme to {t}")
+            }
+            "downloads" => "read which binaries are cached and what is downloading".to_string(),
+            "prefetch" => "download every binary the stack's start needs".to_string(),
+            "retry_download" => format!("retry downloading {} {}", str_field(args, "name", action)?, str_field(args, "version", action)?),
+            "autostart" => {
+                let on = args.get("enabled").and_then(Value::as_bool).ok_or_else(|| Error::Other("stack `autostart` needs `enabled` (true or false).".into()))?;
+                format!("{} rexenv at login", if on { "start" } else { "stop starting" })
+            }
+            "edge_conflict" => "read what, if anything, answers :443 in front of rexenv's edge".to_string(),
             "start_sites" => "serve every one of the user's sites again".to_string(),
             _ => "stop serving every one of the user's sites (rexenv's services keep running)".to_string(),
         };
@@ -2733,6 +2795,7 @@ fn stack<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::ActedTa
             // `System` has no auto-allow variant (#470): this arm is reached only
             // by a person's click, and then by a second person's click in macOS.
             Scope::System => { ctx.claim::<scope::System>(None, &wanted)?; }
+            Scope::Read => { ctx.claim::<scope::Read>(None, &wanted)?; }
             _ => { ctx.claim::<scope::Manage>(None, &wanted)?; }
         };
         let st = ctx.stack;
@@ -2752,6 +2815,34 @@ fn stack<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::ActedTa
                 st.set_mail_catch_all(on).await?;
                 json!({ "mailCatchAll": on })
             }
+            "set_engine_version" => {
+                let version = str_field(args, "version", action)?.to_string();
+                st.set_engine_version(service.unwrap().to_string(), version.clone()).await?;
+                json!({ "engine": service, "version": version })
+            }
+            "adminer" => to_json(st.adminer_status().await?)?,
+            "adminer_update_check" => to_json(st.adminer_update_check().await?)?,
+            "adminer_update_apply" => to_json(st.adminer_update_apply(str_field(args, "version", action)?.to_string()).await?)?,
+            "adminer_theme" => {
+                let theme = str_field(args, "theme", action)?.to_string();
+                st.adminer_set_theme(theme.clone()).await?;
+                json!({ "theme": theme })
+            }
+            "downloads" => {
+                let (plan, hub) = st.downloads().await?;
+                json!({ "plan": plan, "state": hub })
+            }
+            "prefetch" => { st.prefetch().await?; json!({ "prefetched": true }) }
+            "retry_download" => {
+                st.retry_download(str_field(args, "name", action)?.to_string(), str_field(args, "version", action)?.to_string()).await?;
+                json!({ "retried": true })
+            }
+            "autostart" => {
+                let on = args.get("enabled").and_then(Value::as_bool).unwrap_or(false);
+                st.set_autostart(on).await?;
+                json!({ "autostart": on })
+            }
+            "edge_conflict" => to_json(st.edge_conflict().await?)?,
             act @ ("start_sites" | "stop_sites") => {
                 let on = act == "start_sites";
                 let r = st.set_all_sites_enabled(on).await?;
@@ -3942,6 +4033,33 @@ pub(crate) mod tests {
             })
         }
         fn set_mail_catch_all<'a>(&'a self, enabled: bool) -> OpFuture<'a, Result<()>> { self.calls.lock().unwrap().push(format!("mail catch {enabled}")); Box::pin(async { Ok(()) }) }
+        fn set_engine_version<'a>(&'a self, key: String, version: String) -> OpFuture<'a, Result<()>> { self.calls.lock().unwrap().push(format!("engine {key} {version}")); Box::pin(async { Ok(()) }) }
+        fn adminer_status<'a>(&'a self) -> OpFuture<'a, Result<crate::commands::database::AdminerStatus>> {
+            Box::pin(async { Ok(crate::commands::database::AdminerStatus { staged: Some("5.4.4".into()), effective: "5.4.4".into(), updatable: Some("5.4.5".into()) }) })
+        }
+        fn adminer_update_check<'a>(&'a self) -> OpFuture<'a, Result<crate::commands::database::AdminerStatus>> {
+            self.calls.lock().unwrap().push("adminer check".into());
+            Box::pin(async { Ok(crate::commands::database::AdminerStatus { staged: Some("5.4.4".into()), effective: "5.4.4".into(), updatable: Some("5.4.5".into()) }) })
+        }
+        fn adminer_update_apply<'a>(&'a self, version: String) -> OpFuture<'a, Result<crate::commands::database::AdminerStatus>> {
+            self.calls.lock().unwrap().push(format!("adminer apply {version}"));
+            Box::pin(async move { Ok(crate::commands::database::AdminerStatus { staged: Some(version.clone()), effective: version, updatable: None }) })
+        }
+        fn adminer_set_theme<'a>(&'a self, theme: String) -> OpFuture<'a, Result<()>> { self.calls.lock().unwrap().push(format!("adminer theme {theme}")); Box::pin(async { Ok(()) }) }
+        fn downloads<'a>(&'a self) -> OpFuture<'a, Result<(Vec<crate::commands::downloads::PlannedInfo>, crate::core::downloads::Snapshot)>> {
+            Box::pin(async {
+                Ok((
+                    vec![crate::commands::downloads::PlannedInfo { id: "mysql@8.4.6".into(), name: "mysql".into(), version: "8.4.6".into(), label: "MySQL 8.4.6".into(), cached: true }],
+                    crate::core::downloads::Snapshot { batch: None, items: Vec::new() },
+                ))
+            })
+        }
+        fn prefetch<'a>(&'a self) -> OpFuture<'a, Result<()>> { self.calls.lock().unwrap().push("downloads prefetch".into()); Box::pin(async { Ok(()) }) }
+        fn retry_download<'a>(&'a self, name: String, version: String) -> OpFuture<'a, Result<()>> { self.calls.lock().unwrap().push(format!("downloads retry {name} {version}")); Box::pin(async { Ok(()) }) }
+        fn set_autostart<'a>(&'a self, enabled: bool) -> OpFuture<'a, Result<()>> { self.calls.lock().unwrap().push(format!("autostart {enabled}")); Box::pin(async { Ok(()) }) }
+        fn edge_conflict<'a>(&'a self) -> OpFuture<'a, Result<Option<crate::commands::system::SetupEdgeConflict>>> {
+            Box::pin(async { Ok(Some(crate::commands::system::SetupEdgeConflict { holder: Some("Herd (pid 4242)".into()), app: Some("Herd".into()), fix: Some("quit Herd".into()) })) })
+        }
     }
 
     impl SystemOps for FakeOps {
@@ -4788,6 +4906,14 @@ pub(crate) mod tests {
         // site's mail to real addresses, machine-wide.
         assert_eq!(stack_scope("catch_mail"), Some(Scope::Manage));
         assert_eq!(stack_scope("stop_catching_mail"), Some(Scope::System));
+        // The engines, Adminer, downloads, autostart and the edge conflict (#564).
+        for (a, s) in [
+            ("adminer", Scope::Read), ("downloads", Scope::Read), ("edge_conflict", Scope::Read),
+            ("adminer_update_check", Scope::Manage), ("adminer_theme", Scope::Manage), ("prefetch", Scope::Manage), ("retry_download", Scope::Manage),
+            ("set_engine_version", Scope::System), ("adminer_update_apply", Scope::System), ("autostart", Scope::System),
+        ] {
+            assert_eq!(stack_scope(a), Some(s), "{a}");
+        }
         // The source: `start_all(`/`stop_all(` appear ONCE each in production
         // code, inside `stack`, and the arm that reaches them claims `System`.
         let me = include_str!("user_sites.rs");
@@ -4812,6 +4938,23 @@ pub(crate) mod tests {
         // not the action — and releasing mail must need the machine-wide one.
         let err = stack(ctx, &json!({ "action": "stop_catching_mail" }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("`system`"), "releasing every site's mail needs system: {err}");
+        // The three reads are free at the dial's Read; the shape is checked
+        // before anything is asked; the machine-wide switch is refused.
+        let v = stack(ctx, &json!({ "action": "adminer" }), &acted).await.unwrap();
+        assert_eq!(v["result"]["updatable"], "5.4.5");
+        let v = stack(ctx, &json!({ "action": "downloads" }), &acted).await.unwrap();
+        assert_eq!(v["result"]["plan"][0]["cached"], true);
+        assert!(v["result"]["state"]["items"].is_array(), "{v}");
+        let v = stack(ctx, &json!({ "action": "edge_conflict" }), &acted).await.unwrap();
+        assert_eq!(v["result"]["app"], "Herd");
+        let err = stack(ctx, &json!({ "action": "set_engine_version", "service": "redis", "version": "8" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("not a database engine"), "{err}");
+        let err = stack(ctx, &json!({ "action": "adminer_theme", "theme": "neon" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("dark or light"), "{err}");
+        let err = stack(ctx, &json!({ "action": "autostart" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("needs `enabled`"), "{err}");
+        let err = stack(ctx, &json!({ "action": "set_engine_version", "service": "mysql", "version": "8.4" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("`system`"), "an engine switch restarts every site on it: {err}");
         let err = stack(ctx, &json!({ "action": "stop_database", "service": "redis" }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("not a database engine"), "{err}");
         dial(&state, crate::core::agent_access::AccessLevel::Changes);
@@ -4826,11 +4969,20 @@ pub(crate) mod tests {
         assert_eq!(v["result"]["mailCatchAll"], false);
         let v = stack(ctx, &json!({ "action": "catch_mail" }), &acted).await.unwrap();
         assert_eq!(v["result"]["mailCatchAll"], true);
+        let v = stack(ctx, &json!({ "action": "set_engine_version", "service": "mysql", "version": "8.4" }), &acted).await.unwrap();
+        assert_eq!(v["result"]["version"], "8.4");
+        let v = stack(ctx, &json!({ "action": "adminer_update_apply", "version": "5.4.5" }), &acted).await.unwrap();
+        assert_eq!(v["result"]["effective"], "5.4.5");
+        stack(ctx, &json!({ "action": "adminer_update_check" }), &acted).await.unwrap();
+        stack(ctx, &json!({ "action": "adminer_theme", "theme": "dark" }), &acted).await.unwrap();
+        stack(ctx, &json!({ "action": "prefetch" }), &acted).await.unwrap();
+        stack(ctx, &json!({ "action": "retry_download", "name": "mysql", "version": "8.4.6" }), &acted).await.unwrap();
+        stack(ctx, &json!({ "action": "autostart", "enabled": true }), &acted).await.unwrap();
         dial(&state, crate::core::agent_access::AccessLevel::Changes);
         let v = stack(ctx, &json!({ "action": "stop" }), &acted).await.unwrap();
         assert_eq!(v["result"]["stopped"], true);
         let calls = ops.calls.lock().unwrap().clone();
-        for c in ["stack restart nginx", "db start mysql", "mail stop", "mail catch false", "mail catch true", "stack stop"] {
+        for c in ["stack restart nginx", "db start mysql", "mail stop", "mail catch false", "mail catch true", "engine mysql 8.4", "adminer apply 5.4.5", "adminer check", "adminer theme dark", "downloads prefetch", "downloads retry mysql 8.4.6", "autostart true", "stack stop"] {
             assert!(calls.iter().any(|x| x == c), "missing {c} in {calls:?}");
         }
         assert_eq!(calls.iter().filter(|x| *x == "stack start").count(), 1, "start ran once, under Changes");

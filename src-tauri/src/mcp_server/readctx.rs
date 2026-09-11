@@ -95,6 +95,19 @@ pub struct StackSnapshot {
     /// The PHP minor FrankenPHP embeds, which a FrankenPHP site runs whatever
     /// its own PHP setting says.
     pub frankenphp_php: String,
+    /// Each database engine this platform offers: its versions and the one
+    /// selected — what `stack` `set_engine_version` chooses between.
+    pub engines: Vec<StackEngine>,
+}
+
+/// One database engine's version choice.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StackEngine {
+    pub key: &'static str,
+    pub label: &'static str,
+    pub selected: String,
+    pub offered: Vec<&'static str>,
 }
 
 /// One TLD a site answers on that this machine cannot resolve. The read
@@ -202,6 +215,11 @@ impl<'a> ReadCtx<'a> {
             .collect();
         let default_tld = core::sites::default_tld(&conn)?;
         let mail_catch_all = core::mail::catch_all_enabled(&conn);
+        let engines = core::db::DbEngine::ALL
+            .into_iter()
+            .filter(|e| e.available())
+            .map(|e| StackEngine { key: e.key(), label: e.label(), selected: e.effective_version(&conn), offered: e.versions().to_vec() })
+            .collect();
         let platform = self.state.platform.as_ref();
         let unresolvable_tlds = core::dns::unresolvable_tlds_in_use(&conn, platform, core::dns::DEFAULT_DNS_PORT)
             .into_iter()
@@ -229,6 +247,7 @@ impl<'a> ReadCtx<'a> {
             unresolvable_tlds,
             firefox: core::firefox::status(platform.cert_trust().firefox_profiles_root().as_deref()),
             frankenphp_php: core::php::minor_of(core::binaries::FRANKENPHP_EMBEDDED_PHP),
+            engines,
         })
     }
 
@@ -424,6 +443,15 @@ mod tests {
             assert!(v["firefox"].get(k).is_some(), "firefox.{k} missing: {v}");
         }
         assert!(v.get("autostart").is_some() && v["mailCatchAll"].is_boolean(), "{v}");
+        // The engines `stack set_engine_version` chooses between (#564): each with
+        // its offered versions and the one selected, which is one of them.
+        let engines = v["engines"].as_array().expect("engines");
+        assert!(!engines.is_empty(), "{v}");
+        for e in engines {
+            let offered = e["offered"].as_array().expect("offered");
+            assert!(e["key"].is_string() && !offered.is_empty(), "{e}");
+            assert!(offered.contains(&e["selected"]), "the selected version is an offered one: {e}");
+        }
         let text = v.to_string();
         assert!(!text.contains("caPath") && !text.contains("/dev/null"), "no CA path: {text}");
     }

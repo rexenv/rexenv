@@ -23,20 +23,14 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
-- [ ] **MCP parity gaps — 12 app commands an agent cannot reach yet** (30 at first; the mail
-  catch-all, the two TLD reads and the external terminal closed 11 Sep 2026, ledger #561;
-  the stack health reads the same day, #562 — six reached, two re-ruled `Never` with the reason;
-  WordPress core versions + WP-CLI packages, log clearing and a repo watch's log, #563). Found 11 Sep 2026
-  by asking, per command, whether an agent can do what the app does; now kept true by
-  `mcp_server/parity.rs` (ledger #560), whose `Gap` rows ARE this list — the test fails
-  on a new command until someone rules on it. Grouped by what a tool would look like:
-  - **Engines + Adminer** (`stack`, system): `db_engine_versions`, `set_db_engine_version`,
-    `adminer_status`, `adminer_update_check`, `adminer_update_apply`, `adminer_set_theme`.
-  - **Downloads** (a `downloads` tool, manage): `core_binaries_plan`, `downloads_state`,
-    `prefetch_core_binaries`, `retry_download`.
-  - **System** (system): `set_autostart`, `setup_edge_conflict`.
-  Each row closes by building the tool (the guard then demands the row be deleted) or by
-  re-ruling it `Never` with the reason.
+- [x] **MCP parity gaps — the 30 app commands an agent could not reach** ✓ 11 Sep 2026 —
+  all closed the day they were found, in four commits: the mail catch-all, TLD status and
+  policy, open in terminal (#561); the stack health reads, two re-ruled `Never` with the
+  reason (#562); WordPress releases + WP-CLI packages, log clearing, a repo watch's log
+  (#563); engine versions, Adminer, downloads, start-at-login and the :443 edge conflict
+  (#564). Found by asking, per command, whether an agent can do what the app does, and kept
+  true by `mcp_server/parity.rs` (#560): its table now has no `Gap` row, and a new command
+  fails the build until someone rules on it.
 
 - [ ] **In-app self-update — a dmg user has no update path at all**
   — 6 Sep 2026, planned in `docs/archive/PLAN-self-update.md`; supersedes the Phase 4+ row
