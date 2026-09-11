@@ -125,14 +125,17 @@ static REGISTRY: &[UserTool] = &[
                       general settings form — title, admin email, timezone, roles), `debug` (WP_DEBUG \
                       and the named debug flags), `maintenance`, `permalinks`, `languages`, \
                       `cron` (scheduled events), `checksums` (core files verified against \
-                      WordPress.org), `primary_admin`. Every read boots the site's own code through \
+                      WordPress.org), `primary_admin`, `core_versions` (the WordPress releases the \
+                      version switch can install, from WordPress.org — a network read) and \
+                      `cli_packages` (the global WP-CLI packages this machine's shell adds, the \
+                      home folder shown as `<home>`). Every read boots the site's own code through \
                       wp-cli, as the user, so it needs the user's `read` permission on that site. \
                       Refused on a scratch site (use wp_run there) and on a non-WordPress site.",
         input_schema: || json!({
             "type": "object",
             "properties": {
                 "site_id": { "type": "string" },
-                "what": { "type": "string", "enum": ["info", "options", "debug", "maintenance", "permalinks", "languages", "cron", "checksums", "primary_admin"] },
+                "what": { "type": "string", "enum": ["info", "options", "debug", "maintenance", "permalinks", "languages", "cron", "checksums", "primary_admin", "core_versions", "cli_packages"] },
                 "flag": { "type": "string", "description": "debug: one named flag (WP_DEBUG_LOG, WP_DEBUG_DISPLAY, SCRIPT_DEBUG, SAVEQUERIES) instead of WP_DEBUG." }
             },
             "required": ["site_id", "what"],
@@ -409,20 +412,23 @@ static REGISTRY: &[UserTool] = &[
                       recent lines (default 100, max 200), with rexenv's login tokens, cookie \
                       headers and the paths rexenv knows removed — otherwise the raw log. Needs \
                       the user's `read` permission on the site (the free tail_log covers only the \
-                      WordPress debug log).",
+                      WordPress debug log). With `clear: true` and a `source` it EMPTIES that log \
+                      instead, which needs `destroy`: the web server, PHP and database logs are \
+                      shared, so clearing one clears every site's lines in it.",
         input_schema: || json!({
             "type": "object",
             "properties": {
                 "site_id": { "type": "string" },
                 "source": { "type": "string", "description": "A key from the list, or `wp-debug`. Omit to list." },
-                "lines": { "type": "integer", "description": "Max 200; default 100." }
+                "lines": { "type": "integer", "description": "Max 200; default 100." },
+                "clear": { "type": "boolean", "description": "Empty the `source` log instead of reading it (destroy)." }
             },
             "required": ["site_id"],
             "additionalProperties": false
         }),
         sweep_args: |id| json!({ "site_id": id }),
         summarise: |args| args.get("source").and_then(Value::as_str).map(str::to_string),
-        scope: Scope::Read,
+        scope: Scope::Destroy,
         handler: site_logs,
     },
     UserTool {
@@ -625,7 +631,8 @@ static REGISTRY: &[UserTool] = &[
                       Repo tab. Takes `site_id`, `action`, and for most `dir` (the plugin/theme \
                       folder name) and `kind` (plugin, the default, or theme). Reads under `read` on \
                       the site: `assets`, `status` {dir}, `branches`, `prs`, `stashes`, `scripts`, \
-                      `info`, `jobs`, `job` {job_id}, `watches`, `unmanaged`, `check` {dir} \
+                      `info`, `jobs`, `job` {job_id}, `watches`, `watch_log` {watch_id} (what a \
+                      watch on this site printed, paths removed), `unmanaged`, `check` {dir} \
                       (dependency check, runs nothing). Under `read` on rexenv itself: `tools` \
                       {refresh}, `probe` {url}. Everything that runs code or writes into the site \
                       needs `run` on the site: `add` {url, ref?, dir?, install?} (clone a \
@@ -640,7 +647,7 @@ static REGISTRY: &[UserTool] = &[
             "type": "object",
             "properties": {
                 "site_id": { "type": "string" },
-                "action": { "type": "string", "enum": ["assets", "status", "branches", "prs", "stashes", "scripts", "info", "jobs", "job", "watches", "unmanaged", "check", "tools", "probe", "add", "adopt", "link", "git", "run_step", "run_offered", "script", "dist_archive", "watch_start", "watch_stop", "cancel"] },
+                "action": { "type": "string", "enum": ["assets", "status", "branches", "prs", "stashes", "scripts", "info", "jobs", "job", "watches", "watch_log", "unmanaged", "check", "tools", "probe", "add", "adopt", "link", "git", "run_step", "run_offered", "script", "dist_archive", "watch_start", "watch_stop", "cancel"] },
                 "kind": { "type": "string", "enum": ["plugin", "theme"] },
                 "dir": { "type": "string" }, "url": { "type": "string" }, "ref": { "type": "string" },
                 "path": { "type": "string" }, "op": { "type": "string" }, "install": { "type": "boolean" },
@@ -936,6 +943,10 @@ pub trait SiteOps: Send + Sync {
         enabled: bool,
     ) -> OpFuture<'a, Result<Option<crate::commands::sites::SiteEnabledReport>>>;
     fn retry<'a>(&'a self, site_id: String) -> OpFuture<'a, Result<crate::commands::site_provision::SiteProvisionState>>;
+    /// Truncate one log by its key — the Logs tab's own clear. Shared logs are
+    /// every site's, which is why the tool arm that reaches this is `destroy`.
+    fn log_clear<'a>(&'a self, key: String) -> OpFuture<'a, Result<()>>;
+    fn wp_debug_log_clear<'a>(&'a self, site_id: String) -> OpFuture<'a, Result<()>>;
 }
 
 /// The app's own WordPress operations (`commands::wordpress`), runtime-erased
@@ -969,6 +980,10 @@ pub trait WpOps: Send + Sync {
     fn cron_events<'a>(&'a self, id: String) -> OpFuture<'a, Result<Vec<crate::core::wordpress::WpCronEvent>>>;
     fn core_verify_checksums<'a>(&'a self, id: String) -> OpFuture<'a, Result<crate::core::wordpress::WpChecksumReport>>;
     fn primary_admin<'a>(&'a self, id: String) -> OpFuture<'a, Result<u64>>;
+    /// Installable WordPress releases from WordPress.org — a network read.
+    fn core_versions<'a>(&'a self) -> OpFuture<'a, Result<Vec<crate::core::wordpress::WpCoreVersion>>>;
+    /// The global WP-CLI packages this machine's login shell adds.
+    fn cli_packages<'a>(&'a self) -> OpFuture<'a, Result<Option<crate::commands::wordpress::WpCliPackagesView>>>;
     // ── wp_user ──
     fn users<'a>(&'a self, id: String) -> OpFuture<'a, Result<Vec<crate::core::wordpress::WpUser>>>;
     fn user_create<'a>(&'a self, id: String, login: String, email: String, role: String, password: String) -> OpFuture<'a, Result<()>>;
@@ -1083,6 +1098,8 @@ pub trait RepoOps: Send + Sync {
     fn site_jobs<'a>(&'a self, site_id: String, kind: String) -> OpFuture<'a, Result<Vec<crate::commands::repo::RepoJobState>>>;
     fn job_state<'a>(&'a self, job_id: String) -> OpFuture<'a, Result<crate::commands::repo::RepoJobState>>;
     fn watches<'a>(&'a self, site_id: String) -> OpFuture<'a, Result<Vec<crate::commands::repo::WatchState>>>;
+    /// What a watcher printed — its in-memory ring buffer, as the Repo tab's pane.
+    fn watch_log<'a>(&'a self, id: String) -> OpFuture<'a, Result<Vec<String>>>;
     fn unmanaged<'a>(&'a self, site_id: String, kind: String) -> OpFuture<'a, Result<Vec<crate::core::repo::UnmanagedRepo>>>;
     fn check<'a>(&'a self, site_id: String, kind: String, dir: String) -> OpFuture<'a, Result<crate::commands::repo::RepoJobState>>;
     fn tools<'a>(&'a self, refresh: bool) -> OpFuture<'a, Result<Vec<crate::commands::repo::ToolStatus>>>;
@@ -1833,7 +1850,7 @@ fn wp_info<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedT
     Box::pin(async move {
         let id = args.get("site_id").and_then(Value::as_str).ok_or_else(|| Error::Other("wp_info needs a `site_id`.".into()))?;
         let what = args.get("what").and_then(Value::as_str).ok_or_else(|| Error::Other("wp_info needs `what`.".into()))?;
-        const WHATS: &[&str] = &["info", "options", "debug", "maintenance", "permalinks", "languages", "cron", "checksums", "primary_admin"];
+        const WHATS: &[&str] = &["info", "options", "debug", "maintenance", "permalinks", "languages", "cron", "checksums", "primary_admin", "core_versions", "cli_packages"];
         if !WHATS.contains(&what) {
             return Err(Error::Other(format!("`{what}` is not something wp_info reads. Use one of: {}.", WHATS.join(", "))));
         }
@@ -1859,6 +1876,15 @@ fn wp_info<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedT
                 let known = super::view::KnownPaths::for_site(ctx.state.platform.paths(), &site.path);
                 json!({ "ok": r.ok, "real": r.real, "benign": r.benign, "output": super::view::scrub_log_line(&r.output, &known) })
             }
+            "core_versions" => to_json(wp.core_versions().await?)?,
+            "cli_packages" => match wp.cli_packages().await? {
+                // The directory is under the person's home: through the scrubber.
+                Some(p) => {
+                    let known = super::view::KnownPaths::for_site(ctx.state.platform.paths(), &site.path);
+                    json!({ "dir": super::view::scrub_log_line(&p.dir, &known), "names": p.names })
+                }
+                None => Value::Null,
+            },
             _ => json!({ "primaryAdminUserId": wp.primary_admin(sid).await? }),
         };
         Ok(json!({ "domain": site.domain, "what": what, "result": value }))
@@ -2475,9 +2501,22 @@ fn site_logs<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::Acte
                 }
             }
         }
-        let wanted = match source { Some(k) => format!("read its `{k}` log"), None => "list its logs".to_string() };
-        let claimed = ctx.claim::<scope::Read>(Some(id), &wanted)?;
-        let site = claimed.granted.site().cloned().ok_or_else(|| Error::Other("site_logs needs a site.".into()))?;
+        let clear = args.get("clear").and_then(Value::as_bool).unwrap_or(false);
+        if clear && source.is_none() {
+            return Err(Error::Other("site_logs `clear` needs a `source` — the one log to empty.".into()));
+        }
+        // Reading is `read`; emptying is `destroy`, and says what it takes with it.
+        let site = match (clear, source) {
+            (true, Some("wp-debug")) => ctx.claim::<scope::Destroy>(Some(id), "empty its WordPress debug log")?.granted.site().cloned(),
+            (true, Some(k)) => ctx
+                .claim::<scope::Destroy>(Some(id), &format!("empty the `{k}` log — a shared log, so every site's lines in it go too"))?
+                .granted
+                .site()
+                .cloned(),
+            (_, Some(k)) => ctx.claim::<scope::Read>(Some(id), &format!("read its `{k}` log"))?.granted.site().cloned(),
+            (_, None) => ctx.claim::<scope::Read>(Some(id), "list its logs")?.granted.site().cloned(),
+        }
+        .ok_or_else(|| Error::Other("site_logs needs a site.".into()))?;
         acted.set(&site);
         let log_dir = ctx.state.platform.paths().log_dir()?;
         // The site's OWN target list, from core — the same one its Logs tab
@@ -2498,6 +2537,10 @@ fn site_logs<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::Acte
                 if site.site_type != SiteType::Wordpress {
                     return Err(Error::Other(format!("`{}` is not a WordPress site, so it has no debug log.", site.domain)));
                 }
+                if clear {
+                    ctx.ops.wp_debug_log_clear(site.id.clone()).await?;
+                    return Ok(json!({ "result": { "domain": site.domain, "source": "wp-debug", "cleared": true } }));
+                }
                 let raw = crate::core::logs::wp_debug_log_tail(std::path::Path::new(&site.path), site.content_dir_rel(), lines)?;
                 json!({ "domain": site.domain, "source": "wp-debug", "lines": scrub(raw) })
             }
@@ -2507,6 +2550,11 @@ fn site_logs<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::Acte
                         "`{key}` is not one of `{}`'s logs. Call site_logs without `source` to see its keys.",
                         site.domain
                     )));
+                }
+                if clear {
+                    // Only a key from THIS site's own target list reaches here.
+                    ctx.ops.log_clear(key.to_string()).await?;
+                    return Ok(json!({ "result": { "domain": site.domain, "source": key, "cleared": true, "shared": true } }));
                 }
                 let raw = crate::core::logs::tail(ctx.state.platform.as_ref(), key, lines)?;
                 json!({ "domain": site.domain, "source": key, "lines": scrub(raw) })
@@ -3005,7 +3053,7 @@ fn blueprints<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::Ac
 pub(crate) fn repo_scope(action: &str) -> Option<(Scope, bool)> {
     // (scope, stack-level?) — the two machine-wide reads take no site.
     Some(match action {
-        "assets" | "status" | "branches" | "prs" | "stashes" | "scripts" | "info" | "jobs" | "job" | "watches" | "unmanaged" | "check" => (Scope::Read, false),
+        "assets" | "status" | "branches" | "prs" | "stashes" | "scripts" | "info" | "jobs" | "job" | "watches" | "watch_log" | "unmanaged" | "check" => (Scope::Read, false),
         "tools" | "probe" => (Scope::Read, true),
         "add" | "adopt" | "link" | "git" | "run_step" | "run_offered" | "script" | "dist_archive" | "watch_start" | "watch_stop" | "cancel" => (Scope::Run, false),
         _ => return None,
@@ -3057,6 +3105,7 @@ fn repo<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTarg
             "dist_archive" => format!("build a distributable zip of `{}`", dir()?),
             "watch_start" => format!("start watching `{}` with `{}`", dir()?, s("script")?),
             "watch_stop" => format!("stop watch {}", s("watch_id")?),
+            "watch_log" => format!("read what watch {} printed", s("watch_id")?),
             "cancel" => format!("cancel job {}", s("job_id")?),
             "status" | "branches" | "prs" | "stashes" | "scripts" | "check" => format!("read the repo state of `{}`", dir()?),
             "job" => format!("read job {}", s("job_id")?),
@@ -3096,6 +3145,16 @@ fn repo<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTarg
             "jobs" => { let all = r.site_jobs(sid, kind).await?; json!(all.iter().map(|st| json!({ "jobId": st.id, "op": st.op, "dir": st.dir_name, "finishedOk": st.finished_ok })).collect::<Vec<_>>()) }
             "job" => job(r.job_state(s("job_id")?).await?).await,
             "watches" => { let w = r.watches(sid).await?; json!(w.iter().map(|w| json!({ "watchId": w.id, "dir": w.dir_name, "kind": w.kind, "script": w.script, "status": w.status, "exit": w.exit })).collect::<Vec<_>>()) }
+            "watch_log" => {
+                let wid = s("watch_id")?;
+                // A watch ON THIS SITE only: the id is the agent's, the site is
+                // the grant — another site's watcher is not this read's to show.
+                if !r.watches(sid.clone()).await?.iter().any(|w| w.id == wid) {
+                    return Err(Error::Other(format!("watch {wid} is not running on this site — repo `watches` lists the ones that are.")));
+                }
+                let lines = r.watch_log(wid.clone()).await?;
+                json!({ "watchId": wid, "lines": lines.iter().map(|l| super::view::scrub_log_line(l, &known)).collect::<Vec<_>>() })
+            }
             "unmanaged" => to_json(r.unmanaged(sid, kind).await?)?,
             "check" => job(r.check(sid, kind, dir()?).await?).await,
             "tools" => { let t = r.tools(args.get("refresh").and_then(Value::as_bool).unwrap_or(false)).await?; json!(t.iter().map(|t| json!({ "name": t.name, "ok": t.ok, "version": t.version, "error": t.error.as_deref().map(|e| super::view::scrub_log_line(e, &known)) })).collect::<Vec<_>>()) }
@@ -3548,6 +3607,8 @@ pub(crate) mod tests {
                 })
             })
         }
+        fn log_clear<'a>(&'a self, key: String) -> OpFuture<'a, Result<()>> { self.calls.lock().unwrap().push(format!("log clear {key}")); Box::pin(async { Ok(()) }) }
+        fn wp_debug_log_clear<'a>(&'a self, site_id: String) -> OpFuture<'a, Result<()>> { self.calls.lock().unwrap().push(format!("log wp-debug clear {site_id}")); Box::pin(async { Ok(()) }) }
     }
 
     /// The WordPress commands, recorded; the reads answer canned shapes.
@@ -3654,6 +3715,23 @@ pub(crate) mod tests {
         fn primary_admin<'a>(&'a self, id: String) -> OpFuture<'a, Result<u64>> {
             self.calls.lock().unwrap().push(format!("wp primary_admin {id}"));
             Box::pin(async { Ok(1) })
+        }
+        fn core_versions<'a>(&'a self) -> OpFuture<'a, Result<Vec<crate::core::wordpress::WpCoreVersion>>> {
+            self.calls.lock().unwrap().push("wp core_versions".into());
+            Box::pin(async { Ok(vec![crate::core::wordpress::WpCoreVersion { version: "6.8.2".into(), status: "latest".into() }]) })
+        }
+        fn cli_packages<'a>(&'a self) -> OpFuture<'a, Result<Option<crate::commands::wordpress::WpCliPackagesView>>> {
+            self.calls.lock().unwrap().push("wp cli_packages".into());
+            // The real directory is under the person's REAL home — the one the
+            // scrubber knows. A made-up `/Users/somebody` here passed the fixture
+            // while proving nothing about what production would send.
+            let home = directories::BaseDirs::new().map(|b| b.home_dir().display().to_string()).unwrap_or_default();
+            Box::pin(async move {
+                Ok(Some(crate::commands::wordpress::WpCliPackagesView {
+                    dir: format!("{home}/.wp-cli/packages"),
+                    names: vec!["wp-cli/doctor-command".into()],
+                }))
+            })
         }
         fn users<'a>(&'a self, id: String) -> OpFuture<'a, Result<Vec<crate::core::wordpress::WpUser>>> {
             self.calls.lock().unwrap().push(format!("wp users {id}"));
@@ -3938,7 +4016,25 @@ pub(crate) mod tests {
         fn site_info<'a>(&'a self, _s: String) -> OpFuture<'a, Result<crate::commands::repo::SiteRepoInfo>> { Box::pin(async { Ok(crate::commands::repo::SiteRepoInfo { present: true, project_root: "/Users/somebody/Sites/mine.rex".into(), cloned_from: None }) }) }
         fn site_jobs<'a>(&'a self, _s: String, _k: String) -> OpFuture<'a, Result<Vec<crate::commands::repo::RepoJobState>>> { Box::pin(async { Ok(vec![fake_job("add")]) }) }
         fn job_state<'a>(&'a self, _j: String) -> OpFuture<'a, Result<crate::commands::repo::RepoJobState>> { Box::pin(async { Ok(fake_job("add")) }) }
-        fn watches<'a>(&'a self, _s: String) -> OpFuture<'a, Result<Vec<crate::commands::repo::WatchState>>> { Box::pin(async { Ok(vec![]) }) }
+        fn watches<'a>(&'a self, s: String) -> OpFuture<'a, Result<Vec<crate::commands::repo::WatchState>>> {
+            Box::pin(async move {
+                Ok(vec![crate::commands::repo::WatchState {
+                    id: "w-1".into(),
+                    site_id: s,
+                    kind: "plugin".into(),
+                    dir_name: "acme".into(),
+                    script: "watch".into(),
+                    status: "running".into(),
+                    exit: None,
+                    log_key: "repo-mine.rex-acme-watch.log".into(),
+                }])
+            })
+        }
+        fn watch_log<'a>(&'a self, id: String) -> OpFuture<'a, Result<Vec<String>>> {
+            self.calls.lock().unwrap().push(format!("repo watch_log {id}"));
+            // A real watcher prints absolute paths into the user's project.
+            Box::pin(async { Ok(vec!["compiled /Users/somebody/Library/Application Support/rexenv/Sites/mine.rex/wp-content/plugins/acme/src/app.js".into()]) })
+        }
         fn unmanaged<'a>(&'a self, _s: String, _k: String) -> OpFuture<'a, Result<Vec<crate::core::repo::UnmanagedRepo>>> { Box::pin(async { Ok(vec![]) }) }
         fn check<'a>(&'a self, _s: String, _k: String, _d: String) -> OpFuture<'a, Result<crate::commands::repo::RepoJobState>> { Box::pin(async { Ok(fake_job("check")) }) }
         fn tools<'a>(&'a self, refresh: bool) -> OpFuture<'a, Result<Vec<crate::commands::repo::ToolStatus>>> { self.calls.lock().unwrap().push(format!("repo tools {refresh}")); Box::pin(async { Ok(vec![]) }) }
@@ -4424,10 +4520,20 @@ pub(crate) mod tests {
         let v = wp_theme(ctx, &json!({ "site_id": wp_site.id, "action": "network_enabled" }), &acted).await.unwrap();
         assert_eq!(v["result"]["networkEnabled"], json!(["twentytwentyfour"]));
         // Every `what` of wp_info reaches its read; the checksum output is scrubbed.
-        for what in ["info", "options", "debug", "maintenance", "permalinks", "languages", "cron", "checksums", "primary_admin"] {
+        for what in ["info", "options", "debug", "maintenance", "permalinks", "languages", "cron", "checksums", "primary_admin", "core_versions", "cli_packages"] {
             let v = wp_info(ctx, &json!({ "site_id": wp_site.id, "what": what }), &acted).await.unwrap();
             assert_eq!(v["what"], what);
         }
+        // The two reads added 11 Sep 2026 (#563): the releases the version switch
+        // offers, and the global WP-CLI packages — whose directory is under the
+        // person's home and must come back without it.
+        let v = wp_info(ctx, &json!({ "site_id": wp_site.id, "what": "core_versions" }), &acted).await.unwrap();
+        assert_eq!(v["result"][0]["version"], "6.8.2");
+        let v = wp_info(ctx, &json!({ "site_id": wp_site.id, "what": "cli_packages" }), &acted).await.unwrap();
+        assert_eq!(v["result"]["names"], json!(["wp-cli/doctor-command"]));
+        let home = directories::BaseDirs::new().map(|b| b.home_dir().display().to_string()).expect("a home dir");
+        assert!(!v.to_string().contains(&home), "the packages dir carried the home path: {v}");
+        assert_eq!(v["result"]["dir"], "<home>/.wp-cli/packages", "scrubbed to the label, the rest kept: {v}");
         let v = wp_info(ctx, &json!({ "site_id": wp_site.id, "what": "debug", "flag": "SCRIPT_DEBUG" }), &acted).await.unwrap();
         assert_eq!(v["result"]["flag"], "SCRIPT_DEBUG");
         let v = wp_info(ctx, &json!({ "site_id": wp_site.id, "what": "checksums" }), &acted).await.unwrap();
@@ -4624,6 +4730,26 @@ pub(crate) mod tests {
         assert!(!v.to_string().contains("/Users/somebody"), "a target's path leaked: {v}");
         let err = site_logs(ctx, &json!({ "site_id": site.id, "source": "../etc/passwd" }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("not one of"), "a key outside the site's list is refused before core: {err}");
+        // Clearing is `destroy`, needs a source, and a shared log says it is shared.
+        let err = site_logs(ctx, &json!({ "site_id": site.id, "clear": true }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("needs a `source`"), "{err}");
+        let err = site_logs(ctx, &json!({ "site_id": site.id, "source": "wp-debug", "clear": true }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("`destroy`"), "a read grant does not empty a log: {err}");
+        let shared_key = sources.iter().filter_map(|s| s["key"].as_str()).find(|k| *k != "wp-debug").expect("a shared log key").to_string();
+        dial(&state, crate::core::agent_access::AccessLevel::Full);
+        let err = site_logs(ctx, &json!({ "site_id": site.id, "source": "../etc/passwd", "clear": true }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("not one of"), "a clear outside the site's list is refused before anything is emptied: {err}");
+        let v = site_logs(ctx, &json!({ "site_id": site.id, "source": "wp-debug", "clear": true }), &acted).await.unwrap();
+        assert_eq!(v["result"]["cleared"], true);
+        let v = site_logs(ctx, &json!({ "site_id": site.id, "source": shared_key, "clear": true }), &acted).await.unwrap();
+        assert_eq!(v["result"]["shared"], true, "{v}");
+        {
+            let calls = ops.calls.lock().unwrap().clone();
+            assert!(calls.iter().any(|c| *c == format!("log wp-debug clear {}", site.id)), "{calls:?}");
+            assert!(calls.iter().any(|c| *c == format!("log clear {shared_key}")), "{calls:?}");
+            assert!(!calls.iter().any(|c| c.contains("passwd")), "the refused key reached an op: {calls:?}");
+        }
+        dial(&state, crate::core::agent_access::AccessLevel::Read);
 
         // D16: the inbox is a read — free at the dial's Read, no switch in front.
         let v = mail_inbox(ctx, &json!({ "action": "list", "unread": true }), &acted).await.unwrap();
@@ -4940,6 +5066,13 @@ pub(crate) mod tests {
         let text = v.to_string();
         assert!(!text.contains("/Users/somebody"), "a path in the job reply or its log: {text}");
         assert!(text.contains("<"), "scrubbed to a label: {text}");
+        // watch_log: a read, only for a watch on THIS site, lines scrubbed.
+        assert_eq!(repo_scope("watch_log"), Some((Scope::Read, false)));
+        let err = repo(ctx, &json!({ "site_id": site.id, "action": "watch_log", "watch_id": "someone-elses" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("not running on this site"), "{err}");
+        let v = repo(ctx, &json!({ "site_id": site.id, "action": "watch_log", "watch_id": "w-1" }), &acted).await.unwrap();
+        let lines = v["result"]["lines"].to_string();
+        assert!(lines.contains("compiled") && !lines.contains("/Users/somebody"), "a watch's lines, scrubbed: {lines}");
         assert!(repo(ctx, &json!({ "action": "tools" }), &acted).await.is_ok(), "tools is a read on rexenv itself — free at the dial's default");
         {
             let conn = state.db.lock().unwrap();

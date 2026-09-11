@@ -1210,7 +1210,11 @@ IPC surface — which is how a reader ends up designing against a system with on
   that runs a database client and a read tool runs nothing (`resources_of`'s
   `include_db_sizes`). Both computations moved into core (`core::app_info`,
   `core::site_metrics::resources_of`) rather than the read bridge reaching
-  `commands::`: the M1 boundary test failed the first version that did. `init_error` and `startup_notices` were re-ruled `Never`: with no
+  `commands::`: the M1 boundary test failed the first version that did. Then (#563):
+  `wp_info` `core_versions` (WordPress.org releases) and `cli_packages` (the directory as
+  `<home>/…`); `site_logs` `clear` — `destroy`, because the server, PHP and database logs
+  are shared and clearing one empties every site's lines; and `repo` `watch_log`, only for
+  a watch running on THAT site, lines scrubbed. `init_error` and `startup_notices` were re-ruled `Never`: with no
   AppState the server answers "still starting", and reading the notices drains the
   person's toasts.
 - **Three registries, and the registry IS the capability.** `mcp_server/tools.rs` holds the

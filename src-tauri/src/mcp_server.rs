@@ -1080,6 +1080,12 @@ impl<Rt: tauri::Runtime> user_sites::SiteOps for AppSiteCreator<Rt> {
             crate::commands::wordpress::wp_multisite_convert(state, tunnels, id, mode).await.map(|_| ())
         })
     }
+    fn log_clear<'a>(&'a self, key: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::logs::log_clear(self.state()?, key) })
+    }
+    fn wp_debug_log_clear<'a>(&'a self, site_id: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
+        Box::pin(async move { crate::commands::logs::wp_debug_log_clear(self.state()?, site_id) })
+    }
 }
 
 impl<Rt: tauri::Runtime> user_sites::WpOps for AppSiteCreator<Rt> {
@@ -1154,6 +1160,12 @@ impl<Rt: tauri::Runtime> user_sites::WpOps for AppSiteCreator<Rt> {
     }
     fn primary_admin<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<u64>> {
         Box::pin(async move { crate::commands::wordpress::wp_primary_admin(self.state()?, id).await })
+    }
+    fn core_versions<'a>(&'a self) -> user_sites::OpFuture<'a, crate::error::Result<Vec<crate::core::wordpress::WpCoreVersion>>> {
+        Box::pin(async move { crate::commands::wordpress::wp_core_versions().await })
+    }
+    fn cli_packages<'a>(&'a self) -> user_sites::OpFuture<'a, crate::error::Result<Option<crate::commands::wordpress::WpCliPackagesView>>> {
+        Box::pin(async move { crate::commands::wordpress::wp_cli_packages(self.state()?, self.repo_jobs()?).await })
     }
     fn users<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<Vec<crate::core::wordpress::WpUser>>> {
         Box::pin(async move { crate::commands::wordpress::wp_users(self.state()?, id).await })
@@ -1469,6 +1481,9 @@ impl<Rt: tauri::Runtime> user_sites::RepoOps for AppSiteCreator<Rt> {
     }
     fn watches<'a>(&'a self, site_id: String) -> user_sites::OpFuture<'a, crate::error::Result<Vec<crate::commands::repo::WatchState>>> {
         Box::pin(async move { crate::commands::repo::repo_watches(self.repo_watches()?, Some(site_id), None).await })
+    }
+    fn watch_log<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<Vec<String>>> {
+        Box::pin(async move { crate::commands::repo::repo_watch_log(self.repo_watches()?, id).await })
     }
     fn unmanaged<'a>(&'a self, site_id: String, kind: String) -> user_sites::OpFuture<'a, crate::error::Result<Vec<crate::core::repo::UnmanagedRepo>>> {
         Box::pin(async move { crate::commands::repo::repo_unmanaged(self.state()?, site_id, kind).await })

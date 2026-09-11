@@ -81,8 +81,6 @@ mod tests {
         ("tail_log", Tool("site_logs")),
         ("wp_debug_log_status", Tool("site_logs")),
         ("wp_debug_log_tail", Tool("tail_log")),
-        ("log_clear", Gap("parity §4.3 planned `log_clear` (destroy); not built")),
-        ("wp_debug_log_clear", Gap("parity §4.3 planned `log_clear` (destroy); not built")),
         ("log_download", Never("returns a path for a Save dialog; an agent reads the log with site_logs")),
         ("wp_debug_log_download", Never("returns a path for a Save dialog; an agent reads the log with tail_log")),
         // ── mail
@@ -101,7 +99,6 @@ mod tests {
         ("frankenphp_embedded_php", Tool("stack_status")),
         // ── repo
         ("repo_run_offered_steps", Tool("repo")),
-        ("repo_watch_log", Gap("a watch's own log — `repo` lists watches, not what they printed")),
         // ── services
         ("services_status", Tool("stack_status")),
         // ── settings
@@ -155,8 +152,6 @@ mod tests {
         ("terminal_resize", Never(PTY)),
         ("terminal_close", Never(PTY)),
         // ── wordpress
-        ("wp_core_versions", Gap("parity §4.2 folded it into `wp_info`; its `what` enum does not offer it")),
-        ("wp_cli_packages", Gap("parity §4.2 folded it into `wp_info`; its `what` enum does not offer it")),
         ("wp_org_search_plugins", Tool("wp_org_search")),
         ("wp_org_search_themes", Tool("wp_org_search")),
         ("wp_org_plugin_icons", Never("icon URLs for the app's list rows; wp_org_search returns the plugins themselves")),
