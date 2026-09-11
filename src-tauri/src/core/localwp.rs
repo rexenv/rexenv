@@ -277,6 +277,22 @@ fn row(s: &LocalSite, default_tld: &str) -> DiscoveredSite {
     }
 }
 
+/// Whether a site config's database host means "Local's socket for this site"
+/// — the ONLY case in which the registry may replace what the config says
+/// (ledger #572).
+///
+/// Local writes `define( 'DB_HOST', 'localhost' )`, and PHP reads a bare
+/// `localhost` as the unix socket its php.ini names. Read literally that is
+/// `localhost:3306`, which is not where the data is. Anything more specific —
+/// an IP, another host, an explicit port — is a choice somebody made (a Local
+/// site pointed at DBngin on purpose), and the config wins. A bare `localhost`
+/// parses to the default port, so `localhost:3306` spelled out is
+/// indistinguishable from it; that is the same server the socket form reaches
+/// in every setup that has one there, so treating it the same is safe.
+pub fn overrides_config(config_host: &str, config_port: u16) -> bool {
+    config_host.trim().eq_ignore_ascii_case("localhost") && config_port == 3306
+}
+
 /// A Local site's own database server, as the registry places it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LocalDb {
@@ -500,6 +516,18 @@ mod tests {
         let (source, rows) = discover(&home.0, "rex").unwrap();
         assert!(rows.is_empty());
         assert!(source.notes.iter().any(|n| n.contains("couldn't understand")), "{:?}", source.notes);
+    }
+
+    /// Only the socket-meaning `localhost` lets the registry override the
+    /// config; every explicit choice wins (ledger #572).
+    #[test]
+    fn only_a_bare_localhost_is_replaced_by_the_registry() {
+        assert!(overrides_config("localhost", 3306));
+        assert!(overrides_config(" LocalHost ", 3306));
+        assert!(!overrides_config("127.0.0.1", 3306), "an IP is a TCP choice");
+        assert!(!overrides_config("localhost", 10003), "an explicit port is a choice");
+        assert!(!overrides_config("db.internal", 3306));
+        assert!(!overrides_config("", 3306));
     }
 
     /// The database lookup matches a docroot to ITS Local site — through a

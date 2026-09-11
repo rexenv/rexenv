@@ -297,9 +297,31 @@ async fn run<R: tauri::Runtime>(
     // ── check: config → probe → is-this-us → verdict → live → disk ─────────
     enter_phase(entry, 0);
     emit(app, entry);
-    let conn_info = dbimport::read_connection(Path::new(&site.path)).map_err(|(reason, source)| {
+    let mut conn_info = dbimport::read_connection(Path::new(&site.path)).map_err(|(reason, source)| {
         Error::Other(DbSiteStatus::NeedsAttention { reason, source }.message())
     })?;
+    // A Local site's wp-config says `localhost` — Local's socket for THIS site's
+    // own mysqld — so its data is wherever Local's registry puts that server,
+    // not on `localhost:3306` (which is nothing, or somebody's Homebrew MySQL
+    // with its own `local` database). Only a bare `localhost` is replaced; an
+    // explicit host is a choice and wins. Re-read from their registry on every
+    // run, like the credentials are from wp-config (ledger #572).
+    let local = directories::BaseDirs::new()
+        .filter(|_| core::localwp::overrides_config(&conn_info.host, conn_info.port))
+        .and_then(|b| core::localwp::db_source_for(b.home_dir(), Path::new(&site.path)));
+    if let Some(l) = &local {
+        log_line(
+            app,
+            entry,
+            &format!(
+                "{} is a Local site: its database is Local's own server for it (127.0.0.1:{}, \
+                 signed in over its socket), not the `localhost` wp-config names",
+                l.site_name, l.port
+            ),
+        );
+        conn_info.host = "127.0.0.1".into();
+        conn_info.port = l.port;
+    }
     log_line(app, entry, &format!("source: {:?}", conn_info.info()));
     // The target name is decided (and validated) HERE, before the dump: the
     // first version validated it at prepare_target, after minutes and
@@ -322,6 +344,18 @@ async fn run<R: tauri::Runtime>(
 
     let identity = match dbsource::probe(&conn_info.host, conn_info.port) {
         dbsource::Probe::Listening(id) => id,
+        // Named for Local, because the generic "start it (DBngin, Herd…)" points
+        // at the wrong app — and Local runs a site's database only while that
+        // one site is started, which nobody guesses from a port number.
+        dbsource::Probe::NotListening(_) if local.is_some() => {
+            let l = local.as_ref().expect("guarded");
+            return Err(Error::Other(format!(
+                "`{}` is the database of the \"{}\" site in Local, and its server isn't \
+                 running — Local runs a site's database only while that site is started. \
+                 Start \"{}\" in Local, then retry. rexenv never starts or stops Local's servers.",
+                conn_info.database, l.site_name, l.site_name
+            )));
+        }
         dbsource::Probe::NotListening(_) => {
             return Err(Error::Other(
                 DbSiteStatus::ServerUnreachable { conn: Box::new(conn_info.info()) }.message(),
@@ -391,7 +425,14 @@ async fn run<R: tauri::Runtime>(
     core::downloads::prefetch(platform, "Database import (tools)", &plan).await?;
     let (src_client, src_dump) = src_engine.sql_client_bins(platform, &src_engine_version).await?;
 
-    let defaults = dbdump::DefaultsFile::create(platform, &dest_dir, &conn_info)?;
+    let defaults = match &local {
+        // The TCP port answered the probe above; sign-in goes the way the site
+        // itself signs in. No socket file (an unusual Local build) → TCP.
+        Some(l) if l.socket.exists() => {
+            dbdump::DefaultsFile::create_via_socket(platform, &dest_dir, &conn_info, &l.socket)?
+        }
+        _ => dbdump::DefaultsFile::create(platform, &dest_dir, &conn_info)?,
+    };
     let (size, skip_tables) = match dbdump::preflight_live(
         &cleared,
         &src_client,
@@ -616,10 +657,14 @@ async fn run<R: tauri::Runtime>(
             db_name: name.clone(),
             table_count: verified.tables,
             size_bytes: preflight.size.total_bytes,
-            source_label: match &src_version {
-                Some(v) => format!("{} {} at {}:{}", source_vendor.label(), v, conn_info.host, conn_info.port),
-                None => format!("{}:{}", conn_info.host, conn_info.port),
-            },
+            source_label: format!(
+                "{}{}",
+                local.as_ref().map(|l| format!("Local's \"{}\" site — ", l.site_name)).unwrap_or_default(),
+                match &src_version {
+                    Some(v) => format!("{} {} at {}:{}", source_vendor.label(), v, conn_info.host, conn_info.port),
+                    None => format!("{}:{}", conn_info.host, conn_info.port),
+                }
+            ),
             mirrored_user: intended_user,
             // From the MANIFEST, not the local variable: the manifest is what
             // the artifact actually was, and a re-import from an existing
@@ -666,6 +711,33 @@ pub(crate) fn target_db_name(source: &str, disambiguate_with: Option<&str>) -> S
     let keep = max - 1 - suffix.len();
     let head: String = full.chars().take(keep).collect();
     format!("{head}_{suffix}")
+}
+
+/// Ledger #572 — the Local registry replaces the config's host ONLY behind the
+/// bare-`localhost` rule, and only in the one job that reads a source.
+#[cfg(test)]
+mod local_source_wiring {
+    /// `overrides_config` is the rule; this pins that `run` actually asks it
+    /// BEFORE consulting Local's registry, and asks the registry exactly once.
+    /// A registry lookup outside that gate would let `sites.json` silently
+    /// redirect a site whose config names an explicit server — a Local site
+    /// someone pointed at DBngin would be dumped from the wrong database.
+    #[test]
+    fn the_registry_is_consulted_only_behind_the_localhost_rule() {
+        let src = crate::core::copy_scan::production_source(include_str!("db_import.rs"));
+        assert_eq!(src.matches("db_source_for(").count(), 1, "one registry lookup, in `run`");
+        let gate = src.find("overrides_config(").expect("the rule is no longer asked");
+        let lookup = src.find("db_source_for(").expect("lookup");
+        assert!(gate < lookup, "the registry is read before the rule decides it may be");
+        let head = &src[gate.saturating_sub(80)..gate];
+        let between = &src[gate..lookup];
+        assert!(
+            head.contains(".filter(") && !between.contains(';'),
+            "the rule must GATE the lookup in one expression, not merely precede it: {head}{between}"
+        );
+        // A stopped Local site is named as Local's, not DBngin's.
+        assert!(src.contains("Start \\\"{}\\\" in Local"), "the Local-named unreachable message is gone");
+    }
 }
 
 #[cfg(test)]

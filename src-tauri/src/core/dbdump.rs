@@ -184,15 +184,27 @@ pub struct DefaultsFile {
 
 impl DefaultsFile {
     pub fn create(platform: &dyn Platform, dir: &Path, conn: &DbConnection) -> Result<DefaultsFile> {
+        Self::write(platform, dir, &defaults_contents(conn, None))
+    }
+
+    /// The same file, signing in over a unix SOCKET instead of TCP — for a
+    /// Local site, whose WordPress reaches its database that way
+    /// (`core::localwp::db_source_for`). With `skip-name-resolve` on Local's
+    /// mysqld, a `root@localhost` account is not guaranteed to match a TCP
+    /// login from 127.0.0.1; the socket is how the site itself signs in, so it
+    /// is the one route known to accept these credentials.
+    pub fn create_via_socket(
+        platform: &dyn Platform,
+        dir: &Path,
+        conn: &DbConnection,
+        socket: &Path,
+    ) -> Result<DefaultsFile> {
+        Self::write(platform, dir, &defaults_contents(conn, Some(socket)))
+    }
+
+    fn write(platform: &dyn Platform, dir: &Path, contents: &str) -> Result<DefaultsFile> {
         std::fs::create_dir_all(dir)?;
         let path = dir.join(".connect.cnf");
-        let contents = format!(
-            "[client]\nhost={}\nport={}\nprotocol=TCP\nuser={}\npassword=\"{}\"\n",
-            conn.host,
-            conn.port,
-            conn.user,
-            escape_option_value(&conn.password),
-        );
         platform.permissions().write_private(&path, contents.as_bytes())?;
         Ok(DefaultsFile { path })
     }
@@ -206,6 +218,24 @@ impl Drop for DefaultsFile {
     fn drop(&mut self) {
         let _ = std::fs::remove_file(&self.path);
     }
+}
+
+/// The `[client]` group: TCP to host/port, or the socket when one is given.
+/// The protocol is pinned either way, so a stray `host` default in some other
+/// option file can't turn a socket login into a TCP one or back.
+fn defaults_contents(conn: &DbConnection, socket: Option<&Path>) -> String {
+    let route = match socket {
+        Some(s) => format!(
+            "socket=\"{}\"\nprotocol=SOCKET\n",
+            escape_option_value(&s.display().to_string())
+        ),
+        None => format!("host={}\nport={}\nprotocol=TCP\n", conn.host, conn.port),
+    };
+    format!(
+        "[client]\n{route}user={}\npassword=\"{}\"\n",
+        conn.user,
+        escape_option_value(&conn.password),
+    )
 }
 
 /// MySQL option-file quoting: inside double quotes, backslash and the quote
@@ -975,6 +1005,35 @@ mod tests {
 
         // The happy path mints the witness.
         assert!(gate(None, &proceed, false).is_ok());
+    }
+
+    /// The socket form names ONLY the socket (quoted — Local's lives under
+    /// "Application Support") and pins the protocol; the TCP form is byte-for-
+    /// byte what it always was.
+    #[test]
+    fn the_defaults_file_signs_in_over_tcp_or_a_socket_never_both() {
+        let conn = DbConnection {
+            driver: crate::core::dbimport::Driver::MysqlFamily,
+            host: "127.0.0.1".into(),
+            port: 10003,
+            database: "local".into(),
+            user: "root".into(),
+            password: "ro\"ot".into(),
+            table_prefix: None,
+            source: crate::core::dbimport::ConfigSource::WpConfig { path: "/x/wp-config.php".into() },
+        };
+        assert_eq!(
+            defaults_contents(&conn, None),
+            "[client]\nhost=127.0.0.1\nport=10003\nprotocol=TCP\nuser=root\npassword=\"ro\\\"ot\"\n"
+        );
+        let sock = Path::new("/Users/dev/Library/Application Support/Local/run/abc/mysql/mysqld.sock");
+        let s = defaults_contents(&conn, Some(sock));
+        assert!(
+            s.contains("socket=\"/Users/dev/Library/Application Support/Local/run/abc/mysql/mysqld.sock\"\n"),
+            "{s}"
+        );
+        assert!(s.contains("protocol=SOCKET\n"), "{s}");
+        assert!(!s.contains("host=") && !s.contains("port="), "a socket login must not also name TCP: {s}");
     }
 
     #[test]

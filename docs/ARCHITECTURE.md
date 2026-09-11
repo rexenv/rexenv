@@ -960,6 +960,15 @@ honest footer —
   version picker on the row — for every source — and `choose_php` refuses such a
   row in the run unless a version was explicitly chosen: the run used to fall back
   to the default PHP for it, the silent substitution the scan exists to refuse.
+  The database import finds a Local site's data through Local's REGISTRY, not
+  wp-config's literal host (#572): when the served folder is a registered Local
+  site's `app/public` AND the config host is a bare `localhost` (Local's socket), the
+  source is that site's own mysqld — its TCP port for the pre-auth probe, its socket
+  (a 0600 defaults file with `protocol=SOCKET`) for sign-in and dump, both re-read
+  from `sites.json` on every run. An explicit host or port always wins. A stopped
+  Local site fails with "start it in Local" — Local runs a site's database only while
+  that site is started, and rexenv never starts it. `app/sql/local.sql` is never used
+  (a stale snapshot).
 - **Database import copies their database and RECORDS what it did** (Stage 2:
   `core/{dbsource,dbcompat,dbdump,dbrestore,dbmirror,dbimport}`, v19 `sites.db_created`,
   v20 `db_imports`). Their side is read-only: engines identified from the pre-auth

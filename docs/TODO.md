@@ -43,7 +43,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   - [x] T3 — PHP picker for rows pinned to a version rexenv doesn't ship ✓ 11 Sep 2026 —
     `an_unshipped_pin_needs_an_explicit_choice_and_nothing_else_does` (the run's silent
     default-PHP fallback for such rows was a real hole on the MCP/scripted path, closed here)
-  - [ ] T4 — Local database source (registry port + socket) in the db import
+  - [x] T4 — Local database source (registry port + socket) in the db import ✓ 11 Sep 2026 —
+    ledger #572; `only_a_bare_localhost_is_replaced_by_the_registry`,
+    `the_defaults_file_signs_in_over_tcp_or_a_socket_never_both`,
+    `the_registry_is_consulted_only_behind_the_localhost_rule`. Live dump from a STARTED
+    Local site still owed (PUBLISH-TESTING, T7)
   - [ ] T5 — URL re-home pass on rexenv's copy
   - [ ] T6 — `local_scan_check` example
   - [ ] T7 — ARCHITECTURE §8, ledger rows, PUBLISH-TESTING §N
