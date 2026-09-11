@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, FolderInput, Plus, Globe, FolderOpen, Database, Lock, LockOpen, Trash2, MoreVertical, ArrowDownUp, Pencil, Copy, Code, Link, RefreshCw, Pin as PinIcon, Bot, X, Play, Square, ChevronDown } from "lucide-react";
@@ -754,32 +754,9 @@ export function Sites() {
 
   const running = sites.filter((s) => statusOf(s) === "running").length;
 
-  // **The default view is Running — decided ONCE, and never again.**
-  //
-  // With every site running, an "All" tab and a "Running" tab show the same
-  // list, and the first thing most people want is the sites that are up. But a
-  // machine where nothing is running would then open on an empty page, so the
-  // fallback is All.
-  //
-  // The `once` part is the load-bearing half. The serving map refetches every
-  // two seconds; a default that re-decided on each poll would move the user's
-  // tab out from under them the moment they stopped their last running site —
-  // and stopping a site is now a thing they can do from this very list. So the
-  // decision happens on the first load that has both facts in hand, and any tab
-  // the user touches settles it for the session.
-  const filterDecided = useRef(false);
-  const chooseFilter = (f: Filter) => {
-    filterDecided.current = true;
-    setFilter(f);
-  };
-  useEffect(() => {
-    // `serving` undefined = the first poll has not answered yet. Deciding then
-    // would read "nothing is running" from "we have not asked", and open on All
-    // for a machine where everything is up.
-    if (filterDecided.current || isLoading || !serving) return;
-    filterDecided.current = true;
-    setFilter(sites.some((s) => servingMap.get(s.domain)) ? "running" : "all");
-  }, [isLoading, serving, sites, servingMap]);
+  // The page opens on All, and only a tab the user clicks changes it. It opened
+  // on Running for a while (chosen once, after the first serving poll); the
+  // owner asked for All back on 11 Sep 2026 — every site visible on arrival.
 
   // **Each control counts what the OTHER one has already selected.** The
   // alternative — both counting all sites — writes a number above a list that
@@ -982,7 +959,7 @@ export function Sites() {
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <FilterTabs
               value={filter}
-              onChange={chooseFilter}
+              onChange={setFilter}
               counts={counts}
               tabs={[
                 { key: "all", label: "All" },
@@ -1067,7 +1044,7 @@ export function Sites() {
             <button
               className="mt-1 text-[0.78125rem] text-brand-tint underline decoration-dotted"
               onClick={() => {
-                chooseFilter("all");
+                setFilter("all");
                 setTypeFilter("all");
                 setQuery("");
               }}
