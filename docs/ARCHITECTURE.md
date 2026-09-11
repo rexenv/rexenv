@@ -955,7 +955,11 @@ honest footer —
   Already-imported is decided by FOLDER first for every source (a re-homed name
   cannot be matched by name, and a Valet site whose domain was later changed in
   rexenv is still that folder); a Local row whose name a Valet/Herd row already
-  claims is refused rather than listed twice.
+  claims is refused rather than listed twice. A row pinned to a PHP minor rexenv
+  doesn't ship (Local pins patches like 7.3.5) carries `php_choice` and gets a
+  version picker on the row — for every source — and `choose_php` refuses such a
+  row in the run unless a version was explicitly chosen: the run used to fall back
+  to the default PHP for it, the silent substitution the scan exists to refuse.
 - **Database import copies their database and RECORDS what it did** (Stage 2:
   `core/{dbsource,dbcompat,dbdump,dbrestore,dbmirror,dbimport}`, v19 `sites.db_created`,
   v20 `db_imports`). Their side is read-only: engines identified from the pre-auth

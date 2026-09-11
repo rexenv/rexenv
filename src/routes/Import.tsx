@@ -42,9 +42,12 @@ function ago(at: number, now: number): string {
   return `${Math.floor(s / 3600)}h ago`;
 }
 
-/** A row can be ticked only when importing it needs no further decision. */
-function selectable(c: ImportCandidate): boolean {
-  return c.status.status === "importable" && !!c.servePath;
+/** A row can be ticked only when importing it needs no further decision — or
+ *  when the one decision it needs (a PHP version rexenv ships, in place of a
+ *  pin it doesn't) has been made on the row. Never a silent substitute. */
+function selectable(c: ImportCandidate, phpPick: Record<string, string>): boolean {
+  if (!c.servePath) return false;
+  return c.status.status === "importable" || (c.phpChoice && !!phpPick[c.domain]);
 }
 
 function statusPill(c: ImportCandidate, outcome?: ImportOutcome) {
@@ -127,6 +130,10 @@ export function Import() {
     return () => clearInterval(t);
   }, []);
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  // Per-row PHP choice for rows pinned to a version rexenv doesn't ship. Starts
+  // EMPTY: the row stays unticked until someone picks, so no version is ever
+  // chosen for them.
+  const [phpPick, setPhpPick] = useState<Record<string, string>>({});
   const [outcomes, setOutcomes] = useState<Record<string, ImportOutcome>>({});
   const [running, setRunning] = useState(false);
   // ON by default: rexenv is the whole stack, so someone migrating off Valet
@@ -137,7 +144,10 @@ export function Import() {
   const [progress, setProgress] = useState<ImportProgress | null>(null);
 
   const candidates = useMemo(() => data?.candidates ?? [], [data]);
-  const ready = useMemo(() => candidates.filter(selectable).map((c) => c.domain), [candidates]);
+  const ready = useMemo(
+    () => candidates.filter((c) => selectable(c, phpPick)).map((c) => c.domain),
+    [candidates, phpPick],
+  );
 
   // Drop selections for rows a rescan removed, so the count can't lie.
   useEffect(() => {
@@ -172,7 +182,7 @@ export function Import() {
     mutationFn: () =>
       valetImportRun({
         domains: [...picked].sort(),
-        php: {},
+        php: Object.fromEntries(Object.entries(phpPick).filter(([d]) => picked.has(d))),
         importDatabases: withDatabases,
       }),
     onMutate: () => {
@@ -394,8 +404,15 @@ export function Import() {
                       title: live.waiting ? undefined : (progress?.detail ?? undefined),
                       db: null,
                     }
-                  : statusPill(c, outcomes[c.domain]);
-                const can = selectable(c) && !running;
+                  : c.phpChoice && phpPick[c.domain] && !outcomes[c.domain]
+                    ? {
+                        label: "ready",
+                        tone: "border-status-running-border bg-status-running-bg text-status-running-bright",
+                        title: `Imports on PHP ${phpPick[c.domain]} instead of ${c.phpMinor ?? "its pinned version"} — check the site works on it.`,
+                        db: null,
+                      }
+                    : statusPill(c, outcomes[c.domain]);
+                const can = selectable(c, phpPick) && !running;
                 return (
                   <div
                     key={c.domain}
@@ -406,7 +423,7 @@ export function Import() {
                       className={CHECK_INPUT}
                       checked={picked.has(c.domain)}
                       disabled={!can}
-                      title={selectable(c) ? undefined : pill.title}
+                      title={selectable(c, phpPick) ? undefined : pill.title}
                       onChange={() =>
                         setPicked((s) => {
                           const n = new Set(s);
@@ -450,9 +467,40 @@ export function Import() {
                         </div>
                       )}
                     </div>
-                    <span className="flex-none font-mono text-[0.6875rem] text-rex-text-muted">
-                      {c.phpTarget ? `PHP ${c.phpTarget}` : c.phpMinor ? `PHP ${c.phpMinor}` : ""}
-                    </span>
+                    {c.phpChoice && c.servePath && !outcomes[c.domain] ? (
+                      <select
+                        aria-label={`PHP version for ${c.domain}`}
+                        value={phpPick[c.domain] ?? ""}
+                        disabled={running}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setPhpPick((p) => {
+                            const n = { ...p };
+                            if (v) n[c.domain] = v;
+                            else delete n[c.domain];
+                            return n;
+                          });
+                          if (!v)
+                            setPicked((s) => {
+                              const n = new Set(s);
+                              n.delete(c.domain);
+                              return n;
+                            });
+                        }}
+                        className="h-[26px] flex-none rounded border border-rex-border bg-rex-surface-2 px-1.5 font-mono text-[0.6875rem] text-rex-text outline-none transition-colors focus:border-brand disabled:opacity-50"
+                      >
+                        <option value="">PHP {c.phpMinor ?? "?"} → choose…</option>
+                        {(data?.availablePhp ?? []).map((v) => (
+                          <option key={v} value={v}>
+                            PHP {v}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="flex-none font-mono text-[0.6875rem] text-rex-text-muted">
+                        {c.phpTarget ? `PHP ${c.phpTarget}` : c.phpMinor ? `PHP ${c.phpMinor}` : ""}
+                      </span>
+                    )}
                     {"db" in pill && pill.db && (
                       <span
                         className={cn(

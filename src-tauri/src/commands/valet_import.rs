@@ -44,6 +44,10 @@ pub struct ImportCandidate {
     /// The minor we'd use. `None` when theirs isn't one we ship and the user
     /// must choose — we never substitute silently.
     pub php_target: Option<String>,
+    /// The row needs attention ONLY because its pinned PHP isn't one rexenv
+    /// ships — the one decision the screen can take on the row itself (a
+    /// version picker). The run refuses such a row without an explicit choice.
+    pub php_choice: bool,
     pub secured: bool,
     pub proxy_to: Option<String>,
     pub also_in: Option<SourceKind>,
@@ -323,6 +327,7 @@ fn enrich(
         label: None,
         php_minor: s.php_minor.clone(),
         php_target: None,
+        php_choice: false,
         secured: s.secured,
         proxy_to: s.proxy_to,
         also_in: s.also_in,
@@ -377,6 +382,7 @@ fn enrich(
             c.status = SiteStatus::NeedsAttention(format!(
                 "PHP {m} isn't one rexenv ships — choose a version to import it on"
             ));
+            c.php_choice = true;
             return c;
         }
         // No pin means they used their global PHP, so there is nothing to
@@ -765,17 +771,13 @@ pub async fn valet_import_run<R: tauri::Runtime>(
             outcomes.push(skipped(domain, "its folder is missing"));
             continue;
         };
-        // The user's explicit choice wins for a version we don't ship.
-        let php = request
-            .php
-            .get(domain)
-            .cloned()
-            .or_else(|| c.php_target.clone())
-            .unwrap_or_else(|| core::php::minor_of(core::binaries::PHP_VERSION));
-        if !scan.available_php.contains(&php) {
-            outcomes.push(skipped(domain, &format!("PHP {php} isn't one rexenv ships")));
-            continue;
-        }
+        let php = match choose_php(&c, request.php.get(domain), &scan.available_php) {
+            Ok(php) => php,
+            Err(why) => {
+                outcomes.push(skipped(domain, &why));
+                continue;
+            }
+        };
         let _ = serve;
         queue.push((c, php));
     }
@@ -1067,6 +1069,36 @@ async fn import_db_for<R: tauri::Runtime>(
     }
 }
 
+/// The PHP minor one requested row imports on, or why it can't be imported.
+///
+/// The user's explicit choice wins. A row pinned to a version rexenv doesn't
+/// ship and given NO choice is refused: until 11 Sep 2026 the run fell through
+/// to the default PHP here, so any caller that named such a row without a
+/// `php` entry (the MCP tool, a script) got exactly the silent substitution
+/// the scan refuses to make. A row with no pin at all still gets the default —
+/// they used their global PHP, so there is nothing to honour.
+fn choose_php(
+    c: &ImportCandidate,
+    chosen: Option<&String>,
+    available: &[String],
+) -> std::result::Result<String, String> {
+    let php = match (chosen, &c.php_target) {
+        (Some(p), _) => p.clone(),
+        (None, Some(t)) => t.clone(),
+        (None, None) if c.php_choice => {
+            return Err(format!(
+                "PHP {} isn't one rexenv ships, and no version was chosen for it",
+                c.php_minor.as_deref().unwrap_or("(unknown)")
+            ))
+        }
+        (None, None) => core::php::minor_of(core::binaries::PHP_VERSION),
+    };
+    if !available.contains(&php) {
+        return Err(format!("PHP {php} isn't one rexenv ships"));
+    }
+    Ok(php)
+}
+
 /// Stop after the site currently being imported.
 #[tauri::command]
 pub fn valet_import_cancel(jobs: State<'_, ImportJobs>) {
@@ -1312,6 +1344,7 @@ mod folding_a_link_farm {
             label: None,
             php_minor: None,
             php_target: None,
+            php_choice: false,
             secured: false,
             proxy_to: None,
             also_in: None,
@@ -1386,6 +1419,31 @@ mod folding_a_link_farm {
         assert_eq!(already_here(&existing, &fresh, "shop.rex", None), Some(SiteStatus::AlreadyImported));
         assert_eq!(already_here(&existing, &fresh, "new.rex", None), None);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A pin rexenv doesn't ship is imported ONLY on an explicit choice — the
+    /// run never quietly falls back to the default for it.
+    #[test]
+    fn an_unshipped_pin_needs_an_explicit_choice_and_nothing_else_does() {
+        let available = vec!["7.4".to_string(), "8.3".to_string()];
+        let mut pinned73 = candidate("ea.rex", "/p/ea", SiteStatus::NeedsAttention("PHP 7.3".into()));
+        pinned73.php_minor = Some("7.3".into());
+        pinned73.php_choice = true;
+
+        let err = choose_php(&pinned73, None, &available).unwrap_err();
+        assert!(err.contains("7.3") && err.contains("no version was chosen"), "{err}");
+        assert_eq!(choose_php(&pinned73, Some(&"7.4".to_string()), &available).unwrap(), "7.4");
+        assert!(choose_php(&pinned73, Some(&"7.2".to_string()), &available).is_err(), "a choice must be shipped too");
+
+        let mut shipped = candidate("a.test", "/p/a", SiteStatus::Importable);
+        shipped.php_target = Some("8.3".into());
+        assert_eq!(choose_php(&shipped, None, &available).unwrap(), "8.3");
+
+        // No pin at all: their global PHP — the default is an honest pick, but
+        // only when the default is itself something this build ships.
+        let unpinned = candidate("b.test", "/p/b", SiteStatus::Importable);
+        let default = crate::core::php::minor_of(crate::core::binaries::PHP_VERSION);
+        assert_eq!(choose_php(&unpinned, None, std::slice::from_ref(&default)).unwrap(), default);
     }
 
     /// A Local row whose name an earlier row claims is refused, named, and made

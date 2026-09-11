@@ -40,7 +40,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   - [x] T2 — scan integration, TS types, Import/Sites/Settings copy, MCP description
     ✓ 11 Sep 2026 — `already_here_matches_the_folder_before_the_name`,
     `a_name_an_earlier_row_claims_is_refused_not_duplicated`; ARCHITECTURE §8 Local bullet
-  - [ ] T3 — PHP picker for rows pinned to a version rexenv doesn't ship
+  - [x] T3 — PHP picker for rows pinned to a version rexenv doesn't ship ✓ 11 Sep 2026 —
+    `an_unshipped_pin_needs_an_explicit_choice_and_nothing_else_does` (the run's silent
+    default-PHP fallback for such rows was a real hole on the MCP/scripted path, closed here)
   - [ ] T4 — Local database source (registry port + socket) in the db import
   - [ ] T5 — URL re-home pass on rexenv's copy
   - [ ] T6 — `local_scan_check` example

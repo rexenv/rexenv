@@ -198,6 +198,9 @@ export interface ImportCandidate {
   /** The minor we'd use — null when theirs isn't one we ship and the user must
    *  choose. We never substitute silently. */
   phpTarget: string | null;
+  /** Needs attention ONLY because the pinned PHP isn't shipped — the row gets
+   *  a version picker, and imports only once one is chosen. */
+  phpChoice: boolean;
   secured: boolean;
   /** Other names Valet/Herd serves this SAME folder under, folded into this row
    *  and imported as the site's extra domains (v42). One project — one folder,
