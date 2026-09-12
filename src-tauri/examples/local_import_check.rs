@@ -134,7 +134,7 @@ async fn main() -> std::process::ExitCode {
         !matches!(control, Ok(LiveCheck::Ready { .. })),
         &format!("{control:?}"),
     );
-    let id = dbsource::probe_socket(&socket);
+    let id = dbsource::probe_socket(&*plat, &socket);
     check.is(
         "the pre-auth probe identifies the server over its socket (Local refuses TCP before greeting)",
         matches!(&id, Probe::Listening(Identity::Handshake { vendor: Vendor::Mysql, .. })),

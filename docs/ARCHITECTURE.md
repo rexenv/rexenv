@@ -19,13 +19,19 @@ commands/   thin translators only — parse args, call core, map errors
         ↓
 core/       platform-agnostic domain logic ("the what") — no OS-specific code, ever
         ↓
-platform/   ALL OS-specific code, behind 12 traits (platform/traits.rs):
+platform/   ALL OS-specific code, behind 13 traits (platform/traits.rs):
             DnsManager · CertTrustManager · PrivilegeManager · ProcessSupervisor ·
             AutostartManager · PermissionManager · ShellRunner · Paths · BinaryProvider ·
-            EdgeSupervisor · DnsAgentManager · AppBundle
+            EdgeSupervisor · DnsAgentManager · AppBundle · LocalIpc
 ```
 
-- `platform/macos/mod.rs` — all 12 traits real. `platform/windows/`, `platform/linux/` —
+- `platform/macos/mod.rs` — all 13 traits real. **`LocalIpc` is the 13th (12 Sep 2026,
+  Windows port W1):** local non-TCP transport — a unix socket here, a named pipe with a
+  current-user ACL on Windows (owner ruling D3). It only dials today (`proxy::admin_alive`,
+  `dbsource::probe_socket`, which used to open `UnixStream`s inside `core/`); the CLI and
+  MCP listeners move behind it in W8. It is also the one `Platform` accessor with a
+  default — the build OS's implementation — so the dozen stub platforms in tests and
+  examples did not each grow a field. `platform/windows/`, `platform/linux/` —
   every method `todo!()`. The design goal is "adding an OS = filling stubs"; **the tree
   does not meet it yet** (measured 12 Sep 2026): unix sockets (`cli_server`, the `rex`
   CLI, `core/proxy.rs`, `core/dbsource.rs`; `mcp_server` compiles everywhere since W1,

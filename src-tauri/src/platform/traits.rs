@@ -916,9 +916,35 @@ pub trait AppBundle: Send + Sync {
     fn spawn_relauncher(&self, bundle: &Path) -> Result<()>;
 }
 
+/// Local (non-TCP) inter-process transport — how rexenv reaches a server on THIS
+/// machine: a unix-domain socket on macOS/Linux, a named pipe with a current-user
+/// ACL on Windows (owner ruling D3, 12 Sep 2026, `docs/PLAN-windows-port.md`).
+/// Today it only DIALS — the edge admin's liveness (`proxy::admin_alive`) and a
+/// MySQL server's greeting (`dbsource::probe_socket`); the `rex` CLI and MCP
+/// listeners move behind it in the port's W8.
+pub trait LocalIpc: Send + Sync {
+    /// Connect to the endpoint at `path`. `read_timeout` bounds each read on the
+    /// returned stream (`None` = the OS default). A connect error keeps the kind
+    /// the OS reported, so callers can tell "no endpoint there" (`NotFound`) from
+    /// "an endpoint nobody listens on" (`ConnectionRefused`).
+    fn connect(
+        &self,
+        path: &Path,
+        read_timeout: Option<std::time::Duration>,
+    ) -> std::io::Result<Box<dyn std::io::Read + Send>>;
+}
+
 /// Aggregate of every platform capability. `core/` is handed one of these and
 /// never names a concrete OS type.
 pub trait Platform: Send + Sync {
+    /// Local IPC. The one accessor with a DEFAULT: the build OS's implementation
+    /// (`platform::host_local_ipc`). There are a dozen stub `Platform`s in tests and
+    /// examples, and before this trait existed `core/` dialled the socket itself —
+    /// so the default keeps every one of them dialling a real socket exactly as it
+    /// did, instead of each growing a field it would only forward.
+    fn local_ipc(&self) -> &dyn LocalIpc {
+        crate::platform::host_local_ipc()
+    }
     fn paths(&self) -> &dyn Paths;
     fn dns(&self) -> &dyn DnsManager;
     fn cert_trust(&self) -> &dyn CertTrustManager;

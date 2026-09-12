@@ -44,6 +44,27 @@ pub use macos::process_start_token;
 #[cfg(target_os = "macos")]
 pub use macos::activation::activate_app;
 
+/// The build OS's `LocalIpc` — what `Platform::local_ipc` returns unless a
+/// platform overrides it. Selected here, beside `current()`, so `traits.rs`
+/// never names an OS type.
+pub fn host_local_ipc() -> &'static dyn traits::LocalIpc {
+    #[cfg(target_os = "macos")]
+    {
+        static IPC: macos::MacosLocalIpc = macos::MacosLocalIpc;
+        &IPC
+    }
+    #[cfg(target_os = "windows")]
+    {
+        static IPC: windows::WindowsLocalIpc = windows::WindowsLocalIpc;
+        &IPC
+    }
+    #[cfg(target_os = "linux")]
+    {
+        static IPC: linux::LinuxLocalIpc = linux::LinuxLocalIpc;
+        &IPC
+    }
+}
+
 /// Construct the platform implementation for the current OS.
 pub fn current() -> Box<dyn Platform> {
     #[cfg(target_os = "macos")]

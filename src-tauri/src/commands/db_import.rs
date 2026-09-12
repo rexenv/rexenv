@@ -362,7 +362,7 @@ async fn run<R: tauri::Runtime>(
     // learn what it is — the first real Local import died here, 11 Sep 2026.
     // The TCP port is the route only when no socket file exists.
     let probed = match local.as_ref().filter(|l| l.socket.exists()) {
-        Some(l) => dbsource::probe_socket(&l.socket),
+        Some(l) => dbsource::probe_socket(platform, &l.socket),
         None => dbsource::probe(&conn_info.host, conn_info.port),
     };
     let identity = match probed {
@@ -827,7 +827,7 @@ mod local_source_wiring {
         // And a Local server is IDENTIFIED over its socket: its TCP port answers
         // 127.0.0.1 with ERR 1130 in place of the handshake (measured 11 Sep 2026).
         assert!(
-            src.contains("Some(l) => dbsource::probe_socket(&l.socket)"),
+            src.contains("Some(l) => dbsource::probe_socket(platform, &l.socket)"),
             "the Local branch no longer probes the socket — a real Local import then dies unidentified"
         );
     }

@@ -200,8 +200,8 @@ rexenv/
         │   ├── traits.rs       # DnsManager, CertTrustManager, PrivilegeManager,
         │   │                   #   ProcessSupervisor, AutostartManager, PermissionManager,
         │   │                   #   ShellRunner, Paths, BinaryProvider, EdgeSupervisor,
-        │   │                   #   DnsAgentManager
-        │   ├── macos/          # all 12 impls real (+ app_bundle.rs, relauncher.rs, webview_dialogs.rs, parent_death_guard.rs, activation.rs, prompt_applet.rs, keychain_trust.rs)
+        │   │                   #   DnsAgentManager, AppBundle, LocalIpc
+        │   ├── macos/          # all 13 impls real (+ app_bundle.rs, relauncher.rs, webview_dialogs.rs, parent_death_guard.rs, activation.rs, prompt_applet.rs, keychain_trust.rs)
         │   └── windows/ · linux/   # todo!() stubs (Windows port: docs/PLAN-windows-port.md)
         │
         └── state/              # app state

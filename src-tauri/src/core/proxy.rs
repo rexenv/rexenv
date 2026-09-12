@@ -65,8 +65,9 @@ pub const MAX_UNIX_SOCKET_PATH: usize = 103;
 /// overflows. Short account names are fine; `firstname.lastname` homes and
 /// network/AD mounts are the ones that get close.
 pub fn check_unix_socket_len(path: &Path) -> Result<()> {
-    use std::os::unix::ffi::OsStrExt;
-    let len = path.as_os_str().as_bytes().len();
+    // `OsStr::len` is the byte length of the platform encoding — on unix exactly
+    // `as_bytes().len()` — and, unlike `OsStrExt`, it compiles for Windows.
+    let len = path.as_os_str().len();
     if len <= MAX_UNIX_SOCKET_PATH {
         return Ok(());
     }
@@ -215,9 +216,10 @@ fn admin_address(sock: &Path) -> String {
 
 /// Whether OUR edge's admin socket is accepting connections (liveness). The socket
 /// FILE persists after a crash, so we actually connect rather than stat the path.
+/// Dialled through `LocalIpc` — the socket is OS-specific, and `core/` is not.
 pub fn admin_alive(platform: &dyn Platform) -> bool {
     match admin_socket_path(platform) {
-        Ok(sock) => std::os::unix::net::UnixStream::connect(&sock).is_ok(),
+        Ok(sock) => platform.local_ipc().connect(&sock, None).is_ok(),
         Err(_) => false,
     }
 }

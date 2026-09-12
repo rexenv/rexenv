@@ -237,6 +237,16 @@ impl AppBundle for LinuxAppBundle {
         todo!("linux sweep update leftovers")
     }
 }
+pub struct LinuxLocalIpc;
+impl LocalIpc for LinuxLocalIpc {
+    fn connect(
+        &self,
+        _path: &Path,
+        _read_timeout: Option<std::time::Duration>,
+    ) -> std::io::Result<Box<dyn std::io::Read + Send>> {
+        todo!("linux local IPC — a unix-domain socket, as on macOS")
+    }
+}
 pub struct LinuxPlatform {
     paths: LinuxPaths,
     dns: LinuxDns,

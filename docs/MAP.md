@@ -10,7 +10,8 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
 - `src/` (React/TS) calls typed wrappers in `src/lib/ipc/index.ts` — never raw `invoke`.
 - `commands/` = thin Tauri IPC translators; parse args, call `core/`, map errors.
 - `core/` = platform-agnostic domain logic; talks to `platform/` only through traits.
-- `platform/` = ALL OS-specific code behind the 12 traits in `platform/traits.rs`
+- `platform/` = ALL OS-specific code behind the 13 traits in `platform/traits.rs`
+  (the 13th, `LocalIpc`, is local non-TCP IPC — unix socket / Windows named pipe)
   (macOS real; `windows/`/`linux/` are `todo!()` stubs).
 - `state/` = SQLite migrations + the store layer; only `state/` writes SQL.
 

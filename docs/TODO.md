@@ -41,14 +41,19 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   `docs/PLAN-windows-port.md`. W0–W2 can start now; W3+ wait on the owner's D1–D6.
   - [ ] D1–D6 — owner rulings: PHP process model (php-cgi groups), DNS (:53 + NRPT),
     local IPC (named pipes; Caddy admin socket measured), v1 feature scope, signing +
-    installer + updates, supported Windows/arch (plan §3)
+    installer + updates, supported Windows/arch (plan §3). **D3 ruled 12 Sep 2026:**
+    named pipes with a current-user ACL, behind a new 13th trait `LocalIpc`; D1, D2,
+    D4–D6 still open
   - [x] W0 — Windows compile check on the Mac (owner: local `cargo xwin check --all-targets`
     for src-tauri + cli, not Actions — private repo) ✓ 12 Sep 2026 — `scripts/windows-check.sh`,
     exit code is the verdict; first run RED, 29 error sites (19 src-tauri, 10 cli), now the
     inventory in plan §2.1 (+4 the grep missed: `cfg(unix)` modules used ungated,
     `QUIT_MENU_ID`, ungated `objc2` dev-deps, host-cfg sidecar staging); ledger #582/#583
   - [ ] W1 — move Unix-only code behind traits; widen ledger #163's scan to `std::os::unix`
-    and `Command::new("kill")`, plant-proven
+    and `Command::new("kill")`, plant-proven. **Progress 12 Sep 2026:** the app lib and
+    binary now COMPILE for Windows (objc2 dev-deps gated, About-menu cfg, MCP transport-only
+    gate, `LocalIpc` for the edge admin + MySQL socket probes). Open: 24 test-module sites,
+    58 in 17 examples, the `cli` crate (D3/W8), `kill` in `core/`, and the scan itself (plan §2.1)
   - [ ] W2 — `(os, arch)` binary catalog; Windows pins + checksums; sweep covers them
   - [ ] W3 — Paths, ACL permissions, BinaryProvider, ProcessSupervisor (MySQL + Mailpit
     start, outlive the app, adopt on relaunch — on real Windows)

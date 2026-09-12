@@ -2226,6 +2226,25 @@ impl BinaryProvider for MacosBinaryProvider {
 }
 
 /// Aggregate macOS platform, handed to `core/` as `&dyn Platform`.
+/// Local IPC on macOS: a unix-domain socket. The stream is returned with the
+/// requested read timeout already applied, and a connect error keeps the kind the
+/// OS reported (`NotFound` = no socket file, `ConnectionRefused` = a file nobody
+/// listens on), which `dbsource::probe_socket` turns into two different messages.
+pub struct MacosLocalIpc;
+impl LocalIpc for MacosLocalIpc {
+    fn connect(
+        &self,
+        path: &Path,
+        read_timeout: Option<Duration>,
+    ) -> std::io::Result<Box<dyn std::io::Read + Send>> {
+        let stream = std::os::unix::net::UnixStream::connect(path)?;
+        // Best-effort, as the probe it replaces was: a stream whose timeout could
+        // not be set still answers the one read a probe makes.
+        let _ = stream.set_read_timeout(read_timeout);
+        Ok(Box::new(stream))
+    }
+}
+
 pub struct MacosPlatform {
     paths: MacosPaths,
     dns: MacosDns,

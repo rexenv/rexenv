@@ -233,6 +233,16 @@ impl AppBundle for WindowsAppBundle {
         todo!("windows sweep update leftovers")
     }
 }
+pub struct WindowsLocalIpc;
+impl LocalIpc for WindowsLocalIpc {
+    fn connect(
+        &self,
+        _path: &Path,
+        _read_timeout: Option<std::time::Duration>,
+    ) -> std::io::Result<Box<dyn std::io::Read + Send>> {
+        todo!("windows local IPC — a named pipe with a current-user ACL (owner ruling D3, docs/PLAN-windows-port.md W8)")
+    }
+}
 pub struct WindowsPlatform {
     paths: WindowsPaths,
     dns: WindowsDns,

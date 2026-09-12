@@ -292,8 +292,11 @@ fn read_greeting(stream: &mut impl Read) -> Probe {
 /// its WordPress uses — greets normally. Measured on Local 10.1.2 / MySQL 8.4.0,
 /// 11 Sep 2026: the first Local import on a real site died on exactly this, with
 /// the TCP-only probe reporting an unidentifiable server.
-pub fn probe_socket(path: &Path) -> Probe {
-    let mut stream = match std::os::unix::net::UnixStream::connect(path) {
+///
+/// Dialled through the platform's `LocalIpc` (a unix socket on macOS), so the
+/// connect is OS code and this parse is not; the read timeout rides the connect.
+pub fn probe_socket(platform: &dyn crate::platform::traits::Platform, path: &Path) -> Probe {
+    let mut stream = match platform.local_ipc().connect(path, Some(READ_TIMEOUT)) {
         Ok(s) => s,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             return Probe::NotListening("there's no socket file there — the server isn't running".into())
@@ -303,11 +306,12 @@ pub fn probe_socket(path: &Path) -> Probe {
         }
         Err(e) => return Probe::NotListening(e.to_string()),
     };
-    let _ = stream.set_read_timeout(Some(READ_TIMEOUT));
     read_greeting(&mut stream)
 }
 
-#[cfg(test)]
+// unix only: the fake server is a real `UnixListener`, and the probe dials it through
+// the host's `LocalIpc` — the Windows arm is a named pipe (docs/PLAN-windows-port.md W8).
+#[cfg(all(test, unix))]
 mod socket_probe_tests {
     use super::*;
 
@@ -316,6 +320,7 @@ mod socket_probe_tests {
     #[test]
     fn a_socket_probe_reads_the_handshake_and_keeps_a_refusal_in_the_servers_words() {
         use std::io::Write;
+        let plat = crate::platform::current();
         let dir = std::env::temp_dir().join(format!("rexenv-sockprobe-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
@@ -335,18 +340,18 @@ mod socket_probe_tests {
                 .unwrap();
         });
 
-        match probe_socket(&path) {
+        match probe_socket(&*plat, &path) {
             Probe::Listening(Identity::Handshake { vendor, version }) => {
                 assert_eq!((vendor, version.as_str()), (Vendor::Mysql, "8.4.0"))
             }
             p => panic!("the socket greeting was not read: {p:?}"),
         }
-        match probe_socket(&path) {
+        match probe_socket(&*plat, &path) {
             Probe::Listening(Identity::Unknown { note: Some(n) }) => assert!(n.contains("not allowed"), "{n}"),
             p => panic!("a refusal lost the server's words: {p:?}"),
         }
         server.join().unwrap();
-        assert!(matches!(probe_socket(&dir.join("absent.sock")), Probe::NotListening(_)));
+        assert!(matches!(probe_socket(&*plat, &dir.join("absent.sock")), Probe::NotListening(_)));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

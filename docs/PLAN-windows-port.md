@@ -94,6 +94,21 @@ suspicion rides with them: `examples/webview_dialogs_check.rs` is gated with a
 file-level `#![cfg(target_os = "macos")]`, which on Windows leaves a crate with no
 `main` (E0601). Expect the count to rise again the day the lib goes green.
 
+**The lib went green on 12 Sep 2026, and the count rose exactly as predicted: 45 → 92.**
+With `proxy::admin_alive` and `dbsource::probe_socket` dialling through `LocalIpc`, the
+`rexenv` library AND the app binary (`main.rs`) compile for `x86_64-pc-windows-msvc` — the
+failed-unit list no longer names `(lib)` or a bin. What is left is where the production
+code is not:
+
+| Unit | Error sites | What they are |
+|---|---|---|
+| `rexenv (lib test)` | 24 | Unix APIs inside `#[cfg(test)]` modules (symlink/permission fixtures, `ExitStatusExt`, `process_group`) + `UNPINNED_PROVISIONERS` |
+| 17 examples | 58 | mostly `mcp_*`/`cli_*` checks that bind the unix socket themselves (`mcp_control_check` alone has 10); `webview_dialogs_check` is the predicted E0601, and a second E0601 rides along |
+| `cli` crate | 10 | the `rex` client's `UnixStream` — waits for D3's named pipe (W8) |
+
+None of these is code a Windows user runs. They still matter — `verify.sh` builds the
+examples, so a Windows bar will too — but the thing that ships compiles.
+
 ### 2.2 The binary catalog has no OS dimension
 
 `src-tauri/src/core/binaries.rs` keys pins by `Arch` alone, and the URLs spell macOS into
@@ -134,7 +149,12 @@ Fallback when 53 is taken: per-site `hosts` entries (no wildcards — subdomain 
 degrades, and the UI must say so). *Unmeasured:* whether anything commonly binds loopback
 :53 on a developer's Windows machine (ICS/SharedAccess, Hyper-V, WSL, Docker Desktop).
 
-**D3 — Local IPC (the CLI, MCP and Caddy admin sockets).** `std`/tokio have no unix
+**D3 — Local IPC (the CLI, MCP and Caddy admin sockets).** **RULED 12 Sep 2026 by the
+owner: named pipes with a current-user ACL, behind a new 13th trait `LocalIpc`** (chosen
+over a method on `ProcessSupervisor`, which would have kept the count and mixed a transport
+into the process trait). First use landed in W1: `proxy::admin_alive` and
+`dbsource::probe_socket` dial through it. The Caddy admin measurement below still stands
+before W5. `std`/tokio have no unix
 sockets on Windows.
 *Recommendation:* the CLI and MCP servers use named pipes
 (`tokio::net::windows::named_pipe`) with a security descriptor that admits only the
