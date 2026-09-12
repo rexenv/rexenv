@@ -126,7 +126,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     byte-identical; the connect plan boots the SUBSITE on its rexenv name with
     `COOKIE_DOMAIN` `.multi.rex`. Plant: removing `--url` from the proof fails it; removing
     the override's `DOMAIN_CURRENT_SITE` pin did NOT — the pin was deleted
-  - [ ] T5 — docs, PUBLISH-TESTING §N network steps, live pass on `multi.local`
+  - [ ] T5 — docs, PUBLISH-TESTING §N network steps, live pass on `multi.local` — steps
+    N10–N14 written 12 Sep 2026 (+ the summary row, and N0's stale "multisite can't
+    import" corrected); **owed: the owner-run pass** (Local must run the network)
 
 - [ ] **A Valet or Herd multisite network imports silently as a single site** — found
   12 Sep 2026 researching the Local network import (`docs/PLAN-local-multisite.md` §6).

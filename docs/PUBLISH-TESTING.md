@@ -1292,7 +1292,7 @@ Result: ____ (date, reqwest version).
 
 ---
 
-## N) ✅ Local import — live pass against a STARTED Local site (owner-run)
+## N) Local import — live pass against a STARTED Local site (owner-run) — single site ✅, network steps N10–N14 pending
 
 **PASSED 12 Sep 2026**, owner-run on `ab12.local` (Local 10.1.2, MySQL 8.4.0) at
 `805ee0d`. Its first attempt is why §2b of the plan changed: the TCP probe met ERR 1130
@@ -1330,7 +1330,8 @@ started IN Local — a button rexenv never presses.
 
 - **N0** — Import → a **Local** source card naming Local's app-data folder, with the
   note that `.local` sites import on `.rex` and each copied database has its URLs
-  updated (rexenv's copy only). Multisite rows read "can't import" with the reason.
+  updated (rexenv's copy only). Multisite rows import as networks (N10 — since 12 Sep
+  2026); only a network with a subsite on its own domain reads "can't import".
   **Expect** every Local site you have is a row — count them against Local's sidebar.
 - **N1** — the chosen row shows `<name>.rex` and **"was <name>.local"**. If its PHP
   isn't shipped, the row has a picker: it stays unticked until you choose; choose →
@@ -1355,6 +1356,33 @@ started IN Local — a button rexenv never presses.
 - **N8** — Revert the connection; open the site in Local — it still works there.
 - **N9** — delete the rexenv site (revert-then-delete default). `~/Local Sites/<name>`
   is untouched; Local's site still starts and serves.
+
+### Network steps — N10–N14 (added 12 Sep 2026, `docs/PLAN-local-multisite.md` T5)
+
+**Pending.** The single-site pass above predates network import. What the layers below
+already prove (`local_import_check` leg C): a real subdomain network's copy moves every
+blog to `https://` on the new name, and the connect plan boots a subsite with the login
+cookie on the new domain. What only this pass gives: Local's real network database, the
+Import row, the batch adopt + reload actually SERVING `*.multi.rex`, and a browser login.
+Use a Local network you'd shrug at losing (the owner's `multi.local`: subdomains, `ea1` +
+`ea2`). Writes into the project only at N11/N12 if you connect — backed up, one-click revert.
+
+- **N10** — Import: the network's row reads `multi.rex`, "was multi.local", and
+  **"multisite network · subdomains · ea1.multi.rex, ea2.multi.rex"**, and is ready (not
+  "can't import"). **Expect** the row imports as ONE site.
+- **N11** — **start the network in Local**, then import its row with "also copy databases"
+  and "also connect Local sites". **Expect** imported + DB copied + connected; the job log's
+  URLs line; the site's WordPress tab shows it as a network with NO "Convert to multisite"
+  card; rexenv's Adminer: `wp_blogs.domain` = `multi.rex`, `ea1.multi.rex`, `ea2.multi.rex`.
+- **N12** — Database tab → the connection's diff (or its record after the batch):
+  `DOMAIN_CURRENT_SITE` → `multi.rex`, no password line; the preview's sentence that Local
+  can't load the network under its old name while connected.
+- **N13** — open `https://multi.rex` and `https://ea1.multi.rex`: both load, neither
+  redirects to `.local`. Log in at `https://multi.rex/wp-admin` → Network Admin opens, and
+  a subsite's dashboard opens without logging in again.
+- **N14** — Revert the connection: wp-config's `DOMAIN_CURRENT_SITE` reads `multi.local`
+  again; open the network in Local — it loads. Delete the rexenv site (revert-then-delete);
+  `~/Local Sites/multi` is untouched.
 
 ## Publish-blocking summary
 
@@ -1381,4 +1409,5 @@ started IN Local — a button rexenv never presses.
 | F | Resolver TAKEOVER + RESTORE — clean-VM only (fixture-tested, never live-run) | 🚧 **publish-blocking, and it was missing from this table until 21 Aug 2026** |
 | G | `/import` screen — packaged-app GUI pass | 🚧 **publish-blocking, and it was missing from this table until 21 Aug 2026** |
 | N | Local import: live pass on a STARTED Local site + the packaged screen's Local rows | ✅ passed 12 Sep 2026 (owner-run, `ab12.local`) |
+| N10–N14 | Local import of a multisite NETWORK: the row, adopt + reload serving `*.<name>.rex`, the connect moving `DOMAIN_CURRENT_SITE`, a browser login across subsites, revert | ⏳ pending (owner-run; L1 leg C green 12 Sep 2026) |
 | L | Offline/timeout behaviour of the update check | 🟢 nice-to-have (no row here before 21 Aug 2026) |
