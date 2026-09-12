@@ -1,5 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { Check, Copy, Database, ExternalLink } from "lucide-react";
+import { Check, Copy, Database } from "lucide-react";
+import { PreferredBrowserIcon } from "@/components/ui/open-in";
 import { Placeholder } from "@/components/common/Placeholder";
 import { adminerSetTheme, isTauri, openExternal } from "@/lib/ipc";
 import { currentTheme, subscribeTheme } from "@/lib/theme";
@@ -78,7 +79,7 @@ export function AdminerFrame({ src, externalUrl }: { src: string; externalUrl?: 
             title="Open this database in your default browser"
             className="flex h-7 flex-none items-center gap-1.5 rounded-md px-2 text-[0.71875rem] text-rex-text-muted transition-colors hover:bg-rex-hover-strong hover:text-rex-text"
           >
-            <ExternalLink className="h-3.5 w-3.5" />
+            <PreferredBrowserIcon className="h-3.5 w-3.5" />
             Open in browser
           </button>
         </div>

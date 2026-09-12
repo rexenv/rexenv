@@ -423,6 +423,18 @@ the shipped UI toward one.
   asset catalog) the component renders the caller's monochrome lucide glyph —
   `null` is a fine answer, a wrong logo is not. The label follows the same rule:
   the tile says "Open in Chrome" only when a browser is actually resolved.
+- **One icon per kind of hand-off, on every surface.** EVERY control that opens a
+  URL in the browser wears `PreferredBrowserIcon` (`components/ui/open-in.tsx`) —
+  the site header and quick tile, the Sites row, a network sub-site's Visit, the
+  tunnel's public URL, Open Mailpit, Adminer's Open in browser, Change domain's Open
+  site — and EVERY magic login wears `WordPressIcon`: the header and tile, a
+  sub-site's Magic Login, One-click admin login, and a user's Log in. Until 13 Sep
+  2026 the header showed the browser while the Network tab, Tunnels, Mailpit and
+  Adminer showed a generic arrow or globe and three logins a door; the owner asked
+  for "sob jaigai consistency". Not covered, on purpose: Settings → About's web links
+  keep their arrow-out (it promises "leaves the app", not "visits a site"), and a
+  log's Open file opens the default app, not a browser. Guarded by
+  `open_in_browser_and_magic_login_wear_one_icon_everywhere`.
 - **A chevron appears only when there is something to choose between.**
   `SplitButton`/`QuickTile` drop the chevron entirely when the menu is empty
   (`useBrowserMenu`/`useEditorMenu` return undefined below two apps) — a control

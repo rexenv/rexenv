@@ -868,6 +868,60 @@ const LINK = "https://example.test/a//b";
         );
     }
 
+    /// One icon per kind of hand-off, on every surface that has one (owner,
+    /// 13 Sep 2026: "sob jaigai consistency"): a control that opens a URL in the
+    /// browser wears `PreferredBrowserIcon` — the browser the click will use —
+    /// and a magic login wears `WordPressIcon`. Until then the site header and
+    /// Sites rows showed the browser while the Network tab, Tunnels, Mailpit and
+    /// Adminer showed a generic arrow or globe, and three logins a door icon.
+    /// Each control is found by its label; the code around it must wear the
+    /// right component and no generic stand-in.
+    #[test]
+    fn open_in_browser_and_magic_login_wear_one_icon_everywhere() {
+        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../src");
+        let browser = "PreferredBrowserIcon";
+        let wordpress = "WordPressIcon";
+        // (file, a needle unique to the control, the icon it must wear)
+        let controls = [
+            ("routes/SiteDetail.tsx", "            Open in browser", browser),
+            ("routes/SiteDetail.tsx", "Open site\n", browser),
+            ("routes/SiteDetail.tsx", "label={browser ? `Open in ${browser.name}`", browser),
+            ("routes/SiteDetail.tsx", "{adminBusy ? \"Signing in…\" : \"Magic Login\"}", wordpress),
+            ("routes/SiteDetail.tsx", "label=\"Magic Login\"", wordpress),
+            ("routes/Sites.tsx", "aria-label=\"Open in browser\"", browser),
+            ("components/wordpress/WordPressManager.tsx", "        Visit\n", browser),
+            ("components/wordpress/WordPressManager.tsx", "{signingIn ? \"Signing in…\" : \"Magic Login\"}", wordpress),
+            // The button, not the dialog sentence that mentions it.
+            ("components/wordpress/WordPressManager.tsx", "One-click admin login\n          </button>", wordpress),
+            ("components/wordpress/WordPressManager.tsx", "onClick={onLoginAs}", wordpress),
+            ("routes/Tunnels.tsx", "title=\"Open public URL\"", browser),
+            ("routes/Mail.tsx", "Open Mailpit", browser),
+            ("components/database/AdminerFrame.tsx", "Open in browser", browser),
+        ];
+        for (rel, needle, icon) in controls {
+            let text = strip_ts_comments(
+                &std::fs::read_to_string(src.join(rel)).unwrap_or_else(|_| panic!("{rel} exists")),
+            );
+            let hits: Vec<usize> = text.match_indices(needle).map(|(i, _)| i).collect();
+            assert!(!hits.is_empty(), "{rel}: `{needle}` is gone — if the control was reworded or moved, move this guard");
+            for at in hits {
+                // Wide enough for a label that sits after a long `title` and a
+                // JSX comment (the Sites row), narrow enough not to reach the
+                // next control's icon.
+                let lo = text[..at].char_indices().rev().nth(520).map_or(0, |(i, _)| i);
+                let hi = text[at..].char_indices().nth(520).map_or(text.len(), |(i, _)| at + i);
+                let window = &text[lo..hi];
+                assert!(window.contains(icon), "{rel}: the control at `{needle}` doesn't wear {icon}");
+                for generic in ["<ExternalLink", "<Globe", "<LogIn"] {
+                    assert!(
+                        !window.contains(generic),
+                        "{rel}: the control at `{needle}` wears a generic {generic} instead of {icon}"
+                    );
+                }
+            }
+        }
+    }
+
     #[test]
     fn the_new_site_dialog_reads_postgres_support_rather_than_deciding_it() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))

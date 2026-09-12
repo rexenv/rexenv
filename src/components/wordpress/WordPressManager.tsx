@@ -3,11 +3,12 @@ import { useNavigate } from "react-router-dom";
 import { toast, toastBackendError } from "@/lib/toast";
 import { confirm, PromptDialog } from "@/components/ui/dialog";
 import { Menu } from "@/components/ui/menu";
-import { BROWSER_MENU_WIDTH, useBrowserMenu, useTerminalMenu } from "@/components/ui/open-in";
+import { BROWSER_MENU_WIDTH, PreferredBrowserIcon, useBrowserMenu, useTerminalMenu } from "@/components/ui/open-in";
+import { WordPressIcon } from "@/components/common/WordPressIcon";
 import { SplitButton } from "@/components/ui/split-button";
 import { confirmPhraseMatches, TypeToConfirm } from "@/components/ui/type-to-confirm";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowUpCircle, Check, ChevronDown, Download, FileUp, Globe, Loader2, Lock, LogIn, Network, Palette, Plus, RefreshCw, Replace, RotateCcw, Eye, EyeOff, KeyRound, Search, Shield, Star, TerminalSquare, Trash2, UserPlus, X } from "lucide-react";
+import { AlertTriangle, ArrowUpCircle, Check, ChevronDown, Download, FileUp, Loader2, Lock, Network, Palette, Plus, RefreshCw, Replace, RotateCcw, Eye, EyeOff, KeyRound, Search, Shield, Star, TerminalSquare, Trash2, UserPlus, X } from "lucide-react";
 import { CHECK_INPUT, cn, TECH_INPUT } from "@/lib/utils";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import {
@@ -1274,7 +1275,7 @@ function ToolsPanel({
             ))}
           </div>
           <button className={maintBtn} disabled={adminLogin.isPending} onClick={() => adminLogin.mutate()}>
-            <LogIn className="h-3.5 w-3.5" />
+            <WordPressIcon className="h-3.5 w-3.5" />
             One-click admin login
           </button>
         </div>
@@ -2283,7 +2284,7 @@ function SubSiteRow({
         menuWidth={BROWSER_MENU_WIDTH}
         chevronLabel="Visit in another browser"
       >
-        <Globe className="h-3.5 w-3.5" />
+        <PreferredBrowserIcon className="h-3.5 w-3.5" />
         Visit
       </SplitButton>
       <SplitButton
@@ -2303,7 +2304,7 @@ function SubSiteRow({
         menuWidth={BROWSER_MENU_WIDTH}
         chevronLabel="Sign in through another browser"
       >
-        <LogIn className="h-3.5 w-3.5" />
+        <WordPressIcon className="h-3.5 w-3.5" />
         {signingIn ? "Signing in…" : "Magic Login"}
       </SplitButton>
       <button
@@ -2551,7 +2552,7 @@ function UserRow({
         <KeyRound className="h-3.5 w-3.5" />
       </button>
       <button className={BTN + " flex w-[84px] items-center justify-center gap-1.5"} disabled={busy} onClick={onLoginAs}>
-        <LogIn className="h-3.5 w-3.5" />
+        <WordPressIcon className="h-3.5 w-3.5" />
         Log in
       </button>
     </div>

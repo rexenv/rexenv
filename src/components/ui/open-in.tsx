@@ -9,6 +9,21 @@ import { openInTerminal, useTerminalApps } from "@/lib/useTerminalApp";
 import type { TerminalAsset } from "@/lib/ipc";
 import type { BrowserApp } from "@/types";
 
+/**
+ * The icon every "open this in the browser" control wears: the browser the
+ * click will ACTUALLY use (preference, else the OS default — both resolved in
+ * `usePreferredBrowser`), falling back to a globe when its bundle icon can't be
+ * read. One component so the controls cannot drift apart again: until 13 Sep
+ * 2026 the site header and Sites rows showed the browser while the Network
+ * tab's Visit, Tunnels, Mailpit and Adminer showed a generic arrow or globe
+ * (owner: "sob jaigai consistency"). A magic login wears `WordPressIcon`
+ * instead — it is a sign-in, not a visit.
+ */
+export function PreferredBrowserIcon({ className = "h-4 w-4" }: { className?: string }) {
+  const browser = usePreferredBrowser();
+  return <AppIcon icon={browser?.icon} fallback={<Globe className={className} />} className={className} />;
+}
+
 /** Width for a chevron menu built by {@link useBrowserMenu}. Wider than the
  *  `SplitButton` default because a row here carries an icon, a name, the
  *  `default` tag AND the private target — at the default width the names of the

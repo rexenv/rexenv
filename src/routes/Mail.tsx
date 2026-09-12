@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { toastBackendError } from "@/lib/toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCheck, ChevronRight, ExternalLink, Globe, Mail as MailIcon, Search, Trash2 } from "lucide-react";
+import { CheckCheck, ChevronRight, Globe, Mail as MailIcon, Search, Trash2 } from "lucide-react";
+import { PreferredBrowserIcon } from "@/components/ui/open-in";
 import { cn, TECH_INPUT } from "@/lib/utils";
 import { TopBar } from "@/components/shell/TopBar";
 import { StatusPill } from "@/components/common/StatusPill";
@@ -286,7 +287,7 @@ export function Mail() {
               disabled={!running}
               className="flex items-center gap-1.5 rounded-lg border border-rex-border bg-rex-surface-2 px-2.5 py-1.5 text-[0.75rem] text-rex-text transition-colors hover:border-brand disabled:opacity-40"
             >
-              <ExternalLink className="h-3.5 w-3.5" />
+              <PreferredBrowserIcon className="h-3.5 w-3.5" />
               Open Mailpit
             </button>
           )}

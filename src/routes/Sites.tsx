@@ -20,6 +20,7 @@ import { allSiteDomains, defaultTld, listSites, resolverDrift, deleteSite, renam
 import { openSiteInEditor, usePreferredEditor } from "@/lib/useEditor";
 import { usePreferredBrowser } from "@/lib/useBrowser";
 import { AppIcon } from "@/components/ui/app-icon";
+import { PreferredBrowserIcon } from "@/components/ui/open-in";
 import { SiteProvisionCard, useSiteProvision } from "@/components/sites/SiteProvisionCard";
 import { useDownloads } from "@/lib/useDownloads";
 import type { DbImportRecord, ScratchPackage, Site, SiteResources, SiteType } from "@/types";
@@ -339,7 +340,7 @@ export function SiteRow({
               row already reserves a fixed width for its quick actions, and a
               per-row menu next to a per-row menu is noise (§C1.2). Choosing a
               different browser for one link lives on the site page. */}
-          <AppIcon icon={browser?.icon} fallback={<Globe className="h-4 w-4" />} />
+          <PreferredBrowserIcon />
         </Button>
         <Button
           variant="ghost"

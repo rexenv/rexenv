@@ -11,9 +11,7 @@ import {
   Code,
   Copy,
   Database,
-  ExternalLink,
   FolderOpen,
-  Globe,
   LayoutGrid,
   Loader2,
   Lock,
@@ -30,6 +28,7 @@ import { WordPressIcon } from "@/components/common/WordPressIcon";
 import { openSiteInEditor, usePreferredEditor } from "@/lib/useEditor";
 import { usePreferredBrowser } from "@/lib/useBrowser";
 import { AppIcon } from "@/components/ui/app-icon";
+import { PreferredBrowserIcon } from "@/components/ui/open-in";
 import { Menu } from "@/components/ui/menu";
 import { SplitButton } from "@/components/ui/split-button";
 import { BROWSER_MENU_WIDTH, useBrowserMenu, useEditorMenu, useTerminalMenu } from "@/components/ui/open-in";
@@ -397,8 +396,7 @@ function SiteHeader({
   const t = siteTypeMeta(site.type);
   const url = `https://${site.domain}`;
   // The button wears the icon of the browser the click will ACTUALLY use —
-  // preference, else the OS default (both resolved in `usePreferredBrowser`).
-  const browser = usePreferredBrowser();
+  // `PreferredBrowserIcon`, the one component every open-in-browser control shares.
   const browserMenu = useBrowserMenu(url);
   const adminMenu = useBrowserMenu(() => magicLoginUrl(site));
   const [adminBusy, setAdminBusy] = useState(false);
@@ -482,11 +480,7 @@ function SiteHeader({
             menuWidth={BROWSER_MENU_WIDTH}
             chevronLabel="Open this site in another browser"
           >
-            <AppIcon
-              icon={browser?.icon}
-              fallback={<ExternalLink className="h-[15px] w-[15px]" strokeWidth={1.8} />}
-              className="h-[15px] w-[15px]"
-            />
+            <PreferredBrowserIcon className="h-[15px] w-[15px]" />
             Open in browser
           </SplitButton>
           {isWordpress && (
@@ -672,9 +666,7 @@ function Overview({
           </div>
           <div className="grid grid-cols-2 gap-[9px]">
             <QuickTile
-              icon={
-                <AppIcon icon={browser?.icon} fallback={<Globe className="h-4 w-4" />} />
-              }
+              icon={<PreferredBrowserIcon />}
               iconColor="text-rex-text-muted"
               label={browser ? `Open in ${browser.name}` : "Browser"}
               onClick={() => void openExternal(url).catch(toastBackendError)}
@@ -1496,6 +1488,7 @@ function ChangeDomainDialog({ site, onClose }: { site: Site; onClose: () => void
                 variant="primary"
                 onClick={() => void openExternal(`https://${done.site.domain}`).catch(toastBackendError)}
               >
+                <PreferredBrowserIcon className="h-[15px] w-[15px]" />
                 Open site
               </Button>
               <Button variant="secondary" onClick={onClose}>

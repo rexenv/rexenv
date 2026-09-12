@@ -178,7 +178,16 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   Magic Login split buttons with the header's browser chooser; the login is minted ON the
   sub-site's blog (a main-site token is invisible to a sub-site's request) for the URL the
   network's own `wp site list` reports, host-checked. Ledger #589,
-  `a_subsite_login_is_built_only_on_this_sites_host`. L3 owner-run owed.
+  `a_subsite_login_is_built_only_on_this_sites_host`. L3 owner-run 13 Sep 2026: "thik
+  moto kaj korchhe".
+
+- [x] **One icon per hand-off, everywhere** ✓ 13 Sep 2026 — owner, after the sub-site
+  rows: their Visit and Magic Login showed a globe and a door while the header showed the
+  browser and the WordPress mark ("sob jaigai consistency"). `PreferredBrowserIcon` now
+  sits on every open-in-browser control (header, tile, Sites row, sub-site Visit, tunnel
+  URL, Open Mailpit, Adminer, Change domain's Open site) and `WordPressIcon` on every
+  magic login (header, tile, sub-site, One-click admin login, a user's Log in). DESIGN.md
+  rule; ledger #590, `open_in_browser_and_magic_login_wear_one_icon_everywhere`.
 
 - [ ] **A Valet or Herd multisite network imports silently as a single site** — found
   12 Sep 2026 researching the Local network import (`docs/PLAN-local-multisite.md` §6).

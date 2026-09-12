@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { toast, toastBackendError } from "@/lib/toast";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Check, ChevronRight, Cloud, Copy, ExternalLink, Lightbulb, Share2, Square } from "lucide-react";
+import { AlertTriangle, Check, ChevronRight, Cloud, Copy, Lightbulb, Share2, Square } from "lucide-react";
+import { PreferredBrowserIcon } from "@/components/ui/open-in";
 import { cn } from "@/lib/utils";
 import { TopBar } from "@/components/shell/TopBar";
 import { Placeholder } from "@/components/common/Placeholder";
@@ -439,7 +440,7 @@ function TunnelCard({
               onClick={() => void openExternal(tunnel.url).catch(toastBackendError)}
               className="rounded p-1 text-rex-text-muted transition-colors hover:bg-rex-surface-2 hover:text-rex-text"
             >
-              <ExternalLink className="h-3.5 w-3.5" />
+              <PreferredBrowserIcon className="h-3.5 w-3.5" />
             </button>
             <button
               onClick={() => onToggle(false)}
