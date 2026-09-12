@@ -49,7 +49,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     exit code is the verdict; first run RED, 29 error sites (19 src-tauri, 10 cli), now the
     inventory in plan §2.1 (+4 the grep missed: `cfg(unix)` modules used ungated,
     `QUIT_MENU_ID`, ungated `objc2` dev-deps, host-cfg sidecar staging); ledger #582/#583
-  - [ ] W1 — move Unix-only code behind traits; widen ledger #163's scan to `std::os::unix`
+  - [x] W1 — move Unix-only code behind traits; widen ledger #163's scan to `std::os::unix`
     and `Command::new("kill")`, plant-proven. **Progress 12 Sep 2026:** the app lib and
     binary now COMPILE for Windows (objc2 dev-deps gated, About-menu cfg, MCP transport-only
     gate, `LocalIpc` for the edge admin + MySQL socket probes; `kill` in `core/` moved to
@@ -59,8 +59,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     `cli_server` compiles everywhere too (transport-only gate), and every example now
     compiles for Windows (unix-socket and macOS-only checks print a skip line there).
     The whole `src-tauri` crate — lib, binary, tests, every example — now compiles for
-    Windows (test-only OS fixtures live in `src/test_support.rs`). Open: the `cli` crate's
-    10 sites (D3/W8) (plan §2.1)
+    Windows (test-only OS fixtures live in `src/test_support.rs`). ✓ 12 Sep 2026 — `windows-check: all green` for
+    both crates, and the check runs inside `verify.sh` (SKIPPED without the toolchain or
+    `XWIN_ACCEPT_LICENSE=1`, ledger #584); commits `48613a7` → the W1-done commit (plan §2.1)
   - [ ] W2 — `(os, arch)` binary catalog; Windows pins + checksums; sweep covers them
   - [ ] W3 — Paths, ACL permissions, BinaryProvider, ProcessSupervisor (MySQL + Mailpit
     start, outlive the app, adopt on relaunch — on real Windows)

@@ -1252,9 +1252,12 @@ bloating the fast path:
   tree COMPILE for `x86_64-pc-windows-msvc`? `cargo xwin check --all-targets --keep-going`
   over both crates, from the Mac, printing every error site in our sources. **It proves
   compilation and nothing else** — no link, no Windows test run, no behaviour; the Mac
-  cannot run any of those (plan §7). **Not inside `verify.sh`, on purpose:** it is RED by
-  design until W1 moves the Unix-only code behind traits, and a pre-commit bar that is red
-  by design is one nobody runs. It joins the bar in the commit it first goes green.
+  cannot run any of those (plan §7). **Inside `verify.sh` since it first went green** (W1
+  complete, 12 Sep 2026 — owner ruling: the pre-commit bar, not only the release gate, so a
+  Windows break surfaces in the commit that made it). A machine without cargo-xwin, llvm/lld
+  or `XWIN_ACCEPT_LICENSE=1` gets `verify: windows-check SKIPPED — …` printed above the
+  verdict rather than a red bar; every other non-zero exit fails it. **What a skip costs:**
+  that commit's Windows compile went unchecked, and the line is the only record — read it.
   Local rather than GitHub Actions by owner ruling (private repo, never ran Actions).
   Two things it had to route around, both worth knowing before touching it: `--keep-going`,
   because the ungated `objc2` dev-dependencies fail first and would otherwise hide every

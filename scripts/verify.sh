@@ -114,6 +114,31 @@ for f in scripts/wk-checks/*.js; do
   node --check "$f" || { echo "verify: $f does not parse"; exit 1; }
 done
 
+# The Windows compile check (docs/PLAN-windows-port.md W1). Owner ruling, 12 Sep
+# 2026: part of THIS bar, not only the release gate — while the port is under way a
+# Windows break has to surface in the commit that made it, not at release time,
+# when it is twenty commits deep. It needs a toolchain this bar cannot assume
+# (cargo-xwin, brew llvm + lld, and Microsoft's SDK licence accepted through
+# XWIN_ACCEPT_LICENSE=1 — consent this script never gives on anyone's behalf,
+# ledger #583). So windows-check's exit 3, "cannot run on this machine", becomes a
+# SKIPPED line printed right above the verdict, and every other non-zero exit is a
+# Windows compile break that fails the bar. Exit codes are captured, never piped.
+WC_LOG="$(mktemp -t rexenv-windows-check)"
+set +e
+./scripts/windows-check.sh > "$WC_LOG" 2>&1
+wc_code=$?
+set -e
+WC_SKIPPED=""
+case "$wc_code" in
+  0) grep '^windows-check:' "$WC_LOG" || true ;;
+  3) WC_SKIPPED="$(grep -m1 '^windows-check:' "$WC_LOG" || head -n1 "$WC_LOG" || true)" ;;
+  *)
+    cat "$WC_LOG"
+    echo "verify: windows-check is RED (exit $wc_code) — the tree no longer compiles for Windows"
+    exit 1
+    ;;
+esac
+
 # The receipt (see scripts/verify-receipt.sh). Written LAST, and only when the
 # tree is still the one that was checked.
 if [ -n "$TREE_BEFORE" ]; then
@@ -125,4 +150,7 @@ if [ -n "$TREE_BEFORE" ]; then
   fi
 fi
 
+if [ -n "$WC_SKIPPED" ]; then
+  echo "verify: windows-check SKIPPED — ${WC_SKIPPED}"
+fi
 echo "verify: all green"

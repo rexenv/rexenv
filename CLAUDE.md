@@ -94,7 +94,10 @@ headers saying "not started" about shipped features. Derived beats typed.
   react-hooks rules, NOT a style linter — see `eslint.config.js`) + the three
   generated-doc gates, `ledger-tally.sh`, `doc-counts.sh` — the latter also fails
   on any `docs/*.md` path the tree cites that does not exist — and `status.py --check`,
-  which fails when `docs/STATUS.md` no longer matches TODO.md / the ledger / the plans). A green verdict comes ONLY from the script's own
+  which fails when `docs/STATUS.md` no longer matches TODO.md / the ledger / the plans) +
+  `windows-check.sh`, the Windows x64 compile of both crates — `verify: windows-check SKIPPED`
+  on a machine without cargo-xwin, llvm/lld or `XWIN_ACCEPT_LICENSE=1`, a red bar on any
+  real Windows break (ledger #584). A green verdict comes ONLY from the script's own
   `verify: all green` line — an ad-hoc `cargo test`/`tsc` invocation is never a gate:
   it can silently run from the wrong cwd (shell state resets between tool calls) and
   a `&&`-chain then passes on partial checks, exactly as a piped exit code once

@@ -1,7 +1,8 @@
 # PLAN — rexenv on Windows: the port, the decisions it forces, and the launch
 
-**Status:** IN PROGRESS — W0 done 12 Sep 2026 (`scripts/windows-check.sh`, RED by design:
-29 error sites, §2.1); W1–W2 next; W3 onward waits on the owner's rulings D1–D6 (§3). Planned against `e0d287c`. Open work is tracked as the
+**Status:** IN PROGRESS — W0 and W1 done 12 Sep 2026: both crates compile for Windows, and
+`scripts/windows-check.sh` runs inside `verify.sh`. W2 next; W3 onward waits on the owner's
+rulings D1, D2 and D4–D6 (§3; D3 is ruled). Planned against `e0d287c`. Open work is tracked as the
 "Windows launch" row in `docs/TODO.md`; this file is the reasoning behind it.
 
 macOS is stable and feature-rich (Phases 1–3 shipped). The owner wants a Windows release.
@@ -145,6 +146,15 @@ on unix. One more misplaced `cfg` turned up, the `QUIT_MENU_ID` shape again:
 `#[cfg(target_os = "macos")]` above a stray doc comment in `core/sites.rs` gated the
 `UNPINNED_PROVISIONERS` const while the test that reads it was ungated — the test only
 reads example files, so the attribute went. Windows run 31 → 10, all in the `cli` crate.
+
+**W1 done: both crates compile for Windows (12 Sep 2026).** The `rex` client's four
+`UnixStream::connect` calls go through one `connect`; off unix a stub `Stream` fails every
+method, so nothing is dialled — and `socket_path` already refuses on non-macOS hosts first.
+`windows-check.sh` went green on both crates and joined `verify.sh` by owner ruling: the
+pre-commit bar, not only the release gate, with a SKIPPED line where the toolchain or the
+licence consent is missing and a red bar on any real break (ledger #584). The Windows
+count, from first run to last: 29 → 58 → 56 → 45 → 92 → 89 → 78 → 31 → 10 → 0 — every rise
+a unit that had been hidden behind a failure becoming visible.
 
 ### 2.2 The binary catalog has no OS dimension
 

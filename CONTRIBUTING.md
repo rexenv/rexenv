@@ -29,8 +29,8 @@ scripts/verify.sh        # THE pre-commit bar: lib + cli tests, example builds,
                          #   and the two generated-number gates (ledger-tally, doc-counts)
 scripts/verify-full.sh   # release gate: verify + L1 sandbox tier + WebKit harness
 scripts/live-checks.sh   # tiered live checks (see the tier table inside)
-scripts/windows-check.sh # Windows x64 COMPILE check via cargo-xwin — not a gate yet
-                         #   (red until docs/PLAN-windows-port.md W1; see TESTING.md §6)
+scripts/windows-check.sh # Windows x64 COMPILE check via cargo-xwin — runs inside verify.sh;
+                         #   SKIPPED there without the toolchain + XWIN_ACCEPT_LICENSE=1 (TESTING.md §6)
 ```
 
 Green comes ONLY from a script's own final line (`verify: all green`). An ad-hoc

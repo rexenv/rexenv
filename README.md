@@ -79,7 +79,7 @@ scripts/verify.sh
 # deeper tiers (see CONTRIBUTING.md and docs/TESTING.md):
 scripts/live-checks.sh                     # tiered live checks against real binaries
 scripts/verify-full.sh                     # release gate: verify + sandbox tier + WebKit harness
-scripts/windows-check.sh                   # does it COMPILE for Windows x64? (cargo-xwin; RED until the port's W1)
+scripts/windows-check.sh                   # does it COMPILE for Windows x64? (cargo-xwin; also run by verify.sh)
 cargo run --example <name>                 # a single live check (src-tauri/examples/)
 ```
 

@@ -12,9 +12,9 @@
 # and says nothing about behaviour — a green here means "the Windows stubs are
 # reachable", not "rexenv works on Windows". That proof needs a Windows machine (plan §7).
 #
-# NOT part of verify.sh. Until W1 moves the Unix-only code behind platform traits this
-# is expected RED, and a pre-commit bar that is red by design is a bar nobody runs. It
-# joins the bar the commit it first goes green.
+# Part of verify.sh since it first went green (W1 complete, 12 Sep 2026). On a machine
+# without the toolchain or the licence consent it exits 3, and verify.sh prints that as
+# a SKIPPED line instead of failing; any other non-zero exit fails the bar.
 #
 #   ./scripts/windows-check.sh              check both crates, print the error inventory
 #   ./scripts/windows-check.sh > f 2>&1     the sanctioned way to keep its output

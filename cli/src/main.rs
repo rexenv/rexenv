@@ -9,7 +9,65 @@
 
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Write};
-use std::os::unix::net::UnixStream;
+// ── Transport ────────────────────────────────────────────────────────────────
+// `rex` reaches the app over a unix socket. Off unix it has no transport yet: the
+// Windows named pipe is port W8 (owner ruling D3), and `socket_path` /
+// `mcp_socket_path` already refuse on any non-macOS host before a connect is tried.
+// The non-unix `Stream` exists only so this crate compiles — every method fails and
+// nothing is ever dialled (docs/PLAN-windows-port.md W1).
+#[cfg(unix)]
+use std::os::unix::net::UnixStream as Stream;
+
+#[cfg(unix)]
+fn connect(path: impl AsRef<Path>) -> std::io::Result<Stream> {
+    Stream::connect(path)
+}
+
+#[cfg(not(unix))]
+fn connect(_path: impl AsRef<Path>) -> std::io::Result<Stream> {
+    Err(no_transport())
+}
+
+#[cfg(not(unix))]
+fn no_transport() -> std::io::Error {
+    std::io::Error::new(std::io::ErrorKind::Unsupported, "rex has no transport to rexenv on this platform yet")
+}
+
+#[cfg(not(unix))]
+struct Stream;
+
+#[cfg(not(unix))]
+impl Stream {
+    fn try_clone(&self) -> std::io::Result<Stream> {
+        Err(no_transport())
+    }
+    fn shutdown(&self, _how: std::net::Shutdown) -> std::io::Result<()> {
+        Err(no_transport())
+    }
+    fn set_read_timeout(&self, _dur: Option<std::time::Duration>) -> std::io::Result<()> {
+        Err(no_transport())
+    }
+    fn set_write_timeout(&self, _dur: Option<std::time::Duration>) -> std::io::Result<()> {
+        Err(no_transport())
+    }
+}
+
+#[cfg(not(unix))]
+impl std::io::Read for Stream {
+    fn read(&mut self, _buf: &mut [u8]) -> std::io::Result<usize> {
+        Err(no_transport())
+    }
+}
+
+#[cfg(not(unix))]
+impl std::io::Write for Stream {
+    fn write(&mut self, _buf: &[u8]) -> std::io::Result<usize> {
+        Err(no_transport())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Err(no_transport())
+    }
+}
 use std::path::{Path, PathBuf};
 use std::process::exit;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -278,7 +336,7 @@ impl PendingIds {
 /// side closing ends the whole bridge, so the client sees the server go away.
 fn run_mcp_bridge() -> ! {
     use std::io::BufRead;
-    let socket = match UnixStream::connect(mcp_socket_path()) {
+    let socket = match connect(mcp_socket_path()) {
         Ok(s) => s,
         // ENOENT (never bound) and ECONNREFUSED (stale after a crash) both mean
         // the app isn't there to serve — the CLI socket's exact treatment.
@@ -386,7 +444,7 @@ fn request_inner(
     let path = socket_path();
     // ENOENT (app never bound) and ECONNREFUSED (stale file after a crash)
     // mean the same thing to the user: the app isn't there to take commands.
-    let mut sock = match UnixStream::connect(&path) {
+    let mut sock = match connect(&path) {
         Ok(s) => s,
         Err(_) => {
             eprintln!("{NOT_RUNNING}");
@@ -559,7 +617,7 @@ fn soft_request(cmd: &str) -> Option<Value> {
 /// succeeds proves a listener exists, never that anything is behind it, so
 /// "best effort" has to be bounded in time and not just in error kind.
 fn soft_request_at(path: &Path, cmd: &str, deadline: Duration) -> Option<Value> {
-    let mut stream = UnixStream::connect(path).ok()?;
+    let mut stream = connect(path).ok()?;
     // Both directions: a peer that never reads can block the write just as a
     // peer that never writes blocks the read.
     stream.set_read_timeout(Some(deadline)).ok()?;
@@ -651,7 +709,7 @@ fn main() {
     match words.first().map(String::as_str) {
         None | Some("completions") => {} // native output, no app needed
         _ => {
-            if UnixStream::connect(socket_path()).is_err() {
+            if connect(socket_path()).is_err() {
                 eprintln!("{NOT_RUNNING}");
                 exit(2);
             }
@@ -3930,6 +3988,7 @@ mod tests {
     }
     use super::*;
     use std::io::Read;
+    #[cfg(unix)]
     use std::os::unix::net::UnixListener;
     use std::sync::mpsc;
     use std::time::Instant;
@@ -4131,6 +4190,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn soft_request_gives_up_on_a_listener_that_accepts_and_never_answers() {
         let path = fixture_socket("deaf");
         let listener = UnixListener::bind(&path).expect("bind");
@@ -4158,6 +4218,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn soft_request_returns_the_data_when_the_app_answers() {
         let path = fixture_socket("answers");
         let listener = UnixListener::bind(&path).expect("bind");
