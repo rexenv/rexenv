@@ -1292,7 +1292,7 @@ Result: ____ (date, reqwest version).
 
 ---
 
-## N) Local import — live pass against a STARTED Local site (owner-run) — single site ✅, network steps N10–N14 pending
+## N) ✅ Local import — live pass against a STARTED Local site (owner-run) — single site and network (N10–N14) passed
 
 **PASSED 12 Sep 2026**, owner-run on `ab12.local` (Local 10.1.2, MySQL 8.4.0) at
 `805ee0d`. Its first attempt is why §2b of the plan changed: the TCP probe met ERR 1130
@@ -1360,7 +1360,14 @@ started IN Local — a button rexenv never presses.
 
 ### Network steps — N10–N14 (added 12 Sep 2026, `docs/PLAN-local-multisite.md` T5)
 
-**Pending.** The single-site pass above predates network import. What the layers below
+**PASSED 13 Sep 2026**, owner-run on `multisite.local` (a subdomain network, `sub1` +
+`sub2`) after switching Local's router to localhost mode: "ekhon sob thik achhe". Its
+first attempt found three defects, each fixed before the pass — a failed attempt's copy
+orphaned as `local` (#586), Local copies named `local_<domain>` from the first import
+(#587), and Local's router on :443 named with its way out (#588) — and the copy was read
+back over MCP before connecting: all three blogs, `sitemeta` and `wp_site` on
+`https://…multisite.rex`, and a connect diff moving `DOMAIN_CURRENT_SITE`.
+The single-site pass above predates network import. What the layers below
 already prove (`local_import_check` leg C): a real subdomain network's copy moves every
 blog to `https://` on the new name, and the connect plan boots a subsite with the login
 cookie on the new domain. What only this pass gives: Local's real network database, the
@@ -1410,5 +1417,5 @@ Use a Local network you'd shrug at losing (the owner's `multi.local`: subdomains
 | F | Resolver TAKEOVER + RESTORE — clean-VM only (fixture-tested, never live-run) | 🚧 **publish-blocking, and it was missing from this table until 21 Aug 2026** |
 | G | `/import` screen — packaged-app GUI pass | 🚧 **publish-blocking, and it was missing from this table until 21 Aug 2026** |
 | N | Local import: live pass on a STARTED Local site + the packaged screen's Local rows | ✅ passed 12 Sep 2026 (owner-run, `ab12.local`) |
-| N10–N14 | Local import of a multisite NETWORK: the row, adopt + reload serving `*.<name>.rex`, the connect moving `DOMAIN_CURRENT_SITE`, a browser login across subsites, revert | ⏳ pending (owner-run; L1 leg C green 12 Sep 2026) |
+| N10–N14 | Local import of a multisite NETWORK: the row, adopt + reload serving `*.<name>.rex`, the connect moving `DOMAIN_CURRENT_SITE`, a browser login across subsites, revert | ✅ passed 13 Sep 2026 (owner-run, `multisite.local`) |
 | L | Offline/timeout behaviour of the update check | 🟢 nice-to-have (no row here before 21 Aug 2026) |

@@ -125,7 +125,8 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     the live run was NOT the applet: BTM log, 13:34:24, the DNS LaunchAgent re-registered
     pointing at `target/debug/rexenv`, two minutes before the applet launched.)
 
-- [ ] **Import Local multisite networks** — 12 Sep 2026, planned in
+- [x] **Import Local multisite networks** ✓ 13 Sep 2026 — every child closed; the live
+  pass ran owner-run on `multisite.local`. 12 Sep 2026, planned in
   `docs/PLAN-local-multisite.md`. Q2 of the Local import (`docs/archive/PLAN-local-import.md`
   §9), parked the same morning and un-parked by the owner: "Q2 o kore felo multisite".
   Adopt the network (record its mode, never convert), move rexenv's copy's network URLs,
@@ -166,9 +167,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     now name "Local's router" and the setting that frees the port without quitting Local;
     ledger #588, `locals_router_is_named_with_the_way_out_that_keeps_local_running`,
     `a_named_holder_replaces_the_cant_identify_sentence`. L3 owner-run
-  - [ ] T5 — docs, PUBLISH-TESTING §N network steps, live pass on `multi.local` — steps
+  - [x] T5 — docs, PUBLISH-TESTING §N network steps, live pass on `multi.local` — steps
     N10–N14 written 12 Sep 2026 (+ the summary row, and N0's stale "multisite can't
-    import" corrected); **owed: the owner-run pass** (Local must run the network)
+    import" corrected) ✓ 13 Sep 2026 — owner-run on `multisite.local`: "ekhon sob thik
+    achhe"; the copy's blogs read back over MCP first (all `https://…multisite.rex`)
 
 - [ ] **A Valet or Herd multisite network imports silently as a single site** — found
   12 Sep 2026 researching the Local network import (`docs/PLAN-local-multisite.md` §6).
