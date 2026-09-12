@@ -46,6 +46,10 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 sha2 = "0.10"
 tar = "0.4"
 flate2 = "1"
+# The Windows artifacts (Caddy, PHP, nginx, MySQL, Mailpit) ship as zips —
+# docs/PLAN-windows-port.md W2. Extraction only: no default features, and deflate
+# goes through the flate2 above rather than a second compressor.
+zip = { version = "8.6", default-features = false, features = ["deflate-flate2"] }
 sysinfo = "0.36.1"
 portable-pty = "0.9"
 base64 = "0.22"

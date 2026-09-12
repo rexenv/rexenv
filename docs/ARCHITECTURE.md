@@ -597,7 +597,12 @@ Live-proven end to end by `site_stop_start_check`.
   to `/usr/lib` → ad-hoc codesign LAST.**
 - Shapes: single Mach-O (`resolve`) · plain file like WP-CLI `.phar` (`resolve_file`, no
   chmod/codesign) · dir tree like MySQL/PostgreSQL (`Archive::TarGzTree` + `resolve_dir`;
-  extraction guards against path/symlink escapes, L2) · **bottle BUNDLE** — Redis
+  extraction guards against path/symlink escapes, L2) · **Windows zips** (12 Sep 2026, port
+  W2) — `Archive::Zip` for a single `.exe` (Caddy, Mailpit) and `Archive::ZipTree { strip }`
+  for trees (PHP flat, nginx/MySQL with a top dir), through the same `resolve`/`resolve_dir`;
+  every entry's RAW name is checked before any strip and symlink entries are refused
+  (ledger #585 — the zip crate's own `enclosed_name` sanitizes an absolute name instead of
+  refusing it) · **bottle BUNDLE** — Redis
   (+ openssl@3), MariaDB (server/clients/bootstrap-SQL/errmsg/charsets + openssl@3 +
   pcre2; plugins excluded so groonga/lz4/lzo/xz/zstd never enter the closure), Apache
   httpd (server + the 10 conf-loaded modules + mime.types + apr + apr-util + pcre2;

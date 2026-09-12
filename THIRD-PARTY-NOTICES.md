@@ -47,6 +47,10 @@ rexenv uses it under the first permissive option compatible with this
 distribution. Generated from the real dependency graphs on 2026-07-28 and
 re-verified on 2026-08-03, 2026-08-04 and 2026-08-05. The Rust closure is
 unchanged at 389 crates.
+**12 Sep 2026: +2 Rust crates for the Windows port** (`zip` 8.6.0 MIT, `typed-path`
+0.12.3 MIT OR Apache-2.0 — zip extraction for the Windows artifacts). Added as rows,
+NOT regenerated: this header already read 393 against the 389 above, so the two-way
+reconcile below is due before the next release, not assumed done.
 
 **The npm table was INCOMPLETE from the day it was generated, and the 5 Aug
 pass found it: 112 rows against a 127-package production closure.** Fifteen
@@ -249,7 +253,7 @@ chosen for exactly this reason.
 `rusqlite` is built with the `bundled` feature, so SQLite itself is compiled
 into the app. SQLite is in the public domain (https://sqlite.org/copyright.html).
 
-## Rust crates (statically linked; 393 external crates, macOS graph)
+## Rust crates (statically linked; 395 external crates, macOS graph)
 
 | Crate | Version | Licence |
 |---|---|---|
@@ -604,6 +608,7 @@ into the app. SQLite is in the public domain (https://sqlite.org/copyright.html)
 | tracing-core | 0.1.36 | MIT |
 | tray-icon | 0.24.1 | MIT OR Apache-2.0 |
 | try-lock | 0.2.5 | MIT |
+| typed-path | 0.12.3 | MIT OR Apache-2.0 |
 | typeid | 1.0.3 | MIT OR Apache-2.0 |
 | typenum | 1.20.1 | MIT OR Apache-2.0 |
 | unic-char-property | 0.9.0 | MIT/Apache-2.0 |
@@ -645,6 +650,7 @@ into the app. SQLite is in the public domain (https://sqlite.org/copyright.html)
 | zerotrie | 0.2.4 | Unicode-3.0 |
 | zerovec | 0.11.6 | Unicode-3.0 |
 | zerovec-derive | 0.11.3 | Unicode-3.0 |
+| zip | 8.6.0 | MIT |
 | zmij | 1.0.21 | MIT |
 
 Notes on the non-MIT/Apache families above: the five MPL-2.0 crates

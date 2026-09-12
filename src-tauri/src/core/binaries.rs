@@ -199,6 +199,12 @@ pub enum Archive {
     /// gzip-compressed tar of a full directory tree; extracted whole (the
     /// single top-level dir is stripped). Used for MySQL (bin/lib/share).
     TarGzTree,
+    /// A zip holding one executable; extract `member` (Windows: `caddy.exe`).
+    Zip,
+    /// A zip of a whole directory tree, extracted after dropping `strip` leading
+    /// path components — zips disagree about a top directory (nginx has one, PHP
+    /// does not), so the manifest arm says which rather than a guess at unpack.
+    ZipTree { strip: usize },
 }
 
 /// Pinned content hash of a downloaded artifact (digest varies by source:
@@ -2238,7 +2244,7 @@ pub async fn resolve(platform: &dyn Platform, name: &str, version: &str) -> Resu
             php_arch(arch)
         ))
     })?;
-    if spec.archive == Archive::TarGzTree {
+    if matches!(spec.archive, Archive::TarGzTree | Archive::ZipTree { .. }) {
         return Err(Error::Other(format!(
             "{name} is a directory distribution — use resolve_dir"
         )));
@@ -2280,7 +2286,14 @@ pub async fn resolve(platform: &dyn Platform, name: &str, version: &str) -> Resu
                 download(&spec.url, &staged_bin, Some(&spec.checksum), Some(&id)).await?;
                 downloads::hub().item_preparing(&id);
             }
-            Archive::TarGzTree => unreachable!("TarGzTree returned above"),
+            Archive::Zip => {
+                let archive = staging.join(".archive.zip");
+                download(&spec.url, &archive, Some(&spec.checksum), Some(&id)).await?;
+                downloads::hub().item_preparing(&id);
+                extract_zip_member(&archive, spec.member, &staged_bin)?;
+                std::fs::remove_file(&archive)?;
+            }
+            Archive::TarGzTree | Archive::ZipTree { .. } => unreachable!("trees returned above"),
         }
         platform.permissions().set_executable(&staged_bin)?;
         platform.binaries().prepare_binary(&staged_bin)?;
@@ -2389,7 +2402,7 @@ pub async fn resolve_dir(platform: &dyn Platform, name: &str, version: &str) -> 
         return Ok(hit);
     }
 
-    if spec.archive != Archive::TarGzTree {
+    if !matches!(spec.archive, Archive::TarGzTree | Archive::ZipTree { .. }) {
         return Err(Error::Other(format!(
             "{name} is not a directory distribution — use resolve"
         )));
@@ -2407,12 +2420,20 @@ pub async fn resolve_dir(platform: &dyn Platform, name: &str, version: &str) -> 
     let staging = staging_path(&bin_dir, name, version);
     let staged: Result<()> = async {
         std::fs::create_dir_all(&staging)?;
-        let archive = staging.join(".archive.tar.gz");
+        // A tar tree strips its one top-level dir; a zip tree strips what its
+        // manifest arm says (a PHP zip is flat, an nginx zip is not).
+        let (archive, zip_strip) = match spec.archive {
+            Archive::ZipTree { strip } => (staging.join(".archive.zip"), Some(strip)),
+            _ => (staging.join(".archive.tar.gz"), None),
+        };
         download(&spec.url, &archive, Some(&spec.checksum), Some(&id)).await?;
         downloads::hub().item_preparing(&id);
-        extract_tar_gz_tree(open_buffered(&archive)?, &staging)?;
+        match zip_strip {
+            Some(strip) => extract_zip_tree(&archive, &staging, strip)?,
+            None => extract_tar_gz_tree(open_buffered(&archive)?, &staging)?,
+        }
         // Drop the archive BEFORE publishing so the cached tree doesn't carry a
-        // dead 600MB tarball into the final dir.
+        // dead 600MB archive into the final dir.
         std::fs::remove_file(&archive)?;
         stage_licenses(&spec, name, version, arch, &staging, &id).await?;
         write_pin_marker(&staging, &spec.checksum);
@@ -2950,6 +2971,92 @@ fn extract_tar_gz_tree_filtered(
     Ok(())
 }
 
+/// Open a downloaded zip for reading.
+fn open_zip(archive: &Path) -> Result<zip::ZipArchive<std::fs::File>> {
+    zip::ZipArchive::new(std::fs::File::open(archive)?).map_err(zip_err)
+}
+
+fn zip_err(e: zip::result::ZipError) -> Error {
+    Error::Other(format!("zip archive: {e}"))
+}
+
+/// Extract the ONE file named `member` from a zip into `dest` — matched by file
+/// NAME, as [`extract_tar_gz_member`] matches, because the Windows single-binary
+/// zips (Caddy, Mailpit) hold the executable beside a README and a LICENSE.
+fn extract_zip_member(archive: &Path, member: &str, dest: &Path) -> Result<()> {
+    let mut zip = open_zip(archive)?;
+    for i in 0..zip.len() {
+        let mut entry = zip.by_index(i).map_err(zip_err)?;
+        if entry.is_dir() {
+            continue;
+        }
+        let is_member = entry
+            .enclosed_name()
+            .and_then(|p| p.file_name().map(|n| n == member))
+            .unwrap_or(false);
+        if is_member {
+            if entry.is_symlink() {
+                return Err(Error::Other(format!(
+                    "refusing a symlink in a zip archive: {}",
+                    entry.name()
+                )));
+            }
+            let mut out = std::fs::File::create(dest)?;
+            std::io::copy(&mut entry, &mut out)?;
+            return Ok(());
+        }
+    }
+    Err(Error::Other(format!("member '{member}' not found in archive")))
+}
+
+/// Extract a whole zip tree into `dest`, dropping `strip` leading path components
+/// (`nginx-1.30.4/nginx.exe` with strip 1 → `<dest>/nginx.exe`; PHP's Windows zip
+/// is flat, strip 0).
+///
+/// The tar path's guards, applied to a zip's own hazards (docs/PLAN-windows-port.md
+/// W2). An entry whose name is not ENCLOSED — `..` that climbs out, an absolute
+/// path, a drive prefix — is refused, not skipped: a pinned archive that carries
+/// one is not the archive we pinned. `safe_join` then checks the post-strip path
+/// again. And a symlink entry is refused outright: no artifact rexenv pins from a
+/// zip ships one, and a link is how a later entry gets written outside `dest`.
+/// File modes are not carried over — the zips pinned here are Windows builds,
+/// where there is no executable bit to lose.
+fn extract_zip_tree(archive: &Path, dest: &Path, strip: usize) -> Result<()> {
+    let mut zip = open_zip(archive)?;
+    for i in 0..zip.len() {
+        let mut entry = zip.by_index(i).map_err(zip_err)?;
+        let name = entry.name().to_string();
+        // Checked on the RAW name, by this host's path rules — not on
+        // `enclosed_name()` alone, which may hand back a sanitized path that stays
+        // inside `dest` for a name that tried to climb out. Nothing would escape
+        // then, but nothing would be refused either, and a pinned archive carrying
+        // such a name is not the archive we pinned. Checked BEFORE the strip, so a
+        // stripped component can never be the `/` or `..` that made a name unsafe.
+        let raw = Path::new(&name);
+        if entry.enclosed_name().is_none() || safe_join(dest, raw).is_err() {
+            return Err(Error::Other(format!("unsafe path in archive: {name}")));
+        }
+        if entry.is_symlink() {
+            return Err(Error::Other(format!("refusing a symlink in a zip archive: {name}")));
+        }
+        let rel: PathBuf = raw.components().skip(strip).collect();
+        if rel.as_os_str().is_empty() {
+            continue;
+        }
+        let out = safe_join(dest, &rel)?;
+        if entry.is_dir() {
+            std::fs::create_dir_all(&out)?;
+        } else {
+            if let Some(parent) = out.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            let mut file = std::fs::File::create(&out)?;
+            std::io::copy(&mut entry, &mut file)?;
+        }
+    }
+    Ok(())
+}
+
 /// Join `rel` under `base`, rejecting any component that would escape it — `..`, an
 /// absolute root, or a Windows drive prefix. Tar entry paths (file locations) should
 /// only ever be plain (`Normal`) components; anything else is a traversal attempt.
@@ -3037,6 +3144,94 @@ fn publish(staging: &Path, dir: &Path, marker: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A fixture zip at a fixture-owned temp path. A name ending in `/` is a
+    /// directory, a body starting `link:` makes a symlink to the rest, anything
+    /// else is a DEFLATED file — the compression every real Windows zip uses.
+    fn write_zip(tag: &str, entries: &[(&str, &str)]) -> (PathBuf, PathBuf) {
+        let root = std::env::temp_dir().join(format!("rexenv-zip-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join("fixture.zip");
+        let mut w = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
+        let opts = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+        for (name, body) in entries {
+            if let Some(target) = body.strip_prefix("link:") {
+                w.add_symlink(*name, target, opts).unwrap();
+            } else if name.ends_with('/') {
+                w.add_directory(*name, opts).unwrap();
+            } else {
+                w.start_file(*name, opts).unwrap();
+                std::io::Write::write_all(&mut w, body.as_bytes()).unwrap();
+            }
+        }
+        w.finish().unwrap();
+        (root, path)
+    }
+
+    #[test]
+    fn a_zip_member_is_found_by_file_name_and_a_missing_one_fails_loud() {
+        let (root, zip) = write_zip(
+            "member",
+            &[("README.md", "readme"), ("caddy.exe", "MZ-caddy"), ("LICENSE", "apache")],
+        );
+        let dest = root.join("caddy.exe");
+        extract_zip_member(&zip, "caddy.exe", &dest).unwrap();
+        assert_eq!(std::fs::read_to_string(&dest).unwrap(), "MZ-caddy");
+        let missing = extract_zip_member(&zip, "nope.exe", &root.join("nope.exe")).unwrap_err();
+        assert!(missing.to_string().contains("not found"), "{missing}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_zip_tree_strips_what_it_is_told_and_keeps_the_layout() {
+        // nginx's shape: one top directory, stripped.
+        let (root, zip) = write_zip(
+            "tree",
+            &[
+                ("nginx-1.30.4/", ""),
+                ("nginx-1.30.4/nginx.exe", "MZ-nginx"),
+                ("nginx-1.30.4/conf/nginx.conf", "worker_processes 1;"),
+            ],
+        );
+        let dest = root.join("out");
+        extract_zip_tree(&zip, &dest, 1).unwrap();
+        assert_eq!(std::fs::read_to_string(dest.join("nginx.exe")).unwrap(), "MZ-nginx");
+        assert!(dest.join("conf/nginx.conf").is_file());
+        assert!(!dest.join("nginx-1.30.4").exists(), "the top directory must be stripped");
+
+        // PHP's shape: flat, nothing stripped.
+        let (flat_root, flat) = write_zip("flat", &[("php.exe", "MZ-php"), ("ext/php_curl.dll", "dll")]);
+        let flat_dest = flat_root.join("out");
+        extract_zip_tree(&flat, &flat_dest, 0).unwrap();
+        assert!(flat_dest.join("php.exe").is_file() && flat_dest.join("ext/php_curl.dll").is_file());
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&flat_root);
+    }
+
+    /// Zip-slip: an entry that climbs out of the destination, or names an absolute
+    /// path, is REFUSED — and nothing lands outside `dest` on the way.
+    #[test]
+    fn a_zip_entry_that_escapes_the_destination_is_refused_and_writes_nothing_outside() {
+        for (tag, hostile) in [("dotdot", "top/../../escaped.txt"), ("absolute", "/escaped-abs.txt")] {
+            let (root, zip) = write_zip(tag, &[("top/ok.txt", "fine"), (hostile, "pwned")]);
+            let dest = root.join("out");
+            let err = extract_zip_tree(&zip, &dest, 0).unwrap_err();
+            assert!(err.to_string().contains("unsafe path"), "{tag}: {err}");
+            assert!(!root.join("escaped.txt").exists(), "{tag}: an entry was written outside dest");
+            assert!(!std::path::Path::new("/escaped-abs.txt").exists(), "{tag}: an absolute entry was written");
+            let _ = std::fs::remove_dir_all(&root);
+        }
+    }
+
+    #[test]
+    fn a_symlink_in_a_zip_is_refused() {
+        let (root, zip) = write_zip("symlink", &[("top/link", "link:../../outside"), ("top/f.txt", "x")]);
+        let err = extract_zip_tree(&zip, &root.join("out"), 0).unwrap_err();
+        assert!(err.to_string().contains("symlink"), "{err}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     /// A `Platform` that answers only the two questions [`cached_path`] asks:
     /// where the bin dir is, and which arch this machine is. Everything else

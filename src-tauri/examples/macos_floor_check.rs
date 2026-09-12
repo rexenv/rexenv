@@ -111,6 +111,9 @@ fn unpack(bytes: &[u8], spec: &binaries::BinarySpec, dest: &Path) -> Option<Path
             }
             None
         }
+        // Windows artifacts (docs/PLAN-windows-port.md W2). No macOS manifest arm
+        // produces a zip, and there is no Mach-O inside one to measure.
+        Archive::Zip | Archive::ZipTree { .. } => None,
     }
 }
 

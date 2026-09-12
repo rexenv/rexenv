@@ -279,6 +279,20 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
 - **W2 — OS dimension in the binary catalog.** `(os, arch)` pins, Windows URLs and
   checksums for §4's official rows, `manifest_sweep_check` covering them.
   *Done when:* L0 URL tests pass per OS and the sweep hashes every Windows artifact.
+  **Measured 12 Sep 2026 — half of this already existed:** `manifest(name, version, os,
+  arch)` and `bundle_manifest` take the OS, and every resolve passes
+  `std::env::consts::OS`; only `macos` arms exist. What W2 actually needs: (1) zip
+  extraction — every Windows artifact except PostgreSQL (tar.gz) and cloudflared (raw
+  `.exe`) is a zip, and the tree had no zip reader (done: `zip` crate by owner ruling,
+  `Archive::Zip` / `ZipTree { strip }`, ledger #585); (2) `.exe` naming — a single
+  binary publishes at `dir/<name>`, and Windows will not run a file without the
+  extension; (3) per-OS shapes — `shape_of(name)` says nginx and php are single
+  binaries, while their Windows zips are trees; (4) the arms, all x64 (Windows ARM runs
+  them under emulation — there is no arm64 PHP, PostgreSQL or MySQL build); (5) the
+  sweep. Every Windows artifact was downloaded and hashed on 12 Sep 2026; Caddy's
+  SHA-512 and PostgreSQL's SHA-256 matched their publishers', the rest have no published
+  digest (php.net's archive has no `sha256sum.txt`, Mailpit and nginx.org publish none,
+  MySQL publishes MD5).
 - **W3 — Foundations.** `Paths` (`%LOCALAPPDATA%\rexenv`), `PermissionManager` (owner-only
   ACLs), `BinaryProvider` (strip the `Zone.Identifier` stream, no codesign),
   `ProcessSupervisor` (hidden + detached spawn so services OUTLIVE the app, graceful

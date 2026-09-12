@@ -390,6 +390,7 @@ L3 = scripted manual.
 | # | Anchor | Claim | Verdict |
 |---|---|---|---|
 | 83 | binaries.rs:149 | Corrupted resume fails closed, partial removed, never silent | ✅ 4 lib tests |
+| 585 | binaries.rs (`extract_zip_tree`, `extract_zip_member`, `Archive::Zip` / `Archive::ZipTree`) | **A zip is unpacked only inside its destination: an entry naming a path out of it, and any symlink entry, fails the extraction instead of being written — or quietly rewritten.** Added 12 Sep 2026 for the Windows artifacts (`docs/PLAN-windows-port.md` W2). The RAW entry name is checked by `safe_join` on the host's path rules BEFORE any strip, so a stripped component can never be the `/` or `..` that made a name unsafe, and `enclosed_name()` must accept it too | ✅ L0 `a_zip_entry_that_escapes_the_destination_is_refused_and_writes_nothing_outside` (a climbing `top/../../` name and an absolute `/` name; nothing written outside), `a_symlink_in_a_zip_is_refused`, with `a_zip_member_is_found_by_file_name_and_a_missing_one_fails_loud` and `a_zip_tree_strips_what_it_is_told_and_keeps_the_layout`. **Plant-proven twice.** The first version trusted `enclosed_name()` alone, and the absolute case FAILED: zip 8.6 sanitizes `/escaped-abs.txt` into `escaped-abs.txt`, so the file landed inside `dest` — nothing escaped, and nothing was refused either, which is what this row claims. And removing the symlink refusal fails the symlink test (`unwrap_err` on `Ok`). **Not covered:** a zip bomb (size is bounded only by the pinned checksum of an artifact we chose); Windows-host path parsing, where `..\` is a real separator — `safe_join`'s job there, unrun until W3; unix file modes, deliberately not carried (the pinned zips are Windows builds) |
 | 84 | binaries.rs:1804 | Archive traversal/symlink escapes rejected | ✅ 2 lib tests |
 | 85 | binaries.rs:950 | Stage→rename publish atomic; truncated artifact never cached | ✅ 5 lib tests |
 | 86 | binaries.rs:1123 | Failed relink/codesign never leaves a poisoned cache | 🔨 L1 (macOS) |
@@ -817,7 +818,7 @@ import-graph lint #163 closed; the FrankenPHP read-only picker #333; the
 mid-dump-kill server-side leg #116 closed; the resolver-drift banner #334; the
 delete-kill ordering #190 closed; #103's Apache/FrankenPHP legs; the fpm
 candidate isolation #104/#191; the manifest sweep #335):
-**✅ 503 · ◐ 53 · 🔨 11 · 🚫 17** of 584 rows, plus 15 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432, #486, #541).
+**✅ 504 · ◐ 53 · 🔨 11 · 🚫 17** of 585 rows, plus 15 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432, #486, #541).
 Recomputed mechanically with the one-liner above. The working backlog = every 🔨
 row + the noted half of every ◐ row, ranked below.
 
