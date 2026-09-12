@@ -39,11 +39,29 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   Not "fill the stubs": Unix-only code outside `platform/`, no php-fpm, no `/etc/resolver`,
   no unix sockets on Windows. Reasoning, measurements and "Done when" per task:
   `docs/PLAN-windows-port.md`. W0–W2 can start now; W3+ wait on the owner's D1–D6.
-  - [ ] D1–D6 — owner rulings: PHP process model (php-cgi groups), DNS (:53 + NRPT),
-    local IPC (named pipes; Caddy admin socket measured), v1 feature scope, signing +
-    installer + updates, supported Windows/arch (plan §3). **D3 ruled 12 Sep 2026:**
-    named pipes with a current-user ACL, behind a new 13th trait `LocalIpc`; D1, D2,
-    D4–D6 still open
+  - [ ] D5 signing — open for ONE reason: the owner decides Authenticode after an unsigned
+    NSIS installer is measured on the Dell (plan §3 D5). Every other ruling is in: D3 named
+    pipes + `LocalIpc` (12 Sep 2026); **13 Sep 2026** D1 php-cgi group accepted (supervision,
+    positive ID and worker count written in plan §3 D1(a)/(b) before W3), D2 agent on :53 +
+    NRPT accepted and the `hosts` fallback REFUSED (:53 taken → refuse naming the holder),
+    D4 accepted (MariaDB named as the gap), D6 accepted (Win 11 x64; Win 10 22H2 best-effort;
+    arm64 emulation unsupported)
+  - [ ] Measure before building on it (plan §3, Dell + VM): D1 — php-cgi's own parent
+    (children spawned, respawned, killed with the parent; the listener's owning pid; job
+    breakaway from the app's launch contexts; memory per child; peak concurrency on a
+    block-editor load); D2 — who holds loopback :53 and who ANSWERS it, per state (clean,
+    hotspot/ICS, Hyper-V, WSL2 NAT + mirrored, Docker Desktop); D5 — unsigned NSIS through
+    Edge and Chrome: every dialog verbatim, the clicks, and whether the next build repeats them
+  - [ ] W3 step 0 — a half-ported build fails out loud (plan §3a Q1): panic hook →
+    `crash.log` + a Windows message box; `Error::Unported` stubs instead of `todo!()` (50
+    today), scan-enforced under `platform/windows/`, ledger row
+  - [ ] Per-OS version answers (plan §3a Q3): PostgreSQL driver, Xdebug, curl resolver, the
+    update catalog's OS token (not a new field — shipped Intel apps would take Windows rows),
+    the cache marker — each before the Windows feature it gates, each with a test that the
+    Windows answer differs where the builds do
+  - [ ] Busy-workers signal, macOS too (plan §3 D1(b)): today neither OS tells a user that a
+    slow site is a full pool; ESTABLISHED connections on the pool port ≥ workers, sustained →
+    the Services row + health log. Done when N+2 parallel `sleep(5)` requests turn it on and off
   - [x] W0 — Windows compile check on the Mac (owner: local `cargo xwin check --all-targets`
     for src-tauri + cli, not Actions — private repo) ✓ 12 Sep 2026 — `scripts/windows-check.sh`,
     exit code is the verdict; first run RED, 29 error sites (19 src-tauri, 10 cli), now the
@@ -79,8 +97,8 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   - [ ] W7 — ShellRunner, autostart, tray (includes the Windows half of the browser-stub row)
   - [ ] W8 — `rex` CLI + MCP over named pipes; `rex.exe` on PATH
   - [ ] W9 — frontend on WebView2 (Windows paths, Ctrl shortcuts, fonts)
-  - [ ] W10 — Redis/Apache/Xdebug (per D4) refused in core with an honest message
-  - [ ] W11 — NSIS installer, Authenticode, Windows release job, updater, winget
+  - [ ] W10 — Redis/Apache/Xdebug/MariaDB (per D4) refused in core with an honest message
+  - [ ] W11 — NSIS installer, Authenticode (if D5 rules it in), Windows release job, updater, winget
   - [ ] W12 — launch gates: verify on the Windows runner, SMOKE-TEST + INSTALL Windows
     sections, clean Windows 11 VM pass
 

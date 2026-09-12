@@ -2,7 +2,10 @@
 
 **Status:** IN PROGRESS — W0, W1 and W2 done 12 Sep 2026: both crates compile for Windows,
 `scripts/windows-check.sh` runs inside `verify.sh`, and the Windows x64 artifacts are pinned
-and swept. W3 onward waits on the owner's rulings D1, D2 and D4–D6 (§3; D3 is ruled). Planned against `e0d287c`. Open work is tracked as the
+and swept. **The owner ruled D1, D2, D4 and D6 on 13 Sep 2026** (D3 on 12 Sep); D5's signing
+waits on an unsigned-installer measurement. D1's supervision and worker count, and the owner's
+four pre-W3 questions, are answered in writing in §3 and §3a; W3 starts with §3a's step 0.
+Planned against `e0d287c`. Open work is tracked as the
 "Windows launch" row in `docs/TODO.md`; this file is the reasoning behind it.
 
 macOS is stable and feature-rich (Phases 1–3 shipped). The owner wants a Windows release.
@@ -178,23 +181,134 @@ too: upstreams spell Windows differently (`windows_amd64`, `windows-x86_64`,
 
 ## 3. Decisions the owner rules on before W3
 
-**D1 — PHP process model (Windows has no php-fpm).** Official Windows PHP ships
-`php-cgi.exe`; `PHP_FCGI_CHILDREN` does not fork workers on Windows, so one process serves
-one request at a time. The non-negotiable "one php-fpm pool per PHP version" becomes
-"one supervised php-cgi *group* per PHP minor".
-*Recommendation:* rexenv spawns a small fixed number of `php-cgi.exe` workers per minor
-(e.g. 4), each on its own port, fronted by an nginx `upstream`; a worker that exits
-(`PHP_FCGI_MAX_REQUESTS`, a crash) is respawned by the supervisor. Needs a new port block
-in `docs/PORTS.md` — the `9700 + major*10 + minor` formula has one slot per minor.
+**D1 — PHP process model (Windows has no php-fpm).** **RULED 13 Sep 2026: accepted — one
+supervised php-cgi *group* per PHP minor replaces "one php-fpm pool per PHP version" — with
+(a) supervision and (b) the worker count settled in writing here, before W3, rather than
+discovered in W4.** Official Windows PHP ships `php-cgi.exe`, no php-fpm.
 
-**D2 — `.rex` DNS (no `/etc/resolver`).** Windows routes a suffix to a server with an NRPT
+**Correction, from php-src the same day.** This section used to say `PHP_FCGI_CHILDREN` does
+not fork workers on Windows, so rexenv would spawn N workers itself, one port each. **Wrong.**
+`sapi/cgi/cgi_main.c` and `main/fastcgi.c` (PHP-7.4 and PHP-8.3 branches, read 13 Sep 2026)
+carry a Windows arm: started as `php-cgi.exe -b 127.0.0.1:<port>` with
+`PHP_FCGI_CHILDREN=N`, the process binds the port once (`fcgi_listen`, backlog 128 or
+`PHP_FCGI_BACKLOG`), then becomes a **parent** that `CreateProcessW`s N children (capped at
+64) on its own command line, handing each the listening socket as its stdin with
+stdout/stderr invalid. A child therefore sees `fcgi_is_fastcgi()` true, **ignores `-b`**
+(`case 'b': if (!fastcgi)`), detects a socket rather than a pipe (`!GetNamedPipeInfo`) and
+`accept()`s on the shared socket — one accept queue, so the next connection goes to whichever
+child is idle. The parent puts every child in a Job Object with
+`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` and loops on `WaitForMultipleObjects`, respawning any
+child that exits (`PHP_FCGI_MAX_REQUESTS`, a crash). That is php-fpm's master in miniature,
+**read from source and not yet run**: every *measure* below is W4's first hour on the Dell,
+before anything is built on it.
+
+*(a) Supervision — who is master, who supervises while the app is closed, what identifies ours.*
+- **Master = php-cgi's own parent, one per minor, on the minor's existing pool port**
+  (`9700 + major*10 + minor`). No new port block — the old draft's per-worker ports go with
+  its per-worker processes. rexenv supervises the PARENT exactly as it supervises the php-fpm
+  master on macOS; the parent supervises its children. With the app closed, children still
+  come back after `PHP_FCGI_MAX_REQUESTS` because the parent respawns them, not rexenv — the
+  same reason a macOS pool survives a quit.
+- **Outliving the app.** rexenv spawns the parent detached, hidden (`CREATE_NO_WINDOW`) and
+  **outside any job the app itself sits in** (`CREATE_BREAKAWAY_FROM_JOB`) — a terminal or
+  IDE that launched rexenv inside a kill-on-close job would otherwise take every pool down
+  with the app. The parent gets a real stderr (the pool log): started with stdout and stderr
+  both invalid and stdin valid, it would take itself for a child. *Measure:* whether
+  breakaway is allowed from the launch contexts that matter (Explorer, Start, the logon task,
+  Windows Terminal). Where it is refused, the start fails loud and names why; it never
+  silently becomes a pool that dies with the app.
+- **Orphan workers — closed by the OS, with one hole.** The children live in the parent's
+  kill-on-close job: the parent dies by any means, `TerminateProcess` included, the job
+  handle closes, and Windows kills the children. The macOS class (a SIGKILLed master leaking
+  workers that hold the port) cannot happen — **unless `AssignProcessToJobObject` fails,
+  where php-cgi only prints to stderr and keeps the child.** rexenv reads the parent's
+  stderr, and "unable to assign child process to job object" fails the start: the group is
+  stopped and the line quoted. The orphan sweep stays anyway; it is what shows the hole stays
+  closed.
+- **Positive identification — never a bare pid or port.** The group is ours only if all four
+  hold, the macOS `owned_listeners` / `owned_master` shape with Windows sources:
+  1. a listener on our pool port (`GetExtendedTcpTable` → owning pid);
+  2. that process's image (`QueryFullProcessImageNameW`) is the cached `php-cgi.exe` for
+     this minor under our app-data `bin\`;
+  3. its command line carries our marker, `-c "<app-data>\config\php-cgi-<minor>.ini"` — the
+     role php-fpm's rewritten title plays on macOS. Children run the parent's command line
+     verbatim (`GetCommandLineW`), so the same marker identifies them;
+  4. the master is the root of that set: a member whose parent is also a member is a child.
+     Windows keeps a dead parent's pid in the child's record and reuses pids, so a parent pid
+     counts only if that process was created before the child (`process_start_token` on
+     Windows = creation time).
+  *Measure:* which pid the TCP table reports for a listener its creator handed to children
+  (expected: the parent; the root rule in 4 gives the same answer either way), and that
+  reading a same-user process's command line needs no elevation.
+- **Adopt on relaunch:** `adopt_startup` finds the group by 1–4 and adopts the master. A
+  master whose children do not answer is not running — ownership AND liveness.
+- **Hazards, written down now:**
+  - The respawn loop has **no backoff**. A child that dies at startup (bad ini, missing DLL)
+    respawns as fast as `CreateProcess` allows, burning a core while the port still listens.
+    Readiness and health are a real FastCGI round trip, never a listen check; a group that
+    fails one is stopped with the parent's stderr quoted.
+  - `fcgi_listen` sets **`SO_REUSEADDR`**, which on Windows lets a second socket bind a port
+    already in use. So php-cgi can "start" on a port another program holds (unless that one
+    used `SO_EXCLUSIVEADDRUSE`), and another program can bind ours. Bind success proves
+    nothing here: `ensure_free` reads the TCP table before the start, and the health check
+    confirms our group is the one answering.
+  - **Stop is `TerminateProcess` on the parent**: the children have no console, so php-cgi's
+    Ctrl+C handler is unreachable, and in-flight requests are cut. Acceptable for local
+    development; ARCHITECTURE says so when W4 lands.
+  - nginx on Windows is `select()`-based (upstream calls the build beta) — fine for one
+    developer, recorded so a later "slow" report checks it.
+
+*(b) Worker count — measured or assumed, and can a user tell?*
+- **"4" was assumed.** Nothing measured it. The pool it replaces is `pm = dynamic`,
+  `pm.max_children = 10` (`core/services.rs:127`), so 4 would have been a Windows-only
+  downgrade nobody chose. And `PHP_FCGI_CHILDREN` is static: N processes always, no spare
+  range.
+- **Why a small N is worse than it looks for WordPress:** a request holds its worker for its
+  whole life, and WordPress calls itself. The block editor fires several REST requests in
+  parallel on load, WP-Cron's spawn takes a worker, heartbeat polls, and the theme/plugin
+  file editor's save makes a *blocking* loopback request while its own worker waits — N=1
+  deadlocks that outright, and any N stalls once N requests each wait on a loopback. Excess
+  connections do not fail: they sit in the listen backlog, so the user sees a slow page, then
+  nginx's 504 after `fastcgi_read_timeout` — which reads as "rexenv is slow on Windows".
+- **Default: parity with macOS, 10 per minor**, lowered only by a measurement. *Measure on
+  the Dell:* private bytes per idle and per busy child; peak concurrent FastCGI connections
+  during a block-editor load of a fresh site and a WooCommerce admin page; 10 × that memory
+  against 8 GB with two minors running.
+- **Can a user tell it is worker exhaustion? Not today — on macOS either.** php-fpm writes
+  "server reached pm.max_children" to its own log and rexenv surfaces nothing (grep, 13 Sep
+  2026: `max_children` appears only in the pool template and its test). php-cgi writes
+  nothing at all. **The signal, both OSes, with W4:** sample the ESTABLISHED connections to
+  the pool port (the TCP table W3's listener lookup reads; `lsof` on macOS) against the
+  worker count; sustained at or above it, the Services row says "PHP 8.3: all 10 workers busy
+  — requests are queuing" and the health log records it with the site host from nginx's
+  access log. *Done when:* N+2 parallel `sleep(5)` requests to a fixture site turn it on, and
+  it turns off after. A per-minor worker setting follows only if the Dell's numbers say 10
+  is wrong for somebody.
+
+**D2 — `.rex` DNS (no `/etc/resolver`).** **RULED 13 Sep 2026: the agent on 127.0.0.1:53 +
+one NRPT rule per TLD is accepted; the `hosts` fallback is REFUSED for now.**
+Windows routes a suffix to a server with an NRPT
 rule (`Add-DnsClientNrptRule -Namespace .rex -NameServers 127.0.0.1`, admin). **NRPT has
 no port parameter** (verified against the cmdlet reference, 12 Sep 2026), so the DNS
-agent must answer on **127.0.0.1:53**, not 15353.
-*Recommendation:* agent on 127.0.0.1:53 + one NRPT rule per TLD (one UAC prompt).
-Fallback when 53 is taken: per-site `hosts` entries (no wildcards — subdomain multisite
-degrades, and the UI must say so). *Unmeasured:* whether anything commonly binds loopback
-:53 on a developer's Windows machine (ICS/SharedAccess, Hyper-V, WSL, Docker Desktop).
+agent must answer on **127.0.0.1:53**, not 15353 — one UAC prompt for the rules.
+*Why the fallback is refused (owner):* `hosts` is an OS-level file every tool on the machine
+shares, and rexenv's rule is never to overwrite a file somebody else owns — `/etc/resolver`
+got its consent-gated takeover for exactly that reason. And `hosts` has no wildcards, so
+subdomain multisite degrades: the fallback would be a different product, not a degraded
+mode of this one. `hosts` is a later conversation.
+*When :53 is taken:* **refuse**, in the `port_conflict_help` shape — the holder by name (the
+process image, plus the service name when the pid is a `svchost.exe`) and what to do about it.
+*Measure first (a W6 prerequisite, on the Dell and the VM) — the earlier draft called this
+unmeasured and still proposed a fallback for it.* Who holds loopback :53 in each state: a
+clean install; Mobile hotspot / ICS (`SharedAccess`) on; Hyper-V with the Default Switch up;
+WSL2 running (NAT, and mirrored networking with `dnsTunneling`); Docker Desktop running. For
+each, `Get-NetUDPEndpoint -LocalPort 53` and `Get-NetTCPConnection -LocalPort 53` (address
+and owning pid → process and service). **And who ANSWERS, not only who binds:** on macOS,
+Herd shadow-binds 127.0.0.1:443 with no bind error, and Windows lets a specific-address bind
+coexist with another process's wildcard bind unless one side set `SO_EXCLUSIVEADDRUSE` — so
+each state also runs `Resolve-DnsName probe.rex -Server 127.0.0.1` against a bound agent
+and records which process replied. The agent binds with `SO_EXCLUSIVEADDRUSE`. If no common
+state holds loopback :53, the fallback question closes itself.
 
 **D3 — Local IPC (the CLI, MCP and Caddy admin sockets).** **RULED 12 Sep 2026 by the
 owner: named pipes with a current-user ACL, behind a new 13th trait `LocalIpc`** (chosen
@@ -211,29 +325,110 @@ rule stands: never TCP `:2019`.** Measure first whether Caddy on Windows accepts
 `unix//` admin address (Go supports AF_UNIX on Windows 10 1803+; unconfirmed for Caddy's
 admin listener). If not, this is a blocker to escalate, not a rule to relax.
 
-**D4 — What ships in Windows v1.** Official, checksum-lockable artifacts exist for most
+**D4 — What ships in Windows v1.** **RULED 13 Sep 2026: accepted as written.**
+Official, checksum-lockable artifacts exist for most
 of the stack (§4). Redis has no official Windows build; Apache on Windows means Apache
 Lounge (a third-party trust decision); Xdebug DLLs must match PHP's NTS + compiler.
 *Recommendation:* v1 = Caddy, nginx, PHP 7.4–8.5, MySQL, PostgreSQL, Mailpit, Adminer,
 WP-CLI, Composer, cloudflared; FrankenPHP if W4 proves it. Redis, Apache and Xdebug are
 refused in CORE on Windows with an honest message — the shape OpenLiteSpeed already
 uses (`ensure_server_available`) — until each is proven.
+*One gap the list leaves:* **MariaDB**. macOS ships it (bundle pins), there is no Windows
+pin, and neither list above names it. PORTS.md's Windows table already resolves it to
+nothing; W10 refuses it with the same message unless the owner rules it into v1 (MariaDB
+publishes an official Windows zip).
 
-**D5 — Signing, installer, updates, distribution.**
-Unsigned Windows installers hit SmartScreen's "Windows protected your PC".
-*Recommendation:* NSIS installer (per-user, no admin to install); Authenticode signing
-(Azure Trusted Signing is the cheapest route — needs an account, like Apple's
-`docs/SIGNING.md`); updates through rexenv's OWN signed-manifest channel with a Windows
-`AppBundle` (a running `.exe` is locked — stage, exit, swap, relaunch). The reasons
-`docs/archive/PLAN-self-update.md` P1 gave for refusing `tauri-plugin-updater` were
-macOS-specific; re-check them for Windows, do not inherit the ruling blind.
+**D5 — Signing, installer, updates, distribution.** **RULED 13 Sep 2026: signing is NOT
+decided — measure first.** NSIS (per-user, no admin to install) and the distribution line
+stand as the direction.
+*Why not decide now (owner):* Azure Trusted Signing needs an account — a recurring
+commitment — and macOS got the opposite ruling: no $99 Developer ID, ad-hoc signing plus
+de-quarantine. But the cost of going unsigned is higher on Windows: macOS pays one `xattr`
+per install, while Windows shows "Windows protected your PC" to every user on every
+download, and an unsigned file's SmartScreen reputation is per hash, so each release starts
+from zero.
+*Measure (a W11 prerequisite, on the Dell):* build an unsigned NSIS installer; download it
+through Edge and through Chrome, so it carries the Mark of the Web; record every dialog
+verbatim, the clicks from download to first window, and whether a second build (a new hash)
+repeats them. Then the owner decides.
+*Self-update — P1's refusal reasons re-checked, not inherited* (read against
+`docs/archive/PLAN-self-update.md` P1, 13 Sep 2026; the plugin's Windows code path is W11's
+to read): (1) the install that `rm -rf`s the app as root through osascript — macOS-only,
+does not carry; (2) `restart()` bypassing the ONE quit gate — Tauri's behaviour, not macOS's:
+carries; (3) unsigned `latest.json` whose version is not bound to the signed bytes, a
+rollback — OS-independent: carries; (4) the signing key forced onto the build machine —
+OS-independent: carries; (5) `rustls-platform-verifier` trusting rexenv's own CA — on Windows
+it asks CryptoAPI, which reads the CurrentUser Root store W5 installs into: carries. Four of
+five hold from the text alone, so rexenv's OWN signed-manifest channel is the expected
+answer; what is new is the swap (a running `.exe` cannot be replaced: stage, exit through
+the gate, a relauncher swaps and starts).
 Distribution: GitHub release + a winget manifest (the Homebrew tap's counterpart).
 
-**D6 — Supported Windows and architectures.**
+**D6 — Supported Windows and architectures.** **RULED 13 Sep 2026: accepted** — Windows 11
+x64 supported; Windows 10 22H2 best-effort; arm64 runs the x64 build under emulation,
+unsupported.
 Windows 10 left mainstream support on 14 Oct 2025. Official PHP Windows builds are
 x86/x64 only (no arm64), and PostgreSQL's portable build is x64 only.
-*Recommendation:* Windows 11 x64 supported; Windows 10 22H2 best-effort; arm64 runs the
-x64 build under emulation, unsupported.
+
+## 3a. Answered before W3 (the owner's questions, 13 Sep 2026)
+
+**Q1 — How far does a half-ported build get on Windows, and what does it say when it
+stops?** Read from the tree, not run — there is no Windows host yet.
+
+- `main` → `run()`: the single-instance claim is `cfg(unix)`, so on Windows **nothing stops
+  a second instance** today (W8's named pipe becomes the claim). `mark_app_process`, the
+  plugins and the URI-scheme handler touch no stub. `setup` calls `platform::current()` — a
+  struct of unit stubs, fine — and the first stub it reaches is
+  `platform.paths().log_dir()` (`lib.rs:199`) → `todo!("windows log_dir")`. The `.ok()`
+  around it never runs: `todo!` panics, it does not return `Err`. (A login launch reaches
+  `dns().resolver_path` one step earlier, same outcome.)
+- **What the user sees:** a release build carries `windows_subsystem = "windows"`
+  (`main.rs`) — no console — and the tree installs no panic hook (grep `set_hook`: none).
+  The message `not yet implemented: windows log_dir` goes to a stderr nobody has. `setup`
+  runs inside the event loop's callback, and a panic unwinding out of that `extern "system"`
+  frame aborts. Expected, to be confirmed on the first launch: **no window, no process, and
+  nothing on screen says why** — at most an Application Error in Event Viewer. A debug build
+  (`tauri dev`) has a console and prints the message.
+- **A stub reached later, from an IPC command,** panics on a tokio worker. tauri 2.11.3's
+  source has no `catch_unwind` (grep), so the task dies and the frontend's promise never
+  settles: **a spinner that never ends**, again with no message. That is the worst shape for
+  W3–W12, when the half-ported app is run between every task.
+- **Recommendation — W3 step 0, before any stub is filled:** (1) a panic hook installed first
+  thing in `main` on every OS: message, location and backtrace appended to `crash.log` in the
+  log dir when `Paths` answers and in `std::env::temp_dir()` when it does not, plus a native
+  message box naming the file on a Windows release build — a half-ported build fails out
+  loud; (2) Windows stubs stop being `todo!()`: one that returns `Result` returns a named
+  `Error::Unported("windows log_dir")` reading "rexenv on Windows: … is not ported yet", so a
+  half-ported *feature* is an ordinary error toast while the rest of the app runs; one that
+  cannot return an error panics through a single `unported!` macro with the same wording,
+  which the hook then records; (3) a ledger row — no `todo!()` under `platform/windows/`,
+  scan-enforced, and the hook's file write plant-proven. Today: 50 `todo!()` in
+  `platform/windows/mod.rs`.
+
+**Q2 — PostgreSQL's publisher digests.** An omission, not an exception; our own downloads now
+match all three. §5 W2 and ledger #335.
+
+**Q3 — Which per-version answers must be per-OS?** The "one fact, two places" sweep: every
+function the PHP version row, the site guards and the updater consult about a version, read
+13 Sep 2026. None takes an OS today. The row the owner called the read-only "exists" row
+matched no function by that name; the version row (`PhpVersionView`, `core/php.rs`) is where
+these answers meet, and every field it carries is below.
+
+| Answer | Where (callers) | Keyed by today | True on Windows? | Must become |
+|---|---|---|---|---|
+| PostgreSQL driver present — `pdo_pgsql_supported` → `php_has_pdo_pgsql` | `binaries.rs:866` (`sites.rs:163` refusal, `php.rs:387` switch guard, the row's `postgres_supported`, `oldest_pdo_pgsql_minor`) | the version has a rexenv self-hosted tag, i.e. is one of our macOS builds | **Wrong basis.** The tag exists for the version string, so Windows would say yes for 8.1–8.5 and no for 7.4/8.0 — about php.net's build, which ships `ext/php_pdo_pgsql.dll` for every version and loads it only if our ini enables it | `(os, version)`, answered from the artifact that OS resolves; W4 measures the DLL loading per minor |
+| Xdebug available, why not, which version — `xdebug_supported`, `xdebug_unavailable_reason`, `xdebug_version_for` | `binaries.rs:589`–`625` (`service_manager.rs:710` debug pools, `php.rs:252` debug port, `commands/sites.rs:1030`, the row) | minor → a Homebrew `arm64_sonoma` bottle | **Wrong.** Says available for 8.1+, while D4 refuses Xdebug on Windows. The "static build exports no Zend symbols" sentence describes our static macOS builds; php.net's PHP loads DLL extensions | `(os, minor)`; Windows gives D4's refusal, never the static-build sentence |
+| curl's resolver — `wp_dns::resolver_for` | `wp_dns.rs:78` (the c-ares exposure count `:109`, its notice `:378`) | minor → the measured macOS builds (7.4 threaded, 8.x c-ares) | **Unmeasured, and the test would lie:** `every_pinned_php_has_a_measured_curl_resolver` passes on Windows with macOS measurements | `(os, minor)`, with a Windows measurement per minor once NRPT exists (W6) |
+| Update offered, its cost, the artifact installed — `newer_than`, `artifact`, `update_cost`, `catalog_arch` | `updates.rs:245`–`350` (`commands/php.rs:35`, `commands/database.rs:242`, `binaries.rs:941`, `:1263`) | `arch` only: `arm64` / `x86_64` | **Dangerous.** A Windows x64 host matches the macOS Intel rows: offered a macOS patch, downloads a macOS tarball, the digest matches, the spawn fails | an OS dimension that is **not a new `os` field** — `Artifact` has no `deny_unknown_fields`, so every shipped Intel Mac app would ignore the field and take a Windows `x86_64` row as its own. An arch token old apps cannot match (`windows-x86_64`) or a separate signed document; W11 decides |
+| Cache-marker staleness — `cache_matches_pin` | `binaries.rs:1444` | self-hosted tag per version | Harmless: an unmarked Windows 8.1–8.5 cache re-downloads once | `(os, version)`, with row 1 |
+| Pool port / debug port — `fpm_port`, `debug_fpm_port` | `core/php.rs` | minor | The pool port holds under D1(a) (one group per minor); debug pools do not exist there (D4) | pool port unchanged; debug port refused per OS |
+| Security-support end — `eol_since` | `php.rs:190` | minor → php.net's lifecycle dates | Yes — a fact about PHP, not about a build | unchanged |
+| Upstream has a newer patch — `php_upstream::is_newer` | `core/php.rs` `list_versions` | php.net source releases | Yes as a fact. windows.php.net lags a source release by days, so any sentence around it saying rexenv has "not built" it is macOS wording | unchanged; the copy is checked in W9 |
+| Pinned patch per minor — `PHP_VERSIONS` | `binaries.rs` | minor | Yes — W2 pinned the Windows zips at the macOS patches (php.net's `archives/` keeps them), so it is one fact until a signed update moves one OS (row 4) | unchanged until then |
+
+**The rule for W4 onward:** an answer about a BUILD takes `(os, version)`; an answer about PHP
+itself stays keyed by version. Each per-OS function gets a test asserting the Windows answer
+differs wherever the builds do, so a macOS measurement cannot pass for Windows again.
 
 ## 4. Upstream availability (measured 12 Sep 2026)
 
@@ -246,8 +441,8 @@ looked at yet (W2 measures and hashes every row before it is pinned).
 | Mailpit 1.30.3 | `mailpit-windows-amd64.zip`, `-arm64.zip` | ✓ |
 | cloudflared 2026.6.1 | `cloudflared-windows-amd64.exe` / `.msi` | ✓ |
 | FrankenPHP 1.12.4 | `frankenphp-windows-x86_64.zip` | ✓ (whether it runs our overrides: W4) |
-| PostgreSQL 18.6.0 | theseus-rs `x86_64-pc-windows-msvc` `.zip`/`.tar.gz` + `.sha256` | ✓ (16/17 pins unchecked) |
-| PHP | php.net `php-X.Y.Z-nts-Win32-vs16/vs17-x64.zip` + `sha256sum.txt`; current dir lists 7.4.33, 8.0.30, 8.1.34, 8.2.33, 8.3.33, 8.4.25, 8.5.10; **no arm64** | ✓ — note 8.2/8.3/8.4/8.5 patches differ from the macOS pins, so `php::pdo_pgsql_supported`'s per-PATCH answer must be per-OS too |
+| PostgreSQL 18.6.0 | theseus-rs `x86_64-pc-windows-msvc` `.zip`/`.tar.gz` + `.sha256` | ✓ (all three pinned, and hashed by us — §5 W2) |
+| PHP | php.net `php-X.Y.Z-nts-Win32-vs16/vs17-x64.zip` + `sha256sum.txt`; current dir lists 7.4.33, 8.0.30, 8.1.34, 8.2.33, 8.3.33, 8.4.25, 8.5.10; **no arm64** | ✓ — note 8.2/8.3/8.4/8.5 patches differ from the macOS pins, so `php::pdo_pgsql_supported`'s per-PATCH answer must be per-OS too (W2 then pinned the Windows zips at the macOS patches from `archives/`; the per-OS sweep is §3a Q3) |
 | nginx | nginx.org Windows zip (upstream calls it beta: `select()`, limited connections — fine for local dev) | unchecked |
 | MySQL 8.4 / 8.0 | Oracle Windows `noinstall` zip | unchecked |
 | Xdebug | xdebug.org DLLs per PHP minor / NTS / compiler | unchecked |
@@ -313,14 +508,16 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   ours was taken (#335). **What W2 does not prove:** that any of these runs.
   `resolve` on a real Windows host still calls `set_executable` / `prepare_binary`, which
   are `todo!()` there — that is W3.
-- **W3 — Foundations.** `Paths` (`%LOCALAPPDATA%\rexenv`), `PermissionManager` (owner-only
+- **W3 — Foundations.** **Step 0 first (§3a Q1): the panic hook and `Unported` stubs, so every
+  build from here on fails out loud.** Then `Paths` (`%LOCALAPPDATA%\rexenv`), `PermissionManager` (owner-only
   ACLs), `BinaryProvider` (strip the `Zone.Identifier` stream, no codesign),
   `ProcessSupervisor` (hidden + detached spawn so services OUTLIVE the app, graceful
   per-service stop, pid → exe/cmdline for ownership, listener lookup via
   `GetExtendedTcpTable`, conflict help naming HTTP.sys and the Hyper-V excluded port
   ranges). *Done when:* MySQL and Mailpit start, survive an app quit, and are adopted on
   relaunch — on a real Windows machine.
-- **W4 — Serve a WordPress site.** D1's php-cgi groups, nginx Windows config (forward
+- **W4 — Serve a WordPress site.** D1's php-cgi group — its measurements first (§3 D1(a)), then the group, its
+  positive-ID chain and D1(b)'s busy-workers signal; nginx Windows config (forward
   slashes, every path quoted), mail through the SMTP ini keys, WP-CLI/Composer via the
   site's PHP. *Done when:* a one-click WordPress site loads through nginx and its mail
   lands in Mailpit.
@@ -329,7 +526,8 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   shape; `CertTrustManager` into the CurrentUser Root store (Windows shows its own
   confirmation) plus the Firefox enterprise-roots path. *Done when:* `https://<site>.rex`
   shows a valid lock in Edge, Chrome and Firefox.
-- **W6 — DNS + privileges.** D2's agent and NRPT rules; `PrivilegeManager` as a UAC
+- **W6 — DNS + privileges.** D2's :53 measurement first, then the agent, the NRPT rules and the refusal that names a
+  :53 holder; `PrivilegeManager` as a UAC
   elevation that says what it is for (the macOS dialog rule, ledger #579's family);
   `DnsAgentManager` as a logon Scheduled Task with restart. *Done when:* `*.rex` resolves
   after a reboot with the app closed.
@@ -341,7 +539,9 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
 - **W9 — Frontend on WebView2.** Windows paths (`C:\…`) in inputs and display,
   Cmd → Ctrl shortcuts, font metrics; divergences into `docs/DESIGN.md`.
 - **W10 — Feature gates per D4.** Refused in core, honest in the UI, one arm to enable later.
-- **W11 — Packaging and updates per D5.** NSIS bundle, signing, a Windows job in
+  MariaDB joins Redis, Apache and Xdebug unless ruled in. §3a Q3's per-OS answers land with
+  the feature each one gates, not here in a batch.
+- **W11 — Packaging and updates per D5.** NSIS bundle, signing (only after D5's measurement and ruling), a Windows job in
   `.github/workflows/release.yml`, Windows `AppBundle`, winget manifest.
 - **W12 — Launch gates.** `verify.sh` runnable on the Windows runner (Git Bash);
   macOS-only examples tiered or ported; a Windows section in `docs/SMOKE-TEST.md` run on
@@ -377,7 +577,7 @@ claims coverage that does not run.
 ## 8. Docs this changes as it lands
 
 `docs/ARCHITECTURE.md` (the OS rule, per-OS process model, DNS, IPC), `docs/MAP.md`
-(new trait, Windows modules), `docs/PORTS.md` (php-cgi block, DNS :53 on Windows,
+(new trait, Windows modules), `docs/PORTS.md` (the php-cgi group on the existing pool ports — D1(a), no new block; DNS :53 on Windows,
 Windows pins), `docs/CLAIM-LEDGER.md` (#163 widened; every new "never"), `docs/TESTING.md`,
 `docs/SMOKE-TEST.md`, `docs/INSTALL.md`, `docs/RELEASING.md`, `docs/DESIGN.md`,
 `docs/CLI-ROADMAP.md` (named-pipe transport).
