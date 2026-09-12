@@ -745,7 +745,8 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   (skips `wp config create` when wp-config.php exists but calls
   `create_database` unconditionally), and `phase_defs` blanket-skips WP phases
   on `docroot_managed == Some(false)` — needs an explicit opt-in flag.
-- [ ] **Valet compatibility tails** (recorded in the migration research, §2).
+- [x] **Valet compatibility tails** (recorded in the migration research, §2). ✓ 12 Sep 2026 —
+  the last child closed with the owner's real link-farm import.
   - [x] Laravel's `/storage/*` URI mapping ✓ 2 Sep 2026, ledger #448 — emitted for a
     Laravel site whose `storage/app/public` exists, with php AND dotfiles refused
     INSIDE the block (the `^~` prefix that makes the mapping work also beats the
@@ -757,7 +758,7 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     positive ID via the include Valet appends to the Homebrew nginx.conf (never "Valet
     is installed"), and the offered fix is `valet stop` rather than
     `brew services stop nginx`, which leaves their Valet half-stopped.
-  - [ ] Serving one site under two domains. **Foundation landed 2 Sep 2026** (ledger
+  - [x] Serving one site under two domains. **Foundation landed 2 Sep 2026** (ledger
     #450): schema v42 `site_domains` (aliases only — the primary stays on the site
     row), `core::sites::{all_domains, validate_alias, add_alias, remove_alias}` with
     the cross-table refusal SQL cannot express. **Serving half + CLI landed 2 Sep 2026**
@@ -778,7 +779,10 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     **12 Sep 2026, owner's `valet link tr-www`**: the Import row showed no extra domain —
     the scan folded `tr-www.test` into `tr.test` (`valet_scan_check`: both ready, one
     folder) but `Import.tsx` never rendered `extraDomains`. Fixed: the row says "also
-    answers on …"; the import-and-both-names-answer leg is still the owner's to run.
+    answers on …" (`88bf851`). ✓ **Owner-run 12 Sep 2026**: the farm imported from the
+    app with both names working — "test korlam thik moto kaj korchhe". (At the time of
+    recording the test site was already gone from rexenv and `tr-www` was still linked
+    in Valet and Herd.)
 - [ ] **`rex` design-first set — ONE item left: raw `wp` passthrough** (a security
   ruling about what the CLI may execute, deliberately not gap-filled). The other four —
   single-site restart (#444), web-tier restart (#445), `wp_user_delete` (#446), progress
