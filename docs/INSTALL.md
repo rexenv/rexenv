@@ -108,6 +108,7 @@ ask for permission a few times. These are expected and all stay on your machine:
    the same way on first use if you pick one in Settings.)
 2. **Keychain prompt** — to **trust rexenv's local Certificate Authority**, so your
    local sites get a valid green-lock HTTPS cert (it signs only your local sites).
+   This dialog is titled **rexenv** too, and asks for your login password.
 3. **Admin password** — to let the built-in edge server use ports **80/443** when
    you start your services.
 

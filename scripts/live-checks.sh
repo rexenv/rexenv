@@ -93,6 +93,7 @@ caddy_443 system
 caddy_fetch network
 caddy_recovery_demo system
 caddy_serve service
+cert_trust_prompt_check system
 cli_repo_check system
 cli_socket_check stack
 cli_wp_install_check network

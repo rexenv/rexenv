@@ -1141,7 +1141,7 @@ written procedure; "manual" means scripted-for-a-human, never remembered.
 |---|---|
 | Gatekeeper/quarantine first launch from the dmg | PUBLISH-TESTING §A |
 | Privileged prompts (foreground, cancel/retry) + root daemon on-disk ownership (ledger #67/#155) | SMOKE-TEST robustness + PUBLISH-TESTING §B |
-| Keychain CA trust dialog | SMOKE-TEST first-run |
+| Keychain CA trust dialog | `cert_trust_prompt_check` (system tier: cancel mapping, trust + untrust through the real API from a non-main thread, fixture-owned CA removed by its own SHA-1) + SMOKE-TEST first-run (the rexenv name + logo, which only a bundle has) |
 | Second-device tunnel reach; router DNS negative-cache | SMOKE-TEST tunnels (explicitly not-a-bug note) |
 | Resolver takeover/restore on a clean VM | PUBLISH-TESTING §F |
 | Sleep/wake + reboot edge recovery; DNS agent handoff (#46) | SMOKE-TEST robustness (added, T13) |

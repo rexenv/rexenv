@@ -99,6 +99,15 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   changes.", in the branded applet and the osascript fallback alike. The reason is a
   required typed argument of `run_privileged`, not a `&str`: beside the script, swapped
   strings would compile and run the sentence as root.
+- **The keychain (CA trust) dialog is rexenv's too** (`platform/macos/keychain_trust.rs`,
+  #579). It is titled after the process that calls the trust-settings API, so
+  `security add-trusted-cert` read "security" — and running that same command inside
+  the rexenv applet changed nothing (measured). rexenv now calls
+  `SecCertificateAddToKeychain` (login keychain, no dialog) +
+  `SecTrustSettingsSetTrustSettings`/`RemoveTrustSettings` (user domain, the dialog)
+  itself: the packaged `rexenv.app` gets its name and logo, a bundle-less `cargo run` its
+  executable name. A dismissed dialog returns -60006 and reads as a cancel. Cancel still
+  leaves the CA imported, untrusted — as `security` did.
 - **Per-site server overrides** (`OverrideKind` in the manager — one seam, two kinds
   today, OLS drops in later if a macOS artifact ever exists):
   - **FrankenPHP** (single static binary, embeds its own PHP): loopback backend on a

@@ -4,7 +4,8 @@
 //!  1. install the `/etc/resolver/rex` file (root) — via `PrivilegeManager`
 //!     (one admin prompt);
 //!  2. trust the local CA — on macOS this writes the USER login keychain and
-//!     `security` shows its OWN native auth dialog (no root).
+//!     rexenv itself raises the keychain dialog (no root; called in-process so
+//!     the dialog is titled rexenv, not `security` — `platform/macos/keychain_trust.rs`).
 //!
 //! A true single prompt for both isn't possible with osascript (System-keychain
 //! trust needs a UI session a detached-root shell lacks), so we deliberately use

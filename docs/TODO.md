@@ -28,6 +28,21 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [ ] **The keychain (CA trust) dialog is rexenv's too** — 12 Sep 2026, owner, after the admin
+  dialog got its name: the CA trust dialog still read "security". Measured first: wrapping
+  `security` in the rexenv applet does NOT change the title; calling the trust API
+  in-process does (ledger #579).
+  - [x] T1 — `MacosCertTrust` calls `SecCertificateAddToKeychain` +
+    `SecTrustSettingsSet/RemoveTrustSettings` itself ✓ 12 Sep 2026 — 4 L0 incl.
+    `a_dismissed_dialog_reads_as_a_cancel_never_a_status_code`; example
+    `cert_trust_prompt_check` (system tier) written
+  - [x] T2 — `cert_trust_prompt_check` live ✓ 12 Sep 2026 — PASS, owner answering: Cancel →
+    "Keychain permission was cancelled — …"; approve → trusted; approve untrust →
+    untrusted; all on a spawned thread; throwaway CA removed by its SHA-1 (#579)
+  - [ ] T3 — the title from the REAL app: in a packaged build (the installed
+    `/Applications/rexenv.app` predates this), Settings → re-trust the CA and read the
+    dialog — "rexenv" + logo. Rides SMOKE first-run; #579 stays ◐ until then
+
 - [x] **The admin-password dialog is rexenv's, like Local's** ✓ 12 Sep 2026 — owner: ours
   read "osascript wants to make changes." over a plain lock beside Local's branded prompt.
   Spike measured on macOS 26.6.2 first (name via bundle, badge only once `Assets.car` is

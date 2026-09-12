@@ -70,7 +70,9 @@ nothing.** The silent case is the one that ships to everybody.
   prompt that lost its `PromptReason`. **Tell:** "osascript wants to make changes." over
   a plain lock — the branded applet failed to build or launch and the fallback ran; the
   log line `branded password prompt unavailable` names why.
-- [ ] Keychain prompt to trust the local CA appears and is accepted.
+- [ ] Keychain prompt to trust the local CA appears and is accepted. It is titled **rexenv**
+  with rexenv's logo (#579). **Tell:** a dialog titled "security" — the trust went through
+  the `security` CLI again instead of the in-process call.
 - [ ] Admin prompt for the edge to bind ports 80/443 appears and is accepted.
 - [ ] **The PHP 7.4 licence texts arrive on the COLD path, not by repair.** (Added
   17 Aug 2026 — this leg has never been exercised.) rexenv BUILDS 7.4, so it is the

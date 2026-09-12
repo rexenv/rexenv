@@ -199,7 +199,7 @@ rexenv/
         │   │                   #   ProcessSupervisor, AutostartManager, PermissionManager,
         │   │                   #   ShellRunner, Paths, BinaryProvider, EdgeSupervisor,
         │   │                   #   DnsAgentManager
-        │   ├── macos/          # all 12 impls real (+ app_bundle.rs, relauncher.rs, webview_dialogs.rs, parent_death_guard.rs, activation.rs, prompt_applet.rs)
+        │   ├── macos/          # all 12 impls real (+ app_bundle.rs, relauncher.rs, webview_dialogs.rs, parent_death_guard.rs, activation.rs, prompt_applet.rs, keychain_trust.rs)
         │   └── windows/ · linux/   # todo!() stubs (fill later, no restructuring)
         │
         └── state/              # app state
