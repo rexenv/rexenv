@@ -974,7 +974,11 @@ honest footer —
   permanent nav item" decision once Local joined, and removed the entry point that sat
   inside Settings → DNS & SSL. DNS & SSL now carries only DNS: the borrowed-resolver
   hand-back rows; the leftover-dumps card lives on the Import page with the imports
-  that leave it.
+  that leave it. A link farm is ONE row whose other names show under it ("also
+  answers on …", `extraDomains`) — until 12 Sep 2026 the fold carried them and the
+  import added them, but the row never displayed them, so the owner's real farm
+  (`tr` + `tr-www`) read as a single name and looked lost. On a WordPress site
+  those extra names reach it and redirect to the primary (the multi-name entry above).
 - **Local import** (`core/localwp.rs`; the same `/import` screen, scan and run —
   design record `docs/PLAN-local-import.md`). Local keeps a REGISTRY
   (`~/Library/Application Support/Local/sites.json`), not a symlink farm; the scan

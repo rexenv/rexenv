@@ -733,6 +733,21 @@ const LINK = "https://example.test/a//b";
         );
     }
 
+    /// A link farm folds into ONE row (`fold_same_folder`) and its other names ride
+    /// that row as `extra_domains` — which the Import page never rendered until
+    /// 12 Sep 2026, so the owner's real `tr` + `tr-www` farm read as one name and
+    /// looked lost. The row must show them, in code rather than in a comment.
+    #[test]
+    fn the_import_row_shows_the_names_a_fold_carries() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../src/routes/Import.tsx");
+        let import = strip_ts_comments(&std::fs::read_to_string(&path).expect("the Import route exists"));
+        assert!(import.len() > 1000, "the Import route was emptied or moved — this guard proves nothing");
+        assert!(
+            import.contains("c.extraDomains.join("),
+            "the Import row no longer renders a folded row's extra domains"
+        );
+    }
+
     #[test]
     fn the_new_site_dialog_reads_postgres_support_rather_than_deciding_it() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))

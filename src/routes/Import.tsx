@@ -515,6 +515,18 @@ export function Import() {
                           </span>
                         )}
                       </div>
+                      {/* A link farm folds into this row (`fold_same_folder`); until
+                          12 Sep 2026 its other names were imported but never shown, so
+                          the row read as one name and the owner concluded they were lost. */}
+                      {c.extraDomains.length > 0 && (
+                        <div
+                          className="truncate text-[0.6875rem] text-rex-text-muted"
+                          title={`${SOURCE_LABEL[c.source]} links the same folder under these names too; they import as extra domains of this one site.`}
+                        >
+                          also answers on{" "}
+                          <span className="font-mono text-rex-text">{c.extraDomains.join(", ")}</span>
+                        </div>
+                      )}
                       <div className="truncate font-mono text-[0.6875rem] text-rex-text-muted">
                         {c.servePath ?? c.path ?? "—"}
                         {c.docrootRel ? ` (serving ${c.docrootRel}/)` : ""}

@@ -775,6 +775,10 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     plant-proven). **Still owed**: a REAL link farm imported through the running app —
     this Mac has none, and creating one writes into the Valet tree the import must not
     touch, so it waits for an owner-made `valet link` (ledger #452).
+    **12 Sep 2026, owner's `valet link tr-www`**: the Import row showed no extra domain —
+    the scan folded `tr-www.test` into `tr.test` (`valet_scan_check`: both ready, one
+    folder) but `Import.tsx` never rendered `extraDomains`. Fixed: the row says "also
+    answers on …"; the import-and-both-names-answer leg is still the owner's to run.
 - [ ] **`rex` design-first set — ONE item left: raw `wp` passthrough** (a security
   ruling about what the CLI may execute, deliberately not gap-filled). The other four —
   single-site restart (#444), web-tier restart (#445), `wp_user_delete` (#446), progress
