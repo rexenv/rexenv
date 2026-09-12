@@ -708,6 +708,64 @@ fn cloudflared_arch(arch: Arch) -> &'static str {
     }
 }
 
+// ── Windows x64 artifacts (docs/PLAN-windows-port.md W2) ─────────────────────
+// Every one downloaded and hashed on 12 Sep 2026. Caddy's SHA-512 and PostgreSQL's
+// SHA-256 matched the digests their publishers post; the rest post none we can pin
+// against (php.net's archive has no sha256sum.txt, Mailpit and nginx.org publish no
+// digest, MySQL publishes MD5), so they are pinned from our own download — the
+// practice the macOS rows already follow. x64 ONLY, for every `Arch`: Windows on
+// ARM runs x64 under emulation, and PHP, MySQL, nginx and PostgreSQL publish no
+// arm64 Windows build, so one pinned set is also the only proof there is.
+const CADDY_2_11_4_WIN_AMD64_SHA512: &str = "cd5ccfd86a4b40732cf715890d0dca5bf3f63adefec5a7914de85adf240c60ce7e5d2791631b88ef9758e46b23bb1730e020b9c5d696889740b284ffd4788e35";
+const NGINX_1_30_4_WIN_AMD64_SHA256: &str = "159294214d403f34f0bb4ae598801ab1f6a0d8c8da707f8f08748e294a222a01";
+const MAILPIT_1_30_3_WIN_AMD64_SHA256: &str = "7e9bdf9a299ae6df2c3e73d8c666af8a084dd3ddf5f218522c9cfbdb54e0a015";
+const CLOUDFLARED_2026_6_1_WIN_AMD64_SHA256: &str = "5253e66f1f493c4e13539749f1aa86fd0c61e3072900fec29a44ba046a6d97e2";
+
+/// php.net's Windows builds: NTS x64 zips from the permanent `archives/` path,
+/// which keeps every release (the current-releases directory moves on).
+fn php_windows_sha256(version: &str) -> Option<&'static str> {
+    match version {
+        "7.4.33" => Some("14ae3250d4447c8ccfc4c45a70d90adfbcd61e728d85f0be56a7ddf8f9c8aace"),
+        "8.0.30" => Some("dfb70498ffa2c617f2f655a155564697e3c9cca41709938fd1a5997d1d5b0785"),
+        "8.1.34" => Some("9cfe246cb144076c16f5913a3ef88a474c3dd7e60f0f0c8bb95faf68674016cc"),
+        "8.2.32" => Some("44e561948d6e336ac91cba3e59f074b687e22d9ceb824056f28ed8dfbbfdbe35"),
+        "8.3.32" => Some("67c724e7b675b50d8f0476d816c3e2a3064ce3a53d572575d63c321cc0a3a6cf"),
+        "8.4.23" => Some("826efa189b21f46314ad497ff31467de9f0953292f42b235542be4feea182b48"),
+        "8.5.8" => Some("63a3f6493f37c9ff3e288ec16621222a6cda5167dd1abffec0019e7f18c8e7e9"),
+        _ => None,
+    }
+}
+
+/// The MSVC toolset a php.net Windows file name carries: `vc15` for 7.4, `vs16`
+/// for 8.0–8.3, `vs17` from 8.4 on.
+fn php_windows_toolset(version: &str) -> &'static str {
+    if version.starts_with("7.") {
+        "vc15"
+    } else if ["8.0.", "8.1.", "8.2.", "8.3."].iter().any(|p| version.starts_with(p)) {
+        "vs16"
+    } else {
+        "vs17"
+    }
+}
+
+fn mysql_windows_sha256(version: &str) -> Option<&'static str> {
+    match version {
+        "8.4.6" => Some("b6c152f9f3aaa7294eb47db698e47974d37b261bf3cab4f90dc1243bb5ecd204"),
+        "8.0.44" => Some("4d9316d2955b0bd2b484e08bda67c18d7979e0622b84f2e9146d97f04ed9a2fc"),
+        _ => None,
+    }
+}
+
+/// theseus-rs publishes a `.sha256` beside each Windows tarball; these are those.
+fn postgres_windows_sha256(version: &str) -> Option<&'static str> {
+    match version {
+        "18.6.0" => Some("7da44c2dbcda3b49688ea08ce8cf99cfe677adf565f53a9145bf9002c74db7d5"),
+        "17.11.0" => Some("a013f0e082826f53985c7bc2a0fe1c2dcc47a9f3797023938cf1ff8c9d6d1792"),
+        "16.15.0" => Some("157bd7322f8c653f06b0373d1b2280e9cb238b6a6d3bd05541aeb8f33885a8ad"),
+        _ => None,
+    }
+}
+
 fn pick(arch: Arch, arm: &str, amd: &str) -> String {
     match arch {
         Arch::Arm64 => arm,
@@ -1545,6 +1603,67 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
             archive: Archive::TarGz,
             member: "cloudflared",
         }),
+        // ── Windows (x64 for every `Arch` — see the Windows pins above) ─────────
+        ("caddy", "windows", "2.11.4") => Some(BinarySpec {
+            url: format!(
+                "https://github.com/caddyserver/caddy/releases/download/v{version}/caddy_{version}_windows_amd64.zip"
+            ),
+            checksum: Checksum::Sha512(CADDY_2_11_4_WIN_AMD64_SHA512.to_string()),
+            archive: Archive::Zip,
+            member: "caddy.exe",
+        }),
+        // A TREE on Windows: `php.exe` and `php-cgi.exe` beside `ext/*.dll`. There is
+        // no `php-fpm` on Windows at all — the pool is php-cgi (plan D1).
+        ("php", "windows", v) => php_windows_sha256(v).map(|hex| BinarySpec {
+            url: format!(
+                "https://downloads.php.net/~windows/releases/archives/php-{v}-nts-Win32-{}-x64.zip",
+                php_windows_toolset(v)
+            ),
+            checksum: Checksum::Sha256(hex.to_string()),
+            archive: Archive::ZipTree { strip: 0 },
+            member: "php.exe",
+        }),
+        // nginx.org's own Windows build — a tree (`conf/`, `html/`, `logs/` beside the
+        // exe), unlike the single binary rexenv builds for macOS.
+        ("nginx", "windows", "1.30.4") => Some(BinarySpec {
+            url: format!("https://nginx.org/download/nginx-{version}.zip"),
+            checksum: Checksum::Sha256(NGINX_1_30_4_WIN_AMD64_SHA256.to_string()),
+            archive: Archive::ZipTree { strip: 1 },
+            member: "nginx.exe",
+        }),
+        ("mysql", "windows", v) => mysql_windows_sha256(v).map(|hex| BinarySpec {
+            url: format!(
+                "https://cdn.mysql.com/archives/mysql-{series}/mysql-{v}-winx64.zip",
+                series = mysql_series(v),
+            ),
+            checksum: Checksum::Sha256(hex.to_string()),
+            archive: Archive::ZipTree { strip: 1 },
+            member: "bin/mysqld.exe",
+        }),
+        ("postgres", "windows", v) => postgres_windows_sha256(v).map(|hex| BinarySpec {
+            url: format!(
+                "https://github.com/theseus-rs/postgresql-binaries/releases/download/{v}/postgresql-{v}-x86_64-pc-windows-msvc.tar.gz"
+            ),
+            checksum: Checksum::Sha256(hex.to_string()),
+            archive: Archive::TarGzTree,
+            member: "bin/postgres.exe",
+        }),
+        ("mailpit", "windows", "1.30.3") => Some(BinarySpec {
+            url: format!(
+                "https://github.com/axllent/mailpit/releases/download/v{version}/mailpit-windows-amd64.zip"
+            ),
+            checksum: Checksum::Sha256(MAILPIT_1_30_3_WIN_AMD64_SHA256.to_string()),
+            archive: Archive::Zip,
+            member: "mailpit.exe",
+        }),
+        ("cloudflared", "windows", "2026.6.1") => Some(BinarySpec {
+            url: format!(
+                "https://github.com/cloudflare/cloudflared/releases/download/{version}/cloudflared-windows-amd64.exe"
+            ),
+            checksum: Checksum::Sha256(CLOUDFLARED_2026_6_1_WIN_AMD64_SHA256.to_string()),
+            archive: Archive::Raw,
+            member: "cloudflared.exe",
+        }),
         // Adminer is a single PHP file (run via the bundled PHP), identical on every OS.
         ("adminer", _, v) => adminer_spec(v),
         // WP-CLI is a PHP .phar (run via the bundled PHP), identical on every OS.
@@ -1894,14 +2013,34 @@ pub enum Shape {
     Bundle,
 }
 
-/// The distribution shape of `name` — see [`Shape`].
+/// The distribution shape of `name` on THIS machine — see [`Shape`].
 pub fn shape_of(name: &str) -> Shape {
+    shape_of_on(name, std::env::consts::OS)
+}
+
+/// The distribution shape of `name` on `os`. It depends on the OS because one
+/// name can be a different KIND of artifact per OS: macOS gets a single static
+/// `php` and a single `nginx`, while their Windows builds are zip TREES (`php.exe`
+/// beside `ext/*.dll`, `nginx.exe` beside `conf/`). A host-only answer would send a
+/// Windows resolve looking for `dir/php` inside a tree (docs/PLAN-windows-port.md W2).
+pub fn shape_of_on(name: &str, os: &str) -> Shape {
     match name {
         "mysql" | "postgres" => Shape::Dir,
+        "php" | "nginx" if os == "windows" => Shape::Dir,
         "redis" | "mariadb" | "httpd" => Shape::Bundle,
         n if n.starts_with("xdebug-") => Shape::Bundle,
         "wp-cli" | "adminer" | "composer" => Shape::File,
         _ => Shape::Single,
+    }
+}
+
+/// The file a single executable is published as: `name` itself, and `name.exe` on
+/// Windows, which will not start a file that lacks the extension.
+fn exe_name(name: &str, os: &str) -> String {
+    if os == "windows" {
+        format!("{name}.exe")
+    } else {
+        name.to_string()
     }
 }
 
@@ -1927,9 +2066,9 @@ fn published_member(platform: &dyn Platform, name: &str, version: &str) -> Optio
     let dir = platform.paths().bin_dir().ok()?.join(format!("{name}-{version}"));
     let arch = platform.binaries().arch();
     let os = std::env::consts::OS;
-    Some(match shape_of(name) {
+    Some(match shape_of_on(name, os) {
         Shape::Bundle => dir.join(bundle_manifest(name, version, os, arch)?.member),
-        Shape::Single => dir.join(name),
+        Shape::Single => dir.join(exe_name(name, os)),
         _ => dir.join(manifest(name, version, os, arch)?.member),
     })
 }
@@ -1995,7 +2134,7 @@ pub fn cached_path(platform: &dyn Platform, name: &str, version: &str) -> Option
     let arch = platform.binaries().arch();
     let os = std::env::consts::OS;
 
-    match shape_of(name) {
+    match shape_of_on(name, os) {
         Shape::Bundle => {
             // Bundles carry a prepare RECEIPT rather than a pin marker: they are
             // merged from many part digests, so there is no single checksum to
@@ -2007,7 +2146,7 @@ pub fn cached_path(platform: &dyn Platform, name: &str, version: &str) -> Option
         shape => {
             let spec = manifest(name, version, os, arch)?;
             let member = match shape {
-                Shape::Single => dir.join(name),
+                Shape::Single => dir.join(exe_name(name, os)),
                 _ => dir.join(spec.member),
             };
             if !member.exists()
@@ -2234,7 +2373,7 @@ pub async fn resolve(platform: &dyn Platform, name: &str, version: &str) -> Resu
 
     let bin_dir = platform.paths().bin_dir()?;
     let dir = bin_dir.join(format!("{name}-{version}"));
-    let bin_path = dir.join(name);
+    let bin_path = dir.join(exe_name(name, os));
 
     // The manifest is consulted BEFORE the cache check, because "is this cached"
     // now means "are these the bytes we pin" — not merely "is a file there".
@@ -2271,7 +2410,7 @@ pub async fn resolve(platform: &dyn Platform, name: &str, version: &str) -> Resu
     let id = downloads::item_id(name, version);
     downloads::hub().item_started(name, version);
     let staging = staging_path(&bin_dir, name, version);
-    let staged_bin = staging.join(name);
+    let staged_bin = staging.join(exe_name(name, os));
     let staged: Result<()> = async {
         std::fs::create_dir_all(&staging)?;
         match spec.archive {
@@ -2308,7 +2447,7 @@ pub async fn resolve(platform: &dyn Platform, name: &str, version: &str) -> Resu
         // prevented, so it cannot be the fallback when the network is unkind.
         stage_licenses(&spec, name, version, arch, &staging, &id).await?;
         write_pin_marker(&staging, &spec.checksum);
-        publish(&staging, &dir, name)
+        publish(&staging, &dir, &exe_name(name, os))
     }
     .await;
     if staged.is_err() {
@@ -5172,11 +5311,103 @@ mod tests {
         assert_eq!(checksum_hex(&a.checksum), checksum_hex(&b.checksum));
     }
 
+    /// W2 — the Windows arms: source, archive kind and member per artifact, and
+    /// ONE x64 artifact whichever `Arch` asks (Windows on ARM runs x64; there is no
+    /// arm64 Windows PHP, MySQL, nginx or PostgreSQL to pin).
+    #[test]
+    fn manifest_pins_the_windows_x64_artifacts() {
+        let cases: &[(&str, &str, &str, Archive, &str)] = &[
+            ("caddy", CADDY_VERSION, "caddy_2.11.4_windows_amd64.zip", Archive::Zip, "caddy.exe"),
+            ("nginx", NGINX_VERSION, "nginx.org/download/nginx-1.30.4.zip", Archive::ZipTree { strip: 1 }, "nginx.exe"),
+            ("mailpit", MAILPIT_VERSION, "mailpit-windows-amd64.zip", Archive::Zip, "mailpit.exe"),
+            ("cloudflared", CLOUDFLARED_VERSION, "cloudflared-windows-amd64.exe", Archive::Raw, "cloudflared.exe"),
+            ("mysql", MYSQL_VERSION, "archives/mysql-8.4/mysql-8.4.6-winx64.zip", Archive::ZipTree { strip: 1 }, "bin/mysqld.exe"),
+            ("postgres", POSTGRES_VERSION, "postgresql-18.6.0-x86_64-pc-windows-msvc.tar.gz", Archive::TarGzTree, "bin/postgres.exe"),
+            ("php", PHP_VERSION, "archives/php-8.3.32-nts-Win32-vs16-x64.zip", Archive::ZipTree { strip: 0 }, "php.exe"),
+        ];
+        for (name, version, tail, archive, member) in cases {
+            let arm = manifest(name, version, "windows", Arch::Arm64)
+                .unwrap_or_else(|| panic!("{name} {version}: no Windows arm"));
+            let amd = manifest(name, version, "windows", Arch::X86_64).unwrap();
+            assert!(arm.url.ends_with(tail), "{name}: {}", arm.url);
+            assert_eq!(arm.archive, *archive, "{name}");
+            assert_eq!(arm.member, *member, "{name}");
+            assert_eq!(arm.url, amd.url, "{name}: Windows on ARM must get the same x64 artifact");
+            assert_eq!(checksum_hex(&arm.checksum), checksum_hex(&amd.checksum), "{name}");
+        }
+        // The toolset in PHP's file name follows the minor.
+        for (v, toolset) in [("7.4.33", "vc15"), ("8.0.30", "vs16"), ("8.3.32", "vs16"), ("8.4.23", "vs17"), ("8.5.8", "vs17")] {
+            let url = manifest("php", v, "windows", Arch::X86_64).unwrap().url;
+            assert!(url.ends_with(&format!("php-{v}-nts-Win32-{toolset}-x64.zip")), "{url}");
+        }
+    }
+
+    /// Every version the app OFFERS has a Windows pin, and what Windows does not
+    /// get in v1 resolves to nothing rather than to a macOS artifact.
+    #[test]
+    fn every_offered_version_has_a_windows_pin_and_the_rest_resolve_to_nothing() {
+        for v in PHP_VERSIONS {
+            assert!(manifest("php", v, "windows", Arch::X86_64).is_some(), "php {v}");
+            assert!(manifest("php-fpm", v, "windows", Arch::X86_64).is_none(), "php-fpm {v}: Windows has no FPM");
+        }
+        for v in MYSQL_VERSIONS {
+            assert!(manifest("mysql", v, "windows", Arch::X86_64).is_some(), "mysql {v}");
+        }
+        for v in POSTGRES_VERSIONS {
+            assert!(manifest("postgres", v, "windows", Arch::X86_64).is_some(), "postgres {v}");
+        }
+        // The default stack, minus php-fpm: on Windows the pool is php-cgi, which
+        // ships inside the php zip (plan D1).
+        for (name, version) in DEFAULT_STACK {
+            if *name == "php-fpm" {
+                continue;
+            }
+            assert!(manifest(name, version, "windows", Arch::X86_64).is_some(), "{name} {version}");
+        }
+        // Not in Windows v1 (plan D4): no macOS artifact may leak through.
+        assert!(manifest("frankenphp", FRANKENPHP_VERSION, "windows", Arch::X86_64).is_none());
+        for (name, version) in [("redis", REDIS_VERSION), ("mariadb", MARIADB_VERSION), ("httpd", HTTPD_VERSION)] {
+            assert!(bundle_manifest(name, version, "windows", Arch::X86_64).is_none(), "{name}");
+        }
+    }
+
+    /// A single executable publishes as `name.exe` on Windows, and each Windows
+    /// shape agrees with what its manifest arm unpacks.
+    #[test]
+    fn windows_names_executables_with_their_extension_and_shapes_match_the_archives() {
+        assert_eq!(exe_name("caddy", "windows"), "caddy.exe");
+        assert_eq!(exe_name("caddy", "macos"), "caddy");
+        for n in ["php", "nginx"] {
+            assert_eq!(shape_of_on(n, "windows"), Shape::Dir, "{n}");
+            assert_eq!(shape_of_on(n, "macos"), Shape::Single, "{n}");
+        }
+        for (name, version) in [
+            ("php", PHP_VERSION),
+            ("nginx", NGINX_VERSION),
+            ("mysql", MYSQL_VERSION),
+            ("postgres", POSTGRES_VERSION),
+            ("caddy", CADDY_VERSION),
+            ("mailpit", MAILPIT_VERSION),
+            ("cloudflared", CLOUDFLARED_VERSION),
+        ] {
+            let spec = manifest(name, version, "windows", Arch::X86_64).unwrap();
+            let tree = matches!(spec.archive, Archive::TarGzTree | Archive::ZipTree { .. });
+            assert_eq!(
+                shape_of_on(name, "windows") == Shape::Dir,
+                tree,
+                "{name}: its Windows shape and archive disagree — a resolve would look in the wrong place"
+            );
+        }
+    }
+
     #[test]
     fn manifest_unknown_is_none() {
         assert!(manifest("nginx", "1.0", "macos", Arch::Arm64).is_none());
         assert!(manifest("caddy", "9.9.9", "macos", Arch::Arm64).is_none());
-        assert!(manifest("caddy", CADDY_VERSION, "windows", Arch::X86_64).is_none());
+        // Windows HAS arms since W2 (this line used to assert it had none); an unknown
+        // version there still resolves to nothing, and so does an OS with no arms yet.
+        assert!(manifest("caddy", "9.9.9", "windows", Arch::X86_64).is_none());
+        assert!(manifest("caddy", CADDY_VERSION, "linux", Arch::X86_64).is_none());
         assert!(manifest("php", "9.9.9", "macos", Arch::Arm64).is_none());
     }
 

@@ -292,7 +292,12 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   sweep. Every Windows artifact was downloaded and hashed on 12 Sep 2026; Caddy's
   SHA-512 and PostgreSQL's SHA-256 matched their publishers', the rest have no published
   digest (php.net's archive has no `sha256sum.txt`, Mailpit and nginx.org publish none,
-  MySQL publishes MD5).
+  MySQL publishes MD5). **(2)–(4) landed the same day:** `exe_name` publishes a single
+  binary as `name.exe` on Windows, `shape_of_on(name, os)` makes `php`/`nginx` trees there,
+  and the seven arms are in with PORTS.md's Windows table. A test that asserted Windows
+  had NO Caddy arm (`manifest_unknown_is_none`) failed on cue and now asserts an unknown
+  version and an arm-less OS instead. The PostgreSQL tarball's layout
+  (`postgresql-<v>-x86_64-pc-windows-msvc/bin/postgres.exe`) was confirmed by streaming it.
 - **W3 — Foundations.** `Paths` (`%LOCALAPPDATA%\rexenv`), `PermissionManager` (owner-only
   ACLs), `BinaryProvider` (strip the `Zone.Identifier` stream, no codesign),
   `ProcessSupervisor` (hidden + detached spawn so services OUTLIVE the app, graceful

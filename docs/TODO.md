@@ -64,9 +64,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     `XWIN_ACCEPT_LICENSE=1`, ledger #584); commits `48613a7` → the W1-done commit (plan §2.1)
   - [ ] W2 — `(os, arch)` binary catalog; Windows pins + checksums; sweep covers them.
     **Progress 12 Sep 2026:** `manifest` was already keyed by `os`; zip extraction landed
-    (`Archive::Zip` / `ZipTree`, zip-slip + symlink refusal, ledger #585). Open: `.exe`
-    naming and per-OS shapes, the Windows arms (hashed: Caddy, nginx, PHP 7.4–8.5,
-    MySQL, PostgreSQL, Mailpit, cloudflared), the sweep's Windows half
+    (`Archive::Zip` / `ZipTree`, zip-slip + symlink refusal, ledger #585). The Windows arms
+    landed too (Caddy, nginx, PHP 7.4–8.5, MySQL, PostgreSQL, Mailpit, cloudflared — x64
+    for every `Arch`, table in PORTS.md), with `.exe` naming and per-OS shapes
+    (`shape_of_on`). Open: the sweep's Windows half
   - [ ] W3 — Paths, ACL permissions, BinaryProvider, ProcessSupervisor (MySQL + Mailpit
     start, outlive the app, adopt on relaunch — on real Windows)
   - [ ] W4 — php-cgi groups + nginx + SMTP mail → a WordPress site serves
