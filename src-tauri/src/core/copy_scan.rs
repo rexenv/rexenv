@@ -66,17 +66,26 @@
 pub(crate) fn production_lines(src: &str) -> Vec<(usize, &str)> {
     let mut out = Vec::new();
     let mut depth: Option<i32> = None;
+    // String and comment state is carried ACROSS lines — see `Lexer`.
+    let mut lex = Lexer::default();
     for (i, line) in src.lines().enumerate() {
+        // An attribute only counts when the line starts in code: `#[cfg(test)]`
+        // inside a multi-line string is text.
+        let starts_in_code = lex.in_code();
+        let delta = lex.line_delta(line);
         match depth.as_mut() {
             // A one-line item under the attribute — `#[cfg(test)] pub(crate)
             // mod copy_scan;` — has no brace to close, and the first version
             // waited for a `}` that never came: everything after line 15 of
             // `core/mod.rs` was dropped from every tree-wide scan. An item
             // that ends in `;` with no `{` is over on its own line.
-            None if line.trim_start().starts_with("#[cfg(test)]") => {
+            None if starts_in_code && line.trim_start().starts_with("#[cfg(test)]") => {
                 let rest = line.trim_start().trim_start_matches("#[cfg(test)]");
                 if !rest.contains(';') || rest.contains('{') {
-                    depth = Some(0);
+                    // `#[cfg(test)] mod tests {` opens the module on THIS line:
+                    // its brace counts here, or the module's first inner `}`
+                    // would read as the module's own end.
+                    depth = Some(delta);
                 }
             }
             Some(0) if line.contains(';') && !line.contains('{') && !line.contains('}') => {
@@ -85,14 +94,125 @@ pub(crate) fn production_lines(src: &str) -> Vec<(usize, &str)> {
             }
             None => out.push((i + 1, line)),
             Some(d) => {
-                *d += line.matches('{').count() as i32 - line.matches('}').count() as i32;
-                if *d <= 0 && line.contains('}') {
+                *d += delta;
+                if *d <= 0 && delta < 0 {
                     depth = None;
                 }
             }
         }
     }
     out
+}
+
+/// Where a Rust source position is, as far as braces are concerned.
+#[derive(Default, Clone, Copy, PartialEq)]
+enum Lex {
+    #[default]
+    Code,
+    /// Inside `"…"` (or `b"…"`); `\` escapes the next char, and the string may
+    /// run over several lines.
+    Str,
+    /// Inside `r#…#"…"#…#` with this many hashes.
+    RawStr(usize),
+    /// Inside `/* … */`, nested this deep.
+    Block(usize),
+}
+
+/// Counts `{`/`}` that are CODE, carrying string and comment state from line to
+/// line, so a test module's end is found by its real closing brace.
+///
+/// Counting every brace closed test modules early, and it took two tries to
+/// see why. `core/localwp.rs`'s tests build `format!("{{{},{}}}", …)` — four `{`,
+/// five `}` — and a line-by-line fix for that still failed on the next shape:
+/// multi-line raw JSON (`r#"{"scripts":{ … }}"#` in `core/repo.rs`), whose inner
+/// `"` flip a per-line string flag on every line. Either way the depth hit zero
+/// mid-module and the rest of it was read as production. It surfaced 12 Sep 2026
+/// as false violations of ledger #163's widened scan; every tree-wide guard on
+/// this function had been reading those modules' tails as production code.
+#[derive(Default)]
+struct Lexer {
+    state: Lex,
+}
+
+impl Lexer {
+    fn in_code(&self) -> bool {
+        self.state == Lex::Code
+    }
+
+    /// Net code `{` minus `}` on `line`, advancing the carried state.
+    fn line_delta(&mut self, line: &str) -> i32 {
+        let cs: Vec<char> = line.chars().collect();
+        let ident = |c: char| c.is_alphanumeric() || c == '_';
+        let mut delta = 0;
+        let mut i = 0;
+        while i < cs.len() {
+            let c = cs[i];
+            match self.state {
+                Lex::Str => match c {
+                    '\\' => i += 1,
+                    '"' => self.state = Lex::Code,
+                    _ => {}
+                },
+                Lex::RawStr(h) => {
+                    if c == '"' && cs.get(i + 1..i + 1 + h).is_some_and(|s| s.iter().all(|&x| x == '#')) {
+                        self.state = Lex::Code;
+                        i += h;
+                    }
+                }
+                Lex::Block(n) => {
+                    if c == '*' && cs.get(i + 1) == Some(&'/') {
+                        self.state = if n == 1 { Lex::Code } else { Lex::Block(n - 1) };
+                        i += 1;
+                    } else if c == '/' && cs.get(i + 1) == Some(&'*') {
+                        self.state = Lex::Block(n + 1);
+                        i += 1;
+                    }
+                }
+                Lex::Code => match c {
+                    '"' => self.state = Lex::Str,
+                    // `r"…"`, `r#"…"#`, `br#"…"#` — but not the `r` ending an identifier.
+                    'r' if match i.checked_sub(1).map(|p| cs[p]) {
+                        None => true,
+                        Some('b') => i < 2 || !ident(cs[i - 2]),
+                        Some(p) => !ident(p),
+                    } =>
+                    {
+                        let mut j = i + 1;
+                        while cs.get(j) == Some(&'#') {
+                            j += 1;
+                        }
+                        if cs.get(j) == Some(&'"') {
+                            self.state = Lex::RawStr(j - i - 1);
+                            i = j;
+                        }
+                    }
+                    // A char literal — `'{'`, `'"'`, `'\''`, `'\u{7b}'` — is skipped
+                    // whole; a lifetime (`'a`) has no closing quote after one char.
+                    '\'' => match (cs.get(i + 1), cs.get(i + 2)) {
+                        (Some('\\'), _) => {
+                            let mut j = i + 3;
+                            while j < cs.len() && cs[j] != '\'' {
+                                j += 1;
+                            }
+                            i = j;
+                        }
+                        (Some(_), Some('\'')) => i += 2,
+                        _ => {}
+                    },
+                    '/' if cs.get(i + 1) == Some(&'/') => break,
+                    '/' if cs.get(i + 1) == Some(&'*') => {
+                        self.state = Lex::Block(1);
+                        i += 1;
+                    }
+                    '{' => delta += 1,
+                    '}' => delta -= 1,
+                    _ => {}
+                },
+            }
+            i += 1;
+        }
+        delta
+    }
 }
 
 /// [`production_lines`] rejoined — for guards that scan text rather than report
@@ -1741,6 +1861,50 @@ const LINK = "https://example.test/a//b";
         let lines = production_lines(src);
         assert_eq!(lines.first().map(|(n, _)| *n), Some(1));
         assert_eq!(lines.last().map(|(n, _)| *n), Some(7));
+    }
+
+    /// The shapes that made test modules end early (12 Sep 2026, found by ledger
+    /// #163's widened scan): braces inside a format string (`core/localwp.rs`'s
+    /// `format!("{{{},{}}}")`, four `{` and five `}`), inside char literals, and
+    /// inside strings that span LINES — multi-line raw JSON (`core/repo.rs`) and a
+    /// `\`-continued string. A per-line count gets the last two wrong, which is
+    /// why the lexer carries its state from line to line.
+    #[test]
+    fn a_brace_inside_a_string_or_char_literal_does_not_end_the_test_module() {
+        let src = "fn head() {}\n\
+                   #[cfg(test)]\n\
+                   mod tests {\n\
+                       fn t() {\n\
+                           let _ = format!(\"{{{},{}}}\", 1, 2);\n\
+                           let _ = ('{', '\"', '\\'', '\\u{7b}'); // and a } in a comment\n\
+                           let _ = r#\"{\"scripts\":{\n\
+                               \"build\":\"tsc\"\n\
+                           }}\"#;\n\
+                           let _ = \"a\\\n\
+                           b }\";\n\
+                       }\n\
+                       fn still_a_test() { let _ = \"std::os::unix\"; }\n\
+                   }\n\
+                   fn tail_after_the_tests() {}\n";
+        let out = production_source(src);
+        assert!(out.contains("fn head()"));
+        assert!(!out.contains("still_a_test"), "the module closed early and its tail read as production");
+        assert!(out.contains("fn tail_after_the_tests()"), "code after the test module was lost");
+    }
+
+    /// `#[cfg(test)] mod tests {` on ONE line opens the module on that line — its
+    /// brace has to count, or the first inner `}` closes the module.
+    #[test]
+    fn a_one_line_test_module_attribute_opens_the_module_on_that_line() {
+        let src = "fn head() {}\n\
+                   #[cfg(test)] mod tests {\n\
+                       fn t() { }\n\
+                       fn still_a_test() {}\n\
+                   }\n\
+                   fn tail() {}\n";
+        let out = production_source(src);
+        assert!(!out.contains("still_a_test"), "the one-line module closed at its first inner brace");
+        assert!(out.contains("fn tail()"), "code after the test module was lost");
     }
 
     /// **Every IPC tally key a WebKit probe reads is a key the app can produce.**

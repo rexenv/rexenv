@@ -109,6 +109,18 @@ code is not:
 None of these is code a Windows user runs. They still matter — `verify.sh` builds the
 examples, so a Windows bar will too — but the thing that ships compiles.
 
+**The guard now holds the line (12 Sep 2026).** With the last `cfg(unix)` out of `core/`
+(the rewrite's temp file → `write_private`, the CLI link → `ShellRunner::symlink_file`),
+ledger #163's scan was widened to refuse `std::os::unix`, `#[cfg(unix)]`, `cfg(not(unix))`
+and `Command::new("kill")` in `core/` production — so a Unix API cannot walk back in
+unnoticed. Landing it exposed a bug in the scanner every tree-wide guard shares:
+`copy_scan::production_lines` found a test module's end by COUNTING braces, including braces
+inside strings, so `core/localwp.rs`'s `format!("{{{},{}}}")` and `core/repo.rs`'s multi-line
+raw JSON closed their test modules early and the tails read as production. The first fix
+(per-line string skipping) failed on the multi-line case; the second carries string, raw-string
+and block-comment state across lines. The error was in the loud direction — test code
+flagged as production — but every guard on that function had been reading those tails.
+
 ### 2.2 The binary catalog has no OS dimension
 
 `src-tauri/src/core/binaries.rs` keys pins by `Arch` alone, and the URLs spell macOS into

@@ -1148,11 +1148,28 @@ mod import_graph {
     /// non-negotiable in CLAUDE.md this file anchors. Tests are exempt
     /// (asserting macOS-specific MESSAGES from a stub platform is legitimate
     /// and common), which is why the scan reads production lines only.
+    ///
+    /// **Widened 12 Sep 2026 (Windows port W1).** The first four needles are OS
+    /// NAMES; the scan was green while `core/` dialled unix sockets, symlinked
+    /// with `std::os::unix`, split on `cfg(unix)` and shelled out to `kill` — none
+    /// of which names an OS, and every one of which stopped the Windows build or
+    /// would have failed on it at runtime. So the scan now also refuses the UNIX
+    /// APIs themselves. Those leaks were moved behind `LocalIpc`,
+    /// `ProcessSupervisor` and `PermissionManager`/`ShellRunner` first, so this
+    /// lands green rather than as a list of exemptions.
     #[test]
     fn core_production_code_never_names_an_os_or_carries_an_os_cfg() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        let needles =
-            ["platform::macos", "platform::windows", "platform::linux", "#[cfg(target_os"];
+        let needles = [
+            "platform::macos",
+            "platform::windows",
+            "platform::linux",
+            "#[cfg(target_os",
+            "std::os::unix",
+            "#[cfg(unix)]",
+            "cfg(not(unix))",
+            r#"Command::new("kill")"#,
+        ];
 
         fn walk(dir: &std::path::Path, out: &mut Vec<(String, String)>) {
             let Ok(entries) = std::fs::read_dir(dir) else { return };

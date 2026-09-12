@@ -309,15 +309,20 @@ pub fn probe_socket(platform: &dyn crate::platform::traits::Platform, path: &Pat
     read_greeting(&mut stream)
 }
 
-// unix only: the fake server is a real `UnixListener`, and the probe dials it through
-// the host's `LocalIpc` — the Windows arm is a named pipe (docs/PLAN-windows-port.md W8).
-#[cfg(all(test, unix))]
+// The module is plain `#[cfg(test)]` and the unix gate sits on the TEST: the tree-wide
+// scans (`copy_scan::production_lines`) recognise a test module by that exact
+// attribute, and `#[cfg(all(test, unix))]` read as production — it failed ledger
+// #163's widened scan the day it was written.
+#[cfg(test)]
 mod socket_probe_tests {
     use super::*;
 
     /// A socket probe reads the greeting a TCP one would — the version off the
     /// wire — and an ERR packet in its place keeps the server's own words.
+    /// Unix only: the fake server is a real `UnixListener`, dialled through the
+    /// host's `LocalIpc` (the Windows arm is a named pipe, docs/PLAN-windows-port.md W8).
     #[test]
+    #[cfg(unix)]
     fn a_socket_probe_reads_the_handshake_and_keeps_a_refusal_in_the_servers_words() {
         use std::io::Write;
         let plat = crate::platform::current();
