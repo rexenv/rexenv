@@ -1,7 +1,7 @@
 # PLAN — rexenv on Windows: the port, the decisions it forces, and the launch
 
-**Status:** PLANNED 12 Sep 2026, not started — W0–W2 can start now; W3 onward waits on the
-owner's rulings D1–D6 (§3). Planned against `e0d287c`. Open work is tracked as the
+**Status:** IN PROGRESS — W0 done 12 Sep 2026 (`scripts/windows-check.sh`, RED by design:
+29 error sites, §2.1); W1–W2 next; W3 onward waits on the owner's rulings D1–D6 (§3). Planned against `e0d287c`. Open work is tracked as the
 "Windows launch" row in `docs/TODO.md`; this file is the reasoning behind it.
 
 macOS is stable and feature-rich (Phases 1–3 shipped). The owner wants a Windows release.
@@ -40,7 +40,27 @@ traits and false for the tree**:
 | `src-tauri/src/core/confrewrite.rs:85` | `OpenOptionsExt` mode 0600 | same; `PermissionManager::write_private` already exists |
 | `src-tauri/src/core/proc.rs:88, :108`, `core/services.rs:875`, `core/dbdump.rs:864`, `core/dbrestore.rs:182` | `Command::new("kill")` | compiles, fails at runtime — there is no `kill` and no signals |
 
-This is a grep, not the full list — W0's compiler run is the authoritative one.
+The table above was a grep. **W0's compiler run is the authoritative list**
+(`scripts/windows-check.sh`, first run 12 Sep 2026: RED, 29 error sites — 19 in
+`src-tauri`, 10 in `cli`). It confirmed every socket row and found four the grep missed:
+
+- **`#[cfg(unix)]` modules used ungated.** `mcp_server` (`lib.rs:12`) and `commands::mcp`
+  (`commands/mod.rs:14`) are compiled out on Windows, yet `lib.rs:223, :973, :1367–1368,
+  :1858, :2165` and `commands/scratch.rs:24` name them. Ledger #163's scan looks for
+  `cfg(target_os`, not `cfg(unix)`, so this passed it too.
+- **`QUIT_MENU_ID`** is defined under `cfg(macos)` (`lib.rs:2255`) and used outside it
+  (`lib.rs:2289, :2298`).
+- **The `objc2` dev-dependencies** (`src-tauri/Cargo.toml` `[dev-dependencies]`:
+  `objc2`, `objc2-foundation`, `objc2-web-kit`) are not target-gated, so every test and
+  example target fails for Windows before a line of ours is checked. The `[dependencies]`
+  copies are correctly under `cfg(target_os = "macos")`.
+- **Build plumbing.** `tauri_build` refuses a missing `binaries/rex-<triple>.exe`, and
+  `build.rs`'s sidecar staging is `#[cfg(target_os = "macos")]` — which in a build script
+  means the HOST, so a Mac cross-check stages nothing for Windows. `build.rs` also shells
+  to `sh` and `date`, which a Windows HOST build (W12) does not have.
+
+A first-layer list, not a final one: most of the E0282/E0277 sites are the cascade of
+an unresolved import, and fixing resolve errors routinely uncovers type errors behind them.
 
 ### 2.2 The binary catalog has no OS dimension
 
@@ -140,10 +160,16 @@ looked at yet (W2 measures and hashes every row before it is pinned).
 
 Each ends in something observable. W0–W2 change nothing a macOS user sees.
 
-- **W0 — Windows CI compile job.** A `windows-latest` job: `cargo check --all-targets` for
-  `src-tauri` and `cli`, plus `tsc`. Cross-compiling from macOS is not the gate (`ring`
-  needs the MSVC toolchain). *Done when:* the job exists and its error list replaces §2.1
-  as the authoritative inventory.
+- **W0 — Windows compile check, on the Mac.** Owner ruling 12 Sep 2026: local
+  `cargo xwin check --all-targets --target x86_64-pc-windows-msvc` for `src-tauri` and
+  `cli`, not a GitHub Actions job — this private repo has never run Actions (release
+  builds are local for the same billing reason, `docs/RELEASING.md`), and xwin brings the
+  MSVC CRT/SDK that `ring` and the other C build scripts need (Homebrew `llvm` + `lld`
+  supply `clang-cl`/`lld-link`; the owner accepted Microsoft's SDK licence). A separate
+  `CARGO_TARGET_DIR` so it never invalidates `verify.sh`'s macOS cache. It proves
+  COMPILATION only — no Windows test runs, no link. *Done when:* a script runs it from its
+  own cwd with a load-bearing exit code, and its error list replaces §2.1 as the
+  authoritative inventory. A CI job stays possible later (W12) at the owner's call.
 - **W1 — Move the leaks behind traits.** Sockets → `LocalIpc` (D3); `kill` → a
   `ProcessSupervisor` method; `core/cli.rs` symlink → `ShellRunner::symlink_dir`;
   `confrewrite` → `PermissionManager::write_private`. Widen #163's scan to refuse
@@ -205,9 +231,13 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
 
 ## 7. What an agent on the macOS dev machine cannot prove
 
-Everything past W2 needs Windows: the CI runner proves compile and L0; W3–W12's "Done
-when" lines need a real Windows 11 machine or VM, driven by a human or by examples run
-there. `docs/TESTING.md` gains a Windows column when W0 lands — not before, so it never
+The Mac proves COMPILATION for Windows (W0's cross-check) and nothing else — no Windows
+test, no link, no run. Everything past W2 needs Windows itself. The owner's machines
+(12 Sep 2026): a **Dell Inspiron 3543** (i7-5500U, 8 GB — real x64, low-end, not on
+Windows 11's supported-CPU list, too slow to be the build box: build elsewhere, run
+there) is the release-gate machine; a Windows 11 ARM VM on the M3 Pro Mac runs the x64
+build under emulation for the day-to-day loop, and never counts as the x64 proof. Both
+are driven over OpenSSH from the Mac; dialogs are read by a human. `docs/TESTING.md` gains a Windows column when W0 lands — not before, so it never
 claims coverage that does not run.
 
 ## 8. Docs this changes as it lands

@@ -79,6 +79,7 @@ scripts/verify.sh
 # deeper tiers (see CONTRIBUTING.md and docs/TESTING.md):
 scripts/live-checks.sh                     # tiered live checks against real binaries
 scripts/verify-full.sh                     # release gate: verify + sandbox tier + WebKit harness
+scripts/windows-check.sh                   # does it COMPILE for Windows x64? (cargo-xwin; RED until the port's W1)
 cargo run --example <name>                 # a single live check (src-tauri/examples/)
 ```
 
@@ -112,6 +113,7 @@ rexenv/
 │                               #   app's private 0600 socket; app not running → exit 2
 ├── scripts/                    # verify.sh (THE pre-commit bar) · verify-full.sh
 │   │                           #   live-checks.sh (tiered L1 runner) · build-cli.sh
+│   │                           #   windows-check.sh (Windows x64 compile check, cargo-xwin)
 │   └── wk-checks/              # Playwright WebKit render checks (L2) + README
 │
 │   # The Homebrew cask is NOT in this repo — it lives in github.com/rexenv/homebrew-tap

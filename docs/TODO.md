@@ -42,7 +42,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   - [ ] D1–D6 — owner rulings: PHP process model (php-cgi groups), DNS (:53 + NRPT),
     local IPC (named pipes; Caddy admin socket measured), v1 feature scope, signing +
     installer + updates, supported Windows/arch (plan §3)
-  - [ ] W0 — `windows-latest` CI job: `cargo check --all-targets` (src-tauri + cli) + tsc
+  - [x] W0 — Windows compile check on the Mac (owner: local `cargo xwin check --all-targets`
+    for src-tauri + cli, not Actions — private repo) ✓ 12 Sep 2026 — `scripts/windows-check.sh`,
+    exit code is the verdict; first run RED, 29 error sites (19 src-tauri, 10 cli), now the
+    inventory in plan §2.1 (+4 the grep missed: `cfg(unix)` modules used ungated,
+    `QUIT_MENU_ID`, ungated `objc2` dev-deps, host-cfg sidecar staging); ledger #582/#583
   - [ ] W1 — move Unix-only code behind traits; widen ledger #163's scan to `std::os::unix`
     and `Command::new("kill")`, plant-proven
   - [ ] W2 — `(os, arch)` binary catalog; Windows pins + checksums; sweep covers them

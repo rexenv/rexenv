@@ -1248,6 +1248,19 @@ bloating the fast path:
 - **`network` / `stack` / `system` L1 tiers:** run deliberately when the change
   touches their subject (the runner prints per-tier one-liners for the commit note).
 - **L3:** SMOKE-TEST per release; PUBLISH-TESTING per its per-item triggers.
+- **`scripts/windows-check.sh`** (12 Sep 2026, `docs/PLAN-windows-port.md` W0): does the
+  tree COMPILE for `x86_64-pc-windows-msvc`? `cargo xwin check --all-targets --keep-going`
+  over both crates, from the Mac, printing every error site in our sources. **It proves
+  compilation and nothing else** — no link, no Windows test run, no behaviour; the Mac
+  cannot run any of those (plan §7). **Not inside `verify.sh`, on purpose:** it is RED by
+  design until W1 moves the Unix-only code behind traits, and a pre-commit bar that is red
+  by design is one nobody runs. It joins the bar in the commit it first goes green.
+  Local rather than GitHub Actions by owner ruling (private repo, never ran Actions).
+  Two things it had to route around, both worth knowing before touching it: `--keep-going`,
+  because the ungated `objc2` dev-dependencies fail first and would otherwise hide every
+  library error behind one line; and a placeholder `rex-<triple>.exe` sidecar staged for
+  the run and removed on exit, because `tauri_build` refuses a missing `externalBin` —
+  kept OUT of `build.rs` so no real Windows bundle can ever ship a fake `rex`.
 
 A gate nobody can afford to run stops being one: the fast bar stays fast, and nothing
 above it is required per-commit. The metric the gate serves is the ledger tally, which
