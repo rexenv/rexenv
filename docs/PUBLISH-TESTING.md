@@ -1300,7 +1300,7 @@ before Local's handshake and the job refused the server as unidentifiable; after
 socket-probe fix the copy came over (12 tables), the URL pass moved `ab12.local` →
 `https://ab12.rex` (13 replacements), and the owner reported the rest of the pass fine.
 
-What neither layer below this can give (`docs/PLAN-local-import.md` §7): Local's
+What neither layer below this can give (`docs/archive/PLAN-local-import.md` §7): Local's
 REAL per-site mysqld (`skip-name-resolve`, the socket where Local's docs place it),
 a real Local WordPress database, and the packaged `/import` screen with Local rows.
 The sandbox examples prove the socket sign-in and the URL pass against a mysqld and

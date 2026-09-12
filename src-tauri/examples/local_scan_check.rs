@@ -2,7 +2,7 @@
 //! `cargo run --example local_scan_check`
 //!
 //! Runs the REAL discovery against whatever Local has on this machine and
-//! checks three things (`docs/PLAN-local-import.md`, ledger #570/#571/#572):
+//! checks three things (`docs/archive/PLAN-local-import.md`, ledger #570/#571/#572):
 //!
 //!   1. **It is read-only.** Every file under `~/Local Sites` and Local's own
 //!      registry files are fingerprinted (path, size, mtime) before and after

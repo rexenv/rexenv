@@ -1,9 +1,12 @@
 # Import sites from Local (WP Engine / Flywheel) — the third migration source
 
-**Status:** BUILT 11 Sep 2026 (T0–T7, `c2e1cc9` → `7eea758` + the T7 docs commit), awaiting
-the owner: the live pass on a STARTED Local site (`docs/PUBLISH-TESTING.md` §N — rexenv
-never starts Local's servers, so no agent can run it) and the three questions in §9.
-Moves to `docs/archive/` once §N passes. Planned against `6aee703`.
+**Status:** SHIPPED — archived 12 Sep 2026. Built 11 Sep (T0–T7, `c2e1cc9` → `7eea758`),
+§N passed owner-run 12 Sep on `ab12.local`, §9 ruled (Q1 reversed and built, Q3 built),
+and the follow-ups the real imports found landed 12 Sep (socket probe, honest interim,
+the batch connect, the Import page) — ledger #570–#576, log in
+`docs/archive/SHIPPED-2026-09.md`. **Still open:** Q2, multisite networks — parked as
+its own row in `docs/TODO.md`. Planned against `6aee703`; the text below is the design
+record as planned, with the rulings added in §9.
 
 Valet and Herd import shipped in four stages (`docs/archive/PLAN-valet-herd-*.md`,
 `PLAN-linked-sites.md`). Local is the other big WordPress environment people leave,

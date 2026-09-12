@@ -154,7 +154,7 @@ Two rules with teeth, learned the hard way:
 | Module/file map | `README.md` ("Project structure") |
 | Xdebug debug-PHP build (blocked item) | `docs/xdebug-debug-build.md` |
 | Developer ID signing + notarization (blocked on a paid Apple account; runbook ready) | `docs/SIGNING.md` |
-| **Why a shipped feature is shaped the way it is** — every design record (linked sites, Valet/Herd stages 1–3, git-site clone, PHP 7.4, MCP server + parity, dist-archive, menu-bar tray, binary/Adminer updates, browser preference, per-site lifecycle, webview-dialog proofs, in-app self-update) | `docs/archive/README.md` table → `docs/archive/PLAN-*.md`. A plan lives in `docs/` only while in flight; `status.py` lists those. |
+| **Why a shipped feature is shaped the way it is** — every design record (linked sites, Valet/Herd stages 1–3, Local import, git-site clone, PHP 7.4, MCP server + parity, dist-archive, menu-bar tray, binary/Adminer updates, browser preference, per-site lifecycle, webview-dialog proofs, in-app self-update) | `docs/archive/README.md` table → `docs/archive/PLAN-*.md`. A plan lives in `docs/` only while in flight; `status.py` lists those. |
 | User-facing install / first-run prompts | `docs/INSTALL.md` |
 | Cutting a release — CI pipeline, draft gate, tap auto-bump | `docs/RELEASING.md` (cask itself lives in `rexenv/homebrew-tap`) |
 | Release QA checklist (clean Mac) | `docs/SMOKE-TEST.md` |

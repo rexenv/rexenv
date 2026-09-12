@@ -986,7 +986,7 @@ honest footer —
   (`tr` + `tr-www`) read as a single name and looked lost. On a WordPress site
   those extra names reach it and redirect to the primary (the multi-name entry above).
 - **Local import** (`core/localwp.rs`; the same `/import` screen, scan and run —
-  design record `docs/PLAN-local-import.md`). Local keeps a REGISTRY
+  design record `docs/archive/PLAN-local-import.md`). Local keeps a REGISTRY
   (`~/Library/Application Support/Local/sites.json`), not a symlink farm; the scan
   reads it plus existence probes of `<folder>/app/public` — never Local's
   `site-statuses.json` (a label about what runs, the DBngin lesson) and never a file

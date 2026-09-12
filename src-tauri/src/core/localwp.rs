@@ -1,7 +1,7 @@
 //! core::localwp — READ-ONLY discovery of Local (WP Engine, formerly "Local by
 //! Flywheel") WordPress sites: the third migration source beside Valet and Herd
 //! (`core::valet`), under the same rules. Design record:
-//! `docs/PLAN-local-import.md`.
+//! `docs/archive/PLAN-local-import.md`.
 //!
 //! **Nothing in this module writes anything, anywhere** (ledger #570). It reads
 //! Local's own registry (`sites.json`, in Local's app data) and probes a

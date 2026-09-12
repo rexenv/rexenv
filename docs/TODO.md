@@ -6,6 +6,13 @@ month's evidence log (`docs/archive/SHIPPED-2026-07.md`, `-08.md`, `-09.md`) wit
 `reconcile-todo` skill. Tick an item in the commit that does the work, with a one-line
 ✓ evidence note. `scripts/todo-reconcile.py --count` prints the open/ticked tally.
 
+**Reconciled 12 Sep 2026, targeted pass** (HEAD `ab06f11`): two blocks moved by hand — Import
+sites from Local (every child closed; its plan archived with it as `docs/archive/PLAN-local-import.md`, Q2
+multisite staying as its Parked row) and Valet compatibility tails (the link-farm leg closed
+owner-run). A third ticked row, the admin-password dialog (`c995163`, the same hour), was
+left in place for the next mechanical pass. Shape 4 (parent whose children all closed):
+the Local parent, 1. The other shapes were not re-hunted.
+
 **Reconciled 11 Sep 2026, mechanical pass only** (HEAD `954d0f7`, v0.6.1 + 46 commits, before
 the 0.7.0 cut): seven ticked blocks moved (MCP parity; the first-run stuck downloads and the
 three privileged-prompt rows; the two job-log rows). The four judgement shapes below were
@@ -93,84 +100,6 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     to build) — the release SMOKE row's tell covers it. (The "App Background Activity: rexenv" notification seen during
     the live run was NOT the applet: BTM log, 13:34:24, the DNS LaunchAgent re-registered
     pointing at `target/debug/rexenv`, two minutes before the applet launched.)
-
-- [ ] **Import sites from Local (WP Engine/Flywheel)** — 11 Sep 2026, planned in
-  `docs/PLAN-local-import.md`. The third migration source after Valet/Herd, under the
-  same read-only/link-in-place/copy-the-database rules; what differs is recorded there
-  (`.local` re-homed to the default TLD, the per-site mysqld found through Local's
-  registry, the copy's URLs re-homed, a PHP picker). Owner questions in §9.
-  - [x] T0 — the plan + this row ✓ 11 Sep 2026 — `docs/PLAN-local-import.md`
-  - [x] T1 — `core/localwp.rs` read-only discovery + `SourceKind::Local` ✓ 11 Sep 2026 —
-    ledger #570/#571; 5 L0 fixture tests incl.
-    `scan_surfaces_every_kind_of_site_and_rehomes_before_anyone_sees_it` (both plants fail it)
-  - [x] T2 — scan integration, TS types, Import/Sites/Settings copy, MCP description
-    ✓ 11 Sep 2026 — `already_here_matches_the_folder_before_the_name`,
-    `a_name_an_earlier_row_claims_is_refused_not_duplicated`; ARCHITECTURE §8 Local bullet
-  - [x] T3 — PHP picker for rows pinned to a version rexenv doesn't ship ✓ 11 Sep 2026 —
-    `an_unshipped_pin_needs_an_explicit_choice_and_nothing_else_does` (the run's silent
-    default-PHP fallback for such rows was a real hole on the MCP/scripted path, closed here)
-  - [x] T4 — Local database source (registry port + socket) in the db import ✓ 11 Sep 2026 —
-    ledger #572; `only_a_bare_localhost_is_replaced_by_the_registry`,
-    `the_defaults_file_signs_in_over_tcp_or_a_socket_never_both`,
-    `the_registry_is_consulted_only_behind_the_localhost_rule`. Live dump from a STARTED
-    Local site still owed (PUBLISH-TESTING, T7)
-  - [x] T5 — URL re-home pass on rexenv's copy ✓ 11 Sep 2026 — ledger #573;
-    `the_override_names_our_copy_and_holds_no_secret`,
-    `a_copy_moves_to_https_on_the_new_name_bare_name_last`,
-    `the_url_pass_writes_only_the_copy_this_job_restored`. L1 owed (T6)
-  - [x] T6 — the two L1 examples ✓ 11 Sep 2026 — `local_scan_check` (sandbox, PASS on the
-    real install: 20,340 entries unchanged) + `local_import_check` (network, PASS: socket
-    login past a dead TCP port, URL pass on PHP 8.x and 7.4, serialized length repaired,
-    wp-config byte-identical); ledger #570 → ✅, #573 L1
-  - [x] T7 — ARCHITECTURE §8, ledger rows, PUBLISH-TESTING §N ✓ 11 Sep 2026 — ARCHITECTURE
-    and ledger #570–#573 landed with T1–T6; §N written (steps N0–N9) + its summary row
-  - [x] **fix: a Local site's server is identified over its SOCKET** ✓ 11 Sep 2026 — the
-    owner's first real import (`ab12.local`) failed "couldn't tell which database server
-    this is": Local's mysqld answers TCP from 127.0.0.1 with ERR 1130 before its
-    handshake. `probe_socket` +
-    `a_socket_probe_reads_the_handshake_and_keeps_a_refusal_in_the_servers_words`; the
-    refusal now carries the server's own words; ledger #572 updated with the measurement
-  - [x] **PUBLISH-TESTING §N — the live pass on a STARTED Local site** ✓ 12 Sep 2026 —
-    owner-run on `ab12.local` (Local 10.1.2, MySQL 8.4.0): "live test done, sob thik
-    achhe". Closes #572's L3 half.
-  - [x] **Owner decisions — plan §9** ✓ 12 Sep 2026 — Q1 declined (collision-renamed
-    Local copies stay tell-only; the 28 Jul ruling holds), Q2 parked (row under Parked),
-    Q3 approved — needed now: `tr.local` could not import because `tr.test` exists.
-  - [x] **Q1 reversed — the one-click connect covers a renamed database** ✓ 12 Sep 2026 —
-    owner, after `tr.local` was restored as `local_tr_local_rex` and its connect refused.
-    `RewriteKey::Name` + `RewritePlan::with_database`, the refusal gone; ledger #574;
-    `a_renamed_copy_moves_only_the_database_name_bytes`,
-    `a_renamed_copy_reaches_the_plan_instead_of_a_refusal` (plant-proven),
-    `config_rewrite_check` step 7 (renamed copy connects; without the name, no proof)
-  - [x] **fix: a Local import no longer claims it "still reads its old database"** ✓ 12 Sep
-    2026 — found by migrating `ab12.local`/`tr.local` over MCP: both served WordPress's
-    database error (Local's `root`/`root` refused on rexenv's socket) while the log and
-    panel said the site still read its old one. Ledger #575;
-    `only_a_local_sites_socket_config_reaches_nothing_under_rexenv`,
-    `the_import_panel_never_claims_a_local_site_reads_its_old_database`
-  - [x] **The import progress stays on screen too** ✓ 12 Sep 2026 — owner: pressing Import
-    in the bottom bar meant scrolling back to the top to watch the batch. The progress
-    card now renders in the same bar below the scrolling list. tsc + eslint; checked by
-    the owner in the dev app, 12 Sep 2026 ("thik achhe").
-  - [x] **"Also connect Local sites" in the import batch** ✓ 12 Sep 2026 — owner: a Local
-    site can't load under rexenv until connected, so the batch offers the connect (ticked
-    by default, Local rows only — Valet/Herd keep their per-site opt-in). Ledger #576;
-    `the_batch_connects_only_local_rows_whose_database_came_over`,
-    `connecting_local_sites_from_the_import_claims_destroy_first` (both plant-proven).
-    The batch connecting a real Local import: owner-run in the app, 12 Sep 2026 — works.
-  - [x] **Import is its own page, not a card inside Settings → DNS & SSL** ✓ 12 Sep 2026 —
-    owner: a sidebar entry (`nav.ts`); DNS & SSL keeps only the borrowed-resolver
-    hand-back rows — the importable-sites nudge is gone and the leftover-dumps card moved
-    to the Import page. tsc + eslint; checked by the owner in the dev app, 12 Sep 2026.
-  - [x] **Q3 — choose the domain for a re-homed row** ✓ 12 Sep 2026 — `domain_choice` +
-    the row's name field (label on the re-homed TLD, live-checked against
-    `takenDomains`); `choose_domain` re-validates in the run —
-    `a_rehomed_row_takes_a_typed_name_only_when_it_is_valid_free_and_unclaimed`
-  - [x] **The import action bar is reachable from anywhere in a long list** ✓ 12 Sep 2026
-    — owner: selecting a row near the bottom meant scrolling back to the top to press
-    Import. The count, "also copy databases" and Import now sit in a bar below the
-    scrolling list (outside it), so they never scroll away. tsc + eslint; checked by the
-    owner in the dev app, 12 Sep 2026.
 
 - [ ] **In-app self-update — a dmg user has no update path at all**
   — 6 Sep 2026, planned in `docs/archive/PLAN-self-update.md`; supersedes the Phase 4+ row
@@ -745,7 +674,7 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)
 
-- [ ] **Import Local multisite networks** — `docs/PLAN-local-import.md` §9 Q2, parked by
+- [ ] **Import Local multisite networks** — `docs/archive/PLAN-local-import.md` §9 Q2, parked by
   the owner 12 Sep 2026 ("pore korbo"). Listed as unsupported today; re-homing a network
   means `DOMAIN_CURRENT_SITE` in wp-config (a project write the rewrite contract can't
   express) plus every row of `wp_blogs`.
@@ -769,44 +698,6 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   (skips `wp config create` when wp-config.php exists but calls
   `create_database` unconditionally), and `phase_defs` blanket-skips WP phases
   on `docroot_managed == Some(false)` — needs an explicit opt-in flag.
-- [x] **Valet compatibility tails** (recorded in the migration research, §2). ✓ 12 Sep 2026 —
-  the last child closed with the owner's real link-farm import.
-  - [x] Laravel's `/storage/*` URI mapping ✓ 2 Sep 2026, ledger #448 — emitted for a
-    Laravel site whose `storage/app/public` exists, with php AND dotfiles refused
-    INSIDE the block (the `^~` prefix that makes the mapping work also beats the
-    vhost's own guards).
-  - [x] The `default` catch-all-site key ✓ 2 Sep 2026, ledger #448 — REPORTED by the
-    scan, not imported: rexenv has no catch-all, and a behaviour that silently stops
-    after a migration is the shape nobody can connect back to the move.
-  - [x] A Valet-named port-conflict attribution branch ✓ 2 Sep 2026, ledger #449 —
-    positive ID via the include Valet appends to the Homebrew nginx.conf (never "Valet
-    is installed"), and the offered fix is `valet stop` rather than
-    `brew services stop nginx`, which leaves their Valet half-stopped.
-  - [x] Serving one site under two domains. **Foundation landed 2 Sep 2026** (ledger
-    #450): schema v42 `site_domains` (aliases only — the primary stays on the site
-    row), `core::sites::{all_domains, validate_alias, add_alias, remove_alias}` with
-    the cross-table refusal SQL cannot express. **Serving half + CLI landed 2 Sep 2026**
-    (ledger #451): one nginx server block per site whatever it answers on, extra
-    addresses on the site's own Caddy block, one certificate covering every name (the
-    cache reissues when the name SET changes), and `rex site domains <domain>
-    [--add N | --remove N]`. **Import mapping landed 2 Sep 2026** (ledger #452):
-    a link farm folds into one site with extra domains, on the served folder, with
-    every fold announced. **UI landed 2 Sep 2026** (ledger #453): a Domains card on
-    the site's Settings tab, rendering the backend's list after every mutation, with an
-    L2 probe. **Added domain served over HTTPS — live 3 Sep and again 12 Sep 2026**
-    (scratch `linkfarm-livetest.rex`: the alias answered 200 through the edge, the cert
-    was reissued with it in the SAN, removal refused it at TLS, no residue after delete).
-    `valet_import_check` scans a two-name farm fixture (both rows on one folder,
-    plant-proven). **Still owed**: a REAL link farm imported through the running app —
-    this Mac has none, and creating one writes into the Valet tree the import must not
-    touch, so it waits for an owner-made `valet link` (ledger #452).
-    **12 Sep 2026, owner's `valet link tr-www`**: the Import row showed no extra domain —
-    the scan folded `tr-www.test` into `tr.test` (`valet_scan_check`: both ready, one
-    folder) but `Import.tsx` never rendered `extraDomains`. Fixed: the row says "also
-    answers on …" (`88bf851`). ✓ **Owner-run 12 Sep 2026**: the farm imported from the
-    app with both names working — "test korlam thik moto kaj korchhe". (At the time of
-    recording the test site was already gone from rexenv and `tr-www` was still linked
-    in Valet and Herd.)
 - [ ] **`rex` design-first set — ONE item left: raw `wp` passthrough** (a security
   ruling about what the CLI may execute, deliberately not gap-filled). The other four —
   single-site restart (#444), web-tier restart (#445), `wp_user_delete` (#446), progress

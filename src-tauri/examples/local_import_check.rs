@@ -1,5 +1,5 @@
 //! Live check for the two halves of a Local import that rexenv can prove on its
-//! own (`docs/PLAN-local-import.md`). Run: `cargo run --example local_import_check`
+//! own (`docs/archive/PLAN-local-import.md`). Run: `cargo run --example local_import_check`
 //!
 //! Network tier: it installs a real WordPress (`wp core download`). Everything
 //! it creates lives in the sandbox — its own mysqld on a fixture port plays
