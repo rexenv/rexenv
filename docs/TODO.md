@@ -102,6 +102,18 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   - [ ] W12 — launch gates: verify on the Windows runner, SMOKE-TEST + INSTALL Windows
     sections, clean Windows 11 VM pass
 
+- [ ] **Third-party notices — the shipped macOS app is missing 14 crates** — 13 Sep 2026, owner
+  asked whether the notices count drift was tracked; it was not (the debt lived only inside
+  `THIRD-PARTY-NOTICES.md`). Measured with the file's own `cargo metadata --filter-platform`,
+  both directions: the table's 395 rows are all in the graph, but arm64 links 409 — missing
+  `mysql_async`, `mysql_common` and 12 they pull in (list in the notices' 13 Sep note); Intel
+  adds `cpufeatures`.
+  - [ ] Add the 15 rows with their licences; the header counts the graph, not the rows
+  - [ ] A reconcile script both directions per target, so a new dependency cannot land
+    without its row (the 5 Aug npm lesson, now twice)
+  - [ ] Windows: a crate table for the Windows graph (410; 50 beyond the table) before any
+    Windows release — the download sources are already listed (plan §3a Q4)
+
 - [ ] **The keychain (CA trust) dialog is rexenv's too** — 12 Sep 2026, owner, after the admin
   dialog got its name: the CA trust dialog still read "security". Measured first: wrapping
   `security` in the rexenv applet does NOT change the title; calling the trust API

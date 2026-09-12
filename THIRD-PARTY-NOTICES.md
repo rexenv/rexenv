@@ -10,6 +10,17 @@ Xdebug, and PHP **8.0–8.5**) rexenv is not the distributor: those are fetched
 from their own distributors, checksum-pinned, and carry their own licences; the
 pinned versions and sources are listed in `docs/PORTS.md`.
 
+**Windows (port in progress, 13 Sep 2026 — no Windows build has shipped).** The Windows
+build downloads from distributors too, never from us: PHP from the PHP project's own
+Windows builds (`downloads.php.net/~windows`), nginx from nginx.org's Windows zip, MySQL
+from Oracle's `winx64` zips, PostgreSQL from theseus-rs's `x86_64-pc-windows-msvc`
+builds, and Caddy, Mailpit and cloudflared from their GitHub releases. So the three
+"rexenv's own build" sections below describe **macOS artifacts only** — none of them is
+downloaded on Windows. Versions, sources and digests: `docs/PORTS.md`, Windows table.
+The Windows app binary links a different Rust graph (the `windows-*` and `webview2-com*`
+families in place of `objc2`), so this file needs a Windows crate table before any
+Windows release — `docs/TODO.md`, "Third-party notices".
+
 **Two exceptions, and each is a real change to the sentence above.** They are
 listed separately because they arrived for different reasons and carry different
 obligations.
@@ -51,6 +62,13 @@ unchanged at 389 crates.
 0.12.3 MIT OR Apache-2.0 — zip extraction for the Windows artifacts). Added as rows,
 NOT regenerated: this header already read 393 against the 389 above, so the two-way
 reconcile below is due before the next release, not assumed done.
+**Measured 13 Sep 2026, both directions, with the command below:** every one of the table's
+395 rows is in the graph (table − graph = 0), but the macOS arm64 graph links **409** crates
+— **14 are missing**: `mysql_async` 0.37.0 and `mysql_common` 0.37.3 with what they pull in
+(`allocator-api2`, `btoi`, `bytemuck`, `chacha20`, `crossbeam-queue`,
+`keyed_priority_queue`, `lru`, `rand` / `rand_core` 0.10, `saturating`, `sha1`,
+`twox-hash`); the Intel graph adds `cpufeatures` (15). The Windows graph (410) is 50 crates
+beyond the table and 35 short of it. Tracked in `docs/TODO.md` until the rows land.
 
 **The npm table was INCOMPLETE from the day it was generated, and the 5 Aug
 pass found it: 112 rows against a 127-package production closure.** Fifteen
@@ -253,7 +271,7 @@ chosen for exactly this reason.
 `rusqlite` is built with the `bundled` feature, so SQLite itself is compiled
 into the app. SQLite is in the public domain (https://sqlite.org/copyright.html).
 
-## Rust crates (statically linked; 395 external crates, macOS graph)
+## Rust crates (statically linked; 395 rows — the macOS arm64 graph links 409, see the 13 Sep 2026 note)
 
 | Crate | Version | Licence |
 |---|---|---|

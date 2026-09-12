@@ -430,6 +430,15 @@ these answers meet, and every field it carries is below.
 itself stays keyed by version. Each per-OS function gets a test asserting the Windows answer
 differs wherever the builds do, so a macOS measurement cannot pass for Windows again.
 
+**Q4 — THIRD-PARTY-NOTICES.** The count drift was **not** in TODO — the file said "due before
+the next release" and nothing tracked it. Measured 13 Sep 2026 both directions: no table row
+is outside the graph, but the macOS arm64 graph links 409 crates against 395 rows — 14
+missing from the app that ships today (`mysql_async` and what it pulls in), 15 on Intel. Now
+a TODO row. For Windows: the download sources (php.net's Windows builds, nginx.org, Oracle,
+theseus-rs, and the three GitHub releases) are named in the notices, which now say the
+"rexenv's own build" sections are macOS-only; the Windows app's own Rust graph (410 crates,
+50 beyond the table) needs its table before a Windows release, in that same row.
+
 ## 4. Upstream availability (measured 12 Sep 2026)
 
 ✓ = the asset was listed at the pinned tag or version; *unchecked* = believed to exist, not
