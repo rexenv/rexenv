@@ -771,6 +771,9 @@ commands/ 9 — commands/ is 1.7% of tests for ~20 files of orchestration):
   **Closed 15 Aug 2026** (`manifest_sweep_check`, network tier, #335): every pin
   HEAD-probed on both arches and everything under the size cap re-hashed against
   its digest — including the Intel pins that were hashed once and never re-run.
+  **Since 12 Sep 2026 it sweeps the Windows x64 set too** (port W2): 104 targets, 88
+  re-hashed. It proves the Windows URLs answer and the sub-cap bytes match — not that
+  anything runs on Windows, which no layer on this Mac can show.
 - **The design system's colour contrast was asserted in one comment and checked
   nowhere** (#337, scan landed 16 Aug 2026). `every_text_on_surface_pairing_meets_wcag_aa`
   and `every_rex_colour_class_names_a_token_that_exists` in `core::copy_scan` derive

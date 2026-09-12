@@ -1,8 +1,8 @@
 # PLAN — rexenv on Windows: the port, the decisions it forces, and the launch
 
-**Status:** IN PROGRESS — W0 and W1 done 12 Sep 2026: both crates compile for Windows, and
-`scripts/windows-check.sh` runs inside `verify.sh`. W2 next; W3 onward waits on the owner's
-rulings D1, D2 and D4–D6 (§3; D3 is ruled). Planned against `e0d287c`. Open work is tracked as the
+**Status:** IN PROGRESS — W0, W1 and W2 done 12 Sep 2026: both crates compile for Windows,
+`scripts/windows-check.sh` runs inside `verify.sh`, and the Windows x64 artifacts are pinned
+and swept. W3 onward waits on the owner's rulings D1, D2 and D4–D6 (§3; D3 is ruled). Planned against `e0d287c`. Open work is tracked as the
 "Windows launch" row in `docs/TODO.md`; this file is the reasoning behind it.
 
 macOS is stable and feature-rich (Phases 1–3 shipped). The owner wants a Windows release.
@@ -298,6 +298,14 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   had NO Caddy arm (`manifest_unknown_is_none`) failed on cue and now asserts an unknown
   version and an arm-less OS instead. The PostgreSQL tarball's layout
   (`postgresql-<v>-x86_64-pc-windows-msvc/bin/postgres.exe`) was confirmed by streaming it.
+  **(5) the sweep, and W2 is done:** `manifest_sweep_check` enumerates the Windows x64 set
+  (one target per pin — both `Arch` values resolve the same URL) and PASSED on 12 Sep 2026:
+  104 targets answering, 88 re-hashed. Windows: Caddy, nginx, Mailpit and the seven PHP
+  zips re-hashed and matching; cloudflared, both MySQL zips and the three PostgreSQL
+  tarballs are over the 40 MB cap and HEAD-only — named, and PostgreSQL's digests are
+  the publisher's alone (ledger #335). **What W2 does not prove:** that any of these runs.
+  `resolve` on a real Windows host still calls `set_executable` / `prepare_binary`, which
+  are `todo!()` there — that is W3.
 - **W3 — Foundations.** `Paths` (`%LOCALAPPDATA%\rexenv`), `PermissionManager` (owner-only
   ACLs), `BinaryProvider` (strip the `Zone.Identifier` stream, no codesign),
   `ProcessSupervisor` (hidden + detached spawn so services OUTLIVE the app, graceful

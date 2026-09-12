@@ -1,5 +1,6 @@
 //! The manifest HEAD+digest sweep (TESTING §1.1's audit item): every pinned
-//! URL — both arches, bundles part by part — answered by its host, and the
+//! URL — both macOS arches, bundles part by part, and the Windows x64 set
+//! (docs/PLAN-windows-port.md W2) — answered by its host, and the
 //! small artifacts re-hashed against their pins.
 //!
 //!   cargo run --example manifest_sweep_check      (network tier)
@@ -52,14 +53,14 @@ struct Target {
     checksum: Checksum,
 }
 
-fn push_single(out: &mut Vec<Target>, name: &str, version: &str, arch: Arch) {
-    match binaries::manifest(name, version, "macos", arch) {
+fn push_single(out: &mut Vec<Target>, os: &str, name: &str, version: &str, arch: Arch) {
+    match binaries::manifest(name, version, os, arch) {
         Some(spec) => out.push(Target {
-            label: format!("{name} {version} {arch:?}"),
+            label: format!("{name} {version} {os}/{arch:?}"),
             url: spec.url,
             checksum: spec.checksum,
         }),
-        None => panic!("{name} {version} {arch:?}: no manifest arm — the sweep's list and the manifest disagree"),
+        None => panic!("{name} {version} {os}/{arch:?}: no manifest arm — the sweep's list and the manifest disagree"),
     }
 }
 
@@ -85,23 +86,23 @@ async fn main() -> ExitCode {
     // 1. Enumerate — from the constants, not a retyped list.
     let mut targets: Vec<Target> = Vec::new();
     for arch in [Arch::Arm64, Arch::X86_64] {
-        push_single(&mut targets, "caddy", binaries::CADDY_VERSION, arch);
-        push_single(&mut targets, "nginx", binaries::NGINX_VERSION, arch);
-        push_single(&mut targets, "mailpit", binaries::MAILPIT_VERSION, arch);
-        push_single(&mut targets, "cloudflared", binaries::CLOUDFLARED_VERSION, arch);
-        push_single(&mut targets, "frankenphp", binaries::FRANKENPHP_VERSION, arch);
-        push_single(&mut targets, "adminer", binaries::ADMINER_VERSION, arch);
-        push_single(&mut targets, "wp-cli", binaries::WP_CLI_VERSION, arch);
-        push_single(&mut targets, "composer", binaries::COMPOSER_VERSION, arch);
+        push_single(&mut targets, "macos", "caddy", binaries::CADDY_VERSION, arch);
+        push_single(&mut targets, "macos", "nginx", binaries::NGINX_VERSION, arch);
+        push_single(&mut targets, "macos", "mailpit", binaries::MAILPIT_VERSION, arch);
+        push_single(&mut targets, "macos", "cloudflared", binaries::CLOUDFLARED_VERSION, arch);
+        push_single(&mut targets, "macos", "frankenphp", binaries::FRANKENPHP_VERSION, arch);
+        push_single(&mut targets, "macos", "adminer", binaries::ADMINER_VERSION, arch);
+        push_single(&mut targets, "macos", "wp-cli", binaries::WP_CLI_VERSION, arch);
+        push_single(&mut targets, "macos", "composer", binaries::COMPOSER_VERSION, arch);
         for v in binaries::PHP_VERSIONS {
-            push_single(&mut targets, "php", v, arch);
-            push_single(&mut targets, "php-fpm", v, arch);
+            push_single(&mut targets, "macos", "php", v, arch);
+            push_single(&mut targets, "macos", "php-fpm", v, arch);
         }
         for v in binaries::MYSQL_VERSIONS {
-            push_single(&mut targets, "mysql", v, arch);
+            push_single(&mut targets, "macos", "mysql", v, arch);
         }
         for v in binaries::POSTGRES_VERSIONS {
-            push_single(&mut targets, "postgres", v, arch);
+            push_single(&mut targets, "macos", "postgres", v, arch);
         }
         for v in binaries::REDIS_VERSIONS {
             push_bundle(&mut targets, "redis", v, arch);
@@ -116,11 +117,27 @@ async fn main() -> ExitCode {
             }
         }
     }
+    // Windows x64 (port W2). ONE target per pin: every `Arch` resolves the same x64
+    // URL there, so asking for both would probe it twice. The .phar/.php artifacts
+    // are OS-agnostic and were swept above.
+    push_single(&mut targets, "windows", "caddy", binaries::CADDY_VERSION, Arch::X86_64);
+    push_single(&mut targets, "windows", "nginx", binaries::NGINX_VERSION, Arch::X86_64);
+    push_single(&mut targets, "windows", "mailpit", binaries::MAILPIT_VERSION, Arch::X86_64);
+    push_single(&mut targets, "windows", "cloudflared", binaries::CLOUDFLARED_VERSION, Arch::X86_64);
+    for v in binaries::PHP_VERSIONS {
+        push_single(&mut targets, "windows", "php", v, Arch::X86_64);
+    }
+    for v in binaries::MYSQL_VERSIONS {
+        push_single(&mut targets, "windows", "mysql", v, Arch::X86_64);
+    }
+    for v in binaries::POSTGRES_VERSIONS {
+        push_single(&mut targets, "windows", "postgres", v, Arch::X86_64);
+    }
     // The count floor is the drift alarm for the LIST itself: pins only ever
     // grow, so a shrink means an enumeration line was lost, not a pin.
     checks.is(
-        &format!("enumeration floor ({} targets ≥ 70)", targets.len()),
-        targets.len() >= 70,
+        &format!("enumeration floor ({} targets ≥ 86)", targets.len()),
+        targets.len() >= 86,
         "the sweep's list shrank — an enumeration line was lost",
     );
 
