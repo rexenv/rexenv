@@ -1092,6 +1092,11 @@ honest footer —
   0600 artifact + manifest, and their server is never started or stopped. Restore is
   provenance-FIRST: `db_created` (1 = this import created it, 0 = pre-existed → never
   dropped by any path, NULL = legacy provisioning) is written before `CREATE DATABASE`.
+  A job that fails after that point drops its partial copy (ours only) from every step
+  up to `finish` — the row is pointed at the restored name only on success, so until
+  12 Sep 2026 a failed-then-deleted import left the copy on our engine under the
+  SOURCE's name, and the next import of that name (every Local site's is `local`) met
+  "no rexenv site owns it" (#586). A crash mid-job can still leave one; Retry reuses it.
   Credentials are mirrored loopback-only (`localhost`+`127.0.0.1`, never `'%'`, never
   root — reserved accounts refuse as an outcome). The settled fact is ONE serialized
   row (`db_imports`): badge, summary and panel all render it, so they cannot disagree,

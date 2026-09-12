@@ -627,6 +627,22 @@ async fn run<R: tauri::Runtime>(
         dbrestore::record_provenance(&conn, &site.id, exists_now)?
     };
     dbrestore::prepare_target(&recorded, &tgt_client, target_engine.port(), &name)?;
+    // From here until `finish`, a failure leaves a copy of THEIR database on our
+    // engine under `name` while the site row still names its own derived
+    // database — `finish` points the row at `name` only on success. So deleting
+    // the site dropped the derived name and ORPHANED the copy, and the next
+    // import of any database with that name met "no rexenv site owns it": every
+    // Local site's database is `local`, and the owner's multisite.local import
+    // hit exactly that (12 Sep 2026). Every fallible step below drops the partial
+    // copy on its way out — only if ours (`cleanup_failed` checks provenance);
+    // Retry restores it from the kept dump either way.
+    let fail_after_restore = |e: Error| -> Error {
+        match dbrestore::cleanup_failed(&recorded, &tgt_client, target_engine.port(), &name) {
+            Ok(dropped) => log_line(app, entry, &format!("partial copy `{name}` dropped: {dropped}")),
+            Err(c) => log_line(app, entry, &format!("could not drop the partial copy `{name}`: {c}")),
+        }
+        e
+    };
     let total = manifest.artifact_bytes.max(1);
     let mut last_emit = std::time::Instant::now();
     let fed = {
@@ -659,10 +675,11 @@ async fn run<R: tauri::Runtime>(
             settle(entry, "cancelled", None, Some(artifact.display().to_string()), None);
             return Ok(());
         }
-        Err(e) => return Err(e),
+        Err(e) => return Err(fail_after_restore(e)),
     };
     log_line(app, entry, &format!("fed {fed} bytes"));
-    let verified = dbrestore::verify_complete(&tgt_client, target_engine.port(), &name, &manifest)?;
+    let verified = dbrestore::verify_complete(&tgt_client, target_engine.port(), &name, &manifest)
+        .map_err(&fail_after_restore)?;
 
     // ── urls: a Local copy moves to the name rexenv serves ─────────────────
     //
@@ -677,8 +694,9 @@ async fn run<R: tauri::Runtime>(
     emit(app, entry);
     match &local {
         Some(l) => {
-            let (php_bin, wp_phar) =
-                crate::commands::wordpress::wp_tools(state, &site.php_version).await?;
+            let (php_bin, wp_phar) = crate::commands::wordpress::wp_tools(state, &site.php_version)
+                .await
+                .map_err(&fail_after_restore)?;
             let replaced = core::wordpress::rehome_urls_on_copy(
                 platform,
                 &php_bin,
@@ -692,7 +710,8 @@ async fn run<R: tauri::Runtime>(
                 // Recorded by the import's adopt step (ledger #580) before this
                 // job runs; a network's blogs and DOMAIN_CURRENT_SITE move too.
                 !matches!(site.multisite, crate::state::models::MultisiteMode::None),
-            )?;
+            )
+            .map_err(&fail_after_restore)?;
             log_line(
                 app,
                 entry,
@@ -721,8 +740,8 @@ async fn run<R: tauri::Runtime>(
     emit(app, entry);
     let intended_user = (!dbmirror::is_reserved(&conn_info.user)).then(|| conn_info.user.clone());
     let record = {
-        let conn = lock(state)?;
-        dbrestore::finish(&conn, &site.id, &name, &verified)?;
+        let conn = lock(state).map_err(&fail_after_restore)?;
+        dbrestore::finish(&conn, &site.id, &name, &verified).map_err(&fail_after_restore)?;
         // The write shape has no state field: an import can only land
         // 'imported' — 'connected' is minted solely by the Stage 3 rewrite
         // job's verification. The upsert returns the stored row.
@@ -840,7 +859,7 @@ mod local_source_wiring {
         let src = crate::core::copy_scan::production_source(include_str!("db_import.rs"));
         assert_eq!(src.matches("rehome_urls_on_copy(").count(), 1, "one URL pass, in `run`");
         let at = src.find("rehome_urls_on_copy(").unwrap();
-        let args = &src[at..at + src[at..].find(")?;").expect("the call's end")];
+        let args = &src[at..at + src[at..].find(".map_err(").expect("the call's end")];
         assert!(args.contains("target_engine.port()"), "not pointed at OUR engine: {args}");
         assert!(args.contains("&name,"), "not pointed at the restored copy: {args}");
         assert!(!args.contains("conn_info"), "the SOURCE's address reached the URL pass: {args}");
@@ -857,6 +876,40 @@ mod local_source_wiring {
             at < src.find("dbrestore::finish(").unwrap(),
             "the URL pass must run BEFORE the import is recorded, or a failed pass settles as imported"
         );
+    }
+
+    /// A job that fails AFTER restoring into `name` drops that partial copy
+    /// (when ours): every fallible step from the feed to `finish` goes through
+    /// `fail_after_restore`. Until 12 Sep 2026 none did — the site row still
+    /// named its derived database, so deleting the site orphaned the copy, and
+    /// the next Local import (every Local database is `local`) met "no rexenv
+    /// site owns it" on the owner's multisite.local.
+    #[test]
+    fn every_failure_after_the_restore_drops_the_partial_copy() {
+        let src = crate::core::copy_scan::production_source(include_str!("db_import.rs"));
+        assert!(
+            src.contains("Err(e) => return Err(fail_after_restore(e))"),
+            "a failed feed no longer drops the partial copy"
+        );
+        let cleanup = src.find("let fail_after_restore").expect("the cleanup closure");
+        let start = src.find("fed {fed} bytes").expect("the fed log line");
+        assert!(
+            src[cleanup..start].contains("dbrestore::cleanup_failed(&recorded"),
+            "the cleanup no longer goes through the ours-only drop"
+        );
+        let finish = src.find("dbrestore::finish(").expect("finish");
+        let end = finish + src[finish..].find(';').expect("finish's statement");
+        let seg = &src[start..end];
+        let unguarded: Vec<String> = seg
+            .match_indices('?')
+            .filter(|(i, _)| !seg[..*i].trim_end().ends_with("map_err(&fail_after_restore)"))
+            .map(|(i, _)| seg[i.saturating_sub(70)..i].replace('\n', " "))
+            .collect();
+        assert!(
+            unguarded.is_empty(),
+            "a step after the restore can fail without dropping the partial copy: {unguarded:#?}"
+        );
+        assert!(seg.matches("map_err(&fail_after_restore)").count() >= 5, "the guarded steps vanished: {seg}");
     }
 
     /// Every phase weight still sums to the whole bar, and a skipped phase is

@@ -150,6 +150,14 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     byte-identical; the connect plan boots the SUBSITE on its rexenv name with
     `COOKIE_DOMAIN` `.multi.rex`. Plant: removing `--url` from the proof fails it; removing
     the override's `DOMAIN_CURRENT_SITE` pin did NOT — the pin was deleted
+  - [x] **fix: a failed import no longer orphans its copy** ✓ 12 Sep 2026 — the owner's
+    first `multisite.local` attempt stopped at "a database called `local` already exists …
+    no rexenv site owns it": an earlier attempt's copy, left when a post-restore failure
+    kept `local` while the row named its derived database, then orphaned by delete. Every
+    step from the feed to `finish` now drops the partial copy (ours only); ledger #586,
+    `every_failure_after_the_restore_drops_the_partial_copy` (plant-proven). The orphan
+    `local` was dropped with the owner's OK. Also found then: Local's router (Site Domains
+    mode) held :443/:80, so no rexenv site loaded
   - [ ] T5 — docs, PUBLISH-TESTING §N network steps, live pass on `multi.local` — steps
     N10–N14 written 12 Sep 2026 (+ the summary row, and N0's stale "multisite can't
     import" corrected); **owed: the owner-run pass** (Local must run the network)
