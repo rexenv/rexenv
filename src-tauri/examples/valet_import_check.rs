@@ -28,9 +28,10 @@ use common::Reaped;
 
 const NGINX_PORT: u16 = 18099;
 const DOMAIN: &str = "importcheck.rex";
-/// An extra name the site answers on (v42) — a link-farm alias, recorded and
-/// then proved served only through the manager's mirror.
-const ALIAS: &str = "www.importcheck.rex";
+/// An extra name the site answers on (v42) — the fixture tree links the SAME
+/// folder under this name too (a link farm), so the scan must surface it as a
+/// second row on one folder, and the imported site must answer on it.
+const ALIAS: &str = "importcheck-www.rex";
 const MARKER: &str = "IMPORTED-FROM-THEIR-OWN-FOLDER";
 
 fn fingerprint(dir: &Path) -> BTreeMap<String, u64> {
@@ -75,6 +76,8 @@ async fn main() {
     std::fs::write(project.join("public/marker.txt"), MARKER).unwrap();
     std::fs::write(project.join(".env"), "APP_KEY=secret-not-read\n").unwrap();
     std::os::unix::fs::symlink(&project, valet_home.join("Sites/importcheck")).unwrap();
+    // The link farm: `valet link importcheck-www` run in the same project.
+    std::os::unix::fs::symlink(&project, valet_home.join("Sites/importcheck-www")).unwrap();
     std::fs::write(
         valet_home.join("config.json"),
         r#"{"tld":"rex","loopback":"127.0.0.1","paths":["/nonexistent"]}"#,
@@ -100,6 +103,15 @@ async fn main() {
         site.domain, site.status, site.php_minor
     );
     ok &= scanned_ok;
+    // Both farm names reach the scan as rows on ONE folder — the input shape
+    // `fold_same_folder` turns into one site with an extra domain (the fold
+    // itself is L0: `same_folder_rows_become_one_row_with_extra_domains`).
+    let farm_ok = found
+        .iter()
+        .find(|s| s.domain == ALIAS)
+        .is_some_and(|s| s.path.is_some() && s.path == site.path);
+    println!("  link farm: {ALIAS} is a second row on the same folder: {farm_ok}");
+    ok &= farm_ok;
 
     println!("\n=== 2. enrich: which folder would we actually serve? ===");
     let root = PathBuf::from(site.path.clone().expect("target exists"));
@@ -203,6 +215,12 @@ async fn main() {
     let served = body.contains(MARKER);
     println!("  GET /marker.txt through the {DOMAIN} vhost: {served}");
     ok &= served;
+    // No GET through ALIAS here, on purpose: with one site, nginx hands ANY Host
+    // to its only server block (a planted `plant-not-a-farm-name.rex` got the
+    // marker, 12 Sep 2026), so it would pass with the alias unserved. The name
+    // is proved by 3b's server_name; that it answers is proved at the edge —
+    // SNI, certificate, and refusal once removed — by the live run recorded in
+    // TODO.md's "Serving one site under two domains".
 
     println!("\n=== 5. delete the imported site ===");
     let out = sites::teardown(&conn, &*plat, &created.id).unwrap();

@@ -333,7 +333,10 @@ it can:
   share to end while the stand-in survives. `valet_import_check` gained step 3b the same
   day: the one example that builds configs BOTH ways (an empty manager mirror vs the
   table's alias map), because every other example calls the DB path and could never see
-  a recorded-but-unpushed alias.
+  a recorded-but-unpushed alias. On 12 Sep 2026 its fixture became a two-name link farm
+  (step 1 requires both rows on one folder). What it can NOT prove is that the alias
+  answers: with one site on loopback, nginx serves any Host from that block — a planted
+  bogus name got the marker — so "answers" is an edge-level, live-app fact (SNI + cert).
   Also from that review: `scripts/wk-checks/contrast.js` read only an element's OWN
   `opacity`, so a badge inside a Services row dimmed with `opacity-[0.74]` reported 4.9:1
   and rendered at 3.1:1 — the gate that certified the periwinkle change was blind one

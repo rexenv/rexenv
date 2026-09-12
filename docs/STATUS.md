@@ -48,24 +48,24 @@ App version **0.7.0** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md`
 - `TODO.md:732` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN 25 Aug 2026
 - `TODO.md:741` Install WordPress into an empty LINKED folder
 - `TODO.md:748` Valet compatibility tails
-- `TODO.md:773` `rex` design-first set — ONE item left: raw `wp` passthrough
+- `TODO.md:778` `rex` design-first set — ONE item left: raw `wp` passthrough
 
 ### Menu-bar app — 1
 
-- `TODO.md:786` Hold the tray menu open while the stack MOVES
+- `TODO.md:791` Hold the tray menu open while the stack MOVES
 
 ### Blocked on external work — 4
 
-- `TODO.md:796` Xdebug on PHP 8.0
-- `TODO.md:801` SMAppService privileged helper
-- `TODO.md:803` Developer ID signing + notarization
-- `TODO.md:805` OpenLiteSpeed override server
+- `TODO.md:801` Xdebug on PHP 8.0
+- `TODO.md:806` SMAppService privileged helper
+- `TODO.md:808` Developer ID signing + notarization
+- `TODO.md:810` OpenLiteSpeed override server
 
 ### Phase 4+ (next era) — 3
 
-- `TODO.md:815` Windows platform impls — fill the `todo!()` stubs in
-- `TODO.md:817` Linux platform impls — same, `platform/linux/mod.rs`
-- `TODO.md:818` Public distribution (the open-sourcing half of the old "packaging polish" row)
+- `TODO.md:820` Windows platform impls — fill the `todo!()` stubs in
+- `TODO.md:822` Linux platform impls — same, `platform/linux/mod.rs`
+- `TODO.md:823` Public distribution (the open-sourcing half of the old "packaging polish" row)
 
 ## Claim ledger (`scripts/ledger-tally.sh`)
 

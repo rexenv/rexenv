@@ -768,8 +768,13 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     a link farm folds into one site with extra domains, on the served folder, with
     every fold announced. **UI landed 2 Sep 2026** (ledger #453): a Domains card on
     the site's Settings tab, rendering the backend's list after every mutation, with an
-    L2 probe. **Still owed**: the live leg — a real link farm imported with both names
-    answering, and an added domain actually served over HTTPS.
+    L2 probe. **Added domain served over HTTPS — live 3 Sep and again 12 Sep 2026**
+    (scratch `linkfarm-livetest.rex`: the alias answered 200 through the edge, the cert
+    was reissued with it in the SAN, removal refused it at TLS, no residue after delete).
+    `valet_import_check` scans a two-name farm fixture (both rows on one folder,
+    plant-proven). **Still owed**: a REAL link farm imported through the running app —
+    this Mac has none, and creating one writes into the Valet tree the import must not
+    touch, so it waits for an owner-made `valet link` (ledger #452).
 - [ ] **`rex` design-first set — ONE item left: raw `wp` passthrough** (a security
   ruling about what the CLI may execute, deliberately not gap-filled). The other four —
   single-site restart (#444), web-tier restart (#445), `wp_user_delete` (#446), progress
