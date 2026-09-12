@@ -2704,8 +2704,15 @@ pub fn url_rehome_pairs(from: &str, to: &str) -> Vec<(String, String)> {
 /// definition of a constant (a redefinition is a Notice on 7.x, a Warning on
 /// 8.x, never fatal), so these four win for this run only. It names rexenv's
 /// passwordless root, so there is no secret in it at all. Pure.
-pub fn copy_db_override(port: u16, db_name: &str) -> String {
-    format!(
+///
+/// A NETWORK also needs `DOMAIN_CURRENT_SITE`: WordPress finds the network by
+/// that constant, and their wp-config's still names the source's host — so once
+/// the pass renames `wp_site`, a run booting with the old name finds no network
+/// (`docs/PLAN-local-multisite.md` §2). `network_domain` pins the name the copy
+/// holds at the moment of the run.
+pub fn copy_db_override(port: u16, db_name: &str, network_domain: Option<&str>) -> String {
+    let esc = |s: &str| s.replace('\\', "\\\\").replace('\'', "\\'");
+    let mut php = format!(
         "<?php\n\
          // Written by rexenv for one wp-cli run against rexenv's COPY of this site's\n\
          // database, and deleted when that run ends. The site's wp-config.php still\n\
@@ -2715,8 +2722,63 @@ pub fn copy_db_override(port: u16, db_name: &str) -> String {
          define('DB_USER', 'root');\n\
          define('DB_PASSWORD', '');\n\
          define('DB_NAME', '{}');\n",
-        db_name.replace('\\', "\\\\").replace('\'', "\\'")
-    )
+        esc(db_name)
+    );
+    if let Some(domain) = network_domain {
+        php.push_str(&format!("define('DOMAIN_CURRENT_SITE', '{}');\n", esc(domain)));
+    }
+    php
+}
+
+/// The search-replace passes that move a copied multisite NETWORK from `from`
+/// to `to`, given the domains its `wp_blogs` rows hold. Each subsite under
+/// `from` moves first, to the same labels under `to` — `http://ea1.multi.local`
+/// is not matched by the network's own `http://multi.local` pair, and the bare
+/// pass alone would leave it on `http://` — then the network's own pairs, bare
+/// network name LAST (by substring it renames `wp_site`, `wp_blogs` and every
+/// subsite's options). A blog on any other domain (a mapped subsite) is an
+/// error before anything is replaced. Pure.
+pub fn network_rehome_pairs(
+    from: &str,
+    to: &str,
+    blog_domains: &[String],
+) -> std::result::Result<Vec<(String, String)>, String> {
+    let under = format!(".{from}");
+    let mut labels: Vec<String> = Vec::new();
+    for d in blog_domains {
+        let d = crate::core::sites::normalize_hostname(d);
+        if d == from {
+            continue;
+        }
+        match d.strip_suffix(&under) {
+            Some(label) if !label.is_empty() => labels.push(label.to_string()),
+            _ => {
+                return Err(format!(
+                    "this network has a site on {d}, outside {from} — a mapped domain, which \
+                     rexenv doesn't import yet. Nothing in the copy was changed."
+                ))
+            }
+        }
+    }
+    labels.sort();
+    labels.dedup();
+    let mut out = Vec::new();
+    for label in labels {
+        out.extend(url_rehome_pairs(&format!("{label}.{from}"), &format!("{label}.{to}")));
+    }
+    out.extend(url_rehome_pairs(from, to));
+    Ok(out)
+}
+
+/// The first blog URL of a moved network that does NOT read `https://` on the
+/// new name — the network's own host or a subsite under it. `None` = every
+/// blog moved. Pure.
+pub fn first_unmoved_blog_url<'a>(to: &str, urls: &'a [String]) -> Option<&'a str> {
+    let under = format!(".{to}");
+    urls.iter().map(|u| u.trim()).filter(|u| !u.is_empty()).find(|u| {
+        let host = u.strip_prefix("https://").and_then(|r| r.split(['/', ':']).next());
+        !host.is_some_and(|h| h.eq_ignore_ascii_case(to) || h.to_ascii_lowercase().ends_with(&under))
+    })
 }
 
 /// Move rexenv's copy of a site's database onto the hostname rexenv serves it
@@ -2727,6 +2789,12 @@ pub fn copy_db_override(port: u16, db_name: &str) -> String {
 /// Reaches the copy ONLY through [`copy_db_override`] (0600, deleted on every
 /// exit path), with `--skip-plugins --skip-themes` so the site's own code does
 /// not run beyond WordPress's bootstrap. Nothing is written into the project.
+///
+/// A `network` (the site is recorded as multisite) lists its blogs first and
+/// moves them with [`network_rehome_pairs`] — a mapped-domain blog fails the
+/// job before any replace — with `DOMAIN_CURRENT_SITE` pinned to the name the
+/// copy holds (old during the replaces, new for the proof), and the proof also
+/// requires EVERY blog's URL to read `https://` on the new name.
 #[allow(clippy::too_many_arguments)]
 pub fn rehome_urls_on_copy(
     platform: &dyn crate::platform::traits::Platform,
@@ -2738,11 +2806,14 @@ pub fn rehome_urls_on_copy(
     db_name: &str,
     from: &str,
     to: &str,
+    network: bool,
 ) -> Result<u64> {
     crate::core::database::validate_db_name(db_name)?;
     std::fs::create_dir_all(scratch_dir)?;
     let file = scratch_dir.join(".copy-db-override.php");
-    platform.permissions().write_private(&file, copy_db_override(port, db_name).as_bytes())?;
+    platform
+        .permissions()
+        .write_private(&file, copy_db_override(port, db_name, network.then_some(from)).as_bytes())?;
     struct Gone<'a>(&'a Path);
     impl Drop for Gone<'_> {
         fn drop(&mut self) {
@@ -2756,8 +2827,28 @@ pub fn rehome_urls_on_copy(
     let tail = ["--skip-plugins", "--skip-themes", require.as_str(), path.as_str()];
     let last_line = |s: &str| s.trim().lines().last().unwrap_or("").trim().to_string();
 
+    let lines = |s: &str| -> Vec<String> {
+        s.lines().map(str::trim).filter(|l| !l.is_empty()).map(str::to_string).collect()
+    };
+
+    let pairs = if network {
+        let mut args: Vec<&str> = vec!["site", "list", "--field=domain"];
+        args.extend(tail);
+        let domains = lines(&wp_cli_checked(php_bin, wp_phar, &args, None)?);
+        if domains.is_empty() {
+            return Err(Error::Other(
+                "this site is recorded as a multisite network, but its copied database lists no \
+                 sites — Retry re-imports the database from scratch."
+                    .into(),
+            ));
+        }
+        network_rehome_pairs(from, to, &domains).map_err(Error::Other)?
+    } else {
+        url_rehome_pairs(from, to)
+    };
+
     let mut total = 0u64;
-    for (a, b) in url_rehome_pairs(from, to) {
+    for (a, b) in pairs {
         let mut args: Vec<&str> =
             vec!["search-replace", a.as_str(), b.as_str(), "--all-tables", "--format=count"];
         args.extend(tail);
@@ -2767,7 +2858,17 @@ pub fn rehome_urls_on_copy(
         })?;
     }
 
+    // The copy's network now lives at `to` — boot it there for the proof.
+    let url = format!("--url=https://{to}/");
+    if network {
+        platform
+            .permissions()
+            .write_private(&file, copy_db_override(port, db_name, Some(to)).as_bytes())?;
+    }
     let mut args: Vec<&str> = vec!["option", "get", "siteurl"];
+    if network {
+        args.push(url.as_str());
+    }
     args.extend(tail);
     let siteurl = last_line(&wp_cli_checked(php_bin, wp_phar, &args, None)?);
     let want = format!("https://{to}");
@@ -2777,6 +2878,18 @@ pub fn rehome_urls_on_copy(
              than `{want}` — the site would redirect to a name rexenv doesn't serve. Retry \
              re-imports the database from scratch."
         )));
+    }
+    if network {
+        let mut args: Vec<&str> = vec!["site", "list", "--field=url", url.as_str()];
+        args.extend(tail);
+        let urls = lines(&wp_cli_checked(php_bin, wp_phar, &args, None)?);
+        if let Some(u) = first_unmoved_blog_url(to, &urls) {
+            return Err(Error::Other(format!(
+                "rexenv updated the network's URLs in the copy, but one of its sites still reads \
+                 `{u}` rather than https:// on {to} — that site would redirect to a name rexenv \
+                 doesn't serve. Retry re-imports the database from scratch."
+            )));
+        }
     }
     Ok(total)
 }
@@ -2810,7 +2923,7 @@ mod copy_rehome_tests {
     /// secret, because rexenv's root has none (ledger #573).
     #[test]
     fn the_override_names_our_copy_and_holds_no_secret() {
-        let php = copy_db_override(13306, "local_ea_rex");
+        let php = copy_db_override(13306, "local_ea_rex", None);
         assert!(php.starts_with("<?php\n"));
         assert!(php.contains("define('DB_HOST', '127.0.0.1:13306');"), "{php}");
         assert!(php.contains("define('DB_NAME', 'local_ea_rex');"), "{php}");
@@ -2820,6 +2933,65 @@ mod copy_rehome_tests {
         assert!(
             php.find("error_reporting(").unwrap() < php.find("define(").unwrap(),
             "the redefinition notices are silenced before they can fire"
+        );
+
+        // A network run also pins the name the copy's network lives at — and
+        // only a network run.
+        let net = copy_db_override(13306, "local_multi_rex", Some("multi.rex"));
+        assert!(net.contains("define('DOMAIN_CURRENT_SITE', 'multi.rex');"), "{net}");
+        assert_eq!(net.matches("define(").count(), 5, "{net}");
+        assert!(!php.contains("DOMAIN_CURRENT_SITE"));
+    }
+
+    /// Every subsite moves onto HTTPS under the new name BEFORE the network's
+    /// bare rename (which would otherwise leave `http://ea1.multi.rex`), the
+    /// bare network name is last, and a mapped-domain blog stops the pass
+    /// before anything is replaced.
+    #[test]
+    fn a_network_moves_every_subsite_before_its_own_bare_name() {
+        let doms = |d: &[&str]| d.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let p = network_rehome_pairs("multi.local", "multi.rex", &doms(&["multi.local", "EA2.multi.local.", "ea1.multi.local"]))
+            .unwrap();
+        let at = |a: &str, b: &str| p.iter().position(|x| x == &(a.to_string(), b.to_string()));
+        let bare = at("multi.local", "multi.rex").expect("the network's bare pair");
+        assert_eq!(bare, p.len() - 1, "the bare network name goes last: {p:?}");
+        for sub in ["ea1", "ea2"] {
+            let scheme = at(&format!("http://{sub}.multi.local"), &format!("https://{sub}.multi.rex"))
+                .unwrap_or_else(|| panic!("{sub}'s http pair is missing: {p:?}"));
+            assert!(scheme < bare, "{sub} must move before the bare rename");
+        }
+        assert!(at("https://multi.local", "https://multi.rex").is_some());
+
+        // A subdirectory network: every blog on the network's own host.
+        assert_eq!(
+            network_rehome_pairs("dirs.local", "dirs.rex", &doms(&["dirs.local", "dirs.local"])).unwrap(),
+            url_rehome_pairs("dirs.local", "dirs.rex")
+        );
+        let err = network_rehome_pairs("multi.local", "multi.rex", &doms(&["multi.local", "shop.local"])).unwrap_err();
+        assert!(err.contains("shop.local") && err.contains("Nothing in the copy was changed"), "{err}");
+    }
+
+    /// The proof: every blog reads `https://` on the new name or a subdomain of
+    /// it; an `http://` survivor and an old-name survivor are both named.
+    #[test]
+    fn a_network_is_proved_moved_only_when_every_blog_reads_https_on_the_new_name() {
+        let urls = |u: &[&str]| u.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(
+            first_unmoved_blog_url("multi.rex", &urls(&["https://multi.rex/", "https://ea1.multi.rex/", "https://multi.rex/sub/", ""])),
+            None
+        );
+        assert_eq!(
+            first_unmoved_blog_url("multi.rex", &urls(&["https://multi.rex/", "http://ea1.multi.rex/"])),
+            Some("http://ea1.multi.rex/")
+        );
+        assert_eq!(
+            first_unmoved_blog_url("multi.rex", &urls(&["https://ea1.multi.local/"])),
+            Some("https://ea1.multi.local/")
+        );
+        assert_eq!(
+            first_unmoved_blog_url("multi.rex", &urls(&["https://notmulti.rex/"])),
+            Some("https://notmulti.rex/"),
+            "a suffix match must be on a label boundary"
         );
     }
 }

@@ -186,7 +186,7 @@ async fn main() -> std::process::ExitCode {
         ("PHP 7.4", binaries::resolve(&*plat, "php", "7.4.33").await.expect("php 7.4"), "ea.rex", "ea2.rex"),
     ] {
         let replaced =
-            wordpress::rehome_urls_on_copy(&*plat, &php, &wp, &docroot, &scratch, PORT, COPY_DB, from, to);
+            wordpress::rehome_urls_on_copy(&*plat, &php, &wp, &docroot, &scratch, PORT, COPY_DB, from, to, false);
         check.is(
             &format!("{label}: the URL pass reaches the copy through the override"),
             matches!(replaced, Ok(n) if n > 0),

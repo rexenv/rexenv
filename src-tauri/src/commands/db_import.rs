@@ -689,6 +689,9 @@ async fn run<R: tauri::Runtime>(
                 &name,
                 &l.domain,
                 &site.domain,
+                // Recorded by the import's adopt step (ledger #580) before this
+                // job runs; a network's blogs and DOMAIN_CURRENT_SITE move too.
+                !matches!(site.multisite, crate::state::models::MultisiteMode::None),
             )?;
             log_line(
                 app,
@@ -841,6 +844,11 @@ mod local_source_wiring {
         assert!(args.contains("target_engine.port()"), "not pointed at OUR engine: {args}");
         assert!(args.contains("&name,"), "not pointed at the restored copy: {args}");
         assert!(!args.contains("conn_info"), "the SOURCE's address reached the URL pass: {args}");
+        assert!(
+            args.contains("site.multisite"),
+            "the URL pass no longer learns whether the site is a network — a network's subsites \
+             then stay on the old name: {args}"
+        );
         assert!(
             src.find("dbrestore::verify_complete(").unwrap() < at,
             "the URL pass must run only AFTER the copy is proven whole"

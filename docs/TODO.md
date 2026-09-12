@@ -112,7 +112,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     `a_network_imports_with_its_mode_and_a_mapped_subsite_is_refused`,
     `an_imported_network_is_adopted_never_converted_and_reloaded` (both guards plant-proven).
     Not usable alone: the copy still names `.local` until T2, and serving needs T3
-  - [ ] T2 — network-aware URL pass on the copy
+  - [x] T2 — network-aware URL pass on the copy ✓ 12 Sep 2026 — ledger #573 extended;
+    `a_network_moves_every_subsite_before_its_own_bare_name`,
+    `a_network_is_proved_moved_only_when_every_blog_reads_https_on_the_new_name`, the
+    override and wiring guards (plant-proven ×3). The bootstrap it rests on is L1-owed (T4)
   - [ ] T3 — `RewriteKey::NetworkDomain` in the connect
   - [ ] T4 — L1 network leg in `local_import_check`
   - [ ] T5 — docs, PUBLISH-TESTING §N network steps, live pass on `multi.local`
