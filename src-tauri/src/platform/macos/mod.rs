@@ -9,6 +9,7 @@ pub mod activation;
 pub mod app_bundle;
 pub mod relauncher;
 pub mod parent_death_guard;
+mod prompt_applet;
 pub mod webview_dialogs;
 
 use crate::error::{Error, Result};
@@ -234,6 +235,41 @@ impl MacosPrivileges {
 
 impl PrivilegeManager for MacosPrivileges {
     fn run_privileged(&self, script: &str) -> Result<String> {
+        // One dialog at a time — and one build of the per-process work dir.
+        static ONE_PROMPT: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _one = ONE_PROMPT.lock().unwrap_or_else(|p| p.into_inner());
+
+        // The dialog names rexenv and carries our icon (`prompt_applet`). If the
+        // applet cannot be built or launched, no dialog was shown, so osascript's
+        // unbranded one is still the only prompt the user sees.
+        let dir = prompt_applet::work_dir();
+        let icon = prompt_applet::icon_source();
+        let ran = match prompt_applet::build(&dir, script, icon.as_deref()) {
+            Ok(()) => prompt_applet::run(&dir),
+            Err(e) => Err(prompt_applet::RunError::NoDialog(e.to_string())),
+        };
+        let _ = prompt_applet::remove(&dir);
+        match ran {
+            Ok(prompt_applet::Outcome::Ran(stdout)) => Ok(stdout),
+            Ok(prompt_applet::Outcome::Failed { number, message }) => Err(Error::Other(
+                Self::privileged_error_message(&format!("{message} ({number})")),
+            )),
+            // It ran: a password may already have been accepted, so asking again
+            // through osascript would be a second dialog for the same step.
+            Err(prompt_applet::RunError::NoResult(why)) => Err(Error::Other(format!(
+                "the rexenv password prompt closed without reporting what happened ({why})"
+            ))),
+            Err(prompt_applet::RunError::NoDialog(why)) => {
+                log::warn!("branded password prompt unavailable ({why}); asking through osascript");
+                Self::run_osascript(script)
+            }
+        }
+    }
+}
+
+impl MacosPrivileges {
+    /// The unbranded fallback: the dialog names `osascript`.
+    fn run_osascript(script: &str) -> Result<String> {
         // `do shell script … with administrator privileges` shows one macOS
         // auth dialog and runs the script as root via /bin/sh.
         let program = Self::osascript_program(script);

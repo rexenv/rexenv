@@ -28,6 +28,21 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [ ] **The admin-password dialog is rexenv's, like Local's** — 12 Sep 2026, owner: ours
+  read "osascript wants to make changes." over a plain lock beside Local's branded prompt.
+  Spike measured on macOS 26.6.2 first (name via bundle, badge only once `Assets.car` is
+  gone); ARCHITECTURE "The admin dialog is rexenv's".
+  - [x] T1 — `run_privileged` asks through a rexenv-named applet with our icon, script
+    compiled in, osascript only when no dialog was shown ✓ 12 Sep 2026 — ledger #577;
+    `a_built_applet_is_named_rexenv_badged_with_our_icon_and_holds_the_script_inside`
+    (plant-proven) + 3 L0; `priv_check` live: "rexenv" + logo, `root` returned
+  - [ ] T2 — say WHAT each prompt is for (`with prompt`: "install the .rex DNS resolver",
+    "start the HTTPS edge on :443", …): a `reason` on `run_privileged`, set by each
+    `dns.rs`/`proxy.rs`/`setup.rs`/`cli.rs` caller. Also owed: the cancel leg live
+    (SMOKE robustness). (The "App Background Activity: rexenv" notification seen during
+    the live run was NOT the applet: BTM log, 13:34:24, the DNS LaunchAgent re-registered
+    pointing at `target/debug/rexenv`, two minutes before the applet launched.)
+
 - [ ] **Import sites from Local (WP Engine/Flywheel)** — 11 Sep 2026, planned in
   `docs/PLAN-local-import.md`. The third migration source after Valet/Herd, under the
   same read-only/link-in-place/copy-the-database rules; what differs is recorded there

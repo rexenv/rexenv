@@ -111,6 +111,11 @@ ask for permission a few times. These are expected and all stay on your machine:
 3. **Admin password** — to let the built-in edge server use ports **80/443** when
    you start your services.
 
+The admin-password dialogs read **rexenv** in bold with rexenv's logo on the lock.
+If one ever reads "osascript wants to make changes." instead, it is still rexenv
+asking — the plain fallback used when its branded prompt cannot start (the app log
+says why: "branded password prompt unavailable").
+
 You can grant these once and get on with it. (A future signed/notarized build will
 reduce the first-launch friction; the local setup prompts are inherent to running a
 real HTTPS dev stack.)

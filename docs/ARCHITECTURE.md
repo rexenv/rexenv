@@ -81,6 +81,18 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
 - CA trust = **login keychain** (user op, `CertTrustManager`) — a detached-root osascript
   can't write System-keychain trust settings. `/etc/resolver/<tld>` files = root op
   (`PrivilegeManager`; onboarding installs the `.rex` backbone, other TLDs on first use). Hence ~2 setup prompts; true single prompt = SMAppService (deferred).
+- **The admin dialog is rexenv's, not osascript's** (`platform/macos/prompt_applet.rs`,
+  #577). SecurityAgent names the dialog after the asking process's bundle, so
+  `/usr/bin/osascript` produced "osascript wants to make changes." over a plain lock —
+  beside Local's branded prompt, the one a careful user refuses (owner, 12 Sep 2026).
+  `run_privileged` now compiles the script INTO a throwaway applet bundle named
+  `rexenv` carrying our icon (per-process `$TMPDIR/rexenv-prompt-<pid>`, 0700), opens
+  it with `open -n -W`, and reads `ok`/`error <n>` back from a result file. The icon
+  only shows once the applet's `Assets.car`/`CFBundleIconName` are gone (they outrank
+  `applet.icns` — measured). The script is a literal in `main.scpt`, so root reads no
+  file after approval. osascript remains the fallback ONLY when no dialog was shown
+  (build/launch failed); an applet that ran and reported nothing is an error, never a
+  second prompt.
 - **Per-site server overrides** (`OverrideKind` in the manager — one seam, two kinds
   today, OLS drops in later if a macOS artifact ever exists):
   - **FrankenPHP** (single static binary, embeds its own PHP): loopback backend on a

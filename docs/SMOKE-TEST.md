@@ -64,6 +64,10 @@ nothing.** The silent case is the one that ships to everybody.
   the Sites list and status must still load. **Tell:** screens that spin until the prompt
   is answered — the database locked across the dialog (#569).
 - [ ] Admin prompt for the `.rex` DNS resolver appears and is accepted (`/etc/resolver/rex`; NO `/etc/resolver/test` on a fresh machine).
+  The dialog reads **rexenv** in bold with rexenv's logo on the lock, and no extra Dock
+  icon appears while it is open (#577). **Tell:** "osascript wants to make changes." over
+  a plain lock — the branded applet failed to build or launch and the fallback ran; the
+  log line `branded password prompt unavailable` names why.
 - [ ] Keychain prompt to trust the local CA appears and is accepted.
 - [ ] Admin prompt for the edge to bind ports 80/443 appears and is accepted.
 - [ ] **The PHP 7.4 licence texts arrive on the COLD path, not by repair.** (Added
