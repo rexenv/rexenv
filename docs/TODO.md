@@ -28,6 +28,30 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [ ] **Windows launch** — 12 Sep 2026, owner: macOS is stable, ship a Windows version.
+  Not "fill the stubs": Unix-only code outside `platform/`, no php-fpm, no `/etc/resolver`,
+  no unix sockets on Windows. Reasoning, measurements and "Done when" per task:
+  `docs/PLAN-windows-port.md`. W0–W2 can start now; W3+ wait on the owner's D1–D6.
+  - [ ] D1–D6 — owner rulings: PHP process model (php-cgi groups), DNS (:53 + NRPT),
+    local IPC (named pipes; Caddy admin socket measured), v1 feature scope, signing +
+    installer + updates, supported Windows/arch (plan §3)
+  - [ ] W0 — `windows-latest` CI job: `cargo check --all-targets` (src-tauri + cli) + tsc
+  - [ ] W1 — move Unix-only code behind traits; widen ledger #163's scan to `std::os::unix`
+    and `Command::new("kill")`, plant-proven
+  - [ ] W2 — `(os, arch)` binary catalog; Windows pins + checksums; sweep covers them
+  - [ ] W3 — Paths, ACL permissions, BinaryProvider, ProcessSupervisor (MySQL + Mailpit
+    start, outlive the app, adopt on relaunch — on real Windows)
+  - [ ] W4 — php-cgi groups + nginx + SMTP mail → a WordPress site serves
+  - [ ] W5 — Caddy :443 edge + CurrentUser Root CA trust → valid lock in Edge/Chrome/Firefox
+  - [ ] W6 — DNS agent + NRPT + UAC + logon task → `*.rex` resolves after reboot, app closed
+  - [ ] W7 — ShellRunner, autostart, tray (includes the Windows half of the browser-stub row)
+  - [ ] W8 — `rex` CLI + MCP over named pipes; `rex.exe` on PATH
+  - [ ] W9 — frontend on WebView2 (Windows paths, Ctrl shortcuts, fonts)
+  - [ ] W10 — Redis/Apache/Xdebug (per D4) refused in core with an honest message
+  - [ ] W11 — NSIS installer, Authenticode, Windows release job, updater, winget
+  - [ ] W12 — launch gates: verify on the Windows runner, SMOKE-TEST + INSTALL Windows
+    sections, clean Windows 11 VM pass
+
 - [ ] **The keychain (CA trust) dialog is rexenv's too** — 12 Sep 2026, owner, after the admin
   dialog got its name: the CA trust dialog still read "security". Measured first: wrapping
   `security` in the rexenv applet does NOT change the title; calling the trust API
@@ -825,9 +849,9 @@ the first and exits) — its box stayed `[ ]` under a struck-through title, tick
 
 ## Phase 4+ (next era)
 
-- [ ] Windows platform impls — fill the `todo!()` stubs in
-  `platform/windows/mod.rs` (trait-by-trait; no restructuring required).
-- [ ] Linux platform impls — same, `platform/linux/mod.rs`.
+- [ ] Linux platform impls — `platform/linux/mod.rs`. Windows moved to *Now* as
+  "Windows launch" on 12 Sep 2026; its W1/W2 (traits for the Unix-only leaks, the
+  `(os, arch)` binary catalog) are most of Linux's groundwork too.
 - [ ] Public distribution (the open-sourcing half of the old "packaging polish" row).
   **The updater half moved out of Phase 4+ on 6 Sep 2026** — it is the "In-app
   self-update" row under *Now*, planned in `docs/archive/PLAN-self-update.md`, and it does

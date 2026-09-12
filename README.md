@@ -200,7 +200,7 @@ rexenv/
         │   │                   #   ShellRunner, Paths, BinaryProvider, EdgeSupervisor,
         │   │                   #   DnsAgentManager
         │   ├── macos/          # all 12 impls real (+ app_bundle.rs, relauncher.rs, webview_dialogs.rs, parent_death_guard.rs, activation.rs, prompt_applet.rs, keychain_trust.rs)
-        │   └── windows/ · linux/   # todo!() stubs (fill later, no restructuring)
+        │   └── windows/ · linux/   # todo!() stubs (Windows port: docs/PLAN-windows-port.md)
         │
         └── state/              # app state
             ├── db.rs           # SQLite + migrations (v1–v44)
@@ -209,7 +209,7 @@ rexenv/
 ```
 
 ### Why this shape
-- **`platform/` is the whole cross-platform strategy.** Every OS difference (DNS, trust store, privileges, process supervision, paths, binaries, permissions, shell) is a trait with per-OS impls. Build the macOS impls now and leave Windows/Linux as `todo!()` — adding them later means filling stubs, **not** restructuring.
+- **`platform/` is the whole cross-platform strategy.** Every OS difference (DNS, trust store, privileges, process supervision, paths, binaries, permissions, shell) is a trait with per-OS impls. Build the macOS impls now and leave Windows/Linux as `todo!()` — the goal is that adding them later means filling stubs, not restructuring. **Measured 12 Sep 2026, the tree is not there yet** (unix sockets, `kill`, macOS binary URLs outside `platform/`; no php-fpm or `/etc/resolver` on Windows) — see `docs/PLAN-windows-port.md`.
 - **`core/` never imports OS-specific code** — it talks to `platform/` traits only. This keeps the Windows/Linux ports clean.
 - **`commands/` stay thin** — they translate IPC calls into `core/` calls, so the business logic is testable without the UI.
 - **Frontend mirrors the design** — `routes/` map 1:1 to screens (`docs/DESIGN.md` holds the design system + the comps' intentional divergences); `components/shell/` is the app shell; `lib/ipc/` is the typed bridge to Rust.
