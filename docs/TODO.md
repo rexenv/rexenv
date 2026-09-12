@@ -28,7 +28,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
-- [ ] **The admin-password dialog is rexenv's, like Local's** — 12 Sep 2026, owner: ours
+- [x] **The admin-password dialog is rexenv's, like Local's** ✓ 12 Sep 2026 — owner: ours
   read "osascript wants to make changes." over a plain lock beside Local's branded prompt.
   Spike measured on macOS 26.6.2 first (name via bundle, badge only once `Assets.car` is
   gone); ARCHITECTURE "The admin dialog is rexenv's".
@@ -41,10 +41,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     and the osascript fallback; ledger #578;
     `a_reason_completes_one_sentence_whatever_punctuation_the_caller_brought` + the
     applet/osascript source tests
-  - [ ] T3 — one live `priv_check`, eyes on the dialog: the sentence under "rexenv" reads
-    "rexenv wants to run its password-prompt check." (#578's L3 — the 12 Sep run was
-    approved and returned `root`, but nobody read the text), then Cancel → "permission
-    cancelled, try again", and a retry works (SMOKE robustness). (The "App Background Activity: rexenv" notification seen during
+  - [x] T3 — one live `priv_check`, eyes on the dialog ✓ 12 Sep 2026 — the owner read
+    "rexenv wants to run its password-prompt check." under "rexenv" (#578 → ✅); Cancel
+    returned "Administrator permission was cancelled — this step needs it. Try again and
+    approve the prompt." with no second dialog and no work dir left; the retry, approved,
+    returned `root` (#577). (The "App Background Activity: rexenv" notification seen during
     the live run was NOT the applet: BTM log, 13:34:24, the DNS LaunchAgent re-registered
     pointing at `target/debug/rexenv`, two minutes before the applet launched.)
 
