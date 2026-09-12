@@ -1371,10 +1371,17 @@ export async function wpUserLoginUrl(id: string, userId: number): Promise<string
  *  the site's PRIMARY administrator and lands on /wp-admin/. Same hardened
  *  single-use / short-TTL / loopback-only token as `wpUserLoginUrl`. Throws if
  *  the link can't be issued (no admin user, tools missing) — callers fall back
- *  to the plain login page. Desktop-app only. */
-export async function wpAdminLoginUrl(id: string): Promise<string> {
+ *  to the plain login page. Desktop-app only.
+ *
+ *  `blogId` signs in to one SUB-SITE of a network (a `WpNetworkSite.id`): the
+ *  backend looks its URL up in the network's own list and mints the token on
+ *  that blog, so the link lands in that sub-site's admin. */
+export async function wpAdminLoginUrl(id: string, blogId?: string): Promise<string> {
   if (!isTauri()) throw new Error('"Open admin" requires the rexenv desktop app.');
-  return invoke<string>("wp_admin_login_url", { id });
+  return invoke<string>("wp_admin_login_url", {
+    id,
+    blogId: blogId === undefined ? null : Number(blogId),
+  });
 }
 
 // ── WordPress Manager — tools (§7.2) ────────────────────────────────────────

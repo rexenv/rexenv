@@ -1212,6 +1212,15 @@ editor" → `open -a <editor> <site folder>`, so the folder lands as a PROJECT) 
   plugin/theme rows…); a UI-side rule would mean the next call site anyone adds
   silently opens in the system default. Non-`http(s)` targets (docroots, log
   files) keep going to the OS handler unchanged.
+- **A network's sub-sites get the header's two actions, not two plain icons** (13 Sep
+  2026, owner report): each Network-tab row has Visit and Magic Login, both with the
+  browser chooser (`useBrowserMenu`). Sub-site sign-in needed a backend change, not a
+  button: the login token lives in an option, and a sub-site's request reads ITS blog's
+  options, so a token minted on the main site was invisible there — the row could only
+  open a plain `/wp-admin/`. `wp_admin_login_url` takes an optional `blog_id`, looks the
+  blog's URL up in the network's own `wp site list` (never the caller's string), accepts
+  it only on this site's host or a subdomain of it (`wp_login::subsite_login_base`), and
+  mints the token with `--url` on that blog (#589).
 - **Installed-ness is re-checked at every open, never once at save time** — a
   browser can be dragged to the Trash any day. A preference that no longer
   resolves logs and falls back to the OS handler: the link still opens, and the

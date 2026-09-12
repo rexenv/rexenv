@@ -247,6 +247,26 @@ pub fn issue(
     user_id: u64,
     ttl_secs: u64,
 ) -> Result<(String, bool)> {
+    issue_at(php_bin, wp_phar, docroot, content_rel, domain, user_id, ttl_secs, None)
+}
+
+/// [`issue`] for ONE blog of a multisite network. `blog_url` (a
+/// [`subsite_login_base`]) makes WP-CLI write the token into that blog's own
+/// options: the mu-plugin reads `get_option` on the blog the request lands on,
+/// so a token on the main site is invisible to a sub-site — which is why the
+/// Network tab's sub-site rows could only open a plain `/wp-admin/` (owner,
+/// 12 Sep 2026). The caller builds the link on that same base.
+#[allow(clippy::too_many_arguments)]
+pub fn issue_at(
+    php_bin: &Path,
+    wp_phar: &Path,
+    docroot: &Path,
+    content_rel: &str,
+    domain: &str,
+    user_id: u64,
+    ttl_secs: u64,
+    blog_url: Option<&str>,
+) -> Result<(String, bool)> {
     let created_dir = ensure_muplugin(docroot, content_rel, domain)?;
 
     // ~244-bit token (two v4 UUIDs); store only its hash. NOT 256: a v4 UUID
@@ -263,9 +283,45 @@ pub fn issue(
         + ttl_secs;
 
     let payload = serde_json::json!({ "hash": hash, "user": user_id, "exp": exp }).to_string();
-    // Store (or overwrite any prior pending token) as a non-autoloaded option.
-    wp_run(php_bin, wp_phar, docroot, &["option", "update", "rexenv_login", &payload, "--autoload=no"])?;
+    // Store (or overwrite any prior pending token) as a non-autoloaded option —
+    // on the blog the link will land on.
+    let url_arg = blog_url.map(|u| format!("--url={u}"));
+    let mut args = vec!["option", "update", "rexenv_login", payload.as_str(), "--autoload=no"];
+    if let Some(u) = &url_arg {
+        args.push(u.as_str());
+    }
+    wp_run(php_bin, wp_phar, docroot, &args)?;
     Ok((token, created_dir))
+}
+
+/// The base a network SUB-SITE's magic link is built on (`https://sub.site.rex/`
+/// or `https://site.rex/sub/`), from the blog's URL as the network's own
+/// `wp site list` reports it. Accepted only on this site's host or a subdomain
+/// of it — the mu-plugin's own host rule, so anything else would be denied
+/// anyway, and a host rexenv doesn't serve is not one to mint a token for.
+/// `https://` is forced (rexenv serves every site over HTTPS); the path keeps
+/// only URL-safe characters, no `..`, and ends in `/`. Pure.
+pub fn subsite_login_base(site_domain: &str, blog_url: &str) -> Result<String> {
+    let bad = || Error::Other(format!("{blog_url:?} is not a sub-site of {site_domain}"));
+    let url = blog_url.trim();
+    let rest = url.strip_prefix("https://").or_else(|| url.strip_prefix("http://")).ok_or_else(bad)?;
+    let (host, path) = match rest.find('/') {
+        Some(i) => (&rest[..i], &rest[i..]),
+        None => (rest, "/"),
+    };
+    let host = host.to_ascii_lowercase();
+    let on_site = host == site_domain
+        || host.strip_suffix(site_domain).is_some_and(|h| h.len() > 1 && h.ends_with('.'));
+    if !on_site || !domain_is_php_string_safe(&host) {
+        return Err(bad());
+    }
+    let path_ok = path.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '-' | '_' | '.' | '~'))
+        && !path.contains("..");
+    if !path_ok {
+        return Err(bad());
+    }
+    let path = if path.ends_with('/') { path.to_string() } else { format!("{path}/") };
+    Ok(format!("https://{host}{path}"))
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
@@ -278,6 +334,36 @@ fn sha256_hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A sub-site's link is built only on this site's host or a subdomain of
+    /// it, over https, with a safe path — never on a host the caller named.
+    #[test]
+    fn a_subsite_login_is_built_only_on_this_sites_host() {
+        assert_eq!(subsite_login_base("multisite.rex", "https://sub1.multisite.rex/").unwrap(), "https://sub1.multisite.rex/");
+        assert_eq!(
+            subsite_login_base("multisite.rex", "http://Sub1.multisite.rex").unwrap(),
+            "https://sub1.multisite.rex/",
+            "https forced, host lowercased, slash added"
+        );
+        assert_eq!(
+            subsite_login_base("mstest.rex", "https://mstest.rex/shop/").unwrap(),
+            "https://mstest.rex/shop/",
+            "a subdirectory sub-site keeps its path"
+        );
+        for bad in [
+            "https://evil.rex/",
+            "https://notmultisite.rex/",
+            "https://multisite.rex.evil.com/",
+            "https://.multisite.rex/",
+            "ftp://sub1.multisite.rex/",
+            "https://sub1.multisite.rex/a'b/",
+            "https://sub1.multisite.rex/../x/",
+            "sub1.multisite.rex",
+            "",
+        ] {
+            assert!(subsite_login_base("multisite.rex", bad).is_err(), "accepted {bad:?}");
+        }
+    }
 
     #[test]
     fn mu_plugin_path_follows_the_recorded_content_dir() {

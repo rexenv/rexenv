@@ -774,7 +774,7 @@ where
                 .as_str()
                 .ok_or_else(|| Error::Other("site.login needs an id".into()))?
                 .to_string();
-            let url = commands::wordpress::wp_admin_login_url(state.clone(), id).await?;
+            let url = commands::wordpress::wp_admin_login_url(state.clone(), id, None).await?;
             Ok(json!({ "url": url }))
         }
         // Site delete: the CLI resolves domain → id via site.list first; this

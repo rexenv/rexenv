@@ -1208,7 +1208,7 @@ impl<Rt: tauri::Runtime> user_sites::WpOps for AppSiteCreator<Rt> {
         Box::pin(async move { crate::commands::wordpress::wp_user_login_url(self.state()?, id, user_id).await })
     }
     fn admin_login_url<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<String>> {
-        Box::pin(async move { crate::commands::wordpress::wp_admin_login_url(self.state()?, id).await })
+        Box::pin(async move { crate::commands::wordpress::wp_admin_login_url(self.state()?, id, None).await })
     }
     fn super_admins<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<Vec<String>>> {
         Box::pin(async move { crate::commands::wordpress::wp_super_admins(self.state()?, id).await })

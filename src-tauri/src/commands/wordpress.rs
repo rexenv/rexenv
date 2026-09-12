@@ -540,8 +540,18 @@ pub async fn wp_user_login_url(state: State<'_, AppState>, id: String, user_id: 
 /// (§7.1); the mu-plugin lands the browser on `/wp-admin/`. Scoped to managed
 /// sites by construction: the site row must exist in OUR database, and the
 /// token is planted via WP-CLI in that site's own docroot.
+///
+/// `blog_id` signs in to ONE sub-site of a network (the Network tab's rows):
+/// its URL is looked up in the network's OWN list — never taken from the
+/// caller — and must be on this site's host or a subdomain of it
+/// (`wp_login::subsite_login_base`); the token is written to that blog's
+/// options, where its request will look for it.
 #[tauri::command]
-pub async fn wp_admin_login_url(state: State<'_, AppState>, id: String) -> Result<String> {
+pub async fn wp_admin_login_url(
+    state: State<'_, AppState>,
+    id: String,
+    blog_id: Option<u64>,
+) -> Result<String> {
     let site = {
         let conn = state
             .db
@@ -549,13 +559,30 @@ pub async fn wp_admin_login_url(state: State<'_, AppState>, id: String) -> Resul
             .map_err(|_| Error::Other("database lock poisoned".into()))?;
         core::sites::get(&conn, &id)?.ok_or_else(|| Error::Other(format!("no site {id}")))?
     };
+    if blog_id.is_some() && site.multisite == crate::state::models::MultisiteMode::None {
+        return Err(Error::Other(format!(
+            "{} is not a multisite network — there is no sub-site to sign in to",
+            site.domain
+        )));
+    }
     let (php_bin, wp_phar) = wp_tools(&state, &site.php_version).await?;
     let docroot = PathBuf::from(&site.path);
     let content_rel = site.content_dir_rel().to_string();
     let domain = site.domain.clone();
-    let (admin_id, token, created_dir) = wp_blocking(move || {
+    let (admin_id, token, created_dir, base) = wp_blocking(move || {
         let admin_id = core::wordpress::primary_admin_id(&php_bin, &wp_phar, &docroot)?;
-        let (token, created_dir) = core::wp_login::issue(
+        let base = match blog_id {
+            None => None,
+            Some(b) => {
+                let want = b.to_string();
+                let blog = core::wordpress::network_site_list(&php_bin, &wp_phar, &docroot)?
+                    .into_iter()
+                    .find(|s| s.id == want)
+                    .ok_or_else(|| Error::Other(format!("there is no sub-site #{b} in this network")))?;
+                Some(core::wp_login::subsite_login_base(&domain, &blog.url)?)
+            }
+        };
+        let (token, created_dir) = core::wp_login::issue_at(
             &php_bin,
             &wp_phar,
             &docroot,
@@ -563,17 +590,18 @@ pub async fn wp_admin_login_url(state: State<'_, AppState>, id: String) -> Resul
             &domain,
             admin_id,
             core::wp_login::LOGIN_TTL_SECS,
+            base.as_deref(),
         )?;
-        Ok((admin_id, token, created_dir))
+        Ok((admin_id, token, created_dir, base))
     })
     .await?;
     if created_dir {
         crate::commands::tunnels::record_mu_dir_created(&state, &site.id);
     }
-    Ok(format!(
-        "https://{}/?rexenv_login={}&rexenv_user={}",
-        site.domain, token, admin_id
-    ))
+    Ok(match base {
+        Some(base) => format!("{base}?rexenv_login={token}&rexenv_user={admin_id}"),
+        None => format!("https://{}/?rexenv_login={}&rexenv_user={}", site.domain, token, admin_id),
+    })
 }
 
 /// Whether WP_DEBUG is on for the site.

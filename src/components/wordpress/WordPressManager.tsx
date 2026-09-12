@@ -3,10 +3,11 @@ import { useNavigate } from "react-router-dom";
 import { toast, toastBackendError } from "@/lib/toast";
 import { confirm, PromptDialog } from "@/components/ui/dialog";
 import { Menu } from "@/components/ui/menu";
-import { useTerminalMenu } from "@/components/ui/open-in";
+import { BROWSER_MENU_WIDTH, useBrowserMenu, useTerminalMenu } from "@/components/ui/open-in";
+import { SplitButton } from "@/components/ui/split-button";
 import { confirmPhraseMatches, TypeToConfirm } from "@/components/ui/type-to-confirm";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowUpCircle, Check, ChevronDown, Download, ExternalLink, FileUp, Globe, Loader2, Lock, LogIn, Network, Palette, Plus, RefreshCw, Replace, RotateCcw, Eye, EyeOff, KeyRound, Search, Shield, Star, TerminalSquare, Trash2, UserPlus, X } from "lucide-react";
+import { AlertTriangle, ArrowUpCircle, Check, ChevronDown, Download, FileUp, Globe, Loader2, Lock, LogIn, Network, Palette, Plus, RefreshCw, Replace, RotateCcw, Eye, EyeOff, KeyRound, Search, Shield, Star, TerminalSquare, Trash2, UserPlus, X } from "lucide-react";
 import { CHECK_INPUT, cn, TECH_INPUT } from "@/lib/utils";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import {
@@ -43,6 +44,7 @@ import {
   wpPermalinkSet,
   wpNetworkSiteDelete,
   wpNetworkSites,
+  wpAdminLoginUrl,
   wpPluginActivateNetwork,
   wpPluginDeactivateNetwork,
   wpRewriteFlush,
@@ -810,39 +812,16 @@ function NetworkPanel({ siteId, mode, domain }: { siteId: string; mode: Multisit
         ) : (
           <div className="overflow-hidden rounded-lg border border-rex-border">
             {sites.map((s) => (
-              <div
+              <SubSiteRow
                 key={s.id}
-                className="flex items-center gap-2 border-b border-rex-border-subtle px-3 py-2 last:border-b-0"
-              >
-                <span className="rounded bg-rex-surface-3 px-1.5 py-0.5 font-mono text-[0.65625rem] text-rex-text-muted">
-                  #{s.id}
-                </span>
-                <span className="min-w-0 flex-1 truncate font-mono text-[0.75rem] text-rex-text" title={s.url}>
-                  {s.url}
-                </span>
-                {s.deleted && (
-                  <span className="rounded-full bg-status-warning-bg px-1.5 py-0.5 text-[0.625rem] text-status-warning-bright">
-                    archived
-                  </span>
-                )}
-                <IconBtn title="Visit" onClick={() => void openExternal(s.url).catch(toastBackendError)}>
-                  <Globe className="h-3.5 w-3.5" />
-                </IconBtn>
-                <IconBtn title="Admin" onClick={() => void openExternal(`${s.url.replace(/\/$/, "")}/wp-admin/`).catch(toastBackendError)}>
-                  <ExternalLink className="h-3.5 w-3.5" />
-                </IconBtn>
-                <button
-                  className={BTN + " hover:border-status-error-border hover:text-status-error-bright disabled:hover:border-rex-border disabled:hover:text-rex-text"}
-                  disabled={sitesRun.isPending || s.id === "1"}
-                  title={s.id === "1" ? "Can't delete the main site" : "Delete sub-site"}
-                  onClick={async () => {
-                    if (await confirm({ title: "Delete sub-site?", message: s.url, danger: true, confirmLabel: "Delete" }))
-                      sitesRun.mutate(() => wpNetworkSiteDelete(siteId, s.id));
-                  }}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </div>
+                siteId={siteId}
+                site={s}
+                deleteDisabled={sitesRun.isPending || s.id === "1"}
+                onDelete={async () => {
+                  if (await confirm({ title: "Delete sub-site?", message: s.url, danger: true, confirmLabel: "Delete" }))
+                    sitesRun.mutate(() => wpNetworkSiteDelete(siteId, s.id));
+                }}
+              />
             ))}
           </div>
         )}
@@ -2257,15 +2236,85 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
   );
 }
 
-function IconBtn({ title, onClick, children }: { title: string; onClick: () => void; children: React.ReactNode }) {
+/** One network sub-site row: Visit and Magic Login, each with the browser
+ *  chooser the site header has. Until 12 Sep 2026 these were two plain icons —
+ *  Visit in the default browser only, and "Admin" opening `/wp-admin/` with no
+ *  sign-in at all (owner report). The login is minted per click FOR THIS BLOG
+ *  (`blogId`): a token on the main site is invisible to a sub-site's request. */
+function SubSiteRow({
+  siteId,
+  site: s,
+  deleteDisabled,
+  onDelete,
+}: {
+  siteId: string;
+  site: { id: string; url: string; deleted: boolean };
+  deleteDisabled: boolean;
+  onDelete: () => void;
+}) {
+  const loginUrl = async () => {
+    try {
+      return await wpAdminLoginUrl(siteId, s.id);
+    } catch (e) {
+      toast.error(`Auto-login unavailable — opening the sub-site's login page instead.\n${String(e)}`);
+      return `${s.url.replace(/\/$/, "")}/wp-admin/`;
+    }
+  };
+  const visitMenu = useBrowserMenu(s.url);
+  const loginMenu = useBrowserMenu(loginUrl);
+  const [signingIn, setSigningIn] = useState(false);
   return (
-    <button
-      title={title}
-      onClick={onClick}
-      className="rounded p-1 text-rex-text-muted transition-colors hover:bg-rex-surface-2 hover:text-rex-text"
-    >
-      {children}
-    </button>
+    <div className="flex items-center gap-2 border-b border-rex-border-subtle px-3 py-2 last:border-b-0">
+      <span className="rounded bg-rex-surface-3 px-1.5 py-0.5 font-mono text-[0.65625rem] text-rex-text-muted">
+        #{s.id}
+      </span>
+      <span className="min-w-0 flex-1 truncate font-mono text-[0.75rem] text-rex-text" title={s.url}>
+        {s.url}
+      </span>
+      {s.deleted && (
+        <span className="rounded-full bg-status-warning-bg px-1.5 py-0.5 text-[0.625rem] text-status-warning-bright">
+          archived
+        </span>
+      )}
+      <SplitButton
+        size="sm"
+        onClick={() => void openExternal(s.url).catch(toastBackendError)}
+        menu={visitMenu}
+        menuWidth={BROWSER_MENU_WIDTH}
+        chevronLabel="Visit in another browser"
+      >
+        <Globe className="h-3.5 w-3.5" />
+        Visit
+      </SplitButton>
+      <SplitButton
+        size="sm"
+        disabled={signingIn}
+        onClick={async () => {
+          setSigningIn(true);
+          try {
+            await openExternal(await loginUrl());
+          } catch (e) {
+            toastBackendError(e);
+          } finally {
+            setSigningIn(false);
+          }
+        }}
+        menu={loginMenu}
+        menuWidth={BROWSER_MENU_WIDTH}
+        chevronLabel="Sign in through another browser"
+      >
+        <LogIn className="h-3.5 w-3.5" />
+        {signingIn ? "Signing in…" : "Magic Login"}
+      </SplitButton>
+      <button
+        className={BTN + " hover:border-status-error-border hover:text-status-error-bright disabled:hover:border-rex-border disabled:hover:text-rex-text"}
+        disabled={deleteDisabled}
+        title={s.id === "1" ? "Can't delete the main site" : "Delete sub-site"}
+        onClick={onDelete}
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+      </button>
+    </div>
   );
 }
 

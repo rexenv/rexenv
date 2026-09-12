@@ -172,6 +172,14 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     import" corrected) ✓ 13 Sep 2026 — owner-run on `multisite.local`: "ekhon sob thik
     achhe"; the copy's blogs read back over MCP first (all `https://…multisite.rex`)
 
+- [x] **A network's sub-site rows sign in and choose a browser** ✓ 13 Sep 2026 — owner
+  report on `multisite.rex`: the Network tab's rows had a Visit icon (default browser
+  only) and an "Admin" icon that opened a plain `/wp-admin/`. Each row now has Visit and
+  Magic Login split buttons with the header's browser chooser; the login is minted ON the
+  sub-site's blog (a main-site token is invisible to a sub-site's request) for the URL the
+  network's own `wp site list` reports, host-checked. Ledger #589,
+  `a_subsite_login_is_built_only_on_this_sites_host`. L3 owner-run owed.
+
 - [ ] **A Valet or Herd multisite network imports silently as a single site** — found
   12 Sep 2026 researching the Local network import (`docs/PLAN-local-multisite.md` §6).
   Nothing in `core/valet.rs` / `commands/valet_import.rs` detects multisite, so the site
