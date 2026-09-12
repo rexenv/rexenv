@@ -32,6 +32,7 @@ use std::path::Path;
 use std::time::Duration;
 use tauri::Manager;
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader};
+#[cfg(unix)]
 use tokio::net::UnixListener;
 
 pub const SOCKET_FILE: &str = "rexenv-cli.sock";
@@ -100,7 +101,15 @@ pub fn parse_request(line: &str) -> Result<Request> {
     serde_json::from_str(line.trim()).map_err(|e| Error::Other(format!("bad request: {e}")))
 }
 
+// ── The transport: unix-only ─────────────────────────────────────────────────
+// Everything from here to `serve`, plus `spawn` and `hand_off_to_running_instance`,
+// is the unix socket, and is `cfg(unix)`. The request model, `handle_request` and
+// `dispatch` below are not, so they compile on every OS — the examples drive
+// them in-process, and the Windows named pipe (owner ruling D3, port W8) will
+// reach the same dispatch. Gating the whole module used to hide that.
+
 /// What taking the socket path found.
+#[cfg(unix)]
 pub enum Claim {
     /// Ours: bound, `0600`, nobody else was listening.
     Bound(std::os::unix::net::UnixListener),
@@ -121,6 +130,7 @@ pub enum Claim {
 /// first request is served. Plain `std`, no runtime needed: this runs before
 /// Tauri boots, so the lock is held for the whole of startup rather than from
 /// the end of `setup`.
+#[cfg(unix)]
 pub fn claim(path: &Path) -> Result<Claim> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
@@ -139,6 +149,7 @@ pub fn claim(path: &Path) -> Result<Claim> {
 
 /// [`claim`] as a tokio listener — for callers already on the runtime (tests,
 /// and the late bind when the startup claim could not be made).
+#[cfg(unix)]
 pub fn bind(path: &Path) -> Result<UnixListener> {
     match claim(path)? {
         Claim::Bound(l) => {
@@ -153,6 +164,7 @@ pub fn bind(path: &Path) -> Result<UnixListener> {
 }
 
 /// What `run()` does about the socket before Tauri boots.
+#[cfg(unix)]
 pub enum StartupClaim {
     /// Continue: the socket is ours (`Some`), or could not be claimed at all
     /// (`None` — `spawn` tries again later, and the app works without its CLI).
@@ -169,6 +181,7 @@ pub enum StartupClaim {
 /// backfills, two process-table sweeps, `adopt_startup` — is seconds during
 /// which a second launch used to find no socket, boot fully as a second
 /// writer, and then take the socket from the first.
+#[cfg(unix)]
 pub fn claim_at_startup() -> StartupClaim {
     let Ok(dir) = crate::platform::current().paths().config_dir() else {
         return StartupClaim::Ours(None);
@@ -222,6 +235,7 @@ impl Progress {
 ///
 /// The envelope is always last and always exactly one, which is what lets a
 /// reader that knows nothing about a given command still know when it is done.
+#[cfg(unix)]
 pub async fn serve<F, Fut>(listener: UnixListener, handler: F)
 where
     F: Fn(String, Progress) -> Fut + Clone + Send + 'static,
@@ -389,8 +403,8 @@ where
 }
 
 // The settle rule lives beside `RepoJobState` in `commands::repo`, not here: the
-// MCP server applies the same rule, and this module is `cfg(unix)` while the MCP
-// server now compiles on every OS (docs/PLAN-windows-port.md W1).
+// MCP server applies the same rule, and it moved out while this whole module was
+// still `cfg(unix)` (docs/PLAN-windows-port.md W1).
 use crate::commands::repo::repo_job_settled;
 
 /// Poll a job until settled (no cap — same philosophy as the UI: builds run
@@ -1955,6 +1969,7 @@ pub fn hand_off_to_running_instance() -> bool {
 /// Spawn the listener at app startup, on the socket `claim_at_startup` already
 /// holds (or a late bind when it could not). Failure is logged, never fatal —
 /// the app works without its CLI.
+#[cfg(unix)]
 pub fn spawn(app: tauri::AppHandle, claimed: Option<std::os::unix::net::UnixListener>) {
     let path = match crate::platform::current().paths().config_dir() {
         Ok(dir) => dir.join(SOCKET_FILE),
@@ -2035,6 +2050,7 @@ mod cli_isolation {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
 
     fn scratch_sock(name: &str) -> std::path::PathBuf {
@@ -2297,6 +2313,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(unix)]
     async fn bind_locks_perms_and_replaces_a_stale_socket() {
         let path = scratch_sock("perms");
         let first = bind(&path).expect("first bind");
@@ -2314,6 +2331,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(unix)]
     async fn serve_round_trips_one_line_per_connection() {
         let path = scratch_sock("echo");
         let listener = bind(&path).expect("bind");
@@ -2337,6 +2355,7 @@ mod tests {
     /// client saying it can read more than one line, and a request without it
     /// must get the old framing byte for byte.
     #[tokio::test]
+    #[cfg(unix)]
     async fn progress_lines_only_go_to_a_client_that_asked_for_them() {
         let path = scratch_sock("stream");
         let listener = bind(&path).expect("bind");
@@ -2397,6 +2416,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(unix)] // the idle-peer leg uses a unix socket pair
     async fn read_request_line_bounds_size_and_timeout() {
         // A normal request fits well under the cap and round-trips intact.
         let ok = read_request_line(&b"{\"cmd\":\"x\"}\n"[..], 1024, Duration::from_secs(5)).await;

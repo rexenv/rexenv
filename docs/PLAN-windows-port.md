@@ -53,8 +53,10 @@ The table above was a grep. **W0's compiler run is the authoritative list**
   `start` refuses so the toggle never reads on (ledger #203's scope note). Un-gating
   surfaced one more: `mcp_server` called `cli_server::repo_job_settled`, a pure predicate
   stranded in the `cfg(unix)` CLI server — moved beside `RepoJobState` in
-  `commands/repo.rs`. Windows run 56 → 45. **Still open:** `cli_server` itself is
-  `cfg(unix)` and stays so until D3/W8 give it a transport. Ledger #163's scan looks for
+  `commands/repo.rs`. Windows run 56 → 45. **Then `cli_server` got the same
+  treatment:** only its socket transport (`claim`, `bind`, `serve`, `spawn`, the hand-off)
+  is `cfg(unix)`; `handle_request` and `dispatch` compile everywhere — three examples drive
+  them in-process today, and W8's named pipe will reach the same dispatch. Ledger #163's scan looks for
   `cfg(target_os`, not `cfg(unix)`, so none of this ever failed it.
 - ~~**`QUIT_MENU_ID`** is defined under `cfg(macos)` (`lib.rs:2255`) and used outside it
   (`lib.rs:2289, :2298`).~~ **Fixed 12 Sep 2026 (W1):** the `cfg` had landed between

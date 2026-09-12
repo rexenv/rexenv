@@ -3,7 +3,6 @@
 //! Architecture: `commands/` (thin IPC) → `core/` (platform-agnostic) →
 //! `platform/` (OS traits, selected via cfg). See CLAUDE.md.
 
-#[cfg(unix)]
 pub mod cli_server;
 pub mod commands;
 pub mod core;

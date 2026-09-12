@@ -32,15 +32,16 @@ platform/   ALL OS-specific code, behind 13 traits (platform/traits.rs):
   MCP listeners move behind it in W8. It is also the one `Platform` accessor with a
   default — the build OS's implementation — so the dozen stub platforms in tests and
   examples did not each grow a field. `platform/windows/`, `platform/linux/` —
-  every method `todo!()`. The design goal is "adding an OS = filling stubs"; **the tree
-  does not meet it yet** (measured 12 Sep 2026): unix sockets (`cli_server`, the `rex`
-  CLI, `core/proxy.rs`, `core/dbsource.rs`; `mcp_server` compiles everywhere since W1,
-  only its socket transport is `cfg(unix)`; `core/`'s `Command::new("kill")` moved behind
-  `ProcessSupervisor` the same day),
-  and `macos-`/`darwin` URLs in `core/binaries.rs` sit outside `platform/`, and three
-  mechanisms — php-fpm, `/etc/resolver`, unix-socket IPC — do not exist on Windows at all.
-  Ledger #163's scan stayed green through all of it because it looks for OS module names
-  and `cfg`s, not for Unix APIs. `docs/PLAN-windows-port.md` has the inventory and the port.
+  every method `todo!()`. The design goal is "adding an OS = filling stubs". **Measured 12
+  Sep 2026 the tree did not meet it**, and ledger #163's scan was green anyway — it looked
+  for OS module names, not Unix APIs. Windows port W1 (`docs/PLAN-windows-port.md`) closed
+  the `core/` half the same day: its unix sockets, `kill`, `cfg(unix)` and `std::os::unix`
+  moved behind `LocalIpc`, `ProcessSupervisor`, `PermissionManager` and `ShellRunner`, the
+  scan now refuses them, and the app library and binary compile for Windows. **Still
+  Unix-only, by design until W8:** the socket TRANSPORTS of `cli_server` and `mcp_server`
+  (their request handling compiles everywhere) and the `rex` client. Still macOS-only
+  DATA: the `macos-`/`darwin` URLs in `core/binaries.rs` (W2). And three mechanisms —
+  php-fpm, `/etc/resolver`, unix-socket IPC — do not exist on Windows at all (plan §3).
 - The only non-platform `todo!`-ish code is a defensive `unreachable!` in
   `core/binaries.rs`. `core/`, `commands/`, `state/` are macOS-complete.
 
