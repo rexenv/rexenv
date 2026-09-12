@@ -83,13 +83,19 @@ objc2-web-kit = { version = "0.3", features = ["WKWebView", "WKUIDelegate", "obj
 # MockRuntime app for cli_server tests + the cli_socket_check example — lets us
 # exercise the real command dispatch without a GUI event loop.
 tauri = { version = "2.11.3", features = ["test"] }
-# webview_dialogs_check builds a REAL WKWebView + a wry-shaped stub delegate to
-# prove the panel installation mechanics (ledger #166 leg B). Same versions as
-# [dependencies]; WKWebViewConfiguration is the one extra feature it needs.
-objc2 = "0.6"
-objc2-foundation = { version = "0.3", features = ["NSString", "NSGeometry"] }
-objc2-web-kit = { version = "0.3", features = ["WKWebView", "WKUIDelegate", "WKWebViewConfiguration", "objc2-app-kit"] }
 # manifest_sweep_check probes every pinned URL and re-hashes the small
 # artifacts; same versions/features as [dependencies], so nothing new compiles.
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 sha2 = "0.10"
+
+# webview_dialogs_check builds a REAL WKWebView + a wry-shaped stub delegate to
+# prove the panel installation mechanics (ledger #166 leg B). Same versions as
+# [dependencies]; WKWebViewConfiguration is the one extra feature it needs.
+# Target-gated like the [dependencies] copies: objc2 is a compile_error! on any
+# non-Apple target, and as a plain dev-dependency it failed EVERY test and example
+# target of a Windows build before a line of ours was checked
+# (docs/PLAN-windows-port.md §2.1, found by scripts/windows-check.sh).
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSString", "NSGeometry"] }
+objc2-web-kit = { version = "0.3", features = ["WKWebView", "WKUIDelegate", "WKWebViewConfiguration", "objc2-app-kit"] }

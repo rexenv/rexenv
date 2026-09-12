@@ -62,6 +62,27 @@ The table above was a grep. **W0's compiler run is the authoritative list**
 A first-layer list, not a final one: most of the E0282/E0277 sites are the cascade of
 an unresolved import, and fixing resolve errors routinely uncovers type errors behind them.
 
+**W1's first fix raised the count, and that is the fix working.** With the `objc2`
+dev-dependencies target-gated (12 Sep 2026) the run went from 29 to **58** error sites:
+the objc2 failure had stopped cargo before any `#[cfg(test)]` module was checked, so the
+first number counted production code only. The new sites are Unix APIs inside TEST
+modules — `std::os::unix::fs::symlink` / `PermissionsExt` / `ExitStatusExt` /
+`CommandExt::process_group` in `core/{confrewrite,devtools,dist_archive,laravel,localwp,
+sites,valet,wordpress}.rs` and `commands/valet_import.rs`, a test `UnixListener` in
+`core/dbsource.rs` — plus two more ungated uses: `mcp_server` in `state/db.rs`
+(:1554, :1584) and the cfg-gated `UNPINNED_PROVISIONERS` in `core/sites.rs` (:4973,
+:4993). Test-only sites need a Windows arm or a `cfg(unix)` on the test, never a
+production change; they are counted so the number stays honest, not because a user
+meets them.
+
+**And 58 still undercounts.** `--keep-going` does not reach a target whose dependency
+failed: the log shows `rexenv (lib)` failing on 18 errors and `rexenv (lib test)` on 48,
+and NO example or bin unit checked at all — every one of them links the lib. So the
+134 examples and `main.rs` are invisible until the lib compiles for Windows, and one
+suspicion rides with them: `examples/webview_dialogs_check.rs` is gated with a
+file-level `#![cfg(target_os = "macos")]`, which on Windows leaves a crate with no
+`main` (E0601). Expect the count to rise again the day the lib goes green.
+
 ### 2.2 The binary catalog has no OS dimension
 
 `src-tauri/src/core/binaries.rs` keys pins by `Arch` alone, and the URLs spell macOS into
