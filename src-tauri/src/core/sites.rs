@@ -1281,6 +1281,13 @@ pub fn convert_multisite(
             "multisite mode must be 'subdomain' or 'subdirectory'".into(),
         ));
     }
+    // Already a network ON DISK — a Valet/Herd network that imported as a single
+    // site before 13 Sep 2026, or one converted outside rexenv. Convert on a live
+    // network rewrites its wp-config and tables; record what the FILE declares
+    // instead, whatever mode was asked for.
+    if let Some(existing) = network_mode_on_disk(docroot) {
+        return adopt_multisite(conn, id, existing);
+    }
     crate::core::wordpress::multisite_convert(
         php_bin,
         wp_phar,
@@ -1291,6 +1298,33 @@ pub fn convert_multisite(
         return Ok(None);
     }
     get(conn, id)
+}
+
+/// The network mode a WordPress install's OWN wp-config declares — `MULTISITE`
+/// true, `SUBDOMAIN_INSTALL` choosing between the two — or `None` for a single
+/// site (`WP_ALLOW_MULTISITE` only permits one). A read of the file's text
+/// through `phpconf` (comments skipped, no PHP runs), the same kind of read the
+/// database import makes of it. Pure.
+pub fn network_mode_in_wp_config(text: &str) -> Option<MultisiteMode> {
+    let on = |name: &str| {
+        crate::core::phpconf::wp_define_str(text, name).is_ok_and(|v| v == "true" || v == "1")
+    };
+    on("MULTISITE").then(|| {
+        if on("SUBDOMAIN_INSTALL") {
+            MultisiteMode::Subdomain
+        } else {
+            MultisiteMode::Subdirectory
+        }
+    })
+}
+
+/// [`network_mode_in_wp_config`] for the wp-config WordPress would load from
+/// `docroot` (there, or one level up). `None` when there is none or it can't be
+/// read. Valet and Herd record no network anywhere else, so this is how their
+/// imports learn one (13 Sep 2026 — they landed as single sites before).
+pub fn network_mode_on_disk(docroot: &Path) -> Option<MultisiteMode> {
+    let path = crate::core::phpconf::wp_config_path(docroot)?;
+    network_mode_in_wp_config(&std::fs::read_to_string(path).ok()?)
 }
 
 /// Record that a site already IS a network — the Local import's adopt path
@@ -3628,6 +3662,36 @@ mod tests {
     /// Adopting records the mode and nothing else — it takes no PHP, no wp-cli
     /// and no docroot, so it cannot run a convert — and refuses to "adopt" a
     /// single site.
+    /// A network is read from the wp-config's own defines (commented, merely
+    /// allowed and false ones are not networks), and Convert on a docroot that
+    /// already is one records the FILE's mode and runs nothing.
+    #[test]
+    fn a_network_is_read_from_wp_config_and_never_converted_again() {
+        let sub = "<?php\ndefine( 'MULTISITE', true );\ndefine( 'SUBDOMAIN_INSTALL', true );\n";
+        assert_eq!(network_mode_in_wp_config(sub), Some(MultisiteMode::Subdomain));
+        assert_eq!(
+            network_mode_in_wp_config("<?php\ndefine('MULTISITE', true);\ndefine('SUBDOMAIN_INSTALL', false);\n"),
+            Some(MultisiteMode::Subdirectory)
+        );
+        assert_eq!(network_mode_in_wp_config("<?php\ndefine('MULTISITE', 1);\n"), Some(MultisiteMode::Subdirectory));
+        assert_eq!(network_mode_in_wp_config("<?php\ndefine('WP_ALLOW_MULTISITE', true);\n"), None, "allowed is not enabled");
+        assert_eq!(network_mode_in_wp_config("<?php\ndefine('MULTISITE', false);\n"), None);
+        assert_eq!(network_mode_in_wp_config("<?php\n// define('MULTISITE', true);\n"), None, "a commented define is not a network");
+
+        // The php/wp-cli paths don't exist: a convert that ran would fail.
+        let dir = std::env::temp_dir().join(format!("rexenv-convert-live-network-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("wp-config.php"), sub).unwrap();
+        let conn = db::open_in_memory().unwrap();
+        let a = create(&conn, sample("A", "a.test")).unwrap();
+        let nope = Path::new("/nonexistent/rexenv-test-bin");
+        let got = convert_multisite(&conn, nope, nope, &dir, &a.id, MultisiteMode::Subdirectory);
+        let _ = std::fs::remove_dir_all(&dir);
+        let site = got.expect("an existing network is recorded, not converted").expect("the site exists");
+        assert_eq!(site.multisite, MultisiteMode::Subdomain, "the file's mode wins over the one asked for");
+    }
+
     #[test]
     fn adopting_a_network_records_the_mode_and_refuses_none() {
         let conn = db::open_in_memory().unwrap();

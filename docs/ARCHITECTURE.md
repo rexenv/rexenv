@@ -981,7 +981,14 @@ honest footer —
 - **Valet/Herd import** (`core/valet.rs` + `commands/valet_import.rs`,
   `/import`): a strictly read-only scan of their config, symlink farm and
   per-site confs — nothing of theirs is written, started or stopped, and no file
-  inside a user project is opened. Deliberately tolerant of real installations
+  inside a user project is opened by the SCAN. The import itself reads one: a
+  WordPress row's wp-config text (`core::sites::network_mode_on_disk` — `MULTISITE`,
+  `SUBDOMAIN_INSTALL`; no PHP runs), because Valet and Herd record a network nowhere
+  else, and until 13 Sep 2026 their networks landed as single sites (sub-sites unserved,
+  Convert offered on a live network). A network found there is adopted like Local's and
+  the batch reload covers it; Convert on a docroot that already is a network records the
+  file's mode instead of converting, which is also how a network imported before the
+  fix is repaired from the WordPress tab (#591). Deliberately tolerant of real installations
   (dangling symlinks, confs with no site, proxies, a conf on a TLD the config
   never mentions, the pre-2.1 `domain` key, duplicate parked paths, and all
   three isolation-marker formats), surfacing every case as a row or a note

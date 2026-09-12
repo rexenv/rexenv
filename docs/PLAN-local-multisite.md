@@ -128,4 +128,6 @@ Valet/Herd networks (see §6).
 A Valet or Herd **network imports silently as a single site**: nothing in
 `core/valet.rs` or `commands/valet_import.rs` detects multisite, and the scan's
 never-open-a-project-file rule (#570's Valet twin) means it can't read `MULTISITE` from
-wp-config at scan time. Its own TODO row.
+wp-config at scan time. Its own TODO row. **Fixed 13 Sep 2026** by reading it at IMPORT
+time instead (as text, like the database import's own read), plus a Convert guard that
+records an on-disk network rather than converting it — ledger #591.

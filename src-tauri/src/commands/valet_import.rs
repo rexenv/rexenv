@@ -938,6 +938,7 @@ pub async fn valet_import_run<R: tauri::Runtime>(
         !c.extra_domains.is_empty()
             || !matches!(c.multisite, crate::state::models::MultisiteMode::None)
     });
+    let mut networks_imported = false;
     for (i, (c, php, target)) in queue.into_iter().enumerate() {
         let index = i + 1;
         if jobs.cancel.load(Ordering::SeqCst) {
@@ -953,6 +954,16 @@ pub async fn valet_import_run<R: tauri::Runtime>(
         let c = ImportCandidate { domain: target, ..c };
         batch.tick("site", index, Some(&c.domain), Some("starting".into()), 0);
         let mut row = import_one(&app, &state, &provision, &c, &php, &batch, index).await;
+        // A network found AT import (a Valet/Herd wp-config) is invisible to the
+        // queue-time gate below, yet needs the same batch reload to be served.
+        if row.status == "imported" {
+            if let (Some(site_id), Ok(conn)) = (row.site_id.as_deref(), state.db.lock()) {
+                networks_imported |= core::sites::get(&conn, site_id)
+                    .ok()
+                    .flatten()
+                    .is_some_and(|s| !matches!(s.multisite, crate::state::models::MultisiteMode::None));
+            }
+        }
         // Opt-in database import, per site, CONTINUE ON FAILURE exactly like
         // the sites themselves: a database that won't come over must not cost
         // the rest of the batch, and every row states what happened to its
@@ -1007,7 +1018,7 @@ pub async fn valet_import_run<R: tauri::Runtime>(
     // the batch, not one per site. A failure here is a caveat on the result,
     // not a failed import: the sites exist and their primaries serve.
     let alias_reload = if outcomes.iter().any(|o| o.status == "imported")
-        && queue_needs_reload
+        && (queue_needs_reload || networks_imported)
     {
         batch.tick("serving", 0, None, Some("serving extra domains and networks".into()), 0);
         let read = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()));
@@ -1466,10 +1477,23 @@ async fn import_one<R: tauri::Runtime>(
             // copied database, and convert on a live network rewrites both.
             // Left at `none` it would be served as a single site and offered
             // "Convert to multisite". The batch's one reload serves the mode.
-            if !matches!(c.multisite, crate::state::models::MultisiteMode::None) {
+            // Local's registry names the mode; Valet and Herd record none, so a
+            // WordPress row's own wp-config decides — read at IMPORT, never at
+            // scan (the scan opens no file inside a project), and as text: no
+            // PHP runs. Until 13 Sep 2026 a Valet/Herd network landed as a
+            // single site (its sub-sites unserved, "Convert" offered on it).
+            let mode = match c.multisite {
+                crate::state::models::MultisiteMode::None if c.site_type == Some(SiteType::Wordpress) => c
+                    .serve_path
+                    .as_deref()
+                    .and_then(|p| crate::core::sites::network_mode_on_disk(std::path::Path::new(p)))
+                    .unwrap_or(crate::state::models::MultisiteMode::None),
+                recorded => recorded,
+            };
+            if !matches!(mode, crate::state::models::MultisiteMode::None) {
                 let adopted = match state.db.lock() {
                     Ok(conn) => {
-                        crate::core::sites::adopt_multisite(&conn, site_id, c.multisite).map(|_| ())
+                        crate::core::sites::adopt_multisite(&conn, site_id, mode).map(|_| ())
                     }
                     Err(_) => Err(Error::Other("database lock poisoned".into())),
                 };
@@ -1915,5 +1939,12 @@ mod cancel_lands_between_sites {
         let reload = src.split("let alias_reload").nth(1).expect("the batch reload");
         let head = &reload[..reload.find("reload_for_domains").expect("the reload call")];
         assert!(head.contains("queue_needs_reload"), "the batch reload no longer reads the gate");
+        // A Valet/Herd network is learned from its wp-config AT import, and the
+        // reload must know about it too (13 Sep 2026).
+        assert!(
+            import_one.contains("network_mode_on_disk("),
+            "the import no longer reads a Valet/Herd network from its wp-config — it lands as a single site"
+        );
+        assert!(head.contains("networks_imported"), "the batch reload misses a network found at import");
     }
 }

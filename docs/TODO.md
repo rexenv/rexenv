@@ -190,7 +190,15 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   rule; ledger #590, `open_in_browser_and_magic_login_wear_one_icon_everywhere`. Checked by
   the owner in the dev app, 13 Sep 2026 ("icon gulo thik achhe").
 
-- [ ] **A Valet or Herd multisite network imports silently as a single site** — found
+- [x] **A Valet or Herd multisite network imports silently as a single site** ✓ 13 Sep
+  2026 — owner: "Valet/Herd multisite er fix ta koro". The import reads the served
+  folder's wp-config text (`MULTISITE`, `SUBDOMAIN_INSTALL`; no PHP runs, at import, not
+  scan) and records the network like Local's; the batch reload covers a network found
+  there; and Convert on a docroot that already is a network records the file's mode
+  instead of converting — which also repairs a network imported before the fix, from
+  the WordPress tab's new "Already a multisite network → Record as a network" card.
+  Ledger #591, `a_network_is_read_from_wp_config_and_never_converted_again`,
+  `an_imported_network_is_adopted_never_converted_and_reloaded`. Original text: found
   12 Sep 2026 researching the Local network import (`docs/PLAN-local-multisite.md` §6).
   Nothing in `core/valet.rs` / `commands/valet_import.rs` detects multisite, so the site
   lands as `multisite = none`: subdirectory subsites 404, subdomain subsites aren't

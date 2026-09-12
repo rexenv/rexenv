@@ -631,17 +631,52 @@ function ConvertPanel({ siteId, domain }: { siteId: string; domain: string }) {
   // the same kind of network, and the choice is permanent enough that a
   // different default in each place is a trap.
   const [mode, setMode] = useState<Exclude<MultisiteMode, "none">>("subdomain");
+  // The FILE may already run a network rexenv has recorded as a single site —
+  // a Valet/Herd network imported before 13 Sep 2026. Then there is nothing to
+  // convert: the backend records the mode its wp-config declares instead.
+  const { data: info } = useQuery({
+    queryKey: ["wp-info", siteId],
+    queryFn: () => wpInfo(siteId),
+    ...WP_QUERY,
+  });
+  const alreadyNetwork = info?.multisite === true;
 
   const convert = useMutation({
     mutationFn: () => wpMultisiteConvert(siteId, mode),
     onSuccess: () => {
-      toast.success(`Converted to ${mode} multisite`);
+      toast.success(alreadyNetwork ? "Recorded as a multisite network" : `Converted to ${mode} multisite`);
       qc.invalidateQueries({ queryKey: ["sites"] });
       qc.invalidateQueries({ queryKey: ["wp-info", siteId] });
       qc.invalidateQueries({ queryKey: ["wp-network-sites", siteId] });
     },
     onError: (e) => toastBackendError(e),
   });
+
+  if (alreadyNetwork) {
+    return (
+      <div className="flex flex-col gap-3">
+        <Card title="Already a multisite network">
+          <div className="text-[0.78125rem] leading-[1.5] text-rex-text-muted">
+            This site's <span className="font-mono">wp-config.php</span> already runs a network,
+            but rexenv has it recorded as a single site — so its sub-sites aren't served.
+            Recording it reads the mode from that file and changes nothing in WordPress.
+          </div>
+          <button
+            className={BTN + " mt-3 flex items-center gap-1.5"}
+            disabled={convert.isPending}
+            onClick={() => convert.mutate()}
+          >
+            {convert.isPending ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Network className="h-3.5 w-3.5" />
+            )}
+            {convert.isPending ? "Recording…" : "Record as a network"}
+          </button>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-3">
