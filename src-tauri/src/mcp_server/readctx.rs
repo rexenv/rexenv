@@ -385,7 +385,12 @@ impl<'a> ReadCtx<'a> {
         .map(|r| r.is_ok())
         .unwrap_or(false);
 
-        ServingSignals { edge_answers_ours, tcp_443_open, serving_manager }
+        // Only when something ELSE holds :443: name it, the way the Services
+        // screen does (lsof on the listener — no request to it).
+        let holder = (!edge_answers_ours && tcp_443_open)
+            .then(|| self.state.platform.supervisor().port_conflict_help(EDGE_HTTPS_PORT, false).holder)
+            .flatten();
+        ServingSignals { edge_answers_ours, tcp_443_open, serving_manager, holder }
     }
 
     /// The RAW tail of the site's WordPress debug log (the caller scrubs), capped

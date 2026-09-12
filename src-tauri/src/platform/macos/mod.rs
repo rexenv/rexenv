@@ -648,7 +648,11 @@ impl ProcessSupervisor for MacosSupervisor {
         let (holder, app, free_command) = match master_pid {
             Some(pid) => {
                 let exe = executable_path(pid);
-                let (h, a) = attribute_holder(&exe, pid, holder_is_valets_nginx(&exe, pid));
+                let (h, a) = if holder_is_locals_router(&exe, MacosSupervisor.pid_command(pid).as_deref()) {
+                    locals_router_holder(pid)
+                } else {
+                    attribute_holder(&exe, pid, holder_is_valets_nginx(&exe, pid))
+                };
                 let cmd = free_port_command(a.as_deref(), &exe, pid);
                 (Some(h), a, Some(cmd))
             }
@@ -779,6 +783,32 @@ fn holder_is_valets_nginx(exe_path: &str, pid: u32) -> bool {
     crate::core::valet::nginx_conf_for(exe_path, cmdline.as_deref())
         .and_then(|conf| std::fs::read_to_string(conf).ok())
         .is_some_and(|conf| crate::core::valet::conf_is_valets(&conf))
+}
+
+/// Is this port holder Local's ROUTER — the nginx Local runs on :80/:443 in its
+/// "Site Domains" router mode? By path alone it already reads "Local (nginx,
+/// pid …)" and the offered fix is quitting Local, which also stops the per-site
+/// database a Local import reads from — the owner met exactly this mid-import
+/// (12 Sep 2026: every rexenv site dark, the MCP verdict unable to say by whom).
+/// Positive identification only: Local's bundled nginx AND a config under
+/// Local's `run/router/`; Local's per-site nginx (`run/<id>/`) is not the router.
+/// Pure — the command line is passed in, so the test is the same on every machine.
+fn holder_is_locals_router(exe_path: &str, cmdline: Option<&str>) -> bool {
+    exe_path.contains("/Application Support/Local/lightning-services/nginx")
+        && cmdline.is_some_and(|c| c.contains("/Application Support/Local/run/router/"))
+}
+
+/// Local's router, named with the way out that keeps Local (and the databases
+/// it runs) up: its router mode is Local's own setting. The app stays "Local",
+/// so messages that say "quit {app}" and the osascript quit still read true.
+fn locals_router_holder(pid: u32) -> (String, Option<String>) {
+    (
+        format!(
+            "Local's router (nginx, pid {pid}; or set Local → Preferences → Advanced → Router \
+             Mode to localhost to free the port without quitting Local)"
+        ),
+        Some("Local".into()),
+    )
 }
 
 /// Attribute a port holder to its OWNING APPLICATION — the actionable name.
@@ -2472,6 +2502,33 @@ mod tests {
             attribute_holder("/opt/homebrew/opt/nginx/bin/nginx", 4242, false),
             ("nginx (pid 4242, /opt/homebrew/opt/nginx/bin/nginx)".into(), None)
         );
+    }
+
+    /// Local's router is named as the ROUTER, with the setting that frees the
+    /// port while Local keeps running; Local's per-site nginx and anyone else's
+    /// nginx are not claimed.
+    #[test]
+    fn locals_router_is_named_with_the_way_out_that_keeps_local_running() {
+        let exe = "/Users/x/Library/Application Support/Local/lightning-services/nginx-1.26.1+3/bin/darwin-arm64/sbin/nginx";
+        // The shape measured on the owner's Mac (ps -o command), user renamed.
+        let router = format!(
+            "nginx: master process {exe} -c /Users/x/Library/Application Support/Local/run/router/nginx/conf/nginx.conf \
+             -p /Users/x/Library/Application Support/Local/run/router/nginx"
+        );
+        assert!(holder_is_locals_router(exe, Some(&router)));
+        let per_site = format!("nginx: master process {exe} -c /Users/x/Library/Application Support/Local/run/5V6xCZo2_/conf/nginx/nginx.conf");
+        assert!(!holder_is_locals_router(exe, Some(&per_site)), "a Local SITE's nginx is not the router");
+        assert!(!holder_is_locals_router(exe, None), "no command line, no claim");
+        assert!(!holder_is_locals_router("/Applications/Herd.app/Contents/Resources/nginx", Some(&router)));
+
+        let (holder, app) = locals_router_holder(26114);
+        assert_eq!(app.as_deref(), Some("Local"), "\"quit Local\" and the osascript quit stay true");
+        assert!(
+            holder.starts_with("Local's router (nginx, pid 26114") && holder.contains("Router Mode to localhost"),
+            "{holder}"
+        );
+        // What path-only attribution said before: true, and no way out that keeps Local up.
+        assert_eq!(attribute_holder(exe, 26114, false).0, "Local (nginx, pid 26114)");
     }
 
     /// Valet's tier of the free-the-port advice: their own CLI, not brew.

@@ -1191,7 +1191,12 @@ honest footer —
 - `AppState` (`state/app.rs`) = db + platform + monitor + CA + ServiceManager + Terminals/
   Tunnels registries, **field-level locks** (see §5 locking rule).
 - Every service start is gated by `core/ports::ensure_free`; a conflict names the holding
-  process + a copy-paste free command.
+  process + a copy-paste free command. Attribution names the managing app (Herd, Valet —
+  #449), and since 12 Sep 2026 Local's ROUTER (its nginx on :80/:443 in "Site Domains"
+  mode, identified by Local's bundled nginx loading a config under `run/router/`), with
+  the way out that keeps Local running: Router Mode → localhost. Quitting Local also
+  stops the per-site database a Local import reads. The MCP `site_status` edge-blocked
+  verdict names the same holder instead of "can't identify" (#588).
 
 ### 8.2 Which app opens a link — one choke point
 

@@ -1168,6 +1168,7 @@ mod tests {
             edge_answers_ours: false,
             tcp_443_open: false,
             serving_manager: false,
+            holder: None,
         };
         let view = AgentScratchSite {
             url: format!("https://{}", site.domain),

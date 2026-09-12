@@ -90,6 +90,10 @@ pub struct ServingSignals {
     pub tcp_443_open: bool,
     /// MANAGER belief: edge up AND this site's upstream up (the Sites-page bool).
     pub serving_manager: bool,
+    /// WHO holds :443 when it isn't our edge, as the port-conflict help
+    /// attributes it (lsof — no request). `None` when nothing else holds it or
+    /// the holder is invisible without privileges (a root listener).
+    pub holder: Option<String>,
 }
 
 /// A serving verdict — kept DISTINCT rather than collapsed into "not serving",
@@ -156,12 +160,24 @@ impl ServingSignals {
         //    answers itself — it does NOT request the site).
         if !self.edge_answers_ours {
             return if self.tcp_443_open {
+                // Name the holder when the port-conflict help can (the owner's
+                // Local router, 12 Sep 2026, read as "can't identify"); keep the
+                // stated scope when it can't.
+                let (who, scope) = match &self.holder {
+                    Some(h) => (format!("{h} is answering on port 443"), ""),
+                    // `Resolution::*` is in scope, and it has a `None` variant.
+                    Option::None => (
+                        "Another server is answering on port 443".to_string(),
+                        " The probe can't identify the other server, only that it isn't rexenv's \
+                         edge.",
+                    ),
+                };
                 (EdgeBlocked,
-                 "Another server is answering on port 443 — not rexenv's edge — so rexenv can't \
-                  serve this (or any) site until that's resolved. Resolving the conflict, or \
-                  stopping the other server, is your action in rexenv's Services screen; an agent \
-                  can't do it. The probe can't identify the other server, only that it isn't \
-                  rexenv's edge.".into(),
+                 format!(
+                     "{who} — not rexenv's edge — so rexenv can't serve this (or any) site until \
+                      that's resolved. Resolving the conflict, or stopping the other server, is \
+                      your action in rexenv's Services screen; an agent can't do it.{scope}"
+                 ),
                  UserActionInRexenv)
             } else {
                 (EdgeDown,
@@ -572,7 +588,20 @@ mod tests {
     }
 
     fn sig(edge_ours: bool, tcp443: bool, mgr: bool) -> ServingSignals {
-        ServingSignals { edge_answers_ours: edge_ours, tcp_443_open: tcp443, serving_manager: mgr }
+        ServingSignals { edge_answers_ours: edge_ours, tcp_443_open: tcp443, serving_manager: mgr, holder: None }
+    }
+
+    /// A holder the port-conflict help can name replaces the "can't identify"
+    /// sentence; without one, the probe's scope is still stated.
+    #[test]
+    fn a_named_holder_replaces_the_cant_identify_sentence() {
+        let mut s = sig(false, true, false);
+        s.holder = Some("Local's router (nginx, pid 7; or set Local → … Router Mode to localhost …)".into());
+        let (verdict, detail, _) = s.classify(true, true);
+        assert_eq!(verdict, ServingVerdict::EdgeBlocked);
+        assert!(detail.starts_with("Local's router") && !detail.contains("can't identify"), "{detail}");
+        let (_, detail, _) = sig(false, true, false).classify(true, true);
+        assert!(detail.contains("can't identify"), "without a name the scope stays stated: {detail}");
     }
 
     #[test]

@@ -161,6 +161,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   - [x] **A Local copy is named `local_<domain>` from the first import** ✓ 12 Sep 2026 —
     every Local database is `local`, so the bare name only collided; ledger #587,
     `a_local_copy_is_named_after_the_site`; PUBLISH-TESTING N7's diff is now 3 keys
+  - [x] **Local's router on :443 is named, with Router Mode → localhost** ✓ 12 Sep 2026 —
+    the port-conflict help and the MCP `site_status` verdict (which said "can't identify")
+    now name "Local's router" and the setting that frees the port without quitting Local;
+    ledger #588, `locals_router_is_named_with_the_way_out_that_keeps_local_running`,
+    `a_named_holder_replaces_the_cant_identify_sentence`. L3 owner-run
   - [ ] T5 — docs, PUBLISH-TESTING §N network steps, live pass on `multi.local` — steps
     N10–N14 written 12 Sep 2026 (+ the summary row, and N0's stale "multisite can't
     import" corrected); **owed: the owner-run pass** (Local must run the network)

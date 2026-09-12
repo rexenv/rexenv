@@ -3526,13 +3526,26 @@ pub(crate) mod tests {
         fn bin_dir(&self) -> Result<std::path::PathBuf> { Ok("/Users/somebody/Library/Application Support/rexenv/bin".into()) }
         fn hosts_file(&self) -> std::path::PathBuf { "/etc/hosts".into() }
     }
+    /// The serving probe asks the supervisor who holds :443 when our edge
+    /// isn't answering it (#588). Unimplemented, that made this test's result
+    /// depend on the machine: green with :443 free, a panic with any other
+    /// server on it (Local's router, 12 Sep 2026). The defaults answer "no
+    /// holder", so the verdict text is the same everywhere.
+    struct StubSupervisor;
+    impl crate::platform::traits::ProcessSupervisor for StubSupervisor {
+        fn spawn(&self, _: &std::path::Path, _: &[String]) -> Result<std::process::Child> { unimplemented!() }
+        fn spawn_logged(&self, _: &std::path::Path, _: &[String], _: &std::path::Path) -> Result<std::process::Child> {
+            unimplemented!()
+        }
+        fn stop(&self, _: u32) -> Result<()> { unimplemented!() }
+    }
     struct StubPlatform;
     impl crate::platform::traits::Platform for StubPlatform {
         fn paths(&self) -> &dyn crate::platform::traits::Paths { &SandboxPaths }
         fn dns(&self) -> &dyn crate::platform::traits::DnsManager { unimplemented!() }
         fn cert_trust(&self) -> &dyn crate::platform::traits::CertTrustManager { unimplemented!() }
         fn privileges(&self) -> &dyn crate::platform::traits::PrivilegeManager { unimplemented!() }
-        fn supervisor(&self) -> &dyn crate::platform::traits::ProcessSupervisor { unimplemented!() }
+        fn supervisor(&self) -> &dyn crate::platform::traits::ProcessSupervisor { &StubSupervisor }
         fn autostart(&self) -> &dyn crate::platform::traits::AutostartManager { unimplemented!() }
         fn permissions(&self) -> &dyn crate::platform::traits::PermissionManager { unimplemented!() }
         fn shell(&self) -> &dyn crate::platform::traits::ShellRunner { unimplemented!() }
