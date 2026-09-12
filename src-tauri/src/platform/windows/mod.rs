@@ -57,7 +57,11 @@ impl CertTrustManager for WindowsCertTrust {
 
 pub struct WindowsPrivileges;
 impl PrivilegeManager for WindowsPrivileges {
-    fn run_privileged(&self, _script: &str) -> Result<String> {
+    fn run_privileged(
+        &self,
+        _script: &str,
+        _reason: &crate::platform::traits::PromptReason,
+    ) -> Result<String> {
         todo!("windows UAC elevation (runas / ShellExecute 'runas')")
     }
 }

@@ -21,8 +21,12 @@ fn main() {
     // Run as root: create a file (owned by root) and report its owner.
     let script = format!("rm -f {marker}; touch {marker}; stat -f '%Su' {marker}");
 
-    println!("A password dialog is opening — check it reads \"rexenv\" with rexenv's logo.");
-    match plat.privileges().run_privileged(&script) {
+    let reason = platform::traits::PromptReason::new("run its password-prompt check");
+    println!(
+        "A password dialog is opening — check it reads \"rexenv\" with rexenv's logo and says: {}",
+        reason.sentence()
+    );
+    match plat.privileges().run_privileged(&script, &reason) {
         Ok(owner) => {
             println!("privileged op succeeded; owner of {marker} = {owner}");
             if owner.trim() == "root" {

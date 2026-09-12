@@ -64,8 +64,10 @@ nothing.** The silent case is the one that ships to everybody.
   the Sites list and status must still load. **Tell:** screens that spin until the prompt
   is answered — the database locked across the dialog (#569).
 - [ ] Admin prompt for the `.rex` DNS resolver appears and is accepted (`/etc/resolver/rex`; NO `/etc/resolver/test` on a fresh machine).
-  The dialog reads **rexenv** in bold with rexenv's logo on the lock, and no extra Dock
-  icon appears while it is open (#577). **Tell:** "osascript wants to make changes." over
+  The dialog reads **rexenv** in bold with rexenv's logo on the lock, says "rexenv wants to
+  add a DNS resolver so .rex sites open on this Mac." (#578), and no extra Dock icon
+  appears while it is open (#577). **Tell:** "wants to make changes." with no reason — a
+  prompt that lost its `PromptReason`. **Tell:** "osascript wants to make changes." over
   a plain lock — the branded applet failed to build or launch and the fallback ran; the
   log line `branded password prompt unavailable` names why.
 - [ ] Keychain prompt to trust the local CA appears and is accepted.

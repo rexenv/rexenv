@@ -106,8 +106,50 @@ pub trait CertTrustManager: Send + Sync {
 /// together). Also covers privilege needs like binding :80/:443.
 pub trait PrivilegeManager: Send + Sync {
     /// Run `script` (a `/bin/sh` script) with administrator privileges, showing
-    /// the OS auth prompt once. Returns captured stdout on success.
-    fn run_privileged(&self, script: &str) -> Result<String>;
+    /// the OS auth prompt once, worded by `reason`. Returns captured stdout on
+    /// success.
+    fn run_privileged(&self, script: &str, reason: &PromptReason) -> Result<String>;
+}
+
+/// What a privileged prompt is for. It completes the sentence the dialog shows —
+/// "rexenv wants to <reason>." — so it is a lower-case verb phrase naming the
+/// change in the user's terms, without the trailing period.
+///
+/// Why it exists: every admin dialog read the OS default, "… wants to make
+/// changes.", so a user asked for their password could not tell a DNS resolver
+/// from the HTTPS server from uninstall (owner, 12 Sep 2026). A TYPE, not a
+/// `&str`, because it sits beside the script: swapped strings would compile, show
+/// the script to the user and run the sentence as root. REQUIRED, not a default,
+/// so a new caller cannot fall back to the wordless dialog.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PromptReason(String);
+
+impl PromptReason {
+    pub fn new(what: impl Into<String>) -> Self {
+        Self(what.into().trim().trim_end_matches('.').to_string())
+    }
+
+    /// The whole sentence the dialog shows.
+    pub fn sentence(&self) -> String {
+        format!("rexenv wants to {}.", self.0)
+    }
+}
+
+#[cfg(test)]
+mod prompt_reason_tests {
+    use super::PromptReason;
+
+    #[test]
+    fn a_reason_completes_one_sentence_whatever_punctuation_the_caller_brought() {
+        let want = "rexenv wants to add a DNS resolver so .rex sites open on this Mac.";
+        for given in [
+            "add a DNS resolver so .rex sites open on this Mac",
+            "add a DNS resolver so .rex sites open on this Mac.",
+            "  add a DNS resolver so .rex sites open on this Mac. ",
+        ] {
+            assert_eq!(PromptReason::new(given).sentence(), want, "{given:?}");
+        }
+    }
 }
 
 /// Spawns and supervises long-running child processes (web servers, php-fpm,

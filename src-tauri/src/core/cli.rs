@@ -68,7 +68,13 @@ pub fn install(platform: &dyn Platform) -> Result<()> {
     let src = bundled_rex()?;
     let dst = platform.paths().cli_symlink_path()?;
     if try_symlink_unprivileged(&src, &dst).is_err() {
-        platform.privileges().run_privileged(&install_script(&src, &dst)?)?;
+        platform.privileges().run_privileged(
+            &install_script(&src, &dst)?,
+            &crate::platform::traits::PromptReason::new(format!(
+                "add the rex command at {}",
+                dst.display()
+            )),
+        )?;
     }
     match std::fs::read_link(&dst) {
         Ok(t) if t == src => Ok(()),

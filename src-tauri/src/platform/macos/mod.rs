@@ -213,10 +213,14 @@ pub struct MacosPrivileges;
 impl MacosPrivileges {
     /// Build the `osascript -e` program that runs `script` as admin. Factored
     /// out so escaping can be unit-tested without triggering the auth prompt.
-    fn osascript_program(script: &str) -> String {
+    fn osascript_program(script: &str, reason: &PromptReason) -> String {
         // Escape for an AppleScript double-quoted string literal.
-        let escaped = script.replace('\\', "\\\\").replace('"', "\\\"");
-        format!("do shell script \"{escaped}\" with administrator privileges")
+        let lit = |s: &str| s.replace('\\', "\\\\").replace('"', "\\\"");
+        format!(
+            "do shell script \"{}\" with prompt \"{}\" with administrator privileges",
+            lit(script),
+            lit(&reason.sentence())
+        )
     }
 
     /// Turn osascript's stderr into a clear message. A user who dismisses the auth
@@ -234,7 +238,7 @@ impl MacosPrivileges {
 }
 
 impl PrivilegeManager for MacosPrivileges {
-    fn run_privileged(&self, script: &str) -> Result<String> {
+    fn run_privileged(&self, script: &str, reason: &PromptReason) -> Result<String> {
         // One dialog at a time — and one build of the per-process work dir.
         static ONE_PROMPT: std::sync::Mutex<()> = std::sync::Mutex::new(());
         let _one = ONE_PROMPT.lock().unwrap_or_else(|p| p.into_inner());
@@ -244,7 +248,7 @@ impl PrivilegeManager for MacosPrivileges {
         // unbranded one is still the only prompt the user sees.
         let dir = prompt_applet::work_dir();
         let icon = prompt_applet::icon_source();
-        let ran = match prompt_applet::build(&dir, script, icon.as_deref()) {
+        let ran = match prompt_applet::build(&dir, script, &reason.sentence(), icon.as_deref()) {
             Ok(()) => prompt_applet::run(&dir),
             Err(e) => Err(prompt_applet::RunError::NoDialog(e.to_string())),
         };
@@ -261,18 +265,18 @@ impl PrivilegeManager for MacosPrivileges {
             ))),
             Err(prompt_applet::RunError::NoDialog(why)) => {
                 log::warn!("branded password prompt unavailable ({why}); asking through osascript");
-                Self::run_osascript(script)
+                Self::run_osascript(script, reason)
             }
         }
     }
 }
 
 impl MacosPrivileges {
-    /// The unbranded fallback: the dialog names `osascript`.
-    fn run_osascript(script: &str) -> Result<String> {
+    /// The unbranded fallback: the dialog names `osascript`, but still says why.
+    fn run_osascript(script: &str, reason: &PromptReason) -> Result<String> {
         // `do shell script … with administrator privileges` shows one macOS
         // auth dialog and runs the script as root via /bin/sh.
-        let program = Self::osascript_program(script);
+        let program = Self::osascript_program(script, reason);
         let out = std::process::Command::new("osascript")
             .arg("-e")
             .arg(&program)
@@ -2636,11 +2640,14 @@ mod tests {
 
     #[test]
     fn osascript_program_wraps_and_escapes() {
-        let program = MacosPrivileges::osascript_program(r#"echo "hi" \ there"#);
+        let reason = PromptReason::new(r#"test "quoted" \ things"#);
+        let program = MacosPrivileges::osascript_program(r#"echo "hi" \ there"#, &reason);
         assert!(program.starts_with("do shell script \""));
         assert!(program.ends_with("\" with administrator privileges"));
         // Quotes and backslashes are escaped for the AppleScript string literal.
         assert!(program.contains(r#"echo \"hi\" \\ there"#));
+        // The fallback dialog still says what it is for.
+        assert!(program.contains(r#" with prompt "rexenv wants to test \"quoted\" \\ things." "#), "{program}");
     }
 
     #[test]
@@ -2659,7 +2666,7 @@ mod tests {
     fn osascript_program_handles_multi_command_batch() {
         // Batching: multiple privileged commands joined into one script => one prompt.
         let script = "mkdir -p /etc/resolver\ncp /tmp/test /etc/resolver/test";
-        let program = MacosPrivileges::osascript_program(script);
+        let program = MacosPrivileges::osascript_program(script, &PromptReason::new("test"));
         assert!(program.contains("mkdir -p /etc/resolver"));
         assert!(program.contains("cp /tmp/test /etc/resolver/test"));
     }

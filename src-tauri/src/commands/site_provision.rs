@@ -2483,7 +2483,11 @@ mod tests {
         calls: Mutex<Vec<String>>,
     }
     impl PrivilegeManager for RecordingPrivileges {
-        fn run_privileged(&self, script: &str) -> crate::error::Result<String> {
+        fn run_privileged(
+            &self,
+            script: &str,
+            _reason: &crate::platform::traits::PromptReason,
+        ) -> crate::error::Result<String> {
             self.calls.lock().unwrap().push(script.to_string());
             Ok(String::new())
         }

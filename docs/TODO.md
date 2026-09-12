@@ -36,10 +36,15 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     compiled in, osascript only when no dialog was shown ✓ 12 Sep 2026 — ledger #577;
     `a_built_applet_is_named_rexenv_badged_with_our_icon_and_holds_the_script_inside`
     (plant-proven) + 3 L0; `priv_check` live: "rexenv" + logo, `root` returned
-  - [ ] T2 — say WHAT each prompt is for (`with prompt`: "install the .rex DNS resolver",
-    "start the HTTPS edge on :443", …): a `reason` on `run_privileged`, set by each
-    `dns.rs`/`proxy.rs`/`setup.rs`/`cli.rs` caller. Also owed: the cancel leg live
-    (SMOKE robustness). (The "App Background Activity: rexenv" notification seen during
+  - [x] T2 — every prompt says what it is for ✓ 12 Sep 2026 — required `PromptReason` on
+    `run_privileged`, set by all 8 callers in `dns`/`proxy`/`setup`/`cli`, in the applet
+    and the osascript fallback; ledger #578;
+    `a_reason_completes_one_sentence_whatever_punctuation_the_caller_brought` + the
+    applet/osascript source tests
+  - [ ] T3 — one live `priv_check`, eyes on the dialog: the sentence under "rexenv" reads
+    "rexenv wants to run its password-prompt check." (#578's L3 — the 12 Sep run was
+    approved and returned `root`, but nobody read the text), then Cancel → "permission
+    cancelled, try again", and a retry works (SMOKE robustness). (The "App Background Activity: rexenv" notification seen during
     the live run was NOT the applet: BTM log, 13:34:24, the DNS LaunchAgent re-registered
     pointing at `target/debug/rexenv`, two minutes before the applet launched.)
 

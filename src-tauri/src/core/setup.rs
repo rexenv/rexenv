@@ -101,7 +101,12 @@ pub fn run_system_teardown(
         root_cmds.push(platform.dns().restore_command(&plan.restore));
     }
     if !root_cmds.is_empty() {
-        platform.privileges().run_privileged(&root_cmds.join(" ; "))?;
+        platform.privileges().run_privileged(
+            &root_cmds.join(" ; "),
+            &crate::platform::traits::PromptReason::new(
+                "remove its system changes (DNS resolvers and the HTTPS server)",
+            ),
+        )?;
     }
     // Records + their backups die together, and only after the root step
     // actually succeeded.
@@ -198,7 +203,11 @@ mod lock_tests {
             }
         }
         impl PrivilegeManager for Probe {
-            fn run_privileged(&self, _script: &str) -> Result<String> {
+            fn run_privileged(
+                &self,
+                _script: &str,
+                _reason: &crate::platform::traits::PromptReason,
+            ) -> Result<String> {
                 self.ask();
                 Ok(String::new())
             }

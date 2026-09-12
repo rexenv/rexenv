@@ -369,7 +369,12 @@ pub fn agent_is_stale(answered: Option<&str>) -> bool {
 /// `core::setup`'s module docs).
 pub fn configure_resolver(platform: &dyn Platform, tld: &str, port: u16) -> Result<()> {
     let cmd = platform.dns().install_command(tld, port);
-    platform.privileges().run_privileged(&cmd)?;
+    platform.privileges().run_privileged(
+        &cmd,
+        &crate::platform::traits::PromptReason::new(format!(
+            "add a DNS resolver so .{tld} sites open on this Mac"
+        )),
+    )?;
     Ok(())
 }
 
@@ -386,7 +391,12 @@ pub fn remove_resolver(platform: &dyn Platform, tld: &str, port: u16) -> Result<
         }
         ResolverOwner::Ours => {
             let cmd = platform.dns().uninstall_command(std::slice::from_ref(&tld.to_string()));
-            platform.privileges().run_privileged(&cmd)?;
+            platform.privileges().run_privileged(
+                &cmd,
+                &crate::platform::traits::PromptReason::new(format!(
+                    "remove its DNS resolver for .{tld}"
+                )),
+            )?;
             Ok(true)
         }
     }
@@ -714,7 +724,12 @@ pub fn hand_back_resolver(
         cmds.push(platform.dns().restore_command(&plan.restore));
     }
     if !cmds.is_empty() {
-        platform.privileges().run_privileged(&cmds.join(" ; "))?;
+        platform.privileges().run_privileged(
+            &cmds.join(" ; "),
+            &crate::platform::traits::PromptReason::new(format!(
+                "give the .{tld} DNS resolver back to the app rexenv borrowed it from"
+            )),
+        )?;
     }
     finish_resolver_teardown(&*db_lock(db)?, platform, &plan)?;
     Ok(plan)
@@ -1075,7 +1090,11 @@ mod tests {
         /// The cancelled prompt.
         struct Cancelled;
         impl PrivilegeManager for Cancelled {
-            fn run_privileged(&self, _script: &str) -> Result<String> {
+            fn run_privileged(
+                &self,
+                _script: &str,
+                _reason: &crate::platform::traits::PromptReason,
+            ) -> Result<String> {
                 Err(Error::Other("the administrator prompt was cancelled".into()))
             }
         }
@@ -1230,7 +1249,11 @@ mod tests {
         /// observable at all.
         struct RootWrites(std::path::PathBuf);
         impl PrivilegeManager for RootWrites {
-            fn run_privileged(&self, _script: &str) -> Result<String> {
+            fn run_privileged(
+                &self,
+                _script: &str,
+                _reason: &crate::platform::traits::PromptReason,
+            ) -> Result<String> {
                 std::fs::write(&self.0, "nameserver 127.0.0.1\nport 15353\n")?;
                 Ok(String::new())
             }
@@ -1371,7 +1394,11 @@ mod tests {
             held: Arc<AtomicUsize>,
         }
         impl PrivilegeManager for LockProbe {
-            fn run_privileged(&self, script: &str) -> Result<String> {
+            fn run_privileged(
+                &self,
+                script: &str,
+                _reason: &crate::platform::traits::PromptReason,
+            ) -> Result<String> {
                 self.prompts.fetch_add(1, Ordering::SeqCst);
                 if self.db.try_lock().is_err() {
                     self.held.fetch_add(1, Ordering::SeqCst);

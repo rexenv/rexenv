@@ -93,6 +93,12 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   file after approval. osascript remains the fallback ONLY when no dialog was shown
   (build/launch failed); an applet that ran and reported nothing is an error, never a
   second prompt.
+- **Every admin dialog says what it is for** (`PromptReason`, #578): "rexenv wants to add
+  a DNS resolver so .rex sites open on this Mac." / "… start its HTTPS server on ports 80
+  and 443." / "… remove its system changes …" instead of the OS default "wants to make
+  changes.", in the branded applet and the osascript fallback alike. The reason is a
+  required typed argument of `run_privileged`, not a `&str`: beside the script, swapped
+  strings would compile and run the sentence as root.
 - **Per-site server overrides** (`OverrideKind` in the manager — one seam, two kinds
   today, OLS drops in later if a macOS artifact ever exists):
   - **FrankenPHP** (single static binary, embeds its own PHP): loopback backend on a

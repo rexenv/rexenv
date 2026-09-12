@@ -82,12 +82,13 @@ fn applescript_literal(s: &str) -> String {
     format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
-/// The applet's AppleScript: run `script` as root and write the outcome to
-/// `result`. `without altering line endings` keeps stdout's `\n` (the default
-/// turns them into `\r`).
-pub(super) fn applet_source(script: &str, result: &Path) -> String {
+/// The applet's AppleScript: run `script` as root behind a dialog that says
+/// `prompt`, and write the outcome to `result`. `without altering line endings`
+/// keeps stdout's `\n` (the default turns them into `\r`).
+pub(super) fn applet_source(script: &str, prompt: &str, result: &Path) -> String {
     let result = applescript_literal(&result.to_string_lossy());
     let script = applescript_literal(script);
+    let prompt = applescript_literal(prompt);
     format!(
         "on writeResult(t)
 \tset f to open for access (POSIX file {result}) with write permission
@@ -96,7 +97,7 @@ pub(super) fn applet_source(script: &str, result: &Path) -> String {
 \tclose access f
 end writeResult
 try
-\tset r to do shell script {script} with administrator privileges without altering line endings
+\tset r to do shell script {script} with prompt {prompt} with administrator privileges without altering line endings
 \twriteResult(\"ok\" & linefeed & r)
 on error errMsg number errNum
 \twriteResult(\"error \" & errNum & linefeed & errMsg)
@@ -159,7 +160,8 @@ pub(super) fn remove(path: &Path) -> Result<()> {
 }
 
 /// Build the applet for `script` in `dir`, replacing anything already there.
-pub(super) fn build(dir: &Path, script: &str, icon: Option<&Path>) -> Result<()> {
+/// `prompt` is the sentence the dialog shows under the name.
+pub(super) fn build(dir: &Path, script: &str, prompt: &str, icon: Option<&Path>) -> Result<()> {
     use std::io::Write;
     use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 
@@ -173,7 +175,7 @@ pub(super) fn build(dir: &Path, script: &str, icon: Option<&Path>) -> Result<()>
         .create_new(true)
         .mode(0o600)
         .open(&source)?
-        .write_all(applet_source(script, &result_path(dir)).as_bytes())?;
+        .write_all(applet_source(script, prompt, &result_path(dir)).as_bytes())?;
     let app = app_path(dir);
     let compiled = tool("/usr/bin/osacompile", &["-o".as_ref(), app.as_os_str(), source.as_os_str()]);
     std::fs::remove_file(&source)?;
@@ -230,11 +232,12 @@ mod tests {
     fn the_script_is_one_escaped_literal_run_as_root_with_its_line_endings_kept() {
         let src = applet_source(
             "echo \"hi\" \\ there\nid -u",
+            "rexenv wants to add a \"quoted\" thing.",
             Path::new("/Users/me/Library/Application Support/x/result"),
         );
         assert!(
             src.contains(
-                "do shell script \"echo \\\"hi\\\" \\\\ there\nid -u\" with administrator privileges without altering line endings"
+                "do shell script \"echo \\\"hi\\\" \\\\ there\nid -u\" with prompt \"rexenv wants to add a \\\"quoted\\\" thing.\" with administrator privileges without altering line endings"
             ),
             "{src}"
         );
@@ -280,7 +283,7 @@ mod tests {
     fn a_built_applet_is_named_rexenv_badged_with_our_icon_and_holds_the_script_inside() {
         let dir = scratch("build");
         let icon = Path::new(env!("CARGO_MANIFEST_DIR")).join("icons/icon.icns");
-        build(&dir, "echo rexenv-prompt-marker", Some(&icon)).expect("build");
+        build(&dir, "echo rexenv-prompt-marker", "rexenv wants to prove this.", Some(&icon)).expect("build");
         let app = app_path(&dir);
         let res = app.join("Contents/Resources");
 
@@ -300,7 +303,12 @@ mod tests {
             .output()
             .unwrap();
         let decompiled = String::from_utf8_lossy(&decompiled.stdout);
-        assert!(decompiled.contains("do shell script \"echo rexenv-prompt-marker\""), "{decompiled}");
+        assert!(
+            decompiled.contains(
+                "do shell script \"echo rexenv-prompt-marker\" with prompt \"rexenv wants to prove this.\""
+            ),
+            "{decompiled}"
+        );
 
         let mut left: Vec<String> = std::fs::read_dir(&dir)
             .unwrap()

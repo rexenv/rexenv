@@ -111,7 +111,9 @@ ask for permission a few times. These are expected and all stay on your machine:
 3. **Admin password** — to let the built-in edge server use ports **80/443** when
    you start your services.
 
-The admin-password dialogs read **rexenv** in bold with rexenv's logo on the lock.
+The admin-password dialogs read **rexenv** in bold with rexenv's logo on the lock, and
+say what they are for — e.g. "rexenv wants to add a DNS resolver so .rex sites open on
+this Mac." or "rexenv wants to start its HTTPS server on ports 80 and 443."
 If one ever reads "osascript wants to make changes." instead, it is still rexenv
 asking — the plain fallback used when its branded prompt cannot start (the app log
 says why: "branded password prompt unavailable").

@@ -58,7 +58,11 @@ impl CertTrustManager for LinuxCertTrust {
 
 pub struct LinuxPrivileges;
 impl PrivilegeManager for LinuxPrivileges {
-    fn run_privileged(&self, _script: &str) -> Result<String> {
+    fn run_privileged(
+        &self,
+        _script: &str,
+        _reason: &crate::platform::traits::PromptReason,
+    ) -> Result<String> {
         todo!("linux pkexec / sudo elevation")
     }
 }

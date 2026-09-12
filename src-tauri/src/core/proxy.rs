@@ -428,7 +428,10 @@ pub fn start_privileged(platform: &dyn Platform, caddy_bin: &Path, caddyfile: &P
         appdata = sh_quote(&appdata),
         log = sh_quote(&start_log),
     );
-    platform.privileges().run_privileged(&cmd)?;
+    platform.privileges().run_privileged(
+        &cmd,
+        &crate::platform::traits::PromptReason::new("start its HTTPS server on ports 80 and 443"),
+    )?;
     Ok(())
 }
 
@@ -471,9 +474,10 @@ pub fn start_edge_daemon(platform: &dyn Platform, src_caddy: &Path, caddyfile: &
         edge.wrapper_contents(&edge.daemon_binary_path(), caddyfile, &sock, &appdata),
     )?;
     std::fs::write(&staged_plist, edge.plist_contents(&edge.wrapper_path(), &start_log))?;
-    platform
-        .privileges()
-        .run_privileged(&edge.install_command(src_caddy, &staged_wrapper, &staged_plist))?;
+    platform.privileges().run_privileged(
+        &edge.install_command(src_caddy, &staged_wrapper, &staged_plist),
+        &crate::platform::traits::PromptReason::new("start its HTTPS server on ports 80 and 443"),
+    )?;
 
     // Bootstrap/kickstart returns before caddy has bound the socket; wait for it
     // (the wrapper also needs a beat to chown the socket to us) so the edge reads
@@ -511,7 +515,10 @@ pub fn start_edge_daemon(platform: &dyn Platform, src_caddy: &Path, caddyfile: &
 /// launchd (`disable` + `bootout`) — a privileged op (one prompt). Waits for the
 /// admin socket to go quiet. No-op / best-effort if the daemon isn't installed.
 pub fn stop_edge_daemon(platform: &dyn Platform) -> Result<()> {
-    platform.privileges().run_privileged(&platform.edge().stop_command())?;
+    platform.privileges().run_privileged(
+        &platform.edge().stop_command(),
+        &crate::platform::traits::PromptReason::new("stop its HTTPS server on ports 80 and 443"),
+    )?;
     for _ in 0..20 {
         if !admin_alive(platform) {
             return Ok(());
