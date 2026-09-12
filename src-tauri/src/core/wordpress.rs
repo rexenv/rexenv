@@ -2704,15 +2704,8 @@ pub fn url_rehome_pairs(from: &str, to: &str) -> Vec<(String, String)> {
 /// definition of a constant (a redefinition is a Notice on 7.x, a Warning on
 /// 8.x, never fatal), so these four win for this run only. It names rexenv's
 /// passwordless root, so there is no secret in it at all. Pure.
-///
-/// A NETWORK also needs `DOMAIN_CURRENT_SITE`: WordPress finds the network by
-/// that constant, and their wp-config's still names the source's host — so once
-/// the pass renames `wp_site`, a run booting with the old name finds no network
-/// (`docs/PLAN-local-multisite.md` §2). `network_domain` pins the name the copy
-/// holds at the moment of the run.
-pub fn copy_db_override(port: u16, db_name: &str, network_domain: Option<&str>) -> String {
-    let esc = |s: &str| s.replace('\\', "\\\\").replace('\'', "\\'");
-    let mut php = format!(
+pub fn copy_db_override(port: u16, db_name: &str) -> String {
+    format!(
         "<?php\n\
          // Written by rexenv for one wp-cli run against rexenv's COPY of this site's\n\
          // database, and deleted when that run ends. The site's wp-config.php still\n\
@@ -2722,12 +2715,8 @@ pub fn copy_db_override(port: u16, db_name: &str, network_domain: Option<&str>) 
          define('DB_USER', 'root');\n\
          define('DB_PASSWORD', '');\n\
          define('DB_NAME', '{}');\n",
-        esc(db_name)
-    );
-    if let Some(domain) = network_domain {
-        php.push_str(&format!("define('DOMAIN_CURRENT_SITE', '{}');\n", esc(domain)));
-    }
-    php
+        db_name.replace('\\', "\\\\").replace('\'', "\\'")
+    )
 }
 
 /// The search-replace passes that move a copied multisite NETWORK from `from`
@@ -2792,9 +2781,8 @@ pub fn first_unmoved_blog_url<'a>(to: &str, urls: &'a [String]) -> Option<&'a st
 ///
 /// A `network` (the site is recorded as multisite) lists its blogs first and
 /// moves them with [`network_rehome_pairs`] — a mapped-domain blog fails the
-/// job before any replace — with `DOMAIN_CURRENT_SITE` pinned to the name the
-/// copy holds (old during the replaces, new for the proof), and the proof also
-/// requires EVERY blog's URL to read `https://` on the new name.
+/// job before any replace — and the proof, run with `--url` on the new host,
+/// also requires EVERY blog's URL to read `https://` on the new name.
 #[allow(clippy::too_many_arguments)]
 pub fn rehome_urls_on_copy(
     platform: &dyn crate::platform::traits::Platform,
@@ -2811,9 +2799,7 @@ pub fn rehome_urls_on_copy(
     crate::core::database::validate_db_name(db_name)?;
     std::fs::create_dir_all(scratch_dir)?;
     let file = scratch_dir.join(".copy-db-override.php");
-    platform
-        .permissions()
-        .write_private(&file, copy_db_override(port, db_name, network.then_some(from)).as_bytes())?;
+    platform.permissions().write_private(&file, copy_db_override(port, db_name).as_bytes())?;
     struct Gone<'a>(&'a Path);
     impl Drop for Gone<'_> {
         fn drop(&mut self) {
@@ -2858,13 +2844,13 @@ pub fn rehome_urls_on_copy(
         })?;
     }
 
-    // The copy's network now lives at `to` — boot it there for the proof.
+    // A network's proof names the NEW host. Their wp-config still gives
+    // DOMAIN_CURRENT_SITE as the source's, and without `--url` wp-cli boots the
+    // network by that constant and finds no such site once `wp_site` moved;
+    // with it, WordPress finds the blog by host. Measured (local_import_check
+    // leg C): pinning the constant in the override instead was tried and is not
+    // what makes this work — `--url` is.
     let url = format!("--url=https://{to}/");
-    if network {
-        platform
-            .permissions()
-            .write_private(&file, copy_db_override(port, db_name, Some(to)).as_bytes())?;
-    }
     let mut args: Vec<&str> = vec!["option", "get", "siteurl"];
     if network {
         args.push(url.as_str());
@@ -2923,7 +2909,7 @@ mod copy_rehome_tests {
     /// secret, because rexenv's root has none (ledger #573).
     #[test]
     fn the_override_names_our_copy_and_holds_no_secret() {
-        let php = copy_db_override(13306, "local_ea_rex", None);
+        let php = copy_db_override(13306, "local_ea_rex");
         assert!(php.starts_with("<?php\n"));
         assert!(php.contains("define('DB_HOST', '127.0.0.1:13306');"), "{php}");
         assert!(php.contains("define('DB_NAME', 'local_ea_rex');"), "{php}");
@@ -2934,13 +2920,6 @@ mod copy_rehome_tests {
             php.find("error_reporting(").unwrap() < php.find("define(").unwrap(),
             "the redefinition notices are silenced before they can fire"
         );
-
-        // A network run also pins the name the copy's network lives at — and
-        // only a network run.
-        let net = copy_db_override(13306, "local_multi_rex", Some("multi.rex"));
-        assert!(net.contains("define('DOMAIN_CURRENT_SITE', 'multi.rex');"), "{net}");
-        assert_eq!(net.matches("define(").count(), 5, "{net}");
-        assert!(!php.contains("DOMAIN_CURRENT_SITE"));
     }
 
     /// Every subsite moves onto HTTPS under the new name BEFORE the network's

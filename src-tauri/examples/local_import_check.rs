@@ -18,9 +18,20 @@
 //!      leave wp-config byte-identical, and delete its override file. Then again
 //!      on PHP 7.4, where a constant redefinition is a Notice rather than a Warning.
 //!
+//!   C. **A multisite NETWORK moves, then connects (#573, #581).** A real
+//!      subdomain network (`multi.local` + `ea1.multi.local`, every stored URL on
+//!      `http://`, a serialized subsite option, wp-config in Local's shape) is
+//!      re-homed with `network = true`: `wp_blogs`, `wp_site`, `sitemeta` and both
+//!      blogs' options must read `https://` on `multi.rex`. A control shows why the
+//!      proof names the new host with `--url`. Then the connect plan (dedicated user,
+//!      renamed database, network domain) is applied to the fixture wp-config and
+//!      plain WordPress must boot the SUBSITE on its rexenv name with the login
+//!      cookie scoped to `.multi.rex`.
+//!
 //! NOT covered, by construction: Local's real mysqld (`skip-name-resolve`, the
 //! socket where Local puts it) — `docs/PUBLISH-TESTING.md` §N, owner-run.
 
+use rexenv_lib::core::confedit::{self, RewritePlan};
 use rexenv_lib::core::db::DbEngine;
 use rexenv_lib::core::dbcompat::{compat, Source, Target, Version};
 use rexenv_lib::core::dbdump::{self, LiveCheck};
@@ -212,6 +223,145 @@ async fn main() -> std::process::ExitCode {
         std::fs::read_to_string(&config).unwrap() == local_text,
         "the URL pass wrote into the project",
     );
+
+    // ── C. a subdomain NETWORK: the URL pass, then the connect plan ───────────
+    const NET_DB: &str = "local_net";
+    let q = |s: &str| sql(client.path(), s).unwrap_or_else(|e| format!("<error: {e}>"));
+    let net_root = sandbox.root().join("Local Sites/multi/app/public");
+    std::fs::create_dir_all(&net_root).unwrap();
+    wordpress::install_for_site(
+        &php8,
+        &wp,
+        &net_root,
+        "multi.local",
+        "Multi",
+        NET_DB,
+        &format!("127.0.0.1:{PORT}"),
+        &client,
+        &Default::default(),
+    )
+    .expect("install the network's WordPress");
+    wordpress::multisite_convert(&php8, &wp, &net_root, true).expect("convert to a subdomain network");
+    let made = wordpress::wp_run(&php8, &wp, &net_root, &["site", "create", "--slug=ea1", "--title=EA1"]);
+    check.is("fixture: the network gained a subsite", made.is_ok(), &format!("{made:?}"));
+
+    // Local serves http:// — every stored URL says so, and one subsite option is serialized.
+    let sub_old = "http://ea1.multi.local";
+    let ser_old = format!("a:1:{{s:3:\"url\";s:{}:\"{sub_old}\";}}", sub_old.len());
+    sql(
+        client.path(),
+        &format!(
+            "UPDATE {NET_DB}.wp_options SET option_value='http://multi.local' WHERE option_name IN ('siteurl','home'); \
+             UPDATE {NET_DB}.wp_2_options SET option_value='{sub_old}' WHERE option_name IN ('siteurl','home'); \
+             UPDATE {NET_DB}.wp_sitemeta SET meta_value='http://multi.local/' WHERE meta_key='siteurl'; \
+             INSERT INTO {NET_DB}.wp_2_options (option_name, option_value, autoload) VALUES ('rex_probe', '{}', 'off');",
+            ser_old.replace('\'', "''")
+        ),
+    )
+    .expect("make the network look like Local's");
+    let blogs = format!("SELECT GROUP_CONCAT(domain ORDER BY blog_id) FROM {NET_DB}.wp_blogs");
+    check.is("fixture: the blogs are multi.local and ea1.multi.local", q(&blogs) == "multi.local,ea1.multi.local", &q(&blogs));
+
+    let net_config = net_root.join("wp-config.php");
+    let net_local = std::fs::read_to_string(&net_config)
+        .unwrap()
+        .replace(&format!("'127.0.0.1:{PORT}'"), "'localhost'")
+        .replace("'DB_PASSWORD', ''", "'DB_PASSWORD', 'root'")
+        .replace(&format!("'{NET_DB}'"), "'local'");
+    std::fs::write(&net_config, &net_local).unwrap();
+    let dcs = rexenv_lib::core::phpconf::wp_define_str(&net_local, "DOMAIN_CURRENT_SITE");
+    check.is(
+        "fixture: the network's wp-config is Local-shaped with DOMAIN_CURRENT_SITE = multi.local",
+        net_local.contains("'localhost'") && net_local.contains("'DB_PASSWORD', 'root'") && dcs.as_deref() == Ok("multi.local"),
+        &format!("{dcs:?}"),
+    );
+
+    let net_scratch = sandbox.root().join("db-imports-net");
+    let moved = wordpress::rehome_urls_on_copy(
+        &*plat, &php8, &wp, &net_root, &net_scratch, PORT, NET_DB, "multi.local", "multi.rex", true,
+    );
+    check.is("network: the URL pass reaches and moves the copy", matches!(moved, Ok(n) if n > 0), &format!("{moved:?}"));
+    let sub_new = "https://ea1.multi.rex";
+    for (label, query, want) in [
+        ("wp_blogs", blogs.clone(), "multi.rex,ea1.multi.rex".to_string()),
+        ("wp_site", format!("SELECT domain FROM {NET_DB}.wp_site"), "multi.rex".to_string()),
+        ("sitemeta siteurl", format!("SELECT meta_value FROM {NET_DB}.wp_sitemeta WHERE meta_key='siteurl'"), "https://multi.rex/".to_string()),
+        ("the network's siteurl", format!("SELECT option_value FROM {NET_DB}.wp_options WHERE option_name='siteurl'"), "https://multi.rex".to_string()),
+        ("the subsite's siteurl", format!("SELECT option_value FROM {NET_DB}.wp_2_options WHERE option_name='siteurl'"), sub_new.to_string()),
+        ("the subsite's home", format!("SELECT option_value FROM {NET_DB}.wp_2_options WHERE option_name='home'"), sub_new.to_string()),
+        (
+            "the subsite's serialized option (length repaired)",
+            format!("SELECT option_value FROM {NET_DB}.wp_2_options WHERE option_name='rex_probe'"),
+            format!("a:1:{{s:3:\"url\";s:{}:\"{sub_new}\";}}", sub_new.len()),
+        ),
+    ] {
+        let got = q(&query);
+        check.is(&format!("network: {label} moved"), got == want, &got);
+    }
+    check.is("network: the override file is gone", !net_scratch.join(".copy-db-override.php").exists(), "left behind");
+    check.is(
+        "network: wp-config is byte-identical after the pass",
+        std::fs::read_to_string(&net_config).unwrap() == net_local,
+        "the URL pass wrote into the project",
+    );
+
+    // Control: the same override on the moved copy WITHOUT `--url` — wp-cli boots
+    // the network from wp-config's DOMAIN_CURRENT_SITE (still multi.local) and
+    // finds no such site, which is why the pass's proof names the new host.
+    let bare = net_scratch.join("control-override.php");
+    std::fs::write(&bare, wordpress::copy_db_override(PORT, NET_DB)).unwrap();
+    let require = format!("--require={}", bare.display());
+    let path = format!("--path={}", net_root.display());
+    let unpinned = wordpress::wp_cli_checked(
+        &php8,
+        &wp,
+        &["option", "get", "siteurl", "--skip-plugins", "--skip-themes", &require, &path],
+        None,
+    );
+    check.is(
+        "control: without --url, the moved network does not boot from wp-config's old DOMAIN_CURRENT_SITE",
+        !matches!(&unpinned, Ok(s) if s.trim().ends_with("https://multi.rex")),
+        &format!("{unpinned:?}"),
+    );
+    let _ = std::fs::remove_file(&bare);
+
+    // The connect (#581): dedicated account holding the config's password (D1),
+    // the renamed database (#574) and the network's domain, on the fixture file.
+    sql(
+        client.path(),
+        &format!(
+            "CREATE USER IF NOT EXISTS 'rex_multi'@'%' IDENTIFIED BY 'root'; \
+             GRANT ALL PRIVILEGES ON {NET_DB}.* TO 'rex_multi'@'%';"
+        ),
+    )
+    .expect("the dedicated account");
+    let plan = RewritePlan::wp(&format!("127.0.0.1:{PORT}"), Some("rex_multi"))
+        .and_then(|p| p.with_database(NET_DB))
+        .and_then(|p| p.with_network_domain("multi.rex"))
+        .expect("the connect plan");
+    match confedit::rewrite(&net_local, &plan) {
+        Err(refusal) => check.is("connect: the network's wp-config can be rewritten", false, &format!("{refusal:?}")),
+        Ok(r) => {
+            check.is(
+                "connect: the diff moves DOMAIN_CURRENT_SITE to multi.rex",
+                r.diff.iter().any(|d| d.sign == '+' && d.text.contains("DOMAIN_CURRENT_SITE") && d.text.contains("'multi.rex'")),
+                &format!("{:?}", r.diff),
+            );
+            std::fs::write(&net_config, &r.new_content).unwrap();
+            let booted = wordpress::wp_run(&php8, &wp, &net_root, &["option", "get", "siteurl", "--url=https://ea1.multi.rex/"]);
+            check.is(
+                "connect: plain WordPress boots the network's SUBSITE on its rexenv name",
+                matches!(&booted, Ok(s) if s.trim() == sub_new),
+                &format!("{booted:?}"),
+            );
+            let cookie = wordpress::wp_run(&php8, &wp, &net_root, &["eval", "echo COOKIE_DOMAIN;", "--url=https://multi.rex/"]);
+            check.is(
+                "connect: the login cookie is scoped to .multi.rex, not .multi.local",
+                matches!(&cookie, Ok(s) if s.trim() == ".multi.rex"),
+                &format!("{cookie:?}"),
+            );
+        }
+    }
 
     check.verdict()
 }

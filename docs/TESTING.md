@@ -196,6 +196,13 @@ it can:
   which plain wp-cli is asserted unable to reach — so reaching the copy can only be the
   override's doing, on PHP 8.x and again on 7.4 (Notice vs Warning on the
   redefinition). What both leave to `docs/PUBLISH-TESTING.md` §N is Local's real mysqld.
+  Leg C (12 Sep 2026, `docs/PLAN-local-multisite.md` T4) runs a real subdomain NETWORK
+  with a subsite through the network URL pass and the connect plan, ending with plain
+  WordPress booting the subsite on its rexenv name and `COOKIE_DOMAIN` read back. Its
+  first run is the reason this layer exists: T2 had shipped an override pin of
+  `DOMAIN_CURRENT_SITE` that L0 could only take on faith; with the pin planted OUT the
+  leg stayed green, with the proof's `--url` planted out it went red — so the pin was
+  deleted and the control now asserts the `--url` half.
 
   **`site_matrix_check` (network tier, 11 Sep 2026, ledger #555-#557) walks the
   whole space instead of sampling it**: every pinned PHP × {Blank PHP, WordPress,

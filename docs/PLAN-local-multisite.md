@@ -2,7 +2,9 @@
 
 **Status:** IN FLIGHT 12 Sep 2026 — owner: "Q2 o kore felo multisite". T0 (this plan),
 T1 (scan + adopt, ledger #580), T2 (the network URL pass, #573) and T3 (the connect moves
-`DOMAIN_CURRENT_SITE`, #581) done; next T4.
+`DOMAIN_CURRENT_SITE`, #581) and T4 (L1 leg C on a real network — which measured the
+override's `DOMAIN_CURRENT_SITE` pin unnecessary and removed it) done; next T5, the live
+pass on the owner's `multi.local`.
 Planned against `626b685`. Parent design record: `docs/archive/PLAN-local-import.md`
 (§3 listed networks as unsupported, §9 Q2 parked them).
 
@@ -74,8 +76,11 @@ The blockers:
   - Each subsite's `http(s)://sub.old` pairs run first, then the network's pairs,
     bare network name LAST (it renames `wp_blogs.domain`, `wp_site.domain`, and every
     `wp_N_options` row — substrings, so `ea1.multi.local` → `ea1.multi.rex`).
-  - The override file also defines `DOMAIN_CURRENT_SITE`: the old name during the
-    replaces, the new one for the re-check — first definition wins, as with `DB_*`.
+  - ~~The override file also defines `DOMAIN_CURRENT_SITE`: the old name during the
+    replaces, the new one for the re-check.~~ **Measured wrong in T4:** with the pin
+    removed the real network still moved; with `--url` removed from the proof it failed
+    ("Site 'multi.local/' not found"). The proof runs with `--url=https://<new>/` and the
+    override keeps only the four connection constants.
   - Proof: the network's `siteurl` AND every blog's URL must read `https://…` on the
     new name, or the job fails (Retry re-imports).
 - **Connect moves the network's domain.** `RewriteKey::NetworkDomain`

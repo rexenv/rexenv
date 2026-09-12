@@ -1031,10 +1031,11 @@ honest footer —
   A NETWORK copy (the site recorded as multisite) first lists its blogs — a mapped-domain
   blog fails the job before any replace — moves each subsite's `http(s)://sub.old` onto
   `https://sub.new` BEFORE the bare network rename (the network's own pairs never match
-  a subsite, and the bare pass alone leaves it on `http://`), pins `DOMAIN_CURRENT_SITE`
-  in the same require file (their wp-config still names the old host, and WordPress
-  finds a network by it), and requires every blog's URL to read `https://` on the new
-  name.
+  a subsite, and the bare pass alone leaves it on `http://`), runs its proof with
+  `--url=https://<new>/` (their wp-config still gives `DOMAIN_CURRENT_SITE` as the old
+  host, and a run with no URL finds no such site once `wp_site` moved), and requires
+  every blog's URL to read `https://` on the new name. Pinning the constant in the
+  require file was the first design and measured unnecessary — `--url` is what works.
   A re-homed row whose PICKED name another rexenv site already holds (`tr.local` →
   `tr.test` with a `tr.test` site present) carries `domain_choice` and gets a name field
   on the row — the label only, on the row's re-homed TLD, checked live against the

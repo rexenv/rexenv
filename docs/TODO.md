@@ -114,12 +114,18 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     Not usable alone: the copy still names `.local` until T2, and serving needs T3
   - [x] T2 — network-aware URL pass on the copy ✓ 12 Sep 2026 — ledger #573 extended;
     `a_network_moves_every_subsite_before_its_own_bare_name`,
-    `a_network_is_proved_moved_only_when_every_blog_reads_https_on_the_new_name`, the
-    override and wiring guards (plant-proven ×3). The bootstrap it rests on is L1-owed (T4)
+    `a_network_is_proved_moved_only_when_every_blog_reads_https_on_the_new_name` and the
+    wiring guard (plant-proven ×3). T4 measured its override pin unnecessary — removed;
+    the proof's `--url` is what works
   - [x] T3 — `RewriteKey::NetworkDomain` in the connect ✓ 12 Sep 2026 — ledger #581;
     `a_network_moves_only_its_domain_bytes`, `a_networks_domain_reaches_the_plan_before_the_diff`
     (plant-proven ×2); the preview's `movesNetworkDomain` sentence in DbImportCard + MCP JSON
-  - [ ] T4 — L1 network leg in `local_import_check`
+  - [x] T4 — L1 network leg in `local_import_check` ✓ 12 Sep 2026 — leg C PASS (33 checks):
+    a real subdomain network with a subsite moves to `https://…multi.rex` in `wp_blogs`,
+    `wp_site`, `sitemeta` and both blogs' options (serialized length repaired), wp-config
+    byte-identical; the connect plan boots the SUBSITE on its rexenv name with
+    `COOKIE_DOMAIN` `.multi.rex`. Plant: removing `--url` from the proof fails it; removing
+    the override's `DOMAIN_CURRENT_SITE` pin did NOT — the pin was deleted
   - [ ] T5 — docs, PUBLISH-TESTING §N network steps, live pass on `multi.local`
 
 - [ ] **A Valet or Herd multisite network imports silently as a single site** — found
