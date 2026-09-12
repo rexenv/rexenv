@@ -24,6 +24,7 @@
 //!   nothing, or somebody's Homebrew MySQL holding its own `local` database.
 
 use crate::core::valet::{DiscoveredSite, Origin, SiteStatus, Source, SourceKind};
+use crate::state::models::MultisiteMode;
 use std::path::{Path, PathBuf};
 
 /// Local's app-data directory — where `sites.json` and each site's `run/`
@@ -61,6 +62,9 @@ pub struct LocalSite {
     pub web_server: Option<String>,
     /// `ms-subdomain` / `ms-subdir`; `None` for a single site.
     pub multisite: Option<String>,
+    /// The hosts Local lists for a network's sites (`multiSiteDomains`, URLs
+    /// reduced to hostnames) — the network's own name and each subsite's.
+    pub multisite_domains: Vec<String>,
 }
 
 impl LocalSite {
@@ -126,6 +130,11 @@ pub fn parse_registry(text: &str, home: &Path) -> Option<Vec<LocalSite>> {
                 mysql_version: str_at("/services/mysql/version").or_else(|| str_at("/mysqlVersion")),
                 web_server,
                 multisite: str_at("/multiSite"),
+                multisite_domains: s
+                    .pointer("/multiSiteDomains")
+                    .and_then(|x| x.as_array())
+                    .map(|a| a.iter().filter_map(|v| v.as_str()).filter_map(host_of).collect())
+                    .unwrap_or_default(),
             }
         })
         .collect();
@@ -232,6 +241,8 @@ fn row(s: &LocalSite, default_tld: &str) -> DiscoveredSite {
         Err(_) => (s.domain.clone(), None),
     };
     let docroot = s.docroot();
+    let mode = network_mode(s);
+    let mapped = mapped_subsite(s);
     let status = match (&s.root, &docroot) {
         (None, _) | (_, None) => {
             SiteStatus::Unsupported("Local's registry records no folder for this site".into())
@@ -248,14 +259,20 @@ fn row(s: &LocalSite, default_tld: &str) -> DiscoveredSite {
                 doc.display()
             ))
         }
-        _ if s.multisite.is_some() => SiteStatus::Unsupported(format!(
-            "a WordPress multisite network ({}) — importing networks from Local isn't supported \
-             yet; single sites import normally",
-            match s.multisite.as_deref() {
-                Some("ms-subdomain") => "subdomains",
-                Some("ms-subdir") => "subdirectories",
-                other => other.unwrap_or("network"),
-            }
+        // A network imports (`docs/PLAN-local-multisite.md`) — adopted, never
+        // converted — except in the two shapes this cut can't carry.
+        _ if s.multisite.is_some() && matches!(mode, MultisiteMode::None) => {
+            SiteStatus::Unsupported(format!(
+                "a WordPress multisite network of a kind rexenv doesn't recognise (Local calls it \
+                 `{}`)",
+                s.multisite.as_deref().unwrap_or_default()
+            ))
+        }
+        _ if mapped.is_some() => SiteStatus::Unsupported(format!(
+            "a multisite network with a subsite on its own domain ({}) — rexenv imports networks \
+             whose subsites live on {} or under it; a mapped domain isn't imported yet",
+            mapped.as_deref().unwrap_or_default(),
+            s.domain
         )),
         _ => match &rehomed {
             Ok(_) => SiteStatus::Importable,
@@ -274,7 +291,52 @@ fn row(s: &LocalSite, default_tld: &str) -> DiscoveredSite {
         also_in: None,
         status,
         renamed_from,
+        subsites: if matches!(mode, MultisiteMode::Subdomain) { subsite_labels(s) } else { Vec::new() },
+        multisite: mode,
     }
+}
+
+/// Local's `multiSite` value as rexenv's mode; anything else (including a
+/// single site's absent value) is `None`.
+fn network_mode(s: &LocalSite) -> MultisiteMode {
+    match s.multisite.as_deref() {
+        Some("ms-subdomain") => MultisiteMode::Subdomain,
+        Some("ms-subdir") => MultisiteMode::Subdirectory,
+        _ => MultisiteMode::None,
+    }
+}
+
+/// The first host Local lists for a network that is neither the network's own
+/// name nor under it — a domain-mapped subsite. `None` for a single site.
+fn mapped_subsite(s: &LocalSite) -> Option<String> {
+    s.multisite.as_ref()?;
+    let under = format!(".{}", s.domain);
+    s.multisite_domains.iter().find(|h| **h != s.domain && !h.ends_with(&under)).cloned()
+}
+
+/// `ea1` for `ea1.multi.local` on the network `multi.local`: the subsite's
+/// labels without the network's name, sorted, the network itself excluded.
+fn subsite_labels(s: &LocalSite) -> Vec<String> {
+    let under = format!(".{}", s.domain);
+    let mut out: Vec<String> = s
+        .multisite_domains
+        .iter()
+        .filter_map(|h| h.strip_suffix(&under))
+        .filter(|l| !l.is_empty())
+        .map(str::to_string)
+        .collect();
+    out.sort();
+    out.dedup();
+    out
+}
+
+/// `http://ea1.multi.local/` → `ea1.multi.local`: scheme, port and path
+/// dropped, normalised like the registry's own `domain`.
+fn host_of(url: &str) -> Option<String> {
+    let rest = url.split_once("://").map_or(url, |(_, r)| r);
+    let host = rest.split(['/', ':']).next().unwrap_or_default();
+    let host = crate::core::sites::normalize_hostname(host);
+    (!host.is_empty()).then_some(host)
 }
 
 /// Whether a site config's database host means "Local's socket for this site"
@@ -455,6 +517,50 @@ mod tests {
         assert!(parse_registry("[1,2]", home).is_none(), "an array is not Local's registry");
     }
 
+    /// A network is a row with its mode and its subsites' labels; a subsite on
+    /// a mapped domain and a network kind nobody recognises are refused with
+    /// the reason — nothing is imported as a plain single site.
+    #[test]
+    fn a_network_imports_with_its_mode_and_a_mapped_subsite_is_refused() {
+        let with = |id: &str, name: &str, kind: &str, hosts: &[&str]| {
+            let base = site_json(id, name, &format!("{name}.local"), "8.1.29", 10009, kind);
+            let list = hosts.iter().map(|h| format!("\"http://{h}/\"")).collect::<Vec<_>>().join(",");
+            format!("{},\"multiSiteDomains\":[{list}]}}", base.strip_suffix('}').unwrap())
+        };
+        let registry = format!(
+            "{{{},{},{},{}}}",
+            with("a", "multi", "ms-subdomain", &["multi.local", "ea2.multi.local", "EA1.multi.local"]),
+            with("b", "dirs", "ms-subdir", &["dirs.local"]),
+            with("c", "mapped", "ms-subdomain", &["mapped.local", "shop.local"]),
+            with("d", "odd", "ms-weird", &[]),
+        );
+        let home = Home::new("network")
+            .registry(&registry)
+            .wordpress("multi")
+            .wordpress("dirs")
+            .wordpress("mapped")
+            .wordpress("odd");
+        let (_, rows) = discover(&home.0, "rex").expect("a registry is a source");
+        let by = |n: &str| rows.iter().find(|r| r.name == n).unwrap_or_else(|| panic!("{n} missing"));
+
+        let multi = by("multi");
+        assert_eq!(multi.status, SiteStatus::Importable);
+        assert_eq!((multi.domain.as_str(), &multi.multisite), ("multi.rex", &MultisiteMode::Subdomain));
+        assert_eq!(multi.subsites, vec!["ea1", "ea2"], "labels, normalised and sorted, network excluded");
+
+        let dirs = by("dirs");
+        assert_eq!((&dirs.status, &dirs.multisite), (&SiteStatus::Importable, &MultisiteMode::Subdirectory));
+        assert!(dirs.subsites.is_empty());
+
+        let reason = |n: &str| match &by(n).status {
+            SiteStatus::Unsupported(r) => r.clone(),
+            s => panic!("{n}: expected unsupported, got {s:?}"),
+        };
+        assert!(reason("mapped").contains("shop.local"), "{}", reason("mapped"));
+        assert!(reason("odd").contains("ms-weird"), "{}", reason("odd"));
+        assert_eq!(by("mapped").multisite, MultisiteMode::Subdomain, "the refusal is about the domain, not the kind");
+    }
+
     /// `.local` is refused by policy, so it is re-homed onto the default TLD;
     /// an allowed TLD keeps its name; a malformed name is NOT "fixed".
     #[test]
@@ -504,7 +610,11 @@ mod tests {
             SiteStatus::Unsupported(r) => r.clone(),
             s => panic!("{n}: expected unsupported, got {s:?}"),
         };
-        assert!(reason("multi").contains("multisite"), "{}", reason("multi"));
+        assert_eq!(
+            (&by("multi").status, &by("multi").multisite),
+            (&SiteStatus::Importable, &MultisiteMode::Subdomain),
+            "a network imports, carrying its mode (docs/PLAN-local-multisite.md)"
+        );
         assert!(reason("gone").contains("folder is missing"), "{}", reason("gone"));
         assert!(reason("empty").contains("wp-config.php"), "{}", reason("empty"));
 

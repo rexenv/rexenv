@@ -1293,6 +1293,25 @@ pub fn convert_multisite(
     get(conn, id)
 }
 
+/// Record that a site already IS a network — the Local import's adopt path
+/// (`docs/PLAN-local-multisite.md`). Unlike [`convert_multisite`], this runs
+/// nothing: the network exists in their wp-config and in the copied database,
+/// and `multisite-convert` on a live network rewrites both. Every other path to
+/// a network converts first; the import must never (an adopted site left at
+/// `none` is served as a single site AND offered "Convert to multisite", which
+/// would do exactly that). `None` is refused — un-networking a site is
+/// [`clear_multisite`]'s, after a reset. Returns the updated site, `None` if the
+/// id doesn't exist; the caller reloads the web tier.
+pub fn adopt_multisite(conn: &Connection, id: &str, mode: MultisiteMode) -> Result<Option<Site>> {
+    if matches!(mode, MultisiteMode::None) {
+        return Err(Error::Other("adopting a network needs 'subdomain' or 'subdirectory'".into()));
+    }
+    if !store::set_site_multisite(conn, id, mode.as_db())? {
+        return Ok(None);
+    }
+    get(conn, id)
+}
+
 /// Flip a site back to single-site after a reset — the fresh database has no
 /// network, and the reset cleared the multisite constants from wp-config.
 /// Returns the updated site (`None` if it doesn't exist).
@@ -3604,6 +3623,20 @@ mod tests {
         assert_eq!(updated.db_name, "wp_myapp_test");
         assert_eq!(updated.path, created.path);
         assert_eq!(updated.name, "Shop");
+    }
+
+    /// Adopting records the mode and nothing else — it takes no PHP, no wp-cli
+    /// and no docroot, so it cannot run a convert — and refuses to "adopt" a
+    /// single site.
+    #[test]
+    fn adopting_a_network_records_the_mode_and_refuses_none() {
+        let conn = db::open_in_memory().unwrap();
+        let a = create(&conn, sample("A", "a.test")).unwrap();
+        assert!(adopt_multisite(&conn, &a.id, MultisiteMode::None).is_err());
+        assert_eq!(get(&conn, &a.id).unwrap().unwrap().multisite, MultisiteMode::None, "a refusal wrote");
+        let s = adopt_multisite(&conn, &a.id, MultisiteMode::Subdomain).unwrap().unwrap();
+        assert_eq!(s.multisite, MultisiteMode::Subdomain);
+        assert!(adopt_multisite(&conn, "nope", MultisiteMode::Subdirectory).unwrap().is_none());
     }
 
     #[test]

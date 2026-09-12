@@ -25,6 +25,8 @@ use serde::Serialize;
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
+use crate::state::models::MultisiteMode;
+
 /// Which tool a discovered site came from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -112,6 +114,13 @@ pub struct DiscoveredSite {
     /// The hostname the source served it under, when rexenv can't use that one
     /// (`ea.local` → `ea.rex`). Only Local rows are ever re-homed.
     pub renamed_from: Option<String>,
+    /// A WordPress network the source's own registry records — Local rows
+    /// only; Valet/Herd have no such record and stay `None` (a finding of its
+    /// own, `docs/PLAN-local-multisite.md` §6).
+    pub multisite: MultisiteMode,
+    /// A subdomain network's subsite LABELS (`ea1` for `ea1.multi.local`), so
+    /// the screen can show them under whatever name the network imports as.
+    pub subsites: Vec<String>,
 }
 
 /// The whole read-only picture.
@@ -366,6 +375,8 @@ pub fn scan_source(kind: SourceKind, dir: &Path) -> (Source, Vec<DiscoveredSite>
                 also_in: None,
                 status: SiteStatus::Unsupported(String::new()),
                 renamed_from: None,
+                multisite: MultisiteMode::None,
+                subsites: Vec::new(),
             };
             r.status = SiteStatus::Unsupported(match &r.proxy_to {
                 Some(to) => format!("a {} proxy to {to}, not a site", kind.label()),
@@ -427,6 +438,8 @@ fn row(
         also_in: None,
         status,
         renamed_from: None,
+        multisite: MultisiteMode::None,
+        subsites: Vec::new(),
     }
 }
 

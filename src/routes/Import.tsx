@@ -527,6 +527,23 @@ export function Import() {
                           <span className="font-mono text-rex-text">{c.extraDomains.join(", ")}</span>
                         </div>
                       )}
+                      {c.multisite !== "none" && (
+                        <div
+                          className="truncate text-[0.6875rem] text-rex-text-muted"
+                          title={`A WordPress multisite network (${c.multisite === "subdomain" ? "subsites on subdomains" : "subsites in subfolders"}). rexenv imports it as a network — it never converts it.`}
+                        >
+                          multisite network ·{" "}
+                          {c.multisite === "subdomain" ? "subdomains" : "subdirectories"}
+                          {c.subsites.length > 0 && (
+                            <>
+                              {" · "}
+                              <span className="font-mono text-rex-text">
+                                {c.subsites.map((l) => `${l}.${chosenName(c)}`).join(", ")}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      )}
                       <div className="truncate font-mono text-[0.6875rem] text-rex-text-muted">
                         {c.servePath ?? c.path ?? "—"}
                         {c.docrootRel ? ` (serving ${c.docrootRel}/)` : ""}

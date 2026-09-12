@@ -215,6 +215,11 @@ export interface ImportCandidate {
   /** The hostname the source served it under when rexenv can't use it — a
    *  Local site on `.local` imports as `<name>.<default TLD>`. */
   renamedFrom: string | null;
+  /** A WordPress network the source's registry records (Local only). Imported
+   *  by recording the mode — rexenv never converts it. */
+  multisite: MultisiteMode;
+  /** A subdomain network's subsite labels (`ea1`), shown under the imported name. */
+  subsites: string[];
   hasCustomValetDriver: boolean;
   status: ImportStatus;
 }

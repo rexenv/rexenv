@@ -993,7 +993,14 @@ honest footer —
   inside the project (#570). `.local` is refused by TLD policy (Bonjour), so a site on
   a refused TLD is RE-HOMED onto the default TLD in the scan itself (`ea.local` →
   `ea.rex`, shown on the row as "was ea.local"), before `enrich` or site creation see
-  it (#571); an allowed TLD keeps its name. Multisite networks list as unsupported.
+  it (#571); an allowed TLD keeps its name. A multisite NETWORK imports too (12 Sep 2026,
+  `docs/PLAN-local-multisite.md`): its mode comes from the registry's `multiSite` and is
+  RECORDED after the ordinary provision (`core::sites::adopt_multisite`) — never by
+  running `multisite-convert`, which every other path to a network runs and which would
+  rewrite a live network's wp-config and tables. The batch's one reload serves it (the
+  network rewrites, and `*.domain` for subdomains). Refused with the reason: a subsite on
+  a mapped domain (a `multiSiteDomains` host outside the network's name). The row shows
+  the network and its subsites under the imported name.
   Already-imported is decided by FOLDER first for every source (a re-homed name
   cannot be matched by name, and a Valet site whose domain was later changed in
   rexenv is still that folder); a Local row whose name a Valet/Herd row already

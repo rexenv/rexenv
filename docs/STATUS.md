@@ -9,72 +9,72 @@ App version **0.7.0** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md`
 - `TODO.md:38` Windows launch
 - `TODO.md:62` The keychain (CA trust) dialog is rexenv's too
 - `TODO.md:104` Import Local multisite networks
-- `TODO.md:116` A Valet or Herd multisite network imports silently as a single site
-- `TODO.md:124` In-app self-update — a dmg user has no update path at all
-- `TODO.md:252` ~16 flag-taking `rex` commands still ignore what they do not recognise
-- `TODO.md:267` A public tunnel for `mstest.rex` was running that this session never started
-- `TODO.md:294` The pinned wp-cli phar (2.12.0) is not PHP 8.5-clean
-- `TODO.md:328` Private-window flags for Arc, ChatGPT Atlas, Orion
-- `TODO.md:337` Windows/Linux: `detect_browsers`/`open_in_browser` are the default empty stubs
-- `TODO.md:344` Eliminate the bug class: bundled PHP with curl's THREADED resolver
-- `TODO.md:419` Option, not a commitment: a self-built nginx (deployment target 12) would drop the app floor from 15 to 14
-- `TODO.md:423` PHP 7.4 — the five residuals of a shipped feature
-- `TODO.md:497` Radicle-hosted repos are unverified
-- `TODO.md:499` Why that `rex` instance went deaf was never diagnosed
+- `TODO.md:120` A Valet or Herd multisite network imports silently as a single site
+- `TODO.md:128` In-app self-update — a dmg user has no update path at all
+- `TODO.md:256` ~16 flag-taking `rex` commands still ignore what they do not recognise
+- `TODO.md:271` A public tunnel for `mstest.rex` was running that this session never started
+- `TODO.md:298` The pinned wp-cli phar (2.12.0) is not PHP 8.5-clean
+- `TODO.md:332` Private-window flags for Arc, ChatGPT Atlas, Orion
+- `TODO.md:341` Windows/Linux: `detect_browsers`/`open_in_browser` are the default empty stubs
+- `TODO.md:348` Eliminate the bug class: bundled PHP with curl's THREADED resolver
+- `TODO.md:423` Option, not a commitment: a self-built nginx (deployment target 12) would drop the app floor from 15 to 14
+- `TODO.md:427` PHP 7.4 — the five residuals of a shipped feature
+- `TODO.md:501` Radicle-hosted repos are unverified
+- `TODO.md:503` Why that `rex` instance went deaf was never diagnosed
 
 ### Ledger-driven proof backlog — 2
 
-- `TODO.md:512` `wp_plugins_check` failed its deactivate assertion once and has not reproduced — the product-bug flag raise…
-- `TODO.md:564` Bedrock live provision — the committed example (#35), deliberately not built
+- `TODO.md:516` `wp_plugins_check` failed its deactivate assertion once and has not reproduced — the product-bug flag raise…
+- `TODO.md:568` Bedrock live provision — the committed example (#35), deliberately not built
 
 ### Release gates (human, scripted — see the docs named) — 13
 
-- `TODO.md:584` PUBLISH-TESTING §B
-- `TODO.md:585` PUBLISH-TESTING §D
-- `TODO.md:603` Flip the release host back when `rexenv/rexenv` goes public
-- `TODO.md:617` The self-update swap probe (T0) and the first real in-app update (T11)
-- `TODO.md:622` PUBLISH-TESTING §K
-- `TODO.md:623` PUBLISH-TESTING §F
-- `TODO.md:624` PUBLISH-TESTING §G
-- `TODO.md:630` Release 5.4 — clean-Mac smoke test
-- `TODO.md:634` Tunnel probe session
-- `TODO.md:638` Intel spot-run
-- `TODO.md:641` The macOS floor is a claim about BOTH slices, and most of it has still never been measured
-- `TODO.md:679` In-app verifies owed
-- `TODO.md:691` PUBLISH-TESTING §E / §L
+- `TODO.md:588` PUBLISH-TESTING §B
+- `TODO.md:589` PUBLISH-TESTING §D
+- `TODO.md:607` Flip the release host back when `rexenv/rexenv` goes public
+- `TODO.md:621` The self-update swap probe (T0) and the first real in-app update (T11)
+- `TODO.md:626` PUBLISH-TESTING §K
+- `TODO.md:627` PUBLISH-TESTING §F
+- `TODO.md:628` PUBLISH-TESTING §G
+- `TODO.md:634` Release 5.4 — clean-Mac smoke test
+- `TODO.md:638` Tunnel probe session
+- `TODO.md:642` Intel spot-run
+- `TODO.md:645` The macOS floor is a claim about BOTH slices, and most of it has still never been measured
+- `TODO.md:683` In-app verifies owed
+- `TODO.md:695` PUBLISH-TESTING §E / §L
 
 ### Parked (deliberate — needs explicit go; don't pick up silently) — 4
 
-- `TODO.md:697` The live pool swap is still L3
-- `TODO.md:701` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN 25 Aug 2026
-- `TODO.md:710` Install WordPress into an empty LINKED folder
-- `TODO.md:717` `rex` design-first set — ONE item left: raw `wp` passthrough
+- `TODO.md:701` The live pool swap is still L3
+- `TODO.md:705` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN 25 Aug 2026
+- `TODO.md:714` Install WordPress into an empty LINKED folder
+- `TODO.md:721` `rex` design-first set — ONE item left: raw `wp` passthrough
 
 ### Menu-bar app — 1
 
-- `TODO.md:730` Hold the tray menu open while the stack MOVES
+- `TODO.md:734` Hold the tray menu open while the stack MOVES
 
 ### Blocked on external work — 4
 
-- `TODO.md:740` Xdebug on PHP 8.0
-- `TODO.md:745` SMAppService privileged helper
-- `TODO.md:747` Developer ID signing + notarization
-- `TODO.md:749` OpenLiteSpeed override server
+- `TODO.md:744` Xdebug on PHP 8.0
+- `TODO.md:749` SMAppService privileged helper
+- `TODO.md:751` Developer ID signing + notarization
+- `TODO.md:753` OpenLiteSpeed override server
 
 ### Phase 4+ (next era) — 2
 
-- `TODO.md:759` Linux platform impls — `platform/linux/mod.rs`. Windows moved to *Now* as
-- `TODO.md:762` Public distribution (the open-sourcing half of the old "packaging polish" row)
+- `TODO.md:763` Linux platform impls — `platform/linux/mod.rs`. Windows moved to *Now* as
+- `TODO.md:766` Public distribution (the open-sourcing half of the old "packaging polish" row)
 
 ## Claim ledger (`scripts/ledger-tally.sh`)
 
-**✅ 499 · ◐ 52 · 🔨 11 · 🚫 17** of 579 rows, plus 15 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432, #486, #541).
+**✅ 500 · ◐ 52 · 🔨 11 · 🚫 17** of 580 rows, plus 15 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432, #486, #541).
 
 ## Plans in flight (`docs/PLAN-*.md`) and their own Status line
 
 | Plan | Status |
 |---|---|
-| `docs/PLAN-local-multisite.md` | IN FLIGHT 12 Sep 2026 — owner: "Q2 o kore felo multisite". T0 (this plan). |
+| `docs/PLAN-local-multisite.md` | IN FLIGHT 12 Sep 2026 — owner: "Q2 o kore felo multisite". T0 (this plan), |
 | `docs/PLAN-windows-port.md` | PLANNED 12 Sep 2026, not started — W0–W2 can start now; W3 onward waits on the |
 
 ## Counts the docs must agree with (`scripts/doc-counts.sh`)

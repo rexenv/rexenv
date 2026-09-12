@@ -107,7 +107,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   Adopt the network (record its mode, never convert), move rexenv's copy's network URLs,
   and let the connect move `DOMAIN_CURRENT_SITE`.
   - [x] T0 — the plan + this row ✓ 12 Sep 2026 — `docs/PLAN-local-multisite.md`
-  - [ ] T1 — scan + adopt: network rows importable, mode recorded without convert
+  - [x] T1 — scan + adopt: network rows importable, mode recorded without convert ✓ 12 Sep
+    2026 — ledger #580; `adopting_a_network_records_the_mode_and_refuses_none`,
+    `a_network_imports_with_its_mode_and_a_mapped_subsite_is_refused`,
+    `an_imported_network_is_adopted_never_converted_and_reloaded` (both guards plant-proven).
+    Not usable alone: the copy still names `.local` until T2, and serving needs T3
   - [ ] T2 — network-aware URL pass on the copy
   - [ ] T3 — `RewriteKey::NetworkDomain` in the connect
   - [ ] T4 — L1 network leg in `local_import_check`

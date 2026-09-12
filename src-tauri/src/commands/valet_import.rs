@@ -69,6 +69,12 @@ pub struct ImportCandidate {
     /// as extra domains on the site this row creates.
     #[serde(default)]
     pub extra_domains: Vec<String>,
+    /// A network the source's registry records (Local only) — imported by
+    /// RECORDING the mode, never by converting (`core::sites::adopt_multisite`).
+    pub multisite: crate::state::models::MultisiteMode,
+    /// A subdomain network's subsite labels, for the row to show under the
+    /// name the network imports as.
+    pub subsites: Vec<String>,
     pub status: SiteStatus,
 }
 
@@ -357,6 +363,8 @@ fn enrich(
         has_custom_valet_driver: false,
         status: s.status,
         extra_domains: Vec::new(),
+        multisite: s.multisite,
+        subsites: s.subsites,
     };
 
     // A filesystem-level refusal (missing folder, proxy) already decided this.
@@ -924,7 +932,12 @@ pub async fn valet_import_run<R: tauri::Runtime>(
             .await?;
     }
 
-    let queue_had_aliases = queue.iter().any(|(c, _, _)| !c.extra_domains.is_empty());
+    // Extra domains AND adopted networks are served only after the manager's
+    // mirror is refreshed and the web tier reloaded — one reload for the batch.
+    let queue_needs_reload = queue.iter().any(|(c, _, _)| {
+        !c.extra_domains.is_empty()
+            || !matches!(c.multisite, crate::state::models::MultisiteMode::None)
+    });
     for (i, (c, php, target)) in queue.into_iter().enumerate() {
         let index = i + 1;
         if jobs.cancel.load(Ordering::SeqCst) {
@@ -994,9 +1007,9 @@ pub async fn valet_import_run<R: tauri::Runtime>(
     // the batch, not one per site. A failure here is a caveat on the result,
     // not a failed import: the sites exist and their primaries serve.
     let alias_reload = if outcomes.iter().any(|o| o.status == "imported")
-        && queue_had_aliases
+        && queue_needs_reload
     {
-        batch.tick("serving", 0, None, Some("serving the extra domains".into()), 0);
+        batch.tick("serving", 0, None, Some("serving extra domains and networks".into()), 0);
         let read = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()));
         match read.and_then(|conn| {
             Ok((core::sites::list(&conn)?, crate::state::store::all_site_aliases(&conn)?))
@@ -1434,6 +1447,7 @@ async fn import_one<R: tauri::Runtime>(
     // already answers on) must not fail an import that otherwise worked, and it
     // is reported rather than swallowed.
     let mut alias_failures: Vec<String> = Vec::new();
+    let mut network_failure: Option<String> = None;
     if ok {
         if let Some(site_id) = settled.site_id.as_deref() {
             for extra in &c.extra_domains {
@@ -1447,6 +1461,22 @@ async fn import_one<R: tauri::Runtime>(
                     alias_failures.push(format!("{extra} ({e})"));
                 }
             }
+            // A network is RECORDED as one — the registry's mode — and never
+            // converted: the network already exists in their wp-config and the
+            // copied database, and convert on a live network rewrites both.
+            // Left at `none` it would be served as a single site and offered
+            // "Convert to multisite". The batch's one reload serves the mode.
+            if !matches!(c.multisite, crate::state::models::MultisiteMode::None) {
+                let adopted = match state.db.lock() {
+                    Ok(conn) => {
+                        crate::core::sites::adopt_multisite(&conn, site_id, c.multisite).map(|_| ())
+                    }
+                    Err(_) => Err(Error::Other("database lock poisoned".into())),
+                };
+                if let Err(e) = adopted {
+                    network_failure = Some(e.to_string());
+                }
+            }
         }
     }
     ImportOutcome {
@@ -1455,8 +1485,18 @@ async fn import_one<R: tauri::Runtime>(
         reason: if ok {
             // An import that worked still says what it could NOT do — an extra
             // domain silently missing is a name the user will try and find dead.
-            (!alias_failures.is_empty()).then(|| {
-                format!("imported, but these extra domains were not added: {}", alias_failures.join("; "))
+            (!alias_failures.is_empty() || network_failure.is_some()).then(|| {
+                let mut parts = Vec::new();
+                if !alias_failures.is_empty() {
+                    parts.push(format!("these extra domains were not added: {}", alias_failures.join("; ")));
+                }
+                if let Some(e) = &network_failure {
+                    parts.push(format!(
+                        "it was not recorded as a multisite network ({e}) — rexenv serves it as a \
+                         single site, so its subsites won't load"
+                    ));
+                }
+                format!("imported, but {}", parts.join("; "))
             })
         } else {
             Some(settled.error.clone().unwrap_or_else(|| {
@@ -1585,6 +1625,8 @@ mod folding_a_link_farm {
             renamed_from: None,
             has_custom_valet_driver: false,
             extra_domains: Vec::new(),
+            multisite: crate::state::models::MultisiteMode::None,
+            subsites: Vec::new(),
             status,
         }
     }
@@ -1840,5 +1882,38 @@ mod cancel_lands_between_sites {
             "`import_one` reads the cancel flag — a cancel inside one site abandons a provision \
              half-way, which is the state this boundary exists to prevent"
         );
+    }
+
+    /// An imported network is RECORDED, never converted: `import_one` records
+    /// the registry's mode through `adopt_multisite` and reaches no convert or
+    /// install, and the batch's one reload is gated on networks as well as
+    /// extra domains — an unreloaded network is served as a single site.
+    #[test]
+    fn an_imported_network_is_adopted_never_converted_and_reloaded() {
+        let src = include_str!("valet_import.rs");
+        let import_one = src
+            .split("async fn import_one")
+            .nth(1)
+            .and_then(|b| b.split("\nfn ").next())
+            .expect("import_one");
+        assert!(import_one.contains("adopt_multisite("), "the import no longer records a network's mode");
+        for banned in ["convert_multisite", "multisite_convert", "multisite-convert", "multisite-install"] {
+            assert!(
+                !import_one.contains(banned),
+                "`import_one` reaches `{banned}` — converting a live network rewrites its wp-config and tables"
+            );
+        }
+        let gate = src
+            .split("let queue_needs_reload")
+            .nth(1)
+            .and_then(|b| b.split("});").next())
+            .expect("the reload gate");
+        assert!(
+            gate.contains("extra_domains") && gate.contains("MultisiteMode::None"),
+            "the batch reload gate forgot networks or extra domains: {gate}"
+        );
+        let reload = src.split("let alias_reload").nth(1).expect("the batch reload");
+        let head = &reload[..reload.find("reload_for_domains").expect("the reload call")];
+        assert!(head.contains("queue_needs_reload"), "the batch reload no longer reads the gate");
     }
 }

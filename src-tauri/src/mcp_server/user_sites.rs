@@ -3333,7 +3333,7 @@ fn valet_import<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::
                 let scan = im.valet_scan().await?;
                 json!({
                     "sources": scan.sources.iter().map(|s| json!({ "kind": s.kind, "tld": s.tld, "loopback": s.loopback, "parked": s.parked.len() })).collect::<Vec<_>>(),
-                    "candidates": scan.candidates.iter().map(|c| json!({ "name": c.name, "domain": c.domain, "source": c.source, "siteType": c.site_type, "label": c.label, "docrootRel": c.docroot_rel, "phpMinor": c.php_minor, "phpTarget": c.php_target, "secured": c.secured, "proxyTo": c.proxy_to, "alsoIn": c.also_in, "renamedFrom": c.renamed_from, "phpChoice": c.php_choice, "domainChoice": c.domain_choice })).collect::<Vec<_>>(),
+                    "candidates": scan.candidates.iter().map(|c| json!({ "name": c.name, "domain": c.domain, "source": c.source, "siteType": c.site_type, "label": c.label, "docrootRel": c.docroot_rel, "phpMinor": c.php_minor, "phpTarget": c.php_target, "secured": c.secured, "proxyTo": c.proxy_to, "alsoIn": c.also_in, "renamedFrom": c.renamed_from, "phpChoice": c.php_choice, "domainChoice": c.domain_choice, "multisite": c.multisite, "subsites": c.subsites })).collect::<Vec<_>>(),
                     "tlds": scan.tlds.iter().map(|t| json!({ "tld": t.tld, "owner": t.owner, "rexenvSites": t.rexenv_sites })).collect::<Vec<_>>(),
                     "availablePhp": scan.available_php,
                 })
