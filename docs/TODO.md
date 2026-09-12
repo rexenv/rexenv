@@ -84,8 +84,8 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     `the_import_panel_never_claims_a_local_site_reads_its_old_database`
   - [x] **The import progress stays on screen too** ✓ 12 Sep 2026 — owner: pressing Import
     in the bottom bar meant scrolling back to the top to watch the batch. The progress
-    card now renders in the same bar below the scrolling list. tsc + eslint; not yet
-    seen in a packaged build.
+    card now renders in the same bar below the scrolling list. tsc + eslint; checked by
+    the owner in the dev app, 12 Sep 2026 ("thik achhe").
   - [x] **"Also connect Local sites" in the import batch** ✓ 12 Sep 2026 — owner: a Local
     site can't load under rexenv until connected, so the batch offers the connect (ticked
     by default, Local rows only — Valet/Herd keep their per-site opt-in). Ledger #576;
@@ -95,7 +95,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   - [x] **Import is its own page, not a card inside Settings → DNS & SSL** ✓ 12 Sep 2026 —
     owner: a sidebar entry (`nav.ts`); DNS & SSL keeps only the borrowed-resolver
     hand-back rows — the importable-sites nudge is gone and the leftover-dumps card moved
-    to the Import page. tsc + eslint; not yet seen in a packaged build.
+    to the Import page. tsc + eslint; checked by the owner in the dev app, 12 Sep 2026.
   - [x] **Q3 — choose the domain for a re-homed row** ✓ 12 Sep 2026 — `domain_choice` +
     the row's name field (label on the re-homed TLD, live-checked against
     `takenDomains`); `choose_domain` re-validates in the run —
@@ -103,8 +103,8 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   - [x] **The import action bar is reachable from anywhere in a long list** ✓ 12 Sep 2026
     — owner: selecting a row near the bottom meant scrolling back to the top to press
     Import. The count, "also copy databases" and Import now sit in a bar below the
-    scrolling list (outside it), so they never scroll away. tsc + eslint; not yet seen in
-    a packaged build.
+    scrolling list (outside it), so they never scroll away. tsc + eslint; checked by the
+    owner in the dev app, 12 Sep 2026.
 
 - [ ] **In-app self-update — a dmg user has no update path at all**
   — 6 Sep 2026, planned in `docs/archive/PLAN-self-update.md`; supersedes the Phase 4+ row
