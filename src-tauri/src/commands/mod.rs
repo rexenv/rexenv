@@ -9,8 +9,10 @@ pub mod rewrite;
 pub mod downloads;
 pub mod logs;
 pub mod mail;
-/// Unix-only: IPC for the opt-in MCP endpoint (mirrors the `mcp_server` module).
-#[cfg(unix)]
+/// IPC for the opt-in MCP endpoint and the agent-activity feed. Compiled on every
+/// OS: only the endpoint's unix-socket transport is `cfg(unix)` (inside
+/// `mcp_server`), and on a target without it `mcp_set_enabled` refuses rather than
+/// reading on (docs/PLAN-windows-port.md W1).
 pub mod mcp;
 pub mod php;
 pub mod repo;

@@ -8,7 +8,6 @@ pub mod cli_server;
 pub mod commands;
 pub mod core;
 pub mod error;
-#[cfg(unix)]
 pub mod mcp_server;
 pub mod platform;
 pub mod state;
@@ -973,7 +972,6 @@ pub fn run() {
                     commands::mcp::end_session_grants_at_launch(state.inner());
                 }
             }
-            #[cfg(unix)]
             mcp_server::spawn_if_enabled(app.handle().clone());
 
             // The scratch reaper: collect agent-created sites whose clock ran
@@ -1356,13 +1354,9 @@ pub fn run() {
             commands::settings::default_tld,
             commands::settings::set_default_tld,
             commands::settings::tld_policy,
-            #[cfg(unix)]
             commands::mcp::mcp_status,
-            #[cfg(unix)]
             commands::mcp::mcp_set_enabled,
-            #[cfg(unix)]
             commands::mcp::agent_activity,
-            #[cfg(unix)]
             commands::mcp::agent_activity_clear,
             commands::mcp::agent_access_get,
             commands::mcp::agent_access_set,

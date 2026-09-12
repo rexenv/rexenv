@@ -388,27 +388,10 @@ where
         .ok_or_else(|| Error::Other("provision job registry not ready".into()))
 }
 
-/// A repo job has SETTLED for CLI purposes: nothing runs and nothing the job
-/// itself would still run is pending. Offered install steps stay `pending`
-/// until the user asks — they never block settling (`--install` runs them as
-/// their own settled-waits).
-pub(crate) fn repo_job_settled(st: &commands::repo::RepoJobState, waiting_for: Option<&str>) -> bool {
-    let status_of = |k: &str| {
-        st.steps.iter().find(|x| x.key == k).map(|x| x.status.clone()).unwrap_or_default()
-    };
-    if let Some(key) = waiting_for {
-        return !matches!(status_of(key).as_str(), "pending" | "running");
-    }
-    match st.op.as_str() {
-        // add = clone → detect in ONE worker; detect settles the job (a
-        // failed/cancelled clone settles it early — detect never runs).
-        "add" => {
-            matches!(status_of("clone").as_str(), "failed" | "cancelled")
-                || !matches!(status_of("detect").as_str(), "pending" | "running")
-        }
-        op => !matches!(status_of(op).as_str(), "pending" | "running"),
-    }
-}
+// The settle rule lives beside `RepoJobState` in `commands::repo`, not here: the
+// MCP server applies the same rule, and this module is `cfg(unix)` while the MCP
+// server now compiles on every OS (docs/PLAN-windows-port.md W1).
+use crate::commands::repo::repo_job_settled;
 
 /// Poll a job until settled (no cap — same philosophy as the UI: builds run
 /// long, the connection is held, a Ctrl-C'd client just abandons the reply

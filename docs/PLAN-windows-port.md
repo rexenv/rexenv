@@ -44,10 +44,18 @@ The table above was a grep. **W0's compiler run is the authoritative list**
 (`scripts/windows-check.sh`, first run 12 Sep 2026: RED, 29 error sites — 19 in
 `src-tauri`, 10 in `cli`). It confirmed every socket row and found four the grep missed:
 
-- **`#[cfg(unix)]` modules used ungated.** `mcp_server` (`lib.rs:12`) and `commands::mcp`
+- ~~**`#[cfg(unix)]` modules used ungated.** `mcp_server` (`lib.rs:12`) and `commands::mcp`
   (`commands/mod.rs:14`) are compiled out on Windows, yet `lib.rs:223, :973, :1367–1368,
-  :1858, :2165` and `commands/scratch.rs:24` name them. Ledger #163's scan looks for
-  `cfg(target_os`, not `cfg(unix)`, so this passed it too.
+  :1858, :2165` and `commands/scratch.rs:24` name them.~~ **Fixed for MCP, 12 Sep 2026
+  (W1):** the module gate was wider than the thing that is unix-specific. Both modules
+  and `AppState.mcp` now compile on every OS; only the transport (`socket_path`,
+  `bind_socket`, `start`, `serve`, and the test that binds) is `cfg(unix)`, and off unix
+  `start` refuses so the toggle never reads on (ledger #203's scope note). Un-gating
+  surfaced one more: `mcp_server` called `cli_server::repo_job_settled`, a pure predicate
+  stranded in the `cfg(unix)` CLI server — moved beside `RepoJobState` in
+  `commands/repo.rs`. Windows run 56 → 45. **Still open:** `cli_server` itself is
+  `cfg(unix)` and stays so until D3/W8 give it a transport. Ledger #163's scan looks for
+  `cfg(target_os`, not `cfg(unix)`, so none of this ever failed it.
 - ~~**`QUIT_MENU_ID`** is defined under `cfg(macos)` (`lib.rs:2255`) and used outside it
   (`lib.rs:2289, :2298`).~~ **Fixed 12 Sep 2026 (W1):** the `cfg` had landed between
   `install_about_menu_item`'s doc comment and the const's, gating the const and not the

@@ -223,7 +223,11 @@ had claimed a clean sweep for as long as that row sat three screens above it —
 the same shape as the two `mail` rows below, and the reason both are now gated by
 `no_roadmap_row_calls_unbuilt_a_thing_the_cli_already_dispatches`.
 
-92 commands shipped. **That number is now GENERATED** (`scripts/doc-counts.sh`, and as of 2 Sep 2026 it
+91 commands shipped — **and 91 is not a removal.** It read 92 until 12 Sep 2026, when the
+counter was caught measuring a SUPERSET a second way: it counts every quoted match arm
+anywhere in `cli_server.rs`, and a helper there (`repo_job_settled`) had an `"add" =>` arm
+that is not a command. Moving that helper out for the Windows port (it now lives in
+`commands/repo.rs`) dropped the count; no command stopped answering. **That number is now GENERATED** (`scripts/doc-counts.sh`, and as of 2 Sep 2026 it
 counts what it claims to: the counter matched `"word.word" =>` only, so every
 three-segment name (`wp.user.password`, `wp.plugin.install`, …) and every
 alternation arm went uncounted — 56 where 87 commands answer. A generated number

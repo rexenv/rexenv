@@ -84,5 +84,5 @@ App version **0.7.0** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md`
   commands/wordpress.rs commands     63
   commands/repo.rs commands          26
   src/lib/ipc/index.ts exports       257
-  rex commands (cli_server arms)     92
+  rex commands (cli_server arms)     91
 ```

@@ -88,6 +88,33 @@ pub struct RepoJobState {
     pub archive: Option<ArchiveResult>,
 }
 
+/// A repo job has SETTLED for CLI purposes: nothing runs and nothing the job
+/// itself would still run is pending. Offered install steps stay `pending`
+/// until the user asks — they never block settling (`--install` runs them as
+/// their own settled-waits).
+///
+/// Beside the type it reads, and called by both `rex` (`cli_server`) and the MCP
+/// server's repo tools. It lived in `cli_server` until that module's
+/// `cfg(unix)` stopped the MCP server compiling for Windows
+/// (docs/PLAN-windows-port.md W1).
+pub(crate) fn repo_job_settled(st: &RepoJobState, waiting_for: Option<&str>) -> bool {
+    let status_of = |k: &str| {
+        st.steps.iter().find(|x| x.key == k).map(|x| x.status.clone()).unwrap_or_default()
+    };
+    if let Some(key) = waiting_for {
+        return !matches!(status_of(key).as_str(), "pending" | "running");
+    }
+    match st.op.as_str() {
+        // add = clone → detect in ONE worker; detect settles the job (a
+        // failed/cancelled clone settles it early — detect never runs).
+        "add" => {
+            matches!(status_of("clone").as_str(), "failed" | "cancelled")
+                || !matches!(status_of("detect").as_str(), "pending" | "running")
+        }
+        op => !matches!(status_of(op).as_str(), "pending" | "running"),
+    }
+}
+
 /// What an archive job left the user with. The path is the one that actually
 /// exists — never a predicted name (`PLAN-dist-archive.md` §1.5).
 #[derive(Debug, Clone, Serialize)]

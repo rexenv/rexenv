@@ -85,6 +85,10 @@ use crate::state::app::AppState;
 use readctx::ReadCtx;
 use serde_json::{json, Value};
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
+// The transport is the only unix-specific part of this module: `socket_path`,
+// `bind_socket`, `start` and `serve` are `cfg(unix)`; sessions, dispatch, tools and
+// the feed compile everywhere (docs/PLAN-windows-port.md W1; the Windows pipe is W8).
+#[cfg(unix)]
 use tokio::net::UnixListener;
 use tokio::sync::{mpsc, watch};
 
@@ -207,6 +211,7 @@ impl McpControl {
 }
 
 /// The MCP socket path — a sibling of the CLI socket in the config dir.
+#[cfg(unix)]
 fn socket_path() -> crate::error::Result<std::path::PathBuf> {
     Ok(crate::platform::current().paths().config_dir()?.join(SOCKET_FILE))
 }
@@ -223,6 +228,7 @@ fn socket_path() -> crate::error::Result<std::path::PathBuf> {
 /// INSIDE the runtime-resident serve task removes that hidden requirement while
 /// keeping bind errors synchronous to the toggle. Guarded by
 /// `binding_the_socket_needs_no_ambient_runtime`.
+#[cfg(unix)]
 pub fn bind_socket(path: &std::path::Path) -> crate::error::Result<std::os::unix::net::UnixListener> {
     use std::os::unix::fs::PermissionsExt;
     if let Some(dir) = path.parent() {
@@ -244,6 +250,7 @@ pub fn bind_socket(path: &std::path::Path) -> crate::error::Result<std::os::unix
 /// is synchronous (via the runtime-agnostic `bind_socket`) so a port/permission
 /// failure surfaces to the caller (the Settings toggle) rather than vanishing into
 /// a spawned task — the toggle must not read on if nothing bound.
+#[cfg(unix)]
 pub fn start<Rt: tauri::Runtime>(
     app: tauri::AppHandle<Rt>,
 ) -> crate::error::Result<watch::Sender<bool>> {
@@ -253,6 +260,20 @@ pub fn start<Rt: tauri::Runtime>(
     log::info!("mcp: listening on {} (opt-in enabled)", path.display());
     tauri::async_runtime::spawn(serve(listener, app, rx));
     Ok(tx)
+}
+
+/// No MCP transport exists on this OS yet — the endpoint is a unix socket, and the
+/// Windows replacement (a named pipe, owner ruling D3) is `docs/PLAN-windows-port.md`
+/// W8. Refusing HERE keeps the bind-first rule intact on every OS (ledger #203):
+/// `mcp_set_enabled` returns this error before it persists "true", nothing is stored
+/// in `AppState.mcp`, and the toggle can never read on while nothing listens.
+#[cfg(not(unix))]
+pub fn start<Rt: tauri::Runtime>(
+    _app: tauri::AppHandle<Rt>,
+) -> crate::error::Result<watch::Sender<bool>> {
+    Err(crate::error::Error::Other(
+        "The AI agent (MCP) endpoint is not available on this operating system yet.".into(),
+    ))
 }
 
 /// At app startup, start the endpoint IF the user has enabled it — otherwise the
@@ -296,6 +317,7 @@ pub fn spawn_if_enabled(app: tauri::AppHandle) {
 /// socket's one-request-per-connection). Each session runs on its own task.
 /// Public and runtime-generic so the `mcp_socket_check` example can serve it
 /// with a `MockRuntime` app, exactly as `cli_server` tests do.
+#[cfg(unix)]
 pub async fn serve<Rt: tauri::Runtime>(
     listener: std::os::unix::net::UnixListener,
     app: tauri::AppHandle<Rt>,
@@ -1441,7 +1463,7 @@ impl<Rt: tauri::Runtime> AppSiteCreator<Rt> {
                     sink.report(done as f64, Some(total as f64), &running);
                 }
             }
-            if crate::cli_server::repo_job_settled(&st, waiting_for) {
+            if crate::commands::repo::repo_job_settled(&st, waiting_for) {
                 return Ok(st);
             }
             if std::time::Instant::now() > deadline {
@@ -1879,6 +1901,7 @@ mod tests {
     /// against `cli_server::bind` panicked on this exact thread); it passes on the
     /// std bind. A harness (L2) can never catch this — it mocks the IPC command.
     #[test]
+    #[cfg(unix)] // exercises `bind_socket`, which is the unix transport itself
     fn binding_the_socket_needs_no_ambient_runtime() {
         use std::os::unix::fs::PermissionsExt;
         let dir = std::env::temp_dir().join(format!("rexenv-mcp-bindguard-{}", std::process::id()));

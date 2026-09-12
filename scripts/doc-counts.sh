@@ -66,6 +66,12 @@ IPC_EXPORTS=$(grep -cE '^export (async )?function ' src/lib/ipc/index.ts)
 # answer. A generated number that measures a SUBSET is worse than a typed one,
 # because nobody re-derives it — it was the count that gated the doc, so it
 # read as authoritative for six weeks.
+# And a SUPERSET the other way (12 Sep 2026): the pattern counts every quoted
+# match arm in the FILE, not in the dispatch. `repo_job_settled`'s `"add" =>`
+# counted as a command for as long as that helper lived here; moving it to
+# `commands/repo.rs` (Windows port) took the count from 92 to 91 with no command
+# removed. Anything else in this file with a `"word" =>` arm inflates it the same
+# way — read a drop here as "check what moved" before "what stopped answering".
 CLI_CMDS=$(grep -oE '^\s+"[a-z_.]+"( \| "[a-z_.]+")* =>' src-tauri/src/cli_server.rs \
   | grep -oE '"[a-z_.]+"' | wc -l | tr -d ' ')
 

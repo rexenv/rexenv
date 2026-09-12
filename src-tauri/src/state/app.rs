@@ -100,9 +100,9 @@ pub struct AppState {
     pub rewrite_active: Mutex<Option<String>>,
     /// Live control of the opt-in MCP endpoint (Settings → AI agents). Holds the
     /// running server's shutdown handle so the toggle can bind/unbind the socket
-    /// at runtime; `None` shutdown = not serving. Unix-only, mirroring the
-    /// unix-socket `mcp_server` module.
-    #[cfg(unix)]
+    /// at runtime; `None` shutdown = not serving. Present on every OS — it holds
+    /// a shutdown handle, not a socket; on a target with no MCP transport
+    /// `start` refuses, so nothing is ever stored and it stays `None`.
     pub mcp: Mutex<crate::mcp_server::McpControl>,
 }
 
@@ -158,7 +158,6 @@ impl AppState {
             db_status_cache: Mutex::new(Vec::new()),
             db_import_active: Mutex::new(None),
             rewrite_active: Mutex::new(None),
-            #[cfg(unix)]
             mcp: Mutex::new(crate::mcp_server::McpControl::default()),
         }
     }
