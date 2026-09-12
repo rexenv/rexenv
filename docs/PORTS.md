@@ -56,8 +56,10 @@ binary, update THIS file in the same commit.
 
 Same versions as the macOS rows, different builds. **x64 for every `Arch`**: Windows on
 ARM runs x64 under emulation, and PHP, MySQL, nginx and PostgreSQL publish no arm64
-Windows build. Every artifact was downloaded and hashed on 12 Sep 2026; the "Digest"
-column says whether a publisher's own digest confirmed it. Not in Windows v1, and
+Windows build. Every artifact was downloaded and hashed by us — twelve on 12 Sep 2026, the
+three PostgreSQL tarballs on 13 Sep (on the 12th they were pinned from the publisher's
+`.sha256` alone, and this sentence claimed otherwise); the "Digest" column says whether a
+publisher's own digest confirmed it. Not in Windows v1, and
 resolving to nothing there (plan D4): `php-fpm` (the pool is php-cgi, inside the PHP
 zip — D1), FrankenPHP, Redis, MariaDB, Apache httpd, Xdebug.
 
@@ -67,7 +69,7 @@ zip — D1), FrankenPHP, Redis, MariaDB, Apache httpd, Xdebug.
 | PHP 7.4.33 · 8.0.30 · 8.1.34 · 8.2.32 · 8.3.32 · 8.4.23 · 8.5.8 | php.net `~windows/releases/archives/php-<v>-nts-Win32-<vc15\|vs16\|vs17>-x64.zip` — NTS; `archives/` keeps every release | `ZipTree { strip: 0 }` (flat) → `php.exe`, `php-cgi.exe`, `ext/` (incl. `php_pdo_pgsql.dll`) | SHA-256 of our download — the archive has no `sha256sum.txt` |
 | nginx 1.30.4 | nginx.org `download/nginx-1.30.4.zip` (upstream's own build, not ours) | `ZipTree { strip: 1 }` → `nginx.exe` + `conf/` | SHA-256 of our download — nginx.org posts none |
 | MySQL 8.4.6 · 8.0.44 | `cdn.mysql.com/archives/mysql-<series>/mysql-<v>-winx64.zip` (the `Downloads/` path 404s once a release is superseded) | `ZipTree { strip: 1 }` → `bin/mysqld.exe` | SHA-256 of our download — Oracle posts MD5 |
-| PostgreSQL 18.6.0 · 17.11.0 · 16.15.0 | theseus-rs `postgresql-<v>-x86_64-pc-windows-msvc.tar.gz` | `TarGzTree` → `bin/postgres.exe` | SHA-256, **the project's published `.sha256`** |
+| PostgreSQL 18.6.0 · 17.11.0 · 16.15.0 | theseus-rs `postgresql-<v>-x86_64-pc-windows-msvc.tar.gz` | `TarGzTree` → `bin/postgres.exe` | SHA-256, the project's published `.sha256`, **matched by our own full download on 13 Sep 2026** (the macOS rows' rule: a publisher digest is pinned only once our hash agrees) |
 | Mailpit 1.30.3 | GitHub release `mailpit-windows-amd64.zip` | `Zip` → `mailpit.exe` | SHA-256 of our download — no checksums file for this release |
 | cloudflared 2026.6.1 | GitHub release `cloudflared-windows-amd64.exe` | `Raw` → `cloudflared.exe` | SHA-256 of our download |
 | WP-CLI · Composer · Adminer | as above — OS-agnostic | unchanged | unchanged |

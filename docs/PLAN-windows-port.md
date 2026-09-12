@@ -289,8 +289,9 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   extension; (3) per-OS shapes — `shape_of(name)` says nginx and php are single
   binaries, while their Windows zips are trees; (4) the arms, all x64 (Windows ARM runs
   them under emulation — there is no arm64 PHP, PostgreSQL or MySQL build); (5) the
-  sweep. Every Windows artifact was downloaded and hashed on 12 Sep 2026; Caddy's
-  SHA-512 and PostgreSQL's SHA-256 matched their publishers', the rest have no published
+  sweep. Every Windows artifact except PostgreSQL's was downloaded and hashed on 12 Sep
+  2026 (PostgreSQL's three were pinned from the publisher's `.sha256` and only streamed for
+  their layout — see (5)); Caddy's SHA-512 matched its publisher's, the rest have no published
   digest (php.net's archive has no `sha256sum.txt`, Mailpit and nginx.org publish none,
   MySQL publishes MD5). **(2)–(4) landed the same day:** `exe_name` publishes a single
   binary as `name.exe` on Windows, `shape_of_on(name, os)` makes `php`/`nginx` trees there,
@@ -302,8 +303,14 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   (one target per pin — both `Arch` values resolve the same URL) and PASSED on 12 Sep 2026:
   104 targets answering, 88 re-hashed. Windows: Caddy, nginx, Mailpit and the seven PHP
   zips re-hashed and matching; cloudflared, both MySQL zips and the three PostgreSQL
-  tarballs are over the 40 MB cap and HEAD-only — named, and PostgreSQL's digests are
-  the publisher's alone (ledger #335). **What W2 does not prove:** that any of these runs.
+  tarballs are over the 40 MB cap and HEAD-only — named. PostgreSQL's digests were the
+  publisher's alone until **13 Sep 2026, when the owner asked whether that was a deliberate
+  exception** to the macOS rule (a published sum is documentation; the pin is ours). It was
+  not — an omission. All three tarballs were then downloaded in full and hashed: 18.6.0
+  `7da44c2d…`, 17.11.0 `a013f0e0…`, 16.15.0 `157bd732…` — each MATCHES the `.sha256`. The
+  cap stays: over-cap trees are HEAD-only on macOS too, so raising it for Windows alone
+  would be the exception; what the ledger now says is WHICH hash a pin rests on and when
+  ours was taken (#335). **What W2 does not prove:** that any of these runs.
   `resolve` on a real Windows host still calls `set_executable` / `prepare_binary`, which
   are `todo!()` there — that is W3.
 - **W3 — Foundations.** `Paths` (`%LOCALAPPDATA%\rexenv`), `PermissionManager` (owner-only

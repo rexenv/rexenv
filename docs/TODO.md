@@ -69,7 +69,8 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     for every `Arch`, table in PORTS.md), with `.exe` naming and per-OS shapes
     (`shape_of_on`). ✓ 12 Sep 2026 — `manifest_sweep_check` PASS with the
     Windows set: 104 targets answering, Windows 10 re-hashed + 6 HEAD-only and named
-    (PostgreSQL's digests are the publisher's, never re-hashed by us — ledger #335)
+    (PostgreSQL's three were pinned from the publisher's `.sha256` alone; 13 Sep 2026 our own
+    full downloads matched all three — the sweep keeps them HEAD-only, ledger #335)
   - [ ] W3 — Paths, ACL permissions, BinaryProvider, ProcessSupervisor (MySQL + Mailpit
     start, outlive the app, adopt on relaunch — on real Windows)
   - [ ] W4 — php-cgi groups + nginx + SMTP mail → a WordPress site serves
