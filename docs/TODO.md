@@ -187,7 +187,8 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   sits on every open-in-browser control (header, tile, Sites row, sub-site Visit, tunnel
   URL, Open Mailpit, Adminer, Change domain's Open site) and `WordPressIcon` on every
   magic login (header, tile, sub-site, One-click admin login, a user's Log in). DESIGN.md
-  rule; ledger #590, `open_in_browser_and_magic_login_wear_one_icon_everywhere`.
+  rule; ledger #590, `open_in_browser_and_magic_login_wear_one_icon_everywhere`. Checked by
+  the owner in the dev app, 13 Sep 2026 ("icon gulo thik achhe").
 
 - [ ] **A Valet or Herd multisite network imports silently as a single site** — found
   12 Sep 2026 researching the Local network import (`docs/PLAN-local-multisite.md` §6).
