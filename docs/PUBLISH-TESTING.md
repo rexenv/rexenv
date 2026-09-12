@@ -1349,10 +1349,11 @@ started IN Local — a button rexenv never presses.
 - **N5** — rexenv's Adminer: the copy's `siteurl`/`home` are `https://<name>.rex`.
   Local's own Adminer (Local → Database): still `http://<name>.local`.
 - **N6** — Rescan → the row reads **already here** (folder match, not name).
-- **N7** — Database tab → connect. First Local import (db `local`): the 2-key diff
-  (host, user → `rex_<slug>`), no password line. Open `https://<name>.rex` — it loads
-  and does NOT redirect to `.local`. *(A second Local import restores as
-  `local_<domain>` and gets the tell-only block — plan §9 Q1, expected today.)*
+- **N7** — Database tab → connect. The copy is named after the site, `local_<domain>`
+  (every Local import since 12 Sep 2026 — every Local database is `local`, so the bare
+  name only ever collided), so the diff has three keys: host, user → `rex_<slug>`, and
+  `DB_NAME` → `local_<domain>`; no password line. Open `https://<name>.rex` — it loads
+  and does NOT redirect to `.local`.
 - **N8** — Revert the connection; open the site in Local — it still works there.
 - **N9** — delete the rexenv site (revert-then-delete default). `~/Local Sites/<name>`
   is untouched; Local's site still starts and serves.

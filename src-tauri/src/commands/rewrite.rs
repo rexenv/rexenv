@@ -142,8 +142,8 @@ fn resolve(state: &State<'_, AppState>, site_id: &str) -> Result<Resolution> {
     };
     let file = PathBuf::from(conn.source.path());
 
-    // A collision-renamed import (their `local` restored as `local_tr_local_rex`
-    // — the NORM for Local, where every site's database is called `local`): the
+    // A renamed import (their `local` restored as `local_<domain>` — EVERY Local
+    // import since 12 Sep 2026, where every site's database is called `local`): the
     // plan moves the config's database NAME to the copy as well. Until 12 Sep
     // 2026 this refused to tell-only, a ruling called permanent on the evidence
     // of zero collisions across a dozen Valet sites; the second Local import on

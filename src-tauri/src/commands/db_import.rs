@@ -588,8 +588,17 @@ async fn run<R: tauri::Runtime>(
     emit(app, entry);
     // D1: keep their name when free; disambiguate when another SITE owns it;
     // typed confirmation when an unclaimed database of that name exists.
-    let mut name = target_db_name(&conn_info.database, None);
-    if name != conn_info.database {
+    // A LOCAL copy is named after the site from the start: every Local database
+    // is called `local`, so keeping the bare name only ever collided — with the
+    // next Local import (renamed then anyway) or with an orphan (the typed-
+    // overwrite prompt the owner met on multisite.local, #586).
+    let mut name = target_db_name(&conn_info.database, local.as_ref().map(|_| site.domain.as_str()));
+    if local.is_some() {
+        log_line(app, entry, &format!(
+            "every Local site's database is `{}` — importing this one as `{name}`",
+            conn_info.database
+        ));
+    } else if name != conn_info.database {
         log_line(app, entry, &format!(
             "`{}` is not a name rexenv's engine can hold as-is — importing as `{name}`",
             conn_info.database
@@ -876,6 +885,20 @@ mod local_source_wiring {
             at < src.find("dbrestore::finish(").unwrap(),
             "the URL pass must run BEFORE the import is recorded, or a failed pass settles as imported"
         );
+    }
+
+    /// A Local copy is named after the SITE (`local_<domain>`) from the first
+    /// import — never the bare `local` every Local site shares, which could
+    /// only collide.
+    #[test]
+    fn a_local_copy_is_named_after_the_site() {
+        let src = crate::core::copy_scan::production_source(include_str!("db_import.rs"));
+        let restore = &src[src.find("enter_phase(entry, 3)").expect("the restore phase")..];
+        assert!(
+            restore.contains("target_db_name(&conn_info.database, local.as_ref().map(|_| site.domain.as_str()))"),
+            "the restore no longer names a Local copy after its site"
+        );
+        assert_eq!(super::target_db_name("local", Some("multisite.rex")), "local_multisite_rex");
     }
 
     /// A job that fails AFTER restoring into `name` drops that partial copy

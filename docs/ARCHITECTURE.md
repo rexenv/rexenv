@@ -1050,6 +1050,10 @@ honest footer —
   host, and a run with no URL finds no such site once `wp_site` moved), and requires
   every blog's URL to read `https://` on the new name. Pinning the constant in the
   require file was the first design and measured unnecessary — `--url` is what works.
+  A Local copy is named after the site, `local_<domain>`, from the first import (12 Sep
+  2026): every Local database is `local`, so the bare name only ever collided — with the
+  next Local import, or with a failed attempt's orphan (#586) — and the connect's diff
+  therefore always moves `DB_NAME` too (#574). Ledger #587.
   A re-homed row whose PICKED name another rexenv site already holds (`tr.local` →
   `tr.test` with a `tr.test` site present) carries `domain_choice` and gets a name field
   on the row — the label only, on the row's re-homed TLD, checked live against the

@@ -158,6 +158,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     `every_failure_after_the_restore_drops_the_partial_copy` (plant-proven). The orphan
     `local` was dropped with the owner's OK. Also found then: Local's router (Site Domains
     mode) held :443/:80, so no rexenv site loaded
+  - [x] **A Local copy is named `local_<domain>` from the first import** ✓ 12 Sep 2026 —
+    every Local database is `local`, so the bare name only collided; ledger #587,
+    `a_local_copy_is_named_after_the_site`; PUBLISH-TESTING N7's diff is now 3 keys
   - [ ] T5 — docs, PUBLISH-TESTING §N network steps, live pass on `multi.local` — steps
     N10–N14 written 12 Sep 2026 (+ the summary row, and N0's stale "multisite can't
     import" corrected); **owed: the owner-run pass** (Local must run the network)
