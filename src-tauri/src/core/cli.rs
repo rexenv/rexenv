@@ -67,7 +67,7 @@ fn status_from(link: &Path, bundled: Option<PathBuf>) -> CliStatus {
 pub fn install(platform: &dyn Platform) -> Result<()> {
     let src = bundled_rex()?;
     let dst = platform.paths().cli_symlink_path()?;
-    if try_symlink_unprivileged(&src, &dst).is_err() {
+    if try_symlink_unprivileged(platform, &src, &dst).is_err() {
         platform.privileges().run_privileged(
             &install_script(&src, &dst)?,
             &crate::platform::traits::PromptReason::new(format!(
@@ -86,22 +86,23 @@ pub fn install(platform: &dyn Platform) -> Result<()> {
 }
 
 /// Direct symlink attempt — idempotent (an existing link/file is replaced).
-#[cfg(unix)]
-fn try_symlink_unprivileged(src: &Path, dst: &Path) -> std::io::Result<()> {
+///
+/// The link is the platform's (`ShellRunner::symlink_file`). It is tried BEFORE
+/// anything at `dst` is removed, and removal happens only when the link failed
+/// because something is already there: the `cfg(not(unix))` arm this replaced
+/// errored without touching the disk, and a remove-then-link order would have
+/// deleted whatever sat at `dst` on a platform that then cannot link at all.
+fn try_symlink_unprivileged(platform: &dyn Platform, src: &Path, dst: &Path) -> Result<()> {
     if let Some(dir) = dst.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    match std::fs::remove_file(dst) {
-        Ok(()) => {}
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(e) => return Err(e),
+    match platform.shell().symlink_file(src, dst) {
+        Err(Error::Io(e)) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            std::fs::remove_file(dst)?;
+            platform.shell().symlink_file(src, dst)
+        }
+        other => other,
     }
-    std::os::unix::fs::symlink(src, dst)
-}
-
-#[cfg(not(unix))]
-fn try_symlink_unprivileged(_src: &Path, _dst: &Path) -> std::io::Result<()> {
-    Err(std::io::Error::other("not implemented on this platform"))
 }
 
 /// The privileged fallback script. Paths are single-quoted (app-data and
@@ -187,7 +188,7 @@ mod tests {
         let dir = scratch("selfcheck");
         // Exactly what the status test leaves behind: a file and a bin/rex symlink.
         std::fs::write(dir.join("rex"), "stale").unwrap();
-        try_symlink_unprivileged(&dir.join("rex"), &dir.join("bin").join("rex")).unwrap();
+        try_symlink_unprivileged(&*crate::platform::current(), &dir.join("rex"), &dir.join("bin").join("rex")).unwrap();
         assert!(dir.join("bin").join("rex").exists(), "plant did not take");
 
         // A second entry is a second RUN that drew the same pid.
@@ -207,10 +208,10 @@ mod tests {
         std::fs::write(&src_a, "a").unwrap();
         std::fs::write(&src_b, "b").unwrap();
         let dst = dir.join("bin").join("rex");
-        try_symlink_unprivileged(&src_a, &dst).expect("first install (creates parent)");
+        try_symlink_unprivileged(&*crate::platform::current(), &src_a, &dst).expect("first install (creates parent)");
         assert_eq!(std::fs::read_link(&dst).unwrap(), src_a);
-        try_symlink_unprivileged(&src_a, &dst).expect("re-install over itself");
-        try_symlink_unprivileged(&src_b, &dst).expect("replace a stale link");
+        try_symlink_unprivileged(&*crate::platform::current(), &src_a, &dst).expect("re-install over itself");
+        try_symlink_unprivileged(&*crate::platform::current(), &src_b, &dst).expect("replace a stale link");
         assert_eq!(std::fs::read_link(&dst).unwrap(), src_b);
     }
 
@@ -224,11 +225,11 @@ mod tests {
         let s = status_from(&link, Some(bundled.clone()));
         assert!(s.available && !s.installed && !s.current, "no link yet: {s:?}");
 
-        try_symlink_unprivileged(&dir.join("elsewhere"), &link).unwrap();
+        try_symlink_unprivileged(&*crate::platform::current(), &dir.join("elsewhere"), &link).unwrap();
         let s = status_from(&link, Some(bundled.clone()));
         assert!(s.installed && !s.current, "stale link: {s:?}");
 
-        try_symlink_unprivileged(&bundled, &link).unwrap();
+        try_symlink_unprivileged(&*crate::platform::current(), &bundled, &link).unwrap();
         let s = status_from(&link, Some(bundled));
         assert!(s.installed && s.current, "current link: {s:?}");
     }

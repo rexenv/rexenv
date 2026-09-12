@@ -1632,6 +1632,13 @@ impl ShellRunner for MacosShell {
         Ok(())
     }
 
+    fn symlink_file(&self, target: &Path, link: &Path) -> Result<()> {
+        // A unix symlink is untyped — the same call as `symlink_dir`. EEXIST
+        // surfaces as `AlreadyExists` for the caller to decide on.
+        std::os::unix::fs::symlink(target, link)?;
+        Ok(())
+    }
+
     fn remove_symlink(&self, link: &Path) -> Result<()> {
         // A dir symlink is a FILE entry on unix — remove_file drops the link
         // itself and can never recurse into the target.

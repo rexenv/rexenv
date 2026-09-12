@@ -53,8 +53,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     and `Command::new("kill")`, plant-proven. **Progress 12 Sep 2026:** the app lib and
     binary now COMPILE for Windows (objc2 dev-deps gated, About-menu cfg, MCP transport-only
     gate, `LocalIpc` for the edge admin + MySQL socket probes; `kill` in `core/` moved to
-    `ProcessSupervisor`). Open: 24 test-module sites, 58 in 17 examples, the `cli` crate
-    (D3/W8), and the scan itself (plan §2.1)
+    `ProcessSupervisor`; the last `cfg(unix)` in `core/` — the rewrite's owner-only temp and
+    the CLI symlink — moved to `write_private` / a new `ShellRunner::symlink_file`). Open:
+    24 test-module sites, 58 in 17 examples, the `cli` crate (D3/W8), and the scan itself
+    (plan §2.1)
   - [ ] W2 — `(os, arch)` binary catalog; Windows pins + checksums; sweep covers them
   - [ ] W3 — Paths, ACL permissions, BinaryProvider, ProcessSupervisor (MySQL + Mailpit
     start, outlive the app, adopt on relaunch — on real Windows)

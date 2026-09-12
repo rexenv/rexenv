@@ -61,7 +61,7 @@ pub fn write_backup(platform: &dyn Platform, backup: &Path, original: &str) -> R
 /// the original's permission bits copied onto it, then `rename`. A crash at
 /// any point leaves either the old file or the new file — never a truncated
 /// one, and never a mode change their config didn't have.
-pub fn atomic_write_preserving_mode(path: &Path, content: &str) -> Result<()> {
+pub fn atomic_write_preserving_mode(platform: &dyn Platform, path: &Path, content: &str) -> Result<()> {
     let dir = path
         .parent()
         .ok_or_else(|| Error::Other(format!("config path has no parent: {path:?}")))?;
@@ -76,19 +76,12 @@ pub fn atomic_write_preserving_mode(path: &Path, content: &str) -> Result<()> {
     // 0666 & ~umask with the database password already inside, and a chmod
     // afterwards leaves a world-readable window (and, when the original had
     // vanished, a world-readable file renamed into place for good).
-    {
-        use std::io::Write;
-        let mut opts = std::fs::OpenOptions::new();
-        opts.write(true).create(true).truncate(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            opts.mode(0o600);
-        }
-        let mut f = opts.open(&tmp)?;
-        f.write_all(content.as_bytes())?;
-        f.sync_all()?;
-    }
+    // Owner-only is the platform's to express (`write_private`: 0600 at create on
+    // unix, an owner ACL on Windows), and it re-hardens a stale temp a crash left.
+    platform.permissions().write_private(&tmp, content.as_bytes())?;
+    // Durable before the rename — through a WRITE handle, because Windows will not
+    // flush a file opened read-only.
+    std::fs::OpenOptions::new().write(true).open(&tmp)?.sync_all()?;
     // Their file's mode survives the inode swap (a config chmodded 0600 must
     // not come back 0644). If the original vanished mid-flight the rename
     // below recreates it — owner-only, which for a file holding credentials
@@ -227,8 +220,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)] // asserts unix mode bits
     fn atomic_write_preserves_content_and_mode() {
         use std::os::unix::fs::PermissionsExt;
+        let plat = crate::platform::current();
         let dir = std::env::temp_dir()
             .join(format!("rexenv-confrewrite-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -238,7 +233,7 @@ mod tests {
         std::fs::write(&file, "old").unwrap();
         std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600)).unwrap();
 
-        atomic_write_preserving_mode(&file, "new content").unwrap();
+        atomic_write_preserving_mode(&*plat, &file, "new content").unwrap();
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "new content");
         let mode = std::fs::metadata(&file).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600, "their chmod must survive the inode swap");

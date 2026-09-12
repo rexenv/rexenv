@@ -445,7 +445,7 @@ pub async fn rewrite_apply(
     // An all-no-op plan (config already points at us) skips the write and
     // goes straight to verification — re-verifying is the point then.
     if r.rewrite.new_content != r.original {
-        confrewrite::atomic_write_preserving_mode(&r.file, &r.rewrite.new_content)?;
+        confrewrite::atomic_write_preserving_mode(state.platform.as_ref(), &r.file, &r.rewrite.new_content)?;
     }
     {
         let conn = lock(&state)?;
@@ -652,7 +652,7 @@ pub async fn rewrite_revert(
             let backup_text = backup.ok_or_else(|| {
                 Error::Other("backup vanished between classification and restore".into())
             })?;
-            confrewrite::atomic_write_preserving_mode(Path::new(&row.file), &backup_text)?;
+            confrewrite::atomic_write_preserving_mode(state.platform.as_ref(), Path::new(&row.file), &backup_text)?;
             {
                 let conn = lock(&state)?;
                 let _ = std::fs::remove_file(&row.backup_path);

@@ -120,7 +120,7 @@ async fn main() {
 
     dbmirror::mirror_dedicated(&client, PORT, DB, DOMAIN, THEIR_PASSWORD)
         .expect("dedicated user created");
-    confrewrite::atomic_write_preserving_mode(&config, &rewrite.new_content)
+    confrewrite::atomic_write_preserving_mode(&*plat, &config, &rewrite.new_content)
         .expect("atomic write");
     let mode = std::fs::metadata(&config).unwrap().permissions().mode() & 0o777;
     check(&mut ok, "their chmod 600 survives the rewrite", mode == 0o600, &format!("mode {mode:o}"));
@@ -138,7 +138,7 @@ async fn main() {
     // ── 2. a failed write leaves their file byte-untouched ──────────────────
     let after_write = std::fs::read_to_string(&config).unwrap();
     std::fs::set_permissions(&project, std::fs::Permissions::from_mode(0o555)).unwrap();
-    let denied = confrewrite::atomic_write_preserving_mode(&config, "sabotage");
+    let denied = confrewrite::atomic_write_preserving_mode(&*plat, &config, "sabotage");
     std::fs::set_permissions(&project, std::fs::Permissions::from_mode(0o755)).unwrap();
     check(
         &mut ok,
@@ -189,7 +189,7 @@ async fn main() {
     let current = std::fs::read_to_string(&config).unwrap();
     let verdict = confrewrite::classify_revert(Some(&current), Some(&original), Some(&digest));
     check(&mut ok, "an untouched rewrite classifies CleanRestore", verdict == RevertCheck::CleanRestore, &format!("{verdict:?}"));
-    confrewrite::atomic_write_preserving_mode(&config, &original).expect("restore");
+    confrewrite::atomic_write_preserving_mode(&*plat, &config, &original).expect("restore");
     let restored = std::fs::read_to_string(&config).unwrap();
     let mode = std::fs::metadata(&config).unwrap().permissions().mode() & 0o777;
     check(
@@ -255,7 +255,7 @@ async fn main() {
         &format!("{:?}", renamed_rewrite.diff),
     );
     std::fs::write(&renamed_config, &renamed_original).unwrap();
-    confrewrite::atomic_write_preserving_mode(&renamed_config, &renamed_rewrite.new_content)
+    confrewrite::atomic_write_preserving_mode(&*plat, &renamed_config, &renamed_rewrite.new_content)
         .expect("atomic write");
     let renamed_proof = confverify::verify_signin(&*plat, &client, &renamed, &scratch, PORT, DB)
         .expect("verify runs");

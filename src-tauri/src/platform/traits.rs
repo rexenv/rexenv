@@ -484,6 +484,16 @@ pub trait ShellRunner: Send + Sync {
         Err(crate::error::Error::Unsupported("symlink_dir"))
     }
 
+    /// Create a FILE symlink `link` → `target` (the `rex` CLI on the user's PATH).
+    /// Separate from `symlink_dir` because Windows makes them different objects:
+    /// a directory junction cannot point at a file, and a file symlink needs
+    /// Developer Mode or elevation — the Windows CLI install is a PATH entry, not
+    /// a link (port W8). An existing `link` is an error (`AlreadyExists` on unix);
+    /// replacing it is the caller's decision. Default: unsupported.
+    fn symlink_file(&self, _target: &std::path::Path, _link: &std::path::Path) -> Result<()> {
+        Err(crate::error::Error::Unsupported("symlink_file"))
+    }
+
     /// Remove a symlink WITHOUT touching its target. The unlink-only delete
     /// path for linked assets — the caller has already verified `link` IS a
     /// symlink (fs truth, not metadata).

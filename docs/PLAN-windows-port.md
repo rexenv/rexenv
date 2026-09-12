@@ -36,8 +36,8 @@ traits and false for the tree**:
 | `cli/src/main.rs` (12, 281, 389, 562, 654) | the `rex` CLI connects over `UnixStream` | same — the CLI crate does not compile |
 | `src-tauri/src/core/proxy.rs:68, :220` | `OsStrExt`; Caddy admin socket probe | same |
 | `src-tauri/src/core/dbsource.rs:296` | `UnixStream` to a database socket | same |
-| `src-tauri/src/core/cli.rs:99` | `std::os::unix::fs::symlink` | same; `ShellRunner::symlink_dir` already exists |
-| `src-tauri/src/core/confrewrite.rs:85` | `OpenOptionsExt` mode 0600 | same; `PermissionManager::write_private` already exists |
+| `src-tauri/src/core/cli.rs:99` | `std::os::unix::fs::symlink` | ~~same; `ShellRunner::symlink_dir` already exists~~ **Fixed 12 Sep 2026 (W1) — and not with `symlink_dir`**, which this row first named: the `rex` link is a FILE, and a Windows directory junction cannot point at one. A new `ShellRunner::symlink_file` (default unsupported). The link is now tried BEFORE anything at the destination is removed — the old `cfg(not(unix))` arm never touched the disk, and a remove-then-link order would have deleted a file on a platform that then cannot link |
+| `src-tauri/src/core/confrewrite.rs:85` | `OpenOptionsExt` mode 0600 | **Fixed 12 Sep 2026 (W1):** the temp is born through `PermissionManager::write_private`; the sync moved to a write handle (Windows will not flush a read-only one). `atomic_write_preserving_mode` takes the `Platform` now (ledger #130) |
 | `src-tauri/src/core/proc.rs:88, :108`, `core/services.rs:875`, `core/dbdump.rs:864`, `core/dbrestore.rs:182` | `Command::new("kill")` | compiles, fails at runtime — there is no `kill` and no signals. **Fixed 12 Sep 2026 (W1):** three copies of the TERM → 2s → KILL loop, the nginx SIGHUP and the adopted-pid `kill -0` became `ProcessSupervisor::terminate_child` / `signal_reload` / `pid_alive`. macOS overrides each with the exact old behaviour; the defaults are the portable floor (kill + wait, "no reload signal", has-a-command-line), so Windows compiles and falls back honestly until W3 decides what graceful means per service |
 
 The table above was a grep. **W0's compiler run is the authoritative list**
@@ -223,7 +223,8 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   own cwd with a load-bearing exit code, and its error list replaces §2.1 as the
   authoritative inventory. A CI job stays possible later (W12) at the owner's call.
 - **W1 — Move the leaks behind traits.** Sockets → `LocalIpc` (D3); `kill` → a
-  `ProcessSupervisor` method; `core/cli.rs` symlink → `ShellRunner::symlink_dir`;
+  `ProcessSupervisor` method; `core/cli.rs` symlink → `ShellRunner::symlink_file` (not `symlink_dir` — a junction
+  cannot point at a file);
   `confrewrite` → `PermissionManager::write_private`. Widen #163's scan to refuse
   `std::os::unix` and `Command::new("kill")` in `core/` production lines, plant-proven.
   *Done when:* `scripts/verify.sh` is green on macOS and W0 compiles the lib against the
