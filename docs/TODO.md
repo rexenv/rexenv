@@ -45,7 +45,13 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     "rexenv wants to run its password-prompt check." under "rexenv" (#578 → ✅); Cancel
     returned "Administrator permission was cancelled — this step needs it. Try again and
     approve the prompt." with no second dialog and no work dir left; the retry, approved,
-    returned `root` (#577). (The "App Background Activity: rexenv" notification seen during
+    returned `root` (#577).
+  - [x] T4 — the fallback split proven ✓ 12 Sep 2026 — `settle` + `classify` pulled out of
+    the shelling-out code; `only_a_run_that_showed_no_dialog_is_asked_again_through_osascript`
+    + `a_launch_that_ran_but_wrote_nothing_is_no_result_never_no_dialog` (both plant-proven)
+    over the measured `open -n -W` exits (1 = not launched, 0 = applet killed mid-dialog);
+    ledger #577 → ✅. The osascript dialog itself still never ran live (nothing here fails
+    to build) — the release SMOKE row's tell covers it. (The "App Background Activity: rexenv" notification seen during
     the live run was NOT the applet: BTM log, 13:34:24, the DNS LaunchAgent re-registered
     pointing at `target/debug/rexenv`, two minutes before the applet launched.)
 

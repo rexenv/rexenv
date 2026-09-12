@@ -253,17 +253,9 @@ impl PrivilegeManager for MacosPrivileges {
             Err(e) => Err(prompt_applet::RunError::NoDialog(e.to_string())),
         };
         let _ = prompt_applet::remove(&dir);
-        match ran {
-            Ok(prompt_applet::Outcome::Ran(stdout)) => Ok(stdout),
-            Ok(prompt_applet::Outcome::Failed { number, message }) => Err(Error::Other(
-                Self::privileged_error_message(&format!("{message} ({number})")),
-            )),
-            // It ran: a password may already have been accepted, so asking again
-            // through osascript would be a second dialog for the same step.
-            Err(prompt_applet::RunError::NoResult(why)) => Err(Error::Other(format!(
-                "the rexenv password prompt closed without reporting what happened ({why})"
-            ))),
-            Err(prompt_applet::RunError::NoDialog(why)) => {
+        match Self::settle(ran) {
+            Settled::Done(answer) => answer,
+            Settled::AskThroughOsascript(why) => {
                 log::warn!("branded password prompt unavailable ({why}); asking through osascript");
                 Self::run_osascript(script, reason)
             }
@@ -271,7 +263,35 @@ impl PrivilegeManager for MacosPrivileges {
     }
 }
 
+/// What `run_privileged` does with one run of the branded prompt.
+#[derive(Debug)]
+enum Settled {
+    /// The answer, a refusal included. No other dialog follows it.
+    Done(Result<String>),
+    /// No dialog was shown, so osascript may ask instead. Carries why, for the log.
+    AskThroughOsascript(String),
+}
+
 impl MacosPrivileges {
+    /// The one decision about a second dialog: only a run that showed none may be
+    /// asked again. An applet that ran and reported nothing may have had its
+    /// password accepted already, so that is an error, never an osascript retry.
+    fn settle(
+        ran: std::result::Result<prompt_applet::Outcome, prompt_applet::RunError>,
+    ) -> Settled {
+        match ran {
+            Ok(prompt_applet::Outcome::Ran(stdout)) => Settled::Done(Ok(stdout)),
+            Ok(prompt_applet::Outcome::Failed { number, message }) => Settled::Done(Err(
+                Error::Other(Self::privileged_error_message(&format!("{message} ({number})"))),
+            )),
+            Err(prompt_applet::RunError::NoResult(why)) => Settled::Done(Err(Error::Other(format!(
+                "the rexenv password prompt closed without reporting what happened ({why})"
+            )))),
+            Err(prompt_applet::RunError::NoDialog(why)) => Settled::AskThroughOsascript(why),
+        }
+    }
+
+
     /// The unbranded fallback: the dialog names `osascript`, but still says why.
     fn run_osascript(script: &str, reason: &PromptReason) -> Result<String> {
         // `do shell script … with administrator privileges` shows one macOS
@@ -2660,6 +2680,31 @@ mod tests {
         // Other failures keep their detail.
         let other = MacosPrivileges::privileged_error_message("rm: permission denied");
         assert!(other.contains("permission denied"));
+    }
+
+    /// #577's fallback split. osascript may ask only when the branded prompt
+    /// showed no dialog; a cancel is an answer, and an applet that ran but wrote
+    /// nothing is an error — asking again there would be a second password dialog
+    /// for a step the user may already have approved.
+    #[test]
+    fn only_a_run_that_showed_no_dialog_is_asked_again_through_osascript() {
+        use prompt_applet::{Outcome, RunError};
+        assert!(matches!(
+            MacosPrivileges::settle(Ok(Outcome::Ran("root".into()))),
+            Settled::Done(Ok(s)) if s == "root"
+        ));
+        match MacosPrivileges::settle(Ok(Outcome::Failed { number: -128, message: "User canceled.".into() })) {
+            Settled::Done(Err(e)) => assert!(e.to_string().contains("cancelled"), "{e}"),
+            other => panic!("a cancel is an answer, not a reason to ask again: {other:?}"),
+        }
+        match MacosPrivileges::settle(Err(RunError::NoResult("gone".into()))) {
+            Settled::Done(Err(e)) => assert!(e.to_string().contains("closed without reporting"), "{e}"),
+            other => panic!("an applet that ran must never be asked again: {other:?}"),
+        }
+        assert!(matches!(
+            MacosPrivileges::settle(Err(RunError::NoDialog("osacompile failed".into()))),
+            Settled::AskThroughOsascript(w) if w == "osacompile failed"
+        ));
     }
 
     #[test]

@@ -204,20 +204,35 @@ pub(super) fn build(dir: &Path, script: &str, prompt: &str, icon: Option<&Path>)
 
 /// Launch the applet built in `dir`, wait for it to quit, and read its result.
 pub(super) fn run(dir: &Path) -> std::result::Result<Outcome, RunError> {
-    let app = app_path(dir);
     let launched = Command::new("/usr/bin/open")
         .args(["-n", "-W"])
-        .arg(&app)
+        .arg(app_path(dir))
         .output()
         .map_err(|e| RunError::NoDialog(e.to_string()))?;
-    let result = std::fs::read_to_string(result_path(dir));
-    if !launched.status.success() && result.is_err() {
-        return Err(RunError::NoDialog(
-            String::from_utf8_lossy(&launched.stderr).trim().to_string(),
-        ));
+    classify(
+        launched.status.success(),
+        &String::from_utf8_lossy(&launched.stderr),
+        std::fs::read_to_string(result_path(dir)),
+    )
+}
+
+/// Read a finished launch. A result file wins whatever `open` said. Without one,
+/// `open`'s exit decides whether a dialog could have been shown — measured on
+/// macOS 26.6.2 (12 Sep 2026): `open -n -W` exits 1 for an app it cannot launch,
+/// and 0 for an applet SIGKILLed while its dialog was up. So a clean exit with no
+/// result is `NoResult` (the user may have answered), never `NoDialog`.
+pub(super) fn classify(
+    open_ok: bool,
+    open_stderr: &str,
+    result: std::io::Result<String>,
+) -> std::result::Result<Outcome, RunError> {
+    match result {
+        Ok(raw) => {
+            parse_result(&raw).ok_or_else(|| RunError::NoResult(format!("unreadable result: {raw:?}")))
+        }
+        Err(_) if !open_ok => Err(RunError::NoDialog(open_stderr.trim().to_string())),
+        Err(e) => Err(RunError::NoResult(e.to_string())),
     }
-    let raw = result.map_err(|e| RunError::NoResult(e.to_string()))?;
-    parse_result(&raw).ok_or_else(|| RunError::NoResult(format!("unreadable result: {raw:?}")))
 }
 
 #[cfg(test)]
@@ -264,6 +279,22 @@ mod tests {
         for junk in ["", "okay\nroot", "error\nx", "error abc\nx", "root"] {
             assert_eq!(parse_result(junk), None, "{junk:?}");
         }
+    }
+
+    /// The two `open -W` exits measured on macOS 26.6.2, plus the rule that a
+    /// result file outranks either. The case that must never read as "no dialog"
+    /// is a clean exit with nothing written: that applet ran, and a dialog it
+    /// showed may already have been answered.
+    #[test]
+    fn a_launch_that_ran_but_wrote_nothing_is_no_result_never_no_dialog() {
+        let nothing = || Err(std::io::Error::from(std::io::ErrorKind::NotFound));
+        assert!(matches!(classify(true, "", nothing()), Err(RunError::NoResult(_))));
+        assert!(matches!(
+            classify(false, " The file x.app does not exist.\n", nothing()),
+            Err(RunError::NoDialog(m)) if m == "The file x.app does not exist."
+        ));
+        assert_eq!(classify(false, "x", Ok("ok\nroot".into())).unwrap(), Outcome::Ran("root".into()));
+        assert!(matches!(classify(true, "", Ok("garbage".into())), Err(RunError::NoResult(_))));
     }
 
     fn plist_value(app: &Path, key: &str) -> Option<String> {
