@@ -91,7 +91,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     by default, Local rows only — Valet/Herd keep their per-site opt-in). Ledger #576;
     `the_batch_connects_only_local_rows_whose_database_came_over`,
     `connecting_local_sites_from_the_import_claims_destroy_first` (both plant-proven).
-    The batch connecting a real Local import is still to be run (L1).
+    The batch connecting a real Local import: owner-run in the app, 12 Sep 2026 — works.
   - [x] **Import is its own page, not a card inside Settings → DNS & SSL** ✓ 12 Sep 2026 —
     owner: a sidebar entry (`nav.ts`); DNS & SSL keeps only the borrowed-resolver
     hand-back rows — the importable-sites nudge is gone and the leftover-dumps card moved
