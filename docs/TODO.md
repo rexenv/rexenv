@@ -101,6 +101,26 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     the live run was NOT the applet: BTM log, 13:34:24, the DNS LaunchAgent re-registered
     pointing at `target/debug/rexenv`, two minutes before the applet launched.)
 
+- [ ] **Import Local multisite networks** — 12 Sep 2026, planned in
+  `docs/PLAN-local-multisite.md`. Q2 of the Local import (`docs/archive/PLAN-local-import.md`
+  §9), parked the same morning and un-parked by the owner: "Q2 o kore felo multisite".
+  Adopt the network (record its mode, never convert), move rexenv's copy's network URLs,
+  and let the connect move `DOMAIN_CURRENT_SITE`.
+  - [x] T0 — the plan + this row ✓ 12 Sep 2026 — `docs/PLAN-local-multisite.md`
+  - [ ] T1 — scan + adopt: network rows importable, mode recorded without convert
+  - [ ] T2 — network-aware URL pass on the copy
+  - [ ] T3 — `RewriteKey::NetworkDomain` in the connect
+  - [ ] T4 — L1 network leg in `local_import_check`
+  - [ ] T5 — docs, PUBLISH-TESTING §N network steps, live pass on `multi.local`
+
+- [ ] **A Valet or Herd multisite network imports silently as a single site** — found
+  12 Sep 2026 researching the Local network import (`docs/PLAN-local-multisite.md` §6).
+  Nothing in `core/valet.rs` / `commands/valet_import.rs` detects multisite, so the site
+  lands as `multisite = none`: subdirectory subsites 404, subdomain subsites aren't
+  served, and the WordPress tab offers "Convert to multisite" on a live network. The
+  scan may not open project files, so detection needs another source (the copied
+  database, or a post-import `wp_info` read).
+
 - [ ] **In-app self-update — a dmg user has no update path at all**
   — 6 Sep 2026, planned in `docs/archive/PLAN-self-update.md`; supersedes the Phase 4+ row
   "Packaging polish: Tauri updater" (`docs/archive/TASKS-RELEASE.md` §6.1), which
@@ -674,10 +694,6 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)
 
-- [ ] **Import Local multisite networks** — `docs/archive/PLAN-local-import.md` §9 Q2, parked by
-  the owner 12 Sep 2026 ("pore korbo"). Listed as unsupported today; re-homing a network
-  means `DOMAIN_CURRENT_SITE` in wp-config (a project write the rewrite contract can't
-  express) plus every row of `wp_blogs`.
 - [ ] **The live pool swap is still L3.** `php_update_check` proves the chain up
   to "a pool on the new patch answers on a FIXTURE port". Stopping the running
   master on the PRODUCTION port and reverting when it does not come back needs
