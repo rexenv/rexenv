@@ -40,13 +40,16 @@ use rexenv_lib::state::app::AppState;
 use rexenv_lib::{core, mcp_server};
 use serde_json::Value;
 use std::io::{BufRead, BufReader, Read, Write};
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
+#[cfg(unix)]
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 use tauri::Manager;
 
 mod common;
 
+#[cfg(unix)]
 fn send(stream: &mut UnixStream, msg: &str) {
     stream.write_all(msg.as_bytes()).expect("write");
     stream.write_all(b"\n").expect("newline");
@@ -60,6 +63,7 @@ fn read_reply(reader: &mut impl BufRead) -> Value {
 }
 
 /// Handshake + one successful call, leaving the connection OPEN.
+#[cfg(unix)]
 fn open_session(sock: &Path, tag: &str) -> (UnixStream, BufReader<UnixStream>) {
     let mut stream = UnixStream::connect(sock).expect("connect to the endpoint");
     let mut reader = BufReader::new(stream.try_clone().expect("clone stream"));
@@ -80,6 +84,7 @@ fn open_session(sock: &Path, tag: &str) -> (UnixStream, BufReader<UnixStream>) {
     (stream, reader)
 }
 
+#[cfg(unix)]
 #[tokio::main]
 async fn main() {
     let (plat, _sandbox) = common::sandbox("mcp_control_check");
@@ -194,4 +199,11 @@ async fn main() {
          cleanly afterwards. Not covered here: the `mcp_set_enabled` command's bind-before-flip \
          ordering (L0) and the packaged toggle (SMOKE steps 2 and 4)."
     );
+}
+
+/// This check talks to the app over its unix socket; the Windows transport is a
+/// named pipe that does not exist yet (docs/PLAN-windows-port.md W8).
+#[cfg(not(unix))]
+fn main() {
+    eprintln!("mcp_control_check: skipped — a unix-socket live check (Windows transport: port W8)");
 }

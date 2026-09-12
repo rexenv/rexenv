@@ -23,21 +23,31 @@
 //! `confirm()` returns the button pressed, or that WebKit suspends the calling
 //! frame — that is SMOKE's drop-table step (leg C), which needs an eye.
 
-#![cfg(target_os = "macos")]
+// macOS-only (WKWebView). Gated item by item rather than with a file-level
+// `#![cfg]`, which on any other OS leaves a crate with no `main` (E0601) —
+// found by the Windows compile check (docs/PLAN-windows-port.md W1).
 
+#[cfg(target_os = "macos")]
 use objc2::ffi::class_addMethod;
+#[cfg(target_os = "macos")]
 use objc2::rc::Retained;
+#[cfg(target_os = "macos")]
 use objc2::runtime::{AnyClass, AnyObject, ClassBuilder, Imp, Sel};
+#[cfg(target_os = "macos")]
 use objc2::{msg_send, sel, MainThreadMarker, MainThreadOnly};
+#[cfg(target_os = "macos")]
 use objc2_foundation::{NSObject, NSPoint, NSRect, NSSize};
+#[cfg(target_os = "macos")]
 use objc2_web_kit::{WKWebView, WKWebViewConfiguration};
 
 mod common;
 
+#[cfg(target_os = "macos")]
 const ENC_PANEL: &[u8] = b"v@:@@@@?\0";
 
 /// The stand-in for wry's file-picker method. Never called — the example
 /// opens no panels — it exists so the stub class has exactly wry's shape.
+#[cfg(target_os = "macos")]
 unsafe extern "C-unwind" fn stub_open_panel(
     _this: *mut AnyObject,
     _cmd: Sel,
@@ -49,14 +59,17 @@ unsafe extern "C-unwind" fn stub_open_panel(
     std::hint::black_box(0u8);
 }
 
+#[cfg(target_os = "macos")]
 fn responds(cls: &AnyClass, sel: Sel) -> bool {
     cls.instance_method(sel).is_some()
 }
 
+#[cfg(target_os = "macos")]
 fn imp_of(cls: &AnyClass, sel: Sel) -> Option<Imp> {
     cls.instance_method(sel).map(|m| m.implementation())
 }
 
+#[cfg(target_os = "macos")]
 fn main() -> std::process::ExitCode {
     let mut checks = common::Check::new("webview_dialogs_check");
     let mtm = MainThreadMarker::new().expect("example main runs on the main thread");
@@ -166,4 +179,12 @@ fn main() -> std::process::ExitCode {
          confirm() returns the button pressed, JS suspends."
     );
     checks.verdict()
+}
+
+/// WKWebView exists only on macOS; the other platforms' webviews draw their own
+/// JS dialogs, so there is nothing here to check.
+#[cfg(not(target_os = "macos"))]
+fn main() -> std::process::ExitCode {
+    eprintln!("webview_dialogs_check: skipped — macOS-only (WKWebView)");
+    std::process::ExitCode::SUCCESS
 }

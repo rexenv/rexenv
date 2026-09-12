@@ -16,10 +16,13 @@ use rexenv_lib::cli_server;
 use rexenv_lib::state::app::{AppState, DnsMode, DnsState};
 use serde_json::Value;
 use std::io::{BufRead, BufReader, Write};
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
+#[cfg(unix)]
 use std::os::unix::net::UnixStream;
 use tauri::Manager;
 
+#[cfg(unix)]
 fn ask(path: &std::path::Path, line: &str) -> Value {
     let mut s = UnixStream::connect(path).expect("connect");
     s.write_all(format!("{line}\n").as_bytes()).expect("write");
@@ -28,6 +31,7 @@ fn ask(path: &std::path::Path, line: &str) -> Value {
     serde_json::from_str(reply.trim()).expect("valid JSON envelope")
 }
 
+#[cfg(unix)]
 #[tokio::main]
 async fn main() {
     let platform = rexenv_lib::platform::current();
@@ -104,4 +108,11 @@ async fn main() {
     tokio::time::sleep(std::time::Duration::from_secs(150)).await;
     let _ = std::fs::remove_file(&sock);
     println!("✓ cli_socket_check done (socket removed)");
+}
+
+/// This check talks to the app over its unix socket; the Windows transport is a
+/// named pipe that does not exist yet (docs/PLAN-windows-port.md W8).
+#[cfg(not(unix))]
+fn main() {
+    eprintln!("cli_socket_check: skipped — a unix-socket live check (Windows transport: port W8)");
 }

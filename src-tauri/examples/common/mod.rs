@@ -1455,3 +1455,52 @@ impl Drop for PublicTunnel {
         reap_public_tunnel();
     }
 }
+
+// ── Unix file-mode and symlink fixtures ─────────────────────────────────────
+// Examples are macOS live checks, but they compile wherever the lib does, and
+// the Windows port's compile check builds them (docs/PLAN-windows-port.md W1).
+// These keep the unix-only std extensions in one place. Off unix they are inert
+// — a mode of 0, a no-op chmod, an Unsupported symlink — which is honest for a
+// check nobody runs there yet.
+
+/// `path`'s permission bits (`mode & 0o777`), or 0 when they cannot be read —
+/// and always 0 off unix.
+pub fn mode_bits(path: impl AsRef<std::path::Path>) -> u32 {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::metadata(path).map(|m| m.permissions().mode() & 0o777).unwrap_or(0)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+        0
+    }
+}
+
+/// chmod `path` to `mode`. A no-op off unix.
+pub fn set_mode(path: impl AsRef<std::path::Path>, mode: u32) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (path, mode);
+        Ok(())
+    }
+}
+
+/// A symlink `dst` → `src`. Unsupported off unix.
+pub fn symlink(src: impl AsRef<std::path::Path>, dst: impl AsRef<std::path::Path>) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(src, dst)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (src, dst);
+        Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "symlink fixtures are unix-only"))
+    }
+}

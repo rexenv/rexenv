@@ -55,6 +55,7 @@ use rexenv_lib::state::models::{NewSite, SiteDbEngine, SiteType, WebServer};
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
+#[cfg(unix)]
 use std::os::unix::net::UnixStream;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
@@ -67,6 +68,7 @@ const NEAR_MISS: &str = "admin@probe.scratch.rex";
 const STAMPED_SUBJECT: &str = "rexenv-mailcheck-stamped";
 const NEAR_MISS_SUBJECT: &str = "rexenv-mailcheck-nearmiss";
 
+#[cfg(unix)]
 fn send_line(stream: &mut UnixStream, msg: &str) {
     stream.write_all(msg.as_bytes()).expect("write message");
     stream.write_all(b"\n").expect("write newline");
@@ -79,6 +81,7 @@ fn read_reply(reader: &mut impl BufRead) -> Value {
     serde_json::from_str(line.trim()).expect("reply is valid JSON-RPC")
 }
 
+#[cfg(unix)]
 fn call(
     stream: &mut UnixStream,
     reader: &mut impl BufRead,
@@ -177,6 +180,7 @@ fn smtp_send(from: &str, subject: &str) {
     expect(&mut sock, Some("QUIT"), '2');
 }
 
+#[cfg(unix)]
 #[tokio::main]
 async fn main() {
     let (plat, _sandbox) = common::sandbox("mcp_mail_check");
@@ -441,4 +445,11 @@ async fn main() {
         "\n✓ mcp_mail_check: over real messages, the stamp matches, the same domain with a \
          different local part does not, and the gate holds on an id the agent chose"
     );
+}
+
+/// This check talks to the app over its unix socket; the Windows transport is a
+/// named pipe that does not exist yet (docs/PLAN-windows-port.md W8).
+#[cfg(not(unix))]
+fn main() {
+    eprintln!("mcp_mail_check: skipped — a unix-socket live check (Windows transport: port W8)");
 }

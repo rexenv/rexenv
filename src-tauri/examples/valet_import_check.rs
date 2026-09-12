@@ -75,9 +75,9 @@ async fn main() {
     std::fs::write(project.join("public/index.php"), "<?php echo 'php';").unwrap();
     std::fs::write(project.join("public/marker.txt"), MARKER).unwrap();
     std::fs::write(project.join(".env"), "APP_KEY=secret-not-read\n").unwrap();
-    std::os::unix::fs::symlink(&project, valet_home.join("Sites/importcheck")).unwrap();
+    common::symlink(&project, valet_home.join("Sites/importcheck")).unwrap();
     // The link farm: `valet link importcheck-www` run in the same project.
-    std::os::unix::fs::symlink(&project, valet_home.join("Sites/importcheck-www")).unwrap();
+    common::symlink(&project, valet_home.join("Sites/importcheck-www")).unwrap();
     std::fs::write(
         valet_home.join("config.json"),
         r#"{"tld":"rex","loopback":"127.0.0.1","paths":["/nonexistent"]}"#,

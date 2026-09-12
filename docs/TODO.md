@@ -56,7 +56,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     `ProcessSupervisor`; the last `cfg(unix)` in `core/` — the rewrite's owner-only temp and
     the CLI symlink — moved to `write_private` / a new `ShellRunner::symlink_file`). Ledger #163's scan is widened: `std::os::unix`,
     `cfg(unix)`, `cfg(not(unix))` and `kill` in `core/` production now fail it, plant-proven.
-    Open: 21 test-module sites, 58 in 17 examples, the `cli` crate (D3/W8) (plan §2.1)
+    `cli_server` compiles everywhere too (transport-only gate), and every example now
+    compiles for Windows (unix-socket and macOS-only checks print a skip line there).
+    Open: 21 test-module sites and the `cli` crate's 10 (D3/W8) (plan §2.1)
   - [ ] W2 — `(os, arch)` binary catalog; Windows pins + checksums; sweep covers them
   - [ ] W3 — Paths, ACL permissions, BinaryProvider, ProcessSupervisor (MySQL + Mailpit
     start, outlive the app, adopt on relaunch — on real Windows)

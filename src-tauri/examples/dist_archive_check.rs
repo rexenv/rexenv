@@ -95,7 +95,7 @@ fn fixture() -> Fixture {
     }
     // The link name differs from the folder name on purpose (#230/§1.5).
     let link = plugins.join("awesome-slug");
-    std::os::unix::fs::symlink(&real, &link).expect("symlink");
+    common::symlink(&real, &link).expect("symlink");
     Fixture { root, real, link }
 }
 

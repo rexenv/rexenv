@@ -30,7 +30,6 @@ use rexenv_lib::core::dbdump::{self, DumpOutcome, DumpRequest, LiveCheck, OurEng
 use rexenv_lib::core::dbimport::{ConfigSource, DbConnection, Driver};
 use rexenv_lib::core::dbsource::{self, Identity, Vendor};
 use rexenv_lib::core::{binaries, database};
-use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
 use std::time::Duration;
@@ -55,7 +54,7 @@ fn conn_for(port: u16) -> DbConnection {
 }
 
 fn mode_of(p: &Path) -> u32 {
-    std::fs::metadata(p).map(|m| m.permissions().mode() & 0o777).unwrap_or(0)
+    common::mode_bits(p)
 }
 
 #[tokio::main]

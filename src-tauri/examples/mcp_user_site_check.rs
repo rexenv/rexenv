@@ -53,6 +53,7 @@ use rexenv_lib::state::store;
 use rexenv_lib::{core, mcp_server};
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Write};
+#[cfg(unix)]
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use tauri::Manager;
@@ -66,6 +67,7 @@ impl Drop for TempTree {
     }
 }
 
+#[cfg(unix)]
 fn send(stream: &mut UnixStream, msg: &str) {
     stream.write_all(msg.as_bytes()).expect("write message");
     stream.write_all(b"\n").expect("write newline");
@@ -78,6 +80,7 @@ fn read_reply(reader: &mut impl BufRead) -> Value {
     serde_json::from_str(line.trim()).expect("reply is valid JSON-RPC")
 }
 
+#[cfg(unix)]
 fn call(stream: &mut UnixStream, reader: &mut impl BufRead, id: u32, name: &str, args: Value) -> (bool, String) {
     let req = json!({ "jsonrpc": "2.0", "id": id, "method": "tools/call", "params": { "name": name, "arguments": args } });
     send(stream, &req.to_string());
@@ -86,6 +89,7 @@ fn call(stream: &mut UnixStream, reader: &mut impl BufRead, id: u32, name: &str,
     (v["result"]["isError"].as_bool().unwrap_or(false), text)
 }
 
+#[cfg(unix)]
 #[tokio::main]
 async fn main() {
     let (plat, _sandbox) = common::sandbox("mcp_user_site_check");
@@ -334,4 +338,11 @@ async fn main() {
     println!("✓ feed complete (targets, verbs, refusals, no values); the launch sweep ended the session grant");
 
     println!("mcp_user_site_check: PASS");
+}
+
+/// This check talks to the app over its unix socket; the Windows transport is a
+/// named pipe that does not exist yet (docs/PLAN-windows-port.md W8).
+#[cfg(not(unix))]
+fn main() {
+    eprintln!("mcp_user_site_check: skipped — a unix-socket live check (Windows transport: port W8)");
 }

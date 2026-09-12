@@ -62,6 +62,7 @@ use rexenv_lib::state::models::{NewSite, SiteDbEngine, SiteType, WebServer};
 use rexenv_lib::{core, mcp_server};
 use serde_json::Value;
 use std::io::{BufRead, BufReader, Write};
+#[cfg(unix)]
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use tauri::Manager;
@@ -83,6 +84,7 @@ impl Drop for TempTree {
     }
 }
 
+#[cfg(unix)]
 fn send(stream: &mut UnixStream, msg: &str) {
     stream.write_all(msg.as_bytes()).expect("write message");
     stream.write_all(b"\n").expect("write newline");
@@ -97,6 +99,7 @@ fn read_reply(reader: &mut impl BufRead) -> Value {
 
 /// One `tools/call`, returning `(is_error, text)` — the tool's own reply text,
 /// which for a refusal is the policy statement an agent reads.
+#[cfg(unix)]
 fn call(
     stream: &mut UnixStream,
     reader: &mut impl BufRead,
@@ -134,6 +137,7 @@ fn snapshot(dir: &Path) -> Vec<(PathBuf, Vec<u8>)> {
     out
 }
 
+#[cfg(unix)]
 #[tokio::main]
 async fn main() {
     let (plat, _sandbox) = common::sandbox("mcp_scratch_check");
@@ -580,4 +584,11 @@ async fn main() {
          FILTER over real messages, which needs Mailpit running (the three-state discrimination \
          above is stat-based and needs none)."
     );
+}
+
+/// This check talks to the app over its unix socket; the Windows transport is a
+/// named pipe that does not exist yet (docs/PLAN-windows-port.md W8).
+#[cfg(not(unix))]
+fn main() {
+    eprintln!("mcp_scratch_check: skipped — a unix-socket live check (Windows transport: port W8)");
 }

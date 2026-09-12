@@ -69,7 +69,7 @@ fn state_of(pid: u32) -> String {
 /// process that isn't provably ours).
 fn stage_fake(path: &std::path::Path) {
     let _ = std::fs::remove_file(path);
-    std::os::unix::fs::symlink("/bin/bash", path).expect("stage the fake cloudflared");
+    common::symlink("/bin/bash", path).expect("stage the fake cloudflared");
 }
 
 fn main() {

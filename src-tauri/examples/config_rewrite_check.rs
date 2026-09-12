@@ -31,7 +31,6 @@ use rexenv_lib::core::dbdump::{self, SelfImport};
 use rexenv_lib::core::dbmirror;
 use rexenv_lib::core::{binaries, database, dbimport};
 use rexenv_lib::state::db;
-use std::os::unix::fs::PermissionsExt;
 use std::time::Duration;
 
 mod common;
@@ -90,7 +89,7 @@ async fn main() {
          $table_prefix = 'wp_';\n"
     );
     std::fs::write(&config, &original).unwrap();
-    std::fs::set_permissions(&config, std::fs::Permissions::from_mode(0o600)).unwrap();
+    common::set_mode(&config, 0o600).unwrap();
 
     // ── 1a. plan + rewrite: the diff IS the write, and holds no secret ──────
     let dedicated = dbmirror::dedicated_user_name(DOMAIN);
@@ -115,14 +114,14 @@ async fn main() {
     // ── 1b. backup (0600, first wins), mirror, write, verify ────────────────
     let backup = confrewrite::backup_path(&*plat, "site-fixture", &config).expect("backup path");
     confrewrite::write_backup(&*plat, &backup, &original).expect("backup written");
-    let mode = std::fs::metadata(&backup).unwrap().permissions().mode() & 0o777;
+    let mode = common::mode_bits(&backup);
     check(&mut ok, "the backup is born 0600", mode == 0o600, &format!("mode {mode:o}"));
 
     dbmirror::mirror_dedicated(&client, PORT, DB, DOMAIN, THEIR_PASSWORD)
         .expect("dedicated user created");
     confrewrite::atomic_write_preserving_mode(&*plat, &config, &rewrite.new_content)
         .expect("atomic write");
-    let mode = std::fs::metadata(&config).unwrap().permissions().mode() & 0o777;
+    let mode = common::mode_bits(&config);
     check(&mut ok, "their chmod 600 survives the rewrite", mode == 0o600, &format!("mode {mode:o}"));
 
     let scratch = sandbox.root().join("scratch");
@@ -137,9 +136,9 @@ async fn main() {
 
     // ── 2. a failed write leaves their file byte-untouched ──────────────────
     let after_write = std::fs::read_to_string(&config).unwrap();
-    std::fs::set_permissions(&project, std::fs::Permissions::from_mode(0o555)).unwrap();
+    common::set_mode(&project, 0o555).unwrap();
     let denied = confrewrite::atomic_write_preserving_mode(&*plat, &config, "sabotage");
-    std::fs::set_permissions(&project, std::fs::Permissions::from_mode(0o755)).unwrap();
+    common::set_mode(&project, 0o755).unwrap();
     check(
         &mut ok,
         "a failed write errors AND the file still holds the previous bytes",
@@ -191,7 +190,7 @@ async fn main() {
     check(&mut ok, "an untouched rewrite classifies CleanRestore", verdict == RevertCheck::CleanRestore, &format!("{verdict:?}"));
     confrewrite::atomic_write_preserving_mode(&*plat, &config, &original).expect("restore");
     let restored = std::fs::read_to_string(&config).unwrap();
-    let mode = std::fs::metadata(&config).unwrap().permissions().mode() & 0o777;
+    let mode = common::mode_bits(&config);
     check(
         &mut ok,
         "revert restores the byte-identical original (CRLF quirk included), mode kept",

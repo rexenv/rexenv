@@ -54,8 +54,7 @@ fn make_marker_app(at: &Path, marker: &Path) -> std::io::Result<()> {
     let script = format!("#!/bin/sh\ndate +%s.%N >> '{}'\n", marker.display());
     let exe = macos.join("marker");
     std::fs::write(&exe, script)?;
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755))?;
+    common::set_mode(&exe, 0o755)?;
     Ok(())
 }
 
@@ -116,6 +115,7 @@ fn wait_for_marker(marker: &Path, want: usize, limit: Duration) -> bool {
     false
 }
 
+#[cfg(target_os = "macos")]
 #[tokio::main]
 async fn main() -> ExitCode {
     let (plat, _sandbox) = common::sandbox("relaunch");
@@ -244,4 +244,13 @@ async fn main() -> ExitCode {
          SMOKE-TEST §In-app self-update / PUBLISH-TESTING §M."
     );
     checks.verdict()
+}
+
+/// The relauncher is macOS's (`platform::run_relauncher`), and so is the process
+/// start-time token this check identifies the parent by — skipped elsewhere
+/// until the Windows `AppBundle` exists (docs/PLAN-windows-port.md W11).
+#[cfg(not(target_os = "macos"))]
+fn main() -> ExitCode {
+    eprintln!("app_relaunch_check: skipped — macOS-only (relauncher)");
+    ExitCode::SUCCESS
 }

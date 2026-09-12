@@ -124,6 +124,7 @@ fn stand_in_tunnel(script: &PathBuf, marker: &str, domain: &str) -> Owned {
         .expect("spawn stand-in tunnel"))
 }
 
+#[cfg(target_os = "macos")]
 fn main() {
     let plat = rexenv_lib::platform::current();
     let marker = plat
@@ -316,4 +317,12 @@ fn main() {
         }
         std::process::exit(1);
     }
+}
+
+/// The tunnel guard is macOS's (`platform::run_tunnel_guard`, kqueue) and so is the
+/// start-time token it pins the parent with — skipped elsewhere until a Windows
+/// guard exists.
+#[cfg(not(target_os = "macos"))]
+fn main() {
+    eprintln!("tunnel_parent_death_check: skipped — macOS-only (tunnel guard)");
 }

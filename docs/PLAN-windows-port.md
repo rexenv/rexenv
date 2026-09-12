@@ -123,6 +123,18 @@ raw JSON closed their test modules early and the tails read as production. The f
 and block-comment state across lines. The error was in the loud direction — test code
 flagged as production — but every guard on that function had been reading those tails.
 
+**Every example compiles for Windows (12 Sep 2026).** Windows run 78 → 31, all of it the
+`lib test` unit (21) and the `cli` crate (10). No example changed behaviour on macOS; the
+fixes came in three kinds. Unix file-mode and symlink fixtures moved behind
+`examples/common` helpers (`mode_bits`, `set_mode`, `symlink` — inert off unix). The six
+checks that talk to the app over its unix socket (`mcp_*`, `cli_socket_check`) and the two
+whose subject is macOS-only (`app_relaunch_check`, `tunnel_parent_death_check`) keep their
+real `main` behind a cfg and print a skip line elsewhere. And `webview_dialogs_check` traded
+its file-level `#![cfg(target_os = "macos")]` — which on any other OS leaves a crate with no
+`main` (E0601) — for per-item gates. The three examples that only drive `handle_request`
+in-process needed nothing: gating `cli_server`'s transport instead of the whole module was
+the whole fix.
+
 ### 2.2 The binary catalog has no OS dimension
 
 `src-tauri/src/core/binaries.rs` keys pins by `Arch` alone, and the URLs spell macOS into
