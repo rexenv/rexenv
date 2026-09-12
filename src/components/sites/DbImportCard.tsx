@@ -433,6 +433,21 @@ export function DbImportCard({ site }: { site: Site }) {
                       database error here. The site keeps working in Local.
                     </p>
                   )}
+                {/* Say what connecting a NETWORK costs: its DOMAIN_CURRENT_SITE
+                    moves, and the folder is shared, so the source tool can't load
+                    the network under its old name until Revert. */}
+                {preview?.status === "ready" &&
+                  preview.diff.length > 0 &&
+                  preview.movesNetworkDomain && (
+                    <p>
+                      <strong>This is a multisite network, so connecting also moves its domain</strong>{" "}
+                      — <span className="font-mono text-[0.78125rem]">DOMAIN_CURRENT_SITE</span>{" "}
+                      becomes <span className="font-mono text-[0.78125rem]">{site.domain}</span>{" "}
+                      (it's in the change below). While connected, the network won't load under
+                      its old name in the tool you imported it from — the folder is shared.
+                      Revert puts the line back.
+                    </p>
+                  )}
                 {preview?.status === "ready" && preview.diff.length === 0 && (
                   /* The honest sentence for this state: the FILE is proven
                      (it points at the copy); the CONNECTION is not. Which

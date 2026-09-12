@@ -53,21 +53,34 @@ pub enum RewriteKey {
     /// config's (`local` → `local_tr_local_rex`). A name is not a secret, so
     /// adding it keeps every diff secret-free (ledger #574).
     Name,
+    /// A multisite network's `DOMAIN_CURRENT_SITE` — the host WordPress finds
+    /// the network by and scopes its login cookies to — moved to the name
+    /// rexenv serves an imported network under (`docs/PLAN-local-multisite.md`
+    /// T3). A hostname, never a secret. wp-config only.
+    NetworkDomain,
 }
 
 impl RewriteKey {
     /// Exhaustive by construction: adding a variant breaks this constant (and
     /// the tests pinned to it) at compile time.
-    pub const ALL: [RewriteKey; 4] =
-        [RewriteKey::Host, RewriteKey::Port, RewriteKey::User, RewriteKey::Name];
+    pub const ALL: [RewriteKey; 5] = [
+        RewriteKey::Host,
+        RewriteKey::Port,
+        RewriteKey::User,
+        RewriteKey::Name,
+        RewriteKey::NetworkDomain,
+    ];
 
-    /// The literal key this maps to in a `.env` file.
-    pub fn env_name(self) -> &'static str {
+    /// The literal key this maps to in a `.env` file. NetworkDomain has none —
+    /// a `.env` app has no network — and [`RewritePlan::with_network_domain`]
+    /// refuses to stage one on an env plan.
+    pub fn env_name(self) -> Option<&'static str> {
         match self {
-            RewriteKey::Host => "DB_HOST",
-            RewriteKey::Port => "DB_PORT",
-            RewriteKey::User => "DB_USERNAME",
-            RewriteKey::Name => "DB_DATABASE",
+            RewriteKey::Host => Some("DB_HOST"),
+            RewriteKey::Port => Some("DB_PORT"),
+            RewriteKey::User => Some("DB_USERNAME"),
+            RewriteKey::Name => Some("DB_DATABASE"),
+            RewriteKey::NetworkDomain => None,
         }
     }
 
@@ -80,6 +93,7 @@ impl RewriteKey {
             RewriteKey::Port => None,
             RewriteKey::User => Some("DB_USER"),
             RewriteKey::Name => Some("DB_NAME"),
+            RewriteKey::NetworkDomain => Some("DOMAIN_CURRENT_SITE"),
         }
     }
 }
@@ -150,6 +164,23 @@ impl RewritePlan {
         Ok(self)
     }
 
+    /// Also move a multisite network's `DOMAIN_CURRENT_SITE` to `domain` — an
+    /// imported network's wp-config still names the source's host
+    /// (`multi.local`), and WordPress finds the network and scopes its cookies
+    /// by it, so logins under rexenv fail until it moves. wp-config only: an
+    /// env plan refuses rather than silently dropping the change. A hostname
+    /// passes the same charset check as every other value.
+    pub fn with_network_domain(mut self, domain: &str) -> Result<Self> {
+        if self.shape != ConfigShape::WpConfig {
+            return Err(Error::Other(
+                "a network's domain is a wp-config constant — a .env plan cannot stage one".into(),
+            ));
+        }
+        self.changes
+            .push((RewriteKey::NetworkDomain, checked_value(RewriteKey::NetworkDomain, domain)?));
+        Ok(self)
+    }
+
     pub fn shape(&self) -> ConfigShape {
         self.shape
     }
@@ -182,6 +213,10 @@ pub struct Rewrite {
     pub diff: Vec<DiffLine>,
 }
 
+/// Every key an env plan can hold has a `.env` name: the only key without one
+/// (NetworkDomain) is refused by `with_network_domain` on an env plan.
+const ENV_PLANS_HAVE_ENV_KEYS: &str = "env plans cannot stage NetworkDomain";
+
 /// Prepare a rewrite of `original` (the file's full text) per `plan`.
 ///
 /// Pure: no filesystem, no execution. `Err` is a first-class refusal that
@@ -198,7 +233,9 @@ pub fn rewrite(original: &str, plan: &RewritePlan) -> std::result::Result<Rewrit
     // tell-only like every other refusal instead of staging a blind write.
     for (key, value) in &plan.changes {
         let read = match plan.shape {
-            ConfigShape::DotEnv => phpconf::dotenv_value(&new_content, key.env_name()),
+            ConfigShape::DotEnv => {
+                phpconf::dotenv_value(&new_content, key.env_name().expect(ENV_PLANS_HAVE_ENV_KEYS))
+            }
             ConfigShape::WpConfig => {
                 let name = key.wp_name().expect("wp plans cannot stage Port");
                 phpconf::wp_define_str(&new_content, name)
@@ -206,7 +243,7 @@ pub fn rewrite(original: &str, plan: &RewritePlan) -> std::result::Result<Rewrit
         };
         if read.as_deref() != Ok(value.as_str()) {
             let name = match plan.shape {
-                ConfigShape::DotEnv => key.env_name(),
+                ConfigShape::DotEnv => key.env_name().expect(ENV_PLANS_HAVE_ENV_KEYS),
                 ConfigShape::WpConfig => key.wp_name().expect("checked above"),
             };
             return Err(Unreadable::EditUnverified { key: name.into() });
@@ -244,7 +281,7 @@ fn rewrite_env(original: &str, plan: &RewritePlan) -> std::result::Result<String
     let mut append_port: Option<String> = None;
 
     for (key, new_value) in &plan.changes {
-        let name = key.env_name();
+        let name = key.env_name().expect(ENV_PLANS_HAVE_ENV_KEYS);
         let matches: Vec<&phpconf::EnvLine> = lines
             .iter()
             .filter(|l| matches!(&l.kind, EnvLineKind::Entry { key: k, .. } if k == name))
@@ -330,11 +367,11 @@ fn append_port_line(
     let host = lines
         .iter()
         .find(|l| {
-            matches!(&l.kind, EnvLineKind::Entry { key, .. } if key == RewriteKey::Host.env_name())
+            matches!(&l.kind, EnvLineKind::Entry { key, .. } if RewriteKey::Host.env_name() == Some(key.as_str()))
         })
         // rewrite_env resolved Host before Port, so it exists; a plan without
         // a Host change cannot exist (both constructors stage one).
-        .ok_or(Unreadable::MissingKey { key: RewriteKey::Host.env_name().into() })?;
+        .ok_or(Unreadable::MissingKey { key: "DB_HOST".into() })?;
 
     // The host line's conventions, read from the ORIGINAL bytes.
     let host_content = &original[host.start..host.content_end];
@@ -520,9 +557,9 @@ mod tests {
         // maps to a password-ish name in either shape. If someone adds a
         // Password variant back, this test — and the exhaustive matches in
         // env_name/wp_name — fail before any code could stage one.
-        assert_eq!(RewriteKey::ALL.len(), 4);
+        assert_eq!(RewriteKey::ALL.len(), 5);
         for k in RewriteKey::ALL {
-            for name in [Some(k.env_name()), k.wp_name()].into_iter().flatten() {
+            for name in [k.env_name(), k.wp_name()].into_iter().flatten() {
                 let lower = name.to_lowercase();
                 assert!(!lower.contains("pass"), "{name} could carry a secret");
                 assert!(!lower.contains("secret"), "{name} could carry a secret");
@@ -826,5 +863,30 @@ mod tests {
         for bad in ["my db", "x'y", ""] {
             assert!(RewritePlan::wp("127.0.0.1:13306", None).unwrap().with_database(bad).is_err(), "{bad:?}");
         }
+    }
+
+    /// A network's connect moves DOMAIN_CURRENT_SITE's value bytes and nothing
+    /// else (PATH_CURRENT_SITE and the other constants stay); an env plan
+    /// refuses the key instead of dropping it; an already-moved value is a
+    /// no-op, not a diff.
+    #[test]
+    fn a_network_moves_only_its_domain_bytes() {
+        let wp = "<?php\ndefine( 'DB_HOST', 'localhost' );\ndefine( 'MULTISITE', true );\n\
+                  define( 'SUBDOMAIN_INSTALL', true );\ndefine( 'DOMAIN_CURRENT_SITE', 'multi.local' );\n\
+                  define( 'PATH_CURRENT_SITE', '/' );\n";
+        let plan = RewritePlan::wp("127.0.0.1:13306", None).unwrap().with_network_domain("multi.rex").unwrap();
+        let r = rewrite(wp, &plan).unwrap();
+        assert_eq!(r.new_content, wp.replace("'localhost'", "'127.0.0.1:13306'").replace("'multi.local'", "'multi.rex'"));
+        assert_eq!(r.diff.len(), 4, "two lines out, two in: {:?}", r.diff);
+        assert!(r.diff.iter().any(|d| d.sign == '+' && d.text.contains("'DOMAIN_CURRENT_SITE', 'multi.rex'")));
+
+        let moved = r.new_content.clone();
+        assert!(rewrite(&moved, &plan).unwrap().diff.is_empty(), "re-applying the same plan is a no-op");
+
+        assert!(RewritePlan::env("127.0.0.1", 13306, None).unwrap().with_network_domain("multi.rex").is_err());
+        assert!(RewritePlan::wp("127.0.0.1:13306", None).unwrap().with_network_domain("multi rex").is_err());
+        // A network config without the constant refuses by name — resolve() never stages it then.
+        let bare = "<?php\ndefine( 'DB_HOST', 'localhost' );\n";
+        assert!(matches!(rewrite(bare, &plan), Err(Unreadable::MissingKey { .. })));
     }
 }

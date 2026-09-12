@@ -171,6 +171,8 @@ function preview(): RewritePreview {
     // `local=1`: a Local import, whose config reaches no database under rexenv
     // until connected — the panel must say so instead of "still reads the old one".
     oldDatabaseUnreachable: params.get("local") === "1",
+    // `network=1`: an imported multisite network — connecting moves DOMAIN_CURRENT_SITE.
+    movesNetworkDomain: params.get("network") === "1",
   };
 }
 

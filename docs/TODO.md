@@ -116,7 +116,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     `a_network_moves_every_subsite_before_its_own_bare_name`,
     `a_network_is_proved_moved_only_when_every_blog_reads_https_on_the_new_name`, the
     override and wiring guards (plant-proven ×3). The bootstrap it rests on is L1-owed (T4)
-  - [ ] T3 — `RewriteKey::NetworkDomain` in the connect
+  - [x] T3 — `RewriteKey::NetworkDomain` in the connect ✓ 12 Sep 2026 — ledger #581;
+    `a_network_moves_only_its_domain_bytes`, `a_networks_domain_reaches_the_plan_before_the_diff`
+    (plant-proven ×2); the preview's `movesNetworkDomain` sentence in DbImportCard + MCP JSON
   - [ ] T4 — L1 network leg in `local_import_check`
   - [ ] T5 — docs, PUBLISH-TESTING §N network steps, live pass on `multi.local`
 

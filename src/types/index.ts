@@ -431,6 +431,10 @@ export type RewritePreview =
       /** The config still names Local's own server, which rexenv can't reach —
        *  until this is applied the site reads NO database. */
       oldDatabaseUnreachable: boolean;
+      /** A multisite network whose DOMAIN_CURRENT_SITE this change moves to the
+       *  rexenv name — while connected, the source tool can't load the network
+       *  under its old name (the folder is shared). */
+      movesNetworkDomain: boolean;
     }
   | { status: "refused"; reason: string; file: string | null };
 

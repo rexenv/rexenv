@@ -1,7 +1,8 @@
 # Import Local multisite networks — Q2 of the Local import
 
 **Status:** IN FLIGHT 12 Sep 2026 — owner: "Q2 o kore felo multisite". T0 (this plan),
-T1 (scan + adopt, ledger #580) and T2 (the network URL pass, #573) done; next T3.
+T1 (scan + adopt, ledger #580), T2 (the network URL pass, #573) and T3 (the connect moves
+`DOMAIN_CURRENT_SITE`, #581) done; next T4.
 Planned against `626b685`. Parent design record: `docs/archive/PLAN-local-import.md`
 (§3 listed networks as unsupported, §9 Q2 parked them).
 

@@ -30,7 +30,8 @@ use crate::core::dbmirror::{self, RESERVED_USERS};
 use crate::core::{self};
 use crate::error::{Error, Result};
 use crate::state::app::AppState;
-use crate::state::models::Site;
+use crate::core::phpconf;
+use crate::state::models::{MultisiteMode, Site};
 use crate::state::store::{self, ConnectedVerified, DbImportRecord};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -84,6 +85,10 @@ pub enum RewritePreview {
         /// reach — so until this change is applied the site reads NO database
         /// (it does not "keep reading the old one"). Ledger #575.
         old_database_unreachable: bool,
+        /// A multisite network whose `DOMAIN_CURRENT_SITE` this change moves to
+        /// the site's rexenv name — so while connected, the network no longer
+        /// loads under its old name in the source tool (the folder is shared).
+        moves_network_domain: bool,
     },
     /// Downgraded to tell-only, with the reason. Never a guess.
     #[serde(rename = "refused", rename_all = "camelCase")]
@@ -103,6 +108,8 @@ struct Resolved {
     /// The dedicated account the root case creates (D1), else None.
     creates_user: Option<String>,
     engine: DbEngine,
+    /// The plan moves a network's DOMAIN_CURRENT_SITE.
+    moves_network_domain: bool,
 }
 
 enum Resolution {
@@ -173,6 +180,9 @@ fn resolve(state: &State<'_, AppState>, site_id: &str) -> Result<Resolution> {
     let reserved = RESERVED_USERS.iter().any(|r| r.eq_ignore_ascii_case(&conn.user));
     let creates_user = reserved.then(|| dbmirror::dedicated_user_name(&site.domain));
 
+    let original = std::fs::read_to_string(&file)
+        .map_err(|e| Error::Other(format!("reading {}: {e}", file.display())))?;
+
     let plan = match &conn.source {
         ConfigSource::WpConfig { .. } => {
             RewritePlan::wp(&format!("127.0.0.1:{port}"), creates_user.as_deref())?
@@ -186,8 +196,23 @@ fn resolve(state: &State<'_, AppState>, site_id: &str) -> Result<Resolution> {
         None => plan,
     };
 
-    let original = std::fs::read_to_string(&file)
-        .map_err(|e| Error::Other(format!("reading {}: {e}", file.display())))?;
+    // A multisite NETWORK moves its domain too (docs/PLAN-local-multisite.md T3).
+    // WordPress finds the network — and scopes its login cookies — by
+    // DOMAIN_CURRENT_SITE, which an imported network's wp-config still gives as
+    // the source's host (`multi.local`); served as `multi.rex`, logins fail. The
+    // site row says it is a network (ledger #580); the FILE says whether the
+    // constant exists and differs. Absent = nothing to move (WordPress then uses
+    // the request's host). Any other unreadable shape is staged anyway, so the
+    // editor refuses it by name instead of connecting a network that can't log in.
+    let moves_network_domain = matches!(conn.source, ConfigSource::WpConfig { .. })
+        && !matches!(site.multisite, MultisiteMode::None)
+        && match phpconf::wp_define_str(&original, "DOMAIN_CURRENT_SITE") {
+            Ok(v) => v != site.domain,
+            Err(phpconf::Unreadable::MissingKey { .. }) => false,
+            Err(_) => true,
+        };
+    let plan = if moves_network_domain { plan.with_network_domain(&site.domain)? } else { plan };
+
     let rewrite = match confedit::rewrite(&original, &plan) {
         Ok(r) => r,
         Err(refusal) => {
@@ -207,6 +232,7 @@ fn resolve(state: &State<'_, AppState>, site_id: &str) -> Result<Resolution> {
         rewrite,
         creates_user,
         engine,
+        moves_network_domain,
     })))
 }
 
@@ -250,6 +276,7 @@ pub async fn rewrite_preview(
                         Path::new(&r.site.path),
                     )
                 }),
+                moves_network_domain: r.moves_network_domain,
             })
         }
     }
@@ -685,6 +712,27 @@ mod crash_ordering {
             at(&body, "confedit::rewrite(&original, &plan)") > applied,
             "the diff must be produced from the plan AFTER the rename is added, or the preview omits it"
         );
+    }
+
+    /// A network's DOMAIN_CURRENT_SITE reaches the plan before the diff is
+    /// produced — decided from the site row (is it a network?) AND the file
+    /// (does the constant differ from the rexenv name?). A decision computed and
+    /// never staged connects a network whose logins fail; one staged after the
+    /// diff writes a change the preview never showed.
+    #[test]
+    fn a_networks_domain_reaches_the_plan_before_the_diff() {
+        let body = body_of("fn resolve(");
+        let decided = at(&body, "let moves_network_domain");
+        let staged = at(&body, "plan.with_network_domain(&site.domain)");
+        assert!(decided < staged, "the network decision must precede staging it");
+        assert!(
+            at(&body, "confedit::rewrite(&original, &plan)") > staged,
+            "the diff must be produced from the plan AFTER the network domain is added"
+        );
+        let rule = &body[decided..staged];
+        for needed in ["site.multisite", "\"DOMAIN_CURRENT_SITE\"", "v != site.domain"] {
+            assert!(rule.contains(needed), "the network rule lost `{needed}`: {rule}");
+        }
     }
 
     /// **Apply is ordered so every crash window leaves the ORIGINAL

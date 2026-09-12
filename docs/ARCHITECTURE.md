@@ -1087,7 +1087,11 @@ honest footer —
   `core/{confedit,confverify,confrewrite}`, `commands/rewrite.rs`, v21/v22).
   `RewriteKey` is a closed enum (Host/Port/User/Name — Name, the database NAME, added
   12 Sep 2026 so a collision-renamed copy such as a second Local site's
-  `local_<domain>` connects in one click instead of tell-only; ledger #574) — no
+  `local_<domain>` connects in one click instead of tell-only; ledger #574; and
+  NetworkDomain, a multisite network's `DOMAIN_CURRENT_SITE`, added the same day so an
+  imported network's logins work under its rexenv name — wp-config only, staged only
+  when the site row says network AND the file's value differs, and the preview says the
+  source tool can't load the network under its old name while connected; ledger #581) — no
   password key exists, so no plan,
   diff or write can stage one; wp-config edits are OUR value-span editor (not wp-cli:
   the preview must BE the write). The diff is derived from the produced bytes; apply

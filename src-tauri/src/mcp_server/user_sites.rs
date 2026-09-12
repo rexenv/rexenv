@@ -3381,9 +3381,9 @@ fn connection_rewrite<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::f
         use crate::commands::rewrite::{RevertOutcome, RewriteApplied, RewritePreview};
         let result = match action {
             "preview" => match im.rewrite_preview(site.id.clone()).await? {
-                RewritePreview::Ready { file, diff, fingerprint, creates_user, backup_exists, laravel_cache_warning, target, old_database_unreachable } => json!({
+                RewritePreview::Ready { file, diff, fingerprint, creates_user, backup_exists, laravel_cache_warning, target, old_database_unreachable, moves_network_domain } => json!({
                     "status": "ready", "file": basename(&file), "fingerprint": fingerprint, "createsUser": creates_user, "backupExists": backup_exists,
-                    "laravelCacheWarning": laravel_cache_warning, "target": target, "oldDatabaseUnreachable": old_database_unreachable,
+                    "laravelCacheWarning": laravel_cache_warning, "target": target, "oldDatabaseUnreachable": old_database_unreachable, "movesNetworkDomain": moves_network_domain,
                     "diff": diff.iter().map(|d| json!({ "sign": d.sign.to_string(), "line": d.line, "text": scrub(&d.text) })).collect::<Vec<_>>(),
                 }),
                 RewritePreview::Refused { reason, file } => json!({ "status": "refused", "reason": scrub(&reason), "file": file.as_deref().map(basename) }),
@@ -4210,6 +4210,7 @@ pub(crate) mod tests {
                 diff: vec![crate::core::confedit::DiffLine { sign: '+', line: 3, text: "define('DB_HOST', '127.0.0.1:13306'); // was /Users/somebody/Library/Application Support/rexenv/x".into() }],
                 fingerprint: "sha256:abc".into(), creates_user: None, backup_exists: false, laravel_cache_warning: false, target: "127.0.0.1:13306".into(),
                 old_database_unreachable: false,
+                moves_network_domain: false,
             }) })
         }
         fn rewrite_apply<'a>(&'a self, site_id: String, fingerprint: String) -> OpFuture<'a, Result<crate::commands::rewrite::RewriteApplied>> {
