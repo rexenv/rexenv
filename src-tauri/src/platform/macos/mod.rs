@@ -342,6 +342,33 @@ fn stop_pid(pid: u32, grace_tries: u32, interval: Duration) -> Result<()> {
 
 pub struct MacosSupervisor;
 impl ProcessSupervisor for MacosSupervisor {
+    fn terminate_child(&self, child: &mut Child) {
+        // SIGTERM first — a php-fpm / nginx MASTER takes its workers down with it,
+        // where a bare SIGKILL orphans them holding the listen socket — then
+        // SIGKILL after a 2s grace. `try_wait` both polls and reaps.
+        let _ = std::process::Command::new("kill").arg(child.id().to_string()).status();
+        for _ in 0..20 {
+            if matches!(child.try_wait(), Ok(Some(_))) {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+    fn signal_reload(&self, pid: u32) -> bool {
+        matches!(
+            std::process::Command::new("kill").args(["-HUP", &pid.to_string()]).status(),
+            Ok(s) if s.success()
+        )
+    }
+    fn pid_alive(&self, pid: u32) -> bool {
+        std::process::Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    }
     fn spawn(&self, program: &Path, args: &[String]) -> Result<Child> {
         Ok(std::process::Command::new(program).args(args).spawn()?)
     }

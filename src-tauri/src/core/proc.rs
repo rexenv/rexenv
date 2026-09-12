@@ -83,17 +83,13 @@ impl Proc {
     /// orphans them still holding the listen socket (port probes then read
     /// "running" against a frozen, masterless pool) — then SIGKILL after a
     /// short grace. Adopted processes are deliberately left alone.
+    ///
+    /// The signalling is the platform's (`ProcessSupervisor::terminate_child`).
+    /// This runs from `Drop`, which has no `Platform` in hand, so it asks for the
+    /// build OS's — as `wordpress.rs` already does.
     pub fn terminate(&mut self) {
         if let Proc::Child(c, _) = self {
-            let _ = std::process::Command::new("kill").arg(c.id().to_string()).status();
-            for _ in 0..20 {
-                if matches!(c.try_wait(), Ok(Some(_))) {
-                    return;
-                }
-                std::thread::sleep(std::time::Duration::from_millis(100));
-            }
-            let _ = c.kill();
-            let _ = c.wait();
+            crate::platform::current().supervisor().terminate_child(c);
         }
     }
 
@@ -101,15 +97,11 @@ impl Proc {
     /// healthy service from its orphaned children still squatting on the
     /// listen socket (php-fpm workers outlive a SIGKILLed master and keep
     /// accepting) — this checks the PROCESS we manage. Child: `try_wait`
-    /// (also reaps a zombie); adopted: signal 0.
+    /// (also reaps a zombie); adopted: the platform's `pid_alive` (signal 0 on macOS).
     pub fn alive(&mut self) -> bool {
         match self {
             Proc::Child(c, _) => matches!(c.try_wait(), Ok(None)),
-            Proc::Adopted(pid) => std::process::Command::new("kill")
-                .args(["-0", &pid.to_string()])
-                .status()
-                .map(|s| s.success())
-                .unwrap_or(false),
+            Proc::Adopted(pid) => crate::platform::current().supervisor().pid_alive(*pid),
         }
     }
 }

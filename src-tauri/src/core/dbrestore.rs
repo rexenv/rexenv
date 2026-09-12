@@ -41,7 +41,6 @@ use rusqlite::Connection;
 use std::io::{BufRead, Write};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
 
 /// Witness that provenance is on disk. Private constructor; carries whether the
 /// database is OURS (we created it) — read from the record, so callers can't
@@ -177,17 +176,10 @@ pub fn feed(
         String::from_utf8_lossy(&raw).into_owned()
     });
 
+    // Graceful-then-forceful through the platform (SIGTERM → poll → SIGKILL on
+    // macOS). `feed` has no `Platform` in hand, so it asks for the build OS's.
     let kill = |child: &mut std::process::Child| {
-        let pid = child.id().to_string();
-        let _ = std::process::Command::new("kill").arg(&pid).status();
-        for _ in 0..20 {
-            if matches!(child.try_wait(), Ok(Some(_))) {
-                break;
-            }
-            std::thread::sleep(Duration::from_millis(100));
-        }
-        let _ = child.kill();
-        let _ = child.wait();
+        crate::platform::current().supervisor().terminate_child(child);
     };
 
     // Skip the flagged sandbox line, if any. Bytes, not `read_line`: the same

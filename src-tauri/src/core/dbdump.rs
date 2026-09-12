@@ -857,19 +857,11 @@ pub fn dump(
 
     let status = loop {
         if cancel.load(Ordering::SeqCst) {
-            // SIGTERM first, poll, then SIGKILL — the Proc::terminate shape.
-            // Either way their server just sees the connection drop; the
-            // snapshot transaction rolls back in session teardown.
-            let pid = child.id().to_string();
-            let _ = std::process::Command::new("kill").arg(&pid).status();
-            for _ in 0..20 {
-                if matches!(child.try_wait(), Ok(Some(_))) {
-                    break;
-                }
-                std::thread::sleep(Duration::from_millis(100));
-            }
-            let _ = child.kill();
-            let _ = child.wait();
+            // Graceful-then-forceful, the Proc::terminate shape, through the
+            // platform (SIGTERM → poll → SIGKILL on macOS). Either way their
+            // server just sees the connection drop; the snapshot transaction
+            // rolls back in session teardown.
+            platform.supervisor().terminate_child(&mut child);
             let _ = stderr_thread.join();
             let _ = std::fs::remove_file(&partial);
             return Ok(DumpOutcome::Cancelled);

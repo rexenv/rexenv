@@ -52,8 +52,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   - [ ] W1 — move Unix-only code behind traits; widen ledger #163's scan to `std::os::unix`
     and `Command::new("kill")`, plant-proven. **Progress 12 Sep 2026:** the app lib and
     binary now COMPILE for Windows (objc2 dev-deps gated, About-menu cfg, MCP transport-only
-    gate, `LocalIpc` for the edge admin + MySQL socket probes). Open: 24 test-module sites,
-    58 in 17 examples, the `cli` crate (D3/W8), `kill` in `core/`, and the scan itself (plan §2.1)
+    gate, `LocalIpc` for the edge admin + MySQL socket probes; `kill` in `core/` moved to
+    `ProcessSupervisor`). Open: 24 test-module sites, 58 in 17 examples, the `cli` crate
+    (D3/W8), and the scan itself (plan §2.1)
   - [ ] W2 — `(os, arch)` binary catalog; Windows pins + checksums; sweep covers them
   - [ ] W3 — Paths, ACL permissions, BinaryProvider, ProcessSupervisor (MySQL + Mailpit
     start, outlive the app, adopt on relaunch — on real Windows)

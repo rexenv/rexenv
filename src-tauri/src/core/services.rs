@@ -872,10 +872,9 @@ pub fn reload_nginx(
         .map(|d| d.display().to_string())
         .filter(|m| !m.is_empty());
     if let Some(pid) = marker.and_then(|m| platform.supervisor().owned_master(port, &m)) {
-        let hup = std::process::Command::new("kill")
-            .args(["-HUP", &pid.to_string()])
-            .status();
-        if matches!(hup, Ok(s) if s.success()) {
+        // SIGHUP on macOS; `false` where the OS has no reload signal, which falls
+        // through to the next step exactly like a failed send.
+        if platform.supervisor().signal_reload(pid) {
             // HEAL the pid file. SIGHUP does not make nginx rewrite it, so
             // without this every later reload keeps taking the fallback and the
             // broken state persists invisibly until someone restarts nginx —

@@ -189,6 +189,29 @@ pub trait ProcessSupervisor: Send + Sync {
     }
     /// Stop a previously spawned process by pid.
     fn stop(&self, pid: u32) -> Result<()>;
+    /// End a child THIS process spawned and still holds the handle to, as
+    /// gracefully as the OS allows, and reap it — the Drop-path and cancel stop,
+    /// where a bare kill orphans a master's workers still holding its listen
+    /// socket. The default is the only portable step, `kill` + `wait` with no
+    /// grace, for a platform with no "please exit" to send; macOS sends SIGTERM
+    /// first. What graceful means on Windows is per-service work (port W3).
+    fn terminate_child(&self, child: &mut Child) {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+    /// Ask `pid` to reload its configuration (nginx: SIGHUP). `false` = not sent —
+    /// this OS has no such signal (the default) or the send failed — and the
+    /// caller must fall back rather than report a reload.
+    fn signal_reload(&self, _pid: u32) -> bool {
+        false
+    }
+    /// Whether `pid` names a live process (an ADOPTED service's liveness — never
+    /// its identity; see `ServiceManager`'s ownership rule). Default: the process
+    /// has a command line. macOS keeps `kill -0`, which also says no for a
+    /// process this user may not signal.
+    fn pid_alive(&self, pid: u32) -> bool {
+        self.pid_command(pid).is_some()
+    }
 
     /// PIDs of every process whose NAME is exactly `name` (candidate
     /// enumeration only — callers must positively identify each pid via

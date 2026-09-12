@@ -35,7 +35,8 @@ platform/   ALL OS-specific code, behind 13 traits (platform/traits.rs):
   every method `todo!()`. The design goal is "adding an OS = filling stubs"; **the tree
   does not meet it yet** (measured 12 Sep 2026): unix sockets (`cli_server`, the `rex`
   CLI, `core/proxy.rs`, `core/dbsource.rs`; `mcp_server` compiles everywhere since W1,
-  only its socket transport is `cfg(unix)`), `Command::new("kill")` in `core/`,
+  only its socket transport is `cfg(unix)`; `core/`'s `Command::new("kill")` moved behind
+  `ProcessSupervisor` the same day),
   and `macos-`/`darwin` URLs in `core/binaries.rs` sit outside `platform/`, and three
   mechanisms — php-fpm, `/etc/resolver`, unix-socket IPC — do not exist on Windows at all.
   Ledger #163's scan stayed green through all of it because it looks for OS module names

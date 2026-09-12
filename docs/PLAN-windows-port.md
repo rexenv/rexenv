@@ -38,7 +38,7 @@ traits and false for the tree**:
 | `src-tauri/src/core/dbsource.rs:296` | `UnixStream` to a database socket | same |
 | `src-tauri/src/core/cli.rs:99` | `std::os::unix::fs::symlink` | same; `ShellRunner::symlink_dir` already exists |
 | `src-tauri/src/core/confrewrite.rs:85` | `OpenOptionsExt` mode 0600 | same; `PermissionManager::write_private` already exists |
-| `src-tauri/src/core/proc.rs:88, :108`, `core/services.rs:875`, `core/dbdump.rs:864`, `core/dbrestore.rs:182` | `Command::new("kill")` | compiles, fails at runtime — there is no `kill` and no signals |
+| `src-tauri/src/core/proc.rs:88, :108`, `core/services.rs:875`, `core/dbdump.rs:864`, `core/dbrestore.rs:182` | `Command::new("kill")` | compiles, fails at runtime — there is no `kill` and no signals. **Fixed 12 Sep 2026 (W1):** three copies of the TERM → 2s → KILL loop, the nginx SIGHUP and the adopted-pid `kill -0` became `ProcessSupervisor::terminate_child` / `signal_reload` / `pid_alive`. macOS overrides each with the exact old behaviour; the defaults are the portable floor (kill + wait, "no reload signal", has-a-command-line), so Windows compiles and falls back honestly until W3 decides what graceful means per service |
 
 The table above was a grep. **W0's compiler run is the authoritative list**
 (`scripts/windows-check.sh`, first run 12 Sep 2026: RED, 29 error sites — 19 in

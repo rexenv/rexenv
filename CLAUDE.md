@@ -40,8 +40,9 @@ headers saying "not started" about shipped features. Derived beats typed.
 - ALL OS-specific code lives ONLY in `src-tauri/src/platform/`, behind the 13 Rust traits
   in `platform/traits.rs`, impls selected via `#[cfg(target_os)]`. macOS impls are real;
   `windows/`/`linux/` stay `todo!()`. The traits are designed so adding an OS = filling
-  stubs — but measured 12 Sep 2026 the tree is NOT there yet: Unix sockets, `kill` and
-  macOS-only binary URLs still live outside `platform/`, and php-fpm / `/etc/resolver` /
+  stubs — but measured 12 Sep 2026 the tree is NOT there yet: the `rex` CLI's unix socket
+  and macOS-only binary URLs still live outside `platform/` (the app lib itself now
+  compiles for Windows), and php-fpm / `/etc/resolver` /
   unix-socket IPC have no Windows equivalent. The inventory and the port: `docs/PLAN-windows-port.md`.
 
 ## Non-negotiables (foundational — don't relitigate)
