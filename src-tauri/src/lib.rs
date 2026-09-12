@@ -12,6 +12,9 @@ pub mod platform;
 pub mod state;
 pub mod utils;
 
+#[cfg(test)]
+mod test_support;
+
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

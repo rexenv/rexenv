@@ -150,6 +150,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)] // runs `#!/bin/sh` scripts
     fn probe_version_reports_a_tool_and_bounds_a_hung_one() {
         use std::os::unix::fs::PermissionsExt;
         let dir = std::env::temp_dir().join(format!("rexenv-probe-{}", std::process::id()));

@@ -686,7 +686,7 @@ mod tests {
         assert_eq!(db.socket, local_home(&home.0).join("run/0Yh5N8r16/mysql/mysqld.sock"));
 
         let link = home.0.join("linked-docroot");
-        std::os::unix::fs::symlink(&doc, &link).unwrap();
+        crate::test_support::symlink(&doc, &link).unwrap();
         assert_eq!(db_source_for(&home.0, &link).map(|d| d.port), Some(10003), "a symlinked docroot is the same site");
 
         assert!(db_source_for(&home.0, &home.0.join("Local Sites/ea")).is_none(), "the site ROOT isn't the docroot");

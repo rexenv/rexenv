@@ -57,7 +57,7 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
 | rex CLI (remote control, never a second brain) | `cli/src/main.rs` (own crate) + `cli_server.rs` (app side), `core/cli.rs` (PATH install) | dispatches to the SAME commands::* fns | Paths | #54–58; `cli_socket_check`; surface: `CLI-ROADMAP.md` |
 | App state (SQLite v1–v44, store) | `state/db.rs` (migrations), `state/store.rs`, `state/models.rs`, `state/app.rs` (AppState, locks) | — | — | #167–174 |
 | Menu-bar app (tray, no dock icon) | `core/tray.rs` (the menu as data: `TrayModel` → `MenuSpec`, `TrayAction` ids) | `lib.rs` (`install_tray`, `tray_model`, `render_menu`, `refresh_tray`, `on_tray_click`, `show_main_window`, the `Accessory` policy, the `CloseRequested` hide), `platform/macos/activation.rs` (`activate_app`), `scripts/make-menubar-icon.py` → `icons/menubar.png`, `App.tsx` `TrayRouteWatch` ← `tray://route`, `HIDDEN_LAUNCH_FLAG` + `first_window_decision` (login launch), `cli_server::hand_off_to_running_instance` + the `app.open` arm (single instance) | `rex open` | #436, #437, #438, #439, #441; plan: `PLAN-menubar-tray.md`; ARCHITECTURE "the APP outlives the window" |
-| App entry / wiring | `lib.rs` (builder, launch adopt, watchdog, exit hooks, `StartupNotices`), `main.rs` (`--dns-agent` and `--tunnel-guard` modes), `error.rs` | — | — | #59–61, #431 |
+| App entry / wiring | `lib.rs` (builder, launch adopt, watchdog, exit hooks, `StartupNotices`), `main.rs` (`--dns-agent` and `--tunnel-guard` modes), `error.rs`, `test_support.rs` (test-only fixtures that need an OS std extension — symlink, file mode, raw exit status — kept out of `core/` so #163's scan never reads them as production) | — | — | #59–61, #431, #163 |
 
 ## Frontend
 

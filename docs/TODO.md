@@ -58,7 +58,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     `cfg(unix)`, `cfg(not(unix))` and `kill` in `core/` production now fail it, plant-proven.
     `cli_server` compiles everywhere too (transport-only gate), and every example now
     compiles for Windows (unix-socket and macOS-only checks print a skip line there).
-    Open: 21 test-module sites and the `cli` crate's 10 (D3/W8) (plan §2.1)
+    The whole `src-tauri` crate — lib, binary, tests, every example — now compiles for
+    Windows (test-only OS fixtures live in `src/test_support.rs`). Open: the `cli` crate's
+    10 sites (D3/W8) (plan §2.1)
   - [ ] W2 — `(os, arch)` binary catalog; Windows pins + checksums; sweep covers them
   - [ ] W3 — Paths, ACL permissions, BinaryProvider, ProcessSupervisor (MySQL + Mailpit
     start, outlive the app, adopt on relaunch — on real Windows)

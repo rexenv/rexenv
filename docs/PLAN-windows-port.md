@@ -135,6 +135,17 @@ its file-level `#![cfg(target_os = "macos")]` — which on any other OS leaves a
 in-process needed nothing: gating `cli_server`'s transport instead of the whole module was
 the whole fix.
 
+**`src-tauri` compiles for Windows, every target (12 Sep 2026).** The last 21 sites were
+inside `#[cfg(test)]` modules: unix symlink and file-mode fixtures, a `/bin/sh` fake
+supervisor's `process_group`, and an `ExitStatusExt::from_raw`. They now go through
+`src/test_support.rs` — deliberately outside `core/`, because a helper FILE reads as
+production to ledger #163's scan even when only tests call it. The one test that runs
+`#!/bin/sh` scripts is `cfg(unix)`, and the fake supervisor sets its process group only
+on unix. One more misplaced `cfg` turned up, the `QUIT_MENU_ID` shape again:
+`#[cfg(target_os = "macos")]` above a stray doc comment in `core/sites.rs` gated the
+`UNPINNED_PROVISIONERS` const while the test that reads it was ungated — the test only
+reads example files, so the attribute went. Windows run 31 → 10, all in the `cli` crate.
+
 ### 2.2 The binary catalog has no OS dimension
 
 `src-tauri/src/core/binaries.rs` keys pins by `Arch` alone, and the URLs spell macOS into

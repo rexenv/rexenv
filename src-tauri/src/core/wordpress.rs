@@ -3952,10 +3952,9 @@ mod tests {
     /// missing schema, and a Blank-PHP docroot.
     #[test]
     fn is_installed_stderr_separates_a_down_database_from_no_wordpress() {
-        use std::os::unix::process::ExitStatusExt;
-        use std::process::{ExitStatus, Output};
+        use std::process::Output;
         let out = |code: i32, stderr: &str| Output {
-            status: ExitStatus::from_raw(code << 8),
+            status: crate::test_support::exit_status(code),
             stdout: Vec::new(),
             stderr: stderr.as_bytes().to_vec(),
         };
@@ -4760,11 +4759,11 @@ Error: WordPress installation doesn't verify against checksums.";
         std::fs::write(outside.join(".DS_Store"), "outside-victim").unwrap();
         std::fs::write(root.join("wp-config.php"), "inside-victim").unwrap();
         // Symlink named like noise → OUTSIDE file: must not be followed.
-        std::os::unix::fs::symlink(outside.join(".DS_Store"), root.join("wp-admin/.DS_Store"))
+        crate::test_support::symlink(outside.join(".DS_Store"), root.join("wp-admin/.DS_Store"))
             .unwrap();
         // Symlink named like noise → INSIDE non-noise file: the canonical path
         // passes the prefix check — only the lstat guard saves wp-config.php.
-        std::os::unix::fs::symlink(root.join("wp-config.php"), root.join("wp-admin/css/._cfg"))
+        crate::test_support::symlink(root.join("wp-config.php"), root.join("wp-admin/css/._cfg"))
             .unwrap();
         // Directory named like noise — files only.
         std::fs::create_dir(root.join(".Trashes")).unwrap();

@@ -786,7 +786,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&outside);
         std::fs::create_dir_all(&outside).unwrap();
         std::fs::write(outside.join("keep.txt"), "mine").unwrap();
-        std::os::unix::fs::symlink(&outside, dir.join("linked")).unwrap();
+        crate::test_support::symlink(&outside, dir.join("linked")).unwrap();
         clear_failed_skeleton(&dir).unwrap();
         assert!(dir.is_dir());
         assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 0);

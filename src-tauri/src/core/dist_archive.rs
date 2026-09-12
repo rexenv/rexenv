@@ -632,7 +632,7 @@ mod tests {
         std::fs::create_dir_all(&real).unwrap();
         std::fs::create_dir_all(&plugins).unwrap();
         let link = plugins.join("awesome-slug");
-        std::os::unix::fs::symlink(&real, &link).unwrap();
+        crate::test_support::symlink(&real, &link).unwrap();
         // Archivable by default: the target rules are what these tests are
         // about, and a missing .distignore would refuse every one of them for
         // the wrong reason — a fixture that passes a test by failing earlier
@@ -908,24 +908,28 @@ mod tests {
             cwd: &Path,
             env: &[(String, String)],
         ) -> Result<std::process::Child> {
-            use std::os::unix::process::CommandExt;
             let tmp = env
                 .iter()
                 .rfind(|(k, _)| k == "TMPDIR")
                 .map(|(_, v)| PathBuf::from(v))
                 .expect("TMPDIR must be set for the child");
             *self.seen_tmpdir.lock().unwrap() = Some(tmp);
-            Ok(std::process::Command::new("/bin/sh")
-                .arg("-c")
+            let mut cmd = std::process::Command::new("/bin/sh");
+            cmd.arg("-c")
                 .arg(&self.script)
                 .current_dir(cwd)
                 .env_clear()
                 .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
                 .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped())
-                .process_group(0)
-                .spawn()?)
+                .stderr(std::process::Stdio::piped());
+            // Its own process group, as the real supervisor spawns it — unix only.
+            #[cfg(unix)]
+            {
+                use std::os::unix::process::CommandExt;
+                cmd.process_group(0);
+            }
+            Ok(cmd.spawn()?)
         }
         fn spawn(&self, _p: &Path, _a: &[String]) -> Result<std::process::Child> {
             unimplemented!("the archive path only ever uses spawn_streamed")
@@ -1179,7 +1183,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("stage")).unwrap();
         let occupied = dir.join("my-plugin.1.2.3.zip");
-        std::os::unix::fs::symlink(dir.join("no-such-target"), &occupied).unwrap();
+        crate::test_support::symlink(dir.join("no-such-target"), &occupied).unwrap();
         assert!(!occupied.exists(), "the fixture needs a name `exists()` denies");
         assert!(occupied.symlink_metadata().is_ok(), "but that is really there");
 

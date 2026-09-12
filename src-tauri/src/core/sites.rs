@@ -3792,16 +3792,12 @@ mod tests {
         // mentions the failure, no partial target left, source intact.
         let locked = root.join("locked");
         std::fs::create_dir_all(&locked).unwrap();
-        let mut perms = std::fs::metadata(&locked).unwrap().permissions();
-        use std::os::unix::fs::PermissionsExt;
-        perms.set_mode(0o555);
-        std::fs::set_permissions(&locked, perms.clone()).unwrap();
+        crate::test_support::set_mode(&locked, 0o555).unwrap();
         let denied = move_dir(&doc, &locked.join("acme.test")).unwrap_err().to_string();
         assert!(denied.contains("nothing changed"), "{denied}");
         assert!(doc.join("index.php").exists(), "source untouched on failure");
         assert!(!locked.join("acme.test").exists(), "no partial target left");
-        perms.set_mode(0o755);
-        std::fs::set_permissions(&locked, perms).unwrap();
+        crate::test_support::set_mode(&locked, 0o755).unwrap();
 
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -4901,7 +4897,6 @@ mod tests {
         assert_eq!(store::get_setting(&conn, "k").unwrap().as_deref(), Some("v2"));
     }
 
-    #[cfg(target_os = "macos")]
     /// **A fixture that sandboxes its PATHS and not its SITES FOLDER is refused,
     /// rather than quietly filling the user's real one.**
     ///

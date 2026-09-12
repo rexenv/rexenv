@@ -1682,7 +1682,7 @@ mod folding_a_link_farm {
         assert_eq!(already_here(&existing, &ea, "ea.rex", Some("ea.local")), Some(SiteStatus::AlreadyImported));
         // A symlinked route to the same folder is the same folder.
         let link = dir.join("link");
-        let _ = std::os::unix::fs::symlink(&ea, &link);
+        let _ = crate::test_support::symlink(&ea, &link);
         assert_eq!(already_here(&existing, &link, "x.test", None), Some(SiteStatus::AlreadyImported));
         // A different folder whose re-homed name another site holds: a collision.
         let fresh = dir.join("fresh");

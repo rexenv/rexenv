@@ -153,6 +153,8 @@ rexenv/
         ├── cli_server.rs       # `rex` socket server — dispatches to the SAME
         │                       #   commands::* fns the UI calls (one code path)
         ├── error.rs            # shared error type (serializes for the UI)
+        ├── test_support.rs     # test-only OS fixtures (symlink, mode, exit status) — kept
+        │                       #   out of core/ so ledger #163's scan stays clean
         │
         ├── commands/           # Tauri IPC handlers (THIN — just call core/)
         │   ├── system.rs       # status, setup, DNS/SSL, autostart, open-external

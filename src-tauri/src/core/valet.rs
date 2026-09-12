@@ -584,11 +584,11 @@ mod tests {
         fn project(self, name: &str) -> Self {
             let p = self.0.join("projects").join(name);
             std::fs::create_dir_all(&p).unwrap();
-            std::os::unix::fs::symlink(&p, self.0.join("Sites").join(name)).unwrap();
+            crate::test_support::symlink(&p, self.0.join("Sites").join(name)).unwrap();
             self
         }
         fn dangling(self, name: &str, target: &str) -> Self {
-            std::os::unix::fs::symlink(target, self.0.join("Sites").join(name)).unwrap();
+            crate::test_support::symlink(target, self.0.join("Sites").join(name)).unwrap();
             self
         }
         fn conf(self, fqdn: &str, body: &str) -> Self {
