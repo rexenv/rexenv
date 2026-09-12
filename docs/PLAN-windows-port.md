@@ -48,8 +48,11 @@ The table above was a grep. **W0's compiler run is the authoritative list**
   (`commands/mod.rs:14`) are compiled out on Windows, yet `lib.rs:223, :973, :1367–1368,
   :1858, :2165` and `commands/scratch.rs:24` name them. Ledger #163's scan looks for
   `cfg(target_os`, not `cfg(unix)`, so this passed it too.
-- **`QUIT_MENU_ID`** is defined under `cfg(macos)` (`lib.rs:2255`) and used outside it
-  (`lib.rs:2289, :2298`).
+- ~~**`QUIT_MENU_ID`** is defined under `cfg(macos)` (`lib.rs:2255`) and used outside it
+  (`lib.rs:2289, :2298`).~~ **Fixed 12 Sep 2026 (W1):** the `cfg` had landed between
+  `install_about_menu_item`'s doc comment and the const's, gating the const and not the
+  function. The attribute now sits on the function and the const lives inside it, its
+  only user; Windows run 58 → 56, no `QUIT_MENU_ID` site left.
 - **The `objc2` dev-dependencies** (`src-tauri/Cargo.toml` `[dev-dependencies]`:
   `objc2`, `objc2-foundation`, `objc2-web-kit`) are not target-gated, so every test and
   example target fails for Windows before a line of ours is checked. The `[dependencies]`

@@ -2249,12 +2249,17 @@ pub const CHECK_UPDATES_MENU_EVENT: &str = "menu://check-updates";
 /// it — Services/Hide/Quit and the whole Edit menu with Cmd-C/V/Z — survives;
 /// rebuilding a menu from scratch is how apps lose the clipboard shortcuts they
 /// never wrote.
+///
+/// The `cfg` sits on the FUNCTION. It used to sit between this doc comment and
+/// the Quit id's, which gated the const and left the function compiling on every
+/// OS — so a Windows build failed on the id it could no longer see
+/// (docs/PLAN-windows-port.md §2.1).
 #[cfg(target_os = "macos")]
-/// The custom Quit item's id — custom so that Cmd+Q raises `ExitRequested`
-/// like every other quit, instead of `terminate:`-ing straight past the gate.
-const QUIT_MENU_ID: &str = "rex-quit";
-
 fn install_about_menu_item(app: &tauri::AppHandle) -> tauri::Result<()> {
+    // The custom Quit item's id — custom so that Cmd+Q raises `ExitRequested`
+    // like every other quit, instead of `terminate:`-ing straight past the gate.
+    // Scoped to its only user, so no attribute can separate the two again.
+    const QUIT_MENU_ID: &str = "rex-quit";
     use tauri::menu::{Menu, MenuItem, MenuItemKind};
     use tauri::Emitter;
 
