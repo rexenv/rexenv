@@ -27,12 +27,12 @@ const CADDY_HTTP: u16 = 8080;
 const CADDY_HTTPS: u16 = 8443;
 
 fn fetch(domain: &str, ca_pem: &str) -> (String, String) {
-    let code = Command::new("curl")
+    let code = Command::new("curl").args(["--max-time", "60"])
         .args(["-s", "--resolve", &format!("{domain}:{CADDY_HTTPS}:127.0.0.1"),
                "--cacert", ca_pem, "-o", "/dev/null", "-w", "%{http_code}",
                &format!("https://{domain}:{CADDY_HTTPS}/")])
         .output().expect("curl").stdout;
-    let body = Command::new("curl")
+    let body = Command::new("curl").args(["--max-time", "60"])
         .args(["-s", "--resolve", &format!("{domain}:{CADDY_HTTPS}:127.0.0.1"),
                "--cacert", ca_pem, &format!("https://{domain}:{CADDY_HTTPS}/")])
         .output().expect("curl").stdout;

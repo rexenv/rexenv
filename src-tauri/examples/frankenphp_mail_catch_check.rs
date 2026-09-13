@@ -43,7 +43,10 @@ const DOMAIN: &str = "fpmail.test";
 const SUBJECT: &str = "rexenv-fp-mail-514";
 
 fn get(path: &str) -> String {
-    let out = Command::new("curl")
+    // Bounded (13 Sep 2026): with no --max-time, a backend that accepted and never
+    // answered held 0.7.1's release gate for 50 minutes at 0% CPU. A hung request
+    // now fails its check with an empty body instead of stalling the tier.
+    let out = Command::new("curl").args(["--max-time", "60"])
         .args(["-s", "-H", &format!("Host: {DOMAIN}"), &format!("http://127.0.0.1:{PORT}{path}")])
         .output()
         .expect("curl")
