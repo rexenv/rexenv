@@ -236,8 +236,14 @@ impl ProcessSupervisor for WindowsSupervisor {
             })
             .collect()
     }
+    /// Climbed from the listeners to the group's topmost marked process: nginx's listener
+    /// is its worker, not its master (measured — `process::climb_to_group_root`).
     fn owned_master(&self, port: u16, owner_marker: &str) -> Option<u32> {
-        process::root_of(&self.owned_listeners(port, owner_marker))
+        process::climb_to_group_root(&self.owned_listeners(port, owner_marker), owner_marker)
+    }
+    /// nginx listens for a reload EVENT on Windows, not a signal (`stop_policy.rs`).
+    fn signal_reload(&self, pid: u32) -> bool {
+        process::set_named_event(&stop_policy::nginx_reload_event(pid))
     }
     fn owned_pids(&self, marker: &str) -> Vec<u32> {
         process::processes()

@@ -367,24 +367,15 @@ impl super::stop_policy::Target for Stoppable {
         self.process.as_ref().is_some_and(|p| unsafe { WaitForSingleObject(p.0, 0) } == WAIT_TIMEOUT)
     }
 
-    /// The process's own shutdown event, if it published one — today only `mysqld`'s.
+    /// The process's own shutdown event, if it published one — `mysqld`'s or nginx's.
     fn request_clean_exit(&mut self) -> bool {
-        let name: Vec<u16> = super::stop_policy::mysqld_shutdown_event(self.pid)
-            .encode_utf16()
-            .chain(std::iter::once(0))
-            .collect();
-        // SAFETY: a NUL-terminated name; a null handle (no such event) is checked.
-        let event = unsafe { OpenEventW(EVENT_MODIFY_STATE, 0, name.as_ptr()) };
-        if event.is_null() {
-            return false;
+        for name in super::stop_policy::clean_exit_events(self.pid) {
+            if set_named_event(&name) {
+                log::info!("rexenv: asked pid {} to shut down through its {name} event", self.pid);
+                return true;
+            }
         }
-        let event = Owned(event);
-        // SAFETY: an event handle opened with EVENT_MODIFY_STATE.
-        let delivered = unsafe { SetEvent(event.0) } != 0;
-        if delivered {
-            log::info!("rexenv: asked pid {} to shut down through its MYSQLShutdown event", self.pid);
-        }
-        delivered
+        false
     }
 
     fn wait_exit(&mut self, budget: Duration) -> bool {
@@ -465,4 +456,39 @@ pub(crate) fn keep_inheritable_handles_out_of_children() -> usize {
         .filter(|&h| !h.is_null() && h != INVALID_HANDLE_VALUE)
         .filter(|&h| clear(h))
         .count()
+}
+
+/// Set the named event `name` if some process published it; `false` when none exists or
+/// the set fails. How rexenv talks to a server that listens for its own events rather
+/// than for signals (`mysqld`'s shutdown, nginx's quit and reload — `stop_policy.rs`).
+pub(crate) fn set_named_event(name: &str) -> bool {
+    let wide: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
+    // SAFETY: a NUL-terminated name; a null handle (no such event) is checked.
+    let event = unsafe { OpenEventW(EVENT_MODIFY_STATE, 0, wide.as_ptr()) };
+    if event.is_null() {
+        return false;
+    }
+    let event = Owned(event);
+    // SAFETY: an event handle opened with EVENT_MODIFY_STATE.
+    unsafe { SetEvent(event.0) != 0 }
+}
+
+/// The group a listener set belongs to, climbed to its topmost member: from each pid,
+/// up through parents that carry `marker` too — with a parent link counted only when
+/// that parent is not younger than the child (pid reuse) — then `traits::select_master`
+/// over the result. nginx's listener is its WORKER, whose master holds no socket
+/// (measured); php-cgi's listener is already the parent.
+pub(crate) fn climb_to_group_root(listeners: &[u32], marker: &str) -> Option<u32> {
+    if listeners.is_empty() {
+        return None;
+    }
+    let table = processes();
+    let parent_of = |pid: u32| -> Option<u32> {
+        let parent = table.iter().find(|e| e.pid == pid).map(|e| e.parent).filter(|&p| p != 0)?;
+        let (child_born, parent_born) = (creation_time(pid)?, creation_time(parent)?);
+        (parent_born <= child_born).then_some(parent)
+    };
+    let marked = |pid: u32| command_line(pid).is_some_and(|c| port_table::command_carries_marker(&c, marker));
+    let tops = port_table::climb_marked(listeners, parent_of, marked);
+    root_of(&tops)
 }

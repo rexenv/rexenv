@@ -2183,6 +2183,40 @@ pub fn cached_bin(platform: &dyn Platform, name: &str, version: &str) -> Option<
         .flatten()
 }
 
+/// The EXECUTABLE a program runs from, whatever shape it ships in on this OS: the
+/// single binary itself, or the manifest's member inside a directory distribution.
+/// For a program that is a single binary on one OS and a tree on another (nginx: a
+/// static binary on macOS, `nginx.exe` beside `conf\` in the Windows zip) — a caller
+/// that wants "the thing to spawn" must not have to know which.
+pub async fn resolve_program(platform: &dyn Platform, name: &str, version: &str) -> Result<PathBuf> {
+    match shape_of(name) {
+        Shape::Single => resolve(platform, name, version).await,
+        Shape::Dir => {
+            let dir = resolve_dir(platform, name, version).await?;
+            program_member(platform, name, version).map(|m| dir.join(m)).ok_or_else(|| {
+                Error::Other(format!("no binary manifest for {name} {version} on this platform"))
+            })
+        }
+        other => Err(Error::Other(format!("{name} is a {other:?} distribution, not a program to run"))),
+    }
+}
+
+/// [`resolve_program`] without the download: the cached executable, or `None`.
+pub fn cached_program(platform: &dyn Platform, name: &str, version: &str) -> Option<PathBuf> {
+    match shape_of(name) {
+        Shape::Single => cached_path(platform, name, version),
+        Shape::Dir => {
+            let dir = cached_path(platform, name, version)?;
+            Some(dir.join(program_member(platform, name, version)?))
+        }
+        _ => None,
+    }
+}
+
+fn program_member(platform: &dyn Platform, name: &str, version: &str) -> Option<&'static str> {
+    manifest(name, version, std::env::consts::OS, platform.binaries().arch()).map(|spec| spec.member)
+}
+
 /// The cached bundle tree dir for `name`/`version` iff it's actually present —
 /// a bundle dir is valid ONLY when its `member` exists (the same gate
 /// [`resolve_bundle`] uses), so a half-extracted `<name>-<version>/` without the

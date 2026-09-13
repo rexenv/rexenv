@@ -556,8 +556,19 @@ fn storage_block(storage_root: Option<&Path>) -> String {
          \t\t\talias \"{root}/\";\n\
          \t\t\ttry_files $uri =404;\n\
          \t\t}}\n",
-        root = root.display()
+        root = nginx_path(root)
     )
+}
+
+/// A path as nginx.conf must spell it: forward slashes only.
+///
+/// Inside a quoted nginx string a backslash starts an escape. Measured on the Dell
+/// (14 Sep 2026, nginx 1.30.4): `…\rexenv-probe-w3\ngx prefix\nginx.pid` was read as
+/// `exenv-probe-w3 / gx prefix / ginx.pid` — `\r` and `\n` swallowed — and `nginx -t`
+/// failed, while the same config with forward slashes passed. Every path written into the
+/// nginx config goes through here; a path whose separator is `/` is returned unchanged.
+pub fn nginx_path(path: &Path) -> String {
+    path.display().to_string().replace('\\', "/")
 }
 
 fn server_block(http_port: u16, site: &NginxSite) -> String {
@@ -621,7 +632,7 @@ fn server_block(http_port: u16, site: &NginxSite) -> String {
          \t}}\n",
         port = http_port,
         server_name = server_name,
-        root = site.docroot.display(),
+        root = nginx_path(&site.docroot),
         fpm = site.php_fpm_port,
         rewrite = rewrite_block(site.rewrite),
         storage = storage_block(site.storage_root.as_deref()),
@@ -667,7 +678,7 @@ fn stopped_block(http_port: u16, site: &NginxStopped) -> String {
          \t}}\n",
         port = http_port,
         names = names.join(" "),
-        root = site.page_dir.display(),
+        root = nginx_path(&site.page_dir),
     )
 }
 
@@ -678,8 +689,8 @@ pub fn generate_nginx_config(cfg: &NginxConfig) -> String {
     s.push_str("worker_processes 1;\n");
     s.push_str("daemon off;\n"); // foreground for ProcessSupervisor
     // Quote path values: app-data paths contain spaces ("Application Support").
-    s.push_str(&format!("pid \"{}\";\n", cfg.pid.display()));
-    s.push_str(&format!("error_log \"{}\";\n", cfg.error_log.display()));
+    s.push_str(&format!("pid \"{}\";\n", nginx_path(&cfg.pid)));
+    s.push_str(&format!("error_log \"{}\";\n", nginx_path(&cfg.error_log)));
     s.push_str("events {\n\tworker_connections 256;\n}\n\n");
     s.push_str("http {\n");
     // Per-HOST access lines (host + ISO time + bytes) — the default "combined"
@@ -687,7 +698,7 @@ pub fn generate_nginx_config(cfg: &NginxConfig) -> String {
     // page) couldn't be attributed. Kept minimal on purpose: this log is parsed
     // every poll (core::site_metrics).
     s.push_str("\tlog_format rexenv '$host $time_iso8601 $body_bytes_sent';\n");
-    s.push_str(&format!("\taccess_log \"{}\" rexenv;\n", cfg.access_log.display()));
+    s.push_str(&format!("\taccess_log \"{}\" rexenv;\n", nginx_path(&cfg.access_log)));
     s.push_str(
         "\ttypes {\n\
          \t\ttext/html html htm;\n\
@@ -709,7 +720,7 @@ pub fn generate_nginx_config(cfg: &NginxConfig) -> String {
          \tproxy_temp_path \"{t}/proxy\";\n\
          \tuwsgi_temp_path \"{t}/uwsgi\";\n\
          \tscgi_temp_path \"{t}/scgi\";\n",
-        t = cfg.temp_root.display()
+        t = nginx_path(&cfg.temp_root)
     ));
     // Map Caddy's X-Forwarded-Proto to an HTTPS flag for php (WordPress is_ssl()).
     s.push_str("\tmap $http_x_forwarded_proto $rexenv_https {\n\t\tdefault '';\n\t\thttps on;\n\t}\n");
@@ -740,6 +751,10 @@ pub fn write_nginx_config(
     std::fs::create_dir_all(&config_dir)?;
     std::fs::create_dir_all(&log_dir)?;
     std::fs::create_dir_all(&temp_root)?;
+    // nginx opens `<prefix>/logs/error.log` BEFORE it reads the config that names our own
+    // error log, and alerts when that folder is missing (measured on the Dell with the
+    // Windows build, 14 Sep 2026) — so the folder exists, even though nothing is logged there.
+    std::fs::create_dir_all(prefix.join("logs"))?;
 
     let cfg = NginxConfig {
         http_port,
@@ -914,6 +929,44 @@ pub fn nginx_running(port: u16) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every path in the nginx config is forward-slashed (the Dell measurement on
+    /// `nginx_path`). Plant: `display()` for the docroot lets the backslash through.
+    #[test]
+    fn every_nginx_config_path_is_forward_slashed() {
+        assert_eq!(nginx_path(Path::new(r"C:\Users\DELL\AppData\Local\rexenv\rexenv\data\nginx\nginx.pid")),
+                   "C:/Users/DELL/AppData/Local/rexenv/rexenv/data/nginx/nginx.pid");
+        assert_eq!(nginx_path(Path::new("/Users/me/Library/Application Support/x")), "/Users/me/Library/Application Support/x");
+        let back = PathBuf::from(r"C:\sites\new site");
+        let cfg = NginxConfig {
+            http_port: 18088,
+            pid: PathBuf::from(r"C:\data\nginx\nginx.pid"),
+            error_log: PathBuf::from(r"C:\data\logs\nginx-error.log"),
+            access_log: PathBuf::from(r"C:\data\logs\nginx-access.log"),
+            temp_root: PathBuf::from(r"C:\data\nginx\tmp"),
+            // A SERVING site too: without one the docroot line is never rendered, and a
+            // `display()` there passed this test (the first plant, 14 Sep 2026).
+            sites: vec![NginxSite {
+                domain: "serving.rex".into(),
+                docroot: PathBuf::from(r"C:\sites\serving root"),
+                php_fpm_port: 9783,
+                rewrite: RewriteMode::Single,
+                body_limit: None,
+                read_timeout: None,
+                php_value: None,
+                aliases: vec![],
+                storage_root: Some(back.clone()),
+                env: vec![],
+            }],
+            stopped: vec![NginxStopped { domain: "stopped.rex".into(), page_dir: back.clone(), aliases: vec![], wildcard: false }],
+        };
+        let text = generate_nginx_config(&cfg);
+        let quoted_with_backslash: Vec<&str> = text.lines().filter(|l| l.contains('"') && l.contains('\\')).collect();
+        assert!(quoted_with_backslash.is_empty(), "a backslash reached a quoted nginx string: {quoted_with_backslash:?}");
+        assert!(text.contains("C:/sites/new site"), "{text}");
+        assert!(text.contains("root \"C:/sites/serving root\";"), "{text}");
+        assert!(storage_block(Some(&back)).contains("alias \"C:/sites/new site/\""));
+    }
 
     #[test]
     fn fpm_config_has_global_and_pool() {

@@ -591,7 +591,8 @@ impl ServiceManager {
         }
         // php-fpm is resolved per version by the pool manager; DB engines resolve
         // their own binaries via `DbEngine::start`.
-        let nginx = binaries::resolve(platform, "nginx", binaries::NGINX_VERSION).await?;
+        // A single binary on one OS, a tree on another — `resolve_program` answers both.
+        let nginx = binaries::resolve_program(platform, "nginx", binaries::NGINX_VERSION).await?;
         let caddy = binaries::resolve(platform, "caddy", binaries::CADDY_VERSION).await?;
         self.bins = Some(Bins { nginx, caddy });
         Ok(())
@@ -1885,11 +1886,10 @@ impl ServiceManager {
             if let Ok(bin_dir) = platform.paths().bin_dir() {
                 // stop_all's edge stop + `reload` need nginx/caddy.
                 if self.bins.is_none() {
-                    let nginx =
-                        bin_dir.join(format!("nginx-{}", binaries::NGINX_VERSION)).join("nginx");
+                    let nginx = binaries::cached_program(platform, "nginx", binaries::NGINX_VERSION);
                     let caddy =
                         bin_dir.join(format!("caddy-{}", binaries::CADDY_VERSION)).join("caddy");
-                    if nginx.exists() && caddy.exists() {
+                    if let Some(nginx) = nginx.filter(|_| caddy.exists()) {
                         self.bins = Some(Bins { nginx, caddy });
                     }
                 }

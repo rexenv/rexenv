@@ -775,7 +775,21 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   born with from sshd and held its session open until they were stopped — found by reading the
   whole handle table while it hung, fixed by clearing every inheritable handle before a service
   spawn (`windows/handles.rs`).
-- **W4 — Serve a WordPress site.** D1's php-cgi group — its measurements first (§3 D1(a)), then the group, its
+- **W4 — Serve a WordPress site.** **nginx measured first — the Dell, 14 Sep 2026** (official
+  nginx 1.30.4 zip, checksum matched, a prefix with a space, a php-cgi group behind it):
+  - **Backslash paths break the config:** inside a quoted nginx string `\r` and `\n` are escapes —
+    `…\rexenv-probe-w3\ngx prefix\nginx.pid` came out `exenv-probe-w3 / gx prefix / ginx.pid`
+    and `nginx -t` failed; the same config with FORWARD slashes passed. Every path rexenv writes into
+    nginx.conf must be forward-slashed — `display()` alone is wrong there.
+  - **nginx is a master and a worker with byte-identical command lines, and the socket table names
+    the WORKER as the listener** — so a root-of-the-listeners `owned_master` adopts the worker.
+  - **`TerminateProcess` on the master leaves the worker alive, listening and serving** — the
+    orphan-worker class again. `nginx -s quit` ended both in 331 ms; the master publishes
+    `ngx_quit_<pid>`, `ngx_stop_<pid>`, `ngx_reload_<pid>` and `ngx_reopen_<pid>` events.
+  - `-s reload` exited 0 and replaced the worker; static and PHP-through-nginx both served;
+    PHP answered with and without `REDIRECT_STATUS` — FastCGI mode does not enforce
+    `cgi.force_redirect`, so the template needs no new param.
+- **W4 (cont.)** D1's php-cgi group — its measurements first (§3 D1(a)), then the group, its
   positive-ID chain and D1(b)'s busy-workers signal; nginx Windows config (forward
   slashes, every path quoted), mail through the SMTP ini keys, WP-CLI/Composer via the
   site's PHP. *Done when:* a one-click WordPress site loads through nginx and its mail

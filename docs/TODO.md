@@ -168,8 +168,18 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     owner rulings on the pool's contents (the 26 official extensions, `PoolModel` named by the
     platform with `core` rendering both, rexenv's own ini); step 1 written — `core/php_cgi.rs`
     (ini, env, args, output-reading preflight), `PhpFpmPools` running both models, the settings
-    gate for both, Xdebug refused on the group (ledger #601). Still to come: the churn breaker,
-    nginx on Windows, WP-CLI/Composer through the site's PHP, the busy-workers signal
+    gate for both, Xdebug refused on the group (ledger #601). **✓ 14 Sep 2026, step 2 — the shared
+    nginx on Windows** (measured first: backslashes break quoted nginx paths, the listener is the
+    worker, a terminated master leaves its worker serving): every nginx.conf path forward-slashed,
+    `binaries::resolve_program` for a program that is a single binary on one OS and a tree on another,
+    `owned_master` climbing to the marked master, reload and quit through nginx's own events; Dell
+    `windows_nginx_check` PASS (ledger #602). Still to come: the churn breaker, WP-CLI/Composer through
+    the site's PHP, a WordPress site end to end, the busy-workers signal
+    - [ ] Per-vhost `PHP_VALUE` does NOT reach a php-cgi group — measured 14 Sep 2026 on the Dell
+      (`windows_nginx_check`: `memory_limit=222M` sent per vhost, the child kept the pool's value).
+      It is php-fpm's per-request ini; php-cgi has none. Every per-site PHP value rexenv sets that
+      way needs another carrier on Windows (a per-site `.user.ini`, or a group per setting) — a
+      decision for the owner before a site that relies on one is served there
     - [ ] Download planning (`core/downloads.rs`) names `php-fpm` for every PHP it plans; on a
       php-cgi platform it must plan `php` — found writing W4 step 1, not yet changed
   - [ ] W5 — Caddy :443 edge + CurrentUser Root CA trust → valid lock in Edge/Chrome/Firefox

@@ -538,6 +538,12 @@ Live-proven end to end by `site_stop_start_check`.
   and spawns the parent on the minor's usual pool port. `PhpFpmPools` runs the same ensure / adopt /
   reap / stop for both models; the settings gate tests a candidate for whichever model runs. The
   Xdebug pool is refused there (D4).
+  **The shared nginx on Windows** (#602): every path in nginx.conf goes through `services::nginx_path`
+  (forward slashes — a backslash in a quoted nginx string is an escape, measured); the binary is
+  `binaries::resolve_program`, which answers a single binary or `nginx.exe` inside its tree; the socket
+  table names nginx's WORKER, so `owned_master` climbs to the marked master; reload is nginx's
+  `ngx_reload_<pid>` event and stop asks `ngx_quit_<pid>` first, because a terminated master leaves
+  its worker serving.
 - `reconcile_startup()` = the OLD stop-orphans-at-boot, now only an explicit cleanup path
   (e.g. `examples/stack_stop`), never run automatically.
 - **"Running" is ownership AND liveness, never a bare port-listen** (finding H2):

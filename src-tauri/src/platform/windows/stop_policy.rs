@@ -25,6 +25,27 @@ pub(crate) fn mysqld_shutdown_event(pid: u32) -> String {
     format!("MYSQLShutdown{pid}")
 }
 
+/// nginx's graceful-quit event for its MASTER `pid` — what `nginx -s quit` sets.
+///
+/// Measured on the Dell (nginx 1.30.4, 14 Sep 2026): the master publishes `ngx_quit_<pid>`,
+/// `ngx_stop_<pid>`, `ngx_reload_<pid>` and `ngx_reopen_<pid>`. `TerminateProcess` on the
+/// master left its worker alive, LISTENING and serving — so nginx must be asked to quit,
+/// never only terminated; `-s quit` ended master and worker in 331 ms.
+pub(crate) fn nginx_quit_event(pid: u32) -> String {
+    format!("ngx_quit_{pid}")
+}
+
+/// nginx's reload event for its master `pid` — what `nginx -s reload` sets.
+pub(crate) fn nginx_reload_event(pid: u32) -> String {
+    format!("ngx_reload_{pid}")
+}
+
+/// Every clean-shutdown event a process might publish for `pid`, tried in order. A
+/// name belongs to exactly one program, so the one that opens is that program's own.
+pub(crate) fn clean_exit_events(pid: u32) -> [String; 2] {
+    [mysqld_shutdown_event(pid), nginx_quit_event(pid)]
+}
+
 /// The arguments rexenv adds to `mysqld` on Windows (`ProcessSupervisor::mysqld_supervision_args`).
 ///
 /// `--no-monitor` because MySQL 8.4 on Windows otherwise runs as TWO processes: a restart
@@ -164,6 +185,13 @@ mod tests {
         assert_eq!(gone.calls, ["alive"]);
         let mut stubborn = Fake::new(true, false, false, false);
         assert_eq!(stop(&mut stubborn, GRACE, TERM), Outcome::Survived);
+    }
+
+    #[test]
+    fn nginx_is_asked_to_quit_and_reload_by_the_measured_event_names() {
+        assert_eq!(nginx_quit_event(10208), "ngx_quit_10208");
+        assert_eq!(nginx_reload_event(10208), "ngx_reload_10208");
+        assert_eq!(clean_exit_events(7), ["MYSQLShutdown7".to_string(), "ngx_quit_7".to_string()]);
     }
 
     #[test]

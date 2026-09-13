@@ -137,6 +137,31 @@ pub(crate) fn parent_links(members: &[(u32, u32, Option<u64>, Option<u64>)]) -> 
         .collect()
 }
 
+/// From each start pid, climb through parents for which `marked` holds, and return the
+/// topmost marked pid of each chain (deduplicated, in input order). `parent_of` answers
+/// only GENUINE parents (the caller applies the pid-reuse rule); a chain is cut at 16
+/// steps so a corrupt table cannot loop.
+pub(crate) fn climb_marked(
+    starts: &[u32],
+    parent_of: impl Fn(u32) -> Option<u32>,
+    marked: impl Fn(u32) -> bool,
+) -> Vec<u32> {
+    let mut tops = Vec::new();
+    for &start in starts {
+        let mut top = start;
+        for _ in 0..16 {
+            match parent_of(top) {
+                Some(parent) if parent != top && marked(parent) => top = parent,
+                _ => break,
+            }
+        }
+        if !tops.contains(&top) {
+            tops.push(top);
+        }
+    }
+    tops
+}
+
 /// A holder the conflict message can name: what it is, the app behind it when one is
 /// identifiable, and a PowerShell line that stops it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -335,6 +360,19 @@ Startport   Endport
             (400, 200, None, Some(20)),
         ]);
         assert_eq!(links, vec![(100, 7), (200, 0), (300, 200), (400, 0)]);
+    }
+
+    /// nginx: the listener is the worker (8560) and its master (10208) carries the same
+    /// command line — the climb reaches the master. php-cgi: the listener is the parent,
+    /// whose own parent (a shell, unmarked) stops the climb. A self-parent cannot loop.
+    #[test]
+    fn a_listener_climbs_to_its_marked_master_and_stops_at_an_unmarked_parent() {
+        let parents = |pid: u32| match pid { 8560 => Some(10208), 10208 => Some(11300), 9184 => Some(700), 5 => Some(5), _ => None };
+        let marked = |pid: u32| matches!(pid, 8560 | 10208 | 9184 | 5);
+        assert_eq!(climb_marked(&[8560], parents, marked), vec![10208]);
+        assert_eq!(climb_marked(&[9184], parents, marked), vec![9184]);
+        assert_eq!(climb_marked(&[5], parents, marked), vec![5]);
+        assert_eq!(climb_marked(&[8560, 10208], parents, marked), vec![10208]);
     }
 
     #[test]
