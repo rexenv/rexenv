@@ -754,10 +754,19 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     it with `CARGO_BUILD_JOBS=4`. `release-assets: all green` (archive sha256 `e21b3525…`), §A0 all
     green: one dmg, `rexenv` + `rex` x86_64 arm64, the payload in both slices, codesign, and the built
     Licenses text carrying `mysql_async | 0.37.0`, `zmij | 1.0.23`, "410 external crates"
-  - [ ] **Owner:** SMOKE-TEST on that dmg, then PUBLISH-TESTING §A
-  - [ ] Draft on `rexenv/homebrew-tap` with the one-line note → **owner** publishes → cask bump →
-    runtimes "Publish app update manifest" → `scripts/check-app-manifest.sh`
-  - [ ] Local tag `v0.7.1`; master records the shipped commit (`git merge -s ours release/0.7.1`)
+  - [x] **Owner:** SMOKE-TEST on that dmg, then PUBLISH-TESTING §A ✓ 13 Sep 2026 — owner reported
+    both pass (after installing the same dmg on the dev Mac, where Local import was — correctly —
+    absent: it landed after v0.7.0)
+  - [x] Draft on `rexenv/homebrew-tap` with the one-line note ✓ 13 Sep 2026 — release id
+    387865008, draft, tag `v0.7.1`; four assets `uploaded`, and the API's digests equal the local
+    hashes (dmg `89239fd1…a3e3`, archive `e21b3525…c859`); exactly one asset ends
+    `_universal.dmg`, the same shape as 0.7.0
+  - [ ] **Owner** publishes the draft → the cask bumps on that publish → runtimes "Publish app
+    update manifest" (dry run first) → `scripts/check-app-manifest.sh`
+  - [x] Local tag `v0.7.1` ✓ 13 Sep 2026 — annotated, on `b5c3d43`, not pushed (the pre-push hook
+    refuses a `v*` tag while the repo is private)
+  - [ ] After publish: master records the shipped commit (`git merge -s ours release/0.7.1`),
+    then the worktree and branch can go
 
 - [ ] **PUBLISH-TESTING §B** — uninstall removes the root :443 daemon (live launchd).
 - [ ] **PUBLISH-TESTING §D** — `--zap` ONLY; everything else has now run four times.
