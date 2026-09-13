@@ -3,7 +3,8 @@
 rexenv is a native (no-Docker) local dev environment: a Tauri 2 app — Rust backend,
 React/TS frontend — that runs a real local stack (edge proxy with HTTPS, nginx,
 multi-version PHP, MySQL/MariaDB/Postgres/Redis, WordPress tooling, DNS, mail,
-tunnels). macOS is complete; Windows/Linux are deliberate `todo!()` stubs.
+tunnels). macOS is complete; the Windows port is in progress (its stubs fail as
+`Error::Unported`), and Linux stubs are deliberate `todo!()`.
 
 Read `docs/ARCHITECTURE.md` before changing anything — it replaces reading the
 codebase end-to-end. `docs/MAP.md` answers "where does X live".
@@ -143,8 +144,9 @@ check `docs/ARCHITECTURE.md` and this list:
   socket, dispatching to the same command fns as the UI. App not running = exit 2,
   by design (a headless second brain is the bug class the stack guard exists to kill).
 - **`commands/` are thin; `core/` is platform-agnostic; ALL OS code sits behind the
-  11 traits in `platform/traits.rs`.** Windows/Linux stubs stay `todo!()` until an
-  OS port fills them — never restructure around them.
+  13 traits in `platform/traits.rs`.** Unfilled Windows stubs return `Error::Unported`
+  (or panic through `unported!` where the trait cannot return an error — never `todo!()`,
+  ledger #595); Linux stubs stay `todo!()`. A port fills them — never restructure around them.
 - **TLS leaves ≤398 days** (Safari rejects longer), CA trust in the LOGIN keychain
   (System keychain is unreachable from a detached-root osascript).
 - **Quote every path in generated configs** — app-data paths contain spaces.

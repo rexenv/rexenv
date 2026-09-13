@@ -15,6 +15,14 @@ pub enum Error {
     #[error("not implemented on this platform: {0}")]
     Unsupported(&'static str),
 
+    /// A platform method the port has not reached yet — NOT a refusal. Returned by
+    /// the Windows stubs (`platform/windows`) in place of `todo!()`, so a half-ported
+    /// build fails a feature as an ordinary error the UI can show, instead of
+    /// killing the process silently (`docs/PLAN-windows-port.md` §3a Q1, W3 step 0;
+    /// ledger #595). `Unsupported` stays for what an OS will never do.
+    #[error("rexenv: {0} is not ported to this OS yet (docs/PLAN-windows-port.md)")]
+    Unported(&'static str),
+
     #[error("{0}")]
     Other(String),
 

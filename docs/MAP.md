@@ -12,7 +12,7 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
 - `core/` = platform-agnostic domain logic; talks to `platform/` only through traits.
 - `platform/` = ALL OS-specific code behind the 13 traits in `platform/traits.rs`
   (the 13th, `LocalIpc`, is local non-TCP IPC — unix socket / Windows named pipe)
-  (macOS real; `windows/`/`linux/` are `todo!()` stubs).
+  (macOS real; `windows/` stubs return `Error::Unported` / `unported!` — ledger #595; `linux/` is `todo!()`).
 - `state/` = SQLite migrations + the store layer; only `state/` writes SQL.
 
 ## Backend subsystems

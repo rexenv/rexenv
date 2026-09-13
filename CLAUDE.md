@@ -4,7 +4,7 @@ rexenv is a native, **no-Docker** local development environment for web & WordPr
 developers: a Tauri 2 desktop app (Rust backend + React/TS frontend) that runs the whole
 local stack — edge proxy with auto-HTTPS, shared web server, multi-version PHP, MySQL/
 PostgreSQL, one-click WordPress, `.rex` DNS, mail catching, tunnels — from one UI.
-**macOS is complete** (Phases 1–3 shipped); Windows/Linux are `todo!()` stubs (Phase 4).
+**macOS is complete** (Phases 1–3 shipped); Windows is being ported (unfilled stubs fail as `Error::Unported`); Linux stubs are `todo!()`.
 
 This file is a ROUTER. Read only what the task needs (table at the bottom).
 The system mental model lives in `docs/ARCHITECTURE.md` — read it for any feature or bug.
@@ -39,7 +39,8 @@ headers saying "not started" about shipped features. Derived beats typed.
 - `core/` is **platform-agnostic** ("the what") — never imports OS-specific code.
 - ALL OS-specific code lives ONLY in `src-tauri/src/platform/`, behind the 13 Rust traits
   in `platform/traits.rs`, impls selected via `#[cfg(target_os)]`. macOS impls are real;
-  `windows/`/`linux/` stay `todo!()`. The traits are designed so adding an OS = filling
+  unfilled `windows/` stubs return `Error::Unported` or panic via `unported!` (never `todo!()`,
+  ledger #595), `linux/` stays `todo!()`. The traits are designed so adding an OS = filling
   stubs — but measured 12 Sep 2026 the tree is NOT there yet: the `rex` CLI's unix socket
   and macOS-only binary URLs still live outside `platform/` (the app lib itself now
   compiles for Windows), and php-fpm / `/etc/resolver` /

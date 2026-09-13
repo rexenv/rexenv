@@ -10,8 +10,8 @@ A native, lightweight, limitless local development environment for web & WordPre
 > (serve any existing folder in place), full Valet/Herd migration (scan → import →
 > database copy → consent-gated connection rewrite, all reversible), plugin/theme
 > add-from-Git with streamed jobs and watchers, per-site Xdebug, and the 40+-command
-> `rex` CLI. Open work is tracked in `docs/TODO.md`; Windows/Linux ports are
-> `todo!()` stubs by design.
+> `rex` CLI. Open work is tracked in `docs/TODO.md`; the Windows port is in
+> progress (`docs/PLAN-windows-port.md`) and Linux is `todo!()` stubs by design.
 
 ---
 
@@ -204,7 +204,7 @@ rexenv/
         │   │                   #   ShellRunner, Paths, BinaryProvider, EdgeSupervisor,
         │   │                   #   DnsAgentManager, AppBundle, LocalIpc
         │   ├── macos/          # all 13 impls real (+ app_bundle.rs, relauncher.rs, webview_dialogs.rs, parent_death_guard.rs, activation.rs, prompt_applet.rs, keychain_trust.rs)
-        │   └── windows/ · linux/   # todo!() stubs (Windows port: docs/PLAN-windows-port.md)
+        │   └── windows/ · linux/   # Windows: Error::Unported stubs being filled (docs/PLAN-windows-port.md); Linux: todo!()
         │
         └── state/              # app state
             ├── db.rs           # SQLite + migrations (v1–v44)

@@ -4,6 +4,19 @@
 
 pub mod traits;
 
+/// A platform method with no implementation yet, in a trait method that cannot
+/// return an error (a `PathBuf`, a `bool`, a command string). Panics with the
+/// same wording as `Error::Unported`, which the panic hook records — so an
+/// unported path fails loudly and names itself, where `todo!()` said only
+/// "not yet implemented" to a console a release build does not have.
+/// Defined BEFORE the OS modules: `macro_rules!` is textually scoped.
+#[allow(unused_macros)]
+macro_rules! unported {
+    ($what:expr) => {
+        panic!("rexenv: {} is not ported to this OS yet (docs/PLAN-windows-port.md)", $what)
+    };
+}
+
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(target_os = "windows")]
@@ -82,5 +95,48 @@ pub fn current() -> Box<dyn Platform> {
     #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
     {
         compile_error!("unsupported target OS")
+    }
+}
+
+#[cfg(test)]
+mod stub_guard {
+    /// Production lines of `text` (tests and comments stripped) that contain any
+    /// needle — a guard that reads comments would read its own explanation (#235).
+    fn hits(text: &str, needles: &[&str]) -> Vec<String> {
+        crate::core::copy_scan::production_source(text)
+            .lines()
+            .map(|l| l.find("//").map_or(l, |i| &l[..i]))
+            .filter(|l| needles.iter().any(|n| l.contains(n)))
+            .map(|l| l.trim().to_string())
+            .collect()
+    }
+
+    /// Ledger #595 — W3 step 0 (`docs/PLAN-windows-port.md` §3a Q1): the Windows
+    /// stubs never `todo!()`. A release build has no console, so `todo!()`'s
+    /// message reached nobody, and one reached from an IPC command left the
+    /// frontend waiting forever. Stubs return `Error::Unported` or panic through
+    /// `unported!` instead. Read as TEXT, so it runs on the macOS test host where
+    /// the Windows module does not compile.
+    #[test]
+    fn windows_stubs_fail_as_unported_never_todo() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/platform/windows/mod.rs");
+        let text = std::fs::read_to_string(&path).expect("read platform/windows/mod.rs");
+        assert!(
+            text.contains("impl Paths for WindowsPaths"),
+            "not the Windows platform module — a moved file would make this scan vacuous"
+        );
+        let forbidden = ["todo!(", "unimplemented!("];
+        // Canary: the matcher must see a planted one, or its zero proves nothing.
+        assert_eq!(
+            hits("fn f() -> u8 {\n    todo!(\"x\")\n}\n", &forbidden).len(),
+            1,
+            "the matcher cannot see a todo! at all"
+        );
+        let found = hits(&text, &forbidden);
+        assert!(
+            found.is_empty(),
+            "platform/windows has {} todo!/unimplemented! — return Error::Unported, or unported! where the trait cannot return an error: {found:?}",
+            found.len()
+        );
     }
 }

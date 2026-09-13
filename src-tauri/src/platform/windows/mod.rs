@@ -1,8 +1,16 @@
-//! Windows implementations — Phase 4. Stubs only: every method is `todo!()`.
-//! Filling these in is the entire Windows port; `core/` does not change.
+//! Windows implementations — the port in progress (`docs/PLAN-windows-port.md`).
+//!
+//! **No `todo!()` here, by rule (ledger #595).** A stub that can return an error
+//! returns `Error::Unported`, so a half-ported build fails that ONE feature as an
+//! ordinary error the UI shows while the rest of the app runs. A stub whose trait
+//! method cannot return an error panics through `unported!`, with the same
+//! wording, for the panic hook to record. `todo!()` did neither: a release build
+//! has no console, so its message reached nobody, and a panic in a command left
+//! the frontend waiting forever (plan §3a Q1). Filling these in is the port;
+//! `core/` does not change.
 #![allow(dead_code)]
 
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::platform::traits::*;
 use std::path::{Path, PathBuf};
 use std::process::Child;
@@ -10,16 +18,16 @@ use std::process::Child;
 pub struct WindowsPaths;
 impl Paths for WindowsPaths {
     fn app_data_dir(&self) -> Result<PathBuf> {
-        todo!("windows app_data_dir")
+        Err(Error::Unported("windows app_data_dir"))
     }
     fn config_dir(&self) -> Result<PathBuf> {
-        todo!("windows config_dir")
+        Err(Error::Unported("windows config_dir"))
     }
     fn log_dir(&self) -> Result<PathBuf> {
-        todo!("windows log_dir")
+        Err(Error::Unported("windows log_dir"))
     }
     fn bin_dir(&self) -> Result<PathBuf> {
-        todo!("windows bin_dir")
+        Err(Error::Unported("windows bin_dir"))
     }
     fn hosts_file(&self) -> PathBuf {
         PathBuf::from(r"C:\Windows\System32\drivers\etc\hosts")
@@ -29,29 +37,29 @@ impl Paths for WindowsPaths {
 pub struct WindowsDns;
 impl DnsManager for WindowsDns {
     fn resolver_path(&self, _tld: &str) -> PathBuf {
-        todo!("windows DNS — no /etc/resolver equivalent")
+        unported!("windows DNS — no /etc/resolver equivalent (NRPT, plan D2)")
     }
     fn resolver_contents(&self, _port: u16) -> String {
-        todo!("windows DNS")
+        unported!("windows DNS")
     }
     fn install_command(&self, _tld: &str, _port: u16) -> String {
-        todo!("windows DNS")
+        unported!("windows DNS")
     }
     fn uninstall_command(&self, _tlds: &[String]) -> String {
-        todo!("windows DNS")
+        unported!("windows DNS")
     }
     fn restore_command(&self, _restores: &[(String, PathBuf)]) -> String {
-        todo!("windows DNS")
+        unported!("windows DNS")
     }
 }
 
 pub struct WindowsCertTrust;
 impl CertTrustManager for WindowsCertTrust {
     fn trust_ca(&self, _ca_cert_path: &Path) -> Result<()> {
-        todo!("windows certutil -addstore Root")
+        Err(Error::Unported("windows CA trust (CurrentUser Root store)"))
     }
     fn untrust_ca(&self, _ca_cert_path: &Path) -> Result<()> {
-        todo!("windows certutil -delstore Root")
+        Err(Error::Unported("windows CA untrust (CurrentUser Root store)"))
     }
 }
 
@@ -62,60 +70,61 @@ impl PrivilegeManager for WindowsPrivileges {
         _script: &str,
         _reason: &crate::platform::traits::PromptReason,
     ) -> Result<String> {
-        todo!("windows UAC elevation (runas / ShellExecute 'runas')")
+        Err(Error::Unported("windows UAC elevation"))
     }
 }
 
 pub struct WindowsSupervisor;
 impl ProcessSupervisor for WindowsSupervisor {
     fn spawn(&self, _program: &Path, _args: &[String]) -> Result<Child> {
-        todo!("windows spawn")
+        Err(Error::Unported("windows spawn"))
     }
     fn spawn_logged(&self, _program: &Path, _args: &[String], _log_path: &Path) -> Result<Child> {
-        todo!("windows spawn_logged")
+        Err(Error::Unported("windows spawn_logged"))
     }
     fn stop(&self, _pid: u32) -> Result<()> {
-        todo!("windows stop")
+        Err(Error::Unported("windows stop"))
     }
 }
 
 pub struct WindowsAutostart;
 impl AutostartManager for WindowsAutostart {
     fn enable(&self) -> Result<()> {
-        todo!("windows service / task scheduler")
+        Err(Error::Unported("windows autostart (HKCU Run key)"))
     }
     fn disable(&self) -> Result<()> {
-        todo!("windows service / task scheduler")
+        Err(Error::Unported("windows autostart (HKCU Run key)"))
     }
     fn is_enabled(&self) -> Result<bool> {
-        todo!("windows service / task scheduler")
+        Err(Error::Unported("windows autostart (HKCU Run key)"))
     }
 }
 
 pub struct WindowsPermissions;
 impl PermissionManager for WindowsPermissions {
     fn set_executable(&self, _path: &Path) -> Result<()> {
-        // No-op on Windows (executability is by extension), but kept for parity.
-        todo!("windows ACLs")
+        // Likely a no-op when ported (executability is by extension), but that is
+        // the port's decision to record, not a stub's to assume.
+        Err(Error::Unported("windows set_executable"))
     }
     fn set_private(&self, _path: &Path) -> Result<()> {
-        todo!("windows ACLs (owner-only)")
+        Err(Error::Unported("windows owner-only ACL"))
     }
     fn write_private(&self, _path: &Path, _contents: &[u8]) -> Result<()> {
-        todo!("windows owner-only create (ACLs)")
+        Err(Error::Unported("windows owner-only create (ACL)"))
     }
 }
 
 pub struct WindowsShell;
 impl ShellRunner for WindowsShell {
     fn run(&self, _command: &str, _args: &[String]) -> Result<String> {
-        todo!("windows PowerShell runner")
+        Err(Error::Unported("windows shell runner"))
     }
     fn open(&self, _target: &str) -> Result<()> {
-        todo!("windows shell open")
+        Err(Error::Unported("windows shell open"))
     }
     fn reveal(&self, _path: &str) -> Result<()> {
-        todo!("windows shell reveal")
+        Err(Error::Unported("windows shell reveal"))
     }
 }
 
@@ -125,32 +134,32 @@ impl BinaryProvider for WindowsBinaryProvider {
         Arch::X86_64
     }
     fn prepare_binary(&self, _path: &Path) -> Result<()> {
-        todo!("windows binary prepare (no codesign needed)")
+        Err(Error::Unported("windows binary prepare (Zone.Identifier, no codesign)"))
     }
     fn prepare_binary_tree(&self, _root: &Path) -> Result<()> {
-        todo!("windows bundle-tree prepare (DLLs load from the exe dir — likely a no-op)")
+        Err(Error::Unported("windows bundle-tree prepare"))
     }
 }
 
 pub struct WindowsEdge;
 impl EdgeSupervisor for WindowsEdge {
     fn is_installed(&self) -> bool {
-        todo!("windows edge supervisor (Windows Service KeepAlive)")
+        unported!("windows edge supervisor")
     }
     fn is_enabled(&self) -> bool {
-        todo!("windows edge supervisor")
+        unported!("windows edge supervisor")
     }
     fn plist_path(&self) -> PathBuf {
-        todo!("windows edge supervisor")
+        unported!("windows edge supervisor")
     }
     fn wrapper_path(&self) -> PathBuf {
-        todo!("windows edge supervisor")
+        unported!("windows edge supervisor")
     }
     fn daemon_binary_path(&self) -> PathBuf {
-        todo!("windows edge supervisor")
+        unported!("windows edge supervisor")
     }
     fn plist_contents(&self, _wrapper: &Path, _start_log: &Path) -> String {
-        todo!("windows edge supervisor")
+        unported!("windows edge supervisor")
     }
     fn wrapper_contents(
         &self,
@@ -159,7 +168,7 @@ impl EdgeSupervisor for WindowsEdge {
         _admin_sock: &Path,
         _appdata: &Path,
     ) -> String {
-        todo!("windows edge supervisor")
+        unported!("windows edge supervisor")
     }
     fn install_command(
         &self,
@@ -167,44 +176,44 @@ impl EdgeSupervisor for WindowsEdge {
         _staged_wrapper: &Path,
         _staged_plist: &Path,
     ) -> String {
-        todo!("windows edge supervisor")
+        unported!("windows edge supervisor")
     }
     fn start_command(&self) -> String {
-        todo!("windows edge supervisor")
+        unported!("windows edge supervisor")
     }
     fn stop_command(&self) -> String {
-        todo!("windows edge supervisor")
+        unported!("windows edge supervisor")
     }
     fn uninstall_command(&self) -> String {
-        todo!("windows edge supervisor")
+        unported!("windows edge supervisor")
     }
 }
 
 pub struct WindowsDnsAgent;
 impl DnsAgentManager for WindowsDnsAgent {
     fn is_installed(&self) -> bool {
-        todo!("windows dns agent")
+        unported!("windows dns agent (logon task, plan W6)")
     }
     fn plist_path(&self) -> Result<PathBuf> {
-        todo!("windows dns agent")
+        Err(Error::Unported("windows dns agent"))
     }
     fn plist_contents(&self, _exe: &Path, _log: &Path) -> String {
-        todo!("windows dns agent")
+        unported!("windows dns agent")
     }
     fn install(&self, _exe: &Path, _log: &Path) -> Result<()> {
-        todo!("windows dns agent")
+        Err(Error::Unported("windows dns agent"))
     }
     fn kickstart(&self) -> Result<()> {
-        todo!("windows dns agent")
+        Err(Error::Unported("windows dns agent"))
     }
     fn uninstall(&self) -> Result<()> {
-        todo!("windows dns agent")
+        Err(Error::Unported("windows dns agent"))
     }
 }
 pub struct WindowsAppBundle;
 impl AppBundle for WindowsAppBundle {
     fn facts(&self, _exe: &Path) -> Result<BundleFacts> {
-        todo!("windows app bundle facts — self-update is macOS-only today")
+        Err(Error::Unported("windows app bundle facts (self-update, plan D5/W11)"))
     }
     fn stage(
         &self,
@@ -212,17 +221,17 @@ impl AppBundle for WindowsAppBundle {
         _archive: &Path,
         _expect: &StagedExpect,
     ) -> Result<StagedBundle> {
-        todo!("windows stage a replacement bundle")
+        Err(Error::Unported("windows stage a replacement bundle"))
     }
     fn swap(
         &self,
         _installed: &Path,
         _staged: &StagedBundle,
     ) -> std::result::Result<SwapReceipt, SwapFailure> {
-        todo!("windows swap the bundle")
+        Err(SwapFailure::Other(Error::Unported("windows swap the bundle").to_string()))
     }
     fn spawn_relauncher(&self, _bundle: &Path) -> Result<()> {
-        todo!("windows relauncher")
+        Err(Error::Unported("windows relauncher"))
     }
     fn sweep_leftovers(
         &self,
@@ -230,7 +239,7 @@ impl AppBundle for WindowsAppBundle {
         _my_version: &str,
         _delete_previous: bool,
     ) -> Result<Vec<Leftover>> {
-        todo!("windows sweep update leftovers")
+        Err(Error::Unported("windows sweep update leftovers"))
     }
 }
 pub struct WindowsLocalIpc;
@@ -240,7 +249,10 @@ impl LocalIpc for WindowsLocalIpc {
         _path: &Path,
         _read_timeout: Option<std::time::Duration>,
     ) -> std::io::Result<Box<dyn std::io::Read + Send>> {
-        todo!("windows local IPC — a named pipe with a current-user ACL (owner ruling D3, docs/PLAN-windows-port.md W8)")
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            Error::Unported("windows local IPC — a named pipe with a current-user ACL (D3, W8)").to_string(),
+        ))
     }
 }
 pub struct WindowsPlatform {

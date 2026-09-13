@@ -440,7 +440,9 @@ stops?** Read from the tree, not run — there is no Windows host yet.
   cannot return an error panics through a single `unported!` macro with the same wording,
   which the hook then records; (3) a ledger row — no `todo!()` under `platform/windows/`,
   scan-enforced, and the hook's file write plant-proven. Today: 50 `todo!()` in
-  `platform/windows/mod.rs`.
+  `platform/windows/mod.rs`. **Progress 13 Sep 2026: (2) and (3) landed** — no `todo!()` is left
+  there (`Error::Unported`, or `unported!` where a trait method cannot return an error; ledger
+  #595). (1), the panic hook, is next.
 
 **Q2 — PostgreSQL's publisher digests.** An omission, not an exception; our own downloads now
 match all three. §5 W2 and ledger #335.
@@ -665,7 +667,7 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   would be the exception; what the ledger now says is WHICH hash a pin rests on and when
   ours was taken (#335). **What W2 does not prove:** that any of these runs.
   `resolve` on a real Windows host still calls `set_executable` / `prepare_binary`, which
-  are `todo!()` there — that is W3.
+  are unported there — that is W3 (since step 0 they return `Error::Unported`, not `todo!()`).
 - **W3 — Foundations.** **Step 0 first (§3a Q1): the panic hook and `Unported` stubs, so every
   build from here on fails out loud.** Then `Paths` (`%LOCALAPPDATA%\rexenv`), `PermissionManager` (owner-only
   ACLs), `BinaryProvider` (strip the `Zone.Identifier` stream, no codesign),

@@ -7,8 +7,8 @@ file, verify the line. Ports + pinned versions: `docs/PORTS.md`. Open work: `doc
 rexenv = native, no-Docker local dev environment for web/WordPress developers.
 Tauri 2 desktop app: Rust backend + React/TS frontend. Runs the whole stack — edge
 proxy, shared web server, multi-version PHP, databases, one-click WordPress, local-TLD
-DNS (`.rex` backbone, configurable) + auto-HTTPS, mail catching, tunnels — from one UI. macOS complete; Windows/Linux
-are `todo!()` stubs.
+DNS (`.rex` backbone, configurable) + auto-HTTPS, mail catching, tunnels — from one UI. macOS complete; Windows
+in progress (unfilled stubs fail as `Error::Unported`); Linux `todo!()` stubs.
 
 ## 1. Layering (non-negotiable)
 
@@ -31,8 +31,10 @@ platform/   ALL OS-specific code, behind 13 traits (platform/traits.rs):
   `dbsource::probe_socket`, which used to open `UnixStream`s inside `core/`); the CLI and
   MCP listeners move behind it in W8. It is also the one `Platform` accessor with a
   default — the build OS's implementation — so the dozen stub platforms in tests and
-  examples did not each grow a field. `platform/windows/`, `platform/linux/` —
-  every method `todo!()`. The design goal is "adding an OS = filling stubs". **Measured 12
+  examples did not each grow a field. `platform/windows/` — every unfilled
+  method returns `Error::Unported`, or panics through `unported!` where the trait cannot return
+  an error, and never `todo!()` (W3 step 0, ledger #595: a release build has no console, so
+  `todo!()`'s message reached nobody); `platform/linux/` — every method `todo!()`. The design goal is "adding an OS = filling stubs". **Measured 12
   Sep 2026 the tree did not meet it**, and ledger #163's scan was green anyway — it looked
   for OS module names, not Unix APIs. Windows port W1 (`docs/PLAN-windows-port.md`) closed
   the `core/` half the same day: its unix sockets, `kill`, `cfg(unix)` and `std::os::unix`
