@@ -704,6 +704,45 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   `GetExtendedTcpTable`, conflict help naming HTTP.sys and the Hyper-V excluded port
   ranges). *Done when:* MySQL and Mailpit start, survive an app quit, and are adopted on
   relaunch — on a real Windows machine.
+  **Measured before spawn/stop is written — the Dell, 13 Sep 2026, pinned MySQL 8.4.6 and
+  Mailpit 1.30.3 (checksums matched), fixture ports, all processes removed afterwards:**
+  - *An SSH session runs inside a job with `KILL_ON_JOB_CLOSE` and `BREAKAWAY_OK`.* Two Mailpits
+    spawned from one session through `CreateProcessW`: the one with `CREATE_BREAKAWAY_FROM_JOB`
+    was still listening from a NEW session; the one without died with the session. So
+    "outlives the app" depends on the flag whenever the launcher sits in such a job — and the
+    SSH session is a real fixture for proving it.
+  - *MySQL 8.4 on Windows is TWO processes by default.* `mysqld` starts as a restart MONITOR
+    (`sql/restart_monitor_win.cc`) that `CreateProcess`es the real server as its child — no job
+    object — and waits on it. Measured: spawned pid 8660 = monitor; the listener on the port =
+    child 9308. `TerminateProcess` on the monitor left the child alive and LISTENING — the macOS
+    orphan-worker class, on Windows. The child's clean-shutdown event is named after the MONITOR:
+    `mysqld8660_shutdown` existed, `MYSQLShutdown<pid>` did not; `SetEvent` on it → "Normal
+    shutdown … Shutdown complete" in 571 ms.
+  - *With `--no-monitor` it is ONE process:* spawned pid = listener = 12056, event
+    `MYSQLShutdown12056`, `SetEvent` → clean shutdown in 906 ms. The monitor only exists to
+    serve the SQL `RESTART` statement; rexenv supervises the server itself.
+  - *Mailpit:* one process, the listener is the spawned pid; `TerminateProcess` → exited in 110 ms,
+    port released.
+  - Rust's `Command` on Windows appends `.exe` to an absolute path that lacks it when that file
+    exists (`resolve_exe`, std 1.93.1), so `core`'s `bin/mysqld` needs no per-OS name.
+  - Go programs (Mailpit, Caddy, cloudflared) turn CTRL_C and CTRL_BREAK into SIGINT
+    (`runtime/os_windows.go`) — a graceful path for them exists, not measured, and needs a shared
+    console to deliver.
+  **Rulings on these measurements (owner, 13 Sep 2026):** MySQL on Windows runs with
+  `--no-monitor` (one process; the flag reaches `core::database::start` through
+  `ProcessSupervisor::mysqld_supervision_args`, since macOS's `mysqld` has no such option), and
+  `stop` asks a process through its own clean-shutdown channel with a grace, then
+  `TerminateProcess` — the event for `mysqld`, termination for everything else until a
+  service needs more (Go's CTRL_BREAK path waits for Caddy, W5). Written the same day:
+  `platform/windows/stop_policy.rs` (the sequencing, tested on every host) +
+  `process.rs::Stoppable` (holds the process handle for the whole stop) + `WindowsSupervisor`'s
+  spawn family; ledger #600. The Dell run of the "Done when" is
+  `examples/windows_supervision_check.rs` (two phases, two SSH sessions). **MET 14 Sep 2026**
+  (phase 1 PASS and its session closed by itself in 20 s; phase 2 PASS). It took a third fix the
+  measurements above did not predict: the services inherited ~20 handles the launching process was
+  born with from sshd and held its session open until they were stopped — found by reading the
+  whole handle table while it hung, fixed by clearing every inheritable handle before a service
+  spawn (`windows/handles.rs`).
 - **W4 — Serve a WordPress site.** D1's php-cgi group — its measurements first (§3 D1(a)), then the group, its
   positive-ID chain and D1(b)'s busy-workers signal; nginx Windows config (forward
   slashes, every path quoted), mail through the SMTP ini keys, WP-CLI/Composer via the

@@ -1292,6 +1292,9 @@ bloating the fast path:
   (`windows_port_gate_check`, 13 Sep 2026 — the build and run lines are in its header). On
   macOS the same example prints a skip line, which is all its `sandbox` tier entry runs.
   A Windows verdict is that example's own `PASS` line on the Dell, never the Mac tier.
+  `windows_supervision_check` (W3's "Done when", `demo` tier) runs in TWO SSH sessions on
+  purpose: an SSH session is a kill-on-close job (measured), so phase 1's session ending is
+  the app quitting with its job, and phase 2 in a fresh session is the relaunch.
 
 A gate nobody can afford to run stops being one: the fast bar stays fast, and nothing
 above it is required per-commit. The metric the gate serves is the ledger tally, which

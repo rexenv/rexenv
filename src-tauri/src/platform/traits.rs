@@ -342,6 +342,14 @@ pub trait ProcessSupervisor: Send + Sync {
         None
     }
 
+    /// Arguments this OS's supervision needs on every `mysqld` server start, appended
+    /// after rexenv's own. Default: none. Windows: `--no-monitor` — MySQL 8.4 there
+    /// otherwise runs a restart monitor whose child is the real server, and killing the
+    /// monitor orphans a child still holding the port (measured, ledger #600).
+    fn mysqld_supervision_args(&self) -> Vec<String> {
+        Vec::new()
+    }
+
     /// The copy-paste command that ends `pid`, a same-user process rexenv started —
     /// the last line of `ensure_free`'s "leftover rexenv process" message. Default:
     /// `kill <pid>`; Windows has no `kill`.

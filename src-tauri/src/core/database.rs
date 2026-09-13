@@ -321,6 +321,9 @@ pub(crate) fn db_sizes(client: &SqlClient, port: u16) -> Result<Vec<(String, u64
 }
 
 /// Start the shared MySQL server (foreground) via `ProcessSupervisor`.
+///
+/// The platform's `mysqld_supervision_args` go last: on Windows `--no-monitor`, so the
+/// pid rexenv holds is the server itself and a stop cannot orphan it (ledger #600).
 pub fn start(
     platform: &dyn Platform,
     basedir: &Path,
@@ -329,7 +332,7 @@ pub fn start(
     socket: &Path,
 ) -> Result<Child> {
     let log = platform.paths().log_dir()?.join("mysql-error.log");
-    let args = vec![
+    let mut args = vec![
         "--no-defaults".to_string(),
         format!("--basedir={}", basedir.display()),
         format!("--datadir={}", datadir.display()),
@@ -339,6 +342,7 @@ pub fn start(
         "--mysqlx=OFF".to_string(), // skip the X protocol (avoids :33060)
         format!("--log-error={}", log.display()),
     ];
+    args.extend(platform.supervisor().mysqld_supervision_args());
     let stdout_log = platform.paths().log_dir()?.join("mysql-stdout.log");
     platform
         .supervisor()

@@ -17,7 +17,9 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
   `ProcessSupervisor`'s identity and port-gate half, run on the Dell:
   `windows/acl.rs` + `windows/owner_only.rs` (ledger #597), `windows/pe.rs` (ledger #598),
   `windows/process.rs` (Win32 reads) + `windows/port_table.rs` (their pure rules, tested on
-  every host — ledger #599);
+  every host — ledger #599), and its spawn/stop half: `WindowsSupervisor`'s spawn family +
+  `process.rs::Stoppable` + `windows/stop_policy.rs` (the stop sequencing, tested on every
+  host — ledger #600);
   `linux/` is `todo!()`).
 - `state/` = SQLite migrations + the store layer; only `state/` writes SQL.
 - `crash.rs` = the panic hook, installed FIRST in `main.rs`: every panic appended to

@@ -16,10 +16,12 @@ use std::path::{Path, PathBuf};
 use std::process::Child;
 
 mod acl;
+mod handles;
 mod owner_only;
 mod pe;
 mod port_table;
 mod process;
+mod stop_policy;
 
 pub struct WindowsPaths;
 impl Paths for WindowsPaths {
@@ -91,18 +93,97 @@ impl PrivilegeManager for WindowsPrivileges {
     }
 }
 
-/// Identity and the port gate are real (`process.rs`, `port_table.rs`, ledger #599);
-/// spawning and stopping are the next W3 step and still unported.
+/// Identity and the port gate (`process.rs`, `port_table.rs`, ledger #599); spawning
+/// services that outlive the app and stopping them (ledger #600).
 pub struct WindowsSupervisor;
+
+/// Flags for a SERVICE — a process that must outlive rexenv (ledger #600):
+/// - `CREATE_BREAKAWAY_FROM_JOB`: measured on the Dell 13 Sep 2026, a process spawned from
+///   inside a kill-on-close job (an SSH session is one; a terminal or IDE can be) died with
+///   the job without it and survived with it;
+/// - `CREATE_NO_WINDOW`: no console window flashing up for a console program;
+/// - `CREATE_NEW_PROCESS_GROUP`: a Ctrl+C in a console rexenv was started from is not
+///   delivered to its services.
+const SERVICE_FLAGS: u32 = windows_sys::Win32::System::Threading::CREATE_BREAKAWAY_FROM_JOB
+    | windows_sys::Win32::System::Threading::CREATE_NO_WINDOW
+    | windows_sys::Win32::System::Threading::CREATE_NEW_PROCESS_GROUP;
+
 impl ProcessSupervisor for WindowsSupervisor {
-    fn spawn(&self, _program: &Path, _args: &[String]) -> Result<Child> {
-        Err(Error::Unported("windows spawn"))
+    /// A short-lived helper (`mysqld --initialize-insecure`, a config test) the caller
+    /// waits for: no console window, stdio inherited, and NOT broken away — a helper
+    /// that dies with the app is correct, and a launcher that forbids breakaway must not
+    /// fail it.
+    fn spawn(&self, program: &Path, args: &[String]) -> Result<Child> {
+        use std::os::windows::process::CommandExt;
+        Ok(std::process::Command::new(program)
+            .args(args)
+            .creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW)
+            .spawn()?)
     }
-    fn spawn_logged(&self, _program: &Path, _args: &[String], _log_path: &Path) -> Result<Child> {
-        Err(Error::Unported("windows spawn_logged"))
+    fn spawn_logged(&self, program: &Path, args: &[String], log_path: &Path) -> Result<Child> {
+        self.spawn_logged_env(program, args, log_path, &[])
     }
-    fn stop(&self, _pid: u32) -> Result<()> {
-        Err(Error::Unported("windows stop"))
+    /// A service: stdout and stderr appended to its log, stdin closed, [`SERVICE_FLAGS`].
+    fn spawn_logged_env(
+        &self,
+        program: &Path,
+        args: &[String],
+        log_path: &Path,
+        env: &[(String, String)],
+    ) -> Result<Child> {
+        use std::os::windows::process::CommandExt;
+        // Before the spawn: a service must not inherit — and pin open for its whole life —
+        // the handles rexenv itself was started with (`handles.rs`, measured).
+        process::keep_inheritable_handles_out_of_children();
+        if let Some(parent) = log_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let out = std::fs::OpenOptions::new().create(true).append(true).open(log_path)?;
+        let err = out.try_clone()?;
+        std::process::Command::new(program)
+            .args(args)
+            .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
+            .stdin(std::process::Stdio::null())
+            .stdout(out)
+            .stderr(err)
+            .creation_flags(SERVICE_FLAGS)
+            .spawn()
+            .map_err(|e| {
+                if e.raw_os_error() == Some(windows_sys::Win32::Foundation::ERROR_ACCESS_DENIED as i32) {
+                    // CreateProcess answers access denied both for a blocked file and for
+                    // a breakaway the launcher's job forbids — name both, since only the
+                    // second is fixed by how rexenv is started.
+                    Error::Other(format!(
+                        "Windows refused to start {} (access denied): either the file is blocked, \
+                         or rexenv was started inside a job that forbids its services to outlive \
+                         it — start rexenv from the Start menu or Explorer rather than from a tool \
+                         that confines it",
+                        program.display()
+                    ))
+                } else {
+                    e.into()
+                }
+            })
+    }
+    /// The process's own clean-shutdown channel with a grace, else `TerminateProcess`
+    /// (`stop_policy.rs`, owner ruling 13 Sep 2026, ledger #600).
+    fn stop(&self, pid: u32) -> Result<()> {
+        let mut target = process::Stoppable::open(pid)?;
+        match stop_policy::stop(&mut target, stop_policy::CLEAN_EXIT_GRACE, stop_policy::TERMINATE_WAIT) {
+            stop_policy::Outcome::Survived => {
+                Err(Error::Other(format!("pid {pid} was still running after TerminateProcess")))
+            }
+            _ => Ok(()),
+        }
+    }
+    /// Our own child: the same stop, then reap. The `Child` handle keeps the process
+    /// object — and so its pid — alive until the wait.
+    fn terminate_child(&self, child: &mut Child) {
+        let _ = self.stop(child.id());
+        let _ = child.wait();
+    }
+    fn mysqld_supervision_args(&self) -> Vec<String> {
+        stop_policy::MYSQLD_ARGS.iter().map(|a| a.to_string()).collect()
     }
     fn pid_alive(&self, pid: u32) -> bool {
         process::alive(pid)

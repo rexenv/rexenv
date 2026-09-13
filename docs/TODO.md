@@ -136,8 +136,18 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     families' owner-pid tables, names the root holder by image / hosted service / HTTP.sys /
     excluded range with PowerShell commands, and implements `pid_exe`, `pid_command`,
     `pid_alive`, `pids_named`, `owned_listeners`, `owned_master` (pid-reuse-safe parent links),
-    `owned_pids` — `platform/windows/process.rs` + `port_table.rs`, ledger #599. Spawn and stop
-    are next
+    `owned_pids` — `platform/windows/process.rs` + `port_table.rs`, ledger #599.
+    **✓ 14 Sep 2026, spawn + stop — the "Done when" met on the Dell** (`windows_supervision_check`,
+    two SSH sessions: MySQL + Mailpit started through `core`, outlived the launching process and
+    its kill-on-close job, adopted as the same pids, MySQL stopped cleanly through its event, ports
+    free). Owner rulings 13 Sep 2026: `mysqld --no-monitor` (the default monitor's child survived
+    the monitor's termination holding the port); stop = the process's own shutdown channel with a
+    10 s grace, else `TerminateProcess`. Services spawn broken away from the launcher's job, with
+    no console and every inheritable handle of rexenv's cleared first — the first two Dell runs
+    kept their SSH session open because the services inherited ~20 handles the launcher was born
+    with from sshd. Ledger #600. The box stays open for the parts of W3 still unproven on Windows,
+    not its "Done when": the owner-only ACL refusing another account (#597) and Mark-of-the-Web
+    removal on a file that has one (#598), both 🔨 L1 on the Dell
     - [x] **macOS has the same hole — measured 13 Sep 2026, found while writing #599; fixed the
       same day at the owner's go** ✓ `MacosSupervisor::port_holders` from `lsof -Fpn`, local ends
       only, `a_wildcard_tcp_holder_is_busy_on_macos_though_the_bind_says_free` +

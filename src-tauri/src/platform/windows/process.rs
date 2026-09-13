@@ -1,19 +1,23 @@
-//! Win32 reads behind `WindowsSupervisor`'s identity and port-gate methods (ledger
-//! #599): the socket tables, a process's image, command line, parent and creation
-//! time, the services it hosts, and `netsh`'s excluded port ranges.
+//! Win32 behind `WindowsSupervisor`: the identity and port-gate reads (ledger #599) —
+//! the socket tables, a process's image, command line, parent and creation time, the
+//! services it hosts, `netsh`'s excluded port ranges — `Stoppable`, the process a stop
+//! holds by handle, and the inherit-flag sweep before a service spawn (ledger #600).
 //!
-//! The rules applied to what these return live in `port_table.rs`, which has no Win32
-//! in it and runs its tests on every host. Everything here is compile-checked from the
-//! Mac and proven only by a run on Windows (`examples/windows_port_gate_check.rs`).
+//! The rules applied to what these return live in `port_table.rs` and `stop_policy.rs`,
+//! which have no Win32 in them and run their tests on every host. Everything here is
+//! compile-checked from the Mac and proven only by a run on Windows
+//! (`examples/windows_port_gate_check.rs`, `examples/windows_supervision_check.rs`).
 
 use super::port_table::{self, Table};
 use std::os::windows::ffi::OsStringExt;
 use std::path::PathBuf;
+use std::time::Duration;
 use windows_sys::Wdk::System::Threading::{NtQueryInformationProcess, ProcessCommandLineInformation};
 use windows_sys::Win32::Foundation::{
-    CloseHandle, GetLastError, ERROR_INSUFFICIENT_BUFFER, ERROR_MORE_DATA, FILETIME, HANDLE,
-    INVALID_HANDLE_VALUE, NO_ERROR, STATUS_BUFFER_OVERFLOW, STATUS_BUFFER_TOO_SMALL,
-    STATUS_INFO_LENGTH_MISMATCH, UNICODE_STRING, WAIT_TIMEOUT,
+    CloseHandle, GetLastError, ERROR_ACCESS_DENIED, ERROR_INSUFFICIENT_BUFFER, ERROR_MORE_DATA,
+    FILETIME, HANDLE, INVALID_HANDLE_VALUE, NO_ERROR, STATUS_BUFFER_OVERFLOW,
+    STATUS_BUFFER_TOO_SMALL, STATUS_INFO_LENGTH_MISMATCH, UNICODE_STRING, WAIT_OBJECT_0,
+    WAIT_TIMEOUT,
 };
 use windows_sys::Win32::NetworkManagement::IpHelper::{
     GetExtendedTcpTable, GetExtendedUdpTable, TCP_TABLE_OWNER_PID_LISTENER, UDP_TABLE_OWNER_PID,
@@ -27,8 +31,9 @@ use windows_sys::Win32::System::Services::{
     SC_ENUM_PROCESS_INFO, SC_MANAGER_ENUMERATE_SERVICE, SERVICE_ACTIVE, SERVICE_WIN32,
 };
 use windows_sys::Win32::System::Threading::{
-    GetProcessTimes, OpenProcess, QueryFullProcessImageNameW, WaitForSingleObject, CREATE_NO_WINDOW,
-    PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE,
+    GetProcessTimes, OpenEventW, OpenProcess, QueryFullProcessImageNameW, SetEvent,
+    TerminateProcess, WaitForSingleObject, CREATE_NO_WINDOW, EVENT_MODIFY_STATE,
+    PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE,
 };
 
 /// A kernel handle closed on drop.
@@ -331,4 +336,133 @@ pub(crate) fn excluded_ranges(udp: bool) -> Option<String> {
         .output()
         .ok()?;
     out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// A process being stopped, held by handle for the whole stop so its pid cannot be
+/// reused under us between the request, the wait and the terminate (ledger #600).
+pub(crate) struct Stoppable {
+    pid: u32,
+    process: Option<Owned>,
+}
+
+impl Stoppable {
+    /// `Ok` with no handle when the process is already gone; `Err` when it exists but
+    /// this user may not stop it — never reported as "already gone".
+    pub(crate) fn open(pid: u32) -> crate::error::Result<Self> {
+        let access = PROCESS_SYNCHRONIZE | PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION;
+        match Owned::process(pid, access) {
+            Some(process) => Ok(Stoppable { pid, process: Some(process) }),
+            // SAFETY: read immediately after the failing open.
+            None if unsafe { GetLastError() } == ERROR_ACCESS_DENIED => Err(crate::error::Error::Other(
+                format!("cannot stop pid {pid}: this user may not end that process (access denied)"),
+            )),
+            None => Ok(Stoppable { pid, process: None }),
+        }
+    }
+}
+
+impl super::stop_policy::Target for Stoppable {
+    fn alive(&mut self) -> bool {
+        // SAFETY: a zero-timeout wait on a handle opened with SYNCHRONIZE.
+        self.process.as_ref().is_some_and(|p| unsafe { WaitForSingleObject(p.0, 0) } == WAIT_TIMEOUT)
+    }
+
+    /// The process's own shutdown event, if it published one — today only `mysqld`'s.
+    fn request_clean_exit(&mut self) -> bool {
+        let name: Vec<u16> = super::stop_policy::mysqld_shutdown_event(self.pid)
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        // SAFETY: a NUL-terminated name; a null handle (no such event) is checked.
+        let event = unsafe { OpenEventW(EVENT_MODIFY_STATE, 0, name.as_ptr()) };
+        if event.is_null() {
+            return false;
+        }
+        let event = Owned(event);
+        // SAFETY: an event handle opened with EVENT_MODIFY_STATE.
+        let delivered = unsafe { SetEvent(event.0) } != 0;
+        if delivered {
+            log::info!("rexenv: asked pid {} to shut down through its MYSQLShutdown event", self.pid);
+        }
+        delivered
+    }
+
+    fn wait_exit(&mut self, budget: Duration) -> bool {
+        let Some(process) = self.process.as_ref() else {
+            return true;
+        };
+        let millis = u32::try_from(budget.as_millis()).unwrap_or(u32::MAX);
+        // SAFETY: a bounded wait on a handle opened with SYNCHRONIZE.
+        unsafe { WaitForSingleObject(process.0, millis) == WAIT_OBJECT_0 }
+    }
+
+    fn terminate(&mut self) -> bool {
+        let Some(process) = self.process.as_ref() else {
+            return false;
+        };
+        log::info!("rexenv: terminating pid {}", self.pid);
+        // SAFETY: a handle opened with PROCESS_TERMINATE.
+        unsafe { TerminateProcess(process.0, 1) != 0 }
+    }
+}
+
+/// Clear the inherit flag on every handle THIS process holds, so a service spawned next
+/// inherits only the stdio `std` hands it (ledger #600, `handles.rs` for the measurement).
+///
+/// Runs before each service spawn rather than once at start, so a handle some library
+/// opened inheritable later is caught too. `std`'s `Stdio::inherit`/`Stdio::from(File)`
+/// duplicate their OWN inheritable copy inside `spawn`, after this, so no `std` child loses
+/// its stdio; `std` serialises its spawns, so another thread's child-stdio copies cannot
+/// slip in between. Returns how many flags were cleared. If the snapshot cannot be read
+/// (it needs Windows 8), the standard handles are still cleared — the old, partial answer.
+pub(crate) fn keep_inheritable_handles_out_of_children() -> usize {
+    use windows_sys::Win32::Foundation::{SetHandleInformation, HANDLE_FLAG_INHERIT};
+    use windows_sys::Win32::System::Threading::GetCurrentProcess;
+    /// `ProcessHandleSnapshotInformation`.
+    const PROCESS_HANDLE_SNAPSHOT_INFORMATION: i32 = 51;
+    let clear = |handle: HANDLE| -> bool {
+        // SAFETY: a handle value this process holds; clearing a flag closes nothing, and a
+        // value that was closed in between fails the call harmlessly.
+        unsafe { SetHandleInformation(handle, HANDLE_FLAG_INHERIT, 0) != 0 }
+    };
+    // u64 words: the snapshot holds pointer-sized fields, so give it 8-byte alignment.
+    let mut words: Vec<u64> = vec![0; 1024];
+    for _ in 0..6 {
+        let mut needed = 0u32;
+        // SAFETY: the length passed is the buffer's size in bytes.
+        let status = unsafe {
+            NtQueryInformationProcess(
+                GetCurrentProcess(),
+                PROCESS_HANDLE_SNAPSHOT_INFORMATION,
+                words.as_mut_ptr().cast(),
+                (words.len() * 8) as u32,
+                &mut needed,
+            )
+        };
+        if matches!(status, STATUS_INFO_LENGTH_MISMATCH | STATUS_BUFFER_OVERFLOW | STATUS_BUFFER_TOO_SMALL) {
+            words = vec![0; (needed as usize).div_ceil(8).max(words.len() * 2)];
+            continue;
+        }
+        if status < 0 {
+            break;
+        }
+        // SAFETY: a byte view of the u64 buffer the call filled.
+        let bytes = unsafe { std::slice::from_raw_parts(words.as_ptr().cast::<u8>(), words.len() * 8) };
+        let cleared = super::handles::inheritable_handles(bytes)
+            .into_iter()
+            .filter(|&value| clear(value as HANDLE))
+            .count();
+        if cleared > 0 {
+            log::info!("rexenv: cleared the inherit flag on {cleared} handle(s) before spawning a service");
+        }
+        return cleared;
+    }
+    log::warn!("rexenv: could not read this process's handle table; clearing the standard handles only");
+    use std::os::windows::io::AsRawHandle;
+    [std::io::stdin().as_raw_handle(), std::io::stdout().as_raw_handle(), std::io::stderr().as_raw_handle()]
+        .into_iter()
+        .map(|h| h as HANDLE)
+        .filter(|&h| !h.is_null() && h != INVALID_HANDLE_VALUE)
+        .filter(|&h| clear(h))
+        .count()
 }

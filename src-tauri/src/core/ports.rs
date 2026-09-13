@@ -213,6 +213,13 @@ mod tests {
     /// the reason it is safe. Empty is the goal; an entry is an argument.
     const RAW_CHILD_OK: &[(&str, &str)] = &[
         (
+            "windows_supervision_check",
+            "LEAVES its mysqld and mailpit running on purpose: its first phase is the app \
+             quitting, and the second phase, in a new process and a new SSH session, has to \
+             find them alive, adopt them and stop them. A guard that reaped them on exit would \
+             destroy the thing under test — the same reason as `wp_real443_setup`.",
+        ),
+        (
             "mcp_mail_check",
             "owns its mailpit through a static + `MailpitGuard` rather than a local, because \
              the child has to be reachable from a signal path — the same deliberate shape \

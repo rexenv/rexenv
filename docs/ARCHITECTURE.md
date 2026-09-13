@@ -513,6 +513,22 @@ Live-proven end to end by `site_stop_start_check`.
   (`owned_listeners(port, marker)`, lowest pid = master). The root edge is invisible to
   unprivileged lsof → adopted iff OUR admin unix socket answers. If anything was adopted,
   cached nginx/caddy binary paths are wired strictly offline (existence-checked, no download).
+  **On Windows** (#600, 13 Sep 2026) "outlives" needs a flag, not just a missing kill: a
+  service is spawned with `CREATE_BREAKAWAY_FROM_JOB`, because a launcher inside a
+  kill-on-close job — an SSH session measurably is one, a terminal or IDE can be — takes
+  every child without it down with the job; plus `CREATE_NO_WINDOW` and its own process
+  group. A launcher whose job forbids breakaway gets a start error that says so, never a
+  service that silently dies with the app. Stop has no SIGTERM to send: a process with its
+  own clean-shutdown channel is asked through it and given 10 s — `mysqld`, run with
+  `--no-monitor` so the pid rexenv holds IS the server (the default restart monitor's child
+  survived the monitor's termination still holding the port, measured), via its
+  `MYSQLShutdown<pid>` event — and everything else, or anything that ignores the request,
+  is ended with `TerminateProcess` (Mailpit today; owner ruling 13 Sep 2026). A service also
+  never inherits a handle rexenv holds: `std` spawns with handle inheritance on, and the Dell
+  showed services carrying 20–25 handles the launcher was born with (from sshd — not just its
+  stdio) and holding its SSH session open until they were stopped; the same would pin a
+  terminal's pipe for a service's life. Every inheritable handle in rexenv's own snapshot is
+  cleared before each service spawn (`windows/handles.rs`).
 - `reconcile_startup()` = the OLD stop-orphans-at-boot, now only an explicit cleanup path
   (e.g. `examples/stack_stop`), never run automatically.
 - **"Running" is ownership AND liveness, never a bare port-listen** (finding H2):

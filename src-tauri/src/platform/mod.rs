@@ -50,6 +50,16 @@ mod windows_pe;
 #[allow(dead_code)]
 #[path = "windows/port_table.rs"]
 mod windows_port_table;
+// And the stop sequencing (ledger #600).
+#[cfg(all(test, not(target_os = "windows")))]
+#[allow(dead_code)]
+#[path = "windows/stop_policy.rs"]
+mod windows_stop_policy;
+// And the handle-snapshot parse a service spawn clears inheritance from (ledger #600).
+#[cfg(all(test, not(target_os = "windows")))]
+#[allow(dead_code)]
+#[path = "windows/handles.rs"]
+mod windows_handles;
 
 use traits::Platform;
 

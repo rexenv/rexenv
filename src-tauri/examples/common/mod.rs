@@ -770,6 +770,17 @@ impl Drop for SandboxGuard {
     }
 }
 
+/// A sandboxed `Platform` rooted at `root`, with NO guard — for a check whose phases are
+/// separate processes, where the root must outlive the first one (`sandbox` removes its
+/// tree when its process ends). The caller owns `root` and removes it. Same exceptions as
+/// [`sandbox`]: the real binary cache, the real hosts file.
+pub fn sandbox_platform_at(root: PathBuf) -> Box<dyn Platform> {
+    let real = rexenv_lib::platform::current();
+    let bin = real.paths().bin_dir().expect("real binary cache");
+    let hosts = real.paths().hosts_file();
+    Box::new(SandboxPlatform { inner: real, paths: SandboxPaths { root, bin, hosts } })
+}
+
 /// A `Platform` whose app data is a throwaway directory.
 ///
 /// Use this in ANY example that generates configs or spawns services. The
