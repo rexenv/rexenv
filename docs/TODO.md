@@ -53,7 +53,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     carry 21 cut-name leftovers — this bug; `bl.rex`, `tr.rex`, `tr2.rex`, `xyz.rex` pass checksums but still carry
     the 21 cut-name leftovers (a later update restored the real files); `lm.test` (6.7.1, 175 missing) and
     `oc.test` (6.2, 142 missing) predate `php-ai-client` — a different cause, not attributed here; the other 6 are
-    clean. Repair (`core_reinstall`) only on the owner's go. Users of 0.4.0–0.7.1
+    clean. ✓ **Repaired 14 Sep 2026 at the owner's go:** the five broken sites reinstalled from their version's
+    no-content zip (`core_reinstall`'s exact arguments) — 25 missing → 0, `wp core verify-checksums` Success on each;
+    wp-content, config and database untouched; the cut-name leftovers kept by ruling. Still open for USERS' sites
+    created by 0.4.0–0.7.1: 0.7.2 (a hotfix cut from v0.7.1, being prepared) carries the fix, and its release note
+    says how to repair an existing site Users of 0.4.0–0.7.1
     with sites created by rexenv are affected the same way — a release note or an in-app repair is a separate
     ruling
 - [ ] **Windows launch** — 12 Sep 2026, owner: macOS is stable, ship a Windows version.
