@@ -41,7 +41,7 @@ pub(crate) async fn wp_tools(
             .map_err(|_| Error::Other("database lock poisoned".into()))?;
         php::patch_to_run(&conn, php_minor)?
     };
-    let php_bin = binaries::resolve(state.platform.as_ref(), "php", &patch).await?;
+    let php_bin = binaries::resolve_program(state.platform.as_ref(), "php", &patch).await?;
     // wp-cli is a .phar (not a Mach-O) → resolve_file (no chmod/codesign).
     let wp_phar =
         binaries::resolve_file(state.platform.as_ref(), "wp-cli", binaries::WP_CLI_VERSION).await?;
@@ -63,7 +63,7 @@ pub(crate) async fn composer_tools(
             .map_err(|_| Error::Other("database lock poisoned".into()))?;
         php::patch_to_run(&conn, php_minor)?
     };
-    let php_bin = binaries::resolve(state.platform.as_ref(), "php", &patch).await?;
+    let php_bin = binaries::resolve_program(state.platform.as_ref(), "php", &patch).await?;
     // A .phar (not a Mach-O) → resolve_file: no chmod/codesign step.
     let composer_phar =
         binaries::resolve_file(state.platform.as_ref(), "composer", binaries::COMPOSER_VERSION)

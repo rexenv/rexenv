@@ -177,9 +177,14 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     the site's PHP, a WordPress site end to end, the busy-workers signal
     - [ ] Per-vhost `PHP_VALUE` does NOT reach a php-cgi group — measured 14 Sep 2026 on the Dell
       (`windows_nginx_check`: `memory_limit=222M` sent per vhost, the child kept the pool's value).
-      It is php-fpm's per-request ini; php-cgi has none. Every per-site PHP value rexenv sets that
-      way needs another carrier on Windows (a per-site `.user.ini`, or a group per setting) — a
-      decision for the owner before a site that relies on one is served there
+      It is php-fpm's per-request ini; php-cgi has none. Measured who sets one: ONLY the Adminer
+      vhost (`sites.rs`, `adminer::import_php_value` — the import upload cap), no user site. So on
+      Windows Adminer's import cap is the pool's until another carrier exists (a `.user.ini` in
+      Adminer's docroot is the likely one) — small, and not a blocker for serving sites
+    - [ ] The site terminal (`commands/terminal.rs`) resolves PHP as a single binary, starts
+      `$SHELL`/zsh and writes a shell-script `wp` wrapper — none of which exists on Windows. W7's
+      terminals, not W4; WP-CLI and Composer themselves now resolve PHP through
+      `binaries::resolve_program`
     - [ ] Download planning (`core/downloads.rs`) names `php-fpm` for every PHP it plans; on a
       php-cgi platform it must plan `php` — found writing W4 step 1, not yet changed
   - [ ] W5 — Caddy :443 edge + CurrentUser Root CA trust → valid lock in Edge/Chrome/Firefox
