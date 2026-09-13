@@ -229,6 +229,13 @@ notices fix alone, while 65 commits of Windows groundwork and features stayed on
 - `scripts/wk-checks/node_modules` is untracked, so a worktree has none and `verify-full.sh`
   stops. Link the main checkout's when `scripts/wk-checks/package*.json` are unchanged since
   the tag; install otherwise.
+  **Never link the ROOT `node_modules` the same way — install it** (`pnpm install
+  --frozen-lockfile`; pnpm hardlinks from its store, so it costs little disk). Vite serves only
+  files inside the project root, and a symlinked `node_modules` resolves to the main checkout's
+  path: 0.7.2's WebKit checks failed 118 scenarios on `403 Forbidden` for the fontsource fonts
+  ("outside of Vite serving allow list", 14 Sep 2026), every page's console carrying the error
+  while the panels that load no font passed. The wk-checks harness's own `node_modules` is
+  plain Node and does not go through vite, which is why that one link is safe.
 - The draft's notes say in one line what the patch fixes — for 0.7.1, that earlier copies
   carry an incomplete licence list. Users who downloaded before have a right to know.
 - After it ships, master records the shipped commit: `git merge -s ours release/X.Y.Z`
