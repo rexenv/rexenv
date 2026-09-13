@@ -34,7 +34,13 @@ platform/   ALL OS-specific code, behind 13 traits (platform/traits.rs):
   examples did not each grow a field. `platform/windows/` — every unfilled
   method returns `Error::Unported`, or panics through `unported!` where the trait cannot return
   an error, and never `todo!()` (W3 step 0, ledger #595: a release build has no console, so
-  `todo!()`'s message reached nobody); `platform/linux/` — every method `todo!()`. The design goal is "adding an OS = filling stubs". **Measured 12
+  `todo!()`'s message reached nobody); `platform/linux/` — every method `todo!()`.
+  **Windows `Paths` and `PermissionManager` are written** (13 Sep 2026, W3; compile-checked
+  from the Mac, not yet run): app data in `%LOCALAPPDATA%\rexenv\rexenv\data` (Local, never
+  roaming — it holds binaries and datadirs; the namespace constants in `platform/mod.rs` are
+  shared with macOS), and "owner-only" means a PROTECTED DACL with a single full-access entry
+  for the process's user — no SYSTEM, no Administrators, nothing inherited — applied through the
+  file handle, with `write_private` creating the file already carrying it (ledger #597). The design goal is "adding an OS = filling stubs". **Measured 12
   Sep 2026 the tree did not meet it**, and ledger #163's scan was green anyway — it looked
   for OS module names, not Unix APIs. Windows port W1 (`docs/PLAN-windows-port.md`) closed
   the `core/` half the same day: its unix sockets, `kill`, `cfg(unix)` and `std::os::unix`

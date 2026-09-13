@@ -4,6 +4,15 @@
 
 pub mod traits;
 
+// The app-data namespace, ONE fact for every OS: `directories::ProjectDirs::from`
+// composes it. macOS → `~/Library/Application Support/dev.rexenv.rexenv` (its drift
+// guard checks that equals the bundle identifier); Windows → `%LOCALAPPDATA%\rexenv\
+// rexenv\data` (the crate drops the qualifier there). Moved here from macos/ for the
+// Windows port, so the two platforms cannot name the folder differently.
+pub(crate) const APP_QUALIFIER: &str = "dev";
+pub(crate) const APP_ORG: &str = "rexenv";
+pub(crate) const APP_NAME: &str = "rexenv";
+
 /// A platform method with no implementation yet, in a trait method that cannot
 /// return an error (a `PathBuf`, a `bool`, a command string). Panics with the
 /// same wording as `Error::Unported`, which the panic hook records — so an
@@ -23,6 +32,12 @@ mod macos;
 mod windows;
 #[cfg(target_os = "linux")]
 mod linux;
+
+// The Windows owner-only SDDL builder is pure text: include it on the macOS/Linux
+// test host so its tests run in `verify.sh` too, not only on a Windows machine.
+#[cfg(all(test, not(target_os = "windows")))]
+#[path = "windows/owner_only.rs"]
+mod windows_owner_only;
 
 use traits::Platform;
 

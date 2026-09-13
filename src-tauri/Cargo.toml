@@ -101,7 +101,17 @@ sha2 = "0.10"
 # (tao/wry), so this declares a crate that was compiled anyway; the macOS graph
 # is unchanged.
 [target.'cfg(target_os = "windows")'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+    # Owner-only files (platform/windows/acl.rs, ledger #597): the current user's SID,
+    # an SDDL descriptor, and a DACL set through a file handle. Security_Authorization
+    # is the one feature not already on in the Windows graph — same crate, more bindings.
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Threading",
+] }
 
 # Target-gated like the [dependencies] copies: objc2 is a compile_error! on any
 # non-Apple target, and as a plain dev-dependency it failed EVERY test and example

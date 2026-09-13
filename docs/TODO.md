@@ -112,7 +112,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     full downloads matched all three — the sweep keeps them HEAD-only, ledger #335)
   - [ ] W3 — Paths, ACL permissions, BinaryProvider, ProcessSupervisor (MySQL + Mailpit
     start, outlive the app, adopt on relaunch — on real Windows); `ensure_free` reads the
-    TCP/UDP tables, never a trial bind, and a start counts only when OUR server answers (plan §6)
+    TCP/UDP tables, never a trial bind, and a start counts only when OUR server answers (plan §6).
+    **Progress 13 Sep 2026 (compile-checked from the Mac, not run on Windows):** `Paths` →
+    `%LOCALAPPDATA%\rexenv\rexenv\data` (the app-data namespace constants now live in
+    `platform/mod.rs`, shared with macOS); `PermissionManager` → owner-only ACLs in
+    `platform/windows/acl.rs` (SDDL builder L0-tested on every host, ledger #597);
+    `set_executable` checks the file exists — Windows has no execute bit
   - [ ] W4 — php-cgi group (preflight + churn breaker, plan §3 D1(a)) + nginx + SMTP mail → a
     WordPress site serves
   - [ ] W5 — Caddy :443 edge + CurrentUser Root CA trust → valid lock in Edge/Chrome/Firefox

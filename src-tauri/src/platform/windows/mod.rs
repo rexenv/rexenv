@@ -15,19 +15,33 @@ use crate::platform::traits::*;
 use std::path::{Path, PathBuf};
 use std::process::Child;
 
+mod acl;
+mod owner_only;
+
 pub struct WindowsPaths;
 impl Paths for WindowsPaths {
+    /// `%LOCALAPPDATA%\rexenv\rexenv\data` — `directories` resolves the Local AppData
+    /// known folder (`SHGetKnownFolderPath`, not an environment variable) and drops the
+    /// qualifier on Windows. LOCAL, not roaming: this folder holds gigabytes of
+    /// binaries and database datadirs, which must never sync to a roaming profile.
     fn app_data_dir(&self) -> Result<PathBuf> {
-        Err(Error::Unported("windows app_data_dir"))
+        let dirs = directories::ProjectDirs::from(
+            crate::platform::APP_QUALIFIER,
+            crate::platform::APP_ORG,
+            crate::platform::APP_NAME,
+        )
+        .ok_or(Error::Other("cannot resolve the Local AppData folder".into()))?;
+        Ok(dirs.data_local_dir().to_path_buf())
     }
+    // Same layout under app data as macOS: one tree, one set of relative names.
     fn config_dir(&self) -> Result<PathBuf> {
-        Err(Error::Unported("windows config_dir"))
+        Ok(self.app_data_dir()?.join("config"))
     }
     fn log_dir(&self) -> Result<PathBuf> {
-        Err(Error::Unported("windows log_dir"))
+        Ok(self.app_data_dir()?.join("logs"))
     }
     fn bin_dir(&self) -> Result<PathBuf> {
-        Err(Error::Unported("windows bin_dir"))
+        Ok(self.app_data_dir()?.join("bin"))
     }
     fn hosts_file(&self) -> PathBuf {
         PathBuf::from(r"C:\Windows\System32\drivers\etc\hosts")
@@ -102,16 +116,21 @@ impl AutostartManager for WindowsAutostart {
 
 pub struct WindowsPermissions;
 impl PermissionManager for WindowsPermissions {
-    fn set_executable(&self, _path: &Path) -> Result<()> {
-        // Likely a no-op when ported (executability is by extension), but that is
-        // the port's decision to record, not a stub's to assume.
-        Err(Error::Unported("windows set_executable"))
+    /// Windows runs a file by its extension; there is no execute bit to set. The
+    /// metadata read keeps the macOS contract that a missing file is an error rather
+    /// than a silent success.
+    fn set_executable(&self, path: &Path) -> Result<()> {
+        std::fs::metadata(path)?;
+        Ok(())
     }
-    fn set_private(&self, _path: &Path) -> Result<()> {
-        Err(Error::Unported("windows owner-only ACL"))
+    /// A protected DACL with one entry, the current user (`acl.rs`, ledger #597).
+    fn set_private(&self, path: &Path) -> Result<()> {
+        acl::set_private(path)
     }
-    fn write_private(&self, _path: &Path, _contents: &[u8]) -> Result<()> {
-        Err(Error::Unported("windows owner-only create (ACL)"))
+    /// Born owner-only through `CreateFileW`'s security attributes; an existing file
+    /// is re-hardened before it is truncated and written (`acl.rs`, ledger #597).
+    fn write_private(&self, path: &Path, contents: &[u8]) -> Result<()> {
+        acl::write_private(path, contents)
     }
 }
 

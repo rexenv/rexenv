@@ -674,8 +674,13 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   `resolve` on a real Windows host still calls `set_executable` / `prepare_binary`, which
   are unported there — that is W3 (since step 0 they return `Error::Unported`, not `todo!()`).
 - **W3 — Foundations.** **Step 0 first (§3a Q1): the panic hook and `Unported` stubs, so every
-  build from here on fails out loud.** Then `Paths` (`%LOCALAPPDATA%\rexenv`), `PermissionManager` (owner-only
-  ACLs), `BinaryProvider` (strip the `Zone.Identifier` stream, no codesign),
+  build from here on fails out loud.** Then `Paths` (`%LOCALAPPDATA%\rexenv\rexenv\data` —
+  measured 13 Sep 2026 in `directories` 5's source: it resolves the Local AppData known folder
+  and drops the qualifier on Windows; the draft's `%LOCALAPPDATA%\rexenv` was a guess),
+  `PermissionManager` (owner-only ACLs — **written 13 Sep 2026, compile-checked from the Mac,
+  not yet run:** a protected DACL with one full-access entry for the process's user, set
+  through the file handle, and `write_private` creating the file WITH that descriptor;
+  ledger #597), `BinaryProvider` (strip the `Zone.Identifier` stream, no codesign),
   `ProcessSupervisor` (hidden + detached spawn so services OUTLIVE the app, graceful
   per-service stop, pid → exe/cmdline for ownership, listener lookup via
   `GetExtendedTcpTable`, conflict help naming HTTP.sys and the Hyper-V excluded port

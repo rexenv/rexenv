@@ -26,10 +26,9 @@ use std::time::Duration;
 pub const APP_IDENTIFIER: &str = "dev.rexenv.rexenv";
 
 // app-data namespace parts: `directories::ProjectDirs::from(qualifier, org, name)`
-// composes these to `<qualifier>.<org>.<name>` = APP_IDENTIFIER on macOS.
-const APP_QUALIFIER: &str = "dev";
-const APP_ORG: &str = "rexenv";
-const APP_NAME: &str = "rexenv";
+// composes these to `<qualifier>.<org>.<name>` = APP_IDENTIFIER on macOS. Defined
+// in platform/mod.rs, shared with Windows — one namespace for every OS.
+use crate::platform::{APP_NAME, APP_ORG, APP_QUALIFIER};
 
 pub struct MacosPaths;
 impl Paths for MacosPaths {
