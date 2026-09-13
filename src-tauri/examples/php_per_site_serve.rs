@@ -108,7 +108,7 @@ async fn main() {
     let mut all_ok = true;
     for (domain, minor) in sites_spec {
         let want = php::patch_for_minor(minor).unwrap(); // e.g. "8.1.34"
-        let out = Command::new("curl")
+        let out = Command::new("curl").args(["--max-time", "60"])
             .args([
                 "-s",
                 "--resolve",
@@ -126,7 +126,7 @@ async fn main() {
         let code = String::from_utf8_lossy(&out.stdout).trim().to_string();
 
         // Re-fetch the body to read the reported PHP version from phpinfo().
-        let body = Command::new("curl")
+        let body = Command::new("curl").args(["--max-time", "60"])
             .args([
                 "-s",
                 "--resolve",

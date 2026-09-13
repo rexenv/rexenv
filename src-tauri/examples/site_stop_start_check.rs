@@ -54,7 +54,7 @@ fn marker(domain: &str) -> String {
 /// because "503" alone does not distinguish rexenv saying the site is stopped
 /// from a proxy failing to reach something.
 fn body(host: &str, port: u16, ca_pem: &Path) -> String {
-    let out = std::process::Command::new("curl")
+    let out = std::process::Command::new("curl").args(["--max-time", "60"])
         .args([
             "-s",
             "--resolve",

@@ -938,7 +938,7 @@ pub fn fixture_db(tag: &str) -> (rusqlite::Connection, FixtureDb) {
 /// every example that talks to the edge already does and a second mechanism
 /// here would be a second set of TLS behaviours to reason about.
 pub fn https_status(host: &str, port: u16, ca_pem: &Path) -> String {
-    let out = std::process::Command::new("curl")
+    let out = std::process::Command::new("curl").args(["--max-time", "60"])
         .args([
             "-s",
             "--resolve",

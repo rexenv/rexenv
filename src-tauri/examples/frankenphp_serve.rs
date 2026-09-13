@@ -78,12 +78,12 @@ async fn main() -> std::process::ExitCode {
     // assertion is "we did not add one".
     let admin_bound = !admin_before && ports::is_listening(2019); // must be false — admin is off
 
-    let code = Command::new("curl")
+    let code = Command::new("curl").args(["--max-time", "60"])
         .args(["-s", "-H", &format!("Host: {DOMAIN}"), "-o", "/dev/null", "-w", "%{http_code}",
                &format!("http://127.0.0.1:{PORT}/")])
         .output().expect("curl").stdout;
     let code = String::from_utf8_lossy(&code).trim().to_string();
-    let body = Command::new("curl")
+    let body = Command::new("curl").args(["--max-time", "60"])
         .args(["-s", "-H", &format!("Host: {DOMAIN}"), &format!("http://127.0.0.1:{PORT}/")])
         .output().expect("curl").stdout;
     let body = String::from_utf8_lossy(&body);
@@ -100,7 +100,7 @@ async fn main() -> std::process::ExitCode {
     // still be 200, or "deny every dot path" would satisfy the three denials
     // while breaking ACME — the fix someone reaches for first.
     let get = |path: &str| -> String {
-        let out = Command::new("curl")
+        let out = Command::new("curl").args(["--max-time", "60"])
             .args(["-s", "-i", "-H", &format!("Host: {DOMAIN}"),
                    &format!("http://127.0.0.1:{PORT}{path}")])
             .output().expect("curl").stdout;
