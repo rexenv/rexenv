@@ -1737,7 +1737,7 @@ impl ServiceManager {
                 .into_iter()
                 .flatten()
             {
-                for pid in platform.supervisor().owned_listeners(port, "php-fpm") {
+                for pid in platform.supervisor().owned_listeners(port, platform.supervisor().php_pool_model().process_title()) {
                     let _ = platform.supervisor().stop(pid);
                 }
             }

@@ -342,6 +342,11 @@ pub trait ProcessSupervisor: Send + Sync {
         None
     }
 
+    /// How this platform serves a PHP minor. Default: a php-fpm pool.
+    fn php_pool_model(&self) -> PoolModel {
+        PoolModel::Fpm
+    }
+
     /// Arguments this OS's supervision needs on every `mysqld` server start, appended
     /// after rexenv's own. Default: none. Windows: `--no-monitor` — MySQL 8.4 there
     /// otherwise runs a restart monitor whose child is the real server, and killing the
@@ -364,6 +369,47 @@ pub trait ProcessSupervisor: Send + Sync {
     /// Default: no help — the plain "port in use" error stands on its own.
     fn port_conflict_help(&self, _port: u16, _udp: bool) -> PortConflictHelp {
         PortConflictHelp::default()
+    }
+}
+
+/// How this platform serves one PHP minor (docs/PLAN-windows-port.md §3 D1, ledger #601).
+/// The platform names the MODEL; `core` renders both and runs one lifecycle for both
+/// (owner ruling 14 Sep 2026).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PoolModel {
+    /// A php-fpm master and its pool config (`core::services`).
+    Fpm,
+    /// A `php-cgi` parent that spawns and respawns its own children on one socket
+    /// (`core::php_cgi`), with the extensions this platform's PHP build loads.
+    CgiGroup(CgiGroup),
+}
+
+/// The extensions a [`PoolModel::CgiGroup`] loads from its PHP directory's `ext\`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CgiGroup {
+    /// `extension = <name>` lines.
+    pub extensions: &'static [&'static str],
+    /// `zend_extension = <name>` lines.
+    pub zend_extensions: &'static [&'static str],
+}
+
+impl PoolModel {
+    /// The binary catalog name the pool runs (`core::binaries`).
+    pub fn catalog_name(&self) -> &'static str {
+        match self {
+            PoolModel::Fpm => "php-fpm",
+            PoolModel::CgiGroup(_) => "php",
+        }
+    }
+
+    /// A word every process of the pool carries on its command line or title: the
+    /// fixed-port sweep's identity for a worker whose command line lacks the
+    /// app-data path (php-fpm rewrites worker titles; php-cgi children do not).
+    pub fn process_title(&self) -> &'static str {
+        match self {
+            PoolModel::Fpm => "php-fpm",
+            PoolModel::CgiGroup(_) => "php-cgi",
+        }
     }
 }
 

@@ -529,6 +529,15 @@ Live-proven end to end by `site_stop_start_check`.
   stdio) and holding its SSH session open until they were stopped; the same would pin a
   terminal's pipe for a service's life. Every inheritable handle in rexenv's own snapshot is
   cleared before each service spawn (`windows/handles.rs`).
+  **A PHP minor on Windows is a php-cgi GROUP, not a php-fpm pool** (#601, W4): the platform
+  answers `ProcessSupervisor::php_pool_model()` with `PoolModel::CgiGroup` and the extensions its
+  PHP build loads; `core::php_cgi` renders rexenv's own ini (`php-cgi -n -c`: `extension_dir`,
+  the 26 extensions, the user's settings, SMTP keys to Mailpit) and the environment
+  (`PHP_FCGI_CHILDREN=10`, `PHP_FCGI_MAX_REQUESTS=500`, the Laravel mail set), refuses to start on
+  a failed preflight — read from the OUTPUT, since php-cgi exits 0 when an extension fails to load —
+  and spawns the parent on the minor's usual pool port. `PhpFpmPools` runs the same ensure / adopt /
+  reap / stop for both models; the settings gate tests a candidate for whichever model runs. The
+  Xdebug pool is refused there (D4).
 - `reconcile_startup()` = the OLD stop-orphans-at-boot, now only an explicit cleanup path
   (e.g. `examples/stack_stop`), never run automatically.
 - **"Running" is ownership AND liveness, never a bare port-listen** (finding H2):

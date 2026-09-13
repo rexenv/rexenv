@@ -19,7 +19,8 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
   `windows/process.rs` (Win32 reads) + `windows/port_table.rs` (their pure rules, tested on
   every host — ledger #599), and its spawn/stop half: `WindowsSupervisor`'s spawn family +
   `process.rs::Stoppable` + `windows/stop_policy.rs` (the stop sequencing, tested on every
-  host — ledger #600);
+  host — ledger #600); the PHP pool MODEL each platform runs (`traits::PoolModel` — php-fpm, or a
+  php-cgi group rendered by `core/php_cgi.rs`, ledger #601);
   `linux/` is `todo!()`).
 - `state/` = SQLite migrations + the store layer; only `state/` writes SQL.
 - `crash.rs` = the panic hook, installed FIRST in `main.rs`: every panic appended to

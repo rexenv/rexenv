@@ -185,6 +185,20 @@ impl ProcessSupervisor for WindowsSupervisor {
     fn mysqld_supervision_args(&self) -> Vec<String> {
         stop_policy::MYSQLD_ARGS.iter().map(|a| a.to_string()).collect()
     }
+    /// No php-fpm exists for Windows: a php-cgi group (plan D1). The extensions are the 26
+    /// the official NTS x64 zip ships that the macOS build also carries (owner ruling 14 Sep
+    /// 2026); pcntl/posix/sysvmsg/sysvsem do not exist here, and the PECL ones (apcu,
+    /// imagick, redis, event, swoole, protobuf, opentelemetry) are not in v1.
+    fn php_pool_model(&self) -> PoolModel {
+        PoolModel::CgiGroup(CgiGroup {
+            extensions: &[
+                "bz2", "curl", "dba", "exif", "fileinfo", "ftp", "gd", "gmp", "imap", "intl",
+                "mbstring", "mysqli", "openssl", "pdo_mysql", "pdo_pgsql", "pdo_sqlite", "pgsql",
+                "shmop", "soap", "sockets", "sodium", "sqlite3", "sysvshm", "xsl", "zip",
+            ],
+            zend_extensions: &["opcache"],
+        })
+    }
     fn pid_alive(&self, pid: u32) -> bool {
         process::alive(pid)
     }

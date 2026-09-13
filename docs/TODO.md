@@ -164,7 +164,14 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
       and are unaffected. The shape is Herd's :443 shadow bind, on rexenv's own gate. Parsed from
       `-Fpn` rather than `-t`, because `-iUDP:<p>` also lists a client whose REMOTE end is the port
   - [ ] W4 — php-cgi group (preflight + churn breaker, plan §3 D1(a)) + nginx + SMTP mail → a
-    WordPress site serves
+    WordPress site serves. **Progress 14 Sep 2026:** D1's measurements on the Dell (plan §3 D1);
+    owner rulings on the pool's contents (the 26 official extensions, `PoolModel` named by the
+    platform with `core` rendering both, rexenv's own ini); step 1 written — `core/php_cgi.rs`
+    (ini, env, args, output-reading preflight), `PhpFpmPools` running both models, the settings
+    gate for both, Xdebug refused on the group (ledger #601). Still to come: the churn breaker,
+    nginx on Windows, WP-CLI/Composer through the site's PHP, the busy-workers signal
+    - [ ] Download planning (`core/downloads.rs`) names `php-fpm` for every PHP it plans; on a
+      php-cgi platform it must plan `php` — found writing W4 step 1, not yet changed
   - [ ] W5 — Caddy :443 edge + CurrentUser Root CA trust → valid lock in Edge/Chrome/Firefox
   - [ ] W6 — DNS agent + NRPT + UAC + logon task → `*.rex` resolves after reboot, app closed
   - [ ] W7 — ShellRunner, autostart, tray (includes the Windows half of the browser-stub row)

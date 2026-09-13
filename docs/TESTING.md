@@ -1298,6 +1298,8 @@ bloating the fast path:
   `windows_files_check` (#597/#598) is driven by `scripts/probes/windows-files-check.sh`, because
   "owner-only" is a claim about OTHER accounts: the runner reads the files back as
   `NT AUTHORITY\LOCAL SERVICE` through a scheduled task, and cleans task, folder and exe on exit.
+  `windows_php_pool_check` (#601) starts a PHP minor through `PhpFpmPools` and speaks FastCGI to it
+  itself — a child's answer, not a port probe, is what shows the group serves.
 
 A gate nobody can afford to run stops being one: the fast bar stays fast, and nothing
 above it is required per-commit. The metric the gate serves is the ledger tally, which

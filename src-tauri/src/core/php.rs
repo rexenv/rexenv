@@ -775,6 +775,47 @@ pub fn nginx_body_limits(
     out
 }
 
+/// Gate a settings change on a CANDIDATE config the running pool never reads, for
+/// whichever pool model this platform runs — `php-fpm -t` on a candidate conf, or the
+/// php-cgi preflight on a candidate ini. Only when the binary is already cached: a
+/// settings edit must not download PHP for a minor that is not installed (typed
+/// validation already ran, and no pool runs for it anyway).
+pub async fn test_settings_candidate(
+    platform: &dyn Platform,
+    minor: &str,
+    patch: &str,
+    port: u16,
+    pairs: &[(String, String)],
+) -> Result<()> {
+    let model = platform.supervisor().php_pool_model();
+    if !binaries::is_cached(platform, model.catalog_name(), patch) {
+        return Ok(());
+    }
+    match model {
+        crate::platform::traits::PoolModel::Fpm => {
+            let bin = binaries::resolve(platform, "php-fpm", patch).await?; // cache hit
+            let candidate = services::write_fpm_config_candidate(platform, minor, port, pairs)?;
+            let test = services::test_fpm_config(platform, &bin, &candidate);
+            let _ = std::fs::remove_file(&candidate);
+            test
+        }
+        crate::platform::traits::PoolModel::CgiGroup(group) => {
+            let dir = binaries::resolve_dir(platform, "php", patch).await?; // cache hit
+            let candidate = super::php_cgi::write_ini(
+                platform,
+                &group,
+                &dir,
+                &format!("{minor}.candidate"),
+                None,
+                pairs,
+            )?;
+            let test = super::php_cgi::preflight(platform, &group, &dir, &candidate);
+            let _ = std::fs::remove_file(&candidate);
+            test
+        }
+    }
+}
+
 /// A running php-fpm pool's status (for the Services view / metrics).
 #[derive(Debug, Clone)]
 pub struct PoolStatus {
@@ -923,16 +964,25 @@ impl PhpFpmPools {
         let port =
             fpm_port(minor).ok_or_else(|| Error::Other(format!("no fpm port for {minor}")))?;
         ports::ensure_free(platform, port, ports::Proto::Tcp, "PHP-FPM")?;
-        let bin = binaries::resolve(platform, "php-fpm", &patch).await?;
         let settings = self.settings.get(minor).map(Vec::as_slice).unwrap_or(&[]);
-        let conf = services::write_fpm_config(
-            platform,
-            minor,
-            port,
-            self.catch.as_ref(),
-            settings,
-        )?;
-        let child = services::start_fpm(platform, &bin, &conf)?;
+        let child = match platform.supervisor().php_pool_model() {
+            crate::platform::traits::PoolModel::Fpm => {
+                let bin = binaries::resolve(platform, "php-fpm", &patch).await?;
+                let conf = services::write_fpm_config(
+                    platform,
+                    minor,
+                    port,
+                    self.catch.as_ref(),
+                    settings,
+                )?;
+                services::start_fpm(platform, &bin, &conf)?
+            }
+            // One php-cgi parent per minor on the same port (ledger #601).
+            crate::platform::traits::PoolModel::CgiGroup(group) => {
+                let dir = binaries::resolve_dir(platform, "php", &patch).await?;
+                super::php_cgi::start_group(platform, &group, &dir, minor, port, self.catch.as_ref(), settings)?
+            }
+        };
         self.pools.push(Pool {
             minor: minor.to_string(),
             port,
@@ -952,6 +1002,13 @@ impl PhpFpmPools {
     pub async fn ensure_debug(&mut self, platform: &dyn Platform, minor: &str) -> Result<()> {
         if self.has(minor, true) {
             return Ok(());
+        }
+        if !matches!(platform.supervisor().php_pool_model(), crate::platform::traits::PoolModel::Fpm) {
+            // Xdebug has no pinned build for the php-cgi group yet (plan D4): refused
+            // honestly rather than serving the toggled site without it.
+            return Err(Error::Other(format!(
+                "Xdebug is not available for PHP {minor} on this platform yet"
+            )));
         }
         let patch = self.effective(minor)?;
         let port = debug_fpm_port(minor).ok_or_else(|| {
@@ -1035,10 +1092,11 @@ impl PhpFpmPools {
             // — reaps immediately. An ADOPTED master is identified by its
             // command line, not `kill -0`: a recycled pid must read as a miss.
             let master = if p.child.is_adopted() {
+                let title = platform.supervisor().php_pool_model().process_title();
                 let ours = platform
                     .supervisor()
                     .pid_command(p.child.id())
-                    .is_some_and(|cmd| cmd.contains("php-fpm"));
+                    .is_some_and(|cmd| cmd.contains(title));
                 MasterSight::Probed(ours)
             } else if !p.child.alive() {
                 MasterSight::ChildExited
@@ -1063,7 +1121,7 @@ impl PhpFpmPools {
                 let _ = services::stop(platform, p.child.id()); // no-op if already gone
                 p.child.kill();
                 p.child.wait();
-                for pid in platform.supervisor().owned_listeners(p.port, "php-fpm") {
+                for pid in platform.supervisor().owned_listeners(p.port, platform.supervisor().php_pool_model().process_title()) {
                     let _ = platform.supervisor().stop(pid);
                 }
                 (p.minor, p.debug)
@@ -1086,7 +1144,7 @@ impl PhpFpmPools {
         let mut p = self.pools.remove(i);
         let _ = services::stop(platform, p.child.id());
         p.child.wait();
-        for pid in platform.supervisor().owned_listeners(p.port, "php-fpm") {
+        for pid in platform.supervisor().owned_listeners(p.port, platform.supervisor().php_pool_model().process_title()) {
             let _ = platform.supervisor().stop(pid);
         }
         true

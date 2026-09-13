@@ -259,6 +259,22 @@ before anything is built on it.
   - preflight `php-cgi -n -m`: exit 0 in 185 ms. **A missing extension ALSO exits 0**, with only
     `PHP Startup: Unable to load dynamic library …` on the output — so the preflight must read
     the output for that line; the exit code alone would pass a broken ini.
+
+*(c) The pool's contents — RULED 14 Sep 2026 (owner), after comparing the builds:*
+- **Extensions: the 26 the official zip ships that rexenv's macOS build also has** — bz2 curl dba
+  exif fileinfo ftp gd gmp imap intl mbstring mysqli opcache openssl pdo_mysql pdo_pgsql
+  pdo_sqlite pgsql shmop soap sockets sodium sqlite3 sysvshm xsl zip (plus what PHP compiles in).
+  pcntl, posix, sysvmsg and sysvsem do not exist on Windows. The PECL ones the macOS build carries
+  — apcu, imagick, redis, event, swoole, protobuf, opentelemetry — are NOT in v1: each would be a
+  third-party DLL pin, a trust decision and a sweep target; Settings says so honestly, D4's shape.
+- **Structure: the platform names the pool MODEL, `core` renders both.** A
+  `PoolModel::{Fpm, CgiGroup}` answer from the platform; the php-fpm conf and the php-cgi ini + env
+  are both `core` renderers tested on every host, and the pool lifecycle (ensure, adopt, reap,
+  stop) stays one implementation.
+- **The ini is rexenv's own:** `php-cgi -n -c <config>\php-cgi-<minor>.ini` — `extension_dir`, the
+  extension lines, the user's settings, the SMTP keys for mail; everything else PHP's built-in
+  defaults, as the macOS static build runs with no php.ini at all. Not a copy of
+  `php.ini-development`, whose values would differ from macOS and move with every patch.
 - **Adopt on relaunch:** `adopt_startup` finds the group by 1–4 and adopts the master. A
   master whose children do not answer is not running — ownership AND liveness.
 - **Hazards, written down now:**

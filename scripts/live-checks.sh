@@ -228,6 +228,7 @@ xdebug_pool_check sandbox
 windows_port_gate_check sandbox
 windows_supervision_check demo
 windows_files_check demo
+windows_php_pool_check demo
 "
 
 tier_of() {

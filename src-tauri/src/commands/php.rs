@@ -163,18 +163,9 @@ pub async fn apply_php_settings(
         .ok_or_else(|| Error::Other(format!("no fpm port for {minor}")))?;
     let platform = state.platform.as_ref();
 
-    // `php-fpm -t` gate on a CANDIDATE config (the live file is never touched) —
-    // only when the binary is already cached: a settings edit must not trigger a
-    // PHP download for an uninstalled version (typed validation already ran, and
-    // no pool is running for it anyway).
-    if core::binaries::is_cached(platform, "php-fpm", patch) {
-        let bin = core::binaries::resolve(platform, "php-fpm", patch).await?; // cache hit
-        let candidate =
-            core::services::write_fpm_config_candidate(platform, &minor, port, &pairs)?;
-        let test = core::services::test_fpm_config(platform, &bin, &candidate);
-        let _ = std::fs::remove_file(&candidate);
-        test?;
-    }
+    // Gate on a CANDIDATE config the live pool never reads (`php-fpm -t`, or the
+    // php-cgi preflight) — only when the binary is already cached.
+    core::php::test_settings_candidate(platform, &minor, patch, port, &pairs).await?;
 
     // Persist + snapshot under ONE brief DB lock, dropped before any await.
     // `previous` is what the revert below restores; read in the SAME lock as the
