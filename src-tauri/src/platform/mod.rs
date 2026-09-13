@@ -78,6 +78,20 @@ pub fn host_local_ipc() -> &'static dyn traits::LocalIpc {
     }
 }
 
+/// Tell a person the app panicked, where nothing else would — called by the
+/// panic hook (`crash::install`), for the first panic of a process only.
+///
+/// On a Windows release build, which has no console by `windows_subsystem`, a
+/// native message box naming `crash.log`. Everywhere else a no-op: a debug build
+/// prints to its console, and on macOS the report file is the record (an alert
+/// raised from a panicking thread would need AppKit's main thread). Ledger #596.
+pub fn fatal_notice(summary: &str, crash_log: Option<&std::path::Path>) {
+    #[cfg(all(target_os = "windows", not(debug_assertions)))]
+    windows::fatal_notice(summary, crash_log);
+    #[cfg(not(all(target_os = "windows", not(debug_assertions))))]
+    let _ = (summary, crash_log);
+}
+
 /// Construct the platform implementation for the current OS.
 pub fn current() -> Box<dyn Platform> {
     #[cfg(target_os = "macos")]

@@ -95,6 +95,14 @@ sha2 = "0.10"
 # webview_dialogs_check builds a REAL WKWebView + a wry-shaped stub delegate to
 # prove the panel installation mechanics (ledger #166 leg B). Same versions as
 # [dependencies]; WKWebViewConfiguration is the one extra feature it needs.
+# The panic hook's message box on a Windows release build (platform/windows
+# `fatal_notice`, ledger #596) — a `windows_subsystem = "windows"` process has no
+# console. ALREADY in the Windows graph at this version with these features
+# (tao/wry), so this declares a crate that was compiled anyway; the macOS graph
+# is unchanged.
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
+
 # Target-gated like the [dependencies] copies: objc2 is a compile_error! on any
 # non-Apple target, and as a plain dev-dependency it failed EVERY test and example
 # target of a Windows build before a line of ours was checked

@@ -577,6 +577,15 @@ Live-proven end to end by `site_stop_start_check`.
   safety valves. The sink set is a value (`lib.rs::log_sinks`) so the rule is testable
   without a running Tauri app; `debug` only ADDS stdout. Rotation `KeepSome(3)` at 2 MB.
   Ledger #359.
+- **A panic writes `<log_dir>/crash.log`** (13 Sep 2026, W3 step 0, ledger #596). `crash.rs`
+  installs a panic hook as the first line of `main`, so the DNS agent, the tunnel guard, the
+  relauncher and the app are all covered: version, OS, thread, message, location and a
+  backtrace are appended, the file rotates to `crash.log.old` past 1 MB, and when `Paths`
+  cannot answer (a half-ported platform) it goes to the temp dir instead. The first panic of a
+  process also calls `platform::fatal_notice` — a native message box on a Windows release
+  build, a no-op elsewhere. Before this, a release build (no console) lost every panic
+  message: the window never appeared, or an IPC command's promise never settled. The hook
+  cannot tell a caught panic from an uncaught one; production code catches none.
 
 ## 6. Resource monitor (`core/monitor.rs`, `commands/services.rs`)
 

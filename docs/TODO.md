@@ -54,13 +54,17 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     Edge and Chrome: the clicks (each named), every message verbatim with a screenshot, whether
     "Run anyway" is reachable without "More info", and whether the next build repeats it all;
     the Windows bind matrix (plan §6) before `ensure_free` is written
-  - [ ] W3 step 0 — a half-ported build fails out loud (plan §3a Q1, **ruled 13 Sep 2026**): panic hook →
+  - [x] W3 step 0 — a half-ported build fails out loud (plan §3a Q1, **ruled 13 Sep 2026**): panic hook →
     `crash.log` + a Windows message box; `Error::Unported` stubs instead of `todo!()` (50
     today), scan-enforced under `platform/windows/`, ledger row. **Progress 13 Sep 2026: the stubs
     half is done** — every `Result` stub returns `Error::Unported`, every other one panics through
     `unported!`, `swap` returns `SwapFailure::Other`, `LocalIpc::connect` an `Unsupported` io
     error; `windows_stubs_fail_as_unported_never_todo` scans the module (plant-proven), ledger #595;
-    Linux untouched. Open: the panic hook → `crash.log` + the Windows message box
+    Linux untouched. ✓ 13 Sep 2026, the hook half too: `crash.rs` installed first in `main.rs`
+    appends every panic to `<log_dir>/crash.log` (temp dir fallback, rotates at 1 MB) and raises
+    `platform::fatal_notice` once per process — a `MessageBoxW` on a Windows release build;
+    child-process L0 test + rotation test, both plant-proven, ledger #596. Unproven until a
+    Windows run: the message box itself
   - [ ] Update catalogs across OSes — **ruled 13 Sep 2026: a separate signed document per OS**
     (`manifest-<os>.json`, `app-manifest-<os>.json`; unsuffixed = macOS, frozen; naming for
     all three OSes in plan §3b). Measured against every shipped release (0.3.0–0.7.0): an `os`

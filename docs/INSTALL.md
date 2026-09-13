@@ -185,6 +185,12 @@ copy and open the newer rexenv (reinstall it if it was replaced). rexenv 0.7.1 a
 not have this check, so going back to one of those after a newer version has run is not
 supported.
 
+**If rexenv quits unexpectedly or never shows its window**, look for `crash.log` in
+`~/Library/Application Support/dev.rexenv.rexenv/logs/` (or your temp folder, if rexenv could
+not resolve its data folder). Every internal panic is appended there with the version, the
+message, where it happened and a backtrace — attach it to a bug report. It rotates to
+`crash.log.old` past 1 MB.
+
 **Installed with Homebrew?** `brew upgrade --cask rexenv` still works, and brew reads the
 app's own version afterwards, so a self-updated copy is not downgraded by a plain
 `brew upgrade`. `brew upgrade --greedy` and `brew reinstall` DO reinstall the cask's

@@ -2,6 +2,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
+    // FIRST, before any mode: a panic anywhere below — the DNS agent, the tunnel
+    // guard, the relauncher or the app — is written to crash.log, and on a
+    // Windows release build shown, instead of vanishing into a console the
+    // process does not have (docs/PLAN-windows-port.md §3a Q1, ledger #596).
+    rexenv_lib::crash::install();
+
     // Headless resolver mode, run by the per-user LaunchAgent so local-TLD DNS
     // survives app quits (and is up from login). Checked BEFORE Tauri boots:
     // the agent must never open a window, touch SQLite, or start services.

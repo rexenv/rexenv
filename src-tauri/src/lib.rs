@@ -6,6 +6,7 @@
 pub mod cli_server;
 pub mod commands;
 pub mod core;
+pub mod crash;
 pub mod error;
 pub mod mcp_server;
 pub mod platform;

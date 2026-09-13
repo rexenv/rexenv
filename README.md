@@ -153,6 +153,7 @@ rexenv/
         ├── cli_server.rs       # `rex` socket server — dispatches to the SAME
         │                       #   commands::* fns the UI calls (one code path)
         ├── error.rs            # shared error type (serializes for the UI)
+        ├── crash.rs            # panic hook — crash.log (+ a message box on Windows release)
         ├── test_support.rs     # test-only OS fixtures (symlink, mode, exit status) — kept
         │                       #   out of core/ so ledger #163's scan stays clean
         │

@@ -14,6 +14,9 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
   (the 13th, `LocalIpc`, is local non-TCP IPC — unix socket / Windows named pipe)
   (macOS real; `windows/` stubs return `Error::Unported` / `unported!` — ledger #595; `linux/` is `todo!()`).
 - `state/` = SQLite migrations + the store layer; only `state/` writes SQL.
+- `crash.rs` = the panic hook, installed FIRST in `main.rs`: every panic appended to
+  `<log_dir>/crash.log` (temp dir if `Paths` cannot answer), and the first one raised through
+  `platform::fatal_notice` — a message box on a Windows release build (W3 step 0, ledger #596).
 
 ## Backend subsystems
 

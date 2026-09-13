@@ -255,6 +255,34 @@ impl LocalIpc for WindowsLocalIpc {
         ))
     }
 }
+/// The panic hook's notice (`platform::fatal_notice`): a native message box,
+/// because a `windows_subsystem = "windows"` process has no console to print to.
+/// Compiled in every Windows build so `windows-check` type-checks it; called only
+/// when debug assertions are off. The app may survive a panic on a background
+/// thread, so the text does not claim it stopped.
+pub fn fatal_notice(summary: &str, crash_log: Option<&Path>) {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        MessageBoxW, MB_ICONERROR, MB_OK, MB_SETFOREGROUND,
+    };
+    let details = match crash_log {
+        Some(path) => format!("Details were written to:\n{}", path.display()),
+        None => "Details could not be written to a file.".to_string(),
+    };
+    let body = format!("rexenv hit an internal error and may have stopped.\n\n{summary}\n\n{details}");
+    let wide = |s: &str| s.encode_utf16().chain(std::iter::once(0)).collect::<Vec<u16>>();
+    let (text, caption) = (wide(&body), wide("rexenv"));
+    // SAFETY: both pointers are NUL-terminated UTF-16 buffers that outlive the
+    // call, and a null owner window is allowed.
+    unsafe {
+        MessageBoxW(
+            std::ptr::null_mut(),
+            text.as_ptr(),
+            caption.as_ptr(),
+            MB_OK | MB_ICONERROR | MB_SETFOREGROUND,
+        );
+    }
+}
+
 pub struct WindowsPlatform {
     paths: WindowsPaths,
     dns: WindowsDns,

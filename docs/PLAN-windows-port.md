@@ -442,7 +442,12 @@ stops?** Read from the tree, not run — there is no Windows host yet.
   scan-enforced, and the hook's file write plant-proven. Today: 50 `todo!()` in
   `platform/windows/mod.rs`. **Progress 13 Sep 2026: (2) and (3) landed** — no `todo!()` is left
   there (`Error::Unported`, or `unported!` where a trait method cannot return an error; ledger
-  #595). (1), the panic hook, is next.
+  #595). **(1) landed the same day — step 0 is done:** `crash.rs` installs the hook as `main`'s
+  first line, every panic is appended to `<log_dir>/crash.log` (temp dir when `Paths` cannot
+  answer — exactly the half-ported case), and the first one per process raises a
+  `MessageBoxW` on a Windows release build through `platform::fatal_notice` (ledger #596).
+  What only Windows can show: that box appearing, and a `Result` stub's `Unported` error
+  reaching the screen.
 
 **Q2 — PostgreSQL's publisher digests.** An omission, not an exception; our own downloads now
 match all three. §5 W2 and ledger #335.
