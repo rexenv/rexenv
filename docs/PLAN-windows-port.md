@@ -814,8 +814,13 @@ so probes go through `-EncodedCommand`); an SSH session carries an ELEVATED admi
 desktop user's filtered one, so anything token-sensitive must also be measured from the desktop's token —
 `scripts/probes/windows-limited-token.sh` runs a probe as an Interactive, RunLevel Limited
 scheduled task in the logged-on session, which measured Medium integrity (an S4U task with
-Limited still ran High). The Dell is on 2.4 GHz Wi-Fi with adapter power saving on, and SSH
-sessions to it drop for minutes at a time, so probes use short sessions and keepalives; a Windows 11 ARM VM on the M3 Pro Mac runs the x64
+Limited still ran High). The Dell is on 2.4 GHz Wi-Fi, and SSH sessions to it dropped for
+minutes at a time, so probes use short sessions and keepalives. **Its adapter power saving was
+turned off 13 Sep 2026 at the owner's go:** "allow the computer to turn off this device" went
+from on to off through `root\wmi` `MSPower_DeviceEnable` (no adapter restart, the link stayed
+up; set `Enable` back to `$true` to undo); the power plan's wireless Power Saving Mode was
+already Maximum Performance on AC and battery, and the driver's Minimum Power Consumption was
+already off, so neither was touched; a Windows 11 ARM VM on the M3 Pro Mac runs the x64
 build under emulation for the day-to-day loop, and never counts as the x64 proof. Both
 are driven over OpenSSH from the Mac; dialogs are read by a human. `docs/TESTING.md` gains a Windows column when W0 lands — not before, so it never
 claims coverage that does not run.

@@ -27,7 +27,9 @@
 # already produced and cleaned away. So: every ssh/scp carries ServerAliveInterval (a dead
 # link fails within a minute), each step is its own short session, the Mac polls, and the
 # output file is copied back with scp rather than trusted to a stream. The Dell is on 2.4 GHz
-# Wi-Fi with adapter power saving on, and SSH sessions to it do drop for minutes at a time.
+# Wi-Fi, and SSH sessions to it dropped for minutes at a time while the adapter's power saving
+# was on (turned off 13 Sep 2026, docs/PLAN-windows-port.md §7); the short sessions stay, since
+# Wi-Fi can still drop.
 #
 # # Why the account name comes from the token
 #
