@@ -57,12 +57,18 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   - [ ] W3 step 0 — a half-ported build fails out loud (plan §3a Q1, **ruled 13 Sep 2026**): panic hook →
     `crash.log` + a Windows message box; `Error::Unported` stubs instead of `todo!()` (50
     today), scan-enforced under `platform/windows/`, ledger row
-  - [ ] Update catalogs across OSes — the owner rules plan §3b BEFORE W3, since the answer may
-    change the format released apps read. Measured 13 Sep 2026 against every shipped release
-    (0.3.0–0.7.0): nothing crashes or refuses; an `os` field on an `x86_64` row is KEPT by every
-    Intel Mac, an unknown arch or name is dropped, a new top-level key is ignored, and `os` on
-    the app descriptor's `release` is accepted as the Mac release. Recommended: a separate
-    signed document per OS
+  - [ ] Update catalogs across OSes — **ruled 13 Sep 2026: a separate signed document per OS**
+    (`manifest-<os>.json`, `app-manifest-<os>.json`; unsuffixed = macOS, frozen; naming for
+    all three OSes in plan §3b). Measured against every shipped release (0.3.0–0.7.0): an `os`
+    field on an `x86_64` row is KEPT by every Intel Mac, so no Windows or Linux entry is ever
+    published into the macOS documents. Open until both guards land, and both land before
+    the first non-macOS entry is published:
+    - [ ] This tree: tests pinning the macOS readers' drop/ignore behaviour, and future macOS
+      readers dropping any row whose `os` is not `macos`
+    - [ ] `rexenv/runtimes` publisher: refuse an OS marker or a foreign arch in the macOS
+      documents, and any per-OS row whose `os` is not the file's
+    - [ ] W11: the Windows reader fetches `manifest-windows.json` / `app-manifest-windows.json`
+      only
   - [ ] Per-OS version answers (plan §3a Q3): PostgreSQL driver, Xdebug, curl resolver, the
     cache marker (the update catalogs are the row above) — each before the Windows feature it gates, each with a test that the
     Windows answer differs where the builds do

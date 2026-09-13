@@ -5,9 +5,9 @@
 and swept. **The owner ruled D1, D2, D4 and D6 on 13 Sep 2026** (D3 on 12 Sep); D5's signing
 waits on an unsigned-installer measurement. D1's supervision and worker count, and the owner's
 four pre-W3 questions, are answered in writing in §3 and §3a; W3 starts with §3a's step 0.
-**One ruling still stands before W3: §3b** — how Windows entries reach the update catalogs
-without every shipped Intel Mac taking them (measured against all released versions).
-MariaDB is out of v1 (D4).
+§3b ruled the same day: a separate signed document per OS (`manifest-<os>.json`), with a
+publisher guard and a reader test landing before any non-macOS entry is published. MariaDB
+is out of v1 (D4). The only open decision left is D5's signing, which waits on its measurement.
 Planned against `e0d287c`. Open work is tracked as the
 "Windows launch" row in `docs/TODO.md`; this file is the reasoning behind it.
 
@@ -544,7 +544,49 @@ order; and for the app descriptor there is no alternative anyway (iv). Whatever 
 guards land with it: a test in the current tree pinning (ii) and (iii), so macOS readers keep
 dropping foreign entries if one is ever published into their document by mistake, and a
 refusal in the `rexenv/runtimes` publisher of any `manifest.json` entry carrying an OS marker.
-**Owner rules.**
+
+**RULED 13 Sep 2026: option 1, a separate signed document per OS, with both guards.** *Why
+(owner):* it is the only option that relies on nothing about released apps' filtering, and
+the measurement shows that filtering wrong in the worst place — an Intel Mac taking
+`arch:"x86_64"` + `os:"windows"` as its own is not a crash, it is a Mac downloading a Windows
+binary and trying to run it. And an Intel Mac that never updates stays broken forever, so
+there is no choice: the separate document must exist before any Windows entry is published.
+The publisher guard matters more than the test — it is what stops a future "one document is
+simpler" from sending a Windows binary to an Intel Mac.
+
+**Naming, fixed now for three OSes.**
+
+| Document | macOS | Windows | Linux |
+|---|---|---|---|
+| PHP / Adminer catalog | `manifest.json` | `manifest-windows.json` | `manifest-linux.json` |
+| App release descriptor | `app-manifest.json` | `app-manifest-windows.json` | `app-manifest-linux.json` |
+| Signature | the document's name + `.sig`, always | | |
+
+- **The unsuffixed names are macOS's, frozen.** Their URLs are compiled into every shipped
+  build (`updates.rs` `MANIFEST_URL`, the app descriptor's likewise), so they can never be
+  renamed; and there is never a `manifest-macos.json` — a second macOS document would be a
+  second serial for the same machines.
+- **The suffix is Rust's `std::env::consts::OS`** (`windows`, `linux`) — the token
+  `binaries::manifest(name, version, os, arch)` already keys every pin on, so one spelling runs
+  from the pin table to the URL. A build picks its URL from that constant in one function;
+  it never fetches another OS's document.
+- **Inside a per-OS document** rows keep the `arch` tokens `catalog_arch` spells (`arm64`,
+  `x86_64`, `any`) and carry a required `os` equal to the document's; a reader drops any row
+  whose `os` is not its own, so even a mis-published file cannot cross OSes. Serials are per
+  document; the signing key is the same one.
+- **Linux specifically:** its `arm64` / `x86_64` collide with macOS's tokens exactly as
+  Windows' `x86_64` does — that collision is the reason for the rule, so "one document with an
+  `os` field" stays refused for Linux too, and so does any variant of it. If Linux ever needs a
+  libc split (glibc / musl), it goes in the arch token *inside* `manifest-linux.json`
+  (`x86_64-musl`), never into a shared document.
+
+**Guards, before any non-macOS entry is published** (TODO "Update catalogs across OSes"):
+(1) in this tree, tests pinning (ii) and (iii) for the macOS readers, plus a reader change so
+FUTURE macOS builds also drop a row carrying any `os` other than `macos` — defence for the
+builds we can still change; (2) in `rexenv/runtimes`' publisher, a refusal of any
+`manifest.json` / `app-manifest.json` entry carrying an OS marker or an arch outside
+`arm64` / `x86_64` / `any`, and of any per-OS document row whose `os` is not the file's — one
+publisher run writes one document.
 
 ## 4. Upstream availability (measured 12 Sep 2026)
 
