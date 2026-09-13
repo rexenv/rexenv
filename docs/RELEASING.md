@@ -107,6 +107,10 @@ release** — which is the property that makes a stolen key survivable. Ledger
 1. Bump the version in all four manifests as in step 1 below, and commit, then
    `./scripts/check-versions.sh` — the guard CI has (and, while this repo is private,
    never runs). Five releases were cut with nothing checking this.
+   **If the release adds a migration** (`MIGRATIONS.len()` grew since the last tag), its note
+   says that going back to rexenv 0.7.1 or older afterwards is not supported: those builds
+   predate the schema guard (ledger #593) and would open the newer database without refusing.
+   Every build after them refuses on its own.
 2. `./scripts/verify.sh` — the bar, same as in CI. Green verdict = its own
    `verify: all green` line.
 3. `pnpm release:mac` → `src-tauri/target/universal-apple-darwin/release/bundle/dmg/rexenv_<X.Y.Z>_universal.dmg`.

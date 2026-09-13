@@ -823,6 +823,13 @@ honest footer —
 
 ## 8. Data & app state
 
+- **An older build refuses newer data** (13 Sep 2026, ledger #593): `state::db::open` reads
+  `user_version` before any pragma, and a value above this build's migration count stops the
+  launch on its own screen ("this copy of rexenv is older than its data", both schema
+  numbers, nothing changed). Migrations only walk forward, so without it an older copy
+  sharing a data folder with a newer one — a hand-installed older dmg, or a dev build next
+  to a release — would read and write tables whose shape it does not know. Builds up to
+  0.7.1 predate the check and never refuse.
 - **SQLite for all app state** (`state/db.rs`), `user_version` migrations, currently 44:
   v1 `sites` + `settings` · v2 `php_versions` registry · v3 `sites.multisite` ·
   v4 `blueprints` (JSON `spec`) · v5 `php_settings` · v6 `sites.db_name` (stored, never

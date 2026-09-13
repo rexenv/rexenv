@@ -704,9 +704,30 @@ pub fn open(path: &Path) -> Result<Connection> {
         std::fs::create_dir_all(parent)?;
     }
     let conn = Connection::open(path)?;
+    // BEFORE `configure`: its WAL pragma is the first thing that could write.
+    refuse_newer_schema(&conn, MIGRATIONS.len())?;
     configure(&conn)?;
     migrate(&conn)?;
     Ok(conn)
+}
+
+/// Refuse a database a NEWER rexenv migrated, before anything writes to it.
+///
+/// The engine below only walks forward: it applies the steps above `user_version`,
+/// and until 13 Sep 2026 it said nothing when `user_version` was ABOVE every step
+/// it knows. An older build opened on data a newer one had migrated — a
+/// hand-installed older dmg, or a dev build and a release sharing one data folder,
+/// which is how the owner met it installing 0.7.1 — would have read and written
+/// tables whose shape it does not know, silently. Called from `open` before any
+/// pragma and again at the top of `migrate_with`, so no path reaches a write first
+/// (ledger #593). Builds up to 0.7.1 predate this and will never refuse.
+fn refuse_newer_schema(conn: &Connection, known: usize) -> Result<()> {
+    let found: i64 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    let known = known as i64;
+    if found > known {
+        return Err(crate::error::Error::NewerSchema { found, known });
+    }
+    Ok(())
 }
 
 /// Open the database at the platform-resolved app-data location.
@@ -753,6 +774,7 @@ fn migrate(conn: &Connection) -> Result<()> {
 /// Migration engine over an explicit list — factored out so tests can drive a
 /// deliberately-failing step. See [`migrate`] for the atomicity contract.
 fn migrate_with(conn: &Connection, migrations: &[&str]) -> Result<()> {
+    refuse_newer_schema(conn, migrations.len())?;
     let current: i64 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
     for (i, stmt) in migrations.iter().enumerate() {
         let version = (i + 1) as i64;
@@ -1678,6 +1700,60 @@ mod tests {
         let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
         assert_eq!(version, 2, "the corrected step re-ran cleanly — DB not bricked");
         assert!(has("b"), "table b exists after the successful re-run");
+    }
+
+    #[test]
+    fn a_database_a_newer_rexenv_migrated_is_refused_and_left_untouched() {
+        // The shape the owner hit on 13 Sep 2026: one data folder, a newer build
+        // and an older one taking turns. Stamp the file one step past everything
+        // this build knows — what a newer rexenv's migration leaves — and open it.
+        let dir = std::env::temp_dir().join(format!("rexenv-test-newer-schema-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join(DB_FILE);
+        let newer = MIGRATIONS.len() as i64 + 1;
+        {
+            let conn = open(&path).unwrap();
+            conn.execute("INSERT INTO settings (key, value) VALUES ('theme', 'dark')", [])
+                .unwrap();
+            conn.pragma_update(None, "user_version", newer).unwrap();
+        }
+        let before = std::fs::read(&path).unwrap();
+
+        let err = open(&path).expect_err("an older build must refuse data a newer one migrated");
+        match &err {
+            crate::error::Error::NewerSchema { found, known } => {
+                assert_eq!(*found, newer);
+                assert_eq!(*known, MIGRATIONS.len() as i64);
+            }
+            other => panic!("refused for the wrong reason: {other}"),
+        }
+        let text = err.to_string();
+        assert!(
+            text.contains(&format!("v{newer}")) && text.contains(&format!("v{}", MIGRATIONS.len())),
+            "the screen must name both versions: {text}"
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), before, "the refusal changed the database file");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn migrate_with_refuses_a_version_above_its_steps_and_runs_none() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.pragma_update(None, "user_version", 3).unwrap();
+        let steps: &[&str] = &["CREATE TABLE a (x INTEGER);", "CREATE TABLE b (y INTEGER);"];
+        assert!(
+            matches!(
+                migrate_with(&conn, steps),
+                Err(crate::error::Error::NewerSchema { found: 3, known: 2 })
+            ),
+            "a version above every known step must be refused, not walked past"
+        );
+        let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert_eq!(version, 3, "the refusal must not rewrite the version");
+        let tables: i64 = conn
+            .query_row("SELECT count(*) FROM sqlite_master WHERE type='table'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(tables, 0, "no step may run on a database it refused");
     }
 
     #[test]

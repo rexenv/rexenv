@@ -17,6 +17,18 @@ pub enum Error {
 
     #[error("{0}")]
     Other(String),
+
+    /// The app database was migrated by a NEWER rexenv than this build — refused
+    /// before anything writes to it (`state::db::refuse_newer_schema`, ledger #593).
+    /// Its own variant so the launch screen can say THIS, not the generic
+    /// "data folder isn't writable" advice every other open failure gets.
+    #[error(
+        "This copy of rexenv is older than its data: the database was last opened by a \
+         newer rexenv (schema v{found}), and this copy only understands up to v{known}.\n\n\
+         Nothing was changed. Open the newer rexenv instead — install it again if it was \
+         replaced — and this data keeps working."
+    )]
+    NewerSchema { found: i64, known: i64 },
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

@@ -914,6 +914,12 @@ pub fn run() {
                     }
                     None
                 }
+                // Its own screen: "not writable / disk full" is the wrong advice
+                // for data a newer rexenv migrated (ledger #593).
+                (Err(e @ error::Error::NewerSchema { .. }), _) => {
+                    log::error!("db: refused a database a newer rexenv migrated: {e}");
+                    Some(e.to_string())
+                }
                 (Err(e), _) => {
                     log::error!("db: failed to open app database: {e}");
                     Some(format!(

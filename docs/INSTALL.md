@@ -178,6 +178,13 @@ mv /Applications/rexenv.app ~/Desktop/rexenv-broken.app
 mv /Applications/.rexenv-update-*/rexenv.app /Applications/rexenv.app
 ```
 
+**"This copy of rexenv is older than its data"** on launch means the data folder was last
+opened by a newer rexenv — you installed an older copy over a newer one, or run two versions
+side by side. The screen names both schema versions and nothing has been changed: quit this
+copy and open the newer rexenv (reinstall it if it was replaced). rexenv 0.7.1 and older do
+not have this check, so going back to one of those after a newer version has run is not
+supported.
+
 **Installed with Homebrew?** `brew upgrade --cask rexenv` still works, and brew reads the
 app's own version afterwards, so a self-updated copy is not downgraded by a plain
 `brew upgrade`. `brew upgrade --greedy` and `brew reinstall` DO reinstall the cask's
