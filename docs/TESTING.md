@@ -1232,7 +1232,8 @@ bloating the fast path:
   Rust table against the graphs that ship — arm64 ∪ x86_64, the app crate and the `rex`
   CLI, normal + build edges — in BOTH directions, each row's licence against the crate's
   declared one, and the heading's count; the npm table against `pnpm list --prod`, both
-  directions and its count. The tables had been typed: 17 crates the shipped app linked
+  directions and its count; the vendored composer table against its own `installed.json`, licences
+  included. The tables had been typed: 17 crates the shipped app linked
   had no row, two of them because the CLI's graph was never inventoried (ledger #592).
   **Does not prove:** the Windows graph (no Windows build has shipped); npm licences
   (pnpm's list carries none); the licences of binaries downloaded at runtime (#336).

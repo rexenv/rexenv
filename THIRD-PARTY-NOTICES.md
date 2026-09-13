@@ -72,7 +72,8 @@ inventoried at all. No generator's filter dropped them — there was no generato
 was typed, every count in this file was typed, and each re-verification was one-directional
 or scoped to the change in hand (5 Sep added the tray icon's four crates and looked no
 further). `scripts/notices-check.py` now runs inside `verify.sh`: both directions,
-arm64 ∪ x86_64, the app and the CLI, the licence column, and this section's heading count.
+arm64 ∪ x86_64, the app and the CLI, the licence column, and this section's heading count —
+plus the npm table and the vendored composer packages.
 The Windows graph (410 crates) is not checked until a Windows build ships.
 
 **The npm table was INCOMPLETE from the day it was generated, and the 5 Aug

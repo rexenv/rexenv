@@ -17,6 +17,9 @@ Checks, BOTH directions (a one-way check is what hid the npm gap):
   npm  — the production closure `pnpm list --prod` reports equals the table's
          rows; the heading's count equals it. (pnpm's list carries no licence, so
          the npm licence column is not checked.)
+  composer — the vendored `wp dist-archive` tree compiled into the app: the
+         packages its own `vendor/composer/installed.json` records equal the
+         table's rows, with their licences, and the heading's count equals them.
 
 Dev-dependencies are excluded: they never ship. The Windows graph is NOT checked
 yet — no Windows build has shipped (docs/TODO.md, "Third-party notices").
@@ -35,6 +38,8 @@ MANIFESTS = ["src-tauri/Cargo.toml", "cli/Cargo.toml"]
 TARGETS = ["aarch64-apple-darwin", "x86_64-apple-darwin"]
 RUST_HEADING = re.compile(r"^## Rust crates \(statically linked; (\d+) external crates, universal macOS graph\)$")
 NPM_HEADING = re.compile(r"^## npm packages \(production closure bundled by Vite; (\d+) packages\)$")
+VENDORED_HEADING = re.compile(r"^## Vendored PHP \(compiled into the app binary; (\d+) packages\)$")
+COMPOSER_INSTALLED = os.path.join(ROOT, "src-tauri/resources/wp-dist-archive/vendor/composer/installed.json")
 
 
 def rust_graph():
@@ -86,7 +91,17 @@ def npm_graph():
     return seen
 
 
-def section(prefix, heading_re):
+def composer_graph():
+    """(name, version) -> licence for every package the vendored tree's composer installed."""
+    data = json.load(open(COMPOSER_INSTALLED, encoding="utf-8"))
+    packages = data["packages"] if isinstance(data, dict) else data
+    return {
+        (p["name"], p["version"].lstrip("v")): " OR ".join(p.get("license") or ["(none declared)"])
+        for p in packages
+    }
+
+
+def section(prefix, heading_re, licence_col=2):
     """(heading line, stated count or None, {(name, version): licence})."""
     lines = open(NOTICES, encoding="utf-8").read().splitlines()
     starts = [i for i, l in enumerate(lines) if l.startswith(prefix)]
@@ -102,7 +117,7 @@ def section(prefix, heading_re):
             cells = [c.strip() for c in l.strip().strip("|").split("|")]
             if cells[0] in ("Crate", "Package"):
                 continue
-            rows[(cells[0], cells[1])] = cells[2] if len(cells) > 2 else ""
+            rows[(cells[0], cells[1])] = cells[licence_col] if len(cells) > licence_col else ""
     return head, (int(m.group(1)) if m else None), rows
 
 
@@ -136,6 +151,10 @@ def main():
     npm = npm_graph()
     problems = compare("rust", rust, *section("## Rust crates", RUST_HEADING), rust)
     problems += compare("npm", npm, *section("## npm packages", NPM_HEADING), None)
+    composer = composer_graph()
+    problems += compare(
+        "composer", composer, *section("## Vendored PHP", VENDORED_HEADING, licence_col=3), composer
+    )
     if problems:
         print(f"notices-check: THIRD-PARTY-NOTICES.md does not match what ships ({len(problems)}):")
         for p in problems:
@@ -143,7 +162,8 @@ def main():
         return 1
     print(
         f"notices-check: {len(rust)} Rust crates (arm64 + x86_64, app + rex CLI) with rows and "
-        f"licences; {len(npm)} npm packages with rows"
+        f"licences; {len(npm)} npm packages with rows; {len(composer)} vendored composer "
+        f"packages with rows and licences"
     )
     return 0
 
