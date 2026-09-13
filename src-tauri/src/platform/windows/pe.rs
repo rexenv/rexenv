@@ -3,13 +3,19 @@
 //!
 //! Pure bytes, no Windows API, so the macOS test host runs these tests too
 //! (`platform/mod.rs` includes this file under `cfg(test)` there). Used by
-//! `WindowsBinaryProvider` to refuse publishing an artifact that could never run:
-//! a pin that names the wrong archive member, an x86 or arm64 build where every
-//! Windows pin is x64 (plan D6), or bytes that are not an executable at all
-//! (ledger #598).
+//! `WindowsBinaryProvider` to refuse publishing an artifact that could never run on
+//! x64 Windows: a pin that names the wrong archive member, an arm64 build, or bytes
+//! that are not an executable at all (ledger #598).
+//!
+//! **x86 is runnable, and the official artifacts need it.** Measured 13 Sep 2026 across
+//! every Windows pin: nginx.org's `nginx.exe` is x86, PHP 7.4.33's `icudt66.dll` (ICU's
+//! data-only library) is x86, and MySQL 8.4.6's `mysql_configurator.exe` is x86 — each
+//! inside a distribution meant for x64 Windows. An x64-only rule would have refused them.
 
-/// `IMAGE_FILE_MACHINE_AMD64` — the COFF machine of every Windows artifact rexenv pins.
+/// `IMAGE_FILE_MACHINE_AMD64`.
 pub const MACHINE_AMD64: u16 = 0x8664;
+/// `IMAGE_FILE_MACHINE_I386` — runs on x64 Windows under WOW64.
+pub const MACHINE_I386: u16 = 0x014c;
 
 /// How many leading bytes [`classify`] is given. Real executables put the PE header
 /// within the first few hundred bytes (`e_lfanew` after the DOS stub); a header past
@@ -20,7 +26,9 @@ pub const HEAD_BYTES: usize = 4096;
 pub enum PeKind {
     /// A PE image whose COFF machine is x64.
     X64,
-    /// A PE image for another machine (`0x014c` x86, `0xaa64` arm64, …).
+    /// A PE image whose COFF machine is x86.
+    X86,
+    /// A PE image for another machine (`0xaa64` arm64, …).
     OtherMachine(u16),
     /// Not a PE image: no `MZ`, no `PE\0\0` where `e_lfanew` points, or too short.
     NotPe,
@@ -44,8 +52,14 @@ pub fn classify(head: &[u8]) -> PeKind {
     }
     match u16::from_le_bytes([header[4], header[5]]) {
         MACHINE_AMD64 => PeKind::X64,
+        MACHINE_I386 => PeKind::X86,
         other => PeKind::OtherMachine(other),
     }
+}
+
+/// Whether x64 Windows can run an image of this kind: x64 natively, x86 under WOW64.
+pub fn runs_on_x64_windows(kind: PeKind) -> bool {
+    matches!(kind, PeKind::X64 | PeKind::X86)
 }
 
 /// Whether a file name is one the tree check must read as a PE image: `.exe` or
@@ -59,7 +73,7 @@ pub fn is_image_name(name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{classify, is_image_name, PeKind, MACHINE_AMD64};
+    use super::{classify, is_image_name, runs_on_x64_windows, PeKind, MACHINE_AMD64, MACHINE_I386};
 
     #[test]
     fn executables_and_libraries_are_images_whatever_their_case() {
@@ -85,8 +99,16 @@ mod tests {
     #[test]
     fn an_x64_image_is_x64_and_other_machines_are_named() {
         assert_eq!(classify(&image(MACHINE_AMD64)), PeKind::X64);
-        assert_eq!(classify(&image(0x014c)), PeKind::OtherMachine(0x014c));
+        assert_eq!(classify(&image(MACHINE_I386)), PeKind::X86);
         assert_eq!(classify(&image(0xaa64)), PeKind::OtherMachine(0xaa64));
+    }
+
+    #[test]
+    fn x64_windows_runs_x64_and_x86_and_nothing_else() {
+        assert!(runs_on_x64_windows(PeKind::X64));
+        assert!(runs_on_x64_windows(PeKind::X86), "nginx.exe and PHP 7.4's ICU data DLL are x86");
+        assert!(!runs_on_x64_windows(PeKind::OtherMachine(0xaa64)), "arm64");
+        assert!(!runs_on_x64_windows(PeKind::NotPe));
     }
 
     #[test]

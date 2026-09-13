@@ -2553,7 +2553,9 @@ pub async fn resolve_dir(platform: &dyn Platform, name: &str, version: &str) -> 
     // tree that later resolves accept via the marker short-circuit (task 2.5 /
     // H4). MySQL's binaries are Oracle-signed + notarized (Postgres is
     // relocatable/unsigned-ok), and a reqwest download adds no quarantine
-    // attribute, so there's no ad-hoc re-signing step here.
+    // attribute, so there's no ad-hoc re-signing step here — `prepare_binary_dir`
+    // is a no-op on macOS. On Windows it checks the tree can run before it is
+    // published (owner ruling 13 Sep 2026, ledger #598).
     let id = downloads::item_id(name, version);
     downloads::hub().item_started(name, version);
     let staging = staging_path(&bin_dir, name, version);
@@ -2574,6 +2576,9 @@ pub async fn resolve_dir(platform: &dyn Platform, name: &str, version: &str) -> 
         // Drop the archive BEFORE publishing so the cached tree doesn't carry a
         // dead 600MB archive into the final dir.
         std::fs::remove_file(&archive)?;
+        // Inside the staged block, so a tree that fails it is removed with the
+        // staging dir and never becomes the cached tree.
+        platform.binaries().prepare_binary_dir(&staging)?;
         stage_licenses(&spec, name, version, arch, &staging, &id).await?;
         write_pin_marker(&staging, &spec.checksum);
         publish(&staging, &dir, spec.member)

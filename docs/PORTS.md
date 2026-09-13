@@ -56,7 +56,10 @@ binary, update THIS file in the same commit.
 
 Same versions as the macOS rows, different builds. **x64 for every `Arch`**: Windows on
 ARM runs x64 under emulation, and PHP, MySQL, nginx and PostgreSQL publish no arm64
-Windows build. Every artifact was downloaded and hashed by us — twelve on 12 Sep 2026, the
+Windows build. x64 is the ARTIFACT, not every image inside it: measured 13 Sep 2026 across
+all 16, three of 1,197 `.exe`/`.dll` files are x86 — nginx.org's `nginx.exe`, PHP 7.4.33's
+`icudt66.dll` (ICU data) and MySQL 8.4.6's `mysql_configurator.exe` — which x64 Windows runs
+under WOW64. The prepare check accepts x64 and x86 and refuses anything else (ledger #598). Every artifact was downloaded and hashed by us — twelve on 12 Sep 2026, the
 three PostgreSQL tarballs on 13 Sep (on the 12th they were pinned from the publisher's
 `.sha256` alone, and this sentence claimed otherwise); the "Digest" column says whether a
 publisher's own digest confirmed it. Not in Windows v1, and

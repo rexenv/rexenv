@@ -13,6 +13,9 @@
 /// no Administrators, no Everyone — the Windows reading of Unix `0600`, where the
 /// owner alone has an entry. An administrator can still take ownership, as root
 /// can still read a `0600` file; that is the same boundary, not a weaker one.
+/// No SYSTEM entry is an owner ruling (13 Sep 2026, ledger #597): if something
+/// Windows needs turns out to fail without one, bring the finding back rather than
+/// quietly adding an ACE here.
 ///
 /// `None` unless `user_sid` is a well-formed SID string (`S-1-` then dash-separated
 /// decimal parts), so nothing but a SID can ever be spliced into the descriptor.

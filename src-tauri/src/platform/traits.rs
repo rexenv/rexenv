@@ -652,6 +652,15 @@ pub trait BinaryProvider: Send + Sync {
     /// each Mach-O LAST (relinking invalidates signatures). Must error loudly if
     /// a dependency is NOT bundled — never publish a tree that can't load.
     fn prepare_binary_tree(&self, root: &std::path::Path) -> Result<()>;
+    /// Prepare an extracted DIRECTORY distribution before it is published
+    /// (`core::binaries::resolve_dir`: MySQL and PostgreSQL, and on Windows also PHP
+    /// and nginx). Default: nothing — macOS publishes these trees as extracted: MySQL's
+    /// binaries are Oracle-signed and notarized, a reqwest download carries no
+    /// quarantine, and relinking or re-signing them would break that. Windows checks
+    /// the tree can run (owner ruling 13 Sep 2026, ledger #598).
+    fn prepare_binary_dir(&self, _root: &std::path::Path) -> Result<()> {
+        Ok(())
+    }
 }
 
 /// Keeps the privileged Caddy edge (`:80`/`:443`, root) alive across ANY death —

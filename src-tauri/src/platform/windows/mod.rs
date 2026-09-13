@@ -157,16 +157,17 @@ impl ShellRunner for WindowsShell {
 ///   written by browsers and `IAttachmentExecute` callers, per Microsoft's docs — not
 ///   yet measured on Windows. So this is defence, cheap and idempotent, for a file
 ///   that arrived some other way.
-/// - **The file must be an x64 PE image**, or it is refused before it is published:
-///   a pin naming the wrong archive member, an x86 or arm64 build (every Windows pin
-///   is x64, plan D6), or bytes that are no executable at all. The Windows form of
-///   macOS's "never publish a binary that cannot load".
+/// - **Every image must be one x64 Windows can run** — x64, or x86 under WOW64 — or
+///   it is refused before it is published: a pin naming the wrong archive member, an
+///   arm64 build, or bytes that are no executable at all. The Windows form of macOS's
+///   "never publish a binary that cannot load". x86 is accepted because the official
+///   artifacts carry it: nginx.org's `nginx.exe`, PHP 7.4.33's ICU data DLL, MySQL
+///   8.4.6's configurator (measured 13 Sep 2026, `pe.rs`).
 ///
 /// `core` calls `prepare_binary` for single executables (Caddy, Mailpit,
-/// cloudflared). `prepare_binary_tree` runs only for `Shape::Bundle`, and every
-/// bundle is refused on Windows (D4), so no path reaches it today — and
-/// `resolve_dir` (PHP, nginx, MySQL, PostgreSQL trees) calls no prepare at all, on
-/// either OS.
+/// cloudflared) and `prepare_binary_dir` for directory distributions — PHP, nginx,
+/// MySQL, PostgreSQL (owner ruling 13 Sep 2026). `prepare_binary_tree` runs only for
+/// `Shape::Bundle`, which D4 refuses on Windows, so no path reaches it today.
 pub struct WindowsBinaryProvider;
 impl BinaryProvider for WindowsBinaryProvider {
     fn arch(&self) -> Arch {
@@ -174,31 +175,41 @@ impl BinaryProvider for WindowsBinaryProvider {
     }
     fn prepare_binary(&self, path: &Path) -> Result<()> {
         strip_mark_of_the_web(path)?;
-        require_x64_image(path)
+        require_runnable_image(path)
     }
     fn prepare_binary_tree(&self, root: &Path) -> Result<()> {
-        let mut files = Vec::new();
-        collect_files(root, &mut files)?;
-        let mut images = 0usize;
-        for file in &files {
-            strip_mark_of_the_web(file)?;
-            let is_image = file
-                .file_name()
-                .and_then(|n| n.to_str())
-                .is_some_and(pe::is_image_name);
-            if is_image {
-                require_x64_image(file)?;
-                images += 1;
-            }
-        }
-        if images == 0 {
-            return Err(Error::Other(format!(
-                "no .exe or .dll under {} — not a Windows binary tree",
-                root.display()
-            )));
-        }
-        Ok(())
+        check_tree(root)
     }
+    fn prepare_binary_dir(&self, root: &Path) -> Result<()> {
+        check_tree(root)
+    }
+}
+
+/// Every file loses its Mark of the Web; every `.exe`/`.dll` must be runnable; a tree
+/// with none is not a binary tree. One function for bundles and directory
+/// distributions, so the two can never apply different rules.
+fn check_tree(root: &Path) -> Result<()> {
+    let mut files = Vec::new();
+    collect_files(root, &mut files)?;
+    let mut images = 0usize;
+    for file in &files {
+        strip_mark_of_the_web(file)?;
+        let is_image = file
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(pe::is_image_name);
+        if is_image {
+            require_runnable_image(file)?;
+            images += 1;
+        }
+    }
+    if images == 0 {
+        return Err(Error::Other(format!(
+            "no .exe or .dll under {} — not a Windows binary tree",
+            root.display()
+        )));
+    }
+    Ok(())
 }
 
 /// Remove `path`'s `Zone.Identifier` alternate data stream, if it has one.
@@ -222,24 +233,26 @@ fn strip_mark_of_the_web(path: &Path) -> Result<()> {
     }
 }
 
-/// Refuse `path` unless its PE header says x64.
-fn require_x64_image(path: &Path) -> Result<()> {
+/// Refuse `path` unless its PE header names a machine x64 Windows runs.
+fn require_runnable_image(path: &Path) -> Result<()> {
     use std::io::Read;
     let mut head = Vec::with_capacity(pe::HEAD_BYTES);
     std::fs::File::open(path)?
         .take(pe::HEAD_BYTES as u64)
         .read_to_end(&mut head)?;
     match pe::classify(&head) {
-        pe::PeKind::X64 => Ok(()),
+        kind if pe::runs_on_x64_windows(kind) => Ok(()),
         pe::PeKind::OtherMachine(machine) => Err(Error::Other(format!(
-            "{} is a Windows executable for machine 0x{machine:04x}, not x64 — every Windows \
-             artifact rexenv pins is x64, so this pin names the wrong build",
+            "{} is a Windows executable for machine 0x{machine:04x}, which x64 Windows cannot \
+             run — this pin names the wrong build",
             path.display()
         ))),
         pe::PeKind::NotPe => Err(Error::Other(format!(
             "{} is not a Windows executable — the pin names the wrong file or archive member",
             path.display()
         ))),
+        // X64 and X86 are matched by the guard above.
+        pe::PeKind::X64 | pe::PeKind::X86 => Ok(()),
     }
 }
 

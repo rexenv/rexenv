@@ -43,8 +43,10 @@ platform/   ALL OS-specific code, behind 13 traits (platform/traits.rs):
   file handle, with `write_private` creating the file already carrying it (ledger #597).
   `BinaryProvider` there needs no relink and no signature: `prepare_binary` removes the Mark
   of the Web if present (reqwest downloads and our zip extraction are believed not to set it —
-  unmeasured) and refuses anything that is not an x64 PE image before it is published (ledger
-  #598). As on macOS, `resolve_dir` trees are published without any prepare step. The design goal is "adding an OS = filling stubs". **Measured 12
+  unmeasured) and refuses any image x64 Windows cannot run (x64 and x86 pass; nginx.org's `nginx.exe` is
+  x86) before it is published. Directory trees (`resolve_dir`: PHP, nginx, MySQL, PostgreSQL)
+  go through `prepare_binary_dir`, the same check for every file — a no-op on macOS, where
+  MySQL is Oracle-signed and must stay untouched (owner ruling 13 Sep 2026, ledger #598). The design goal is "adding an OS = filling stubs". **Measured 12
   Sep 2026 the tree did not meet it**, and ledger #163's scan was green anyway — it looked
   for OS module names, not Unix APIs. Windows port W1 (`docs/PLAN-windows-port.md`) closed
   the `core/` half the same day: its unix sockets, `kill`, `cfg(unix)` and `std::os::unix`

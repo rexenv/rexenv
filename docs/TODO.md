@@ -115,12 +115,13 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     TCP/UDP tables, never a trial bind, and a start counts only when OUR server answers (plan §6).
     **Progress 13 Sep 2026 (compile-checked from the Mac, not run on Windows):** `Paths` →
     `%LOCALAPPDATA%\rexenv\rexenv\data` (the app-data namespace constants now live in
-    `platform/mod.rs`, shared with macOS); `PermissionManager` → owner-only ACLs in
+    `platform/mod.rs`, shared with macOS); `PermissionManager` → owner-only ACLs (current user only, no SYSTEM — owner ruling 13 Sep 2026) in
     `platform/windows/acl.rs` (SDDL builder L0-tested on every host, ledger #597);
     `set_executable` checks the file exists — Windows has no execute bit; `BinaryProvider` →
-    Mark of the Web stripped, x64 PE required before publish (`platform/windows/pe.rs`, real
-    `rex.exe` classified x64, ledger #598). Open: `resolve_dir` prepares no tree on either OS,
-    so Windows' PHP/nginx/MySQL/PostgreSQL trees go unchecked — owner's call whether to add one
+    Mark of the Web stripped, every image x64 or x86 before publish (`platform/windows/pe.rs`),
+    and directory trees checked too through the new `prepare_binary_dir` (owner ruling 13 Sep
+    2026; macOS no-op). Measured across all 16 Windows artifacts: 1,197 images, 3 x86, none
+    refused — an x64-only rule would have refused nginx, PHP 7.4 and MySQL 8.4 (ledger #598)
   - [ ] W4 — php-cgi group (preflight + churn breaker, plan §3 D1(a)) + nginx + SMTP mail → a
     WordPress site serves
   - [ ] W5 — Caddy :443 edge + CurrentUser Root CA trust → valid lock in Edge/Chrome/Firefox

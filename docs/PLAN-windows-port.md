@@ -647,8 +647,10 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   `Archive::Zip` / `ZipTree { strip }`, ledger #585); (2) `.exe` naming — a single
   binary publishes at `dir/<name>`, and Windows will not run a file without the
   extension; (3) per-OS shapes — `shape_of(name)` says nginx and php are single
-  binaries, while their Windows zips are trees; (4) the arms, all x64 (Windows ARM runs
-  them under emulation — there is no arm64 PHP, PostgreSQL or MySQL build); (5) the
+  binaries, while their Windows zips are trees; (4) the arms, all x64 artifacts (Windows ARM runs
+  them under emulation — there is no arm64 PHP, PostgreSQL or MySQL build; three images inside
+  them turned out x86 when W3 measured every file — `nginx.exe`, PHP 7.4's ICU data DLL, MySQL
+  8.4's configurator — ledger #598); (5) the
   sweep. Every Windows artifact except PostgreSQL's was downloaded and hashed on 12 Sep
   2026 (PostgreSQL's three were pinned from the publisher's `.sha256` and only streamed for
   their layout — see (5)); Caddy's SHA-512 matched its publisher's, the rest have no published
@@ -678,15 +680,18 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   measured 13 Sep 2026 in `directories` 5's source: it resolves the Local AppData known folder
   and drops the qualifier on Windows; the draft's `%LOCALAPPDATA%\rexenv` was a guess),
   `PermissionManager` (owner-only ACLs — **written 13 Sep 2026, compile-checked from the Mac,
-  not yet run:** a protected DACL with one full-access entry for the process's user, set
+  not yet run:** a protected DACL with one full-access entry for the process's user — no SYSTEM entry, by
+  owner ruling the same day — set
   through the file handle, and `write_private` creating the file WITH that descriptor;
   ledger #597), `BinaryProvider` (strip the `Zone.Identifier` stream, no codesign — **written
-  13 Sep 2026, compile-checked:** the stream is removed if present, and a file must be an x64
-  PE image before it is published; the header parser is L0-tested and ran against a real
-  cross-built `rex.exe` → x64; ledger #598. **Open question for the owner:** `resolve_dir`
-  calls no prepare on either OS, so Windows' PHP, nginx, MySQL and PostgreSQL zip trees are
-  published unchecked, and `prepare_binary_tree` is reachable only from bundles, which D4
-  refuses on Windows),
+  13 Sep 2026, compile-checked:** the stream is removed if present, and every image must be one
+  x64 Windows can run — x64, or x86 under WOW64 — before it is published; the header parser is
+  L0-tested and ran against a real cross-built `rex.exe` → x64; ledger #598. **Owner ruling the
+  same day: directory trees are checked too** — a new `BinaryProvider::prepare_binary_dir`, a
+  no-op on macOS (MySQL stays Oracle-signed, untouched), called by `resolve_dir` before publish.
+  Measuring every Windows artifact first changed the rule: 3 of 1,197 images are x86
+  (`nginx.exe`, PHP 7.4's ICU data DLL, MySQL 8.4's configurator), so an x64-only check would
+  have refused nginx, PHP 7.4 and MySQL 8.4 outright),
   `ProcessSupervisor` (hidden + detached spawn so services OUTLIVE the app, graceful
   per-service stop, pid → exe/cmdline for ownership, listener lookup via
   `GetExtendedTcpTable`, conflict help naming HTTP.sys and the Hyper-V excluded port
