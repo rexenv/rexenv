@@ -35,6 +35,16 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [ ] **SHIPPED macOS BUG — new WordPress sites are missing core files (measured 14 Sep 2026).** WP-CLI's
+  `wp core download` extracts WordPress's `.tar.gz` with PHP's `PharData`, and rexenv's PHP 8.3.32 reads that
+  tarball with every member name CUT AT 100 CHARACTERS: bsdtar lists 3,782 members, PharData 3,776; 40 names
+  come out truncated (`…/Contracts/WithRequestAuthenticationInterface.php` → `…Interface.`, `…Italic.woff2` →
+  `…Italic.wof`) and six vanish where two truncations collide — 20+ `wp-includes/php-ai-client` classes and
+  several default-theme fonts. macOS creates the dot-ended names without an error, so the damage is silent. On
+  the owner's machine, 5 of the rexenv sites checked (`hridoy.rex`, `mstest.rex`, `msd.rex`, `new.rex`,
+  `ealite`) have only the truncated file; others have both (a later update restored them). WordPress's `.zip`
+  build extracts every name intact through `ZipArchive` (measured on the Mac and the Dell). Owner to rule the
+  fix and what happens to existing sites
 - [ ] **Windows launch** — 12 Sep 2026, owner: macOS is stable, ship a Windows version.
   Not "fill the stubs": Unix-only code outside `platform/`, no php-fpm, no `/etc/resolver`,
   no unix sockets on Windows. Reasoning, measurements and "Done when" per task:
@@ -185,6 +195,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
       `$SHELL`/zsh and writes a shell-script `wp` wrapper — none of which exists on Windows. W7's
       terminals, not W4; WP-CLI and Composer themselves now resolve PHP through
       `binaries::resolve_program`
+    - [ ] A plugin's bare curl HTTPS call fails on Windows — PHP's curl has no CA bundle there
+      (`unable to get local issuer certificate`, measured 14 Sep 2026; `file_get_contents` works via
+      the Windows store, and WordPress/WP-CLI/Composer ship their own bundles). Owner ruled: not now.
+      The fix when it comes is a pinned CA bundle for `curl.cainfo` — a new artifact, notices row and
+      sweep target — or another route
     - [ ] Download planning (`core/downloads.rs`) names `php-fpm` for every PHP it plans; on a
       php-cgi platform it must plan `php` — found writing W4 step 1, not yet changed
   - [ ] W5 — Caddy :443 edge + CurrentUser Root CA trust → valid lock in Edge/Chrome/Firefox

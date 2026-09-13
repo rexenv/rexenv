@@ -271,6 +271,17 @@ before anything is built on it.
   `PoolModel::{Fpm, CgiGroup}` answer from the platform; the php-fpm conf and the php-cgi ini + env
   are both `core` renderers tested on every host, and the pool lifecycle (ensure, adopt, reap,
   stop) stays one implementation.
+- **The PHP CLI gets its extensions from a `php.ini` beside `php.exe` in the resolved tree
+  (RULED 14 Sep 2026, owner).** php.exe with no ini loads no extension; PHP reads the ini in its
+  own folder by default, so every CLI spawn — WP-CLI, Composer, artisan, Adminer, the terminal, and
+  any spawn not yet written — gets the same extensions the group loads. Written by `core` at the
+  one resolve every PHP tree passes through. Chosen over `-c`/`PHPRC` at each call site, where a
+  forgotten spawn would run without extensions silently.
+- **No CA bundle for now (RULED 14 Sep 2026, owner).** Measured on the Dell: `file_get_contents`
+  over HTTPS succeeds with no CA configured (PHP's openssl stream uses the Windows store); curl
+  without a CA fails `unable to get local issuer certificate` and succeeds with
+  `CURLSSLOPT_NATIVE_CA`, which only a handle can set. WordPress, WP-CLI and Composer carry their own
+  bundles, so W4's path should not need one; a plugin's bare curl call will fail — a TODO row.
 - **The ini is rexenv's own:** `php-cgi -n -c <config>\php-cgi-<minor>.ini` — `extension_dir`, the
   extension lines, the user's settings, the SMTP keys for mail; everything else PHP's built-in
   defaults, as the macOS static build runs with no php.ini at all. Not a copy of

@@ -15,7 +15,7 @@
 //! `php::PhpFpmPools`, one implementation for both models (owner ruling 14 Sep 2026).
 
 use crate::error::{Error, Result};
-use crate::platform::traits::{CgiGroup, Platform};
+use crate::platform::traits::{CgiGroup, Platform, PoolModel};
 use std::path::{Path, PathBuf};
 use std::process::Child;
 
@@ -49,13 +49,7 @@ pub fn render_ini(
     let mut ini = String::from(
         "; rexenv php-cgi group — generated on every start; edits here are overwritten\n",
     );
-    ini.push_str(&format!("extension_dir = \"{}\"\n", php_dir.join("ext").display()));
-    for ext in group.extensions {
-        ini.push_str(&format!("extension = {ext}\n"));
-    }
-    for ext in group.zend_extensions {
-        ini.push_str(&format!("zend_extension = {ext}\n"));
-    }
+    ini.push_str(&extension_lines(group, php_dir));
     ini.push_str("log_errors = On\n");
     ini.push_str(&format!("error_log = \"{}\"\n", log_file.display()));
     if catch.is_some() {
@@ -68,6 +62,56 @@ pub fn render_ini(
         ini.push_str(&format!("{key} = {value}\n"));
     }
     ini
+}
+
+/// `extension_dir` and one line per extension — shared by the group's ini and the CLI's, so
+/// the pool and every PHP CLI spawn can never load different sets.
+fn extension_lines(group: &CgiGroup, php_dir: &Path) -> String {
+    let mut lines = format!("extension_dir = \"{}\"\n", php_dir.join("ext").display());
+    for ext in group.extensions {
+        lines.push_str(&format!("extension = {ext}\n"));
+    }
+    for ext in group.zend_extensions {
+        lines.push_str(&format!("zend_extension = {ext}\n"));
+    }
+    lines
+}
+
+/// The `php.ini` beside `php.exe` in a resolved PHP tree: the extensions and nothing else
+/// (owner ruling 14 Sep 2026, ledger #603).
+///
+/// php.exe with no ini loads NO extension — no curl, openssl or mysqli — while the macOS
+/// build compiles them in, so WP-CLI, Composer, artisan and Adminer would run crippled. PHP
+/// reads `php.ini` from its executable's own folder by default, so writing it THERE gives
+/// every CLI spawn the extensions, including a spawn nobody has found or written yet. The
+/// group is unaffected: it runs `-n -c <its own ini>`. No settings and no mail keys: the CLI
+/// runs with PHP's defaults, as the static build does; mail catch for the CLI stays with the
+/// call sites that pass it.
+pub fn render_cli_ini(group: &CgiGroup, php_dir: &Path) -> String {
+    let mut ini = String::from(
+        "; rexenv — the PHP CLI's extensions for this tree; rewritten when it differs\n",
+    );
+    ini.push_str(&extension_lines(group, php_dir));
+    ini
+}
+
+/// Make sure a resolved `name` tree carries the CLI's `php.ini`, when this platform serves
+/// PHP as a php-cgi group and `name` is that model's PHP. Idempotent; a file that differs
+/// (a tree published before this existed, a moved cache) is rewritten.
+pub fn ensure_cli_ini(platform: &dyn Platform, name: &str, dir: &Path) -> Result<()> {
+    let model = platform.supervisor().php_pool_model();
+    let PoolModel::CgiGroup(group) = model else {
+        return Ok(());
+    };
+    if name != model.catalog_name() {
+        return Ok(());
+    }
+    let path = dir.join("php.ini");
+    let want = render_cli_ini(&group, dir);
+    if std::fs::read_to_string(&path).ok().as_deref() != Some(want.as_str()) {
+        std::fs::write(&path, want)?;
+    }
+    Ok(())
 }
 
 /// The group's environment: the worker count and recycle, plus the Laravel half of
@@ -236,6 +280,21 @@ mod tests {
         assert!(ini.lines().any(|l| l == "memory_limit = 512M"), "{ini}");
         assert!(!ini.contains("sendmail_path"), "the shim needs a shell the group does not have:\n{ini}");
         assert!(!ini.contains("default_socket"), "{ini}");
+    }
+
+    /// The CLI's ini carries exactly the group's extensions and no pool concerns (no log file,
+    /// no SMTP keys, no settings); the group's ini renders the same extension lines.
+    #[test]
+    fn the_cli_ini_loads_the_groups_extensions_and_nothing_else() {
+        let dir = Path::new("/bin/php-8.3.32");
+        let cli = render_cli_ini(&GROUP, dir);
+        let group = render_ini(&GROUP, dir, Path::new("/l.log"), Some(&catch()), &[("memory_limit".into(), "1G".into())]);
+        for line in ["extension = curl", "extension = mysqli", "extension = mbstring", "zend_extension = opcache"] {
+            assert!(cli.lines().any(|l| l == line), "missing {line:?}:\n{cli}");
+        }
+        assert!(cli.contains(&format!("extension_dir = \"{}\"", dir.join("ext").display())), "{cli}");
+        assert!(!cli.contains("SMTP") && !cli.contains("error_log") && !cli.contains("memory_limit"), "{cli}");
+        assert!(group.contains(&extension_lines(&GROUP, dir)), "the group's ini must carry the same extension lines");
     }
 
     #[test]

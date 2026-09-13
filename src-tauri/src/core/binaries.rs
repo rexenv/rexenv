@@ -2552,7 +2552,17 @@ pub async fn resolve_file(platform: &dyn Platform, name: &str, version: &str) ->
 /// base dir, downloading + verifying + extracting on first use. The single
 /// top-level dir in the tarball is stripped, so the base dir directly contains
 /// `bin/`, `lib/`, `share/`. Idempotent: a cached tree is returned as-is.
+/// Resolve a directory distribution — and, for the PHP a php-cgi platform serves, make sure
+/// the tree carries its CLI `php.ini` (`php_cgi::ensure_cli_ini`, ledger #603). Here, at the
+/// one resolve every PHP tree passes through (the pool, the CLI via `resolve_program`, the
+/// settings gate), rather than at each caller.
 pub async fn resolve_dir(platform: &dyn Platform, name: &str, version: &str) -> Result<PathBuf> {
+    let dir = resolve_dir_tree(platform, name, version).await?;
+    super::php_cgi::ensure_cli_ini(platform, name, &dir)?;
+    Ok(dir)
+}
+
+async fn resolve_dir_tree(platform: &dyn Platform, name: &str, version: &str) -> Result<PathBuf> {
     let _flight = in_flight(name, version).await;
     let arch = platform.binaries().arch();
     let os = std::env::consts::OS;

@@ -537,7 +537,9 @@ Live-proven end to end by `site_stop_start_check`.
   a failed preflight — read from the OUTPUT, since php-cgi exits 0 when an extension fails to load —
   and spawns the parent on the minor's usual pool port. `PhpFpmPools` runs the same ensure / adopt /
   reap / stop for both models; the settings gate tests a candidate for whichever model runs. The
-  Xdebug pool is refused there (D4).
+  Xdebug pool is refused there (D4). The PHP CLI on the same platform (WP-CLI, Composer, artisan,
+  Adminer) loads the same extensions from a `php.ini` `core` writes beside `php.exe` whenever the
+  tree is resolved (#603) — php.exe with no ini loads none, and PHP reads that file by default.
   **The shared nginx on Windows** (#602): every path in nginx.conf goes through `services::nginx_path`
   (forward slashes — a backslash in a quoted nginx string is an escape, measured); the binary is
   `binaries::resolve_program`, which answers a single binary or `nginx.exe` inside its tree; the socket
