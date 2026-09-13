@@ -117,6 +117,24 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   - [ ] W12 — launch gates: verify on the Windows runner, SMOKE-TEST + INSTALL Windows
     sections, clean Windows 11 VM pass
 
+- [ ] **An older rexenv refuses a database a newer one migrated** — 13 Sep 2026, owner, after
+  installing the 0.7.1 dmg over data a master dev build had been using. Measured: the only
+  production opener (`lib.rs:423` → `state::db::open_for_platform` → `open`, `state/db.rs:702`)
+  runs `migrate_with`, which applies the migrations numbered above `user_version` and says
+  nothing when `user_version` is ABOVE `MIGRATIONS.len()`; nothing else reads it. So the day
+  master adds migration 45, any older build opened on that data — a hand-installed older dmg,
+  or this Mac swapping between a dev build and a release — reads and writes tables it does not
+  know, silently. Not live today: v0.7.0 and master are both schema v44, and this Mac's
+  database reads `user_version` 44.
+  - [ ] `open` refuses before any write when `user_version` > `MIGRATIONS.len()`, with a
+    message naming both numbers and the fix (run the rexenv that migrated the data, or newer),
+    shown wherever a failed database open is shown today (measure that path first)
+  - [ ] L0 test: a database stamped `len + 1` is refused and left byte-identical; plant-proven;
+    ledger row
+  - [ ] Ship it in a release BEFORE the first release that adds migration 45. Builds up to
+    0.7.1 stay unguarded forever, so the gap closes only for versions after the guard — say so
+    in `docs/RELEASING.md` beside the version bump
+
 - [ ] **Third-party notices — a Windows crate table before any Windows release** — 13 Sep 2026,
   owner asked whether the notices count drift was tracked; it was not (the debt lived only
   inside `THIRD-PARTY-NOTICES.md`). The macOS half is done below; open for ONE reason: the
