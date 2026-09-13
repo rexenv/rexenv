@@ -243,6 +243,22 @@ before anything is built on it.
   *Measure:* which pid the TCP table reports for a listener its creator handed to children
   (expected: the parent; the root rule in 4 gives the same answer either way), and that
   reading a same-user process's command line needs no elevation.
+  **Measured 14 Sep 2026 on the Dell** (official PHP 8.3.32 NTS x64, checksum matched,
+  `php-cgi.exe -n -b 127.0.0.1:<port>`, `PHP_FCGI_CHILDREN=4`, `PHP_FCGI_MAX_REQUESTS=3`, over
+  SSH — the elevated token; the command-line read under the desktop token stays open):
+  - one parent + 4 children; **the TCP table names the PARENT alone as the listener**; every
+    child's command line is byte-identical to the parent's — the marker identifies all five;
+  - 10 sequential FastCGI requests were answered round-robin by the four children, and each
+    child was replaced by a new pid after its 3rd request; killing one child → a replacement
+    within 2 s;
+  - 6 parallel 2-second requests against 4 children finished at 2004, 2004, 2004, 2005, 4020,
+    4020 ms — the excess QUEUES, it does not fail: the "slow page, then 504" D1(b) predicts;
+  - idle child (`-n`, no extensions): ~6 MB private, ~11 MB working set;
+  - **`TerminateProcess` on the parent → all four children gone within 2 s, the port free** —
+    the kill-on-close job holds; the parent's stderr stayed empty (no "unable to assign");
+  - preflight `php-cgi -n -m`: exit 0 in 185 ms. **A missing extension ALSO exits 0**, with only
+    `PHP Startup: Unable to load dynamic library …` on the output — so the preflight must read
+    the output for that line; the exit code alone would pass a broken ini.
 - **Adopt on relaunch:** `adopt_startup` finds the group by 1–4 and adopts the master. A
   master whose children do not answer is not running — ownership AND liveness.
 - **Hazards, written down now:**
