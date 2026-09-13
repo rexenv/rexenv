@@ -332,6 +332,23 @@ pub trait ProcessSupervisor: Send + Sync {
         None
     }
 
+    /// Every pid holding `port` on ANY local address, from the OS's own socket tables —
+    /// TCP: a LISTEN socket; UDP: a bound endpoint. `core::ports::is_free` refuses a port
+    /// any of them holds before it trusts a trial bind (ledger #599): on Windows the bind
+    /// succeeds beside another process's wildcard listener (plan §6). Candidates only —
+    /// ownership is still `owned_listeners`' command-line check.
+    /// Default: `None`, no table read here — the gate's trial bind stands alone.
+    fn port_holders(&self, _port: u16, _udp: bool) -> Option<Vec<u32>> {
+        None
+    }
+
+    /// The copy-paste command that ends `pid`, a same-user process rexenv started —
+    /// the last line of `ensure_free`'s "leftover rexenv process" message. Default:
+    /// `kill <pid>`; Windows has no `kill`.
+    fn stop_pid_command(&self, pid: u32) -> String {
+        format!("kill {pid}")
+    }
+
     /// Help for a port-conflict error: who is holding `port` (any process, not
     /// just ours — this is diagnostic, never used to kill anything ourselves)
     /// and a copy-paste shell command the USER can run to terminate the holder

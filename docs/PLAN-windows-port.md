@@ -760,6 +760,23 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
     say "free" while another process listens on `0.0.0.0` or `[::]` of the same port. There,
     `ensure_free` reads the TCP/UDP tables (`GetExtendedTcpTable` / `GetExtendedUdpTable`)
     for ANY local address on the port and names the holder from them.
+    **Written 13 Sep 2026 (ledger #599) and run on the Dell the same day — `windows_port_gate_check: PASS`:**
+    `ports::is_free` now takes the platform and refuses a port any row names —
+    `ProcessSupervisor::port_holders`, both address families — BEFORE its trial bind, so no
+    caller can reach the bind-only answer. The bind stays as a second refusal, not a
+    verdict, for whatever refuses a bind without a table row. **Measured the same day, an
+    administered excluded range is not one of those:** inside the Dell's 50000–50059 (`*`),
+    `127.0.0.1`, `0.0.0.0` and `[::]` all listened and answered and UDP bound — an exclusion
+    stops Windows handing the ports out, not a program asking for one; WinNAT's run-time
+    ranges are reported to refuse binds, unmeasured here (no Hyper-V/WSL distro/Docker on the
+    Dell). The first Dell run had asserted the opposite and failed on it. The conflict names the ROOT holder (parent links dropped when the parent is
+    younger than the child — pid reuse, D1(a) rule 4) by image, by hosted service for a
+    `svchost.exe`, as HTTP.sys for pid 4, or — with no holder — as the excluded range from
+    `netsh interface ipv4 show excludedportrange`, parsed by row shape so a localized netsh
+    reads the same. Our own leftover is found by the app-data path on its command line,
+    ignoring case, and gets `Stop-Process -Id`, not `kill`. The pure rules live in
+    `platform/windows/port_table.rs` (tested on every host), the Win32 reads in
+    `process.rs`; `examples/windows_port_gate_check.rs` is the Dell run.
   - A start is confirmed by who ANSWERS with our identity — a FastCGI round trip for a
     php-cgi group, the admin pipe for Caddy, the handshake for MySQL/PostgreSQL, a marker
     record for the DNS agent (W6) — never by a bind or a listen. That is the existing

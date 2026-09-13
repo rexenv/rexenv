@@ -225,6 +225,7 @@ wp_tools_check network
 wpcli_check sandbox
 wporg_icons_check network
 xdebug_pool_check sandbox
+windows_port_gate_check sandbox
 "
 
 tier_of() {

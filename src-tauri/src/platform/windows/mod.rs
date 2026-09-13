@@ -18,6 +18,8 @@ use std::process::Child;
 mod acl;
 mod owner_only;
 mod pe;
+mod port_table;
+mod process;
 
 pub struct WindowsPaths;
 impl Paths for WindowsPaths {
@@ -89,6 +91,8 @@ impl PrivilegeManager for WindowsPrivileges {
     }
 }
 
+/// Identity and the port gate are real (`process.rs`, `port_table.rs`, ledger #599);
+/// spawning and stopping are the next W3 step and still unported.
 pub struct WindowsSupervisor;
 impl ProcessSupervisor for WindowsSupervisor {
     fn spawn(&self, _program: &Path, _args: &[String]) -> Result<Child> {
@@ -99,6 +103,73 @@ impl ProcessSupervisor for WindowsSupervisor {
     }
     fn stop(&self, _pid: u32) -> Result<()> {
         Err(Error::Unported("windows stop"))
+    }
+    fn pid_alive(&self, pid: u32) -> bool {
+        process::alive(pid)
+    }
+    /// ToolHelp reports image file names with their extension, and callers pass the
+    /// bare name the macOS `pgrep -x` takes — both spellings match, ignoring case.
+    fn pids_named(&self, name: &str) -> Vec<u32> {
+        let with_exe = format!("{name}.exe");
+        process::processes()
+            .into_iter()
+            .filter(|e| e.exe.eq_ignore_ascii_case(name) || e.exe.eq_ignore_ascii_case(&with_exe))
+            .map(|e| e.pid)
+            .collect()
+    }
+    fn pid_exe(&self, pid: u32) -> Option<PathBuf> {
+        process::image_path(pid)
+    }
+    fn pid_command(&self, pid: u32) -> Option<String> {
+        process::command_line(pid)
+    }
+    fn port_holders(&self, port: u16, udp: bool) -> Option<Vec<u32>> {
+        process::port_holders(port, udp)
+    }
+    fn stop_pid_command(&self, pid: u32) -> String {
+        format!("Stop-Process -Id {pid}")
+    }
+    /// TCP listeners on `port` whose command line carries the marker, case-insensitively
+    /// (`port_table::command_carries_marker`).
+    fn owned_listeners(&self, port: u16, owner_marker: &str) -> Vec<u32> {
+        process::port_holders(port, false)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|&pid| {
+                process::command_line(pid)
+                    .is_some_and(|cmd| port_table::command_carries_marker(&cmd, owner_marker))
+            })
+            .collect()
+    }
+    fn owned_master(&self, port: u16, owner_marker: &str) -> Option<u32> {
+        process::root_of(&self.owned_listeners(port, owner_marker))
+    }
+    fn owned_pids(&self, marker: &str) -> Vec<u32> {
+        process::processes()
+            .into_iter()
+            .filter(|e| {
+                process::command_line(e.pid)
+                    .is_some_and(|cmd| port_table::command_carries_marker(&cmd, marker))
+            })
+            .map(|e| e.pid)
+            .collect()
+    }
+    /// The root holder by image, hosted services or "cannot inspect"; with no holder at
+    /// all, the excluded range the port sits in — the one refusal no socket table shows.
+    fn port_conflict_help(&self, port: u16, udp: bool) -> PortConflictHelp {
+        let holders = process::port_holders(port, udp).unwrap_or_default();
+        let named = match process::root_of(&holders) {
+            Some(pid) => {
+                let image = process::image_path(pid).map(|p| p.display().to_string());
+                Some(port_table::describe_holder(pid, image.as_deref(), &process::services_hosted_by(pid)))
+            }
+            None => process::excluded_ranges(udp)
+                .and_then(|out| port_table::excluded_range_containing(&out, port))
+                .map(|range| port_table::describe_excluded(range, udp)),
+        };
+        named
+            .map(|h| PortConflictHelp { holder: Some(h.holder), app: h.app, free_command: h.free_command })
+            .unwrap_or_default()
     }
 }
 

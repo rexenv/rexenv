@@ -1284,6 +1284,14 @@ bloating the fast path:
   library error behind one line; and a placeholder `rex-<triple>.exe` sidecar staged for
   the run and removed on exit, because `tauri_build` refuses a missing `externalBin` —
   kept OUT of `build.rs` so no real Windows bundle can ever ship a fake `rex`.
+- **Windows-only pure rules run on the Mac too.** A Windows module with no Win32 calls in it
+  — `windows/owner_only.rs`, `pe.rs`, `port_table.rs` — is `#[path]`-included into the macOS
+  test build (`platform/mod.rs`), so its L0 tests run in `verify.sh`. The Win32 calls around
+  them are only compiled here.
+- **Windows L1 = an example cross-built on the Mac and run on the Dell** over SSH
+  (`windows_port_gate_check`, 13 Sep 2026 — the build and run lines are in its header). On
+  macOS the same example prints a skip line, which is all its `sandbox` tier entry runs.
+  A Windows verdict is that example's own `PASS` line on the Dell, never the Mac tier.
 
 A gate nobody can afford to run stops being one: the fast bar stays fast, and nothing
 above it is required per-commit. The metric the gate serves is the ledger tally, which

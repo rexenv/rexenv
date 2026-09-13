@@ -136,7 +136,7 @@ async fn main() -> std::process::ExitCode {
     std::thread::sleep(Duration::from_millis(500));
     println!(
         "stopped; :{https_port} free now = {}",
-        rexenv_lib::core::ports::is_free(https_port, rexenv_lib::core::ports::Proto::Tcp)
+        rexenv_lib::core::ports::is_free(&*plat, https_port, rexenv_lib::core::ports::Proto::Tcp)
     );
     std::process::ExitCode::SUCCESS
 }

@@ -1234,6 +1234,14 @@ honest footer —
   the way out that keeps Local running: Router Mode → localhost. Quitting Local also
   stops the per-site database a Local import reads. The MCP `site_status` edge-blocked
   verdict names the same holder instead of "can't identify" (#588).
+  **The gate reads the platform's socket tables before it trusts a trial bind** (#599,
+  13 Sep 2026): `ports::is_free(platform, …)` refuses any port `port_holders` lists on ANY
+  local address, then binds. On Windows a trial bind on `127.0.0.1` succeeds beside another
+  process's `0.0.0.0`/`[::]` listener and takes its localhost traffic (plan §6, measured), so
+  the bind alone would call a developer's own all-interfaces MySQL free. macOS has no table
+  read (`None`) and keeps the bind alone. Windows names holders by image, hosted service,
+  HTTP.sys (pid 4) or the excluded port range a holderless port sits in, with PowerShell
+  commands — run on the Dell (Windows 10) 13 Sep 2026, `windows_port_gate_check: PASS`.
 
 ### 8.2 Which app opens a link — one choke point
 

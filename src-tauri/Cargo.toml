@@ -111,6 +111,14 @@ windows-sys = { version = "0.61", features = [
     "Win32_Security_Authorization",
     "Win32_Storage_FileSystem",
     "Win32_System_Threading",
+    # The port gate and process identity (platform/windows/process.rs, ledger #599): the
+    # socket tables, a process's command line, parent and services, the address families.
+    # Same crate as above, more bindings — no new crate in the Windows graph.
+    "Wdk_System_Threading",
+    "Win32_NetworkManagement_IpHelper",
+    "Win32_Networking_WinSock",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_Services",
 ] }
 
 # Target-gated like the [dependencies] copies: objc2 is a compile_error! on any

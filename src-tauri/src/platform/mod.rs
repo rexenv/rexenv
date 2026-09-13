@@ -44,6 +44,12 @@ mod windows_owner_only;
 #[allow(dead_code)]
 #[path = "windows/pe.rs"]
 mod windows_pe;
+// And the port gate's pure half: socket-table rows, netsh's excluded ranges, the
+// holder wording (ledger #599).
+#[cfg(all(test, not(target_os = "windows")))]
+#[allow(dead_code)]
+#[path = "windows/port_table.rs"]
+mod windows_port_table;
 
 use traits::Platform;
 

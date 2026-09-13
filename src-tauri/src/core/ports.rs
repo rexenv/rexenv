@@ -4,6 +4,8 @@
 //! Nginx, php-fpm, MySQL, the DNS resolver). Before spawning a service the
 //! service manager checks its port is free and surfaces a clear error instead
 //! of letting the process crash on bind. Detection method depends on the port:
+//!  - **a platform with socket tables** (Windows) answers first: any holder on ANY
+//!    local address makes the port busy, whatever a trial bind says (ledger #599);
 //!  - **privileged TCP (<1024)** can't be bind-tested without root, so we probe
 //!    for something already *listening* (a connect attempt);
 //!  - **high ports** are bind-tested directly (free iff the bind succeeds).
@@ -46,8 +48,34 @@ pub struct PortStatus {
     pub free: bool,
 }
 
-/// Whether `port` appears usable for `proto` on loopback.
-pub fn is_free(port: u16, proto: Proto) -> bool {
+/// Whether `port` is usable for `proto` on loopback.
+///
+/// **Never "free" while the platform's socket tables name a holder (ledger #599).**
+/// Measured on Windows (plan §6): a trial bind on `127.0.0.1` succeeds beside another
+/// process's `0.0.0.0` or `[::]` listener and then takes its localhost traffic, so the
+/// bind alone called a developer's own all-interfaces MySQL "free" and stole its
+/// clients. The tables see every local address. The bind still runs after them, as a
+/// second refusal for anything that refuses a bind without owning a row — WinNAT's
+/// run-time excluded ranges are reported to, not measured here; an ADMINISTERED
+/// excluded range was measured NOT to (the Dell, 13 Sep 2026: 127.0.0.1, 0.0.0.0 and
+/// `[::]` all listened and answered inside 50000–50059) — and on a platform without
+/// tables (`port_holders` = `None`) it is the whole answer, exactly as before.
+///
+/// Takes the platform so no caller can reach the bind-only answer by accident — the
+/// old signature had no way to ask the tables, and every caller used it.
+pub fn is_free(platform: &dyn Platform, port: u16, proto: Proto) -> bool {
+    let udp = matches!(proto, Proto::Udp);
+    if let Some(holders) = platform.supervisor().port_holders(port, udp) {
+        if !holders.is_empty() {
+            return false;
+        }
+    }
+    bind_probe(port, proto)
+}
+
+/// The trial bind (or, for privileged TCP, the connect) — half of [`is_free`], never a
+/// verdict on its own where the platform can read its tables.
+fn bind_probe(port: u16, proto: Proto) -> bool {
     let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
     match proto {
         // Privileged TCP: can't bind-test without root — treat "free" as
@@ -78,18 +106,24 @@ pub fn is_listening(port: u16) -> bool {
 /// Bounded wait for `port` to actually close. A stopped master's workers exit
 /// a beat after it; "stopped" must mean the port is FREE, or the next spawn's
 /// port gate trips over our own dying tree. True = freed within the budget.
-pub fn wait_free(port: u16, proto: Proto, tries: u32, interval: std::time::Duration) -> bool {
+pub fn wait_free(
+    platform: &dyn Platform,
+    port: u16,
+    proto: Proto,
+    tries: u32,
+    interval: std::time::Duration,
+) -> bool {
     for _ in 0..tries {
-        if is_free(port, proto) {
+        if is_free(platform, port, proto) {
             return true;
         }
         std::thread::sleep(interval);
     }
-    is_free(port, proto)
+    is_free(platform, port, proto)
 }
 
 pub fn ensure_free(platform: &dyn Platform, port: u16, proto: Proto, service: &str) -> Result<()> {
-    if is_free(port, proto) {
+    if is_free(platform, port, proto) {
         return Ok(());
     }
     // OUR OWN leftover (the app-data marker on the holder's cmdline) is
@@ -111,8 +145,9 @@ pub fn ensure_free(platform: &dyn Platform, port: u16, proto: Proto, service: &s
                 "port {port}/{} (needed by {service}) is still held by a leftover rexenv \
                  process (pid {pid}). rexenv reclaims these automatically on start — if \
                  this keeps happening, run this in a terminal, then start services again:\n\
-                 $ kill {pid}",
-                proto.as_str()
+                 $ {}",
+                proto.as_str(),
+                platform.supervisor().stop_pid_command(pid)
             )));
         }
     }
@@ -156,20 +191,20 @@ pub fn default_ports() -> Vec<PortReq> {
 }
 
 /// Probe every requested port.
-pub fn check(reqs: &[PortReq]) -> Vec<PortStatus> {
+pub fn check(platform: &dyn Platform, reqs: &[PortReq]) -> Vec<PortStatus> {
     reqs.iter()
         .map(|r| PortStatus {
             service: r.service,
             port: r.port,
             proto: r.proto,
-            free: is_free(r.port, r.proto),
+            free: is_free(platform, r.port, r.proto),
         })
         .collect()
 }
 
 /// Just the conflicts (ports already in use).
-pub fn conflicts(reqs: &[PortReq]) -> Vec<PortStatus> {
-    check(reqs).into_iter().filter(|s| !s.free).collect()
+pub fn conflicts(platform: &dyn Platform, reqs: &[PortReq]) -> Vec<PortStatus> {
+    check(platform, reqs).into_iter().filter(|s| !s.free).collect()
 }
 
 #[cfg(test)]
@@ -390,9 +425,9 @@ mod tests {
         for _ in 0..10 {
             let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
             let port = listener.local_addr().unwrap().port();
-            assert!(!is_free(port, Proto::Tcp));
-            // The error must name the port + the service that needs it (§2.1).
             let platform = crate::platform::current();
+            assert!(!is_free(&*platform, port, Proto::Tcp));
+            // The error must name the port + the service that needs it (§2.1).
             let err = ensure_free(&*platform, port, Proto::Tcp, "edge").unwrap_err().to_string();
             assert!(err.contains(&port.to_string()), "msg: {err}");
             assert!(err.contains("edge") && err.contains("in use"), "msg: {err}");
@@ -404,7 +439,7 @@ mod tests {
                 assert!(err.lines().last().unwrap().starts_with("$ sudo kill"), "msg: {err}");
             }
             drop(listener);
-            if is_free(port, Proto::Tcp) {
+            if is_free(&*platform, port, Proto::Tcp) {
                 return;
             }
         }
@@ -508,17 +543,111 @@ mod tests {
         drop(listener);
     }
 
+    /// **A port the tables say is held is busy even when a trial bind on it
+    /// succeeds (ledger #599)** — the Windows shape measured on the Dell, where the
+    /// bind succeeds beside another process's wildcard listener. And the tables only
+    /// ADD refusals: an empty table still runs the bind, which refuses a port a
+    /// socket holds — whatever refuses a bind without a row still refuses.
+    ///
+    /// Plant: dropping the `port_holders` check from `is_free` fails the first two
+    /// assertions (the bind on a free port says free); returning early on an empty
+    /// table fails the last one.
+    #[test]
+    fn a_holder_in_the_tables_is_busy_whatever_the_trial_bind_says() {
+        use crate::platform::traits::*;
+        /// Socket tables that say what they are told to.
+        struct TableSup(Option<Vec<u32>>);
+        impl ProcessSupervisor for TableSup {
+            fn spawn(&self, _: &std::path::Path, _: &[String]) -> Result<std::process::Child> {
+                unimplemented!()
+            }
+            fn spawn_logged(
+                &self,
+                _: &std::path::Path,
+                _: &[String],
+                _: &std::path::Path,
+            ) -> Result<std::process::Child> {
+                unimplemented!()
+            }
+            fn stop(&self, _: u32) -> Result<()> {
+                unimplemented!()
+            }
+            fn port_holders(&self, _: u16, _: bool) -> Option<Vec<u32>> {
+                self.0.clone()
+            }
+        }
+        /// Those tables over the real platform's paths; nothing else is reached.
+        struct TablePlatform {
+            sup: TableSup,
+            real: Box<dyn Platform>,
+        }
+        impl Platform for TablePlatform {
+            fn paths(&self) -> &dyn Paths {
+                self.real.paths()
+            }
+            fn supervisor(&self) -> &dyn ProcessSupervisor {
+                &self.sup
+            }
+            fn dns(&self) -> &dyn DnsManager {
+                unimplemented!()
+            }
+            fn cert_trust(&self) -> &dyn CertTrustManager {
+                unimplemented!()
+            }
+            fn privileges(&self) -> &dyn PrivilegeManager {
+                unimplemented!()
+            }
+            fn autostart(&self) -> &dyn AutostartManager {
+                unimplemented!()
+            }
+            fn permissions(&self) -> &dyn PermissionManager {
+                unimplemented!()
+            }
+            fn shell(&self) -> &dyn ShellRunner {
+                unimplemented!()
+            }
+            fn binaries(&self) -> &dyn BinaryProvider {
+                unimplemented!()
+            }
+            fn edge(&self) -> &dyn EdgeSupervisor {
+                unimplemented!()
+            }
+            fn dns_agent(&self) -> &dyn DnsAgentManager {
+                unimplemented!()
+            }
+            fn app_bundle(&self) -> &dyn AppBundle {
+                unimplemented!()
+            }
+        }
+        let held = TablePlatform { sup: TableSup(Some(vec![4242])), real: crate::platform::current() };
+        for proto in [Proto::Tcp, Proto::Udp] {
+            // A port nothing binds any more: the trial bind alone would call it free.
+            let port = match proto {
+                Proto::Tcp => TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap().local_addr().unwrap().port(),
+                Proto::Udp => UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).unwrap().local_addr().unwrap().port(),
+            };
+            assert!(!is_free(&held, port, proto), "{proto:?}: a table holder must make the port busy");
+            let err = ensure_free(&held, port, proto, "MySQL").unwrap_err().to_string();
+            assert!(err.contains("in use") && err.contains("MySQL"), "{proto:?}: {err}");
+        }
+        let empty = TablePlatform { sup: TableSup(Some(Vec::new())), real: crate::platform::current() };
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        assert!(!is_free(&empty, port, Proto::Tcp), "an empty table must not skip the bind");
+    }
+
     #[test]
     fn high_udp_port_bind_probe() {
         // A concurrent test binding UDP :0 (e.g. the DNS ones) can re-grab our
         // just-freed ephemeral port before the second probe — macOS hands the
         // last-freed port right back. Retry on a fresh port when that happens.
+        let platform = crate::platform::current();
         for _ in 0..10 {
             let sock = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
             let port = sock.local_addr().unwrap().port();
-            assert!(!is_free(port, Proto::Udp));
+            assert!(!is_free(&*platform, port, Proto::Udp));
             drop(sock);
-            if is_free(port, Proto::Udp) {
+            if is_free(&*platform, port, Proto::Udp) {
                 return;
             }
         }

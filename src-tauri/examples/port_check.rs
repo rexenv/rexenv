@@ -5,8 +5,9 @@
 use rexenv_lib::core::ports;
 
 fn main() {
+    let platform = rexenv_lib::platform::current();
     println!("{:<16} {:<8} status", "service", "port");
-    for s in ports::check(&ports::default_ports()) {
+    for s in ports::check(&*platform, &ports::default_ports()) {
         println!(
             "{:<16} {:<8} {}",
             s.service,
@@ -14,6 +15,6 @@ fn main() {
             if s.free { "free" } else { "IN USE" }
         );
     }
-    let c = ports::conflicts(&ports::default_ports());
+    let c = ports::conflicts(&*platform, &ports::default_ports());
     println!("\nconflicts: {}", c.len());
 }

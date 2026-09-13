@@ -1802,7 +1802,7 @@ where
                 if matches!(req.proto, crate::core::ports::Proto::Udp)
                     || req.port == crate::core::proxy::DEFAULT_HTTPS_PORT
                     || req.port == crate::core::proxy::DEFAULT_HTTP_PORT
-                    || crate::core::ports::is_free(req.port, req.proto)
+                    || crate::core::ports::is_free(&*state.platform, req.port, req.proto)
                     || (!marker.is_empty()
                         && state.platform.supervisor().owned_master(req.port, &marker).is_some())
                 {

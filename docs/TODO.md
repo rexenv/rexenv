@@ -118,7 +118,8 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     full downloads matched all three — the sweep keeps them HEAD-only, ledger #335)
   - [ ] W3 — Paths, ACL permissions, BinaryProvider, ProcessSupervisor (MySQL + Mailpit
     start, outlive the app, adopt on relaunch — on real Windows); `ensure_free` reads the
-    TCP/UDP tables, never a trial bind, and a start counts only when OUR server answers (plan §6).
+    TCP/UDP tables before any trial bind — the bind is kept only as a second refusal, for
+    whatever refuses a bind without a table row — and a start counts only when OUR server answers (plan §6).
     **Progress 13 Sep 2026 (compile-checked from the Mac, not run on Windows):** `Paths` →
     `%LOCALAPPDATA%\rexenv\rexenv\data` (the app-data namespace constants now live in
     `platform/mod.rs`, shared with macOS); `PermissionManager` → owner-only ACLs (current user only, no SYSTEM — owner ruling 13 Sep 2026) in
@@ -127,7 +128,27 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     Mark of the Web stripped, every image x64 or x86 before publish (`platform/windows/pe.rs`),
     and directory trees checked too through the new `prepare_binary_dir` (owner ruling 13 Sep
     2026; macOS no-op). Measured across all 16 Windows artifacts: 1,197 images, 3 x86, none
-    refused — an x64-only rule would have refused nginx, PHP 7.4 and MySQL 8.4 (ledger #598)
+    refused — an x64-only rule would have refused nginx, PHP 7.4 and MySQL 8.4 (ledger #598).
+    **Progress 13 Sep 2026, the port gate + process identity — L0 on every host, plant-proven, and
+    ✓ run on the Dell (`windows_port_gate_check: PASS`, 64 checks; its first run failed on a wrong
+    excluded-range assumption, now corrected):** `ports::is_free` takes the platform and refuses any port
+    `ProcessSupervisor::port_holders` lists before it binds; Windows reads both address
+    families' owner-pid tables, names the root holder by image / hosted service / HTTP.sys /
+    excluded range with PowerShell commands, and implements `pid_exe`, `pid_command`,
+    `pid_alive`, `pids_named`, `owned_listeners`, `owned_master` (pid-reuse-safe parent links),
+    `owned_pids` — `platform/windows/process.rs` + `port_table.rs`, ledger #599. Spawn and stop
+    are next
+    - [ ] **macOS has the same hole — measured 13 Sep 2026, found while writing #599; owner to
+      rule before a fix.** On macOS 26.6.2, a holder in another process on `0.0.0.0:<p>` or
+      `[::]:<p>` (dual-stack), default options or `SO_REUSEADDR`, does NOT stop a
+      `127.0.0.1:<p>` bind made the way Rust's `TcpListener::bind` makes it on Unix
+      (`SO_REUSEADDR`) — so `ports::is_free` says free for every high TCP port such a holder
+      has. And the bind takes the traffic: after it, a client to `127.0.0.1` reached the new
+      socket, not the holder (`::1` still reached a dual-stack holder). A `127.0.0.1` holder
+      is refused, and every UDP case is refused. Privileged ports (<1024) use a connect probe
+      and are unaffected. The shape is Herd's :443 shadow bind, on rexenv's own gate. Fix
+      shape: a macOS `port_holders` from `lsof -iTCP:<p> -sTCP:LISTEN` (the tool
+      `owned_listeners` already runs), after which #599's core rule applies unchanged
   - [ ] W4 — php-cgi group (preflight + churn breaker, plan §3 D1(a)) + nginx + SMTP mail → a
     WordPress site serves
   - [ ] W5 — Caddy :443 edge + CurrentUser Root CA trust → valid lock in Edge/Chrome/Firefox

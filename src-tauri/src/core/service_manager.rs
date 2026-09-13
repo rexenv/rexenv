@@ -1253,6 +1253,7 @@ impl ServiceManager {
         }
         backend.child.wait();
         if !ports::wait_free(
+            platform,
             backend.port,
             ports::Proto::Tcp,
             20,
@@ -1359,7 +1360,7 @@ impl ServiceManager {
         // through to the port gate's honest error. Guarded: an unmarked
         // process (live-check example) fails the gate instead of stopping the
         // user's real backend.
-        if !ports::is_free(port, ports::Proto::Tcp) && stack_guard::may_control_real_stack() {
+        if !ports::is_free(platform, port, ports::Proto::Tcp) && stack_guard::may_control_real_stack() {
             let leftover = platform
                 .paths()
                 .app_data_dir()
@@ -1374,6 +1375,7 @@ impl ServiceManager {
                 );
                 let _ = platform.supervisor().stop(master);
                 if !ports::wait_free(
+                    platform,
                     port,
                     ports::Proto::Tcp,
                     20,

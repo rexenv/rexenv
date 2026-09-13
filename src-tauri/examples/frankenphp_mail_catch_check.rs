@@ -120,7 +120,7 @@ async fn main() -> std::process::ExitCode {
         );
         check.is("control: with the catch OFF getenv('MAIL_HOST') is empty", e.contains("MAIL_HOST=false"), &e);
         child.stop();
-        if !ports::wait_free(PORT, ports::Proto::Tcp, 40, std::time::Duration::from_millis(100)) {
+        if !ports::wait_free(&*plat, PORT, ports::Proto::Tcp, 40, std::time::Duration::from_millis(100)) {
             check.is("control backend released the port", false, "still listening");
         }
     }
