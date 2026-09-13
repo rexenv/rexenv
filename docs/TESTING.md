@@ -1295,6 +1295,9 @@ bloating the fast path:
   `windows_supervision_check` (W3's "Done when", `demo` tier) runs in TWO SSH sessions on
   purpose: an SSH session is a kill-on-close job (measured), so phase 1's session ending is
   the app quitting with its job, and phase 2 in a fresh session is the relaunch.
+  `windows_files_check` (#597/#598) is driven by `scripts/probes/windows-files-check.sh`, because
+  "owner-only" is a claim about OTHER accounts: the runner reads the files back as
+  `NT AUTHORITY\LOCAL SERVICE` through a scheduled task, and cleans task, folder and exe on exit.
 
 A gate nobody can afford to run stops being one: the fast bar stays fast, and nothing
 above it is required per-commit. The metric the gate serves is the ledger tally, which

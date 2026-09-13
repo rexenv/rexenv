@@ -116,7 +116,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     Windows set: 104 targets answering, Windows 10 re-hashed + 6 HEAD-only and named
     (PostgreSQL's three were pinned from the publisher's `.sha256` alone; 13 Sep 2026 our own
     full downloads matched all three — the sweep keeps them HEAD-only, ledger #335)
-  - [ ] W3 — Paths, ACL permissions, BinaryProvider, ProcessSupervisor (MySQL + Mailpit
+  - [x] W3 — Paths, ACL permissions, BinaryProvider, ProcessSupervisor (MySQL + Mailpit
     start, outlive the app, adopt on relaunch — on real Windows); `ensure_free` reads the
     TCP/UDP tables before any trial bind — the bind is kept only as a second refusal, for
     whatever refuses a bind without a table row — and a start counts only when OUR server answers (plan §6).
@@ -145,9 +145,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     10 s grace, else `TerminateProcess`. Services spawn broken away from the launcher's job, with
     no console and every inheritable handle of rexenv's cleared first — the first two Dell runs
     kept their SSH session open because the services inherited ~20 handles the launcher was born
-    with from sshd. Ledger #600. The box stays open for the parts of W3 still unproven on Windows,
-    not its "Done when": the owner-only ACL refusing another account (#597) and Mark-of-the-Web
-    removal on a file that has one (#598), both 🔨 L1 on the Dell
+    with from sshd. Ledger #600. ✓ 14 Sep 2026, the rest of W3 on the Dell too
+    (`scripts/probes/windows-files-check.sh`): owner-only files refused to `NT AUTHORITY\LOCAL
+    SERVICE` with one protected rule each (#597 — and a file made under an elevated token is owned
+    by Administrators, recorded); Mark of the Web removed, arm64 and non-PE refused, trees checked,
+    and rexenv's own 299 downloaded files carry no mark (#598)
     - [x] **macOS has the same hole — measured 13 Sep 2026, found while writing #599; fixed the
       same day at the owner's go** ✓ `MacosSupervisor::port_holders` from `lsof -Fpn`, local ends
       only, `a_wildcard_tcp_holder_is_busy_on_macos_though_the_bind_says_free` +

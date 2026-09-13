@@ -227,6 +227,7 @@ wporg_icons_check network
 xdebug_pool_check sandbox
 windows_port_gate_check sandbox
 windows_supervision_check demo
+windows_files_check demo
 "
 
 tier_of() {
