@@ -680,7 +680,13 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   `PermissionManager` (owner-only ACLs — **written 13 Sep 2026, compile-checked from the Mac,
   not yet run:** a protected DACL with one full-access entry for the process's user, set
   through the file handle, and `write_private` creating the file WITH that descriptor;
-  ledger #597), `BinaryProvider` (strip the `Zone.Identifier` stream, no codesign),
+  ledger #597), `BinaryProvider` (strip the `Zone.Identifier` stream, no codesign — **written
+  13 Sep 2026, compile-checked:** the stream is removed if present, and a file must be an x64
+  PE image before it is published; the header parser is L0-tested and ran against a real
+  cross-built `rex.exe` → x64; ledger #598. **Open question for the owner:** `resolve_dir`
+  calls no prepare on either OS, so Windows' PHP, nginx, MySQL and PostgreSQL zip trees are
+  published unchecked, and `prepare_binary_tree` is reachable only from bundles, which D4
+  refuses on Windows),
   `ProcessSupervisor` (hidden + detached spawn so services OUTLIVE the app, graceful
   per-service stop, pid → exe/cmdline for ownership, listener lookup via
   `GetExtendedTcpTable`, conflict help naming HTTP.sys and the Hyper-V excluded port

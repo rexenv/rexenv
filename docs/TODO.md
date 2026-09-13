@@ -117,7 +117,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     `%LOCALAPPDATA%\rexenv\rexenv\data` (the app-data namespace constants now live in
     `platform/mod.rs`, shared with macOS); `PermissionManager` → owner-only ACLs in
     `platform/windows/acl.rs` (SDDL builder L0-tested on every host, ledger #597);
-    `set_executable` checks the file exists — Windows has no execute bit
+    `set_executable` checks the file exists — Windows has no execute bit; `BinaryProvider` →
+    Mark of the Web stripped, x64 PE required before publish (`platform/windows/pe.rs`, real
+    `rex.exe` classified x64, ledger #598). Open: `resolve_dir` prepares no tree on either OS,
+    so Windows' PHP/nginx/MySQL/PostgreSQL trees go unchecked — owner's call whether to add one
   - [ ] W4 — php-cgi group (preflight + churn breaker, plan §3 D1(a)) + nginx + SMTP mail → a
     WordPress site serves
   - [ ] W5 — Caddy :443 edge + CurrentUser Root CA trust → valid lock in Edge/Chrome/Firefox

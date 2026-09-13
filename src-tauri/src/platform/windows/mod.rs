@@ -17,6 +17,7 @@ use std::process::Child;
 
 mod acl;
 mod owner_only;
+mod pe;
 
 pub struct WindowsPaths;
 impl Paths for WindowsPaths {
@@ -147,17 +148,118 @@ impl ShellRunner for WindowsShell {
     }
 }
 
+/// Windows needs no relinking and no signature to run a downloaded executable, so
+/// "prepare" is two checks rather than two rewrites (ledger #598):
+///
+/// - **The Mark of the Web is removed** — the `Zone.Identifier` stream SmartScreen
+///   consults before running a file. Files rexenv fetches itself (reqwest) and
+///   extracts itself (the `zip` crate) are believed to carry none: the stream is
+///   written by browsers and `IAttachmentExecute` callers, per Microsoft's docs — not
+///   yet measured on Windows. So this is defence, cheap and idempotent, for a file
+///   that arrived some other way.
+/// - **The file must be an x64 PE image**, or it is refused before it is published:
+///   a pin naming the wrong archive member, an x86 or arm64 build (every Windows pin
+///   is x64, plan D6), or bytes that are no executable at all. The Windows form of
+///   macOS's "never publish a binary that cannot load".
+///
+/// `core` calls `prepare_binary` for single executables (Caddy, Mailpit,
+/// cloudflared). `prepare_binary_tree` runs only for `Shape::Bundle`, and every
+/// bundle is refused on Windows (D4), so no path reaches it today — and
+/// `resolve_dir` (PHP, nginx, MySQL, PostgreSQL trees) calls no prepare at all, on
+/// either OS.
 pub struct WindowsBinaryProvider;
 impl BinaryProvider for WindowsBinaryProvider {
     fn arch(&self) -> Arch {
         Arch::X86_64
     }
-    fn prepare_binary(&self, _path: &Path) -> Result<()> {
-        Err(Error::Unported("windows binary prepare (Zone.Identifier, no codesign)"))
+    fn prepare_binary(&self, path: &Path) -> Result<()> {
+        strip_mark_of_the_web(path)?;
+        require_x64_image(path)
     }
-    fn prepare_binary_tree(&self, _root: &Path) -> Result<()> {
-        Err(Error::Unported("windows bundle-tree prepare"))
+    fn prepare_binary_tree(&self, root: &Path) -> Result<()> {
+        let mut files = Vec::new();
+        collect_files(root, &mut files)?;
+        let mut images = 0usize;
+        for file in &files {
+            strip_mark_of_the_web(file)?;
+            let is_image = file
+                .file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(pe::is_image_name);
+            if is_image {
+                require_x64_image(file)?;
+                images += 1;
+            }
+        }
+        if images == 0 {
+            return Err(Error::Other(format!(
+                "no .exe or .dll under {} — not a Windows binary tree",
+                root.display()
+            )));
+        }
+        Ok(())
     }
+}
+
+/// Remove `path`'s `Zone.Identifier` alternate data stream, if it has one.
+fn strip_mark_of_the_web(path: &Path) -> Result<()> {
+    let mut stream = path.as_os_str().to_os_string();
+    stream.push(":Zone.Identifier");
+    match std::fs::remove_file(&stream) {
+        Ok(()) => Ok(()),
+        // No stream — the common case — or a volume that cannot hold one: FAT32 and
+        // exFAT answer ERROR_INVALID_NAME for a `:stream` path.
+        Err(e)
+            if e.kind() == std::io::ErrorKind::NotFound
+                || e.raw_os_error() == Some(windows_sys::Win32::Foundation::ERROR_INVALID_NAME as i32) =>
+        {
+            Ok(())
+        }
+        Err(e) => Err(Error::Other(format!(
+            "could not remove the Mark of the Web from {}: {e}",
+            path.display()
+        ))),
+    }
+}
+
+/// Refuse `path` unless its PE header says x64.
+fn require_x64_image(path: &Path) -> Result<()> {
+    use std::io::Read;
+    let mut head = Vec::with_capacity(pe::HEAD_BYTES);
+    std::fs::File::open(path)?
+        .take(pe::HEAD_BYTES as u64)
+        .read_to_end(&mut head)?;
+    match pe::classify(&head) {
+        pe::PeKind::X64 => Ok(()),
+        pe::PeKind::OtherMachine(machine) => Err(Error::Other(format!(
+            "{} is a Windows executable for machine 0x{machine:04x}, not x64 — every Windows \
+             artifact rexenv pins is x64, so this pin names the wrong build",
+            path.display()
+        ))),
+        pe::PeKind::NotPe => Err(Error::Other(format!(
+            "{} is not a Windows executable — the pin names the wrong file or archive member",
+            path.display()
+        ))),
+    }
+}
+
+/// Every regular file under `dir`, recursively. Symlinks are not followed: the zip
+/// extractor already refuses them (ledger #585), and a tree check must never walk
+/// out of the tree it was given.
+fn collect_files(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let kind = entry.file_type()?;
+        if kind.is_symlink() {
+            continue;
+        }
+        if kind.is_dir() {
+            collect_files(&entry.path(), out)?;
+        } else if kind.is_file() {
+            out.push(entry.path());
+        }
+    }
+    Ok(())
 }
 
 pub struct WindowsEdge;

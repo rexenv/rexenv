@@ -38,6 +38,12 @@ mod linux;
 #[cfg(all(test, not(target_os = "windows")))]
 #[path = "windows/owner_only.rs"]
 mod windows_owner_only;
+// Same for the PE header check `WindowsBinaryProvider` refuses non-x64 artifacts with.
+// `dead_code` allowed: only its tests use it here; the Windows build uses the rest.
+#[cfg(all(test, not(target_os = "windows")))]
+#[allow(dead_code)]
+#[path = "windows/pe.rs"]
+mod windows_pe;
 
 use traits::Platform;
 
