@@ -785,7 +785,12 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     `git worktree remove`, the main target and wk-checks deps confirmed intact after; branch
     deleted, the tag keeps `b5c3d43`
 
-- [ ] **`check-app-manifest.sh` blames a forgotten click for CDN lag** — 13 Sep 2026, releasing
+- [x] **`check-app-manifest.sh` blames a forgotten click for CDN lag** ✓ 13 Sep 2026 — built at the
+  owner's go: step 2 reads the committed file through the contents API, verifies its signature, and
+  prints "the publish already happened — only the CDN is behind … Do NOT publish again" when the
+  commit names the tap's version; the forgotten-click line stays for a real miss. Proven offline by
+  `check-app-manifest-test.sh` in `verify.sh` (13 checks, two plants), and against the live
+  descriptor (all green). Ledger #594. Found 13 Sep 2026, releasing
   0.7.1: run two minutes after the real publish (runtimes `b82cdba`, serial 4, 10:37:29Z), it read
   `raw.githubusercontent.com`'s cached serial 3 and printed "This is the forgotten-second-click:
   run … 'Publish app update manifest'" — advice that sends someone to publish a second time. The

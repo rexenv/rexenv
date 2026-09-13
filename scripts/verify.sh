@@ -108,6 +108,9 @@ npx eslint "src/**/*.{ts,tsx}"
 # missing from five releases' Licenses dialog before a hand count found them
 # (13 Sep 2026, ledger #592).
 ./scripts/notices-check.py
+# check-app-manifest.sh against file:// fixtures and a throwaway key: CDN lag must
+# read as CDN lag, not as a forgotten publish (13 Sep 2026, ledger #594). Offline.
+./scripts/check-app-manifest-test.sh
 ./scripts/status.py --check
 
 # The L2 probes parse. They only RUN at release time (verify-full.sh / a manual

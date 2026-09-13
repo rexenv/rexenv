@@ -1,0 +1,92 @@
+#!/bin/bash
+# Offline proof that scripts/check-app-manifest.sh tells CDN lag from a forgotten
+# publish (ledger #594).
+#
+# Releasing 0.7.1 the check read raw.githubusercontent.com's cached copy two
+# minutes after a correct publish and told the releaser to publish again. A real
+# CDN window cannot be summoned on demand, so this builds one: two descriptors
+# signed with a throwaway ed25519 key, served over file:// — one as "what the CDN
+# returns", one as "what is committed" — and the tap's latest version given
+# directly. No network, no gh, no release key (tests must never hold its private
+# half). Exit code is the verdict.
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+T="$(mktemp -d)"
+trap 'rm -rf "$T"' EXIT
+
+openssl genpkey -algorithm ed25519 -out "$T/key.pem" 2>/dev/null
+PUB="$(openssl pkey -in "$T/key.pem" -pubout -outform DER | tail -c 32 | xxd -p -c 64)"
+[ "${#PUB}" = "64" ] || { echo "check-app-manifest-test: could not derive a test public key" >&2; exit 1; }
+
+# descriptor <dir> <serial> <version>: a signed document shaped like the published one.
+descriptor() {
+  mkdir -p "$1"
+  cat > "$1/app-manifest.json" <<EOF
+{
+  "serial": $2,
+  "generatedAt": "2026-09-13T10:37:29Z",
+  "release": {
+    "version": "$3",
+    "url": "https://github.com/rexenv/homebrew-tap/releases/download/v$3/rexenv_$3_universal.app.tar.gz",
+    "sha256": "e21b3525e7d1de3d04f27f29d04560a60cc84ce476137b1d45eed095c9fce859",
+    "sizeBytes": 29014289,
+    "minAppVersion": "",
+    "minimumSystemVersion": "15.0",
+    "notes": "",
+    "publishedAt": "2026-09-13T10:34:13Z"
+  }
+}
+EOF
+  openssl pkeyutl -sign -inkey "$T/key.pem" -rawin -in "$1/app-manifest.json" | xxd -p -c 256 > "$1/app-manifest.json.sig"
+}
+
+descriptor "$T/old" 3 0.7.0
+descriptor "$T/new" 4 0.7.1
+# A committed file whose signature does not match its bytes.
+mkdir -p "$T/badsig" && cp "$T/new/app-manifest.json" "$T/badsig/" && cp "$T/old/app-manifest.json.sig" "$T/badsig/"
+
+# run <cdn dir> <committed dir> <tap latest>
+run() {
+  CHECK_APP_MANIFEST_PUBKEY="$PUB" CHECK_APP_MANIFEST_OFFLINE=1 CHECK_APP_MANIFEST_TAP_LATEST="$3" \
+  CHECK_APP_MANIFEST_DOC_URL="file://$1/app-manifest.json" \
+  CHECK_APP_MANIFEST_API_DOC_URL="file://$2/app-manifest.json" \
+    ./scripts/check-app-manifest.sh 2>&1
+}
+
+FAILS=0
+check() { # <case> <what> <condition 0/1>
+  if [ "$3" = "1" ]; then echo "  ✓ $1: $2"; else echo "  ✗ $1: $2"; FAILS=$((FAILS + 1)); fi
+}
+has() { grep -qF -- "$2" <<<"$1" && echo 1 || echo 0; }
+lacks() { grep -qF -- "$2" <<<"$1" && echo 0 || echo 1; }
+
+code=0; out="$(run "$T/old" "$T/new" 0.7.1)" || code=$?
+check "CDN behind a correct publish" "says only the CDN is behind" "$(has "$out" "only the CDN is behind")"
+check "CDN behind a correct publish" "does NOT tell anyone to publish again" "$(lacks "$out" "forgotten-second-click")"
+check "CDN behind a correct publish" "does not call it all green" "$(lacks "$out" "all green")"
+check "CDN behind a correct publish" "exit 0" "$([ "$code" = 0 ] && echo 1 || echo 0)"
+
+code=0; out="$(run "$T/old" "$T/old" 0.7.1)" || code=$?
+check "publish really forgotten" "names the forgotten second click" "$(has "$out" "forgotten-second-click")"
+check "publish really forgotten" "does not blame the CDN" "$(lacks "$out" "only the CDN is behind")"
+check "publish really forgotten" "says why it is not CDN lag" "$(has "$out" "so this is not CDN lag")"
+
+code=0; out="$(run "$T/old" "$T/nonexistent" 0.7.1)" || code=$?
+check "committed file unreadable" "still warns about the missing publish" "$(has "$out" "forgotten-second-click")"
+check "committed file unreadable" "says CDN lag was not ruled out" "$(has "$out" "CDN lag is not ruled out")"
+
+code=0; out="$(run "$T/new" "$T/new" 0.7.1)" || code=$?
+check "everything current" "all green" "$(has "$out" "all green")"
+check "everything current" "no warning" "$(lacks "$out" "WARNING")"
+
+code=0; out="$(run "$T/old" "$T/badsig" 0.7.1)" || code=$?
+check "committed file badly signed" "fails instead of reassuring" "$([ "$code" != 0 ] && echo 1 || echo 0)"
+check "committed file badly signed" "says the committed descriptor does not verify" "$(has "$out" "COMMITTED descriptor")"
+
+if [ "$FAILS" -gt 0 ]; then
+  echo "check-app-manifest-test: $FAILS check(s) FAILED"
+  exit 1
+fi
+echo "check-app-manifest-test: all green"

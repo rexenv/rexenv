@@ -1228,6 +1228,14 @@ bloating the fast path:
   §D then found `rex --version` hanging forever on an app that accepts and never
   answers (ledger #300). A crate that ships and a crate the gate visits are now the
   same set; keep them that way when a third crate appears.
+- **`scripts/check-app-manifest-test.sh`, inside `verify.sh` (13 Sep 2026):** drives the release
+  step's `check-app-manifest.sh` offline — two descriptors signed with a throwaway ed25519 key,
+  served over `file://` as "what the CDN returns" and "what is committed", the tap's latest
+  given directly. Five cases: the CDN behind a correct publish says "only the CDN is behind" and
+  never "publish again"; a publish really missing still says so; an unreadable committed file
+  warns without ruling lag out; everything current is all green; a committed file with a bad
+  signature fails. Releasing 0.7.1, the check told the releaser to publish twice (ledger #594).
+  **Does not prove:** the real CDN, the contents API or `gh` — those only run by hand at release.
 - **`scripts/notices-check.py`, inside `verify.sh` (13 Sep 2026):** THIRD-PARTY-NOTICES.md's
   Rust table against the graphs that ship — arm64 ∪ x86_64, the app crate and the `rex`
   CLI, normal + build edges — in BOTH directions, each row's licence against the crate's

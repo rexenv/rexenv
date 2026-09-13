@@ -188,6 +188,13 @@ release** — which is the property that makes a stolen key survivable. Ledger
 8. `./scripts/check-app-manifest.sh` — verifies the published descriptor against the key
    compiled into THIS tree, warns when the tap is ahead of it (the forgotten step 7), and
    compares the descriptor's sha256 to the published asset's digest.
+   **Run within five minutes of step 7 and it may say "only the CDN is behind".** Installed
+   apps read `raw.githubusercontent.com`, which caches the file (the new one appeared 3 min
+   10 s after 0.7.1's commit), so before blaming a missed publish the check reads the
+   committed file through the contents API and verifies that signature too. That line means
+   wait and re-run — never publish again. The release is done only at `all green`; until
+   13 Sep 2026 this step printed the forgotten-click advice inside the cache window
+   (ledger #594).
 
 ### A patch release cut from a published tag (first used for 0.7.1, 13 Sep 2026)
 
