@@ -41,23 +41,30 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   `docs/PLAN-windows-port.md`. W0–W2 can start now; W3+ wait on the owner's D1–D6.
   - [ ] D5 signing — open for ONE reason: the owner decides Authenticode after an unsigned
     NSIS installer is measured on the Dell (plan §3 D5). Every other ruling is in: D3 named
-    pipes + `LocalIpc` (12 Sep 2026); **13 Sep 2026** D1 php-cgi group accepted (supervision,
+    pipes + `LocalIpc` (12 Sep 2026); **13 Sep 2026** D1 php-cgi group accepted with the php-src correction (supervision,
     positive ID and worker count written in plan §3 D1(a)/(b) before W3), D2 agent on :53 +
     NRPT accepted and the `hosts` fallback REFUSED (:53 taken → refuse naming the holder),
-    D4 accepted (MariaDB named as the gap), D6 accepted (Win 11 x64; Win 10 22H2 best-effort;
+    D4 accepted and MariaDB NOT in v1 (refused with an honest message; MySQL 8.4/8.0 cover it), D6 accepted (Win 11 x64; Win 10 22H2 best-effort;
     arm64 emulation unsupported)
   - [ ] Measure before building on it (plan §3, Dell + VM): D1 — php-cgi's own parent
     (children spawned, respawned, killed with the parent; the listener's owning pid; job
     breakaway from the app's launch contexts; memory per child; peak concurrency on a
     block-editor load); D2 — who holds loopback :53 and who ANSWERS it, per state (clean,
     hotspot/ICS, Hyper-V, WSL2 NAT + mirrored, Docker Desktop); D5 — unsigned NSIS through
-    Edge and Chrome: every dialog verbatim, the clicks, and whether the next build repeats them
-  - [ ] W3 step 0 — a half-ported build fails out loud (plan §3a Q1): panic hook →
+    Edge and Chrome: the clicks (each named), every message verbatim with a screenshot, whether
+    "Run anyway" is reachable without "More info", and whether the next build repeats it all;
+    the Windows bind matrix (plan §6) before `ensure_free` is written
+  - [ ] W3 step 0 — a half-ported build fails out loud (plan §3a Q1, **ruled 13 Sep 2026**): panic hook →
     `crash.log` + a Windows message box; `Error::Unported` stubs instead of `todo!()` (50
     today), scan-enforced under `platform/windows/`, ledger row
+  - [ ] Update catalogs across OSes — the owner rules plan §3b BEFORE W3, since the answer may
+    change the format released apps read. Measured 13 Sep 2026 against every shipped release
+    (0.3.0–0.7.0): nothing crashes or refuses; an `os` field on an `x86_64` row is KEPT by every
+    Intel Mac, an unknown arch or name is dropped, a new top-level key is ignored, and `os` on
+    the app descriptor's `release` is accepted as the Mac release. Recommended: a separate
+    signed document per OS
   - [ ] Per-OS version answers (plan §3a Q3): PostgreSQL driver, Xdebug, curl resolver, the
-    update catalog's OS token (not a new field — shipped Intel apps would take Windows rows),
-    the cache marker — each before the Windows feature it gates, each with a test that the
+    cache marker (the update catalogs are the row above) — each before the Windows feature it gates, each with a test that the
     Windows answer differs where the builds do
   - [ ] Busy-workers signal, macOS too (plan §3 D1(b)): today neither OS tells a user that a
     slow site is a full pool; ESTABLISHED connections on the pool port ≥ workers, sustained →
@@ -90,8 +97,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     (PostgreSQL's three were pinned from the publisher's `.sha256` alone; 13 Sep 2026 our own
     full downloads matched all three — the sweep keeps them HEAD-only, ledger #335)
   - [ ] W3 — Paths, ACL permissions, BinaryProvider, ProcessSupervisor (MySQL + Mailpit
-    start, outlive the app, adopt on relaunch — on real Windows)
-  - [ ] W4 — php-cgi groups + nginx + SMTP mail → a WordPress site serves
+    start, outlive the app, adopt on relaunch — on real Windows); `ensure_free` reads the
+    TCP/UDP tables, never a trial bind, and a start counts only when OUR server answers (plan §6)
+  - [ ] W4 — php-cgi group (preflight + churn breaker, plan §3 D1(a)) + nginx + SMTP mail → a
+    WordPress site serves
   - [ ] W5 — Caddy :443 edge + CurrentUser Root CA trust → valid lock in Edge/Chrome/Firefox
   - [ ] W6 — DNS agent + NRPT + UAC + logon task → `*.rex` resolves after reboot, app closed
   - [ ] W7 — ShellRunner, autostart, tray (includes the Windows half of the browser-stub row)

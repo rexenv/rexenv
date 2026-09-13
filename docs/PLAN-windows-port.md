@@ -5,6 +5,9 @@
 and swept. **The owner ruled D1, D2, D4 and D6 on 13 Sep 2026** (D3 on 12 Sep); D5's signing
 waits on an unsigned-installer measurement. D1's supervision and worker count, and the owner's
 four pre-W3 questions, are answered in writing in §3 and §3a; W3 starts with §3a's step 0.
+**One ruling still stands before W3: §3b** — how Windows entries reach the update catalogs
+without every shipped Intel Mac taking them (measured against all released versions).
+MariaDB is out of v1 (D4).
 Planned against `e0d287c`. Open work is tracked as the
 "Windows launch" row in `docs/TODO.md`; this file is the reasoning behind it.
 
@@ -243,15 +246,40 @@ before anything is built on it.
 - **Adopt on relaunch:** `adopt_startup` finds the group by 1–4 and adopts the master. A
   master whose children do not answer is not running — ownership AND liveness.
 - **Hazards, written down now:**
-  - The respawn loop has **no backoff**. A child that dies at startup (bad ini, missing DLL)
-    respawns as fast as `CreateProcess` allows, burning a core while the port still listens.
-    Readiness and health are a real FastCGI round trip, never a listen check; a group that
-    fails one is stopped with the parent's stderr quoted.
-  - `fcgi_listen` sets **`SO_REUSEADDR`**, which on Windows lets a second socket bind a port
-    already in use. So php-cgi can "start" on a port another program holds (unless that one
-    used `SO_EXCLUSIVEADDRUSE`), and another program can bind ours. Bind success proves
-    nothing here: `ensure_free` reads the TCP table before the start, and the health check
-    confirms our group is the one answering.
+  - **The respawn loop has no backoff — designed now, built in W4** (owner asked 13 Sep 2026
+    whether W3 would catch it; it would not, since W3 has no php-cgi, and W4 would have
+    discovered it). Read again in the source first, and narrower than first written:
+    `cgi_sapi_module.startup` — ini parsing and extension loading — runs in the PARENT
+    (`cgi_main.c:1878`) before any child exists (`:2084`), and children run the same binary
+    with the same ini. So a bad ini or an extension that will not load fails, or warns, in
+    the parent, once. The spins that remain: (1) `CreateProcessW` itself failing — Defender
+    or another scanner blocking the child, a commit-limit or handle failure — leaves a NULL
+    in the handle array, `WaitForMultipleObjects` then fails immediately, and the loop spins
+    at full speed printing "unable to spawn"; (2) a child that dies on its first request,
+    which respawns once per request rather than spinning, but serves nothing. The design,
+    three parts:
+    - *Preflight, before the group exists:* run the same `php-cgi.exe -c <ini>` once without
+      `PHP_FCGI_CHILDREN` and with `-m`, stdout and stderr captured, under a timeout. Exit 0,
+      the modules the pool needs listed, and no `PHP Startup:` / "Unable to load dynamic
+      library" line — or the start is refused with that text quoted. One process, so it can
+      never loop. (*Measure:* that `-m` exercises the same startup path the pool takes.)
+    - *Churn breaker, after the start:* each health tick already snapshots the group for
+      positive ID (pids + creation times). A child younger than a few seconds being replaced
+      again, more than 2 × workers times in 10 s — or "unable to spawn" appearing in the
+      parent's stderr at all — stops the group: `TerminateProcess` on the parent (the job
+      reaps the children), the service marked failed, the parent's stderr quoted. Legitimate
+      churn from `PHP_FCGI_MAX_REQUESTS` needs that many requests per child; at 10 workers
+      the threshold means thousands of requests in 10 s, not a developer's load. The number
+      is a Dell measurement, not a guess to keep.
+    - *A serving check, not a process check:* readiness and health are a FastCGI round trip,
+      so case (2) — processes alive, nothing answering — is "not running", which is D1's
+      ownership-AND-liveness rule already. *Done when (W4):* a fixture whose child cannot
+      be spawned and one whose script kills the worker each end in a stopped group with the
+      reason on screen, within the breaker's window, CPU idle afterwards.
+  - `fcgi_listen` sets **`SO_REUSEADDR`**, so php-cgi can "start" on a port another program
+    holds and another program can bind ours. That is one case of the general rule in §6 — a
+    successful bind proves nothing on Windows; who answers does — which `ensure_free`, every
+    readiness check and D2's :53 all follow.
   - **Stop is `TerminateProcess` on the parent**: the children have no console, so php-cgi's
     Ctrl+C handler is unreachable, and in-flight requests are cut. Acceptable for local
     development; ARCHITECTURE says so when W4 lands.
@@ -333,10 +361,11 @@ Lounge (a third-party trust decision); Xdebug DLLs must match PHP's NTS + compil
 WP-CLI, Composer, cloudflared; FrankenPHP if W4 proves it. Redis, Apache and Xdebug are
 refused in CORE on Windows with an honest message — the shape OpenLiteSpeed already
 uses (`ensure_server_available`) — until each is proven.
-*One gap the list leaves:* **MariaDB**. macOS ships it (bundle pins), there is no Windows
-pin, and neither list above names it. PORTS.md's Windows table already resolves it to
-nothing; W10 refuses it with the same message unless the owner rules it into v1 (MariaDB
-publishes an official Windows zip).
+**MariaDB — RULED 13 Sep 2026: not in v1.** macOS ships it (bundle pins), there is no
+Windows pin, and it stays on the refusal list with an honest message (W10). *Why (owner):*
+MySQL 8.4 and 8.0 both ship on Windows, so MariaDB is redundant for v1, and a new pin is a
+new trust decision, a notices row and a sweep target. Windows users asking for it is the
+evidence that would add it.
 
 **D5 — Signing, installer, updates, distribution.** **RULED 13 Sep 2026: signing is NOT
 decided — measure first.** NSIS (per-user, no admin to install) and the distribution line
@@ -347,10 +376,16 @@ de-quarantine. But the cost of going unsigned is higher on Windows: macOS pays o
 per install, while Windows shows "Windows protected your PC" to every user on every
 download, and an unsigned file's SmartScreen reputation is per hash, so each release starts
 from zero.
-*Measure (a W11 prerequisite, on the Dell):* build an unsigned NSIS installer; download it
-through Edge and through Chrome, so it carries the Mark of the Web; record every dialog
-verbatim, the clicks from download to first window, and whether a second build (a new hash)
-repeats them. Then the owner decides.
+*Measure (a W11 prerequisite, on the Dell) — the cost falls on every user, so it needs
+numbers (owner):* build an unsigned NSIS installer; download it through Edge and through
+Chrome, so it carries the Mark of the Web; record, per browser: (1) **the clicks** from the
+download finishing to rexenv's first window, each one named; (2) **every message verbatim** —
+the browser's download warning and SmartScreen's dialog word for word, with a screenshot;
+(3) **whether it can be got past without "More info"** — whether "Run anyway" is on the first
+screen or only behind that link, since a user who does not know to click it reads the first
+screen as a dead end; (4) whether a second build (a new hash) repeats all of it. macOS's
+equivalent was measured as one `xattr` command; this is the Windows number. Then the owner
+decides.
 *Self-update — P1's refusal reasons re-checked, not inherited* (read against
 `docs/archive/PLAN-self-update.md` P1, 13 Sep 2026; the plugin's Windows code path is W11's
 to read): (1) the install that `rm -rf`s the app as root through osascript — macOS-only,
@@ -393,7 +428,9 @@ stops?** Read from the tree, not run — there is no Windows host yet.
   source has no `catch_unwind` (grep), so the task dies and the frontend's promise never
   settles: **a spinner that never ends**, again with no message. That is the worst shape for
   W3–W12, when the half-ported app is run between every task.
-- **Recommendation — W3 step 0, before any stub is filled:** (1) a panic hook installed first
+- **RULED 13 Sep 2026: accepted as W3 step 0, before any stub is filled** (owner: a silent
+  exit is the worst failure mode, and a spinner that never ends is worse still, because the
+  user waits): (1) a panic hook installed first
   thing in `main` on every OS: message, location and backtrace appended to `crash.log` in the
   log dir when `Paths` answers and in `std::env::temp_dir()` when it does not, plus a native
   message box naming the file on a Windows release build — a half-ported build fails out
@@ -419,7 +456,7 @@ these answers meet, and every field it carries is below.
 | PostgreSQL driver present — `pdo_pgsql_supported` → `php_has_pdo_pgsql` | `binaries.rs:866` (`sites.rs:163` refusal, `php.rs:387` switch guard, the row's `postgres_supported`, `oldest_pdo_pgsql_minor`) | the version has a rexenv self-hosted tag, i.e. is one of our macOS builds | **Wrong basis.** The tag exists for the version string, so Windows would say yes for 8.1–8.5 and no for 7.4/8.0 — about php.net's build, which ships `ext/php_pdo_pgsql.dll` for every version and loads it only if our ini enables it | `(os, version)`, answered from the artifact that OS resolves; W4 measures the DLL loading per minor |
 | Xdebug available, why not, which version — `xdebug_supported`, `xdebug_unavailable_reason`, `xdebug_version_for` | `binaries.rs:589`–`625` (`service_manager.rs:710` debug pools, `php.rs:252` debug port, `commands/sites.rs:1030`, the row) | minor → a Homebrew `arm64_sonoma` bottle | **Wrong.** Says available for 8.1+, while D4 refuses Xdebug on Windows. The "static build exports no Zend symbols" sentence describes our static macOS builds; php.net's PHP loads DLL extensions | `(os, minor)`; Windows gives D4's refusal, never the static-build sentence |
 | curl's resolver — `wp_dns::resolver_for` | `wp_dns.rs:78` (the c-ares exposure count `:109`, its notice `:378`) | minor → the measured macOS builds (7.4 threaded, 8.x c-ares) | **Unmeasured, and the test would lie:** `every_pinned_php_has_a_measured_curl_resolver` passes on Windows with macOS measurements | `(os, minor)`, with a Windows measurement per minor once NRPT exists (W6) |
-| Update offered, its cost, the artifact installed — `newer_than`, `artifact`, `update_cost`, `catalog_arch` | `updates.rs:245`–`350` (`commands/php.rs:35`, `commands/database.rs:242`, `binaries.rs:941`, `:1263`) | `arch` only: `arm64` / `x86_64` | **Dangerous.** A Windows x64 host matches the macOS Intel rows: offered a macOS patch, downloads a macOS tarball, the digest matches, the spawn fails | an OS dimension that is **not a new `os` field** — `Artifact` has no `deny_unknown_fields`, so every shipped Intel Mac app would ignore the field and take a Windows `x86_64` row as its own. An arch token old apps cannot match (`windows-x86_64`) or a separate signed document; W11 decides |
+| Update offered, its cost, the artifact installed — `newer_than`, `artifact`, `update_cost`, `catalog_arch` | `updates.rs:245`–`350` (`commands/php.rs:35`, `commands/database.rs:242`, `binaries.rs:941`, `:1263`) | `arch` only: `arm64` / `x86_64` | **Dangerous.** A Windows x64 host matches the macOS Intel rows: offered a macOS patch, downloads a macOS tarball, the digest matches, the spawn fails | an OS dimension that is **not a new `os` field** — `Artifact` has no `deny_unknown_fields`, so every shipped Intel Mac app would ignore the field and take a Windows `x86_64` row as its own. Measured against every shipped release and proposed in §3b; the owner rules before W3 |
 | Cache-marker staleness — `cache_matches_pin` | `binaries.rs:1444` | self-hosted tag per version | Harmless: an unmarked Windows 8.1–8.5 cache re-downloads once | `(os, version)`, with row 1 |
 | Pool port / debug port — `fpm_port`, `debug_fpm_port` | `core/php.rs` | minor | The pool port holds under D1(a) (one group per minor); debug pools do not exist there (D4) | pool port unchanged; debug port refused per OS |
 | Security-support end — `eol_since` | `php.rs:190` | minor → php.net's lifecycle dates | Yes — a fact about PHP, not about a build | unchanged |
@@ -438,6 +475,76 @@ a TODO row. For Windows: the download sources (php.net's Windows builds, nginx.o
 theseus-rs, and the three GitHub releases) are named in the notices, which now say the
 "rexenv's own build" sections are macOS-only; the Windows app's own Rust graph (410 crates,
 50 beyond the table) needs its table before a Windows release, in that same row.
+**Owner, the same day: fix the macOS half now.** Done — 17 rows (the CLI sidecar's graph
+added two the arm64/Intel count had not shown), and `scripts/notices-check.py` gates both
+tables in `verify.sh` (ledger #592).
+
+## 3b. Update catalogs across OSes — measured against every shipped release (13 Sep 2026)
+
+**Owner, 13 Sep 2026:** settle this before W3, because the answer may change the catalog's
+FORMAT, and that has to be negotiated with apps already released. *Measure whether old apps
+skip an unknown row or crash; do not assume.*
+
+**What ships today.** Two signed documents on `rexenv/runtimes` `main`, fetched by every
+installed app: `manifest.json` — PHP, `php-fpm`, `php-licenses` and Adminer rows keyed by
+`name` + `version` + `arch` ∈ {`arm64`, `x86_64`, `any`} (live: serial 5, 37 rows) — and
+`app-manifest.json`, ONE `release` object naming the universal macOS `.app.tar.gz` (live:
+serial 3). Neither has an OS anywhere. The PHP catalog shipped in 0.3.0 (0.1.1 and 0.2.0
+never fetch it); the app descriptor in 0.6.0.
+
+**How it was measured.** Each distinct released version of the parsing code — `updates.rs`
+at v0.3.0 (identical in v0.4.0), v0.5.0, v0.6.1 (= v0.6.0) and v0.7.0; `app_update.rs` at
+v0.6.1 and v0.7.0 — checked out in a worktree, a probe test added inside that release's own
+`tests` module, and run. It signs crafted documents with a test keypair and feeds them to
+the release's `verify_with`, the function its fetch path calls once the signature is
+checked. Controls: a plain `arm64` row and a plain `x86_64` row are retained by every
+release, so a "dropped" below is the filter's doing, not the probe's. Not exercised: the real
+key and the network fetch, which none of these shapes touch.
+
+| Shape a Windows entry could take | 0.3.0–0.4.0 | 0.5.0 | 0.6.0–0.6.1 | 0.7.0 |
+|---|---|---|---|---|
+| A — `"arch":"x86_64"` plus a new `"os":"windows"` field | **kept, as an x86_64 row** | **kept** | **kept** | **kept** |
+| E — `"arch":"x86_64"` plus a nested `"platform":{…}` object | **kept** | **kept** | **kept** | **kept** |
+| B — `"arch":"windows-x86_64"` | dropped | dropped | dropped | dropped |
+| C — `"name":"php-windows"` | dropped | dropped | dropped | dropped |
+| D — rows under a new top-level key (`windowsArtifacts`) | ignored; document accepted | ignored | ignored | ignored |
+| App descriptor: `"os":"windows"` on `release` | — | — | **accepted as the Mac release** | **accepted** |
+| App descriptor: a new top-level `windows` object or `releases` array | — | — | ignored | ignored |
+
+**Reading it.** No release crashes or refuses the document — every shape parsed.
+(i) Unknown fields are ignored (no `deny_unknown_fields` anywhere), so **any entry that keeps
+`arch: "x86_64"` is taken by every shipped Intel Mac as its own**: offered, downloaded,
+digest-verified, then spawned as a macOS binary. The break is already shipped; it fires the
+day such a row is published. (ii) An entry whose `arch` or `name` an old app does not know is
+silently dropped by `retain(acceptable)`, present since 0.3.0 — the rule that one bad row
+cannot deny every other update, working in our favour here. (iii) New top-level keys are
+invisible to old apps. (iv) The app descriptor has exactly one `release`, so a Windows release
+can never share it.
+
+**Options.**
+1. **A separate document per OS** — `manifest-windows.json` and `app-manifest-windows.json`
+   (each with its `.sig`) on the same branch, the same key, their own serials. Only a Windows
+   build fetches them, and their schema can carry `os` from day one. Old apps never request
+   those URLs, so nothing relies on how they filter. Cost: two more files per publish, and
+   `check-app-manifest.sh` checks them too.
+2. **The same document, arch tokens old apps cannot match** (`windows-x86_64`, and
+   `windows-any` for Adminer) — relies on (ii), measured true in all four releases. Cost:
+   every future macOS build must keep dropping those tokens (a test), Adminer needs a Windows
+   copy of its `any` row, and one document carries both OSes.
+3. **The same document, rows under a new top-level key** (`windows: {artifacts: […]}`) —
+   relies on (iii). Cost: two schemas in one document, and one shared serial, so a
+   Windows-only publish moves every Mac's serial.
+4. **Anything that keeps `arch: "x86_64"` and adds an OS marker, or puts `os` on the app
+   descriptor's `release`** — **refused by the measurement.** Not a release-ordering problem
+   either: an Intel Mac that never updates would stay broken by it for good.
+
+**Recommendation: 1.** It is the only option whose safety does not rest on how released
+builds filter rows; each serial keeps meaning one thing; nothing has to ship in a particular
+order; and for the app descriptor there is no alternative anyway (iv). Whatever is ruled, two
+guards land with it: a test in the current tree pinning (ii) and (iii), so macOS readers keep
+dropping foreign entries if one is ever published into their document by mistake, and a
+refusal in the `rexenv/runtimes` publisher of any `manifest.json` entry carrying an OS marker.
+**Owner rules.**
 
 ## 4. Upstream availability (measured 12 Sep 2026)
 
@@ -571,6 +678,29 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
 - **Reserved ports:** HTTP.sys (PID 4) can hold 80/443; Hyper-V/WinNAT reserve dynamic
   TCP ranges that can swallow a fixed port like 13306 or 15432 (`netsh int ipv4 show
   excludedportrange protocol=tcp`). `ensure_free` must name both.
+- **A successful bind proves nothing — the general Windows rule (owner, 13 Sep 2026).**
+  Windows lets a later socket bind a port already in use when it sets `SO_REUSEADDR` (php-cgi's
+  `fcgi_listen` does), and lets a specific-address bind coexist with another process's
+  wildcard bind unless one side set `SO_EXCLUSIVEADDRUSE`. "We could bind it" and "it is ours"
+  are different facts for every port rexenv uses — D1's php-cgi and D2's :53 are two cases of
+  this one rule, not two rules. Consequences, W3 unless noted:
+  - `core/ports::is_free` is a trial bind on `127.0.0.1` (`ports.rs:58`); on Windows it can
+    say "free" while another process listens on `0.0.0.0` or `[::]` of the same port. There,
+    `ensure_free` reads the TCP/UDP tables (`GetExtendedTcpTable` / `GetExtendedUdpTable`)
+    for ANY local address on the port and names the holder from them.
+  - A start is confirmed by who ANSWERS with our identity — a FastCGI round trip for a
+    php-cgi group, the admin pipe for Caddy, the handshake for MySQL/PostgreSQL, a marker
+    record for the DNS agent (W6) — never by a bind or a listen. That is the existing
+    "ownership AND liveness" non-negotiable; on Windows the bind is one more thing it must
+    not trust.
+  - Sockets rexenv opens itself (the DNS agent, probe listeners) set `SO_EXCLUSIVEADDRUSE`, so
+    nothing shadows them. A third-party server's socket options are its own, which is why the
+    identity check is the rule and not the option.
+  - *Measure on the VM first:* the bind matrix `ensure_free` will rely on — a trial bind
+    against an existing wildcard, loopback and `[::]` listener, with and without
+    `SO_REUSEADDR` / `SO_EXCLUSIVEADDRUSE` on either side — as a small probe.
+  Not new to Windows in kind: on macOS, Herd shadow-binds 127.0.0.1:443 with no bind error,
+  and what caught it was checking who answered.
 
 ## 7. What an agent on the macOS dev machine cannot prove
 
