@@ -29,43 +29,43 @@ App version **0.7.0** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md`
 
 ### Release gates (human, scripted — see the docs named) — 14
 
-- `TODO.md:737` Release 0.7.1 — the notices fix alone, cut from v0.7.0
-- `TODO.md:771` PUBLISH-TESTING §B
-- `TODO.md:772` PUBLISH-TESTING §D
-- `TODO.md:790` Flip the release host back when `rexenv/rexenv` goes public
-- `TODO.md:804` The self-update swap probe (T0) and the first real in-app update (T11)
-- `TODO.md:809` PUBLISH-TESTING §K
-- `TODO.md:810` PUBLISH-TESTING §F
-- `TODO.md:811` PUBLISH-TESTING §G
-- `TODO.md:817` Release 5.4 — clean-Mac smoke test
-- `TODO.md:821` Tunnel probe session
-- `TODO.md:825` Intel spot-run
-- `TODO.md:828` The macOS floor is a claim about BOTH slices, and most of it has still never been measured
-- `TODO.md:866` In-app verifies owed
-- `TODO.md:878` PUBLISH-TESTING §E / §L
+- `TODO.md:779` `check-app-manifest.sh` blames a forgotten click for CDN lag
+- `TODO.md:788` PUBLISH-TESTING §B
+- `TODO.md:789` PUBLISH-TESTING §D
+- `TODO.md:807` Flip the release host back when `rexenv/rexenv` goes public
+- `TODO.md:821` The self-update swap probe (T0) and the first real in-app update (T11)
+- `TODO.md:826` PUBLISH-TESTING §K
+- `TODO.md:827` PUBLISH-TESTING §F
+- `TODO.md:828` PUBLISH-TESTING §G
+- `TODO.md:834` Release 5.4 — clean-Mac smoke test
+- `TODO.md:838` Tunnel probe session
+- `TODO.md:842` Intel spot-run
+- `TODO.md:845` The macOS floor is a claim about BOTH slices, and most of it has still never been measured
+- `TODO.md:883` In-app verifies owed
+- `TODO.md:895` PUBLISH-TESTING §E / §L
 
 ### Parked (deliberate — needs explicit go; don't pick up silently) — 4
 
-- `TODO.md:884` The live pool swap is still L3
-- `TODO.md:888` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN 25 Aug 2026
-- `TODO.md:897` Install WordPress into an empty LINKED folder
-- `TODO.md:904` `rex` design-first set — ONE item left: raw `wp` passthrough
+- `TODO.md:901` The live pool swap is still L3
+- `TODO.md:905` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN 25 Aug 2026
+- `TODO.md:914` Install WordPress into an empty LINKED folder
+- `TODO.md:921` `rex` design-first set — ONE item left: raw `wp` passthrough
 
 ### Menu-bar app — 1
 
-- `TODO.md:917` Hold the tray menu open while the stack MOVES
+- `TODO.md:934` Hold the tray menu open while the stack MOVES
 
 ### Blocked on external work — 4
 
-- `TODO.md:927` Xdebug on PHP 8.0
-- `TODO.md:932` SMAppService privileged helper
-- `TODO.md:934` Developer ID signing + notarization
-- `TODO.md:936` OpenLiteSpeed override server
+- `TODO.md:944` Xdebug on PHP 8.0
+- `TODO.md:949` SMAppService privileged helper
+- `TODO.md:951` Developer ID signing + notarization
+- `TODO.md:953` OpenLiteSpeed override server
 
 ### Phase 4+ (next era) — 2
 
-- `TODO.md:946` Linux platform impls — `platform/linux/mod.rs`. Windows moved to *Now* as
-- `TODO.md:949` Public distribution (the open-sourcing half of the old "packaging polish" row)
+- `TODO.md:963` Linux platform impls — `platform/linux/mod.rs`. Windows moved to *Now* as
+- `TODO.md:966` Public distribution (the open-sourcing half of the old "packaging polish" row)
 
 ## Claim ledger (`scripts/ledger-tally.sh`)
 

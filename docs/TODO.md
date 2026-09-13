@@ -734,7 +734,8 @@ SMOKE-TEST on the built dmg, then PUBLISH-TESTING §A0/§A before publishing.** 
 this note exists for: silence in a gate list reads as "this is the set", and a gate
 nobody can see from the list is indistinguishable from a gate nobody ran.
 
-- [ ] **Release 0.7.1 — the notices fix alone, cut from v0.7.0** — owner ruling 13 Sep 2026: never
+- [x] **Release 0.7.1 — the notices fix alone, cut from v0.7.0** ✓ 13 Sep 2026 — published, cask
+  bumped, app manifest serial 4 offering 0.7.1 (`check-app-manifest: all green`). Owner ruling 13 Sep 2026: never
   rebuild a published version, and do not wait for the next feature release either, because
   the shipped binary carries code whose notice does not travel with it. Flow: `docs/RELEASING.md`,
   "A patch release cut from a published tag". Branch `release/0.7.1` in a worktree: the 17 rows,
@@ -761,12 +762,28 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
     387865008, draft, tag `v0.7.1`; four assets `uploaded`, and the API's digests equal the local
     hashes (dmg `89239fd1…a3e3`, archive `e21b3525…c859`); exactly one asset ends
     `_universal.dmg`, the same shape as 0.7.0
-  - [ ] **Owner** publishes the draft → the cask bumps on that publish → runtimes "Publish app
-    update manifest" (dry run first) → `scripts/check-app-manifest.sh`
+  - [x] **Owner** publishes the draft → the cask bumps on that publish → runtimes "Publish app
+    update manifest" (dry run first) → `scripts/check-app-manifest.sh` ✓ 13 Sep 2026 — published
+    10:34:13Z, Latest; `update-cask` run 34752197550 success, cask `version "0.7.1"` with sha256
+    `89239fd1…` = the dmg; manifest dry run 34752249555 ("nothing committed"), real run 34752320411
+    → runtimes `b82cdba`, serial 3 → 4, release 0.7.1; `check-app-manifest: all green` once the
+    CDN served serial 4 (10:40:39Z)
   - [x] Local tag `v0.7.1` ✓ 13 Sep 2026 — annotated, on `b5c3d43`, not pushed (the pre-push hook
     refuses a `v*` tag while the repo is private)
-  - [ ] After publish: master records the shipped commit (`git merge -s ours release/0.7.1`),
-    then the worktree and branch can go
+  - [x] After publish: master records the shipped commit (`git merge -s ours release/0.7.1`),
+    then the worktree and branch can go ✓ 13 Sep 2026 — merge `b563ac3` (no tree change;
+    `v0.7.1` is in master's history); the worktree's two symlinks were unlinked before
+    `git worktree remove`, the main target and wk-checks deps confirmed intact after; branch
+    deleted, the tag keeps `b5c3d43`
+
+- [ ] **`check-app-manifest.sh` blames a forgotten click for CDN lag** — 13 Sep 2026, releasing
+  0.7.1: run two minutes after the real publish (runtimes `b82cdba`, serial 4, 10:37:29Z), it read
+  `raw.githubusercontent.com`'s cached serial 3 and printed "This is the forgotten-second-click:
+  run … 'Publish app update manifest'" — advice that sends someone to publish a second time. The
+  committed file was already right (contents API: serial 4, 0.7.1). Read the descriptor through the
+  API as well, and when only the CDN is behind, say that and how long raw caches, instead.
+  Measured the same day: the CDN served serial 4 at 10:40:39Z, 3 min 10 s after the commit.
+  Done when: a check run inside the cache window prints the CDN-lag line, not the forgotten-click one.
 
 - [ ] **PUBLISH-TESTING §B** — uninstall removes the root :443 daemon (live launchd).
 - [ ] **PUBLISH-TESTING §D** — `--zap` ONLY; everything else has now run four times.
