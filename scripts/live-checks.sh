@@ -217,6 +217,7 @@ wp_packages_check sandbox
 wp_plugins_check network
 wp_premium_update_check network
 wp_real443_setup demo
+wp_core_zip_check network
 wp_themes_check network
 wp_tools_check network
 wpcli_check sandbox
