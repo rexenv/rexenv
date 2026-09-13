@@ -60,6 +60,13 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     says how to repair an existing site Users of 0.4.0–0.7.1
     with sites created by rexenv are affected the same way — a release note or an in-app repair is a separate
     ruling
+- [ ] **`frankenphp_mail_catch_check`'s catch-OFF backend sometimes accepts a request and never answers** — twice in
+  two days, both inside a release `verify-full`: 13 Sep 2026 it held 0.7.1's gate 50 minutes at 0% CPU (curl had no
+  timeout; now `--max-time 60`), and 14 Sep 2026 on the 0.7.2 worktree it failed the control check with an EMPTY body
+  (`getenv('MAIL_HOST') is empty — ` with no detail; the neighbouring "does not carry our shim" check passes vacuously on
+  an empty body). The same example then passed 3 of 3 alone (15 s, 14 s, 11 s). Not the mail catch — the first backend
+  the example starts. Unmeasured: whether FrankenPHP is still loading its worker when `await_listening` sees the port,
+  or wedges; a check that reads "empty body" as its own failure, and the backend's log spilled, would say which
 - [ ] **Windows launch** — 12 Sep 2026, owner: macOS is stable, ship a Windows version.
   Not "fill the stubs": Unix-only code outside `platform/`, no php-fpm, no `/etc/resolver`,
   no unix sockets on Windows. Reasoning, measurements and "Done when" per task:
