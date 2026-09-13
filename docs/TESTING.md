@@ -1200,6 +1200,15 @@ bloating the fast path:
   §D then found `rex --version` hanging forever on an app that accepts and never
   answers (ledger #300). A crate that ships and a crate the gate visits are now the
   same set; keep them that way when a third crate appears.
+- **`scripts/notices-check.py`, inside `verify.sh` (13 Sep 2026, 0.7.1):** THIRD-PARTY-NOTICES.md's
+  Rust table against the graphs that ship — arm64 ∪ x86_64, the app crate and the `rex`
+  CLI, normal + build edges — in BOTH directions, each row's licence against the crate's
+  declared one, and the heading's count; the npm table against `pnpm list --prod`, both
+  directions and its count; the vendored composer table against its own `installed.json`,
+  licences included. The Rust table had been typed: 17 crates the shipped app linked had no
+  row, two of them because the CLI's graph was never inventoried (ledger #592).
+  **Does not prove:** npm licences (pnpm's list carries none); the licences of binaries
+  downloaded at runtime (#336).
 - **The two generated-doc gates, inside `verify.sh`:** `scripts/ledger-tally.sh`
   computes the CLAIM-LEDGER tally, and `scripts/doc-counts.sh` computes the counts
   the docs state about the code (schema version, per-file command counts, IPC

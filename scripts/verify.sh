@@ -102,6 +102,12 @@ npx eslint "src/**/*.{ts,tsx}"
 # six of them were stale at once on 21 Aug 2026, none in a way that broke
 # anything and all in the way that costs a reader their trust in the file.
 ./scripts/doc-counts.sh --check
+# THIRD-PARTY-NOTICES.md's tables against what ships, both directions. The Rust
+# table was typed, and "regenerate before each release" kept it true until it
+# didn't: mysql_async's crates and the rex CLI's whole graph were missing from
+# five releases' Licenses dialog before a hand count found them (13 Sep 2026,
+# ledger #592).
+./scripts/notices-check.py
 ./scripts/status.py --check
 
 # The L2 probes parse. They only RUN at release time (verify-full.sh / a manual
