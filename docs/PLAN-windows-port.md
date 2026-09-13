@@ -777,6 +777,9 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
     ignoring case, and gets `Stop-Process -Id`, not `kill`. The pure rules live in
     `platform/windows/port_table.rs` (tested on every host), the Win32 reads in
     `process.rs`; `examples/windows_port_gate_check.rs` is the Dell run.
+    **macOS turned out to have the same hole** (measured the same day on 26.6.2: TCP only — UDP
+    and a `127.0.0.1` holder are refused by the bind) and got `port_holders` from `lsof` at the
+    owner's go, so the rule is one rule on both OSes, not a Windows special case.
   - A start is confirmed by who ANSWERS with our identity — a FastCGI round trip for a
     php-cgi group, the admin pipe for Caddy, the handshake for MySQL/PostgreSQL, a marker
     record for the DNS agent (W6) — never by a bind or a listen. That is the existing

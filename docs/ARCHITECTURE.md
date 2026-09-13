@@ -1238,8 +1238,12 @@ honest footer —
   13 Sep 2026): `ports::is_free(platform, …)` refuses any port `port_holders` lists on ANY
   local address, then binds. On Windows a trial bind on `127.0.0.1` succeeds beside another
   process's `0.0.0.0`/`[::]` listener and takes its localhost traffic (plan §6, measured), so
-  the bind alone would call a developer's own all-interfaces MySQL free. macOS has no table
-  read (`None`) and keeps the bind alone. Windows names holders by image, hosted service,
+  the bind alone would call a developer's own all-interfaces MySQL free. **macOS had the same
+  hole for TCP** (measured the same day: an `SO_REUSEADDR` `127.0.0.1` bind succeeds beside a
+  wildcard holder and takes its `127.0.0.1` traffic) and now reads `lsof -Fpn`, counting only
+  sockets whose LOCAL end is on the port — a client talking TO the port is not a holder. A
+  root holder is invisible to unprivileged lsof; the trial bind stands for it. Any local
+  address counts, so a listener on a LAN-only address is refused too, by name. Windows names holders by image, hosted service,
   HTTP.sys (pid 4) or the excluded port range a holderless port sits in, with PowerShell
   commands — run on the Dell (Windows 10) 13 Sep 2026, `windows_port_gate_check: PASS`.
 

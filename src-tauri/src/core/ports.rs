@@ -51,10 +51,10 @@ pub struct PortStatus {
 /// Whether `port` is usable for `proto` on loopback.
 ///
 /// **Never "free" while the platform's socket tables name a holder (ledger #599).**
-/// Measured on Windows (plan §6): a trial bind on `127.0.0.1` succeeds beside another
-/// process's `0.0.0.0` or `[::]` listener and then takes its localhost traffic, so the
-/// bind alone called a developer's own all-interfaces MySQL "free" and stole its
-/// clients. The tables see every local address. The bind still runs after them, as a
+/// Measured on Windows (plan §6) AND on macOS (13 Sep 2026, TCP): a trial bind on
+/// `127.0.0.1` succeeds beside another process's `0.0.0.0` or `[::]` listener and then
+/// takes its localhost traffic, so the bind alone called a developer's own
+/// all-interfaces MySQL "free" and stole its clients. The tables see every local address. The bind still runs after them, as a
 /// second refusal for anything that refuses a bind without owning a row — WinNAT's
 /// run-time excluded ranges are reported to, not measured here; an ADMINISTERED
 /// excluded range was measured NOT to (the Dell, 13 Sep 2026: 127.0.0.1, 0.0.0.0 and
@@ -634,6 +634,27 @@ mod tests {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
         let port = listener.local_addr().unwrap().port();
         assert!(!is_free(&empty, port, Proto::Tcp), "an empty table must not skip the bind");
+    }
+
+    /// **On macOS a wildcard TCP holder makes the port busy (ledger #599)** — through the
+    /// REAL platform, lsof and all. The precondition is asserted, not assumed: if the
+    /// trial bind stops lying on some macOS, this says so rather than passing on the
+    /// bind alone. Plant: `MacosSupervisor::port_holders` answering `None` fails it.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_wildcard_tcp_holder_is_busy_on_macos_though_the_bind_says_free() {
+        let platform = crate::platform::current();
+        let holder = TcpListener::bind((Ipv4Addr::UNSPECIFIED, 0)).unwrap();
+        let port = holder.local_addr().unwrap().port();
+        assert!(
+            bind_probe(port, Proto::Tcp),
+            "precondition: a 127.0.0.1 trial bind beside a 0.0.0.0 holder succeeded when this \
+             test was written — if it is refused now, the hole this test guards has closed"
+        );
+        assert!(!is_free(&*platform, port, Proto::Tcp), "a 0.0.0.0 holder on {port} must make it busy");
+        let holders = platform.supervisor().port_holders(port, false).unwrap_or_default();
+        assert!(holders.contains(&std::process::id()), "lsof must name this process: {holders:?}");
+        drop(holder);
     }
 
     #[test]

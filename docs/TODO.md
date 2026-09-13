@@ -138,17 +138,19 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     `pid_alive`, `pids_named`, `owned_listeners`, `owned_master` (pid-reuse-safe parent links),
     `owned_pids` — `platform/windows/process.rs` + `port_table.rs`, ledger #599. Spawn and stop
     are next
-    - [ ] **macOS has the same hole — measured 13 Sep 2026, found while writing #599; owner to
-      rule before a fix.** On macOS 26.6.2, a holder in another process on `0.0.0.0:<p>` or
+    - [x] **macOS has the same hole — measured 13 Sep 2026, found while writing #599; fixed the
+      same day at the owner's go** ✓ `MacosSupervisor::port_holders` from `lsof -Fpn`, local ends
+      only, `a_wildcard_tcp_holder_is_busy_on_macos_though_the_bind_says_free` +
+      `lsof_holders_are_local_ends_on_the_port_and_nothing_else`, both plant-proven (ledger #599).
+      What was measured: On macOS 26.6.2, a holder in another process on `0.0.0.0:<p>` or
       `[::]:<p>` (dual-stack), default options or `SO_REUSEADDR`, does NOT stop a
       `127.0.0.1:<p>` bind made the way Rust's `TcpListener::bind` makes it on Unix
-      (`SO_REUSEADDR`) — so `ports::is_free` says free for every high TCP port such a holder
-      has. And the bind takes the traffic: after it, a client to `127.0.0.1` reached the new
+      (`SO_REUSEADDR`) — so `ports::is_free` said free for every high TCP port such a holder
+      had. And the bind takes the traffic: after it, a client to `127.0.0.1` reached the new
       socket, not the holder (`::1` still reached a dual-stack holder). A `127.0.0.1` holder
       is refused, and every UDP case is refused. Privileged ports (<1024) use a connect probe
-      and are unaffected. The shape is Herd's :443 shadow bind, on rexenv's own gate. Fix
-      shape: a macOS `port_holders` from `lsof -iTCP:<p> -sTCP:LISTEN` (the tool
-      `owned_listeners` already runs), after which #599's core rule applies unchanged
+      and are unaffected. The shape is Herd's :443 shadow bind, on rexenv's own gate. Parsed from
+      `-Fpn` rather than `-t`, because `-iUDP:<p>` also lists a client whose REMOTE end is the port
   - [ ] W4 — php-cgi group (preflight + churn breaker, plan §3 D1(a)) + nginx + SMTP mail → a
     WordPress site serves
   - [ ] W5 — Caddy :443 edge + CurrentUser Root CA trust → valid lock in Edge/Chrome/Firefox

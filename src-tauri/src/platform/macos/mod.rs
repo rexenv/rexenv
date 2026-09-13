@@ -619,6 +619,28 @@ impl ProcessSupervisor for MacosSupervisor {
             .collect()
     }
 
+    /// `lsof`'s field output: TCP listeners and UDP endpoints whose LOCAL address is on
+    /// `port` (ledger #599). Measured 13 Sep 2026 on macOS 26.6.2: a `127.0.0.1` bind made
+    /// the way Rust's `TcpListener::bind` makes it (`SO_REUSEADDR`) SUCCEEDS beside another
+    /// process's `0.0.0.0` or `[::]` TCP listener and then receives the `127.0.0.1` traffic —
+    /// the trial bind alone called that port free. `None` only when lsof cannot run; then
+    /// the gate falls back to its bind, as before.
+    ///
+    /// Unprivileged lsof lists this user's processes only, so a ROOT wildcard holder is not
+    /// in this answer; the trial bind is what stands for it (not measured — no root holder
+    /// was set up to see whether BSD refuses a cross-user shadow bind).
+    fn port_holders(&self, port: u16, udp: bool) -> Option<Vec<u32>> {
+        let selector = if udp { format!("-iUDP:{port}") } else { format!("-iTCP:{port}") };
+        let mut cmd = std::process::Command::new("lsof");
+        cmd.args(["-nP", &selector]);
+        if !udp {
+            cmd.arg("-sTCP:LISTEN");
+        }
+        // Exit 1 with no output is lsof's "nothing matched" — an answer, not a failure.
+        let out = cmd.arg("-Fpn").output().ok()?;
+        Some(lsof_local_port_holders(&String::from_utf8_lossy(&out.stdout), port))
+    }
+
     fn port_conflict_help(&self, port: u16, udp: bool) -> PortConflictHelp {
         // `-i` selector for the port; UDP has no LISTEN state to filter on.
         let (sel, state): (String, &[&str]) = if udp {
@@ -737,6 +759,31 @@ fn brew_formula(exe_path: &str) -> Option<String> {
         .position(|w| w[0] == "opt" && w[1] != "homebrew")
         .filter(|_| exe_path.starts_with("/opt/homebrew/") || exe_path.starts_with("/usr/local/"))
         .and_then(|i| segs.get(i + 1).map(|s| s.to_string()))
+}
+
+/// Pids from `lsof -Fpn` output with a socket whose LOCAL end is on `port`.
+///
+/// `-i<proto>:<port>` matches EITHER end of a socket: measured 13 Sep 2026, a UDP client
+/// talking TO the port shows as `n127.0.0.1:64140->127.0.0.1:64885`. Counting that as a
+/// holder would refuse the DNS agent's port every time something queries it. So only the
+/// part before `->` is compared, and it must end in `:<port>` exactly.
+fn lsof_local_port_holders(fields: &str, port: u16) -> Vec<u32> {
+    let suffix = format!(":{port}");
+    let mut pid = None;
+    let mut pids = Vec::new();
+    for line in fields.lines() {
+        if let Some(p) = line.strip_prefix('p') {
+            pid = p.trim().parse::<u32>().ok();
+        } else if let Some(name) = line.strip_prefix('n') {
+            let local = name.split("->").next().unwrap_or(name);
+            if let Some(p) = pid.filter(|_| local.ends_with(&suffix)) {
+                if !pids.contains(&p) {
+                    pids.push(p);
+                }
+            }
+        }
+    }
+    pids
 }
 
 /// The REAL executable path of `pid`. `ps -o comm=` is a trap for daemons that
@@ -2390,6 +2437,20 @@ impl Platform for MacosPlatform {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Only a socket whose LOCAL end is on the port holds it — the shapes are lsof's own
+    /// output, measured 13 Sep 2026 (ledger #599). Plant: comparing the whole name instead
+    /// of the part before `->` counts the UDP client and the accepted TCP connection.
+    #[test]
+    fn lsof_holders_are_local_ends_on_the_port_and_nothing_else() {
+        let out = "p98098\nf3\nn*:49634\nf4\nn127.0.0.1:49635->127.0.0.1:49634\n\
+                   p77\nf6\nn127.0.0.1:64140->127.0.0.1:49634\n\
+                   p88\nf1\nn[::1]:49634\n\
+                   p99\nf1\nn127.0.0.1:149634\nn127.0.0.1:9634\n";
+        assert_eq!(lsof_local_port_holders(out, 49634), vec![98098, 88]);
+        assert_eq!(lsof_local_port_holders(out, 9634), vec![99]);
+        assert!(lsof_local_port_holders("", 49634).is_empty());
+    }
 
     /// A terminal is handed a DIRECTORY or nothing. `open -a Terminal <file>`
     /// RUNS the file — the one mistake this control must not make — so the
