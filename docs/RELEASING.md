@@ -198,6 +198,18 @@ notices fix alone, while 65 commits of Windows groundwork and features stayed on
   untouched. Apply only the fix, the docs its same-commit rule demands, and the four-manifest
   bump; `cargo update --workspace --offline` in `src-tauri/` and `cli/` moves only the
   workspace entries of both lockfiles, and `scripts/check-versions.sh` confirms all four agree.
+  **A tag older than 13 Sep 2026 needs one tooling fix first:** its `verify-receipt.sh`
+  writes to `$ROOT/.git/…`, and in a worktree `.git` is a file — so `verify.sh` passes every
+  gate and then fails writing the receipt, and the pre-commit hook can never pass. 0.7.1's
+  first `verify-full` died exactly there. The fix (the checkout's own
+  `git rev-parse --absolute-git-dir`) is on master since then; carry that one line onto the
+  release branch as its own commit. It ships in no binary. **So does the second:** the
+  examples' `curl` calls had no `--max-time`, and 0.7.1's second `verify-full` sat 50 minutes
+  on a fixture FrankenPHP that accepted a request and never answered — carry the bounds too.
+- **Before `verify-full`, check nothing already listens on :5199** (`lsof -nP -iTCP:5199
+  -sTCP:LISTEN`). Its wk-checks start vite there and then only ask whether the port answers,
+  so a vite left behind by an earlier run — 0.7.1's release found one four days old — would
+  have the WebKit checks test whatever tree THAT vite serves, and pass.
 - Point the worktree's `src-tauri/target` at the main checkout's with a symlink. A second cold
   universal build needs more disk than this Mac had free (19 GiB on 13 Sep), and the relative
   bundle paths `release-mac.sh`, `release-assets.sh` and §A0 use keep working through it.

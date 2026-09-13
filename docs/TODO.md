@@ -720,8 +720,15 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   rebuild a published version, and do not wait for the next feature release either, because
   the shipped binary carries code whose notice does not travel with it. Flow: `docs/RELEASING.md`,
   "A patch release cut from a published tag". Branch `release/0.7.1` in a worktree: the 17 rows,
-  `notices-check.py` wired into `verify.sh`, its ledger row, the four-manifest bump — nothing else.
-  - [ ] `verify-full.sh` green on the branch; its two commits (the fix, the bump)
+  `notices-check.py` wired into `verify.sh`, its ledger row, the four-manifest bump — and two
+  release-tooling fixes that ship in no binary: `verify-receipt.sh` hardcoded `.git/`, so the bar
+  and the pre-commit hook could not pass in any worktree (the first `verify-full` died on it);
+  and 14 example `curl` calls had no `--max-time`, so a fixture FrankenPHP that accepted and
+  never answered held the second `verify-full` for 50 minutes (owner: bound them, 13 Sep 2026).
+  The same run found a 4-day-old `vite` on :5199 left by an earlier `verify-full` — wk-checks
+  would have tested whatever that served; stopped with the owner's go.
+  - [ ] `verify-full.sh` green on the branch; its four commits (receipt path, curl bounds, the
+    notices fix, the bump)
   - [ ] `pnpm release:mac`, then §A0 by hand (both slices, the per-slice payload, codesign, one dmg)
   - [ ] **Owner:** SMOKE-TEST on that dmg, then PUBLISH-TESTING §A
   - [ ] Draft on `rexenv/homebrew-tap` with the one-line note → **owner** publishes → cask bump →
