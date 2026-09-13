@@ -727,9 +727,15 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   never answered held the second `verify-full` for 50 minutes (owner: bound them, 13 Sep 2026).
   The same run found a 4-day-old `vite` on :5199 left by an earlier `verify-full` — wk-checks
   would have tested whatever that served; stopped with the owner's go.
-  - [ ] `verify-full.sh` green on the branch; its four commits (receipt path, curl bounds, the
-    notices fix, the bump)
-  - [ ] `pnpm release:mac`, then §A0 by hand (both slices, the per-slice payload, codesign, one dmg)
+  - [x] `verify-full.sh` green on the branch; its four commits (receipt path, curl bounds, the
+    notices fix, the bump) ✓ 13 Sep 2026 — `verify-full: all green` (bar, sandbox tier,
+    wk-checks ALL PASS) on the third run; `release/0.7.1` = `d324fff` → `956ece1` → `94c9cf7` →
+    `b5c3d43`, `check-versions` 0.7.1 in all places
+  - [x] `pnpm release:mac`, then §A0 by hand (both slices, the per-slice payload, codesign, one dmg)
+    ✓ 13 Sep 2026 — the first build was killed at low memory (18 GB, swap full); the owner re-ran
+    it with `CARGO_BUILD_JOBS=4`. `release-assets: all green` (archive sha256 `e21b3525…`), §A0 all
+    green: one dmg, `rexenv` + `rex` x86_64 arm64, the payload in both slices, codesign, and the built
+    Licenses text carrying `mysql_async | 0.37.0`, `zmij | 1.0.23`, "410 external crates"
   - [ ] **Owner:** SMOKE-TEST on that dmg, then PUBLISH-TESTING §A
   - [ ] Draft on `rexenv/homebrew-tap` with the one-line note → **owner** publishes → cask bump →
     runtimes "Publish app update manifest" → `scripts/check-app-manifest.sh`
