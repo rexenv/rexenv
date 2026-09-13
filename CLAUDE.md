@@ -91,9 +91,10 @@ headers saying "not started" about shipped features. Derived beats typed.
   Tunnels, Settings, Onboarding).
 - Verification: **`scripts/verify.sh` is the pre-commit bar** (lib tests + `cli` tests +
   example builds + clippy `--all-targets` at zero in BOTH crates + tsc + eslint (two
-  react-hooks rules, NOT a style linter — see `eslint.config.js`) + the three
+  react-hooks rules, NOT a style linter — see `eslint.config.js`) + the
   generated-doc gates, `ledger-tally.sh`, `doc-counts.sh` — the latter also fails
-  on any `docs/*.md` path the tree cites that does not exist — and `status.py --check`,
+  on any `docs/*.md` path the tree cites that does not exist — `notices-check.py`
+  (THIRD-PARTY-NOTICES' Rust and npm tables against what ships, both directions) and `status.py --check`,
   which fails when `docs/STATUS.md` no longer matches TODO.md / the ledger / the plans) +
   `windows-check.sh`, the Windows x64 compile of both crates — `verify: windows-check SKIPPED`
   on a machine without cargo-xwin, llvm/lld or `XWIN_ACCEPT_LICENSE=1`, a red bar on any

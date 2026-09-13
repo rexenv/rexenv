@@ -62,13 +62,18 @@ unchanged at 389 crates.
 0.12.3 MIT OR Apache-2.0 — zip extraction for the Windows artifacts). Added as rows,
 NOT regenerated: this header already read 393 against the 389 above, so the two-way
 reconcile below is due before the next release, not assumed done.
-**Measured 13 Sep 2026, both directions, with the command below:** every one of the table's
-395 rows is in the graph (table − graph = 0), but the macOS arm64 graph links **409** crates
-— **14 are missing**: `mysql_async` 0.37.0 and `mysql_common` 0.37.3 with what they pull in
-(`allocator-api2`, `btoi`, `bytemuck`, `chacha20`, `crossbeam-queue`,
-`keyed_priority_queue`, `lru`, `rand` / `rand_core` 0.10, `saturating`, `sha1`,
-`twox-hash`); the Intel graph adds `cpufeatures` (15). The Windows graph (410) is 50 crates
-beyond the table and 35 short of it. Tracked in `docs/TODO.md` until the rows land.
+**13 Sep 2026: 17 rows added, and the table is now CHECKED rather than remembered.**
+Measured both directions: all 395 rows were in the graph, but the graphs that ship held
+412 — `mysql_async` 0.37.0 and `mysql_common` 0.37.3 with the thirteen crates they pull in
+across both slices (in the app since 24 Aug 2026, so the Licenses dialog of 0.4.0 through
+0.7.0 left them out), and two crates of the `rex` CLI sidecar (`memchr` 2.8.3, `zmij`
+1.0.23): the command below only ever named `src-tauri`, so the sidecar's graph was never
+inventoried at all. No generator's filter dropped them — there was no generator. The table
+was typed, every count in this file was typed, and each re-verification was one-directional
+or scoped to the change in hand (5 Sep added the tray icon's four crates and looked no
+further). `scripts/notices-check.py` now runs inside `verify.sh`: both directions,
+arm64 ∪ x86_64, the app and the CLI, the licence column, and this section's heading count.
+The Windows graph (410 crates) is not checked until a Windows build ships.
 
 **The npm table was INCOMPLETE from the day it was generated, and the 5 Aug
 pass found it: 112 rows against a 127-package production closure.** Fifteen
@@ -89,7 +94,8 @@ cell by the original generation. The packages and their licences were right; the
 table rendered them wrong. Regenerate before each release with:
 
 ```sh
-# Rust (the app + statically linked deps, macOS graph):
+# Rust — CHECKED by scripts/notices-check.py in verify.sh (app + rex CLI, arm64 + x86_64);
+# it prints each missing row ready to paste. The graph it reads, for one target:
 cd src-tauri && cargo metadata --format-version 1 --filter-platform aarch64-apple-darwin
 # npm (production closure that Vite bundles):
 pnpm list --prod --depth Infinity --json
@@ -271,7 +277,7 @@ chosen for exactly this reason.
 `rusqlite` is built with the `bundled` feature, so SQLite itself is compiled
 into the app. SQLite is in the public domain (https://sqlite.org/copyright.html).
 
-## Rust crates (statically linked; 395 rows — the macOS arm64 graph links 409, see the 13 Sep 2026 note)
+## Rust crates (statically linked; 412 external crates, universal macOS graph)
 
 | Crate | Version | Licence |
 |---|---|---|
@@ -281,6 +287,7 @@ into the app. SQLite is in the public domain (https://sqlite.org/copyright.html)
 | aho-corasick | 1.1.4 | Unlicense OR MIT |
 | alloc-no-stdlib | 2.0.4 | BSD-3-Clause |
 | alloc-stdlib | 0.2.4 | BSD-3-Clause |
+| allocator-api2 | 0.2.21 | MIT OR Apache-2.0 |
 | anyhow | 1.0.103 | MIT OR Apache-2.0 |
 | arrayvec | 0.7.7 | MIT OR Apache-2.0 |
 | asn1-rs | 0.6.2 | MIT OR Apache-2.0 |
@@ -303,9 +310,11 @@ into the app. SQLite is in the public domain (https://sqlite.org/copyright.html)
 | brotli | 8.0.4 | BSD-3-Clause AND MIT |
 | brotli-decompressor | 5.0.3 | BSD-3-Clause/MIT |
 | bs58 | 0.5.1 | MIT/Apache-2.0 |
+| btoi | 0.5.0 | MIT OR Apache-2.0 |
 | byte-unit | 5.2.3 | MIT |
 | bytecheck | 0.6.12 | MIT |
 | bytecheck_derive | 0.6.12 | MIT |
+| bytemuck | 1.25.0 | Zlib OR Apache-2.0 OR MIT |
 | byteorder | 1.5.0 | Unlicense OR MIT |
 | byteorder-lite | 0.1.0 | Unlicense OR MIT |
 | bytes | 1.12.0 | MIT |
@@ -318,6 +327,7 @@ into the app. SQLite is in the public domain (https://sqlite.org/copyright.html)
 | cfg-if | 1.0.4 | MIT OR Apache-2.0 |
 | cfg_aliases | 0.1.1 | MIT |
 | cfg_aliases | 0.2.1 | MIT |
+| chacha20 | 0.10.1 | MIT OR Apache-2.0 |
 | chrono | 0.4.45 | MIT OR Apache-2.0 |
 | cookie | 0.18.1 | MIT OR Apache-2.0 |
 | cookie_store | 0.22.1 | MIT OR Apache-2.0 |
@@ -326,8 +336,10 @@ into the app. SQLite is in the public domain (https://sqlite.org/copyright.html)
 | core-graphics | 0.25.0 | MIT OR Apache-2.0 |
 | core-graphics-types | 0.2.0 | MIT OR Apache-2.0 |
 | cpufeatures | 0.2.17 | MIT OR Apache-2.0 |
+| cpufeatures | 0.3.0 | MIT OR Apache-2.0 |
 | crc32fast | 1.5.0 | MIT OR Apache-2.0 |
 | crossbeam-channel | 0.5.15 | MIT OR Apache-2.0 |
+| crossbeam-queue | 0.3.13 | MIT OR Apache-2.0 |
 | crossbeam-utils | 0.8.21 | MIT OR Apache-2.0 |
 | crypto-common | 0.1.7 | MIT OR Apache-2.0 |
 | cssparser | 0.36.0 | MPL-2.0 |
@@ -430,6 +442,7 @@ into the app. SQLite is in the public domain (https://sqlite.org/copyright.html)
 | json-patch | 3.0.1 | MIT/Apache-2.0 |
 | jsonptr | 0.6.3 | MIT OR Apache-2.0 |
 | keyboard-types | 0.7.0 | MIT OR Apache-2.0 |
+| keyed_priority_queue | 0.4.2 | MIT |
 | lazy_static | 1.5.0 | MIT OR Apache-2.0 |
 | libc | 0.2.186 | MIT OR Apache-2.0 |
 | libsqlite3-sys | 0.30.1 | MIT |
@@ -437,15 +450,19 @@ into the app. SQLite is in the public domain (https://sqlite.org/copyright.html)
 | litrs | 1.0.0 | MIT OR Apache-2.0 |
 | lock_api | 0.4.14 | MIT OR Apache-2.0 |
 | log | 0.4.33 | MIT OR Apache-2.0 |
+| lru | 0.18.2 | MIT |
 | lru-slab | 0.1.2 | MIT OR Apache-2.0 OR Zlib |
 | markup5ever | 0.38.0 | MIT OR Apache-2.0 |
 | memchr | 2.8.2 | Unlicense OR MIT |
+| memchr | 2.8.3 | Unlicense OR MIT |
 | mime | 0.3.17 | MIT OR Apache-2.0 |
 | minimal-lexical | 0.2.1 | MIT/Apache-2.0 |
 | miniz_oxide | 0.8.9 | MIT OR Zlib OR Apache-2.0 |
 | mio | 1.2.1 | MIT |
 | moxcms | 0.8.1 | BSD-3-Clause OR Apache-2.0 |
 | muda | 0.19.3 | Apache-2.0 OR MIT |
+| mysql_async | 0.37.0 | MIT OR Apache-2.0 |
+| mysql_common | 0.37.3 | MIT OR Apache-2.0 |
 | new_debug_unreachable | 1.0.6 | MIT |
 | nix | 0.28.0 | MIT |
 | nom | 7.1.3 | MIT |
@@ -509,10 +526,12 @@ into the app. SQLite is in the public domain (https://sqlite.org/copyright.html)
 | radium | 0.7.0 | MIT |
 | rand | 0.8.6 | MIT OR Apache-2.0 |
 | rand | 0.9.4 | MIT OR Apache-2.0 |
+| rand | 0.10.2 | MIT OR Apache-2.0 |
 | rand_chacha | 0.3.1 | MIT OR Apache-2.0 |
 | rand_chacha | 0.9.0 | MIT OR Apache-2.0 |
 | rand_core | 0.6.4 | MIT OR Apache-2.0 |
 | rand_core | 0.9.5 | MIT OR Apache-2.0 |
+| rand_core | 0.10.1 | MIT OR Apache-2.0 |
 | raw-window-handle | 0.6.2 | MIT OR Apache-2.0 OR Zlib |
 | rcgen | 0.13.2 | MIT OR Apache-2.0 |
 | ref-cast | 1.0.25 | MIT OR Apache-2.0 |
@@ -537,6 +556,7 @@ into the app. SQLite is in the public domain (https://sqlite.org/copyright.html)
 | rustls-webpki | 0.103.13 | ISC |
 | ryu | 1.0.23 | Apache-2.0 OR BSL-1.0 |
 | same-file | 1.0.6 | Unlicense/MIT |
+| saturating | 0.1.0 | MIT |
 | schemars | 0.8.22 | MIT |
 | schemars | 0.9.0 | MIT |
 | schemars | 1.2.1 | MIT |
@@ -560,6 +580,7 @@ into the app. SQLite is in the public domain (https://sqlite.org/copyright.html)
 | serialize-to-javascript | 0.1.2 | MIT OR Apache-2.0 |
 | serialize-to-javascript-impl | 0.1.2 | MIT OR Apache-2.0 |
 | servo_arc | 0.4.3 | MIT OR Apache-2.0 |
+| sha1 | 0.10.7 | MIT OR Apache-2.0 |
 | sha2 | 0.10.9 | MIT OR Apache-2.0 |
 | shell-words | 1.1.1 | MIT/Apache-2.0 |
 | shlex | 2.0.1 | MIT OR Apache-2.0 |
@@ -626,6 +647,7 @@ into the app. SQLite is in the public domain (https://sqlite.org/copyright.html)
 | tracing-core | 0.1.36 | MIT |
 | tray-icon | 0.24.1 | MIT OR Apache-2.0 |
 | try-lock | 0.2.5 | MIT |
+| twox-hash | 2.1.3 | MIT |
 | typed-path | 0.12.3 | MIT OR Apache-2.0 |
 | typeid | 1.0.3 | MIT OR Apache-2.0 |
 | typenum | 1.20.1 | MIT OR Apache-2.0 |
@@ -670,6 +692,7 @@ into the app. SQLite is in the public domain (https://sqlite.org/copyright.html)
 | zerovec-derive | 0.11.3 | Unicode-3.0 |
 | zip | 8.6.0 | MIT |
 | zmij | 1.0.21 | MIT |
+| zmij | 1.0.23 | MIT |
 
 Notes on the non-MIT/Apache families above: the five MPL-2.0 crates
 (`cssparser`, `cssparser-macros`, `dtoa-short`, `option-ext`, `selectors`) are

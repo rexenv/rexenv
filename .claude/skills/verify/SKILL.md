@@ -7,7 +7,7 @@ description: Run rexenv's pre-commit bar (scripts/verify.sh) the only way its ve
 
 `scripts/verify.sh` is the bar: lib tests (both crates) + example builds + clippy
 `--all-targets` at zero + tsc + eslint + the generated-doc gates (`ledger-tally`,
-`doc-counts`, `status.py --check`). Its own `verify: all green` line and exit code
+`doc-counts`, `notices-check.py`, `status.py --check`). Its own `verify: all green` line and exit code
 are the verdict. An ad-hoc `cargo test && tsc` is never a gate: shell state resets
 between tool calls, so it can run from the wrong cwd and a `&&` chain passes on a
 partial check — that is how a broken commit landed on 28 Jul 2026.

@@ -20,8 +20,9 @@ live today. Do not invent a third.
    `cli/Cargo.toml`. Then `./scripts/status.py --write`. One commit.
 4. `./scripts/verify-full.sh > log 2>&1; echo exit=$?` — verify + sandbox tier +
    wk-checks. Green line only.
-5. Build: `pnpm release:mac` (universal dmg). Regenerate `THIRD-PARTY-NOTICES.md`
-   if pins moved.
+5. Build: `pnpm release:mac` (universal dmg). `THIRD-PARTY-NOTICES.md`'s crate and npm
+   tables are checked by verify (`notices-check.py`, ledger #592); the downloaded-binary
+   sections are not — update those by hand if pins moved.
 6. **Human gates — the agent cannot run these; say so, list them:**
    `docs/SMOKE-TEST.md` on the built dmg (clean Mac), then
    `docs/PUBLISH-TESTING.md` §A0/§A before publishing. Both, in that order.

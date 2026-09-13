@@ -102,17 +102,21 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   - [ ] W12 — launch gates: verify on the Windows runner, SMOKE-TEST + INSTALL Windows
     sections, clean Windows 11 VM pass
 
-- [ ] **Third-party notices — the shipped macOS app is missing 14 crates** — 13 Sep 2026, owner
-  asked whether the notices count drift was tracked; it was not (the debt lived only inside
-  `THIRD-PARTY-NOTICES.md`). Measured with the file's own `cargo metadata --filter-platform`,
-  both directions: the table's 395 rows are all in the graph, but arm64 links 409 — missing
-  `mysql_async`, `mysql_common` and 12 they pull in (list in the notices' 13 Sep note); Intel
-  adds `cpufeatures`.
-  - [ ] Add the 15 rows with their licences; the header counts the graph, not the rows
-  - [ ] A reconcile script both directions per target, so a new dependency cannot land
-    without its row (the 5 Aug npm lesson, now twice)
-  - [ ] Windows: a crate table for the Windows graph (410; 50 beyond the table) before any
-    Windows release — the download sources are already listed (plan §3a Q4)
+- [ ] **Third-party notices — a Windows crate table before any Windows release** — 13 Sep 2026,
+  owner asked whether the notices count drift was tracked; it was not (the debt lived only
+  inside `THIRD-PARTY-NOTICES.md`). The macOS half is done below; open for ONE reason: the
+  Windows graph needs its table, and `notices-check.py` a Windows target, before a Windows
+  build ships.
+  - [x] The rows the shipped app was missing ✓ 13 Sep 2026 — 17 added: `mysql_async`,
+    `mysql_common` and 13 they pull in across arm64 + x86_64 (in the app since 24 Aug, so the
+    Licenses dialog of 0.4.0–0.7.0 left them out), and the `rex` CLI's `memchr` 2.8.3 + `zmij`
+    1.0.23 (the CLI's graph was never inventoried); heading 395 → 412
+  - [x] Checked, not remembered ✓ 13 Sep 2026 — `scripts/notices-check.py` in `verify.sh`: Rust
+    both directions (arm64 ∪ x86_64, app + CLI) with licences and the heading count, npm both
+    directions with its count; plant-proven, ledger #592
+  - [ ] Windows: a crate table for the Windows graph (410 crates; 50 beyond the table) and a
+    Windows target in the check, before any Windows release — the download sources are
+    already listed (plan §3a Q4)
 
 - [ ] **The keychain (CA trust) dialog is rexenv's too** — 12 Sep 2026, owner, after the admin
   dialog got its name: the CA trust dialog still read "security". Measured first: wrapping
