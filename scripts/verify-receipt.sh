@@ -33,7 +33,11 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-RECEIPT="$ROOT/.git/rexenv-verify-receipt"
+# The checkout's OWN git dir, not "$ROOT/.git": in a `git worktree`, `.git` is a file
+# pointing elsewhere, and the hardcoded path made verify.sh fail at its last step
+# and the pre-commit hook unpassable there (found cutting 0.7.1 from a worktree,
+# 13 Sep 2026). Per-worktree is also right: the fingerprint is of THIS checkout.
+RECEIPT="$(git -C "$ROOT" rev-parse --absolute-git-dir)/rexenv-verify-receipt"
 
 # The paths the bar actually covers. `scripts/` is included deliberately: a
 # change to verify.sh changes what "green" MEANS, so it must invalidate the
