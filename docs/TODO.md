@@ -716,6 +716,18 @@ SMOKE-TEST on the built dmg, then PUBLISH-TESTING §A0/§A before publishing.** 
 this note exists for: silence in a gate list reads as "this is the set", and a gate
 nobody can see from the list is indistinguishable from a gate nobody ran.
 
+- [ ] **Release 0.7.1 — the notices fix alone, cut from v0.7.0** — owner ruling 13 Sep 2026: never
+  rebuild a published version, and do not wait for the next feature release either, because
+  the shipped binary carries code whose notice does not travel with it. Flow: `docs/RELEASING.md`,
+  "A patch release cut from a published tag". Branch `release/0.7.1` in a worktree: the 17 rows,
+  `notices-check.py` wired into `verify.sh`, its ledger row, the four-manifest bump — nothing else.
+  - [ ] `verify-full.sh` green on the branch; its two commits (the fix, the bump)
+  - [ ] `pnpm release:mac`, then §A0 by hand (both slices, the per-slice payload, codesign, one dmg)
+  - [ ] **Owner:** SMOKE-TEST on that dmg, then PUBLISH-TESTING §A
+  - [ ] Draft on `rexenv/homebrew-tap` with the one-line note → **owner** publishes → cask bump →
+    runtimes "Publish app update manifest" → `scripts/check-app-manifest.sh`
+  - [ ] Local tag `v0.7.1`; master records the shipped commit (`git merge -s ours release/0.7.1`)
+
 - [ ] **PUBLISH-TESTING §B** — uninstall removes the root :443 daemon (live launchd).
 - [ ] **PUBLISH-TESTING §D** — `--zap` ONLY; everything else has now run four times.
   **Re-scoped 21 Aug 2026**: the row below pins the v0.1.0 cask hash, but the cask has

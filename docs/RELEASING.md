@@ -185,6 +185,33 @@ release** — which is the property that makes a stolen key survivable. Ledger
    compiled into THIS tree, warns when the tap is ahead of it (the forgotten step 7), and
    compares the descriptor's sha256 to the published asset's digest.
 
+### A patch release cut from a published tag (first used for 0.7.1, 13 Sep 2026)
+
+When a fix must ship without everything master gained since the last tag — 0.7.1 was the
+notices fix alone, while 65 commits of Windows groundwork and features stayed on master
+(owner ruling) — cut it from the tag. Do not rebuild the published version:
+
+- **Never re-issue a published version's bytes.** The cask's sha256 breaks, and a user who
+  already has 0.7.0 and the tap would hold different things under one name. PHP 7.4's
+  candidate was rebuilt only because it had not been published yet; that is the line.
+- `git worktree add -b release/X.Y.Z <dir> vX.Y.W`, so the main checkout the IDE works in is
+  untouched. Apply only the fix, the docs its same-commit rule demands, and the four-manifest
+  bump; `cargo update --workspace --offline` in `src-tauri/` and `cli/` moves only the
+  workspace entries of both lockfiles, and `scripts/check-versions.sh` confirms all four agree.
+- Point the worktree's `src-tauri/target` at the main checkout's with a symlink. A second cold
+  universal build needs more disk than this Mac had free (19 GiB on 13 Sep), and the relative
+  bundle paths `release-mac.sh`, `release-assets.sh` and §A0 use keep working through it.
+  **Move — never delete — any older dmg / `.app.tar.gz` out of `bundle/` first**: §A0
+  requires exactly one dmg, and the old one may be the only copy of something.
+- `scripts/wk-checks/node_modules` is untracked, so a worktree has none and `verify-full.sh`
+  stops. Link the main checkout's when `scripts/wk-checks/package*.json` are unchanged since
+  the tag; install otherwise.
+- The draft's notes say in one line what the patch fixes — for 0.7.1, that earlier copies
+  carry an incomplete licence list. Users who downloaded before have a right to know.
+- After it ships, master records the shipped commit: `git merge -s ours release/X.Y.Z`
+  keeps the tag's commit in master's history without taking its tree (master already
+  carries the fix). Tag locally, as for every release while the repo is private.
+
 ### Going public later — two things flip in one commit
 
 The cask's `url` and `SOURCE_REPO` in `update-cask.yml` must name the same repo; the
