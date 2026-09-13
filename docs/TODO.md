@@ -43,8 +43,19 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   several default-theme fonts. macOS creates the dot-ended names without an error, so the damage is silent. On
   the owner's machine, 5 of the rexenv sites checked (`hridoy.rex`, `mstest.rex`, `msd.rex`, `new.rex`,
   `ealite`) have only the truncated file; others have both (a later update restored them). WordPress's `.zip`
-  build extracts every name intact through `ZipArchive` (measured on the Mac and the Dell). Owner to rule the
-  fix and what happens to existing sites
+  build extracts every name intact through `ZipArchive` (measured on the Mac and the Dell). **Owner ruled 14 Sep
+  2026: `wp core download` gets the zip URL; existing sites are MEASURED read-only first, repair only on a
+  further go.** Fix written: `wordpress::core_zip_url` + `core_download_args` (the only place `core download` is
+  assembled — a source guard), used by site provisioning, `install_wordpress` and `core_reinstall` (the version's
+  no-content zip, since WP-CLI refuses `--skip-content` and `--locale` with a URL); ledger #604
+  - [ ] Read-only `wp core verify-checksums` across the owner's rexenv sites — **measured 14 Sep 2026** (17 sites):
+    `hridoy.rex`, `msd.rex`, `mstest.rex`, `new.rex` (7.1) and `ealite.test` (7.0.4) each MISS 25 core files and
+    carry 21 cut-name leftovers — this bug; `bl.rex`, `tr.rex`, `tr2.rex`, `xyz.rex` pass checksums but still carry
+    the 21 cut-name leftovers (a later update restored the real files); `lm.test` (6.7.1, 175 missing) and
+    `oc.test` (6.2, 142 missing) predate `php-ai-client` — a different cause, not attributed here; the other 6 are
+    clean. Repair (`core_reinstall`) only on the owner's go. Users of 0.4.0–0.7.1
+    with sites created by rexenv are affected the same way — a release note or an in-app repair is a separate
+    ruling
 - [ ] **Windows launch** — 12 Sep 2026, owner: macOS is stable, ship a Windows version.
   Not "fill the stubs": Unix-only code outside `platform/`, no php-fpm, no `/etc/resolver`,
   no unix sockets on Windows. Reasoning, measurements and "Done when" per task:

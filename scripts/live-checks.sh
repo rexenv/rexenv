@@ -231,6 +231,7 @@ windows_files_check demo
 windows_php_pool_check demo
 windows_nginx_check demo
 windows_php_cli_check demo
+wp_core_zip_check network
 "
 
 tier_of() {

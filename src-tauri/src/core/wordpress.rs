@@ -2985,16 +2985,167 @@ pub fn rewrite_flush(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<S
 // path with progress and settle. Core is the one where it matters most — the
 // update takes minutes, and a silent one reads as a hang.
 
-/// Re-download core files of the current version (`wp core download --force`) —
-/// repairs a corrupt/modified core without touching the DB or wp-content.
+/// Re-download core files of the current version — repairs a corrupt/modified core
+/// without touching the DB or wp-content.
+///
+/// The build is the version's NO-CONTENT zip (`core_zip_url`), forced over the docroot:
+/// measured 14 Sep 2026, it restored a deleted core file and kept a user plugin and an
+/// edit to a default theme. `--skip-content` cannot be used any more — WP-CLI refuses it
+/// with a URL ("Skip content and locale options are not available for URL downloads") —
+/// and the no-content build is what that flag used to select. No-content builds exist
+/// only in en_US, which is what this always reinstalled.
 pub fn core_reinstall(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<String> {
-    wp_run_timed(
-        php_bin,
-        wp_phar,
-        docroot,
-        &["core", "download", "--force", "--skip-content"],
-        download_timeout(1),
-    )
+    let version = installed_version(docroot).ok_or_else(|| {
+        Error::Other(format!(
+            "cannot tell which WordPress version {} runs — wp-includes/version.php is missing or \
+             names no release version, so there is nothing to reinstall it from",
+            docroot.display()
+        ))
+    })?;
+    let mut args = core_download_args(&core_zip_url("", Some(&version), true)?);
+    args.push("--force".into());
+    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    wp_run_timed(php_bin, wp_phar, docroot, &refs, download_timeout(1))
+}
+
+/// The URL `wp core download` fetches WordPress from — ALWAYS a `.zip` (ledger #604).
+///
+/// **Why never the default `.tar.gz`.** WP-CLI extracts a tarball with PHP's `PharData`,
+/// and PharData reads WordPress's tarball with every member name CUT AT 100 CHARACTERS
+/// (measured 14 Sep 2026 on rexenv's PHP 8.3.32: bsdtar lists 3,782 members, PharData
+/// 3,776; `…/Contracts/WithRequestAuthenticationInterface.php` arrives as `…Interface.`,
+/// `…Italic.woff2` as `…Italic.wof`, and six files vanish where two cut names collide).
+/// macOS creates those names without an error, so sites were created missing core classes —
+/// five of the owner's own sites were. Windows cannot create them at all. The zip build
+/// extracts through `ZipArchive` with every name intact on both (measured).
+///
+/// Shapes, each measured to answer 200: `wordpress.org/latest.zip`;
+/// `downloads.wordpress.org/release/wordpress-<v>[-no-content].zip`;
+/// `downloads.wordpress.org/release/<locale>/latest.zip` and `…/<locale>/wordpress-<v>.zip`.
+/// A localized no-content build does not exist (404), so asking for one is an error; so is a
+/// no-content build without a version. The locale and version are validated before they
+/// reach a URL.
+pub fn core_zip_url(locale: &str, version: Option<&str>, no_content: bool) -> Result<String> {
+    let locale = if locale == "en_US" { "" } else { locale };
+    if !locale.is_empty() && !valid_locale(locale) {
+        return Err(Error::Other(format!("invalid locale: {locale:?}")));
+    }
+    if let Some(v) = version {
+        if !valid_release_version(v) {
+            return Err(Error::Other(format!("invalid WordPress version: {v:?}")));
+        }
+    }
+    let suffix = if no_content { "-no-content" } else { "" };
+    match (locale.is_empty(), version) {
+        (true, None) if !no_content => Ok("https://wordpress.org/latest.zip".to_string()),
+        (true, None) => Err(Error::Other("a no-content WordPress build needs a version".into())),
+        (true, Some(v)) => Ok(format!("https://downloads.wordpress.org/release/wordpress-{v}{suffix}.zip")),
+        (false, _) if no_content => Err(Error::Other(format!(
+            "WordPress publishes no no-content build for {locale}"
+        ))),
+        (false, None) => Ok(format!("https://downloads.wordpress.org/release/{locale}/latest.zip")),
+        (false, Some(v)) => Ok(format!("https://downloads.wordpress.org/release/{locale}/wordpress-{v}.zip")),
+    }
+}
+
+/// `core download <url>` — the ONE place those words are assembled for a WP-CLI spawn, so
+/// no download can reach the tarball default (a source guard checks nothing else does).
+pub fn core_download_args(url: &str) -> Vec<String> {
+    vec!["core".to_string(), "download".to_string(), url.to_string()]
+}
+
+/// A release version: two or three dot-separated numbers (`7.1`, `7.0.4`).
+fn valid_release_version(v: &str) -> bool {
+    let parts: Vec<&str> = v.split('.').collect();
+    (2..=3).contains(&parts.len())
+        && parts.iter().all(|p| !p.is_empty() && p.len() <= 4 && p.chars().all(|c| c.is_ascii_digit()))
+}
+
+/// The WordPress release a docroot runs, read from `wp-includes/version.php`.
+pub fn installed_version(docroot: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(docroot.join("wp-includes").join("version.php")).ok()?;
+    let line = text.lines().find(|l| l.trim_start().starts_with("$wp_version"))?;
+    let v = line.split('\'').nth(1)?;
+    valid_release_version(v).then(|| v.to_string())
+}
+
+#[cfg(test)]
+mod core_zip_tests {
+    use super::*;
+
+    #[test]
+    fn every_download_url_is_a_zip_in_the_measured_shapes() {
+        assert_eq!(core_zip_url("", None, false).unwrap(), "https://wordpress.org/latest.zip");
+        assert_eq!(core_zip_url("en_US", None, false).unwrap(), "https://wordpress.org/latest.zip");
+        assert_eq!(core_zip_url("", Some("7.1"), true).unwrap(), "https://downloads.wordpress.org/release/wordpress-7.1-no-content.zip");
+        assert_eq!(core_zip_url("", Some("7.0.4"), false).unwrap(), "https://downloads.wordpress.org/release/wordpress-7.0.4.zip");
+        assert_eq!(core_zip_url("de_DE", None, false).unwrap(), "https://downloads.wordpress.org/release/de_DE/latest.zip");
+        assert_eq!(core_zip_url("de_DE", Some("7.1"), false).unwrap(), "https://downloads.wordpress.org/release/de_DE/wordpress-7.1.zip");
+        for ok in [core_zip_url("", None, false), core_zip_url("fr_FR", Some("6.9.1"), false)] {
+            assert!(ok.unwrap().ends_with(".zip"));
+        }
+    }
+
+    #[test]
+    fn nothing_unvalidated_or_unpublished_reaches_a_url() {
+        assert!(core_zip_url("../../evil", None, false).is_err());
+        assert!(core_zip_url("de_DE", Some("7.1/../x"), false).is_err());
+        assert!(core_zip_url("", Some("7.1-RC1"), false).is_err());
+        assert!(core_zip_url("de_DE", Some("7.1"), true).is_err(), "no localized no-content build exists (404)");
+        assert!(core_zip_url("", None, true).is_err(), "a no-content build needs a version");
+    }
+
+    #[test]
+    fn the_installed_version_is_read_from_version_php() {
+        let dir = std::env::temp_dir().join(format!("rexenv-wpver-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("wp-includes")).unwrap();
+        std::fs::write(dir.join("wp-includes/version.php"), "<?php
+/** x */
+$wp_version = '7.0.4';
+$wp_db_version = 60717;
+").unwrap();
+        assert_eq!(installed_version(&dir).as_deref(), Some("7.0.4"));
+        std::fs::write(dir.join("wp-includes/version.php"), "<?php
+$wp_version = '7.1-beta2';
+").unwrap();
+        assert_eq!(installed_version(&dir), None, "a pre-release has no release zip to reinstall from");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **No production code asks WP-CLI for `core download` except through
+    /// `core_download_args`** — which always carries a zip URL. The tarball default was the
+    /// bug; a second hand-written `["core", "download", …]` is how it would come back.
+    /// Plant: restore the old provisioning args in site_provision.rs.
+    #[test]
+    fn core_download_is_assembled_in_one_place() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut hits = Vec::new();
+        let mut scanned = 0;
+        fn walk(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+            for e in std::fs::read_dir(dir).unwrap().flatten() {
+                let p = e.path();
+                if p.is_dir() { walk(&p, out) } else if p.extension().is_some_and(|x| x == "rs") { out.push(p) }
+            }
+        }
+        let mut files = Vec::new();
+        walk(&root, &mut files);
+        for f in files {
+            let text = std::fs::read_to_string(&f).unwrap();
+            let prod = crate::core::copy_scan::production_source(&text);
+            scanned += 1;
+            for (i, line) in prod.lines().enumerate() {
+                let compact: String = line.chars().filter(|c| !c.is_whitespace()).collect();
+                let assembles = compact.contains("\"core\",\"download\"")
+                    || compact.contains("\"core\".into(),\"download\".into()")
+                    || compact.contains("\"core\".to_string(),\"download\".to_string()");
+                if assembles && !(f.ends_with("core/wordpress.rs") && compact.starts_with("vec![\"core\".to_string(),\"download\".to_string(),url.to_string()]")) {
+                    hits.push(format!("{}:{}: {}", f.display(), i + 1, line.trim()));
+                }
+            }
+        }
+        assert!(scanned > 100, "only {scanned} files scanned — the walk is broken");
+        assert!(hits.is_empty(), "`core download` assembled outside core_download_args — the tarball default can return:\n  {}", hits.join("\n  "));
+    }
 }
 
 /// Input/validation kind of a whitelisted option (drives the UI input AND the
@@ -3603,14 +3754,13 @@ pub struct InstallOptions {
 pub fn install_wordpress(php_bin: &Path, wp_phar: &Path, opts: &WpInstall) -> Result<()> {
     let path = format!("--path={}", opts.docroot.display());
 
-    // 1) WordPress core (optionally a localized build).
+    // 1) WordPress core (optionally a localized build) — always the ZIP (`core_zip_url`).
     if !opts.docroot.join("wp-load.php").exists() {
-        let locale = format!("--locale={}", opts.locale);
-        let mut args = vec!["core", "download", &path];
-        if !opts.locale.trim().is_empty() {
-            args.push(&locale);
-        }
-        wp_cli_checked(php_bin, wp_phar, &args, None)?;
+        let url = core_zip_url(opts.locale.trim(), None, false)?;
+        let mut args = core_download_args(&url);
+        args.push(path.clone());
+        let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        wp_cli_checked(php_bin, wp_phar, &refs, None)?;
     }
 
     // 2) wp-config.php (skip the live DB check — the DB is created next).

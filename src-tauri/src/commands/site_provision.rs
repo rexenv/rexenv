@@ -1270,10 +1270,13 @@ async fn drive<R: tauri::Runtime>(
         } else if docroot.join("wp-load.php").exists() {
             finish_phase(app, entry, progress, ix, "skipped", Some("WordPress core already present"));
         } else {
-            let mut args: Vec<String> = vec!["core".into(), "download".into()];
-            if !resolved.locale.is_empty() {
-                args.push(format!("--locale={}", resolved.locale));
-            }
+            // Always the ZIP build (`wordpress::core_zip_url`, ledger #604): the tarball
+            // default reaches PharData, which cut 40 member names at 100 characters and
+            // left sites missing core files.
+            let args = match wordpress::core_zip_url(&resolved.locale, None, false) {
+                Ok(url) => wordpress::core_download_args(&url),
+                Err(e) => return JobEnd::Failed(format!("wp core download failed: {e}")),
+            };
             match streamed_step(app, entry, &env, &php_bin, &wp_phar, &docroot, args).await {
                 StepEnd::Ok => finish_phase(app, entry, progress, ix, "ok", None),
                 StepEnd::Cancelled => return JobEnd::Cancelled,
