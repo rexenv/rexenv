@@ -56,9 +56,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     the Windows bind matrix (plan §6) before `ensure_free` is written — **bind matrix ✓ 13 Sep 2026
     on the Dell** (288 binds, `scripts/probes/windows-bind-matrix.ps1`): the trial bind reports
     free under a `0.0.0.0`/`[::]` holder and then takes its localhost traffic, so `ensure_free` must
-    read the tables; :53 clean state measured (nothing there). Still open: ICS/hotspot on, a WSL
-    distribution (none installed), a holder under another account, a non-elevated token, the D5
-    installer, php-cgi
+    read the tables; :53 clean state measured (nothing there). The desktop user's Medium token
+    gives the identical 288 rows (✓ 13 Sep 2026, `scripts/probes/windows-limited-token.sh`). Still
+    open: ICS/hotspot on, a WSL distribution (none installed), a holder under another account,
+    the D5 installer, php-cgi
   - [x] W3 step 0 — a half-ported build fails out loud (plan §3a Q1, **ruled 13 Sep 2026**): panic hook →
     `crash.log` + a Windows message box; `Error::Unported` stubs instead of `todo!()` (50
     today), scan-enforced under `platform/windows/`, ledger row. **Progress 13 Sep 2026: the stubs

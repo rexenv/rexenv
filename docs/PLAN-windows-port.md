@@ -793,9 +793,11 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
     (access denied); against a wildcard holder it wins localhost exactly as a default bind
     does — the option adds nothing there. (3) `SO_EXCLUSIVEADDRUSE` on `127.0.0.1` refuses
     every later bind of that address and keeps localhost traffic when a wildcard binds after
-    it — the right option for the DNS agent and rexenv's own listeners. **Not measured:** a
-    holder running as another account (a service as LocalService/SYSTEM), a non-elevated
-    token, and Windows 11.
+    it — the right option for the DNS agent and rexenv's own listeners. **The desktop user's token
+    gives the same answer:** re-run the same day as an Interactive, RunLevel Limited task
+    (`scripts/probes/windows-limited-token.sh`; the wrapper recorded `token elevated: False`,
+    Medium integrity), all 288 rows came back identical to the elevated run. **Not measured:**
+    a holder running as another account (a service as LocalService/SYSTEM), and Windows 11.
   Not new to Windows in kind: on macOS, Herd shadow-binds 127.0.0.1:443 with no bind error,
   and what caught it was checking who answered.
 
@@ -809,7 +811,11 @@ there) is the release-gate machine — **measured 13 Sep 2026: Windows 10 Pro 22
 not 11**, which D6 calls best-effort, so it cannot be the gate for the "supported" Windows 11
 alone. Reached from the Mac over OpenSSH (key auth; the default shell is Windows PowerShell 5.1,
 so probes go through `-EncodedCommand`); an SSH session carries an ELEVATED admin token, unlike a
-desktop user's filtered one, so anything token-sensitive must also be measured from the desktop; a Windows 11 ARM VM on the M3 Pro Mac runs the x64
+desktop user's filtered one, so anything token-sensitive must also be measured from the desktop's token —
+`scripts/probes/windows-limited-token.sh` runs a probe as an Interactive, RunLevel Limited
+scheduled task in the logged-on session, which measured Medium integrity (an S4U task with
+Limited still ran High). The Dell is on 2.4 GHz Wi-Fi with adapter power saving on, and SSH
+sessions to it drop for minutes at a time, so probes use short sessions and keepalives; a Windows 11 ARM VM on the M3 Pro Mac runs the x64
 build under emulation for the day-to-day loop, and never counts as the x64 proof. Both
 are driven over OpenSSH from the Mac; dialogs are read by a human. `docs/TESTING.md` gains a Windows column when W0 lands — not before, so it never
 claims coverage that does not run.
