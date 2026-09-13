@@ -337,6 +337,13 @@ coexist with another process's wildcard bind unless one side set `SO_EXCLUSIVEAD
 each state also runs `Resolve-DnsName probe.rex -Server 127.0.0.1` against a bound agent
 and records which process replied. The agent binds with `SO_EXCLUSIVEADDRUSE`. If no common
 state holds loopback :53, the fallback question closes itself.
+**Measured 13 Sep 2026, the Dell's clean state:** nothing on UDP or TCP 53. `SharedAccess` (ICS)
+is running but idle — its DNS proxy binds only while sharing is on; Hyper-V's `vmms` and Docker
+are not installed; WSL is present (`LxssManager`, `hns` running) with **no distribution and no
+WSL 2 kernel**, so the WSL states cannot be measured here without installing one. The §6 matrix
+already answers "who answers": a `127.0.0.1` bind wins loopback traffic over a `0.0.0.0` or
+`[::]` holder, so a wildcard :53 holder would not stop the agent — only a `127.0.0.1` holder or
+an exclusive wildcard would, and those are the ones to refuse by name.
 
 **D3 — Local IPC (the CLI, MCP and Caddy admin sockets).** **RULED 12 Sep 2026 by the
 owner: named pipes with a current-user ACL, behind a new 13th trait `LocalIpc`** (chosen
@@ -761,9 +768,34 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   - Sockets rexenv opens itself (the DNS agent, probe listeners) set `SO_EXCLUSIVEADDRUSE`, so
     nothing shadows them. A third-party server's socket options are its own, which is why the
     identity check is the rule and not the option.
-  - *Measure on the VM first:* the bind matrix `ensure_free` will rely on — a trial bind
-    against an existing wildcard, loopback and `[::]` listener, with and without
-    `SO_REUSEADDR` / `SO_EXCLUSIVEADDRUSE` on either side — as a small probe.
+  - **Measured 13 Sep 2026 on the Dell** (Windows 10 22H2, over SSH — an elevated admin token,
+    one user; `scripts/probes/windows-bind-matrix.ps1`, 288 binds): A binds first, B second, on
+    the same port, then a connection or datagram goes to `127.0.0.1`. TCP and UDP came out
+    IDENTICAL. `x` = in use, `acc` = access denied, `ok:A/B` = both bound and that one received:
+
+    | A \ B | 0.0.0.0 | 127.0.0.1 | 127.0.0.1 +REUSEADDR | 127.0.0.1 +EXCLUSIVE |
+    |---|---|---|---|---|
+    | 0.0.0.0 | x | **ok:B** | **ok:B** | ok:B |
+    | 0.0.0.0 +EXCLUSIVE | x | acc | acc | acc |
+    | 127.0.0.1 | ok:A | x | acc | x |
+    | 127.0.0.1 +EXCLUSIVE | ok:A | x | acc | x |
+    | `[::]` dual-stack | ok:B | **ok:B** | ok:B | ok:B |
+    | `[::]` dual-stack +EXCLUSIVE | acc | acc | acc | acc |
+    | `[::]` v6-only | ok:B | **ok:B** | ok:B | ok:B |
+
+    Three consequences. (1) **`is_free`'s trial bind (`127.0.0.1`, default options — what
+    Rust's `TcpListener::bind` does) reports FREE while another process holds the port on
+    `0.0.0.0` or `[::]`, and once rexenv binds, `127.0.0.1` traffic goes to rexenv's socket,
+    the more specific one** — a developer's own MySQL on `0.0.0.0:13306` would lose its
+    localhost clients to ours without any conflict being reported. It fails correctly only
+    when the holder is on `127.0.0.1` itself or bound its wildcard EXCLUSIVE. (2) php-cgi's
+    `SO_REUSEADDR` cannot take `127.0.0.1` from a server bound there with default options
+    (access denied); against a wildcard holder it wins localhost exactly as a default bind
+    does — the option adds nothing there. (3) `SO_EXCLUSIVEADDRUSE` on `127.0.0.1` refuses
+    every later bind of that address and keeps localhost traffic when a wildcard binds after
+    it — the right option for the DNS agent and rexenv's own listeners. **Not measured:** a
+    holder running as another account (a service as LocalService/SYSTEM), a non-elevated
+    token, and Windows 11.
   Not new to Windows in kind: on macOS, Herd shadow-binds 127.0.0.1:443 with no bind error,
   and what caught it was checking who answered.
 
@@ -773,7 +805,11 @@ The Mac proves COMPILATION for Windows (W0's cross-check) and nothing else — n
 test, no link, no run. Everything past W2 needs Windows itself. The owner's machines
 (12 Sep 2026): a **Dell Inspiron 3543** (i7-5500U, 8 GB — real x64, low-end, not on
 Windows 11's supported-CPU list, too slow to be the build box: build elsewhere, run
-there) is the release-gate machine; a Windows 11 ARM VM on the M3 Pro Mac runs the x64
+there) is the release-gate machine — **measured 13 Sep 2026: Windows 10 Pro 22H2 (build 19045),
+not 11**, which D6 calls best-effort, so it cannot be the gate for the "supported" Windows 11
+alone. Reached from the Mac over OpenSSH (key auth; the default shell is Windows PowerShell 5.1,
+so probes go through `-EncodedCommand`); an SSH session carries an ELEVATED admin token, unlike a
+desktop user's filtered one, so anything token-sensitive must also be measured from the desktop; a Windows 11 ARM VM on the M3 Pro Mac runs the x64
 build under emulation for the day-to-day loop, and never counts as the x64 proof. Both
 are driven over OpenSSH from the Mac; dialogs are read by a human. `docs/TESTING.md` gains a Windows column when W0 lands — not before, so it never
 claims coverage that does not run.
