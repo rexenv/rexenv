@@ -933,8 +933,15 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   answering Yes to both prompts): `trust_ca` returned Ok after 6.6 s and `is_trusted` was true; a
   second `trust_ca` returned Ok in 0.0 s (no prompt); `untrust_ca` returned Ok and `is_trusted` was
   false. No elevation is needed. The untrust's elapsed time read 3883.7 s, past the check's 180 s
-  deadline, while the Dell was unreachable over both the tunnel and the LAN — not explained. **Owed:**
-  a No answered live (the cancel wording rests on L0), then a lock in Edge, Chrome and Firefox.
+  deadline, while the Dell was unreachable over both the tunnel and the LAN — not explained. **Every
+  answer, the same evening** (`windows-cert-trust-answers.ps1`; the owner answered No, Yes, No, Yes):
+  a No to the install and a No to the delete each came back as rexenv's cancel wording and left the
+  store as it was; each Yes did what it said. The prompts are Windows' own, shown in rexenv's process
+  (the check's watcher found them among its own windows): "Security Warning" — "You are about to install
+  a certificate from a certification authority (CA) claiming to represent: rexenv Local CA … Thumbprint
+  (sha1) …" — and "Root Certificate Store" — "Do you want to DELETE the following certificate from the
+  Root Store?" with the subject, validity, serial and thumbprints. They name the CA, not the app; there is
+  no hook to reword them. **Owed:** a lock in Edge, Chrome and Firefox.
 - **W6 — DNS + privileges.** D2's :53 measurement first, then the agent, the NRPT rules and the refusal that names a
   :53 holder; `PrivilegeManager` as a UAC
   elevation that says what it is for (the macOS dialog rule, ledger #579's family);

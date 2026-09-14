@@ -318,7 +318,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     session, the same day** (`windows-cert-trust-desktop.ps1` through `windows-limited-token.sh`, Medium
     token, the owner at the Dell answering Yes twice): PASS — `trust_ca` Ok after 6.6 s and `is_trusted`
     true; a re-trust Ok in 0.0 s; `untrust_ca` Ok and `is_trusted` false; exe, task and folder removed.
-    Still owed: a No answered live (the cancel wording rests on L0), then the three browsers
+    **And every answer, the same evening** (`windows-cert-trust-answers.ps1`, the owner answering No,
+    Yes, No, Yes): PASS — install No → the cancel, not trusted; install Yes → trusted; delete No → the
+    cancel, still trusted; delete Yes → gone. Windows' prompts, read off the screen by the check: "Security
+    Warning" naming "rexenv Local CA" and its SHA-1 thumbprint, and "Root Certificate Store" — "Do you
+    want to DELETE the following certificate from the Root Store?". Still to come: the three browsers
   - [ ] W6 — DNS agent + NRPT + UAC + logon task → `*.rex` resolves after reboot, app closed
   - [ ] W7 — ShellRunner, autostart, tray (includes the Windows half of the browser-stub row)
   - [ ] W8 — `rex` CLI + MCP over named pipes; `rex.exe` on PATH

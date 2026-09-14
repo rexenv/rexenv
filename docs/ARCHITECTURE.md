@@ -152,7 +152,11 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   `while_prompting` exactly as on macOS; a No reads as a cancel. `is_trusted` is a prompt-free lookup
   in the logical store (machine roots count). With no interactive desktop the add fails at once with
   0x32 — measured over SSH — and is worded as that, not as a raw number. Chrome and Edge read this
-  store; Firefox reads it through `security.enterprise_roots.enabled` (above).
+  store; Firefox reads it through `security.enterprise_roots.enabled` (above). The prompts are Windows'
+  own dialogs inside rexenv's process, and they name the CA, not the app: "Security Warning … claiming to
+  represent: rexenv Local CA … Thumbprint (sha1)" to add, "Root Certificate Store — Do you want to
+  DELETE the following certificate from the Root Store?" to remove (measured; unlike macOS, there is no
+  API to title them). So the CA's subject, `rexenv Local CA`, is the only name a Windows user sees there.
 - **Per-site server overrides** (`OverrideKind` in the manager — one seam, two kinds
   today, OLS drops in later if a macOS artifact ever exists):
   - **FrankenPHP** (single static binary, embeds its own PHP): loopback backend on a
