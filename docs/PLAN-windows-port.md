@@ -834,7 +834,9 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   not yet trusted:** WP-CLI's mail rode `mail::sendmail_path_cli`, which escapes for `/bin/sh`; it
   delivered from `C:\Users\DELL\…`, and **with a space in the path it is lost while `mail()` answers
   `true`** — measured the same day (`windows_cli_mail_probe`: the sh-escaped space and a quoted path
-  both failed in cmd.exe; PHP's `SMTP`/`smtp_port` keys delivered with no shell involved; TODO). The edge
+  both failed in cmd.exe; PHP's `SMTP`/`smtp_port` keys delivered with no shell involved). **Fixed the
+  same day (#407):** on a php-cgi platform WP-CLI gets the keys and no `sendmail_path` flag at all — an
+  emptied `-d sendmail_path=` is `""` to PHP, not NULL, and lost the mail with `true` again (measured). The edge
   (W5) and `.rex` names (W6) are not part of this proof.
 - **W5 — HTTPS edge.** Caddy on :443 (Windows has no privileged ports, so the edge need
   not run elevated — record why in ARCHITECTURE), admin per D3, `EdgeSupervisor` for that

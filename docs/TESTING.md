@@ -1322,8 +1322,10 @@ bloating the fast path:
   refusing every Windows path (#303).
   `windows_cli_mail_probe` is a PROBE: `php.exe` with the `-d` flags a WP-CLI spawn gets, one
   `mail()` per shape (today's sendmail shim from a folder with and without a space, the path
-  double-quoted, PHP's SMTP keys), each subject then looked up in Mailpit — because `mail()` answers
-  `true` whether or not anything was delivered, and only the sink can tell.
+  double-quoted, PHP's SMTP keys, and the keys with an EMPTIED `sendmail_path`), each subject then
+  looked up in Mailpit — because `mail()` answers `true` whether or not anything was delivered, and
+  only the sink can tell. The fifth shape exists because the first WP-CLI fix sent it, and it lost the
+  mail just as silently.
 
 A gate nobody can afford to run stops being one: the fast bar stays fast, and nothing
 above it is required per-commit. The metric the gate serves is the ledger tally, which

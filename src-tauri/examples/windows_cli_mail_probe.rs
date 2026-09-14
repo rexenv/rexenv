@@ -91,6 +91,12 @@ mod windows {
             ("case2 shim with space", vec!["-d".into(), format!("sendmail_path={}", mail::sendmail_path_cli(&spaced))]),
             ("case3 quoted with space", vec!["-d".into(), format!("sendmail_path={quoted}")]),
             ("case4 smtp keys", vec!["-d".into(), "SMTP=127.0.0.1".into(), "-d".into(), format!("smtp_port={smtp}")]),
+            // The first fix added an EMPTIED sendmail_path to the keys, and real WP-CLI mail then
+            // vanished with `true` (windows_wp_site_check, 14 Sep 2026). Is the empty value the cause?
+            (
+                "case5 smtp keys with an emptied sendmail_path",
+                vec!["-d".into(), "sendmail_path=".into(), "-d".into(), "SMTP=127.0.0.1".into(), "-d".into(), format!("smtp_port={smtp}")],
+            ),
         ];
         let mut delivered = Vec::new();
         for (subject, flags) in &cases {

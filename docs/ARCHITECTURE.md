@@ -556,6 +556,10 @@ Live-proven end to end by `site_stop_start_check`.
   A site folder is checked for config-breaking characters inside each folder NAME
   (`sites::config_breaking_char`, #303), so Windows' `\` separator passes while a `\` inside a Unix
   folder name is still refused; judged across the raw string, it had refused every Windows path.
+  **WP-CLI's mail on Windows goes by PHP's SMTP keys, not the sendmail shim** (#407): the shim is a
+  cmd.exe command line there, and a Mailpit path with a space was lost in it while `mail()` answered
+  `true`. `wordpress::finish_wp_argv` gives a php-cgi platform `-d SMTP=127.0.0.1 -d smtp_port=…` and
+  NO `sendmail_path` flag — an emptied one is `""` to PHP, not the NULL that selects SMTP.
   **The shared nginx on Windows** (#602): every path in nginx.conf goes through `services::nginx_path`
   (forward slashes — a backslash in a quoted nginx string is an escape, measured); the binary is
   `binaries::resolve_program`, which answers a single binary or `nginx.exe` inside its tree; the socket

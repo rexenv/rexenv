@@ -189,6 +189,23 @@ mod windows {
             wait_for_mail("Password Reset"),
             &format!("{} · mailpit: {}", head(&reset), head(&mailpit_messages())),
         );
+        // WP-CLI routes mail by PHP's SMTP keys here, never the sendmail shim — a shim is a cmd.exe
+        // line that a Mailpit path with a space breaks while mail() answers true (#407). Read from
+        // INSIDE a real WP-CLI run, so it is what PHP was given, not what an argv builder returns.
+        // (The shim would deliver from this Mailpit path too — it has no space — so the delivery
+        // below cannot tell the branches apart; this can.)
+        let ini = wordpress::wp_cli(
+            &php,
+            &wp,
+            &["eval", "echo ini_get('SMTP'), '|', ini_get('smtp_port'), '|', ini_get('sendmail_path');", &format!("--path={}", docroot.display())],
+            None,
+        );
+        let ini = ini.map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_else(|e| e.to_string());
+        check.is(
+            "inside WP-CLI, PHP's SMTP keys aim at Mailpit and no sendmail shim is set",
+            ini == format!("127.0.0.1|{}|", mail::MAILPIT_SMTP_PORT),
+            &ini,
+        );
         let eval = wordpress::wp_cli(
             &php,
             &wp,

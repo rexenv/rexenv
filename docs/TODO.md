@@ -220,7 +220,13 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     across the whole string) — now judged per folder name (#303). Still to come: the busy-workers
     signal, the pool's health probe as a FastCGI `GET_VALUES` round trip instead of a TCP connect,
     Composer through the site's PHP
-    - [ ] **WP-CLI's mail is LOST, silently, on Windows when Mailpit's path has a space** — measured
+    - [x] ✓ 14 Sep 2026 — fixed: where the pool model is the php-cgi group, `finish_wp_argv` gives
+      WP-CLI `-d SMTP=127.0.0.1 -d smtp_port=11025` and NO `sendmail_path` flag (ledger #407). The
+      first fix also sent `-d sendmail_path=`, and real WP-CLI mail vanished with `true` on the Dell:
+      PHP takes the SMTP path only when that setting is NULL, and an emptied one is `""`
+      (ext/standard/mail.c; the probe's case 5 then measured exactly that). Dell after the fix:
+      `windows_wp_site_check` PASS — PHP read inside a real WP-CLI run had the keys and no shim, and
+      `wp eval wp_mail()` arrived in Mailpit. **WP-CLI's mail is LOST, silently, on Windows when Mailpit's path has a space** — measured
       14 Sep 2026 on the Dell (`windows_cli_mail_probe`, `php.exe` run with the flags a WP-CLI spawn
       gets, a `mail()` per case, Mailpit's API asked for each subject). It rides `-d
       sendmail_path=<mailpit> sendmail …` from `mail::sendmail_path_cli`, escaped for `/bin/sh`:

@@ -90,6 +90,10 @@ pub fn sendmail_path(mailpit_bin: &Path) -> String {
 /// So this escapes for `sh` instead of quoting: every byte outside a
 /// conservative safe set gets a backslash, which survives `-d`'s unquoting
 /// because there are no quotes to remove.
+///
+/// For php-fpm platforms only: on a php-cgi platform (Windows) this is a cmd.exe
+/// line that a space in the path breaks, and WP-CLI gets PHP's SMTP keys instead
+/// (`wordpress::finish_wp_argv`, ledger #407).
 pub fn sendmail_path_cli(mailpit_bin: &Path) -> String {
     format!(
         "{} sendmail -t -S 127.0.0.1:{MAILPIT_SMTP_PORT}",

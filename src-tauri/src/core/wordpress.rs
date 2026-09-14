@@ -260,22 +260,51 @@ pub fn wp_argv_prefix(wp_phar: &Path) -> Vec<String> {
     // omitted, which is right, because there is no sink to aim at either.
     // Resolving the platform here keeps the signature — and so the guard's
     // "build yours from wp_argv_prefix" instruction — unchanged.
-    let mailpit = super::binaries::cached_bin(
-        &*crate::platform::current(),
-        "mailpit",
-        super::binaries::MAILPIT_VERSION,
-    );
-    finish_wp_argv(argv, wp_phar, mailpit.as_deref())
+    let platform = crate::platform::current();
+    let mailpit = super::binaries::cached_bin(&*platform, "mailpit", super::binaries::MAILPIT_VERSION);
+    finish_wp_argv(argv, wp_phar, mailpit.as_deref(), platform.supervisor().php_pool_model())
 }
 
-/// [`wp_argv_prefix`] minus the platform lookup — split out so BOTH branches
-/// are unit-testable, since whether the flag appears otherwise depends on
-/// whether the machine running the test happens to have Mailpit downloaded.
-/// The same split `dbmirror::mirror_sql` uses, for the same reason.
-fn finish_wp_argv(mut argv: Vec<String>, wp_phar: &Path, mailpit_bin: Option<&Path>) -> Vec<String> {
+/// [`wp_argv_prefix`] minus the platform lookup — split out so EVERY branch is
+/// unit-testable, since whether the flag appears otherwise depends on whether
+/// the machine running the test happens to have Mailpit downloaded, and how it
+/// is spelled on which OS it runs. The same split `dbmirror::mirror_sql` uses,
+/// for the same reason.
+///
+/// `model` decides HOW mail reaches Mailpit (ledger #407):
+/// - php-fpm platforms: the `sendmail_path` shim, escaped for `/bin/sh`;
+/// - a php-cgi group (Windows): PHP's own `SMTP`/`smtp_port` keys and NO
+///   `sendmail_path` flag at all. The shim is a cmd.exe command line there, and
+///   with a SPACE in Mailpit's path cmd.exe splits it while `mail()` still answers
+///   `true` — measured on the Dell, 14 Sep 2026 (`windows_cli_mail_probe`);
+///   quoting the path fails too, because `-d` drops the quotes. The keys need no
+///   shell, carry no path, and are how the group's own ini routes a page's mail
+///   (#601). **Never `-d sendmail_path=`:** PHP's `mail()` takes the SMTP path
+///   only when that setting is NULL (`if (!sendmail_path)`, ext/standard/mail.c),
+///   and an emptied one is `""`, not NULL — the first version of this fix sent it,
+///   and real WP-CLI mail vanished on the Dell with `wp_mail()` answering `true`.
+fn finish_wp_argv(
+    mut argv: Vec<String>,
+    wp_phar: &Path,
+    mailpit_bin: Option<&Path>,
+    model: crate::platform::traits::PoolModel,
+) -> Vec<String> {
     if let Some(bin) = mailpit_bin {
-        argv.push("-d".into());
-        argv.push(format!("sendmail_path={}", super::mail::sendmail_path_cli(bin)));
+        match model {
+            crate::platform::traits::PoolModel::Fpm => {
+                argv.push("-d".into());
+                argv.push(format!("sendmail_path={}", super::mail::sendmail_path_cli(bin)));
+            }
+            crate::platform::traits::PoolModel::CgiGroup(_) => {
+                for flag in [
+                    "SMTP=127.0.0.1".to_string(),
+                    format!("smtp_port={}", super::mail::MAILPIT_SMTP_PORT),
+                ] {
+                    argv.push("-d".into());
+                    argv.push(flag);
+                }
+            }
+        }
     }
     // The phar stays LAST: everything before it is a PHP flag, everything after
     // it is a wp-cli argument, and a caller appends its subcommand to what this
@@ -4214,7 +4243,8 @@ mod tests {
         let phar = std::path::Path::new("/tmp/wp-cli.phar");
         let mailpit = std::path::Path::new("/tmp/bin/mailpit");
 
-        let with = finish_wp_argv(vec!["-d".into(), "memory_limit=512M".into()], phar, Some(mailpit));
+        let fpm = crate::platform::traits::PoolModel::Fpm;
+        let with = finish_wp_argv(vec!["-d".into(), "memory_limit=512M".into()], phar, Some(mailpit), fpm);
         let flag = with
             .iter()
             .position(|a| a.starts_with("sendmail_path="))
@@ -4233,10 +4263,33 @@ mod tests {
 
         // No Mailpit cached: no flag, and nothing else changes. Correct rather
         // than degraded — with no binary there is no sink to aim at either.
-        let without = finish_wp_argv(vec!["-d".into(), "memory_limit=512M".into()], phar, None);
+        let without = finish_wp_argv(vec!["-d".into(), "memory_limit=512M".into()], phar, None, fpm);
         assert!(!without.iter().any(|a| a.starts_with("sendmail_path=")));
         assert_eq!(without.last().map(String::as_str), Some("/tmp/wp-cli.phar"));
         assert_eq!(without.len() + 2, with.len(), "the flag is the only difference");
+
+        // A php-cgi group (Windows): PHP's SMTP keys and NO sendmail_path flag, never the shim
+        // — a shim with a space in Mailpit's path is lost in cmd.exe while mail() answers true
+        // (measured on the Dell, 14 Sep 2026). No path reaches the argv at all.
+        let group = crate::platform::traits::PoolModel::CgiGroup(crate::platform::traits::CgiGroup {
+            extensions: &[],
+            zend_extensions: &[],
+        });
+        let spaced = std::path::Path::new("C:/Users/John Smith/AppData/Local/rexenv/bin/mailpit.exe");
+        let win = finish_wp_argv(vec!["-d".into(), "memory_limit=512M".into()], phar, Some(spaced), group);
+        assert!(!win.iter().any(|a| a.contains("sendmail -t")), "the shim is back on a php-cgi platform: {win:?}");
+        assert!(!win.iter().any(|a| a.contains("John Smith")), "a Mailpit path reached the argv: {win:?}");
+        assert!(
+            !win.iter().any(|a| a.starts_with("sendmail_path=")),
+            "an emptied sendmail_path is \"\" to PHP, not NULL: mail() then pipes to nothing and answers true (measured on the Dell): {win:?}"
+        );
+        for flag in ["SMTP=127.0.0.1".to_string(), format!("smtp_port={}", crate::core::mail::MAILPIT_SMTP_PORT)] {
+            let at = win.iter().position(|a| *a == flag).unwrap_or_else(|| panic!("missing -d {flag}: {win:?}"));
+            assert_eq!(win[at - 1], "-d", "{flag} is not attached to a -d flag");
+        }
+        assert_eq!(win.last().map(String::as_str), Some("/tmp/wp-cli.phar"), "the phar must stay LAST");
+        let win_without = finish_wp_argv(vec!["-d".into(), "memory_limit=512M".into()], phar, None, group);
+        assert!(!win_without.iter().any(|a| a.starts_with("SMTP=")), "no Mailpit cached: no keys either");
     }
 
     use super::*;
