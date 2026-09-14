@@ -67,20 +67,35 @@ impl Paths for WindowsPaths {
 
 pub struct WindowsDns;
 impl DnsManager for WindowsDns {
-    fn resolver_path(&self, _tld: &str) -> PathBuf {
-        unported!("windows DNS — no /etc/resolver equivalent (NRPT, plan D2)")
+    /// An NRPT rule, not a file (plan §3 D2).
+    fn route_label(&self, tld: &str) -> String {
+        format!("the NRPT rule for .{tld}")
     }
-    fn resolver_contents(&self, _port: u16) -> String {
-        unported!("windows DNS")
+    fn route_contents(&self, _port: u16) -> String {
+        "an NRPT rule sending the TLD to 127.0.0.1 (rexenv's resolver)".into()
     }
+    /// rexenv writes no NRPT rule until W6 S4's rules land, so none is ours; reading another tool's comes
+    /// with them (ledger #617). A status read — `dns_status` and a login launch reached `resolver_path`
+    /// here, an `unported!` panic.
+    fn route_owner(&self, _tld: &str, _port: u16) -> ResolverOwner {
+        ResolverOwner::Absent
+    }
+    fn our_route_tlds(&self, _port: u16) -> Vec<String> {
+        Vec::new()
+    }
+    fn foreign_route_tlds(&self, _port: u16) -> Vec<String> {
+        Vec::new()
+    }
+    /// Never run yet: `WindowsPrivileges::run_privileged` is `Error::Unported` until W6 S3, which is where
+    /// a privileged route change fails, as an ordinary error.
     fn install_command(&self, _tld: &str, _port: u16) -> String {
-        unported!("windows DNS")
+        String::new()
     }
     fn uninstall_command(&self, _tlds: &[String]) -> String {
-        unported!("windows DNS")
+        String::new()
     }
     fn restore_command(&self, _restores: &[(String, PathBuf)]) -> String {
-        unported!("windows DNS")
+        String::new()
     }
 }
 

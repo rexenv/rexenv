@@ -29,10 +29,19 @@ impl Paths for LinuxPaths {
 
 pub struct LinuxDns;
 impl DnsManager for LinuxDns {
-    fn resolver_path(&self, _tld: &str) -> PathBuf {
+    fn route_label(&self, _tld: &str) -> String {
         todo!("linux systemd-resolved / dnsmasq")
     }
-    fn resolver_contents(&self, _port: u16) -> String {
+    fn route_contents(&self, _port: u16) -> String {
+        todo!("linux DNS")
+    }
+    fn route_owner(&self, _tld: &str, _port: u16) -> ResolverOwner {
+        todo!("linux DNS")
+    }
+    fn our_route_tlds(&self, _port: u16) -> Vec<String> {
+        todo!("linux DNS")
+    }
+    fn foreign_route_tlds(&self, _port: u16) -> Vec<String> {
         todo!("linux DNS")
     }
     fn install_command(&self, _tld: &str, _port: u16) -> String {

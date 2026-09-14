@@ -474,9 +474,9 @@ fn resolver_status_for(
     ResolverTldStatus {
         tld: tld.to_string(),
         owner: owner.to_string(),
-        path: platform.dns().resolver_path(tld).display().to_string(),
+        path: platform.dns().route_label(tld),
         their_content: their.or_else(|| borrowed.map(|b| b.original)),
-        our_content: platform.dns().resolver_contents(port),
+        our_content: platform.dns().route_contents(port),
         rexenv_sites: existing.iter().filter(|s| s.domain.ends_with(&format!(".{tld}"))).count(),
     }
 }

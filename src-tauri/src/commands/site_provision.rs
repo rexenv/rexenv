@@ -2458,11 +2458,20 @@ mod tests {
     /// half-onboarded machine the never-prompt rule exists for.
     struct AbsentResolver(PathBuf);
     impl DnsManager for AbsentResolver {
-        fn resolver_path(&self, tld: &str) -> PathBuf {
-            self.0.join(format!("resolver-{tld}"))
+        fn route_label(&self, tld: &str) -> String {
+            self.0.join(format!("resolver-{tld}")).display().to_string()
         }
-        fn resolver_contents(&self, port: u16) -> String {
+        fn route_contents(&self, port: u16) -> String {
             format!("nameserver 127.0.0.1\nport {port}\n")
+        }
+        fn route_owner(&self, tld: &str, port: u16) -> crate::platform::traits::ResolverOwner {
+            crate::platform::resolver_files::owner_of(&self.0.join(format!("resolver-{tld}")), &self.route_contents(port))
+        }
+        fn our_route_tlds(&self, port: u16) -> Vec<String> {
+            crate::platform::resolver_files::tlds_matching_signature(&self.0, &self.route_contents(port))
+        }
+        fn foreign_route_tlds(&self, port: u16) -> Vec<String> {
+            crate::platform::resolver_files::tlds_not_matching_signature(&self.0, &self.route_contents(port))
         }
         fn install_command(&self, _tld: &str, _port: u16) -> String {
             "true".into()

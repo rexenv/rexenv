@@ -413,7 +413,7 @@ pub fn remove_resolver(platform: &dyn Platform, tld: &str, port: u16) -> Result<
     match resolver_owner(platform, tld, port) {
         ResolverOwner::Absent => Ok(false),
         ResolverOwner::Foreign { .. } => {
-            Err(foreign_resolver_error(&platform.dns().resolver_path(tld)))
+            Err(foreign_resolver_error(&platform.dns().route_label(tld)))
         }
         ResolverOwner::Ours => {
             let cmd = platform.dns().uninstall_command(std::slice::from_ref(&tld.to_string()));
@@ -428,46 +428,12 @@ pub fn remove_resolver(platform: &dyn Platform, tld: &str, port: u16) -> Result<
     }
 }
 
-/// Who owns the OS resolver file for a TLD.
-///
-/// Ownership across this codebase is CONTENT equality — there is no marker and
-/// no provenance in the file itself (`resolver_contents` doubles as the
-/// signature). That makes "is this ours?" answerable, which is what keeps the
-/// teardown sweep from touching a foreign file.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ResolverOwner {
-    /// No file at all — installing is a plain create, nothing to consent to.
-    Absent,
-    /// Exactly our signature — nothing to do.
-    Ours,
-    /// Someone else's file (Valet, Herd, hand-written). NEVER overwritten
-    /// without an explicit takeover that backs it up first. `content` is `None`
-    /// when the file exists but couldn't be read.
-    Foreign { content: Option<String> },
-}
+/// Who owns a TLD's route (`platform::traits::ResolverOwner`, where the trait that answers it lives).
+pub use crate::platform::traits::ResolverOwner;
 
 /// Classify the resolver file for `tld`.
 pub fn resolver_owner(platform: &dyn Platform, tld: &str, port: u16) -> ResolverOwner {
-    owner_of(
-        &platform.dns().resolver_path(tld),
-        &platform.dns().resolver_contents(port),
-    )
-}
-
-/// The classification itself, over a path + signature so it is unit-testable
-/// against fixture files (same reason [`tlds_matching_signature`] takes a dir):
-/// the dev machine has no foreign resolver file to exercise this against, and
-/// creating a root-owned one to test would be worse than a fixture.
-///
-/// A file we cannot READ counts as foreign, never absent — refusing to touch
-/// what we can't inspect is the safe direction.
-fn owner_of(path: &std::path::Path, signature: &str) -> ResolverOwner {
-    match std::fs::read_to_string(path) {
-        Ok(c) if c == signature => ResolverOwner::Ours,
-        Ok(content) => ResolverOwner::Foreign { content: Some(content) },
-        Err(_) if path.exists() => ResolverOwner::Foreign { content: None },
-        Err(_) => ResolverOwner::Absent,
-    }
+    platform.dns().route_owner(tld, port)
 }
 
 // `resolver_installed` lived here until 3 Sep 2026 and is DELETED. It answered
@@ -477,12 +443,11 @@ fn owner_of(path: &std::path::Path, signature: &str) -> ResolverOwner {
 // that trusts it installs over a tool the user is still using.
 
 /// The refusal when another tool already owns a TLD's resolver file.
-fn foreign_resolver_error(path: &std::path::Path) -> Error {
+fn foreign_resolver_error(label: &str) -> Error {
     Error::Other(format!(
-        "{} is managed by another tool (most likely Valet or Herd) — rexenv won't \
+        "{label} is managed by another tool (most likely Valet or Herd) — rexenv won't \
          overwrite it. rexenv can take that TLD over, backing up the existing file first \
-         and restoring it if you hand it back, or you can use a different TLD for this site.",
-        path.display()
+         and restoring it if you hand it back, or you can use a different TLD for this site."
     ))
 }
 
@@ -514,7 +479,7 @@ pub fn ensure_resolver(
             ))),
         },
         ResolverOwner::Foreign { .. } => {
-            Err(foreign_resolver_error(&platform.dns().resolver_path(tld)))
+            Err(foreign_resolver_error(&platform.dns().route_label(tld)))
         }
     }
 }
@@ -575,7 +540,7 @@ pub fn take_over_resolver(
             return Err(Error::Other(format!(
                 "{} can't be read, so rexenv can't back it up — and it won't replace a file \
                  it couldn't give back.",
-                platform.dns().resolver_path(tld).display()
+                platform.dns().route_label(tld)
             )))
         }
         ResolverOwner::Foreign { content: Some(c) } => c,
@@ -853,76 +818,19 @@ pub fn sweep_orphan_backups(conn: &rusqlite::Connection, platform: &dyn Platform
     swept
 }
 
-/// The TLDs whose resolver files under `dir` are OURS — file content equals
-/// `signature` (`resolver_contents(port)`, i.e. loopback + our fixed port —
-/// the same ownership test as service adoption's port+marker). Pure directory
-/// scan, factored out of [`installed_tlds`] for testability. Non-UTF8 names
-/// and unreadable/foreign files are skipped.
-///
-/// The name is ALSO required to be a syntactically valid TLD label
-/// (`tld::is_valid_label`, `[a-z]{1,63}`): every resolver file rexenv writes has
-/// that shape (creation passes `ensure_allowed`), so this excludes nothing of
-/// ours, but it means a scanned filename that ISN'T ours-by-construction can
-/// never reach the privileged `rm` in `uninstall_command` — a foreign file with
-/// a shell-metachar name + our signature is dropped here, not interpolated into
-/// a root shell (B10).
-fn tlds_matching_signature(dir: &std::path::Path, signature: &str) -> Vec<String> {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return Vec::new();
-    };
-    let mut tlds: Vec<String> = entries
-        .flatten()
-        .filter(|e| std::fs::read_to_string(e.path()).ok().as_deref() == Some(signature))
-        .filter_map(|e| e.file_name().into_string().ok())
-        .filter(|name| crate::core::tld::is_valid_label(name))
-        .collect();
-    tlds.sort();
-    tlds
-}
-
-/// The complement of [`tlds_matching_signature`]: every valid-label file in the
-/// resolver directory that is NOT ours — a different port, extra options, or a
-/// file we cannot read (refusing to classify what we can't inspect as ours is
-/// the safe direction, same as `owner_of`). These are the TLDs another tool
-/// answers on this machine.
-fn tlds_not_matching_signature(dir: &std::path::Path, signature: &str) -> Vec<String> {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return Vec::new();
-    };
-    let mut tlds: Vec<String> = entries
-        .flatten()
-        .filter(|e| e.path().is_file())
-        .filter(|e| std::fs::read_to_string(e.path()).ok().as_deref() != Some(signature))
-        .filter_map(|e| e.file_name().into_string().ok())
-        .filter(|name| crate::core::tld::is_valid_label(name))
-        .collect();
-    tlds.sort();
-    tlds
-}
-
 /// Every TLD ANOTHER tool has an OS resolver file for on this machine. The
 /// import scan lists these beside the TLDs Valet's own sites use, because a
 /// leftover `/etc/resolver/test` from an uninstalled Valet has no site behind
 /// it and used to appear on no page at all until someone typed a `.test`
 /// domain and met the refusal (5 Sep 2026). Read-only, like the scan.
 pub fn foreign_tlds(platform: &dyn Platform, port: u16) -> Vec<String> {
-    let probe = platform.dns().resolver_path(crate::core::tld::BACKBONE_TLD);
-    let Some(dir) = probe.parent() else {
-        return Vec::new();
-    };
-    tlds_not_matching_signature(dir, &platform.dns().resolver_contents(port))
+    platform.dns().foreign_route_tlds(port)
 }
 
-/// Enumerate every TLD rexenv has an OS resolver file for — the files in the
-/// resolver directory whose content matches our port-`port` signature. The
-/// directory comes from the platform's `resolver_path` so this stays
-/// platform-agnostic (macOS: `/etc/resolver`, world-readable).
+/// Enumerate every TLD rexenv routes — macOS the resolver files whose content is our port-`port`
+/// signature, Windows our NRPT rules (`DnsManager::our_route_tlds`).
 pub fn installed_tlds(platform: &dyn Platform, port: u16) -> Vec<String> {
-    let probe = platform.dns().resolver_path(crate::core::tld::BACKBONE_TLD);
-    let Some(dir) = probe.parent() else {
-        return Vec::new();
-    };
-    tlds_matching_signature(dir, &platform.dns().resolver_contents(port))
+    platform.dns().our_route_tlds(port)
 }
 
 /// Whether the resolver's loopback UDP `port` is already bound — a lightweight
@@ -1098,11 +1006,22 @@ mod tests {
         }
         struct TmpDns(std::path::PathBuf);
         impl DnsManager for TmpDns {
-            fn resolver_path(&self, _tld: &str) -> std::path::PathBuf {
-                self.0.clone()
+            fn route_label(&self, _tld: &str) -> String {
+                self.0.display().to_string()
             }
-            fn resolver_contents(&self, port: u16) -> String {
+            fn route_contents(&self, port: u16) -> String {
                 format!("nameserver 127.0.0.1\nport {port}\n")
+            }
+            fn route_owner(&self, _tld: &str, port: u16) -> ResolverOwner {
+                crate::platform::resolver_files::owner_of(&self.0, &self.route_contents(port))
+            }
+            fn our_route_tlds(&self, port: u16) -> Vec<String> {
+                let dir = self.0.parent().unwrap_or(std::path::Path::new("/nonexistent"));
+                crate::platform::resolver_files::tlds_matching_signature(dir, &self.route_contents(port))
+            }
+            fn foreign_route_tlds(&self, port: u16) -> Vec<String> {
+                let dir = self.0.parent().unwrap_or(std::path::Path::new("/nonexistent"));
+                crate::platform::resolver_files::tlds_not_matching_signature(dir, &self.route_contents(port))
             }
             fn install_command(&self, _tld: &str, _port: u16) -> String {
                 "true".into()
@@ -1256,11 +1175,22 @@ mod tests {
         }
         struct TmpDns(std::path::PathBuf);
         impl DnsManager for TmpDns {
-            fn resolver_path(&self, _tld: &str) -> std::path::PathBuf {
-                self.0.clone()
+            fn route_label(&self, _tld: &str) -> String {
+                self.0.display().to_string()
             }
-            fn resolver_contents(&self, port: u16) -> String {
+            fn route_contents(&self, port: u16) -> String {
                 format!("nameserver 127.0.0.1\nport {port}\n")
+            }
+            fn route_owner(&self, _tld: &str, port: u16) -> ResolverOwner {
+                crate::platform::resolver_files::owner_of(&self.0, &self.route_contents(port))
+            }
+            fn our_route_tlds(&self, port: u16) -> Vec<String> {
+                let dir = self.0.parent().unwrap_or(std::path::Path::new("/nonexistent"));
+                crate::platform::resolver_files::tlds_matching_signature(dir, &self.route_contents(port))
+            }
+            fn foreign_route_tlds(&self, port: u16) -> Vec<String> {
+                let dir = self.0.parent().unwrap_or(std::path::Path::new("/nonexistent"));
+                crate::platform::resolver_files::tlds_not_matching_signature(dir, &self.route_contents(port))
             }
             fn install_command(&self, _tld: &str, _port: u16) -> String {
                 "install".into()
@@ -1397,11 +1327,22 @@ mod tests {
         }
         struct TmpDns(std::path::PathBuf);
         impl DnsManager for TmpDns {
-            fn resolver_path(&self, _tld: &str) -> std::path::PathBuf {
-                self.0.clone()
+            fn route_label(&self, _tld: &str) -> String {
+                self.0.display().to_string()
             }
-            fn resolver_contents(&self, port: u16) -> String {
+            fn route_contents(&self, port: u16) -> String {
                 format!("nameserver 127.0.0.1\nport {port}\n")
+            }
+            fn route_owner(&self, _tld: &str, port: u16) -> ResolverOwner {
+                crate::platform::resolver_files::owner_of(&self.0, &self.route_contents(port))
+            }
+            fn our_route_tlds(&self, port: u16) -> Vec<String> {
+                let dir = self.0.parent().unwrap_or(std::path::Path::new("/nonexistent"));
+                crate::platform::resolver_files::tlds_matching_signature(dir, &self.route_contents(port))
+            }
+            fn foreign_route_tlds(&self, port: u16) -> Vec<String> {
+                let dir = self.0.parent().unwrap_or(std::path::Path::new("/nonexistent"));
+                crate::platform::resolver_files::tlds_not_matching_signature(dir, &self.route_contents(port))
             }
             fn install_command(&self, _tld: &str, _port: u16) -> String {
                 "install".into()
@@ -1660,6 +1601,7 @@ mod tests {
     /// file the same way `plan_resolver_teardown` does.
     #[test]
     fn teardown_decision_table_restores_borrowed_and_never_touches_reclaimed() {
+        use crate::platform::resolver_files::{owner_of, tlds_matching_signature};
         let dir = std::env::temp_dir().join(format!("rexenv-plan-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
@@ -1728,105 +1670,6 @@ mod tests {
         assert_eq!(all[0].original, "second\n", "newest backup is what we replaced");
     }
 
-    /// Ownership classification, against fixture files.
-    ///
-    /// Fixtures rather than a live check by necessity: the dev Mac has no
-    /// foreign `/etc/resolver/<tld>`, and creating a root-owned one to test
-    /// against would be a worse idea than this. The takeover/restore paths are
-    /// tracked as a clean-VM item in docs/PUBLISH-TESTING.md §F.
-    #[test]
-    fn owner_of_classifies_ours_foreign_and_absent() {
-        let dir = std::env::temp_dir().join(format!("rexenv-owner-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        let sig = "nameserver 127.0.0.1\nport 15353\n";
-
-        // Absent.
-        assert_eq!(owner_of(&dir.join("nothing"), sig), ResolverOwner::Absent);
-
-        // Ours — byte-exact.
-        let ours = dir.join("rex");
-        std::fs::write(&ours, sig).unwrap();
-        assert_eq!(owner_of(&ours, sig), ResolverOwner::Ours);
-
-        // Valet's real shape: same nameserver, NO port line. This is the one
-        // that used to be silently overwritten.
-        let valet = dir.join("test");
-        std::fs::write(&valet, "nameserver 127.0.0.1\n").unwrap();
-        assert_eq!(
-            owner_of(&valet, sig),
-            ResolverOwner::Foreign { content: Some("nameserver 127.0.0.1\n".into()) },
-            "a Valet resolver file must read as FOREIGN, never as ours"
-        );
-
-        // Our nameserver but a different port — still theirs.
-        let other = dir.join("dev");
-        std::fs::write(&other, "nameserver 127.0.0.1\nport 5333\n").unwrap();
-        assert!(matches!(owner_of(&other, sig), ResolverOwner::Foreign { .. }));
-
-        // Even a near-miss (trailing newline dropped) is foreign, not ours —
-        // equality is the whole ownership notion, so it must not be fuzzy.
-        let near = dir.join("near");
-        std::fs::write(&near, "nameserver 127.0.0.1\nport 15353").unwrap();
-        assert!(matches!(owner_of(&near, sig), ResolverOwner::Foreign { .. }));
-
-        // Present but unreadable counts as FOREIGN (never absent): refusing to
-        // touch what we can't inspect is the safe direction. Skipped when the
-        // test runs as a user who can read it anyway (e.g. root in CI).
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let locked = dir.join("locked");
-            std::fs::write(&locked, "whatever\n").unwrap();
-            std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
-            if std::fs::read_to_string(&locked).is_err() {
-                assert_eq!(owner_of(&locked, sig), ResolverOwner::Foreign { content: None });
-            }
-            let _ = std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o644));
-        }
-
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    /// Enumerating our resolver files: exact-content signature match — foreign
-    /// files (a developer's own dnsmasq entry, different port) are never touched.
-    #[test]
-    fn tlds_matching_signature_finds_only_our_files() {
-        let dir = std::env::temp_dir().join(format!("rexenv-resolver-scan-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        let sig = format!("nameserver 127.0.0.1\nport {DEFAULT_DNS_PORT}\n");
-
-        std::fs::write(dir.join("test"), &sig).unwrap();
-        std::fs::write(dir.join("rex"), &sig).unwrap();
-        // Foreign: another tool's resolver on a different port, and a
-        // same-nameserver file with extra options — neither is ours.
-        std::fs::write(dir.join("docker"), "nameserver 127.0.0.1\nport 19999\n").unwrap();
-        std::fs::write(dir.join("dev"), "nameserver 127.0.0.1\n").unwrap();
-        // Files with OUR signature but a name that isn't a valid TLD label
-        // ([a-z]{1,63}) can't be ours-by-construction — and must never reach the
-        // privileged `rm`. Shell-metachar / space / uppercase / digit names are
-        // dropped here (B10). rexenv could never have created any of these.
-        for bad in ["evil;reboot", "a b", "UP", "x9", "back`tick`"] {
-            std::fs::write(dir.join(bad), &sig).unwrap();
-        }
-
-        // Only the two valid-label files with our signature survive the sweep.
-        assert_eq!(tlds_matching_signature(&dir, &sig), vec!["rex", "test"]);
-        // Missing dir → empty, not an error (fresh machine, nothing installed).
-        assert!(tlds_matching_signature(&dir.join("nope"), &sig).is_empty());
-
-        // The complement the import scan lists: the two foreign files, and NOT
-        // ours, and NOT the bad-label files either — a name rexenv could never
-        // create is also a name it must never offer to take over (the offer
-        // ends in a privileged write to that path).
-        assert_eq!(tlds_not_matching_signature(&dir, &sig), vec!["dev", "docker"]);
-        assert!(tlds_not_matching_signature(&dir.join("nope"), &sig).is_empty());
-        // A subdirectory is not a resolver file.
-        std::fs::create_dir_all(dir.join("sub")).unwrap();
-        assert_eq!(tlds_not_matching_signature(&dir, &sig), vec!["dev", "docker"]);
-        let _ = std::fs::remove_dir_all(&dir);
-    }
 
     #[tokio::test]
     async fn managed_service_starts_serves_and_stops() {

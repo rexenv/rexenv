@@ -1581,7 +1581,8 @@ fn first_window_decision(app: &tauri::AppHandle, needs_window: bool) {
 /// BEFORE state exists — and a login launch on a machine that cannot resolve
 /// `.rex` must show the window rather than look broken and hide the fix (A7).
 fn login_launch_needs_window(platform: &dyn platform::traits::Platform) -> bool {
-    let resolver_installed = platform.dns().resolver_path(core::tld::BACKBONE_TLD).exists();
+    let resolver_installed = platform.dns().route_owner(core::tld::BACKBONE_TLD, core::dns::DEFAULT_DNS_PORT)
+        != core::dns::ResolverOwner::Absent;
     let ca_trusted = core::ssl::ca_dir(platform.paths())
         .map(|dir| dir.join(core::ssl::CA_CERT_FILE))
         .is_ok_and(|cert| cert.exists() && platform.cert_trust().is_trusted(&cert));

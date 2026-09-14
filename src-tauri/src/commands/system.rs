@@ -432,13 +432,13 @@ pub fn dns_status(
     };
     // The Settings indicator reports the BACKBONE (.rex) resolver file — the
     // one system setup installs and that always stays active.
-    let path = state.platform.dns().resolver_path(core::tld::BACKBONE_TLD);
+    let route = state.platform.dns();
     DnsStatus {
         running,
         mode,
         port,
-        resolver_installed: path.exists(),
-        resolver_path: path.display().to_string(),
+        resolver_installed: route.route_owner(core::tld::BACKBONE_TLD, port) != core::dns::ResolverOwner::Absent,
+        resolver_path: route.route_label(core::tld::BACKBONE_TLD),
         ca_trusted: state.platform.cert_trust().is_trusted(&state.ca.cert_path),
     }
 }

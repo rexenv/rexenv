@@ -394,6 +394,14 @@ Live-proven end to end by `site_stop_start_check`.
   file first (`platform::send_output_to`). The trait's methods are `definition_path`/`definition_contents`
   — the plist on macOS, the task XML on Windows. An interactive-token task runs only while the user is
   logged on: the agent is up from logon, not from boot.
+- **A TLD's route is the platform's, not a file the core reads** (`DnsManager`, #617, W6 ruling R1):
+  the core asks `route_owner` (Absent / Ours / Foreign, by rexenv's exact signature), `our_route_tlds`,
+  `foreign_route_tlds`, `route_label` (the words a message uses) and `route_contents` (what a takeover
+  preview shows beside theirs), and gets privileged command strings — it no longer reads
+  `/etc/resolver/<tld>` or scans that directory itself. macOS answers exactly as before, from its resolver
+  files (`platform/resolver_files.rs`: `owner_of`, the two signature scans, and their tests); Windows'
+  route is an NRPT rule. Until Windows reads its rules the Windows answer is Absent — no longer the
+  `unported!` panic `dns_status` and a login launch reached through `resolver_path`.
 - **App launch = adopt-or-install-or-fall-back** (`lib.rs`): probe
   `dns::answers_as_ours` (a REAL A query must return `127.0.0.1` — ownership AND
   liveness, H2 — never a bare port probe); refresh the plist every launch so it tracks

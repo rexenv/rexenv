@@ -43,7 +43,7 @@ fn main() {
     println!("✓ DNS UDP probe: held port reads in-use (running), unbound reads free (stopped)");
     println!(
         "  OS resolver path = {}",
-        plat.dns().resolver_path(rexenv_lib::core::tld::BACKBONE_TLD).display()
+        plat.dns().route_label(rexenv_lib::core::tld::BACKBONE_TLD)
     );
 
     // 3) Cert regeneration: re-issue → fresh material, same wildcard SAN + CA issuer.

@@ -1082,6 +1082,34 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
     `ExecutionTimeLimit` PT0S, no battery stop, restart on failure, hidden) replacing `plist_*`;
     install/kickstart/uninstall through Task Scheduler as the user, no elevation — measured first on the
     Dell under the Medium token. L0 XML test; L1 register → runs → `kickstart` → `uninstall`.
+  - **S4 measured first, 15 Sep 2026** (`scripts/probes/windows-nrpt.ps1`, elevated SSH, the agent on
+    127.0.0.1:53): the Dell had no NRPT rule (`DnsPolicyConfig` existed, empty). `Add-DnsClientNrptRule
+    -Namespace .rex -NameServers 127.0.0.1 -Comment … -DisplayName …` created
+    `HKLM\SYSTEM\CurrentControlSet\Services\Dnscache\Parameters\DnsPolicyConfig\{GUID}` with `Name=.rex`,
+    `GenericDNSServers=127.0.0.1`, `Comment`, `DisplayName`, `ConfigOptions=8`, `Version=2`, empty
+    `IPSECCARestriction`; `Get-DnsClientNrptPolicy` showed it at once. **It took effect immediately, no
+    cache flush:** `Resolve-DnsName probe.rex` (no `-Server`) and `a.b.probe.rex` got 127.0.0.1 in 1–8 ms,
+    and so did .NET `GetHostAddresses` and `ping` (getaddrinfo); `probe.test` stayed NXDOMAIN. Removing the
+    rule stopped resolution at once, and removing the LAST rule deleted the `DnsPolicyConfig` key itself.
+    **The values' types and a non-elevated read, the same day** (two rules added over SSH — ours on
+    `.rex`, a "foreign" one on `.test` + `.example` with servers `127.0.0.1` and `::1` — then read from the
+    desktop session's Medium token, then removed): `Name` is `REG_MULTI_SZ` (one rule, several namespaces),
+    `GenericDNSServers` a `REG_SZ` joined by `;`, `Comment`/`DisplayName` `REG_SZ`, `ConfigOptions` and
+    `Version` `REG_DWORD`. The Medium token read the keys and `Get-DnsClientNrptRule` listed both rules, so
+    ownership and status need no elevation. No Group Policy NRPT path existed on the Dell
+    (`HKLM\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient\DnsPolicyConfig`). A foreign rule can name
+    several namespaces at once — a takeover of one TLD must not drop the others.
+  - **S4, first half — the route trait, 15 Sep 2026 (ledger #617).** `DnsManager` no longer speaks
+    files: `route_label`, `route_contents`, `route_owner`, `our_route_tlds`, `foreign_route_tlds` and the
+    install/uninstall/restore builders; `ResolverOwner` moved to `platform::traits` (re-exported from
+    `core::dns`). The file half — `owner_of` and the two signature scans, with their tests — moved to
+    `platform/resolver_files.rs`, which `MacosDns` and the core's test platforms share; `resolver_path` and
+    `resolver_contents` are `MacosDns`'s own methods. Callers (`dns_status`, a login launch, the MCP stack
+    snapshot, the takeover preview) ask `route_owner != Absent` — what `path.exists()` answered on macOS.
+    Windows' `WindowsDns` answers Absent, no TLDs and empty commands (never run: `run_privileged` is
+    unported until S3) — so S0's `resolver_path` panics are gone. Next half: the NRPT reads (registry,
+    measured readable without elevation) and PowerShell builders, with R3's takeover of a rule that may name
+    several namespaces.
   - **S3 — `PrivilegeManager` on Windows** (per R2): one UAC prompt per batch, the platform owning how
     commands join; output and exit code back to the caller. L1 on the Dell with the owner answering.
   - **S4 — resolver routes, NRPT** (per R1, R3): one rule per TLD, `-Namespace .<tld> -NameServers

@@ -231,7 +231,8 @@ impl<'a> ReadCtx<'a> {
             services: services.into_iter().map(|s| StackService { name: s.name, running: s.running, port: s.port, optional: s.optional }).collect(),
             services_fresh: fresh,
             dns_answers: core::dns::answers_as_ours(core::dns::DEFAULT_DNS_PORT),
-            resolver_installed: platform.dns().resolver_path(core::tld::BACKBONE_TLD).exists(),
+            resolver_installed: platform.dns().route_owner(core::tld::BACKBONE_TLD, core::dns::DEFAULT_DNS_PORT)
+                != core::dns::ResolverOwner::Absent,
             ca_trusted: platform.cert_trust().is_trusted(&self.state.ca.cert_path),
             mail_running: core::mail::running(),
             mail_catch_all,

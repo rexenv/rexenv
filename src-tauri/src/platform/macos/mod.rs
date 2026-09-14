@@ -55,17 +55,45 @@ impl Paths for MacosPaths {
 }
 
 pub struct MacosDns;
-impl DnsManager for MacosDns {
-    fn resolver_path(&self, tld: &str) -> PathBuf {
-        // macOS reads /etc/resolver/<domain> — one file per development TLD.
-        PathBuf::from("/etc/resolver").join(tld)
+
+/// The directory macOS reads resolver files from.
+const RESOLVER_DIR: &str = "/etc/resolver";
+
+impl MacosDns {
+    /// macOS reads /etc/resolver/<domain> — one file per development TLD.
+    pub(crate) fn resolver_path(&self, tld: &str) -> PathBuf {
+        PathBuf::from(RESOLVER_DIR).join(tld)
     }
 
-    fn resolver_contents(&self, port: u16) -> String {
-        // macOS resolver(5): send the TLD to our loopback resolver on `port`.
-        // Identical for every TLD — this content is the ownership signature
-        // core::dns uses to enumerate the files rexenv installed.
+    /// macOS resolver(5): send the TLD to our loopback resolver on `port`. Identical for every TLD —
+    /// this content is the ownership signature rexenv enumerates its files by.
+    pub(crate) fn resolver_contents(&self, port: u16) -> String {
         format!("nameserver 127.0.0.1\nport {port}\n")
+    }
+}
+
+impl DnsManager for MacosDns {
+    fn route_label(&self, tld: &str) -> String {
+        self.resolver_path(tld).display().to_string()
+    }
+
+    fn route_contents(&self, port: u16) -> String {
+        self.resolver_contents(port)
+    }
+
+    fn route_owner(&self, tld: &str, port: u16) -> ResolverOwner {
+        crate::platform::resolver_files::owner_of(&self.resolver_path(tld), &self.resolver_contents(port))
+    }
+
+    fn our_route_tlds(&self, port: u16) -> Vec<String> {
+        crate::platform::resolver_files::tlds_matching_signature(Path::new(RESOLVER_DIR), &self.resolver_contents(port))
+    }
+
+    fn foreign_route_tlds(&self, port: u16) -> Vec<String> {
+        crate::platform::resolver_files::tlds_not_matching_signature(
+            Path::new(RESOLVER_DIR),
+            &self.resolver_contents(port),
+        )
     }
 
     fn install_command(&self, tld: &str, port: u16) -> String {
@@ -90,7 +118,7 @@ impl DnsManager for MacosDns {
         // TLDs stop resolving immediately (mirror of install_command's flush).
         // Every `tld` here is an [a-z]{1,63} label: install-time values pass
         // `tld::ensure_allowed`, and the teardown sweep filters scanned filenames
-        // through `tld::is_valid_label` (core::dns::tlds_matching_signature), so
+        // through `tld::is_valid_label` (platform::resolver_files::tlds_matching_signature), so
         // no shell-metachar name can reach this root `rm` (B10).
         let files = tlds
             .iter()
@@ -2909,6 +2937,19 @@ mod tests {
             dns.resolver_contents(15353),
             "nameserver 127.0.0.1\nport 15353\n"
         );
+    }
+
+    /// Ledger #617 — the route trait on macOS says what the file-shaped one said: the label a message
+    /// shows is the resolver file's path, and the content a takeover preview shows is the file's exact
+    /// bytes (the ownership signature). `route_owner` and the two scans read `/etc/resolver` itself, so
+    /// they are not driven here — this machine's own resolver files would decide the answer.
+    #[test]
+    fn dns_route_label_and_contents_are_the_resolver_file_and_its_bytes() {
+        let dns = MacosDns;
+        assert_eq!(dns.route_label("test"), "/etc/resolver/test");
+        assert_eq!(dns.route_label("rex"), dns.resolver_path("rex").display().to_string());
+        assert_eq!(dns.route_contents(15353), "nameserver 127.0.0.1\nport 15353\n");
+        assert_eq!(dns.route_contents(15353), dns.resolver_contents(15353));
     }
 
     #[test]

@@ -34,38 +34,60 @@ pub trait Paths: Send + Sync {
     }
 }
 
-/// Points the OS resolver at our embedded `hickory-dns` server so `*.<tld>`
-/// resolves to `127.0.0.1`. The embedded server is platform-agnostic and
-/// answers ANY name; WHICH TLDs reach it is scoped per-OS by one resolver
-/// file per TLD (macOS: `/etc/resolver/<tld>`) — so adding a TLD never
-/// restarts the DNS server, and multiple TLDs coexist.
+/// Who owns a TLD's ROUTE — the OS configuration that sends that TLD's lookups to a resolver — as far as
+/// rexenv is concerned: macOS the `/etc/resolver/<tld>` file, Windows the NRPT rule. Ownership is
+/// rexenv's exact signature, never a fuzzy match.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResolverOwner {
+    /// No route at all — installing is a plain create, nothing to consent to.
+    Absent,
+    /// Exactly our signature — nothing to do.
+    Ours,
+    /// Someone else's route (Valet, Herd, hand-written, another tool's rule). NEVER replaced without an
+    /// explicit takeover that backs it up first. `content` is that route as rexenv would put it back
+    /// (macOS: the file's bytes); `None` when it exists but couldn't be read.
+    Foreign { content: Option<String> },
+}
+
+/// How a TLD's lookups reach rexenv's resolver — the OS half of local-TLD DNS.
 ///
-/// These are pure command BUILDERS (no privilege, no side effects) so the
-/// install/remove can be unit-tested without sudo AND batched with other
-/// privileged ops into a single `PrivilegeManager` elevation (see core::dns +
-/// the batched system-setup step). The actual run goes through `PrivilegeManager`.
+/// Neutral about WHAT a route is (W6 ruling R1, ledger #617): the core asks who owns a TLD's route,
+/// which TLDs are ours or another tool's, and for the privileged commands, and never assumes a file.
+/// It used to: ownership was a file's content, `installed_tlds` a directory scan of
+/// `resolver_path("rex").parent()`, and the Windows build reached `resolver_path` from `dns_status` and a
+/// login launch — an `unported!` panic, because an NRPT rule has no path.
+///
+/// Points the OS resolver at the embedded `hickory-dns` server so `*.<tld>` resolves to `127.0.0.1`.
+/// The server is platform-agnostic and answers ANY name; WHICH TLDs reach it is scoped by one route per
+/// TLD (macOS `/etc/resolver/<tld>`, Windows an NRPT rule) — so adding a TLD never restarts the DNS
+/// server, and multiple TLDs coexist. The command builders are pure (no privilege, no side effects), so
+/// they are unit-testable and batch with other privileged ops into a single `PrivilegeManager`
+/// elevation (see core::dns and the system-setup step).
 pub trait DnsManager: Send + Sync {
-    /// Path of the OS resolver file for `tld` (e.g. `/etc/resolver/test`).
-    /// `tld` is a bare label already validated by `core::tld` — callers never
-    /// pass user input here directly.
-    fn resolver_path(&self, tld: &str) -> PathBuf;
-    /// Contents of a resolver file pointing a TLD at our resolver on `port`.
-    /// TLD-independent (the TLD lives in the file NAME) — this exact content
-    /// is also the ownership signature used to enumerate OUR resolver files.
-    fn resolver_contents(&self, port: u16) -> String;
-    /// Shell command(s) that install the resolver file for `tld` — run via
-    /// `PrivilegeManager`.
+    /// Where `tld`'s route lives, in the words a message shows — macOS `/etc/resolver/test`. `tld` is a
+    /// bare label already validated by `core::tld`.
+    fn route_label(&self, tld: &str) -> String;
+    /// Our route as a user reads it beside a foreign one before a takeover — macOS the resolver file's
+    /// bytes, which are also its ownership signature.
+    fn route_contents(&self, port: u16) -> String;
+    /// Who owns `tld`'s route now. One that exists but cannot be read is Foreign, never Absent.
+    fn route_owner(&self, tld: &str, port: u16) -> ResolverOwner;
+    /// Every TLD whose route is ours, sorted — valid TLD labels only.
+    fn our_route_tlds(&self, port: u16) -> Vec<String>;
+    /// Every TLD another tool routes, sorted — valid TLD labels only.
+    fn foreign_route_tlds(&self, port: u16) -> Vec<String>;
+    /// Shell command(s) that make `tld`'s route ours, replacing whatever is there — run via
+    /// `PrivilegeManager`. Callers establish the route is absent, ours, or taken over with a backup.
     fn install_command(&self, tld: &str, port: u16) -> String;
-    /// Shell command(s) that remove the resolver files for `tlds` (one batch,
-    /// one cache flush) — run via `PrivilegeManager`.
+    /// Shell command(s) that remove the routes for `tlds` (one batch, one cache
+    /// flush) — run via `PrivilegeManager`.
     fn uninstall_command(&self, tlds: &[String]) -> String;
-    /// Shell command(s) that put BORROWED resolver files back — one batch, one
-    /// cache flush. Each entry is `(tld, our 0600 backup of their file)`.
+    /// Shell command(s) that put BORROWED routes back — one batch, one cache flush. Each entry is
+    /// `(tld, our 0600 backup of theirs)`.
     ///
-    /// Copies the backup rather than writing its contents inline: the bytes are
-    /// the USER'S file, arbitrary, and must never be interpolated into a root
-    /// shell string. The backup path lives under app-data (spaces) so it needs
-    /// quoting; the TLD is an `[a-z]{1,63}` label by construction.
+    /// Reads the backup rather than writing its contents inline: the bytes are the USER'S, arbitrary,
+    /// and must never be interpolated into a privileged shell string. The backup path lives under
+    /// app-data (spaces) so it needs quoting; the TLD is an `[a-z]{1,63}` label by construction.
     fn restore_command(&self, restores: &[(String, PathBuf)]) -> String;
 }
 

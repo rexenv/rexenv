@@ -360,7 +360,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     session (17 checks): install → answering in 0.5 s with its bind line in the log; a repeated install
     kept the same process; kickstart gave a new one; killed, it was back in 6 s; uninstall left no task,
     agent, definition or answer. An interactive-token task needs a logged-on user — the first runs died
-    with the Dell's session on critical battery. Next: S0 + S4 (the resolver-route trait and NRPT)
+    with the Dell's session on critical battery. **S0 + S4, first half, 15 Sep 2026 (ledger #617):**
+    `DnsManager` is the neutral route trait (R1) — `route_owner`, `our_route_tlds`, `foreign_route_tlds`,
+    `route_label`, `route_contents` and the command builders — the core no longer reads resolver files, macOS
+    answers from them as before (`platform/resolver_files.rs`), and Windows answers Absent instead of the
+    `resolver_path` panic. NRPT measured the same day (plan §5 W6 S4: immediate effect, the registry
+    layout, a non-elevated read). Next: Windows reads and writes its NRPT rules, then S3 (the UAC step)
   - [ ] W7 — ShellRunner, autostart, tray (includes the Windows half of the browser-stub row)
   - [ ] W8 — `rex` CLI + MCP over named pipes; `rex.exe` on PATH
   - [ ] W9 — frontend on WebView2 (Windows paths, Ctrl shortcuts, fonts)

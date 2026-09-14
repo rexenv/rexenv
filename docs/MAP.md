@@ -36,7 +36,8 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
   `port_table::owners_of_port_where`) (ledger #615); the DNS agent as a logon task —
   `WindowsDnsAgent` over `windows/logon_task.rs` (the task XML, tested on every host) and `schtasks`, its
   output through `platform::send_output_to` / `windows/agent_output.rs` and `main.rs`'s `--log`
-  (ledger #616); nginx's Windows shape — `services::nginx_path`,
+  (ledger #616); the resolver-route trait (`DnsManager::route_*`) with macOS's file half in
+  `platform/resolver_files.rs` (ledger #617); nginx's Windows shape — `services::nginx_path`,
   `binaries::resolve_program`, the master climb and nginx's events (ledger #602);
   `linux/` is `todo!()`).
 - `state/` = SQLite migrations + the store layer; only `state/` writes SQL.
@@ -55,7 +56,7 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
 | Per-site override servers (FrankenPHP 8200s / Apache 8300s) | `core/frankenphp.rs`, `core/apache.rs` | `commands/sites.rs` (server switch) | BinaryProvider, ProcessSupervisor | `frankenphp_serve`, `apache_site_check` |
 | DB engines (MySQL/MariaDB/Postgres/Redis, version switch) | `core/db.rs` (DbEngine — lifecycle AND the five site-DB ops), `core/database.rs` (MySQL/MariaDB ops, `pub(crate)`), `core/mariadb.rs`, `core/postgres.rs` (PG server + site-DB ops), `core/redis.rs` | `commands/database.rs` | BinaryProvider, ProcessSupervisor | `db_engine_serve`, `db_version_switch_check`, `mariadb_*`, `postgres_site_db_check` |
 | Service lifecycle, adoption, watchdog | `core/service_manager.rs`, `core/proc.rs`, `core/stack_guard.rs`, `core/monitor.rs`, `core/ports.rs` | `commands/services.rs`, `commands/system.rs` | ProcessSupervisor | #70–82; `adopt_check`, `stack_guard_check`, `health_watchdog_check` |
-| DNS (hickory agent :15353, resolvers, TLD policy) | `core/dns.rs`, `core/tld.rs` | `commands/system.rs`, `commands/settings.rs` | DnsManager, DnsAgentManager, PrivilegeManager | #44–53; `dns_serve`, `dns_ssl_autostart_check` |
+| DNS (hickory agent — :15353 macOS, :53 Windows; resolver routes — macOS files, Windows NRPT; TLD policy) | `core/dns.rs`, `core/tld.rs` | `commands/system.rs`, `commands/settings.rs` | DnsManager (route trait, macOS file half `platform/resolver_files.rs`), DnsAgentManager (macOS LaunchAgent, Windows logon task), PrivilegeManager | #44–53, #615–617; `dns_serve`, `dns_ssl_autostart_check`, `windows_dns_agent_check`, `windows_dns_agent_task_check` |
 | TLS (local CA, per-site leaves ≤398d) | `core/ssl.rs`, `core/firefox.rs` | `commands/system.rs`, `commands/sites.rs` (cert card) | CertTrustManager (macOS: `platform/macos/keychain_trust.rs` — the trust API called in-process so the keychain dialog is rexenv's, #579; Windows: the CurrentUser Root store — `platform/windows/cert_store.rs` + `cert_rules.rs` (#613), and `firefox_profiles_root` — `platform/windows/firefox_root.rs` (#612)) | #152–154, #579, #612, #613; `ca_gen`, `site_cert_gen`, `cert_trust_prompt_check` |
 | Binaries (download-on-demand, pins, bundles) | `core/binaries.rs` (incl. `php_url`/`php_self_hosted_tag` — which source publishes a PHP build; `XdebugBottle` — the per-minor Xdebug row), `core/downloads.rs` (hub) | `commands/downloads.rs` | BinaryProvider, Paths | #83–90, #319, #320, #323; `download_progress_check`, `relink_tree_check` |
 | Sites (provision, linked sites, move/rename/delete, streamed provisioning) | `core/sites.rs`, `core/site_env.rs`, `core/site_metrics.rs` | `commands/sites.rs`, `commands/site_provision.rs` | Paths, ShellRunner | #91–101; `site_provision_check`, `linked_site_check` |
