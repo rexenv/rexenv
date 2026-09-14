@@ -1345,6 +1345,12 @@ bloating the fast path:
   that pool's row alone, in the warning text colour, inside the row's box — and nowhere without it.
   The colour assertion caught the first version, whose class (`text-rex-warning`) Tailwind never
   generates.
+  `windows_streamed_step_check` (#609) is Windows' streamed steps end to end: the registry-fresh
+  environment (a fixture value written to `HKCU\Environment` mid-run, removed by a guard), a step's
+  output and its handed-only environment, cancel and the idle limit ending a step AND the grandchild
+  it started, a second copy of the example that starts a step and exits without stopping it (rexenv
+  quitting), and `laravel::create_project` through the site's `php.exe` with Composer's home inside the
+  fixture. It needs the network.
 
 A gate nobody can afford to run stops being one: the fast bar stays fast, and nothing
 above it is required per-commit. The metric the gate serves is the ledger tally, which

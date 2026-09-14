@@ -195,7 +195,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
       is refused, and every UDP case is refused. Privileged ports (<1024) use a connect probe
       and are unaffected. The shape is Herd's :443 shadow bind, on rexenv's own gate. Parsed from
       `-Fpn` rather than `-t`, because `-iUDP:<p>` also lists a client whose REMOTE end is the port
-  - [ ] W4 — php-cgi group (preflight + churn breaker, plan §3 D1(a)) + nginx + SMTP mail → a
+  - [x] W4 — php-cgi group (preflight + churn breaker, plan §3 D1(a)) + nginx + SMTP mail → a
     WordPress site serves. **Progress 14 Sep 2026:** D1's measurements on the Dell (plan §3 D1);
     owner rulings on the pool's contents (the 26 official extensions, `PoolModel` named by the
     platform with `core` rendering both, rexenv's own ini); step 1 written — `core/php_cgi.rs`
@@ -231,8 +231,14 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     two samples in a row, sampled in the status poll. `pool_busy_check` PASS on both: the Dell's group
     read 12 of 10 from the first second (busy at 2 s), the Mac's php-fpm grew one worker a second
     (busy at 9.6 s — which is why the check sleeps 15 s, not the plan's 5), both free at 17 s; the
-    WebKit check `poolbusy.js` renders the note in its row, and nothing without it. Still to come:
-    Composer through the site's PHP
+    WebKit check `poolbusy.js` renders the note in its row, and nothing without it. **✓ 14 Sep 2026, Composer through the
+    site's PHP** (ledger #609): Windows had no streamed steps (`spawn_streamed` / `stop_group`) and no
+    user environment (`login_shell_env`), so no Laravel or Git site could be provisioned there. Owner
+    rulings: the environment read fresh from the registry; a step dies with rexenv. Built as a
+    kill-on-close Job Object per step, spawned suspended; `windows/login_env.rs` for the merge.
+    `windows_streamed_step_check` PASS on the Dell: a registry value written after launch was seen,
+    the step saw only its env, cancel and the idle limit ended the step AND its grandchild, a launcher
+    exiting took both with it, and `laravel::create_project` installed Laravel through `php.exe` in 112 s
     - [x] ✓ 14 Sep 2026 — fixed: where the pool model is the php-cgi group, `finish_wp_argv` gives
       WP-CLI `-d SMTP=127.0.0.1 -d smtp_port=11025` and NO `sendmail_path` flag (ledger #407). The
       first fix also sent `-d sendmail_path=`, and real WP-CLI mail vanished with `true` on the Dell:

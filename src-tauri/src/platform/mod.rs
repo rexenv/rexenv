@@ -60,6 +60,11 @@ mod windows_stop_policy;
 #[allow(dead_code)]
 #[path = "windows/handles.rs"]
 mod windows_handles;
+// And the registry environment merge streamed steps get (ledger #609).
+#[cfg(all(test, not(target_os = "windows")))]
+#[allow(dead_code)]
+#[path = "windows/login_env.rs"]
+mod windows_login_env;
 
 use traits::Platform;
 

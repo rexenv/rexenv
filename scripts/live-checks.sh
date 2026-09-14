@@ -238,6 +238,7 @@ windows_cli_mail_probe demo
 pool_get_values_probe demo
 pool_health_check demo
 pool_busy_check demo
+windows_streamed_step_check demo
 wp_core_zip_check network
 "
 

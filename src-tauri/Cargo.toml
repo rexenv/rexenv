@@ -119,6 +119,11 @@ windows-sys = { version = "0.61", features = [
     "Win32_Networking_WinSock",
     "Win32_System_Diagnostics_ToolHelp",
     "Win32_System_Services",
+    # Streamed steps (Composer, git, npm — platform/windows/process.rs, ledger #609): each step's
+    # process tree in a kill-on-close Job Object, and the user's environment read fresh from the
+    # registry. Same crate, more bindings.
+    "Win32_System_JobObjects",
+    "Win32_System_Registry",
 ] }
 
 # Target-gated like the [dependencies] copies: objc2 is a compile_error! on any

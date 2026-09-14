@@ -863,7 +863,16 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   both failed in cmd.exe; PHP's `SMTP`/`smtp_port` keys delivered with no shell involved). **Fixed the
   same day (#407):** on a php-cgi platform WP-CLI gets the keys and no `sendmail_path` flag at all — an
   emptied `-d sendmail_path=` is `""` to PHP, not NULL, and lost the mail with `true` again (measured). The edge
-  (W5) and `.rex` names (W6) are not part of this proof.
+  (W5) and `.rex` names (W6) are not part of this proof. **Composer through the site's PHP — done
+  14 Sep 2026 (#609), which closes W4's list.** Found first: Windows had no streamed step
+  (`spawn_streamed`/`stop_group` answered Unsupported) and no user environment (`login_shell_env`), so
+  no Laravel or Git site could be provisioned at all. **Ruled (owner):** the environment is read fresh
+  from the registry (the system's and the user's `Environment` keys over the process's variables, the
+  user `Path` appended), and a step dies with rexenv (a kill-on-close Job Object; macOS lets it
+  run on). Measured on the Dell (`windows_streamed_step_check`, 14 checks): a value written to
+  `HKCU\Environment` after launch was in the environment; cancel ended the step and the grandchild it
+  started in 0.2 s; the idle limit killed both; a launcher exiting without stopping its step took both
+  with it; `composer create-project laravel/laravel` through `php.exe` installed Laravel in 112 s.
 - **W5 — HTTPS edge.** Caddy on :443 (Windows has no privileged ports, so the edge need
   not run elevated — record why in ARCHITECTURE), admin per D3, `EdgeSupervisor` for that
   shape; `CertTrustManager` into the CurrentUser Root store (Windows shows its own

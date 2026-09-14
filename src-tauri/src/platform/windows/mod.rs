@@ -17,6 +17,7 @@ use std::process::Child;
 
 mod acl;
 mod handles;
+mod login_env;
 mod owner_only;
 mod pe;
 mod port_table;
@@ -122,6 +123,66 @@ impl ProcessSupervisor for WindowsSupervisor {
     }
     fn spawn_logged(&self, program: &Path, args: &[String], log_path: &Path) -> Result<Child> {
         self.spawn_logged_env(program, args, log_path, &[])
+    }
+    /// A streamed step — Composer, git, npm (`core::repo::run_step_streamed`, ledger #609): the given
+    /// environment ONLY (the registry-fresh one `login_shell_env` builds), stdout and stderr piped, no
+    /// console window, and started SUSPENDED so it is inside its kill-on-close job before it can start
+    /// a grandchild. A job that cannot be made, or joined, refuses the step: a step rexenv could not
+    /// stop is not started.
+    fn spawn_streamed(&self, program: &Path, args: &[String], cwd: &Path, env: &[(String, String)]) -> Result<Child> {
+        use std::os::windows::io::AsRawHandle;
+        use std::os::windows::process::CommandExt;
+        use std::process::Stdio;
+        use windows_sys::Win32::System::Threading::{CREATE_NEW_PROCESS_GROUP, CREATE_NO_WINDOW, CREATE_SUSPENDED};
+        process::keep_inheritable_handles_out_of_children();
+        let job = process::StepJob::new()
+            .ok_or_else(|| Error::Other(format!("could not create a job object to run {}", program.display())))?;
+        let mut child = std::process::Command::new(program)
+            .args(args)
+            .current_dir(cwd)
+            .env_clear()
+            .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP | CREATE_SUSPENDED)
+            .spawn()?;
+        let refuse = |child: &mut Child, why: &str| {
+            let _ = child.kill();
+            let _ = child.wait();
+            Error::Other(format!("{} was not started: {why}", program.display()))
+        };
+        if !job.assign(child.as_raw_handle() as windows_sys::Win32::Foundation::HANDLE) {
+            return Err(refuse(&mut child, "it could not be put in its job object"));
+        }
+        if !process::resume_suspended(child.id()) {
+            return Err(refuse(&mut child, "its suspended thread could not be resumed"));
+        }
+        let mut jobs = step_jobs().lock().map_err(|_| Error::Other("the step job registry is poisoned".into()))?;
+        // Finished steps' jobs are empty; closing them now kills nothing. A job whose count cannot
+        // be read is kept — closing it would kill whatever it holds.
+        jobs.retain(|_, j| j.active_processes().map_or(true, |n| n > 0));
+        jobs.insert(child.id(), job);
+        Ok(child)
+    }
+    /// End a streamed step: terminate its job — the step and every process it started — and wait
+    /// until the job is empty. A pid with no job registered has nothing of rexenv's left to stop.
+    fn stop_group(&self, pgid: u32) -> Result<()> {
+        let job = step_jobs()
+            .lock()
+            .map_err(|_| Error::Other("the step job registry is poisoned".into()))?
+            .remove(&pgid);
+        let Some(job) = job else {
+            return Ok(());
+        };
+        job.terminate();
+        for _ in 0..50 {
+            if job.active_processes() == Some(0) {
+                return Ok(());
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        Err(Error::Other(format!("step {pgid}'s processes were still running 5 s after its job was terminated")))
     }
     /// A service: stdout and stderr appended to its log, stdin closed, [`SERVICE_FLAGS`].
     fn spawn_logged_env(
@@ -310,6 +371,14 @@ impl PermissionManager for WindowsPermissions {
     }
 }
 
+/// Streamed steps' kill-on-close jobs, by the step's pid — the `pgid` `stop_group` is handed
+/// (ledger #609).
+fn step_jobs() -> &'static std::sync::Mutex<std::collections::HashMap<u32, process::StepJob>> {
+    static JOBS: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<u32, process::StepJob>>> =
+        std::sync::OnceLock::new();
+    JOBS.get_or_init(Default::default)
+}
+
 pub struct WindowsShell;
 impl ShellRunner for WindowsShell {
     fn run(&self, _command: &str, _args: &[String]) -> Result<String> {
@@ -320,6 +389,17 @@ impl ShellRunner for WindowsShell {
     }
     fn reveal(&self, _path: &str) -> Result<()> {
         Err(Error::Unported("windows shell reveal"))
+    }
+    /// The user environment a fresh logon would build, read from the registry on every call, so a
+    /// tool installed while rexenv runs is on its Path (owner ruling 14 Sep 2026, ledger #609,
+    /// `login_env.rs`). Variables the registry does not hold — `SystemRoot`, `USERPROFILE` — come
+    /// from this process.
+    fn login_shell_env(&self) -> Result<Vec<(String, String)>> {
+        let own: Vec<(String, String)> = std::env::vars_os()
+            .filter_map(|(k, v)| Some((k.into_string().ok()?, v.into_string().ok()?)))
+            .collect();
+        let (system, user) = (process::registry_env(true), process::registry_env(false));
+        Ok(login_env::merge_login_env(&own, system.as_deref(), user.as_deref()))
     }
 }
 

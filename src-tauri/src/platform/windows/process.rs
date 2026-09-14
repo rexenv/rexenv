@@ -140,6 +140,183 @@ pub(crate) fn established_on(port: u16) -> Option<usize> {
     read_any.then_some(count)
 }
 
+/// The values under one registry environment key — the system's
+/// (`HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment`) or the user's
+/// (`HKCU\Environment`) — `REG_SZ` and `REG_EXPAND_SZ` only, for `login_env::merge_login_env`
+/// (ledger #609). `None` when the key cannot be opened.
+pub(crate) fn registry_env(system: bool) -> Option<Vec<super::login_env::RegValue>> {
+    use windows_sys::Win32::Foundation::{ERROR_NO_MORE_ITEMS, ERROR_SUCCESS};
+    use windows_sys::Win32::System::Registry::{
+        RegCloseKey, RegEnumValueW, RegOpenKeyExW, HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ,
+        REG_EXPAND_SZ, REG_SZ,
+    };
+    struct Key(HKEY);
+    impl Drop for Key {
+        fn drop(&mut self) {
+            // SAFETY: opened below, closed once.
+            unsafe { RegCloseKey(self.0) };
+        }
+    }
+    let (root, subkey) = if system {
+        (HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment")
+    } else {
+        (HKEY_CURRENT_USER, "Environment")
+    };
+    let wide: Vec<u16> = subkey.encode_utf16().chain(std::iter::once(0)).collect();
+    let mut raw: HKEY = std::ptr::null_mut();
+    // SAFETY: a NUL-terminated key name and a valid out-pointer.
+    if unsafe { RegOpenKeyExW(root, wide.as_ptr(), 0, KEY_READ, &mut raw) } != ERROR_SUCCESS {
+        return None;
+    }
+    let key = Key(raw);
+    // An environment variable's name and value are each at most 32,767 characters.
+    let mut name = vec![0u16; 32_768];
+    let mut data = vec![0u8; 65_536];
+    let mut values = Vec::new();
+    let mut index = 0u32;
+    loop {
+        let (mut name_len, mut data_len, mut kind) = (name.len() as u32, data.len() as u32, 0u32);
+        // SAFETY: each buffer's capacity is passed in its own unit (characters, bytes).
+        let rc = unsafe {
+            RegEnumValueW(
+                key.0,
+                index,
+                name.as_mut_ptr(),
+                &mut name_len,
+                std::ptr::null(),
+                &mut kind,
+                data.as_mut_ptr(),
+                &mut data_len,
+            )
+        };
+        index += 1;
+        if rc == ERROR_NO_MORE_ITEMS {
+            break;
+        }
+        if rc != ERROR_SUCCESS || (kind != REG_SZ && kind != REG_EXPAND_SZ) {
+            continue;
+        }
+        let units: Vec<u16> = data[..data_len as usize]
+            .chunks_exact(2)
+            .map(|c| u16::from_le_bytes([c[0], c[1]]))
+            .collect();
+        values.push(super::login_env::RegValue {
+            name: String::from_utf16_lossy(&name[..name_len as usize]),
+            data: String::from_utf16_lossy(&units).trim_end_matches('\0').to_string(),
+            expand: kind == REG_EXPAND_SZ,
+        });
+    }
+    Some(values)
+}
+
+/// A kill-on-close Job Object holding one streamed step's process tree (owner ruling 14 Sep 2026,
+/// ledger #609): terminating it — or closing its last handle, which rexenv exiting or crashing
+/// does — ends every process in it, the grandchildren a Composer or npm run starts included.
+pub(crate) struct StepJob(HANDLE);
+
+// SAFETY: a job handle is a kernel object handle, usable from any thread.
+unsafe impl Send for StepJob {}
+
+impl Drop for StepJob {
+    fn drop(&mut self) {
+        // SAFETY: created by `StepJob::new`, closed exactly once.
+        unsafe { CloseHandle(self.0) };
+    }
+}
+
+impl StepJob {
+    /// A new, unnamed job whose processes are killed when its last handle closes.
+    pub(crate) fn new() -> Option<Self> {
+        use windows_sys::Win32::System::JobObjects::{
+            CreateJobObjectW, JobObjectExtendedLimitInformation, SetInformationJobObject,
+            JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+        };
+        // SAFETY: null attributes and a null name ask for an unnamed job.
+        let raw = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
+        if raw.is_null() {
+            return None;
+        }
+        let job = StepJob(raw);
+        let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        // SAFETY: the pointer and size describe `limits`, the struct this class expects.
+        let ok = unsafe {
+            SetInformationJobObject(
+                job.0,
+                JobObjectExtendedLimitInformation,
+                (&limits as *const JOBOBJECT_EXTENDED_LIMIT_INFORMATION).cast(),
+                std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            )
+        };
+        (ok != 0).then_some(job)
+    }
+
+    /// Put `process` (a handle with the rights `Child` holds) in this job.
+    pub(crate) fn assign(&self, process: HANDLE) -> bool {
+        use windows_sys::Win32::System::JobObjects::AssignProcessToJobObject;
+        // SAFETY: both handles are open for the duration of the call.
+        unsafe { AssignProcessToJobObject(self.0, process) != 0 }
+    }
+
+    /// How many processes are in the job now; `None` when the query fails.
+    pub(crate) fn active_processes(&self) -> Option<u32> {
+        use windows_sys::Win32::System::JobObjects::{
+            JobObjectBasicAccountingInformation, QueryInformationJobObject, JOBOBJECT_BASIC_ACCOUNTING_INFORMATION,
+        };
+        let mut info: JOBOBJECT_BASIC_ACCOUNTING_INFORMATION = unsafe { std::mem::zeroed() };
+        // SAFETY: the pointer and size describe `info`, the struct this class fills.
+        let ok = unsafe {
+            QueryInformationJobObject(
+                self.0,
+                JobObjectBasicAccountingInformation,
+                (&mut info as *mut JOBOBJECT_BASIC_ACCOUNTING_INFORMATION).cast(),
+                std::mem::size_of::<JOBOBJECT_BASIC_ACCOUNTING_INFORMATION>() as u32,
+                std::ptr::null_mut(),
+            )
+        };
+        (ok != 0).then_some(info.ActiveProcesses)
+    }
+
+    /// End every process in the job.
+    pub(crate) fn terminate(&self) -> bool {
+        use windows_sys::Win32::System::JobObjects::TerminateJobObject;
+        // SAFETY: the job handle is open.
+        unsafe { TerminateJobObject(self.0, 1) != 0 }
+    }
+}
+
+/// Resume `pid`, a process created with `CREATE_SUSPENDED` — its one thread. `false` when no
+/// thread of it could be resumed.
+pub(crate) fn resume_suspended(pid: u32) -> bool {
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{Thread32First, Thread32Next, TH32CS_SNAPTHREAD, THREADENTRY32};
+    use windows_sys::Win32::System::Threading::{OpenThread, ResumeThread, THREAD_SUSPEND_RESUME};
+    // SAFETY: a plain call; INVALID_HANDLE_VALUE is its failure value.
+    let snap = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0) };
+    if snap == INVALID_HANDLE_VALUE {
+        return false;
+    }
+    let snap = Owned(snap);
+    let mut entry: THREADENTRY32 = unsafe { std::mem::zeroed() };
+    entry.dwSize = std::mem::size_of::<THREADENTRY32>() as u32;
+    let mut resumed = false;
+    // SAFETY: `entry.dwSize` is set as the API requires; the snapshot handle is open.
+    let mut ok = unsafe { Thread32First(snap.0, &mut entry) };
+    while ok != 0 {
+        if entry.th32OwnerProcessID == pid {
+            // SAFETY: a plain call; null is its failure value.
+            let thread = unsafe { OpenThread(THREAD_SUSPEND_RESUME, 0, entry.th32ThreadID) };
+            if !thread.is_null() {
+                let thread = Owned(thread);
+                // SAFETY: the thread handle is open with THREAD_SUSPEND_RESUME.
+                resumed |= unsafe { ResumeThread(thread.0) } != u32::MAX;
+            }
+        }
+        // SAFETY: as above.
+        ok = unsafe { Thread32Next(snap.0, &mut entry) };
+    }
+    resumed
+}
+
 /// The full image path of `pid` — the file the kernel mapped, whatever the process
 /// calls itself.
 pub(crate) fn image_path(pid: u32) -> Option<PathBuf> {

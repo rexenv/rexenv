@@ -577,6 +577,18 @@ Live-proven end to end by `site_stop_start_check`.
   samples in a row sets the row's `busyNote`, two below clears it, an unreadable count changes
   nothing. Each change writes a health-log line, with the hosts in the tail of nginx's access log as
   "recently served" — nginx logs a request when it ends, so the busy ones are not there yet.
+  **Streamed steps on Windows — Composer, git, npm** (#609, owner rulings 14 Sep 2026): the
+  provisioning and repo jobs run tools through `core::repo::run_step_streamed`, which needs the
+  user's environment (`ShellRunner::login_shell_env`) and a step that can be stopped with everything
+  it started (`spawn_streamed` / `stop_group`); Windows had neither, so a Laravel or Git site could
+  not be provisioned there at all. The environment is read FRESH from the registry on every refresh —
+  the system's and the user's `Environment` keys laid over this process's own variables, the user's
+  `Path` appended to the system's, `REG_EXPAND_SZ` expanded (`windows/login_env.rs`) — so a tool
+  installed while rexenv runs is found, as re-running the login shell finds it on macOS. Each step is
+  spawned SUSPENDED into its own kill-on-close Job Object and only then resumed, so its grandchildren
+  are in the job from their first instant; `stop_group` terminates the job and waits for it to empty,
+  and a job that cannot be made refuses the step. Unlike macOS, a step does not outlive rexenv: the
+  job's last handle closing ends it (the ruling — no half-finished install running unseen).
   **The shared nginx on Windows** (#602): every path in nginx.conf goes through `services::nginx_path`
   (forward slashes — a backslash in a quoted nginx string is an escape, measured); the binary is
   `binaries::resolve_program`, which answers a single binary or `nginx.exe` inside its tree; the socket
