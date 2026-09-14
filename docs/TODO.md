@@ -80,7 +80,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     arm64 emulation unsupported)
   - [ ] Measure before building on it (plan §3, Dell + VM): D1 — php-cgi's own parent
     (children spawned, respawned, killed with the parent; the listener's owning pid; job
-    breakaway from the app's launch contexts; memory per child; peak concurrency on a
+    breakaway from the app's launch contexts (SSH allows it, #600; a Task Scheduler task REFUSES it —
+    ACCESS_DENIED from `proxy::start`, 14 Sep 2026, plan §3 D1; Explorer, Start, Windows Terminal
+    unmeasured); memory per child; peak concurrency on a
     block-editor load); D2 — who holds loopback :53 and who ANSWERS it, per state (clean,
     hotspot/ICS, Hyper-V, WSL2 NAT + mirrored, Docker Desktop); D5 — unsigned NSIS through
     Edge and Chrome: the clicks (each named), every message verbatim with a screenshot, whether
@@ -282,7 +284,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
       sweep target — or another route
     - [ ] Download planning (`core/downloads.rs`) names `php-fpm` for every PHP it plans; on a
       php-cgi platform it must plan `php` — found writing W4 step 1, not yet changed
-  - [ ] W5 — Caddy :443 edge + CurrentUser Root CA trust → valid lock in Edge/Chrome/Firefox.
+  - [x] W5 — Caddy :443 edge + CurrentUser Root CA trust → valid lock in Edge/Chrome/Firefox.
+    ✓ 14 Sep 2026 — Dell `windows_browser_lock_check` PASS in the desktop session (Medium token, the owner
+    answering both prompts): Edge 153, Chrome 152 and Firefox 105, each headless on a fresh profile, REJECTED
+    the edge's `lockcheck.rex` before the CA was trusted, loaded the page and its same-origin beacon after
+    `trust_ca`, and rejected it again after `untrust_ca` (ledger #614). Names resolved by the browsers
+    themselves — `.rex` DNS is W6.
     **Progress 14 Sep 2026 — D3's Caddy admin measurement, done first:** the rule stands; Caddy on
     Windows serves its admin API on a unix socket. rexenv's `unix//C:\…` was the bug — Caddy splits an
     address at its first slash, named the socket `/C:\…`, refused to start and its CLI could not dial
@@ -322,7 +329,8 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     Yes, No, Yes): PASS — install No → the cancel, not trusted; install Yes → trusted; delete No → the
     cancel, still trusted; delete Yes → gone. Windows' prompts, read off the screen by the check: "Security
     Warning" naming "rexenv Local CA" and its SHA-1 thumbprint, and "Root Certificate Store" — "Do you
-    want to DELETE the following certificate from the Root Store?". Still to come: the three browsers
+    want to DELETE the following certificate from the Root Store?". **The three browsers — done the same
+    evening** (above, ✓)
   - [ ] W6 — DNS agent + NRPT + UAC + logon task → `*.rex` resolves after reboot, app closed
   - [ ] W7 — ShellRunner, autostart, tray (includes the Windows half of the browser-stub row)
   - [ ] W8 — `rex` CLI + MCP over named pipes; `rex.exe` on PATH

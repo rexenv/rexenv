@@ -1382,6 +1382,14 @@ bloating the fast path:
   Yes, delete No, delete Yes), each held to its outcome. While a store call waits, a watcher thread
   prints the title and text of every visible window the process owns — the prompt's wording is recorded
   by reading it, never by clicking.
+  `windows_browser_lock_check` (#614) is W5's done-when, run through `windows-browser-lock.ps1` in the
+  desktop session with someone to answer the two prompts. A sandbox edge serves `lockcheck.rex` to an
+  upstream inside the check that records every request; Edge, Chrome and Firefox run headless on fresh
+  profiles before the CA is trusted, after, and after it is removed. A browser that rejects a certificate
+  never sends the request, so "accepted" = its own `/?run=…` (and the beacon the page names) arrived —
+  and the before/after phases are the control that the check can see a rejection at all. Names resolve
+  inside the browsers (W6 owns `.rex` DNS). Caddy is the check's own child, not `proxy::start`: a
+  scheduled task forbids job breakaway, which the supervisor needs.
 
 A gate nobody can afford to run stops being one: the fast bar stays fast, and nothing
 above it is required per-commit. The metric the gate serves is the ledger tally, which

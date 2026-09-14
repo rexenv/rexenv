@@ -219,7 +219,14 @@ before anything is built on it.
   both invalid and stdin valid, it would take itself for a child. *Measure:* whether
   breakaway is allowed from the launch contexts that matter (Explorer, Start, the logon task,
   Windows Terminal). Where it is refused, the start fails loud and names why; it never
-  silently becomes a pool that dies with the app.
+  silently becomes a pool that dies with the app. **One context measured, 14 Sep 2026: a Task
+  Scheduler task REFUSES it.** A task with an interactive logon and RunLevel Limited (the shape
+  `scripts/probes/windows-limited-token.sh` registers, default settings) ran
+  `windows_browser_lock_check`; `proxy::start` came back ACCESS_DENIED with the start error written
+  for exactly this ("…started inside a job that forbids its services to outlive it…"). An SSH session
+  allows it (#600). So rexenv must not be LAUNCHED by a scheduled task — autostart stays the HKCU Run
+  key (W7), and W6's logon task may run the DNS agent (it spawns no service) but never the app.
+  Explorer, Start and Windows Terminal remain unmeasured.
 - **Orphan workers — closed by the OS, with one hole.** The children live in the parent's
   kill-on-close job: the parent dies by any means, `TerminateProcess` included, the job
   handle closes, and Windows kills the children. The macOS class (a SIGKILLed master leaking
@@ -941,7 +948,18 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   a certificate from a certification authority (CA) claiming to represent: rexenv Local CA … Thumbprint
   (sha1) …" — and "Root Certificate Store" — "Do you want to DELETE the following certificate from the
   Root Store?" with the subject, validity, serial and thumbprints. They name the CA, not the app; there is
-  no hook to reword them. **Owed:** a lock in Edge, Chrome and Firefox.
+  no hook to reword them.
+  **W5's done-when — measured 14 Sep 2026 (ledger #614).** `windows_browser_lock_check` in the Dell's
+  desktop session (Medium token; the owner answered Yes to both prompts): the Caddyfile rexenv writes
+  served `lockcheck.rex` on the local CA's leaf; Edge 153, Chrome 152 and Firefox 105 ran headless, each on
+  a fresh profile, three times. Before `trust_ca` none of them sent its request (a certificate the
+  browser rejects never gets one); after it all three fetched the page and the same-origin image it
+  names; after `untrust_ca` none did again. Chromium read the CurrentUser Root store directly, Firefox
+  through the `user.js` rexenv writes. What it rests on: "accepted" is the request reaching the edge's
+  upstream, not a rendered padlock; names resolved inside the browsers (`--host-resolver-rules`,
+  `network.dns.localDomains`) because `.rex` DNS is W6; and Caddy ran as the check's own child, since the
+  scheduled task the desktop session needs forbids job breakaway (§3 D1). Headless Firefox on a rejected
+  certificate did not exit and was killed at 60 s.
 - **W6 — DNS + privileges.** D2's :53 measurement first, then the agent, the NRPT rules and the refusal that names a
   :53 holder; `PrivilegeManager` as a UAC
   elevation that says what it is for (the macOS dialog rule, ledger #579's family);

@@ -152,7 +152,9 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   `while_prompting` exactly as on macOS; a No reads as a cancel. `is_trusted` is a prompt-free lookup
   in the logical store (machine roots count). With no interactive desktop the add fails at once with
   0x32 — measured over SSH — and is worded as that, not as a raw number. Chrome and Edge read this
-  store; Firefox reads it through `security.enterprise_roots.enabled` (above). The prompts are Windows'
+  store; Firefox reads it through `security.enterprise_roots.enabled` (above) — measured end to end
+  (#614): Edge 153, Chrome 152 and Firefox 105 rejected a `.rex` site before the CA was in the store,
+  accepted it once it was, and rejected it again after it was removed. The prompts are Windows'
   own dialogs inside rexenv's process, and they name the CA, not the app: "Security Warning … claiming to
   represent: rexenv Local CA … Thumbprint (sha1)" to add, "Root Certificate Store — Do you want to
   DELETE the following certificate from the Root Store?" to remove (measured; unlike macOS, there is no
@@ -538,7 +540,9 @@ Live-proven end to end by `site_stop_start_check`.
   kill-on-close job — an SSH session measurably is one, a terminal or IDE can be — takes
   every child without it down with the job; plus `CREATE_NO_WINDOW` and its own process
   group. A launcher whose job forbids breakaway gets a start error that says so, never a
-  service that silently dies with the app. Stop has no SIGTERM to send: a process with its
+  service that silently dies with the app — measured 14 Sep 2026 from a Task Scheduler task, which
+  forbids it: `proxy::start` returned ACCESS_DENIED with that wording. So rexenv is never launched by a
+  scheduled task (plan §3 D1). Stop has no SIGTERM to send: a process with its
   own clean-shutdown channel is asked through it and given 10 s — `mysqld`, run with
   `--no-monitor` so the pid rexenv holds IS the server (the default restart monitor's child
   survived the monitor's termination still holding the port, measured), via its
