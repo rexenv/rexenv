@@ -1365,6 +1365,12 @@ bloating the fast path:
   `taskkill /F` crash (the socket file outlives Caddy; the connect error turns from `NotFound` to
   `ConnectionRefused`) and a fresh start over it, then `stop_all` releasing both ports. It runs under the
   SSH session's elevated token, so the desktop token's firewall prompt stays `windows-edge-bind.ps1`'s.
+  `windows_firefox_profiles_check` (#612) is Firefox's side of W5 without touching the user's profile:
+  `firefox_profiles_root` and `firefox::status` on the REAL root, read only (every file rexenv could
+  write is hashed before and after); the real `profiles.ini` copied as bytes into a fixture (its
+  encoding is the shape — UTF-16LE on the Dell) and forced; then the installed `firefox.exe`, headless,
+  on that profile and on a control, reading `prefs.js` after its own shutdown — the pref saved true
+  only where rexenv wrote it. It needs Firefox installed, and proves the pref, not the lock.
 
 A gate nobody can afford to run stops being one: the fast bar stays fast, and nothing
 above it is required per-commit. The metric the gate serves is the ledger tally, which

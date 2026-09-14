@@ -137,6 +137,14 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   itself: the packaged `rexenv.app` gets its name and logo, a bundle-less `cargo run` its
   executable name. A dismissed dialog returns -60006 and reads as a cancel. Cancel still
   leaves the CA imported, untrusted — as `security` did.
+- **Firefox keeps its own trust store** (`core/firefox.rs`, #154): rexenv forces
+  `security.enterprise_roots.enabled` in each profile's `user.js` so Firefox imports the OS roots
+  (default on only from Firefox 120). Only the profiles ROOT is per-OS
+  (`CertTrustManager::firefox_profiles_root`): `~/Library/Application Support/Firefox` on macOS,
+  `%APPDATA%\Mozilla\Firefox` on Windows (#612; the Store build's virtualized copy is not looked in).
+  `profiles.ini` is read in whatever encoding it was saved — the Dell's is **UTF-16LE with a BOM**
+  (the Mac's is plain UTF-8), and read as UTF-8 it yielded no profile, so Settings called Firefox
+  not installed and the trust step wrote nowhere, silently.
 - **Per-site server overrides** (`OverrideKind` in the manager — one seam, two kinds
   today, OLS drops in later if a macOS artifact ever exists):
   - **FrankenPHP** (single static binary, embeds its own PHP): loopback backend on a

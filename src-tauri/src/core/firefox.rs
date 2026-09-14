@@ -44,11 +44,38 @@ pub struct FirefoxTrust {
     pub forced: usize,
 }
 
+/// An INI file's bytes as text, in whichever encoding it was saved: UTF-8 with or without a
+/// byte-order mark, or UTF-16 (little- or big-endian) with one. `None` when it is none of those.
+///
+/// **Why UTF-16:** the Dell's `profiles.ini` (Windows 10, Firefox 105) is UTF-16LE — `FF FE`, a NUL
+/// after every ASCII byte (measured 14 Sep 2026, ledger #612) — and the profile it lists is the one
+/// that Firefox runs. Read as UTF-8 it refused, so `profiles` found nothing: Settings called Firefox
+/// not installed and the trust step wrote to no profile, silently. Every fixture had been ASCII.
+pub fn ini_text(bytes: &[u8]) -> Option<String> {
+    let utf16 = |body: &[u8], little: bool| -> Option<String> {
+        if body.len() % 2 != 0 {
+            return None;
+        }
+        let units: Vec<u16> = body
+            .chunks_exact(2)
+            .map(|c| if little { u16::from_le_bytes([c[0], c[1]]) } else { u16::from_be_bytes([c[0], c[1]]) })
+            .collect();
+        String::from_utf16(&units).ok()
+    };
+    match bytes {
+        [0xFF, 0xFE, body @ ..] => utf16(body, true),
+        [0xFE, 0xFF, body @ ..] => utf16(body, false),
+        [0xEF, 0xBB, 0xBF, body @ ..] => String::from_utf8(body.to_vec()).ok(),
+        _ => String::from_utf8(bytes.to_vec()).ok(),
+    }
+}
+
 /// Profile directories listed in `<root>/profiles.ini` (absolute paths).
 /// Minimal INI walk: every `Path=` inside a `[Profile*]` section, honoring
-/// `IsRelative` (defaults to relative when absent).
+/// `IsRelative` (defaults to relative when absent). The file's encoding is
+/// [`ini_text`]'s to settle.
 pub fn profiles(root: &Path) -> Vec<PathBuf> {
-    let Ok(ini) = std::fs::read_to_string(root.join("profiles.ini")) else {
+    let Some(ini) = std::fs::read(root.join("profiles.ini")).ok().and_then(|b| ini_text(&b)) else {
         return Vec::new();
     };
     let mut out = Vec::new();
@@ -177,6 +204,63 @@ mod tests {
         assert_eq!(got.len(), 2);
         assert_eq!(got[0], root.join("Profiles/a.default"));
         assert_eq!(got[1], PathBuf::from("/tmp"));
+    }
+
+    /// A Windows `profiles.ini` as the Dell has it (Firefox 105, 14 Sep 2026, ledger #612): UTF-16LE
+    /// with its byte-order mark, Windows line endings, two `[Install…]` sections naming the default,
+    /// `IsRelative=1` with a forward-slash `Path`, and a `[BackgroundTasksProfiles]` section whose
+    /// folder exists beside it. Exactly the one real profile comes back.
+    #[test]
+    fn a_windows_profiles_ini_yields_its_one_profile() {
+        let ini = [
+            "[InstallD02ED4FEE9577B7E]",
+            "Default=Profiles/7fo3m2n4.default-1570724765294",
+            "",
+            "[InstallE7CF176E110C211B]",
+            "Default=Profiles/7fo3m2n4.default-1570724765294",
+            "",
+            "[Profile0]",
+            "Name=default",
+            "IsRelative=1",
+            "Path=Profiles/7fo3m2n4.default-1570724765294",
+            "Default=1",
+            "",
+            "[General]",
+            "StartWithLastProfile=1",
+            "Version=2",
+            "",
+            "[BackgroundTasksProfiles]",
+            "MozillaBackgroundTask-E7CF176E110C211B-backgroundupdate=19fw2fqt.MozillaBackgroundTask-E7CF176E110C211B-backgroundupdate",
+            "",
+        ]
+        .join("\r\n");
+        let root = fake_root("windows-dell", "");
+        let mut bytes = vec![0xFF, 0xFE];
+        bytes.extend(ini.encode_utf16().flat_map(u16::to_le_bytes));
+        std::fs::write(root.join("profiles.ini"), bytes).unwrap();
+        std::fs::create_dir_all(root.join("Profiles/7fo3m2n4.default-1570724765294")).unwrap();
+        std::fs::create_dir_all(root.join("19fw2fqt.MozillaBackgroundTask-E7CF176E110C211B-backgroundupdate")).unwrap();
+        assert_eq!(profiles(&root), vec![root.join("Profiles/7fo3m2n4.default-1570724765294")]);
+    }
+
+    /// The other encodings a hand-edited or tool-written `profiles.ini` arrives in: a UTF-8
+    /// byte-order mark before the first section (left in, it hides that section), UTF-16BE; and bytes
+    /// that are no text at all read as no file.
+    #[test]
+    fn ini_text_reads_utf8_with_a_bom_and_utf16_big_endian_and_refuses_garbage() {
+        let text = "[Profile0]\nPath=p0\n";
+        let mut bom = vec![0xEF, 0xBB, 0xBF];
+        bom.extend_from_slice(text.as_bytes());
+        assert_eq!(ini_text(&bom).as_deref(), Some(text));
+        let mut be = vec![0xFE, 0xFF];
+        be.extend(text.encode_utf16().flat_map(u16::to_be_bytes));
+        assert_eq!(ini_text(&be).as_deref(), Some(text));
+        assert_eq!(ini_text(&[0xFF, 0xFE, 0x5B]), None, "an odd UTF-16 body");
+        assert_eq!(ini_text(&[0xC3, 0x28]), None, "invalid UTF-8");
+        let root = fake_root("utf8-bom", "");
+        std::fs::write(root.join("profiles.ini"), &bom).unwrap();
+        std::fs::create_dir_all(root.join("p0")).unwrap();
+        assert_eq!(profiles(&root), vec![root.join("p0")], "the BOM hid the first section");
     }
 
     #[test]

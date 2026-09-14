@@ -912,6 +912,15 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   the local CA; a second manager adopted the live edge and reloaded it in place; after `taskkill /F`
   the socket file stayed, the connect said `ConnectionRefused`, and a fresh start came up over it;
   `stop_all` released both ports. Remaining for W5: `CertTrustManager`, Firefox, the three browsers.
+  **Firefox's profiles root — done 14 Sep 2026 (ledger #612).** `WindowsCertTrust::firefox_profiles_root`
+  = `%APPDATA%\Mozilla\Firefox` (Roaming, via `directories`) when a `profiles.ini` file is there. The
+  Dell's `profiles.ini` turned out UTF-16LE with a BOM — `core::firefox` read it as UTF-8, found no
+  profile and would have told Settings Firefox was absent — so `firefox::ini_text` settles the
+  encoding. Measured (`windows_firefox_profiles_check`, 12 checks): the real root and profile found
+  without writing; the installed Firefox 105 (below 120, so the pref defaults off), headless on a
+  fixture profile, saved `security.enterprise_roots.enabled` true from rexenv's `user.js` and did not on
+  a control. Still open for Firefox: whether it then trusts rexenv's CA from the CurrentUser Root store
+  — that waits on `CertTrustManager`; the Store build's folder.
 - **W6 — DNS + privileges.** D2's :53 measurement first, then the agent, the NRPT rules and the refusal that names a
   :53 holder; `PrivilegeManager` as a UAC
   elevation that says what it is for (the macOS dialog rule, ledger #579's family);

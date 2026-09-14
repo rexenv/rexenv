@@ -70,6 +70,11 @@ mod windows_login_env;
 #[allow(dead_code)]
 #[path = "windows/ipc_rules.rs"]
 mod windows_ipc_rules;
+// And where Firefox's profiles live (ledger #612).
+#[cfg(all(test, not(target_os = "windows")))]
+#[allow(dead_code)]
+#[path = "windows/firefox_root.rs"]
+mod windows_firefox_root;
 
 use traits::Platform;
 

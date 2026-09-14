@@ -302,8 +302,16 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     `windows_edge_start_check` PASS (28 checks): unprivileged plan, `admin_alive` over AF_UNIX,
     `127.0.0.1:443`/`:80` only and the LAN address refusing, TLS on the local CA, adopt + in-place
     reload by a second manager, a `taskkill /F` crash leaving the socket file and a fresh start over
-    it, `stop_all` releasing both ports. Still to come: `CertTrustManager` (the CurrentUser Root store — its confirmation dialog needs someone at the Dell),
-    Firefox's profiles root, the three browsers
+    it, `stop_all` releasing both ports. **Firefox's profiles root — done the same day (ledger #612):**
+    `%APPDATA%\Mozilla\Firefox` when it holds a `profiles.ini`. Found building it: the Dell's
+    `profiles.ini` is UTF-16LE with a BOM, which `core::firefox::profiles` read as UTF-8 and so found no
+    profile — `ini_text` now reads UTF-8 (± BOM) and UTF-16 (LE/BE, BOM). Dell
+    `windows_firefox_profiles_check` PASS (12 checks): the real root and its one profile found, read
+    only (hashes unchanged); a byte-copy fixture forced once, idempotent; the installed Firefox 105,
+    headless, saved `security.enterprise_roots.enabled` true from rexenv's `user.js` and not in a
+    control profile. Not looked in: the Microsoft Store build's virtualized folder (none to measure).
+    Still to come: `CertTrustManager` (the CurrentUser Root store — its confirmation dialog needs someone at the Dell),
+    the three browsers
   - [ ] W6 — DNS agent + NRPT + UAC + logon task → `*.rex` resolves after reboot, app closed
   - [ ] W7 — ShellRunner, autostart, tray (includes the Windows half of the browser-stub row)
   - [ ] W8 — `rex` CLI + MCP over named pipes; `rex.exe` on PATH

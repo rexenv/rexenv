@@ -17,6 +17,7 @@ use std::process::Child;
 
 mod acl;
 mod af_unix;
+mod firefox_root;
 mod handles;
 mod ipc_rules;
 mod login_env;
@@ -82,6 +83,11 @@ impl CertTrustManager for WindowsCertTrust {
     }
     fn untrust_ca(&self, _ca_cert_path: &Path) -> Result<()> {
         Err(Error::Unported("windows CA untrust (CurrentUser Root store)"))
+    }
+    /// `%APPDATA%\Mozilla\Firefox` (`firefox_root.rs`, ledger #612): `directories`' config dir is the
+    /// Roaming AppData known folder on Windows.
+    fn firefox_profiles_root(&self) -> Option<PathBuf> {
+        firefox_root::profiles_root_in(directories::BaseDirs::new()?.config_dir())
     }
 }
 
