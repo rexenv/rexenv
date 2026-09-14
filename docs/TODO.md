@@ -372,7 +372,13 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     `windows_nrpt_route_check` PASS (21 checks, test TLDs only, the scripts run with the elevated SSH token):
     install → ours and resolving through Windows' own resolver; uninstall → gone; another tool's
     two-namespace rule → foreign; takeover → ours, their rule (same key) keeping the other namespace;
-    `uninstall ; restore` → their rule with both again. Next: S3 (the UAC step that runs these scripts)
+    `uninstall ; restore` → their rule with both again. **S3 done, 15 Sep 2026 (ledger #619):**
+    `PrivilegeManager` on Windows — rexenv's own dialog with the reason, then UAC for `rexenv.exe
+    --elevated-step`, which accepts only rexenv's ops (owner's ruling: `WindowsDns` hands over
+    `nrpt-install test`, never PowerShell). The ops path measured over SSH (`windows_nrpt_route_check`
+    PASS, 21 checks, through the step's own body); in the desktop session with the owner answering
+    `windows_uac_step_check` PASS (10 checks): non-op refused with no window, install and remove OK+Yes,
+    Cancel and OK+No → the cancel wording with nothing changed. Next: S5
   - [ ] W7 — ShellRunner, autostart, tray (includes the Windows half of the browser-stub row)
   - [ ] W8 — `rex` CLI + MCP over named pipes; `rex.exe` on PATH
   - [ ] W9 — frontend on WebView2 (Windows paths, Ctrl shortcuts, fonts)

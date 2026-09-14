@@ -88,6 +88,11 @@ mod windows_cert_rules;
 #[allow(dead_code)]
 #[path = "windows/logon_task.rs"]
 mod windows_logon_task;
+// And the elevated step's arguments, result and words (ledger #619).
+#[cfg(all(test, not(target_os = "windows")))]
+#[allow(dead_code)]
+#[path = "windows/elevation_rules.rs"]
+mod windows_elevation_rules;
 // And NRPT ownership and its PowerShell (ledger #618).
 #[cfg(all(test, not(target_os = "windows")))]
 #[allow(dead_code)]
@@ -162,6 +167,28 @@ pub fn send_output_to(log: &std::path::Path) {
     windows::send_output_to(log);
     #[cfg(not(target_os = "windows"))]
     let _ = log;
+}
+
+/// When this process was started as Windows' elevated step (`rexenv.exe --elevated-step`, W6 S3, ledger
+/// #619), run it and return its exit code; `None` otherwise — and always `None` off Windows. Checked by
+/// `main.rs` before anything else starts: the step opens no window and touches no app state.
+pub fn run_elevated_step(argv: &[String]) -> Option<i32> {
+    #[cfg(target_os = "windows")]
+    {
+        windows::run_step(argv)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = argv;
+        None
+    }
+}
+
+/// Run Windows privileged ops in THIS process, with no dialog and no UAC — the elevated step's body, for a
+/// check that already holds an elevated token (the Dell's SSH session). `(exit code, output)`. Windows-only.
+#[cfg(target_os = "windows")]
+pub fn run_elevated_ops_in_this_process(ops: &str) -> (i32, String) {
+    windows::run_ops_here(ops)
 }
 
 /// The build OS's `LocalIpc` — what `Platform::local_ipc` returns unless a

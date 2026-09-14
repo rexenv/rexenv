@@ -408,8 +408,19 @@ Live-proven end to end by `site_stop_start_check`.
   effect at once (measured). One rule may name several namespaces, so `install_command` removes only
   `.<tld>` from another rule (removing the rule only when nothing else is left in it) before adding ours,
   and `restore_command` reads the backup file (never pastes it into the script) and sets the namespaces
-  back on the SAME rule when it still exists, adding it again only when it does not. The commands are
-  PowerShell for an elevated run — `PrivilegeManager` on Windows is W6 S3.
+  back on the SAME rule when it still exists, adding it again only when it does not. What `WindowsDns`
+  hands `PrivilegeManager` is rexenv OPS (`nrpt-install test`, `nrpt-remove …`, `nrpt-restore …`), not
+  PowerShell — the script is built on the far side of the elevation (#619).
+- **Privileged steps on Windows** (`platform/windows/elevation.rs` + `elevation_rules.rs`, #619, W6 S3; owner's
+  rulings R2 and 15 Sep 2026): `run_privileged` first parses the ops and refuses anything else before any
+  dialog; then rexenv's own message box, titled rexenv, says the reason (`PromptReason::sentence`) and that
+  Windows asks next; then `ShellExecuteExW` with the `runas` verb starts `rexenv.exe --elevated-step
+  <base64 ops> "<result>"` — UAC names the program it elevates, so the prompt says rexenv — and waits for
+  it. The elevated process (dispatched first thing in `main.rs`) accepts only rexenv's ops with valid TLD
+  labels, reads restores only from rexenv's own `resolver-backups`, writes its result only to a
+  `rexenv-elevated-*.txt` directly in the user's temp directory, and builds the PowerShell itself. Why ops
+  and not a script: any process on the machine could otherwise start `rexenv.exe --elevated-step <its own
+  script>` behind a UAC prompt that says "rexenv". A Cancel or a No reads as the cancel wording.
 - **App launch = adopt-or-install-or-fall-back** (`lib.rs`): probe
   `dns::answers_as_ours` (a REAL A query must return `127.0.0.1` — ownership AND
   liveness, H2 — never a bare port probe); refresh the plist every launch so it tracks

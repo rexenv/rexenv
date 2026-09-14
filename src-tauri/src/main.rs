@@ -8,13 +8,19 @@ fn main() {
     // process does not have (docs/PLAN-windows-port.md §3a Q1, ledger #596).
     rexenv_lib::crash::install();
 
+    // Windows' elevated step (`rexenv.exe --elevated-step`, W6 S3): started by UAC for one privileged change,
+    // it runs only rexenv's own ops and exits. Before every other mode — it opens no window.
+    let argv: Vec<String> = std::env::args().collect();
+    if let Some(code) = rexenv_lib::platform::run_elevated_step(&argv) {
+        std::process::exit(code);
+    }
+
     // Headless resolver mode, run by the per-user LaunchAgent so local-TLD DNS
     // survives app quits (and is up from login). Checked BEFORE Tauri boots:
     // the agent must never open a window, touch SQLite, or start services.
     if std::env::args().any(|a| a == "--dns-agent") {
         // `--log <path>`: where the agent's output goes when its supervisor captures none — a
         // Windows logon task (W6 S2, ledger #616). launchd's plist redirects it on macOS.
-        let argv: Vec<String> = std::env::args().collect();
         if let Some(log) = argv.iter().position(|a| a == "--log").and_then(|i| argv.get(i + 1)) {
             rexenv_lib::platform::send_output_to(std::path::Path::new(log));
         }
@@ -26,7 +32,6 @@ fn main() {
     // DNS agent is: it must never open a window or touch app state.
     #[cfg(target_os = "macos")]
     {
-        let argv: Vec<String> = std::env::args().collect();
         if let Some(args) = rexenv_lib::core::tunnels::parse_guard_args(&argv) {
             std::process::exit(rexenv_lib::platform::run_tunnel_guard(args));
         }

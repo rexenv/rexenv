@@ -39,7 +39,10 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
   (ledger #616); the resolver-route trait (`DnsManager::route_*`) with macOS's file half in
   `platform/resolver_files.rs` (ledger #617) and Windows' NRPT half — `WindowsDns` over
   `process::read_nrpt_rules` and `windows/nrpt_rules.rs` (ownership and the PowerShell, tested on every
-  host) (ledger #618); nginx's Windows shape — `services::nginx_path`,
+  host) (ledger #618); privileged steps — `WindowsPrivileges` over `windows/elevation.rs` (rexenv's dialog, UAC
+  for `rexenv.exe --elevated-step`, the step itself) and `windows/elevation_rules.rs` (arguments, the result
+  path rule, the words, tested on every host), dispatched by `platform::run_elevated_step` in `main.rs`
+  (ledger #619); nginx's Windows shape — `services::nginx_path`,
   `binaries::resolve_program`, the master climb and nginx's events (ledger #602);
   `linux/` is `todo!()`).
 - `state/` = SQLite migrations + the store layer; only `state/` writes SQL.

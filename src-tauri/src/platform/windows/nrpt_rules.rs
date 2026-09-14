@@ -1,7 +1,13 @@
 //! Windows' route for a TLD: an NRPT rule (W6 S4, ledger #618). The pure half — which rules are ours,
-//! which TLDs another tool routes, and the PowerShell that adds, removes and puts back rules — compiled
-//! into the macOS test build so it runs in `verify.sh`. `WindowsDns` reads the rules from the registry
-//! and hands them here.
+//! which TLDs another tool routes, the rexenv OPS that change them, and the PowerShell those ops become —
+//! compiled into the macOS test build so it runs in `verify.sh`. `WindowsDns` reads the rules from the
+//! registry and hands them here.
+//!
+//! **Ops, not scripts, cross the elevation boundary** (owner's ruling, 15 Sep 2026, ledger #619): what
+//! `WindowsDns` hands `PrivilegeManager` is `nrpt-install test`, never PowerShell. The elevated
+//! `rexenv.exe --elevated-step` parses the ops, refuses anything else or any invalid TLD label, and only
+//! then builds the PowerShell itself — so no other process can use a "rexenv" UAC prompt to run a script
+//! of its own.
 //!
 //! Measured on the Dell (15 Sep 2026, `scripts/probes/windows-nrpt.ps1`): a rule takes effect at once,
 //! with no cache flush; each is a key under `DnsPolicyConfig` whose `Name` is a `REG_MULTI_SZ` of
@@ -91,6 +97,78 @@ pub(crate) fn foreign_tlds(rules: &[NrptRule]) -> Vec<String> {
     tlds
 }
 
+/// One privileged change rexenv makes to NRPT rules — what crosses the elevation boundary.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Op {
+    /// Make each TLD's route ours (`install_script`).
+    Install(String),
+    /// Remove our rules for these TLDs (`uninstall_script`).
+    Remove(Vec<String>),
+    /// Put back the rules rexenv backed up for these TLDs, from rexenv's own backup directory.
+    Restore(Vec<String>),
+}
+
+const INSTALL: &str = "nrpt-install";
+const REMOVE: &str = "nrpt-remove";
+const RESTORE: &str = "nrpt-restore";
+
+pub(crate) fn install_op(tld: &str) -> String {
+    format!("{INSTALL} {tld}")
+}
+
+pub(crate) fn remove_op(tlds: &[String]) -> String {
+    std::iter::once(REMOVE.to_string()).chain(tlds.iter().cloned()).collect::<Vec<_>>().join(" ")
+}
+
+pub(crate) fn restore_op(tlds: &[String]) -> String {
+    std::iter::once(RESTORE.to_string()).chain(tlds.iter().cloned()).collect::<Vec<_>>().join(" ")
+}
+
+/// Parse the ops the core handed `PrivilegeManager` — one per line, or joined with ` ; ` as the core joins
+/// privileged steps. Every word after the verb must be a valid TLD label; anything else — another verb, a
+/// shell word, an empty op — refuses the whole batch.
+pub(crate) fn parse_ops(text: &str) -> Result<Vec<Op>, String> {
+    let mut ops = Vec::new();
+    for line in text.split(" ; ").flat_map(|chunk| chunk.lines()) {
+        let words: Vec<&str> = line.split_whitespace().collect();
+        let Some((verb, tlds)) = words.split_first() else { continue };
+        // The verb first: a foreign command is named as one, not as a bad TLD (measured 15 Sep 2026 — the
+        // Dell's check read "`-Recurse` is not a TLD rexenv routes" for `Remove-Item -Recurse …`).
+        if ![INSTALL, REMOVE, RESTORE].contains(verb) {
+            return Err(format!("`{line}` is not a privileged step rexenv can run on Windows"));
+        }
+        if let Some(bad) = tlds.iter().find(|t| !crate::core::tld::is_valid_label(t)) {
+            return Err(format!("`{bad}` is not a TLD rexenv routes"));
+        }
+        let tlds: Vec<String> = tlds.iter().map(|t| t.to_string()).collect();
+        match *verb {
+            INSTALL if tlds.len() == 1 => ops.push(Op::Install(tlds[0].clone())),
+            REMOVE => ops.push(Op::Remove(tlds)),
+            RESTORE => ops.push(Op::Restore(tlds)),
+            _ => return Err(format!("`{line}` is not a privileged step rexenv can run on Windows")),
+        }
+    }
+    if ops.is_empty() {
+        return Err("no privileged step to run".into());
+    }
+    Ok(ops)
+}
+
+/// The PowerShell for `ops`, restores reading rexenv's own backups under `backup_dir`.
+pub(crate) fn script_for(ops: &[Op], backup_dir: &std::path::Path) -> String {
+    let mut s = String::new();
+    for op in ops {
+        s.push_str(&match op {
+            Op::Install(tld) => install_script(tld),
+            Op::Remove(tlds) => uninstall_script(tlds),
+            Op::Restore(tlds) => {
+                restore_script(&tlds.iter().map(|t| (t.clone(), backup_dir.join(t))).collect::<Vec<_>>())
+            }
+        });
+    }
+    s
+}
+
 /// `s` as a PowerShell single-quoted string.
 pub(crate) fn ps_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "''"))
@@ -135,9 +213,10 @@ pub(crate) fn uninstall_script(tlds: &[String]) -> String {
 /// (`ConvertFrom-Json` on the file); its contents never enter the script text.
 pub(crate) fn restore_script(restores: &[(String, PathBuf)]) -> String {
     let mut s = uninstall_script(&restores.iter().map(|(t, _)| t.clone()).collect::<Vec<_>>());
-    for (_, backup) in restores {
+    for (tld, backup) in restores {
         s.push_str(&format!(
             "foreach ($saved in @(Get-Content -Raw -LiteralPath {path} | ConvertFrom-Json)) {{\n\
+             \x20 if (-not (@($saved.namespaces) -contains {ns})) {{ throw {refusal} }}\n\
              \x20 if (Get-DnsClientNrptRule | Where-Object {{ $_.Name -eq $saved.key }}) {{\n\
              \x20   Set-DnsClientNrptRule -Name $saved.key -Namespace @($saved.namespaces)\n\
              \x20 }} else {{\n\
@@ -148,6 +227,8 @@ pub(crate) fn restore_script(restores: &[(String, PathBuf)]) -> String {
              \x20 }}\n\
              }}\n",
             path = ps_quote(&backup.display().to_string()),
+            ns = ps_quote(&namespace(tld)),
+            refusal = ps_quote(&format!("the backup for .{tld} does not route .{tld}; rexenv will not restore it")),
         ));
     }
     s
@@ -241,5 +322,35 @@ mod tests {
         assert!(s.contains("Add-DnsClientNrptRule @add"));
         assert!(s.contains("-contains '.test'"), "ours is removed first");
         assert!(!s.contains("herd"), "no backup content in the script");
+        // A backup that does not route the TLD it is filed under is refused, not restored.
+        assert!(s.contains("if (-not (@($saved.namespaces) -contains '.test')) { throw 'the backup for .test does not route .test; rexenv will not restore it' }"));
+    }
+
+    /// Ledger #619 — only rexenv's own ops parse, joined as the core joins privileged steps; any other
+    /// verb, a shell word in a TLD's place, or nothing at all refuses the whole batch.
+    #[test]
+    fn only_rexenv_ops_with_valid_tlds_parse() {
+        let joined = [install_op("test"), remove_op(&["rex".into(), "dev".into()]), restore_op(&["test".into()])].join(" ; ");
+        assert_eq!(
+            parse_ops(&joined).unwrap(),
+            vec![Op::Install("test".into()), Op::Remove(vec!["rex".into(), "dev".into()]), Op::Restore(vec!["test".into()])]
+        );
+        let foreign = parse_ops("Remove-Item -Recurse C:\\rexenv").unwrap_err();
+        assert!(foreign.contains("not a privileged step"), "a foreign command is named as one: {foreign}");
+        for bad in [
+            "Remove-Item -Recurse C:\\Windows",
+            "nrpt-install test; calc",
+            "nrpt-install TEST",
+            "nrpt-install te$t",
+            "nrpt-install a b",
+            "nrpt-install",
+            "nrpt-remove ../x",
+            "",
+        ] {
+            assert!(parse_ops(bad).is_err(), "{bad:?} parsed");
+        }
+        let dir = std::path::Path::new("rexenv backups");
+        let script = script_for(&parse_ops(&restore_op(&["test".into()])).unwrap(), dir);
+        assert!(script.contains(&format!("-LiteralPath {}", ps_quote(&dir.join("test").display().to_string()))), "{script}");
     }
 }

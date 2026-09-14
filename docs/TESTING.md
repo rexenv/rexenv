@@ -1415,13 +1415,23 @@ bloating the fast path:
   checks `install` (the agent answers, names the build, logs its bind line), a repeated unchanged `install`
   keeping the same process, `kickstart` giving a new one, a killed agent brought back by the per-minute
   trigger (and how long that took), and `uninstall` leaving no task, agent, definition or answer.
-  `windows_nrpt_route_check` (#618) is the NRPT route through `DnsManager`, run over the elevated SSH
-  session (as `PrivilegeManager` will run the scripts, W6 S3) on test TLDs only (`.rexnrptcheck`,
+  `windows_nrpt_route_check` (#618) is the NRPT route through `DnsManager`, its ops run over the elevated SSH
+  session by `platform::run_elevated_ops_in_this_process` — the elevated step's own body, the SSH token
+  standing in for UAC (#619) — on test TLDs only (`.rexnrptcheck`,
   `.rexnrptother`): install → ours, `a.rexnrptcheck` resolving through Windows' own resolver; uninstall →
   absent and unresolved; another tool's two-namespace rule → foreign with the whole rule as content; the
   takeover leaving that rule — same key — with only the other namespace; and `uninstall ; restore`, joined
   as the core joins privileged steps, giving the same rule both namespaces back. A guard removes every rule
   naming a test TLD on every path.
+  `windows_uac_step_check` (#619) is `run_privileged` end to end in the desktop session
+  (`windows-uac-step.ps1` through `windows-limited-token.sh`) with someone answering four prompt pairs in a
+  fixed order — install OK+Yes, remove OK+Yes, install Cancel, install OK+No — each held to the NRPT route
+  of `.rexuaccheck` afterwards; a non-op script must be refused with no dialog; a window watcher records
+  rexenv's dialog and its words (UAC's secure desktop cannot be read), each step's dialog held to its own
+  reason — a first run with one reason for every step gave the removal the install's words, and its answer
+  could not be told from the screen; no result file may be left. Cancel and No return one wording, so the
+  check cannot tell them apart, nor prove UAC was on screen for the No. The
+  example is its own elevated step (`platform::run_elevated_step`), as `main.rs` is.
 
 A gate nobody can afford to run stops being one: the fast bar stays fast, and nothing
 above it is required per-commit. The metric the gate serves is the ledger tally, which

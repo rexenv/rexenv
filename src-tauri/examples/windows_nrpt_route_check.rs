@@ -7,9 +7,11 @@
 //! scripts/probes/windows-example.sh <host> windows_nrpt_route_check     # the SSH session is elevated
 //! ```
 //!
-//! The scripts are run here with the SSH session's elevated token, as `PrivilegeManager` will run them
-//! (W6 S3); what this checks is the rules and what Windows' resolver does with them. Test TLDs only —
-//! `.rexnrptcheck` and `.rexnrptother` — never `.rex`.
+//! `DnsManager`'s commands are rexenv OPS (`nrpt-install …`, ledger #619); they are run here through
+//! `platform::run_elevated_ops_in_this_process` — the elevated step's own body, with the SSH session's
+//! elevated token standing in for UAC (the dialog and UAC are `windows_uac_step_check`'s). What this checks
+//! is the rules and what Windows' resolver does with them. Test TLDs only — `.rexnrptcheck` and
+//! `.rexnrptother` — never `.rex`.
 //!
 //! 1. Nothing routes either test TLD first; the agent (this example re-run as `agent`) answers on :53.
 //! 2. `install_command` → the route is ours and in `our_route_tlds`; `a.rexnrptcheck` resolves to
@@ -17,13 +19,14 @@
 //!    name no longer resolves.
 //! 3. Another tool's rule naming BOTH test TLDs → the route is foreign, its content the whole rule, and
 //!    both TLDs are in `foreign_route_tlds`.
-//! 4. The takeover: the content saved to a backup file, `install_command` run → the route is ours, and
+//! 4. The takeover: the content saved where rexenv keeps it (`<app data>\\resolver-backups\\rexnrptcheck`, the
+//!    only place the elevated step reads a restore from), `install_command` run → the route is ours, and
 //!    the other tool's rule — the same key — still routes `.rexnrptother`.
 //! 5. The hand-back, joined as the core joins privileged steps (`uninstall ; restore`) → rexenv's rule is
 //!    gone and the other tool's rule, the same key, names both TLDs again.
 //!
-//! Fixture-owned: a guard removes every rule naming a test TLD and stops the agent, on every path; the
-//! backup lives under `%TEMP%\rexenv nrpt check` (a space in it), removed at the end. `demo` tier.
+//! Fixture-owned: a guard removes every rule naming a test TLD, the test TLD's backup file and stops the
+//! agent, on every path; the check refuses to start if that backup file already exists. `demo` tier.
 
 #[cfg(target_os = "windows")]
 mod common;
@@ -76,6 +79,12 @@ mod windows {
         (ok, all)
     }
 
+    /// Run `DnsManager` ops as the elevated step does, in this (elevated) process.
+    fn run_ops(ops: &str) -> (bool, String) {
+        let (code, out) = rexenv_lib::platform::run_elevated_ops_in_this_process(ops);
+        (code == 0, format!("exit {code}: {out}"))
+    }
+
     fn resolves(name: &str) -> String {
         powershell_out(&format!(
             "try {{ (Resolve-DnsName {name} -Type A -QuickTimeout -ErrorAction Stop | Where-Object Type -eq 'A').IPAddress }} catch {{ 'ERR ' + $_.Exception.Message }}"
@@ -96,13 +105,14 @@ mod windows {
         }
     }
 
-    struct Guard(Option<Child>);
+    struct Guard(Option<Child>, PathBuf);
 
     impl Drop for Guard {
         fn drop(&mut self) {
             let _ = powershell(&format!(
                 "foreach ($r in @(Get-DnsClientNrptRule | Where-Object {{ $_.Namespace -contains '.{TLD}' -or $_.Namespace -contains '.{OTHER}' }})) {{ Remove-DnsClientNrptRule -Name $r.Name -Force }}"
             ));
+            let _ = std::fs::remove_file(&self.1);
             if let Some(mut c) = self.0.take() {
                 let _ = c.kill();
                 let _ = c.wait();
@@ -113,10 +123,11 @@ mod windows {
     pub fn main() -> ExitCode {
         let mut check = Check::new("windows_nrpt_route_check");
         let plat = rexenv_lib::platform::current();
-        let fixture = std::env::temp_dir().join("rexenv nrpt check");
-        let _ = std::fs::remove_dir_all(&fixture);
-        std::fs::create_dir_all(&fixture).expect("fixture");
-        let backup: PathBuf = fixture.join(TLD);
+        let backup: PathBuf = plat.paths().app_data_dir().expect("app data").join("resolver-backups").join(TLD);
+        if backup.exists() {
+            check.is("no backup for the test TLD exists before the check", false, &backup.display().to_string());
+            return check.verdict();
+        }
 
         // ── 1. Nothing routes the test TLDs; the agent answers. ──
         let clean = plat.dns().route_owner(TLD, 53) == ResolverOwner::Absent && plat.dns().route_owner(OTHER, 53) == ResolverOwner::Absent;
@@ -128,7 +139,7 @@ mod windows {
             return check.verdict();
         }
         let exe = std::env::current_exe().expect("exe");
-        let mut guard = Guard(Command::new(&exe).arg("agent").stdout(Stdio::null()).stderr(Stdio::null()).spawn().ok());
+        let mut guard = Guard(Command::new(&exe).arg("agent").stdout(Stdio::null()).stderr(Stdio::null()).spawn().ok(), backup.clone());
         let mut up = false;
         for _ in 0..40 {
             if dns::answers_as_ours(53) {
@@ -140,13 +151,13 @@ mod windows {
         check.is("the agent answers on 127.0.0.1:53", up, "no answer");
 
         // ── 2. Install, resolve, uninstall. ──
-        let (ok, out) = powershell(&plat.dns().install_command(TLD, 53));
+        let (ok, out) = run_ops(&plat.dns().install_command(TLD, 53));
         check.is("install_command runs elevated", ok, &out);
         check.is("the route is then ours", plat.dns().route_owner(TLD, 53) == ResolverOwner::Ours, &format!("{:?}", plat.dns().route_owner(TLD, 53)));
         check.is("our_route_tlds names it", plat.dns().our_route_tlds(53).contains(&TLD.to_string()), &format!("{:?}", plat.dns().our_route_tlds(53)));
         let answer = resolves(&format!("a.{TLD}"));
         check.is("Windows' resolver (no -Server) sends a subdomain of it to rexenv: 127.0.0.1", answer == "127.0.0.1", &answer);
-        let (ok, out) = powershell(&plat.dns().uninstall_command(&[TLD.to_string()]));
+        let (ok, out) = run_ops(&plat.dns().uninstall_command(&[TLD.to_string()]));
         check.is("uninstall_command runs elevated", ok, &out);
         check.is("the route is absent again", plat.dns().route_owner(TLD, 53) == ResolverOwner::Absent, &format!("{:?}", plat.dns().route_owner(TLD, 53)));
         let gone = resolves(&format!("a.{TLD}"));
@@ -172,8 +183,9 @@ mod windows {
                 return check.verdict();
             }
         };
+        std::fs::create_dir_all(backup.parent().expect("backup dir")).expect("backup dir");
         std::fs::write(&backup, &content).expect("backup");
-        let (ok, out) = powershell(&plat.dns().install_command(TLD, 53));
+        let (ok, out) = run_ops(&plat.dns().install_command(TLD, 53));
         check.is("install_command over the foreign rule runs elevated", ok, &out);
         check.is("the route is ours after the takeover", plat.dns().route_owner(TLD, 53) == ResolverOwner::Ours, &format!("{:?}", plat.dns().route_owner(TLD, 53)));
         let left = foreign_rules(&*plat, OTHER);
@@ -188,7 +200,7 @@ mod windows {
 
         // ── 5. Hand back, joined as the core joins privileged steps. ──
         let joined = [plat.dns().uninstall_command(&[TLD.to_string()]), plat.dns().restore_command(&[(TLD.to_string(), backup.clone())])].join(" ; ");
-        let (ok, out) = powershell(&joined);
+        let (ok, out) = run_ops(&joined);
         check.is("uninstall ; restore runs elevated as one script", ok, &out);
         let back = foreign_rules(&*plat, TLD);
         println!("  · their rule after the hand-back: {back:?}");
@@ -206,7 +218,6 @@ mod windows {
         drop(guard);
         let after = plat.dns().route_owner(TLD, 53) == ResolverOwner::Absent && plat.dns().route_owner(OTHER, 53) == ResolverOwner::Absent;
         check.is("after cleanup no rule names either test TLD", after, "");
-        let _ = std::fs::remove_dir_all(&fixture);
         check.verdict()
     }
 }

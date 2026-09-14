@@ -134,6 +134,9 @@ windows-sys = { version = "0.61", features = [
     # The DNS agent's output (platform/windows/agent_output.rs, ledger #616): SetStdHandle, so a
     # logon task's agent — which Task Scheduler gives no stdout or stderr — writes its log file.
     "Win32_System_Console",
+    # The privileged step (platform/windows/elevation.rs, ledger #619): ShellExecuteExW with the runas verb,
+    # which is what shows UAC for rexenv.exe. Same crate, more bindings.
+    "Win32_UI_Shell",
 ] }
 
 # Target-gated like the [dependencies] copies: objc2 is a compile_error! on any

@@ -20,6 +20,8 @@ mod af_unix;
 mod agent_output;
 mod cert_rules;
 mod cert_store;
+mod elevation;
+mod elevation_rules;
 mod firefox_root;
 mod handles;
 mod ipc_rules;
@@ -34,6 +36,7 @@ mod resolver_socket;
 mod stop_policy;
 
 pub(crate) use agent_output::send_output_to;
+pub(crate) use elevation::{run_ops_here, run_step};
 pub(crate) use resolver_socket::bind_resolver_udp;
 
 pub struct WindowsPaths;
@@ -90,15 +93,17 @@ impl DnsManager for WindowsDns {
     fn foreign_route_tlds(&self, _port: u16) -> Vec<String> {
         nrpt_rules::foreign_tlds(&process::read_nrpt_rules())
     }
-    /// PowerShell for an elevated run (`PrivilegeManager`, W6 S3).
+    /// rexenv OPS, not PowerShell (ledger #619): the elevated step turns them into the script itself.
     fn install_command(&self, tld: &str, _port: u16) -> String {
-        nrpt_rules::install_script(tld)
+        nrpt_rules::install_op(tld)
     }
     fn uninstall_command(&self, tlds: &[String]) -> String {
-        nrpt_rules::uninstall_script(tlds)
+        nrpt_rules::remove_op(tlds)
     }
+    /// The backups are read from rexenv's own backup directory by the elevated step, which does not take a
+    /// path from the caller; the TLDs are what cross.
     fn restore_command(&self, restores: &[(String, PathBuf)]) -> String {
-        nrpt_rules::restore_script(restores)
+        nrpt_rules::restore_op(&restores.iter().map(|(t, _)| t.clone()).collect::<Vec<_>>())
     }
 }
 
@@ -125,12 +130,11 @@ impl CertTrustManager for WindowsCertTrust {
 
 pub struct WindowsPrivileges;
 impl PrivilegeManager for WindowsPrivileges {
-    fn run_privileged(
-        &self,
-        _script: &str,
-        _reason: &crate::platform::traits::PromptReason,
-    ) -> Result<String> {
-        Err(Error::Unported("windows UAC elevation"))
+    /// rexenv's own dialog with the reason, then UAC elevating `rexenv.exe --elevated-step`, which runs only
+    /// rexenv's ops (`elevation.rs`, ledger #619). `script` is ops text — `WindowsDns`'s commands — never
+    /// PowerShell; anything else is refused before a dialog is shown.
+    fn run_privileged(&self, script: &str, reason: &crate::platform::traits::PromptReason) -> Result<String> {
+        elevation::run_privileged(script, &reason.sentence())
     }
     /// No privileged ports on Windows: the desktop user's filtered token bound `:443` and `:80`
     /// (measured on the Dell, 14 Sep 2026, ledger #611).

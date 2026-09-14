@@ -1126,6 +1126,23 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
     harness: PowerShell's progress records on stderr were read into an answer that was 127.0.0.1. Not
     measured: a Group Policy rule (none on the Dell), `rexenv`-commented rules another tool wrote, the
     scripts under S3's UAC path.
+  - **S3 — done 15 Sep 2026 (ledger #619).** A security question found
+    while designing it went to the owner: `rexenv.exe --elevated-step <script>` would let any process on the
+    machine run its own script behind a UAC prompt that names rexenv. **Ruled: the step runs only rexenv's
+    ops** — `WindowsDns`'s commands became `nrpt-install <tld>` / `nrpt-remove <tlds>` / `nrpt-restore <tlds>`,
+    parsed on both sides (valid TLD labels only), the restore reading only rexenv's own `resolver-backups`
+    and refusing a backup that does not route its TLD, the PowerShell built inside the elevated process.
+    **And ruled: rexenv's own dialog is a native message box** (titled rexenv, the `PromptReason` sentence,
+    "Windows will ask for your permission next.", OK/Cancel) rather than an in-app sheet. The step writes its
+    result only to a `rexenv-elevated-*.txt` directly in the user's temp directory. Over SSH the ops path
+    PASSED (`windows_nrpt_route_check`, 21 checks, through `run_elevated_ops_in_this_process`). In the desktop
+    session with the owner answering, `windows_uac_step_check` PASSED (10 checks) on its second run: a non-op
+    refused with no window; install OK+Yes → ours; remove OK+Yes → absent; Cancel and OK+No → the cancel
+    wording, absent. The first run failed four checks on its harness: the refusal's wording was pre-empted by
+    the label check (the verb is now checked first), and one fixed reason gave the removal the install's
+    words — that run's removal came back "cancelled" after 5.3 s, which button unknown. Not measured: that
+    UAC was on screen for "No" (the secure desktop cannot be read), administrator credentials typed by a
+    standard user, the app binary's own `main.rs` path, Windows 11.
   - **S3 — `PrivilegeManager` on Windows** (per R2): one UAC prompt per batch, the platform owning how
     commands join; output and exit code back to the caller. L1 on the Dell with the owner answering.
   - **S4 — resolver routes, NRPT** (per R1, R3): one rule per TLD, `-Namespace .<tld> -NameServers
