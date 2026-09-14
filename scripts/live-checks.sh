@@ -239,6 +239,7 @@ pool_get_values_probe demo
 pool_health_check demo
 pool_busy_check demo
 windows_streamed_step_check demo
+windows_edge_probe demo
 wp_core_zip_check network
 "
 

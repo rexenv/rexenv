@@ -282,7 +282,23 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
       sweep target — or another route
     - [ ] Download planning (`core/downloads.rs`) names `php-fpm` for every PHP it plans; on a
       php-cgi platform it must plan `php` — found writing W4 step 1, not yet changed
-  - [ ] W5 — Caddy :443 edge + CurrentUser Root CA trust → valid lock in Edge/Chrome/Firefox
+  - [ ] W5 — Caddy :443 edge + CurrentUser Root CA trust → valid lock in Edge/Chrome/Firefox.
+    **Progress 14 Sep 2026 — D3's Caddy admin measurement, done first:** the rule stands; Caddy on
+    Windows serves its admin API on a unix socket. rexenv's `unix//C:\…` was the bug — Caddy splits an
+    address at its first slash, named the socket `/C:\…`, refused to start and its CLI could not dial
+    it — and `proxy::admin_address` now gives a path that does not start with `/` one slash, the macOS
+    string unchanged (ledger #610). Dell `windows_edge_probe` PASS as written: Caddy up with the socket
+    file, Rust reaching the admin API over AF_UNIX (`GET /config/` 200), `:443` serving on the local CA's
+    certificate, `:80` → 308, `caddy reload` and `caddy stop` through the socket, `:443` released.
+    Recorded for the next steps: the socket file carries its folder's inherited ACL, so `|0600` does
+    nothing on Windows; and under the desktop user's token (`windows-edge-bind.ps1`, Medium integrity)
+    Caddy binds `:443`/`:80` without elevation, but Caddy's default all-interfaces bind — rexenv's
+    Caddyfile today — raised Windows Defender Firewall's "Windows Security Alert" on the desktop, while
+    `default_bind 127.0.0.1` raised none. **Ruled (owner, 14 Sep 2026): the Windows edge binds 127.0.0.1
+    only**; macOS unchanged — to build with the edge's Windows start path. Still to come: the edge's start/stop shape without a LaunchDaemon
+    (`EdgeSupervisor`, `prepare_edge` treating 443 as privileged), `LocalIpc` over AF_UNIX,
+    `CertTrustManager` (the CurrentUser Root store — its confirmation dialog needs someone at the Dell),
+    Firefox's profiles root, the three browsers
   - [ ] W6 — DNS agent + NRPT + UAC + logon task → `*.rex` resolves after reboot, app closed
   - [ ] W7 — ShellRunner, autostart, tray (includes the Windows half of the browser-stub row)
   - [ ] W8 — `rex` CLI + MCP over named pipes; `rex.exe` on PATH

@@ -447,6 +447,30 @@ current user — the Windows equivalent of `0600`. Behind a new platform trait (
 rule stands: never TCP `:2019`.** Measure first whether Caddy on Windows accepts a
 `unix//` admin address (Go supports AF_UNIX on Windows 10 1803+; unconfirmed for Caddy's
 admin listener). If not, this is a blocker to escalate, not a rule to relax.
+**Measured 14 Sep 2026 on the Dell — it DOES, with one slash, and the rule stands**
+(`examples/windows_edge_probe.rs`, Caddy 2.11.4, the Caddyfile `proxy::generate_caddyfile` writes,
+`:443`/`:80`, a site on the local CA's certificate): Caddy splits an address at its FIRST slash, so
+rexenv's `unix//C:\…\caddy-admin.sock` named the socket `/C:\…` — Caddy exited with "cannot reuse
+socket /C:\… : unix socket is already in use by another process" (its Windows reuse check dials the
+path first and reads any error but "connection refused" as in use), and the `|0600` and
+forward-slash variants failed the same way. `unix/C:\…|0600` started; the socket file existed; Rust
+reached the admin API over AF_UNIX (Winsock `socket(AF_UNIX)` + `connect`, `GET /config/` → 200);
+`:443` served the site with the local CA's certificate and `:80` answered 308. Its `caddy reload` /
+`caddy stop` then failed for the same slash in rexenv's `--address` ("dial unix /C:\…: An invalid
+argument was supplied"). Also recorded: Caddy bound `0.0.0.0:443` and `0.0.0.0:80` (all interfaces —
+what raises Windows Firewall's prompt for a desktop user; not measured under that token yet), and
+the socket file carried its folder's inherited ACL (SYSTEM, Administrators, the user — full), so the
+`|0600` mode does nothing there. Fix: `proxy::admin_address` gives a path that does not start with
+`/` one slash, and the macOS string is unchanged byte for byte.
+**And under the desktop user's token, the same day** (`scripts/probes/windows-edge-bind.ps1` through
+`windows-limited-token.sh`: Medium integrity, not elevated, in the logged-on desktop session): the
+pinned `caddy.exe` bound `:443` and `:80` — no elevation, so W5's edge needs no UAC. Bound on all
+interfaces (Caddy's default, and rexenv's Caddyfile today) it raised **"Windows Security Alert"**
+(`rundll32`, Windows Defender Firewall's allow prompt) on the desktop; bound with `default_bind
+127.0.0.1` it listened on `127.0.0.1:443`/`:80` only and no second alert window appeared (the one
+counted was the first case's, still open). **Ruled (owner, 14 Sep 2026): on Windows the edge binds
+127.0.0.1 only** (`default_bind 127.0.0.1`) — no firewall prompt, sites open from this computer only,
+tunnels unaffected (cloudflared dials localhost); macOS keeps binding all interfaces.
 
 **D4 — What ships in Windows v1.** **RULED 13 Sep 2026: accepted as written.**
 Official, checksum-lockable artifacts exist for most

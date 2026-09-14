@@ -210,8 +210,23 @@ fn probe_response_is_ours(headers: &reqwest::header::HeaderMap) -> bool {
 }
 
 /// Caddy admin address for the CLI `--address` / Caddyfile `admin` directive.
+///
+/// Caddy splits an address at its FIRST slash and takes everything after it as the path
+/// (`SplitNetworkAddress`, Caddy 2.11.4). rexenv has always written `unix//` + an absolute Unix
+/// path — `unix///Users/…`, whose path `//Users/…` Unix reads as `/Users/…` — and that is kept
+/// byte-identical: a running edge's admin listener is keyed by the string, and an upgrade that
+/// changed it would ask Caddy to rebind its own socket on the next reload. A Windows path does not
+/// start with `/`, and the extra slash became part of it: measured on the Dell (14 Sep 2026,
+/// `windows_edge_probe`), `unix//C:\…` named the socket `/C:\…` — Caddy refused to start ("cannot
+/// reuse socket … already in use") and `caddy reload`/`stop` could not dial it ("An invalid argument
+/// was supplied") — while `unix/C:\…` started, served and answered. So such a path gets ONE slash.
 fn admin_address(sock: &Path) -> String {
-    format!("unix//{}", sock.display())
+    let path = sock.display().to_string();
+    if path.starts_with('/') {
+        format!("unix//{path}")
+    } else {
+        format!("unix/{path}")
+    }
 }
 
 /// Whether OUR edge's admin socket is accepting connections (liveness). The socket
@@ -287,7 +302,8 @@ pub fn generate_caddyfile(cfg: &CaddyConfig) -> String {
         // Bind the admin API to a unix socket instead of the default TCP :2019 (H5).
         // Quote the whole token — app-data paths contain spaces; `|0600` sets
         // owner-only perms (Caddy 2.7+; the privileged edge additionally chowns it).
-        s.push_str(&format!("\tadmin \"unix//{}|0600\"\n", sock.display()));
+        // The address is `admin_address`'s: one slash for a Windows path (measured, see there).
+        s.push_str(&format!("\tadmin \"{}|0600\"\n", admin_address(sock)));
     }
     s.push_str("}\n");
     for r in &cfg.routes {
@@ -1036,6 +1052,26 @@ mod tests {
             "caddyfile:\n{f}"
         );
         assert!(!f.contains("2019"));
+    }
+
+    /// The admin address a Windows path gets (ledger #610): ONE slash. Caddy splits an address at
+    /// its first slash, and `unix//C:\…` named the socket `/C:\…` — Caddy refused to start on it and
+    /// its CLI could not dial it (measured on the Dell, 14 Sep 2026). The Unix string keeps every
+    /// byte, and the Caddyfile's `admin` and the CLI's `--address` are the same string.
+    #[test]
+    fn a_windows_admin_path_gets_one_slash_and_a_unix_path_keeps_its_bytes() {
+        let win = Path::new(r"C:\Users\x\AppData\Local\rexenv\config\caddy-admin.sock");
+        assert_eq!(admin_address(win), r"unix/C:\Users\x\AppData\Local\rexenv\config\caddy-admin.sock");
+        let mac = Path::new("/Users/x/Library/Application Support/dev.rexenv.rexenv/config/caddy-admin.sock");
+        assert_eq!(
+            admin_address(mac),
+            "unix///Users/x/Library/Application Support/dev.rexenv.rexenv/config/caddy-admin.sock"
+        );
+        let mut cfg = sample();
+        cfg.admin_socket = Some(win.to_path_buf());
+        let f = generate_caddyfile(&cfg);
+        assert!(f.contains(&format!("admin \"{}|0600\"", admin_address(win))), "caddyfile:\n{f}");
+        assert!(!f.contains("unix//C:"), "caddyfile:\n{f}");
     }
 
     #[test]

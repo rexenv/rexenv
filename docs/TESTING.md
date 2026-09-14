@@ -1351,6 +1351,13 @@ bloating the fast path:
   it started, a second copy of the example that starts a step and exits without stopping it (rexenv
   quitting), and `laravel::create_project` through the site's `php.exe` with Composer's home inside the
   fixture. It needs the network.
+  `windows_edge_probe` (#610) is D3's Caddy admin measurement and W5's first run: the Caddyfile rexenv
+  writes, started for real on `:443`/`:80` — the socket file, the admin API over AF_UNIX from Rust
+  (Winsock, since std has none), TLS on the local CA, the 308, the bind addresses, the socket's ACL,
+  and `caddy reload`/`stop` through the socket. Its first run failed and named the bug (`unix//C:\…`).
+  The desktop user's token is `scripts/probes/windows-edge-bind.ps1`, run through
+  `windows-limited-token.sh`: `:443`/`:80` bound with Caddy's default and with `default_bind 127.0.0.1`,
+  and whether a firewall alert window appears in that session.
 
 A gate nobody can afford to run stops being one: the fast bar stays fast, and nothing
 above it is required per-commit. The metric the gate serves is the ledger tally, which

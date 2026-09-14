@@ -589,6 +589,12 @@ Live-proven end to end by `site_stop_start_check`.
   are in the job from their first instant; `stop_group` terminates the job and waits for it to empty,
   and a job that cannot be made refuses the step. Unlike macOS, a step does not outlive rexenv: the
   job's last handle closing ends it (the ruling — no half-finished install running unseen).
+  **The edge's admin socket on Windows** (#610, W5 in progress): the never-TCP-`:2019` rule holds —
+  Caddy serves its admin API on a unix socket on Windows too — but its address takes ONE slash before a
+  drive path. Caddy splits an address at its first slash, so `unix//C:\…` named the socket `/C:\…`,
+  which Caddy refused to start on and its CLI could not dial; `proxy::admin_address` writes
+  `unix/C:\…` for such a path and keeps macOS's `unix///Users/…` byte for byte (a running edge's admin
+  listener is keyed by that string).
   **The shared nginx on Windows** (#602): every path in nginx.conf goes through `services::nginx_path`
   (forward slashes — a backslash in a quoted nginx string is an escape, measured); the binary is
   `binaries::resolve_program`, which answers a single binary or `nginx.exe` inside its tree; the socket
