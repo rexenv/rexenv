@@ -392,7 +392,14 @@ before anything is built on it.
   — requests are queuing" and the health log records it with the site host from nginx's
   access log. *Done when:* N+2 parallel `sleep(5)` requests to a fixture site turn it on, and
   it turns off after. A per-minor worker setting follows only if the Dell's numbers say 10
-  is wrong for somebody.
+  is wrong for somebody. **Built 14 Sep 2026 (ledger #608)** — `core::pool_busy`, sampled in the
+  Services status poll (only while a view polls), held ≥ workers for two samples in a row to turn on
+  and two below to turn off. Measured on the way (`pool_busy_check`, 12 × `sleep(15)` on 10 workers):
+  the Dell's table read 12 from the first second and the note was on at 2 s; macOS `lsof` counted one
+  more connection a second as `pm = dynamic` spawned workers (2, 3 … 10 at 9 s), on at 9.6 s — so the
+  "Done when" `sleep(5)` would never have held all ten php-fpm workers, and the check sleeps 15 s;
+  both off at 17 s. The health log's host is **"recently served"**, not the cause: nginx writes an
+  access-log line when a request ENDS, so the requests holding the workers are not in the log yet.
 
 **D2 — `.rex` DNS (no `/etc/resolver`).** **RULED 13 Sep 2026: the agent on 127.0.0.1:53 +
 one NRPT rule per TLD is accepted; the `hosts` fallback is REFUSED for now.**

@@ -815,6 +815,9 @@ export interface ServiceInfo {
    *  "mailpit") — drives the per-row Start/Stop toggle. Serving-core rows
    *  (edge/nginx/pools/FrankenPHP) omit it: group-managed by design. */
   serviceKey?: string;
+  /** Set only for a running shared PHP pool whose every worker is holding a request, sustained
+   *  across polls — e.g. "all 10 workers busy — requests are queuing" (ledger #608). */
+  busyNote?: string;
 }
 
 /** One database engine's status + live metrics (mirrors the Rust DbStatus DTO). */

@@ -225,8 +225,14 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     Owner ruling: no answer is a miss only while the pool is not busy — built as "no answer AND nothing
     held" (`php::pool_serving`), readiness as the answer alone. `pool_health_check` PASS on both: a busy
     pool survived three polls and its 12 requests completed; on the Mac a frozen pool with nothing held
-    was reaped on the second poll. Still to come: the busy-workers DISPLAY ("PHP 8.3: all 10 workers
-    busy") on `established_on`, Composer through the site's PHP
+    was reaped on the second poll. **✓ 14 Sep 2026, the busy-workers display**
+    (ledger #608, plan §3 D1(b)): the Services row's sub-line "all 10 workers busy — requests are
+    queuing" and a health-log line, from `core::pool_busy` — held connections ≥ the pool's workers for
+    two samples in a row, sampled in the status poll. `pool_busy_check` PASS on both: the Dell's group
+    read 12 of 10 from the first second (busy at 2 s), the Mac's php-fpm grew one worker a second
+    (busy at 9.6 s — which is why the check sleeps 15 s, not the plan's 5), both free at 17 s; the
+    WebKit check `poolbusy.js` renders the note in its row, and nothing without it. Still to come:
+    Composer through the site's PHP
     - [x] ✓ 14 Sep 2026 — fixed: where the pool model is the php-cgi group, `finish_wp_argv` gives
       WP-CLI `-d SMTP=127.0.0.1 -d smtp_port=11025` and NO `sendmail_path` flag (ledger #407). The
       first fix also sent `-d sendmail_path=`, and real WP-CLI mail vanished with `true` on the Dell:

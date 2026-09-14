@@ -24,6 +24,7 @@ const CHECKS = [
   "tldconsent.js",
   "tunnelhealth.js",
   "statusagree.js",
+  "poolbusy.js",
   "wpfocus.js",
   "frameancestors.js",
   "importbar.js",

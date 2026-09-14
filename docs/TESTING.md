@@ -1337,6 +1337,14 @@ bloating the fast path:
   fixture port: readiness by `pool_answers`, idle polls reap nothing, a busy pool (12 × `sleep(15)`)
   survives three `reap_dead` polls with every request completing, and — macOS only, `SIGSTOP` — a
   frozen pool holding nothing is kept on the first poll and reaped on the second.
+  `pool_busy_check` (#608, both OSes) feeds `core::pool_busy` real `established_on` samples every
+  second through workers + 2 requests sleeping 15 s: never busy idle, busy within the sleep, free once
+  the requests complete, with the per-second counts printed (the Dell 12 from the first second; the
+  Mac one more a second as php-fpm spawns). Its row is WebKit's: `scripts/wk-checks/poolbusy.js`
+  renders the Services page with and without the mock's `?busy=8.3` and asserts the note appears in
+  that pool's row alone, in the warning text colour, inside the row's box — and nowhere without it.
+  The colour assertion caught the first version, whose class (`text-rex-warning`) Tailwind never
+  generates.
 
 A gate nobody can afford to run stops being one: the fast bar stays fast, and nothing
 above it is required per-commit. The metric the gate serves is the ledger tally, which

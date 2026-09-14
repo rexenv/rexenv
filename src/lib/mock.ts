@@ -111,6 +111,21 @@ export const mockServices: ServiceInfo[] = [
   { name: "Caddy", running: false, pid: null, port: 443, cpuPercent: 0.0, ramMb: 0, kind: "web", version: "2.11.4", isRouter: true },
 ];
 
+/** The services the dev/WebKit harness renders: `?busy=8.3` gives that pool the busy-workers
+ *  note the backend sends (ledger #608). Absent → no note, which is the ordinary state and MUST
+ *  render nothing — the harness probe asserts both ways. */
+export function mockServicesView(): ServiceInfo[] {
+  const busy = (new URLSearchParams(window.location.search).get("busy") ?? "")
+    .split(",")
+    .map((m) => m.trim())
+    .filter(Boolean);
+  return mockServices.map((s) =>
+    s.running && busy.some((m) => s.name === `PHP-FPM ${m}`)
+      ? { ...s, busyNote: "all 10 workers busy — requests are queuing" }
+      : s,
+  );
+}
+
 /** Shaped like production, including the awkward rows: 8.0 and 7.4 ship but have
  *  NO Xdebug (neither static build exports `_OnUpdateBool`, so no `.so` can
  *  dlopen into them), which is the case the dev UI must render correctly and the

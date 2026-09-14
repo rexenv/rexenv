@@ -248,6 +248,16 @@ pub fn fpm_port(minor: &str) -> Option<u16> {
 /// Shares [`port_offset`] with [`fpm_port`] so the ten-slot rule lives in ONE
 /// place: it used to be two copies of the same arithmetic, which is how a fix to
 /// one would have left the other aliasing.
+/// How many requests one pool of `model` serves at once: php-fpm's `pm.max_children`, the php-cgi
+/// group's `PHP_FCGI_CHILDREN`. The busy-workers note compares held connections with it
+/// (`core::pool_busy`, ledger #608), so it reads the same constants the configs are written from.
+pub fn pool_workers(model: crate::platform::traits::PoolModel) -> u32 {
+    match model {
+        crate::platform::traits::PoolModel::Fpm => services::FPM_MAX_CHILDREN,
+        crate::platform::traits::PoolModel::CgiGroup(_) => super::php_cgi::WORKERS,
+    }
+}
+
 pub fn debug_fpm_port(minor: &str) -> Option<u16> {
     if !binaries::xdebug_supported(minor) {
         return None;

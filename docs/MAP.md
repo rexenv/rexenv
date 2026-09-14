@@ -21,7 +21,10 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
   `process.rs::Stoppable` + `windows/stop_policy.rs` (the stop sequencing, tested on every
   host — ledger #600); the PHP pool MODEL each platform runs (`traits::PoolModel` — php-fpm, or a
   php-cgi group rendered by `core/php_cgi.rs`, ledger #601) and that group's churn breaker
-  (`php_cgi::spinning` + `PhpFpmPools::trip_spinning`, run by the health watchdog, ledger #605); nginx's Windows shape — `services::nginx_path`,
+  (`php_cgi::spinning` + `PhpFpmPools::trip_spinning`, run by the health watchdog, ledger #605), every
+  pool's health gate (`php::pool_serving` + `services::pool_answers`, #607) and busy-workers note
+  (`core/pool_busy.rs`, fed by `commands::services::enriched_status`, #608) — both over
+  `ProcessSupervisor::established_on`; nginx's Windows shape — `services::nginx_path`,
   `binaries::resolve_program`, the master climb and nginx's events (ledger #602);
   `linux/` is `todo!()`).
 - `state/` = SQLite migrations + the store layer; only `state/` writes SQL.

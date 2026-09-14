@@ -569,6 +569,14 @@ Live-proven end to end by `site_stop_start_check`.
   answers nothing and holds nothing (frozen, or workerless). A count the platform cannot read falls back
   to the TCP connect. A restarted pool's readiness is the answer alone (it is idle). The Services
   status row still reads the TCP connect.
+  **"All 10 workers busy — requests are queuing"** (#608): a pool whose every worker holds a request
+  makes the next one wait — a slow page, then nginx's 504 — and neither PHP says so where a user
+  looks. `commands::services::enriched_status` samples `established_on` for every running shared pool
+  on each status poll (so only while a view polls) and feeds `core::pool_busy::BusyTracker`: held ≥
+  the pool's workers (`php::pool_workers`, the same constants the configs are written from) for two
+  samples in a row sets the row's `busyNote`, two below clears it, an unreadable count changes
+  nothing. Each change writes a health-log line, with the hosts in the tail of nginx's access log as
+  "recently served" — nginx logs a request when it ends, so the busy ones are not there yet.
   **The shared nginx on Windows** (#602): every path in nginx.conf goes through `services::nginx_path`
   (forward slashes — a backslash in a quoted nginx string is an escape, measured); the binary is
   `binaries::resolve_program`, which answers a single binary or `nginx.exe` inside its tree; the socket

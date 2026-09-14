@@ -60,6 +60,7 @@ pub mod repo;
 pub mod scratch;
 pub mod service_manager;
 pub mod php_cgi;
+pub mod pool_busy;
 pub mod services;
 pub mod settings_access;
 pub mod setup;

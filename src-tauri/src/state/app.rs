@@ -104,6 +104,9 @@ pub struct AppState {
     /// a shutdown handle, not a socket; on a target with no MCP transport
     /// `start` refuses, so nothing is ever stored and it stays `None`.
     pub mcp: Mutex<crate::mcp_server::McpControl>,
+    /// Which PHP pools read "all workers busy", across status polls (`core::pool_busy`, ledger
+    /// #608). Fed by `commands::services::enriched_status`, so it samples only while a view polls.
+    pub pool_busy: Mutex<crate::core::pool_busy::BusyTracker>,
 }
 
 impl AppState {
@@ -159,6 +162,7 @@ impl AppState {
             db_import_active: Mutex::new(None),
             rewrite_active: Mutex::new(None),
             mcp: Mutex::new(crate::mcp_server::McpControl::default()),
+            pool_busy: Mutex::new(crate::core::pool_busy::BusyTracker::default()),
         }
     }
 }

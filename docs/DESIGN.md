@@ -35,6 +35,13 @@ the shipped UI toward one.
 - Progress moves only on real completions; 100% only when settled; failure/cancel
   FREEZE the bar in place, never roll it back.
 - Refusals name the consequence ("a tunnel would publish X"), never "busy".
+- **A queue the user cannot see is said where they look.** A PHP pool whose every worker holds a
+  request queues the next one silently — a slow page, then nginx's 504 — so its Services row says
+  "all 10 workers busy — requests are queuing" as a sub-line in the warning text colour
+  (`text-status-warning-bright`, the shade Tunnels' warnings use), from a backend value that turns on
+  and off only after two agreeing samples, so a burst does not flicker the row (#608). It names the
+  state and its consequence, never a cause it cannot see: the health log's hosts are "recently
+  served", because nginx logs a request only when it ends.
 - **A consent prompt's most load-bearing sentence has ONE source, and it is not the
   TSX.** The Agent access dial (MCP parity, D15) renders "An agent can …" under each
   level from strings Rust serves (`AccessLevel::what_it_allows`, in `AgentAccess.levels`),

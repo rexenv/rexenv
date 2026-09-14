@@ -125,7 +125,7 @@ pub fn generate_fpm_config(
          [www]\n\
          listen = 127.0.0.1:{port}\n\
          pm = dynamic\n\
-         pm.max_children = 10\n\
+         pm.max_children = {max_children}\n\
          pm.start_servers = 2\n\
          pm.min_spare_servers = 1\n\
          pm.max_spare_servers = 3\n\
@@ -138,6 +138,7 @@ pub fn generate_fpm_config(
          {values}",
         pid = pid_file.display(),
         log = log_file.display(),
+        max_children = FPM_MAX_CHILDREN,
     )
 }
 
@@ -309,6 +310,10 @@ pub fn test_fpm_config(platform: &dyn Platform, php_fpm_bin: &Path, conf: &Path)
 pub fn stop(platform: &dyn Platform, pid: u32) -> Result<()> {
     platform.supervisor().stop(pid)
 }
+
+/// A php-fpm pool's `pm.max_children` — also the worker count the busy-workers note compares
+/// held connections with (`php::pool_workers`, ledger #608), so the two cannot drift apart.
+pub const FPM_MAX_CHILDREN: u32 = 10;
 
 /// Service status the services/UI layer reads: a pool is `running` iff its
 /// loopback FastCGI port accepts a connection.

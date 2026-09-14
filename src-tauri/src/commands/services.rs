@@ -41,6 +41,11 @@ pub struct ServiceStatus {
     /// so its rows get `None` and the group-managed hint instead.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub service_key: Option<String>,
+    /// Set ONLY for a running shared pool whose every worker is holding a request, sustained
+    /// (`core::pool_busy`, ledger #608): the row's sub-line, e.g. "all 10 workers busy — requests
+    /// are queuing".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub busy_note: Option<String>,
 }
 
 /// Group a service row by its canonical name (the manager names them).
@@ -439,10 +444,66 @@ pub fn enriched_status(state: &AppState) -> Result<Vec<ServiceStatus>> {
                 domain,
                 optional,
                 service_key,
+                busy_note: None,
             }
         })
         .collect();
+    let mut out = out;
+    note_busy_pools(state, &mut out);
     Ok(out)
+}
+
+/// The busy-workers note (plan §3 D1(b), ledger #608): sample the connections held on every running
+/// shared pool's port, feed the tracker, set each busy row's note, and write a health-log line when a
+/// pool turns busy or free. It samples only while a view polls — nothing runs when no window asks.
+fn note_busy_pools(state: &AppState, rows: &mut [ServiceStatus]) {
+    let platform = state.platform.as_ref();
+    let sup = platform.supervisor();
+    let workers = core::php::pool_workers(sup.php_pool_model());
+    let Ok(mut tracker) = state.pool_busy.lock() else {
+        return;
+    };
+    // Shared pools only: FrankenPHP rows carry a domain and are not pools.
+    let running: Vec<String> = rows
+        .iter()
+        .filter(|r| r.running && r.name.starts_with("PHP-FPM ") && r.domain.is_none())
+        .map(|r| r.name.clone())
+        .collect();
+    tracker.retain_running(&running);
+    let mut events = Vec::new();
+    for row in rows.iter_mut().filter(|r| running.contains(&r.name)) {
+        match tracker.observe(&row.name, sup.established_on(row.port), workers) {
+            core::pool_busy::Change::Busy { held } => {
+                let recent = platform
+                    .paths()
+                    .log_dir()
+                    .ok()
+                    .map(|dir| {
+                        let tail = core::php_cgi::read_tail(&dir.join("nginx-access.log"), 16 * 1024);
+                        core::pool_busy::recent_hosts(&tail, 3)
+                    })
+                    .unwrap_or_default();
+                events.push(core::service_manager::HealthEvent {
+                    service: row.name.clone(),
+                    action: "workers-busy",
+                    detail: core::pool_busy::busy_detail(workers, held, &recent),
+                });
+            }
+            core::pool_busy::Change::Free => events.push(core::service_manager::HealthEvent {
+                service: row.name.clone(),
+                action: "workers-free",
+                detail: "a worker is free again".into(),
+            }),
+            core::pool_busy::Change::None => {}
+        }
+        if tracker.is_busy(&row.name) {
+            row.busy_note = Some(core::pool_busy::note(workers));
+        }
+    }
+    drop(tracker);
+    if !events.is_empty() {
+        core::service_manager::log_health_events(platform, &events);
+    }
 }
 
 /// Per-service status + live RAM/CPU for the Services view.

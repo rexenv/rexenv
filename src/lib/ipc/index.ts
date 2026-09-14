@@ -27,7 +27,7 @@ import {
   mockResolverDrift,
   mockResolverTakeOver,
   mockResolverTldStatus,
-  mockServices,
+  mockServicesView,
   mockSites,
   mockSitesServing,
 } from "@/lib/mock";
@@ -1693,7 +1693,7 @@ export async function wpSuperAdminAdd(id: string, user: string): Promise<void> {
 
 /** Per-service status + live metrics. Mock fallback outside Tauri. */
 export async function servicesStatus(): Promise<ServiceInfo[]> {
-  if (!isTauri()) return mockServices;
+  if (!isTauri()) return mockServicesView();
   return invoke<ServiceInfo[]>("services_status");
 }
 

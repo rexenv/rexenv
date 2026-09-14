@@ -175,6 +175,16 @@ function ServiceRow({
           {svc.domain && (
             <div className="truncate font-mono text-[0.6875rem] text-rex-text-muted">{svc.domain}</div>
           )}
+          {svc.busyNote && (
+            // Every worker holds a request, so the next one waits: a slow page, then nginx's 504.
+            // Said here because php-fpm only writes it to its own log and php-cgi says nothing.
+            <div
+              className="truncate font-mono text-[0.6875rem] text-status-warning-bright"
+              title="Every worker of this PHP version is holding a request, so new requests wait. Long requests — an import, a paused debugger, a slow loopback call — cause it."
+            >
+              {svc.busyNote}
+            </div>
+          )}
         </div>
       </div>
       <div className="w-[54px] flex-none font-mono text-[0.71875rem] text-rex-text-muted">
