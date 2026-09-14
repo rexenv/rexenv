@@ -2047,6 +2047,18 @@ impl ServiceManager {
             }
         }
 
+        // The php-cgi churn breaker (plan §3 D1(a), ledger #605): a group whose PARENT spins —
+        // retrying workers it cannot start — is stopped and reported, never restarted: a
+        // respawn would spin again, a CPU core and ~1 MB of log a second (measured on the
+        // Dell; owner ruling 14 Sep 2026). Before the reap, so the reap cannot hand it back.
+        for (minor, reason) in self.pools.trip_spinning(platform) {
+            events.push(HealthEvent {
+                service: pool_service_name(&minor, false),
+                action: "gave-up",
+                detail: reason,
+            });
+        }
+
         // php-fpm pools: drop dead masters, then ensure those minors again
         // (a debug pool respawns through ensure_debug so its Xdebug args and
         // load-probe gate apply on every respawn, not just the first start).
@@ -3666,6 +3678,23 @@ mod tests {
         assert!(m.db_status().iter().all(|d| d.pid.is_none()));
         // H2: nothing we started ⇒ nothing running, regardless of a foreign DB.
         assert!(m.db_status().iter().all(|d| !d.running));
+    }
+
+    /// The churn breaker's wiring (ledger #605): `reconcile_health` trips spinning php-cgi groups
+    /// BEFORE the pool reap, reports each as `gave-up`, and restarts none of them — a respawn
+    /// would spin again (owner ruling 14 Sep 2026).
+    #[test]
+    fn reconcile_health_trips_spinning_groups_before_the_reap_and_restarts_none() {
+        let src = include_str!("service_manager.rs");
+        let body = &src[src.find("pub async fn reconcile_health(").expect("the watchdog pass")..];
+        let trip = body.find("self.pools.trip_spinning(platform)").expect("the breaker runs in the watchdog");
+        let reap = body.find("self.pools.reap_dead(platform)").expect("the pool reap");
+        assert!(trip < reap, "the breaker must run before the reap can hand its group back");
+        let arm = &body[trip..reap];
+        assert!(arm.contains("action: \"gave-up\""), "a tripped group is reported gave-up:\n{arm}");
+        for restart in ["ensure(", "ensure_debug(", "should_restart(", "spawn_"] {
+            assert!(!arm.contains(restart), "a tripped group must not be restarted (`{restart}`):\n{arm}");
+        }
     }
 
     #[test]

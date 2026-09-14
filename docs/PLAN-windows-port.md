@@ -306,19 +306,38 @@ before anything is built on it.
       the modules the pool needs listed, and no `PHP Startup:` / "Unable to load dynamic
       library" line — or the start is refused with that text quoted. One process, so it can
       never loop. (*Measure:* that `-m` exercises the same startup path the pool takes.)
-    - *Churn breaker, after the start:* each health tick already snapshots the group for
-      positive ID (pids + creation times). A child younger than a few seconds being replaced
-      again, more than 2 × workers times in 10 s — or "unable to spawn" appearing in the
-      parent's stderr at all — stops the group: `TerminateProcess` on the parent (the job
-      reaps the children), the service marked failed, the parent's stderr quoted. Legitimate
-      churn from `PHP_FCGI_MAX_REQUESTS` needs that many requests per child; at 10 workers
-      the threshold means thousands of requests in 10 s, not a developer's load. The number
-      is a Dell measurement, not a guess to keep.
+    - *Churn breaker, after the start — measured, ruled and built 14 Sep 2026 (ledger #605).*
+      First written as "a child younger than a few seconds replaced more than 2 × workers times
+      in 10 s, or `unable to spawn` in the parent's stderr at all". The Dell measured that shape
+      wrong before it was built (`examples/windows_cgi_churn_probe.rs`, PHP 8.3.32, 10 workers,
+      500 requests each):
+      - **Idle:** 10 children, one process-table read 8 ms, the parent at 0.0% CPU. php-cgi
+        answers a FastCGI `GET_VALUES` record itself (`FCGI_MAX_CONNS 1`, `FCGI_MAX_REQS 1`,
+        `FCGI_MPXS_CONNS 0`), so a serving check that runs no script exists.
+      - **Legitimate churn is not rare:** one client sending 1722 requests a second for 15 s
+        recycled 45 children — about 30 per 10 s, already past "2 × workers" — with the parent at
+        0.9% CPU. One look 10 s in saw 10 new children: a 10 s watchdog can never count past the
+        worker count, so the count threshold was both wrong and unmeasurable from where it runs.
+      - **A script that kills its own worker is not a loop:** 75 requests, 70 children born, the
+        parent at 0.6% CPU, a healthy script answering 15 of 15 meanwhile, 10 children 2 s later.
+        Stopping the group for it would take every site on that minor down for one broken page.
+      - **A worker that cannot be spawned spins** (php-cgi.exe renamed under a running parent, one
+        child killed): the parent at 96.8% of a core, 14 045 `unable to spawn: [0x00000002]: The
+        system cannot find the file specified` lines and ~1 MB of log a second — while the port
+        still accepted and the 9 surviving children still served, so no serving check sees it.
+      **Rulings (owner, 14 Sep 2026):** the signal is the PARENT's CPU — at least 25% of one core
+      over a window of at least 5 s (`php_cgi::SPIN_CPU_SHARE`, `SPIN_MIN_WINDOW`); a worker-killing
+      script does not stop the group; a tripped group is stopped and reported `gave-up` with the
+      last `unable to spawn` line from its OWN output — one output log per minor, where every minor
+      had shared one file — and is never restarted automatically, since a respawn would spin again.
+      *Done when (W4):* on the Dell, a group whose worker cannot be spawned is stopped within two
+      watchdog ticks with that line in the reason and no php-cgi left, while legitimate churn and a
+      worker-killing script leave it serving.
     - *A serving check, not a process check:* readiness and health are a FastCGI round trip,
-      so case (2) — processes alive, nothing answering — is "not running", which is D1's
-      ownership-AND-liveness rule already. *Done when (W4):* a fixture whose child cannot
-      be spawned and one whose script kills the worker each end in a stopped group with the
-      reason on screen, within the breaker's window, CPU idle afterwards.
+      so processes alive with nothing answering is "not running" — D1's ownership-AND-liveness
+      rule. Measured since: a worker-killing script leaves the other workers answering, so it is
+      not this case; the pool's health probe is still a TCP connect (`services::fpm_running`), and
+      `GET_VALUES` is the script-free round trip to replace it with.
   - `fcgi_listen` sets **`SO_REUSEADDR`**, so php-cgi can "start" on a port another program
     holds and another program can bind ours. That is one case of the general rule in §6 — a
     successful bind proves nothing on Windows; who answers does — which `ensure_free`, every

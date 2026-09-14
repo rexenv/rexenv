@@ -1302,6 +1302,18 @@ bloating the fast path:
   itself — a child's answer, not a port probe, is what shows the group serves.
   `windows_nginx_check` (#602) puts the shared nginx in front of that group under a sandbox root
   with a space in it, and proves stop by the process table (master AND worker gone), not the port.
+  Any Windows example can be built, copied, run and removed in one line with
+  `scripts/probes/windows-example.sh <host> <example>` (`BUILD_ONLY=1` stops after the build).
+  `windows_cgi_churn_probe` is a PROBE, not a proof: it measured what a churn breaker (plan §3
+  D1(a)) could see from outside before one was built — children born under legitimate
+  `PHP_FCGI_MAX_REQUESTS` recycling and under a script that kills its worker, as a 100 ms poll and
+  as one 10 s watchdog look see them, and the parent's CPU and log growth when a worker cannot be
+  spawned (php-cgi.exe renamed in a fixture copy). It exists because the plan's "2 × workers in
+  10 s" threshold assumed a count a 10 s look cannot make — and legitimate load already passed it.
+  `windows_cgi_breaker_check` (#605) is the proof built on those numbers: it ticks
+  `PhpFpmPools::trip_spinning` every 10 s, as the watchdog does, through legitimate load and a
+  worker-killing script (no trip, still answering) and then a spin (stopped, reason quoted, no
+  php-cgi left).
 
 A gate nobody can afford to run stops being one: the fast bar stays fast, and nothing
 above it is required per-commit. The metric the gate serves is the ledger tally, which

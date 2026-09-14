@@ -205,8 +205,15 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     worker, a terminated master leaves its worker serving): every nginx.conf path forward-slashed,
     `binaries::resolve_program` for a program that is a single binary on one OS and a tree on another,
     `owned_master` climbing to the marked master, reload and quit through nginx's own events; Dell
-    `windows_nginx_check` PASS (ledger #602). Still to come: the churn breaker, WP-CLI/Composer through
-    the site's PHP, a WordPress site end to end, the busy-workers signal
+    `windows_nginx_check` PASS (ledger #602). **✓ 14 Sep 2026, the churn breaker** — measured first
+    (`windows_cgi_churn_probe`: legitimate load recycled ~30 workers per 10 s at 0.9% parent CPU, a
+    worker-killing script 0.6% with the rest answering, a worker that cannot spawn 96.8% and ~1 MB of
+    log a second while the port kept serving), then owner rulings (parent CPU ≥ 25% of a core, no
+    stop for a worker-killing script, `gave-up` with no restart): `PhpFpmPools::trip_spinning` in the
+    watchdog, one output log per minor; Dell `windows_cgi_breaker_check` PASS, the spin stopped on the
+    first tick with its `unable to spawn` line quoted (ledger #605). Still to come: WP-CLI/Composer
+    through the site's PHP, a WordPress site end to end, the busy-workers signal, the pool's health
+    probe as a FastCGI `GET_VALUES` round trip instead of a TCP connect
     - [ ] Per-vhost `PHP_VALUE` does NOT reach a php-cgi group — measured 14 Sep 2026 on the Dell
       (`windows_nginx_check`: `memory_limit=222M` sent per vhost, the child kept the pool's value).
       It is php-fpm's per-request ini; php-cgi has none. Measured who sets one: ONLY the Adminer

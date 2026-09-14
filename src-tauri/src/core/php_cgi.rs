@@ -191,6 +191,18 @@ pub fn php_cgi_bin(php_dir: &Path) -> PathBuf {
     php_dir.join("php-cgi")
 }
 
+/// The group's ini file name for `name` — also a word every member's command line carries,
+/// which is how an adopted parent is told from a recycled pid (`PhpFpmPools::trip_spinning`).
+pub fn ini_file_name(name: &str) -> String {
+    format!("php-cgi-{name}.ini")
+}
+
+/// Where a group's PARENT writes its stdout and stderr: one file per minor, so the reason a
+/// group is stopped is read from that group's own output and never another minor's.
+pub fn output_log(log_dir: &Path, minor: &str) -> PathBuf {
+    log_dir.join(format!("php-cgi-{minor}-output.log"))
+}
+
 /// Write the group's ini for `name` (`8.3`, or a candidate's name) and return its path.
 pub fn write_ini(
     platform: &dyn Platform,
@@ -204,7 +216,7 @@ pub fn write_ini(
     let log_dir = platform.paths().log_dir()?;
     std::fs::create_dir_all(&config_dir)?;
     std::fs::create_dir_all(&log_dir)?;
-    let ini = config_dir.join(format!("php-cgi-{name}.ini"));
+    let ini = config_dir.join(ini_file_name(name));
     let log = log_dir.join(format!("php-cgi-{name}.log"));
     std::fs::write(&ini, render_ini(group, php_dir, &log, catch, settings))?;
     Ok(ini)
@@ -242,13 +254,70 @@ pub fn start_group(
 ) -> Result<Child> {
     let ini = write_ini(platform, group, php_dir, minor, catch, settings)?;
     preflight(platform, group, php_dir, &ini)?;
-    let log = platform.paths().log_dir()?.join("php-cgi-stdout.log");
+    let log = output_log(&platform.paths().log_dir()?, minor);
     platform.supervisor().spawn_logged_env(
         &php_cgi_bin(php_dir),
         &group_args(&ini, port),
         &log,
         &group_env(catch),
     )
+}
+
+/// The churn breaker's threshold (plan §3 D1(a), owner ruling 14 Sep 2026, ledger #605): a
+/// group PARENT that used at least this share of one CPU core over a watchdog window is
+/// spinning. The parent runs no PHP — its CPU is its respawn loop. Measured on the Dell
+/// (`windows_cgi_churn_probe`): 96.8% while it could not spawn a worker, 0.9% under one
+/// client's 1722 requests a second (45 workers recycled in 15 s), 0.6% while a script killed
+/// its own worker on every request.
+pub const SPIN_CPU_SHARE: f64 = 0.25;
+
+/// The shortest window the share is judged over: the parent's own startup costs CPU, and a
+/// watchdog tick landing a second after a spawn must not read that as a spin.
+pub const SPIN_MIN_WINDOW: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Whether `cpu_ms` of parent CPU over `window` is a spin.
+pub fn spinning(cpu_ms: u64, window: std::time::Duration) -> bool {
+    window >= SPIN_MIN_WINDOW && cpu_ms as f64 >= window.as_millis() as f64 * SPIN_CPU_SHARE
+}
+
+/// A process's user + kernel CPU so far, in ms; `None` when it cannot be read.
+pub fn cpu_ms(pid: u32) -> Option<u64> {
+    let mut sys = sysinfo::System::new();
+    let p = sysinfo::Pid::from_u32(pid);
+    sys.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[p]), true);
+    sys.process(p).map(sysinfo::Process::accumulated_cpu_time)
+}
+
+/// Why a spinning group was stopped, for the health event the user reads: the last
+/// `unable to spawn` line in the group's own output (`tail`), else the CPU and where to look.
+pub fn spin_reason(tail: &str, log: &Path) -> String {
+    match tail.lines().rev().map(str::trim).find(|l| l.contains("unable to spawn")) {
+        Some(line) => format!(
+            "stopped — its php-cgi parent could not start its workers and was retrying in a loop \
+             (\"{line}\"). Fix the cause, then start it again"
+        ),
+        None => format!(
+            "stopped — its php-cgi parent was using most of a CPU core in a loop. See {}, then \
+             start it again",
+            log.display()
+        ),
+    }
+}
+
+/// The last `max` bytes of `path`, lossily decoded. A spinning parent writes about a megabyte
+/// a second, so the reason is read from the end, never the whole file.
+pub fn read_tail(path: &Path, max: u64) -> String {
+    use std::io::{Read, Seek, SeekFrom};
+    let Ok(mut file) = std::fs::File::open(path) else {
+        return String::new();
+    };
+    let len = file.metadata().map_or(0, |m| m.len());
+    if file.seek(SeekFrom::Start(len.saturating_sub(max))).is_err() {
+        return String::new();
+    }
+    let mut buf = Vec::new();
+    let _ = file.take(max).read_to_end(&mut buf);
+    String::from_utf8_lossy(&buf).into_owned()
 }
 
 #[cfg(test)]
@@ -265,6 +334,52 @@ mod tests {
             sendmail_path: "'/unused' sendmail -t".into(),
             env: super::super::mail::laravel_env(),
         }
+    }
+
+    /// The breaker's threshold against the Dell's own numbers (ledger #605).
+    #[test]
+    fn the_breaker_trips_on_a_spin_and_never_on_recycling_or_a_short_window() {
+        use std::time::Duration;
+        // 96.8% of a core over a 10 s tick: the parent that could not spawn a worker.
+        assert!(spinning(9_680, Duration::from_secs(10)));
+        // 0.9% over 15 s of 1722 requests a second: 45 workers recycled, legitimately.
+        assert!(!spinning(135, Duration::from_secs(15)));
+        // 0.6% over 11 s while a script killed its own worker on every request.
+        assert!(!spinning(66, Duration::from_secs(11)));
+        // The edge: a quarter of the window trips, a millisecond less does not.
+        assert!(spinning(2_500, Duration::from_secs(10)));
+        assert!(!spinning(2_499, Duration::from_secs(10)));
+        // A tick a second after a spawn: the parent's own startup is not a spin.
+        assert!(!spinning(900, Duration::from_secs(1)));
+    }
+
+    #[test]
+    fn the_reason_quotes_the_groups_last_spawn_failure_or_names_its_log() {
+        let tail = "unable to spawn: [0x00000002]: The system cannot find the file specified\r\n\
+                    unable to spawn: [0x00000005]: Access is denied.\r\n";
+        let log = Path::new("/logs/php-cgi-8.3-output.log");
+        let reason = spin_reason(tail, log);
+        assert!(reason.contains("(\"unable to spawn: [0x00000005]: Access is denied.\")"), "{reason}");
+        let fallback = spin_reason("PHP Notice: nothing about spawning\n", log);
+        assert!(fallback.contains("php-cgi-8.3-output.log"), "{fallback}");
+    }
+
+    /// Two minors never share an output file — the reason is read from the tripped group's own.
+    #[test]
+    fn each_minor_writes_its_own_output_log() {
+        let dir = Path::new("/logs");
+        assert_ne!(output_log(dir, "8.3"), output_log(dir, "8.4"));
+        assert_eq!(ini_file_name("8.3"), "php-cgi-8.3.ini");
+    }
+
+    #[test]
+    fn read_tail_reads_only_the_end_and_nothing_from_a_missing_file() {
+        let path = std::env::temp_dir().join(format!("rexenv-read-tail-{}.log", std::process::id()));
+        std::fs::write(&path, "0123456789abcdef").unwrap();
+        assert_eq!(read_tail(&path, 6), "abcdef");
+        assert_eq!(read_tail(&path, 1_000), "0123456789abcdef");
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(read_tail(&path, 6), "");
     }
 
     #[test]

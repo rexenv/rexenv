@@ -540,6 +540,16 @@ Live-proven end to end by `site_stop_start_check`.
   Xdebug pool is refused there (D4). The PHP CLI on the same platform (WP-CLI, Composer, artisan,
   Adminer) loads the same extensions from a `php.ini` `core` writes beside `php.exe` whenever the
   tree is resolved (#603) — php.exe with no ini loads none, and PHP reads that file by default.
+  **The churn breaker** (#605): php-cgi's parent respawns a dead worker at once and has no backoff,
+  so when a worker cannot be spawned at all it retries at full speed — measured on the Dell at
+  96.8% of a core and ~1 MB of log a second, with the port and the surviving workers still serving.
+  Each watchdog tick reads the parent's CPU (`php_cgi::cpu_ms`); at 25% of a core or more over at
+  least 5 s, `PhpFpmPools::trip_spinning` stops the group and the watchdog reports `gave-up`,
+  quoting the last `unable to spawn` line from that minor's own output log
+  (`php-cgi-<minor>-output.log`), and never restarts it — a respawn would spin again. Legitimate
+  recycling (0.9% at 1722 requests a second) and a script that kills its own worker (0.6%, the other
+  workers still answering) never trip it: counting children was the first design, and a 10 s
+  look cannot count past the worker count.
   **The shared nginx on Windows** (#602): every path in nginx.conf goes through `services::nginx_path`
   (forward slashes — a backslash in a quoted nginx string is an escape, measured); the binary is
   `binaries::resolve_program`, which answers a single binary or `nginx.exe` inside its tree; the socket

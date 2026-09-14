@@ -838,6 +838,10 @@ struct Pool {
     /// loaded box, or a momentary pid-table hiccup on an adopted master, must
     /// not cost the user a serving pool. Reset to 0 by any healthy poll.
     misses: u32,
+    /// The churn breaker's CPU baseline for this pool's process (`trip_spinning`): its user +
+    /// kernel ms and when that was read. A spawn starts it at zero; an adopted pool has none
+    /// until its first watchdog read.
+    cpu: Option<(u64, std::time::Instant)>,
 }
 
 /// Consecutive dead-looking polls before a pool is reaped on PROBE evidence
@@ -989,6 +993,8 @@ impl PhpFpmPools {
             child: child.into(),
             debug: false,
             misses: 0,
+            // A process spawned now has used no CPU yet: the breaker's first window starts here.
+            cpu: Some((0, std::time::Instant::now())),
         });
         Ok(())
     }
@@ -1037,6 +1043,7 @@ impl PhpFpmPools {
             child: child.into(),
             debug: true,
             misses: 0,
+            cpu: None,
         });
         Ok(())
     }
@@ -1055,6 +1062,7 @@ impl PhpFpmPools {
             child: Proc::Adopted(pid),
             debug,
             misses: 0,
+            cpu: None,
         });
     }
 
@@ -1127,6 +1135,80 @@ impl PhpFpmPools {
                 (p.minor, p.debug)
             })
             .collect()
+    }
+
+    /// The php-cgi churn breaker (plan §3 D1(a), owner rulings 14 Sep 2026, ledger #605): stop
+    /// every group whose PARENT used [`super::php_cgi::SPIN_CPU_SHARE`] of a CPU core or more
+    /// since its baseline — a parent retrying workers it cannot start — and return
+    /// `(minor, reason)` for each, the reason quoting that group's own output. The watchdog
+    /// reports them `gave-up` and nothing restarts them: a respawn would spin again.
+    ///
+    /// A no-op where the platform runs php-fpm, which has no such loop.
+    pub fn trip_spinning(&mut self, platform: &dyn Platform) -> Vec<(String, String)> {
+        // No pool, nothing to read: a stopped stack asks the platform nothing.
+        if self.pools.is_empty() {
+            return Vec::new();
+        }
+        let log_dir = match platform.supervisor().php_pool_model() {
+            crate::platform::traits::PoolModel::Fpm => return Vec::new(),
+            crate::platform::traits::PoolModel::CgiGroup(_) => platform.paths().log_dir().ok(),
+        };
+        self.stop_spinning(platform)
+            .into_iter()
+            .map(|minor| {
+                let reason = match &log_dir {
+                    Some(dir) => {
+                        let log = super::php_cgi::output_log(dir, &minor);
+                        // The end only: a spinning parent writes about a megabyte a second.
+                        super::php_cgi::spin_reason(&super::php_cgi::read_tail(&log, 64 * 1024), &log)
+                    }
+                    None => super::php_cgi::spin_reason("", std::path::Path::new("the php-cgi output log")),
+                };
+                (minor, reason)
+            })
+            .collect()
+    }
+
+    /// [`Self::trip_spinning`]'s mechanism: read every pool process's CPU, stop and drop the ones
+    /// spinning since their baseline, move the baseline forward on the rest once a full window
+    /// has passed, and return the stopped minors. An ADOPTED parent is read only while its
+    /// command line names its minor's ini, so a busy process on a recycled pid is never stopped.
+    fn stop_spinning(&mut self, platform: &dyn Platform) -> Vec<String> {
+        let now = std::time::Instant::now();
+        let mut stopped = Vec::new();
+        for mut p in std::mem::take(&mut self.pools) {
+            let pid = p.child.id();
+            let identified = !p.child.is_adopted()
+                || platform
+                    .supervisor()
+                    .pid_command(pid)
+                    .is_some_and(|cmd| cmd.contains(&super::php_cgi::ini_file_name(&p.minor)));
+            // Unreadable (gone, or not ours): left to `reap_dead`, which owns death.
+            let Some(cpu) = identified.then(|| super::php_cgi::cpu_ms(pid)).flatten() else {
+                self.pools.push(p);
+                continue;
+            };
+            let spinning = p.cpu.is_some_and(|(before, at)| {
+                super::php_cgi::spinning(cpu.saturating_sub(before), now.duration_since(at))
+            });
+            if !spinning {
+                if p.cpu.map_or(true, |(_, at)| now.duration_since(at) >= super::php_cgi::SPIN_MIN_WINDOW) {
+                    p.cpu = Some((cpu, now));
+                }
+                self.pools.push(p);
+                continue;
+            }
+            let _ = services::stop(platform, pid);
+            p.child.wait();
+            for listener in platform
+                .supervisor()
+                .owned_listeners(p.port, platform.supervisor().php_pool_model().process_title())
+            {
+                let _ = platform.supervisor().stop(listener);
+            }
+            stopped.push(p.minor);
+        }
+        stopped
     }
 
     /// Stop ONE pool (for a settings-change restart), reaping the master and any
@@ -2200,6 +2282,7 @@ mod tests {
             child: alive.into(), // freshly stamped → within START_GRACE
             debug: false,
             misses: 0,
+            cpu: None,
         });
         pools.pools.push(Pool {
             minor: "8.3".into(),
@@ -2207,6 +2290,7 @@ mod tests {
             child: dead.into(),
             debug: false,
             misses: 0,
+            cpu: None,
         });
 
         let reaped = pools.reap_dead(&platform);
@@ -2219,6 +2303,130 @@ mod tests {
             p.child.kill();
             p.child.wait();
         }
+    }
+
+    /// A supervisor naming the pool `model`, whose `stop` really ends the process (the breaker
+    /// waits on what it stops) and whose `pid_command` answers a fixed string.
+    struct GroupStub {
+        cmd: Option<&'static str>,
+        model: PoolModel,
+    }
+    impl ProcessSupervisor for GroupStub {
+        fn spawn(&self, _: &std::path::Path, _: &[String]) -> crate::error::Result<std::process::Child> {
+            unimplemented!()
+        }
+        fn spawn_logged(
+            &self,
+            _: &std::path::Path,
+            _: &[String],
+            _: &std::path::Path,
+        ) -> crate::error::Result<std::process::Child> {
+            unimplemented!()
+        }
+        fn stop(&self, pid: u32) -> crate::error::Result<()> {
+            let _ = std::process::Command::new("kill")
+                .arg(pid.to_string())
+                .stderr(std::process::Stdio::null())
+                .status();
+            Ok(())
+        }
+        fn pid_command(&self, _pid: u32) -> Option<String> {
+            self.cmd.map(String::from)
+        }
+        fn php_pool_model(&self) -> PoolModel {
+            self.model
+        }
+    }
+    struct GroupPlatform(GroupStub);
+    impl Platform for GroupPlatform {
+        fn supervisor(&self) -> &dyn ProcessSupervisor {
+            &self.0
+        }
+        fn paths(&self) -> &dyn Paths { unimplemented!() }
+        fn dns(&self) -> &dyn DnsManager { unimplemented!() }
+        fn cert_trust(&self) -> &dyn CertTrustManager { unimplemented!() }
+        fn privileges(&self) -> &dyn PrivilegeManager { unimplemented!() }
+        fn autostart(&self) -> &dyn AutostartManager { unimplemented!() }
+        fn permissions(&self) -> &dyn PermissionManager { unimplemented!() }
+        fn shell(&self) -> &dyn ShellRunner { unimplemented!() }
+        fn binaries(&self) -> &dyn BinaryProvider { unimplemented!() }
+        fn edge(&self) -> &dyn EdgeSupervisor { unimplemented!() }
+        fn dns_agent(&self) -> &dyn DnsAgentManager { unimplemented!() }
+        fn app_bundle(&self) -> &dyn AppBundle { unimplemented!() }
+    }
+    const GROUP_MODEL: PoolModel = PoolModel::CgiGroup(CgiGroup { extensions: &[], zend_extensions: &[] });
+
+    /// A process that burns a core, standing in for a php-cgi parent retrying a spawn.
+    fn spinning_process() -> std::process::Child {
+        std::process::Command::new("yes").stdout(std::process::Stdio::null()).spawn().unwrap()
+    }
+
+    /// The churn breaker's mechanism (ledger #605): a pool process that used a quarter of a core
+    /// or more since its baseline is stopped and dropped; an idle one is kept, its baseline moved
+    /// forward once a full window has passed. Where the platform runs php-fpm the breaker reads
+    /// nothing at all (it would reach `paths()`, which this stub does not have).
+    #[test]
+    fn the_breaker_stops_a_spinning_process_and_keeps_an_idle_one() {
+        let window_ago = std::time::Instant::now() - crate::core::php_cgi::SPIN_MIN_WINDOW;
+        let mut pools = PhpFpmPools::default();
+        for (minor, child) in [
+            ("8.3", spinning_process()),
+            ("8.4", std::process::Command::new("sleep").arg("30").spawn().unwrap()),
+        ] {
+            pools.pools.push(Pool {
+                minor: minor.into(),
+                port: 1,
+                child: child.into(),
+                debug: false,
+                misses: 0,
+                cpu: Some((0, window_ago)),
+            });
+        }
+        std::thread::sleep(std::time::Duration::from_secs(4));
+
+        let fpm = GroupPlatform(GroupStub { cmd: None, model: PoolModel::Fpm });
+        assert!(pools.trip_spinning(&fpm).is_empty(), "php-fpm has no respawn loop to break");
+        assert!(pools.has("8.3", false) && pools.has("8.4", false));
+
+        let group = GroupPlatform(GroupStub { cmd: None, model: GROUP_MODEL });
+        assert_eq!(pools.stop_spinning(&group), vec!["8.3".to_string()], "the spinning process is stopped");
+        assert!(!pools.has("8.3", false));
+        assert!(pools.has("8.4", false), "an idle process was stopped");
+        assert!(
+            pools.pools[0].cpu.is_some_and(|(_, at)| at > window_ago),
+            "a full window passed: the idle pool's baseline must move forward"
+        );
+        for p in &mut pools.pools {
+            p.child.kill();
+            p.child.wait();
+        }
+    }
+
+    /// An ADOPTED parent is judged only while its command line names its minor's ini: a busy
+    /// process on a recycled pid is never stopped (ledger #605).
+    #[test]
+    fn the_breaker_never_stops_an_adopted_pid_that_is_not_the_group() {
+        let mut busy = spinning_process();
+        let window_ago = std::time::Instant::now() - crate::core::php_cgi::SPIN_MIN_WINDOW;
+        let mut pools = PhpFpmPools::default();
+        pools.pools.push(Pool {
+            minor: "8.3".into(),
+            port: 1,
+            child: Proc::Adopted(busy.id()),
+            debug: false,
+            misses: 0,
+            cpu: Some((0, window_ago)),
+        });
+        std::thread::sleep(std::time::Duration::from_secs(4));
+        let recycled = GroupPlatform(GroupStub { cmd: Some("C:/Windows/System32/svchost.exe -k netsvcs"), model: GROUP_MODEL });
+        assert!(pools.stop_spinning(&recycled).is_empty(), "a busy stranger on the pid was stopped");
+        assert!(pools.has("8.3", false));
+        let ours = GroupPlatform(GroupStub {
+            cmd: Some("php-cgi -n -c \"C:/Users/x/AppData/Local/rexenv/config/php-cgi-8.3.ini\" -b 127.0.0.1:9083"),
+            model: GROUP_MODEL,
+        });
+        assert_eq!(pools.stop_spinning(&ours), vec!["8.3".to_string()]);
+        let _ = busy.wait();
     }
 
     /// B29b, the decision table. The one-miss bug: a single failed port probe
@@ -2275,6 +2483,7 @@ mod tests {
             child: Proc::Child(alive, backdated),
             debug: false,
             misses: 0,
+            cpu: None,
         });
         assert!(
             pools.reap_dead(&platform).is_empty(),
