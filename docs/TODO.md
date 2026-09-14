@@ -83,7 +83,15 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     breakaway from the app's launch contexts (SSH allows it, #600; a Task Scheduler task REFUSES it —
     ACCESS_DENIED from `proxy::start`, 14 Sep 2026, plan §3 D1; Explorer, Start, Windows Terminal
     unmeasured); memory per child; peak concurrency on a
-    block-editor load); D2 — who holds loopback :53 and who ANSWERS it, per state (clean,
+    block-editor load); D2 — who holds loopback :53 and who ANSWERS it, per state (who ANSWERS, for
+    same-account holders: measured 14 Sep 2026, `windows_dns53_probe` — an exclusive `127.0.0.1` agent
+    answers over UDP and TCP beside any wildcard holder and is refused only by a `127.0.0.1` holder
+    (10048) or an exclusive wildcard (10013), plan §3 D2; the owner ruled hotspot and WSL2 NAT in for the
+    real states, Hyper-V and Docker out; WSL 2 NAT measured the same day — once WSL 2 is installed ICS
+    (`SharedAccess`, LocalSystem) holds UDP `0.0.0.0:53`, answers the WSL adapter's address, not loopback,
+    and an exclusive `127.0.0.1:53` bind still succeeds, and the agent answers beside it; Mobile
+    hotspot measured too — no new :53 row, ICS answers `192.168.137.1`, loopback queries time out, the
+    agent bind still succeeds; still open: mirrored WSL/`dnsTunneling` on the Windows 11 VM) (clean,
     hotspot/ICS, Hyper-V, WSL2 NAT + mirrored, Docker Desktop); D5 — unsigned NSIS through
     Edge and Chrome: the clicks (each named), every message verbatim with a screenshot, whether
     "Run anyway" is reachable without "More info", and whether the next build repeats it all;

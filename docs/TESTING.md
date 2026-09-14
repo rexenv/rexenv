@@ -1390,6 +1390,15 @@ bloating the fast path:
   and the before/after phases are the control that the check can see a rejection at all. Names resolve
   inside the browsers (W6 owns `.rex` DNS). Caddy is the check's own child, not `proxy::start`: a
   scheduled task forbids job breakaway, which the supervisor needs.
+  `windows_dns53_probe` is D2's "who ANSWERS :53" measurement before W6 builds the agent: each holder is
+  a separate process (the example re-run as `hold …`) serving DNS on UDP and TCP with its own marker
+  address, so the address `Resolve-DnsName -Server 127.0.0.1` gets back names the process that replied —
+  seven orders of a wildcard, IPv6-only, dual-stack, loopback or exclusive holder against an exclusive
+  `127.0.0.1` agent. Same-account holders only; the real states — Mobile hotspot
+  (`scripts/probes/windows-hotspot-dns53.ps1`, desktop session, turns the hotspot on and off itself) and a
+  running WSL 2 distribution (`scripts/probes/windows-wsl-dns53.ps1`, SSH, `wsl --shutdown` at the end) —
+  record the rows on :53 by process and service, who answers, and whether an agent-shaped exclusive
+  `127.0.0.1:53` bind still succeeds.
 
 A gate nobody can afford to run stops being one: the fast bar stays fast, and nothing
 above it is required per-commit. The metric the gate serves is the ledger tally, which

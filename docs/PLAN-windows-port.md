@@ -435,10 +435,57 @@ state holds loopback :53, the fallback question closes itself.
 **Measured 13 Sep 2026, the Dell's clean state:** nothing on UDP or TCP 53. `SharedAccess` (ICS)
 is running but idle — its DNS proxy binds only while sharing is on; Hyper-V's `vmms` and Docker
 are not installed; WSL is present (`LxssManager`, `hns` running) with **no distribution and no
-WSL 2 kernel**, so the WSL states cannot be measured here without installing one. The §6 matrix
+WSL 2 kernel**, so the WSL states cannot be measured here without installing one. **Installed 14 Sep
+2026 at the owner's go** (hotspot and WSL2 NAT ruled in, Hyper-V and Docker out): `wsl --update
+--web-download` put WSL 2.7.14.0 (kernel 6.18.33.2-2) in as an MSI + Appx package — then, from the SSH
+session, the inbox `C:\Windows\System32\wsl.exe` (10.0.19041) failed with "The file cannot be accessed
+by the system" while `C:\Program Files\WSL\wsl.exe` answered, so anything rexenv ever runs against WSL
+should not assume the System32 copy works in every session. WSL 2 mirrored networking and
+`dnsTunneling` are documented by Microsoft as Windows 11-only (22H2+) — not measured on this Windows
+10 machine, and left to the Windows 11 VM.
+**Measured, WSL 2 (NAT) with the `Ubuntu` distribution, 14 Sep 2026** (`scripts/probes/windows-wsl-dns53.ps1`
+over SSH). **Once WSL 2 is installed, ICS holds UDP `0.0.0.0:53`** — `svchost` hosting `SharedAccess`
+(LocalSystem) — before the distribution starts, while it runs and after `wsl --shutdown`; nothing on TCP
+53. The same service held nothing at the start of the day, before `wsl --update` and the distribution
+install (what bound it — the install, or the WSL NAT network hns created — is not separated). Inside the
+distribution `/etc/resolv.conf` names `172.21.144.1`, the `vEthernet (WSL)` address, where that proxy
+answered UDP (`www.microsoft.com`) and refused TCP. On loopback it answers nothing: a UDP query to
+`127.0.0.1:53` came back port-unreachable. And an agent-shaped bind — `127.0.0.1:53`, exclusive, UDP and
+TCP — succeeded in every phase. So the common "WSL is installed" machine has a wildcard :53 holder of
+ANOTHER account, and it does not block the agent.
+**And the agent ANSWERS beside it** — `windows_dns53_probe` rerun the same evening with ICS holding UDP
+`0.0.0.0:53`: the exclusive `127.0.0.1` agent bound and `Resolve-DnsName -Server 127.0.0.1` got the
+agent's marker over UDP and TCP. ICS's socket changes the other cases in one way: a same-account UDP
+`0.0.0.0:53` bind is now refused (10048) — ICS did not share it — while `[::]` binds, TCP binds and the
+agent's `127.0.0.1` bind still succeed; so the exclusive-wildcard case split by protocol (UDP answered by
+the agent, whose holder could not bind; TCP by the exclusive holder, the agent refused with 10013). The
+refusals stay the two already measured: a `127.0.0.1` holder (10048) and an exclusive wildcard (10013).
+**Measured, Mobile hotspot on, 14 Sep 2026** (`scripts/probes/windows-hotspot-dns53.ps1` in the desktop
+session, Medium token; the script turned the hotspot on and off itself, both `Success`, and the SSH
+link survived). Turning it on added NO :53 row: the same `SharedAccess` socket (pid 4272, UDP
+`0.0.0.0:53`) served the hotspot's `192.168.137.1`, answering UDP (`www.microsoft.com`) and refusing
+TCP. On loopback a UDP query now TIMED OUT — with WSL alone it had come back port-unreachable — so
+while the hotspot shares, ICS takes loopback datagrams and answers none. The agent-shaped exclusive
+`127.0.0.1:53` bind succeeded with the hotspot on and after it was off. Not measured: the agent
+ANSWERING while the hotspot shares (bound only).
+**What D2 now says:** in every state measured on the Dell — clean, WSL 2 installed, WSL 2 running, the
+hotspot sharing — the agent's `127.0.0.1:53` exclusive bind succeeds; the one real holder, ICS, is a
+wildcard UDP socket of another account that answers the WSL and hotspot adapters, not loopback. The
+fallback question has not reopened. Still open: mirrored WSL and `dnsTunneling` (Windows 11 VM), and
+Hyper-V and Docker (ruled out of the Dell's measurements by the owner). The §6 matrix
 already answers "who answers": a `127.0.0.1` bind wins loopback traffic over a `0.0.0.0` or
 `[::]` holder, so a wildcard :53 holder would not stop the agent — only a `127.0.0.1` holder or
 an exclusive wildcard would, and those are the ones to refuse by name.
+**Measured for :53 itself, UDP and TCP, 14 Sep 2026** (`examples/windows_dns53_probe.rs` on the Dell,
+over SSH; every holder a separate process of the same account, answering A queries with its own
+marker address; queries through Windows' resolver, `Resolve-DnsName -Server 127.0.0.1 -DnsOnly`,
+plus `-TcpOnly`). An agent bound `127.0.0.1:53` with `SO_EXCLUSIVEADDRUSE` bound and answered — on
+both protocols — alone, after a `0.0.0.0` holder, before one (the later wildcard still bound, and the
+agent still answered), after a `[::]` IPv6-only holder and after a `[::]` dual-stack one. It could
+NOT bind after a `127.0.0.1` holder (WSAEADDRINUSE, 10048 — the holder answered) or after an
+exclusive `0.0.0.0` holder (WSAEACCES, 10013 — the holder answered). So the rule stands for UDP as
+measured, and the agent's bind error tells the two refusals apart. Not measured: a holder that is
+ANOTHER account (a LocalSystem service such as ICS's DNS proxy) — that is what the real states show.
 
 **D3 — Local IPC (the CLI, MCP and Caddy admin sockets).** **RULED 12 Sep 2026 by the
 owner: named pipes with a current-user ACL, behind a new 13th trait `LocalIpc`** (chosen
