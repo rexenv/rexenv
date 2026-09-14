@@ -1223,9 +1223,22 @@ pub fn validate_linked_docroot(
     Ok(canon)
 }
 
+/// The first character a generated server config cannot carry, judged inside each folder NAME
+/// rather than across the raw string (ledger #303). A `\` inside a name ends or escapes a quoted
+/// config string and is found wherever it sits; a `\` that is Windows' path SEPARATOR is in no
+/// name, and every config writer renders such a path with forward slashes
+/// (`services::nginx_path`, ledger #602). Measured on the Dell, 14 Sep 2026: the raw-string check
+/// refused every Windows site folder, since every Windows path has a backslash.
+fn config_breaking_char(path: &str, breaks: impl Fn(char) -> bool) -> Option<char> {
+    Path::new(path).components().find_map(|part| match part {
+        std::path::Component::Normal(name) => name.to_string_lossy().chars().find(|&c| breaks(c)),
+        _ => None,
+    })
+}
+
 fn validate_docroot_path(path: &str) -> Result<()> {
     if let Some(c) =
-        path.chars().find(|&c| matches!(c, '"' | '$' | '{' | '}' | '\\') || c.is_control())
+        config_breaking_char(path, |c| matches!(c, '"' | '$' | '{' | '}' | '\\') || c.is_control())
     {
         return Err(Error::Other(format!(
             "the site folder path contains {c:?}, which can't be used in the web-server \
@@ -1984,14 +1997,16 @@ pub fn set_sites_dir(conn: &Connection, value: &str) -> Result<String> {
     }
     if !Path::new(trimmed).is_absolute() {
         return Err(Error::Other(format!(
-            "The sites folder has to be a full path starting at `/` — `{trimmed}` is relative, so \
-             where your sites landed would depend on where rexenv was started from."
+            "The sites folder has to be a full path (starting at `/`, or at a drive such as `C:\\`) \
+             — `{trimmed}` is relative, so where your sites landed would depend on where rexenv \
+             was started from."
         )));
     }
     // The characters that cannot survive a quoted path in a generated config,
     // plus NUL which cannot survive a filesystem call. `"` and `\` end or escape
-    // the quoted string; a newline ends the directive.
-    if let Some(bad) = trimmed.chars().find(|c| matches!(c, '"' | '\\' | '\n' | '\r' | '\0')) {
+    // the quoted string; a newline ends the directive. Judged per folder NAME, so
+    // Windows' `\` separator is not one of them (`config_breaking_char`).
+    if let Some(bad) = config_breaking_char(trimmed, |c| matches!(c, '"' | '\\' | '\n' | '\r' | '\0')) {
         let shown = match bad {
             '\n' => "a line break".to_string(),
             '\r' => "a carriage return".to_string(),

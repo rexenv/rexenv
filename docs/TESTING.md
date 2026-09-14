@@ -1314,6 +1314,12 @@ bloating the fast path:
   `PhpFpmPools::trip_spinning` every 10 s, as the watchdog does, through legitimate load and a
   worker-killing script (no trip, still answering) and then a spin (stopped, reason quoted, no
   php-cgi left).
+  `windows_wp_site_check` (#606) is W4's "Done when": the core create path for a one-click WordPress
+  site, as `wp_create_serve` walks it on macOS minus the edge and DNS — MySQL, Mailpit, the php-cgi
+  group, `sites::provision`, `install_for_site`, `rebuild_configs`, nginx — then requests shaped as
+  the edge sends them (`Host`, `X-Forwarded-Proto: https`) and mail from a page AND from WP-CLI,
+  each looked up in Mailpit's API. It needs the network. Its first run found the site-folder check
+  refusing every Windows path (#303).
 
 A gate nobody can afford to run stops being one: the fast bar stays fast, and nothing
 above it is required per-commit. The metric the gate serves is the ledger tally, which

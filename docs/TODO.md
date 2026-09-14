@@ -211,9 +211,28 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     log a second while the port kept serving), then owner rulings (parent CPU ≥ 25% of a core, no
     stop for a worker-killing script, `gave-up` with no restart): `PhpFpmPools::trip_spinning` in the
     watchdog, one output log per minor; Dell `windows_cgi_breaker_check` PASS, the spin stopped on the
-    first tick with its `unable to spawn` line quoted (ledger #605). Still to come: WP-CLI/Composer
-    through the site's PHP, a WordPress site end to end, the busy-workers signal, the pool's health
-    probe as a FastCGI `GET_VALUES` round trip instead of a TCP connect
+    first tick with its `unable to spawn` line quoted (ledger #605). **✓ 14 Sep 2026, W4's "Done when"
+    MET on the Dell** (`windows_wp_site_check` PASS, 24 checks, ledger #606): MySQL, Mailpit, the 8.3
+    group with the catch on, `sites::provision`, `install_for_site` through php.exe and WP-CLI in 103 s
+    with `verify-checksums` passing, `rebuild_configs` and nginx serving the homepage and the login
+    form, a password-reset mail from a page and a `wp eval wp_mail()` both in Mailpit, every port free
+    after the stops. Found on the way: the site-folder check refused every Windows path (it judged `\`
+    across the whole string) — now judged per folder name (#303). Still to come: the busy-workers
+    signal, the pool's health probe as a FastCGI `GET_VALUES` round trip instead of a TCP connect,
+    Composer through the site's PHP
+    - [ ] WP-CLI's mail on Windows rides `-d sendmail_path=<mailpit> sendmail …` from
+      `mail::sendmail_path_cli`, which escapes for `/bin/sh`: every `\` doubled — the Dell's
+      `C:\Users\DELL\…` path delivered (Windows path parsing collapses doubled separators; read, not
+      measured) — and every SPACE backslash-escaped, which cmd.exe does not read. A Windows user name
+      with a space is common, so measure with a Mailpit path containing one; the likely fix is PHP's
+      SMTP keys on the CLI (`-d SMTP=127.0.0.1 -d smtp_port=…`) where the pool model is the php-cgi
+      group, the way the group's own ini already routes mail
+    - [ ] A LINKED or imported docroot is stored as `canonicalize()` returns it (`sites.rs`, the
+      existing-folder validation), and on Windows `std::fs::canonicalize` answers the extended
+      `\\?\C:\…` form (Rust's documented behaviour — read, not yet measured) — which
+      `services::nginx_path` would render as `//?/C:/…`. Measure what nginx does with it and strip
+      the verbatim prefix at that one place (the one-click path, `<sites_dir>\<domain>`, never
+      canonicalizes and is not affected)
     - [ ] Per-vhost `PHP_VALUE` does NOT reach a php-cgi group — measured 14 Sep 2026 on the Dell
       (`windows_nginx_check`: `memory_limit=222M` sent per vhost, the child kept the pool's value).
       It is php-fpm's per-request ini; php-cgi has none. Measured who sets one: ONLY the Adminer

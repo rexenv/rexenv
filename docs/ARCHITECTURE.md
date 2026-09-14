@@ -550,6 +550,12 @@ Live-proven end to end by `site_stop_start_check`.
   recycling (0.9% at 1722 requests a second) and a script that kills its own worker (0.6%, the other
   workers still answering) never trip it: counting children was the first design, and a 10 s
   look cannot count past the worker count.
+  **A one-click WordPress site serves on Windows** (#606, W4's "Done when"): the same core create
+  path — `sites::provision`, `install_for_site` through `php.exe` and WP-CLI, `rebuild_configs`, the
+  shared nginx over the php-cgi group — with mail from a page and from WP-CLI both reaching Mailpit.
+  A site folder is checked for config-breaking characters inside each folder NAME
+  (`sites::config_breaking_char`, #303), so Windows' `\` separator passes while a `\` inside a Unix
+  folder name is still refused; judged across the raw string, it had refused every Windows path.
   **The shared nginx on Windows** (#602): every path in nginx.conf goes through `services::nginx_path`
   (forward slashes — a backslash in a quoted nginx string is an escape, measured); the binary is
   `binaries::resolve_program`, which answers a single binary or `nginx.exe` inside its tree; the socket

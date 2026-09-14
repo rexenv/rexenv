@@ -233,6 +233,7 @@ windows_nginx_check demo
 windows_php_cli_check demo
 windows_cgi_churn_probe demo
 windows_cgi_breaker_check demo
+windows_wp_site_check demo
 wp_core_zip_check network
 "
 

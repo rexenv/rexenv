@@ -823,7 +823,18 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   positive-ID chain and D1(b)'s busy-workers signal; nginx Windows config (forward
   slashes, every path quoted), mail through the SMTP ini keys, WP-CLI/Composer via the
   site's PHP. *Done when:* a one-click WordPress site loads through nginx and its mail
-  lands in Mailpit.
+  lands in Mailpit. **MET 14 Sep 2026 on the Dell** (`examples/windows_wp_site_check.rs`, ledger #606,
+  24 checks): MySQL, Mailpit and the 8.3 group with the catch on; `sites::provision`;
+  `install_for_site` through `php.exe` and the pinned WP-CLI in 103 s, `wp core verify-checksums`
+  passing; `rebuild_configs` and the shared nginx serving the homepage (200, the site's title) and the
+  login form to requests shaped as the edge sends them; a password-reset mail from a page request
+  (the group's SMTP keys) and a `wp eval wp_mail()` (WP-CLI's `sendmail_path` shim) both in Mailpit;
+  every port free after the stops. **Found by the first run:** the site-folder check refused every
+  Windows path, judging `\` across the whole string — now judged per folder name (#303). **Arrived,
+  not yet trusted:** WP-CLI's mail rode `mail::sendmail_path_cli`, which escapes for `/bin/sh`; it
+  delivered from `C:\Users\DELL\…` (doubled backslashes, which Windows path parsing collapses — read,
+  not measured), and a path with a space is escaped in a way cmd.exe does not read (TODO). The edge
+  (W5) and `.rex` names (W6) are not part of this proof.
 - **W5 — HTTPS edge.** Caddy on :443 (Windows has no privileged ports, so the edge need
   not run elevated — record why in ARCHITECTURE), admin per D3, `EdgeSupervisor` for that
   shape; `CertTrustManager` into the CurrentUser Root store (Windows shows its own
