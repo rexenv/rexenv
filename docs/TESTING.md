@@ -1320,6 +1320,10 @@ bloating the fast path:
   the edge sends them (`Host`, `X-Forwarded-Proto: https`) and mail from a page AND from WP-CLI,
   each looked up in Mailpit's API. It needs the network. Its first run found the site-folder check
   refusing every Windows path (#303).
+  `windows_cli_mail_probe` is a PROBE: `php.exe` with the `-d` flags a WP-CLI spawn gets, one
+  `mail()` per shape (today's sendmail shim from a folder with and without a space, the path
+  double-quoted, PHP's SMTP keys), each subject then looked up in Mailpit — because `mail()` answers
+  `true` whether or not anything was delivered, and only the sink can tell.
 
 A gate nobody can afford to run stops being one: the fast bar stays fast, and nothing
 above it is required per-commit. The metric the gate serves is the ledger tally, which

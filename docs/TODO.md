@@ -220,13 +220,20 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     across the whole string) — now judged per folder name (#303). Still to come: the busy-workers
     signal, the pool's health probe as a FastCGI `GET_VALUES` round trip instead of a TCP connect,
     Composer through the site's PHP
-    - [ ] WP-CLI's mail on Windows rides `-d sendmail_path=<mailpit> sendmail …` from
-      `mail::sendmail_path_cli`, which escapes for `/bin/sh`: every `\` doubled — the Dell's
-      `C:\Users\DELL\…` path delivered (Windows path parsing collapses doubled separators; read, not
-      measured) — and every SPACE backslash-escaped, which cmd.exe does not read. A Windows user name
-      with a space is common, so measure with a Mailpit path containing one; the likely fix is PHP's
-      SMTP keys on the CLI (`-d SMTP=127.0.0.1 -d smtp_port=…`) where the pool model is the php-cgi
-      group, the way the group's own ini already routes mail
+    - [ ] **WP-CLI's mail is LOST, silently, on Windows when Mailpit's path has a space** — measured
+      14 Sep 2026 on the Dell (`windows_cli_mail_probe`, `php.exe` run with the flags a WP-CLI spawn
+      gets, a `mail()` per case, Mailpit's API asked for each subject). It rides `-d
+      sendmail_path=<mailpit> sendmail …` from `mail::sendmail_path_cli`, escaped for `/bin/sh`:
+      (1) no space — delivered (the doubled `\` is read fine); (2) a space — `mail()` returned
+      **`true`**, nothing arrived, and cmd.exe said `'C:\…\rexenv-cli-mail-probe\with\' is not
+      recognized as an internal or external command` on stderr only; (3) the path double-quoted
+      instead — PHP's `-d` parser dropped the quotes AND joined `mailpit.exe` to `sendmail`, same
+      cmd.exe error, `true` again; (4) no sendmail at all, `-d SMTP=127.0.0.1 -d smtp_port=11025` —
+      delivered, no shell involved. A Windows user name with a space is common, so this is a real
+      user's lost mail with a success reported. The fix the measurement points to: where the pool
+      model is the php-cgi group, WP-CLI gets PHP's SMTP keys (4) instead of the shim — the way the
+      group's own ini already routes a page's mail (#601) — in `wordpress::finish_wp_argv`, the one
+      argv builder (#407)
     - [ ] A LINKED or imported docroot is stored as `canonicalize()` returns it (`sites.rs`, the
       existing-folder validation), and on Windows `std::fs::canonicalize` answers the extended
       `\\?\C:\…` form (Rust's documented behaviour — read, not yet measured) — which
