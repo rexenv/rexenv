@@ -11,7 +11,8 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
 - `commands/` = thin Tauri IPC translators; parse args, call `core/`, map errors.
 - `core/` = platform-agnostic domain logic; talks to `platform/` only through traits.
 - `platform/` = ALL OS-specific code behind the 13 traits in `platform/traits.rs`
-  (the 13th, `LocalIpc`, is local non-TCP IPC — unix socket / Windows named pipe)
+  (the 13th, `LocalIpc`, is local non-TCP IPC — its dial is a unix socket on every OS, AF_UNIX on
+  Windows (#611); the CLI/MCP listeners' Windows named pipes are W8)
   (macOS real; `windows/` stubs return `Error::Unported` / `unported!` — ledger #595 — except
   `Paths`, `PermissionManager` and `BinaryProvider`, written but not yet run on Windows, and
   `ProcessSupervisor`'s identity and port-gate half, run on the Dell:
@@ -26,7 +27,9 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
   (`core/pool_busy.rs`, fed by `commands::services::enriched_status`, #608) — both over
   `ProcessSupervisor::established_on`; Windows' streamed steps — `WindowsSupervisor::spawn_streamed` /
   `stop_group` over `process.rs::StepJob` (kill-on-close jobs) and `WindowsShell::login_shell_env` over
-  `windows/login_env.rs` (the registry environment merge, tested on every host) (ledger #609); nginx's Windows shape — `services::nginx_path`,
+  `windows/login_env.rs` (the registry environment merge, tested on every host) (ledger #609); the edge's
+  Windows start — `WindowsPrivileges::port_needs_privilege`, `WindowsEdge::default_bind`, and `LocalIpc`'s
+  dial over `windows/af_unix.rs` + `windows/ipc_rules.rs` (its error rule, tested on every host) (ledger #611); nginx's Windows shape — `services::nginx_path`,
   `binaries::resolve_program`, the master climb and nginx's events (ledger #602);
   `linux/` is `todo!()`).
 - `state/` = SQLite migrations + the store layer; only `state/` writes SQL.

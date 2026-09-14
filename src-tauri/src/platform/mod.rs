@@ -65,6 +65,11 @@ mod windows_handles;
 #[allow(dead_code)]
 #[path = "windows/login_env.rs"]
 mod windows_login_env;
+// And what a failed AF_UNIX connect means (ledger #611).
+#[cfg(all(test, not(target_os = "windows")))]
+#[allow(dead_code)]
+#[path = "windows/ipc_rules.rs"]
+mod windows_ipc_rules;
 
 use traits::Platform;
 

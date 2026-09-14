@@ -902,6 +902,16 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   shape; `CertTrustManager` into the CurrentUser Root store (Windows shows its own
   confirmation) plus the Firefox enterprise-roots path. *Done when:* `https://<site>.rex`
   shows a valid lock in Edge, Chrome and Firefox.
+  **Edge start path — done 14 Sep 2026 (ledger #611).** `PrivilegeManager::port_needs_privilege`
+  (default below 1024; Windows false) decides `EdgePlan::privileged`, so Windows takes the
+  `proxy::start` child branch; `WindowsEdge` has no supervisor (`is_installed` false) and a
+  `default_bind` of `127.0.0.1` (the owner's ruling, written into the Caddyfile's global block);
+  `WindowsLocalIpc::connect` dials AF_UNIX, telling `NotFound` from `ConnectionRefused` by the socket
+  file. Measured on the Dell (`windows_edge_start_check`, 28 checks, PASS first run): unprivileged plan;
+  `admin_alive` true over AF_UNIX; `:443`/`:80` on `127.0.0.1` only, the LAN address refusing; TLS on
+  the local CA; a second manager adopted the live edge and reloaded it in place; after `taskkill /F`
+  the socket file stayed, the connect said `ConnectionRefused`, and a fresh start came up over it;
+  `stop_all` released both ports. Remaining for W5: `CertTrustManager`, Firefox, the three browsers.
 - **W6 — DNS + privileges.** D2's :53 measurement first, then the agent, the NRPT rules and the refusal that names a
   :53 holder; `PrivilegeManager` as a UAC
   elevation that says what it is for (the macOS dialog rule, ledger #579's family);

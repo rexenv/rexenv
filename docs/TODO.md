@@ -295,9 +295,14 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     Caddy binds `:443`/`:80` without elevation, but Caddy's default all-interfaces bind — rexenv's
     Caddyfile today — raised Windows Defender Firewall's "Windows Security Alert" on the desktop, while
     `default_bind 127.0.0.1` raised none. **Ruled (owner, 14 Sep 2026): the Windows edge binds 127.0.0.1
-    only**; macOS unchanged — to build with the edge's Windows start path. Still to come: the edge's start/stop shape without a LaunchDaemon
-    (`EdgeSupervisor`, `prepare_edge` treating 443 as privileged), `LocalIpc` over AF_UNIX,
-    `CertTrustManager` (the CurrentUser Root store — its confirmation dialog needs someone at the Dell),
+    only**; macOS unchanged. **The edge's Windows start path — done the same day (ledger #611):**
+    `prepare_edge` asks `PrivilegeManager::port_needs_privilege` (Windows: false) instead of assuming
+    443 is privileged, so the edge is an ordinary child with no LaunchDaemon; the Caddyfile carries
+    `default_bind 127.0.0.1` from `EdgeSupervisor::default_bind`; `LocalIpc` dials AF_UNIX. Dell
+    `windows_edge_start_check` PASS (28 checks): unprivileged plan, `admin_alive` over AF_UNIX,
+    `127.0.0.1:443`/`:80` only and the LAN address refusing, TLS on the local CA, adopt + in-place
+    reload by a second manager, a `taskkill /F` crash leaving the socket file and a fresh start over
+    it, `stop_all` releasing both ports. Still to come: `CertTrustManager` (the CurrentUser Root store — its confirmation dialog needs someone at the Dell),
     Firefox's profiles root, the three browsers
   - [ ] W6 — DNS agent + NRPT + UAC + logon task → `*.rex` resolves after reboot, app closed
   - [ ] W7 — ShellRunner, autostart, tray (includes the Windows half of the browser-stub row)

@@ -109,6 +109,14 @@ pub trait PrivilegeManager: Send + Sync {
     /// the OS auth prompt once, worded by `reason`. Returns captured stdout on
     /// success.
     fn run_privileged(&self, script: &str, reason: &PromptReason) -> Result<String>;
+
+    /// Whether binding `port` needs elevation on this OS — the edge start asks this rather than
+    /// assuming the Unix rule (ledger #611). Default: below 1024, as on macOS. Windows has no
+    /// privileged ports: measured on the Dell (14 Sep 2026), the desktop user's filtered token bound
+    /// `:443` and `:80`.
+    fn port_needs_privilege(&self, port: u16) -> bool {
+        port < 1024
+    }
 }
 
 /// What a privileged prompt is for. It completes the sentence the dialog shows —
@@ -757,6 +765,13 @@ pub trait BinaryProvider: Send + Sync {
 ///
 /// [`install_command`]: EdgeSupervisor::install_command
 pub trait EdgeSupervisor: Send + Sync {
+    /// The address the edge binds its site ports on, when this OS wants one: rendered as Caddy's
+    /// `default_bind` (ledger #611). Default: `None` — every interface, as on macOS. Windows:
+    /// `127.0.0.1`, because an all-interfaces bind raises Windows Defender Firewall's allow prompt on
+    /// the desktop (measured on the Dell) — owner ruling 14 Sep 2026.
+    fn default_bind(&self) -> Option<&'static str> {
+        None
+    }
     /// Whether the edge daemon is installed (its plist is on disk) — the source of
     /// truth for "is the edge under OS supervision" (vs the legacy osascript spawn).
     fn is_installed(&self) -> bool;

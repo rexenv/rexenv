@@ -276,6 +276,10 @@ pub struct CaddyConfig {
     /// Admin API unix socket to bind (`Some` in production via [`admin_socket_path`]).
     /// `None` omits the `admin` directive (Caddy's default TCP admin) — tests only.
     pub admin_socket: Option<PathBuf>,
+    /// Caddy's `default_bind` for the site ports, when the platform wants one
+    /// (`EdgeSupervisor::default_bind`; Windows: `127.0.0.1`, ledger #611). `None` binds every
+    /// interface, as macOS always has.
+    pub default_bind: Option<String>,
 }
 
 impl Default for CaddyConfig {
@@ -285,6 +289,7 @@ impl Default for CaddyConfig {
             https_port: DEFAULT_HTTPS_PORT,
             routes: Vec::new(),
             admin_socket: None,
+            default_bind: None,
         }
     }
 }
@@ -304,6 +309,10 @@ pub fn generate_caddyfile(cfg: &CaddyConfig) -> String {
         // owner-only perms (Caddy 2.7+; the privileged edge additionally chowns it).
         // The address is `admin_address`'s: one slash for a Windows path (measured, see there).
         s.push_str(&format!("\tadmin \"{}|0600\"\n", admin_address(sock)));
+    }
+    if let Some(bind) = &cfg.default_bind {
+        // Windows: loopback only — an all-interfaces bind raised the firewall's allow prompt (#611).
+        s.push_str(&format!("\tdefault_bind {bind}\n"));
     }
     s.push_str("}\n");
     for r in &cfg.routes {
@@ -1016,6 +1025,7 @@ mod tests {
                 stopped: None,
             }],
             admin_socket: None,
+            default_bind: None,
         }
     }
 
@@ -1072,6 +1082,21 @@ mod tests {
         let f = generate_caddyfile(&cfg);
         assert!(f.contains(&format!("admin \"{}|0600\"", admin_address(win))), "caddyfile:\n{f}");
         assert!(!f.contains("unix//C:"), "caddyfile:\n{f}");
+    }
+
+    /// The Windows edge binds loopback only (ledger #611, owner ruling 14 Sep 2026): a platform
+    /// `default_bind` becomes Caddy's global `default_bind`; without one the Caddyfile says nothing,
+    /// so macOS keeps binding every interface exactly as before.
+    #[test]
+    fn a_default_bind_is_a_global_option_and_absent_otherwise() {
+        let mut cfg = sample();
+        let f = generate_caddyfile(&cfg);
+        assert!(!f.contains("default_bind"), "no platform bind, no directive:\n{f}");
+        cfg.default_bind = Some("127.0.0.1".into());
+        let f = generate_caddyfile(&cfg);
+        let global = f.split("\n}\n").next().unwrap_or("");
+        assert!(global.lines().any(|l| l == "\tdefault_bind 127.0.0.1"), "not in the global block:\n{f}");
+        assert_eq!(f.matches("default_bind").count(), 1, "one global option, not per site:\n{f}");
     }
 
     #[test]

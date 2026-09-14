@@ -1358,6 +1358,13 @@ bloating the fast path:
   The desktop user's token is `scripts/probes/windows-edge-bind.ps1`, run through
   `windows-limited-token.sh`: `:443`/`:80` bound with Caddy's default and with `default_bind 127.0.0.1`,
   and whether a firewall alert window appears in that session.
+  `windows_edge_start_check` (#611) is the Windows edge through the app's own paths: the Caddyfile
+  `sites::rebuild_configs` writes (`default_bind 127.0.0.1`), `prepare_edge`'s unprivileged plan,
+  `proxy::start`, `admin_alive` over `LocalIpc` (AF_UNIX), netstat's bind addresses and the LAN address
+  refusing `:443`, TLS on the local CA, a second manager's `adopt_startup` + in-place reload, a
+  `taskkill /F` crash (the socket file outlives Caddy; the connect error turns from `NotFound` to
+  `ConnectionRefused`) and a fresh start over it, then `stop_all` releasing both ports. It runs under the
+  SSH session's elevated token, so the desktop token's firewall prompt stays `windows-edge-bind.ps1`'s.
 
 A gate nobody can afford to run stops being one: the fast bar stays fast, and nothing
 above it is required per-commit. The metric the gate serves is the ledger tally, which

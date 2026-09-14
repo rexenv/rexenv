@@ -16,7 +16,9 @@ use std::path::{Path, PathBuf};
 use std::process::Child;
 
 mod acl;
+mod af_unix;
 mod handles;
+mod ipc_rules;
 mod login_env;
 mod owner_only;
 mod pe;
@@ -91,6 +93,11 @@ impl PrivilegeManager for WindowsPrivileges {
         _reason: &crate::platform::traits::PromptReason,
     ) -> Result<String> {
         Err(Error::Unported("windows UAC elevation"))
+    }
+    /// No privileged ports on Windows: the desktop user's filtered token bound `:443` and `:80`
+    /// (measured on the Dell, 14 Sep 2026, ledger #611).
+    fn port_needs_privilege(&self, _port: u16) -> bool {
+        false
     }
 }
 
@@ -532,11 +539,18 @@ fn collect_files(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
 
 pub struct WindowsEdge;
 impl EdgeSupervisor for WindowsEdge {
+    /// Windows runs the edge as an ordinary service process — there is no OS supervisor to install
+    /// (ledger #611) — so there is never a daemon to find, boot out or uninstall.
     fn is_installed(&self) -> bool {
-        unported!("windows edge supervisor")
+        false
     }
     fn is_enabled(&self) -> bool {
-        unported!("windows edge supervisor")
+        true
+    }
+    /// Loopback only: an all-interfaces bind raised Windows Defender Firewall's allow prompt on the
+    /// desktop (measured on the Dell); owner ruling 14 Sep 2026.
+    fn default_bind(&self) -> Option<&'static str> {
+        Some("127.0.0.1")
     }
     fn plist_path(&self) -> PathBuf {
         unported!("windows edge supervisor")
@@ -633,15 +647,15 @@ impl AppBundle for WindowsAppBundle {
 }
 pub struct WindowsLocalIpc;
 impl LocalIpc for WindowsLocalIpc {
+    /// An AF_UNIX stream (`af_unix.rs`, ledger #611): what this trait dials — Caddy's admin socket
+    /// and a database's socket — are unix sockets on every OS, and Windows serves them. The CLI
+    /// and MCP endpoints rexenv itself LISTENS on are D3's named pipes, a separate half (W8).
     fn connect(
         &self,
-        _path: &Path,
-        _read_timeout: Option<std::time::Duration>,
+        path: &Path,
+        read_timeout: Option<std::time::Duration>,
     ) -> std::io::Result<Box<dyn std::io::Read + Send>> {
-        Err(std::io::Error::new(
-            std::io::ErrorKind::Unsupported,
-            Error::Unported("windows local IPC — a named pipe with a current-user ACL (D3, W8)").to_string(),
-        ))
+        Ok(Box::new(af_unix::connect_path(path, read_timeout)?))
     }
 }
 /// The panic hook's notice (`platform::fatal_notice`): a native message box,

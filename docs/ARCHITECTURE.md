@@ -595,6 +595,18 @@ Live-proven end to end by `site_stop_start_check`.
   which Caddy refused to start on and its CLI could not dial; `proxy::admin_address` writes
   `unix/C:\…` for such a path and keeps macOS's `unix///Users/…` byte for byte (a running edge's admin
   listener is keyed by that string).
+  **The edge's start on Windows** (#611): an ordinary service process, like nginx — no LaunchDaemon, no
+  UAC. `PrivilegeManager::port_needs_privilege` answers false there (the desktop user's token bound
+  `:443`/`:80`, measured), so `prepare_edge` plans an unprivileged start and `start_services` takes the
+  `proxy::start` child branch; `WindowsEdge::is_installed` is false, so adopt and the watchdog treat a
+  survivor as the non-daemon edge and stop it with `stop_edge`. The Caddyfile carries `default_bind
+  127.0.0.1` from `EdgeSupervisor::default_bind` — Caddy's all-interfaces bind raised Windows Defender
+  Firewall's allow prompt on the desktop, so on Windows sites open from this computer only (owner
+  ruling; cloudflared tunnels dial localhost and are unaffected); macOS writes no bind and is unchanged.
+  `LocalIpc::connect` dials the admin socket over Winsock AF_UNIX (`windows/af_unix.rs`); Windows
+  answers "connection refused" whether or not the socket file exists, so the file's presence tells
+  `NotFound` from `ConnectionRefused` (`windows/ipc_rules.rs`). A killed Caddy leaves its socket file,
+  and a fresh start comes up over it.
   **The shared nginx on Windows** (#602): every path in nginx.conf goes through `services::nginx_path`
   (forward slashes — a backslash in a quoted nginx string is an escape, measured); the binary is
   `binaries::resolve_program`, which answers a single binary or `nginx.exe` inside its tree; the socket

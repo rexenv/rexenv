@@ -805,7 +805,8 @@ impl ServiceManager {
             ports::ensure_free(platform, self.ports.https, ports::Proto::Tcp, "Caddy (HTTPS)")?;
         }
         Ok(Some(EdgePlan {
-            privileged: self.ports.https < 1024,
+            // The OS answers, not the Unix rule: Windows binds :443 unprivileged (ledger #611).
+            privileged: platform.privileges().port_needs_privilege(self.ports.https),
             caddy_bin: bins.caddy.clone(),
             caddyfile,
         }))
@@ -2834,6 +2835,24 @@ mod tests {
     struct EdgeTestPlatform {
         paths: TestPaths,
         edge: TestEdge,
+        privileges: Box<dyn PrivilegeManager>,
+    }
+    /// The trait's default port rule (below 1024 needs elevation, as on macOS).
+    struct UnixPortRule;
+    impl PrivilegeManager for UnixPortRule {
+        fn run_privileged(&self, _: &str, _: &crate::platform::traits::PromptReason) -> Result<String> {
+            unimplemented!()
+        }
+    }
+    /// An OS with no privileged ports (Windows, ledger #611).
+    struct NoPrivilegedPorts;
+    impl PrivilegeManager for NoPrivilegedPorts {
+        fn run_privileged(&self, _: &str, _: &crate::platform::traits::PromptReason) -> Result<String> {
+            unimplemented!()
+        }
+        fn port_needs_privilege(&self, _: u16) -> bool {
+            false
+        }
     }
     struct TestPaths(PathBuf);
     impl Paths for TestPaths {
@@ -2906,7 +2925,7 @@ mod tests {
             unimplemented!()
         }
         fn privileges(&self) -> &dyn PrivilegeManager {
-            unimplemented!()
+            self.privileges.as_ref()
         }
         fn supervisor(&self) -> &dyn ProcessSupervisor {
             unimplemented!()
@@ -3165,7 +3184,11 @@ mod tests {
     fn edge_test_platform(name: &str, installed: bool, enabled: bool) -> EdgeTestPlatform {
         let dir = std::env::temp_dir().join(format!("rexenv-edge-sm-{name}"));
         let _ = std::fs::create_dir_all(&dir);
-        EdgeTestPlatform { paths: TestPaths(dir), edge: TestEdge { installed, enabled } }
+        EdgeTestPlatform {
+            paths: TestPaths(dir),
+            edge: TestEdge { installed, enabled },
+            privileges: Box::new(UnixPortRule),
+        }
     }
 
     /// The live incident: a bootout raced the watchdog's re-adopt, leaving a
@@ -3185,6 +3208,27 @@ mod tests {
             .expect("a stale daemon handle must yield a fresh start plan, not None");
         assert!(plan.privileged, ":443 default is a privileged start");
         assert!(!mgr.edge_is_daemon(), "stale handle must be reset to Stopped");
+    }
+
+    /// Ledger #611: whether the edge start needs elevation is the PLATFORM's answer for the HTTPS
+    /// port, not the Unix below-1024 rule — Windows binds `:443` as the desktop user, and a
+    /// hard-coded `< 1024` sent its start down the privileged (LaunchDaemon) path it has none of.
+    #[test]
+    fn prepare_edge_asks_the_platform_whether_the_https_port_is_privileged() {
+        for (name, privileges, expect) in [
+            ("unix-rule", Box::new(UnixPortRule) as Box<dyn PrivilegeManager>, true),
+            ("no-privileged-ports", Box::new(NoPrivilegedPorts), false),
+        ] {
+            let mut platform = edge_test_platform(name, true, true);
+            platform.privileges = privileges;
+            let mut mgr = ServiceManager::with_ports(Ports::default());
+            mgr.set_bins_for_tests(PathBuf::from("/nonexistent/caddy"));
+            let plan = mgr
+                .prepare_edge(&platform, PathBuf::from("/nonexistent/Caddyfile"))
+                .expect("prepare_edge")
+                .expect("nothing is running, so a start plan");
+            assert_eq!(plan.privileged, expect, "{name}: :443 privileged");
+        }
     }
 
     /// A dead supervised edge is announced ONCE as edge-restarting (launchd's

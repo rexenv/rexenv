@@ -213,6 +213,14 @@ mod tests {
     /// the reason it is safe. Empty is the goal; an entry is an argument.
     const RAW_CHILD_OK: &[(&str, &str)] = &[
         (
+            "windows_edge_start_check",
+            "HANDS its Caddy child to the `ServiceManager` under test (`set_edge_child`): \
+             `stop_all`'s Child branch and `prepare_edge`'s stale-handle reset are what it \
+             checks, so an `OwnedService` would be a second owner of the process the manager \
+             stops. Its `EdgeReaper` records every pid it started and kills each on drop, \
+             panic path included, filtered to `caddy.exe` so a reused pid is never touched.",
+        ),
+        (
             "windows_supervision_check",
             "LEAVES its mysqld and mailpit running on purpose: its first phase is the app \
              quitting, and the second phase, in a new process and a new SSH session, has to \

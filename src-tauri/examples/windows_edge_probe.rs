@@ -113,6 +113,8 @@ mod windows {
                 stopped: None,
             }],
             admin_socket: Some(sock.clone()),
+            // What production writes on this OS (`EdgeSupervisor::default_bind`, ledger #611).
+            default_bind: plat.edge().default_bind().map(str::to_string),
         };
         let caddyfile = proxy::write_caddyfile(&*plat, &cfg).expect("write the Caddyfile");
         let written = std::fs::read_to_string(&caddyfile).unwrap_or_default();

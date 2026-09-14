@@ -240,6 +240,7 @@ pool_health_check demo
 pool_busy_check demo
 windows_streamed_step_check demo
 windows_edge_probe demo
+windows_edge_start_check demo
 wp_core_zip_check network
 "
 

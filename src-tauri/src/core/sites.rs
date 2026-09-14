@@ -2653,6 +2653,8 @@ pub fn rebuild_configs_for(
             // Bind Caddy's admin API to our unix socket (not TCP :2019) so the root
             // edge exposes no unauthenticated local control surface (task 2.3 / H5).
             admin_socket: Some(proxy::admin_socket_path(platform)?),
+            // Windows binds loopback only — no firewall prompt (owner ruling, ledger #611).
+            default_bind: platform.edge().default_bind().map(str::to_string),
             // Written on EVERY rebuild, not only when missing: the page is
             // generated, and "only if absent" is how a wording fix in an update
             // never reaches a machine that already has yesterday's file.
