@@ -1415,6 +1415,13 @@ bloating the fast path:
   checks `install` (the agent answers, names the build, logs its bind line), a repeated unchanged `install`
   keeping the same process, `kickstart` giving a new one, a killed agent brought back by the per-minute
   trigger (and how long that took), and `uninstall` leaving no task, agent, definition or answer.
+  `windows_nrpt_route_check` (#618) is the NRPT route through `DnsManager`, run over the elevated SSH
+  session (as `PrivilegeManager` will run the scripts, W6 S3) on test TLDs only (`.rexnrptcheck`,
+  `.rexnrptother`): install → ours, `a.rexnrptcheck` resolving through Windows' own resolver; uninstall →
+  absent and unresolved; another tool's two-namespace rule → foreign with the whole rule as content; the
+  takeover leaving that rule — same key — with only the other namespace; and `uninstall ; restore`, joined
+  as the core joins privileged steps, giving the same rule both namespaces back. A guard removes every rule
+  naming a test TLD on every path.
 
 A gate nobody can afford to run stops being one: the fast bar stays fast, and nothing
 above it is required per-commit. The metric the gate serves is the ledger tally, which

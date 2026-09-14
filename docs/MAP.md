@@ -37,7 +37,9 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
   `WindowsDnsAgent` over `windows/logon_task.rs` (the task XML, tested on every host) and `schtasks`, its
   output through `platform::send_output_to` / `windows/agent_output.rs` and `main.rs`'s `--log`
   (ledger #616); the resolver-route trait (`DnsManager::route_*`) with macOS's file half in
-  `platform/resolver_files.rs` (ledger #617); nginx's Windows shape — `services::nginx_path`,
+  `platform/resolver_files.rs` (ledger #617) and Windows' NRPT half — `WindowsDns` over
+  `process::read_nrpt_rules` and `windows/nrpt_rules.rs` (ownership and the PowerShell, tested on every
+  host) (ledger #618); nginx's Windows shape — `services::nginx_path`,
   `binaries::resolve_program`, the master climb and nginx's events (ledger #602);
   `linux/` is `todo!()`).
 - `state/` = SQLite migrations + the store layer; only `state/` writes SQL.

@@ -214,6 +214,109 @@ pub(crate) fn registry_env(system: bool) -> Option<Vec<super::login_env::RegValu
     Some(values)
 }
 
+/// Every NRPT rule in the registry, for `nrpt_rules` (W6 S4, ledger #618): the local rules
+/// (`HKLM\SYSTEM\CurrentControlSet\Services\Dnscache\Parameters\DnsPolicyConfig`) and any Group Policy ones
+/// (`HKLM\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient\DnsPolicyConfig`, marked `policy`). Readable
+/// without elevation (measured). A missing key is no rules — the local key goes with its last rule
+/// (measured).
+pub(crate) fn read_nrpt_rules() -> Vec<super::nrpt_rules::NrptRule> {
+    use windows_sys::Win32::Foundation::{ERROR_NO_MORE_ITEMS, ERROR_SUCCESS};
+    use windows_sys::Win32::System::Registry::{
+        RegCloseKey, RegEnumKeyExW, RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_LOCAL_MACHINE, KEY_READ,
+    };
+    struct Key(HKEY);
+    impl Drop for Key {
+        fn drop(&mut self) {
+            // SAFETY: opened by `open`, closed once.
+            unsafe { RegCloseKey(self.0) };
+        }
+    }
+    fn wide(s: &str) -> Vec<u16> {
+        s.encode_utf16().chain(std::iter::once(0)).collect()
+    }
+    fn open(parent: HKEY, sub: &str) -> Option<Key> {
+        let name = wide(sub);
+        let mut raw: HKEY = std::ptr::null_mut();
+        // SAFETY: a NUL-terminated name and a valid out-pointer.
+        (unsafe { RegOpenKeyExW(parent, name.as_ptr(), 0, KEY_READ, &mut raw) } == ERROR_SUCCESS).then_some(Key(raw))
+    }
+    /// A string value's NUL-separated strings (`REG_SZ` gives one, `REG_MULTI_SZ` several).
+    fn strings(key: &Key, value: &str) -> Vec<String> {
+        let name = wide(value);
+        let mut len = 0u32;
+        // SAFETY: a size query — no data buffer.
+        let rc = unsafe {
+            RegQueryValueExW(key.0, name.as_ptr(), std::ptr::null(), std::ptr::null_mut(), std::ptr::null_mut(), &mut len)
+        };
+        if rc != ERROR_SUCCESS || len == 0 {
+            return Vec::new();
+        }
+        let mut data = vec![0u8; len as usize];
+        // SAFETY: `data` holds `len` bytes, as the call is told.
+        let rc = unsafe {
+            RegQueryValueExW(key.0, name.as_ptr(), std::ptr::null(), std::ptr::null_mut(), data.as_mut_ptr(), &mut len)
+        };
+        if rc != ERROR_SUCCESS {
+            return Vec::new();
+        }
+        let units: Vec<u16> = data[..len as usize].chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
+        units
+            .split(|&u| u == 0)
+            .filter(|s| !s.is_empty())
+            .map(String::from_utf16_lossy)
+            .collect()
+    }
+    let mut rules = Vec::new();
+    for (path, policy) in [
+        (r"SYSTEM\CurrentControlSet\Services\Dnscache\Parameters\DnsPolicyConfig", false),
+        (r"SOFTWARE\Policies\Microsoft\Windows NT\DNSClient\DnsPolicyConfig", true),
+    ] {
+        let Some(root) = open(HKEY_LOCAL_MACHINE, path) else { continue };
+        let mut index = 0u32;
+        loop {
+            let mut name = [0u16; 256];
+            let mut name_len = name.len() as u32;
+            // SAFETY: the name buffer's capacity is passed in characters; the optional outputs are null.
+            let rc = unsafe {
+                RegEnumKeyExW(
+                    root.0,
+                    index,
+                    name.as_mut_ptr(),
+                    &mut name_len,
+                    std::ptr::null(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                )
+            };
+            index += 1;
+            if rc == ERROR_NO_MORE_ITEMS {
+                break;
+            }
+            if rc != ERROR_SUCCESS {
+                continue;
+            }
+            let sub = String::from_utf16_lossy(&name[..name_len as usize]);
+            let Some(rule) = open(root.0, &sub) else { continue };
+            rules.push(super::nrpt_rules::NrptRule {
+                key: sub,
+                namespaces: strings(&rule, "Name"),
+                servers: strings(&rule, "GenericDNSServers")
+                    .join(";")
+                    .split(';')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(String::from)
+                    .collect(),
+                comment: strings(&rule, "Comment").join(""),
+                display_name: strings(&rule, "DisplayName").join(""),
+                policy,
+            });
+        }
+    }
+    rules
+}
+
 /// A kill-on-close Job Object holding one streamed step's process tree (owner ruling 14 Sep 2026,
 /// ledger #609): terminating it — or closing its last handle, which rexenv exiting or crashing
 /// does — ends every process in it, the grandchildren a Composer or npm run starts included.

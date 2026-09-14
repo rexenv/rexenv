@@ -399,9 +399,17 @@ Live-proven end to end by `site_stop_start_check`.
   `foreign_route_tlds`, `route_label` (the words a message uses) and `route_contents` (what a takeover
   preview shows beside theirs), and gets privileged command strings — it no longer reads
   `/etc/resolver/<tld>` or scans that directory itself. macOS answers exactly as before, from its resolver
-  files (`platform/resolver_files.rs`: `owner_of`, the two signature scans, and their tests); Windows'
-  route is an NRPT rule. Until Windows reads its rules the Windows answer is Absent — no longer the
-  `unported!` panic `dns_status` and a login launch reached through `resolver_path`.
+  files (`platform/resolver_files.rs`: `owner_of`, the two signature scans, and their tests).
+- **On Windows a TLD's route is an NRPT rule** (#618, W6 S4): `WindowsDns` reads every rule from the
+  registry (`DnsPolicyConfig`, local and Group Policy — readable without elevation, measured) and
+  `windows/nrpt_rules.rs` decides. Ours is exactly: a local rule, comment `rexenv`, the one namespace
+  `.<tld>`, the one server `127.0.0.1` (NRPT has no port — hence the resolver on :53); any other rule naming
+  the TLD makes it Foreign, and the content a takeover backs up is those whole rules as JSON. A rule takes
+  effect at once (measured). One rule may name several namespaces, so `install_command` removes only
+  `.<tld>` from another rule (removing the rule only when nothing else is left in it) before adding ours,
+  and `restore_command` reads the backup file (never pastes it into the script) and sets the namespaces
+  back on the SAME rule when it still exists, adding it again only when it does not. The commands are
+  PowerShell for an elevated run — `PrivilegeManager` on Windows is W6 S3.
 - **App launch = adopt-or-install-or-fall-back** (`lib.rs`): probe
   `dns::answers_as_ours` (a REAL A query must return `127.0.0.1` — ownership AND
   liveness, H2 — never a bare port probe); refresh the plist every launch so it tracks

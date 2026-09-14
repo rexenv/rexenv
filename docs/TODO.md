@@ -365,7 +365,14 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     `route_label`, `route_contents` and the command builders — the core no longer reads resolver files, macOS
     answers from them as before (`platform/resolver_files.rs`), and Windows answers Absent instead of the
     `resolver_path` panic. NRPT measured the same day (plan §5 W6 S4: immediate effect, the registry
-    layout, a non-elevated read). Next: Windows reads and writes its NRPT rules, then S3 (the UAC step)
+    layout, a non-elevated read). **Second half the same day (ledger #618):** `WindowsDns` reads every NRPT
+    rule from the registry and `windows/nrpt_rules.rs` decides ownership (comment `rexenv`, one namespace,
+    server `127.0.0.1`) and builds the PowerShell — a takeover takes only its own namespace out of a shared
+    rule, and the restore reads the backup file and puts it back into the same rule. Dell
+    `windows_nrpt_route_check` PASS (21 checks, test TLDs only, the scripts run with the elevated SSH token):
+    install → ours and resolving through Windows' own resolver; uninstall → gone; another tool's
+    two-namespace rule → foreign; takeover → ours, their rule (same key) keeping the other namespace;
+    `uninstall ; restore` → their rule with both again. Next: S3 (the UAC step that runs these scripts)
   - [ ] W7 — ShellRunner, autostart, tray (includes the Windows half of the browser-stub row)
   - [ ] W8 — `rex` CLI + MCP over named pipes; `rex.exe` on PATH
   - [ ] W9 — frontend on WebView2 (Windows paths, Ctrl shortcuts, fonts)

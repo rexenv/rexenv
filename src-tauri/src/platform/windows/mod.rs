@@ -25,6 +25,7 @@ mod handles;
 mod ipc_rules;
 mod login_env;
 mod logon_task;
+mod nrpt_rules;
 mod owner_only;
 mod pe;
 mod port_table;
@@ -67,35 +68,37 @@ impl Paths for WindowsPaths {
 
 pub struct WindowsDns;
 impl DnsManager for WindowsDns {
-    /// An NRPT rule, not a file (plan §3 D2).
+    /// An NRPT rule, not a file (plan §3 D2, ledger #618).
     fn route_label(&self, tld: &str) -> String {
         format!("the NRPT rule for .{tld}")
     }
     fn route_contents(&self, _port: u16) -> String {
-        "an NRPT rule sending the TLD to 127.0.0.1 (rexenv's resolver)".into()
+        format!(
+            "an NRPT rule sending the TLD to {} (rexenv's resolver), comment \"{}\"",
+            nrpt_rules::OUR_SERVER,
+            nrpt_rules::OUR_COMMENT
+        )
     }
-    /// rexenv writes no NRPT rule until W6 S4's rules land, so none is ours; reading another tool's comes
-    /// with them (ledger #617). A status read — `dns_status` and a login launch reached `resolver_path`
-    /// here, an `unported!` panic.
-    fn route_owner(&self, _tld: &str, _port: u16) -> ResolverOwner {
-        ResolverOwner::Absent
+    /// From the rules in the registry, read without elevation. NRPT has no port: the resolver answers
+    /// on `RESOLVER_PORT`, 53, so `port` does not enter the signature.
+    fn route_owner(&self, tld: &str, _port: u16) -> ResolverOwner {
+        nrpt_rules::owner(&process::read_nrpt_rules(), tld)
     }
     fn our_route_tlds(&self, _port: u16) -> Vec<String> {
-        Vec::new()
+        nrpt_rules::our_tlds(&process::read_nrpt_rules())
     }
     fn foreign_route_tlds(&self, _port: u16) -> Vec<String> {
-        Vec::new()
+        nrpt_rules::foreign_tlds(&process::read_nrpt_rules())
     }
-    /// Never run yet: `WindowsPrivileges::run_privileged` is `Error::Unported` until W6 S3, which is where
-    /// a privileged route change fails, as an ordinary error.
-    fn install_command(&self, _tld: &str, _port: u16) -> String {
-        String::new()
+    /// PowerShell for an elevated run (`PrivilegeManager`, W6 S3).
+    fn install_command(&self, tld: &str, _port: u16) -> String {
+        nrpt_rules::install_script(tld)
     }
-    fn uninstall_command(&self, _tlds: &[String]) -> String {
-        String::new()
+    fn uninstall_command(&self, tlds: &[String]) -> String {
+        nrpt_rules::uninstall_script(tlds)
     }
-    fn restore_command(&self, _restores: &[(String, PathBuf)]) -> String {
-        String::new()
+    fn restore_command(&self, restores: &[(String, PathBuf)]) -> String {
+        nrpt_rules::restore_script(restores)
     }
 }
 

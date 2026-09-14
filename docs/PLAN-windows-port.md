@@ -1110,6 +1110,22 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
     unported until S3) — so S0's `resolver_path` panics are gone. Next half: the NRPT reads (registry,
     measured readable without elevation) and PowerShell builders, with R3's takeover of a rule that may name
     several namespaces.
+  - **S4, second half — NRPT, 15 Sep 2026 (ledger #618).** `process::read_nrpt_rules` reads every rule
+    (local and Group Policy keys; `Name` as a multi-string, servers split on `;`); `windows/nrpt_rules.rs`
+    holds the rest, tested on every host: ours = a local rule, comment `rexenv`, one namespace `.<tld>`, one
+    server `127.0.0.1`; any other rule naming the TLD → Foreign with those rules as JSON. `install_script`
+    strips `.<tld>` from every rule naming it (removing a rule only when nothing is left) and adds ours;
+    `uninstall_script` removes only our exact rules; `restore_script` reads the backup with
+    `ConvertFrom-Json` and `Set`s the namespaces back on the same rule key, or adds the rule when its key is
+    gone. **Measured** (`windows_nrpt_route_check`, 21 checks, `.rexnrptcheck`/`.rexnrptother`, the elevated
+    SSH token standing in for S3): install → ours, `a.rexnrptcheck` → 127.0.0.1 through Windows' resolver;
+    uninstall → absent and unresolved; another tool's rule on both namespaces (servers `10.9.9.9`) → foreign,
+    both in `foreign_route_tlds`; the takeover → ours, their rule (same key) now naming only
+    `.rexnrptother`, `b.rexnrptcheck` → 127.0.0.1; `uninstall ; restore` joined as the core joins them →
+    their rule (same key) naming both again, no rexenv rule. The first run failed two checks on its own
+    harness: PowerShell's progress records on stderr were read into an answer that was 127.0.0.1. Not
+    measured: a Group Policy rule (none on the Dell), `rexenv`-commented rules another tool wrote, the
+    scripts under S3's UAC path.
   - **S3 — `PrivilegeManager` on Windows** (per R2): one UAC prompt per batch, the platform owning how
     commands join; output and exit code back to the caller. L1 on the Dell with the owner answering.
   - **S4 — resolver routes, NRPT** (per R1, R3): one rule per TLD, `-Namespace .<tld> -NameServers

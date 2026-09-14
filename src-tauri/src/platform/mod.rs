@@ -88,6 +88,11 @@ mod windows_cert_rules;
 #[allow(dead_code)]
 #[path = "windows/logon_task.rs"]
 mod windows_logon_task;
+// And NRPT ownership and its PowerShell (ledger #618).
+#[cfg(all(test, not(target_os = "windows")))]
+#[allow(dead_code)]
+#[path = "windows/nrpt_rules.rs"]
+mod windows_nrpt_rules;
 
 use traits::Platform;
 
