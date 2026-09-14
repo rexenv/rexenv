@@ -560,6 +560,15 @@ Live-proven end to end by `site_stop_start_check`.
   cmd.exe command line there, and a Mailpit path with a space was lost in it while `mail()` answered
   `true`. `wordpress::finish_wp_argv` gives a php-cgi platform `-d SMTP=127.0.0.1 -d smtp_port=…` and
   NO `sendmail_path` flag — an emptied one is `""` to PHP, not the NULL that selects SMTP.
+  **A pool's health is a FastCGI answer OR held requests, on both OSes** (#607): the watchdog's
+  `PhpFpmPools::reap_dead` counts a pool as serving when its port accepts AND it answers a
+  `GET_VALUES` record (`services::pool_answers`, 1 s) OR connections are held on its port
+  (`ProcessSupervisor::established_on`). PHP answers `GET_VALUES` in a worker after `accept()`, so a
+  pool with every worker busy does not answer — measured on the Mac and the Dell, its requests all
+  completing — and restarting it on that would cut them; what remains a miss is a pool that accepts,
+  answers nothing and holds nothing (frozen, or workerless). A count the platform cannot read falls back
+  to the TCP connect. A restarted pool's readiness is the answer alone (it is idle). The Services
+  status row still reads the TCP connect.
   **The shared nginx on Windows** (#602): every path in nginx.conf goes through `services::nginx_path`
   (forward slashes — a backslash in a quoted nginx string is an escape, measured); the binary is
   `binaries::resolve_program`, which answers a single binary or `nginx.exe` inside its tree; the socket

@@ -1326,6 +1326,17 @@ bloating the fast path:
   looked up in Mailpit — because `mail()` answers `true` whether or not anything was delivered, and
   only the sink can tell. The fifth shape exists because the first WP-CLI fix sent it, and it lost the
   mail just as silently.
+  `pool_get_values_probe` (both OSes: php-fpm on the Mac, the php-cgi group on the Dell, a fixture
+  port) measured whether a FastCGI `GET_VALUES` round trip can be a pool's health probe: idle, busy
+  (every worker sleeping) and — macOS only — frozen. Busy and frozen both went unanswered while the
+  TCP connect succeeded, which is why that probe waits for the busy-workers signal. It also prints the
+  ESTABLISHED count on the pool port per phase — the number the health gate (#607) reads — and the two
+  OSes count differently (Windows' table includes connections still queued for a worker; `lsof` does
+  not), which is why the gate asks "anything held" rather than "at least the worker count".
+  `pool_health_check` (#607, both OSes) is that gate on a real pool ADOPTED into `PhpFpmPools` on a
+  fixture port: readiness by `pool_answers`, idle polls reap nothing, a busy pool (12 × `sleep(15)`)
+  survives three `reap_dead` polls with every request completing, and — macOS only, `SIGSTOP` — a
+  frozen pool holding nothing is kept on the first poll and reaped on the second.
 
 A gate nobody can afford to run stops being one: the fast bar stays fast, and nothing
 above it is required per-commit. The metric the gate serves is the ledger tally, which

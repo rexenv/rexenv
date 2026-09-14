@@ -20,7 +20,8 @@ use windows_sys::Win32::Foundation::{
     WAIT_TIMEOUT,
 };
 use windows_sys::Win32::NetworkManagement::IpHelper::{
-    GetExtendedTcpTable, GetExtendedUdpTable, TCP_TABLE_OWNER_PID_LISTENER, UDP_TABLE_OWNER_PID,
+    GetExtendedTcpTable, GetExtendedUdpTable, TCP_TABLE_CLASS, TCP_TABLE_OWNER_PID_ALL, TCP_TABLE_OWNER_PID_LISTENER,
+    UDP_TABLE_OWNER_PID,
 };
 use windows_sys::Win32::Networking::WinSock::{AF_INET, AF_INET6};
 use windows_sys::Win32::System::Diagnostics::ToolHelp::{
@@ -61,6 +62,12 @@ impl Drop for Owned {
 /// One of the owner-pid tables, as bytes for `port_table::owners_of_port`, or `None`
 /// when the call fails for a reason other than a buffer that was too small.
 fn read_table(family: u16, table: Table) -> Option<Vec<u8>> {
+    read_table_class(family, table, TCP_TABLE_OWNER_PID_LISTENER)
+}
+
+/// [`read_table`] with the TCP table class spelled out — `TCP_TABLE_OWNER_PID_ALL` for the
+/// connections as well as the listeners (UDP ignores it).
+fn read_table_class(family: u16, table: Table, tcp_class: TCP_TABLE_CLASS) -> Option<Vec<u8>> {
     let mut size = 0u32;
     // The table can grow between the size query and the read; a few retries with
     // slack cover a busy machine without looping forever on a broken one.
@@ -76,7 +83,7 @@ fn read_table(family: u16, table: Table) -> Option<Vec<u8>> {
                     &mut size,
                     0,
                     u32::from(family),
-                    TCP_TABLE_OWNER_PID_LISTENER,
+                    tcp_class,
                     0,
                 ),
                 Table::Udp4 | Table::Udp6 => {
@@ -117,6 +124,20 @@ pub(crate) fn port_holders(port: u16, udp: bool) -> Option<Vec<u32>> {
     pids.sort_unstable();
     pids.dedup();
     read_any.then_some(pids)
+}
+
+/// ESTABLISHED TCP connections whose LOCAL end is on `port`, both address families (the
+/// busy-workers signal, plan §3 D1(b)). `None` only when neither family's table could be read.
+pub(crate) fn established_on(port: u16) -> Option<usize> {
+    let mut read_any = false;
+    let mut count = 0;
+    for (family, table) in [(AF_INET, Table::Tcp4), (AF_INET6, Table::Tcp6)] {
+        if let Some(buf) = read_table_class(family, table, TCP_TABLE_OWNER_PID_ALL) {
+            read_any = true;
+            count += port_table::established_on_port(&buf, table, port);
+        }
+    }
+    read_any.then_some(count)
 }
 
 /// The full image path of `pid` — the file the kernel mapped, whatever the process

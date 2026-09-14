@@ -864,6 +864,22 @@ enum MasterSight {
     Probed(bool),
 }
 
+/// How long the health watchdog waits for a pool's `GET_VALUES` answer. An idle pool answered in
+/// 0 ms on the Mac and on the Dell; a pool with no free worker does not answer at all.
+const POOL_ANSWER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// Whether a pool SERVES, for the health watchdog (plan §3 D1(a), owner ruling 14 Sep 2026, ledger
+/// #607): its port accepts AND either its FastCGI layer answers `GET_VALUES`, or connections are
+/// held on its port. No answer alone is not death: a pool whose every worker is busy does not
+/// answer (measured on both OSes: 12 requests sleeping 12 s all completed while `GET_VALUES` went
+/// unanswered), and restarting it would cut those requests. What stays a miss is a pool that
+/// accepts, answers nothing and holds nothing — frozen, or its workers gone. A connection count
+/// this platform cannot read falls back to the TCP answer alone, never a guess toward "dead".
+/// The round trip is not tried on a closed port.
+fn pool_serving(accepts: bool, answers: impl FnOnce() -> bool, held: impl FnOnce() -> Option<usize>) -> bool {
+    accepts && (answers() || held().map_or(true, |n| n > 0))
+}
+
 /// One pool's fate from one poll (B29b). Returns `(new_misses, reap)`.
 ///
 /// - [`MasterSight::ChildExited`] reaps immediately — a crash during start
@@ -874,6 +890,7 @@ enum MasterSight {
 ///   definition. Note the AND: a `php-fpm`-titled listener on the port with
 ///   the master GONE is the orphan-worker failure ("UI shows running, every
 ///   site hangs") and must keep accruing misses even though the port answers.
+///   "Serves" is [`pool_serving`] (#607).
 fn pool_fate(master: MasterSight, serving: bool, starting: bool, misses: u32) -> (u32, bool) {
     match master {
         MasterSight::ChildExited => (misses, true),
@@ -1111,12 +1128,13 @@ impl PhpFpmPools {
             } else {
                 MasterSight::Probed(true)
             };
-            let (misses, reap) = pool_fate(
-                master,
-                services::fpm_running(p.port),
-                p.child.starting(),
-                p.misses,
+            let port = p.port;
+            let serving = pool_serving(
+                services::fpm_running(port),
+                || services::pool_answers(port, POOL_ANSWER_TIMEOUT),
+                || platform.supervisor().established_on(port),
             );
+            let (misses, reap) = pool_fate(master, serving, p.child.starting(), p.misses);
             p.misses = misses;
             if reap {
                 dead.push(p);
@@ -2310,6 +2328,8 @@ mod tests {
     struct GroupStub {
         cmd: Option<&'static str>,
         model: PoolModel,
+        /// What `established_on` answers for any port.
+        held: Option<usize>,
     }
     impl ProcessSupervisor for GroupStub {
         fn spawn(&self, _: &std::path::Path, _: &[String]) -> crate::error::Result<std::process::Child> {
@@ -2336,6 +2356,9 @@ mod tests {
         fn php_pool_model(&self) -> PoolModel {
             self.model
         }
+        fn established_on(&self, _port: u16) -> Option<usize> {
+            self.held
+        }
     }
     struct GroupPlatform(GroupStub);
     impl Platform for GroupPlatform {
@@ -2355,6 +2378,55 @@ mod tests {
         fn app_bundle(&self) -> &dyn AppBundle { unimplemented!() }
     }
     const GROUP_MODEL: PoolModel = PoolModel::CgiGroup(CgiGroup { extensions: &[], zend_extensions: &[] });
+
+    /// The health gate (ledger #607), against the states measured on both OSes (14 Sep 2026,
+    /// `pool_get_values_probe`): a pool serves when it answers `GET_VALUES`, OR holds connections
+    /// — its workers all busy do not answer — and does not when it accepts, answers nothing and
+    /// holds nothing.
+    #[test]
+    fn a_pool_serves_when_it_answers_or_holds_requests_and_never_on_a_closed_port() {
+        assert!(pool_serving(true, || true, || Some(0)), "idle: answered in 0 ms");
+        assert!(pool_serving(true, || false, || Some(12)), "the Dell's busy group: 10 held + 2 queued, no answer");
+        assert!(pool_serving(true, || false, || Some(4)), "the Mac's ramping php-fpm: 4 held, no answer");
+        assert!(!pool_serving(true, || false, || Some(0)), "accepts, answers nothing, holds nothing — frozen or workerless");
+        assert!(pool_serving(true, || false, || None), "an unreadable count falls back to the TCP answer, never toward dead");
+        assert!(
+            !pool_serving(false, || panic!("the round trip was tried on a closed port"), || panic!("counted a closed port")),
+            "a closed port never serves"
+        );
+    }
+
+    /// `reap_dead` reads health through `pool_serving` (#607): on a port that accepts but never
+    /// answers `GET_VALUES`, a pool holding connections is spared poll after poll, and a pool holding
+    /// nothing accrues misses and is reaped on the second — past its start grace.
+    #[test]
+    fn reap_dead_spares_a_busy_silent_pool_and_reaps_an_idle_silent_one() {
+        // The kernel accepts into the backlog; nothing ever reads or answers.
+        let silent = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = silent.local_addr().unwrap().port();
+        let backdated = std::time::Instant::now() - Proc::START_GRACE - std::time::Duration::from_secs(1);
+        let master = std::process::Command::new("sleep").arg("30").spawn().unwrap();
+        let mut pools = PhpFpmPools::default();
+        pools.pools.push(Pool {
+            minor: "8.4".into(),
+            port,
+            child: Proc::Child(master, backdated),
+            debug: false,
+            misses: 0,
+            cpu: None,
+        });
+
+        let busy = GroupPlatform(GroupStub { cmd: None, model: PoolModel::Fpm, held: Some(3) });
+        for poll in 1..=3 {
+            assert!(pools.reap_dead(&busy).is_empty(), "poll {poll}: a busy pool was counted as dead");
+        }
+        assert_eq!(pools.pools[0].misses, 0, "a busy pool must not even accrue a miss");
+
+        let idle = GroupPlatform(GroupStub { cmd: None, model: PoolModel::Fpm, held: Some(0) });
+        assert!(pools.reap_dead(&idle).is_empty(), "miss 1 of {POOL_MISS_LIMIT}");
+        assert_eq!(pools.reap_dead(&idle), vec![("8.4".to_string(), false)], "miss 2 reaps the silent idle pool");
+        drop(silent);
+    }
 
     /// A process that burns a core, standing in for a php-cgi parent retrying a spawn.
     fn spinning_process() -> std::process::Child {
@@ -2384,11 +2456,11 @@ mod tests {
         }
         std::thread::sleep(std::time::Duration::from_secs(4));
 
-        let fpm = GroupPlatform(GroupStub { cmd: None, model: PoolModel::Fpm });
+        let fpm = GroupPlatform(GroupStub { cmd: None, model: PoolModel::Fpm, held: None });
         assert!(pools.trip_spinning(&fpm).is_empty(), "php-fpm has no respawn loop to break");
         assert!(pools.has("8.3", false) && pools.has("8.4", false));
 
-        let group = GroupPlatform(GroupStub { cmd: None, model: GROUP_MODEL });
+        let group = GroupPlatform(GroupStub { cmd: None, model: GROUP_MODEL, held: None });
         assert_eq!(pools.stop_spinning(&group), vec!["8.3".to_string()], "the spinning process is stopped");
         assert!(!pools.has("8.3", false));
         assert!(pools.has("8.4", false), "an idle process was stopped");
@@ -2418,12 +2490,13 @@ mod tests {
             cpu: Some((0, window_ago)),
         });
         std::thread::sleep(std::time::Duration::from_secs(4));
-        let recycled = GroupPlatform(GroupStub { cmd: Some("C:/Windows/System32/svchost.exe -k netsvcs"), model: GROUP_MODEL });
+        let recycled = GroupPlatform(GroupStub { cmd: Some("C:/Windows/System32/svchost.exe -k netsvcs"), model: GROUP_MODEL, held: None });
         assert!(pools.stop_spinning(&recycled).is_empty(), "a busy stranger on the pid was stopped");
         assert!(pools.has("8.3", false));
         let ours = GroupPlatform(GroupStub {
             cmd: Some("php-cgi -n -c \"C:/Users/x/AppData/Local/rexenv/config/php-cgi-8.3.ini\" -b 127.0.0.1:9083"),
             model: GROUP_MODEL,
+            held: None,
         });
         assert_eq!(pools.stop_spinning(&ours), vec!["8.3".to_string()]);
         let _ = busy.wait();

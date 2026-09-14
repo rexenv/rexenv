@@ -342,6 +342,15 @@ pub trait ProcessSupervisor: Send + Sync {
         None
     }
 
+    /// How many ESTABLISHED TCP connections have their LOCAL end on `port`. For a PHP pool's
+    /// port that is the requests its workers hold — and, where the OS's table lists them, the
+    /// ones still queued for a worker — which the busy-workers signal compares with the worker
+    /// count (plan §3 D1(b)). The client ends of the same connections (nginx's) are not counted.
+    /// Default: `None`, not readable on this platform.
+    fn established_on(&self, _port: u16) -> Option<usize> {
+        None
+    }
+
     /// How this platform serves a PHP minor. Default: a php-fpm pool.
     fn php_pool_model(&self) -> PoolModel {
         PoolModel::Fpm

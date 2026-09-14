@@ -1576,7 +1576,9 @@ impl ServiceManager {
                 service: pool_service_name(minor, debug),
                 log: platform.paths().log_dir()?.join(log_name),
                 tries: 20,
-                probe: Box::new(move || services::fpm_running(port)),
+                // A worker ANSWERS, not only the socket listens: a php-cgi parent listens before its
+                // children exist, and a restarted pool is idle, so no answer here is not busyness (#607).
+                probe: Box::new(move || services::pool_answers(port, std::time::Duration::from_millis(500))),
                 bin: None,
             });
         }

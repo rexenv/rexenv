@@ -320,6 +320,33 @@ pub fn fpm_running(port: u16) -> bool {
     .is_ok()
 }
 
+/// One FastCGI `FCGI_GET_VALUES` management record asking for `FCGI_MPXS_CONNS` — a value PHP
+/// always sets: version 1, type 9, request id 0, a 17-byte body (name length 15, value length 0,
+/// the name), no padding.
+const GET_VALUES_RECORD: [u8; 25] = [
+    1, 9, 0, 0, 0, 17, 0, 0, 15, 0, b'F', b'C', b'G', b'I', b'_', b'M', b'P', b'X', b'S', b'_', b'C',
+    b'O', b'N', b'N', b'S',
+];
+
+/// Whether a pool's FastCGI layer ANSWERS: one [`GET_VALUES_RECORD`] round trip, a
+/// `FCGI_GET_VALUES_RESULT` (type 10) header back inside `timeout`, no script run.
+///
+/// PHP answers the record in a WORKER, after `accept()` (main/fastcgi.c, the same code for php-fpm
+/// and php-cgi), so a yes means a worker is up and free — and a no means none is: a pool whose
+/// every worker is busy and a frozen pool look the same (measured on both OSes, 14 Sep 2026,
+/// `examples/pool_get_values_probe.rs`). Readiness reads it alone; health reads it together with
+/// the connections held on the port (`php::pool_serving`, ledger #607).
+pub fn pool_answers(port: u16, timeout: Duration) -> bool {
+    use std::io::{Read, Write};
+    let Ok(mut stream) = TcpStream::connect_timeout(&SocketAddr::from((Ipv4Addr::LOCALHOST, port)), timeout) else {
+        return false;
+    };
+    let _ = stream.set_read_timeout(Some(timeout));
+    let _ = stream.set_write_timeout(Some(timeout));
+    let mut head = [0u8; 8];
+    stream.write_all(&GET_VALUES_RECORD).is_ok() && stream.read_exact(&mut head).is_ok() && head[0] == 1 && head[1] == 10
+}
+
 // ── Shared Nginx ────────────────────────────────────────────────────────────
 //
 // One shared nginx process listens on an internal loopback HTTP port (plain
@@ -1125,6 +1152,52 @@ mod tests {
     fn fpm_running_false_on_closed_port() {
         // An unlikely-to-be-open high port: status should read stopped.
         assert!(!fpm_running(8))
+    }
+
+    /// A fake FastCGI server on a loopback port: it reads one record and replies with `reply`
+    /// (nothing at all when `None`), holding the connection open for `hold`.
+    fn fake_fastcgi(reply: Option<[u8; 8]>, hold: Duration) -> (u16, std::thread::JoinHandle<Vec<u8>>) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (mut conn, _) = listener.accept().unwrap();
+            let mut got = vec![0u8; GET_VALUES_RECORD.len()];
+            let _ = conn.read_exact(&mut got);
+            if let Some(r) = reply {
+                let _ = conn.write_all(&r);
+            }
+            std::thread::sleep(hold);
+            got
+        });
+        (port, server)
+    }
+
+    /// The health round trip (ledger #607): a `GET_VALUES_RESULT` is an answer; silence inside the
+    /// timeout, a different record type and a closed port are not. The record sent is the one PHP
+    /// parses — version 1, type 9, id 0, `FCGI_MPXS_CONNS` in a 17-byte body.
+    #[test]
+    fn a_pool_answers_only_with_a_get_values_result_inside_the_timeout() {
+        let (port, server) = fake_fastcgi(Some([1, 10, 0, 0, 0, 0, 0, 0]), Duration::ZERO);
+        assert!(pool_answers(port, Duration::from_secs(2)), "a GET_VALUES_RESULT is an answer");
+        let sent = server.join().unwrap();
+        assert_eq!(sent, GET_VALUES_RECORD.to_vec());
+        assert_eq!((sent[0], sent[1], sent[5]), (1, 9, 17), "version 1, FCGI_GET_VALUES, a 17-byte body");
+        assert_eq!(&sent[10..], b"FCGI_MPXS_CONNS");
+
+        // A worker that never frees up: the kernel accepted, nothing answers.
+        let (port, server) = fake_fastcgi(None, Duration::from_millis(900));
+        let started = std::time::Instant::now();
+        assert!(!pool_answers(port, Duration::from_millis(300)), "silence is not an answer");
+        assert!(started.elapsed() < Duration::from_millis(800), "the timeout bounds the wait");
+        let _ = server.join();
+
+        // Something that is not a GET_VALUES_RESULT (an END_REQUEST).
+        let (port, server) = fake_fastcgi(Some([1, 3, 0, 0, 0, 8, 0, 0]), Duration::ZERO);
+        assert!(!pool_answers(port, Duration::from_secs(2)), "another record type is not an answer");
+        let _ = server.join();
+
+        assert!(!pool_answers(8, Duration::from_millis(300)), "a closed port does not answer");
     }
 
     fn nginx_cfg(mode: RewriteMode) -> NginxConfig {

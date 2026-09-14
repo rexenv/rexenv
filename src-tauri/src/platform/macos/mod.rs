@@ -641,6 +641,18 @@ impl ProcessSupervisor for MacosSupervisor {
         Some(lsof_local_port_holders(&String::from_utf8_lossy(&out.stdout), port))
     }
 
+    /// `lsof` lists sockets by the process holding them, so a connection still queued for a
+    /// worker (not yet `accept()`ed) belongs to no process and is not counted: on macOS this is
+    /// the connections workers hold. Unprivileged `lsof` sees this user's processes only — the
+    /// pools are.
+    fn established_on(&self, port: u16) -> Option<usize> {
+        let out = std::process::Command::new("lsof")
+            .args(["-nP", &format!("-iTCP:{port}"), "-sTCP:ESTABLISHED", "-Fpn"])
+            .output()
+            .ok()?;
+        Some(lsof_established_local(&String::from_utf8_lossy(&out.stdout), port))
+    }
+
     fn port_conflict_help(&self, port: u16, udp: bool) -> PortConflictHelp {
         // `-i` selector for the port; UDP has no LISTEN state to filter on.
         let (sel, state): (String, &[&str]) = if udp {
@@ -767,6 +779,20 @@ fn brew_formula(exe_path: &str) -> Option<String> {
 /// talking TO the port shows as `n127.0.0.1:64140->127.0.0.1:64885`. Counting that as a
 /// holder would refuse the DNS agent's port every time something queries it. So only the
 /// part before `->` is compared, and it must end in `:<port>` exactly.
+/// How many connections in `lsof -Fpn` field output have their LOCAL end on `port` — the
+/// `n` lines of the form `local->remote` whose part before `->` ends in `:port`. A client
+/// connecting to the port (nginx) has it after `->` and is not counted; a listener has no
+/// `->` and is not a connection.
+fn lsof_established_local(fields: &str, port: u16) -> usize {
+    let suffix = format!(":{port}");
+    fields
+        .lines()
+        .filter_map(|line| line.strip_prefix('n'))
+        .filter_map(|name| name.split_once("->"))
+        .filter(|(local, _)| local.ends_with(&suffix))
+        .count()
+}
+
 fn lsof_local_port_holders(fields: &str, port: u16) -> Vec<u32> {
     let suffix = format!(":{port}");
     let mut pid = None;
@@ -2450,6 +2476,20 @@ mod tests {
         assert_eq!(lsof_local_port_holders(out, 49634), vec![98098, 88]);
         assert_eq!(lsof_local_port_holders(out, 9634), vec![99]);
         assert!(lsof_local_port_holders("", 49634).is_empty());
+    }
+
+    /// The busy-workers count (plan §3 D1(b)): connections whose LOCAL end is the pool's port.
+    /// nginx's client end has the port after `->`; the listener has no `->`. Plant: splitting on
+    /// nothing counts nginx's ends and doubles every request.
+    #[test]
+    fn lsof_established_counts_the_pools_ends_of_connections_only() {
+        let out = "p501\nf8\nn127.0.0.1:9083->127.0.0.1:53211\nf9\nn127.0.0.1:9083->127.0.0.1:53212\n\
+                   p400\nf12\nn127.0.0.1:53211->127.0.0.1:9083\nf13\nn127.0.0.1:53212->127.0.0.1:9083\n\
+                   p500\nf6\nn127.0.0.1:9083\n\
+                   p502\nf8\nn127.0.0.1:19083->127.0.0.1:53999\n";
+        assert_eq!(lsof_established_local(out, 9083), 2);
+        assert_eq!(lsof_established_local(out, 19083), 1);
+        assert_eq!(lsof_established_local("", 9083), 0);
     }
 
     /// A terminal is handed a DIRECTORY or nothing. `open -a Terminal <file>`

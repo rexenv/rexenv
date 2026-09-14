@@ -221,6 +221,9 @@ impl ProcessSupervisor for WindowsSupervisor {
     fn port_holders(&self, port: u16, udp: bool) -> Option<Vec<u32>> {
         process::port_holders(port, udp)
     }
+    fn established_on(&self, port: u16) -> Option<usize> {
+        process::established_on(port)
+    }
     fn stop_pid_command(&self, pid: u32) -> String {
         format!("Stop-Process -Id {pid}")
     }

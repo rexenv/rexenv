@@ -235,6 +235,8 @@ windows_cgi_churn_probe demo
 windows_cgi_breaker_check demo
 windows_wp_site_check demo
 windows_cli_mail_probe demo
+pool_get_values_probe demo
+pool_health_check demo
 wp_core_zip_check network
 "
 

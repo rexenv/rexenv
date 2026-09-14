@@ -217,9 +217,16 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     with `verify-checksums` passing, `rebuild_configs` and nginx serving the homepage and the login
     form, a password-reset mail from a page and a `wp eval wp_mail()` both in Mailpit, every port free
     after the stops. Found on the way: the site-folder check refused every Windows path (it judged `\`
-    across the whole string) — now judged per folder name (#303). Still to come: the busy-workers
-    signal, the pool's health probe as a FastCGI `GET_VALUES` round trip instead of a TCP connect,
-    Composer through the site's PHP
+    across the whole string) — now judged per folder name (#303). **✓ 14 Sep 2026, the pool's health
+    as a FastCGI answer** (ledger #607), measured first (`pool_get_values_probe`, Mac php-fpm and Dell
+    php-cgi): a pool whose workers are all busy does not answer `GET_VALUES` — a frozen one does not
+    either — while its requests all complete; the connections held on its port (`established_on`)
+    counted 12 on the Dell (queued included) and 4→10 on the Mac (accepted only, php-fpm ramping).
+    Owner ruling: no answer is a miss only while the pool is not busy — built as "no answer AND nothing
+    held" (`php::pool_serving`), readiness as the answer alone. `pool_health_check` PASS on both: a busy
+    pool survived three polls and its 12 requests completed; on the Mac a frozen pool with nothing held
+    was reaped on the second poll. Still to come: the busy-workers DISPLAY ("PHP 8.3: all 10 workers
+    busy") on `established_on`, Composer through the site's PHP
     - [x] ✓ 14 Sep 2026 — fixed: where the pool model is the php-cgi group, `finish_wp_argv` gives
       WP-CLI `-d SMTP=127.0.0.1 -d smtp_port=11025` and NO `sendmail_path` flag (ledger #407). The
       first fix also sent `-d sendmail_path=`, and real WP-CLI mail vanished with `true` on the Dell:

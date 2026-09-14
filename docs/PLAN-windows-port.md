@@ -337,7 +337,26 @@ before anything is built on it.
       so processes alive with nothing answering is "not running" — D1's ownership-AND-liveness
       rule. Measured since: a worker-killing script leaves the other workers answering, so it is
       not this case; the pool's health probe is still a TCP connect (`services::fpm_running`), and
-      `GET_VALUES` is the script-free round trip to replace it with.
+      `GET_VALUES` is the script-free round trip to replace it with. **Measured 14 Sep 2026, before
+      building it** (`examples/pool_get_values_probe.rs`, php-fpm on the Mac and the php-cgi group on
+      the Dell, 10 workers each): idle, `GET_VALUES` answered in 0 ms on both; with 12 requests
+      sleeping 12 s, **neither answered within 3 s** while the TCP connect still succeeded — all 12
+      requests then completed in 24 s, so the pool was busy and healthy, not dead; after the sleeps,
+      0 ms again; a pool frozen with `SIGSTOP` (macOS) also did not answer. PHP answers the record
+      inside `fcgi_read_request`, after a WORKER's `accept()` (main/fastcgi.c), so "no answer" means
+      "no free worker", and busy and frozen look the same. A miss on `GET_VALUES` alone would restart
+      a pool in the middle of an import. **Ruled (owner, 14 Sep 2026): the busy-workers signal of
+      D1(b) first, then `GET_VALUES` as health — a no-answer counts as a miss only while the pool is
+      NOT busy.** **"Busy", measured the same day** (the probe, now printing
+      `ProcessSupervisor::established_on` — ESTABLISHED connections whose LOCAL end is the pool's
+      port): idle 0 on both; with 12 sleepers the Dell's table counted **12** at 2 s and at 8 s (the 10
+      held AND the 2 queued), while macOS `lsof` counted **4** at 2 s and 10 at 8 s — only accepted
+      connections belong to a process, and php-fpm's `pm = dynamic` was still spawning workers, with
+      `GET_VALUES` unanswered throughout. So "established ≥ workers" would have read the ramping php-fpm
+      pool as not busy and counted a miss. The health gate is therefore **no answer AND nothing
+      held** (`php::pool_serving`, #607): any held connection spares the pool; the "all workers busy"
+      display of D1(b) keeps its own ≥-workers rule. Cost, accepted: a frozen pool that is still holding
+      a stuck request is not restarted (nginx's 504 is what the user sees).
   - `fcgi_listen` sets **`SO_REUSEADDR`**, so php-cgi can "start" on a port another program
     holds and another program can bind ours. That is one case of the general rule in §6 — a
     successful bind proves nothing on Windows; who answers does — which `ensure_free`, every

@@ -72,6 +72,32 @@ pub(crate) fn owners_of_port(buf: &[u8], table: Table, port: u16) -> Vec<u32> {
         .collect()
 }
 
+/// `MIB_TCP_STATE_ESTAB` in a TCP row's `dwState`.
+pub(crate) const TCP_STATE_ESTABLISHED: u32 = 5;
+
+/// How many rows of a TCP table read with `TCP_TABLE_OWNER_PID_ALL` are ESTABLISHED with their
+/// LOCAL port on `port` — the connections a server on `port` holds. A client connecting TO `port`
+/// has it as its remote port, so it is not counted. UDP tables have no states: 0.
+pub(crate) fn established_on_port(buf: &[u8], table: Table, port: u16) -> usize {
+    let (row, port_at, _) = table.layout();
+    let state_at = match table {
+        Table::Tcp4 => 0,
+        Table::Tcp6 => 48,
+        Table::Udp4 | Table::Udp6 => return 0,
+    };
+    let Some(count) = buf.get(0..4).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]])) else {
+        return 0;
+    };
+    let rows = (count as usize).min((buf.len() - 4) / row);
+    (0..rows)
+        .filter(|i| {
+            let r = &buf[4 + i * row..4 + (i + 1) * row];
+            let state = u32::from_le_bytes([r[state_at], r[state_at + 1], r[state_at + 2], r[state_at + 3]]);
+            state == TCP_STATE_ESTABLISHED && u16::from_be_bytes([r[port_at], r[port_at + 1]]) == port
+        })
+        .count()
+}
+
 /// A range from `netsh interface ipv4 show excludedportrange`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ExcludedRange {
@@ -278,6 +304,51 @@ mod tests {
             assert_eq!(owners_of_port(&buf, t, 80), vec![4], "{t:?}");
             assert!(owners_of_port(&buf, t, 11025).is_empty(), "{t:?}");
         }
+    }
+
+    /// A TCP table read with `TCP_TABLE_OWNER_PID_ALL`: each row's state, LOCAL port and
+    /// REMOTE port set, noise everywhere else.
+    fn connections(t: Table, rows: &[(u32, u16, u16)]) -> Vec<u8> {
+        let (row, local_at, _) = t.layout();
+        let (state_at, remote_at) = match t {
+            Table::Tcp4 => (0, 16),
+            Table::Tcp6 => (48, 44),
+            _ => unreachable!("TCP tables only"),
+        };
+        let mut buf = (rows.len() as u32).to_le_bytes().to_vec();
+        for &(state, local, remote) in rows {
+            let mut r = vec![0xAAu8; row];
+            r[state_at..state_at + 4].copy_from_slice(&state.to_le_bytes());
+            r[local_at..local_at + 4].copy_from_slice(&[(local >> 8) as u8, local as u8, 0, 0]);
+            r[remote_at..remote_at + 4].copy_from_slice(&[(remote >> 8) as u8, remote as u8, 0, 0]);
+            buf.extend(r);
+        }
+        buf
+    }
+
+    /// The busy-workers count (plan §3 D1(b)): ESTABLISHED rows whose LOCAL port is the pool's.
+    /// The listener (LISTEN = 2), a closing connection (TIME_WAIT = 11) and nginx's client end
+    /// (local port ephemeral, REMOTE port the pool's) are not requests the pool holds.
+    #[test]
+    fn only_established_connections_on_the_local_port_are_counted() {
+        for t in [Table::Tcp4, Table::Tcp6] {
+            let buf = connections(
+                t,
+                &[
+                    (2, 9083, 0),                        // the listener
+                    (TCP_STATE_ESTABLISHED, 9083, 53211), // a request held by the pool
+                    (TCP_STATE_ESTABLISHED, 9083, 53212), // another
+                    (11, 9083, 53100),                   // TIME_WAIT
+                    (TCP_STATE_ESTABLISHED, 53211, 9083), // nginx's client end of the first
+                    (TCP_STATE_ESTABLISHED, 9084, 53300), // another minor's pool
+                ],
+            );
+            assert_eq!(established_on_port(&buf, t, 9083), 2, "{t:?}");
+            assert_eq!(established_on_port(&buf, t, 9084), 1, "{t:?}");
+        }
+        assert_eq!(established_on_port(&[], Table::Tcp4, 9083), 0);
+        let udp = table(Table::Udp4, &[(9083, 7)]);
+        assert_eq!(established_on_port(&udp, Table::Udp4, 9083), 0, "UDP has no connections");
     }
 
     /// The byte order is the whole trick: 13306 is 0x33FA, and read little-endian it
