@@ -189,10 +189,10 @@ impl DnsAgentManager for LinuxDnsAgent {
     fn is_installed(&self) -> bool {
         todo!("linux dns agent")
     }
-    fn plist_path(&self) -> Result<PathBuf> {
+    fn definition_path(&self) -> Result<PathBuf> {
         todo!("linux dns agent")
     }
-    fn plist_contents(&self, _exe: &Path, _log: &Path) -> String {
+    fn definition_contents(&self, _exe: &Path, _log: &Path) -> String {
         todo!("linux dns agent")
     }
     fn install(&self, _exe: &Path, _log: &Path) -> Result<()> {

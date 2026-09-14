@@ -1104,10 +1104,10 @@ impl MacosDnsAgent {
 
 impl DnsAgentManager for MacosDnsAgent {
     fn is_installed(&self) -> bool {
-        self.plist_path().map(|p| p.exists()).unwrap_or(false)
+        self.definition_path().map(|p| p.exists()).unwrap_or(false)
     }
 
-    fn plist_path(&self) -> Result<PathBuf> {
+    fn definition_path(&self) -> Result<PathBuf> {
         let home = std::env::var_os("HOME")
             .ok_or_else(|| Error::Other("HOME is not set".into()))?;
         Ok(PathBuf::from(home)
@@ -1118,7 +1118,7 @@ impl DnsAgentManager for MacosDnsAgent {
     /// `KeepAlive` + `RunAtLoad`: the resolver is up from login and relaunched on
     /// any death. `Background` (a helper, not an interactive app); agent output
     /// goes to the shared log dir so a wedged resolver leaves evidence.
-    fn plist_contents(&self, exe: &Path, log: &Path) -> String {
+    fn definition_contents(&self, exe: &Path, log: &Path) -> String {
         format!(
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
              <!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \
@@ -1150,11 +1150,11 @@ impl DnsAgentManager for MacosDnsAgent {
     }
 
     fn install(&self, exe: &Path, log: &Path) -> Result<()> {
-        let plist = self.plist_path()?;
+        let plist = self.definition_path()?;
         if let Some(parent) = plist.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let contents = self.plist_contents(exe, log);
+        let contents = self.definition_contents(exe, log);
         // Skip the unload/load churn when nothing changed (every app launch calls
         // this): a byte-identical plist with a live agent is already correct.
         let unchanged = std::fs::read_to_string(&plist).map(|c| c == contents).unwrap_or(false);
@@ -1187,11 +1187,11 @@ impl DnsAgentManager for MacosDnsAgent {
         // Job unknown to launchd (e.g. someone ran `launchctl unload` by hand):
         // fall back to a plain load — a REGISTRATION, not a re-registration, so
         // the one notification it may show is honest (the item really was gone).
-        Self::launchctl(&["load", "-w"], &self.plist_path()?)
+        Self::launchctl(&["load", "-w"], &self.definition_path()?)
     }
 
     fn uninstall(&self) -> Result<()> {
-        let plist = self.plist_path()?;
+        let plist = self.definition_path()?;
         if plist.exists() {
             let _ = Self::launchctl(&["unload", "-w"], &plist);
             std::fs::remove_file(&plist)?;
@@ -2706,7 +2706,7 @@ mod tests {
     #[test]
     fn dns_agent_plist_keeps_resolver_alive_from_login() {
         let agent = MacosDnsAgent;
-        let plist = agent.plist_contents(
+        let plist = agent.definition_contents(
             Path::new("/Applications/rexenv.app/Contents/MacOS/rexenv"),
             Path::new("/l/dns-agent.log"),
         );
@@ -2722,7 +2722,7 @@ mod tests {
         assert_ne!(DNS_AGENT_LABEL, AUTOSTART_LABEL);
         assert_ne!(DNS_AGENT_LABEL, EDGE_DAEMON_LABEL);
         // Unprivileged: a per-user LaunchAgent, never a system daemon.
-        let path = agent.plist_path().unwrap();
+        let path = agent.definition_path().unwrap();
         assert!(path.display().to_string().contains("Library/LaunchAgents"));
     }
 

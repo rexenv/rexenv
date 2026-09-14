@@ -1408,6 +1408,13 @@ bloating the fast path:
   pid and never `SharedAccess`. The pid and SharedAccess assertions exist because the first run PASSED
   with a refusal that blamed ICS and offered `Stop-Service SharedAccess` — the check had looked only for
   "53" and "DNS resolver".
+  `windows_dns_agent_task_check` (#616) is W6 S2 in the desktop session (`windows-dns-agent-task.ps1`
+  through `windows-limited-token.sh`; an interactive-token task needs a LOGGED-ON user — a Dell logged off
+  on critical battery ran nothing). The example is its own agent (`--dns-agent --log`), and it registers
+  the REAL task name and definition path, so it refuses unless neither exists and nothing answers :53. It
+  checks `install` (the agent answers, names the build, logs its bind line), a repeated unchanged `install`
+  keeping the same process, `kickstart` giving a new one, a killed agent brought back by the per-minute
+  trigger (and how long that took), and `uninstall` leaving no task, agent, definition or answer.
 
 A gate nobody can afford to run stops being one: the fast bar stays fast, and nothing
 above it is required per-commit. The metric the gate serves is the ledger tally, which

@@ -1051,6 +1051,33 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
     both stay as guards the check does not certify. Not in S1: the app's launch
     path on Windows end to end (it still installs no agent, so it runs in-process), `rex doctor`'s port
     list (`ports::default_ports` still table-gates :53 — the CLI is W8).
+  - **S2 measured first, 15 Sep 2026** (`scripts/probes/windows-logon-task.ps1` through
+    `windows-limited-token.sh`: Medium token, the desktop session). The user registered
+    `\rexenv\dns-agent-probe` from task XML with `schtasks /Create /XML` — NO elevation — with a
+    `LogonTrigger` for its own SID, `InteractiveToken`, and Task Scheduler kept every setting asked for:
+    `Hidden`, `ExecutionTimeLimit PT0S`, both battery stops off, `IgnoreNew`, `RestartOnFailure PT1M ×999`.
+    `/Run` started it; a second `/Run` while it ran started nothing (`IgnoreNew`); `/End` ended it;
+    `/Delete` removed it and the `\rexenv\` folder with it. **`RestartOnFailure` did NOT restart a killed
+    action process** — `Stop-Process` on it left the task `Ready`, Last Result -1, nothing running 150 s
+    later: that setting covers a task that fails to START, not an action that dies. So a logon task alone
+    is not launchd's `KeepAlive`; an agent that crashes with the app closed would stay down until the next
+    logon. **Ruled (owner, 15 Sep 2026): a time trigger repeating every minute on the same task** —
+    `IgnoreNew` makes it a no-op while the agent runs, and a dead agent is back within about a minute; no
+    new code, only the task XML (over an agent that supervises itself, or the app's watchdog alone). To be
+    measured before it is built. **No result yet:** the first run (`windows-logon-task-repeat.ps1`) was cut
+    off when the Dell, on battery, hit "Critical Battery Trigger Met" (00:25) and the user was logged off
+    (00:28) — the wrapper and the probe task's action ended with 0x40010004 and no output, which is the
+    session ending, not Task Scheduler's answer; the rerun never started (267011, "has not run") because an
+    interactive-token task needs a logged-on user. Found the same way: the limited-token wrapper wrote its
+    output only at the end, so a killed run lost everything — it now appends as the probe runs.
+    **S2 done 15 Sep 2026 (ledger #616)**, measured with the product code rather than the probe: Dell
+    `windows_dns_agent_task_check` in the desktop session (Medium token, the owner logged on), 17 checks —
+    `install` registered `\rexenv\dns-agent` without elevation and the agent answered in 0.5 s, naming this
+    build, its bind line in the `--log` file; a second unchanged `install` left the same process;
+    `kickstart` gave a new process; the agent killed with `taskkill /F` was answering again 6 s later — the
+    next minute's tick; `uninstall` left no task, no agent, no definition file, nothing on :53. Not
+    measured: the worst case of the keep-alive (a kill just after a tick — up to a minute), the task after
+    a reboot (S5's done-when), a sleep/resume, and the app's own launch path installing it.
   - **S2 — `DnsAgentManager` as a logon task.** A pure task-XML builder (AtLogOn for this user,
     `ExecutionTimeLimit` PT0S, no battery stop, restart on failure, hidden) replacing `plist_*`;
     install/kickstart/uninstall through Task Scheduler as the user, no elevation — measured first on the

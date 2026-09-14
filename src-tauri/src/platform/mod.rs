@@ -80,6 +80,11 @@ mod windows_firefox_root;
 #[allow(dead_code)]
 #[path = "windows/cert_rules.rs"]
 mod windows_cert_rules;
+// And the DNS agent's logon task definition (ledger #616).
+#[cfg(all(test, not(target_os = "windows")))]
+#[allow(dead_code)]
+#[path = "windows/logon_task.rs"]
+mod windows_logon_task;
 
 use traits::Platform;
 
@@ -138,6 +143,17 @@ pub fn bind_resolver_udp(port: u16) -> std::io::Result<std::net::UdpSocket> {
     {
         std::net::UdpSocket::bind((std::net::Ipv4Addr::LOCALHOST, port))
     }
+}
+
+/// Send this process's stdout and stderr to `log`, appending — the DNS agent's output when nothing
+/// else captures it. launchd writes the agent's output to the file its plist names, so this does
+/// nothing on macOS; a Windows logon task has no such field, and its definition passes `--log` (W6 S2,
+/// ledger #616).
+pub fn send_output_to(log: &std::path::Path) {
+    #[cfg(target_os = "windows")]
+    windows::send_output_to(log);
+    #[cfg(not(target_os = "windows"))]
+    let _ = log;
 }
 
 /// The build OS's `LocalIpc` — what `Platform::local_ipc` returns unless a

@@ -841,13 +841,15 @@ pub trait EdgeSupervisor: Send + Sync {
 /// fallback when the agent can't come up, so DNS never regresses below the old
 /// behavior.
 pub trait DnsAgentManager: Send + Sync {
-    /// Whether the agent is installed (its plist is on disk).
+    /// Whether the agent is installed (macOS: its plist is on disk; Windows: its logon task exists).
     fn is_installed(&self) -> bool;
-    /// Path of the agent's plist (`~/Library/LaunchAgents/<label>.dns.plist`).
-    fn plist_path(&self) -> Result<PathBuf>;
-    /// Plist contents: run `exe --dns-agent` at login, keep it alive, log to `log`.
+    /// Where the agent's DEFINITION is kept on disk — macOS: the LaunchAgent plist
+    /// (`~/Library/LaunchAgents/<label>.dns.plist`); Windows: rexenv's copy of the logon task's XML.
+    /// Named for what it is on every OS, not the macOS file it began as (W6 S2, ledger #616).
+    fn definition_path(&self) -> Result<PathBuf>;
+    /// The definition's contents: run `exe --dns-agent` at login, keep it alive, log to `log`.
     /// Pure builder (unit-testable); [`DnsAgentManager::install`] writes it.
-    fn plist_contents(&self, exe: &Path, log: &Path) -> String;
+    fn definition_contents(&self, exe: &Path, log: &Path) -> String;
     /// Write/refresh the plist for `exe` and (re)load the agent with launchd.
     /// Idempotent; called on every app launch so the plist always tracks the
     /// last-launched build (dev ↔ installed hand off automatically).

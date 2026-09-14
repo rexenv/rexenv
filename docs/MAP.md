@@ -33,7 +33,10 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
   `127.0.0.1:53` — `platform::RESOLVER_PORT` + `platform::bind_resolver_udp` over
   `windows/resolver_socket.rs` (exclusive, no UDP resets), `DnsService::start_default` naming a refused
   bind through `ports::refused_bind` and `ProcessSupervisor::port_conflict_help_on` (loopback rows only,
-  `port_table::owners_of_port_where`) (ledger #615); nginx's Windows shape — `services::nginx_path`,
+  `port_table::owners_of_port_where`) (ledger #615); the DNS agent as a logon task —
+  `WindowsDnsAgent` over `windows/logon_task.rs` (the task XML, tested on every host) and `schtasks`, its
+  output through `platform::send_output_to` / `windows/agent_output.rs` and `main.rs`'s `--log`
+  (ledger #616); nginx's Windows shape — `services::nginx_path`,
   `binaries::resolve_program`, the master climb and nginx's events (ledger #602);
   `linux/` is `todo!()`).
 - `state/` = SQLite migrations + the store layer; only `state/` writes SQL.

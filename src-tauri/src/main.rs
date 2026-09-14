@@ -12,6 +12,12 @@ fn main() {
     // survives app quits (and is up from login). Checked BEFORE Tauri boots:
     // the agent must never open a window, touch SQLite, or start services.
     if std::env::args().any(|a| a == "--dns-agent") {
+        // `--log <path>`: where the agent's output goes when its supervisor captures none — a
+        // Windows logon task (W6 S2, ledger #616). launchd's plist redirects it on macOS.
+        let argv: Vec<String> = std::env::args().collect();
+        if let Some(log) = argv.iter().position(|a| a == "--log").and_then(|i| argv.get(i + 1)) {
+            rexenv_lib::platform::send_output_to(std::path::Path::new(log));
+        }
         std::process::exit(rexenv_lib::core::dns::run_agent());
     }
     // Tunnel guard: a detached watcher that ends ONE public share when the app

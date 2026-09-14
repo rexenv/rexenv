@@ -17,12 +17,14 @@ use std::process::Child;
 
 mod acl;
 mod af_unix;
+mod agent_output;
 mod cert_rules;
 mod cert_store;
 mod firefox_root;
 mod handles;
 mod ipc_rules;
 mod login_env;
+mod logon_task;
 mod owner_only;
 mod pe;
 mod port_table;
@@ -30,6 +32,7 @@ mod process;
 mod resolver_socket;
 mod stop_policy;
 
+pub(crate) use agent_output::send_output_to;
 pub(crate) use resolver_socket::bind_resolver_udp;
 
 pub struct WindowsPaths;
@@ -617,27 +620,84 @@ impl EdgeSupervisor for WindowsEdge {
 }
 
 pub struct WindowsDnsAgent;
+
+impl WindowsDnsAgent {
+    /// `schtasks` with no console window (the app is a GUI process; a console program it starts would
+    /// flash one).
+    fn schtasks(args: &[&str]) -> Result<std::process::Output> {
+        use std::os::windows::process::CommandExt;
+        Ok(std::process::Command::new("schtasks")
+            .args(args)
+            .creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW)
+            .output()?)
+    }
+
+    /// Run `schtasks`, and on a non-zero exit say which step failed with what schtasks printed.
+    fn schtasks_ok(step: &str, args: &[&str]) -> Result<()> {
+        let out = Self::schtasks(args)?;
+        if out.status.success() {
+            return Ok(());
+        }
+        let said = format!("{} {}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+        Err(Error::Other(format!(
+            "could not {step} rexenv's DNS agent task ({}): {}",
+            logon_task::DNS_AGENT_TASK,
+            said.split_whitespace().collect::<Vec<_>>().join(" ")
+        )))
+    }
+}
+
+/// The agent as a logon Scheduled Task for this user (`logon_task.rs`, ledger #616): registered without
+/// elevation, run at logon and — as the keep-alive — every minute, a no-op while it already runs.
 impl DnsAgentManager for WindowsDnsAgent {
-    /// No logon task is ever installed until W6 S2 builds one, so the honest answer is no. It is a
-    /// status read — `spawn_dns_handoff` asks it about 20 s after launch, and `unported!` here killed
-    /// the Windows app there (ledger #615).
     fn is_installed(&self) -> bool {
-        false
+        Self::schtasks(&["/Query", "/TN", logon_task::DNS_AGENT_TASK]).is_ok_and(|o| o.status.success())
     }
-    fn plist_path(&self) -> Result<PathBuf> {
-        Err(Error::Unported("windows dns agent"))
+    /// rexenv's copy of the definition it registered, under app data — what `install` compares with.
+    fn definition_path(&self) -> Result<PathBuf> {
+        Ok(WindowsPaths.config_dir()?.join("dns-agent-task.xml"))
     }
-    fn plist_contents(&self, _exe: &Path, _log: &Path) -> String {
-        unported!("windows dns agent")
+    fn definition_contents(&self, exe: &Path, log: &Path) -> String {
+        // An unreadable SID yields a definition schtasks refuses; `install` reads it first and fails
+        // with the real reason instead.
+        logon_task::dns_agent_task_xml(&acl::current_user_sid().unwrap_or_default(), exe, log)
     }
-    fn install(&self, _exe: &Path, _log: &Path) -> Result<()> {
-        Err(Error::Unported("windows dns agent"))
+    /// Register (or re-register) the task and start it now. An unchanged definition with the task
+    /// present is left alone — the app calls this on every launch.
+    fn install(&self, exe: &Path, log: &Path) -> Result<()> {
+        let sid = acl::current_user_sid()?;
+        let bytes = logon_task::utf16_file_bytes(&logon_task::dns_agent_task_xml(&sid, exe, log));
+        let path = self.definition_path()?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let unchanged = std::fs::read(&path).is_ok_and(|b| b == bytes);
+        if unchanged && self.is_installed() {
+            return Ok(());
+        }
+        std::fs::write(&path, &bytes)?;
+        let file = path.display().to_string();
+        Self::schtasks_ok("register", &["/Create", "/TN", logon_task::DNS_AGENT_TASK, "/XML", &file, "/F"])?;
+        // A changed definition (another build's path): end the old instance so the new one runs now.
+        let _ = Self::schtasks(&["/End", "/TN", logon_task::DNS_AGENT_TASK]);
+        Self::schtasks_ok("start", &["/Run", "/TN", logon_task::DNS_AGENT_TASK])
     }
+    /// End the running agent and start it again, under the same registration.
     fn kickstart(&self) -> Result<()> {
-        Err(Error::Unported("windows dns agent"))
+        let _ = Self::schtasks(&["/End", "/TN", logon_task::DNS_AGENT_TASK]);
+        Self::schtasks_ok("restart", &["/Run", "/TN", logon_task::DNS_AGENT_TASK])
     }
+    /// End it, delete the task (Task Scheduler drops the emptied `\rexenv\` folder) and rexenv's copy.
     fn uninstall(&self) -> Result<()> {
-        Err(Error::Unported("windows dns agent"))
+        if self.is_installed() {
+            let _ = Self::schtasks(&["/End", "/TN", logon_task::DNS_AGENT_TASK]);
+            Self::schtasks_ok("delete", &["/Delete", "/TN", logon_task::DNS_AGENT_TASK, "/F"])?;
+        }
+        let path = self.definition_path()?;
+        if path.exists() {
+            std::fs::remove_file(&path)?;
+        }
+        Ok(())
     }
 }
 pub struct WindowsAppBundle;

@@ -159,8 +159,9 @@ impl OwnerOnlyDescriptor {
     }
 }
 
-/// The string SID of the user this process runs as, e.g. `S-1-5-21-…-1001`.
-fn current_user_sid() -> Result<String> {
+/// The string SID of the user this process runs as, e.g. `S-1-5-21-…-1001`. Also the principal of the
+/// DNS agent's logon task (W6 S2, ledger #616).
+pub(super) fn current_user_sid() -> Result<String> {
     let mut token: HANDLE = null_mut();
     // SAFETY: GetCurrentProcess returns a pseudo-handle that needs no closing; `token`
     // is a valid out-pointer.

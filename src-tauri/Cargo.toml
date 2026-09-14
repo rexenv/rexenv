@@ -131,6 +131,9 @@ windows-sys = { version = "0.61", features = [
     # The resolver's socket (platform/windows/resolver_socket.rs, ledger #615): WSAIoctl, which turns
     # UDP connection-reset reports off, is gated on this feature. Same crate, more bindings.
     "Win32_System_IO",
+    # The DNS agent's output (platform/windows/agent_output.rs, ledger #616): SetStdHandle, so a
+    # logon task's agent — which Task Scheduler gives no stdout or stderr — writes its log file.
+    "Win32_System_Console",
 ] }
 
 # Target-gated like the [dependencies] copies: objc2 is a compile_error! on any

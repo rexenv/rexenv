@@ -352,7 +352,15 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     holder is refused naming that holder's pid. **Found on the way:** the first version of that refusal
     blamed ICS and offered `Stop-Service SharedAccess` — and the check passed it. Also:
     `WindowsDnsAgent::is_installed` answers no, so the Windows app no longer dies at the 20 s handoff.
-    Next: S2 (the logon task)
+    **S2 done 15 Sep 2026 (ledger #616):** the agent as the logon task `\rexenv\dns-agent`
+    (`windows/logon_task.rs`), registered by the user with no elevation; the keep-alive is a time trigger
+    repeating every minute (owner's ruling — `RestartOnFailure` was measured NOT to restart a killed
+    action); the agent's output goes to `--log <path>` (`platform::send_output_to`); the trait says
+    `definition_path`/`definition_contents`. Dell `windows_dns_agent_task_check` PASS in the desktop
+    session (17 checks): install → answering in 0.5 s with its bind line in the log; a repeated install
+    kept the same process; kickstart gave a new one; killed, it was back in 6 s; uninstall left no task,
+    agent, definition or answer. An interactive-token task needs a logged-on user — the first runs died
+    with the Dell's session on critical battery. Next: S0 + S4 (the resolver-route trait and NRPT)
   - [ ] W7 — ShellRunner, autostart, tray (includes the Windows half of the browser-stub row)
   - [ ] W8 — `rex` CLI + MCP over named pipes; `rex.exe` on PATH
   - [ ] W9 — frontend on WebView2 (Windows paths, Ctrl shortcuts, fonts)

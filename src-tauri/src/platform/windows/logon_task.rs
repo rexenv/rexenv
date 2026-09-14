@@ -1,0 +1,166 @@
+//! The DNS agent's logon task on Windows, as Task Scheduler XML (W6 S2, ledger #616). Pure text —
+//! `WindowsDnsAgent` registers it with `schtasks` — so this file is compiled into the macOS test build
+//! and the definition is checked in `verify.sh`.
+//!
+//! Every setting here was measured on the Dell (15 Sep 2026, `scripts/probes/windows-logon-task.ps1`):
+//! the desktop user registers it WITHOUT elevation, and Task Scheduler keeps `InteractiveToken`,
+//! `Hidden`, `ExecutionTimeLimit PT0S` (the 72-hour default would stop the resolver on day three), both
+//! battery stops off (a laptop on battery would otherwise never resolve `.rex`) and `IgnoreNew`.
+//! `RestartOnFailure` is deliberately absent: it did NOT restart a killed action — it covers a task that
+//! fails to start. The keep-alive is instead a time trigger repeating every minute (the owner's ruling),
+//! a no-op under `IgnoreNew` while the agent runs.
+
+use std::path::Path;
+
+/// The task's full name: the `\rexenv\` folder Task Scheduler creates on registration and removes with
+/// its last task (measured).
+pub(crate) const DNS_AGENT_TASK: &str = r"\rexenv\dns-agent";
+
+/// The repeating trigger's start: a FIXED past moment, so the definition's bytes are the same on every
+/// launch — `install` skips re-registering an unchanged definition, as the macOS plist does.
+pub(crate) const REPEAT_FROM: &str = "2026-01-01T00:00:00";
+
+/// `s` with the five XML special characters escaped.
+pub(crate) fn xml_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&apos;"),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+/// The task definition: run `exe --dns-agent --log "<log>"` as `user_sid`, at that user's logon and
+/// every minute after `REPEAT_FROM`, one instance at a time, for as long as it runs.
+pub(crate) fn dns_agent_task_xml(user_sid: &str, exe: &Path, log: &Path) -> String {
+    let sid = xml_escape(user_sid);
+    let command = xml_escape(&exe.display().to_string());
+    let arguments = xml_escape(&format!("--dns-agent --log \"{}\"", log.display()));
+    format!(
+        r#"<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>rexenv's DNS resolver: answers *.rex (and your other rexenv TLDs) with this computer. Removed by rexenv's "Remove system changes".</Description>
+  </RegistrationInfo>
+  <Triggers>
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+      <UserId>{sid}</UserId>
+    </LogonTrigger>
+    <TimeTrigger>
+      <Repetition>
+        <Interval>PT1M</Interval>
+        <StopAtDurationEnd>false</StopAtDurationEnd>
+      </Repetition>
+      <StartBoundary>{REPEAT_FROM}</StartBoundary>
+      <Enabled>true</Enabled>
+    </TimeTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <UserId>{sid}</UserId>
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <IdleSettings>
+      <StopOnIdleEnd>false</StopOnIdleEnd>
+      <RestartOnIdle>false</RestartOnIdle>
+    </IdleSettings>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>true</Hidden>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <Priority>7</Priority>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>{command}</Command>
+      <Arguments>{arguments}</Arguments>
+    </Exec>
+  </Actions>
+</Task>
+"#
+    )
+}
+
+/// The definition as the file `schtasks /Create /XML` reads: UTF-16 little-endian with its byte-order
+/// mark, matching the `encoding="UTF-16"` the document declares (the measured shape).
+pub(crate) fn utf16_file_bytes(xml: &str) -> Vec<u8> {
+    let mut bytes = vec![0xFF, 0xFE];
+    bytes.extend(xml.encode_utf16().flat_map(u16::to_le_bytes));
+    bytes
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn element<'a>(xml: &'a str, tag: &str) -> Vec<&'a str> {
+        xml.split(&format!("<{tag}>"))
+            .skip(1)
+            .filter_map(|rest| rest.split(&format!("</{tag}>")).next())
+            .collect()
+    }
+
+    /// The measured shape, setting by setting: a logon trigger and a per-minute repetition for THIS
+    /// user, the interactive token without elevation, no time limit, no battery stops, one instance,
+    /// hidden — and no `RestartOnFailure`, which did not restart a killed action.
+    #[test]
+    fn the_agent_task_runs_the_resolver_at_logon_and_every_minute_for_as_long_as_it_lives() {
+        let sid = "S-1-5-21-3487155226-1665577948-3202841263-1001";
+        let xml = dns_agent_task_xml(
+            sid,
+            Path::new(r"C:\Program Files\rexenv\rexenv.exe"),
+            Path::new(r"C:\Users\DELL\AppData\Local\rexenv\rexenv\data\logs\dns-agent.log"),
+        );
+        assert!(xml.contains("<LogonTrigger>"), "{xml}");
+        assert_eq!(element(&xml, "UserId"), vec![sid, sid], "trigger and principal are this user");
+        assert_eq!(element(&xml, "Interval"), vec!["PT1M"]);
+        assert_eq!(element(&xml, "StartBoundary"), vec![REPEAT_FROM]);
+        assert_eq!(element(&xml, "LogonType"), vec!["InteractiveToken"]);
+        assert_eq!(element(&xml, "RunLevel"), vec!["LeastPrivilege"]);
+        assert_eq!(element(&xml, "ExecutionTimeLimit"), vec!["PT0S"]);
+        assert_eq!(element(&xml, "DisallowStartIfOnBatteries"), vec!["false"]);
+        assert_eq!(element(&xml, "StopIfGoingOnBatteries"), vec!["false"]);
+        assert_eq!(element(&xml, "MultipleInstancesPolicy"), vec!["IgnoreNew"]);
+        assert_eq!(element(&xml, "Hidden"), vec!["true"]);
+        assert!(!xml.contains("RestartOnFailure"), "measured not to restart a killed action");
+        assert_eq!(element(&xml, "Command"), vec![r"C:\Program Files\rexenv\rexenv.exe"]);
+        assert_eq!(
+            element(&xml, "Arguments"),
+            vec![r"--dns-agent --log &quot;C:\Users\DELL\AppData\Local\rexenv\rexenv\data\logs\dns-agent.log&quot;"]
+        );
+        // Deterministic: the same inputs give the same bytes, so an unchanged definition is skipped.
+        assert_eq!(xml, dns_agent_task_xml(sid, Path::new(r"C:\Program Files\rexenv\rexenv.exe"), Path::new(r"C:\Users\DELL\AppData\Local\rexenv\rexenv\data\logs\dns-agent.log")));
+    }
+
+    /// A user folder may hold `&` or an apostrophe; the document must stay XML.
+    #[test]
+    fn paths_with_xml_characters_are_escaped() {
+        let xml = dns_agent_task_xml("S-1-5-21-1", Path::new(r"C:\Users\A & B\rexenv.exe"), Path::new(r"C:\Users\O'Neil <x>\dns.log"));
+        assert_eq!(element(&xml, "Command"), vec![r"C:\Users\A &amp; B\rexenv.exe"]);
+        assert_eq!(element(&xml, "Arguments"), vec![r"--dns-agent --log &quot;C:\Users\O&apos;Neil &lt;x&gt;\dns.log&quot;"]);
+        assert!(!xml.contains(" & "), "a raw ampersand");
+    }
+
+    #[test]
+    fn the_file_is_utf16_little_endian_with_its_byte_order_mark() {
+        let bytes = utf16_file_bytes("<a>é</a>");
+        assert_eq!(&bytes[..2], &[0xFF, 0xFE]);
+        let units: Vec<u16> = bytes[2..].chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
+        assert_eq!(String::from_utf16(&units).unwrap(), "<a>é</a>");
+    }
+}

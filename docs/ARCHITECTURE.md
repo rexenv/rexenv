@@ -381,9 +381,19 @@ Live-proven end to end by `site_stop_start_check`.
   `0.0.0.0:53` for good and the exclusive loopback bind succeeds and answers beside it. The refusal names
   the socket that caused it — for address-in-use only a LOOPBACK row
   (`ProcessSupervisor::port_conflict_help_on`) — because the unfiltered help blamed ICS and offered
-  `Stop-Service SharedAccess` as the fix while the real holder sat on `127.0.0.1`. The logon task
-  that runs the agent there is S2; until then `WindowsDnsAgent::is_installed` answers no, so the Windows
-  app runs the in-process resolver instead of dying at the 20 s handoff.
+  `Stop-Service SharedAccess` as the fix while the real holder sat on `127.0.0.1`.
+- **On Windows the agent is a logon Scheduled Task** (`\rexenv\dns-agent`, #616, W6 S2), registered by the
+  user with `schtasks` — no elevation (measured) — from `windows/logon_task.rs`'s XML: this user's logon
+  trigger plus a time trigger repeating every minute, `IgnoreNew`, `InteractiveToken`, no execution time
+  limit, no battery stops, hidden. The repeating trigger is the keep-alive (owner's ruling): Task
+  Scheduler's `RestartOnFailure` did not restart a killed action (measured), so a dead agent comes back on
+  the next tick instead. `install` skips an unchanged definition (a fixed past `StartBoundary` keeps the
+  bytes stable, as the plist is on macOS), otherwise re-registers, ends and runs; `kickstart` ends and
+  runs; `uninstall` ends, deletes, and removes rexenv's copy. Task Scheduler gives the action no stdout or
+  stderr, so the definition passes `--dns-agent --log <path>` and `main.rs` points both handles at that
+  file first (`platform::send_output_to`). The trait's methods are `definition_path`/`definition_contents`
+  — the plist on macOS, the task XML on Windows. An interactive-token task runs only while the user is
+  logged on: the agent is up from logon, not from boot.
 - **App launch = adopt-or-install-or-fall-back** (`lib.rs`): probe
   `dns::answers_as_ours` (a REAL A query must return `127.0.0.1` — ownership AND
   liveness, H2 — never a bare port probe); refresh the plist every launch so it tracks

@@ -264,10 +264,10 @@ mod lock_tests {
             fn is_installed(&self) -> bool {
                 false
             }
-            fn plist_path(&self) -> Result<PathBuf> {
+            fn definition_path(&self) -> Result<PathBuf> {
                 Ok(PathBuf::new())
             }
-            fn plist_contents(&self, _e: &Path, _l: &Path) -> String {
+            fn definition_contents(&self, _e: &Path, _l: &Path) -> String {
                 String::new()
             }
             fn install(&self, _e: &Path, _l: &Path) -> Result<()> {

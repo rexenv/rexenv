@@ -22,9 +22,14 @@ $header = @(
   "# token elevated: $($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))",
   "# integrity: $($integrity -replace '\s+', ' ')"
 )
+# Written AS the probe runs, not at its end: a task that hits its execution time limit is killed
+# before any end-of-run write, and the whole run's output went with it (15 Sep 2026, a keep-alive
+# measurement that outlived the 10-minute limit came back as "NO OUTPUT").
+$out = Join-Path $here 'output.txt'
+$header | Out-File -Encoding utf8 $out
 try {
-  $body = & (Join-Path $here 'probe.ps1') 2>&1 | ForEach-Object { "$_" }
+  & (Join-Path $here 'probe.ps1') 2>&1 | ForEach-Object { "$_" | Out-File -Encoding utf8 -Append $out }
 } catch {
-  $body = @("# probe failed: $($_.Exception.Message)")
+  "# probe failed: $($_.Exception.Message)" | Out-File -Encoding utf8 -Append $out
 }
-($header + $body) | Out-File -Encoding utf8 (Join-Path $here 'output.txt')
+'# probe finished' | Out-File -Encoding utf8 -Append $out
