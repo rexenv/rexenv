@@ -310,8 +310,15 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     only (hashes unchanged); a byte-copy fixture forced once, idempotent; the installed Firefox 105,
     headless, saved `security.enterprise_roots.enabled` true from rexenv's `user.js` and not in a
     control profile. Not looked in: the Microsoft Store build's virtualized folder (none to measure).
-    Still to come: `CertTrustManager` (the CurrentUser Root store — its confirmation dialog needs someone at the Dell),
-    the three browsers
+    **`CertTrustManager` — code in, half measured (ledger #613, ◐):** trust/untrust in-process on the
+    CurrentUser Root store (`cert_store.rs`), `is_trusted` a prompt-free lookup, a No reads as a cancel.
+    Dell `windows_cert_trust_check` read-only PASS; its write phase from the SSH session (owner's go:
+    measure both ways) returned `0x32` (ERROR_NOT_SUPPORTED) at once — no hang, no silent add, the
+    store's rexenv count 0 before and after — now worded as "no desktop to ask on". **The desktop
+    session, the same day** (`windows-cert-trust-desktop.ps1` through `windows-limited-token.sh`, Medium
+    token, the owner at the Dell answering Yes twice): PASS — `trust_ca` Ok after 6.6 s and `is_trusted`
+    true; a re-trust Ok in 0.0 s; `untrust_ca` Ok and `is_trusted` false; exe, task and folder removed.
+    Still owed: a No answered live (the cancel wording rests on L0), then the three browsers
   - [ ] W6 — DNS agent + NRPT + UAC + logon task → `*.rex` resolves after reboot, app closed
   - [ ] W7 — ShellRunner, autostart, tray (includes the Windows half of the browser-stub row)
   - [ ] W8 — `rex` CLI + MCP over named pipes; `rex.exe` on PATH

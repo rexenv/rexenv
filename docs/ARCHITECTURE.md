@@ -145,6 +145,14 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   `profiles.ini` is read in whatever encoding it was saved — the Dell's is **UTF-16LE with a BOM**
   (the Mac's is plain UTF-8), and read as UTF-8 it yielded no profile, so Settings called Firefox
   not installed and the trust step wrote nowhere, silently.
+- **CA trust on Windows = this user's Root certificate store** (`platform/windows/cert_store.rs`, #613):
+  the CurrentUser `Root` store, never LocalMachine's (per-user, no elevation — the login keychain's
+  counterpart). The add and the delete make WINDOWS ask the user ("Security Warning: You are about to
+  install a certificate…"), and the store call waits on the answer, so callers go through
+  `while_prompting` exactly as on macOS; a No reads as a cancel. `is_trusted` is a prompt-free lookup
+  in the logical store (machine roots count). With no interactive desktop the add fails at once with
+  0x32 — measured over SSH — and is worded as that, not as a raw number. Chrome and Edge read this
+  store; Firefox reads it through `security.enterprise_roots.enabled` (above).
 - **Per-site server overrides** (`OverrideKind` in the manager — one seam, two kinds
   today, OLS drops in later if a macOS artifact ever exists):
   - **FrankenPHP** (single static binary, embeds its own PHP): loopback backend on a

@@ -17,6 +17,8 @@ use std::process::Child;
 
 mod acl;
 mod af_unix;
+mod cert_rules;
+mod cert_store;
 mod firefox_root;
 mod handles;
 mod ipc_rules;
@@ -78,11 +80,17 @@ impl DnsManager for WindowsDns {
 
 pub struct WindowsCertTrust;
 impl CertTrustManager for WindowsCertTrust {
-    fn trust_ca(&self, _ca_cert_path: &Path) -> Result<()> {
-        Err(Error::Unported("windows CA trust (CurrentUser Root store)"))
+    /// This user's Root certificate store (`cert_store.rs`, ledger #613) — Windows asks the user to
+    /// confirm the add, and the call waits on the answer.
+    fn trust_ca(&self, ca_cert_path: &Path) -> Result<()> {
+        cert_store::trust(ca_cert_path)
     }
-    fn untrust_ca(&self, _ca_cert_path: &Path) -> Result<()> {
-        Err(Error::Unported("windows CA untrust (CurrentUser Root store)"))
+    /// Removed from the same store; Windows asks again.
+    fn untrust_ca(&self, ca_cert_path: &Path) -> Result<()> {
+        cert_store::untrust(ca_cert_path)
+    }
+    fn is_trusted(&self, ca_cert_path: &Path) -> bool {
+        cert_store::is_trusted(ca_cert_path)
     }
     /// `%APPDATA%\Mozilla\Firefox` (`firefox_root.rs`, ledger #612): `directories`' config dir is the
     /// Roaming AppData known folder on Windows.

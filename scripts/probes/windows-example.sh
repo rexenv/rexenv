@@ -51,4 +51,15 @@ if [ "${BUILD_ONLY:-0}" = 1 ]; then echo "## built (BUILD_ONLY)"; exit 0; fi
 scp -q "${O[@]}" "$repo/src-tauri/target/xwin/$TARGET/debug/examples/$EXE" "$host:$EXE" || { echo "copy failed"; exit 1; }
 copied=1
 echo "## built and copied"
-ps "& \"\$HOME\\$EXE\"; \"exit=\$LASTEXITCODE\""
+# REMOTE_ENV="NAME=value NAME2=value2" sets variables for the example on the Windows side — an
+# opt-in phase (e.g. windows_cert_trust_check's REXENV_CERT_TRUST_WRITE) is never on by default,
+# and the SSH session does not carry the Mac's environment. Values may not contain spaces or quotes.
+envset=""
+for kv in ${REMOTE_ENV:-}; do
+  case "$kv" in
+    [A-Za-z_]*=*) envset="$envset\$env:${kv%%=*}='${kv#*=}'; " ;;
+    *) echo "REMOTE_ENV entry is not NAME=value: $kv"; exit 1 ;;
+  esac
+done
+[ -n "$envset" ] && echo "## remote env: ${REMOTE_ENV}"
+ps "$envset& \"\$HOME\\$EXE\"; \"exit=\$LASTEXITCODE\""

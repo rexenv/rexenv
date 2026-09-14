@@ -921,6 +921,20 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   fixture profile, saved `security.enterprise_roots.enabled` true from rexenv's `user.js` and did not on
   a control. Still open for Firefox: whether it then trusts rexenv's CA from the CurrentUser Root store
   — that waits on `CertTrustManager`; the Store build's folder.
+  **`CertTrustManager` — in, half measured 14 Sep 2026 (ledger #613).** `cert_store.rs` calls CryptoAPI
+  in-process: `CertOpenStore` on the CurrentUser `Root` system store, `CertAddEncodedCertificateToStore`
+  (Windows then asks the user), `CertFindCertificateInStore(CERT_FIND_EXISTING)` for `is_trusted` (the
+  logical view, machine roots included, no prompt), `CertDeleteCertificateFromStore` for untrust (asks
+  again). Already present → Ok without a prompt; absent on untrust → Ok. **Measured from the SSH
+  session** (owner's ruling: measure both ways): the add returned `ERROR_NOT_SUPPORTED` (0x32) in 0.0 s —
+  no hang and no silent add; the store held no rexenv certificate before or after. So the prompt is
+  Windows' own and needs an interactive desktop; rexenv words 0x32 as that. **Measured in the desktop
+  session, the same day** (Task Scheduler, interactive logon, Medium token; the owner at the Dell
+  answering Yes to both prompts): `trust_ca` returned Ok after 6.6 s and `is_trusted` was true; a
+  second `trust_ca` returned Ok in 0.0 s (no prompt); `untrust_ca` returned Ok and `is_trusted` was
+  false. No elevation is needed. The untrust's elapsed time read 3883.7 s, past the check's 180 s
+  deadline, while the Dell was unreachable over both the tunnel and the LAN — not explained. **Owed:**
+  a No answered live (the cancel wording rests on L0), then a lock in Edge, Chrome and Firefox.
 - **W6 — DNS + privileges.** D2's :53 measurement first, then the agent, the NRPT rules and the refusal that names a
   :53 holder; `PrivilegeManager` as a UAC
   elevation that says what it is for (the macOS dialog rule, ledger #579's family);

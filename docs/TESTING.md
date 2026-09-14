@@ -1371,6 +1371,13 @@ bloating the fast path:
   encoding is the shape — UTF-16LE on the Dell) and forced; then the installed `firefox.exe`, headless,
   on that profile and on a control, reading `prefs.js` after its own shutdown — the pref saved true
   only where rexenv wrote it. It needs Firefox installed, and proves the pref, not the lock.
+  `windows_cert_trust_check` (#613) is the CurrentUser Root store. Read only by default (a fresh fixture
+  CA is not trusted, a key file is refused, untrusting an absent CA is Ok — no prompts). Its write phase
+  CHANGES the store and runs only with `REXENV_CERT_TRUST_WRITE=1` (`REMOTE_ENV=… windows-example.sh`)
+  and the machine owner's go: trust, look, trust again, untrust, look, each call on a thread with a
+  deadline so a prompt nobody can see is measured, and a leftover CA's `certutil` removal printed. From
+  SSH it measures the no-desktop answer; the prompt itself is `windows-cert-trust-desktop.ps1` through
+  `windows-limited-token.sh`, with someone at the machine to answer it.
 
 A gate nobody can afford to run stops being one: the fast bar stays fast, and nothing
 above it is required per-commit. The metric the gate serves is the ledger tally, which

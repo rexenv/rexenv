@@ -75,6 +75,11 @@ mod windows_ipc_rules;
 #[allow(dead_code)]
 #[path = "windows/firefox_root.rs"]
 mod windows_firefox_root;
+// And the CA trust's PEM read and cancel wording (ledger #613).
+#[cfg(all(test, not(target_os = "windows")))]
+#[allow(dead_code)]
+#[path = "windows/cert_rules.rs"]
+mod windows_cert_rules;
 
 use traits::Platform;
 
