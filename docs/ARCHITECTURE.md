@@ -370,6 +370,20 @@ Live-proven end to end by `site_stop_start_check`.
   dark until relaunch. All unprivileged (`~/Library/LaunchAgents`, high loopback port;
   `launchctl load/unload -w` — no prompt). The agent never exits on a busy port: it
   retries every 10s, so an old in-process holder hands off seamlessly.
+- **On Windows the resolver is on `127.0.0.1:53`** (#615, W6 S1): `DEFAULT_DNS_PORT` is
+  `platform::RESOLVER_PORT` — 15353 on macOS, where the resolver file names a port, 53 on Windows,
+  where an NRPT rule cannot (plan §3 D2). The socket comes from `platform::bind_resolver_udp`: a plain
+  loopback bind on macOS; on Windows `SO_EXCLUSIVEADDRUSE` (plan §3 D2's ruling) and UDP
+  connection-reset reports off — both kept as guards, neither shown load-bearing: planted out, a
+  same-account `SO_REUSEADDR` bind was still refused and twenty vanishing clients still left the agent
+  answering. `DnsService::start_default` BINDS FIRST and only names a refusal (`ports::refused_bind`): the
+  table-first gate (#599) would refuse every Windows machine with WSL 2, where ICS holds UDP
+  `0.0.0.0:53` for good and the exclusive loopback bind succeeds and answers beside it. The refusal names
+  the socket that caused it — for address-in-use only a LOOPBACK row
+  (`ProcessSupervisor::port_conflict_help_on`) — because the unfiltered help blamed ICS and offered
+  `Stop-Service SharedAccess` as the fix while the real holder sat on `127.0.0.1`. The logon task
+  that runs the agent there is S2; until then `WindowsDnsAgent::is_installed` answers no, so the Windows
+  app runs the in-process resolver instead of dying at the 20 s handoff.
 - **App launch = adopt-or-install-or-fall-back** (`lib.rs`): probe
   `dns::answers_as_ours` (a REAL A query must return `127.0.0.1` — ownership AND
   liveness, H2 — never a bare port probe); refresh the plist every launch so it tracks

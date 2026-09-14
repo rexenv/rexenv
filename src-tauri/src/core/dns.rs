@@ -24,9 +24,11 @@ use hickory_server::ServerFuture;
 use std::net::{Ipv4Addr, SocketAddr};
 use tokio::net::UdpSocket;
 
-/// Default loopback port for the embedded resolver. Not :53 (privileged) — the
-/// OS resolver config (task 2.2) points `.rex` (and any configured TLD) lookups here.
-pub const DEFAULT_DNS_PORT: u16 = 15353;
+/// The loopback port the embedded resolver serves on — the platform's (`platform::RESOLVER_PORT`):
+/// 15353 on macOS, off the privileged range, because a resolver file names its port; 53 on Windows,
+/// because an NRPT rule cannot (plan §3 D2, ledger #615). The OS resolver config points `.rex` (and
+/// any configured TLD) lookups here.
+pub const DEFAULT_DNS_PORT: u16 = crate::platform::RESOLVER_PORT;
 
 /// The ONE name that answers something other than "loopback": a TXT record
 /// naming the build the running agent IS.
@@ -158,8 +160,13 @@ impl RequestHandler for DnsHandler {
 /// because the bind is loopback (module note) — a non-loopback bind would be
 /// an open wildcard resolver, so this API makes one unrepresentable rather
 /// than a convention (`loopback_bind_is_structural` pins it).
+///
+/// The socket itself comes from `platform::bind_resolver_udp` — the same loopback bind, with the
+/// options an OS needs (Windows: exclusive, ledger #615).
 pub async fn serve_udp(port: u16) -> Result<(SocketAddr, ServerFuture<DnsHandler>)> {
-    let socket = UdpSocket::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, port))).await?;
+    let bound = crate::platform::bind_resolver_udp(port)?;
+    bound.set_nonblocking(true)?;
+    let socket = UdpSocket::from_std(bound)?;
     let local = socket.local_addr()?;
     let mut server = ServerFuture::new(DnsHandler::default());
     server.register_socket(socket);
@@ -188,17 +195,36 @@ impl DnsService {
         Ok(Self { addr: local, handle })
     }
 
-    /// Start on the fixed default loopback port (`DEFAULT_DNS_PORT`), gated on
-    /// `ports::ensure_free` like every other service — a conflict names the
-    /// holder and a command to free the port instead of a raw bind error.
+    /// Start on the fixed default loopback port (`DEFAULT_DNS_PORT`). A refused bind names the holder
+    /// and a command to free the port (`ports::refused_bind`), instead of a raw bind error.
+    ///
+    /// **The bind comes FIRST here, and the gate only names a refusal** — the one service where
+    /// `ports::is_free`'s "any row on the port is a holder" (#599) is wrong. On Windows, once WSL 2
+    /// is installed, ICS holds UDP `0.0.0.0:53` for good, and the resolver's exclusive
+    /// `127.0.0.1:53` bind succeeds beside it AND answers loopback (measured, plan §3 D2): gating
+    /// on the table would refuse DNS on every such machine. The bind is the honest test; on macOS a
+    /// UDP holder refuses the bind anyway (measured), so the outcome there is unchanged (ledger #615).
     pub async fn start_default(platform: &dyn Platform) -> Result<Self> {
-        crate::core::ports::ensure_free(
-            platform,
-            DEFAULT_DNS_PORT,
-            crate::core::ports::Proto::Udp,
-            "DNS resolver",
-        )?;
-        Self::start(DEFAULT_DNS_PORT).await
+        match Self::start(DEFAULT_DNS_PORT).await {
+            Ok(service) => Ok(service),
+            Err(bind_error) => {
+                // Name the socket that REFUSED the bind, not merely a row on the port. An
+                // address-in-use is a socket on 127.0.0.1 itself; ICS's `0.0.0.0:53` cannot cause
+                // one, and naming it — the first Dell run did — told the user to stop SharedAccess.
+                // Anything else (Windows' access-denied: an exclusive wildcard holder) is named from
+                // every row (ledger #615).
+                let loopback_only =
+                    matches!(&bind_error, Error::Io(e) if e.kind() == std::io::ErrorKind::AddrInUse);
+                log::debug!("dns: resolver bind on :{DEFAULT_DNS_PORT} refused: {bind_error}");
+                Err(crate::core::ports::refused_bind(
+                    platform,
+                    DEFAULT_DNS_PORT,
+                    crate::core::ports::Proto::Udp,
+                    "DNS resolver",
+                    loopback_only,
+                ))
+            }
+        }
     }
 
     /// The address the resolver is actually bound to.
@@ -906,7 +932,8 @@ pub fn installed_tlds(platform: &dyn Platform, port: u16) -> Vec<String> {
 /// Settings status indicator so the command layer needn't open a raw socket; the
 /// authoritative check when a handle is held is [`DnsService::is_running`].
 pub fn port_bound(port: u16) -> bool {
-    std::net::UdpSocket::bind((std::net::Ipv4Addr::LOCALHOST, port)).is_err()
+    // The resolver's own bind, so "bound" means what the resolver would meet (Windows: exclusive).
+    crate::platform::bind_resolver_udp(port).is_err()
 }
 
 #[cfg(test)]

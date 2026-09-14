@@ -46,6 +46,27 @@ impl Table {
             Table::Udp6 => (28, 20, 24),
         }
     }
+
+    /// (offset, length) of the row's LOCAL address: `dwLocalAddr` (4 bytes, network order) or
+    /// `ucLocalAddr[16]`.
+    fn local_addr(self) -> (usize, usize) {
+        match self {
+            Table::Tcp4 => (4, 4),
+            Table::Udp4 => (0, 4),
+            Table::Tcp6 | Table::Udp6 => (0, 16),
+        }
+    }
+}
+
+/// Whether a row's local address is loopback: `127.x.x.x`, or `::1`.
+fn row_is_loopback(r: &[u8], table: Table) -> bool {
+    let (at, len) = table.local_addr();
+    let a = &r[at..at + len];
+    if len == 4 {
+        a[0] == 127
+    } else {
+        a[..15].iter().all(|&b| b == 0) && a[15] == 1
+    }
 }
 
 /// The pids owning a row whose LOCAL port is `port`, on any local address, in table
@@ -55,6 +76,15 @@ impl Table {
 /// first two bytes of the field ARE the port, big-endian. A count larger than the
 /// buffer holds is clamped to the rows actually present rather than trusted.
 pub(crate) fn owners_of_port(buf: &[u8], table: Table, port: u16) -> Vec<u32> {
+    owners_of_port_where(buf, table, port, false)
+}
+
+/// [`owners_of_port`], keeping only rows bound to a LOOPBACK address when `loopback_only`.
+///
+/// For a refusal already known to come from a socket on loopback itself — the resolver's exclusive
+/// `127.0.0.1:53` bind meeting address-in-use (ledger #615). On a machine with WSL 2, ICS holds UDP
+/// `0.0.0.0:53`; that row cannot cause the refusal, and naming it told the user to stop `SharedAccess`.
+pub(crate) fn owners_of_port_where(buf: &[u8], table: Table, port: u16, loopback_only: bool) -> Vec<u32> {
     let (row, port_at, pid_at) = table.layout();
     let Some(count) = buf.get(0..4).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]])) else {
         return Vec::new();
@@ -65,7 +95,7 @@ pub(crate) fn owners_of_port(buf: &[u8], table: Table, port: u16) -> Vec<u32> {
         .filter_map(|i| {
             let r = &buf[4 + i * row..4 + (i + 1) * row];
             let local = u16::from_be_bytes([r[port_at], r[port_at + 1]]);
-            (local == port).then(|| {
+            (local == port && (!loopback_only || row_is_loopback(r, table))).then(|| {
                 u32::from_le_bytes([r[pid_at], r[pid_at + 1], r[pid_at + 2], r[pid_at + 3]])
             })
         })
@@ -303,6 +333,31 @@ mod tests {
             assert_eq!(owners_of_port(&buf, t, 13306), vec![9120, 9121], "{t:?}");
             assert_eq!(owners_of_port(&buf, t, 80), vec![4], "{t:?}");
             assert!(owners_of_port(&buf, t, 11025).is_empty(), "{t:?}");
+        }
+    }
+
+    /// Ledger #615 — the rows a loopback refusal may name. ICS's wildcard `0.0.0.0:53` / `[::]:53`
+    /// beside the resolver's `127.0.0.1:53` / `[::1]:53`, in every table: `loopback_only` keeps the
+    /// loopback owner and drops the wildcard one; without it both stay, as the port gate reads them.
+    #[test]
+    fn loopback_only_keeps_the_owners_bound_to_loopback() {
+        for t in [Table::Tcp4, Table::Tcp6, Table::Udp4, Table::Udp6] {
+            let (row, _, _) = t.layout();
+            let (at, len) = t.local_addr();
+            let mut buf = table(t, &[(53, 4272), (53, 6592), (80, 9)]);
+            let (wildcard, loopback): (Vec<u8>, Vec<u8>) = if len == 4 {
+                (vec![0, 0, 0, 0], vec![127, 0, 0, 1])
+            } else {
+                (vec![0; 16], [vec![0; 15], vec![1]].concat())
+            };
+            buf[4 + at..4 + at + len].copy_from_slice(&wildcard);
+            buf[4 + row + at..4 + row + at + len].copy_from_slice(&loopback);
+            buf[4 + 2 * row + at..4 + 2 * row + at + len].copy_from_slice(&loopback);
+            assert_eq!(owners_of_port_where(&buf, t, 53, true), vec![6592], "{t:?}: the loopback owner only");
+            assert_eq!(owners_of_port_where(&buf, t, 53, false), vec![4272, 6592], "{t:?}: every owner");
+            // The noise-filled address of the plain helper is not loopback.
+            let noisy = table(t, &[(53, 1)]);
+            assert!(owners_of_port_where(&noisy, t, 53, true).is_empty(), "{t:?}");
         }
     }
 

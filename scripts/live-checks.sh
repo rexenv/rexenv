@@ -245,6 +245,7 @@ windows_firefox_profiles_check demo
 windows_cert_trust_check demo
 windows_browser_lock_check demo
 windows_dns53_probe demo
+windows_dns_agent_check demo
 wp_core_zip_check network
 "
 

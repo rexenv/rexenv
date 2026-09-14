@@ -387,6 +387,16 @@ pub trait ProcessSupervisor: Send + Sync {
     fn port_conflict_help(&self, _port: u16, _udp: bool) -> PortConflictHelp {
         PortConflictHelp::default()
     }
+
+    /// [`port_conflict_help`](Self::port_conflict_help), naming only a holder bound to a LOOPBACK
+    /// address when `loopback_only` — for a refusal already known to be a socket on `127.0.0.1`
+    /// itself (the resolver's exclusive loopback bind met address-in-use), where a wildcard listener
+    /// is not the cause. On Windows ICS holds UDP `0.0.0.0:53` beside the resolver; naming it offered
+    /// `Stop-Service SharedAccess` as the fix (ledger #615). Default: the unfiltered help.
+    fn port_conflict_help_on(&self, port: u16, udp: bool, loopback_only: bool) -> PortConflictHelp {
+        let _ = loopback_only;
+        self.port_conflict_help(port, udp)
+    }
 }
 
 /// How this platform serves one PHP minor (docs/PLAN-windows-port.md §3 D1, ledger #601).

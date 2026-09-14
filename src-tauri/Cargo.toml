@@ -128,6 +128,9 @@ windows-sys = { version = "0.61", features = [
     # ledger #613): CertOpenStore / CertAddEncodedCertificateToStore / CertFindCertificateInStore /
     # CertDeleteCertificateFromStore. Same crate, more bindings.
     "Win32_Security_Cryptography",
+    # The resolver's socket (platform/windows/resolver_socket.rs, ledger #615): WSAIoctl, which turns
+    # UDP connection-reset reports off, is gated on this feature. Same crate, more bindings.
+    "Win32_System_IO",
 ] }
 
 # Target-gated like the [dependencies] copies: objc2 is a compile_error! on any

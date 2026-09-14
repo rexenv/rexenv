@@ -1012,6 +1012,64 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   elevation that says what it is for (the macOS dialog rule, ledger #579's family);
   `DnsAgentManager` as a logon Scheduled Task with restart. *Done when:* `*.rex` resolves
   after a reboot with the app closed.
+  **W6 design — proposed 14 Sep 2026; RULED the same day (R1–R4 at the end).** *Order as built:* S1
+  first (self-contained, measurable without changing the Dell), then S2, then S0 together with S4 — the
+  S0 panics sit on `resolver_path`, which R1's route trait replaces — then S3 and S5.
+  *Where Windows stands:* the DNS server itself is platform-free (`core/dns.rs`, hickory, UDP on
+  `127.0.0.1`, answers every A with loopback, a TXT build identity) and `--dns-agent` is dispatched on
+  every OS (`main.rs`). Everything around it is macOS-shaped, and the Windows build reaches the
+  stubs: the launch `install` fails into in-process DNS, then `spawn_dns_handoff` calls
+  `DnsAgentManager::is_installed` about 20 s after launch — an `unported!` panic — and `dns_status` and
+  `login_launch_needs_window` call `DnsManager::resolver_path`, another. The shapes that do not fit:
+  (a) the agent's port is `DEFAULT_DNS_PORT` = 15353 everywhere, while NRPT has no port (D2) — Windows
+  needs 53, with `SO_EXCLUSIVEADDRUSE`; (b) `DnsManager` and the core around it are FILE-shaped —
+  `resolver_path`/`resolver_contents` as the ownership signature, backups that copy the user's file,
+  `installed_tlds` a directory scan of `resolver_path("rex").parent()`; (c) `DnsAgentManager` names a
+  plist; (d) `PrivilegeManager::run_privileged` takes a `/bin/sh` script, and teardown joins the edge's
+  and the resolvers' commands with `" ; "`; (e) UAC's dialog shows the elevated PROGRAM's name and
+  publisher, never a sentence — ledger #578's rule (every admin prompt says what it is for) cannot be met
+  inside it.
+  *Steps, each its own commit with its proof:*
+  - **S0 — no panic on the paths the Windows build already walks.** The agent and resolver stubs answer
+    as "not installed / not configured" instead of `unported!` where the caller is a status read, so the
+    app runs in-process DNS without dying at 20 s. L0 scan + a Dell launch.
+  - **S1 — the agent on :53.** The resolver's port and its bind come from the platform (macOS 15353, a
+    plain bind, byte-identical; Windows 53, `SO_EXCLUSIVEADDRUSE`); `run_agent` and `start_default` use
+    them; a taken :53 refuses by name through `port_holders` (#599), with D2's two measured refusals
+    (10048 a loopback holder, 10013 an exclusive wildcard) worded apart. L1 on the Dell: the agent answers
+    `Resolve-DnsName x.rex -Server 127.0.0.1`, beside ICS's wildcard holder, and refuses a planted holder.
+    **S1 done 14 Sep 2026 (ledger #615).** `platform::RESOLVER_PORT` (53 / 15353) and
+    `platform::bind_resolver_udp` (Windows: `SO_EXCLUSIVEADDRUSE`, `SIO_UDP_CONNRESET` off); `serve_udp`,
+    `port_bound`, `run_agent` and `start_default` use them. The gate moved: `start_default` binds first,
+    and `ports::refused_bind` names the refusal from LOOPBACK rows for address-in-use
+    (`port_conflict_help_on`) — the unfiltered help had named ICS's `0.0.0.0:53` and offered
+    `Stop-Service SharedAccess`, measured on the first Dell run. `WindowsDnsAgent::is_installed` = false
+    until S2. Dell `windows_dns_agent_check` PASS, 20 checks, beside ICS. Plants on the Dell: the
+    table-first gate, port 15353 and naming from every row each failed the check (5, 8 and 4 checks);
+    `SO_EXCLUSIVEADDRUSE` and `SIO_UDP_CONNRESET` planted out each PASSED — Windows' default already
+    refuses a same-account `SO_REUSEADDR` bind, and hickory kept answering past vanishing clients — so
+    both stay as guards the check does not certify. Not in S1: the app's launch
+    path on Windows end to end (it still installs no agent, so it runs in-process), `rex doctor`'s port
+    list (`ports::default_ports` still table-gates :53 — the CLI is W8).
+  - **S2 — `DnsAgentManager` as a logon task.** A pure task-XML builder (AtLogOn for this user,
+    `ExecutionTimeLimit` PT0S, no battery stop, restart on failure, hidden) replacing `plist_*`;
+    install/kickstart/uninstall through Task Scheduler as the user, no elevation — measured first on the
+    Dell under the Medium token. L0 XML test; L1 register → runs → `kickstart` → `uninstall`.
+  - **S3 — `PrivilegeManager` on Windows** (per R2): one UAC prompt per batch, the platform owning how
+    commands join; output and exit code back to the caller. L1 on the Dell with the owner answering.
+  - **S4 — resolver routes, NRPT** (per R1, R3): one rule per TLD, `-Namespace .<tld> -NameServers
+    127.0.0.1`, ownership by a rexenv comment; list/owner/install/uninstall; a DNS cache flush; teardown.
+    L0 for the script builders and ownership classification; L1 with the owner: `x.rex` resolves through
+    Windows' resolver with no `-Server`, and teardown leaves no rule.
+  - **S5 — done-when.** First-run setup, watchdog, handoff and `dns_status` on Windows end to end; the Dell
+    rebooted with the app closed resolves `*.rex`.
+  *Rulings asked:* **R1** the resolver trait — a neutral "resolver route" shape the core uses without
+  assuming files (macOS behaviour and bytes unchanged), or the file-shaped trait kept with NRPT rules
+  mapped to pseudo-paths; **R2** the UAC prompt — rexenv explains the change in its own window first and
+  UAC elevates `rexenv.exe` itself for the step (the dialog names rexenv; "Unknown publisher" until D5
+  signing), or UAC elevates `powershell.exe` (the dialog names Windows PowerShell, Microsoft-verified);
+  **R3** a `.rex` NRPT rule that is not ours — refuse naming it, or macOS's backup-first takeover; **R4**
+  the agent's protocols — UDP only as on macOS, or UDP and TCP.
 - **W7 — Desktop integration.** `ShellRunner` (open/reveal, editors, browsers — closes
   the Windows half of the browser-stub row in TODO — terminals, `git_preflight` naming
   Git for Windows), `AutostartManager` (HKCU Run key), tray and close-to-tray behaviour.

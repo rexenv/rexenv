@@ -152,6 +152,21 @@ pub fn ensure_free(platform: &dyn Platform, port: u16, proto: Proto, service: &s
         }
     }
     let help = platform.supervisor().port_conflict_help(port, matches!(proto, Proto::Udp));
+    Err(in_use(port, proto, service, &help))
+}
+
+/// The error for a service whose OWN bind was refused: the holder named from the tables, without
+/// asking first whether the port is free — the caller already knows it is not. `loopback_only`
+/// names only a socket on loopback, for a refusal that can only be one (the resolver's exclusive
+/// `127.0.0.1` bind meeting address-in-use, where a wildcard row is not the cause — ledger #615).
+pub fn refused_bind(platform: &dyn Platform, port: u16, proto: Proto, service: &str, loopback_only: bool) -> Error {
+    let help = platform.supervisor().port_conflict_help_on(port, matches!(proto, Proto::Udp), loopback_only);
+    in_use(port, proto, service, &help)
+}
+
+/// "port N/proto (needed by S) is already in use by H." plus the free-it command — the one wording
+/// [`ensure_free`] and [`refused_bind`] share (the frontend parses its `$ ` line).
+fn in_use(port: u16, proto: Proto, service: &str, help: &crate::platform::traits::PortConflictHelp) -> Error {
     let by = match &help.holder {
         Some(h) => format!(" by {h}"),
         None => String::new(),
@@ -165,7 +180,7 @@ pub fn ensure_free(platform: &dyn Platform, port: u16, proto: Proto, service: &s
             " To free it, run this in a terminal, then start services again:\n$ {cmd}"
         ));
     }
-    Err(Error::Other(msg))
+    Error::Other(msg)
 }
 
 /// The canonical ports rexenv's services use, in startup order. One php-fpm port

@@ -29,7 +29,11 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
   `stop_group` over `process.rs::StepJob` (kill-on-close jobs) and `WindowsShell::login_shell_env` over
   `windows/login_env.rs` (the registry environment merge, tested on every host) (ledger #609); the edge's
   Windows start — `WindowsPrivileges::port_needs_privilege`, `WindowsEdge::default_bind`, and `LocalIpc`'s
-  dial over `windows/af_unix.rs` + `windows/ipc_rules.rs` (its error rule, tested on every host) (ledger #611); nginx's Windows shape — `services::nginx_path`,
+  dial over `windows/af_unix.rs` + `windows/ipc_rules.rs` (its error rule, tested on every host) (ledger #611); the resolver on
+  `127.0.0.1:53` — `platform::RESOLVER_PORT` + `platform::bind_resolver_udp` over
+  `windows/resolver_socket.rs` (exclusive, no UDP resets), `DnsService::start_default` naming a refused
+  bind through `ports::refused_bind` and `ProcessSupervisor::port_conflict_help_on` (loopback rows only,
+  `port_table::owners_of_port_where`) (ledger #615); nginx's Windows shape — `services::nginx_path`,
   `binaries::resolve_program`, the master climb and nginx's events (ledger #602);
   `linux/` is `todo!()`).
 - `state/` = SQLite migrations + the store layer; only `state/` writes SQL.

@@ -27,7 +27,10 @@ mod owner_only;
 mod pe;
 mod port_table;
 mod process;
+mod resolver_socket;
 mod stop_policy;
+
+pub(crate) use resolver_socket::bind_resolver_udp;
 
 pub struct WindowsPaths;
 impl Paths for WindowsPaths {
@@ -343,12 +346,19 @@ impl ProcessSupervisor for WindowsSupervisor {
     /// The root holder by image, hosted services or "cannot inspect"; with no holder at
     /// all, the excluded range the port sits in — the one refusal no socket table shows.
     fn port_conflict_help(&self, port: u16, udp: bool) -> PortConflictHelp {
-        let holders = process::port_holders(port, udp).unwrap_or_default();
+        self.port_conflict_help_on(port, udp, false)
+    }
+    /// With `loopback_only`, only a holder on `127.0.0.1`/`::1` is named, and never an excluded
+    /// range: a range refuses every address alike, which is not what address-in-use on loopback
+    /// means (ledger #615).
+    fn port_conflict_help_on(&self, port: u16, udp: bool, loopback_only: bool) -> PortConflictHelp {
+        let holders = process::port_holders_where(port, udp, loopback_only).unwrap_or_default();
         let named = match process::root_of(&holders) {
             Some(pid) => {
                 let image = process::image_path(pid).map(|p| p.display().to_string());
                 Some(port_table::describe_holder(pid, image.as_deref(), &process::services_hosted_by(pid)))
             }
+            None if loopback_only => None,
             None => process::excluded_ranges(udp)
                 .and_then(|out| port_table::excluded_range_containing(&out, port))
                 .map(|range| port_table::describe_excluded(range, udp)),
@@ -608,8 +618,11 @@ impl EdgeSupervisor for WindowsEdge {
 
 pub struct WindowsDnsAgent;
 impl DnsAgentManager for WindowsDnsAgent {
+    /// No logon task is ever installed until W6 S2 builds one, so the honest answer is no. It is a
+    /// status read — `spawn_dns_handoff` asks it about 20 s after launch, and `unported!` here killed
+    /// the Windows app there (ledger #615).
     fn is_installed(&self) -> bool {
-        unported!("windows dns agent (logon task, plan W6)")
+        false
     }
     fn plist_path(&self) -> Result<PathBuf> {
         Err(Error::Unported("windows dns agent"))

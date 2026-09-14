@@ -1399,6 +1399,15 @@ bloating the fast path:
   running WSL 2 distribution (`scripts/probes/windows-wsl-dns53.ps1`, SSH, `wsl --shutdown` at the end) —
   record the rows on :53 by process and service, who answers, and whether an agent-shaped exclusive
   `127.0.0.1:53` bind still succeeds.
+  `windows_dns_agent_check` (#615) is W6 S1: the resolver on `127.0.0.1:53` through rexenv's own code —
+  `run_agent` in a separate process (the example re-run as `agent`) and `DnsService::start_default` in
+  process — on a machine where ICS holds UDP `0.0.0.0:53`. It checks the port, `answers_as_ours`, the
+  build identity, `Resolve-DnsName -Server 127.0.0.1`, that a `SO_REUSEADDR` bind cannot share the
+  agent's address, that twenty clients vanishing before their answers do not stop it, and that
+  `start_default` beside the agent and beside a planted loopback holder is refused naming THAT holder's
+  pid and never `SharedAccess`. The pid and SharedAccess assertions exist because the first run PASSED
+  with a refusal that blamed ICS and offered `Stop-Service SharedAccess` — the check had looked only for
+  "53" and "DNS resolver".
 
 A gate nobody can afford to run stops being one: the fast bar stays fast, and nothing
 above it is required per-commit. The metric the gate serves is the ledger tally, which

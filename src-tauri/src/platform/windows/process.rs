@@ -108,6 +108,11 @@ fn read_table_class(family: u16, table: Table, tcp_class: TCP_TABLE_CLASS) -> Op
 /// when neither family's table could be read; one family failing still answers from
 /// the other rather than dropping back to the trial bind alone.
 pub(crate) fn port_holders(port: u16, udp: bool) -> Option<Vec<u32>> {
+    port_holders_where(port, udp, false)
+}
+
+/// [`port_holders`], only sockets bound to a loopback address when `loopback_only` (ledger #615).
+pub(crate) fn port_holders_where(port: u16, udp: bool, loopback_only: bool) -> Option<Vec<u32>> {
     let tables = if udp {
         [(AF_INET, Table::Udp4), (AF_INET6, Table::Udp6)]
     } else {
@@ -118,7 +123,7 @@ pub(crate) fn port_holders(port: u16, udp: bool) -> Option<Vec<u32>> {
     for (family, table) in tables {
         if let Some(buf) = read_table(family, table) {
             read_any = true;
-            pids.extend(port_table::owners_of_port(&buf, table, port));
+            pids.extend(port_table::owners_of_port_where(&buf, table, port, loopback_only));
         }
     }
     pids.sort_unstable();

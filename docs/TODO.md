@@ -340,6 +340,19 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     want to DELETE the following certificate from the Root Store?". **The three browsers — done the same
     evening** (above, ✓)
   - [ ] W6 — DNS agent + NRPT + UAC + logon task → `*.rex` resolves after reboot, app closed
+    **Design ruled 14 Sep 2026** (plan §5 W6: R1 a neutral resolver-route trait, R2 rexenv explains then
+    UAC elevates `rexenv.exe`, R3 a foreign `.rex` NRPT rule is taken over backup-first as on macOS, R4
+    UDP only). **S1 done the same day (ledger #615):** the resolver's port and socket come from the
+    platform — Windows `127.0.0.1:53`, exclusive, UDP resets off; macOS unchanged — and
+    `DnsService::start_default` binds first and names only the socket that refused it. Dell
+    `windows_dns_agent_check` PASS (20 checks) beside ICS's `0.0.0.0:53`: the agent process answers
+    `answers_as_ours` and `Resolve-DnsName`, names its build, cannot be shared by a `SO_REUSEADDR` bind
+    (10013 — Windows' default, as the plant showed, not the exclusive option), survives twenty vanishing
+    clients (with or without the reset ioctl — also planted); `start_default` beside it and beside a planted loopback
+    holder is refused naming that holder's pid. **Found on the way:** the first version of that refusal
+    blamed ICS and offered `Stop-Service SharedAccess` — and the check passed it. Also:
+    `WindowsDnsAgent::is_installed` answers no, so the Windows app no longer dies at the 20 s handoff.
+    Next: S2 (the logon task)
   - [ ] W7 — ShellRunner, autostart, tray (includes the Windows half of the browser-stub row)
   - [ ] W8 — `rex` CLI + MCP over named pipes; `rex.exe` on PATH
   - [ ] W9 — frontend on WebView2 (Windows paths, Ctrl shortcuts, fonts)

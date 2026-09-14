@@ -114,6 +114,32 @@ pub use macos::process_start_token;
 #[cfg(target_os = "macos")]
 pub use macos::activation::activate_app;
 
+/// The loopback port the embedded resolver serves on (`core::dns::DEFAULT_DNS_PORT`).
+///
+/// Per OS because the OS's routing decides it, not rexenv: a macOS resolver file names a port, so
+/// the agent stays off the privileged range on 15353; Windows' NRPT rule names only a server, so the
+/// agent must answer on 53 (plan §3 D2, ledger #615).
+#[cfg(target_os = "windows")]
+pub const RESOLVER_PORT: u16 = 53;
+#[cfg(not(target_os = "windows"))]
+pub const RESOLVER_PORT: u16 = 15353;
+
+/// The embedded resolver's UDP socket, bound on `127.0.0.1:port` — loopback by construction (the
+/// resolver answers every name, which is safe only there; ledger #44).
+///
+/// Windows binds it with `SO_EXCLUSIVEADDRUSE` and UDP connection-reset reports off
+/// (`windows/resolver_socket.rs`, ledger #615); every other OS binds plainly, as before.
+pub fn bind_resolver_udp(port: u16) -> std::io::Result<std::net::UdpSocket> {
+    #[cfg(target_os = "windows")]
+    {
+        windows::bind_resolver_udp(port)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        std::net::UdpSocket::bind((std::net::Ipv4Addr::LOCALHOST, port))
+    }
+}
+
 /// The build OS's `LocalIpc` — what `Platform::local_ipc` returns unless a
 /// platform overrides it. Selected here, beside `current()`, so `traits.rs`
 /// never names an OS type.
