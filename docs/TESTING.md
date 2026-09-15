@@ -1470,6 +1470,14 @@ bloating the fast path:
   every path. It writes Task Manager's Disabled byte itself (03…) to hold `is_enabled` and `refresh` to it.
   The sign-in itself — Explorer starting the app from that value — is not this check's; it needs the real
   app and a person signing out and in.
+  W7 S4's sign-in and S5's tray (#623, #624) are measured with the REAL app on the Dell, the owner at the
+  screen, and a read-only `s5-observe.ps1` over SSH between steps (the login item's two values; each rexenv
+  process with its command line, session and PARENT; the service processes and their parents; the app log's
+  launch and service lines). In order: the owner turns "Open rexenv at login" on in Settings; hides the window
+  and left-clicks, then right-clicks, the tray icon; signs out and in without opening the app (expected: a
+  new session, `rexenv.exe --hidden` whose parent is `explorer.exe`, "launched at login" in the log); starts
+  Mailpit from that app (its parent is the app); quits rexenv from the tray — and Mailpit still running with
+  its parent gone is the breakaway measurement for a Run-key launch.
   W6's done-when (S5) is the REAL app, not an example: `cargo xwin build --bin rexenv --features
   tauri/custom-protocol` (without the feature a debug build loads `devUrl`, not the embedded `dist`; the
   `rex` sidecar staged as a placeholder as `windows-example.sh` does), the exe copied to a stable folder —

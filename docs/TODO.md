@@ -403,8 +403,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     first three each passed over a real bug in how a child inherited rexenv's handles. **S4, registry half,
     the same day (ledger #623):** the per-user Run value `"<exe>" --hidden`, Task Manager's disable read and
     cleared by `enable`, `refresh` never moving the item to a dev build; Dell `windows_autostart_check` PASS
-    (9 checks). Next: S5 (the tray), measured together with S4's sign-in — the app started hidden at login,
-    its services breaking away from Explorer's launch
+    (9 checks). **S4's sign-in and S5 done the same day (ledgers #623, #624)**, with the real app: the Settings
+    toggle wrote the Run value; after a sign-out and sign-in Explorer started `rexenv.exe --hidden`, no window;
+    Mailpit started from it outlived the app's quit (breakaway allowed from Explorer's launch); the tray gave
+    the window back on a left click and opened its menu on a right click. Next: S6 (linked folders as
+    junctions)
   - [ ] W8 — `rex` CLI + MCP over named pipes; `rex.exe` on PATH
   - [ ] W9 — frontend on WebView2 (Windows paths, Ctrl shortcuts, fonts)
     **macOS words on the Windows screens** (seen in the real app on the Dell, W6 S5, 15 Sep 2026): Settings
@@ -412,7 +415,8 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     "Reinstall rexenv's certificate authority in your system keychain." (`:1012`), "asks for your password
     once" (`:1294` — Windows asks rexenv's dialog then UAC), "sign in to your Mac (a macOS login item)"
     (`:1354`); SiteDetail "register it with macOS" (`SiteDetail.tsx:1544`); Onboarding "to your Mac"
-    (`Onboarding.tsx:342`). The words should come from the platform, as `route_label` does for the route
+    (`Onboarding.tsx:342`); and the app log's "launched at login — staying in the menu bar" (`lib.rs`
+    `first_window_decision`). The words should come from the platform, as `route_label` does for the route
   - [ ] W10 — Redis/Apache/Xdebug/MariaDB (per D4) refused in core with an honest message
   - [ ] W11 — NSIS installer, Authenticode (if D5 rules it in), Windows release job, updater, winget
   - [ ] W12 — launch gates: verify on the Windows runner, SMOKE-TEST + INSTALL Windows

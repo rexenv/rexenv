@@ -53,7 +53,8 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
   process — tested on every host) (ledger #622); the login item — `WindowsAutostart` over
   `windows/autostart.rs` (the per-user Run value and Task Manager's `StartupApproved` value) and
   `windows/autostart_rules.rs` (the value, Task Manager's disable, a dev build, the refresh decision — tested on
-  every host) (ledger #623); nginx's Windows shape — `services::nginx_path`,
+  every host) (ledger #623); the Windows tray — `lib.rs` `install_tray`'s `cfg(windows)` branch
+  (`WINDOWS_TRAY_ICON`, a left click → `show_main_window`, the menu on a right click) (ledger #624); nginx's Windows shape — `services::nginx_path`,
   `binaries::resolve_program`, the master climb and nginx's events (ledger #602);
   `linux/` is `todo!()`).
 - `state/` = SQLite migrations + the store layer; only `state/` writes SQL.

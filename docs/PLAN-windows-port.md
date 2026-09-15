@@ -226,7 +226,10 @@ before anything is built on it.
   for exactly this ("…started inside a job that forbids its services to outlive it…"). An SSH session
   allows it (#600). So rexenv must not be LAUNCHED by a scheduled task — autostart stays the HKCU Run
   key (W7), and W6's logon task may run the DNS agent (it spawns no service) but never the app.
-  Explorer, Start and Windows Terminal remain unmeasured.
+  Explorer, Start and Windows Terminal remain unmeasured. **Explorer measured 15 Sep 2026 (W7 S4's sign-in,
+  ledger #623):** the real app started by `explorer.exe` from the Run value at sign-in started Mailpit, and
+  Mailpit kept running after the app quit — breakaway is allowed there. Start and Windows Terminal remain
+  unmeasured.
 - **Orphan workers — closed by the OS, with one hole.** The children live in the parent's
   kill-on-close job: the parent dies by any means, `TerminateProcess` included, the job
   handle closes, and Windows kills the children. The macOS class (a SIGKILLed master leaking
@@ -1298,9 +1301,17 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
     rexenv); `refresh` never touches it. Dell `windows_autostart_check` PASS (9 checks, real Run key, `reg.exe`
     read-back, guard left nothing). **The sign-in half is paired with S5** — both need the real app and the
     owner signing out and in: the app started by Explorer from the value, hidden, and (c) whether its services
-    may break away from that launch context.
+    may break away from that launch context. **Sign-in measured the same day with the real app:** the Settings
+    toggle wrote the Run value; after a sign-out and sign-in `rexenv.exe --hidden` was started by `explorer.exe`,
+    logged "launched at login — staying in the menu bar" and showed no window; Mailpit started from it outlived
+    the app's quit — (c) answered for Explorer.
   - **S5 — the tray (Q2).** Colour icon and the left/right split on Windows; close keeps hiding the window
     (already on every OS), so the tray and S1's second launch are the ways back. L1 with the owner.
+    **S5 done 15 Sep 2026 (ledger #624).** `install_tray`'s `cfg(windows)` branch: `WINDOWS_TRAY_ICON`
+    (`icons/32x32.png`), `show_menu_on_left_click(false)`, a left-button release → `show_main_window`; macOS's
+    branch untouched. A source-scan test with plants 2/2. On the Dell with the real app: a left click brought a
+    hidden window back and a right click opened the menu — both from a double-clicked launch and from the
+    login-launched one, whose tray Quit ended the app. Not confirmed yet: the icon's colour by eye.
   - **S6 — linked folders as junctions.** `symlink_dir` makes a junction; `remove_symlink` recognises a
     junction and removes only the link; the delete guard that must never walk into a linked checkout
     (`core/repo.rs`, `is_symlink`) is held to a junction with its own ledger row and plant — its blast

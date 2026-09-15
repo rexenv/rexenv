@@ -579,6 +579,12 @@ Live-proven end to end by `site_stop_start_check`.
   line moves on its own (the count, the `· updating…` suffix), so a menu held open closed
   itself a few seconds later — reported from the developer's machine, 8 Sep 2026.
   `docs/archive/PLAN-menubar-tray.md`.
+  **On Windows** (W7 S5, owner's ruling Q2, ledger #624) the same menu renders from the same spec, but the
+  icon and the clicks are Windows': the colour app icon (`WINDOWS_TRAY_ICON`, `icons/32x32.png`) — the
+  notification area draws an icon as it is, and the template glyph is a black mark on a dark taskbar — and
+  `show_menu_on_left_click(false)` with a left-button release calling `show_main_window`, so a LEFT click
+  brings the window back and a RIGHT click opens the menu. There is no dock to follow: a hidden window leaves
+  the taskbar, so the tray and a second launch (the single-instance pipe, #620) are the ways back.
 - **Services OUTLIVE the app.** Closing rexenv stops nothing. On launch,
   `adopt_startup()` ADOPTS rexenv-owned survivors as pid-based `Proc::Adopted` handles —
   status/Start all/Stop all treat them like spawned children. Ownership gate = process

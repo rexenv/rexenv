@@ -1506,7 +1506,13 @@ fn log_sinks(log_dir: Option<std::path::PathBuf>, debug: bool) -> Vec<LogSink> {
 /// app has no `icons/` directory beside the binary. Derived from the app icon
 /// by `scripts/make-menubar-icon.py`, never hand-drawn: a second mark drifts
 /// from the first the day the brand changes.
+#[cfg(not(windows))]
 const MENUBAR_ICON: &[u8] = include_bytes!("../icons/menubar.png");
+
+/// Windows' tray icon: the colour app icon. The notification area draws an icon as it is, so macOS's
+/// template glyph would be a black mark on a dark taskbar (W7 S5, owner's ruling Q2, ledger #624).
+#[cfg(windows)]
+const WINDOWS_TRAY_ICON: &[u8] = include_bytes!("../icons/32x32.png");
 
 /// Install the menu-bar status item.
 ///
@@ -1530,9 +1536,26 @@ fn install_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     let menu = render_menu(app, &spec)?;
     *last_menu().lock().unwrap_or_else(|e| e.into_inner()) = Some((spec, menu.clone()));
 
-    TrayIconBuilder::with_id(TRAY_ID)
-        .icon(Image::from_bytes(MENUBAR_ICON)?)
-        .icon_as_template(true)
+    // macOS: the template glyph, tinted for a light or a dark menu bar, and the menu on any click.
+    #[cfg(not(windows))]
+    let builder = TrayIconBuilder::with_id(TRAY_ID).icon(Image::from_bytes(MENUBAR_ICON)?).icon_as_template(true);
+    // Windows (W7 S5, owner's ruling Q2, ledger #624): the colour icon, and the Windows convention for the
+    // clicks — the window on a LEFT click, the menu on a RIGHT one. Acting on the release, as a button does.
+    #[cfg(windows)]
+    let builder = TrayIconBuilder::with_id(TRAY_ID)
+        .icon(Image::from_bytes(WINDOWS_TRAY_ICON)?)
+        .show_menu_on_left_click(false)
+        .on_tray_icon_event(|tray, event| {
+            if let tauri::tray::TrayIconEvent::Click {
+                button: tauri::tray::MouseButton::Left,
+                button_state: tauri::tray::MouseButtonState::Up,
+                ..
+            } = event
+            {
+                show_main_window(tray.app_handle());
+            }
+        });
+    builder
         .tooltip("rexenv")
         .menu(&menu)
         .on_menu_event(|app, event| on_tray_click(app, event.id().as_ref()))
@@ -2401,6 +2424,35 @@ mod tests {
         assert!(release < kickstart, "release the port BEFORE asking the agent to take it");
         assert!(kickstart < probe, "kickstart BEFORE probing, or the probe measures the wait");
         assert!(probe < rebind, "rebind only AFTER the probe says the agent did not take it");
+    }
+
+    /// Ledger #624 — **the Windows tray opens the window on a LEFT click and the menu on a RIGHT one, with the
+    /// colour icon** (owner's ruling Q2, W7 S5). TEXT, not behaviour (the #175 bound): the clicks themselves are
+    /// the owner's run on the Dell. What it catches is a refactor that drops the Windows branch or its
+    /// left-click handler — silently giving Windows macOS's menu-on-any-click and a template glyph that is a
+    /// black mark on a dark taskbar.
+    #[test]
+    fn the_windows_tray_opens_the_window_on_a_left_click_with_the_colour_icon() {
+        let src = crate::core::copy_scan::production_source(include_str!("lib.rs"));
+        let start = src.find("fn install_tray").expect("the tray install exists");
+        let body = &src[start..];
+        let end = body.find("\nfn ").map(|i| i + 1).unwrap_or(body.len());
+        let body = &body[..end];
+        assert!(body.contains("TrayIconBuilder"), "sliced the wrong function");
+        let windows = &body[body.find("#[cfg(windows)]").expect("install_tray has no Windows branch")..];
+        assert!(
+            windows.contains("WINDOWS_TRAY_ICON") && !windows.contains("icon_as_template"),
+            "the Windows tray must use the colour icon, not macOS's template glyph"
+        );
+        assert!(windows.contains(".show_menu_on_left_click(false)"), "a left click must not open the menu on Windows");
+        assert!(
+            windows.contains("MouseButton::Left") && windows.contains("MouseButtonState::Up") && windows.contains("show_main_window"),
+            "a left click must bring the window back on Windows"
+        );
+        assert!(
+            src.contains(r#"const WINDOWS_TRAY_ICON: &[u8] = include_bytes!("../icons/32x32.png");"#),
+            "the Windows tray icon is the colour app icon"
+        );
     }
 
     /// **Cmd+Q passes through the quit gate.** The predefined Quit item is
