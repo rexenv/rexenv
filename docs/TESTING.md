@@ -1432,6 +1432,18 @@ bloating the fast path:
   could not be told from the screen; no result file may be left. Cancel and No return one wording, so the
   check cannot tell them apart, nor prove UAC was on screen for the No. The
   example is its own elevated step (`platform::run_elevated_step`), as `main.rs` is.
+  W6's done-when (S5) is the REAL app, not an example: `cargo xwin build --bin rexenv --features
+  tauri/custom-protocol` (without the feature a debug build loads `devUrl`, not the embedded `dist`; the
+  `rex` sidecar staged as a placeholder as `windows-example.sh` does), the exe copied to a stable folder —
+  the agent task points at it — and opened by the owner in the desktop session. Between the owner's steps
+  `scripts/probes/windows-dns-s5.ps1` reads, and changes nothing: the app and agent processes, the
+  127.0.0.1:53 holder, the task, every NRPT rule, a `.rex` name through Windows' resolver and at
+  127.0.0.1, the build identity, the rexenv CA, and the DNS lines of `rexenv.log`, `health.log` and
+  `dns-agent.log`. Copy it and run it with `-File`: as `-EncodedCommand` it is past the Windows command-line
+  limit and nothing runs, with no error over SSH. The watchdog leg kills the agent a few seconds after a
+  minute tick so the trigger cannot be what brings it back; the handoff leg ends the app and keeps killing
+  the agent until the relaunched app appears, so the app really starts in-process. `dns_status` is read off
+  Settings by the person at the screen — nothing outside the app can call it until W8.
 
 A gate nobody can afford to run stops being one: the fast bar stays fast, and nothing
 above it is required per-commit. The metric the gate serves is the ledger tally, which

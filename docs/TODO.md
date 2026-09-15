@@ -339,7 +339,13 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     Warning" naming "rexenv Local CA" and its SHA-1 thumbprint, and "Root Certificate Store" — "Do you
     want to DELETE the following certificate from the Root Store?". **The three browsers — done the same
     evening** (above, ✓)
-  - [ ] W6 — DNS agent + NRPT + UAC + logon task → `*.rex` resolves after reboot, app closed
+  - [x] W6 — DNS agent + NRPT + UAC + logon task → `*.rex` resolves after reboot, app closed
+    ✓ **Done 15 Sep 2026 (S5, plan §5 W6):** the real `rexenv.exe` on the Dell — launch installed the task
+    and ran in Agent mode; Onboarding's setup made the `.rex` rule ours through UAC and trusted the CA;
+    the watchdog kickstarted a killed agent in 6 s; a relaunch with the agent held down served :53
+    in-process and handed it back in 21 s; Settings' DNS card read "agent"; rebooted with the app closed,
+    `.rex` resolved through Windows' own resolver after logon with no app process
+    (`scripts/probes/windows-dns-s5.ps1`; ledger #615/#616/#619 residuals updated)
     **Design ruled 14 Sep 2026** (plan §5 W6: R1 a neutral resolver-route trait, R2 rexenv explains then
     UAC elevates `rexenv.exe`, R3 a foreign `.rex` NRPT rule is taken over backup-first as on macOS, R4
     UDP only). **S1 done the same day (ledger #615):** the resolver's port and socket come from the
@@ -378,10 +384,16 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     `nrpt-install test`, never PowerShell). The ops path measured over SSH (`windows_nrpt_route_check`
     PASS, 21 checks, through the step's own body); in the desktop session with the owner answering
     `windows_uac_step_check` PASS (10 checks): non-op refused with no window, install and remove OK+Yes,
-    Cancel and OK+No → the cancel wording with nothing changed. Next: S5
+    Cancel and OK+No → the cancel wording with nothing changed. **S5 done the same day** (above)
   - [ ] W7 — ShellRunner, autostart, tray (includes the Windows half of the browser-stub row)
   - [ ] W8 — `rex` CLI + MCP over named pipes; `rex.exe` on PATH
   - [ ] W9 — frontend on WebView2 (Windows paths, Ctrl shortcuts, fonts)
+    **macOS words on the Windows screens** (seen in the real app on the Dell, W6 S5, 15 Sep 2026): Settings
+    "trusted · login keychain" and "Local CA re-trusted in your login keychain." (`Settings.tsx:945`, `:856`),
+    "Reinstall rexenv's certificate authority in your system keychain." (`:1012`), "asks for your password
+    once" (`:1294` — Windows asks rexenv's dialog then UAC), "sign in to your Mac (a macOS login item)"
+    (`:1354`); SiteDetail "register it with macOS" (`SiteDetail.tsx:1544`); Onboarding "to your Mac"
+    (`Onboarding.tsx:342`). The words should come from the platform, as `route_label` does for the route
   - [ ] W10 — Redis/Apache/Xdebug/MariaDB (per D4) refused in core with an honest message
   - [ ] W11 — NSIS installer, Authenticode (if D5 rules it in), Windows release job, updater, winget
   - [ ] W12 — launch gates: verify on the Windows runner, SMOKE-TEST + INSTALL Windows

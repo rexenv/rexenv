@@ -1151,6 +1151,25 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
     Windows' resolver with no `-Server`, and teardown leaves no rule.
   - **S5 — done-when.** First-run setup, watchdog, handoff and `dns_status` on Windows end to end; the Dell
     rebooted with the app closed resolves `*.rex`.
+    **S5 done 15 Sep 2026 — W6 is done.** Measured with the REAL app, not an example (owner's ruling the same
+    day): `rexenv.exe` cross-built with `--features tauri/custom-protocol` (the embedded `dist`; the `rex`
+    sidecar a placeholder, as `windows-example.sh` stages it), copied to a stable folder on the Dell,
+    opened by the owner in the desktop session; `scripts/probes/windows-dns-s5.ps1` read the machine over
+    SSH between steps (read only). From a clean baseline (no task, rule, CA, logs; ICS on `0.0.0.0:53`):
+    **launch** → the task registered without elevation and the app in Agent mode ("resolver agent serving
+    on udp 53"), the agent naming this build; **Onboarding's setup**, the owner answering rexenv's dialog,
+    UAC and the certificate warning → the `.rex` NRPT rule ours through the real `--elevated-step`, the CA in
+    CurrentUser Root, `s5probe.rex` → 127.0.0.1 through Windows' own resolver; **watchdog** — the agent
+    killed just after a minute tick, the app's watchdog kickstarted it 6 s later (`health.log`), answering
+    at 8.4 s, before the next tick could; **handoff** — the app ended, its agent held down (the minute tick
+    started it 8 times while the owner relaunched), the relaunched app served :53 in-process from 3.2 s and
+    handed it back to a new agent at 23.2 s ("attempt 1"), answering throughout at 0.7 s sampling;
+    **`dns_status`** — Settings' DNS card read "*.rex → 127.0.0.1 · agent … resolves even when rexenv is
+    closed" and the CA trusted (the owner's screenshot); **reboot** with the app closed → after logon the
+    agent up at 13:37:16, :53 its own, `.rex` resolving, no app process. Found on the way: the probe first
+    ran as `-EncodedCommand` and nothing ran, silently — past the command-line limit; the Windows screens
+    still say "login keychain", "your Mac" and "password" (W9's row). Not measured: sleep/resume, a
+    fast-user switch, teardown from the app on Windows, a second Windows account, Windows 11.
   *Rulings asked:* **R1** the resolver trait — a neutral "resolver route" shape the core uses without
   assuming files (macOS behaviour and bytes unchanged), or the file-shaped trait kept with NRPT rules
   mapped to pseudo-paths; **R2** the UAC prompt — rexenv explains the change in its own window first and
