@@ -1430,6 +1430,13 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   so that wait cannot end the process between the two. Found while designing: `rex mcp` told a person whose app
   was open with MCP off that rexenv "isn't running" — on macOS too; it now asks the CLI endpoint and says the
   endpoint is off. The pipe `Stream` lost its `shutdown`, now unused.
+  **S2 and S3 measured on the Dell, 15 Sep 2026** (the app from `83f9ebe`; ledgers #631, #632): from the elevated
+  SSH token and the desktop session's Medium token, `rex status`, `rex site list` (plain and `--json`),
+  `rex version` and `rex open` answered from the running app. MCP off by default → `rex mcp` "endpoint is off",
+  exit 2; on → `initialize` and `tools/list` (50 tools) answered and the bridge ended by itself ~120 ms after
+  stdin closed; a held session was dropped when the owner turned the toggle off, and a new `rex mcp` said the
+  endpoint is off. The check's pipe listing (`GetFiles` on `\\.\pipe\`) did not show the MCP pipe even while it
+  served, so "the name is gone" rests on the refused connect. Not run: a streaming command (both make a site).
   *Done when, measured:* after Install, a PowerShell opened from the Start menu runs `rex status`,
   `rex site list` and a streaming command against the running app; `rex mcp` answers `initialize` and
   `tools/list` with the toggle on and says rexenv's endpoint is off with it off; with the app quit, `rex`

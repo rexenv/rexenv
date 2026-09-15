@@ -437,12 +437,18 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     **S2 done the same day (ledger #631), L0:** the unix socket and the lock pipe hand every connection to one
     exchange (`cli_server::serve_connection`), so the pipe serves every `rex` command; W7's app.open-only rule
     is gone. Plants 4/4 — the first run of the client-gone plant PASSED (the test's command finished before
-    the write that found its client gone), and the test now keeps working past it. **The Dell run is next:**
-    the build is staged there, waiting for the app to be quit.
+    the write that found its client gone), and the test now keeps working past it. **Measured on the Dell the same day** (the app from `83f9ebe`,
+    both tokens): `rex status`, `rex site list` (plain and `--json`), `rex version` and `rex open` answered from
+    the running app; a name nothing serves gave exit 2. Not run there: a streaming command (both make a site).
     **S3 done the same day (ledger #632), L0:** on Windows the MCP endpoint is its own owner-only pipe, created
     synchronously before the toggle reads on and gone when it goes off; `rex mcp` dials it, says "endpoint is
     off" (not "isn't running") when the app answers but MCP is off — on macOS too — and at end of input waits
-    for its answers, since a pipe cannot be half-closed. Plants 10/10. Not yet run on the Dell
+    for its answers, since a pipe cannot be half-closed. Plants 10/10. **Measured on the Dell the same day:** off by
+    default → "endpoint is off", exit 2; toggled on → `initialize` and `tools/list` (50 tools) answered from both
+    tokens and the bridge ended by itself ~120 ms after stdin closed; a session held open was dropped when the
+    owner turned the toggle off, and a new `rex mcp` then said the endpoint is off. **Left in W8:** S4 (the
+    `rex.exe` sidecar), S5 (the Settings install onto the user's `Path`), S6 (the done-when from a new
+    PowerShell)
   - [ ] W9 — frontend on WebView2 (Windows paths, Ctrl shortcuts, fonts)
     **macOS words on the Windows screens** (seen in the real app on the Dell, W6 S5, 15 Sep 2026): Settings
     "trusted · login keychain" and "Local CA re-trusted in your login keychain." (`Settings.tsx:945`, `:856`),
