@@ -1180,6 +1180,83 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
 - **W7 — Desktop integration.** `ShellRunner` (open/reveal, editors, browsers — closes
   the Windows half of the browser-stub row in TODO — terminals, `git_preflight` naming
   Git for Windows), `AutostartManager` (HKCU Run key), tray and close-to-tray behaviour.
+  **W7 design — proposed and RULED 15 Sep 2026.**
+  *Where Windows stands* (read from the tree the same day): nothing panics, but most of the desktop fails
+  when used. `ShellRunner::open` is `Unported`, and it backs 19 UI call sites (every site link, "Open
+  folder", Adminer, Mail, magic login, and the fallback when no editor is found); `reveal` backs 8 "Show in
+  Finder" actions; `detect_editors`/`detect_browsers`/`detect_terminals` are the trait's empty defaults,
+  so "Open in editor" says no editor was found and falls back to the failing `open`, the browser chevron
+  shows nothing and the terminal chevron is hidden; `AutostartManager` is `Unported`, so Settings' "Open
+  rexenv at login" reads off without saying why and the launch `refresh` is skipped; `git_preflight` is the
+  default OK and the missing-git hint names `xcode-select`; `symlink_dir`/`remove_symlink` are
+  `Unsupported`, so "Link folder" and deleting a linked plugin fail. `symlink_file` stays unsupported —
+  the Windows CLI install is a PATH entry (W8). `run` has no callers. **The single-instance lock is
+  `#[cfg(unix)]`** (`cli_server::claim_at_startup`, the CLI socket is the lock): on Windows a second
+  double-click boots a second full app — a second SQLite writer, a second watchdog, adoption racing the
+  first. The tray already installs on every OS, but with macOS's template glyph (`icon_as_template`) and a
+  menu on any click. The macOS catalogs (10 editors, 16 browsers, 7 terminals) are private to `MacosShell`
+  and detect `<Name>.app` folders; the frontend has no hardcoded ids (icons from `icon`, lucide fallbacks),
+  but its words are macOS's ("Show in Finder", "sign in to your Mac", the `xcode-select` hint).
+  *The Dell, inventoried read-only the same day:* editors VS Code (per-user install, `code.cmd` on PATH) and
+  PhpStorm 2025.1.1 (uninstall entries: `InstallLocation`, `DisplayIcon`); browsers Chrome, Firefox, Edge,
+  Brave (App Paths + `StartMenuInternet`), Opera (App Paths, empty), Maxthon and Internet Explorer
+  (`StartMenuInternet`); the default `http`/`https` handler `ChromeHTML` (`UrlAssociations\…\UserChoice`);
+  no Windows Terminal, no PowerShell 7; Git for Windows at `C:\Program Files\Git`; Developer Mode off (so a
+  symbolic link needs elevation — junctions); the HKCU Run key already starts Slack and Edge.
+  *Rulings (owner, 15 Sep 2026):* **Q1** the single-instance lock is built IN W7 as a named pipe (D3's
+  transport, current-user ACL) that understands only `app.open` — a second launch connects, brings the
+  first window to the front and exits; W8 grows the same pipe into the CLI and MCP. **Q2** the tray opens
+  the window on a LEFT click and the menu on a RIGHT click (the Windows convention), with the colour app
+  icon — the template glyph is macOS's; macOS unchanged. **Q3** the words a feature shows come from the
+  platform ("Show in Explorer" / "Show in Finder", "when you sign in to Windows", the Git for Windows hint),
+  as `route_label` already does for the DNS route, and change with each W7 feature; Onboarding's and the
+  keychain's words stay W9's row.
+  *Measure first on the Dell, before building on it:* (a) the named pipe as a lock — the first server made
+  with `FILE_FLAG_FIRST_PIPE_INSTANCE` and a current-user DACL, a second process's create refused, its
+  connect succeeding, and another account's connect refused; (b) Tauri 2's tray on Windows 10 — a left
+  click reaching `on_tray_icon_event` with the menu off for it, the menu on a right click, the colour icon
+  on a light and a dark taskbar; (c) the Run-key launch context — the app started by Explorer at logon with
+  `--hidden`: whether `CREATE_BREAKAWAY_FROM_JOB` is allowed there (D1's launch contexts: Explorer and Start
+  still unmeasured; a scheduled task was measured to refuse it); (d) a directory junction made by the
+  desktop user without elevation, what `symlink_metadata().file_type().is_symlink()` says of it, and that
+  removing the link leaves the target's files; (e) `ShellExecuteW` "open" on a folder and a URL, and
+  `explorer.exe /select,` versus `SHOpenFolderAndSelectItems` for reveal, from the desktop token.
+  *Steps, each its own commit with its proof:*
+  - **S1 — single instance (Q1).** The lock is the pipe: its name derived from the app-data directory (one
+    rexenv per app-data directory, as on macOS), created first-instance-only with a current-user DACL
+    before Tauri boots; a refused create means another instance runs, so the launch connects, sends
+    `app.open` and exits; a pipe it cannot interpret starts the app (refusing to launch is the worse
+    failure). L0 the name and the decision; L1 on the Dell: two double-clicks → one process, the window in
+    front.
+  - **S2 — `open` and `reveal`.** `ShellExecuteW` for a path or an `http(s)` URL; reveal selects the item in
+    Explorer. L1: a folder, a file and a URL opened from the desktop token.
+  - **S3 — editors, browsers, terminals.** A Windows catalog behind the same trait shapes, detected from App
+    Paths, uninstall entries and `StartMenuInternet` (never a guessed path alone), the default browser from
+    the `UserChoice` ProgId; opening runs the detected executable with the folder or URL as one argument,
+    browsers `http(s)` only and their private flags (`--incognito`, `-private-window`, `--inprivate`);
+    terminals Windows Terminal (`wt -d`) when present, PowerShell 7, Windows PowerShell and Git Bash at the
+    folder. Icons may start as `None` (the lucide fallbacks). L0 the registry parsers on the Dell's shapes;
+    L1 on the Dell: VS Code and PhpStorm open a site, the chevron lists the browsers with Chrome as default.
+  - **S4 — autostart.** The HKCU Run value `rexenv` = `"<exe>" --hidden`; `is_enabled` reads it;
+    `refresh` rewrites only a changed value and never re-points it at a dev build (the macOS rule). L0 the
+    value; L1 a real sign-out/sign-in: rexenv in the tray, window hidden, services started (the breakaway
+    measurement), and `login_launch_needs_window` still showing the window when setup is incomplete.
+  - **S5 — the tray (Q2).** Colour icon and the left/right split on Windows; close keeps hiding the window
+    (already on every OS), so the tray and S1's second launch are the ways back. L1 with the owner.
+  - **S6 — linked folders as junctions.** `symlink_dir` makes a junction; `remove_symlink` recognises a
+    junction and removes only the link; the delete guard that must never walk into a linked checkout
+    (`core/repo.rs`, `is_symlink`) is held to a junction with its own ledger row and plant — its blast
+    radius is the user's real code. L0 + L1 on the Dell: link a checkout, delete the linked plugin, the
+    checkout's files all still there.
+  - **S7 — git and the words (Q3).** `git_preflight` finds `git.exe` on the login environment's PATH and
+    names Git for Windows when it is missing; the platform's words for reveal, the login item and the git
+    hint reach the frontend through one read, replacing the macOS strings in those features.
+  *Done when* (the Dell, the owner at the desktop): "Open rexenv at login" on, then sign out and in —
+  rexenv in the tray with its services up, a left click opens the window; a second double-click leaves one
+  process with its window in front; "Open folder" and "Show in Explorer" land in Explorer; "Open in editor"
+  opens a site in VS Code and PhpStorm; the browser chevron lists the installed browsers with Chrome as
+  the default and opens a site in each; "Open in terminal" opens PowerShell at the site folder; a linked
+  plugin deleted leaves its checkout intact; a git clone runs through Git for Windows.
 - **W8 — `rex` CLI + MCP on Windows.** Over D3's transport; `rex.exe` sidecar on the
   user PATH. *Done when:* `rex` commands from a new PowerShell reach the running app.
 - **W9 — Frontend on WebView2.** Windows paths (`C:\…`) in inputs and display,

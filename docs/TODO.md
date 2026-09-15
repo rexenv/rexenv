@@ -386,6 +386,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     `windows_uac_step_check` PASS (10 checks): non-op refused with no window, install and remove OK+Yes,
     Cancel and OK+No → the cancel wording with nothing changed. **S5 done the same day** (above)
   - [ ] W7 — ShellRunner, autostart, tray (includes the Windows half of the browser-stub row)
+    **Design ruled 15 Sep 2026** (plan §5 W7): a named-pipe single-instance lock in W7 that knows only
+    `app.open` (W8 grows the same pipe into the CLI); the tray opens the window on a left click and the menu
+    on a right click, with the colour app icon; the words a feature shows ("Show in Explorer", "when you
+    sign in to Windows") come from the platform. Measure first on the Dell, then S1–S7 as the plan lists
   - [ ] W8 — `rex` CLI + MCP over named pipes; `rex.exe` on PATH
   - [ ] W9 — frontend on WebView2 (Windows paths, Ctrl shortcuts, fonts)
     **macOS words on the Windows screens** (seen in the real app on the Dell, W6 S5, 15 Sep 2026): Settings
