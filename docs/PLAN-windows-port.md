@@ -1437,6 +1437,17 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   stdin closed; a held session was dropped when the owner turned the toggle off, and a new `rex mcp` said the
   endpoint is off. The check's pipe listing (`GetFiles` on `\\.\pipe\`) did not show the MCP pipe even while it
   served, so "the name is gone" rests on the refused connect. Not run: a streaming command (both make a site).
+  **Measured for S5, 15 Sep 2026, on the Dell** (the owner agreed to the Path change; both restored):
+  **(f)** from the DESKTOP session (Medium token, session 3 — a broadcast from the SSH session would not reach
+  Explorer), a folder appended to the user's `Path` and `WM_SETTINGCHANGE("Environment")` sent with
+  `SendMessageTimeout` (returned 1): a PowerShell then opened from the Start menu found a `.cmd` in that folder
+  ("found on PATH", the owner). The Dell's user `Path` is **`REG_SZ`**, not `REG_EXPAND_SZ` (595 characters) —
+  so an install must write the value back in the kind it found; the probe's restore wrote the exact data and
+  kind back (verified) and removed its folder. **(g)** a running program's file (a copy of `ping.exe` named
+  `rex.exe`, standing in for a `rex mcp` bridge an agent keeps open): copying over it FAILS ("being used by
+  another process") and so does deleting it, but RENAMING it to `rex.exe.old` works, a new `rex.exe` can then
+  be copied in, and `rex.exe.old` can be deleted only once the process has exited — so S5's install and launch
+  refresh rename the old copy aside, copy, and sweep a leftover `.old` later.
   *Done when, measured:* after Install, a PowerShell opened from the Start menu runs `rex status`,
   `rex site list` and a streaming command against the running app; `rex mcp` answers `initialize` and
   `tools/list` with the toggle on and says rexenv's endpoint is off with it off; with the app quit, `rex`
