@@ -31,6 +31,8 @@ mod elevation_rules;
 mod firefox_root;
 mod handles;
 mod ipc_rules;
+mod junction;
+mod junction_rules;
 mod login_env;
 mod logon_task;
 mod nrpt_rules;
@@ -578,6 +580,17 @@ impl ShellRunner for WindowsShell {
             .find(|f| f.id == terminal_id)
             .ok_or_else(|| Error::Other(format!("the terminal `{terminal_id}` is not installed")))?;
         start(app_catalog::terminal_launch(&found, path))
+    }
+
+    /// A directory JUNCTION, not a symbolic link: any user may make one, while a directory symlink needs
+    /// Developer Mode or a privilege (refused with 1314 on the Dell — measured) (`junction.rs`, ledger #625).
+    fn symlink_dir(&self, target: &Path, link: &Path) -> Result<()> {
+        junction::create(target, link)
+    }
+
+    /// Only a link — a junction or a symbolic link — and only the link itself (`junction.rs`, ledger #625).
+    fn remove_symlink(&self, link: &Path) -> Result<()> {
+        junction::remove(link)
     }
 }
 

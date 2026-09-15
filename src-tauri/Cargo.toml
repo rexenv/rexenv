@@ -140,6 +140,9 @@ windows-sys = { version = "0.61", features = [
     # The single-instance lock (W7 S1, plan §5 W7 ruling Q1): a named pipe created first-instance-only
     # with a current-user DACL — CreateNamedPipeW / ConnectNamedPipe. Same crate, more bindings.
     "Win32_System_Pipes",
+    # Linked folders as junctions (W7 S6, platform/windows/junction.rs, ledger #625): FSCTL_SET_REPARSE_POINT,
+    # sent with DeviceIoControl (already under System_IO). Same crate, more bindings.
+    "Win32_System_Ioctl",
 ] }
 
 # Target-gated like the [dependencies] copies: objc2 is a compile_error! on any

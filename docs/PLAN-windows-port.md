@@ -1317,6 +1317,14 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
     (`core/repo.rs`, `is_symlink`) is held to a junction with its own ledger row and plant — its blast
     radius is the user's real code. L0 + L1 on the Dell: link a checkout, delete the linked plugin, the
     checkout's files all still there.
+    **S6 done 15 Sep 2026 (ledger #625).** `windows/junction_rules.rs` (the target rule — local drive paths
+    only, a share refused by name — and the mount-point reparse data; plants 3/3) and `windows/junction.rs`
+    (`FSCTL_SET_REPARSE_POINT` on a folder it creates and removes again on failure; the link-only removal with
+    `remove_dir`). Dell `windows_junction_check` PASS (12 checks, the desktop user's token): a checkout linked
+    and written through, the delete guard seeing the junction as a link, a real folder refused by
+    `remove_symlink`, the link removed with every checkout file intact. On the way: the first share plant
+    PASSED (the drive check refused shares too, in the wrong words), and a later run of it hit a full disk and
+    left the source planted until it was found and restored byte-identical — plant runs now get a `df` first.
   - **S7 — git and the words (Q3).** `git_preflight` finds `git.exe` on the login environment's PATH and
     names Git for Windows when it is missing; the platform's words for reveal, the login item and the git
     hint reach the frontend through one read, replacing the macOS strings in those features.

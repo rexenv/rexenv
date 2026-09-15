@@ -1478,6 +1478,14 @@ bloating the fast path:
   new session, `rexenv.exe --hidden` whose parent is `explorer.exe`, "launched at login" in the log); starts
   Mailpit from that app (its parent is the app); quits rexenv from the tray — and Mailpit still running with
   its parent gone is the breakaway measurement for a Run-key launch.
+  `windows_junction_check` (#625, W7 S6) is linked folders through the real platform in the desktop session
+  (`windows-junction.ps1` through `windows-limited-token.sh` — the desktop user's token, no Developer Mode, the
+  account "Link folder" runs as). In a `%TEMP%` fixture holding a checkout and a site's `wp-content\plugins`
+  with one real plugin folder, it holds `validate_link_target` to Windows' canonical paths, links the checkout,
+  writes through the link, runs `core::repo::partition_symlink_deletes` over the junction and the real folder,
+  refuses a second link and a share, and removes the link with `remove_symlink` — then checks every checkout
+  file. Any link is removed with `remove_dir` before the fixture. Plants on the Mac get a `df` first: a plant
+  that cannot write its restore leaves the source planted (it happened once, 15 Sep 2026).
   W6's done-when (S5) is the REAL app, not an example: `cargo xwin build --bin rexenv --features
   tauri/custom-protocol` (without the feature a debug build loads `devUrl`, not the embedded `dist`; the
   `rex` sidecar staged as a placeholder as `windows-example.sh` does), the exe copied to a stable folder —

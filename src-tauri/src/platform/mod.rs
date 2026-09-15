@@ -119,6 +119,11 @@ mod windows_app_catalog;
 #[allow(dead_code)]
 #[path = "windows/autostart_rules.rs"]
 mod windows_autostart_rules;
+// And what a linked folder's junction may point at, and its reparse data (ledger #625).
+#[cfg(all(test, not(target_os = "windows")))]
+#[allow(dead_code)]
+#[path = "windows/junction_rules.rs"]
+mod windows_junction_rules;
 // And NRPT ownership and its PowerShell (ledger #618).
 #[cfg(all(test, not(target_os = "windows")))]
 #[allow(dead_code)]

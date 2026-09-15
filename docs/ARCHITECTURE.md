@@ -2657,6 +2657,12 @@ IPC surface — which is how a reader ends up designing against a system with on
     provenance — covers never-adopted manual links): symlinks are removed
     via `ShellRunner::remove_symlink` (which itself refuses non-symlinks),
     everything else goes to wp-cli; the active theme's link is refused.
+    **On Windows the link is a directory JUNCTION** (`WindowsShell::symlink_dir` over `platform/windows/
+    junction.rs` + `junction_rules.rs`, W7 S6, ledger #625): a directory symbolic link needs Developer Mode
+    or a privilege (refused with 1314 on the Dell — measured), a junction any user may make. The guard above
+    still holds because `symlink_metadata(..).file_type().is_symlink()` is TRUE for a junction (measured), and
+    `remove_symlink` removes one with `remove_dir` — which leaves the target's files, where `remove_file` is
+    refused (measured). A junction points only at a local drive path; a network share is refused by name.
     Delete confirms are status-driven (`loss_warning`: exact changed/
     untracked/unpushed counts; linked = calm "removes only the link").
     Watchers (`RepoWatches`) are session processes: process-grouped, die

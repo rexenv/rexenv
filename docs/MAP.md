@@ -54,7 +54,10 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
   `windows/autostart.rs` (the per-user Run value and Task Manager's `StartupApproved` value) and
   `windows/autostart_rules.rs` (the value, Task Manager's disable, a dev build, the refresh decision — tested on
   every host) (ledger #623); the Windows tray — `lib.rs` `install_tray`'s `cfg(windows)` branch
-  (`WINDOWS_TRAY_ICON`, a left click → `show_main_window`, the menu on a right click) (ledger #624); nginx's Windows shape — `services::nginx_path`,
+  (`WINDOWS_TRAY_ICON`, a left click → `show_main_window`, the menu on a right click) (ledger #624); linked
+  folders — `WindowsShell::symlink_dir` / `remove_symlink` over `windows/junction.rs` (a junction through
+  `FSCTL_SET_REPARSE_POINT`, the link-only removal) and `windows/junction_rules.rs` (the target rule, the
+  reparse data — tested on every host) (ledger #625); nginx's Windows shape — `services::nginx_path`,
   `binaries::resolve_program`, the master climb and nginx's events (ledger #602);
   `linux/` is `todo!()`).
 - `state/` = SQLite migrations + the store layer; only `state/` writes SQL.

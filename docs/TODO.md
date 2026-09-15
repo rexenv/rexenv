@@ -406,8 +406,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     (9 checks). **S4's sign-in and S5 done the same day (ledgers #623, #624)**, with the real app: the Settings
     toggle wrote the Run value; after a sign-out and sign-in Explorer started `rexenv.exe --hidden`, no window;
     Mailpit started from it outlived the app's quit (breakaway allowed from Explorer's launch); the tray gave
-    the window back on a left click and opened its menu on a right click. Next: S6 (linked folders as
-    junctions)
+    the window back on a left click and opened its menu on a right click. **S6 done the same day (ledger
+    #625):** "Link folder" makes a junction (no Developer Mode needed), the delete guard sees it, and
+    `remove_symlink` takes only the link; Dell `windows_junction_check` PASS (12 checks). Next: S7 (git and
+    the platform's words)
   - [ ] W8 — `rex` CLI + MCP over named pipes; `rex.exe` on PATH
   - [ ] W9 — frontend on WebView2 (Windows paths, Ctrl shortcuts, fonts)
     **macOS words on the Windows screens** (seen in the real app on the Dell, W6 S5, 15 Sep 2026): Settings
