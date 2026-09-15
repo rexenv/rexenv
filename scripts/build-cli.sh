@@ -23,9 +23,16 @@ case "$(uname -s)" in
       src-tauri/binaries/rex-x86_64-apple-darwin
     echo "build-cli: staged rex sidecars (aarch64, x86_64, universal)"
     ;;
+  MINGW*|MSYS*|CYGWIN*)
+    # Windows (Git Bash on a Windows build host, W8 S4, ledger #633): the x64 sidecar, named for its target
+    # triple so Tauri bundles it beside rexenv.exe as rex.exe — the name `core::cli::bundled_rex` looks for.
+    cargo build --manifest-path cli/Cargo.toml --release --target x86_64-pc-windows-msvc
+    cp cli/target/x86_64-pc-windows-msvc/release/rex.exe src-tauri/binaries/rex-x86_64-pc-windows-msvc.exe
+    echo "build-cli: staged rex sidecar (x86_64-pc-windows-msvc)"
+    ;;
   *)
-    # Phase 4: Windows/Linux staging lands with their platform impls.
-    echo "build-cli: only macOS staging is implemented" >&2
+    # Linux staging lands with its platform impls.
+    echo "build-cli: only macOS and Windows staging are implemented" >&2
     exit 1
     ;;
 esac

@@ -14,6 +14,13 @@ use crate::platform::traits::Platform;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
+/// The sidecar's file name on an OS whose executables carry `exe_suffix` — `rex` on macOS, `rex.exe` on
+/// Windows (W8 S4, ledger #633). Tauri bundles `binaries/rex-<target triple><suffix>` next to the app under
+/// this name.
+pub fn sidecar_file_name(exe_suffix: &str) -> String {
+    format!("rex{exe_suffix}")
+}
+
 /// The bundled `rex` sidecar next to the running app binary. Errors when it
 /// was never staged (bare `cargo run` without `scripts/build-cli.sh`).
 pub fn bundled_rex() -> Result<PathBuf> {
@@ -21,7 +28,7 @@ pub fn bundled_rex() -> Result<PathBuf> {
     let rex = exe
         .parent()
         .ok_or_else(|| Error::Other("app binary has no parent directory".into()))?
-        .join("rex");
+        .join(sidecar_file_name(std::env::consts::EXE_SUFFIX));
     if rex.is_file() {
         Ok(rex)
     } else {
@@ -129,7 +136,8 @@ pub fn remove_symlink_best_effort(platform: &dyn Platform) {
     let Ok(link) = platform.paths().cli_symlink_path() else { return };
     let Ok(target) = std::fs::read_link(&link) else { return };
     let ours_current = bundled_rex().is_ok_and(|b| b == target);
-    let dangling_rex = target.file_name().is_some_and(|n| n == "rex") && !target.exists();
+    let sidecar = sidecar_file_name(std::env::consts::EXE_SUFFIX);
+    let dangling_rex = target.file_name().is_some_and(|n| n == std::ffi::OsStr::new(&sidecar)) && !target.exists();
     if ours_current || dangling_rex {
         let _ = std::fs::remove_file(&link);
     }
@@ -232,6 +240,22 @@ mod tests {
         try_symlink_unprivileged(&*crate::platform::current(), &bundled, &link).unwrap();
         let s = status_from(&link, Some(bundled));
         assert!(s.installed && s.current, "current link: {s:?}");
+    }
+
+    /// Ledger #633 — the sidecar is looked for under this OS's executable name: `rex.exe` beside `rexenv.exe` on
+    /// Windows, where a bare `rex` never exists, the card would stay hidden and nothing could be installed.
+    #[test]
+    fn the_sidecar_is_looked_for_under_this_oss_executable_name() {
+        assert_eq!(sidecar_file_name(""), "rex");
+        assert_eq!(sidecar_file_name(".exe"), "rex.exe");
+        let src = include_str!("cli.rs");
+        let prod = src.split("\n#[cfg(test)]").next().unwrap_or(src);
+        assert!(!prod.contains(".join(\"rex\")"), "a path is joined with a bare `rex` again");
+        assert_eq!(
+            prod.matches("sidecar_file_name(std::env::consts::EXE_SUFFIX)").count(),
+            2,
+            "bundled_rex and the teardown's dangling check both ask for this OS's name"
+        );
     }
 
     #[test]

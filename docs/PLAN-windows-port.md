@@ -1437,6 +1437,11 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   stdin closed; a held session was dropped when the owner turned the toggle off, and a new `rex mcp` said the
   endpoint is off. The check's pipe listing (`GetFiles` on `\\.\pipe\`) did not show the MCP pipe even while it
   served, so "the name is gone" rests on the refused connect. Not run: a streaming command (both make a site).
+  **S4 done 15 Sep 2026 (ledger #633), L0.** `core::cli::sidecar_file_name(EXE_SUFFIX)` is the one spelling of
+  the sidecar's name — `bundled_rex` looked for a bare `rex`, which never exists on Windows — and
+  `scripts/build-cli.sh` gained a Git Bash arm that builds `rex.exe` and stages it as
+  `binaries/rex-x86_64-pc-windows-msvc.exe`. Not run: that arm (no Windows build host yet; the Dell's `rex.exe`
+  is cross-built with cargo-xwin). The card itself stays hidden on Windows until S5 gives it an install shape.
   **Measured for S5, 15 Sep 2026, on the Dell** (the owner agreed to the Path change; both restored):
   **(f)** from the DESKTOP session (Medium token, session 3 — a broadcast from the SSH session would not reach
   Explorer), a folder appended to the user's `Path` and `WM_SETTINGCHANGE("Environment")` sent with

@@ -1627,6 +1627,11 @@ words (the browser shell's mock and two dev review pages excepted).
   (`Paths::cli_symlink_path`; unprivileged attempt first, one admin prompt
   fallback) from the Settings "Command-line tool" card; teardown removes the
   link only when it is ours (content-checked).
+  **On Windows the sidecar is `rex.exe` beside `rexenv.exe`** (W8 S4, ledger #633):
+  `scripts/build-cli.sh` stages `binaries/rex-x86_64-pc-windows-msvc.exe` on a Windows
+  host, and `core::cli::bundled_rex` looks for `sidecar_file_name(EXE_SUFFIX)` — a bare
+  `rex` never exists there, and the card would have stayed hidden. The Windows install
+  is not a link: a copy on the user's `Path` (plan §5 W8 rulings Q3, Q4; S5).
 - **App not running → hard error, exit 2** ("open the app first"). Deliberate: a
   headless CLI-spawned backend would be a second ServiceManager/SQLite writer/
   watchdog racing the GUI — the exact second-brain class the stack guard exists to

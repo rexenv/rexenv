@@ -77,9 +77,10 @@ export PATH="$LLVM_BIN:$LLD_BIN:$PATH"
 # other target's environment.
 #
 # The `rex` sidecar. tauri_build refuses to run unless `bundle.externalBin` exists for
-# the TARGET triple, and the real `rex.exe` cannot exist yet — the cli crate is one of
-# the things that does not compile for Windows (W8). So this script stages an empty,
-# clearly-labelled placeholder for the length of the run and removes it on every exit.
+# the TARGET triple, and a compile check need not build the real `rex.exe` (on a Windows
+# host `scripts/build-cli.sh` stages it since W8 S4). So when none is staged this script
+# stages an empty, clearly-labelled placeholder for the length of the run and removes it
+# on every exit.
 # Deliberately NOT in build.rs: a placeholder the build itself creates is a placeholder
 # a real Windows bundle would ship, silently, as the user's `rex`.
 SIDECAR="src-tauri/binaries/rex-$TARGET.exe"
