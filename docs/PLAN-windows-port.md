@@ -1463,6 +1463,14 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   owner clicked Install; the `Path` went from 10 to 11 entries, still `REG_SZ`, the old 595 characters intact;
   the copy matched the sidecar; a Start-menu PowerShell ran `rex status`. Not run: the launch refresh, the
   off-Path sentence, the teardown.
+  **S6, first run (16 Sep 2026):** `rex site create w8stream.rex` from a fresh desktop process, through the
+  installed `rex`, streamed its progress records as they came (36% at 00:26:07, 73% at 00:27:56, 89% at
+  00:28:04) — and then failed at "starting to serve": the app had ADOPTED the stack an earlier instance
+  started, and `adopt_startup` looked for `caddy-<v>/caddy`, which on Windows is `caddy.exe`, so the manager's
+  resolved binaries stayed empty and the reload refused ("services not started"). Fixed through
+  `binaries::cached_bin` (ledger #635), with a scan against the bug class. The site was deleted with
+  `rex site delete --yes` (the owner agreed to create and delete). The owner ruled out running the teardown
+  (it removes the DNS route and CA trust too).
   *Done when, measured:* after Install, a PowerShell opened from the Start menu runs `rex status`,
   `rex site list` and a streaming command against the running app; `rex mcp` answers `initialize` and
   `tools/list` with the toggle on and says rexenv's endpoint is off with it off; with the app quit, `rex`

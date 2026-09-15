@@ -453,7 +453,14 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     value's own kind, no prompt; a launch keeps an installed copy current (never installing one, never a dev
     build's). On the Dell the owner clicked Install and a Start-menu PowerShell ran `rex status`; the `Path`
     stayed `REG_SZ` with the ten old entries intact. **Left in W8:** S6 — the done-when as a whole, and what S5
-    did not run: the launch refresh (above all over a running `rex mcp`), the off-Path sentence, the teardown
+    did not run: the launch refresh (above all over a running `rex mcp`), the off-Path sentence, the teardown.
+    **Found by S6, fixed 16 Sep 2026 (ledger #635):** on Windows every launch that ADOPTED a surviving stack
+    left the service manager's resolved binaries empty (`adopt_startup` joined `caddy-<v>/caddy`, the file is
+    `caddy.exe`), so each reload after it failed "services not started" — `rex site create` on the Dell streamed
+    its progress and then failed at "starting to serve". Not yet run there after the fix.
+    - Found, not fixed: `rex`'s stall notice ("no reply yet after 10s — the app is either still working or
+      wedged") prints even while progress records are arriving — the timer is not reset by progress; seen on the
+      Dell's `site create`, every OS
   - [ ] W9 — frontend on WebView2 (Windows paths, Ctrl shortcuts, fonts)
     **macOS words on the Windows screens** (seen in the real app on the Dell, W6 S5, 15 Sep 2026): Settings
     "trusted · login keychain" and "Local CA re-trusted in your login keychain." (`Settings.tsx:945`, `:856`),

@@ -2036,7 +2036,7 @@ pub fn shape_of_on(name: &str, os: &str) -> Shape {
 
 /// The file a single executable is published as: `name` itself, and `name.exe` on
 /// Windows, which will not start a file that lacks the extension.
-fn exe_name(name: &str, os: &str) -> String {
+pub(crate) fn exe_name(name: &str, os: &str) -> String {
     if os == "windows" {
         format!("{name}.exe")
     } else {

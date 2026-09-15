@@ -386,7 +386,7 @@ pub fn enriched_status(state: &AppState) -> Result<Vec<ServiceStatus>> {
     // OUR edge caddy's binary path — a cmdline marker only rexenv's edge has.
     let caddy_marker = state.platform.paths().bin_dir().ok().map(|b| {
         b.join(format!("caddy-{}", core::binaries::CADDY_VERSION))
-            .join("caddy")
+            .join(core::binaries::exe_name("caddy", std::env::consts::OS))
             .display()
             .to_string()
     });

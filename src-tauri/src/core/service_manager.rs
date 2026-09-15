@@ -1886,13 +1886,15 @@ impl ServiceManager {
         // on-demand ensure_*() fallback runs exactly as today (no behavior change,
         // just no pre-wiring win).
         if adopted > 0 {
-            if let Ok(bin_dir) = platform.paths().bin_dir() {
-                // stop_all's edge stop + `reload` need nginx/caddy.
+            if platform.paths().bin_dir().is_ok() {
+                // stop_all's edge stop + `reload` need nginx/caddy. Both through the binary cache's own
+                // naming — `caddy.exe` in its versioned folder on Windows: a hand-joined `…/caddy` never
+                // existed there, so every adopting launch on Windows left `bins` empty and each reload after
+                // it (a site create, a delete, a server switch) failed "services not started" (ledger #635).
                 if self.bins.is_none() {
                     let nginx = binaries::cached_program(platform, "nginx", binaries::NGINX_VERSION);
-                    let caddy =
-                        bin_dir.join(format!("caddy-{}", binaries::CADDY_VERSION)).join("caddy");
-                    if let Some(nginx) = nginx.filter(|_| caddy.exists()) {
+                    let caddy = binaries::cached_bin(platform, "caddy", binaries::CADDY_VERSION);
+                    if let (Some(nginx), Some(caddy)) = (nginx, caddy) {
                         self.bins = Some(Bins { nginx, caddy });
                     }
                 }
@@ -1921,14 +1923,10 @@ impl ServiceManager {
         self.stop_stale_owned(platform);
         // Also clear a leftover Caddy edge if its binary is already cached (no
         // download): admin-API stop + best-effort reap. Skipped on a fresh install
-        // (nothing to stop before the first Start all downloads Caddy).
-        if let Ok(bin_dir) = platform.paths().bin_dir() {
-            let caddy = bin_dir
-                .join(format!("caddy-{}", binaries::CADDY_VERSION))
-                .join("caddy");
-            if caddy.exists() {
-                let _ = proxy::stop_edge(platform, &caddy);
-            }
+        // (nothing to stop before the first Start all downloads Caddy). Found through
+        // the cache's own naming — `caddy.exe` on Windows (ledger #635).
+        if let Some(caddy) = binaries::cached_bin(platform, "caddy", binaries::CADDY_VERSION) {
+            let _ = proxy::stop_edge(platform, &caddy);
         }
     }
 
@@ -2755,6 +2753,46 @@ pub fn site_serving(sites: &[Site], infos: &[ServiceInfo]) -> Vec<SiteServing> {
 
 #[cfg(test)]
 mod tests {
+    /// Ledger #635 — **a cached program is found through the binary cache's own naming, never a hand-joined file
+    /// name**: `bin_dir/caddy-<v>/caddy` never exists on Windows, where the file is `caddy.exe`, so an adopting
+    /// launch there left the resolved binaries empty and every reload after it failed "services not started". A
+    /// whole-surface scan of `core/` and `commands/` production code for a versioned binary folder joined with a
+    /// literal file name — whitespace removed, so a join split across lines is still seen.
+    #[test]
+    fn no_production_code_joins_a_versioned_binary_folder_with_a_bare_file_name() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let (mut offenders, mut scanned) = (Vec::new(), 0);
+        for sub in ["core", "commands"] {
+            let mut stack = vec![root.join(sub)];
+            while let Some(dir) = stack.pop() {
+                for entry in std::fs::read_dir(&dir).expect("read the source") {
+                    let path = entry.expect("a directory entry").path();
+                    if path.is_dir() {
+                        stack.push(path);
+                        continue;
+                    }
+                    if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+                        continue;
+                    }
+                    scanned += 1;
+                    let text = std::fs::read_to_string(&path).expect("read a source file");
+                    let prod: String =
+                        crate::core::copy_scan::production_source(&text).chars().filter(|c| !c.is_whitespace()).collect();
+                    if prod.contains("_VERSION)).join(\"") {
+                        offenders.push(path.display().to_string());
+                    }
+                }
+            }
+        }
+        assert!(scanned > 40, "scanned only {scanned} files — the walk is not reading the source");
+        assert!(
+            offenders.is_empty(),
+            "a versioned binary folder joined with a literal file name — on Windows the file is `<name>.exe`; ask \
+             binaries::cached_bin / cached_program:\n{}",
+            offenders.join("\n")
+        );
+    }
+
     use super::*;
     use crate::platform::traits::*;
 
