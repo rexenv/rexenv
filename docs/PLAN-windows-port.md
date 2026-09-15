@@ -1356,6 +1356,45 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   plugin deleted leaves its checkout intact; a git clone runs through Git for Windows.
 - **W8 — `rex` CLI + MCP on Windows.** Over D3's transport; `rex.exe` sidecar on the
   user PATH. *Done when:* `rex` commands from a new PowerShell reach the running app.
+  *Where it starts (read 15 Sep 2026):* `cli_server`'s request model, `handle_request` and `dispatch` compile
+  everywhere; only the unix socket transport (`claim`, `bind`, `serve`, `spawn`, the hand-off) is `cfg(unix)`.
+  W7 left a named pipe `\\.\pipe\rexenv-app-<first 10 bytes of SHA-256 of the lower-cased config dir>`,
+  owner-only, first-instance, that serves only `app.open` (`app_pipe_rules::serves`). `mcp_server::start`
+  refuses off unix, so the Settings toggle never reads on (ledger #203). The `rex` crate has one dependency
+  (`serde_json`), `connect` fails off unix, and `socket_path`/`mcp_socket_path` exit "not supported" off
+  macOS. `scripts/build-cli.sh` stages sidecars on macOS only; `core::cli` installs a symlink at
+  `Paths::cli_symlink_path` (the trait's default is `Unsupported`) and looks for `rex` next to the app.
+  Nine examples (`cli_*`, `mcp_*`) bind the unix socket themselves.
+  *Rulings (owner, 15 Sep 2026):* **Q1** `rex` computes the pipe name itself, the app's way: the `rex` crate
+  gains `sha2` (hashing only — ledger #54's "never links the app library" is untouched), and one test
+  vector binds the app's name to rex's. **Q2** MCP gets its own pipe, `rexenv-mcp-<same digest>`, created only
+  while the toggle is on and closed when it goes off — the macOS socket's rule (#203); the lock pipe grows
+  into the CLI only (this narrows W7 Q1's "the same pipe grows into the CLI and MCP"). **Q3** install copies
+  `rex.exe` into a folder of its own, `%LOCALAPPDATA%\rexenv\bin`, and adds only that folder to the user's
+  `Path` (HKCU, no UAC); each launch refreshes the copy from the app's own `rex.exe`, never moving it to a dev
+  build (the autostart rule, ledger #623). **Q4** install is the Settings card's button, as on macOS — the
+  user's `Path` changes only when they ask.
+  *Measure first on the Dell (a probe, before building on it):* (a) a client in a new desktop PowerShell
+  (Medium integrity) reaches an owner-only pipe served by an Explorer-launched process, and one from the
+  elevated SSH token does too; (b) with every instance connected a client gets `ERROR_PIPE_BUSY` (231) and
+  `WaitNamedPipeW` lets it in; (c) progress lines written before the envelope arrive in order on a pipe the
+  server reads and writes through one handle; (d) **a `rex mcp`-shaped bridge — one thread blocked reading,
+  another writing — on a synchronous client handle and its duplicate:** Windows serializes synchronous I/O
+  on one file object, so a blocked `ReadFile` may hold every `WriteFile` (if it does, the bridge needs
+  overlapped I/O); (e) the config dir `rex` would build from `%LOCALAPPDATA%` equals the app's
+  (`directories`, the Known Folder) on the Dell; (f) a folder appended to HKCU `Path` plus
+  `WM_SETTINGCHANGE` is on `PATH` in a PowerShell started afterwards from the Start menu.
+  *Steps:* **S1** the `rex` transport on Windows — the pipe name (Q1), connect with the busy wait, the
+  socket paths' Windows arms, the refusal words; **S2** the lock pipe serves every CLI request through the
+  unix `serve`'s exchange (progress before the envelope, the command outliving its client), one exchange
+  shape for both transports; **S3** the MCP pipe (Q2) and the `rex mcp` bridge over it, per (d); **S4**
+  `rex.exe` staged as the Windows sidecar (`build-cli.sh`, `externalBin`, `bundled_rex` finding `rex.exe`);
+  **S5** the Settings install (Q3, Q4) — status, install, the launch refresh, the card's words from the
+  platform; **S6** the `cli_socket_check`/`mcp_socket_check` legs on the Dell and the done-when.
+  *Done when, measured:* after Install, a PowerShell opened from the Start menu runs `rex status`,
+  `rex site list` and a streaming command against the running app; `rex mcp` answers `initialize` and
+  `tools/list` with the toggle on and says rexenv's endpoint is off with it off; with the app quit, `rex`
+  says it isn't running and exits 2.
 - **W9 — Frontend on WebView2.** Windows paths (`C:\…`) in inputs and display,
   Cmd → Ctrl shortcuts, font metrics; divergences into `docs/DESIGN.md`.
 - **W10 — Feature gates per D4.** Refused in core, honest in the UI, one arm to enable later.
