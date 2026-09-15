@@ -59,12 +59,12 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
   `FSCTL_SET_REPARSE_POINT`, the link-only removal) and `windows/junction_rules.rs` (the target rule, the
   reparse data — tested on every host) (ledger #625); the words for the OS's own things — `platform/words.rs`
   (`PlatformWords`, `MACOS`/`WINDOWS`, `current()`; tested on every host, including a scan of the frontend),
-  served by `commands::system::platform_words` and read through `src/lib/usePlatformWords.ts`; finding a
-  command on `PATH` — `platform/path_lookup.rs` (`PathLookup`, `UNIX`/`WINDOWS`, `current()`: the separator,
-  the variable's case, `PATHEXT`; tested on every host), walked by `core/devtools.rs` `find_tool` (ledger #628); a path's last part in the UI — `src/lib/path.ts`
-  (`baseName` on either separator, `joinPath`; held by a frontend scan in `path_lookup.rs`) (ledger #629)
+  served by `commands::system::platform_words` and read through `src/lib/usePlatformWords.ts`
   (`mockPlatformWords` in `src/lib/mock.ts`), used by `core/devtools.rs` and `core/repo.rs`'s install hints
-  (ledger #626); nginx's Windows shape — `services::nginx_path`,
+  (ledger #626); finding a command on `PATH` — `platform/path_lookup.rs` (`PathLookup`, `UNIX`/`WINDOWS`,
+  `current()`: the separator, the variable's case, `PATHEXT`; tested on every host), walked by
+  `core/devtools.rs` `find_tool` (ledger #628); a path's last part in the UI — `src/lib/path.ts` (`baseName`
+  on either separator, `joinPath`; held by a frontend scan in `path_lookup.rs`) (ledger #629); nginx's Windows shape — `services::nginx_path`,
   `binaries::resolve_program`, the master climb and nginx's events (ledger #602);
   `linux/` is `todo!()`).
 - `state/` = SQLite migrations + the store layer; only `state/` writes SQL.
@@ -111,7 +111,7 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
 | macOS floor a binary DECLARES (`minos`) | `core/macho.rs` | none — read on the failure path by `service_manager::macos_floor_note` | — | #383; diagnosis only, never gates a spawn |
 | Terminal (PTY) | `core/terminal.rs` | `commands/terminal.rs` | ShellRunner | `terminal_check` |
 | Setup / teardown (system changes) | `core/setup.rs`, `core/prompt.rs` (`while_prompting` — every call that can raise an admin/keychain dialog waits off the async runtime, from an async caller; guard `every_prompt_call_waits_off_the_runtime`, #568) | `commands/system.rs` | PrivilegeManager (macOS: `platform/macos/prompt_applet.rs` — the admin dialog named and badged rexenv, osascript fallback, #577), CertTrustManager, DnsManager | `system_setup`, `system_teardown`, `priv_check` |
-| rex CLI (remote control, never a second brain) | `cli/src/main.rs` (own crate) + `cli_server.rs` (app side), `core/cli.rs` (PATH install) | dispatches to the SAME commands::* fns | Paths | #54–58; `cli_socket_check`; surface: `CLI-ROADMAP.md` |
+| rex CLI (remote control, never a second brain) | `cli/src/main.rs` (own crate; `pipe_name`, `windows_config_dir`, `open_waiting_out_busy`) + `cli/src/pipe.rs` (the Windows transport: tokio's overlapped named-pipe client, ledger #630) + `cli_server.rs` (app side), `core/cli.rs` (PATH install) | dispatches to the SAME commands::* fns | Paths | #54–58; `cli_socket_check`; surface: `CLI-ROADMAP.md` |
 | App state (SQLite v1–v44, store) | `state/db.rs` (migrations), `state/store.rs`, `state/models.rs`, `state/app.rs` (AppState, locks) | — | — | #167–174 |
 | Menu-bar app (tray, no dock icon) | `core/tray.rs` (the menu as data: `TrayModel` → `MenuSpec`, `TrayAction` ids) | `lib.rs` (`install_tray`, `tray_model`, `render_menu`, `refresh_tray`, `on_tray_click`, `show_main_window`, the `Accessory` policy, the `CloseRequested` hide), `platform/macos/activation.rs` (`activate_app`), `scripts/make-menubar-icon.py` → `icons/menubar.png`, `App.tsx` `TrayRouteWatch` ← `tray://route`, `HIDDEN_LAUNCH_FLAG` + `first_window_decision` (login launch), `cli_server::hand_off_to_running_instance` + the `app.open` arm (single instance) | `rex open` | #436, #437, #438, #439, #441; plan: `PLAN-menubar-tray.md`; ARCHITECTURE "the APP outlives the window" |
 | App entry / wiring | `lib.rs` (builder, launch adopt, watchdog, exit hooks, `StartupNotices`), `main.rs` (`--dns-agent` and `--tunnel-guard` modes), `error.rs`, `test_support.rs` (test-only fixtures that need an OS std extension — symlink, file mode, raw exit status — kept out of `core/` so #163's scan never reads them as production) | — | — | #59–61, #431, #163 |

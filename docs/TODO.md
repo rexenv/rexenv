@@ -430,7 +430,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     running app's pipe name and reach it; a busy pipe answers 231 and `WaitNamedPipeW` lets a client in once
     freed; progress lines stream in order — and a `rex mcp` bridge on a blocking handle DEADLOCKS (a write
     waits for the other thread's pending read), while a tokio client does not, so the `rex` crate takes
-    tokio on Windows only (owner, Q5)
+    tokio on Windows only (owner, Q5). **S1 done the same day (ledger #630):** `rex` computes the pipe name
+    from `%LOCALAPPDATA%`, waits out a busy pipe, and dials it overlapped; on the Dell, from both tokens,
+    `rex open` answered, `rex status` returned the W7 pipe's "does not reach rexenv on Windows yet", and a
+    name nothing serves gave "rexenv isn't running", exit 2. #54's guard now reads every dependency table
   - [ ] W9 — frontend on WebView2 (Windows paths, Ctrl shortcuts, fonts)
     **macOS words on the Windows screens** (seen in the real app on the Dell, W6 S5, 15 Sep 2026): Settings
     "trusted · login keychain" and "Local CA re-trusted in your login keychain." (`Settings.tsx:945`, `:856`),

@@ -75,6 +75,9 @@ mod tests {
         assert!(a.starts_with(r"\\.\pipe\rexenv-app-"), "{a}");
         let tail = a.trim_start_matches(r"\\.\pipe\");
         assert!(!tail.contains('\\') && tail.len() < 64, "{tail}");
+        // `rex` computes this name itself (plan §5 W8 ruling Q1) and asserts the same literal
+        // (`cli/src/main.rs`, ledger #630), so the two cannot drift apart unseen.
+        assert_eq!(a, r"\\.\pipe\rexenv-app-c472155a9cab9003d05c");
     }
 
     /// Ledger #620 — only access denied means another instance; anything unclear starts the app.

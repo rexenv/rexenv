@@ -10,11 +10,9 @@
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Write};
 // ── Transport ────────────────────────────────────────────────────────────────
-// `rex` reaches the app over a unix socket. Off unix it has no transport yet: the
-// Windows named pipe is port W8 (owner ruling D3), and `socket_path` /
-// `mcp_socket_path` already refuse on any non-macOS host before a connect is tried.
-// The non-unix `Stream` exists only so this crate compiles — every method fails and
-// nothing is ever dialled (docs/PLAN-windows-port.md W1).
+// `rex` reaches the app over a unix socket on macOS, and over the app's named pipe on Windows (plan §5 W8;
+// owner rulings D3, Q1, Q5 — `pipe.rs`, ledger #630). Any other OS has no transport: the `Stream` there
+// exists only so this crate compiles — every method fails and nothing is ever dialled.
 #[cfg(unix)]
 use std::os::unix::net::UnixStream as Stream;
 
@@ -23,20 +21,30 @@ fn connect(path: impl AsRef<Path>) -> std::io::Result<Stream> {
     Stream::connect(path)
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
+mod pipe;
+#[cfg(windows)]
+use pipe::Stream;
+
+#[cfg(windows)]
+fn connect(path: impl AsRef<Path>) -> std::io::Result<Stream> {
+    Stream::connect(path.as_ref())
+}
+
+#[cfg(not(any(unix, windows)))]
 fn connect(_path: impl AsRef<Path>) -> std::io::Result<Stream> {
     Err(no_transport())
 }
 
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 fn no_transport() -> std::io::Error {
     std::io::Error::new(std::io::ErrorKind::Unsupported, "rex has no transport to rexenv on this platform yet")
 }
 
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 struct Stream;
 
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 impl Stream {
     fn try_clone(&self) -> std::io::Result<Stream> {
         Err(no_transport())
@@ -52,14 +60,14 @@ impl Stream {
     }
 }
 
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 impl std::io::Read for Stream {
     fn read(&mut self, _buf: &mut [u8]) -> std::io::Result<usize> {
         Err(no_transport())
     }
 }
 
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 impl std::io::Write for Stream {
     fn write(&mut self, _buf: &[u8]) -> std::io::Result<usize> {
         Err(no_transport())
@@ -229,6 +237,50 @@ OPTIONS:
 EXIT CODES:
   0 ok · 1 command failed · 2 rexenv isn't running";
 
+/// The app-data config folder on Windows, from `%LOCALAPPDATA%` — the folder the app's `directories` Known
+/// Folder lookup gives (the two measured equal on the Dell, `windows_cli_pipe_probe` (e)). `None` when the
+/// variable is unset or empty.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn windows_config_dir(local_app_data: Option<&str>) -> Option<String> {
+    let base = local_app_data.filter(|v| !v.is_empty())?;
+    Some(format!(r"{}\rexenv\rexenv\data\config", base.trim_end_matches(['\\', '/'])))
+}
+
+/// The app's Windows pipe of `kind` — `app` (the single-instance lock, which serves the CLI) or `mcp` — for
+/// the config folder `config_dir`, computed exactly as `platform/windows/app_pipe_rules.rs` `pipe_name`
+/// computes the lock's (plan §5 W8 ruling Q1, ledger #630): the first 10 bytes of the SHA-256 of the folder,
+/// lower-cased and without a trailing separator. The two assert one shared vector.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn pipe_name(kind: &str, config_dir: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let folded = config_dir.trim_end_matches(['\\', '/']).to_lowercase();
+    let digest = Sha256::digest(folded.as_bytes());
+    let hex: String = digest.iter().take(10).map(|b| format!("{b:02x}")).collect();
+    format!(r"\\.\pipe\rexenv-{kind}-{hex}")
+}
+
+/// Open, waiting out a busy pipe (ledger #630). Every instance of a named pipe is taken for the moment a
+/// server hands a connection off and makes the next, and an open then answers 231 ("All pipe instances are
+/// busy", measured on the Dell) — a moment, not "rexenv isn't running". That error is retried every `pause`
+/// until `deadline`; any other error is final at once.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn open_waiting_out_busy<T>(
+    mut open: impl FnMut() -> std::io::Result<T>,
+    deadline: Duration,
+    pause: Duration,
+) -> std::io::Result<T> {
+    const ERROR_PIPE_BUSY: i32 = 231;
+    let started = std::time::Instant::now();
+    loop {
+        match open() {
+            Err(e) if e.raw_os_error() == Some(ERROR_PIPE_BUSY) && started.elapsed() < deadline => {
+                std::thread::sleep(pause)
+            }
+            other => return other,
+        }
+    }
+}
+
 fn socket_path() -> PathBuf {
     // Test/dev override only — there is no discovery protocol, the path is fixed.
     if let Ok(p) = std::env::var("REXENV_CLI_SOCKET") {
@@ -241,7 +293,17 @@ fn socket_path() -> PathBuf {
         PathBuf::from(std::env::var("HOME").unwrap_or_default())
             .join("Library/Application Support/dev.rexenv.rexenv/config/rexenv-cli.sock")
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
+    {
+        match windows_config_dir(std::env::var("LOCALAPPDATA").ok().as_deref()) {
+            Some(dir) => PathBuf::from(pipe_name("app", &dir)),
+            None => {
+                eprintln!("rex: %LOCALAPPDATA% is not set, so rex cannot find rexenv's folder");
+                exit(1)
+            }
+        }
+    }
+    #[cfg(not(any(target_os = "macos", windows)))]
     {
         eprintln!("rex: this platform is not supported yet");
         exit(1)
@@ -260,7 +322,13 @@ fn mcp_socket_path() -> PathBuf {
         PathBuf::from(std::env::var("HOME").unwrap_or_default())
             .join("Library/Application Support/dev.rexenv.rexenv/config/rexenv-mcp.sock")
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
+    {
+        // The MCP pipe comes with W8 S3 (plan §5 W8 ruling Q2) — until then say so, not "isn't running".
+        eprintln!("rex: `rex mcp` does not reach rexenv on Windows yet — it comes in a later build");
+        exit(1)
+    }
+    #[cfg(not(any(target_os = "macos", windows)))]
     {
         eprintln!("rex: this platform is not supported yet");
         exit(1)
@@ -3634,6 +3702,62 @@ fn cmd_status(json_output: bool) {
 
 #[cfg(test)]
 mod tests {
+    /// Ledger #630 — **`rex` finds the app's Windows pipe itself**: the name is the app's lock pipe name for the
+    /// same config folder, whatever case it is spelled in, and the folder is `%LOCALAPPDATA%`'s. The literal is
+    /// asserted in the app too (`app_pipe_rules.rs`), and this test reads that it still is.
+    #[test]
+    fn rex_names_the_apps_windows_pipe_the_way_the_app_does() {
+        let dir = r"C:\Users\A B\AppData\Local\rexenv\rexenv\data\config";
+        assert_eq!(pipe_name("app", dir), r"\\.\pipe\rexenv-app-c472155a9cab9003d05c");
+        assert_eq!(pipe_name("app", &format!("{}\\", dir.to_uppercase())), pipe_name("app", dir), "case and a trailing separator");
+        assert_eq!(pipe_name("mcp", dir), r"\\.\pipe\rexenv-mcp-c472155a9cab9003d05c");
+        let app = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../src-tauri/src/platform/windows/app_pipe_rules.rs"))
+            .expect("read the app's pipe rules");
+        assert!(
+            app.contains(r"\\.\pipe\rexenv-app-c472155a9cab9003d05c"),
+            "the app's pipe rules no longer assert the name rex computes — one of the two changed alone"
+        );
+        assert_eq!(windows_config_dir(Some(r"C:\Users\A B\AppData\Local")).as_deref(), Some(dir));
+        assert_eq!(windows_config_dir(Some(r"C:\Users\A B\AppData\Local\")).as_deref(), Some(dir));
+        assert_eq!(windows_config_dir(Some("")), None);
+        assert_eq!(windows_config_dir(None), None);
+    }
+
+    /// Ledger #630 — **a busy pipe is a moment, not "not running"**: an open answering 231 is retried until the
+    /// deadline, and any other error is final at once.
+    #[test]
+    fn a_busy_pipe_is_waited_out_and_any_other_error_is_final() {
+        let busy = || std::io::Error::from_raw_os_error(231);
+        let mut calls = 0;
+        let opened = open_waiting_out_busy(
+            || {
+                calls += 1;
+                if calls < 3 { Err(busy()) } else { Ok("in") }
+            },
+            Duration::from_secs(5),
+            Duration::from_millis(1),
+        );
+        assert_eq!(opened.ok(), Some("in"));
+        assert_eq!(calls, 3, "two busy answers, then in");
+
+        let mut calls = 0;
+        let missing: std::io::Result<()> = open_waiting_out_busy(
+            || {
+                calls += 1;
+                Err(std::io::Error::from_raw_os_error(2))
+            },
+            Duration::from_secs(5),
+            Duration::from_millis(1),
+        );
+        assert_eq!(missing.unwrap_err().raw_os_error(), Some(2));
+        assert_eq!(calls, 1, "no pipe at all is final — rexenv isn't there");
+
+        let started = Instant::now();
+        let stuck: std::io::Result<()> = open_waiting_out_busy(|| Err(busy()), Duration::from_millis(60), Duration::from_millis(5));
+        assert_eq!(stuck.unwrap_err().raw_os_error(), Some(231));
+        assert!(started.elapsed() < Duration::from_secs(2), "a pipe busy past the deadline gives its error");
+    }
+
 
     /// `--repair` is a DIFFERENT verb from `--set`, and doctor names it.
     ///
@@ -3987,6 +4111,7 @@ mod tests {
         assert!(!env!("REX_BUILT_AT").is_empty(), "REX_BUILT_AT is empty");
     }
     use super::*;
+    #[cfg(unix)]
     use std::io::Read;
     #[cfg(unix)]
     use std::os::unix::net::UnixListener;

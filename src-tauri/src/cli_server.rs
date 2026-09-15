@@ -2115,32 +2115,42 @@ mod cli_isolation {
     #[test]
     fn the_rex_crate_never_links_the_app_library() {
         let manifest = include_str!("../../cli/Cargo.toml");
-        let deps = manifest
-            .split("[dependencies]")
-            .nth(1)
-            .and_then(|d| d.split("\n[").next())
-            .expect("cli/Cargo.toml has a [dependencies] section");
+        // EVERY dependency table — `[dependencies]` and each `[target.'…'.dependencies]` (build and dev tables
+        // too). This read `[dependencies]` alone until W8 put tokio under a Windows-only table (ledger #630):
+        // a banned crate added there would have passed unread.
+        let tables: Vec<&str> = manifest
+            .split("\n[")
+            .filter(|table| table.lines().next().unwrap_or("").trim_end().trim_end_matches(']').ends_with("dependencies"))
+            .collect();
+        let deps: String = tables
+            .iter()
+            .flat_map(|table| table.lines().skip(1))
+            .filter(|line| !line.trim_start().starts_with('#'))
+            .collect::<Vec<_>>()
+            .join("\n");
 
         for banned in ["rexenv", "rusqlite", "tauri", "path ="] {
             assert!(
                 !deps.contains(banned),
                 "`cli/Cargo.toml` now depends on `{banned}`.\n\n\
-                 The rex CLI is deliberately a thin socket client with ONE dependency \
-                 (serde_json). Linking the app library — or SQLite directly — would let a `rex` \
-                 command open the same database the running app has open, and two writers on one \
-                 SQLite file is the corruption class this separation exists to make IMPOSSIBLE \
-                 rather than merely avoided (ledger #54).\n\n\
+                 The rex CLI is deliberately a thin client of the running app — serde_json, sha2 for the \
+                 Windows pipe's name, tokio for the Windows pipe itself. Linking the app library — or SQLite \
+                 directly — would let a `rex` command open the same database the running app has open, and \
+                 two writers on one SQLite file is the corruption class this separation exists to make \
+                 IMPOSSIBLE rather than merely avoided (ledger #54).\n\n\
                  If you need something the app knows, add a command to `cli_server.rs` and ask \
-                 for it over the socket — that is the whole design, and it is also what keeps \
+                 for it over the socket or pipe — that is the whole design, and it is also what keeps \
                  the CLI and the UI on the same code path (#57).\n\n\
-                 [dependencies] is currently:{deps}"
+                 The dependency tables currently hold:\n{deps}"
             );
         }
-        // The canary: a manifest we failed to read would pass every check above.
+        // The canary: a manifest we failed to read would pass every check above — and one read without the
+        // Windows table would pass a banned crate added there.
         assert!(
-            deps.contains("serde_json"),
-            "the [dependencies] section did not parse as expected — this guard would pass on an \
-             empty string. Fix the parse before trusting the result.{deps}"
+            deps.contains("serde_json") && deps.contains("tokio"),
+            "the dependency tables did not parse as expected (serde_json from [dependencies], tokio from the \
+             Windows table) — this guard would pass on an empty string. Fix the parse before trusting the \
+             result.\n{deps}"
         );
     }
 }

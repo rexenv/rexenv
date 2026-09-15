@@ -53,7 +53,9 @@ platform/   ALL OS-specific code, behind 13 traits (platform/traits.rs):
   moved behind `LocalIpc`, `ProcessSupervisor`, `PermissionManager` and `ShellRunner`, the
   scan now refuses them, and the app library and binary compile for Windows. **Still
   Unix-only, by design until W8:** the socket TRANSPORTS of `cli_server` and `mcp_server`
-  (their request handling compiles everywhere) and the `rex` client. Still macOS-only
+  (their request handling compiles everywhere). The `rex` client reaches the app's Windows
+  pipe since W8 S1 (`cli/src/pipe.rs`, ledger #630); the app's pipe answers only `app.open`
+  until S2. Still macOS-only
   DATA: the `macos-`/`darwin` URLs in `core/binaries.rs` (W2). And three mechanisms —
   php-fpm, `/etc/resolver`, unix-socket IPC — do not exist on Windows at all (plan §3).
 - The only non-platform `todo!`-ish code is a defensive `unreachable!` in
@@ -1583,6 +1585,21 @@ words (the browser shell's mock and two dev review pages excepted).
   trust boundary (same-user processes already own our SQLite/processes; other users
   are locked out). Never TCP. Stale files are unlinked at bind; the CLI *connects*
   to detect liveness (a stat would lie — same lesson as `admin_alive`).
+- **On Windows `rex` dials the app's named pipe** (W8 S1, ledger #630; plan §5 W8 rulings Q1,
+  Q5): `\\.\pipe\rexenv-app-<first 10 bytes of SHA-256 of the lower-cased config folder>` —
+  the single-instance lock's own name, computed by `rex` from `%LOCALAPPDATA%` exactly as the
+  app computes it (the folder measured equal to the app's Known Folder on the Dell; one test
+  vector is asserted on both sides, and `rex`'s test reads the app's). An open answering 231
+  ("All pipe instances are busy") is the moment between two server instances, not "not
+  running": it is retried for 5 s; any other error is "rexenv isn't running", exit 2. The
+  client is tokio's overlapped one (`cli/src/pipe.rs`), because a blocking handle
+  DEADLOCKS `rex mcp` — measured (`windows_cli_pipe_probe` (d)): with one thread blocked
+  reading, a write on the handle's clone returned only when the read did, and the next never.
+  A pipe has no half-close, so `shutdown` is refused there. The crate's dependencies grew for
+  it — `sha2` (the name) and, on Windows only, tokio — and #54's guard now reads every
+  dependency table, not only `[dependencies]` (it would have passed a banned crate added under
+  the Windows table). Piped through PowerShell 5.1, `rex`'s ✓ and — print as `Γ£ô` and `ΓÇö`
+  (it decodes a program's redirected output with the OEM code page); a console is unaffected.
 - **A connect proves a listener, not an answer** (learned 12 Aug 2026, ledger #300).
   A stale App-Translocated instance owned the socket, accepted connections and
   replied to nothing, so "is the app running?" said yes and `rex` blocked in

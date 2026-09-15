@@ -1406,6 +1406,15 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   `rex.exe` staged as the Windows sidecar (`build-cli.sh`, `externalBin`, `bundled_rex` finding `rex.exe`);
   **S5** the Settings install (Q3, Q4) — status, install, the launch refresh, the card's words from the
   platform; **S6** the `cli_socket_check`/`mcp_socket_check` legs on the Dell and the done-when.
+  **S1 done 15 Sep 2026 (ledger #630).** `cli/src/main.rs` `pipe_name` / `windows_config_dir` /
+  `open_waiting_out_busy` (tested on every host, one vector shared with `app_pipe_rules.rs`) and
+  `cli/src/pipe.rs` (tokio's overlapped client behind `UnixStream`'s method shape; `shutdown` refused — a
+  pipe has no half-close, which S3's bridge must design around: the app sees end-of-input only when the
+  whole pipe closes). `cli/Cargo.toml` gained `sha2` and, on Windows, tokio; its libc is pinned to the app's
+  0.2.186 so the shipped macOS graph did not grow a second libc. Found on the way: #54's guard read only
+  `[dependencies]` and would have passed a banned crate under the Windows table — it reads every table now.
+  Dell, both tokens, against the W7 app: `rex open` exit 0, `rex status` exit 1 with the pipe's sentence,
+  `rex mcp` exit 1, a name nothing serves exit 2.
   *Done when, measured:* after Install, a PowerShell opened from the Start menu runs `rex status`,
   `rex site list` and a streaming command against the running app; `rex mcp` answers `initialize` and
   `tools/list` with the toggle on and says rexenv's endpoint is off with it off; with the app quit, `rex`

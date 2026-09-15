@@ -12,6 +12,15 @@ edition = "2021"
 # makes the examples-stop-the-edge bug class impossible at compile time.
 [dependencies]
 serde_json = "1"
+# The Windows pipe's name is a digest of the app's config folder, computed the app's way (plan §5 W8,
+# ruling Q1). Hashing only: it reaches nothing of the app's.
+sha2 = "0.10"
+
+# The Windows transport (plan §5 W8, ruling Q5): an overlapped named-pipe client. A blocking handle deadlocks a
+# reader and a writer on two threads (measured on the Dell, `windows_cli_pipe_probe` (d)). macOS's rex does
+# not link it.
+[target.'cfg(windows)'.dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "time"] }
 
 [[bin]]
 name = "rex"
