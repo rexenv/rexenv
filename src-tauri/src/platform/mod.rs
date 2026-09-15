@@ -173,6 +173,10 @@ pub const RESOLVER_PORT: u16 = 53;
 #[cfg(not(target_os = "windows"))]
 pub const RESOLVER_PORT: u16 = 15353;
 
+/// The words for the OS's own things — its file manager, its login items, how a tool gets installed (W7 S7,
+/// ledger #626). Data for every OS on every host; `words::current()` is this build's.
+pub mod words;
+
 /// The embedded resolver's UDP socket, bound on `127.0.0.1:port` — loopback by construction (the
 /// resolver answers every name, which is safe only there; ledger #44).
 ///

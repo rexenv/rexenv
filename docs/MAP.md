@@ -57,7 +57,11 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
   (`WINDOWS_TRAY_ICON`, a left click → `show_main_window`, the menu on a right click) (ledger #624); linked
   folders — `WindowsShell::symlink_dir` / `remove_symlink` over `windows/junction.rs` (a junction through
   `FSCTL_SET_REPARSE_POINT`, the link-only removal) and `windows/junction_rules.rs` (the target rule, the
-  reparse data — tested on every host) (ledger #625); nginx's Windows shape — `services::nginx_path`,
+  reparse data — tested on every host) (ledger #625); the words for the OS's own things — `platform/words.rs`
+  (`PlatformWords`, `MACOS`/`WINDOWS`, `current()`; tested on every host, including a scan of the frontend),
+  served by `commands::system::platform_words` and read through `src/lib/usePlatformWords.ts`
+  (`mockPlatformWords` in `src/lib/mock.ts`), used by `core/devtools.rs` and `core/repo.rs`'s install hints
+  (ledger #626); nginx's Windows shape — `services::nginx_path`,
   `binaries::resolve_program`, the master climb and nginx's events (ledger #602);
   `linux/` is `todo!()`).
 - `state/` = SQLite migrations + the store layer; only `state/` writes SQL.
@@ -123,7 +127,7 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
 | Settings | `/settings` | `src/routes/Settings.tsx` |
 | Onboarding | `/onboarding` | `src/routes/Onboarding.tsx` |
 | Dev-only harnesses (tree-shaken from prod) | `/dev/git-panel`, `/dev/ui-review` | `src/routes/DevGitPanel.tsx`, `src/routes/DevUiReview.tsx` |
-| IPC bridge (the ONLY invoke path; 257 exports) | — | `src/lib/ipc/index.ts` |
+| IPC bridge (the ONLY invoke path; 258 exports) | — | `src/lib/ipc/index.ts` |
 | Self-update card (Settings → About) | `/settings?section=about` | `src/components/settings/AppUpdateCard.tsx`; `UpdateWatch` in `src/App.tsx`; Settings nav badge in `Sidebar.tsx`; L2 `uireview.js` `appupdate-*` |
 | Add a plugin/theme — the four sources behind `SourceTabs` | — | `components/wordpress/WordPressManager.tsx` (wp.org search + the shared `WpInstallCard`), `ZipAddPanel.tsx` (Upload zip), `GitAddPanel.tsx` (From Git), `LinkFolderPanel.tsx` (Link folder); probes `wk-checks/{zipinstall,wptoast,check,linkpanel}.js` |
 | Shared UI hooks (editor pick + open, terminal pick + open, downloads) | — | `src/lib/useEditor.ts`, `src/lib/useTerminalApp.ts`, `src/lib/useDownloads.ts` |

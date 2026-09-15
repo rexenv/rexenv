@@ -1443,6 +1443,14 @@ ProgId matched by prefix (Firefox's carries an install hash). Every open starts 
 with its arguments and no shell in between; a browser gets `http(s)` only (`app_catalog::web_url_only`,
 checked before the lookup), a private window only with a known flag, a terminal only an existing folder.
 Icons are `None` for now — the UI draws its glyph.
+**The words around them are the platform's too** (`platform/words.rs`, W7 S7, owner's ruling Q3, ledger
+#626): "Show in Finder" / "Show in Explorer", the file manager's name, the login item's description, and the
+fix a missing git, Node, Bun or native compiler gets. `PlatformWords` holds `MACOS` and `WINDOWS` as data on
+every host; `current()` is this build's; the UI reads it once (`platform_words` → `usePlatformWords()`), and
+`core/devtools.rs` / `core/repo.rs` build their messages from it — so no Windows screen tells a user to open
+Finder or run `brew`. The macOS words are the text the app showed before, byte for byte. A test reads every
+frontend source file and fails on "Finder", `xcode-select` or `brew install` written outside the platform's
+words (the browser shell's mock and two dev review pages excepted).
 
 - **The browser preference is applied in the BACKEND, inside `open_external`** —
   not by the UI. Links are opened from about a dozen call sites (site header,

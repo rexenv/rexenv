@@ -1081,6 +1081,18 @@ export interface WpOrgTheme {
   screenshot: string | null;
 }
 
+/** The words for this OS's own things — its file manager, its login items, how a tool gets installed
+ *  (mirrors the Rust PlatformWords DTO, W7 S7). */
+export interface PlatformWords {
+  reveal: string; // the button that shows a file in the OS file manager, e.g. "Show in Explorer"
+  fileManager: string; // the OS file manager's name, e.g. "File Explorer"
+  loginItem: string; // the "Open rexenv at login" toggle's description
+  gitInstall: string;
+  nodeInstall: string;
+  bunInstall: string;
+  nativeBuild: string;
+}
+
 /** A detected code editor (mirrors the Rust EditorApp DTO). */
 export interface EditorApp {
   id: string; // stable key stored as the preferred_editor setting

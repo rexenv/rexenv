@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast, toastBackendError } from "@/lib/toast";
+import { usePlatformWords } from "@/lib/usePlatformWords";
 import { confirm, PromptDialog } from "@/components/ui/dialog";
 import { Menu } from "@/components/ui/menu";
 import { BROWSER_MENU_WIDTH, PreferredBrowserIcon, useBrowserMenu, useTerminalMenu } from "@/components/ui/open-in";
@@ -1037,6 +1038,7 @@ function ToolsPanel({
   isNetwork: boolean;
 }) {
   const qc = useQueryClient();
+  const words = usePlatformWords();
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [dryRun, setDryRun] = useState(true);
@@ -1169,7 +1171,7 @@ function ToolsPanel({
           ? `Content exported to ${paths[0]}`
           : `Content exported to ${paths.length} files in Downloads`,
         {
-          label: "Show in Finder",
+          label: words.reveal,
           onClick: () => void revealPath(paths[0]).catch(toastBackendError),
         },
       ),
@@ -1213,7 +1215,7 @@ function ToolsPanel({
     mutationFn: () => wpDbExport(siteId),
     onSuccess: (path) =>
       toast.success(`Database exported to ${path}`, {
-        label: "Show in Finder",
+        label: words.reveal,
         onClick: () => void revealPath(path).catch(toastBackendError),
       }),
     onError: (e) => toastBackendError(e),
@@ -1510,13 +1512,14 @@ function ToolsPanel({
  *  domain confirm before the Import button arms. */
 function ImportDbDialog({ siteId, domain, onClose }: { siteId: string; domain: string; onClose: () => void }) {
   const qc = useQueryClient();
+  const words = usePlatformWords();
   const [typed, setTyped] = useState("");
   const [file, setFile] = useState<string | null>(null);
   const dbExport = useMutation({
     mutationFn: () => wpDbExport(siteId),
     onSuccess: (path) =>
       toast.success(`Database exported to ${path}`, {
-        label: "Show in Finder",
+        label: words.reveal,
         onClick: () => void revealPath(path).catch(toastBackendError),
       }),
     onError: (e) => toastBackendError(e),
@@ -1632,9 +1635,9 @@ function ChecksumResult({
     const n = r.benign.length;
     if (
       await confirm({
-        title: `Delete ${n} macOS system file${n === 1 ? "" : "s"}?`,
+        title: `Delete ${n} file-manager leftover${n === 1 ? "" : "s"}?`,
         message:
-          "Harmless Finder clutter (.DS_Store etc.) inside this site's folder — macOS recreates it as needed. Files are deleted permanently (not moved to Trash), then the checksums are re-verified.",
+          "Harmless files a file manager leaves in folders (.DS_Store, ._ files, Thumbs.db, desktop.ini) inside this site's folder — it recreates them as needed. Files are deleted permanently (not moved to the trash), then the checksums are re-verified.",
         confirmLabel: "Delete & re-verify",
       })
     )
@@ -1877,13 +1880,14 @@ export function CronCard({ siteId }: { siteId: string }) {
  *  local-dev credentials (admin / admin) — deterministic, nothing stored. */
 function ResetSiteDialog({ siteId, domain, onClose }: { siteId: string; domain: string; onClose: () => void }) {
   const qc = useQueryClient();
+  const words = usePlatformWords();
   const [typed, setTyped] = useState("");
   const [done, setDone] = useState(false);
   const dbExport = useMutation({
     mutationFn: () => wpDbExport(siteId),
     onSuccess: (path) =>
       toast.success(`Database exported to ${path}`, {
-        label: "Show in Finder",
+        label: words.reveal,
         onClick: () => void revealPath(path).catch(toastBackendError),
       }),
     onError: (e) => toastBackendError(e),
@@ -1974,6 +1978,7 @@ function ResetSiteDialog({ siteId, domain, onClose }: { siteId: string; domain: 
  *  honest DB warning; "Export database first" sits in the same flow. */
 function CoreVersionSwitch({ siteId }: { siteId: string }) {
   const qc = useQueryClient();
+  const words = usePlatformWords();
   const { data: info } = useQuery({
     queryKey: ["wp-info", siteId],
     queryFn: () => wpInfo(siteId),
@@ -1993,7 +1998,7 @@ function CoreVersionSwitch({ siteId }: { siteId: string }) {
     mutationFn: () => wpDbExport(siteId),
     onSuccess: (path) =>
       toast.success(`Database exported to ${path}`, {
-        label: "Show in Finder",
+        label: words.reveal,
         onClick: () => void revealPath(path).catch(toastBackendError),
       }),
     onError: (e) => toastBackendError(e),

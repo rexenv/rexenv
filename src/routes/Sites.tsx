@@ -18,6 +18,7 @@ import { NewSiteDialog } from "@/components/sites/NewSiteDialog";
 import { Button } from "@/components/ui/button";
 import { allSiteDomains, defaultTld, listSites, resolverDrift, deleteSite, renameSite, openExternal, getSitesServing, sitesResources, siteProvisionCancel, siteProvisionRetry , scanValetImport, dbImportRecords, rewriteRevert, keepSite, scratchPackages, onScratchReaped, agentActivity } from "@/lib/ipc";
 import { openSiteInEditor, usePreferredEditor } from "@/lib/useEditor";
+import { usePlatformWords } from "@/lib/usePlatformWords";
 import { usePreferredBrowser } from "@/lib/useBrowser";
 import { AppIcon } from "@/components/ui/app-icon";
 import { PreferredBrowserIcon } from "@/components/ui/open-in";
@@ -273,6 +274,7 @@ export function SiteRow({
   const pkg = scratch ? packages?.[0] : undefined;
   const [copied, setCopied] = useState(false);
   const editor = usePreferredEditor();
+  const words = usePlatformWords();
   const browser = usePreferredBrowser();
   return (
     <div
@@ -595,7 +597,7 @@ export function SiteRow({
               className="h-[15px] w-[15px]"
             />
           }
-          onSelect={() => openSiteInEditor(editor, site.path)}
+          onSelect={() => openSiteInEditor(editor, site.path, words.fileManager)}
         >
           {editor ? `Open in ${editor.name}` : "Open in editor"}
         </MenuItem>

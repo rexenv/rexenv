@@ -1176,6 +1176,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::system::app_info,
+            commands::system::platform_words,
             commands::system::repair_resolver,
             commands::system::unresolvable_tlds,
             commands::system::remove_resolver,

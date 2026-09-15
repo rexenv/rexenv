@@ -1311,7 +1311,8 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
     (`icons/32x32.png`), `show_menu_on_left_click(false)`, a left-button release → `show_main_window`; macOS's
     branch untouched. A source-scan test with plants 2/2. On the Dell with the real app: a left click brought a
     hidden window back and a right click opened the menu — both from a double-clicked launch and from the
-    login-launched one, whose tray Quit ended the app. Not confirmed yet: the icon's colour by eye.
+    login-launched one, whose tray Quit ended the app; the owner confirmed the icon drew in colour. Afterwards,
+    at the owner's word, the login item was removed and the test Mailpit stopped.
   - **S6 — linked folders as junctions.** `symlink_dir` makes a junction; `remove_symlink` recognises a
     junction and removes only the link; the delete guard that must never walk into a linked checkout
     (`core/repo.rs`, `is_symlink`) is held to a junction with its own ledger row and plant — its blast
@@ -1328,6 +1329,20 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   - **S7 — git and the words (Q3).** `git_preflight` finds `git.exe` on the login environment's PATH and
     names Git for Windows when it is missing; the platform's words for reveal, the login item and the git
     hint reach the frontend through one read, replacing the macOS strings in those features.
+    **S7 done 15 Sep 2026 (ledger #626).** `platform/words.rs` (`MACOS` byte-identical to the old text,
+    `WINDOWS`), the `platform_words` command and `usePlatformWords()`; "Show in Finder" ×8, the editor
+    fallback's Finder, the login item's description and the git/Node/Bun/node-gyp hints now come from it. A
+    scan test over the whole frontend fails on "Finder", `xcode-select` or `brew install` written outside the
+    words; its first run found the checksum-cleanup confirm calling Thumbs.db "Finder clutter". `git_preflight`
+    stays the default on Windows (no shim to guard; `resolve_git` names Git for Windows when git is missing).
+    Dell: the real app's Settings read "rexenv launches when you sign in to Windows …".
+    **W7's done-when, where it stands:** ✓ login item → sign-in → tray, services break away, a left click opens
+    the window (S4, S5); ✓ a second launch → one process, window in front (S1); ✓ a folder and a reveal land in
+    Explorer (S2); ✓ VS Code opens a site folder (S3); ✓ PowerShell opens in a new console at the folder (S3);
+    ✓ a linked folder's removal leaves the checkout (S6, through the platform). **Not yet measured:**
+    PhpStorm opening a site, a site opened in each detected browser (Chrome only), a git clone through Git for
+    Windows, and the linked-plugin delete through the app's WordPress screen (wp-cli) — W7 stays open until
+    those run.
   *Done when* (the Dell, the owner at the desktop): "Open rexenv at login" on, then sign out and in —
   rexenv in the tray with its services up, a left click opens the window; a second double-click leaves one
   process with its window in front; "Open folder" and "Show in Explorer" land in Explorer; "Open in editor"

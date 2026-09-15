@@ -408,17 +408,23 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     Mailpit started from it outlived the app's quit (breakaway allowed from Explorer's launch); the tray gave
     the window back on a left click and opened its menu on a right click. **S6 done the same day (ledger
     #625):** "Link folder" makes a junction (no Developer Mode needed), the delete guard sees it, and
-    `remove_symlink` takes only the link; Dell `windows_junction_check` PASS (12 checks). Next: S7 (git and
-    the platform's words)
+    `remove_symlink` takes only the link; Dell `windows_junction_check` PASS (12 checks). **S7 done the same day
+    (ledger #626):** the words for the OS's own things come from the platform ("Show in Explorer", "sign in to
+    Windows", Git for Windows) — the real app's Settings read the Windows text on the Dell. **All seven steps
+    are in; the done-when is not yet fully measured** (plan §5 W7): PhpStorm opening a site, a site in each
+    detected browser (only Chrome so far), a git clone through Git for Windows, and deleting a linked plugin
+    through the app's WordPress screen
   - [ ] W8 — `rex` CLI + MCP over named pipes; `rex.exe` on PATH
   - [ ] W9 — frontend on WebView2 (Windows paths, Ctrl shortcuts, fonts)
     **macOS words on the Windows screens** (seen in the real app on the Dell, W6 S5, 15 Sep 2026): Settings
     "trusted · login keychain" and "Local CA re-trusted in your login keychain." (`Settings.tsx:945`, `:856`),
     "Reinstall rexenv's certificate authority in your system keychain." (`:1012`), "asks for your password
-    once" (`:1294` — Windows asks rexenv's dialog then UAC), "sign in to your Mac (a macOS login item)"
-    (`:1354`); SiteDetail "register it with macOS" (`SiteDetail.tsx:1544`); Onboarding "to your Mac"
-    (`Onboarding.tsx:342`); and the app log's "launched at login — staying in the menu bar" (`lib.rs`
-    `first_window_decision`). The words should come from the platform, as `route_label` does for the route
+    once" (`:1294` — Windows asks rexenv's dialog then UAC); SiteDetail "register it with macOS"
+    (`SiteDetail.tsx:1544`); Onboarding "to your Mac" (`Onboarding.tsx:342`); and the app log's "launched at
+    login — staying in the menu bar" (`lib.rs` `first_window_decision`). The mechanism exists since W7 S7
+    (`platform/words.rs`, ledger #626): the login item's description ("sign in to your Mac", `:1354`), every
+    "Show in Finder", the editor fallback's Finder and the tool install hints already come from it — these rows
+    join it
   - [ ] W10 — Redis/Apache/Xdebug/MariaDB (per D4) refused in core with an honest message
   - [ ] W11 — NSIS installer, Authenticode (if D5 rules it in), Windows release job, updater, winget
   - [ ] W12 — launch gates: verify on the Windows runner, SMOKE-TEST + INSTALL Windows

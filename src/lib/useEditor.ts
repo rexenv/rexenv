@@ -27,14 +27,15 @@ export function usePreferredEditor(): EditorApp | null {
 
 /** Open the whole site folder as a PROJECT in `editor`. No editor detected →
  *  say so honestly and reveal the folder instead. Shared by every "Open in
- *  editor" entry point so they can't drift into different fallbacks. */
-export function openSiteInEditor(editor: EditorApp | null, path: string): void {
+ *  editor" entry point so they can't drift into different fallbacks.
+ *  `fileManager` is the platform's word for it (`usePlatformWords().fileManager`). */
+export function openSiteInEditor(editor: EditorApp | null, path: string, fileManager: string): void {
   if (editor) {
     openInEditor(editor.id, path).catch(toastBackendError);
     return;
   }
   toast.info(
-    "No code editor found (VS Code, Cursor, PhpStorm, Zed, Sublime…) — opening the folder in Finder instead.",
+    `No code editor found (VS Code, Cursor, PhpStorm, Zed, Sublime…) — opening the folder in ${fileManager} instead.`,
   );
   void openExternal(path).catch(toastBackendError);
 }

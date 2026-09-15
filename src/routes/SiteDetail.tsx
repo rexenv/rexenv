@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { engineLabel, enginePort } from "@/lib/dbEngines";
 import { toastBackendError } from "@/lib/toast";
+import { usePlatformWords } from "@/lib/usePlatformWords";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -539,6 +540,7 @@ function Overview({
     staleTime: Infinity,
   });
   const editor = usePreferredEditor();
+  const words = usePlatformWords();
   const editorMenu = useEditorMenu(site.path);
   const terminalMenu = useTerminalMenu(site.id);
   const browser = usePreferredBrowser();
@@ -689,7 +691,7 @@ function Overview({
               icon={<AppIcon icon={editor?.icon} fallback={<Code className="h-4 w-4" />} />}
               iconColor="text-rex-text-muted"
               label={editor ? `Open in ${editor.name}` : "Open in editor"}
-              onClick={() => openSiteInEditor(editor, site.path)}
+              onClick={() => openSiteInEditor(editor, site.path, words.fileManager)}
               menu={editorMenu}
               menuLabel="Open this project in another editor"
             />
@@ -1409,6 +1411,7 @@ function EnvVarsCard({ siteId }: { siteId: string }) {
  *  domain is the deliberate confirmation step. */
 function ChangeDomainDialog({ site, onClose }: { site: Site; onClose: () => void }) {
   const qc = useQueryClient();
+  const words = usePlatformWords();
   const [input, setInput] = useState("");
   const [done, setDone] = useState<DomainChange | null>(null);
   const next = input.trim().toLowerCase();
@@ -1479,7 +1482,7 @@ function ChangeDomainDialog({ site, onClose }: { site: Site; onClose: () => void
                   variant="secondary"
                   onClick={() => void revealPath(done.backupPath!).catch(toastBackendError)}
                 >
-                  Show in Finder
+                  {words.reveal}
                 </Button>
               </div>
             )}
@@ -1653,6 +1656,7 @@ function PathField({
   /** Custom open action (e.g. reveal in Finder); defaults to opening the path. */
   onOpen?: () => void;
 }) {
+  const words = usePlatformWords();
   return (
     <div>
       <div className="mb-1.5 text-[0.75rem] text-rex-text-muted">{label}</div>
@@ -1666,7 +1670,7 @@ function PathField({
         <CopyButton value={value} />
         {(openable || onOpen) && (
           <IconBtn
-            title={onOpen ? "Show in Finder" : "Open folder"}
+            title={onOpen ? words.reveal : "Open folder"}
             onClick={onOpen ?? (() => void openExternal(value).catch(toastBackendError))}
           >
             <FolderOpen className="h-3.5 w-3.5" />

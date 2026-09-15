@@ -2273,12 +2273,11 @@ pub fn map_composer_error(tail: &[String]) -> Error {
 pub fn map_node_error(tail: &[String]) -> Error {
     let joined = tail.join("\n");
     if joined.contains("node-gyp") || joined.contains("gyp ERR") {
-        return Error::Other(
-            "A native module failed to compile (node-gyp). That needs the \
-             Xcode Command Line Tools — install them, then retry:\n\
-             $ xcode-select --install"
-                .into(),
-        );
+        // The compiler it needs is this OS's (`platform::words`, ledger #626).
+        return Error::Other(format!(
+            "A native module failed to compile (node-gyp). {}",
+            crate::platform::words::current().native_build
+        ));
     }
     if joined.contains("EBADENGINE") || joined.contains("Unsupported engine") {
         return Error::Other(
@@ -3187,7 +3186,7 @@ mod tests {
         let ext = map_composer_error(&["requires ext-imagick * -> it is missing".into()]);
         assert!(ext.to_string().contains("extension"), "{ext}");
         let gyp = map_node_error(&["gyp ERR! stack Error".into()]);
-        assert!(gyp.to_string().ends_with("$ xcode-select --install"), "{gyp}");
+        assert!(gyp.to_string().ends_with(crate::platform::words::current().native_build), "{gyp}");
         let engine = map_node_error(&["npm warn EBADENGINE Unsupported engine".into()]);
         assert!(engine.to_string().contains("Node version"), "{engine}");
         // Unknown failures keep the tail.

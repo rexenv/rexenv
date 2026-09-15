@@ -1486,6 +1486,11 @@ bloating the fast path:
   refuses a second link and a share, and removes the link with `remove_symlink` — then checks every checkout
   file. Any link is removed with `remove_dir` before the fixture. Plants on the Mac get a `df` first: a plant
   that cannot write its restore leaves the source planted (it happened once, 15 Sep 2026).
+  W7 S7's words (#626) are proven on the Mac by `platform::words`' tests, one of which reads the WHOLE frontend
+  (every `.ts`/`.tsx` under `src/`, comment lines skipped) and fails on "Finder", `xcode-select` or
+  `brew install` written outside the platform's words — the claim is about every screen, so the test reads
+  every file rather than the ones a change touched; it also fails if it read fewer than 50 files, so a walk that
+  finds nothing cannot pass. On the Dell the proof is the real app's Settings read by the owner.
   W6's done-when (S5) is the REAL app, not an example: `cargo xwin build --bin rexenv --features
   tauri/custom-protocol` (without the feature a debug build loads `devUrl`, not the embedded `dist`; the
   `rex` sidecar staged as a placeholder as `windows-example.sh` does), the exe copied to a stable folder —

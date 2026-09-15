@@ -2,7 +2,19 @@
  * Mock data for the static shell (Phase 1 task 0.6). Replaced by real IPC data
  * as backend tasks land. Kept in one place so it's easy to delete later.
  */
-import type { AdminerStatus, AppInfo, AppUpdateState, DbStatus, GlobalStatus, MailDetail, MailList, PhpSetting, PhpVersion, ServiceInfo, Site, SiteServing , ResolverTldStatus } from "@/types";
+import type { AdminerStatus, AppInfo, AppUpdateState, DbStatus, GlobalStatus, MailDetail, MailList, PhpSetting, PhpVersion, PlatformWords, ServiceInfo, Site, SiteServing , ResolverTldStatus } from "@/types";
+
+/** macOS's platform words — the browser shell's answer, and `usePlatformWords`' answer until the backend's
+ *  arrives. Must match `src-tauri/src/platform/words.rs` `MACOS` (a test holds them together). */
+export const mockPlatformWords: PlatformWords = {
+  reveal: "Show in Finder",
+  fileManager: "Finder",
+  loginItem: "rexenv launches when you sign in to your Mac (a macOS login item).",
+  gitInstall: "On macOS it ships with the Xcode Command Line Tools — install them, then hit Re-detect:\n$ xcode-select --install",
+  nodeInstall: "$ brew install node",
+  bunInstall: "$ brew install oven-sh/bun/bun",
+  nativeBuild: "That needs the Xcode Command Line Tools — install them, then retry:\n$ xcode-select --install",
+};
 
 export const mockAppInfo: AppInfo = {
   name: "rexenv",

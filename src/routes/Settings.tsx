@@ -1,6 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useSearchParams } from "react-router-dom";
 import { toast, toastBackendError } from "@/lib/toast";
+import { usePlatformWords } from "@/lib/usePlatformWords";
 import { confirm, Overlay } from "@/components/ui/dialog";
 // Bundled verbatim at build time (`?raw`) so the app can show its own legal
 // text offline — the About row must not depend on a website or the repo
@@ -1329,6 +1330,7 @@ function PrefRow({
  *  without a click. */
 function ServicePrefsCard() {
   const qc = useQueryClient();
+  const words = usePlatformWords();
   const { data: enabled } = useQuery({ queryKey: ["autostart"], queryFn: autostartStatus });
   const toggle = useMutation({
     mutationFn: (on: boolean) => setAutostart(on),
@@ -1351,7 +1353,7 @@ function ServicePrefsCard() {
     <div className="rounded-[13px] border border-rex-border-subtle bg-rex-surface-1 px-5">
       <PrefRow
         title="Open rexenv at login"
-        desc="rexenv launches when you sign in to your Mac (a macOS login item)."
+        desc={words.loginItem}
         on={!!enabled}
         onToggle={() => toggle.mutate(!enabled)}
         label="Open rexenv at login"

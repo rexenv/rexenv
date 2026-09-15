@@ -42,6 +42,7 @@ import type { RepoGitOp, RepoJobState, RepoKind, RepoStepState } from "@/types";
 import { revealPath } from "@/lib/ipc";
 import { cn } from "@/lib/utils";
 import { toast, toastBackendError } from "@/lib/toast";
+import { usePlatformWords } from "@/lib/usePlatformWords";
 import { LogPane, mergeTailAndStreamed, REPO_SCRIPTS_DISCLOSURE, StepDot } from "./repoJobUi";
 import { RefPicker } from "./RefPicker";
 
@@ -173,6 +174,7 @@ export function RepoPanel({
   // and here there is nothing to fix.
   const canArchive = kind !== "site";
   const qc = useQueryClient();
+  const words = usePlatformWords();
   const [logOpen, setLogOpen] = useState(false);
   const [opJob, setOpJob] = useState<RepoJobState | null>(null);
   const [opLines, setOpLines] = useState<string[]>([]);
@@ -432,11 +434,11 @@ export function RepoPanel({
       ? `${archive.fileName} saved to Downloads — ${NO_VERSION_NOTE}.`
       : `${archive.fileName} saved to Downloads`;
     toast.success(message, {
-      label: "Show in Finder",
+      label: words.reveal,
       onClick: () => void revealPath(archive.path).catch(toastBackendError),
     });
     qc.invalidateQueries({ queryKey: statusKey });
-  }, [opJob, qc, statusKey]);
+  }, [opJob, qc, statusKey, words.reveal]);
 
   const runOp = useMutation({
     mutationFn: (args: { op: RepoGitOp; ref?: string }) =>

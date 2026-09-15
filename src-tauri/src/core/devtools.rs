@@ -80,13 +80,12 @@ fn probe_version_with(path: &Path, timeout: std::time::Duration) -> Option<Strin
 /// instead of a surprise GUI dialog (`ShellRunner::git_preflight`).
 pub fn resolve_git(platform: &dyn Platform, env: &[(String, String)]) -> Result<ToolInfo> {
     platform.shell().git_preflight()?;
+    // The fix names this OS's own tools (`platform::words`, ledger #626): a Windows screen must not say Xcode.
     let path = find_tool(env, "git").ok_or_else(|| {
-        Error::Other(
-            "git not found in your shell environment. On macOS it ships with \
-             the Xcode Command Line Tools — install them, then hit Re-detect:\n\
-             $ xcode-select --install"
-                .into(),
-        )
+        Error::Other(format!(
+            "git not found in your shell environment. {}",
+            crate::platform::words::current().git_install
+        ))
     })?;
     Ok(ToolInfo { version: probe_version(&path), path })
 }
@@ -95,13 +94,12 @@ pub fn resolve_git(platform: &dyn Platform, env: &[(String, String)]) -> Result<
 /// PATH — so "but it works in my terminal" has an answer.
 pub fn resolve_node(env: &[(String, String)]) -> Result<ToolInfo> {
     let path = find_tool(env, "node").ok_or_else(|| {
-        Error::Other(
+        Error::Other(format!(
             "Node.js not found in your shell environment (rexenv resolves \
              tools through your login shell's PATH, so nvm/fnm installs are \
-             seen). Install Node, then hit Re-detect:\n\
-             $ brew install node"
-                .into(),
-        )
+             seen). Install Node, then hit Re-detect:\n{}",
+            crate::platform::words::current().node_install
+        ))
     })?;
     Ok(ToolInfo { version: probe_version(&path), path })
 }
@@ -112,15 +110,15 @@ pub fn resolve_package_manager(env: &[(String, String)], name: &str) -> Result<T
     if let Some(tool) = find_optional(env, name) {
         return Ok(tool);
     }
+    let words = crate::platform::words::current();
     let fix = match name {
-        "npm" => "npm ships with Node.js — install Node, then hit Re-detect:\n$ brew install node",
-        "pnpm" | "yarn" => {
-            "this repo pins it via package.json's packageManager field. \
+        "npm" => format!("npm ships with Node.js — install Node, then hit Re-detect:\n{}", words.node_install),
+        "pnpm" | "yarn" => "this repo pins it via package.json's packageManager field. \
              corepack (ships with Node) provides it — enable once, then hit \
              Re-detect:\n$ corepack enable"
-        }
-        "bun" => "this repo uses Bun. Install it, then hit Re-detect:\n$ brew install oven-sh/bun/bun",
-        _ => "install it, then hit Re-detect.",
+            .to_string(),
+        "bun" => format!("this repo uses Bun. Install it, then hit Re-detect:\n{}", words.bun_install),
+        _ => "install it, then hit Re-detect.".to_string(),
     };
     Err(Error::Other(format!(
         "{name} not found in your shell environment — {fix}"
@@ -210,6 +208,10 @@ mod tests {
         assert!(pnpm.contains("corepack"), "{pnpm}");
         assert!(pnpm.lines().last().unwrap().starts_with("$ corepack enable"), "{pnpm}");
         let npm = resolve_package_manager(&empty, "npm").unwrap_err().to_string();
-        assert!(npm.lines().last().unwrap().starts_with("$ "), "{npm}");
+        let words = crate::platform::words::current();
+        assert_eq!(npm.lines().last().unwrap(), words.node_install, "{npm}");
+        assert_eq!(node.lines().last().unwrap(), words.node_install, "{node}");
+        let bun = resolve_package_manager(&empty, "bun").unwrap_err().to_string();
+        assert_eq!(bun.lines().last().unwrap(), words.bun_install, "{bun}");
     }
 }

@@ -5,6 +5,7 @@ import { IncognitoIcon } from "@/components/common/IncognitoIcon";
 import { MenuItem } from "@/components/ui/menu";
 import { openUrlIn, useBrowsers, usePreferredBrowser } from "@/lib/useBrowser";
 import { openSiteInEditor, useEditors, usePreferredEditor } from "@/lib/useEditor";
+import { usePlatformWords } from "@/lib/usePlatformWords";
 import { openInTerminal, useTerminalApps } from "@/lib/useTerminalApp";
 import type { TerminalAsset } from "@/lib/ipc";
 import type { BrowserApp } from "@/types";
@@ -95,12 +96,13 @@ export function useBrowserMenu(
 export function useEditorMenu(path: string): ReactNode | undefined {
   const editors = useEditors();
   const current = usePreferredEditor();
+  const words = usePlatformWords();
   if (editors.length < 2) return undefined;
   return editors.map((e) => (
     <MenuItem
       key={e.id}
       icon={<AppIcon icon={e.icon} fallback={<Code className="h-4 w-4" />} />}
-      onSelect={() => openSiteInEditor(e, path)}
+      onSelect={() => openSiteInEditor(e, path, words.fileManager)}
     >
       <span className="flex-1 truncate">{e.name}</span>
       {e.id === current?.id && (

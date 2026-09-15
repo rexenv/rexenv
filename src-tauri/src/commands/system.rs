@@ -58,6 +58,13 @@ pub fn app_info() -> AppInfo {
     core::app_info::current()
 }
 
+/// The words the UI uses for this OS's own things — "Show in Finder" / "Show in Explorer", the login item's
+/// description (W7 S7, ruling Q3, ledger #626). Static per build, so the frontend reads it once.
+#[tauri::command]
+pub fn platform_words() -> crate::platform::words::PlatformWords {
+    crate::platform::words::current().clone()
+}
+
 /// TLDs a site ANSWERS on that this machine cannot resolve, each flagged with
 /// WHY: `foreign` = another tool owns the resolver file, otherwise it is simply
 /// missing.
