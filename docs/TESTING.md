@@ -1439,6 +1439,13 @@ bloating the fast path:
   call — and what `remove_file`, `remove_dir` and `remove_dir_all` leave of each case's own target), and,
   only with `REXENV_PROBE_OPEN=1` and someone at the screen, `ShellExecuteW` open on a folder and a URL
   and `explorer.exe /select`. It prints; W7's steps are built on what it printed.
+  `windows_cli_pipe_probe` (W8's measure-first, plan §5 W8) is a PROBE run twice — from the elevated SSH
+  token, then in the desktop session (`windows-cli-pipe-probe.ps1` through `windows-limited-token.sh`): the
+  config dir a client builds from `%LOCALAPPDATA%` against the Known Folder, the lock pipe's name from it and
+  one request no build dispatches (`probe.w8`) to the RUNNING app; a one-instance fixture pipe held by a
+  first client (the second's open, `WaitNamedPipeW` held and freed); progress lines then an envelope through
+  a split tokio server; and a `rex mcp`-shaped bridge — a blocked read on a blocking handle while its
+  `try_clone` writes, then the same on a tokio client. It prints; W8's steps are built on what it printed.
   W7 S1's single-instance lock (#620) is measured with the REAL app, as W6's done-when was (the build flags
   and the placeholder sidecar below): the new exe replaces `rexenv-s5\rexenv.exe` with the agent task
   ended first and run again after (the task points at that path, and a running exe cannot be

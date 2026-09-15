@@ -426,8 +426,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     **Design ruled 15 Sep 2026** (plan §5 W8): `rex` computes the app's pipe name itself (the `rex` crate
     gains `sha2`); MCP gets its own pipe, alive only while the toggle is on; install copies `rex.exe` into
     `%LOCALAPPDATA%\rexenv\bin` and adds that folder to the user's `Path`, from the Settings button, refreshed
-    each launch. Measure first on the Dell — above all whether a `rex mcp` bridge (a blocked read on one
-    thread, writes on another) works on a synchronous pipe handle
+    each launch. **Measured the same day** (`windows_cli_pipe_probe`, both tokens): `rex` can compute the
+    running app's pipe name and reach it; a busy pipe answers 231 and `WaitNamedPipeW` lets a client in once
+    freed; progress lines stream in order — and a `rex mcp` bridge on a blocking handle DEADLOCKS (a write
+    waits for the other thread's pending read), while a tokio client does not, so the `rex` crate takes
+    tokio on Windows only (owner, Q5)
   - [ ] W9 — frontend on WebView2 (Windows paths, Ctrl shortcuts, fonts)
     **macOS words on the Windows screens** (seen in the real app on the Dell, W6 S5, 15 Sep 2026): Settings
     "trusted · login keychain" and "Local CA re-trusted in your login keychain." (`Settings.tsx:945`, `:856`),

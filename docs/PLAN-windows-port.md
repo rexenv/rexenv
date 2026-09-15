@@ -1384,6 +1384,21 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   overlapped I/O); (e) the config dir `rex` would build from `%LOCALAPPDATA%` equals the app's
   (`directories`, the Known Folder) on the Dell; (f) a folder appended to HKCU `Path` plus
   `WM_SETTINGCHANGE` is on `PATH` in a PowerShell started afterwards from the Start menu.
+  *Measured 15 Sep 2026 on the Dell* (`windows_cli_pipe_probe`, the same results from the elevated SSH token
+  and the desktop session's Medium token): **(a)+(e)** the config dir from `%LOCALAPPDATA%` equals the Known
+  Folder's, the name computed from it is the running app's pipe (`rexenv-app-ee611f15ee7aa1a3cf20`), and the
+  app answered a request over it from both tokens; **(b)** with the one instance held a client's open
+  answers 231 ("All pipe instances are busy"), `WaitNamedPipeW` waits out its timeout while held (error 121)
+  and returns when the server disconnects and listens again (700 ms, as freed); **(c)** three progress lines
+  written 150 ms apart arrived 150 ms apart and in order, the envelope last; **(d) the blocking bridge
+  deadlocks:** with one thread blocked reading a synchronous handle, a write on its `try_clone` returned only
+  when that read did (3708 ms, when the server's unprompted line came) and the next write never returned in
+  8 s — Windows serializes synchronous I/O on one file object; **(d2)** a tokio client split into halves wrote
+  in 0 ms with its read pending, each echo read as it came. Also seen: the app's reply read through a
+  PowerShell 5.1 pipe showed its em dash as `ΓÇö` (PowerShell decodes a program's redirected output with the
+  console's OEM code page) — a console write is not affected; `rex` output piped in PowerShell 5.1 will be.
+  *Ruling (owner, 15 Sep 2026, after (d)):* **Q5** the `rex` crate takes tokio on Windows only
+  (`cfg(windows)`: net, io-util, rt) for the pipe — the shape (d2) measured; macOS's `rex` is unchanged.
   *Steps:* **S1** the `rex` transport on Windows — the pipe name (Q1), connect with the busy wait, the
   socket paths' Windows arms, the refusal words; **S2** the lock pipe serves every CLI request through the
   unix `serve`'s exchange (progress before the envelope, the command outliving its client), one exchange

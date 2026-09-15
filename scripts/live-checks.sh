@@ -250,6 +250,7 @@ windows_dns_agent_task_check demo
 windows_nrpt_route_check demo
 windows_uac_step_check demo
 windows_desktop_probe demo
+windows_cli_pipe_probe demo
 windows_shell_open_check demo
 windows_app_open_check demo
 windows_autostart_check demo
