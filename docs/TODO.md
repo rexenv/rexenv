@@ -413,7 +413,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     Windows", Git for Windows) — the real app's Settings read the Windows text on the Dell. **All seven steps
     are in; the done-when is not yet fully measured** (plan §5 W7): PhpStorm opening a site, a site in each
     detected browser (only Chrome so far), a git clone through Git for Windows, and deleting a linked plugin
-    through the app's WordPress screen
+    through the app's WordPress screen. **Found measuring it (ledger #627, fixed 15 Sep 2026):** the first
+    WordPress site on the Dell failed "no binary manifest for php-fpm 8.3.32" — the download plans named
+    `php-fpm` on every OS; they now ask `PoolModel::catalog_name()`, and the site `w7check` serves HTTPS 200
   - [ ] W8 — `rex` CLI + MCP over named pipes; `rex.exe` on PATH
   - [ ] W9 — frontend on WebView2 (Windows paths, Ctrl shortcuts, fonts)
     **macOS words on the Windows screens** (seen in the real app on the Dell, W6 S5, 15 Sep 2026): Settings

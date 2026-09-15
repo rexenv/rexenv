@@ -302,8 +302,10 @@ pub async fn php_update_apply(
     }
     // (1) Only a version something vouches for. `manifest` returning a spec IS
     // the check: it means either a compiled-in pin or a signed catalog entry.
+    // The pool binary THIS platform runs (`PoolModel::catalog_name`, ledger #627): `php-fpm` has no Windows
+    // build, so asking for it by name refused every PHP update there.
     if core::binaries::manifest(
-        "php-fpm",
+        platform.supervisor().php_pool_model().catalog_name(),
         &patch,
         std::env::consts::OS,
         platform.binaries().arch(),

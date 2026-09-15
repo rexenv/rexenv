@@ -714,6 +714,13 @@ Live-proven end to end by `site_stop_start_check`.
   `start_database`, `start_mail`, `set_php_version_installed`, `create_site`,
   `set_site_web_server`, `set_site_php_version`, `delete_site`, `set_db_engine_version`.
   Add new binary-resolving commands to this list.
+  **A plan names the binary the start resolves, from the same place** (ledger #627): the pool's PHP comes
+  from `PoolModel::catalog_name()` — `php-fpm` on macOS, the `php` tree a Windows php-cgi group runs — in
+  `PhpFpmPools::ensure` and in every plan that stages a pool (`plan_for_start_with`, `plan_for_pool_with`,
+  and `plan_for_php_with` / `plan_for_php_patch` through `pool_and_cli`, which lists the CLI `php` once where
+  it IS the pool binary); the update apply's manifest check asks it too. The plans named `php-fpm` on every
+  OS, so a Windows first run asked for a build that does not exist ("no binary manifest for php-fpm
+  8.3.32", the Dell, 15 Sep 2026) and no site could begin.
 - **A planned download row never outlives its resolve** (`Hub::item_settled`, called
   by `prefetch` for each item the moment its resolve returns). The resolvers' early
   returns — the cache hit, a failure before the first byte — report nothing, and a

@@ -258,6 +258,56 @@ pub fn pool_workers(model: crate::platform::traits::PoolModel) -> u32 {
     }
 }
 
+/// Ledger #627 — the binary a pool starts from has ONE name source, `PoolModel::catalog_name()`: php-fpm's
+/// own binary, or the `php` tree a php-cgi group runs. Every download plan that stages a pool and the pool
+/// start itself ask it. They used to name `php-fpm` themselves on every OS while a Windows pool started from
+/// `php` — so a Windows first run asked for a binary that has no Windows build and never began a site (found
+/// on the Dell, 15 Sep 2026: "no binary manifest for php-fpm 8.3.32").
+#[cfg(test)]
+mod pool_binary_tests {
+    use crate::platform::traits::{CgiGroup, PoolModel};
+
+    #[test]
+    fn each_pool_model_names_the_binary_it_starts_from() {
+        assert_eq!(PoolModel::Fpm.catalog_name(), "php-fpm");
+        assert_eq!(PoolModel::CgiGroup(CgiGroup { extensions: &[], zend_extensions: &[] }).catalog_name(), "php");
+    }
+
+    /// The plans and the start ask `catalog_name()`, and none names the pool binary itself. TEXT, not behaviour
+    /// (the #175 bound): what it catches is a planner or a start going back to its own literal, which is how
+    /// they drifted apart.
+    #[test]
+    fn the_plans_and_the_start_name_the_pool_binary_from_one_place() {
+        // A function's body ends at its own closing brace: `close` is that brace's line for its indent (a
+        // method inside an `impl` closes at four spaces, a free function at none). A slice that ran on to the
+        // next `pub` swept the debug pool's `php-fpm-debug` into `ensure` on its first run.
+        let slice = |src: &str, start: &str, close: &str| -> String {
+            let at = src.find(start).unwrap_or_else(|| panic!("{start} is gone"));
+            let body = &src[at..];
+            let end = body.find(close).map(|i| i + close.len()).unwrap_or_else(|| panic!("{start} has no {close:?}"));
+            body[..end].to_string()
+        };
+        let php = crate::core::copy_scan::production_source(include_str!("php.rs"));
+        let ensure = slice(&php, "pub async fn ensure(", "\n    }\n");
+        assert!(ensure.contains("resolve_dir("), "sliced the wrong function:\n{ensure}");
+        assert!(ensure.contains("catalog_name()"), "PhpFpmPools::ensure no longer asks catalog_name()");
+        assert!(!ensure.contains("\"php-fpm\"") && !ensure.contains("\"php\""), "ensure names a pool binary itself:\n{ensure}");
+        let downloads = crate::core::copy_scan::production_source(include_str!("downloads.rs"));
+        // Each plan that stages a pool asks `catalog_name()` itself, or goes through `pool_and_cli`, which does.
+        for (plan_fn, asks) in [
+            ("pub fn plan_for_start_with(", "catalog_name()"),
+            ("pub fn plan_for_pool_with(", "catalog_name()"),
+            ("pub fn plan_for_php_with(", "pool_and_cli("),
+            ("pub fn plan_for_php_patch(", "pool_and_cli("),
+            ("fn pool_and_cli(", "catalog_name()"),
+        ] {
+            let plan = slice(&downloads, plan_fn, "\n}\n");
+            assert!(plan.contains(asks), "{plan_fn} no longer asks {asks}:\n{plan}");
+            assert!(!plan.contains("\"php-fpm\""), "{plan_fn} names php-fpm itself:\n{plan}");
+        }
+    }
+}
+
 pub fn debug_fpm_port(minor: &str) -> Option<u16> {
     if !binaries::xdebug_supported(minor) {
         return None;
@@ -996,9 +1046,11 @@ impl PhpFpmPools {
             fpm_port(minor).ok_or_else(|| Error::Other(format!("no fpm port for {minor}")))?;
         ports::ensure_free(platform, port, ports::Proto::Tcp, "PHP-FPM")?;
         let settings = self.settings.get(minor).map(Vec::as_slice).unwrap_or(&[]);
-        let child = match platform.supervisor().php_pool_model() {
+        let model = platform.supervisor().php_pool_model();
+        let pool_bin = model.catalog_name();
+        let child = match model {
             crate::platform::traits::PoolModel::Fpm => {
-                let bin = binaries::resolve(platform, "php-fpm", &patch).await?;
+                let bin = binaries::resolve(platform, pool_bin, &patch).await?;
                 let conf = services::write_fpm_config(
                     platform,
                     minor,
@@ -1010,7 +1062,7 @@ impl PhpFpmPools {
             }
             // One php-cgi parent per minor on the same port (ledger #601).
             crate::platform::traits::PoolModel::CgiGroup(group) => {
-                let dir = binaries::resolve_dir(platform, "php", &patch).await?;
+                let dir = binaries::resolve_dir(platform, pool_bin, &patch).await?;
                 super::php_cgi::start_group(platform, &group, &dir, minor, port, self.catch.as_ref(), settings)?
             }
         };

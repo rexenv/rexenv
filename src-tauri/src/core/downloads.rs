@@ -278,9 +278,12 @@ pub fn plan_for_start_with(
     if !minors.contains(&default_minor) {
         minors.push(default_minor);
     }
+    // The binary this platform's pools start from (`PoolModel::catalog_name`, ledger #627) — never a literal:
+    // the plan once named `php-fpm` on Windows, where the pool starts from `php` and no `php-fpm` build exists.
+    let pool_bin = platform.supervisor().php_pool_model().catalog_name();
     for minor in &minors {
         if let Some(patch) = planned_patch(patches, minor) {
-            set.push(("php-fpm", patch));
+            set.push((pool_bin, patch));
         }
     }
     if sites.iter().any(|s| matches!(s.web_server, WebServer::Frankenphp)) {
@@ -350,12 +353,20 @@ pub fn plan_for_mailpit(platform: &dyn Platform) -> Vec<PlannedBinary> {
 /// its CLI build (WP-CLI operations). Empty if the minor has no pinned build.
 pub fn plan_for_php_with(platform: &dyn Platform, minor: &str, patches: &PatchMap) -> Vec<PlannedBinary> {
     match planned_patch(patches, minor) {
-        Some(patch) => vec![
-            PlannedBinary::new(platform, "php-fpm", patch),
-            PlannedBinary::new(platform, "php", patch),
-        ],
+        Some(patch) => pool_and_cli(platform, patch),
         None => Vec::new(),
     }
+}
+
+/// A patch's pool binary (this platform's `PoolModel::catalog_name`, ledger #627) and its CLI build — ONE item
+/// where they are the same binary, as on Windows, where a php-cgi group runs from the `php` tree the CLI is.
+fn pool_and_cli(platform: &dyn Platform, patch: &str) -> Vec<PlannedBinary> {
+    let pool = platform.supervisor().php_pool_model().catalog_name();
+    let mut plan = vec![PlannedBinary::new(platform, pool, patch)];
+    if pool != "php" {
+        plan.push(PlannedBinary::new(platform, "php", patch));
+    }
+    plan
 }
 
 /// Both binaries of ONE EXPLICIT patch — the in-app update path, which names a
@@ -370,10 +381,7 @@ pub fn plan_for_php_patch(platform: &dyn Platform, minor: &str, patch: &str) -> 
     if php::minor_of(patch) != minor {
         return Vec::new();
     }
-    vec![
-        PlannedBinary::new(platform, "php-fpm", patch),
-        PlannedBinary::new(platform, "php", patch),
-    ]
+    pool_and_cli(platform, patch)
 }
 
 /// Just one minor's php-fpm pool binary — for the site-create / PHP-switch
@@ -381,7 +389,8 @@ pub fn plan_for_php_patch(platform: &dyn Platform, minor: &str, patch: &str) -> 
 /// cache. Empty if the minor has no pinned build (`ensure` then errors clearly).
 pub fn plan_for_pool_with(platform: &dyn Platform, minor: &str, patches: &PatchMap) -> Vec<PlannedBinary> {
     match planned_patch(patches, minor) {
-        Some(patch) => vec![PlannedBinary::new(platform, "php-fpm", patch)],
+        // The binary `ensure_php_pool` resolves on THIS platform (`PoolModel::catalog_name`, ledger #627).
+        Some(patch) => vec![PlannedBinary::new(platform, platform.supervisor().php_pool_model().catalog_name(), patch)],
         None => Vec::new(),
     }
 }
