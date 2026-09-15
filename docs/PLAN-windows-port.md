@@ -1476,6 +1476,15 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   removed it. The same night, with the owner: the CLI folder taken off the user's `Path`, Reinstall put it back
   (11 entries, the other ten intact); a different `rex.exe` beside the app, and the next launch replaced the
   installed copy and left the old one as `rex.exe.old`. Not seen on screen: the card's and toast's words.
+  **W8 is done (16 Sep 2026).** The done-when, clause by clause, on the Dell: after Install a PowerShell opened
+  from the Start menu ran `rex status` (the owner), and fresh desktop-session processes ran `rex site list` and
+  the streaming `rex site create` (created, then deleted); `rex mcp` answered `initialize` and `tools/list` with
+  the toggle on and said the endpoint is off with it off (S3); with the app quit the installed `rex` said
+  "rexenv isn't running", exit 2, and the next launch swept `rex.exe.old`. Found and fixed on the way: a
+  blocking bridge would deadlock (measured first, so the `rex` crate took tokio on Windows), #54's guard read
+  one dependency table, `rex mcp` called an open app "not running", and an adopting launch left caddy
+  unresolved on Windows (#635). Not certified anywhere in W8: the Command-line tool card's words read on
+  screen, a replace while a `rex mcp` keeps the old copy running, the teardown (ruled out), Windows 11.
   *Done when, measured:* after Install, a PowerShell opened from the Start menu runs `rex status`,
   `rex site list` and a streaming command against the running app; `rex mcp` answers `initialize` and
   `tools/list` with the toggle on and says rexenv's endpoint is off with it off; with the app quit, `rex`
