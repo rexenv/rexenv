@@ -61,7 +61,8 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
   (`PlatformWords`, `MACOS`/`WINDOWS`, `current()`; tested on every host, including a scan of the frontend),
   served by `commands::system::platform_words` and read through `src/lib/usePlatformWords.ts`; finding a
   command on `PATH` — `platform/path_lookup.rs` (`PathLookup`, `UNIX`/`WINDOWS`, `current()`: the separator,
-  the variable's case, `PATHEXT`; tested on every host), walked by `core/devtools.rs` `find_tool` (ledger #628)
+  the variable's case, `PATHEXT`; tested on every host), walked by `core/devtools.rs` `find_tool` (ledger #628); a path's last part in the UI — `src/lib/path.ts`
+  (`baseName` on either separator, `joinPath`; held by a frontend scan in `path_lookup.rs`) (ledger #629)
   (`mockPlatformWords` in `src/lib/mock.ts`), used by `core/devtools.rs` and `core/repo.rs`'s install hints
   (ledger #626); nginx's Windows shape — `services::nginx_path`,
   `binaries::resolve_program`, the master climb and nginx's events (ledger #602);

@@ -16,6 +16,7 @@
  *    legitimately sit for minutes printing nothing, and a bar PARKED at a
  *    percentage reads as frozen without it) with Cancel as the escape,
  *    visible from the moment the job starts. */
+import { baseName } from "@/lib/path";
 import { useEffect, useRef, useState } from "react";
 import { Loader2, X } from "lucide-react";
 import type { WpInstallState } from "@/types";
@@ -32,7 +33,7 @@ const BTN =
  *  or shortened there. */
 export function installLabels(job: WpInstallState): string[] {
   if (job.source !== "zip") return job.slugs;
-  return job.slugs.map((p) => p.split("/").filter(Boolean).pop() ?? p);
+  return job.slugs.map((p) => baseName(p) || p);
 }
 
 const END_COPY: Partial<Record<WpInstallState["status"], string>> = {

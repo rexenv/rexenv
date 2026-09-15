@@ -120,6 +120,43 @@ mod tests {
         assert_eq!(WINDOWS.candidates(&env(&[("PATH", r"C:\bin"), ("PATHEXT", " ")]), "git"), expected);
     }
 
+    /// Ledger #629 — **the UI takes a path's last part only through `src/lib/path.ts`**, which splits on both
+    /// separators. The backend's paths are native, so a `split("/")` on a Windows path returns the whole path
+    /// (the Dell's "Link folder" name field, 15 Sep 2026). A whole-surface claim: every `.ts`/`.tsx` under
+    /// `src/`, comment lines skipped, `path.ts` itself excepted.
+    #[test]
+    fn the_frontend_splits_a_path_only_through_the_path_helpers() {
+        let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("../src");
+        let (mut offenders, mut scanned, mut stack) = (Vec::new(), 0, vec![src]);
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).expect("read the frontend source") {
+                let path = entry.expect("a directory entry").path();
+                if path.is_dir() {
+                    stack.push(path);
+                    continue;
+                }
+                let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                if !(name.ends_with(".ts") || name.ends_with(".tsx")) || name == "path.ts" {
+                    continue;
+                }
+                scanned += 1;
+                let text = std::fs::read_to_string(&path).expect("read a source file");
+                for (i, line) in text.lines().enumerate() {
+                    let t = line.trim_start();
+                    if t.starts_with("//") || t.starts_with('*') || t.starts_with("/*") {
+                        continue;
+                    }
+                    // Not `}/${`: routes, counts and event channels join on `/` legitimately.
+                    if [r#"split("/")"#, "split('/')", r"/\/+$/"].iter().any(|w| line.contains(w)) {
+                        offenders.push(format!("{}:{}: {}", path.display(), i + 1, t));
+                    }
+                }
+            }
+        }
+        assert!(scanned > 50, "scanned only {scanned} files — the walk is not reading the frontend");
+        assert!(offenders.is_empty(), "a path split or joined on `/` outside src/lib/path.ts:\n{}", offenders.join("\n"));
+    }
+
     #[test]
     fn this_build_uses_its_own_rules() {
         let expected = if cfg!(target_os = "windows") { &WINDOWS } else { &UNIX };

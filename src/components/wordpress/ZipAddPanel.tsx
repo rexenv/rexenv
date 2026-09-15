@@ -12,6 +12,7 @@
  *  with the Tauri drag-drop plugin wired app-wide, and a half-working drop
  *  target that silently does nothing is worse than a button that always
  *  works. Multi-select in the native dialog covers the batch case. */
+import { baseName } from "@/lib/path";
 import { useState } from "react";
 import { FileArchive, Plus, X } from "lucide-react";
 import { CHECK_INPUT } from "@/lib/utils";
@@ -21,8 +22,6 @@ import { toastBackendError } from "@/lib/toast";
 
 const BTN =
   "rounded-md border border-rex-border bg-rex-surface-2 px-2.5 py-1 text-[0.75rem] text-rex-text transition-colors hover:border-brand disabled:cursor-not-allowed disabled:opacity-40";
-
-const baseName = (p: string) => p.split("/").filter(Boolean).pop() ?? p;
 
 export function ZipAddPanel({
   siteId,

@@ -1,6 +1,7 @@
 /** "Link folder" source (phase D): symlink an EXISTING local checkout into
  *  this site's wp-content. The folder stays where it is — deleting the asset
  *  later removes ONLY the link (backend-guaranteed on filesystem truth). */
+import { baseName } from "@/lib/path";
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { FolderSymlink } from "lucide-react";
@@ -41,7 +42,7 @@ export function LinkFolderPanel({
     const picked = await pickFolder(`Choose the ${kind} folder to link`);
     if (picked) {
       setTarget(picked);
-      setDirName(picked.split("/").filter(Boolean).pop() ?? "");
+      setDirName(baseName(picked));
       setResult(null);
     }
   };

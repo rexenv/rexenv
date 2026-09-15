@@ -385,7 +385,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     PASS, 21 checks, through the step's own body); in the desktop session with the owner answering
     `windows_uac_step_check` PASS (10 checks): non-op refused with no window, install and remove OK+Yes,
     Cancel and OK+No → the cancel wording with nothing changed. **S5 done the same day** (above)
-  - [ ] W7 — ShellRunner, autostart, tray (includes the Windows half of the browser-stub row)
+  - [x] W7 — ShellRunner, autostart, tray (includes the Windows half of the browser-stub row) ✓ 15 Sep 2026
     **Design ruled 15 Sep 2026** (plan §5 W7): a named-pipe single-instance lock in W7 that knows only
     `app.open` (W8 grows the same pipe into the CLI); the tray opens the window on a left click and the menu
     on a right click, with the colour app icon; the words a feature shows ("Show in Explorer", "when you
@@ -411,16 +411,15 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     `remove_symlink` takes only the link; Dell `windows_junction_check` PASS (12 checks). **S7 done the same day
     (ledger #626):** the words for the OS's own things come from the platform ("Show in Explorer", "sign in to
     Windows", Git for Windows) — the real app's Settings read the Windows text on the Dell. **All seven steps
-    are in; the done-when is not yet fully measured** (plan §5 W7): PhpStorm opening a site, a site in each
-    detected browser (only Chrome so far), a git clone through Git for Windows, and deleting a linked plugin
-    through the app's WordPress screen. **Found measuring it (ledger #627, fixed 15 Sep 2026):** the first
+    are in, and the done-when is measured** (plan §5 W7). **Found measuring it (ledger #627, fixed 15 Sep 2026):** the first
     WordPress site on the Dell failed "no binary manifest for php-fpm 8.3.32" — the download plans named
     `php-fpm` on every OS; they now ask `PoolModel::catalog_name()`, and the site `w7check` serves HTTPS 200. **And (ledger #628,
     fixed the same day):** "From Git" said git and node were missing — the core read `PATH` split on `:` for
     a file named `git`; the rules are now the platform's (`Path`, `;`, `PATHEXT`). **Measured on the Dell:**
     PhpStorm opened `w7check` (its `.idea` and recent-projects entry); Firefox, Brave and Edge each showed
-    the site's window (Chrome in S3); a clone of `WordPress/classic-editor` through "From Git". **Left:** a
-    linked plugin deleted through the WordPress screen
+    the site's window (Chrome in S3); a clone of `WordPress/classic-editor` through "From Git"; a folder linked as a plugin and deleted from the
+    WordPress screen left its checkout byte-identical — after the third fix (ledger #629): "Link folder" had
+    offered the whole `C:\…` path as the folder name, because the UI split paths on `/`
     - Found, not fixed: `core/terminal.rs` joins its PATH prepend with `:` — the site terminal on Windows
       needs the same rules when it is ported
   - [ ] W8 — `rex` CLI + MCP over named pipes; `rex.exe` on PATH

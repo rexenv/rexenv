@@ -1,3 +1,4 @@
+import { baseName } from "@/lib/path";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast, toastBackendError } from "@/lib/toast";
@@ -1536,7 +1537,7 @@ function ImportDbDialog({ siteId, domain, onClose }: { siteId: string; domain: s
   });
   const busy = doImport.isPending;
   const match = confirmPhraseMatches(typed, domain);
-  const fileName = file?.split("/").pop() ?? null;
+  const fileName = file ? baseName(file) : null;
   return (
     <div
       className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50"

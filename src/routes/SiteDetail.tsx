@@ -1,3 +1,4 @@
+import { baseName, joinPath } from "@/lib/path";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { engineLabel, enginePort } from "@/lib/dbEngines";
 import { toastBackendError } from "@/lib/toast";
@@ -802,13 +803,13 @@ function SettingsTab({ site }: { site: Site }) {
   const askMove = async () => {
     const parent = await pickFolder("Choose the new parent folder", site.path);
     if (!parent) return;
-    const folder = site.path.replace(/\/+$/, "").split("/").pop() ?? site.domain;
+    const folder = baseName(site.path) || site.domain;
     const ok = await confirm({
       title: "Move site folder?",
       message: (
         <>
           Moves <span className="font-mono">{site.path}</span> to{" "}
-          <span className="font-mono">{`${parent}/${folder}`}</span> and updates the server config
+          <span className="font-mono">{joinPath(parent, folder)}</span> and updates the server config
           (the site may blip for a moment). Files are verified at the destination before anything
           old is removed. Two caveats: plugins that stored absolute paths in the database won't
           follow the move, and moving the folder outside your rexenv sites folder gives up

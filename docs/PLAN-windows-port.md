@@ -1339,10 +1339,15 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
     **W7's done-when, where it stands:** ✓ login item → sign-in → tray, services break away, a left click opens
     the window (S4, S5); ✓ a second launch → one process, window in front (S1); ✓ a folder and a reveal land in
     Explorer (S2); ✓ VS Code opens a site folder (S3); ✓ PowerShell opens in a new console at the folder (S3);
-    ✓ a linked folder's removal leaves the checkout (S6, through the platform). **Not yet measured:**
-    PhpStorm opening a site, a site opened in each detected browser (Chrome only), a git clone through Git for
-    Windows, and the linked-plugin delete through the app's WordPress screen (wp-cli) — W7 stays open until
-    those run.
+    ✓ a linked folder's removal leaves the checkout (S6, through the platform); ✓ Chrome the default among
+    the detected browsers (S3). **The rest measured 15 Sep 2026 with the real app and the WordPress site
+    `w7check`:** ✓ PhpStorm opened the site (its `.idea` created, the project its last opened); ✓ Firefox,
+    Brave and Edge each showed the site's window from the chevron; ✓ "From Git" cloned
+    `WordPress/classic-editor` through Git for Windows; ✓ a folder linked as a plugin and deleted from the
+    WordPress screen left its checkout byte-identical. **W7 is done.** Measuring it found three bugs, each
+    fixed first: the download plans named `php-fpm` on Windows, so no site could begin (ledger #627); tool
+    lookup split `PATH` on `:`, so git and node read as missing (ledger #628); the UI split paths on `/`, so
+    "Link folder" offered the whole path as the name (ledger #629).
   *Done when* (the Dell, the owner at the desktop): "Open rexenv at login" on, then sign out and in —
   rexenv in the tray with its services up, a left click opens the window; a second double-click leaves one
   process with its window in front; "Open folder" and "Show in Explorer" land in Explorer; "Open in editor"

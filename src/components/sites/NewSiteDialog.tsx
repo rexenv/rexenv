@@ -1,3 +1,4 @@
+import { baseName } from "@/lib/path";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { toastBackendError } from "@/lib/toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -175,7 +176,7 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
       const info = await inspectLinkedFolder(picked);
       setLink(info);
       setSiteType(info.siteType);
-      if (!name.trim()) setName(info.root.split("/").filter(Boolean).pop() ?? "");
+      if (!name.trim()) setName(baseName(info.root));
     } catch (e) {
       setLink(null);
       setLinkError(e instanceof Error ? e.message : String(e));

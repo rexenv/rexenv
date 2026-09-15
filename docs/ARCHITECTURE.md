@@ -2683,6 +2683,10 @@ IPC surface — which is how a reader ends up designing against a system with on
     still holds because `symlink_metadata(..).file_type().is_symlink()` is TRUE for a junction (measured), and
     `remove_symlink` removes one with `remove_dir` — which leaves the target's files, where `remove_file` is
     refused (measured). A junction points only at a local drive path; a network share is refused by name.
+    The folder name the panel offers is the picked path's last part through `src/lib/path.ts` `baseName`
+    (either separator, ledger #629) — a `split("/")` offered the whole `C:\…` path on the Dell, and the
+    backend's name check refused it. The app's own delete was then measured there: the junction gone, the
+    checkout's files byte-identical.
     Delete confirms are status-driven (`loss_warning`: exact changed/
     untracked/unpushed counts; linked = calm "removes only the link").
     Watchers (`RepoWatches`) are session processes: process-grouped, die
