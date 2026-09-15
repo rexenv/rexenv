@@ -49,7 +49,6 @@ pub(crate) use app_pipe::{
     claim as claim_app_pipe, hand_off as hand_off_to_app_pipe, next_instance as next_app_pipe_instance, AppPipeClaim,
     HeldAppPipe,
 };
-pub(crate) use app_pipe_rules::{not_yet as app_pipe_not_yet, serves as app_pipe_serves};
 pub(crate) use elevation::{run_ops_here, run_step};
 pub(crate) use resolver_socket::bind_resolver_udp;
 

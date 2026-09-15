@@ -2750,8 +2750,10 @@ IPC surface — which is how a reader ends up designing against a system with on
   created with `FILE_FLAG_FIRST_PIPE_INSTANCE` and the owner-only descriptor private files get (#597), and a
   create refused with access denied — what the Dell measured for a held name — means another instance, so
   the launch connects, sends `app.open` and exits; any other error starts the app without the lock. The
-  pipe answers ONLY `app.open` until the rex CLI reaches Windows (W8), and the server makes each next
-  instance before letting the current one go — the lock is "an instance of this name exists", so a moment
+  pipe answered ONLY `app.open` in W7; since W8 S2 it is the CLI's transport too — every connection runs
+  `cli_server::serve_connection`, the one exchange the unix socket runs (ledger #631), so a same-user
+  process can send it any `rex` command, the trust the socket's `0600` gives on macOS — and the server makes
+  each next instance before letting the current one go — the lock is "an instance of this name exists", so a moment
   with none is a moment a second launch could take it. Before this, the unix-only claim meant every
   double-click on Windows booted a second full app: a second SQLite writer, a second watchdog.
 - **The window starts hidden** (`tauri.conf.json` `visible: false`) and somebody has to

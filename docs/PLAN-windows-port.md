@@ -1415,6 +1415,12 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   `[dependencies]` and would have passed a banned crate under the Windows table — it reads every table now.
   Dell, both tokens, against the W7 app: `rex open` exit 0, `rex status` exit 1 with the pipe's sentence,
   `rex mcp` exit 1, a name nothing serves exit 2.
+  **S2 done 15 Sep 2026 (ledger #631), L0; the Dell run next.** `cli_server::serve_connection` is the one
+  exchange — request line, opt-in progress, one envelope last, the command in its own task — and the unix
+  `serve` and Windows' `spawn_pipe` (both its serving paths, including the next-instance-failure branch, which
+  unsplits the pipe to listen on it again) hand every connection to it. W7's app.open-only rule, its refusal
+  and their re-exports are removed; ledger #620's claim is narrowed to W7. A test over `tokio::io::duplex`
+  holds the framing and the outlive-the-client rule on every host, and a scan holds both transports to it.
   *Done when, measured:* after Install, a PowerShell opened from the Start menu runs `rex status`,
   `rex site list` and a streaming command against the running app; `rex mcp` answers `initialize` and
   `tools/list` with the toggle on and says rexenv's endpoint is off with it off; with the app quit, `rex`

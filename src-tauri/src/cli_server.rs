@@ -247,64 +247,77 @@ where
         };
         let handler = handler.clone();
         tokio::spawn(async move {
-            let (read, mut write) = stream.into_split();
-            if let Some(line) =
-                read_request_line(read, MAX_REQUEST_BYTES, REQUEST_READ_TIMEOUT).await
-            {
-                let streaming = parse_request(&line).map(|r| r.stream).unwrap_or(false);
-                let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
-                let progress = if streaming { Progress(Some(tx)) } else { Progress::none() };
-                // The handler runs in ITS OWN task, so the command outlives
-                // the client: `rex site create … | head -1` used to hang up
-                // after the first record, the write error returned from this
-                // task, and the handler future was DROPPED mid-command — the
-                // site provisioned (a spawned job) but the multisite convert
-                // that follows the wait never ran, with no error anywhere.
-                // A task also turns a panicking arm into a `JoinError` this
-                // loop can answer, keeping "exactly one envelope, always last".
-                let mut work = tokio::spawn(handler(line, progress));
-                let mut client_gone = false;
-                let response = loop {
-                    tokio::select! {
-                        // Progress first when both are ready: a record produced
-                        // before the result must reach the client before the
-                        // envelope that ends the exchange.
-                        biased;
-                        Some(p) = rx.recv() => {
-                            if !client_gone
-                                && (write.write_all(p.as_bytes()).await.is_err()
-                                    || write.write_all(b"\n").await.is_err())
-                            {
-                                // Keep draining so the handler never blocks on
-                                // a full channel; the command runs to its end.
-                                client_gone = true;
-                            }
-                        }
-                        done = &mut work => break match done {
-                            Ok(reply) => reply,
-                            Err(e) => serde_json::json!({
-                                "ok": false,
-                                "error": format!("the command crashed inside the app: {e}"),
-                            })
-                            .to_string(),
-                        },
-                    }
-                };
-                if client_gone {
-                    return;
-                }
-                // Anything queued between the last poll and the handler
-                // returning — dropped otherwise, which would lose the final
-                // phase of every job that reports one just before finishing.
-                while let Ok(p) = rx.try_recv() {
-                    let _ = write.write_all(p.as_bytes()).await;
-                    let _ = write.write_all(b"\n").await;
-                }
-                let _ = write.write_all(response.as_bytes()).await;
-                let _ = write.write_all(b"\n").await;
-            }
+            let (read, write) = stream.into_split();
+            serve_connection(read, write, handler).await;
         });
     }
+}
+
+/// One exchange on a connected client, whatever carries it — the unix socket and Windows' named pipe alike
+/// (W8 S2, ledger #631): a request line in, the progress records the client asked for, then exactly one
+/// envelope, last. One function for both transports, so the framing, the opt-in streaming and a command
+/// outliving its client cannot differ between macOS and Windows.
+pub async fn serve_connection<Rd, Wr, F, Fut>(read: Rd, mut write: Wr, handler: F)
+where
+    Rd: AsyncRead + Unpin,
+    Wr: tokio::io::AsyncWrite + Unpin,
+    F: FnOnce(String, Progress) -> Fut,
+    Fut: std::future::Future<Output = String> + Send + 'static,
+{
+    let Some(line) = read_request_line(read, MAX_REQUEST_BYTES, REQUEST_READ_TIMEOUT).await else {
+        return;
+    };
+    let streaming = parse_request(&line).map(|r| r.stream).unwrap_or(false);
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+    let progress = if streaming { Progress(Some(tx)) } else { Progress::none() };
+    // The handler runs in ITS OWN task, so the command outlives
+    // the client: `rex site create … | head -1` used to hang up
+    // after the first record, the write error returned from this
+    // task, and the handler future was DROPPED mid-command — the
+    // site provisioned (a spawned job) but the multisite convert
+    // that follows the wait never ran, with no error anywhere.
+    // A task also turns a panicking arm into a `JoinError` this
+    // loop can answer, keeping "exactly one envelope, always last".
+    let mut work = tokio::spawn(handler(line, progress));
+    let mut client_gone = false;
+    let response = loop {
+        tokio::select! {
+            // Progress first when both are ready: a record produced
+            // before the result must reach the client before the
+            // envelope that ends the exchange.
+            biased;
+            Some(p) = rx.recv() => {
+                if !client_gone
+                    && (write.write_all(p.as_bytes()).await.is_err()
+                        || write.write_all(b"\n").await.is_err())
+                {
+                    // Keep draining so the handler never blocks on
+                    // a full channel; the command runs to its end.
+                    client_gone = true;
+                }
+            }
+            done = &mut work => break match done {
+                Ok(reply) => reply,
+                Err(e) => serde_json::json!({
+                    "ok": false,
+                    "error": format!("the command crashed inside the app: {e}"),
+                })
+                .to_string(),
+            },
+        }
+    };
+    if client_gone {
+        return;
+    }
+    // Anything queued between the last poll and the handler
+    // returning — dropped otherwise, which would lose the final
+    // phase of every job that reports one just before finishing.
+    while let Ok(p) = rx.try_recv() {
+        let _ = write.write_all(p.as_bytes()).await;
+        let _ = write.write_all(b"\n").await;
+    }
+    let _ = write.write_all(response.as_bytes()).await;
+    let _ = write.write_all(b"\n").await;
 }
 
 /// Read one request line, bounded by `max_bytes` (memory) and `timeout` (a
@@ -2000,8 +2013,9 @@ pub fn spawn(app: tauri::AppHandle, claimed: Option<std::os::unix::net::UnixList
 }
 
 // ── Windows: the single-instance pipe (W7 S1, plan §5 W7 ruling Q1, ledger #620) ──────────────────
-// The unix socket above is both the lock and the CLI. On Windows the lock is a named pipe that knows only
-// `app.open` until the rex CLI arrives (W8), which grows this same pipe into the CLI and MCP transport.
+// The unix socket above is both the lock and the CLI. On Windows the lock is a named pipe (W7 S1), and since
+// W8 S2 it is the CLI's transport too: every connection runs `serve_connection`, the exchange the socket runs
+// (ledger #631). MCP gets a pipe of its own (plan §5 W8 ruling Q2).
 
 /// What `run()` does about the single-instance pipe before Tauri boots — Windows' [`StartupClaim`].
 #[cfg(windows)]
@@ -2037,13 +2051,13 @@ pub fn claim_pipe_at_startup() -> PipeStartup {
     }
 }
 
-/// Serve the pipe the startup claim holds. The next instance is always made BEFORE the one in hand is
-/// given away or dropped: the lock is "some instance of this name exists", so a moment with none is a
-/// moment a second launch could take it.
+/// Serve the pipe the startup claim holds: every CLI request, through `serve_connection` (ledger #631). The
+/// next instance is always made BEFORE the one in hand is given away: the lock is "some instance of this name
+/// exists", so a moment with none is a moment a second launch could take it.
 #[cfg(windows)]
 pub fn spawn_pipe(app: tauri::AppHandle, held: Option<crate::platform::HeldAppPipe>) {
     let Some(held) = held else {
-        log::warn!("app pipe: no single-instance lock this launch — a second launch would start a second app");
+        log::warn!("app pipe: no single-instance lock this launch — a second launch would start a second app, and rex cannot reach this one");
         return;
     };
     tauri::async_runtime::spawn(async move {
@@ -2063,7 +2077,14 @@ pub fn spawn_pipe(app: tauri::AppHandle, held: Option<crate::platform::HeldAppPi
                 Err(e) => {
                     log::error!("app pipe: could not make the next instance of {name}: {e} — keeping this one");
                     if connected.is_ok() {
-                        serve_pipe_connection(&app, &mut server).await;
+                        // No next instance: serve this client on the one in hand, then listen on it again.
+                        let (mut read, mut write) = tokio::io::split(server);
+                        let app = app.clone();
+                        serve_connection(&mut read, &mut write, move |line, progress| async move {
+                            handle_request(&app, line, progress).await
+                        })
+                        .await;
+                        server = read.unsplit(write);
                         let _ = server.disconnect();
                     }
                     continue;
@@ -2073,28 +2094,15 @@ pub fn spawn_pipe(app: tauri::AppHandle, held: Option<crate::platform::HeldAppPi
             if connected.is_ok() {
                 let app = app.clone();
                 tokio::spawn(async move {
-                    let mut current = current;
-                    serve_pipe_connection(&app, &mut current).await;
+                    let (read, write) = tokio::io::split(current);
+                    serve_connection(read, write, move |line, progress| async move {
+                        handle_request(&app, line, progress).await
+                    })
+                    .await;
                 });
             }
         }
     });
-}
-
-/// One exchange on a connected instance: a request line in, one envelope out — `app.open` only.
-#[cfg(windows)]
-async fn serve_pipe_connection(app: &tauri::AppHandle, pipe: &mut tokio::net::windows::named_pipe::NamedPipeServer) {
-    let Some(line) = read_request_line(&mut *pipe, MAX_REQUEST_BYTES, REQUEST_READ_TIMEOUT).await else {
-        return;
-    };
-    let cmd = parse_request(&line).map(|r| r.cmd).unwrap_or_default();
-    let reply = if crate::platform::app_pipe_serves(&cmd) {
-        handle_request(app, line, Progress::none()).await
-    } else {
-        crate::platform::app_pipe_not_yet(&cmd)
-    };
-    let _ = pipe.write_all(reply.as_bytes()).await;
-    let _ = pipe.write_all(b"\n").await;
 }
 
 
@@ -2158,6 +2166,93 @@ mod cli_isolation {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Ledger #631 — **one exchange, whatever the transport**: `serve_connection` over an in-memory pipe (no
+    /// socket, the shape Windows' named pipe hands it) keeps the framing both transports promise — one envelope
+    /// for a client that did not ask to stream; the progress records in order, then the envelope, for one that
+    /// did — and a command whose client hangs up mid-stream still runs to its end.
+    #[tokio::test]
+    async fn one_exchange_over_any_transport_frames_streams_and_outlives_its_client() {
+        async fn exchange(request: &str) -> Vec<String> {
+            let (client, server) = tokio::io::duplex(4096);
+            let (read, write) = tokio::io::split(server);
+            tokio::spawn(serve_connection(read, write, |line: String, p: Progress| async move {
+                p.send(json!({ "step": 1 }));
+                p.send(json!({ "step": 2 }));
+                json!({ "ok": true, "data": line.trim() }).to_string()
+            }));
+            let (client_read, mut client_write) = tokio::io::split(client);
+            client_write.write_all(format!("{request}\n").as_bytes()).await.expect("write");
+            let mut lines = Vec::new();
+            let mut reader = BufReader::new(client_read);
+            loop {
+                let mut line = String::new();
+                match reader.read_line(&mut line).await {
+                    Ok(0) | Err(_) => break,
+                    Ok(_) => lines.push(line.trim().to_string()),
+                }
+            }
+            lines
+        }
+
+        let plain = exchange("{\"cmd\":\"x\"}").await;
+        assert_eq!(plain.len(), 1, "a client that did not ask to stream got more than the envelope: {plain:?}");
+        assert!(plain[0].contains("\"ok\":true"), "{plain:?}");
+
+        let streamed = exchange("{\"cmd\":\"x\",\"stream\":true}").await;
+        assert_eq!(streamed.len(), 3, "two progress records and one envelope: {streamed:?}");
+        assert!(streamed[0].contains("\"step\":1") && streamed[1].contains("\"step\":2"), "out of order: {streamed:?}");
+        assert!(streamed[2].contains("\"ok\":true"), "the envelope must be last: {streamed:?}");
+
+        // The client reads one progress record and hangs up; the command must still finish.
+        let (client, server) = tokio::io::duplex(4096);
+        let (read, write) = tokio::io::split(server);
+        let (finished_tx, finished_rx) = tokio::sync::oneshot::channel::<()>();
+        let (gone_tx, gone_rx) = tokio::sync::oneshot::channel::<()>();
+        tokio::spawn(serve_connection(read, write, move |_line: String, p: Progress| async move {
+            p.send(json!({ "step": 1 }));
+            let _ = gone_rx.await;
+            p.send(json!({ "step": 2 }));
+            // Still working after the write that finds the client gone: a server that drops the command
+            // on that write must drop it before this line.
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            let _ = finished_tx.send(());
+            json!({ "ok": true }).to_string()
+        }));
+        let (client_read, mut client_write) = tokio::io::split(client);
+        client_write.write_all(b"{\"cmd\":\"x\",\"stream\":true}\n").await.expect("write");
+        let mut first = String::new();
+        let mut reader = BufReader::new(client_read);
+        reader.read_line(&mut first).await.expect("the first progress record");
+        assert!(first.contains("\"step\":1"), "{first:?}");
+        drop(reader);
+        drop(client_write);
+        let _ = gone_tx.send(());
+        let finished = tokio::time::timeout(Duration::from_secs(5), finished_rx).await;
+        assert!(
+            matches!(finished, Ok(Ok(()))),
+            "the command was dropped when its client hung up — a `rex site create … | head -1` would leave a half-made site"
+        );
+    }
+
+    /// Ledger #631 — **both transports hand every connection to the one exchange**: the unix `serve` and
+    /// Windows' `spawn_pipe` call `serve_connection`, and nothing on the Windows side answers a request itself
+    /// any more (W7's `app.open`-only rule and its reply are gone).
+    #[test]
+    fn both_transports_hand_every_connection_to_the_one_exchange() {
+        let src = include_str!("cli_server.rs");
+        let body = |head: &str| -> &str {
+            let start = src.find(head).unwrap_or_else(|| panic!("`{head}` is gone"));
+            let rest = &src[start..];
+            &rest[..rest.find("\n}\n").expect("the function's end")]
+        };
+        assert!(body("pub async fn serve<F, Fut>(").contains("serve_connection("), "the unix socket answers a connection itself");
+        let pipe = body("pub fn spawn_pipe(");
+        assert_eq!(pipe.matches("serve_connection(").count(), 2, "both of the pipe's serving paths go through the exchange:\n{pipe}");
+        for gone in [concat!("app_pipe_", "serves"), concat!("app_pipe_", "not_yet"), concat!("fn serve_pipe_", "connection")] {
+            assert!(!src.contains(gone), "`{gone}` is back — the Windows pipe would answer requests its own way again");
+        }
+    }
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
 

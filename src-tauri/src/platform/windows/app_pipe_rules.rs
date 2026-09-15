@@ -1,5 +1,6 @@
 //! The pure half of Windows' single-instance lock (W7 S1, plan §5 W7 ruling Q1, ledger #620): the pipe's
-//! name, what a first-instance create's answer means, and which requests the pipe takes before W8. No
+//! name and what a first-instance create's answer means. Since W8 S2 the pipe serves every CLI request
+//! (`cli_server::serve_connection`, ledger #631). No
 //! Win32 here — `app_pipe.rs` makes the calls — so this is compiled into the macOS test build.
 //!
 //! The lock is a named pipe created with `FILE_FLAG_FIRST_PIPE_INSTANCE`, as on macOS it is the listening
@@ -13,7 +14,7 @@ use sha2::{Digest, Sha256};
 /// `ERROR_ACCESS_DENIED` — what a first-instance create answers while another process holds the name.
 pub(crate) const ERROR_ACCESS_DENIED: u32 = 5;
 
-/// The one request the pipe serves until the `rex` CLI reaches Windows (W8).
+/// What a second launch sends the instance that holds the lock: show your window.
 pub(crate) const APP_OPEN: &str = "app.open";
 
 /// The pipe for the app-data directory whose config folder is `config_dir`: one rexenv per app-data
@@ -48,20 +49,6 @@ pub(crate) fn claim_from(create: Result<(), u32>) -> Claim {
     }
 }
 
-/// Whether the pipe serves `cmd` before W8 (ruling Q1: it knows only `app.open`).
-pub(crate) fn serves(cmd: &str) -> bool {
-    cmd == APP_OPEN
-}
-
-/// The reply to any other request.
-pub(crate) fn not_yet(cmd: &str) -> String {
-    serde_json::json!({
-        "ok": false,
-        "error": format!("`{cmd}` does not reach rexenv on Windows yet — the rex CLI comes to Windows in a later build"),
-    })
-    .to_string()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -87,16 +74,5 @@ mod tests {
         assert_eq!(claim_from(Err(5)), Claim::AnotherInstance);
         assert_eq!(claim_from(Err(231)), Claim::Unclear(231));
         assert_eq!(claim_from(Err(2)), Claim::Unclear(2));
-    }
-
-    #[test]
-    fn the_pipe_serves_only_app_open_before_w8() {
-        assert!(serves("app.open"));
-        for cmd in ["status", "doctor", "site.create", "App.Open", ""] {
-            assert!(!serves(cmd), "{cmd}");
-        }
-        let reply: serde_json::Value = serde_json::from_str(&not_yet("status")).unwrap();
-        assert_eq!(reply["ok"], false);
-        assert!(reply["error"].as_str().unwrap().contains("`status`"));
     }
 }

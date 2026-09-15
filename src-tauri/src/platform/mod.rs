@@ -36,8 +36,7 @@ mod windows;
 // The single-instance pipe (W7 S1, ledger #620), for `cli_server`'s Windows half.
 #[cfg(target_os = "windows")]
 pub(crate) use windows::{
-    app_pipe_not_yet, app_pipe_serves, claim_app_pipe, hand_off_to_app_pipe, next_app_pipe_instance, AppPipeClaim,
-    HeldAppPipe,
+    claim_app_pipe, hand_off_to_app_pipe, next_app_pipe_instance, AppPipeClaim, HeldAppPipe,
 };
 #[cfg(target_os = "linux")]
 mod linux;
@@ -99,7 +98,7 @@ mod windows_logon_task;
 #[allow(dead_code)]
 #[path = "windows/elevation_rules.rs"]
 mod windows_elevation_rules;
-// And the single-instance pipe's name, claim and served requests (ledger #620).
+// And the single-instance pipe's name and claim (ledger #620).
 #[cfg(all(test, not(target_os = "windows")))]
 #[allow(dead_code)]
 #[path = "windows/app_pipe_rules.rs"]
