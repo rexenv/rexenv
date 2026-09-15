@@ -1447,6 +1447,12 @@ bloating the fast path:
   session and times its exit and reads its stderr — another session, the same user; then the owner hides
   the window and double-clicks the exe, and the count is taken again (Prefetch's last write shows the
   launch happened). Whether the window came to the front is the owner's eye.
+  `windows_shell_open_check` (#621, W7 S2) is `ShellRunner::open`/`reveal` through the real platform in the
+  desktop session (`windows-shell-open.ps1` through `windows-limited-token.sh`), with someone at the screen:
+  in a `%TEMP%` fixture it opens a folder and a `.log` and waits for windows naming them, asks to open a
+  `.bat` that would write a marker file and holds the refusal to the marker's ABSENCE 4 s later (the shell
+  never ran it), refuses missing paths, and reveals the log in Explorer. Windows are found by title; only
+  windows naming the fixture are closed (`WM_CLOSE`), and only the fixture folder is removed.
   W6's done-when (S5) is the REAL app, not an example: `cargo xwin build --bin rexenv --features
   tauri/custom-protocol` (without the feature a debug build loads `devUrl`, not the embedded `dist`; the
   `rex` sidecar staged as a placeholder as `windows-example.sh` does), the exe copied to a stable folder —

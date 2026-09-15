@@ -1259,6 +1259,16 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
     log says "this Mac's macOS version could not be read" for the update check on Windows (W11's).
   - **S2 — `open` and `reveal`.** `ShellExecuteW` for a path or an `http(s)` URL; reveal selects the item in
     Explorer. L1: a folder, a file and a URL opened from the desktop token.
+    **Ruled 15 Sep 2026 (owner), found while designing it:** `open_external` passes any string to `open`,
+    and `ShellExecuteW("open")` runs a `.bat`/`.ps1`/`.lnk`/`.php` by association — so Windows `open` takes
+    `http(s)` URLs, existing folders and existing files with a reading extension, and refuses the rest by
+    name (the callers: link and folder buttons, and SiteLogs' "open log"). **S2 done the same day (ledger
+    #621).** `windows/shell_rules.rs` (the classification, bare URI schemes refused too, explorer's
+    `/select,` argument; plants 4/4 — the first scheme plant PASSED on a test whose cases other rules also
+    refused, and the stronger test found `ms-settings:`/`shell:` passing a `://` check) and
+    `WindowsShell::open`/`reveal`. Dell `windows_shell_open_check` PASS (7 checks, desktop session): a
+    folder and a `.log` opened in their windows, a `.bat` refused and never run, missing paths refused,
+    reveal selected the log in Explorer, the fixture's windows closed.
   - **S3 — editors, browsers, terminals.** A Windows catalog behind the same trait shapes, detected from App
     Paths, uninstall entries and `StartMenuInternet` (never a guessed path alone), the default browser from
     the `UserChoice` ProgId; opening runs the detected executable with the folder or URL as one argument,

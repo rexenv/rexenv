@@ -45,7 +45,9 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
   (ledger #619); the single-instance lock — `cli_server::claim_pipe_at_startup` / `spawn_pipe` (called
   from `lib.rs` `run()`) over `windows/app_pipe.rs` (the first-instance pipe, the hand-off) and
   `windows/app_pipe_rules.rs` (the name, the claim decision, `app.open` only — tested on every host)
-  (ledger #620); nginx's Windows shape — `services::nginx_path`,
+  (ledger #620); open and reveal — `WindowsShell::open` (`ShellExecuteW`) / `reveal` (`explorer.exe
+  /select,`) over `windows/shell_rules.rs` (web links, folders and reading files only; the select argument —
+  tested on every host) (ledger #621); nginx's Windows shape — `services::nginx_path`,
   `binaries::resolve_program`, the master climb and nginx's events (ledger #602);
   `linux/` is `todo!()`).
 - `state/` = SQLite migrations + the store layer; only `state/` writes SQL.

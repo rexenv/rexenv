@@ -35,6 +35,7 @@ mod pe;
 mod port_table;
 mod process;
 mod resolver_socket;
+mod shell_rules;
 mod stop_policy;
 
 pub(crate) use agent_output::send_output_to;
@@ -442,16 +443,53 @@ fn step_jobs() -> &'static std::sync::Mutex<std::collections::HashMap<u32, proce
     JOBS.get_or_init(Default::default)
 }
 
+/// `ShellExecuteW("open")` on a target `WindowsShell::open` already allowed. A return of 32 or less is the
+/// shell's error code (measured on the Dell: a folder and a URL both returned 42).
+fn shell_open(target: &str) -> Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::UI::Shell::ShellExecuteW;
+    use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+    let wide = |s: &str| -> Vec<u16> { std::ffi::OsStr::new(s).encode_wide().chain(Some(0)).collect() };
+    let (verb, file) = (wide("open"), wide(target));
+    // SAFETY: nul-terminated strings that outlive the call; no parent window, no parameters or directory.
+    let code = unsafe {
+        ShellExecuteW(std::ptr::null_mut(), verb.as_ptr(), file.as_ptr(), std::ptr::null(), std::ptr::null(), SW_SHOWNORMAL)
+    } as isize;
+    if code > 32 {
+        Ok(())
+    } else {
+        Err(Error::Other(format!("Windows could not open `{target}` (shell error {code})")))
+    }
+}
+
 pub struct WindowsShell;
 impl ShellRunner for WindowsShell {
     fn run(&self, _command: &str, _args: &[String]) -> Result<String> {
         Err(Error::Unported("windows shell runner"))
     }
-    fn open(&self, _target: &str) -> Result<()> {
-        Err(Error::Unported("windows shell open"))
+    /// `http(s)` URLs, existing folders and existing reading files go to `ShellExecuteW("open")`; anything the
+    /// shell could RUN is refused by name (`shell_rules.rs`, owner's ruling 15 Sep 2026, ledger #621).
+    fn open(&self, target: &str) -> Result<()> {
+        use shell_rules::{classify_open, OnDisk, OpenTarget};
+        let on_disk = match std::fs::metadata(target) {
+            Ok(m) if m.is_dir() => OnDisk::Folder,
+            Ok(_) => OnDisk::File,
+            Err(_) => OnDisk::Missing,
+        };
+        if let OpenTarget::Refused(why) = classify_open(target, on_disk) {
+            return Err(Error::Other(why));
+        }
+        shell_open(target)
     }
-    fn reveal(&self, _path: &str) -> Result<()> {
-        Err(Error::Unported("windows shell reveal"))
+    /// Explorer with the item selected. The path must exist: explorer's own exit code carries no meaning (it
+    /// was 1 on success, measured), so a missing path is caught here or not at all.
+    fn reveal(&self, path: &str) -> Result<()> {
+        use std::os::windows::process::CommandExt;
+        if std::fs::symlink_metadata(path).is_err() {
+            return Err(Error::Other(format!("`{path}` does not exist")));
+        }
+        std::process::Command::new("explorer.exe").raw_arg(shell_rules::reveal_argument(path)).spawn()?;
+        Ok(())
     }
     /// The user environment a fresh logon would build, read from the registry on every call, so a
     /// tool installed while rexenv runs is on its Path (owner ruling 14 Sep 2026, ledger #609,

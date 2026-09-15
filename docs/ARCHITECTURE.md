@@ -1435,7 +1435,14 @@ editor" → `open -a <editor> <site folder>`, so the folder lands as a PROJECT) 
   quick tiles, Sites rows, Tunnels, Mail, Adminer, magic login, WordPress
   plugin/theme rows…); a UI-side rule would mean the next call site anyone adds
   silently opens in the system default. Non-`http(s)` targets (docroots, log
-  files) keep going to the OS handler unchanged.
+  files) keep going to the OS handler unchanged — on macOS. **On Windows the handler is narrower**
+  (`WindowsShell::open` over `platform/windows/shell_rules.rs`, W7 S2, ledger #621; owner's ruling 15 Sep
+  2026): `ShellExecuteW("open")` RUNS whatever a file's association says — a `.bat`, a `.ps1`, a `.lnk`,
+  a `.php` wired to `php.exe` — silently, so the shell gets only `http(s)` URLs, existing folders and
+  existing files with a reading extension (`.log .txt .conf .ini .json .xml .md .csv .sql .yml .yaml`);
+  any other file, any other URI scheme (bare ones too — `ms-settings:`, `shell:`), and a missing path are
+  refused by name, pointing at Show in Explorer. A drive letter and a UNC share are paths, not schemes.
+  `reveal` requires the path to exist first — explorer's exit code means nothing (1 on success, measured).
 - **A network's sub-sites get the header's two actions, not two plain icons** (13 Sep
   2026, owner report): each Network-tab row has Visit and Magic Login, both with the
   browser chooser (`useBrowserMenu`). Sub-site sign-in needed a backend change, not a
