@@ -43,6 +43,8 @@ mod process;
 mod resolver_socket;
 mod shell_rules;
 mod stop_policy;
+mod user_path;
+mod user_path_rules;
 
 pub(crate) use agent_output::send_output_to;
 pub(crate) use app_pipe::{
@@ -76,6 +78,15 @@ impl Paths for WindowsPaths {
     }
     fn bin_dir(&self) -> Result<PathBuf> {
         Ok(self.app_data_dir()?.join("bin"))
+    }
+    /// `rex` goes on the user's `Path` as a copy in rexenv's own folder (plan §5 W8 rulings Q3, Q4, ledger #634):
+    /// `%LOCALAPPDATA%\rexenv\bin`, beside the app-data tree rather than inside it, so the folder on `Path`
+    /// holds `rex.exe` and nothing else — never the downloaded binaries in `bin_dir`.
+    fn cli_install(&self) -> Result<crate::platform::traits::CliInstall> {
+        let base = directories::BaseDirs::new().ok_or(Error::Other("cannot resolve the Local AppData folder".into()))?;
+        Ok(crate::platform::traits::CliInstall::CopyOnUserPath(
+            base.data_local_dir().join(crate::platform::APP_ORG).join("bin"),
+        ))
     }
     fn hosts_file(&self) -> PathBuf {
         PathBuf::from(r"C:\Windows\System32\drivers\etc\hosts")
@@ -512,6 +523,19 @@ impl ShellRunner for WindowsShell {
             .collect();
         let (system, user) = (process::registry_env(true), process::registry_env(false));
         Ok(login_env::merge_login_env(&own, system.as_deref(), user.as_deref()))
+    }
+
+    /// The user's own `Path` in `HKEY_CURRENT_USER\Environment` (`user_path.rs`, ledger #634).
+    fn user_path_has(&self, dir: &Path) -> Result<bool> {
+        user_path::has(dir)
+    }
+
+    fn add_to_user_path(&self, dir: &Path) -> Result<()> {
+        user_path::add(dir)
+    }
+
+    fn remove_from_user_path(&self, dir: &Path) -> Result<()> {
+        user_path::remove(dir)
     }
 
     /// The editors `app_catalog.rs` finds from what installers registered, each executable existing on

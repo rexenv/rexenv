@@ -14,6 +14,9 @@ export const mockPlatformWords: PlatformWords = {
   nodeInstall: "$ brew install node",
   bunInstall: "$ brew install oven-sh/bun/bun",
   nativeBuild: "That needs the Xcode Command Line Tools — install them, then retry:\n$ xcode-select --install",
+  cliInstall: "Put the rex command on your PATH to manage rexenv from the terminal. One admin prompt.",
+  cliStale: "points elsewhere (an old copy or another tool) — reinstall to point it at this app.",
+  cliInstalled: "rex installed — run it from any terminal",
 };
 
 export const mockAppInfo: AppInfo = {

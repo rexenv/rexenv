@@ -120,8 +120,9 @@ pub fn run_system_teardown(
     };
     ssl::untrust_ca(platform, &ca)?;
     platform.dns_agent().uninstall()?;
-    // The `rex` PATH symlink — ours only (content-checked), unprivileged
-    // best-effort: teardown must not add a prompt for harmless litter.
+    // The `rex` PATH install — the symlink when ours (content-checked), or on
+    // Windows the copy in rexenv's own folder and its user-Path entry (#634);
+    // unprivileged best-effort: teardown must not add a prompt for harmless litter.
     super::cli::remove_symlink_best_effort(platform);
     Ok(report)
 }

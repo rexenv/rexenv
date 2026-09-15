@@ -32,6 +32,21 @@ pub trait Paths: Send + Sync {
     fn cli_symlink_path(&self) -> Result<PathBuf> {
         Err(crate::error::Error::Unsupported("CLI PATH install"))
     }
+    /// How this OS puts `rex` on the user's PATH (W8 S5, ledger #634). Default: the symlink at
+    /// `cli_symlink_path` — macOS's shape, unchanged.
+    fn cli_install(&self) -> Result<CliInstall> {
+        self.cli_symlink_path().map(CliInstall::Symlink)
+    }
+}
+
+/// How `rex` goes on the user's PATH.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CliInstall {
+    /// One symlink at this path to the bundled `rex` (macOS: `/usr/local/bin/rex`).
+    Symlink(PathBuf),
+    /// A copy of the bundled `rex` in this folder, and the folder on the user's `Path` (Windows: rulings Q3, Q4 —
+    /// `%LOCALAPPDATA%\rexenv\bin`; a file symlink needs Developer Mode there).
+    CopyOnUserPath(PathBuf),
 }
 
 /// Who owns a TLD's ROUTE — the OS configuration that sends that TLD's lookups to a resolver — as far as
@@ -612,6 +627,24 @@ pub trait ShellRunner: Send + Sync {
     /// replacing it is the caller's decision. Default: unsupported.
     fn symlink_file(&self, _target: &std::path::Path, _link: &std::path::Path) -> Result<()> {
         Err(crate::error::Error::Unsupported("symlink_file"))
+    }
+
+    /// Whether the user's own `Path` (not the process's) has an entry naming `dir` (W8 S5, ledger #634).
+    /// Default: unsupported — only an OS whose CLI install is `CliInstall::CopyOnUserPath` answers.
+    fn user_path_has(&self, _dir: &std::path::Path) -> Result<bool> {
+        Err(crate::error::Error::Unsupported("user_path_has"))
+    }
+
+    /// Add `dir` to the user's own `Path`, keeping every other entry as written and the value's kind, and tell
+    /// running programs the environment changed — a terminal opened afterwards sees it. Default: unsupported.
+    fn add_to_user_path(&self, _dir: &std::path::Path) -> Result<()> {
+        Err(crate::error::Error::Unsupported("add_to_user_path"))
+    }
+
+    /// Remove every entry naming `dir` from the user's own `Path`, keeping the rest as written. Default:
+    /// unsupported.
+    fn remove_from_user_path(&self, _dir: &std::path::Path) -> Result<()> {
+        Err(crate::error::Error::Unsupported("remove_from_user_path"))
     }
 
     /// Remove a symlink WITHOUT touching its target. The unlink-only delete

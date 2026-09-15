@@ -1865,7 +1865,7 @@ export async function tldPolicy(tld: string): Promise<TldPolicy> {
 /** `rex` CLI install state. Mock fallback outside Tauri. */
 export async function cliStatus(): Promise<CliStatus> {
   if (!isTauri())
-    return { available: true, installed: false, current: false, linkPath: "/usr/local/bin/rex", bundledPath: "/Applications/rexenv.app/Contents/MacOS/rex" };
+    return { available: true, installed: false, current: false, linkPath: "/usr/local/bin/rex", bundledPath: "/Applications/rexenv.app/Contents/MacOS/rex", onPath: null };
   return invoke<CliStatus>("cli_status");
 }
 

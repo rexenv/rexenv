@@ -1632,6 +1632,20 @@ words (the browser shell's mock and two dev review pages excepted).
   host, and `core::cli::bundled_rex` looks for `sidecar_file_name(EXE_SUFFIX)` — a bare
   `rex` never exists there, and the card would have stayed hidden. The Windows install
   is not a link: a copy on the user's `Path` (plan §5 W8 rulings Q3, Q4; S5).
+  **The Windows install** (W8 S5, ledger #634): `Paths::cli_install` answers
+  `CliInstall::CopyOnUserPath(%LOCALAPPDATA%\rexenv\bin)` — a folder of rexenv's own,
+  beside the app-data tree, so the `Path` entry exposes `rex.exe` and nothing else.
+  Install copies the sidecar there and adds the folder to the user's own `Path`
+  (`HKEY_CURRENT_USER\Environment`) through `ShellRunner::add_to_user_path`: appended
+  once, every other entry kept as written, the value written back in the kind it had —
+  the Dell's is `REG_SZ`, not the `REG_EXPAND_SZ` a fresh profile gets, measured — then
+  `WM_SETTINGCHANGE`, so a terminal opened afterwards has it (one already open does not;
+  the toast says "open a new terminal"). No prompt. A differing copy is renamed aside to
+  `rex.exe.old` first, because a running `rex.exe` — a `rex mcp` an agent keeps open —
+  cannot be overwritten or deleted, only renamed (measured); the `.old` is swept later.
+  "Current" is the copy's bytes, since a copy points nowhere. A launch refreshes an
+  INSTALLED copy — never installs, never touches the `Path`, never serves a dev build's
+  `rex` (the login item's rule) — and teardown removes the copy and the entry.
 - **App not running → hard error, exit 2** ("open the app first"). Deliberate: a
   headless CLI-spawned backend would be a second ServiceManager/SQLite writer/
   watchdog racing the GUI — the exact second-brain class the stack guard exists to

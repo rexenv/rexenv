@@ -1453,6 +1453,16 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   another process") and so does deleting it, but RENAMING it to `rex.exe.old` works, a new `rex.exe` can then
   be copied in, and `rex.exe.old` can be deleted only once the process has exited — so S5's install and launch
   refresh rename the old copy aside, copy, and sweep a leftover `.old` later.
+  **S5 done 16 Sep 2026 (ledger #634).** `Paths::cli_install` names the shape — `CliInstall::Symlink` on macOS
+  (unchanged), `CliInstall::CopyOnUserPath(%LOCALAPPDATA%\rexenv\bin)` on Windows — and `ShellRunner` gained
+  the user-`Path` operations: `platform/windows/user_path_rules.rs` (which entry is the folder, adding it once,
+  removing only it — tested on every host) over `user_path.rs` (the registry value in its own kind, then the
+  broadcast). `core::cli` installs a copy by renaming a different one aside first, reads "current" as the
+  copy's bytes, refreshes an installed copy at launch (`lib.rs`, after the login item's refresh) and removes
+  copy and entry on teardown. The card's three strings became platform words. Plants 13/13. **Dell:** the
+  owner clicked Install; the `Path` went from 10 to 11 entries, still `REG_SZ`, the old 595 characters intact;
+  the copy matched the sidecar; a Start-menu PowerShell ran `rex status`. Not run: the launch refresh, the
+  off-Path sentence, the teardown.
   *Done when, measured:* after Install, a PowerShell opened from the Start menu runs `rex status`,
   `rex site list` and a streaming command against the running app; `rex mcp` answers `initialize` and
   `tools/list` with the toggle on and says rexenv's endpoint is off with it off; with the app quit, `rex`

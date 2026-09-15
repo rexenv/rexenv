@@ -614,6 +614,14 @@ pub fn run() {
                             }
                         }
                     }
+                    // The `rex` copy on the user's Path (Windows), brought up to this app's `rex` — never
+                    // installed unasked, never moved to a dev build (`core::cli::refresh_at_launch`, #634).
+                    {
+                        let cli_state = app.state::<state::app::AppState>();
+                        if let Err(e) = crate::core::cli::refresh_at_launch(cli_state.platform.as_ref()) {
+                            log::warn!("cli: could not refresh the installed rex: {e}");
+                        }
+                    }
 
                     // A LOGIN launch stays hidden — unless first-run setup is
                     // unfinished, in which case the window is the only thing

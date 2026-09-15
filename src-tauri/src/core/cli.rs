@@ -10,7 +10,7 @@
 //! Install refreshes it.
 
 use crate::error::{Error, Result};
-use crate::platform::traits::Platform;
+use crate::platform::traits::{CliInstall, Platform};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
@@ -49,11 +49,48 @@ pub struct CliStatus {
     pub current: bool,
     pub link_path: String,
     pub bundled_path: Option<String>,
+    /// A copy install only (Windows): whether its folder is on the user's own `Path`. `None` for a symlink
+    /// install, whose place on PATH is the folder's convention (W8 S5, ledger #634).
+    pub on_path: Option<bool>,
 }
 
 pub fn status(platform: &dyn Platform) -> Result<CliStatus> {
-    let link = platform.paths().cli_symlink_path()?;
-    Ok(status_from(&link, bundled_rex().ok()))
+    match platform.paths().cli_install()? {
+        CliInstall::Symlink(link) => Ok(status_from(&link, bundled_rex().ok())),
+        CliInstall::CopyOnUserPath(dir) => {
+            let on_path = platform.shell().user_path_has(&dir).ok();
+            Ok(status_of_copy(&copy_in(&dir), bundled_rex().ok(), on_path))
+        }
+    }
+}
+
+/// Where a copy install keeps `rex` inside its folder.
+fn copy_in(dir: &Path) -> PathBuf {
+    dir.join(sidecar_file_name(std::env::consts::EXE_SUFFIX))
+}
+
+/// The card's state for a copy install (W8 S5, ledger #634): installed = the copy exists; current = it is this
+/// app's `rex` byte for byte — a copy points nowhere, so its bytes are what "current" can mean.
+fn status_of_copy(copy: &Path, bundled: Option<PathBuf>, on_path: Option<bool>) -> CliStatus {
+    let installed = copy.is_file();
+    let current = installed && bundled.as_deref().is_some_and(|b| same_bytes(b, copy));
+    CliStatus {
+        available: bundled.is_some(),
+        installed,
+        current,
+        link_path: copy.display().to_string(),
+        bundled_path: bundled.map(|p| p.display().to_string()),
+        on_path,
+    }
+}
+
+fn same_bytes(a: &Path, b: &Path) -> bool {
+    match (std::fs::metadata(a), std::fs::metadata(b)) {
+        (Ok(x), Ok(y)) if x.len() == y.len() => {
+            std::fs::read(a).ok().zip(std::fs::read(b).ok()).is_some_and(|(x, y)| x == y)
+        }
+        _ => false,
+    }
 }
 
 fn status_from(link: &Path, bundled: Option<PathBuf>) -> CliStatus {
@@ -65,6 +102,7 @@ fn status_from(link: &Path, bundled: Option<PathBuf>) -> CliStatus {
         current,
         link_path: link.display().to_string(),
         bundled_path: bundled.map(|p| p.display().to_string()),
+        on_path: None,
     }
 }
 
@@ -73,7 +111,10 @@ fn status_from(link: &Path, bundled: Option<PathBuf>) -> CliStatus {
 /// Verified after either path: the link must resolve to the bundled rex.
 pub fn install(platform: &dyn Platform) -> Result<()> {
     let src = bundled_rex()?;
-    let dst = platform.paths().cli_symlink_path()?;
+    let dst = match platform.paths().cli_install()? {
+        CliInstall::Symlink(link) => link,
+        CliInstall::CopyOnUserPath(dir) => return install_copy(platform, &src, &dir),
+    };
     if try_symlink_unprivileged(platform, &src, &dst).is_err() {
         platform.privileges().run_privileged(
             &install_script(&src, &dst)?,
@@ -89,6 +130,113 @@ pub fn install(platform: &dyn Platform) -> Result<()> {
             "the CLI symlink at {} was not created",
             dst.display()
         ))),
+    }
+}
+
+/// The Windows install (plan §5 W8 rulings Q3, Q4, ledger #634): this app's `rex.exe` copied into rexenv's own
+/// folder, the folder added to the user's `Path`, both verified. No prompt — the folder and the value are the
+/// user's own.
+fn install_copy(platform: &dyn Platform, src: &Path, dir: &Path) -> Result<()> {
+    let dst = copy_in(dir);
+    replace_copy(src, &dst)?;
+    platform.shell().add_to_user_path(dir)?;
+    if !same_bytes(src, &dst) {
+        return Err(Error::Other(format!("the copy at {} is not this app's rex", dst.display())));
+    }
+    if !platform.shell().user_path_has(dir)? {
+        return Err(Error::Other(format!("{} was not added to your Path", dir.display())));
+    }
+    Ok(())
+}
+
+/// `<name>.old` beside `dst` — where a replaced copy goes.
+fn aside_path(dst: &Path) -> PathBuf {
+    let mut name = dst.file_name().unwrap_or_default().to_os_string();
+    name.push(".old");
+    dst.with_file_name(name)
+}
+
+/// Put `src` at `dst`. A running program's file cannot be copied over or deleted on Windows, but it can be
+/// renamed (measured on the Dell, 15 Sep 2026) — and a `rex mcp` an agent keeps open is a running `rex.exe`. So
+/// a `dst` that differs is renamed aside to `<name>.old` and the new copy goes in; a leftover `.old` from an
+/// earlier replace is swept first, best-effort (it stays while its program runs); an identical `dst` is left
+/// alone; a failed copy puts the old file back.
+fn replace_copy(src: &Path, dst: &Path) -> Result<()> {
+    if let Some(dir) = dst.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let aside = aside_path(dst);
+    let _ = std::fs::remove_file(&aside);
+    let mut moved = false;
+    if dst.exists() {
+        if same_bytes(src, dst) {
+            return Ok(());
+        }
+        std::fs::rename(dst, &aside).map_err(|e| {
+            Error::Other(format!(
+                "could not move the old {} aside to replace it (is a rex from an earlier update still running?): {e}",
+                dst.display()
+            ))
+        })?;
+        moved = true;
+    }
+    if let Err(e) = std::fs::copy(src, dst) {
+        if moved {
+            let _ = std::fs::rename(&aside, dst);
+        }
+        return Err(e.into());
+    }
+    Ok(())
+}
+
+/// What a launch does to a copy install.
+#[derive(Debug, PartialEq, Eq)]
+enum CopyRefresh {
+    Nothing,
+    Replace,
+    KeepForDevBuild,
+}
+
+fn copy_refresh(installed: bool, current: bool, dev_build: bool) -> CopyRefresh {
+    if !installed || current {
+        CopyRefresh::Nothing
+    } else if dev_build {
+        CopyRefresh::KeepForDevBuild
+    } else {
+        CopyRefresh::Replace
+    }
+}
+
+/// Whether `exe` is a build out of a cargo `target` folder — the binary the next `cargo clean` deletes. Split on
+/// both separators, so the rule reads a Windows path on every host.
+fn is_dev_build(exe: &Path) -> bool {
+    let text = exe.to_string_lossy().to_ascii_lowercase();
+    let parts: Vec<&str> = text.split(['\\', '/']).collect();
+    parts.windows(2).any(|w| {
+        w[0] == "target" && ["debug", "release", "xwin", "x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc"].contains(&w[1])
+    })
+}
+
+/// At launch, a copy install (Windows, ruling Q3, ledger #634) is brought up to this app's `rex` — never made
+/// (Q4: only the Settings button installs), never the user's `Path` touched, and never replaced with a dev
+/// build's `rex` (the autostart rule, #623). A leftover `.old` is swept every launch. A symlink install has
+/// nothing to refresh: its link follows the bundle.
+pub fn refresh_at_launch(platform: &dyn Platform) -> Result<()> {
+    let CliInstall::CopyOnUserPath(dir) = platform.paths().cli_install()? else {
+        return Ok(());
+    };
+    let copy = copy_in(&dir);
+    let _ = std::fs::remove_file(aside_path(&copy));
+    let Ok(bundled) = bundled_rex() else { return Ok(()) };
+    let installed = copy.is_file();
+    let current = installed && same_bytes(&bundled, &copy);
+    match copy_refresh(installed, current, is_dev_build(&std::env::current_exe()?)) {
+        CopyRefresh::Nothing => Ok(()),
+        CopyRefresh::KeepForDevBuild => {
+            log::info!("cli: this launch is a dev build — keeping the installed rex at {}", copy.display());
+            Ok(())
+        }
+        CopyRefresh::Replace => replace_copy(&bundled, &copy),
     }
 }
 
@@ -133,6 +281,15 @@ fn install_script(src: &Path, dst: &Path) -> Result<String> {
 /// must not add a prompt, and a root-owned leftover link is harmless litter
 /// that the next install overwrites.
 pub fn remove_symlink_best_effort(platform: &dyn Platform) {
+    // A copy install (Windows, ledger #634): the copy, a leftover `.old`, and the folder's `Path` entry — the
+    // folder is rexenv's own, so what is in it is ours.
+    if let Ok(CliInstall::CopyOnUserPath(dir)) = platform.paths().cli_install() {
+        let copy = copy_in(&dir);
+        let _ = std::fs::remove_file(&copy);
+        let _ = std::fs::remove_file(aside_path(&copy));
+        let _ = platform.shell().remove_from_user_path(&dir);
+        return;
+    }
     let Ok(link) = platform.paths().cli_symlink_path() else { return };
     let Ok(target) = std::fs::read_link(&link) else { return };
     let ours_current = bundled_rex().is_ok_and(|b| b == target);
@@ -251,11 +408,77 @@ mod tests {
         let src = include_str!("cli.rs");
         let prod = src.split("\n#[cfg(test)]").next().unwrap_or(src);
         assert!(!prod.contains(".join(\"rex\")"), "a path is joined with a bare `rex` again");
-        assert_eq!(
-            prod.matches("sidecar_file_name(std::env::consts::EXE_SUFFIX)").count(),
-            2,
-            "bundled_rex and the teardown's dangling check both ask for this OS's name"
-        );
+        for head in ["pub fn bundled_rex()", "pub fn remove_symlink_best_effort("] {
+            let body = &prod[prod.find(head).expect(head)..];
+            let body = &body[..body.find("\n}\n").expect("the function's end")];
+            assert!(
+                body.contains("sidecar_file_name(std::env::consts::EXE_SUFFIX)"),
+                "{head} no longer asks for this OS's name"
+            );
+        }
+    }
+
+    /// Ledger #634 — replacing a copy renames the old one aside rather than deleting it (a running `rex.exe` can
+    /// only be renamed — measured), sweeps a leftover aside file on the next replace, and leaves an identical copy
+    /// alone.
+    #[test]
+    fn a_copy_is_replaced_by_renaming_the_old_one_aside_and_an_identical_one_is_left_alone() {
+        let dir = scratch("copy");
+        let src = dir.join("new-rex");
+        std::fs::write(&src, "new").unwrap();
+        let dst = dir.join("bin").join("rex.exe");
+        replace_copy(&src, &dst).expect("a first copy makes the folder");
+        assert_eq!(std::fs::read(&dst).unwrap(), b"new");
+        assert!(!aside_path(&dst).exists(), "a first copy puts nothing aside");
+        std::fs::write(&dst, "old").unwrap();
+        replace_copy(&src, &dst).expect("replace an older copy");
+        assert_eq!(std::fs::read(&dst).unwrap(), b"new");
+        assert_eq!(std::fs::read(aside_path(&dst)).unwrap(), b"old", "the old copy went aside, not away");
+        assert_eq!(aside_path(&dst).file_name().unwrap(), "rex.exe.old");
+        replace_copy(&src, &dst).expect("an identical copy");
+        assert!(!aside_path(&dst).exists(), "the leftover aside copy is swept on the next replace");
+        assert_eq!(std::fs::read(&dst).unwrap(), b"new");
+    }
+
+    /// Ledger #634 — a copy install reads missing, older, current, and current but off the user's Path.
+    #[test]
+    fn a_copy_install_reads_missing_older_current_and_off_the_path() {
+        let dir = scratch("copystatus");
+        let bundled = dir.join("rex.exe");
+        std::fs::write(&bundled, "this build").unwrap();
+        let copy = dir.join("bin").join("rex.exe");
+        let s = status_of_copy(&copy, Some(bundled.clone()), Some(false));
+        assert!(s.available && !s.installed && !s.current, "no copy yet: {s:?}");
+        std::fs::create_dir_all(copy.parent().unwrap()).unwrap();
+        std::fs::write(&copy, "an older build").unwrap();
+        let s = status_of_copy(&copy, Some(bundled.clone()), Some(true));
+        assert!(s.installed && !s.current && s.on_path == Some(true), "an older copy: {s:?}");
+        std::fs::write(&copy, "this build").unwrap();
+        let s = status_of_copy(&copy, Some(bundled.clone()), Some(false));
+        assert!(s.installed && s.current && s.on_path == Some(false), "current, but its folder is off the Path: {s:?}");
+        let s = status_of_copy(&copy, None, Some(true));
+        assert!(!s.available && !s.current, "no sidecar, nothing to compare: {s:?}");
+    }
+
+    /// Ledger #634 — a launch brings an installed copy up to date, never installs one, never adds to the user's
+    /// Path, and never replaces the copy with a dev build's `rex`.
+    #[test]
+    fn a_launch_updates_an_installed_copy_but_never_installs_one_or_serves_a_dev_build() {
+        assert_eq!(copy_refresh(false, false, false), CopyRefresh::Nothing, "not installed: a launch never installs (Q4)");
+        assert_eq!(copy_refresh(true, true, false), CopyRefresh::Nothing);
+        assert_eq!(copy_refresh(true, false, false), CopyRefresh::Replace);
+        assert_eq!(copy_refresh(true, false, true), CopyRefresh::KeepForDevBuild);
+        assert!(is_dev_build(Path::new(r"C:\code\rexenv\src-tauri\target\debug\rexenv.exe")));
+        assert!(is_dev_build(Path::new(r"C:\code\rexenv\src-tauri\TARGET\xwin\x86_64-pc-windows-msvc\debug\rexenv.exe")));
+        assert!(is_dev_build(Path::new("/Users/a/rexenv/src-tauri/target/release/rexenv")));
+        assert!(!is_dev_build(Path::new(r"C:\Users\A B\AppData\Local\Programs\rexenv\rexenv.exe")));
+        assert!(!is_dev_build(Path::new(r"C:\target\rexenv.exe")), "a folder named target alone is not a cargo build");
+        let src = include_str!("cli.rs");
+        let prod = src.split("\n#[cfg(test)]").next().unwrap_or(src);
+        let refresh = &prod[prod.find("pub fn refresh_at_launch(").expect("the launch refresh")..];
+        let refresh = &refresh[..refresh.find("\n}\n").expect("its end")];
+        assert!(!refresh.contains("add_to_user_path") && !refresh.contains("install_copy"), "a launch installed rex unasked");
+        assert!(refresh.contains("is_dev_build("), "the launch refresh no longer asks whether this is a dev build");
     }
 
     #[test]

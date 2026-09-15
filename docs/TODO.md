@@ -448,9 +448,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     tokens and the bridge ended by itself ~120 ms after stdin closed; a session held open was dropped when the
     owner turned the toggle off, and a new `rex mcp` then said the endpoint is off. **S4 done the same day (ledger
     #633), L0:** the sidecar is looked for as `rex.exe` on Windows (`core::cli::sidecar_file_name`) and
-    `scripts/build-cli.sh` stages it on a Windows host. **Left in W8:** S5 (the Settings install onto the user's
-    `Path` — measured first: the Dell's user `Path` is `REG_SZ`, a new Start-menu PowerShell sees a broadcast
-    change, and a running `rex.exe` can only be renamed aside), S6 (the done-when from a new PowerShell)
+    `scripts/build-cli.sh` stages it on a Windows host. **S5 done (ledger #634), 16 Sep 2026:** Settings → Command-line tool →
+    Install copies `rex.exe` into `%LOCALAPPDATA%\rexenv\bin` and adds the folder to the user's `Path` in the
+    value's own kind, no prompt; a launch keeps an installed copy current (never installing one, never a dev
+    build's). On the Dell the owner clicked Install and a Start-menu PowerShell ran `rex status`; the `Path`
+    stayed `REG_SZ` with the ten old entries intact. **Left in W8:** S6 — the done-when as a whole, and what S5
+    did not run: the launch refresh (above all over a running `rex mcp`), the off-Path sentence, the teardown
   - [ ] W9 — frontend on WebView2 (Windows paths, Ctrl shortcuts, fonts)
     **macOS words on the Windows screens** (seen in the real app on the Dell, W6 S5, 15 Sep 2026): Settings
     "trusted · login keychain" and "Local CA re-trusted in your login keychain." (`Settings.tsx:945`, `:856`),

@@ -1040,11 +1040,13 @@ export interface Blueprint {
 /** `rex` CLI install state (mirrors the Rust `CliStatus`). */
 export interface CliStatus {
   available: boolean; // the bundled sidecar exists — install is possible
-  installed: boolean; // something is symlinked at linkPath
+  installed: boolean; // something is at linkPath (a symlink, or on Windows a copy)
   /** The link resolves to THIS app's bundled rex (false = stale/foreign). */
   current: boolean;
   linkPath: string;
   bundledPath: string | null;
+  /** A copy install only (Windows): whether its folder is on the user's Path; null for a symlink install. */
+  onPath: boolean | null;
 }
 
 export interface DnsStatus {
@@ -1091,6 +1093,9 @@ export interface PlatformWords {
   nodeInstall: string;
   bunInstall: string;
   nativeBuild: string;
+  cliInstall: string; // the Command-line tool card before rex is installed
+  cliStale: string; // after the install path, when it is not this app's rex
+  cliInstalled: string; // the toast after Install, before the install path
 }
 
 /** A detected code editor (mirrors the Rust EditorApp DTO). */

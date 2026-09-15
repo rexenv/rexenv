@@ -123,6 +123,11 @@ mod windows_autostart_rules;
 #[allow(dead_code)]
 #[path = "windows/junction_rules.rs"]
 mod windows_junction_rules;
+// And which user-`Path` entry is rexenv's CLI folder, adding it and removing it (ledger #634).
+#[cfg(all(test, not(target_os = "windows")))]
+#[allow(dead_code)]
+#[path = "windows/user_path_rules.rs"]
+mod windows_user_path_rules;
 // And NRPT ownership and its PowerShell (ledger #618).
 #[cfg(all(test, not(target_os = "windows")))]
 #[allow(dead_code)]

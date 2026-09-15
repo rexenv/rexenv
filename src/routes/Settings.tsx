@@ -1097,30 +1097,36 @@ function FirefoxTrustCard() {
   );
 }
 
-/** `rex` CLI install card: one symlink on PATH (may cost one admin prompt —
- *  /usr/local/bin is root-owned on most Macs). The link tracks the bundle, so
- *  app updates need no re-install; a moved bundle shows as "points elsewhere"
- *  and Install refreshes it. Hidden when the sidecar isn't next to the app
- *  binary (bare `cargo run` — `tauri dev` and the packaged app always have it). */
+/** `rex` CLI install card. macOS: one symlink on PATH (may cost one admin prompt —
+ *  /usr/local/bin is root-owned on most Macs); the link tracks the bundle, so
+ *  app updates need no re-install, and a moved bundle shows as "points elsewhere".
+ *  Windows: a copy in rexenv's own folder, that folder on the user's Path, no
+ *  prompt (#634) — `onPath` says when the folder has left the Path. The words
+ *  are the platform's. Hidden when the sidecar isn't next to the app binary
+ *  (bare `cargo run` — `tauri dev` and the packaged app always have it). */
 function CliCard() {
   const qc = useQueryClient();
+  const words = usePlatformWords();
   const { data: cli } = useQuery({ queryKey: ["cli-status"], queryFn: cliStatus });
 
   const install = useMutation({
     mutationFn: cliInstall,
     onSuccess: (s) => {
-      toast.success(`rex installed — run it from any terminal (${s.linkPath})`);
+      toast.success(`${words.cliInstalled} (${s.linkPath})`);
       void qc.invalidateQueries({ queryKey: ["cli-status"] });
     },
     onError: (e) => toastBackendError(e),
   });
 
   if (!cli?.available) return null;
-  const desc = cli.current
-    ? "Installed — manage rexenv from any terminal: rex status, rex start, rex site create."
-    : cli.installed
-      ? `${cli.linkPath} points elsewhere (an old copy or another tool) — reinstall to point it at this app.`
-      : "Put the rex command on your PATH to manage rexenv from the terminal. One admin prompt.";
+  const desc =
+    cli.current && cli.onPath === false
+      ? "Installed, but its folder is no longer on your Path — reinstall to add it back."
+      : cli.current
+        ? "Installed — manage rexenv from any terminal: rex status, rex start, rex site create."
+        : cli.installed
+          ? `${cli.linkPath} ${words.cliStale}`
+          : words.cliInstall;
   return (
     <div className="rounded-[13px] border border-rex-border-subtle bg-rex-surface-1 px-5">
       <ActionRow

@@ -25,6 +25,12 @@ pub struct PlatformWords {
     pub bun_install: &'static str,
     /// What a native npm module (node-gyp) needs to compile, and how to get it.
     pub native_build: &'static str,
+    /// The "Command-line tool" card before `rex` is installed: what Install does, and what it costs (#634).
+    pub cli_install: &'static str,
+    /// The card after the install path's name, when what is there is not this app's `rex`.
+    pub cli_stale: &'static str,
+    /// The toast after Install, before the install path in parentheses.
+    pub cli_installed: &'static str,
 }
 
 pub const MACOS: PlatformWords = PlatformWords {
@@ -35,6 +41,9 @@ pub const MACOS: PlatformWords = PlatformWords {
     node_install: "$ brew install node",
     bun_install: "$ brew install oven-sh/bun/bun",
     native_build: "That needs the Xcode Command Line Tools — install them, then retry:\n$ xcode-select --install",
+    cli_install: "Put the rex command on your PATH to manage rexenv from the terminal. One admin prompt.",
+    cli_stale: "points elsewhere (an old copy or another tool) — reinstall to point it at this app.",
+    cli_installed: "rex installed — run it from any terminal",
 };
 
 pub const WINDOWS: PlatformWords = PlatformWords {
@@ -45,6 +54,9 @@ pub const WINDOWS: PlatformWords = PlatformWords {
     node_install: "> winget install --id OpenJS.NodeJS.LTS -e",
     bun_install: "> winget install --id Oven-sh.Bun -e",
     native_build: "That needs the Visual Studio Build Tools with the C++ workload — install them, then retry:\n> winget install --id Microsoft.VisualStudio.2022.BuildTools -e",
+    cli_install: "Copy the rex command into rexenv's own folder and add that folder to your user Path, to manage rexenv from the terminal. No admin prompt.",
+    cli_stale: "is an older copy — reinstall to update it to this app's rex.",
+    cli_installed: "rex installed — open a new terminal to use it",
 };
 
 /// This build's words.
@@ -63,8 +75,19 @@ pub fn current() -> &'static PlatformWords {
 mod tests {
     use super::*;
 
-    fn fields(w: &PlatformWords) -> [&'static str; 7] {
-        [w.reveal, w.file_manager, w.login_item, w.git_install, w.node_install, w.bun_install, w.native_build]
+    fn fields(w: &PlatformWords) -> [&'static str; 10] {
+        [
+            w.reveal,
+            w.file_manager,
+            w.login_item,
+            w.git_install,
+            w.node_install,
+            w.bun_install,
+            w.native_build,
+            w.cli_install,
+            w.cli_stale,
+            w.cli_installed,
+        ]
     }
 
     /// Ledger #626 — the macOS words are what the app already showed: moving them into the platform changes no
@@ -76,6 +99,10 @@ mod tests {
         assert_eq!(MACOS.login_item, "rexenv launches when you sign in to your Mac (a macOS login item).");
         assert!(MACOS.git_install.ends_with("$ xcode-select --install"));
         assert_eq!(MACOS.node_install, "$ brew install node");
+        // The CLI card's words, moved here from Settings.tsx by W8 S5 (#634), byte for byte.
+        assert_eq!(MACOS.cli_install, "Put the rex command on your PATH to manage rexenv from the terminal. One admin prompt.");
+        assert_eq!(MACOS.cli_stale, "points elsewhere (an old copy or another tool) — reinstall to point it at this app.");
+        assert_eq!(MACOS.cli_installed, "rex installed — run it from any terminal");
     }
 
     /// Ledger #626 — no Windows word names a macOS thing.
@@ -88,6 +115,8 @@ mod tests {
         }
         assert!(WINDOWS.reveal.contains("Explorer") && WINDOWS.login_item.contains("Windows"));
         assert!(WINDOWS.git_install.contains("Git for Windows"));
+        assert!(WINDOWS.cli_install.contains("user Path") && WINDOWS.cli_install.contains("No admin prompt"), "{}", WINDOWS.cli_install);
+        assert!(WINDOWS.cli_installed.contains("new terminal"), "a terminal already open does not see the new Path: {}", WINDOWS.cli_installed);
     }
 
     /// Ledger #626 — **the UI writes no macOS thing itself**: "Finder", `xcode-select` and `brew install` appear

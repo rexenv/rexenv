@@ -456,9 +456,10 @@ pub fn cli_status(state: State<'_, AppState>) -> Result<core::cli::CliStatus> {
     core::cli::status(state.platform.as_ref())
 }
 
-/// Install/refresh the `rex` PATH symlink. May show ONE admin prompt
-/// (`/usr/local/bin` is root-owned on most machines) — `async` so the
-/// blocking prompt runs off the UI thread, same handling as `system_setup`.
+/// Install/refresh `rex` on PATH: on macOS the symlink, which may show ONE admin
+/// prompt (`/usr/local/bin` is root-owned on most machines); on Windows a copy on
+/// the user's own `Path`, no prompt (#634) — `async` so a blocking prompt runs off
+/// the UI thread, same handling as `system_setup`.
 /// Returns the refreshed status so the card updates in one round-trip.
 #[tauri::command]
 pub async fn cli_install(state: State<'_, AppState>) -> Result<core::cli::CliStatus> {
