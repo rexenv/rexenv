@@ -42,7 +42,10 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
   host) (ledger #618); privileged steps — `WindowsPrivileges` over `windows/elevation.rs` (rexenv's dialog, UAC
   for `rexenv.exe --elevated-step`, the step itself) and `windows/elevation_rules.rs` (arguments, the result
   path rule, the words, tested on every host), dispatched by `platform::run_elevated_step` in `main.rs`
-  (ledger #619); nginx's Windows shape — `services::nginx_path`,
+  (ledger #619); the single-instance lock — `cli_server::claim_pipe_at_startup` / `spawn_pipe` (called
+  from `lib.rs` `run()`) over `windows/app_pipe.rs` (the first-instance pipe, the hand-off) and
+  `windows/app_pipe_rules.rs` (the name, the claim decision, `app.open` only — tested on every host)
+  (ledger #620); nginx's Windows shape — `services::nginx_path`,
   `binaries::resolve_program`, the master climb and nginx's events (ledger #602);
   `linux/` is `todo!()`).
 - `state/` = SQLite migrations + the store layer; only `state/` writes SQL.

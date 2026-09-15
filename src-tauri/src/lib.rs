@@ -33,6 +33,12 @@ pub fn run() {
         cli_server::StartupClaim::Ours(listener) => listener,
         cli_server::StartupClaim::AnotherInstanceRuns => return,
     };
+    // Windows' lock is a named pipe, taken here for the same reason (W7 S1, ledger #620).
+    #[cfg(windows)]
+    let app_pipe = match cli_server::claim_pipe_at_startup() {
+        cli_server::PipeStartup::Ours(held) => held,
+        cli_server::PipeStartup::AnotherInstanceRuns => return,
+    };
 
     // The interactive app may stop ADOPTED services (Stop-all after a relaunch);
     // any other process linking this lib (live-check examples) may stop only
@@ -965,6 +971,8 @@ pub fn run() {
             // still-starting/failed error instead of a dead socket.
             #[cfg(unix)]
             cli_server::spawn(app.handle().clone(), cli_socket);
+            #[cfg(windows)]
+            cli_server::spawn_pipe(app.handle().clone(), app_pipe);
 
             // MCP server socket (see `mcp_server`): the AI-agent endpoint,
             // driven through the `rex mcp` pipe. Its own `0600` socket beside

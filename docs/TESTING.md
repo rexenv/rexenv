@@ -1439,6 +1439,14 @@ bloating the fast path:
   call — and what `remove_file`, `remove_dir` and `remove_dir_all` leave of each case's own target), and,
   only with `REXENV_PROBE_OPEN=1` and someone at the screen, `ShellExecuteW` open on a folder and a URL
   and `explorer.exe /select`. It prints; W7's steps are built on what it printed.
+  W7 S1's single-instance lock (#620) is measured with the REAL app, as W6's done-when was (the build flags
+  and the placeholder sidecar below): the new exe replaces `rexenv-s5\rexenv.exe` with the agent task
+  ended first and run again after (the task points at that path, and a running exe cannot be
+  overwritten); the owner opens the app; over SSH the check counts app processes, lists `\\.\pipe\` for
+  `rexenv-app-*` and reads "app pipe: holding" from `rexenv.log`, then starts a SECOND copy from the SSH
+  session and times its exit and reads its stderr — another session, the same user; then the owner hides
+  the window and double-clicks the exe, and the count is taken again (Prefetch's last write shows the
+  launch happened). Whether the window came to the front is the owner's eye.
   W6's done-when (S5) is the REAL app, not an example: `cargo xwin build --bin rexenv --features
   tauri/custom-protocol` (without the feature a debug build loads `devUrl`, not the embedded `dist`; the
   `rex` sidecar staged as a placeholder as `windows-example.sh` does), the exe copied to a stable folder —

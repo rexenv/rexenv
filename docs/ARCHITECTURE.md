@@ -2668,6 +2668,16 @@ IPC surface — which is how a reader ends up designing against a system with on
   succeeding is proof of life, unlike a pid file that outlives the process that wrote it.
   Same reason the check runs before Tauri: a process that must not exist should not first
   open a window, adopt services and bind sockets. `rex open` sends the same command.
+  **On Windows the lock is a named pipe** (`cli_server::claim_pipe_at_startup` over
+  `platform/windows/app_pipe.rs` + `app_pipe_rules.rs`, W7 S1, ledger #620; owner's ruling Q1): the name is
+  a digest of the lower-cased config folder (Windows paths are case-insensitive), the first instance is
+  created with `FILE_FLAG_FIRST_PIPE_INSTANCE` and the owner-only descriptor private files get (#597), and a
+  create refused with access denied — what the Dell measured for a held name — means another instance, so
+  the launch connects, sends `app.open` and exits; any other error starts the app without the lock. The
+  pipe answers ONLY `app.open` until the rex CLI reaches Windows (W8), and the server makes each next
+  instance before letting the current one go — the lock is "an instance of this name exists", so a moment
+  with none is a moment a second launch could take it. Before this, the unix-only claim meant every
+  double-click on Windows booted a second full app: a second SQLite writer, a second watchdog.
 - **The window starts hidden** (`tauri.conf.json` `visible: false`) and somebody has to
   decide to show it. A launch the USER asked for shows it immediately, BEFORE the
   database opens and services are adopted: that work takes seconds, and a launch that

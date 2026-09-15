@@ -1245,6 +1245,18 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
     `app.open` and exits; a pipe it cannot interpret starts the app (refusing to launch is the worse
     failure). L0 the name and the decision; L1 on the Dell: two double-clicks → one process, the window in
     front.
+    **S1 done 15 Sep 2026 (ledger #620).** `platform/windows/app_pipe_rules.rs` (the name — a digest of the
+    lower-cased config folder —, the claim decision, `app.open` only; tested on every host, plants 3/3) and
+    `app_pipe.rs` (a plain `CreateNamedPipeW` before any runtime, overlapped and remote clients rejected,
+    the owner-only descriptor from `acl.rs`; later instances from tokio's `ServerOptions`; the hand-off
+    connect with a short busy retry and a 1.5 s wait for the reply); `cli_server::claim_pipe_at_startup` /
+    `spawn_pipe` beside the unix claim in `lib.rs` `run()`. The server makes the next instance before it lets
+    the connected one go. **Measured with the real app on the Dell:** opened by the owner → one app process,
+    the pipe present, "app pipe: holding" logged; a second copy from SSH → exited in 0.14 s with the hand-off
+    line, one app process, the window came to the front (the owner); the window hidden and the exe
+    double-clicked again → one app process, the window in front. Not measured: another account's connect,
+    two launches in the same instant, the Start menu as the second launch (W11). Seen on the way: the app
+    log says "this Mac's macOS version could not be read" for the update check on Windows (W11's).
   - **S2 — `open` and `reveal`.** `ShellExecuteW` for a path or an `http(s)` URL; reveal selects the item in
     Explorer. L1: a folder, a file and a URL opened from the desktop token.
   - **S3 — editors, browsers, terminals.** A Windows catalog behind the same trait shapes, detected from App

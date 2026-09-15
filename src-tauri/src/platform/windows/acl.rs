@@ -56,7 +56,7 @@ pub(super) fn write_private(path: &Path, contents: &[u8]) -> Result<()> {
 
 /// A security descriptor built from [`super::owner_only::owner_only_sddl`] for the
 /// user this process runs as. Owns the `LocalAlloc`ed buffer and frees it on drop.
-struct OwnerOnlyDescriptor(PSECURITY_DESCRIPTOR);
+pub(super) struct OwnerOnlyDescriptor(PSECURITY_DESCRIPTOR);
 
 impl Drop for OwnerOnlyDescriptor {
     fn drop(&mut self) {
@@ -69,7 +69,13 @@ impl Drop for OwnerOnlyDescriptor {
 }
 
 impl OwnerOnlyDescriptor {
-    fn for_current_user() -> Result<Self> {
+    /// The descriptor itself, for a create that takes security attributes (the single-instance pipe,
+    /// `app_pipe.rs`). Valid while `self` lives.
+    pub(super) fn as_ptr(&self) -> PSECURITY_DESCRIPTOR {
+        self.0
+    }
+
+    pub(super) fn for_current_user() -> Result<Self> {
         let sid = current_user_sid()?;
         let sddl = super::owner_only::owner_only_sddl(&sid)
             .ok_or_else(|| Error::Other(format!("this process's user SID is not well-formed: {sid:?}")))?;

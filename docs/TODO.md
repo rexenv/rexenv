@@ -389,7 +389,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     **Design ruled 15 Sep 2026** (plan §5 W7): a named-pipe single-instance lock in W7 that knows only
     `app.open` (W8 grows the same pipe into the CLI); the tray opens the window on a left click and the menu
     on a right click, with the colour app icon; the words a feature shows ("Show in Explorer", "when you
-    sign in to Windows") come from the platform. Measure first on the Dell, then S1–S7 as the plan lists
+    sign in to Windows") come from the platform. **Measured first, 15 Sep 2026** (`windows_desktop_probe`):
+    a first-instance named pipe refuses a second process's create with error 5 and still takes its connect;
+    a junction reads as `is_symlink`, `remove_file` on it is refused, `remove_dir` removes only the link;
+    `ShellExecuteW` opens a folder and a URL. **S1 done the same day (ledger #620):** the single-instance
+    lock is that pipe — with the real app on the Dell, a second copy from SSH exited in 0.14 s and the
+    owner's second double-click left one process, the window in front each time. Next: S2 (open/reveal)
   - [ ] W8 — `rex` CLI + MCP over named pipes; `rex.exe` on PATH
   - [ ] W9 — frontend on WebView2 (Windows paths, Ctrl shortcuts, fonts)
     **macOS words on the Windows screens** (seen in the real app on the Dell, W6 S5, 15 Sep 2026): Settings

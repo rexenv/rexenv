@@ -18,6 +18,8 @@ use std::process::Child;
 mod acl;
 mod af_unix;
 mod agent_output;
+mod app_pipe;
+mod app_pipe_rules;
 mod cert_rules;
 mod cert_store;
 mod elevation;
@@ -36,6 +38,11 @@ mod resolver_socket;
 mod stop_policy;
 
 pub(crate) use agent_output::send_output_to;
+pub(crate) use app_pipe::{
+    claim as claim_app_pipe, hand_off as hand_off_to_app_pipe, next_instance as next_app_pipe_instance, AppPipeClaim,
+    HeldAppPipe,
+};
+pub(crate) use app_pipe_rules::{not_yet as app_pipe_not_yet, serves as app_pipe_serves};
 pub(crate) use elevation::{run_ops_here, run_step};
 pub(crate) use resolver_socket::bind_resolver_udp;
 

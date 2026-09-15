@@ -1999,6 +1999,104 @@ pub fn spawn(app: tauri::AppHandle, claimed: Option<std::os::unix::net::UnixList
     });
 }
 
+// ── Windows: the single-instance pipe (W7 S1, plan §5 W7 ruling Q1, ledger #620) ──────────────────
+// The unix socket above is both the lock and the CLI. On Windows the lock is a named pipe that knows only
+// `app.open` until the rex CLI arrives (W8), which grows this same pipe into the CLI and MCP transport.
+
+/// What `run()` does about the single-instance pipe before Tauri boots — Windows' [`StartupClaim`].
+#[cfg(windows)]
+pub enum PipeStartup {
+    /// Continue: the lock is ours (`Some`), or could not be taken (`None` — the app starts without it).
+    Ours(Option<crate::platform::HeldAppPipe>),
+    /// Another instance holds this app-data directory; it has been asked to show its window.
+    AnotherInstanceRuns,
+}
+
+/// Claim the pipe at process start, or hand off to the instance that holds it. Before Tauri boots for
+/// the reason `claim_at_startup` gives: the seconds of startup are when a second launch used to become a
+/// second writer.
+#[cfg(windows)]
+pub fn claim_pipe_at_startup() -> PipeStartup {
+    let Ok(dir) = crate::platform::current().paths().config_dir() else {
+        return PipeStartup::Ours(None);
+    };
+    match crate::platform::claim_app_pipe(&dir) {
+        crate::platform::AppPipeClaim::Ours(held) => PipeStartup::Ours(Some(held)),
+        crate::platform::AppPipeClaim::AnotherInstance => {
+            if crate::platform::hand_off_to_app_pipe(&dir) {
+                PipeStartup::AnotherInstanceRuns
+            } else {
+                // Held a moment ago and gone now — this copy is the app.
+                PipeStartup::Ours(None)
+            }
+        }
+        crate::platform::AppPipeClaim::Unclear(code) => {
+            eprintln!("rexenv: could not take the single-instance pipe (error {code}) — starting without the lock");
+            PipeStartup::Ours(None)
+        }
+    }
+}
+
+/// Serve the pipe the startup claim holds. The next instance is always made BEFORE the one in hand is
+/// given away or dropped: the lock is "some instance of this name exists", so a moment with none is a
+/// moment a second launch could take it.
+#[cfg(windows)]
+pub fn spawn_pipe(app: tauri::AppHandle, held: Option<crate::platform::HeldAppPipe>) {
+    let Some(held) = held else {
+        log::warn!("app pipe: no single-instance lock this launch — a second launch would start a second app");
+        return;
+    };
+    tauri::async_runtime::spawn(async move {
+        let name = held.name().to_string();
+        let mut server = match held.into_server() {
+            Ok(server) => server,
+            Err(e) => {
+                log::error!("app pipe: could not serve {name}: {e}");
+                return;
+            }
+        };
+        log::info!("app pipe: holding {name}");
+        loop {
+            let connected = server.connect().await;
+            let next = match crate::platform::next_app_pipe_instance(&name) {
+                Ok(next) => next,
+                Err(e) => {
+                    log::error!("app pipe: could not make the next instance of {name}: {e} — keeping this one");
+                    if connected.is_ok() {
+                        serve_pipe_connection(&app, &mut server).await;
+                        let _ = server.disconnect();
+                    }
+                    continue;
+                }
+            };
+            let current = std::mem::replace(&mut server, next);
+            if connected.is_ok() {
+                let app = app.clone();
+                tokio::spawn(async move {
+                    let mut current = current;
+                    serve_pipe_connection(&app, &mut current).await;
+                });
+            }
+        }
+    });
+}
+
+/// One exchange on a connected instance: a request line in, one envelope out — `app.open` only.
+#[cfg(windows)]
+async fn serve_pipe_connection(app: &tauri::AppHandle, pipe: &mut tokio::net::windows::named_pipe::NamedPipeServer) {
+    let Some(line) = read_request_line(&mut *pipe, MAX_REQUEST_BYTES, REQUEST_READ_TIMEOUT).await else {
+        return;
+    };
+    let cmd = parse_request(&line).map(|r| r.cmd).unwrap_or_default();
+    let reply = if crate::platform::app_pipe_serves(&cmd) {
+        handle_request(app, line, Progress::none()).await
+    } else {
+        crate::platform::app_pipe_not_yet(&cmd)
+    };
+    let _ = pipe.write_all(reply.as_bytes()).await;
+    let _ = pipe.write_all(b"\n").await;
+}
+
 
 /// #54 — the `rex` crate never links the app library.
 ///
