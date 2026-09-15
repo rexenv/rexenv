@@ -18,8 +18,10 @@ use std::process::Child;
 mod acl;
 mod af_unix;
 mod agent_output;
+mod app_catalog;
 mod app_pipe;
 mod app_pipe_rules;
+mod app_registry;
 mod cert_rules;
 mod cert_store;
 mod elevation;
@@ -502,6 +504,151 @@ impl ShellRunner for WindowsShell {
         let (system, user) = (process::registry_env(true), process::registry_env(false));
         Ok(login_env::merge_login_env(&own, system.as_deref(), user.as_deref()))
     }
+
+    /// The editors `app_catalog.rs` finds from what installers registered, each executable existing on
+    /// disk (ledger #622). Read fresh on every call — an app can be uninstalled any day. Icons are `None`.
+    fn detect_editors(&self) -> Vec<EditorApp> {
+        app_catalog::editors(&app_registry::installed(), &|p| p.is_file())
+            .into_iter()
+            .map(|f| EditorApp { id: f.id.into(), name: f.name.into(), icon: None })
+            .collect()
+    }
+
+    fn open_in_editor(&self, editor_id: &str, path: &str) -> Result<()> {
+        if !Path::new(path).exists() {
+            return Err(Error::Other(format!("`{path}` does not exist")));
+        }
+        let found = app_catalog::editors(&app_registry::installed(), &|p| p.is_file())
+            .into_iter()
+            .find(|f| f.id == editor_id)
+            .ok_or_else(|| Error::Other(format!("the editor `{editor_id}` is not installed")))?;
+        start(app_catalog::editor_launch(&found, Path::new(path)))
+    }
+
+    fn detect_browsers(&self) -> Vec<BrowserApp> {
+        app_catalog::browsers(&app_registry::installed(), &|p| p.is_file())
+            .into_iter()
+            .map(|(f, system_default, supports_private)| BrowserApp {
+                id: f.id.into(),
+                name: f.name.into(),
+                icon: None,
+                system_default,
+                supports_private,
+            })
+            .collect()
+    }
+
+    /// `http(s)` only, refused before the lookup (`app_catalog::web_url_only`, the one check); a private
+    /// window errors for a browser with no flag rather than opening a recorded one.
+    fn open_in_browser(&self, browser_id: &str, url: &str, private: bool) -> Result<()> {
+        app_catalog::web_url_only(url).map_err(Error::Other)?;
+        let (found, _, _) = app_catalog::browsers(&app_registry::installed(), &|p| p.is_file())
+            .into_iter()
+            .find(|(f, _, _)| f.id == browser_id)
+            .ok_or_else(|| Error::Other(format!("the browser `{browser_id}` is not installed")))?;
+        start(app_catalog::browser_launch(&found, url, private).map_err(Error::Other)?)
+    }
+
+    fn detect_terminals(&self) -> Vec<TerminalApp> {
+        app_catalog::terminals(&app_registry::installed(), &|p| p.is_file())
+            .into_iter()
+            .map(|f| TerminalApp { id: f.id.into(), name: f.name.into(), icon: None })
+            .collect()
+    }
+
+    /// An existing DIRECTORY only, refused before the lookup: a terminal handed a file would run it.
+    fn open_in_terminal(&self, terminal_id: &str, path: &Path) -> Result<()> {
+        if !path.is_dir() {
+            return Err(Error::Other(format!(
+                "refusing to open a terminal at {} — only an existing directory is a working directory (a \
+                 terminal handed a file would run it)",
+                path.display()
+            )));
+        }
+        let found = app_catalog::terminals(&app_registry::installed(), &|p| p.is_file())
+            .into_iter()
+            .find(|f| f.id == terminal_id)
+            .ok_or_else(|| Error::Other(format!("the terminal `{terminal_id}` is not installed")))?;
+        start(app_catalog::terminal_launch(&found, path))
+    }
+}
+
+/// Start one editor, browser or terminal: the executable and its arguments, no shell in between. Not
+/// waited on — the app outlives this call. Its standard handles are NUL, never this process's: a browser or
+/// an editor started with them keeps writing its logs into them for as long as it runs (measured on the Dell,
+/// 15 Sep 2026: a Chrome the check started held the check's output pipe open with GCM errors, and the run
+/// never ended; VS Code's Electron warnings landed there too). A GUI app needs none of them.
+/// NUL alone was not enough: `std` starts every child inheriting ALL of this process's inheritable handles, so
+/// the same Chrome still held the pipe open, silently, and the run still never ended (measured the same day).
+/// So every handle's inherit flag is cleared first, as before a service spawn (ledger #600): an editor or a
+/// browser can never pin a pipe, a log or a socket of rexenv's for as long as it stays open.
+fn start(launch: app_catalog::Launch) -> Result<()> {
+    if launch.new_console {
+        return start_in_new_console(&launch);
+    }
+    let mut cmd = std::process::Command::new(&launch.exe);
+    cmd.args(&launch.args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    if let Some(dir) = &launch.current_dir {
+        cmd.current_dir(dir);
+    }
+    process::keep_inheritable_handles_out_of_children();
+    cmd.spawn().map_err(|e| Error::Other(format!("could not start {}: {e}", launch.exe.display())))?;
+    Ok(())
+}
+
+/// A console program in a console of its OWN. Not `std::process::Command`: it always hands the child this
+/// process's standard handles (`STARTF_USESTDHANDLES`), so a terminal started by a process whose output is
+/// redirected — a check run, `tauri dev` in a terminal — reads and writes THOSE instead of its window
+/// (measured on the Dell, 15 Sep 2026: the new PowerShell's prompt landed in the check's log). Here no handle
+/// is passed or inherited, so the new console gives the child its own. Its arguments are fixed flags only
+/// (`app_catalog::console_command_line` refuses anything else), so the command line needs no escaping.
+fn start_in_new_console(launch: &app_catalog::Launch) -> Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::Threading::{
+        CreateProcessW, CREATE_NEW_CONSOLE, PROCESS_INFORMATION, STARTUPINFOW,
+    };
+    let line = app_catalog::console_command_line(launch).ok_or_else(|| {
+        Error::Other(format!("refusing to start {} in a console with anything but fixed flags", launch.exe.display()))
+    })?;
+    let wide = |s: &std::ffi::OsStr| -> Vec<u16> { s.encode_wide().chain(Some(0)).collect() };
+    let exe = wide(launch.exe.as_os_str());
+    let mut command_line: Vec<u16> = line.encode_utf16().chain(Some(0)).collect();
+    let dir = launch.current_dir.as_ref().map(|d| wide(d.as_os_str()));
+    // SAFETY: plain-old-data structs, zero-initialised as CreateProcessW expects before `cb` is set.
+    let mut startup: STARTUPINFOW = unsafe { std::mem::zeroed() };
+    startup.cb = std::mem::size_of::<STARTUPINFOW>() as u32;
+    // SAFETY: as above.
+    let mut process: PROCESS_INFORMATION = unsafe { std::mem::zeroed() };
+    // SAFETY: nul-terminated strings that outlive the call, a writable command-line buffer (CreateProcessW may
+    // modify it), no inherited handles, and valid in/out structs.
+    let ok = unsafe {
+        CreateProcessW(
+            exe.as_ptr(),
+            command_line.as_mut_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            0,
+            CREATE_NEW_CONSOLE,
+            std::ptr::null(),
+            dir.as_ref().map_or(std::ptr::null(), |d| d.as_ptr()),
+            &startup,
+            &mut process,
+        )
+    };
+    if ok == 0 {
+        let e = std::io::Error::last_os_error();
+        return Err(Error::Other(format!("could not start {}: {e}", launch.exe.display())));
+    }
+    // SAFETY: the two handles CreateProcessW returned, closed once; the process runs on without them.
+    unsafe {
+        CloseHandle(process.hProcess);
+        CloseHandle(process.hThread);
+    }
+    Ok(())
 }
 
 /// Windows needs no relinking and no signature to run a downloaded executable, so

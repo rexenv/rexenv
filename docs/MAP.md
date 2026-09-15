@@ -47,7 +47,10 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
   `windows/app_pipe_rules.rs` (the name, the claim decision, `app.open` only — tested on every host)
   (ledger #620); open and reveal — `WindowsShell::open` (`ShellExecuteW`) / `reveal` (`explorer.exe
   /select,`) over `windows/shell_rules.rs` (web links, folders and reading files only; the select argument —
-  tested on every host) (ledger #621); nginx's Windows shape — `services::nginx_path`,
+  tested on every host) (ledger #621); editors, browsers and terminals — `WindowsShell::detect_*` /
+  `open_in_*` and `start` over `windows/app_registry.rs` (App Paths, uninstall entries, `StartMenuInternet`,
+  the `https` ProgId) and `windows/app_catalog.rs` (the catalog, detection, the default browser, each open's
+  process — tested on every host) (ledger #622); nginx's Windows shape — `services::nginx_path`,
   `binaries::resolve_program`, the master climb and nginx's events (ledger #602);
   `linux/` is `todo!()`).
 - `state/` = SQLite migrations + the store layer; only `state/` writes SQL.

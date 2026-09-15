@@ -1428,7 +1428,15 @@ Two settings pick the app rexenv hands things to: `preferred_editor` ("Open in
 editor" → `open -a <editor> <site folder>`, so the folder lands as a PROJECT) and
 `preferred_browser` (every `http(s)` link). Both are stored ids over
 `ShellRunner::detect_editors` / `detect_browsers`, whose macOS impls scan
-`/Applications` + `~/Applications` for a fixed table of bundles.
+`/Applications` + `~/Applications` for a fixed table of bundles. **On Windows** (`platform/windows/
+app_catalog.rs` over `app_registry.rs`, W7 S3, ledger #622) the tables carry the SAME ids, so a stored
+preference names the same app on both OSes, and detection reads what installers register — App Paths, the
+uninstall entries (`DisplayIcon`, `InstallLocation`), `StartMenuInternet` — before a known install folder,
+keeping only executables that exist on disk; the default browser is the `https` handler's `UserChoice`
+ProgId matched by prefix (Firefox's carries an install hash). Every open starts the detected executable
+with its arguments and no shell in between; a browser gets `http(s)` only (`app_catalog::web_url_only`,
+checked before the lookup), a private window only with a known flag, a terminal only an existing folder.
+Icons are `None` for now — the UI draws its glyph.
 
 - **The browser preference is applied in the BACKEND, inside `open_external`** —
   not by the UI. Links are opened from about a dozen call sites (site header,

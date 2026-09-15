@@ -109,6 +109,11 @@ mod windows_app_pipe_rules;
 #[allow(dead_code)]
 #[path = "windows/shell_rules.rs"]
 mod windows_shell_rules;
+// And the editors, browsers and terminals rexenv knows, how each is found and started (ledger #622).
+#[cfg(all(test, not(target_os = "windows")))]
+#[allow(dead_code)]
+#[path = "windows/app_catalog.rs"]
+mod windows_app_catalog;
 // And NRPT ownership and its PowerShell (ledger #618).
 #[cfg(all(test, not(target_os = "windows")))]
 #[allow(dead_code)]

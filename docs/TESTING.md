@@ -1453,6 +1453,16 @@ bloating the fast path:
   `.bat` that would write a marker file and holds the refusal to the marker's ABSENCE 4 s later (the shell
   never ran it), refuses missing paths, and reveals the log in Explorer. Windows are found by title; only
   windows naming the fixture are closed (`WM_CLOSE`), and only the fixture folder is removed.
+  `windows_app_open_check` (#622, W7 S3) is editors, browsers and terminals through the real platform in the
+  desktop session (`windows-app-open.ps1` through `windows-limited-token.sh`; the wrapper sets
+  `REXENV_EXPECT_*` to the Dell's inventory, so the detected lists are held to it in order). It opens a
+  fixture folder in the first editor, holds Windows PowerShell to a NEW console window (`ConsoleWindowClass`
+  absent before the call) rather than a title, refuses a `.bat` to a terminal with a marker that must not
+  appear, refuses a file path and an unknown id to a browser, and opens a loopback URL privately in the
+  default browser (that window is the person's to close). **Close every Chrome window first**, so the
+  check's Chrome starts as a fresh process: that is the case that caught a child holding the check's output
+  pipe open, and **a run that ends by itself** — not by the wrapper's 10-minute limit — is part of the
+  verdict. Three runs passed over bugs before this shape existed; the ledger row lists them.
   W6's done-when (S5) is the REAL app, not an example: `cargo xwin build --bin rexenv --features
   tauri/custom-protocol` (without the feature a debug build loads `devUrl`, not the embedded `dist`; the
   `rex` sidecar staged as a placeholder as `windows-example.sh` does), the exe copied to a stable folder —

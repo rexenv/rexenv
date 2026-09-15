@@ -397,8 +397,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     owner's second double-click left one process, the window in front each time. **S2 done the same day
     (ledger #621):** `open` hands the shell only web links, folders and reading files (owner's ruling —
     `ShellExecuteW` runs a `.bat` by association), `reveal` selects in Explorer; Dell
-    `windows_shell_open_check` PASS (7 checks): a `.bat` refused and never run. Next: S3 (editors, browsers,
-    terminals)
+    `windows_shell_open_check` PASS (7 checks): a `.bat` refused and never run. **S3 done the same day
+    (ledger #622):** editors, browsers and terminals detected from what installers register, opened as one
+    executable with its arguments; Dell `windows_app_open_check` PASS (11 checks) on its fourth run — the
+    first three each passed over a real bug in how a child inherited rexenv's handles. Next: S4 (autostart)
   - [ ] W8 — `rex` CLI + MCP over named pipes; `rex.exe` on PATH
   - [ ] W9 — frontend on WebView2 (Windows paths, Ctrl shortcuts, fonts)
     **macOS words on the Windows screens** (seen in the real app on the Dell, W6 S5, 15 Sep 2026): Settings
@@ -792,7 +794,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   tested here at all, and the honest `None` stands until someone with one of those
   browsers runs the flag.
 - [ ] **Windows/Linux: `detect_browsers`/`open_in_browser` are the default empty
-  stubs** (Phase 4, same shape as `detect_editors`). Until they are filled, those
+  stubs** (Phase 4, same shape as `detect_editors`). **The Windows half is closed** (W7 S3, 15 Sep 2026,
+  ledger #622: detected from the registry, Chrome flagged default on the Dell, private windows by flag);
+  Linux's is what remains here. Until they are filled, those
   platforms open every link in the OS handler and show no chevron — honest, but
   the Settings row will read "No browser detected". The private-window arm is
   part of that stub: `supports_private` is false everywhere, so those platforms

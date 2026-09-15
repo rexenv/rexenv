@@ -1276,6 +1276,17 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
     terminals Windows Terminal (`wt -d`) when present, PowerShell 7, Windows PowerShell and Git Bash at the
     folder. Icons may start as `None` (the lucide fallbacks). L0 the registry parsers on the Dell's shapes;
     L1 on the Dell: VS Code and PhpStorm open a site, the chevron lists the browsers with Chrome as default.
+    **S3 done 15 Sep 2026 (ledger #622).** `windows/app_registry.rs` reads App Paths, the uninstall entries,
+    `StartMenuInternet` and the `https` ProgId; `windows/app_catalog.rs` holds the catalogs (macOS's ids),
+    detection (registered first, known folders after, existing executables only), the default browser, and
+    each open's process; `WindowsShell` starts it. Plants 6/6 on the Mac. **The Dell took four runs, and
+    each of the first three PASSED over a real bug:** the PowerShell check matched VS Code's window while the
+    new console wrote into the check's output (`std::process::Command` hands down standard handles even with
+    `CREATE_NEW_CONSOLE` → `CreateProcessW` with none); a fresh Chrome kept the check's pipe open with its logs
+    (→ NUL standard handles); and the same Chrome still held it silently, because `std` makes every child
+    inherit ALL inheritable handles (→ inherit flags cleared before the spawn, #600's rule). The fourth PASSED,
+    11 checks, and ended by itself in 41 s with Chrome started fresh. Not measured: PhpStorm, Git Bash, Firefox,
+    Brave and Edge actually opening; icons (`None`); the real app's menus.
   - **S4 — autostart.** The HKCU Run value `rexenv` = `"<exe>" --hidden`; `is_enabled` reads it;
     `refresh` rewrites only a changed value and never re-points it at a dev build (the macOS rule). L0 the
     value; L1 a real sign-out/sign-in: rexenv in the tray, window hidden, services started (the breakaway
