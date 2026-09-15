@@ -137,6 +137,9 @@ windows-sys = { version = "0.61", features = [
     # The privileged step (platform/windows/elevation.rs, ledger #619): ShellExecuteExW with the runas verb,
     # which is what shows UAC for rexenv.exe. Same crate, more bindings.
     "Win32_UI_Shell",
+    # The single-instance lock (W7 S1, plan §5 W7 ruling Q1): a named pipe created first-instance-only
+    # with a current-user DACL — CreateNamedPipeW / ConnectNamedPipe. Same crate, more bindings.
+    "Win32_System_Pipes",
 ] }
 
 # Target-gated like the [dependencies] copies: objc2 is a compile_error! on any

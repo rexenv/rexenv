@@ -1432,6 +1432,13 @@ bloating the fast path:
   could not be told from the screen; no result file may be left. Cancel and No return one wording, so the
   check cannot tell them apart, nor prove UAC was on screen for the No. The
   example is its own elevated step (`platform::run_elevated_step`), as `main.rs` is.
+  `windows_desktop_probe` (W7's measure-first, plan §5 W7) is a PROBE in the desktop session
+  (`windows-desktop-probe.ps1` through `windows-limited-token.sh`): a named pipe as the single-instance lock
+  (a second process's first-instance create, then its client connect with `app.open`, then the lock after
+  the holder closes), directory junctions in its own `%TEMP%` fixture (`is_symlink` — the delete guard's
+  call — and what `remove_file`, `remove_dir` and `remove_dir_all` leave of each case's own target), and,
+  only with `REXENV_PROBE_OPEN=1` and someone at the screen, `ShellExecuteW` open on a folder and a URL
+  and `explorer.exe /select`. It prints; W7's steps are built on what it printed.
   W6's done-when (S5) is the REAL app, not an example: `cargo xwin build --bin rexenv --features
   tauri/custom-protocol` (without the feature a debug build loads `devUrl`, not the embedded `dist`; the
   `rex` sidecar staged as a placeholder as `windows-example.sh` does), the exe copied to a stable folder —

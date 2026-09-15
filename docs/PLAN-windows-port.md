@@ -1221,6 +1221,23 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   desktop user without elevation, what `symlink_metadata().file_type().is_symlink()` says of it, and that
   removing the link leaves the target's files; (e) `ShellExecuteW` "open" on a folder and a URL, and
   `explorer.exe /select,` versus `SHOpenFolderAndSelectItems` for reveal, from the desktop token.
+  **(a), (d) and (e) measured 15 Sep 2026** (`examples/windows_desktop_probe.rs` through
+  `scripts/probes/windows-desktop-probe.ps1` and `windows-limited-token.sh`: Medium token, the desktop
+  session, the owner at the screen). **(a)** A server pipe made with `FILE_FLAG_FIRST_PIPE_INSTANCE` and
+  the DACL `D:P(A;;GA;;;<user SID>)`: a SECOND process's first-instance create of the same name was
+  refused with **error 5** (access denied — the lock answer), and the same process then connected as a
+  client, sent `{"cmd":"app.open","args":{}}` and read the server's reply; once the holder's handle closed,
+  a new first-instance create succeeded — the lock dies with its holder, as the unix socket's does. A
+  backslash inside the pipe name was accepted. Not measured: another account's connect (none on the Dell).
+  **(d)** `mklink /J` by the desktop token, no elevation: **`symlink_metadata(..).file_type().is_symlink()`
+  is TRUE for a junction** (and `is_dir` false) — so `core::repo::partition_symlink_deletes` already sees
+  one; `read_link` gave the target. `remove_file` on a junction was **refused, error 5**, link still there —
+  the macOS `remove_symlink` shape does not work on Windows; `remove_dir` removed the junction and left the
+  target's file, and so did `remove_dir_all` on the junction (it did not walk in). `symlink_dir` was
+  refused with **1314** (privilege not held) — Developer Mode off, so junctions, as ruled. **(e)**
+  `ShellExecuteW("open")` returned 42 (success) for the fixture folder and for an `http` URL, and after
+  `explorer.exe /select,` two Explorer windows (`CabinetWClass`) titled with the folder were on screen.
+  `SHOpenFolderAndSelectItems` was not tried (it needs COM). (b) and (c) need the real app — S5 and S4.
   *Steps, each its own commit with its proof:*
   - **S1 — single instance (Q1).** The lock is the pipe: its name derived from the app-data directory (one
     rexenv per app-data directory, as on macOS), created first-instance-only with a current-user DACL
