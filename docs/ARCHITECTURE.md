@@ -2673,6 +2673,14 @@ IPC surface — which is how a reader ends up designing against a system with on
   it still exists — one run of a dev build used to re-point the login item at a
   `target/debug` path the next `cargo clean` deleted, with no symptom until the next
   reboot (review, 3 Sep 2026).
+  **On Windows the login item is the per-user Run value** (`WindowsAutostart` over `platform/windows/
+  autostart.rs` + `autostart_rules.rs`, W7 S4, ledger #623): `rexenv` = `"<exe>" --hidden` under
+  `HKCU\…\CurrentVersion\Run`, written with no elevation — never a scheduled task, whose job refuses the
+  breakaway rexenv's services need (plan §3 D1, measured). Task Manager's Startup tab disables an item
+  without touching the Run key, in a `StartupApproved\Run` value whose first byte has its low bit set, so
+  `is_enabled` is the Run value present AND not disabled there; `enable` — the user's choice in rexenv —
+  clears that value; `disable` removes both. `refresh` keeps macOS's rules: rewrite only a changed value, and
+  never move the item to a build in a cargo `target` folder while the recorded program still exists.
 - **One rexenv per app-data dir.** `run()` CLAIMS the CLI socket before Tauri boots
   (`cli_server::claim_at_startup`): if something accepts a connect on it, a live
   instance owns this app data, so the launch sends `app.open` (best-effort) and EXITS;

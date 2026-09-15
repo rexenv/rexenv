@@ -252,6 +252,7 @@ windows_uac_step_check demo
 windows_desktop_probe demo
 windows_shell_open_check demo
 windows_app_open_check demo
+windows_autostart_check demo
 wp_core_zip_check network
 "
 

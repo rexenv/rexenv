@@ -1291,6 +1291,14 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
     `refresh` rewrites only a changed value and never re-points it at a dev build (the macOS rule). L0 the
     value; L1 a real sign-out/sign-in: rexenv in the tray, window hidden, services started (the breakaway
     measurement), and `login_launch_needs_window` still showing the window when setup is incomplete.
+    **S4, registry half done 15 Sep 2026 (ledger #623).** `windows/autostart_rules.rs` (the value, Task
+    Manager's disable in `StartupApproved\Run`, a dev build, the refresh decision; plants 3/3) and
+    `windows/autostart.rs` (HKCU read/write, no elevation). Decided while building it: enabled = the Run value
+    AND not disabled in Task Manager; `enable` clears Task Manager's disable (the user's explicit choice in
+    rexenv); `refresh` never touches it. Dell `windows_autostart_check` PASS (9 checks, real Run key, `reg.exe`
+    read-back, guard left nothing). **The sign-in half is paired with S5** — both need the real app and the
+    owner signing out and in: the app started by Explorer from the value, hidden, and (c) whether its services
+    may break away from that launch context.
   - **S5 — the tray (Q2).** Colour icon and the left/right split on Windows; close keeps hiding the window
     (already on every OS), so the tray and S1's second launch are the ways back. L1 with the owner.
   - **S6 — linked folders as junctions.** `symlink_dir` makes a junction; `remove_symlink` recognises a

@@ -400,7 +400,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     `windows_shell_open_check` PASS (7 checks): a `.bat` refused and never run. **S3 done the same day
     (ledger #622):** editors, browsers and terminals detected from what installers register, opened as one
     executable with its arguments; Dell `windows_app_open_check` PASS (11 checks) on its fourth run — the
-    first three each passed over a real bug in how a child inherited rexenv's handles. Next: S4 (autostart)
+    first three each passed over a real bug in how a child inherited rexenv's handles. **S4, registry half,
+    the same day (ledger #623):** the per-user Run value `"<exe>" --hidden`, Task Manager's disable read and
+    cleared by `enable`, `refresh` never moving the item to a dev build; Dell `windows_autostart_check` PASS
+    (9 checks). Next: S5 (the tray), measured together with S4's sign-in — the app started hidden at login,
+    its services breaking away from Explorer's launch
   - [ ] W8 — `rex` CLI + MCP over named pipes; `rex.exe` on PATH
   - [ ] W9 — frontend on WebView2 (Windows paths, Ctrl shortcuts, fonts)
     **macOS words on the Windows screens** (seen in the real app on the Dell, W6 S5, 15 Sep 2026): Settings

@@ -50,7 +50,10 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
   tested on every host) (ledger #621); editors, browsers and terminals — `WindowsShell::detect_*` /
   `open_in_*` and `start` over `windows/app_registry.rs` (App Paths, uninstall entries, `StartMenuInternet`,
   the `https` ProgId) and `windows/app_catalog.rs` (the catalog, detection, the default browser, each open's
-  process — tested on every host) (ledger #622); nginx's Windows shape — `services::nginx_path`,
+  process — tested on every host) (ledger #622); the login item — `WindowsAutostart` over
+  `windows/autostart.rs` (the per-user Run value and Task Manager's `StartupApproved` value) and
+  `windows/autostart_rules.rs` (the value, Task Manager's disable, a dev build, the refresh decision — tested on
+  every host) (ledger #623); nginx's Windows shape — `services::nginx_path`,
   `binaries::resolve_program`, the master climb and nginx's events (ledger #602);
   `linux/` is `todo!()`).
 - `state/` = SQLite migrations + the store layer; only `state/` writes SQL.

@@ -1463,6 +1463,13 @@ bloating the fast path:
   check's Chrome starts as a fresh process: that is the case that caught a child holding the check's output
   pipe open, and **a run that ends by itself** — not by the wrapper's 10-minute limit — is part of the
   verdict. Three runs passed over bugs before this shape existed; the ledger row lists them.
+  `windows_autostart_check` (#623, W7 S4) is `AutostartManager` against the REAL per-user Run key, over SSH
+  (`windows-example.sh`; the SSH session loads the same user's hive and HKCU needs no elevation), every state
+  read back with `reg.exe` rather than by the code under test. Because the value name is the product's, it
+  refuses to start when a `rexenv` Run or `StartupApproved` value already exists, and a guard removes both on
+  every path. It writes Task Manager's Disabled byte itself (03…) to hold `is_enabled` and `refresh` to it.
+  The sign-in itself — Explorer starting the app from that value — is not this check's; it needs the real
+  app and a person signing out and in.
   W6's done-when (S5) is the REAL app, not an example: `cargo xwin build --bin rexenv --features
   tauri/custom-protocol` (without the feature a debug build loads `devUrl`, not the embedded `dist`; the
   `rex` sidecar staged as a placeholder as `windows-example.sh` does), the exe copied to a stable folder —

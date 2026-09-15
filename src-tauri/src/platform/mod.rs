@@ -114,6 +114,11 @@ mod windows_shell_rules;
 #[allow(dead_code)]
 #[path = "windows/app_catalog.rs"]
 mod windows_app_catalog;
+// And the login item's Run value, Task Manager's disable, and the refresh decision (ledger #623).
+#[cfg(all(test, not(target_os = "windows")))]
+#[allow(dead_code)]
+#[path = "windows/autostart_rules.rs"]
+mod windows_autostart_rules;
 // And NRPT ownership and its PowerShell (ledger #618).
 #[cfg(all(test, not(target_os = "windows")))]
 #[allow(dead_code)]

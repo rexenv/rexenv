@@ -22,6 +22,8 @@ mod app_catalog;
 mod app_pipe;
 mod app_pipe_rules;
 mod app_registry;
+mod autostart;
+mod autostart_rules;
 mod cert_rules;
 mod cert_store;
 mod elevation;
@@ -404,16 +406,22 @@ impl ProcessSupervisor for WindowsSupervisor {
     }
 }
 
+/// The per-user Run value `"<exe>" --hidden` (`autostart.rs` + `autostart_rules.rs`, W7 S4, ledger #623) —
+/// no elevation, and never a scheduled task: a task's job refuses the breakaway rexenv's services need (plan
+/// §3 D1, measured).
 pub struct WindowsAutostart;
 impl AutostartManager for WindowsAutostart {
     fn enable(&self) -> Result<()> {
-        Err(Error::Unported("windows autostart (HKCU Run key)"))
+        autostart::enable()
     }
     fn disable(&self) -> Result<()> {
-        Err(Error::Unported("windows autostart (HKCU Run key)"))
+        autostart::disable()
     }
     fn is_enabled(&self) -> Result<bool> {
-        Err(Error::Unported("windows autostart (HKCU Run key)"))
+        autostart::is_enabled()
+    }
+    fn refresh(&self) -> Result<()> {
+        autostart::refresh()
     }
 }
 
