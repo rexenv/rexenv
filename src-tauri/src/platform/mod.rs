@@ -177,6 +177,10 @@ pub const RESOLVER_PORT: u16 = 15353;
 /// ledger #626). Data for every OS on every host; `words::current()` is this build's.
 pub mod words;
 
+/// How this OS finds a command on `PATH` — the separator, the variable's case, `git` being `git.exe` (ledger
+/// #628). Data for every OS on every host; `path_lookup::current()` is this build's.
+pub mod path_lookup;
+
 /// The embedded resolver's UDP socket, bound on `127.0.0.1:port` — loopback by construction (the
 /// resolver answers every name, which is safe only there; ledger #44).
 ///

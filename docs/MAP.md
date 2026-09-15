@@ -59,7 +59,9 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
   `FSCTL_SET_REPARSE_POINT`, the link-only removal) and `windows/junction_rules.rs` (the target rule, the
   reparse data — tested on every host) (ledger #625); the words for the OS's own things — `platform/words.rs`
   (`PlatformWords`, `MACOS`/`WINDOWS`, `current()`; tested on every host, including a scan of the frontend),
-  served by `commands::system::platform_words` and read through `src/lib/usePlatformWords.ts`
+  served by `commands::system::platform_words` and read through `src/lib/usePlatformWords.ts`; finding a
+  command on `PATH` — `platform/path_lookup.rs` (`PathLookup`, `UNIX`/`WINDOWS`, `current()`: the separator,
+  the variable's case, `PATHEXT`; tested on every host), walked by `core/devtools.rs` `find_tool` (ledger #628)
   (`mockPlatformWords` in `src/lib/mock.ts`), used by `core/devtools.rs` and `core/repo.rs`'s install hints
   (ledger #626); nginx's Windows shape — `services::nginx_path`,
   `binaries::resolve_program`, the master climb and nginx's events (ledger #602);

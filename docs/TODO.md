@@ -415,7 +415,14 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     detected browser (only Chrome so far), a git clone through Git for Windows, and deleting a linked plugin
     through the app's WordPress screen. **Found measuring it (ledger #627, fixed 15 Sep 2026):** the first
     WordPress site on the Dell failed "no binary manifest for php-fpm 8.3.32" — the download plans named
-    `php-fpm` on every OS; they now ask `PoolModel::catalog_name()`, and the site `w7check` serves HTTPS 200
+    `php-fpm` on every OS; they now ask `PoolModel::catalog_name()`, and the site `w7check` serves HTTPS 200. **And (ledger #628,
+    fixed the same day):** "From Git" said git and node were missing — the core read `PATH` split on `:` for
+    a file named `git`; the rules are now the platform's (`Path`, `;`, `PATHEXT`). **Measured on the Dell:**
+    PhpStorm opened `w7check` (its `.idea` and recent-projects entry); Firefox, Brave and Edge each showed
+    the site's window (Chrome in S3); a clone of `WordPress/classic-editor` through "From Git". **Left:** a
+    linked plugin deleted through the WordPress screen
+    - Found, not fixed: `core/terminal.rs` joins its PATH prepend with `:` — the site terminal on Windows
+      needs the same rules when it is ported
   - [ ] W8 — `rex` CLI + MCP over named pipes; `rex.exe` on PATH
   - [ ] W9 — frontend on WebView2 (Windows paths, Ctrl shortcuts, fonts)
     **macOS words on the Windows screens** (seen in the real app on the Dell, W6 S5, 15 Sep 2026): Settings

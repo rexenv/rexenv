@@ -35,13 +35,22 @@ pub fn env_var<'a>(env: &'a [(String, String)], key: &str) -> Option<&'a str> {
 /// Walk the snapshot's PATH for `name`, first hit wins (the shell's own
 /// precedence — an nvm shim beats /usr/bin). Only `is_file` is checked:
 /// exec-bit probing is OS-specific, and a non-executable PATH collision is
-/// pathological — it surfaces at spawn with a clear OS error.
+/// pathological — it surfaces at spawn with a clear OS error. How PATH is
+/// read — its separator, its name's case, `git` being `git.exe` — is the
+/// platform's (`platform::path_lookup`, ledger #628).
 pub fn find_tool(env: &[(String, String)], name: &str) -> Option<PathBuf> {
-    env_var(env, "PATH")?
-        .split(':')
-        .filter(|d| !d.is_empty())
-        .map(|d| Path::new(d).join(name))
-        .find(|p| p.is_file())
+    find_tool_by(crate::platform::path_lookup::current(), env, name, &|p| p.is_file())
+}
+
+/// [`find_tool`] under the given rules and file test — tests walk the Windows
+/// rules on every host.
+pub fn find_tool_by(
+    rules: &crate::platform::path_lookup::PathLookup,
+    env: &[(String, String)],
+    name: &str,
+    is_file: &dyn Fn(&Path) -> bool,
+) -> Option<PathBuf> {
+    rules.candidates(env, name).into_iter().find(|p| is_file(p))
 }
 
 /// `find_tool` + a `--version` probe. None when the tool is absent.
@@ -196,6 +205,32 @@ mod tests {
         std::fs::create_dir_all(first.join("git")).unwrap();
         assert_eq!(find_tool(&env, "git"), None);
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// The Dell's own shape, 15 Sep 2026: the key spelled `Path`, a drive letter in every directory,
+    /// `git.exe`, `npm.cmd` and `composer.bat` — the machine where "From Git" said git was missing.
+    #[test]
+    fn the_windows_rules_find_git_node_and_npm_where_git_for_windows_and_node_put_them() {
+        use crate::platform::path_lookup::WINDOWS;
+        let env = vec![
+            (
+                "Path".to_string(),
+                r"C:\WINDOWS\system32;C:\composer;C:\Program Files\nodejs\;C:\Program Files\Git\cmd;C:\Users\DELL\AppData\Roaming\npm"
+                    .to_string(),
+            ),
+            ("PATHEXT".to_string(), ".COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC;.PY;.PYW;.CPL".to_string()),
+        ];
+        let git = Path::new(r"C:\Program Files\Git\cmd").join("git.exe");
+        let node = Path::new(r"C:\Program Files\nodejs\").join("node.exe");
+        let npm = Path::new(r"C:\Program Files\nodejs\").join("npm.cmd");
+        let composer = Path::new(r"C:\composer").join("composer.bat");
+        let on_disk = [git.clone(), node.clone(), npm.clone(), composer.clone()];
+        let is_file = |p: &Path| on_disk.iter().any(|f| f == p);
+        assert_eq!(find_tool_by(&WINDOWS, &env, "git", &is_file), Some(git));
+        assert_eq!(find_tool_by(&WINDOWS, &env, "node", &is_file), Some(node));
+        assert_eq!(find_tool_by(&WINDOWS, &env, "npm", &is_file), Some(npm));
+        assert_eq!(find_tool_by(&WINDOWS, &env, "composer", &is_file), Some(composer));
+        assert_eq!(find_tool_by(&WINDOWS, &env, "pnpm", &is_file), None);
     }
 
     #[test]

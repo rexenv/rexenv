@@ -300,7 +300,8 @@ export function GitAddPanel({
           {gitTool.error}
         </div>
       )}
-      {probe.isError && (
+      {/* The probe resolves git too — a missing git is already said once, above. */}
+      {probe.isError && String(probe.error) !== (gitTool && !gitTool.ok ? gitTool.error : null) && (
         <div className="whitespace-pre-line rounded-md border border-status-error-border bg-status-error-bg px-2.5 py-1.5 font-mono text-[0.6875rem] text-status-error-bright">
           {String(probe.error)}
         </div>

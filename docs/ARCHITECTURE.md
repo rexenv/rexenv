@@ -2620,7 +2620,12 @@ IPC surface — which is how a reader ends up designing against a system with on
     login-shell env snapshot (`ShellRunner::login_shell_env` — `$SHELL -ilc`
     with a NUL-marker protocol; a Finder-launched app has the bare launchd
     PATH and nvm is rc-file init, so naive PATH detection misses node for
-    every JS dev). Missing tool = honest `$`-fix error; `git_preflight`
+    every JS dev). How a tool is found on that PATH is the platform's
+    (`platform/path_lookup.rs`, ledger #628): `:` and the exact name `PATH`
+    on macOS; on Windows `;`, `Path` in any case, and each `PATHEXT`
+    extension (`git` is `git.exe`, `npm` is `npm.cmd`). The core split on `:`
+    once, so the Dell — Git for Windows and Node installed — was told both
+    were missing (15 Sep 2026). Missing tool = honest `$`-fix error; `git_preflight`
     probes the CLT quietly so `/usr/bin/git`'s shim can never pop a GUI
     dialog from a background task. EXCEPTION: composer is ALWAYS our pinned
     phar run by the SITE's PHP version — platform checks (`php`, `ext-*`)
