@@ -457,7 +457,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     **Found by S6, fixed 16 Sep 2026 (ledger #635):** on Windows every launch that ADOPTED a surviving stack
     left the service manager's resolved binaries empty (`adopt_startup` joined `caddy-<v>/caddy`, the file is
     `caddy.exe`), so each reload after it failed "services not started" — `rex site create` on the Dell streamed
-    its progress and then failed at "starting to serve". Not yet run there after the fix.
+    its progress and then failed at "starting to serve". **Run there after the fix:** an adopting launch, then
+    `rex site create` → "✓ created", exit 0, and a delete. Also measured the same night: Reinstall puts a removed
+    `Path` entry back with the other entries intact, and a launch replaces an older installed copy, renaming the
+    old one to `rex.exe.old`.
     - Found, not fixed: `rex`'s stall notice ("no reply yet after 10s — the app is either still working or
       wedged") prints even while progress records are arriving — the timer is not reset by progress; seen on the
       Dell's `site create`, every OS

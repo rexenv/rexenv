@@ -1471,6 +1471,11 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   `binaries::cached_bin` (ledger #635), with a scan against the bug class. The site was deleted with
   `rex site delete --yes` (the owner agreed to create and delete). The owner ruled out running the teardown
   (it removes the DNS route and CA trust too).
+  **S6, after the fix (16 Sep 2026):** the app built with #635, launched over the stack an earlier instance
+  started: `rex site create w8stream.rex` streamed and ended "✓ created", exit 0, and `rex site delete --yes`
+  removed it. The same night, with the owner: the CLI folder taken off the user's `Path`, Reinstall put it back
+  (11 entries, the other ten intact); a different `rex.exe` beside the app, and the next launch replaced the
+  installed copy and left the old one as `rex.exe.old`. Not seen on screen: the card's and toast's words.
   *Done when, measured:* after Install, a PowerShell opened from the Start menu runs `rex status`,
   `rex site list` and a streaming command against the running app; `rex mcp` answers `initialize` and
   `tools/list` with the toggle on and says rexenv's endpoint is off with it off; with the app quit, `rex`
