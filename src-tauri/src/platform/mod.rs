@@ -33,10 +33,10 @@ macro_rules! unported {
 mod macos;
 #[cfg(target_os = "windows")]
 mod windows;
-// The single-instance pipe (W7 S1, ledger #620), for `cli_server`'s Windows half.
+// The single-instance pipe (W7 S1, ledger #620), for `cli_server`'s Windows half, and the MCP pipe (#632).
 #[cfg(target_os = "windows")]
 pub(crate) use windows::{
-    claim_app_pipe, hand_off_to_app_pipe, next_app_pipe_instance, AppPipeClaim, HeldAppPipe,
+    claim_app_pipe, create_mcp_pipe, hand_off_to_app_pipe, next_app_pipe_instance, AppPipeClaim, HeldAppPipe,
 };
 #[cfg(target_os = "linux")]
 mod linux;

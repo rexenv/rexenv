@@ -1595,7 +1595,8 @@ words (the browser shell's mock and two dev review pages excepted).
   client is tokio's overlapped one (`cli/src/pipe.rs`), because a blocking handle
   DEADLOCKS `rex mcp` — measured (`windows_cli_pipe_probe` (d)): with one thread blocked
   reading, a write on the handle's clone returned only when the read did, and the next never.
-  A pipe has no half-close, so `shutdown` is refused there. The crate's dependencies grew for
+  A pipe has no half-close, so the Windows `Stream` has no `shutdown` at all; `rex mcp` ends a session
+  by waiting for its answers and closing the pipe (ledger #632). The crate's dependencies grew for
   it — `sha2` (the name) and, on Windows only, tokio — and #54's guard now reads every
   dependency table, not only `[dependencies]` (it would have passed a banned crate added under
   the Windows table). Piped through PowerShell 5.1, `rex`'s ✓ and — print as `Γ£ô` and `ΓÇö`
@@ -1671,6 +1672,19 @@ IPC surface — which is how a reader ends up designing against a system with on
   weeks: that binder returns a tokio listener and panics off-runtime, which was a
   packaged-build enable crash. The *convention* is shared; the binder is its own, and a
   test pins that binding needs no ambient runtime.
+  **On Windows the endpoint is its own named pipe** (W8 S3, ledger #632; plan §5 W8 ruling Q2):
+  `\\.\pipe\rexenv-mcp-<the lock pipe's digest>`, owner-only, remote clients rejected. `start`
+  creates its first instance synchronously (`platform::create_mcp_pipe`, the lock's own
+  `create_first`) — `mcp_set_enabled` runs off the runtime, the same lesson as the socket binder
+  — so a failure reaches the toggle and it stays off. `serve_pipe` makes the next instance
+  before a connected one goes to its `session`, and leaves its loop on the toggle's signal,
+  which every session shares: once they have ended no instance of the name exists and a
+  connect finds nothing, the Windows form of the socket file being unlinked. Access denied on
+  the create means an instance already exists — with the lock held, something other than this
+  app — and the endpoint does not start. `rex mcp` tells an endpoint that is off from an app
+  that is not running (it asks the CLI endpoint), on both OSes, and on Windows ends a session
+  at end of input by waiting for every sent request's answer and closing the pipe — the pump
+  marks a reply answered only after writing it, so the process cannot end between the two.
 - **A create that half-builds tells the agent WHY.** `site_create` and `scratch_create_site`
   name the site that now exists (so the agent does not make another) AND carry the
   provision job's own reason through `view::create_failure_reason` — the app's

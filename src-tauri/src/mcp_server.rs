@@ -85,9 +85,9 @@ use crate::state::app::AppState;
 use readctx::ReadCtx;
 use serde_json::{json, Value};
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
-// The transport is the only unix-specific part of this module: `socket_path`,
-// `bind_socket`, `start` and `serve` are `cfg(unix)`; sessions, dispatch, tools and
-// the feed compile everywhere (docs/PLAN-windows-port.md W1; the Windows pipe is W8).
+// The transport is the only OS-specific part of this module: on unix `socket_path`,
+// `bind_socket`, `start` and `serve`; on Windows `start` and `serve_pipe` over the MCP
+// pipe (W8 S3, ledger #632). Sessions, dispatch, tools and the feed compile everywhere.
 #[cfg(unix)]
 use tokio::net::UnixListener;
 use tokio::sync::{mpsc, watch};
@@ -262,12 +262,77 @@ pub fn start<Rt: tauri::Runtime>(
     Ok(tx)
 }
 
-/// No MCP transport exists on this OS yet — the endpoint is a unix socket, and the
-/// Windows replacement (a named pipe, owner ruling D3) is `docs/PLAN-windows-port.md`
-/// W8. Refusing HERE keeps the bind-first rule intact on every OS (ledger #203):
+/// Create the MCP pipe and start serving (W8 S3, plan §5 W8 ruling Q2, ledger #632). The pipe's first
+/// instance is created HERE, synchronously and off any runtime — `mcp_set_enabled` runs off the tokio
+/// runtime, the unix `bind_socket` lesson — so a failure reaches the toggle and it stays off (#203).
+#[cfg(windows)]
+pub fn start<Rt: tauri::Runtime>(
+    app: tauri::AppHandle<Rt>,
+) -> crate::error::Result<watch::Sender<bool>> {
+    let dir = crate::platform::current().paths().config_dir()?;
+    let held = crate::platform::create_mcp_pipe(&dir)?;
+    let (tx, rx) = watch::channel(true);
+    log::info!("mcp: listening on {} (opt-in enabled)", held.name());
+    tauri::async_runtime::spawn(serve_pipe(held, app, rx));
+    Ok(tx)
+}
+
+/// The pipe's accept loop — one MCP session per connection, the unix `serve`'s shape. The next instance is
+/// made before a connected one is handed to its session. Turning the toggle off (or the app exiting) ends the
+/// loop and drops the listening instance; every session ends on the same signal, so once they have, no
+/// instance of the name exists and a connect finds nothing — the Windows form of the socket file being
+/// removed (ledger #632).
+#[cfg(windows)]
+async fn serve_pipe<Rt: tauri::Runtime>(
+    held: crate::platform::HeldAppPipe,
+    app: tauri::AppHandle<Rt>,
+    mut shutdown: watch::Receiver<bool>,
+) {
+    let name = held.name().to_string();
+    let mut server = match held.into_server() {
+        Ok(server) => server,
+        Err(e) => {
+            log::error!("mcp: could not serve {name}: {e}");
+            return;
+        }
+    };
+    loop {
+        tokio::select! {
+            res = shutdown.changed() => {
+                if res.is_err() || !*shutdown.borrow() {
+                    break;
+                }
+            }
+            connected = server.connect() => {
+                if connected.is_err() {
+                    continue;
+                }
+                let next = match crate::platform::next_app_pipe_instance(&name) {
+                    Ok(next) => next,
+                    Err(e) => {
+                        log::error!("mcp: could not make the next instance of {name}: {e} — serving this session, then stopping");
+                        let (read, write) = tokio::io::split(server);
+                        session(read, write, app.clone(), shutdown.clone()).await;
+                        return;
+                    }
+                };
+                let current = std::mem::replace(&mut server, next);
+                let app = app.clone();
+                let sd = shutdown.clone();
+                tokio::spawn(async move {
+                    let (read, write) = tokio::io::split(current);
+                    session(read, write, app, sd).await;
+                });
+            }
+        }
+    }
+    log::info!("mcp: stopped serving {name}");
+}
+
+/// No MCP transport on this OS. Refusing HERE keeps the bind-first rule intact (ledger #203):
 /// `mcp_set_enabled` returns this error before it persists "true", nothing is stored
 /// in `AppState.mcp`, and the toggle can never read on while nothing listens.
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 pub fn start<Rt: tauri::Runtime>(
     _app: tauri::AppHandle<Rt>,
 ) -> crate::error::Result<watch::Sender<bool>> {
@@ -1853,6 +1918,28 @@ fn error_response(id: Value, code: i64, message: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Ledger #632 — **the Windows endpoint exists only while the toggle is on, and the toggle cannot read on
+    /// without it**: `start` creates the pipe before it spawns anything (so a failure reaches `mcp_set_enabled`,
+    /// #203), `serve_pipe` hands each connection to the one `session` and leaves its loop on the shutdown
+    /// signal the sessions share, and no OS but "not unix and not Windows" gets the refusal.
+    #[test]
+    fn the_windows_endpoint_is_made_before_the_toggle_reads_on_and_ends_with_it() {
+        let src = include_str!("mcp_server.rs");
+        let body = |head: &str| -> &str {
+            let start = src.find(head).unwrap_or_else(|| panic!("`{head}` is gone"));
+            let rest = &src[start..];
+            &rest[..rest.find("\n}\n").expect("the function's end")]
+        };
+        let start = body("#[cfg(windows)]\npub fn start<");
+        let created = start.find("create_mcp_pipe(").expect("start no longer creates the pipe itself");
+        let spawned = start.find("spawn(serve_pipe(").expect("start no longer serves the pipe");
+        assert!(created < spawned, "the pipe must exist before anything is spawned — a failure has to reach the toggle:\n{start}");
+        let serve = body("async fn serve_pipe<");
+        assert!(serve.contains("shutdown.changed()") && serve.contains("break;"), "the accept loop no longer ends on the toggle:\n{serve}");
+        assert_eq!(serve.matches("session(").count(), 2, "both of the loop's serving paths run the one session:\n{serve}");
+        assert!(src.contains("#[cfg(not(any(unix, windows)))]\npub fn start<"), "the refusal must not cover Windows any more");
+    }
 
     /// The violation message when a name appears in MORE THAN ONE registry, or
     /// `None` when they are all disjoint. Takes `(module, names)` per registry.

@@ -46,7 +46,7 @@ mod stop_policy;
 
 pub(crate) use agent_output::send_output_to;
 pub(crate) use app_pipe::{
-    claim as claim_app_pipe, hand_off as hand_off_to_app_pipe, next_instance as next_app_pipe_instance, AppPipeClaim,
+    claim as claim_app_pipe, create_mcp as create_mcp_pipe, hand_off as hand_off_to_app_pipe, next_instance as next_app_pipe_instance, AppPipeClaim,
     HeldAppPipe,
 };
 pub(crate) use elevation::{run_ops_here, run_step};

@@ -22,10 +22,20 @@ pub(crate) const APP_OPEN: &str = "app.open";
 /// hold a second backslash-separated part in every API. Lower-cased first, because Windows paths are
 /// case-insensitive — two launches that spell the same folder differently must meet at the same lock.
 pub(crate) fn pipe_name(config_dir: &str) -> String {
+    named("app", config_dir)
+}
+
+/// The MCP endpoint's pipe for the same folder (W8 S3, plan §5 W8 ruling Q2, ledger #632): the lock's digest
+/// under its own name, so the endpoint can exist only while the toggle is on without touching the lock.
+pub(crate) fn mcp_pipe_name(config_dir: &str) -> String {
+    named("mcp", config_dir)
+}
+
+fn named(kind: &str, config_dir: &str) -> String {
     let folded = config_dir.trim_end_matches(['\\', '/']).to_lowercase();
     let digest = Sha256::digest(folded.as_bytes());
     let hex: String = digest.iter().take(10).map(|b| format!("{b:02x}")).collect();
-    format!(r"\\.\pipe\rexenv-app-{hex}")
+    format!(r"\\.\pipe\rexenv-{kind}-{hex}")
 }
 
 /// What a first-instance create of the lock found.
@@ -65,6 +75,9 @@ mod tests {
         // `rex` computes this name itself (plan §5 W8 ruling Q1) and asserts the same literal
         // (`cli/src/main.rs`, ledger #630), so the two cannot drift apart unseen.
         assert_eq!(a, r"\\.\pipe\rexenv-app-c472155a9cab9003d05c");
+        // The MCP endpoint's own pipe for the same folder (ledger #632) — `rex mcp` asserts this literal too.
+        let mcp = mcp_pipe_name(r"C:\Users\A B\AppData\Local\rexenv\rexenv\data\config");
+        assert_eq!(mcp, r"\\.\pipe\rexenv-mcp-c472155a9cab9003d05c");
     }
 
     /// Ledger #620 — only access denied means another instance; anything unclear starts the app.

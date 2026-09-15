@@ -118,6 +118,16 @@ const MCP_NOT_RUNNING: &str =
 const MCP_NOT_RUNNING: &str =
     "rexenv isn't running — open the rexenv app, then reconnect. No MCP server is available until rexenv is running.";
 
+/// The app IS running — its CLI endpoint answered — but the MCP endpoint is off, which is the default. Saying
+/// "isn't running" there sends the person to open an app that is already open (W8 S3, ledger #632).
+const MCP_OFF: &str = "rexenv is running, but its AI agent (MCP) endpoint is off — turn it on in rexenv → Settings → \
+AI agents (MCP), then reconnect.";
+
+/// Why `rex mcp` could not reach the endpoint: `app_reachable` is whether the app's CLI endpoint answers a connect.
+fn mcp_unreachable_message(app_reachable: bool) -> &'static str {
+    if app_reachable { MCP_OFF } else { MCP_NOT_RUNNING }
+}
+
 const USAGE: &str = "\
 rex — control the running rexenv app
 
@@ -281,6 +291,18 @@ fn open_waiting_out_busy<T>(
     }
 }
 
+/// The app's Windows pipe of `kind` as a path `connect` takes, or exit saying why there is none.
+#[cfg(windows)]
+fn windows_pipe_path(kind: &str) -> PathBuf {
+    match windows_config_dir(std::env::var("LOCALAPPDATA").ok().as_deref()) {
+        Some(dir) => PathBuf::from(pipe_name(kind, &dir)),
+        None => {
+            eprintln!("rex: %LOCALAPPDATA% is not set, so rex cannot find rexenv's folder");
+            exit(1)
+        }
+    }
+}
+
 fn socket_path() -> PathBuf {
     // Test/dev override only — there is no discovery protocol, the path is fixed.
     if let Ok(p) = std::env::var("REXENV_CLI_SOCKET") {
@@ -295,13 +317,7 @@ fn socket_path() -> PathBuf {
     }
     #[cfg(windows)]
     {
-        match windows_config_dir(std::env::var("LOCALAPPDATA").ok().as_deref()) {
-            Some(dir) => PathBuf::from(pipe_name("app", &dir)),
-            None => {
-                eprintln!("rex: %LOCALAPPDATA% is not set, so rex cannot find rexenv's folder");
-                exit(1)
-            }
-        }
+        windows_pipe_path("app")
     }
     #[cfg(not(any(target_os = "macos", windows)))]
     {
@@ -324,9 +340,8 @@ fn mcp_socket_path() -> PathBuf {
     }
     #[cfg(windows)]
     {
-        // The MCP pipe comes with W8 S3 (plan §5 W8 ruling Q2) — until then say so, not "isn't running".
-        eprintln!("rex: `rex mcp` does not reach rexenv on Windows yet — it comes in a later build");
-        exit(1)
+        // The endpoint's own pipe, alive only while the toggle is on (plan §5 W8 ruling Q2, ledger #632).
+        windows_pipe_path("mcp")
     }
     #[cfg(not(any(target_os = "macos", windows)))]
     {
@@ -390,6 +405,11 @@ impl PendingIds {
     fn drain(&self) -> Vec<serde_json::Value> {
         self.0.lock().map(|mut v| std::mem::take(&mut *v)).unwrap_or_default()
     }
+    /// Nothing is waiting for a reply. A poisoned lock reads as empty: the bridge must be able to end.
+    #[cfg_attr(unix, allow(dead_code))]
+    fn is_empty(&self) -> bool {
+        self.0.lock().map(|v| v.is_empty()).unwrap_or(true)
+    }
 }
 
 /// `rex mcp` — the MCP stdio bridge. A bidirectional pipe that copies newline-
@@ -406,10 +426,10 @@ fn run_mcp_bridge() -> ! {
     use std::io::BufRead;
     let socket = match connect(mcp_socket_path()) {
         Ok(s) => s,
-        // ENOENT (never bound) and ECONNREFUSED (stale after a crash) both mean
-        // the app isn't there to serve — the CLI socket's exact treatment.
+        // ENOENT (never bound) and ECONNREFUSED (stale after a crash): nothing serves MCP. Whether the app is
+        // there at all is the CLI endpoint's question — the endpoint is opt-in and off by default.
         Err(_) => {
-            eprintln!("{MCP_NOT_RUNNING}");
+            eprintln!("{}", mcp_unreachable_message(connect(socket_path()).is_ok()));
             exit(2);
         }
     };
@@ -433,13 +453,15 @@ fn run_mcp_bridge() -> ! {
             let reader = std::io::BufReader::new(sock_read);
             for line in reader.lines() {
                 let Ok(line) = line else { break };
-                if let Some(id) = reply_id(&line) {
-                    pending.answered(&id);
-                }
                 if out.write_all(line.as_bytes()).is_err() || out.write_all(b"\n").is_err() {
                     break;
                 }
                 let _ = out.flush();
+                // Answered only once the reply is out: on Windows the stdin side ends the process as soon as
+                // nothing is pending, and must not end it between the reply read and the reply written.
+                if let Some(id) = reply_id(&line) {
+                    pending.answered(&id);
+                }
             }
             for id in pending.drain() {
                 let _ = out.write_all(stopped_error(&id).as_bytes());
@@ -450,8 +472,7 @@ fn run_mcp_bridge() -> ! {
         })
     };
     // stdin → socket, line by line, remembering each request's id. Client EOF
-    // means the session is done: half-close so the app sees end-of-input, then
-    // let the socket→stdout side finish.
+    // means the session is done.
     let stdin = std::io::stdin().lock();
     for line in stdin.lines() {
         let Ok(line) = line else { break };
@@ -463,8 +484,23 @@ fn run_mcp_bridge() -> ! {
         }
         let _ = sock_write.flush();
     }
-    let _ = sock_write.shutdown(std::net::Shutdown::Write);
-    let _ = pump.join();
+    // A unix socket half-closes, so the app sees end-of-input, and the socket→stdout side finishes.
+    #[cfg(unix)]
+    {
+        let _ = sock_write.shutdown(std::net::Shutdown::Write);
+        let _ = pump.join();
+    }
+    // A named pipe has no half-close: the app sees end-of-input only when the pipe closes (ledger #632). So
+    // wait until every request already sent is answered — the pump exits the process itself if the app goes
+    // away first — then end the process, which closes the pipe.
+    #[cfg(not(unix))]
+    {
+        drop(sock_write);
+        drop(pump);
+        while !pending.is_empty() {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
     exit(0);
 }
 
@@ -3711,16 +3747,30 @@ mod tests {
         assert_eq!(pipe_name("app", dir), r"\\.\pipe\rexenv-app-c472155a9cab9003d05c");
         assert_eq!(pipe_name("app", &format!("{}\\", dir.to_uppercase())), pipe_name("app", dir), "case and a trailing separator");
         assert_eq!(pipe_name("mcp", dir), r"\\.\pipe\rexenv-mcp-c472155a9cab9003d05c");
+        assert_eq!(pipe_name("app", dir).rsplit('-').next(), pipe_name("mcp", dir).rsplit('-').next(), "one digest, two names");
         let app = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../src-tauri/src/platform/windows/app_pipe_rules.rs"))
             .expect("read the app's pipe rules");
-        assert!(
-            app.contains(r"\\.\pipe\rexenv-app-c472155a9cab9003d05c"),
-            "the app's pipe rules no longer assert the name rex computes — one of the two changed alone"
-        );
+        for literal in [r"\\.\pipe\rexenv-app-c472155a9cab9003d05c", r"\\.\pipe\rexenv-mcp-c472155a9cab9003d05c"] {
+            assert!(app.contains(literal), "the app's pipe rules no longer assert {literal} — one of the two changed alone");
+        }
         assert_eq!(windows_config_dir(Some(r"C:\Users\A B\AppData\Local")).as_deref(), Some(dir));
         assert_eq!(windows_config_dir(Some(r"C:\Users\A B\AppData\Local\")).as_deref(), Some(dir));
         assert_eq!(windows_config_dir(Some("")), None);
         assert_eq!(windows_config_dir(None), None);
+    }
+
+    /// Ledger #632 — **`rex mcp` tells an endpoint that is off from an app that is not running**: the endpoint is
+    /// opt-in and off by default, so with the app's CLI endpoint answering, "isn't running" would send the person
+    /// to open an app that is already open.
+    #[test]
+    fn rex_mcp_says_the_endpoint_is_off_when_the_app_answers() {
+        let off = mcp_unreachable_message(true);
+        assert!(off.contains("is running") && off.contains("Settings") && off.contains("AI agents (MCP)"), "{off}");
+        assert!(!off.contains("isn't running"), "{off}");
+        assert_eq!(mcp_unreachable_message(false), MCP_NOT_RUNNING);
+        let prod = include_str!("main.rs").split("\n#[cfg(test)]").next().unwrap_or_default();
+        let bridge = &prod[prod.find("fn run_mcp_bridge()").expect("the bridge")..];
+        assert!(bridge.contains("mcp_unreachable_message(connect(socket_path()).is_ok())"), "the bridge no longer asks the CLI endpoint before choosing its words");
     }
 
     /// Ledger #630 — **a busy pipe is a moment, not "not running"**: an open answering 231 is retried until the
@@ -4255,8 +4305,10 @@ mod tests {
         p.sent(serde_json::json!(1));
         p.sent(serde_json::json!(2));
         p.answered(&serde_json::json!(1));
+        assert!(!p.is_empty(), "one still waits");
         assert_eq!(p.drain(), vec![serde_json::json!(2)], "only the unanswered one is drained");
         assert!(p.drain().is_empty(), "drained once");
+        assert!(p.is_empty(), "nothing waits after the drain — a Windows bridge may end");
 
         // The in-band error: a JSON-RPC error REPLY to the pending id — routed
         // by the client to the waiting call, not a protocol-level failure —
@@ -4279,6 +4331,14 @@ mod tests {
         let bridge = &prod[prod.find("fn run_mcp_bridge()").unwrap()..];
         let bridge = &bridge[..bridge.find("\n}\n").unwrap()];
         assert!(!bridge.contains("json!("), "the bridge body builds no JSON of its own");
+        // Ledger #632 — a reply is marked answered only AFTER it is written: a Windows bridge ends the process
+        // the moment nothing is pending, and must not end it between a reply read and a reply written.
+        let written = bridge.find("let _ = out.flush();").expect("the pump flushes each reply");
+        let answered = bridge.find("pending.answered(&id)").expect("the pump marks replies answered");
+        assert!(written < answered, "a reply is marked answered before it is written — a Windows bridge could exit and lose it");
+        // …and at end of input a Windows bridge waits for every sent request's answer before it ends.
+        let windows_end = &bridge[bridge.find("#[cfg(not(unix))]").expect("the bridge's pipe ending")..];
+        assert!(windows_end.contains("while !pending.is_empty()"), "the pipe ending no longer waits for the answers");
         assert_eq!(prod.matches("stopped_error(").count(), 2, "defined once, used once — in the socket-EOF drain");
     }
 

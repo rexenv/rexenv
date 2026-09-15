@@ -1421,6 +1421,15 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   unsplits the pipe to listen on it again) hand every connection to it. W7's app.open-only rule, its refusal
   and their re-exports are removed; ledger #620's claim is narrowed to W7. A test over `tokio::io::duplex`
   holds the framing and the outlive-the-client rule on every host, and a scan holds both transports to it.
+  **S3 done 15 Sep 2026 (ledger #632), L0; the Dell run next.** `app_pipe_rules::mcp_pipe_name` (the lock's
+  digest, the `mcp` name) and `app_pipe::create_mcp` (the lock's `create_first`); `mcp_server::start` on
+  Windows creates the pipe synchronously before it spawns `serve_pipe` (the toggle runs off the runtime), and
+  `serve_pipe` is the unix `serve`'s shape — next instance first, each connection to `session`, out on the
+  toggle's signal. `rex mcp` dials `rexenv-mcp-…`, and at end of input waits until nothing is pending
+  (`PendingIds::is_empty`) instead of half-closing; the pump now marks a reply answered only after writing it,
+  so that wait cannot end the process between the two. Found while designing: `rex mcp` told a person whose app
+  was open with MCP off that rexenv "isn't running" — on macOS too; it now asks the CLI endpoint and says the
+  endpoint is off. The pipe `Stream` lost its `shutdown`, now unused.
   *Done when, measured:* after Install, a PowerShell opened from the Start menu runs `rex status`,
   `rex site list` and a streaming command against the running app; `rex mcp` answers `initialize` and
   `tools/list` with the toggle on and says rexenv's endpoint is off with it off; with the app quit, `rex`

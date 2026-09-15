@@ -9,7 +9,9 @@
 //!
 //! The rest of `rex` is blocking code written against `UnixStream`'s methods, so `Stream` keeps that shape:
 //! each call runs its future to completion on a one-worker runtime the stream owns, and `try_clone` shares
-//! the halves, as a duplicated socket shares its connection.
+//! the halves, as a duplicated socket shares its connection. It has no `shutdown`: a named pipe cannot be
+//! half-closed, so `rex mcp` ends a Windows session by waiting for its answers and closing the pipe
+//! (ledger #632).
 
 use std::future::Future;
 use std::io;
@@ -59,12 +61,6 @@ impl Stream {
             read_timeout: self.read_timeout,
             write_timeout: self.write_timeout,
         })
-    }
-
-    /// A named pipe has no half-close: the server sees end-of-input only when the whole pipe closes. Refused,
-    /// so no caller mistakes it for the socket's `shutdown(Write)`.
-    pub fn shutdown(&self, _how: std::net::Shutdown) -> io::Result<()> {
-        Err(io::Error::new(io::ErrorKind::Unsupported, "a named pipe cannot be half-closed"))
     }
 
     pub fn set_read_timeout(&mut self, limit: Option<Duration>) -> io::Result<()> {

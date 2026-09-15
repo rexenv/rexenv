@@ -9,7 +9,7 @@
 //! with error 5 and its client connect still reaches the holder.
 
 use super::acl::OwnerOnlyDescriptor;
-use super::app_pipe_rules::{claim_from, pipe_name, Claim, APP_OPEN};
+use super::app_pipe_rules::{claim_from, mcp_pipe_name, pipe_name, Claim, APP_OPEN};
 use std::io::{Read, Write};
 use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
@@ -72,6 +72,22 @@ pub fn claim(config_dir: &Path) -> AppPipeClaim {
         },
         Claim::AnotherInstance => AppPipeClaim::AnotherInstance,
         Claim::Unclear(code) => AppPipeClaim::Unclear(code),
+    }
+}
+
+/// The MCP endpoint's pipe (W8 S3, plan §5 W8 ruling Q2, ledger #632): the lock's shape — a first instance,
+/// overlapped, remote clients rejected, owner-only — under the `mcp` name, created synchronously so it needs
+/// no runtime (`mcp_set_enabled` runs off it). Access denied means an instance of the name already exists,
+/// which with the lock held is something other than this app.
+pub fn create_mcp(config_dir: &Path) -> std::io::Result<HeldAppPipe> {
+    let name = mcp_pipe_name(&config_dir.to_string_lossy());
+    match create_first(&name) {
+        Ok(handle) => Ok(HeldAppPipe { name, handle: handle as isize }),
+        Err(5) => Err(std::io::Error::other(format!(
+            "another program already holds rexenv's AI agent (MCP) pipe {name} — the endpoint did not start"
+        ))),
+        Err(u32::MAX) => Err(std::io::Error::other("could not build the owner-only descriptor for the MCP pipe")),
+        Err(code) => Err(std::io::Error::from_raw_os_error(code as i32)),
     }
 }
 
