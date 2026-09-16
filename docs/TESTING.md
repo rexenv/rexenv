@@ -40,6 +40,18 @@ now come from the things that produce them: `cargo test --lib` prints L0's, and
 unlisted example and a tier entry with no example each fail the run), which is why it
 can be stated here without a guard of its own.
 
+**Classification has TWO axes since 16 Sep 2026 (W12).** The tier says what an example
+NEEDS (prompts, ports, the network, the real database); a third column says which OS it
+can run on at all — `both`, `macos` or `windows` — and the runner skips what this host
+cannot run, saying how many it skipped. The tiers never encoded an OS, so before this the
+Windows runner would have tried `/etc/resolver`, `osascript`, php-fpm and unix sockets and
+read their failures as regressions. Measured the same day: of 184 examples, 88 are `both`,
+69 `macos` (php-fpm pools, Homebrew bottles, FrankenPHP, unix sockets, `.app` bundles,
+osascript/keychain/LaunchAgents, Valet/Local/DBngin paths, and unix tooling like `ps`,
+`kill`, `unzip`, `zip`, `openssl`), and 27 `windows` (the `windows_*` probes, whose macOS
+arm is already a skip stub). **A skip is not a pass**, which is why the count is printed
+beside the verdict rather than folded into it.
+
 Four layers exist de facto. Named, with what each CANNOT prove stated as loudly as what
 it can:
 

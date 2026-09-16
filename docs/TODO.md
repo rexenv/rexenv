@@ -526,6 +526,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   - [ ] W11 — NSIS installer, Authenticode (if D5 rules it in), Windows release job, updater, winget
   - [ ] W12 — launch gates: verify on the Windows runner, SMOKE-TEST + INSTALL Windows
     sections, clean Windows 11 VM pass
+    **The example half is done 16 Sep 2026 (ledger #645):** the tier table grew an os column
+    (`both`/`macos`/`windows`, enforced like the tier itself), the runner skips what this host
+    cannot run and says how many, and a skip is printed beside the verdict rather than folded
+    into it. 184 examples: 88 both, 69 macOS-only, 27 Windows-only. Plants 4/4. **Left:**
+    `verify.sh` under Git Bash on the runner, the SMOKE-TEST and INSTALL Windows sections, and
+    the clean Windows 11 VM pass — all of which need the runner or the VM, not this Mac
 
 - [x] **An older rexenv refuses a database a newer one migrated** ✓ 13 Sep 2026 — built the same
   day at the owner's go: `refuse_newer_schema` in `state::db::open` (before any pragma) and
