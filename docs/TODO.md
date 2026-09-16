@@ -535,9 +535,16 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     run is also what found the hole #647 fixed — creation had no engine gate at all, so a MariaDB site
     was created on Windows and exited 0. **The UI half is written too** (ledger #648, the same day): the engine picker now
     reads the offered set from core, exactly as the server picker does, so Windows lists no MariaDB and
-    says why. **Not ticked:** none of the UI has been SEEN on Windows — the Dell runs the build from
-    before it, and nobody has looked at the Windows wording yet. The bar still only `cargo check`s for
-    Windows until W12's runner.
+    says why. **SEEN on Windows 16 Sep 2026** (owner at the keyboard, three screenshots, on the
+    build that carries it): Services lists MySQL and PostgreSQL only — no Redis, no MariaDB — and Nginx
+    and Caddy only; the New Site dialog offers Nginx alone and MySQL/PostgreSQL/None, each with the note
+    naming Windows; Settings → DNS & SSL reads "trusted · Trusted Root store", "Reinstall rexenv's
+    certificate authority in your Trusted Root store" and "asks for an administrator's approval once".
+    The CLI agrees (`rex db versions`, and both create refusals by name). **Still not ticked:** Xdebug's
+    Windows refusal has never been read on a screen (it needs a site and the PHP toggle), and three
+    W9 screens are unseen — SiteDetail's domain change, the teardown confirmation, and Import.
+    **Found by looking:** the PHP rows say "PHP-FPM 8.2/8.3" on a machine with no php-fpm — its own row
+    above.
   - [ ] W11 — NSIS installer, Authenticode (if D5 rules it in), Windows release job, updater, winget
   - [ ] W12 — launch gates: verify on the Windows runner, SMOKE-TEST + INSTALL Windows
     sections, clean Windows 11 VM pass
