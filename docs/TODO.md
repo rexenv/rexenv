@@ -533,9 +533,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     deployed build): `rex db versions` lists only MySQL and PostgreSQL, `rex status` shows no Redis or
     MariaDB row, and `rex site create` refuses both `--db mariadb` and `--server apache` by name. That
     run is also what found the hole #647 fixed — creation had no engine gate at all, so a MariaDB site
-    was created on Windows and exited 0. **Not ticked:** the UI half is unseen — the New Site dialog's
-    engine list is not filtered per OS, and nobody has looked at the Windows wording yet. The bar still
-    only `cargo check`s for Windows until W12's runner.
+    was created on Windows and exited 0. **The UI half is written too** (ledger #648, the same day): the engine picker now
+    reads the offered set from core, exactly as the server picker does, so Windows lists no MariaDB and
+    says why. **Not ticked:** none of the UI has been SEEN on Windows — the Dell runs the build from
+    before it, and nobody has looked at the Windows wording yet. The bar still only `cargo check`s for
+    Windows until W12's runner.
   - [ ] W11 — NSIS installer, Authenticode (if D5 rules it in), Windows release job, updater, winget
   - [ ] W12 — launch gates: verify on the Windows runner, SMOKE-TEST + INSTALL Windows
     sections, clean Windows 11 VM pass

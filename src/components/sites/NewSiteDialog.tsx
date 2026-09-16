@@ -7,7 +7,7 @@ import { cn, TECH_INPUT } from "@/lib/utils";
 import { eolNote, eolTag } from "@/lib/php";
 import { Button } from "@/components/ui/button";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
-import { defaultTld, inspectLinkedFolder, listBlueprints, listPhpVersions, listSites, offeredWebServers, pickFolder, repoProbe, siteProvisionCancel, siteProvisionJob, wpMultisiteConvert } from "@/lib/ipc";
+import { defaultTld, inspectLinkedFolder, listBlueprints, listPhpVersions, listSites, offeredDbEngines, offeredWebServers, pickFolder, repoProbe, siteProvisionCancel, siteProvisionJob, wpMultisiteConvert } from "@/lib/ipc";
 import { usePlatformWords } from "@/lib/usePlatformWords";
 import { SiteProvisionCard, useSiteProvision } from "@/components/sites/SiteProvisionCard";
 import { RefPicker, type RefGroup } from "@/components/wordpress/RefPicker";
@@ -258,6 +258,32 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
     if (!postgresOffered && dbEngine === "postgres") setDbEngine("mysql");
   }, [postgresOffered, dbEngine]);
 
+  // The engine picker offers what create would ACCEPT, from the same gate that refuses
+  // (`sites::ensure_engine_available_on`). MySQL and MariaDB used to be listed unconditionally, so
+  // on Windows the dialog offered MariaDB and create refused it — offered-then-refused, the shape
+  // already removed for web servers (W10, ledger #648). Undefined until the backend answers, and
+  // until then everything shows: that is what the dialog did before.
+  const { data: offeredEngines } = useQuery({
+    queryKey: ["offered-db-engines"],
+    queryFn: offeredDbEngines,
+    staleTime: Infinity,
+  });
+  // …and an engine that stops being offered must not survive as a silent payload.
+  useEffect(() => {
+    if (offeredEngines && offeredEngines.length > 0 && !offeredEngines.includes(dbEngine)) {
+      setDbEngine(offeredEngines[0]);
+    }
+  }, [offeredEngines, dbEngine]);
+  const missingEngines = offeredEngines
+    ? (["mysql", "mariadb"] as SiteDbEngine[]).filter((e) => !offeredEngines.includes(e))
+    : [];
+  const engineNote =
+    missingEngines.length === 0
+      ? undefined
+      : `${missingEngines.map((e) => (e === "mariadb" ? "MariaDB" : "MySQL")).join(" and ")} ${
+          missingEngines.length === 1 ? "isn't" : "aren't"
+        } part of rexenv on ${words.osName} yet — rexenv only offers an engine it has a pinned build for.`;
+
   // The web-server picker offers what create would ACCEPT. The list comes from core
   // (`sites::offered_web_servers`, the same gate that refuses); SERVERS above is only where
   // the labels live. On Windows neither Apache nor FrankenPHP has a pin (D4), so they are
@@ -406,6 +432,8 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
               setWebServer={setWebServer}
               offeredServers={offeredServers}
               serverNote={serverNote}
+              offeredEngines={offeredEngines}
+              engineNote={engineNote}
               dbEngine={dbEngine}
               setDbEngine={setDbEngine}
               postgresOffered={postgresOffered}
@@ -751,6 +779,10 @@ function Step2(p: {
   offeredServers: { value: WebServer; label: string }[];
   /** Why a server the user might look for is absent, or undefined when none is. */
   serverNote?: string;
+  /** The engines core will accept on this build — undefined until it answers (W10). */
+  offeredEngines?: SiteDbEngine[];
+  /** Why an engine the user might look for is absent, or undefined when none is. */
+  engineNote?: string;
   dbEngine: SiteDbEngine;
   setDbEngine: (v: SiteDbEngine) => void;
   needsDb: boolean;
@@ -981,8 +1013,12 @@ function Step2(p: {
               }}
               className={FIELD_SELECT}
             >
-              <option value="mysql">MySQL</option>
-              <option value="mariadb">MariaDB</option>
+              {(!p.offeredEngines || p.offeredEngines.includes("mysql")) && (
+                <option value="mysql">MySQL</option>
+              )}
+              {(!p.offeredEngines || p.offeredEngines.includes("mariadb")) && (
+                <option value="mariadb">MariaDB</option>
+              )}
               {p.postgresOffered && <option value="postgres">PostgreSQL</option>}
               {p.starterDbOffered && <option value="none">None</option>}
             </select>
@@ -1008,6 +1044,12 @@ function Step2(p: {
           bug unless it says why. */}
       {p.serverNote && (
         <div className="-mt-1 text-[0.6875rem] leading-[1.5] text-rex-text-muted">{p.serverNote}</div>
+      )}
+      {/* Why an engine is missing, said where it would have been — the same rule as the two notes
+          around it: a control with fewer options than it had elsewhere reads as a bug unless it
+          says why. */}
+      {(p.needsDb || p.starterDbOffered) && p.engineNote && (
+        <div className="-mt-1 text-[0.6875rem] leading-[1.5] text-rex-text-muted">{p.engineNote}</div>
       )}
       {(p.needsDb || p.starterDbOffered) && p.siteType !== "wordpress" && !p.postgresOffered && (
         <div className="-mt-1 text-[0.6875rem] leading-[1.5] text-rex-text-muted">

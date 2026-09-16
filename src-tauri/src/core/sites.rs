@@ -544,6 +544,25 @@ fn ensure_engine_available_on(engine: SiteDbEngine, os: &str) -> Result<()> {
     }
 }
 
+/// The database engines a site can actually be created with on this build, in the order the New
+/// Site dialog offers them.
+///
+/// Derived from the same gate that REFUSES ([`ensure_engine_available_on`]), for the reason
+/// [`offered_web_servers`] exists: the dialog listed `mysql` and `mariadb` unconditionally, so on
+/// Windows it offered MariaDB and create then refused it — offered-then-refused, the shape #643
+/// removed for web servers and #647 left standing for engines (ledger #648).
+pub fn offered_db_engines() -> Vec<SiteDbEngine> {
+    offered_db_engines_on(std::env::consts::OS)
+}
+
+/// [`offered_db_engines`] for a NAMED os, so both answers are measurable from either host.
+pub fn offered_db_engines_on(os: &str) -> Vec<SiteDbEngine> {
+    [SiteDbEngine::Mysql, SiteDbEngine::Mariadb, SiteDbEngine::Postgres]
+        .into_iter()
+        .filter(|e| ensure_engine_available_on(*e, os).is_ok())
+        .collect()
+}
+
 fn refuse_unbuildable(conn: &Connection, new: &NewSite) -> Result<()> {
     ensure_server_available(new.web_server)?;
     ensure_engine_available_on(new.db_engine, std::env::consts::OS)?;
@@ -2755,6 +2774,36 @@ mod tests {
         let msg = e.to_string();
         assert!(msg.contains("MariaDB"), "the refusal must name the engine: {msg}");
         assert!(msg.contains("not available on this platform yet"), "{msg}");
+    }
+
+    /// Ledger #648 — **the engine picker offers exactly what create would accept**, and the dialog
+    /// keeps no list of its own. The twin of the web-server claim (#643); engines were the half left
+    /// standing, which is how a MariaDB site could be offered on Windows and refused on create.
+    #[test]
+    fn the_new_site_dialog_offers_the_engines_core_allows() {
+        use crate::state::models::SiteDbEngine as E;
+        for os in ["macos", "windows"] {
+            for e in offered_db_engines_on(os) {
+                assert!(ensure_engine_available_on(e, os).is_ok(), "{e:?} offered on {os} but refused there");
+            }
+            assert!(offered_db_engines_on(os).contains(&E::Mysql), "MySQL ships on {os}");
+        }
+        // The half only Windows shows: D4 leaves MariaDB out of v1 there.
+        assert!(!offered_db_engines_on("windows").contains(&E::Mariadb), "MariaDB has no Windows pin (D4)");
+        assert_eq!(offered_db_engines_on("macos").len(), 3, "all three ship on macOS");
+
+        let dialog = crate::core::copy_scan::strip_ts_comments(include_str!(
+            "../../../src/components/sites/NewSiteDialog.tsx"
+        ));
+        assert!(dialog.contains("Database"), "the stripper ate the source");
+        // The GUARD, not the literal: the option tag survives being wrapped in a condition, so
+        // asserting its absence would pass on the very shape this is about (the same near-miss the
+        // web-server twin had).
+        assert!(
+            dialog.contains(r#"offeredEngines.includes("mariadb")"#),
+            "the engine picker renders MariaDB unconditionally — on Windows that is offered-then-refused"
+        );
+        assert!(dialog.contains("offeredEngines"), "the dialog does not read the offered engines from the backend");
     }
 
     /// Ledger #647 — **and creation actually ASKS.** The test above proves the gate's logic; on its

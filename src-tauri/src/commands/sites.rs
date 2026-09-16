@@ -95,6 +95,13 @@ pub fn offered_web_servers() -> Vec<String> {
 }
 
 #[tauri::command]
+/// Which database engines this build can create a site with — the picker's options, from the same
+/// gate that refuses (`core::sites::ensure_engine_available_on`). No state, no lock.
+pub fn offered_db_engines() -> Vec<String> {
+    core::sites::offered_db_engines().into_iter().map(|e| e.as_db().to_string()).collect()
+}
+
+#[tauri::command]
 pub fn sites_serving(state: State<'_, AppState>) -> Result<Vec<SiteServing>> {
     let sites = {
         let conn = lock(&state)?;

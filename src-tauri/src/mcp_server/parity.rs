@@ -110,6 +110,7 @@ mod tests {
         ("all_site_domains", Tool("list_sites")),
         ("sites_serving", Tool("site_status")),
         ("offered_web_servers", Never("the New Site dialog's option list. An agent does not pick from a menu: it names a server and core refuses an unavailable one at create time, with the same sentence")),
+        ("offered_db_engines", Never("the New Site dialog's other option list, and the same reasoning: an agent names an engine and core refuses one with no pin on this platform, by name")),
         ("site_domains", Tool("site_info")),
         ("site_cert_info", Tool("site_info")),
         ("scratch_packages", Tool("site_info")),
