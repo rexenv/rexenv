@@ -47,6 +47,40 @@ if [ -f "$SIDECAR" ] && [ "$(head -n1 "$SIDECAR" 2>/dev/null)" = "$PLACEHOLDER_M
   rm -f "$SIDECAR"
 fi
 
+# On a WINDOWS host none of the cross toolchain applies: the compiler targets Windows
+# natively, so cargo-xwin, brew's clang-cl/lld-link and Microsoft's SDK download (and
+# with it the licence consent) are all beside the point. Before this, the machine that
+# could check natively was the one machine where verify.sh printed SKIPPED and the
+# Windows gate was INERT (measured on the Dell, 17 Sep 2026: no brew, so exit 3).
+if [ "${REXENV_FORCE_XWIN:-0}" != "1" ]; then
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+      fail=0
+      total=0
+      for crate in src-tauri cli; do
+        log="$crate/target/windows-check.log"
+        mkdir -p "$(dirname "$log")"
+        (cd "$crate" && cargo check --all-targets --keep-going --target "$TARGET") > "$log" 2>&1
+        code=$?
+        if [ "$code" -eq 0 ]; then
+          echo "windows-check: $crate — compiles for $TARGET (native host)"
+        else
+          fail=1
+          total=$((total + 1))
+          echo "windows-check: $crate — RED (cargo exit $code; full log: $log)"
+          tail -20 "$log" | sed 's/^/    /'
+        fi
+      done
+      if [ "$fail" -eq 0 ]; then
+        echo "windows-check: all green"
+        exit 0
+      fi
+      echo "windows-check: RED — $total crate(s) failed on the native host"
+      exit 1
+      ;;
+  esac
+fi
+
 missing=()
 command -v cargo-xwin >/dev/null 2>&1 || missing+=("cargo install cargo-xwin --locked")
 LLVM_BIN="$(brew --prefix llvm 2>/dev/null)/bin"

@@ -1617,23 +1617,36 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   with CRLF and the doc gates read line endings as CONTENT — `doc-counts` greps
   `^#[tauri::command]$` and would find zero commands, which reads as a baffling failure rather than
   a line ending. The tree carries no CRLF today (checked), so the file adds no diff.
-  **Deliberately NOT fixed from here, because each needs the Windows host to verify:**
-  `verify-receipt.sh`'s `shasum` (a Perl script, likely absent in Git Bash — but a blind swap to
-  `sha256sum` is wrong too: stock macOS has no `sha256sum`, so the portable form must try both, and
-  note its failure mode is a SILENT empty fingerprint, not a red); `check-app-manifest*.sh`'s two
-  `xxd` calls and the test's `file:///tmp/…` fixture URL, which native `curl.exe` resolves against
-  the drive root under MSYS (needs `cygpath -m`) — and whether Git Bash's OpenSSL supports
-  `pkeyutl -rawin` for Ed25519 at all; `build.rs`, whose sidecar staging is `#[cfg(target_os =
-  "macos")]` so a Windows host stages nothing and `tauri_build` then refuses the missing
-  `binaries/rex-x86_64-pc-windows-msvc.exe` (`scripts/build-cli.sh` already has a MINGW arm that
-  would do it, and nothing in `verify.sh` calls it); and `windows-check.sh`, which without `brew`
-  and `cargo-xwin` exits 3 — so `verify.sh` prints SKIPPED and the Windows compile gate is INERT on
-  the one machine that could check it natively (there it should be a plain
-  `cargo check --all-targets`).
-  **The real unknown is not a script question:** `windows-check.sh` only ever proved `cargo check`
-  — it does not link and runs no test — so whether the 1376 lib tests and the CLI's 25 pass on a
-  Windows host has never been measured. `cli_server.rs` alone has 18 `UnixStream` uses. Expect that
-  to be the bulk of W12, not the script edits.
+  **MEASURED ON THE HOST 17 Sep 2026, and half the survey's list was wrong.** The Dell was read
+  instead of reasoned about (Git Bash 5.2.26, MINGW64), and the four items above that "needed the
+  host to verify" split three ways:
+  *Guessed wrong, no fix needed:* `xxd` IS in Git Bash (`/usr/bin/xxd`), its OpenSSL is 3.2.1 and
+  signs Ed25519 with `pkeyutl -rawin` (measured, 64-byte signature), and `jq` — which the survey
+  never flagged and which Git Bash lacks — is not a dependency at all: every `--jq` in the tree is
+  `gh`'s own built-in.
+  *Guessed right, fixed here:* `shasum` is absent and `sha256sum` present, so `verify-receipt.sh`
+  resolves the hasher once and **fails loudly** when neither exists — the old `|| true` degraded
+  into an empty fingerprint, which does not read as "this host cannot hash" but as "the code
+  changed", on every commit forever. And `check-app-manifest-test.sh`'s `file://` fixtures: native
+  `curl.exe` resolves a POSIX path against the drive root, so every fixture URL fetched NOTHING —
+  and silently, because "the CDN has nothing published" is a green exit, so the whole test would
+  have passed while measuring nothing. `cygpath -m` where it exists, the plain form on macOS.
+  *Fixed here, both needing the host to prove:* `build.rs` stages the sidecar on a Windows host
+  too, through `scripts/build-cli.sh`'s existing MINGW arm — never a placeholder, for the reason
+  `windows-check.sh` states about its own; and `windows-check.sh` grew a native arm, because the
+  one machine that could check Windows natively was the one machine where the gate was INERT (no
+  `brew` → exit 3 → SKIPPED). `sh`, `date` and `uname` are on the PATH a build script inherits from
+  bare cmd.exe, so the two arms differ only in which staged file they look for.
+  **The real unknown is not a script question, and it is being measured for the first time:**
+  `windows-check.sh` only ever proved `cargo check` — it does not link and runs no test — so
+  whether the 1376 lib tests and the CLI's 25 pass on a Windows host had never been measured.
+  `cli_server.rs` alone has 18 `UnixStream` uses. The Dell needed no toolchain install for this
+  (rustup, MSVC Build Tools 2022 and the 10.0.22621 SDK were already there, and `rustc` links);
+  the tree reached it as a `git bundle`, so no credentials and no GitHub. Expect that run, not the
+  script edits, to be the bulk of W12.
+  **Still host-blocked, and these DO need the owner:** Node is v14.17.6 (tsc 5.7 and eslint need
+  18+), so `npx tsc` / `npx eslint` cannot run there yet; and `python3` on PATH is the Microsoft
+  Store alias stub, so both `.py` gates fail on the name while `python` 3.9.7 works.
   Still required: `verify.sh` runnable on the Windows runner (Git Bash);
   macOS-only examples tiered or ported; a Windows section in `docs/SMOKE-TEST.md` run on
   a clean Windows 11 VM; a Windows section in `docs/INSTALL.md` (SmartScreen, the UAC

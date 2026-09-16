@@ -6,8 +6,24 @@ fn main() {
     // every other entry point. The cli crate has its own target dir, so the
     // nested cargo can't deadlock this build; after the first run it's a
     // cache hit.
+    // The same hole on a Windows HOST, found the first time the tests were run on one
+    // (17 Sep 2026): the staging was macOS-only, so `cargo test` on the Dell reached
+    // tauri_build with no `binaries/rex-x86_64-pc-windows-msvc.exe` and refused before
+    // compiling anything. `scripts/build-cli.sh` already has the MINGW arm that builds
+    // it (ledger #633) — the gap was only in who calls it.
+    //
+    // It calls the REAL builder, never a placeholder: a placeholder created by the build
+    // itself is a placeholder a Windows bundle would ship as the user's `rex` (the
+    // reasoning windows-check.sh states for keeping its own placeholder out of here).
+    // `sh` on both: measured on the Dell 17 Sep 2026, Git for Windows puts sh.exe,
+    // date.exe and uname.exe on the PATH a build script inherits from bare cmd.exe,
+    // so the Windows arm differs only in which file proves the staging already ran.
     #[cfg(target_os = "macos")]
-    if !std::path::Path::new("binaries/rex-aarch64-apple-darwin").exists() {
+    let marker = "binaries/rex-aarch64-apple-darwin";
+    #[cfg(target_os = "windows")]
+    let marker = "binaries/rex-x86_64-pc-windows-msvc.exe";
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    if !std::path::Path::new(marker).exists() {
         let ok = std::process::Command::new("sh")
             .arg("../scripts/build-cli.sh")
             .status()

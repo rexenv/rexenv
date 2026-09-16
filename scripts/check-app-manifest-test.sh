@@ -47,11 +47,26 @@ descriptor "$T/new" 4 0.7.1
 # A committed file whose signature does not match its bytes.
 mkdir -p "$T/badsig" && cp "$T/new/app-manifest.json" "$T/badsig/" && cp "$T/old/app-manifest.json.sig" "$T/badsig/"
 
+# A file:// URL for a path on THIS host. Under Git Bash the fixture path is a POSIX
+# one (/tmp/…) that native curl.exe resolves against the drive root — so every
+# fixture URL fetches nothing, and the failure is SILENT in the worst possible way:
+# "the CDN has nothing published" is a green exit here, so the whole test would have
+# passed while measuring nothing. Measured on the Dell 17 Sep 2026: plain
+# `file:///tmp/x` returns empty, `file:///$(cygpath -m /tmp/x)` returns the bytes.
+# `cygpath` exists only on MSYS, so macOS keeps the plain form.
+file_url() {
+  if command -v cygpath >/dev/null 2>&1; then
+    printf 'file:///%s' "$(cygpath -m "$1")"
+  else
+    printf 'file://%s' "$1"
+  fi
+}
+
 # run <cdn dir> <committed dir> <tap latest>
 run() {
   CHECK_APP_MANIFEST_PUBKEY="$PUB" CHECK_APP_MANIFEST_OFFLINE=1 CHECK_APP_MANIFEST_TAP_LATEST="$3" \
-  CHECK_APP_MANIFEST_DOC_URL="file://$1/app-manifest.json" \
-  CHECK_APP_MANIFEST_API_DOC_URL="file://$2/app-manifest.json" \
+  CHECK_APP_MANIFEST_DOC_URL="$(file_url "$1/app-manifest.json")" \
+  CHECK_APP_MANIFEST_API_DOC_URL="$(file_url "$2/app-manifest.json")" \
     ./scripts/check-app-manifest.sh 2>&1
 }
 

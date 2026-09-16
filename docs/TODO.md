@@ -566,12 +566,20 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     into it. 184 examples: 88 both, 69 macOS-only, 27 Windows-only. Plants 4/4. **Script side surveyed 16 Sep 2026** (read, not run):
     four portable-by-construction fixes landed here — `verify.sh`'s `mktemp` template, `status.py`'s
     utf-8/LF/`bash`-invoked helpers, and a `.gitattributes` with `eol=lf` so a Windows checkout's
-    CRLF cannot be read as content by the doc gates. Left needing the host: `verify-receipt.sh`'s
-    `shasum`, `check-app-manifest*.sh`'s `xxd` and `file://` fixtures, `build.rs`'s macOS-only
-    sidecar staging, and `windows-check.sh` (which exits 3 without `brew`/`cargo-xwin`, so the
-    Windows compile gate is inert on Windows). **The bulk is not scripts:** no Rust test has ever
-    RUN on a Windows host — `windows-check.sh` proves `cargo check` only. **Left:** that, the
-    SMOKE-TEST and INSTALL Windows sections, and the clean Windows 11 VM pass
+    CRLF cannot be read as content by the doc gates. **The host was then MEASURED 17 Sep 2026**
+    (Git Bash 5.2, MINGW64) and half the survey's list was guesswork: `xxd` is present, OpenSSL
+    3.2.1 signs Ed25519 with `pkeyutl -rawin`, and `jq` is not a dependency (every `--jq` is
+    `gh`'s). Really broken, and fixed: `verify-receipt.sh`'s `shasum` (absent; `sha256sum` present
+    — now resolved once and loud when neither is, where it used to degrade to an empty
+    fingerprint), `check-app-manifest-test.sh`'s `file://` fixtures (native curl resolves a POSIX
+    path against the drive root and fetches nothing — silently green), `build.rs`'s macOS-only
+    sidecar staging, and `windows-check.sh`'s inert SKIP on the one machine that could check
+    natively. **The bulk is not scripts:** no Rust test had ever RUN on a Windows host —
+    `windows-check.sh` proves `cargo check` only — and that run is under way on the Dell (it needed
+    no install: rustup + MSVC Build Tools 2022 + SDK were already there; the tree went over as a
+    `git bundle`). **Left:** that result, Node 14 → 18+ and a real `python3` on the Dell (owner's
+    call, both are installs), the SMOKE-TEST and INSTALL Windows sections, and the clean Windows 11
+    VM pass
 
 - [x] **An older rexenv refuses a database a newer one migrated** ✓ 13 Sep 2026 — built the same
   day at the owner's go: `refuse_newer_schema` in `state::db::open` (before any pragma) and

@@ -10,66 +10,66 @@ App version **0.7.0** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md`
 - `TODO.md:56` SHIPPED macOS BUG — new WordPress sites are missing core files (measured 14 Sep 2026)
 - `TODO.md:81` `frankenphp_mail_catch_check`'s catch-OFF backend sometimes accepts a request and never answers
 - `TODO.md:88` Windows launch
-- `TODO.md:623` The keychain (CA trust) dialog is rexenv's too
-- `TODO.md:746` In-app self-update — a dmg user has no update path at all
-- `TODO.md:874` ~16 flag-taking `rex` commands still ignore what they do not recognise
-- `TODO.md:889` A public tunnel for `mstest.rex` was running that this session never started
-- `TODO.md:916` The pinned wp-cli phar (2.12.0) is not PHP 8.5-clean
-- `TODO.md:950` Private-window flags for Arc, ChatGPT Atlas, Orion
-- `TODO.md:959` Windows/Linux: `detect_browsers`/`open_in_browser` are the default empty stubs
-- `TODO.md:968` Eliminate the bug class: bundled PHP with curl's THREADED resolver
-- `TODO.md:1043` Option, not a commitment: a self-built nginx (deployment target 12) would drop the app floor from 15 to 14
-- `TODO.md:1047` PHP 7.4 — the five residuals of a shipped feature
-- `TODO.md:1121` Radicle-hosted repos are unverified
-- `TODO.md:1123` Why that `rex` instance went deaf was never diagnosed
+- `TODO.md:631` The keychain (CA trust) dialog is rexenv's too
+- `TODO.md:754` In-app self-update — a dmg user has no update path at all
+- `TODO.md:882` ~16 flag-taking `rex` commands still ignore what they do not recognise
+- `TODO.md:897` A public tunnel for `mstest.rex` was running that this session never started
+- `TODO.md:924` The pinned wp-cli phar (2.12.0) is not PHP 8.5-clean
+- `TODO.md:958` Private-window flags for Arc, ChatGPT Atlas, Orion
+- `TODO.md:967` Windows/Linux: `detect_browsers`/`open_in_browser` are the default empty stubs
+- `TODO.md:976` Eliminate the bug class: bundled PHP with curl's THREADED resolver
+- `TODO.md:1051` Option, not a commitment: a self-built nginx (deployment target 12) would drop the app floor from 15 to 14
+- `TODO.md:1055` PHP 7.4 — the five residuals of a shipped feature
+- `TODO.md:1129` Radicle-hosted repos are unverified
+- `TODO.md:1131` Why that `rex` instance went deaf was never diagnosed
 
 ### Ledger-driven proof backlog — 2
 
-- `TODO.md:1136` `wp_plugins_check` failed its deactivate assertion once and has not reproduced — the product-bug flag raise…
-- `TODO.md:1188` Bedrock live provision — the committed example (#35), deliberately not built
+- `TODO.md:1144` `wp_plugins_check` failed its deactivate assertion once and has not reproduced — the product-bug flag raise…
+- `TODO.md:1196` Bedrock live provision — the committed example (#35), deliberately not built
 
 ### Release gates (human, scripted — see the docs named) — 13
 
-- `TODO.md:1264` PUBLISH-TESTING §B
-- `TODO.md:1265` PUBLISH-TESTING §D
-- `TODO.md:1283` Flip the release host back when `rexenv/rexenv` goes public
-- `TODO.md:1297` The self-update swap probe (T0) and the first real in-app update (T11)
-- `TODO.md:1302` PUBLISH-TESTING §K
-- `TODO.md:1303` PUBLISH-TESTING §F
-- `TODO.md:1304` PUBLISH-TESTING §G
-- `TODO.md:1310` Release 5.4 — clean-Mac smoke test
-- `TODO.md:1314` Tunnel probe session
-- `TODO.md:1318` Intel spot-run
-- `TODO.md:1321` The macOS floor is a claim about BOTH slices, and most of it has still never been measured
-- `TODO.md:1359` In-app verifies owed
-- `TODO.md:1371` PUBLISH-TESTING §E / §L
+- `TODO.md:1272` PUBLISH-TESTING §B
+- `TODO.md:1273` PUBLISH-TESTING §D
+- `TODO.md:1291` Flip the release host back when `rexenv/rexenv` goes public
+- `TODO.md:1305` The self-update swap probe (T0) and the first real in-app update (T11)
+- `TODO.md:1310` PUBLISH-TESTING §K
+- `TODO.md:1311` PUBLISH-TESTING §F
+- `TODO.md:1312` PUBLISH-TESTING §G
+- `TODO.md:1318` Release 5.4 — clean-Mac smoke test
+- `TODO.md:1322` Tunnel probe session
+- `TODO.md:1326` Intel spot-run
+- `TODO.md:1329` The macOS floor is a claim about BOTH slices, and most of it has still never been measured
+- `TODO.md:1367` In-app verifies owed
+- `TODO.md:1379` PUBLISH-TESTING §E / §L
 
 ### Parked (deliberate — needs explicit go; don't pick up silently) — 4
 
-- `TODO.md:1377` The live pool swap is still L3
-- `TODO.md:1381` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN 25 Aug 2026
-- `TODO.md:1390` Install WordPress into an empty LINKED folder
-- `TODO.md:1397` `rex` design-first set — ONE item left: raw `wp` passthrough
+- `TODO.md:1385` The live pool swap is still L3
+- `TODO.md:1389` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN 25 Aug 2026
+- `TODO.md:1398` Install WordPress into an empty LINKED folder
+- `TODO.md:1405` `rex` design-first set — ONE item left: raw `wp` passthrough
 
 ### Menu-bar app — 1
 
-- `TODO.md:1410` Hold the tray menu open while the stack MOVES
+- `TODO.md:1418` Hold the tray menu open while the stack MOVES
 
 ### Blocked on external work — 4
 
-- `TODO.md:1420` Xdebug on PHP 8.0
-- `TODO.md:1425` SMAppService privileged helper
-- `TODO.md:1427` Developer ID signing + notarization
-- `TODO.md:1429` OpenLiteSpeed override server
+- `TODO.md:1428` Xdebug on PHP 8.0
+- `TODO.md:1433` SMAppService privileged helper
+- `TODO.md:1435` Developer ID signing + notarization
+- `TODO.md:1437` OpenLiteSpeed override server
 
 ### Phase 4+ (next era) — 2
 
-- `TODO.md:1439` Linux platform impls — `platform/linux/mod.rs`. Windows moved to *Now* as
-- `TODO.md:1442` Public distribution (the open-sourcing half of the old "packaging polish" row)
+- `TODO.md:1447` Linux platform impls — `platform/linux/mod.rs`. Windows moved to *Now* as
+- `TODO.md:1450` Public distribution (the open-sourcing half of the old "packaging polish" row)
 
 ## Claim ledger (`scripts/ledger-tally.sh`)
 
-**✅ 570 · ◐ 53 · 🔨 11 · 🚫 17** of 651 rows, plus 15 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432, #486, #541).
+**✅ 570 · ◐ 54 · 🔨 11 · 🚫 17** of 652 rows, plus 15 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432, #486, #541).
 
 ## Plans in flight (`docs/PLAN-*.md`) and their own Status line
 

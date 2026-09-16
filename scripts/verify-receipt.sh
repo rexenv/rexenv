@@ -45,6 +45,29 @@ RECEIPT="$(git -C "$ROOT" rev-parse --absolute-git-dir)/rexenv-verify-receipt"
 # gated, which is what keeps this from being in the way.
 CODE_PATHS=(src src-tauri/src src-tauri/examples cli/src scripts)
 
+# The hasher, resolved once. NEITHER name is portable: `shasum` is a Perl script
+# that ships with macOS and is absent from Git Bash, while stock macOS has no
+# `sha256sum` — so a blind swap only moves the break to the other host. Measured
+# on the Dell 17 Sep 2026 (Git Bash 5.2, MINGW64): `shasum` missing,
+# `sha256sum` present.
+#
+# It fails LOUDLY when neither exists, and that is the point. The old line ended
+# `|| true`, so a missing hasher degraded into an EMPTY fingerprint, which does
+# not read as "this host cannot fingerprint" — it reads as "the code changed
+# since verify.sh last passed", on every commit, forever.
+#
+# The two produce different digests (SHA-1 vs SHA-256), which costs nothing: a
+# receipt is written and read on ONE checkout, and is invalidated by a commit
+# anyway. It is never compared across machines.
+if command -v shasum >/dev/null 2>&1; then
+  HASH=(shasum)
+elif command -v sha256sum >/dev/null 2>&1; then
+  HASH=(sha256sum)
+else
+  echo "verify-receipt: neither shasum nor sha256sum is on PATH — cannot fingerprint this tree" >&2
+  exit 1
+fi
+
 fingerprint() {
   cd "$ROOT"
   # CONTENT ONLY — deliberately no `git status`, and this is the one thing that
@@ -70,7 +93,7 @@ fingerprint() {
     # skipped, and so this is a handful of processes rather than one per file.
     git ls-files -z -- "${CODE_PATHS[@]}"
     git ls-files -z --others --exclude-standard -- "${CODE_PATHS[@]}"
-  } | { xargs -0 shasum 2>/dev/null || true; } | sort | shasum | cut -d' ' -f1
+  } | { xargs -0 "${HASH[@]}" 2>/dev/null || true; } | sort | "${HASH[@]}" | cut -d' ' -f1
 }
 
 case "${1:-}" in
