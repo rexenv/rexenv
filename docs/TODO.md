@@ -35,6 +35,14 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [ ] **Windows: the pool is called "PHP-FPM" on a machine with no php-fpm** — seen in `rex status`
+  on the Dell, 16 Sep 2026: the service rows read `PHP-FPM 8.2` / `PHP-FPM 8.3`, but D1 ruled Windows
+  runs a php-cgi GROUP, not php-fpm. **Not a wording swap:** measured, that string is a KEY, not just
+  a label — `core/logs.rs:92` pairs it with the log FILE (`php-fpm-<minor>.log`, which on Windows is
+  `php-cgi-<minor>.log`), `service_manager::pool_service_name` feeds watchdog events and the
+  restart-attempt counters, and `core/pool_busy.rs` compares those strings. So renaming per OS changes
+  behaviour, not text, and it needs its own task: decide whether the key stays stable and only the
+  DISPLAY name moves (probably), then move it with the log names together
 - [ ] **SHIPPED macOS BUG — new WordPress sites are missing core files (measured 14 Sep 2026).** WP-CLI's
   `wp core download` extracts WordPress's `.tar.gz` with PHP's `PharData`, and rexenv's PHP 8.3.32 reads that
   tarball with every member name CUT AT 100 CHARACTERS: bsdtar lists 3,782 members, PharData 3,776; 40 names

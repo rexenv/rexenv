@@ -524,8 +524,29 @@ pub fn create(conn: &Connection, new: NewSite) -> Result<Site> {
 /// The refusals that depend only on WHAT is asked for — server, PHP, engine —
 /// never on the disk. Pure, so `provision_with` can run them before it creates
 /// anything and the insert chokepoint can run them again for every other path.
+/// Refuse a site whose DATABASE ENGINE does not ship on this OS.
+///
+/// W10 (#642) gated every surface that STARTS an engine — the Databases page, Services' rows,
+/// the reserved-port list, adoption, the download plan, `start_database` and `spawn_db` — but a
+/// site carries its engine in its ROW, and creation never asked. **Measured on the Dell, 16 Sep
+/// 2026:** `rex site create --db mariadb` created the site and exited 0 on Windows, where
+/// MariaDB has no pin (D4); it would then have failed at `spawn_db`, which is offered-then-
+/// refused — the shape #643 removed for web servers. The os is a parameter for the same reason
+/// every other W10 gate takes one: the bar only `cargo check`s for Windows, so a gate reading
+/// `std::env::consts::OS` alone has a half that cannot fail on the machine running the test
+/// (ledger #647).
+fn ensure_engine_available_on(engine: SiteDbEngine, os: &str) -> Result<()> {
+    let db = crate::core::db::DbEngine::from_site(engine);
+    if db.available_on(os) {
+        Ok(())
+    } else {
+        Err(Error::Other(format!("{} is not available on this platform yet", db.label())))
+    }
+}
+
 fn refuse_unbuildable(conn: &Connection, new: &NewSite) -> Result<()> {
     ensure_server_available(new.web_server)?;
+    ensure_engine_available_on(new.db_engine, std::env::consts::OS)?;
     ensure_server_runs_php(new.web_server, &new.php_version)?;
     // The patch this site will really run — the user's selection floored by the
     // pin — because the PostgreSQL rule is a fact about the ARTIFACT, and the
@@ -2716,6 +2737,42 @@ mod tests {
     use super::*;
     use crate::state::db;
     use crate::state::models::{SiteDbEngine, SiteType, WebServer};
+
+    /// Ledger #647 — **a site cannot be created with an engine this OS does not ship.** Found by
+    /// running the real CLI on the Dell, not by reading: `--db mariadb` created the site and
+    /// exited 0, because creation checked the WEB SERVER and the PostgreSQL/PHP pair but never
+    /// asked whether the engine itself has a pin here. Both os answers, from either host.
+    #[test]
+    fn a_site_cannot_be_created_with_an_engine_this_os_does_not_ship() {
+        use crate::state::models::SiteDbEngine as E;
+        for (engine, os) in
+            [(E::Mysql, "macos"), (E::Mysql, "windows"), (E::Postgres, "macos"), (E::Postgres, "windows"), (E::Mariadb, "macos")]
+        {
+            assert!(ensure_engine_available_on(engine, os).is_ok(), "{engine:?} ships on {os}");
+        }
+        // D4: MariaDB has no Windows pin — MySQL 8.4 and 8.0 both ship there, so it is out of v1.
+        let e = ensure_engine_available_on(E::Mariadb, "windows").expect_err("no Windows pin");
+        let msg = e.to_string();
+        assert!(msg.contains("MariaDB"), "the refusal must name the engine: {msg}");
+        assert!(msg.contains("not available on this platform yet"), "{msg}");
+    }
+
+    /// Ledger #647 — **and creation actually ASKS.** The test above proves the gate's logic; on its
+    /// own that is only half the claim, because the gate could exist and no path could call it —
+    /// which is exactly what the Dell caught. Read from the module's own production source, so a
+    /// call deleted by hand is seen.
+    #[test]
+    fn creation_asks_whether_the_engine_ships_here() {
+        let src = crate::core::copy_scan::production_source(include_str!("sites.rs"));
+        let from = src.find("fn refuse_unbuildable").expect("the stripper ate refuse_unbuildable");
+        let to = src[from..].find("\n}").expect("refuse_unbuildable ends");
+        let body = &src[from..from + to];
+        assert!(
+            body.contains("ensure_engine_available_on(new.db_engine, std::env::consts::OS)?;"),
+            "creation does not ask whether the engine ships here — a site could be created with an \
+             engine that has no pin on this OS, and would fail later at spawn_db:\n{body}"
+        );
+    }
 
     /// Ledger #643 — **the picker offers exactly what create would accept**, and the dialog
     /// keeps no list of its own. Read from the dialog's own source, so a hardcoded array put
