@@ -1491,6 +1491,41 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   says it isn't running and exits 2.
 - **W9 — Frontend on WebView2.** Windows paths (`C:\…`) in inputs and display,
   Cmd → Ctrl shortcuts, font metrics; divergences into `docs/DESIGN.md`.
+  *Measured first, 16 Sep 2026, the real app on the Dell (the owner at the screen, one screenshot):*
+  **fonts need no work** — `@fontsource` Inter, JetBrains Mono and Space Grotesk are bundled and imported by
+  `globals.css`, and the screenshot shows all three rendering (the UI stack's `-apple-system` / `SF Pro Text`
+  simply fall through to the bundled Inter); the Dell has none of them installed, which is exactly why
+  bundling is what makes Windows and macOS look alike. **Ctrl+R reloads the whole app** — wry 0.55's
+  `browser_accelerator_keys` defaults to WebView2's own behaviour and Tauri 2.11 does not surface the switch,
+  so Ctrl+R/F5/Ctrl+P/Ctrl+F/F12 are all live in a packaged build. **The window has Windows' own title bar**
+  (`titleBarStyle: "Overlay"` and `hiddenTitle` are macOS-only), and under it the sidebar still reserves a
+  ~12px row for macOS's traffic lights.
+  *Rulings (owner, 16 Sep 2026):* **Q1** keep the native title bar on Windows and drop the reserved row there —
+  no frameless window, no drawn controls. **Q2** turn the browser accelerator keys off through
+  `WebviewWindow::with_webview` + `ICoreWebView2Settings3::SetAreBrowserAcceleratorKeysEnabled(false)` (the
+  hatch `platform/macos/webview_dialogs.rs` already uses on its side); `webview2-com` and `windows` become
+  direct Windows dependencies — they are already in the lock through wry. **Q3** fonts: bundle all three —
+  already true, so nothing to build.
+  *The rows (measured or read, 15–16 Sep 2026):* **words the frontend still writes as macOS's** — Settings'
+  two "Looked in /Applications and ~/Applications …" tooltips, its `~/rexenv/Sites` tooltip, "trusted · login
+  keychain", "Local CA re-trusted in your login keychain.", "Reinstall rexenv's certificate authority in your
+  system keychain.", "asks for your password once", the teardown's "/etc/resolver" sentences; SiteDetail's
+  "register it with macOS"; Onboarding's "to your Mac"; Import's `~/.config/valet` and `/etc/resolver/test`
+  (and what that whole Valet/Herd card means on Windows at all); AgentsMcpCard's `~/.cursor/mcp.json`.
+  **And in Rust** — `core/proxy.rs`'s "is answering HTTPS on this Mac", `core/dns.rs`'s "so .{tld} sites open
+  on this Mac" (pinned by a `traits.rs` test), `core/app_update.rs`'s "needs a newer macOS than this Mac's"
+  and its "this Mac's macOS version could not be read" (seen in the Dell's log), `mcp_server/user_sites.rs`'s
+  five "(macOS will also ask for your password)" descriptions, `lib.rs`'s "staying in the menu bar" log line,
+  and `traits.rs`'s "macOS refused the operation".
+  *Steps:* **S1** the window on Windows — the reserved traffic-light row gone, the drag region still ours
+  (`startDragging`, double-click to maximise), one look on the Dell; **S2** the accelerator keys off, and a
+  Dell run of Ctrl+R/F5/Ctrl+P/Ctrl+F/F12 to say which of them the setting actually kills; **S3** the words —
+  every row above through `platform/words.rs` (the shape W7 S7 built), with the frontend scan widened to the
+  new words; **S4** the paths shown in the UI — `%LOCALAPPDATA%`-shaped examples where a path is illustrative,
+  and the Import card's Valet/Herd half told honestly on Windows; **S5** `docs/DESIGN.md` gets a Windows
+  section: the native title bar, the accelerator keys, and anything the screenshot shows diverging.
+  *Done when:* on the Dell, no screen names a Mac thing; Ctrl+R does not reload; the window looks like a
+  Windows app (native title bar, no dead row); and a path shown as an example reads `C:\…`.
 - **W10 — Feature gates per D4.** Refused in core, honest in the UI, one arm to enable later.
   MariaDB joins Redis, Apache and Xdebug unless ruled in. §3a Q3's per-OS answers land with
   the feature each one gates, not here in a batch.

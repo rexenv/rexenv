@@ -475,7 +475,17 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     login — staying in the menu bar" (`lib.rs` `first_window_decision`). The mechanism exists since W7 S7
     (`platform/words.rs`, ledger #626): the login item's description ("sign in to your Mac", `:1354`), every
     "Show in Finder", the editor fallback's Finder and the tool install hints already come from it — these rows
-    join it
+    join it. **Also Rust's** (read 16 Sep 2026): `core/proxy.rs`'s "is answering HTTPS on this Mac",
+    `core/dns.rs`'s "so .{tld} sites open on this Mac", `core/app_update.rs`'s "needs a newer macOS than this
+    Mac's" and "this Mac's macOS version could not be read" (seen in the Dell's own log), the five
+    "(macOS will also ask for your password)" tool descriptions in `mcp_server/user_sites.rs`, and
+    `traits.rs`'s "macOS refused the operation". **And the UI's macOS paths**: Settings' two "/Applications and
+    ~/Applications" tooltips and its `~/rexenv/Sites` one, the teardown's `/etc/resolver` sentences, Import's
+    `~/.config/valet` and `/etc/resolver/test`, AgentsMcpCard's `~/.cursor/mcp.json`.
+    **Design ruled 16 Sep 2026** (plan §5 W9), after measuring on the Dell with the owner: keep Windows' own
+    title bar and drop the sidebar's reserved traffic-light row; turn WebView2's browser accelerator keys off
+    (Ctrl+R reloads the app today) through `with_webview`; fonts need no work — Inter, JetBrains Mono and
+    Space Grotesk are bundled and render there (screenshot)
   - [ ] W10 — Redis/Apache/Xdebug/MariaDB (per D4) refused in core with an honest message
   - [ ] W11 — NSIS installer, Authenticode (if D5 rules it in), Windows release job, updater, winget
   - [ ] W12 — launch gates: verify on the Windows runner, SMOKE-TEST + INSTALL Windows
