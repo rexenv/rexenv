@@ -7,6 +7,7 @@ import { toast, toastBackendError } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { cn } from "@/lib/utils";
+import { usePlatformWords } from "@/lib/usePlatformWords";
 import { AgentActivityFeed } from "./AgentActivityFeed";
 import { AgentAccessDial } from "./AgentAccessDial";
 
@@ -83,6 +84,7 @@ function CopyButton({ value }: { value: string }) {
  */
 export function AgentsMcpCard() {
   const qc = useQueryClient();
+  const words = usePlatformWords();
   const { data } = useQuery({
     queryKey: ["mcp-status"],
     queryFn: mcpStatus,
@@ -243,7 +245,7 @@ export function AgentsMcpCard() {
               </div>
               <p className="mt-1.5 text-[0.6875rem] leading-[1.55] text-rex-text-muted">
                 Put it in <span className="font-mono">.cursor/mcp.json</span> for one project, or{" "}
-                <span className="font-mono">~/.cursor/mcp.json</span> for every project. If{" "}
+                <span className="font-mono">{words.homePrefix}/.cursor/mcp.json</span> for every project. If{" "}
                 <span className="font-mono">rex</span> isn't found, install it from Settings →
                 General → Command-line tool, then reconnect.
               </p>

@@ -1055,7 +1055,7 @@ export interface DnsStatus {
    *  fallback (dies with the app), or nothing. */
   mode: "agent" | "in-process" | "down";
   port: number;
-  resolverInstalled: boolean; // /etc/resolver/test present
+  resolverInstalled: boolean; // this OS routes the TLD to rexenv
   resolverPath: string;
   caTrusted: boolean; // local CA trusted for THIS user (per-user, unlike the resolver)
 }
@@ -1104,6 +1104,9 @@ export interface PlatformWords {
   host: string; // this machine, as a sentence points at it
   trayHome: string; // where an app with no window on screen lives
   appSearch: string; // where the app looked for editors/browsers, as the "none detected" tooltip says it
+  routesLabel: string; // what ONE of this OS's DNS routes is, as a sentence counts them
+  homePrefix: string; // how a path in the user's home folder is written ("~" / "%USERPROFILE%")
+  importSearch: string; // where the importer looked for other local-dev tools
   /** macOS draws its window controls over the page (the shell reserves a row for them); Windows draws its
    *  own title bar above it, so there is nothing to reserve (#636). */
   windowControlsInContent: boolean;

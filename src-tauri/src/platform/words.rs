@@ -50,6 +50,15 @@ pub struct PlatformWords {
     /// Where the app looked for the user's editors, browsers and terminals, as the "none detected" tooltip
     /// says it — the places [`crate::platform::AppCatalog`] actually searches on this OS.
     pub app_search: &'static str,
+    /// What ONE of this OS's DNS routes is, as a sentence counts them ("every rexenv file under
+    /// /etc/resolver" / "every rexenv NRPT rule"). `DnsManager::route_label` says where a single TLD's
+    /// route lives; this is the same thing with no TLD in hand. W9 S4, ledger #640.
+    pub routes_label: &'static str,
+    /// How a path in the user's home folder is written on this OS, for a config file the user must place
+    /// themselves (`~/.cursor/mcp.json`).
+    pub home_prefix: &'static str,
+    /// Where the importer looked for other local-dev tools, as the empty state says it.
+    pub import_search: &'static str,
     /// Whether this OS draws its window controls INSIDE the page — macOS's traffic lights over a
     /// `titleBarStyle: "Overlay"` window, which the shell reserves a row for. Windows draws its own title
     /// bar above the page, so reserving that row there leaves a dead strip (W9 S1, ruling Q1, ledger #636).
@@ -75,6 +84,9 @@ pub const MACOS: PlatformWords = PlatformWords {
     host: "this Mac",
     tray_home: "menu bar",
     app_search: "/Applications and ~/Applications",
+    routes_label: "file under /etc/resolver",
+    home_prefix: "~",
+    import_search: "~/.config/valet and in Herd's and Local's application-support folders",
     window_controls_in_content: true,
 };
 
@@ -97,6 +109,9 @@ pub const WINDOWS: PlatformWords = PlatformWords {
     host: "this PC",
     tray_home: "notification area",
     app_search: "the installed-programs list, Program Files and %LOCALAPPDATA%",
+    routes_label: "NRPT rule",
+    home_prefix: "%USERPROFILE%",
+    import_search: "Valet's, Herd's and Local's own folders",
     window_controls_in_content: false,
 };
 
@@ -116,7 +131,7 @@ pub fn current() -> &'static PlatformWords {
 mod tests {
     use super::*;
 
-    fn fields(w: &PlatformWords) -> [&'static str; 18] {
+    fn fields(w: &PlatformWords) -> [&'static str; 21] {
         [
             w.reveal,
             w.file_manager,
@@ -136,6 +151,9 @@ mod tests {
             w.host,
             w.tray_home,
             w.app_search,
+            w.routes_label,
+            w.home_prefix,
+            w.import_search,
         ]
     }
 
@@ -162,6 +180,10 @@ mod tests {
         assert_eq!(MACOS.host, "this Mac");
         assert_eq!(MACOS.tray_home, "menu bar");
         assert_eq!(MACOS.app_search, "/Applications and ~/Applications");
+        // The path words, moved here by W9 S4 (#640).
+        assert_eq!(MACOS.routes_label, "file under /etc/resolver");
+        assert_eq!(MACOS.home_prefix, "~");
+        assert_eq!(MACOS.import_search, "~/.config/valet and in Herd's and Local's application-support folders");
     }
 
     /// Ledger #626 — no Windows word names a macOS thing.
@@ -186,6 +208,12 @@ mod tests {
             "the tooltip must name where the Windows catalog actually looks: {}",
             WINDOWS.app_search
         );
+        // Windows has no /etc/resolver: a TLD is routed by an NRPT rule, which is what
+        // `WindowsDns::route_label` calls it too.
+        assert_eq!(WINDOWS.routes_label, "NRPT rule");
+        assert!(!WINDOWS.routes_label.contains("/etc/resolver"));
+        assert_eq!(WINDOWS.home_prefix, "%USERPROFILE%");
+        assert!(!WINDOWS.import_search.contains('~'), "{}", WINDOWS.import_search);
     }
 
     /// Ledger #636 — the window's controls: macOS draws them over the page (the shell reserves a row),
@@ -258,6 +286,11 @@ mod tests {
                         "with macOS",
                         "this Mac",
                         "/Applications",
+                        // A path spelled the macOS way. Measured 16 Sep 2026: after S4 the frontend
+                        // writes no `~/…` of its own — every path it shows comes from the backend or
+                        // from `home_prefix` (W9 S4, #640).
+                        "~/",
+                        "/etc/resolver",
                     ]
                         .iter()
                         .any(|w| line.contains(w))

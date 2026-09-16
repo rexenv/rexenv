@@ -497,8 +497,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     and the five MCP descriptions. Plants 5/5; the frontend scan widened to "keychain", "your Mac" and "with
     macOS". **S3b done the same day (ledger #639), L0:** `host`, `trayHome` and `appSearch`
     joined the words, and a scan over BOTH Rust crates now forbids a macOS literal in any sentence — three
-    named exceptions, each with its reason. Plants 6/6. **Left:** S4 (the paths), S5 (DESIGN's Windows
-    section)
+    named exceptions, each with its reason. Plants 6/6. **S4 done the same day (ledger #640), L0:**
+    `routesLabel`, `homePrefix` and `importSearch` joined the words, the teardown sentences stopped promising
+    `/etc/resolver`, and the frontend scan now forbids `~/` and `/etc/resolver` outright. Plants 5/5.
+    **Left:** S5 (DESIGN's Windows section). **Open for the owner:** the Valet/Herd/Local importer cannot
+    work on Windows as written (macOS-shaped homes) — port it, or say so on the card
   - [ ] W10 — Redis/Apache/Xdebug/MariaDB (per D4) refused in core with an honest message
   - [ ] W11 — NSIS installer, Authenticode (if D5 rules it in), Windows release job, updater, winget
   - [ ] W12 — launch gates: verify on the Windows runner, SMOKE-TEST + INSTALL Windows

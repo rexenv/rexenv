@@ -304,7 +304,7 @@ function GeneralPrefsCard() {
           <button
             onClick={() => saveFolder.mutate("")}
             disabled={saveFolder.isPending}
-            title="Use the default folder (~/rexenv/Sites) for new sites — existing sites stay where they are"
+            title="Use the default folder for new sites — existing sites stay where they are"
             className="flex h-8 flex-none items-center rounded-[9px] px-[9px] text-[0.75rem] text-rex-text-muted transition-colors hover:text-rex-text-bright disabled:opacity-40"
           >
             Reset to default
@@ -1589,6 +1589,7 @@ const SELECT =
 
 function UninstallSetting() {
   const [msg, setMsg] = useState<string | null>(null);
+  const words = usePlatformWords();
   const run = useMutation({
     mutationFn: uninstallSystem,
     onSuccess: (r) => {
@@ -1603,7 +1604,7 @@ function UninstallSetting() {
         parts.push(`Left alone (already reclaimed): ${r.leftAlone.map((t) => `.${t}`).join(", ")}.`);
       if (r.backupMissing.length)
         parts.push(
-          `Couldn't find our backup of ${r.backupMissing.map((t) => `/etc/resolver/${t}`).join(", ")}, so rexenv's version was removed — run \`valet install\` to restore theirs.`,
+          `Couldn't find our backup of the ${r.backupMissing.map((t) => `.${t}`).join(", ")} ${words.routesLabel}, so rexenv's version was removed — the other tool will need to put its own back.`,
         );
       parts.push("You can now quit and delete rexenv.");
       setMsg(parts.join(" "));
@@ -1630,7 +1631,7 @@ function UninstallSetting() {
               await confirm({
                 title: "Remove rexenv's system changes?",
                 message:
-                  "This stops all services, deletes every rexenv file under /etc/resolver (.rex and any other TLDs), and untrusts the local CA (you'll be asked for your password). Your sites and databases are kept.",
+                  `This stops all services, deletes every rexenv ${words.routesLabel} (.rex and any other TLDs), and untrusts the local CA (${words.elevationNote}). Your sites and databases are kept.`,
                 danger: true,
                 confirmLabel: "Remove",
               })

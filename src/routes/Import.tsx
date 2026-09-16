@@ -7,6 +7,7 @@ import { confirm } from "@/components/ui/dialog";
 import { toast, toastBackendError } from "@/lib/toast";
 import { CHECK_INPUT, TECH_INPUT, cn } from "@/lib/utils";
 import { Track } from "@/components/shell/DownloadPanel";
+import { usePlatformWords } from "@/lib/usePlatformWords";
 import {
   dbImportDeleteLeftover,
   dbImportLeftovers,
@@ -165,6 +166,7 @@ function statusPill(c: ImportCandidate, outcome?: ImportOutcome) {
  */
 export function Import() {
   const qc = useQueryClient();
+  const words = usePlatformWords();
   const { data, isLoading, refetch, isFetching, dataUpdatedAt } = useQuery({
     queryKey: ["valet-scan"],
     queryFn: scanValetImport,
@@ -378,12 +380,12 @@ export function Import() {
                 No Valet, Herd or Local sites found
               </div>
               <div className="mt-1 text-[0.75rem] text-rex-text-muted">
-                rexenv looked in <span className="font-mono">~/.config/valet</span> and in Herd's and
-                Local's application-support folders. Nothing of theirs was changed.
+                rexenv looked in <span className="font-mono">{words.importSearch}</span>. Nothing of
+                theirs was changed.
               </div>
             </div>
             {/* No sites, but their resolver file can outlive them — this is the
-                one place a leftover `/etc/resolver/test` shows up before someone
+                one place another tool's leftover route for a TLD shows up before someone
                 types a .test domain. The empty state used to swallow it. */}
             {consentCards}
             <LeftoverDumpsCard />

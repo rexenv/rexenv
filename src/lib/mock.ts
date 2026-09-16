@@ -25,6 +25,9 @@ export const mockPlatformWords: PlatformWords = {
   host: "this Mac",
   trayHome: "menu bar",
   appSearch: "/Applications and ~/Applications",
+  routesLabel: "file under /etc/resolver",
+  homePrefix: "~",
+  importSearch: "~/.config/valet and in Herd's and Local's application-support folders",
   windowControlsInContent: true,
 };
 
