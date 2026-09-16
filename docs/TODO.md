@@ -524,7 +524,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     the card says rexenv didn't look rather than that nothing is there. Plants 4/4. The port itself stays
     open. **Also ruled:** `app_update`'s "this Mac's macOS version" wording stays macOS-only until the
     Windows updater (W11), which is why the Rust scan names it as an exception
-  - [ ] W10 — Redis/Apache/Xdebug/MariaDB (per D4) refused in core with an honest message
+  - [x] W10 — Redis/Apache/Xdebug/MariaDB (per D4) refused in core with an honest message ✓ 16 Sep 2026
     **Core half done 16 Sep 2026 (ledger #642), L0:** one predicate — `binaries::ships_on` — answers
     "is this pinned on this OS", and the four gates ask it: `DbEngine::available_on` (Redis and
     MariaDB out on Windows, which removes them from the Databases page, Services' rows, the port
@@ -547,9 +547,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     and Caddy only; the New Site dialog offers Nginx alone and MySQL/PostgreSQL/None, each with the note
     naming Windows; Settings → DNS & SSL reads "trusted · Trusted Root store", "Reinstall rexenv's
     certificate authority in your Trusted Root store" and "asks for an administrator's approval once".
-    The CLI agrees (`rex db versions`, and both create refusals by name). **Still not ticked:** Xdebug's
-    Windows refusal has never been read on a screen (it needs a site and the PHP toggle), and three
-    W9 screens are unseen — SiteDetail's domain change, the teardown confirmation, and Import.
+    The CLI agrees (`rex db versions`, and both create refusals by name). **Ticked 16 Sep 2026:** the last of the four, Xdebug's, was read
+    on the Dell — SiteDetail → Settings → Xdebug says "Xdebug isn't part of rexenv on Windows yet — its
+    builds have to match each PHP version's compiler exactly, so they are pinned per version and none is
+    pinned here", which is #642's `NotOnThisOs` sentence. The three W9 screens were seen the same day
+    (domain change, the teardown confirmation with its card, and Import).
     **Found by looking:** the PHP rows say "PHP-FPM 8.2/8.3" on a machine with no php-fpm — its own row
     above.
   - [ ] W11 — NSIS installer, Authenticode (if D5 rules it in), Windows release job, updater, winget
