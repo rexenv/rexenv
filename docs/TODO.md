@@ -529,8 +529,13 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     **UI half done the same day (ledger #643), L0:** the picker's options come from
     `sites::offered_web_servers` — the gate that refuses — through one new command, so on Windows Apache
     and FrankenPHP are absent rather than offered-then-refused, and a note says why. Plants 3/3.
-    **Not ticked:** nothing here has been measured ON Windows; the bar only `cargo check`s for it until
-    W12's runner, so this waits on the Dell like W9's wording does.
+    **The CLI half IS measured on Windows now** (16 Sep 2026, on the Dell, against the
+    deployed build): `rex db versions` lists only MySQL and PostgreSQL, `rex status` shows no Redis or
+    MariaDB row, and `rex site create` refuses both `--db mariadb` and `--server apache` by name. That
+    run is also what found the hole #647 fixed — creation had no engine gate at all, so a MariaDB site
+    was created on Windows and exited 0. **Not ticked:** the UI half is unseen — the New Site dialog's
+    engine list is not filtered per OS, and nobody has looked at the Windows wording yet. The bar still
+    only `cargo check`s for Windows until W12's runner.
   - [ ] W11 — NSIS installer, Authenticode (if D5 rules it in), Windows release job, updater, winget
   - [ ] W12 — launch gates: verify on the Windows runner, SMOKE-TEST + INSTALL Windows
     sections, clean Windows 11 VM pass
