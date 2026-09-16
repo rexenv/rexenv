@@ -1510,9 +1510,11 @@ bloating the fast path:
   `brew install` written outside the platform's words — the claim is about every screen, so the test reads
   every file rather than the ones a change touched; it also fails if it read fewer than 50 files, so a walk that
   finds nothing cannot pass. On the Dell the proof is the real app's Settings read by the owner.
-  W6's done-when (S5) is the REAL app, not an example: `cargo xwin build --bin rexenv --features
-  tauri/custom-protocol` (without the feature a debug build loads `devUrl`, not the embedded `dist`; the
-  `rex` sidecar staged as a placeholder as `windows-example.sh` does), the exe copied to a stable folder —
+  W6's done-when (S5) is the REAL app, not an example: **`./scripts/windows-app-build.sh`** (16 Sep 2026;
+  it runs `cargo xwin build --bin rexenv --features tauri/custom-protocol`, stages and then removes the `rex`
+  sidecar, and REFUSES to report success unless the built exe contains the asset Vite just emitted -- without
+  the feature a debug build loads `devUrl`, not the embedded `dist`, and that shipped to the Dell once
+  because this line was not read, ledger #646), the exe copied to a stable folder —
   the agent task points at it — and opened by the owner in the desktop session. Between the owner's steps
   `scripts/probes/windows-dns-s5.ps1` reads, and changes nothing: the app and agent processes, the
   127.0.0.1:53 holder, the task, every NRPT rule, a `.rex` name through Windows' resolver and at

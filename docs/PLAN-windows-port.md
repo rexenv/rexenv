@@ -1155,7 +1155,8 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   - **S5 — done-when.** First-run setup, watchdog, handoff and `dns_status` on Windows end to end; the Dell
     rebooted with the app closed resolves `*.rex`.
     **S5 done 15 Sep 2026 — W6 is done.** Measured with the REAL app, not an example (owner's ruling the same
-    day): `rexenv.exe` cross-built with `--features tauri/custom-protocol` (the embedded `dist`; the `rex`
+    day): `rexenv.exe` cross-built by `./scripts/windows-app-build.sh` (16 Sep 2026, ledger #646 -- it carries the
+    `--features tauri/custom-protocol` flag and asserts the assets really are inside the exe; the `rex`
     sidecar a placeholder, as `windows-example.sh` stages it), copied to a stable folder on the Dell,
     opened by the owner in the desktop session; `scripts/probes/windows-dns-s5.ps1` read the machine over
     SSH between steps (read only). From a clean baseline (no task, rule, CA, logs; ICS on `0.0.0.0:53`):
