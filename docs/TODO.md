@@ -518,9 +518,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     sentence that offers no way out because there is none), and `spawn_db` (the one start path a
     site's stored engine reaches without passing the filter). Every gate takes the os as a
     parameter, so both answers are measurable from the Mac. Plants 6/6.
-    **Left:** the New Site dialog still offers Apache from a hardcoded `SERVERS` list, so on Windows
-    the refusal lands at create time instead of the option being absent — the same "frontend holds a
-    second copy" shape the Xdebug rows already avoid by reading `PhpVersionView`.
+    **UI half done the same day (ledger #643), L0:** the picker's options come from
+    `sites::offered_web_servers` — the gate that refuses — through one new command, so on Windows Apache
+    and FrankenPHP are absent rather than offered-then-refused, and a note says why. Plants 3/3.
+    **Not ticked:** nothing here has been measured ON Windows; the bar only `cargo check`s for it until
+    W12's runner, so this waits on the Dell like W9's wording does.
   - [ ] W11 — NSIS installer, Authenticode (if D5 rules it in), Windows release job, updater, winget
   - [ ] W12 — launch gates: verify on the Windows runner, SMOKE-TEST + INSTALL Windows
     sections, clean Windows 11 VM pass

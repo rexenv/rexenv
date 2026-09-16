@@ -1593,8 +1593,14 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   `xdebug_row`, the table, separate from the policy); and the plant harness counted multi-line
   anchors with `grep -cF`, which treats each newline as a pattern, so three plants reported 2/198/360
   matches and were skipped — non-verdicts that would have read as done.
-  **Left:** `NewSiteDialog.tsx` offers Apache from a hardcoded `SERVERS` array, so the Windows
-  refusal arrives at create time rather than the option simply not being there.
+  **UI half done 16 Sep 2026 (ledger #643), L0.** `core::sites::offered_web_servers_on` derives the
+  picker's options from the same gate that refuses, a new `offered_web_servers` command carries them (with
+  its own DISPOSITIONS ruling — an agent names a server and is refused by core, it does not pick from a
+  menu), and `NewSiteDialog` renders that set, resets a choice a blueprint made that this build cannot
+  serve, and says why a server is absent. Plants 3/3. The list takes the os as a parameter for the reason
+  the rest of W10 does — the first version read `std::env::consts::OS` and its Windows half could not have
+  failed here. **Still unmeasured on Windows:** every W10 claim is L0 on the Mac; the Dell sees it when it
+  is back.
 - **W11 — Packaging and updates per D5.** NSIS bundle, signing (only after D5's measurement and ruling), a Windows job in
   `.github/workflows/release.yml`, Windows `AppBundle`, winget manifest.
 - **W12 — Launch gates.** `verify.sh` runnable on the Windows runner (Git Bash);

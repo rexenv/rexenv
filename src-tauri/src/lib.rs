@@ -1238,6 +1238,7 @@ pub fn run() {
             commands::blueprints::save_blueprint,
             commands::blueprints::delete_blueprint,
             commands::sites::list_sites,
+            commands::sites::offered_web_servers,
             commands::sites::sites_serving,
             commands::sites::sites_resources,
             commands::sites::create_site,

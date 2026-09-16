@@ -70,6 +70,28 @@ fn ensure_server_available(server: WebServer) -> Result<()> {
     ensure_server_available_on(server, std::env::consts::OS)
 }
 
+/// The web servers a site can actually be created with on this build, in the order the New
+/// Site dialog offers them.
+///
+/// Derived from the same gate that REFUSES (`ensure_server_available_on`), so the picker cannot
+/// offer what create would reject: the dialog held its own hardcoded list, which on Windows
+/// meant Apache was offered and then refused at create time — honest, but late, and the same
+/// "the frontend keeps a second copy" shape the PHP rows already avoid (W10, ledger #643).
+pub fn offered_web_servers() -> Vec<WebServer> {
+    offered_web_servers_on(std::env::consts::OS)
+}
+
+/// [`offered_web_servers`] for a NAMED os — a parameter for the same reason every other gate
+/// in W10 takes one: the bar only `cargo check`s for Windows, so a list built from
+/// `std::env::consts::OS` alone would have a half that cannot fail on the machine running the
+/// test, and a plant against it would read PASSED rather than proving anything.
+pub fn offered_web_servers_on(os: &str) -> Vec<WebServer> {
+    [WebServer::Nginx, WebServer::Frankenphp, WebServer::Apache]
+        .into_iter()
+        .filter(|s| ensure_server_available_on(*s, os).is_ok())
+        .collect()
+}
+
 /// [`ensure_server_available`] for a NAMED os — the os is a parameter so BOTH answers can be
 /// measured from either host. The bar only `cargo check`s for Windows, so a gate that read
 /// `std::env::consts::OS` directly would have an untestable half until W12's Windows runner,
@@ -2694,6 +2716,45 @@ mod tests {
     use super::*;
     use crate::state::db;
     use crate::state::models::{SiteDbEngine, SiteType, WebServer};
+
+    /// Ledger #643 — **the picker offers exactly what create would accept**, and the dialog
+    /// keeps no list of its own. Read from the dialog's own source, so a hardcoded array put
+    /// back by hand is seen.
+    #[test]
+    fn the_new_site_dialog_offers_the_servers_core_allows() {
+        // Every offered server passes the gate that would refuse it — asked for BOTH os
+        // values, so neither half depends on which machine runs the test.
+        for os in ["macos", "windows"] {
+            for s in offered_web_servers_on(os) {
+                assert!(
+                    ensure_server_available_on(s, os).is_ok(),
+                    "{s:?} is offered on {os} but create refuses it there"
+                );
+            }
+            assert!(offered_web_servers_on(os).contains(&WebServer::Nginx), "nginx ships on {os}");
+        }
+        // The half that only Windows shows: D4 leaves both of these out of v1, so the picker
+        // must not list them there — offered-then-refused is what this replaced.
+        let windows = offered_web_servers_on("windows");
+        for s in [WebServer::Apache, WebServer::Frankenphp] {
+            assert!(!windows.contains(&s), "{s:?} has no Windows pin and must not be offered (D4)");
+        }
+        assert_eq!(offered_web_servers_on("macos").len(), 3, "all three ship on macOS");
+
+        let dialog = crate::core::copy_scan::strip_ts_comments(include_str!(
+            "../../../src/components/sites/NewSiteDialog.tsx"
+        ));
+        assert!(dialog.contains("SERVERS"), "the stripper ate the source");
+        assert!(
+            !dialog.contains("SERVERS.map("),
+            "the picker renders its hardcoded list unfiltered — on Windows that offers Apache, \
+             which create then refuses"
+        );
+        assert!(
+            dialog.contains("offeredServers"),
+            "the dialog does not read the offered set from the backend"
+        );
+    }
 
     /// Ledger #642 — **the web-server gate reads the pins, per OS.** Nginx ships everywhere;
     /// FrankenPHP and Apache have a macOS artifact and no Windows one (D4 — Apache on Windows

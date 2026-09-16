@@ -88,6 +88,13 @@ pub fn inspect_linked_folder(
 /// Derived from the non-blocking `service_infos()` snapshot, so it never blocks the
 /// UI on a long start/stop. The frontend overlays it on the site rows by domain.
 #[tauri::command]
+/// Which web servers this build can create a site with — the picker's options, from the same
+/// gate that refuses (`core::sites::offered_web_servers`). No state, no lock: a pin table read.
+pub fn offered_web_servers() -> Vec<String> {
+    core::sites::offered_web_servers().into_iter().map(|s| s.as_db().to_string()).collect()
+}
+
+#[tauri::command]
 pub fn sites_serving(state: State<'_, AppState>) -> Result<Vec<SiteServing>> {
     let sites = {
         let conn = lock(&state)?;

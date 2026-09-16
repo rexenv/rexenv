@@ -1838,6 +1838,13 @@ export async function sitesFolder(): Promise<string> {
   return invoke<string>("sites_folder");
 }
 
+/** The web servers this build can create a site with — the same gate that refuses at create
+ *  time, so the picker never offers what create would reject (W10). */
+export async function offeredWebServers(): Promise<WebServer[]> {
+  if (!isTauri()) return ["nginx", "frankenphp", "apache"];
+  return invoke<WebServer[]>("offered_web_servers");
+}
+
 /** The default TLD new sites are created under (setting, else "rex"). */
 export async function defaultTld(): Promise<string> {
   if (!isTauri()) return "rex";

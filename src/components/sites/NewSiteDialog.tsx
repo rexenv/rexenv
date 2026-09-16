@@ -7,7 +7,8 @@ import { cn, TECH_INPUT } from "@/lib/utils";
 import { eolNote, eolTag } from "@/lib/php";
 import { Button } from "@/components/ui/button";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
-import { defaultTld, inspectLinkedFolder, listBlueprints, listPhpVersions, listSites, pickFolder, repoProbe, siteProvisionCancel, siteProvisionJob, wpMultisiteConvert } from "@/lib/ipc";
+import { defaultTld, inspectLinkedFolder, listBlueprints, listPhpVersions, listSites, offeredWebServers, pickFolder, repoProbe, siteProvisionCancel, siteProvisionJob, wpMultisiteConvert } from "@/lib/ipc";
+import { usePlatformWords } from "@/lib/usePlatformWords";
 import { SiteProvisionCard, useSiteProvision } from "@/components/sites/SiteProvisionCard";
 import { RefPicker, type RefGroup } from "@/components/wordpress/RefPicker";
 import { useDownloads } from "@/lib/useDownloads";
@@ -88,6 +89,7 @@ export type NewSiteInitial = {
 
 export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initial?: NewSiteInitial }) {
   const qc = useQueryClient();
+  const words = usePlatformWords();
   const { data: versions = [] } = useQuery({ queryKey: ["php-versions"], queryFn: listPhpVersions });
   const installed = useMemo(() => versions.filter((v) => v.installed), [versions]);
   const defaultVersion = installed.find((v) => v.isDefault)?.minor ?? installed[0]?.minor ?? "8.3";
@@ -255,6 +257,34 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
   useEffect(() => {
     if (!postgresOffered && dbEngine === "postgres") setDbEngine("mysql");
   }, [postgresOffered, dbEngine]);
+
+  // The web-server picker offers what create would ACCEPT. The list comes from core
+  // (`sites::offered_web_servers`, the same gate that refuses); SERVERS above is only where
+  // the labels live. On Windows neither Apache nor FrankenPHP has a pin (D4), so they are
+  // ABSENT rather than offered and then refused at create time (W10, ledger #643).
+  // Until the first answer arrives the picker shows the full list — what it always showed —
+  // and narrows when core replies. A default built from SERVERS itself would be this module
+  // deciding again, which is the shape the guard forbids.
+  const { data: offered } = useQuery({
+    queryKey: ["offered-web-servers"],
+    queryFn: offeredWebServers,
+    staleTime: Infinity,
+  });
+  const offeredServers = offered ? SERVERS.filter((s) => offered.includes(s.value)) : SERVERS;
+  const missingServers = offered ? SERVERS.filter((s) => !offered.includes(s.value)) : [];
+  // …and a server that stops being offered must not survive as a silent payload — a
+  // blueprint can set one this build cannot serve.
+  useEffect(() => {
+    if (offered && offeredServers.length > 0 && !offered.includes(webServer)) {
+      setWebServer(offeredServers[0].value);
+    }
+  }, [offered, offeredServers, webServer]);
+  const serverNote =
+    missingServers.length === 0
+      ? undefined
+      : `${missingServers.map((s) => s.label.replace(/ \(.*\)$/, "")).join(" and ")} ${
+          missingServers.length === 1 ? "isn't" : "aren't"
+        } part of rexenv on ${words.osName} yet — rexenv only offers a server it has a pinned build for.`;
   const create = useMutation({
     mutationFn: () =>
       siteProvisionJob(
@@ -374,6 +404,8 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
               setPhpVersion={setPhpVersion}
               webServer={webServer}
               setWebServer={setWebServer}
+              offeredServers={offeredServers}
+              serverNote={serverNote}
               dbEngine={dbEngine}
               setDbEngine={setDbEngine}
               postgresOffered={postgresOffered}
@@ -715,6 +747,10 @@ function Step2(p: {
   setPhpVersion: (v: string) => void;
   webServer: WebServer;
   setWebServer: (v: WebServer) => void;
+  /** The servers core will accept on this build — never the module's own list (W10). */
+  offeredServers: { value: WebServer; label: string }[];
+  /** Why a server the user might look for is absent, or undefined when none is. */
+  serverNote?: string;
   dbEngine: SiteDbEngine;
   setDbEngine: (v: SiteDbEngine) => void;
   needsDb: boolean;
@@ -916,7 +952,7 @@ function Step2(p: {
         </Field>
         <Field label="Web server">
           <select value={p.webServer} onChange={(e) => p.setWebServer(e.target.value as WebServer)} className={FIELD_SELECT}>
-            {SERVERS.map((s) => (
+            {p.offeredServers.map((s) => (
               <option key={s.value} value={s.value}>
                 {s.label}
               </option>
@@ -967,6 +1003,12 @@ function Step2(p: {
           bug. Only shown for the type that COULD have it: telling a WordPress
           user about a PHP version would be answering a question they cannot
           ask. */}
+      {/* Why a web server is missing, said where it would have been — the same rule as the
+          PostgreSQL note below: a control with fewer options than it had elsewhere reads as a
+          bug unless it says why. */}
+      {p.serverNote && (
+        <div className="-mt-1 text-[0.6875rem] leading-[1.5] text-rex-text-muted">{p.serverNote}</div>
+      )}
       {(p.needsDb || p.starterDbOffered) && p.siteType !== "wordpress" && !p.postgresOffered && (
         <div className="-mt-1 text-[0.6875rem] leading-[1.5] text-rex-text-muted">
           PostgreSQL needs PDO, and the PHP {p.phpVersion} build has no working{" "}
