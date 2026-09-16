@@ -46,6 +46,12 @@ pub struct ServiceStatus {
     /// are queuing".
     #[serde(skip_serializing_if = "Option::is_none")]
     pub busy_note: Option<String>,
+    /// What to SHOW instead of `name`, when the two differ: a Windows pool is a php-cgi group,
+    /// not a php-fpm pool, so its row reads `PHP-CGI 8.3` while `name` stays `PHP-FPM 8.3` —
+    /// the key `kind_of`, `version`, `is_default`, the busy tracker and the restart counters
+    /// all still work from (ledger #651). Absent when they are the same.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
 }
 
 /// Group a service row by its canonical name (the manager names them).
@@ -412,6 +418,12 @@ pub fn enriched_status(state: &AppState) -> Result<Vec<ServiceStatus>> {
                 _ => pid.and_then(|p| sup.resource_usage(p)).unwrap_or((0.0, 0)),
             };
             let kind = kind_of(&i.name);
+            // The screen's name for a pool, when this OS runs something else (#651). Derived
+            // from the SAME minor the key carries, so the two can never describe different pools.
+            let label = i.name.strip_prefix("PHP-FPM ").and_then(|minor| {
+                let shown = state.platform.supervisor().php_pool_model().display_name(minor);
+                (shown != i.name).then_some(shown)
+            });
             // "PHP-FPM 8.3" → version "8.3" (the shared pools);
             // "FrankenPHP my.rex" → the pinned FrankenPHP release + the domain
             // (it embeds its OWN PHP — not one of the pools).
@@ -432,6 +444,7 @@ pub fn enriched_status(state: &AppState) -> Result<Vec<ServiceStatus>> {
                     .then(|| core::binaries::FRANKENPHP_VERSION.to_string())
             });
             ServiceStatus {
+                label,
                 name: i.name,
                 running: i.running,
                 pid,
@@ -587,6 +600,38 @@ pub async fn restart_web_service(
             core::service_manager::WebRestartOutcome::Refused => "refused",
         },
     })
+}
+
+#[cfg(test)]
+mod label_tests {
+    /// Ledger #651 — **the row's screen name may differ from its key, and the KEY is what
+    /// everything else reads.** `name` stays `PHP-FPM <minor>` on every OS because five things
+    /// derive from it here and in core: the Services grouping (`kind_of`), `version`
+    /// (`strip_prefix("PHP-FPM ")`), `is_default` from that version, `core::pool_busy`'s streaks
+    /// and `restart_attempts`' counters. Renaming the key to match a Windows screen would move
+    /// the row out of the PHP group and take the Set-default control with it.
+    ///
+    /// Read from this module's own production source, because building a row needs a platform:
+    /// what is provable here is that the label is DERIVED from the pool model and that `name`
+    /// is still passed through untouched.
+    #[test]
+    fn the_pool_row_shows_a_label_but_keys_off_its_name() {
+        let src = crate::core::copy_scan::production_source(include_str!("services.rs"));
+        assert!(src.contains("fn kind_of"), "the stripper ate the source");
+        assert!(
+            src.contains("php_pool_model().display_name(minor)"),
+            "the row's label is not asked of the pool model"
+        );
+        assert!(
+            src.contains("let kind = kind_of(&i.name);"),
+            "the grouping no longer keys off the row's name"
+        );
+        assert!(
+            src.contains("i.name.strip_prefix(\"PHP-FPM \")"),
+            "the version is no longer parsed from the name key"
+        );
+        assert!(src.contains("name: i.name,"), "the row stopped carrying its key");
+    }
 }
 
 #[cfg(test)]

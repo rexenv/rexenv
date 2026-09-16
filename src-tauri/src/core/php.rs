@@ -273,6 +273,21 @@ mod pool_binary_tests {
         assert_eq!(PoolModel::CgiGroup(CgiGroup { extensions: &[], zend_extensions: &[] }).catalog_name(), "php");
     }
 
+    /// Ledger #651 — **what the pool row is CALLED follows the model, while its key does not.**
+    /// A Windows pool is a php-cgi group, so the Services row reads `PHP-CGI 8.3` there; the
+    /// row's `name` stays `PHP-FPM 8.3` on every OS because the grouping, the version badge,
+    /// `is_default`, the busy tracker and the restart counters all parse it.
+    #[test]
+    fn the_pool_display_name_follows_the_model() {
+        let cgi = PoolModel::CgiGroup(CgiGroup { extensions: &[], zend_extensions: &[] });
+        assert_eq!(PoolModel::Fpm.display_name("8.3"), "PHP-FPM 8.3");
+        assert_eq!(cgi.display_name("8.3"), "PHP-CGI 8.3");
+        // The key is NOT the label: a php-cgi host must not be told it runs php-fpm.
+        assert_ne!(cgi.display_name("8.3"), PoolModel::Fpm.display_name("8.3"));
+        // …and the minor is carried through untouched, so the two can never name different pools.
+        assert!(cgi.display_name("7.4").ends_with("7.4"));
+    }
+
     /// The plans and the start ask `catalog_name()`, and none names the pool binary itself. TEXT, not behaviour
     /// (the #175 bound): what it catches is a planner or a start going back to its own literal, which is how
     /// they drifted apart.

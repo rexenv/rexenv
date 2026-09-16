@@ -166,7 +166,7 @@ function ServiceRow({
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <span className="truncate text-[0.84375rem] font-semibold text-rex-text">
-              {svc.domain ? "FrankenPHP" : svc.name}
+              {svc.domain ? "FrankenPHP" : (svc.label ?? svc.name)}
             </span>
             {svc.domain && svc.version && (
               <span className="font-mono text-[0.65625rem] text-rex-text-muted">{svc.version}</span>
@@ -234,7 +234,7 @@ function ServiceRow({
             running={running}
             busy={toggleBusy}
             onToggle={() => onToggle(svc.serviceKey!, !running)}
-            label={`${running ? "Stop" : "Start"} ${svc.name}`}
+            label={`${running ? "Stop" : "Start"} ${svc.label ?? svc.name}`}
           />
         ) : (
           // Serving core (edge → web server → PHP): ONE organism — stopping a

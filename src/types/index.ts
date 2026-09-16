@@ -821,6 +821,10 @@ export interface ServiceInfo {
   /** Set only for a running shared PHP pool whose every worker is holding a request, sustained
    *  across polls — e.g. "all 10 workers busy — requests are queuing" (ledger #608). */
   busyNote?: string;
+  /** What to SHOW instead of `name` when the two differ — a Windows pool reads "PHP-CGI 8.3"
+   *  while `name` stays "PHP-FPM 8.3", which the grouping, the version badge, the busy tracker
+   *  and the restart counters all key off (ledger #651). */
+  label?: string;
 }
 
 /** One database engine's status + live metrics (mirrors the Rust DbStatus DTO). */

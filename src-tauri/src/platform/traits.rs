@@ -493,6 +493,22 @@ impl PoolModel {
         }
     }
 
+    /// What a minor's pool row is CALLED on screen — `PHP-FPM 8.3` / `PHP-CGI 8.3`.
+    ///
+    /// Display only, and deliberately separate from the row's `name`, which stays `PHP-FPM …`
+    /// on every OS because five things key off it: `commands::services::kind_of` (the Services
+    /// grouping), `version` (parsed as `strip_prefix("PHP-FPM ")`), `is_default` derived from
+    /// that, `core::pool_busy`'s per-pool streaks and `restart_attempts`' counters. Renaming
+    /// the key to match the screen would move the row out of the PHP group and drop the
+    /// Set-default control with it — which is why the label is a second field rather than a
+    /// rename (ledger #651).
+    pub fn display_name(&self, minor: &str) -> String {
+        match self {
+            PoolModel::Fpm => format!("PHP-FPM {minor}"),
+            PoolModel::CgiGroup(_) => format!("PHP-CGI {minor}"),
+        }
+    }
+
     /// A word every process of the pool carries on its command line or title: the
     /// fixed-port sweep's identity for a worker whose command line lacks the
     /// app-data path (php-fpm rewrites worker titles; php-cgi children do not).
