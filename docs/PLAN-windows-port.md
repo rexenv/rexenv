@@ -1532,6 +1532,11 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   `windows` 0.61 became direct Windows dependencies and the lock did not fork (they were already there
   through wry). Plants 6/6; verify green. Found on the way: a bare `assert!` on a const is
   `clippy::assertions_on_constants`, which the bar denies — the flag test asserts through locals.
+  **Both measured on the Dell the same day** (the owner at the keyboard, one screenshot against the earlier
+  one): Ctrl+R, F5, Ctrl+P, Ctrl+F and F12 do nothing now, while Ctrl+A/C/V/Z still work in a field; the
+  wordmark sits ~14px higher, so the strip under Windows' own title bar is gone. Also learned, and not
+  hidden: the Mac ran out of disk mid-verify (the Windows caches held 19 GB) — the owner ruled they be
+  cleared, which is why that verify was re-run from cold.
   *Done when:* on the Dell, no screen names a Mac thing; Ctrl+R does not reload; the window looks like a
   Windows app (native title bar, no dead row); and a path shown as an example reads `C:\…`.
 - **W10 — Feature gates per D4.** Refused in core, honest in the UI, one arm to enable later.
