@@ -971,7 +971,9 @@ function DnsSslSetting() {
                       <span className="ml-2 text-rex-text-muted">
                         {/* Two causes, two fixes: telling someone to install a
                             file another tool already owns sends them in a circle. */}
-                        {u.foreign ? "another tool owns its resolver file" : "no resolver file"}
+                        {u.foreign
+                          ? `another tool owns its ${words.routesLabel}`
+                          : `no ${words.routesLabel}`}
                       </span>
                     </span>
                     {/* Repair puts OUR file back where there is none; it refuses
@@ -1299,7 +1301,7 @@ function DefaultTldCard() {
         </div>
       )}
       <div className="mt-2.5 text-[0.71875rem] text-rex-text-muted">
-        <span className="font-mono">.rex</span> is rexenv's home TLD — its resolver is set up
+        <span className="font-mono">.rex</span> is rexenv's home TLD — its route is set up
         during onboarding and rexenv's own tools use it. Any other TLD (including{" "}
         <span className="font-mono">.test</span>) {words.privilegedPrompt}, when its first
         site is created.
@@ -1597,7 +1599,10 @@ function UninstallSetting() {
       // from Valet/Herd is handed back, not deleted — and if our backup of it
       // was gone we must say so rather than imply a clean restore.
       const parts = ["Services stopped, local CA untrusted."];
-      if (r.removed.length) parts.push(`Removed rexenv resolvers: ${r.removed.map((t) => `.${t}`).join(", ")}.`);
+      // "resolvers" was a plural the platform word cannot make (`file under /etc/resolver` does not
+      // pluralise into a sentence), so the TLDs are listed after it instead.
+      if (r.removed.length)
+        parts.push(`Removed rexenv's ${words.routesLabel} for: ${r.removed.map((t) => `.${t}`).join(", ")}.`);
       if (r.restored.length)
         parts.push(`Handed back to Valet/Herd: ${r.restored.map((t) => `.${t}`).join(", ")}.`);
       if (r.leftAlone.length)
@@ -1615,8 +1620,8 @@ function UninstallSetting() {
   return (
     <div className="flex flex-col gap-3">
       <p className="text-[0.75rem] text-rex-text-muted">
-        Reverse the system-level changes rexenv made — stop all services, remove every rexenv DNS
-        resolver (<span className="font-mono">.rex</span> plus any other TLDs you added), and
+        Reverse the system-level changes rexenv made — stop all services, remove every rexenv{" "}
+        {words.routesLabel} (<span className="font-mono">.rex</span> plus any other TLDs you added), and
         untrust the local HTTPS certificate authority. Your site files and databases are{" "}
         <span className="font-medium">not</span> deleted.
       </p>

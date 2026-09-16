@@ -35,6 +35,13 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [ ] **Windows: the Sites takeback banner names Valet/Herd and a "resolver file"** — `Sites.tsx`'s
+  `ResolverDriftBanner` reads "Valet or Herd took <tld>'s resolver file back". **Measured 16 Sep 2026,
+  and deliberately NOT fixed:** `drifted_takeovers` filters `list_resolver_takeovers` — only TLDs
+  rexenv took over FROM Valet or Herd — and neither tool is ever detected on Windows (#641), so the
+  banner cannot render there. Dead copy, not wrong copy on a screen, and a cosmetic rewrite could not
+  be tested on either platform without fabricating a takeover row. Fix it WITH the Valet/Herd import
+  port, when that path exists on Windows at all
 - [ ] **Windows: the pool is called "PHP-FPM" on a machine with no php-fpm** — seen in `rex status`
   on the Dell, 16 Sep 2026: the service rows read `PHP-FPM 8.2` / `PHP-FPM 8.3`, but D1 ruled Windows
   runs a php-cgi GROUP, not php-fpm. **Not a wording swap:** measured, that string is a KEY, not just
