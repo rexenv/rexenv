@@ -145,6 +145,13 @@ windows-sys = { version = "0.61", features = [
     "Win32_System_Ioctl",
 ] }
 
+# WebView2's own keyboard shortcuts (W9 S2, plan §5 W9 ruling Q2, ledger #637): Ctrl+R reloaded the whole
+# app, because wry leaves `browser_accelerator_keys` at WebView2's default and tauri 2.11 does not surface
+# the switch. `lib.rs` reaches the controller through `with_webview` and turns them off. Both crates are
+# already in the Windows graph through wry — these lines make them ours to call, at wry's own versions.
+webview2-com = "0.38"
+windows = { version = "0.61", features = ["Win32_Foundation"] }
+
 # Target-gated like the [dependencies] copies: objc2 is a compile_error! on any
 # non-Apple target, and as a plain dev-dependency it failed EVERY test and example
 # target of a Windows build before a line of ours was checked

@@ -1524,6 +1524,14 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   new words; **S4** the paths shown in the UI — `%LOCALAPPDATA%`-shaped examples where a path is illustrative,
   and the Import card's Valet/Herd half told honestly on Windows; **S5** `docs/DESIGN.md` gets a Windows
   section: the native title bar, the accelerator keys, and anything the screenshot shows diverging.
+  **S1 and S2 done 16 Sep 2026 (ledgers #636, #637), L0.** `PlatformWords` grew one non-string fact —
+  `window_controls_in_content`, macOS true / Windows false — and the sidebar renders its ~12px spacer behind
+  it (a scan of `Sidebar.tsx` holds that; the first paint still reserves the row for one frame, until
+  `usePlatformWords` answers, which is recorded rather than hidden). `lib.rs` asks the Windows webview for
+  `SetAreBrowserAcceleratorKeysEnabled(false)` inside `with_webview`, best-effort; `webview2-com` 0.38 and
+  `windows` 0.61 became direct Windows dependencies and the lock did not fork (they were already there
+  through wry). Plants 6/6; verify green. Found on the way: a bare `assert!` on a const is
+  `clippy::assertions_on_constants`, which the bar denies — the flag test asserts through locals.
   *Done when:* on the Dell, no screen names a Mac thing; Ctrl+R does not reload; the window looks like a
   Windows app (native title bar, no dead row); and a path shown as an example reads `C:\…`.
 - **W10 — Feature gates per D4.** Refused in core, honest in the UI, one arm to enable later.

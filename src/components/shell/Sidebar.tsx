@@ -1,6 +1,7 @@
 import { NavLink } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
+import { usePlatformWords } from "@/lib/usePlatformWords";
 import { onTitleBarMouseDown } from "@/lib/window-drag";
 import { RexLogo } from "@/components/common/RexLogo";
 import { NAV_ITEMS, type NavItem } from "./nav";
@@ -120,18 +121,20 @@ export function Sidebar() {
       activeDot: tunnels.some((t) => t.running),
     },
   };
+  const words = usePlatformWords();
   const withLiveBadge = (item: NavItem): NavItem => ({ ...item, ...liveBadges[item.to] });
 
   return (
     <aside className="flex w-[220px] flex-none flex-col border-r border-rex-border-subtle bg-rex-surface-1">
-      {/* Header: wordmark (drag region). The macOS traffic lights are the real
-          OS controls — the window uses titleBarStyle Overlay, so we reserve the
-          top row for them instead of drawing fake dots. */}
+      {/* Header: wordmark (drag region). Where the OS draws its window controls OVER the page (macOS's
+          traffic lights, titleBarStyle Overlay) we reserve the top row for them instead of drawing fake
+          dots; Windows draws its own title bar above the page, so reserving there is a dead strip
+          (`windowControlsInContent`, W9 S1, #636). */}
       <div
         onMouseDown={onTitleBarMouseDown}
         className="drag-region flex h-[84px] flex-none flex-col justify-center gap-3.5 border-b border-rex-border-subtle px-[18px]"
       >
-        <div className="h-3" aria-hidden />
+        {words.windowControlsInContent && <div className="h-3" aria-hidden />}
         <div className="flex items-center gap-2.5">
           <CrownMark />
           <span className="font-display text-[1.03125rem] font-semibold tracking-[-0.02em] text-rex-text">

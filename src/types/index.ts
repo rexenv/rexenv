@@ -1096,6 +1096,9 @@ export interface PlatformWords {
   cliInstall: string; // the Command-line tool card before rex is installed
   cliStale: string; // after the install path, when it is not this app's rex
   cliInstalled: string; // the toast after Install, before the install path
+  /** macOS draws its window controls over the page (the shell reserves a row for them); Windows draws its
+   *  own title bar above it, so there is nothing to reserve (#636). */
+  windowControlsInContent: boolean;
 }
 
 /** A detected code editor (mirrors the Rust EditorApp DTO). */

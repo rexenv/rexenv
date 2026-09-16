@@ -17,6 +17,7 @@ export const mockPlatformWords: PlatformWords = {
   cliInstall: "Put the rex command on your PATH to manage rexenv from the terminal. One admin prompt.",
   cliStale: "points elsewhere (an old copy or another tool) — reinstall to point it at this app.",
   cliInstalled: "rex installed — run it from any terminal",
+  windowControlsInContent: true,
 };
 
 export const mockAppInfo: AppInfo = {

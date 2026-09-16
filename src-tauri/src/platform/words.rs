@@ -31,6 +31,10 @@ pub struct PlatformWords {
     pub cli_stale: &'static str,
     /// The toast after Install, before the install path in parentheses.
     pub cli_installed: &'static str,
+    /// Whether this OS draws its window controls INSIDE the page — macOS's traffic lights over a
+    /// `titleBarStyle: "Overlay"` window, which the shell reserves a row for. Windows draws its own title
+    /// bar above the page, so reserving that row there leaves a dead strip (W9 S1, ruling Q1, ledger #636).
+    pub window_controls_in_content: bool,
 }
 
 pub const MACOS: PlatformWords = PlatformWords {
@@ -44,6 +48,7 @@ pub const MACOS: PlatformWords = PlatformWords {
     cli_install: "Put the rex command on your PATH to manage rexenv from the terminal. One admin prompt.",
     cli_stale: "points elsewhere (an old copy or another tool) — reinstall to point it at this app.",
     cli_installed: "rex installed — run it from any terminal",
+    window_controls_in_content: true,
 };
 
 pub const WINDOWS: PlatformWords = PlatformWords {
@@ -57,6 +62,7 @@ pub const WINDOWS: PlatformWords = PlatformWords {
     cli_install: "Copy the rex command into rexenv's own folder and add that folder to your user Path, to manage rexenv from the terminal. No admin prompt.",
     cli_stale: "is an older copy — reinstall to update it to this app's rex.",
     cli_installed: "rex installed — open a new terminal to use it",
+    window_controls_in_content: false,
 };
 
 /// This build's words.
@@ -117,6 +123,35 @@ mod tests {
         assert!(WINDOWS.git_install.contains("Git for Windows"));
         assert!(WINDOWS.cli_install.contains("user Path") && WINDOWS.cli_install.contains("No admin prompt"), "{}", WINDOWS.cli_install);
         assert!(WINDOWS.cli_installed.contains("new terminal"), "a terminal already open does not see the new Path: {}", WINDOWS.cli_installed);
+    }
+
+    /// Ledger #636 — the window's controls: macOS draws them over the page (the shell reserves a row),
+    /// Windows draws its own title bar above it (reserving there is a dead strip).
+    #[test]
+    fn only_macos_draws_its_window_controls_inside_the_page() {
+        // Through locals: a bare `assert!` on a const is `clippy::assertions_on_constants`, which verify denies.
+        let (mac, windows) = (MACOS.window_controls_in_content, WINDOWS.window_controls_in_content);
+        assert!(mac, "macOS draws its traffic lights over the page — the shell reserves that row");
+        assert!(!windows, "Windows draws its own title bar above the page — reserving there is a dead strip");
+    }
+
+    /// Ledger #636 — **the shell reserves that row only where the OS draws its controls over the page**: the
+    /// sidebar's spacer is rendered behind `windowControlsInContent`, never unconditionally. Read from the
+    /// shell's own source, so a spacer put back by hand is seen.
+    #[test]
+    fn the_shell_reserves_the_window_control_row_only_where_the_flag_says_so() {
+        let sidebar = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../src/components/shell/Sidebar.tsx"),
+        )
+        .expect("read the shell's sidebar");
+        let spacers: Vec<&str> = sidebar.lines().filter(|l| l.contains(r#"className="h-3""#)).collect();
+        assert_eq!(spacers.len(), 1, "expected exactly one reserved-row spacer:\n{spacers:?}");
+        assert!(
+            spacers[0].contains("windowControlsInContent &&"),
+            "the reserved row is rendered unconditionally — on Windows that is a dead strip under the OS's own \
+             title bar:\n{}",
+            spacers[0].trim()
+        );
     }
 
     /// Ledger #626 — **the UI writes no macOS thing itself**: "Finder", `xcode-select` and `brew install` appear

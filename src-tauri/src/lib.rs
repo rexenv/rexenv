@@ -295,6 +295,32 @@ pub fn run() {
                 });
             }
 
+            // WebView2's browser shortcuts are a browser's, not an app's: Ctrl+R and F5 RELOADED the whole
+            // app mid-task (measured on the Dell, 16 Sep 2026), and Ctrl+P, Ctrl+F and F12 are the same
+            // family. wry leaves them at WebView2's default and tauri 2.11 does not surface the switch, so
+            // the controller is asked directly (W9 S2, ruling Q2, ledger #637). Best-effort: a webview that
+            // cannot answer is a webview whose keys stay as they were, not a launch that fails.
+            #[cfg(target_os = "windows")]
+            if let Some(main) = app.get_webview_window("main") {
+                let _ = main.with_webview(|pw| {
+                    use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings3;
+                    use windows::core::Interface;
+                    // SAFETY: the controller tauri hands us belongs to this window's live webview, and every
+                    // call here is a COM getter or setter on it, made on the thread tauri runs this closure on.
+                    let done = unsafe {
+                        pw.controller()
+                            .CoreWebView2()
+                            .and_then(|webview| webview.Settings())
+                            .and_then(|settings| settings.cast::<ICoreWebView2Settings3>())
+                            .and_then(|settings| settings.SetAreBrowserAcceleratorKeysEnabled(false))
+                    };
+                    match done {
+                        Ok(()) => log::info!("webview: browser accelerator keys off (Ctrl+R, F5, Ctrl+P, Ctrl+F, F12)"),
+                        Err(e) => log::warn!("webview: could not turn the browser accelerator keys off: {e}"),
+                    }
+                });
+            }
+
             // DNS: the resolution plane must SURVIVE the app — the data plane
             // (nginx/fpm/DB/edge) already outlives a quit, but sites are
             // unreachable without DNS, and the old always-in-process resolver
@@ -2461,6 +2487,25 @@ mod tests {
         assert!(
             src.contains(r#"const WINDOWS_TRAY_ICON: &[u8] = include_bytes!("../icons/32x32.png");"#),
             "the Windows tray icon is the colour app icon"
+        );
+    }
+
+    /// Ledger #637 — **the Windows webview is asked to turn WebView2's browser shortcuts off**: Ctrl+R and F5
+    /// reloaded the whole app (measured on the Dell), and wry leaves them at WebView2's default. The call is
+    /// `SetAreBrowserAcceleratorKeysEnabled(false)` under `cfg(target_os = "windows")`, best-effort.
+    #[test]
+    fn the_windows_webview_turns_the_browser_accelerator_keys_off() {
+        let src = crate::core::copy_scan::production_source(include_str!("lib.rs"));
+        let start = src
+            .find("SetAreBrowserAcceleratorKeysEnabled")
+            .expect("the Windows webview no longer asks for the browser keys to be turned off");
+        let call = &src[start..src[start..].find(')').map(|i| start + i + 1).expect("the call's end")];
+        assert!(call.contains("(false)"), "the browser accelerator keys are being turned ON: {call}");
+        let before = &src[..start];
+        let guard = before.rfind("#[cfg(target_os = \"windows\")]").expect("the call is not behind a Windows cfg");
+        assert!(
+            before[guard..].contains("with_webview"),
+            "the call no longer runs inside the window's own webview closure"
         );
     }
 
