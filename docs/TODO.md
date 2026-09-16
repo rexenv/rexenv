@@ -489,8 +489,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     **S1 and S2 done 16 Sep 2026 (ledgers #636, #637), L0:** the reserved traffic-light row is behind
     `PlatformWords::window_controls_in_content` (macOS true, Windows false), and the Windows webview is asked
     for `SetAreBrowserAcceleratorKeysEnabled(false)` — `webview2-com` and `windows` became direct Windows
-    dependencies at wry's own versions. Plants 6/6. **Not yet run on the Dell:** which keys the setting stops,
-    and the row gone on screen. **Left:** S3 (the words), S4 (the paths), S5 (DESIGN's Windows section)
+    dependencies at wry's own versions. Plants 6/6. **Measured on the Dell the same day:** Ctrl+R, F5, Ctrl+P, Ctrl+F
+    and F12 now do nothing, while Ctrl+A/C/V/Z still work in a field; and the wordmark sits ~14px higher —
+    the dead strip under Windows' title bar is gone. **Left:** S3 (the words), S4 (the paths), S5 (DESIGN's
+    Windows section)
   - [ ] W10 — Redis/Apache/Xdebug/MariaDB (per D4) refused in core with an honest message
   - [ ] W11 — NSIS installer, Authenticode (if D5 rules it in), Windows release job, updater, winget
   - [ ] W12 — launch gates: verify on the Windows runner, SMOKE-TEST + INSTALL Windows
