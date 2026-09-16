@@ -1,3 +1,4 @@
+import { usePlatformWords } from "@/lib/usePlatformWords";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -295,6 +296,7 @@ function StatusPill({ icon, label }: { icon: ReactNode; label: string }) {
 }
 
 function Domains() {
+  const words = usePlatformWords();
   const qc = useQueryClient();
   const [state, setState] = useState<"idle" | "busy" | "done" | "error">("idle");
   const [error, setError] = useState("");
@@ -339,7 +341,7 @@ function Domains() {
           <>
             So your sites work at{" "}
             <span className="font-mono text-brand-tint">https://anything.rex</span>, rexenv adds a
-            private certificate authority to your Mac and points{" "}
+            private certificate authority to {words.caTarget} and points{" "}
             <span className="font-mono text-rex-text-bright">.rex</span> domains to your machine.
             Nothing leaves your computer.
           </>

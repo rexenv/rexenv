@@ -2757,8 +2757,8 @@ fn stack<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::ActedTa
         let scope = stack_scope(action).ok_or_else(|| Error::Other(format!("`{action}` is not a stack action. Use start, stop, restart, start_database, stop_database, start_mail, stop_mail, start_sites, stop_sites, catch_mail, stop_catching_mail, set_engine_version, adminer, adminer_update_check, adminer_update_apply, adminer_theme, downloads, prefetch, retry_download, autostart or edge_conflict.")))?;
         let service = args.get("service").and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty());
         let wanted = match action {
-            "start" => "start rexenv's whole stack (macOS will also ask for your password)".to_string(),
-            "stop" => "stop rexenv's whole stack — every site goes offline (macOS will also ask for your password)".to_string(),
+            "start" => format!("start rexenv's whole stack ({})", crate::platform::words::current().elevation_note),
+            "stop" => format!("stop rexenv's whole stack — every site goes offline ({})", crate::platform::words::current().elevation_note),
             "restart" => format!("restart the `{}` service", service.ok_or_else(|| Error::Other("stack `restart` needs `service` (nginx, edge or php-<minor>).".into()))?),
             "start_database" | "stop_database" => {
                 let s = service.ok_or_else(|| Error::Other(format!("stack `{action}` needs `service` (mysql, mariadb or postgres).")))?;
@@ -2972,9 +2972,9 @@ fn tld<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::ActedTarg
             _ => {}
         }
         let wanted = match action {
-            "set" => format!("make `.{tld}` the default TLD and install its resolver (macOS will also ask for your password)"),
-            "repair" => format!("put back the resolver file for `.{tld}` (macOS will also ask for your password)"),
-            "remove" => format!("remove rexenv's resolver file for `.{tld}` (macOS will also ask for your password)"),
+            "set" => format!("make `.{tld}` the default TLD and install its resolver ({})", crate::platform::words::current().elevation_note),
+            "repair" => format!("put back the resolver file for `.{tld}` ({})", crate::platform::words::current().elevation_note),
+            "remove" => format!("remove rexenv's resolver file for `.{tld}` ({})", crate::platform::words::current().elevation_note),
             other => return Err(Error::Other(format!("`{other}` is not a tld action. Use set, repair, remove, status or policy."))),
         };
         ctx.claim::<scope::System>(None, &wanted)?;
@@ -3315,7 +3315,12 @@ fn valet_import<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::
                 format!("import {} from Valet, Herd or Local", domains.join(", "))
             }
             "cancel" => "cancel the running import".to_string(),
-            _ => format!("{} the resolver for `.{}` (macOS will also ask for your password)", action.replace('_', " "), str_field(args, "tld", action)?.trim_start_matches('.')),
+            _ => format!(
+                "{} the resolver for `.{}` ({})",
+                action.replace('_', " "),
+                str_field(args, "tld", action)?.trim_start_matches('.'),
+                crate::platform::words::current().elevation_note
+            ),
         };
         claim_stack(&ctx, scope, &wanted)?;
         // Connecting edits the user's own wp-config — the write `connection_rewrite`

@@ -837,6 +837,7 @@ function ActionRow({
 }
 
 function DnsSslSetting() {
+  const words = usePlatformWords();
   const qc = useQueryClient();
   // Poll on the Services cadence: the shared ["dns-status"] key is only
   // refetched by MOUNTED observers, and Services (the other poller) unmounts
@@ -854,7 +855,7 @@ function DnsSslSetting() {
   const trust = useMutation({
     mutationFn: trustLocalCa,
     onSuccess: () => {
-      setMsg("Local CA re-trusted in your login keychain.");
+      setMsg(`Local CA re-trusted in your ${words.trustStore}.`);
       void qc.invalidateQueries({ queryKey: ["dns-status"] });
     },
     onError: (e) => toastBackendError(e),
@@ -943,7 +944,7 @@ function DnsSslSetting() {
             <div className="min-w-0">
               <div className="text-[0.8125rem] font-medium text-rex-text">Local CA</div>
               <div className="mt-px font-mono text-[0.65625rem] text-rex-text-muted">
-                {dns?.caTrusted ? "trusted · login keychain" : "not trusted — use Re-trust below"}
+                {dns?.caTrusted ? `trusted · ${words.trustStore}` : "not trusted — use Re-trust below"}
               </div>
             </div>
           </div>
@@ -1010,7 +1011,7 @@ function DnsSslSetting() {
       <div className="rounded-[13px] border border-rex-border-subtle bg-rex-surface-1 px-5">
         <ActionRow
           title="Re-trust local CA"
-          desc="Reinstall rexenv's certificate authority in your system keychain."
+          desc={`Reinstall rexenv's certificate authority in your ${words.trustStore}.`}
           busy={trust.isPending}
           label="Re-trust"
           onClick={() => {
@@ -1213,6 +1214,7 @@ export function WpCliPackagesCard() {
  *  Blocked TLDs are refused by the BACKEND — the inline feedback here mirrors
  *  the same `tld_policy` classification, it doesn't enforce anything. */
 function DefaultTldCard() {
+  const words = usePlatformWords();
   const qc = useQueryClient();
   const { data: current = "rex" } = useQuery({ queryKey: ["default-tld"], queryFn: defaultTld });
   const [input, setInput] = useState<string | null>(null); // null = untouched
@@ -1298,7 +1300,7 @@ function DefaultTldCard() {
       <div className="mt-2.5 text-[0.71875rem] text-rex-text-muted">
         <span className="font-mono">.rex</span> is rexenv's home TLD — its resolver is set up
         during onboarding and rexenv's own tools use it. Any other TLD (including{" "}
-        <span className="font-mono">.test</span>) asks for your password once, when its first
+        <span className="font-mono">.test</span>) {words.privilegedPrompt}, when its first
         site is created.
       </div>
     </div>

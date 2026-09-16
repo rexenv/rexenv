@@ -1096,6 +1096,11 @@ export interface PlatformWords {
   cliInstall: string; // the Command-line tool card before rex is installed
   cliStale: string; // after the install path, when it is not this app's rex
   cliInstalled: string; // the toast after Install, before the install path
+  trustStore: string; // where the OS keeps the user's own trusted certificate authorities
+  privilegedPrompt: string; // what a first privileged step costs ("asks for your password once")
+  osName: string; // this OS's name, for a sentence that must say it
+  caTarget: string; // what a local CA is added to, as a sentence uses it
+  elevationNote: string; // an agent consent line's note when the OS will prompt too
   /** macOS draws its window controls over the page (the shell reserves a row for them); Windows draws its
    *  own title bar above it, so there is nothing to reserve (#636). */
   windowControlsInContent: boolean;

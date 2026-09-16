@@ -491,7 +491,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     for `SetAreBrowserAcceleratorKeysEnabled(false)` — `webview2-com` and `windows` became direct Windows
     dependencies at wry's own versions. Plants 6/6. **Measured on the Dell the same day:** Ctrl+R, F5, Ctrl+P, Ctrl+F
     and F12 now do nothing, while Ctrl+A/C/V/Z still work in a field; and the wordmark sits ~14px higher —
-    the dead strip under Windows' title bar is gone. **Left:** S3 (the words), S4 (the paths), S5 (DESIGN's
+    the dead strip under Windows' title bar is gone. **S3a done the same day (ledger #638), L0:** the trust store, the first
+    privileged prompt, the OS's name, what a CA is added to, and an agent consent line's note are platform
+    words now — Settings' Local CA card, its TLD copy, SiteDetail's domain dialog, Onboarding's first screen
+    and the five MCP descriptions. Plants 5/5; the frontend scan widened to "keychain", "your Mac" and "with
+    macOS". **Left:** S3b (the Rust half — "this Mac", the menu-bar log line, "macOS refused the operation",
+    the two "/Applications and ~/Applications" tooltips, and a Rust-side scan), S4 (the paths), S5 (DESIGN's
     Windows section)
   - [ ] W10 — Redis/Apache/Xdebug/MariaDB (per D4) refused in core with an honest message
   - [ ] W11 — NSIS installer, Authenticode (if D5 rules it in), Windows release job, updater, winget

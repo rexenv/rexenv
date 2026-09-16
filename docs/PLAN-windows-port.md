@@ -1537,6 +1537,15 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   wordmark sits ~14px higher, so the strip under Windows' own title bar is gone. Also learned, and not
   hidden: the Mac ran out of disk mid-verify (the Windows caches held 19 GB) — the owner ruled they be
   cleared, which is why that verify was re-run from cold.
+  **S3a done 16 Sep 2026 (ledger #638), L0.** Five words joined `PlatformWords` — `trust_store`,
+  `privileged_prompt`, `os_name`, `ca_target`, `elevation_note` — and the screens ask for them: Settings'
+  Local CA card (its re-trust toast, its "trusted · …" line and the Re-trust description), Settings' TLD
+  copy, SiteDetail's domain dialog, Onboarding's first screen, and the five MCP consent descriptions in
+  `user_sites.rs`. The frontend scan grew "keychain", "your Mac" and "with macOS", which immediately caught
+  two of my own type comments quoting macOS examples. Plants 5/5. Left for S3b: the Rust half — "this Mac"
+  (`core/dns.rs`'s prompt reason and the onboarding copy `core/proxy.rs` guards), `lib.rs`'s "staying in the
+  menu bar", `traits.rs`'s "macOS refused the operation", Settings' two "/Applications and ~/Applications"
+  tooltips — and a Rust-side scan, since nothing yet stops a literal being typed back there.
   *Done when:* on the Dell, no screen names a Mac thing; Ctrl+R does not reload; the window looks like a
   Windows app (native title bar, no dead row); and a path shown as an example reads `C:\…`.
 - **W10 — Feature gates per D4.** Refused in core, honest in the UI, one arm to enable later.

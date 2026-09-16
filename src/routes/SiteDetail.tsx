@@ -1545,7 +1545,7 @@ function ChangeDomainDialog({ site, onClose }: { site: Site; onClose: () => void
             <div className="mt-1.5 text-[0.71875rem] text-rex-text-muted">
               Lowercase letters, digits and hyphens, ending in a development TLD (e.g.{" "}
               <span className="font-mono">.rex</span> or <span className="font-mono">.test</span>).
-              First use of a new TLD asks for your password once to register it with macOS.
+              First use of a new TLD {words.privilegedPrompt} to register it with {words.osName}.
             </div>
             {policy && !policy.allowed && (
               <div className="mt-1.5 text-[0.71875rem] text-status-error-bright">{policy.reason}</div>

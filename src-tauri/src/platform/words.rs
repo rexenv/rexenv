@@ -31,6 +31,17 @@ pub struct PlatformWords {
     pub cli_stale: &'static str,
     /// The toast after Install, before the install path in parentheses.
     pub cli_installed: &'static str,
+    /// Where this OS keeps the user's own trusted certificate authorities, as a sentence uses it (W9 S3a,
+    /// ledger #638).
+    pub trust_store: &'static str,
+    /// What a first privileged step costs the user, as a sentence uses it ("… asks for your password once").
+    pub privileged_prompt: &'static str,
+    /// This OS's name, for a sentence that must say it ("register it with macOS").
+    pub os_name: &'static str,
+    /// What a local CA is added TO, as a sentence uses it ("adds a private certificate authority to …").
+    pub ca_target: &'static str,
+    /// The note an agent's consent line carries when the step will also raise the OS's own prompt.
+    pub elevation_note: &'static str,
     /// Whether this OS draws its window controls INSIDE the page — macOS's traffic lights over a
     /// `titleBarStyle: "Overlay"` window, which the shell reserves a row for. Windows draws its own title
     /// bar above the page, so reserving that row there leaves a dead strip (W9 S1, ruling Q1, ledger #636).
@@ -48,6 +59,11 @@ pub const MACOS: PlatformWords = PlatformWords {
     cli_install: "Put the rex command on your PATH to manage rexenv from the terminal. One admin prompt.",
     cli_stale: "points elsewhere (an old copy or another tool) — reinstall to point it at this app.",
     cli_installed: "rex installed — run it from any terminal",
+    trust_store: "login keychain",
+    privileged_prompt: "asks for your password once",
+    os_name: "macOS",
+    ca_target: "your Mac",
+    elevation_note: "macOS will also ask for your password",
     window_controls_in_content: true,
 };
 
@@ -62,6 +78,11 @@ pub const WINDOWS: PlatformWords = PlatformWords {
     cli_install: "Copy the rex command into rexenv's own folder and add that folder to your user Path, to manage rexenv from the terminal. No admin prompt.",
     cli_stale: "is an older copy — reinstall to update it to this app's rex.",
     cli_installed: "rex installed — open a new terminal to use it",
+    trust_store: "Trusted Root store",
+    privileged_prompt: "asks for an administrator's approval once",
+    os_name: "Windows",
+    ca_target: "Windows",
+    elevation_note: "Windows will also ask for approval",
     window_controls_in_content: false,
 };
 
@@ -81,7 +102,7 @@ pub fn current() -> &'static PlatformWords {
 mod tests {
     use super::*;
 
-    fn fields(w: &PlatformWords) -> [&'static str; 10] {
+    fn fields(w: &PlatformWords) -> [&'static str; 15] {
         [
             w.reveal,
             w.file_manager,
@@ -93,6 +114,11 @@ mod tests {
             w.cli_install,
             w.cli_stale,
             w.cli_installed,
+            w.trust_store,
+            w.privileged_prompt,
+            w.os_name,
+            w.ca_target,
+            w.elevation_note,
         ]
     }
 
@@ -109,6 +135,11 @@ mod tests {
         assert_eq!(MACOS.cli_install, "Put the rex command on your PATH to manage rexenv from the terminal. One admin prompt.");
         assert_eq!(MACOS.cli_stale, "points elsewhere (an old copy or another tool) — reinstall to point it at this app.");
         assert_eq!(MACOS.cli_installed, "rex installed — run it from any terminal");
+        // The trust, consent and CA words, moved here by W9 S3a (#638) — the text those screens showed.
+        assert_eq!(MACOS.trust_store, "login keychain");
+        assert_eq!(MACOS.privileged_prompt, "asks for your password once");
+        assert_eq!(MACOS.ca_target, "your Mac");
+        assert_eq!(MACOS.elevation_note, "macOS will also ask for your password");
     }
 
     /// Ledger #626 — no Windows word names a macOS thing.
@@ -123,6 +154,9 @@ mod tests {
         assert!(WINDOWS.git_install.contains("Git for Windows"));
         assert!(WINDOWS.cli_install.contains("user Path") && WINDOWS.cli_install.contains("No admin prompt"), "{}", WINDOWS.cli_install);
         assert!(WINDOWS.cli_installed.contains("new terminal"), "a terminal already open does not see the new Path: {}", WINDOWS.cli_installed);
+        assert!(WINDOWS.trust_store.contains("Trusted Root"), "{}", WINDOWS.trust_store);
+        assert!(WINDOWS.privileged_prompt.contains("administrator"), "UAC asks for approval, not a password: {}", WINDOWS.privileged_prompt);
+        assert_eq!(WINDOWS.os_name, "Windows");
     }
 
     /// Ledger #636 — the window's controls: macOS draws them over the page (the shell reserves a row),
@@ -182,7 +216,10 @@ mod tests {
                     if t.starts_with("//") || t.starts_with('*') || t.starts_with("/*") {
                         continue;
                     }
-                    if ["Finder", "xcode-select", "brew install"].iter().any(|w| line.contains(w)) {
+                    if ["Finder", "xcode-select", "brew install", "keychain", "your Mac", "with macOS"]
+                        .iter()
+                        .any(|w| line.contains(w))
+                    {
                         offenders.push(format!("{}:{}: {}", path.display(), i + 1, t));
                     }
                 }

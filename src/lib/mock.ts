@@ -17,6 +17,11 @@ export const mockPlatformWords: PlatformWords = {
   cliInstall: "Put the rex command on your PATH to manage rexenv from the terminal. One admin prompt.",
   cliStale: "points elsewhere (an old copy or another tool) — reinstall to point it at this app.",
   cliInstalled: "rex installed — run it from any terminal",
+  trustStore: "login keychain",
+  privilegedPrompt: "asks for your password once",
+  osName: "macOS",
+  caTarget: "your Mac",
+  elevationNote: "macOS will also ask for your password",
   windowControlsInContent: true,
 };
 
