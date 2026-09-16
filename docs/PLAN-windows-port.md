@@ -1603,7 +1603,37 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   is back.
 - **W11 — Packaging and updates per D5.** NSIS bundle, signing (only after D5's measurement and ruling), a Windows job in
   `.github/workflows/release.yml`, Windows `AppBundle`, winget manifest.
-- **W12 — Launch gates.** `verify.sh` runnable on the Windows runner (Git Bash);
+- **W12 — Launch gates.** **The script side was SURVEYED 16 Sep 2026** (read, not run — there is
+  still no Windows host). What breaks under Git Bash, and what was done about each:
+  **Fixed here, because each is portable BY CONSTRUCTION and stays green on the Mac:**
+  `verify.sh`'s `mktemp -t rexenv-windows-check` (BSD appends the `XXXXXX`, GNU refuses a template
+  without them — the template now carries its own, valid on both, and under `set -euo pipefail` the
+  GNU error would have killed the bar before the receipt); `status.py`'s four `read_text()` calls
+  (Windows decodes cp1252 and dies on TODO.md's em-dashes and emoji), its `write_text` (now
+  `newline="\n"`, so a Windows regeneration is not a whole-file diff) and its two `sh(["./scripts/…"])`
+  calls (`CreateProcess` cannot execute a shebang script — they go through `bash` now); and a
+  `.gitattributes` with `eol=lf`, because a default Git for Windows checkout rewrites every file
+  with CRLF and the doc gates read line endings as CONTENT — `doc-counts` greps
+  `^#[tauri::command]$` and would find zero commands, which reads as a baffling failure rather than
+  a line ending. The tree carries no CRLF today (checked), so the file adds no diff.
+  **Deliberately NOT fixed from here, because each needs the Windows host to verify:**
+  `verify-receipt.sh`'s `shasum` (a Perl script, likely absent in Git Bash — but a blind swap to
+  `sha256sum` is wrong too: stock macOS has no `sha256sum`, so the portable form must try both, and
+  note its failure mode is a SILENT empty fingerprint, not a red); `check-app-manifest*.sh`'s two
+  `xxd` calls and the test's `file:///tmp/…` fixture URL, which native `curl.exe` resolves against
+  the drive root under MSYS (needs `cygpath -m`) — and whether Git Bash's OpenSSL supports
+  `pkeyutl -rawin` for Ed25519 at all; `build.rs`, whose sidecar staging is `#[cfg(target_os =
+  "macos")]` so a Windows host stages nothing and `tauri_build` then refuses the missing
+  `binaries/rex-x86_64-pc-windows-msvc.exe` (`scripts/build-cli.sh` already has a MINGW arm that
+  would do it, and nothing in `verify.sh` calls it); and `windows-check.sh`, which without `brew`
+  and `cargo-xwin` exits 3 — so `verify.sh` prints SKIPPED and the Windows compile gate is INERT on
+  the one machine that could check it natively (there it should be a plain
+  `cargo check --all-targets`).
+  **The real unknown is not a script question:** `windows-check.sh` only ever proved `cargo check`
+  — it does not link and runs no test — so whether the 1376 lib tests and the CLI's 25 pass on a
+  Windows host has never been measured. `cli_server.rs` alone has 18 `UnixStream` uses. Expect that
+  to be the bulk of W12, not the script edits.
+  Still required: `verify.sh` runnable on the Windows runner (Git Bash);
   macOS-only examples tiered or ported; a Windows section in `docs/SMOKE-TEST.md` run on
   a clean Windows 11 VM; a Windows section in `docs/INSTALL.md` (SmartScreen, the UAC
   prompts, what Defender does to first start).

@@ -132,7 +132,9 @@ done
 # ledger #583). So windows-check's exit 3, "cannot run on this machine", becomes a
 # SKIPPED line printed right above the verdict, and every other non-zero exit is a
 # Windows compile break that fails the bar. Exit codes are captured, never piped.
-WC_LOG="$(mktemp -t rexenv-windows-check)"
+# The template carries its own XXXXXX: BSD mktemp appends them, GNU (Git Bash on the
+# Windows runner, W12) refuses a template without at least three. Valid on both.
+WC_LOG="$(mktemp -t rexenv-windows-check.XXXXXX)"
 set +e
 ./scripts/windows-check.sh > "$WC_LOG" 2>&1
 wc_code=$?

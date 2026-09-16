@@ -1,0 +1,5 @@
+# One line ending everywhere. Without this a default Git for Windows checkout
+# (core.autocrlf=true) rewrites every file with CRLF, and the generated-doc gates
+# read it as content: doc-counts greps `^#[tauri::command]$` and finds nothing,
+# which looks like a baffling failure rather than a line ending (W12).
+* text=auto eol=lf

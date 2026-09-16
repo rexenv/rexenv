@@ -529,9 +529,15 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     **The example half is done 16 Sep 2026 (ledger #645):** the tier table grew an os column
     (`both`/`macos`/`windows`, enforced like the tier itself), the runner skips what this host
     cannot run and says how many, and a skip is printed beside the verdict rather than folded
-    into it. 184 examples: 88 both, 69 macOS-only, 27 Windows-only. Plants 4/4. **Left:**
-    `verify.sh` under Git Bash on the runner, the SMOKE-TEST and INSTALL Windows sections, and
-    the clean Windows 11 VM pass — all of which need the runner or the VM, not this Mac
+    into it. 184 examples: 88 both, 69 macOS-only, 27 Windows-only. Plants 4/4. **Script side surveyed 16 Sep 2026** (read, not run):
+    four portable-by-construction fixes landed here — `verify.sh`'s `mktemp` template, `status.py`'s
+    utf-8/LF/`bash`-invoked helpers, and a `.gitattributes` with `eol=lf` so a Windows checkout's
+    CRLF cannot be read as content by the doc gates. Left needing the host: `verify-receipt.sh`'s
+    `shasum`, `check-app-manifest*.sh`'s `xxd` and `file://` fixtures, `build.rs`'s macOS-only
+    sidecar staging, and `windows-check.sh` (which exits 3 without `brew`/`cargo-xwin`, so the
+    Windows compile gate is inert on Windows). **The bulk is not scripts:** no Rust test has ever
+    RUN on a Windows host — `windows-check.sh` proves `cargo check` only. **Left:** that, the
+    SMOKE-TEST and INSTALL Windows sections, and the clean Windows 11 VM pass
 
 - [x] **An older rexenv refuses a database a newer one migrated** ✓ 13 Sep 2026 — built the same
   day at the owner's go: `refuse_newer_schema` in `state::db::open` (before any pragma) and
