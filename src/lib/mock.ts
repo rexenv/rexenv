@@ -28,6 +28,7 @@ export const mockPlatformWords: PlatformWords = {
   routesLabel: "file under /etc/resolver",
   homePrefix: "~",
   importSearch: "~/.config/valet and in Herd's and Local's application-support folders",
+  importsOtherTools: true,
   windowControlsInContent: true,
 };
 

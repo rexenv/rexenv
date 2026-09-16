@@ -504,9 +504,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     (and why fake traffic lights are the dishonesty the rules forbid), the browser accelerator keys, the OS's
     nouns coming from the platform, and the three bundled type families. **Left to close W9:** the owner's
     look on the Dell at the Windows wording (Settings' Local CA card, Onboarding's first screen, SiteDetail's
-    domain copy, the teardown confirmation) — the build will be staged for them. **Open for the owner:** the
-    Valet/Herd/Local importer cannot work on Windows as written (macOS-shaped homes) — port it, or say so on
-    the card
+    domain copy, the teardown confirmation) — the build will be staged for them. **Ruled by the owner 16 Sep 2026: say so now, port later** — done the same day
+    (ledger #641, L0): `importsOtherTools` is false on Windows, the scan skips both discoveries there, and
+    the card says rexenv didn't look rather than that nothing is there. Plants 4/4. The port itself stays
+    open. **Also ruled:** `app_update`'s "this Mac's macOS version" wording stays macOS-only until the
+    Windows updater (W11), which is why the Rust scan names it as an exception
   - [ ] W10 — Redis/Apache/Xdebug/MariaDB (per D4) refused in core with an honest message
   - [ ] W11 — NSIS installer, Authenticode (if D5 rules it in), Windows release job, updater, winget
   - [ ] W12 — launch gates: verify on the Windows runner, SMOKE-TEST + INSTALL Windows

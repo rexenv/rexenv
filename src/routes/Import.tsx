@@ -377,11 +377,17 @@ export function Import() {
             <div className="rounded-xl border border-rex-border bg-rex-surface-1 p-6 text-center">
               <FolderInput className="mx-auto h-6 w-6 text-rex-text-dim" strokeWidth={1.6} />
               <div className="mt-2 text-[0.875rem] text-rex-text">
-                No Valet, Herd or Local sites found
+                {data?.unsupported
+                  ? "Importing from Valet, Herd and Local isn't ready here yet"
+                  : "No Valet, Herd or Local sites found"}
               </div>
               <div className="mt-1 text-[0.75rem] text-rex-text-muted">
-                rexenv looked in <span className="font-mono">{words.importSearch}</span>. Nothing of
-                theirs was changed.
+                {data?.unsupported ?? (
+                  <>
+                    rexenv looked in <span className="font-mono">{words.importSearch}</span>. Nothing
+                    of theirs was changed.
+                  </>
+                )}
               </div>
             </div>
             {/* No sites, but their resolver file can outlive them — this is the

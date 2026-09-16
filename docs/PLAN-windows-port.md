@@ -1567,7 +1567,14 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   **Measured, and open for the owner:** the Valet/Herd/Local importer cannot work on Windows as written —
   `valet_homes`, `herd_home` and `local_home` all build macOS layouts (`Library/Application Support`), while
   Herd on Windows keeps its tree under `%LOCALAPPDATA%`. On the Dell that card will always say "none found".
-  Its words are honest now; whether to port the importer or say so plainly is the owner's call.
+  Its words were honest already; **the owner ruled 16 Sep 2026 — say so now, port later**, done
+  the same day (ledger #641): `PlatformWords::imports_other_tools` is false on Windows, `scan_valet_import`
+  skips BOTH discoveries there, and `ImportScan::unsupported` carries one sentence — built in core from
+  `os_name`, so the screen cannot drift from it — which the empty state shows instead of "none found". The
+  consent cards and the leftover-dumps card still render there: leftover routes and leftover dumps are real
+  on Windows. Plants 4/4, one of which first came back as an ANCHOR MATCHED 2 TIMES non-verdict (the string
+  also appears in the guard's own assertion) and was re-run with a unique anchor. The port of the Windows
+  layouts (`%LOCALAPPDATA%\Herd`, Local's AppData tree) stays open.
   *Done when:* on the Dell, no screen names a Mac thing; Ctrl+R does not reload; the window looks like a
   Windows app (native title bar, no dead row); and a path shown as an example reads `C:\…`.
 - **W10 — Feature gates per D4.** Refused in core, honest in the UI, one arm to enable later.

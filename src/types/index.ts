@@ -258,6 +258,9 @@ export interface ImportScan {
   /** Every hostname rexenv answers on, lowercased — the name field's live
    *  "taken" check. A hint: the run checks again. */
   takenDomains: string[];
+  /** Set when rexenv did not LOOK (this OS's Valet/Herd/Local layouts aren't ported yet) — as
+   *  opposed to looking and finding nothing. The empty state says this instead of "none found". */
+  unsupported: string | null;
 }
 
 /** What handing a resolver file back actually did (mirrors ResolverPlan). */
@@ -1107,6 +1110,7 @@ export interface PlatformWords {
   routesLabel: string; // what ONE of this OS's DNS routes is, as a sentence counts them
   homePrefix: string; // how a path in the user's home folder is written ("~" / "%USERPROFILE%")
   importSearch: string; // where the importer looked for other local-dev tools
+  importsOtherTools: boolean; // whether this OS's Valet/Herd/Local layouts are known at all
   /** macOS draws its window controls over the page (the shell reserves a row for them); Windows draws its
    *  own title bar above it, so there is nothing to reserve (#636). */
   windowControlsInContent: boolean;

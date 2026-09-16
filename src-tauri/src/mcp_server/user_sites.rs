@@ -4211,7 +4211,7 @@ pub(crate) mod tests {
     impl ImportOps for FakeOps {
         fn valet_scan<'a>(&'a self) -> OpFuture<'a, Result<crate::commands::valet_import::ImportScan>> {
             self.calls.lock().unwrap().push("valet scan".into());
-            Box::pin(async { Ok(crate::commands::valet_import::ImportScan { sources: vec![], candidates: vec![], tlds: vec![], available_php: vec!["8.3".into()], taken_domains: vec![] }) })
+            Box::pin(async { Ok(crate::commands::valet_import::ImportScan { sources: vec![], candidates: vec![], tlds: vec![], available_php: vec!["8.3".into()], taken_domains: vec![], unsupported: None }) })
         }
         fn valet_drift<'a>(&'a self) -> OpFuture<'a, Result<Vec<String>>> { Box::pin(async { Ok(vec!["test".into()]) }) }
         fn valet_run<'a>(&'a self, request: crate::commands::valet_import::ImportRequest) -> OpFuture<'a, Result<crate::commands::valet_import::ImportResult>> {

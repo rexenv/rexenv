@@ -107,6 +107,27 @@ pub struct ImportScan {
     /// lowercased — so the name field of a `domain_choice` row can say "taken"
     /// as it is typed. A hint only: the run checks again (`choose_domain`).
     pub taken_domains: Vec<String>,
+    /// Set when rexenv did not LOOK, rather than looked and found nothing — this OS's layouts for
+    /// Valet, Herd and Local are not ported yet (`PlatformWords::imports_other_tools`). The scan
+    /// reports it instead of returning an empty list, because "no sites found" answers a question
+    /// nobody asked. Owner ruled 16 Sep 2026: say so now, port later (ledger #641).
+    pub unsupported: Option<String>,
+}
+
+/// Why this OS's scan found nothing to look AT — or `None` where the layouts are known.
+///
+/// Pure, and given the words rather than reading them, so both answers are testable on either
+/// host. The sentence lives here rather than in the screen for the reason
+/// `binaries::xdebug_unavailable_reason` gives: one refusal, one place, so two surfaces cannot
+/// drift into telling the same user different stories (ledger #641).
+pub(crate) fn unsupported_reason(w: &crate::platform::words::PlatformWords) -> Option<String> {
+    (!w.imports_other_tools).then(|| {
+        format!(
+            "rexenv doesn't know where Valet, Herd or Local keep their sites on {} yet, so it \
+             didn't look. Nothing of theirs was touched.",
+            w.os_name
+        )
+    })
 }
 
 /// Scan for Valet/Herd sites. Read-only: nothing of theirs is written, started
@@ -120,14 +141,20 @@ pub fn scan_valet_import(state: State<'_, AppState>) -> Result<ImportScan> {
         .home_dir()
         .to_path_buf();
 
-    let mut found = core::valet::discover(&home);
+    // Only scan where we know the other tools' layouts. Probing a Windows home with macOS paths
+    // cannot find anything, and reporting that emptiness as a result is a false answer (#641).
+    let knows_the_layouts = crate::platform::words::current().imports_other_tools;
+    let unsupported = unsupported_reason(crate::platform::words::current());
+
+    let mut found =
+        if knows_the_layouts { core::valet::discover(&home) } else { core::valet::Discovery::default() };
     let available: Vec<String> = core::php::all_minors();
     let existing = core::sites::list(&conn)?;
     // Local's rows arrive already re-homed onto the default TLD (`.local` is
     // refused by policy), so the scan needs the setting — read here, where the
     // connection is, keeping `core::localwp` pure.
     let default_tld = core::sites::default_tld(&conn)?;
-    let local_rows = match core::localwp::discover(&home, &default_tld) {
+    let local_rows = match core::localwp::discover(&home, &default_tld).filter(|_| knows_the_layouts) {
         Some((source, rows)) => {
             found.sources.push(source);
             rows
@@ -201,7 +228,7 @@ pub fn scan_valet_import(state: State<'_, AppState>) -> Result<ImportScan> {
         .collect();
     taken_domains.sort();
     taken_domains.dedup();
-    Ok(ImportScan { sources, candidates, tlds, available_php: available, taken_domains })
+    Ok(ImportScan { sources, candidates, tlds, available_php: available, taken_domains, unsupported })
 }
 
 /// Fold rows that serve the SAME folder into one, carrying the others as extra
@@ -1551,6 +1578,45 @@ fn scopeguard<F: FnOnce()>(f: F) -> impl Drop {
         }
     }
     G(Some(f))
+}
+
+#[cfg(test)]
+mod unported_scan_tests {
+    /// Ledger #641 — on an OS whose Valet/Herd/Local layouts are not ported, the scan says it did not
+    /// LOOK. macOS keeps saying nothing, so no Mac screen changes.
+    #[test]
+    fn only_an_unported_os_reports_that_nobody_looked() {
+        let words = crate::platform::words::MACOS;
+        assert_eq!(super::unsupported_reason(&words), None, "macOS knows the layouts — it looks");
+
+        let words = crate::platform::words::WINDOWS;
+        let why = super::unsupported_reason(&words).expect("Windows layouts are not ported yet");
+        assert!(why.contains("Windows"), "the sentence must name the OS that was not looked on: {why}");
+        assert!(why.contains("didn't look"), "the point is that nobody looked, not that nothing is there: {why}");
+        assert!(
+            !why.contains("no sites") && !why.contains("not found"),
+            "an emptiness claim is exactly the false answer this replaces: {why}"
+        );
+    }
+
+    /// Ledger #641 — **and the scan actually honours it**: neither discovery runs unguarded. Read from
+    /// the command's own production source, so a call put back by hand is seen.
+    #[test]
+    fn neither_discovery_runs_where_the_layouts_are_unknown() {
+        let src = crate::core::copy_scan::production_source(include_str!("valet_import.rs"));
+        assert!(
+            src.contains("pub fn scan_valet_import"),
+            "the stripper ate the source — every check below would pass on an empty string"
+        );
+        assert!(
+            src.contains("if knows_the_layouts { core::valet::discover(&home) }"),
+            "Valet/Herd discovery runs unguarded — on an unported OS it probes paths that cannot exist"
+        );
+        assert!(
+            src.contains("core::localwp::discover(&home, &default_tld).filter(|_| knows_the_layouts)"),
+            "Local discovery runs unguarded — same false answer, from the other source"
+        );
+    }
 }
 
 #[cfg(test)]

@@ -59,6 +59,12 @@ pub struct PlatformWords {
     pub home_prefix: &'static str,
     /// Where the importer looked for other local-dev tools, as the empty state says it.
     pub import_search: &'static str,
+    /// Whether rexenv knows where the OTHER local-dev tools (Valet, Herd, Local) keep their sites on this
+    /// OS. macOS yes; Windows not yet — `valet_homes`, `herd_home` and `local_home` build macOS layouts
+    /// (`Library/Application Support`), while Herd on Windows keeps its tree under `%LOCALAPPDATA%`. Scanning
+    /// anyway finds nothing and reports "no sites found", which tells the user something false: the truth is
+    /// that nobody looked. Owner ruled 16 Sep 2026 — say so now, port later (W9 S4 follow-up, ledger #641).
+    pub imports_other_tools: bool,
     /// Whether this OS draws its window controls INSIDE the page — macOS's traffic lights over a
     /// `titleBarStyle: "Overlay"` window, which the shell reserves a row for. Windows draws its own title
     /// bar above the page, so reserving that row there leaves a dead strip (W9 S1, ruling Q1, ledger #636).
@@ -87,6 +93,7 @@ pub const MACOS: PlatformWords = PlatformWords {
     routes_label: "file under /etc/resolver",
     home_prefix: "~",
     import_search: "~/.config/valet and in Herd's and Local's application-support folders",
+    imports_other_tools: true,
     window_controls_in_content: true,
 };
 
@@ -112,6 +119,7 @@ pub const WINDOWS: PlatformWords = PlatformWords {
     routes_label: "NRPT rule",
     home_prefix: "%USERPROFILE%",
     import_search: "Valet's, Herd's and Local's own folders",
+    imports_other_tools: false,
     window_controls_in_content: false,
 };
 
@@ -214,6 +222,16 @@ mod tests {
         assert!(!WINDOWS.routes_label.contains("/etc/resolver"));
         assert_eq!(WINDOWS.home_prefix, "%USERPROFILE%");
         assert!(!WINDOWS.import_search.contains('~'), "{}", WINDOWS.import_search);
+    }
+
+    /// Ledger #641 — rexenv looks for the other tools' sites only where it knows their layout. Scanning a
+    /// Windows home with macOS paths finds nothing and says "no sites found", which is a false answer to a
+    /// question nobody asked.
+    #[test]
+    fn only_macos_knows_where_the_other_tools_keep_their_sites() {
+        let (mac, windows) = (MACOS.imports_other_tools, WINDOWS.imports_other_tools);
+        assert!(mac, "macOS is where Valet, Herd and Local's layouts are known");
+        assert!(!windows, "Windows layouts are not ported yet — the card must say so, not report emptiness");
     }
 
     /// Ledger #636 — the window's controls: macOS draws them over the page (the shell reserves a row),
