@@ -187,7 +187,8 @@ fn write_fpm_config_named(
 
     let conf = config_dir.join(format!("php-fpm-{version}.{ext}"));
     let pid = run_dir.join(format!("php-fpm-{version}.pid"));
-    let log = log_dir.join(format!("php-fpm-{version}.log"));
+    // Asked, not spelled: the Logs tab reads this same name (ledger #650).
+    let log = log_dir.join(platform.supervisor().php_pool_model().log_name(version));
     // Same fixed-format-line reasoning as the catch-all: the candidate (`-t` gate
     // for user settings) omits the socket default; the real config gets it.
     let mysql_socket =
@@ -207,7 +208,10 @@ pub fn start_fpm(platform: &dyn Platform, php_fpm_bin: &Path, conf: &Path) -> Re
         "-y".to_string(),
         conf.display().to_string(),
     ];
-    let log = platform.paths().log_dir()?.join("php-fpm-stdout.log");
+    let log = platform
+        .paths()
+        .log_dir()?
+        .join(platform.supervisor().php_pool_model().output_log_name(""));
     platform.supervisor().spawn_logged(php_fpm_bin, &args, &log)
 }
 
@@ -240,7 +244,10 @@ pub fn start_fpm_xdebug(
         conf.display().to_string(),
     ];
     args.extend(xdebug_args(xdebug_so));
-    let log = platform.paths().log_dir()?.join("php-fpm-stdout.log");
+    let log = platform
+        .paths()
+        .log_dir()?
+        .join(platform.supervisor().php_pool_model().output_log_name(""));
     platform.supervisor().spawn_logged(php_fpm_bin, &args, &log)
 }
 

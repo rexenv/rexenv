@@ -42,7 +42,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   banner cannot render there. Dead copy, not wrong copy on a screen, and a cosmetic rewrite could not
   be tested on either platform without fabricating a takeover row. Fix it WITH the Valet/Herd import
   port, when that path exists on Windows at all
-- [ ] **Windows: the pool is called "PHP-FPM" on a machine with no php-fpm** — seen in `rex status`
+- [ ] **Windows: the pool ROW is labelled "PHP-FPM" on a machine with no php-fpm** — the log-FILE half
+  of this is done (16 Sep 2026, ledger #650: `PoolModel` owns both log names and `logs.rs` asks it, so the
+  Logs tab offers `php-cgi-<minor>.log` there). What is left is the LABEL — seen in `rex status`
   on the Dell, 16 Sep 2026: the service rows read `PHP-FPM 8.2` / `PHP-FPM 8.3`, but D1 ruled Windows
   runs a php-cgi GROUP, not php-fpm. **Not a wording swap:** measured, that string is a KEY, not just
   a label — `core/logs.rs:92` pairs it with the log FILE (`php-fpm-<minor>.log`, which on Windows is

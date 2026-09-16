@@ -543,6 +543,7 @@ async fn main() {
     // over the real socket path, not by calling `record` directly: the point
     // is that the SESSION's write reaches the file.
     {
+        let state = app.state::<AppState>();
         let text = std::fs::read_to_string(&mcp_log).expect("the sandbox mcp.log was written");
         for tool in ["wp_run", "scratch_add_package", "scratch_delete_site", "scratch_login_url"] {
             assert!(
@@ -567,7 +568,12 @@ async fn main() {
         assert!(!text.contains("/tmp/elsewhere"), "an argv VALUE reached mcp.log:\n{text}");
         assert!(text.contains(" · wp_run plugin list → error"), "the declared summary is what the argv became:\n{text}");
         // The Logs tab offers it under its own category now that it exists.
-        let targets = core::logs::targets_for_site(&ours, mcp_log.parent().unwrap(), &[]);
+        let targets = core::logs::targets_for_site(
+            &ours,
+            mcp_log.parent().unwrap(),
+            &[],
+            state.platform.supervisor().php_pool_model(),
+        );
         assert!(
             targets.iter().any(|t| t.key == core::logs::MCP_LOG_FILE && t.category == core::logs::LogCategory::Agents),
             "the Logs tab does not offer the agent log: {targets:?}"

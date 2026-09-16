@@ -466,6 +466,33 @@ impl PoolModel {
         }
     }
 
+    /// The file a minor's pool writes its ERROR log to, inside the log dir.
+    ///
+    /// One source for a name two sides need: the writer (`services::write_fpm_config_named` /
+    /// `php_cgi::write_ini`) and the READER (`logs::targets_for_site`, the site's Logs tab).
+    /// They had it twice and drifted: `logs.rs` hardcoded `php-fpm-<minor>.log` while Windows
+    /// writes `php-cgi-<minor>.log`, so the Logs tab there offered a file that never exists
+    /// (seen on the Dell, 16 Sep 2026 — ledger #650).
+    pub fn log_name(&self, minor: &str) -> String {
+        match self {
+            PoolModel::Fpm => format!("php-fpm-{minor}.log"),
+            PoolModel::CgiGroup(_) => format!("php-cgi-{minor}.log"),
+        }
+    }
+
+    /// The file the pool's PARENT process writes stdout/stderr to.
+    ///
+    /// The SHAPES differ and that is why `minor` is taken on both arms: php-fpm masters share
+    /// one file, while each php-cgi group gets its own (a spinning group's reason must not be
+    /// read out of another minor's output). A reader asking about one site's minor gets one
+    /// file either way.
+    pub fn output_log_name(&self, minor: &str) -> String {
+        match self {
+            PoolModel::Fpm => "php-fpm-stdout.log".to_string(),
+            PoolModel::CgiGroup(_) => format!("php-cgi-{minor}-output.log"),
+        }
+    }
+
     /// A word every process of the pool carries on its command line or title: the
     /// fixed-port sweep's identity for a worker whose command line lacks the
     /// app-data path (php-fpm rewrites worker titles; php-cgi children do not).

@@ -72,7 +72,12 @@ pub struct LogTarget {
 /// it a neighbour whose domain extends this one (`acme.test-2.test`) would have
 /// its Git logs listed here — and this list is the closed set of keys MCP
 /// `site_logs` lets an agent holding `read` on THIS site open (#565).
-pub fn targets_for_site(site: &Site, log_dir: &Path, other_domains: &[String]) -> Vec<LogTarget> {
+pub fn targets_for_site(
+    site: &Site,
+    log_dir: &Path,
+    other_domains: &[String],
+    pool: crate::platform::traits::PoolModel,
+) -> Vec<LogTarget> {
     let minor = php::minor_of(&site.php_version);
     let t = |key: String, label: String, category: LogCategory| LogTarget {
         path: log_dir.join(&key).to_string_lossy().into_owned(),
@@ -89,8 +94,11 @@ pub fn targets_for_site(site: &Site, log_dir: &Path, other_domains: &[String]) -
         t("rexenv.log".into(), "rexenv (app)".into(), App),
         t("nginx-access.log".into(), "Nginx access".into(), Server),
         t("nginx-error.log".into(), "Nginx error".into(), Server),
-        t(format!("php-fpm-{minor}.log"), format!("PHP-FPM {minor}"), Server),
-        t("php-fpm-stdout.log".into(), "PHP-FPM output".into(), Server),
+        // The pool's own names, asked of the model that WRITES them (#650): on Windows these
+        // are `php-cgi-<minor>.log` and `php-cgi-<minor>-output.log`, and this tab used to
+        // offer the php-fpm names there — files that never exist.
+        t(pool.log_name(&minor), format!("PHP-FPM {minor}"), Server),
+        t(pool.output_log_name(&minor), "PHP-FPM output".into(), Server),
         t("caddy-stdout.log".into(), "Caddy (edge)".into(), Server),
         t("mysql-error.log".into(), "MySQL".into(), Database),
         t("mariadb-error.log".into(), "MariaDB".into(), Database),
@@ -499,7 +507,7 @@ mod tests {
     /// 18 Aug 2026, because the plugin that writes it was debug-build-only.
     #[test]
     fn the_logs_tab_names_the_file_the_app_writes() {
-        let targets = targets_for_site(&site(WebServer::Nginx), Path::new("/tmp"), &[]);
+        let targets = targets_for_site(&site(WebServer::Nginx), Path::new("/tmp"), &[], crate::platform::traits::PoolModel::Fpm);
         let written = format!("{}.log", crate::APP_LOG_STEM);
         let app = targets.iter().find(|t| t.key == written);
         let Some(app) = app else {
@@ -533,13 +541,13 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("rexenv-logs-mcp-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        let before = targets_for_site(&site(WebServer::Nginx), &dir, &[]);
+        let before = targets_for_site(&site(WebServer::Nginx), &dir, &[], crate::platform::traits::PoolModel::Fpm);
         assert!(
             !before.iter().any(|t| t.category == LogCategory::Agents),
             "no agent log on disk, yet a tab was offered"
         );
         std::fs::write(dir.join(MCP_LOG_FILE), b"").unwrap();
-        let after = targets_for_site(&site(WebServer::Nginx), &dir, &[]);
+        let after = targets_for_site(&site(WebServer::Nginx), &dir, &[], crate::platform::traits::PoolModel::Fpm);
         let mcp = after.iter().find(|t| t.key == MCP_LOG_FILE).expect("the agent log is offered");
         assert_eq!(mcp.category, LogCategory::Agents);
         assert_eq!(mcp.label, "AI agents (MCP)", "titled like the Settings card it extends");
@@ -549,6 +557,29 @@ mod tests {
             "the rexenv (app) tab is still that one file"
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Ledger #650 — **the Logs tab offers the file the pool actually writes.** The names had
+    /// two owners and drifted: this module hardcoded php-fpm's while Windows writes php-cgi's,
+    /// so the tab there listed files that never exist (seen on the Dell). Both models are asked
+    /// here, from either host, because only the Windows half was ever wrong.
+    #[test]
+    fn the_pool_log_targets_follow_the_model_that_writes_them() {
+        use crate::platform::traits::{CgiGroup, PoolModel};
+        let cgi = PoolModel::CgiGroup(CgiGroup { extensions: &[], zend_extensions: &[] });
+
+        let fpm_keys: Vec<String> =
+            targets_for_site(&site(WebServer::Nginx), Path::new("/logs"), &[], PoolModel::Fpm)
+                .into_iter().map(|t| t.key).collect();
+        assert!(fpm_keys.contains(&"php-fpm-8.2.log".to_string()), "{fpm_keys:?}");
+        assert!(fpm_keys.contains(&"php-fpm-stdout.log".to_string()), "{fpm_keys:?}");
+
+        let cgi_keys: Vec<String> =
+            targets_for_site(&site(WebServer::Nginx), Path::new("/logs"), &[], cgi)
+                .into_iter().map(|t| t.key).collect();
+        assert!(cgi_keys.contains(&"php-cgi-8.2.log".to_string()), "{cgi_keys:?}");
+        assert!(cgi_keys.contains(&"php-cgi-8.2-output.log".to_string()), "{cgi_keys:?}");
+        assert!(!cgi_keys.iter().any(|k| k.starts_with("php-fpm-")), "php-fpm names on a php-cgi host: {cgi_keys:?}");
     }
 
     fn site(server: WebServer) -> Site {
@@ -588,7 +619,7 @@ mod tests {
 
     #[test]
     fn targets_use_site_php_version_and_omit_frankenphp_for_nginx() {
-        let t = targets_for_site(&site(WebServer::Nginx), Path::new("/nonexistent"), &[]);
+        let t = targets_for_site(&site(WebServer::Nginx), Path::new("/nonexistent"), &[], crate::platform::traits::PoolModel::Fpm);
         let keys: Vec<&str> = t.iter().map(|x| x.key.as_str()).collect();
         assert!(keys.contains(&"php-fpm-8.2.log")); // the site's minor
         assert!(keys.contains(&"nginx-access.log"));
@@ -599,7 +630,7 @@ mod tests {
 
     #[test]
     fn targets_carry_category_and_absolute_path() {
-        let t = targets_for_site(&site(WebServer::Nginx), Path::new("/logs"), &[]);
+        let t = targets_for_site(&site(WebServer::Nginx), Path::new("/logs"), &[], crate::platform::traits::PoolModel::Fpm);
         let by_key = |k: &str| t.iter().find(|x| x.key == k).unwrap();
         assert_eq!(by_key("nginx-access.log").category, LogCategory::Server);
         assert_eq!(by_key("caddy-stdout.log").category, LogCategory::Server);
@@ -615,7 +646,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("repo-acme.test-my-plugin.log"), "x").unwrap();
-        let t = targets_for_site(&site(WebServer::Nginx), &dir, &[]);
+        let t = targets_for_site(&site(WebServer::Nginx), &dir, &[], crate::platform::traits::PoolModel::Fpm);
         let repo = t.iter().find(|x| x.key.starts_with("repo-")).unwrap();
         assert_eq!(repo.category, LogCategory::Git);
         let _ = std::fs::remove_dir_all(&dir);
@@ -636,7 +667,7 @@ mod tests {
 
     #[test]
     fn targets_include_frankenphp_backend_for_override_sites() {
-        let t = targets_for_site(&site(WebServer::Frankenphp), Path::new("/nonexistent"), &[]);
+        let t = targets_for_site(&site(WebServer::Frankenphp), Path::new("/nonexistent"), &[], crate::platform::traits::PoolModel::Fpm);
         assert!(t.iter().any(|x| x.key == "frankenphp-acme.test-stdout.log"));
     }
 
@@ -651,7 +682,7 @@ mod tests {
         // A living neighbour whose domain EXTENDS this one: its log also starts
         // `repo-acme.test-`, which a prefix match listed as acme's (#565).
         std::fs::write(dir.join("repo-acme.test-2.test-thing.log"), "x").unwrap();
-        let t = targets_for_site(&site(WebServer::Nginx), &dir, &["acme.test-2.test".to_string()]);
+        let t = targets_for_site(&site(WebServer::Nginx), &dir, &["acme.test-2.test".to_string()], crate::platform::traits::PoolModel::Fpm);
         let repo: Vec<&LogTarget> =
             t.iter().filter(|x| x.key.starts_with("repo-")).collect();
         assert_eq!(repo.len(), 1);

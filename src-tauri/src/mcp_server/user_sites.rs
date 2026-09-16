@@ -2560,7 +2560,12 @@ fn site_logs<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::Acte
             let conn = ctx.state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
             crate::core::sites::other_domains(&conn, &site.id)?
         };
-        let targets = crate::core::logs::targets_for_site(&site, &log_dir, &others);
+        let targets = crate::core::logs::targets_for_site(
+            &site,
+            &log_dir,
+            &others,
+            ctx.state.platform.supervisor().php_pool_model(),
+        );
         let known = super::view::KnownPaths::for_site(ctx.state.platform.paths(), &site.path);
         let scrub = |v: Vec<String>| v.iter().map(|l| super::view::scrub_log_line(l, &known)).collect::<Vec<_>>();
         let value = match source {

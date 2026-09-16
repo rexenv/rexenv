@@ -200,7 +200,16 @@ pub fn ini_file_name(name: &str) -> String {
 /// Where a group's PARENT writes its stdout and stderr: one file per minor, so the reason a
 /// group is stopped is read from that group's own output and never another minor's.
 pub fn output_log(log_dir: &Path, minor: &str) -> PathBuf {
-    log_dir.join(format!("php-cgi-{minor}-output.log"))
+    // The name lives on `PoolModel` so the Logs tab reads the same one (ledger #650). This
+    // module only ever runs as a CgiGroup, so it asks that arm directly rather than taking a
+    // platform it does not otherwise need.
+    log_dir.join(
+        crate::platform::traits::PoolModel::CgiGroup(crate::platform::traits::CgiGroup {
+            extensions: &[],
+            zend_extensions: &[],
+        })
+        .output_log_name(minor),
+    )
 }
 
 /// Write the group's ini for `name` (`8.3`, or a candidate's name) and return its path.
@@ -217,7 +226,7 @@ pub fn write_ini(
     std::fs::create_dir_all(&config_dir)?;
     std::fs::create_dir_all(&log_dir)?;
     let ini = config_dir.join(ini_file_name(name));
-    let log = log_dir.join(format!("php-cgi-{name}.log"));
+    let log = log_dir.join(PoolModel::CgiGroup(*group).log_name(name));
     std::fs::write(&ini, render_ini(group, php_dir, &log, catch, settings))?;
     Ok(ini)
 }

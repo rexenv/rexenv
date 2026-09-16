@@ -62,7 +62,12 @@ async fn main() -> std::process::ExitCode {
     let site = sites::list(&conn).unwrap().into_iter().find(|s| s.domain == domain).unwrap();
 
     println!("log targets for {domain}:");
-    for t in logs::targets_for_site(&site, &plat.paths().log_dir().unwrap(), &sites::other_domains(&conn, &site.id).unwrap()) {
+    for t in logs::targets_for_site(
+        &site,
+        &plat.paths().log_dir().unwrap(),
+        &sites::other_domains(&conn, &site.id).unwrap(),
+        plat.supervisor().php_pool_model(),
+    ) {
         println!("  {:<28} {}", t.key, t.label);
     }
 
