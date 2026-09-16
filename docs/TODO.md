@@ -554,7 +554,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     release that grows `MIGRATIONS` must tell users that going back to ≤0.7.1 is unsupported,
     and INSTALL explains the screen
 
-- [ ] **Third-party notices — a Windows crate table before any Windows release** — 13 Sep 2026,
+- [x] **Third-party notices — a Windows crate table before any Windows release** ✓ 16 Sep 2026 — 13 Sep 2026,
   owner asked whether the notices count drift was tracked; it was not (the debt lived only
   inside `THIRD-PARTY-NOTICES.md`). The macOS half is done below; open for ONE reason: the
   Windows graph needs its table, and `notices-check.py` a Windows target, before a Windows
@@ -566,9 +566,13 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   - [x] Checked, not remembered ✓ 13 Sep 2026 — `scripts/notices-check.py` in `verify.sh`: Rust
     both directions (arm64 ∪ x86_64, app + CLI) with licences and the heading count, npm both
     directions with its count; plant-proven, ledger #592
-  - [ ] Windows: a crate table for the Windows graph (410 crates; 50 beyond the table) and a
-    Windows target in the check, before any Windows release — the download sources are
-    already listed (plan §3a Q4)
+  - [x] Windows: a crate table for the Windows graph and a Windows target in the check ✓ 16 Sep
+    2026 (ledger #644) — **the row's own numbers were stale**: measured 416 crates, not 410, and 39
+    beyond the macOS table, not 50 (this session added `windows`, `webview2-com` and the CLI's
+    `tokio`). A SEPARATE section, because 35 macOS rows have no Windows counterpart; read by
+    `rust_graph(TARGETS_WINDOWS)` — the same function and the same walk, one argument — and the
+    macOS 412 was re-derived by that walk as a control before the Windows number was trusted.
+    Plants 3/3
 
 - [ ] **The keychain (CA trust) dialog is rexenv's too** — 12 Sep 2026, owner, after the admin
   dialog got its name: the CA trust dialog still read "security". Measured first: wrapping

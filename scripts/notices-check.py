@@ -36,17 +36,28 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 NOTICES = os.path.join(ROOT, "THIRD-PARTY-NOTICES.md")
 MANIFESTS = ["src-tauri/Cargo.toml", "cli/Cargo.toml"]
 TARGETS = ["aarch64-apple-darwin", "x86_64-apple-darwin"]
+# The Windows app links a DIFFERENT closure, not a superset: no objc2/core-foundation, and the
+# windows-*/webview2-com* families instead. One arch, because that is what ships (plan §4: no
+# arm64 PHP), and it is what `scripts/windows-check.sh` compiles.
+TARGETS_WINDOWS = ["x86_64-pc-windows-msvc"]
 RUST_HEADING = re.compile(r"^## Rust crates \(statically linked; (\d+) external crates, universal macOS graph\)$")
+# NOTE the heading may not begin with "## Rust crates": `section()` matches by startswith, so a
+# "## Rust crates — Windows" heading would make the macOS section ambiguous and exit.
+WINDOWS_HEADING = re.compile(r"^## Windows Rust crates \(statically linked; (\d+) external crates, x86_64 Windows graph\)$")
 NPM_HEADING = re.compile(r"^## npm packages \(production closure bundled by Vite; (\d+) packages\)$")
 VENDORED_HEADING = re.compile(r"^## Vendored PHP \(compiled into the app binary; (\d+) packages\)$")
 COMPOSER_INSTALLED = os.path.join(ROOT, "src-tauri/resources/wp-dist-archive/vendor/composer/installed.json")
 
 
-def rust_graph():
-    """(name, version) -> licence for every registry crate reachable without dev edges."""
+def rust_graph(targets=None):
+    """(name, version) -> licence for every registry crate reachable without dev edges.
+
+    `targets` so the Windows graph is read by the SAME walk as the macOS one — two graphs built
+    by two rules is how this file drifted before.
+    """
     out = {}
     for manifest in MANIFESTS:
-        for target in TARGETS:
+        for target in targets or TARGETS:
             raw = subprocess.run(
                 ["cargo", "metadata", "--format-version", "1", "--locked", "--offline",
                  "--filter-platform", target, "--manifest-path", os.path.join(ROOT, manifest)],
@@ -148,8 +159,12 @@ def compare(label, graph, head, stated, rows, licences):
 
 def main():
     rust = rust_graph()
+    windows = rust_graph(TARGETS_WINDOWS)
     npm = npm_graph()
     problems = compare("rust", rust, *section("## Rust crates", RUST_HEADING), rust)
+    problems += compare(
+        "rust (windows)", windows, *section("## Windows Rust crates", WINDOWS_HEADING), windows
+    )
     problems += compare("npm", npm, *section("## npm packages", NPM_HEADING), None)
     composer = composer_graph()
     problems += compare(
@@ -162,8 +177,8 @@ def main():
         return 1
     print(
         f"notices-check: {len(rust)} Rust crates (arm64 + x86_64, app + rex CLI) with rows and "
-        f"licences; {len(npm)} npm packages with rows; {len(composer)} vendored composer "
-        f"packages with rows and licences"
+        f"licences; {len(windows)} for the x86_64 Windows graph; {len(npm)} npm packages with "
+        f"rows; {len(composer)} vendored composer packages with rows and licences"
     )
     return 0
 
