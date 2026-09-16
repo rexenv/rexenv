@@ -548,32 +548,79 @@ enum XdebugStatus {
     /// PHP — and never reachable for a version in [`PHP_VERSIONS`], which
     /// `every_offered_php_minor_has_an_explicit_xdebug_verdict` enforces.
     NotPinned,
+    /// The minor HAS a pinned bottle, but not on this OS — D4: Xdebug is not in
+    /// Windows v1 (its DLLs must match PHP's NTS build and compiler, which is a
+    /// pin and a trust decision per minor). A fourth variant rather than reusing
+    /// [`Self::NotPinned`] for the same reason that one exists: "we have not
+    /// pinned it yet" and "it is not part of this platform's v1" are different
+    /// facts, and the advice differs — there is nothing to wait for here, and
+    /// no newer PHP to switch to (W10, ledger #642).
+    NotOnThisOs,
 }
 
 /// The Xdebug status for a PHP minor: a pinned row, or the REASON there is none.
 /// The single source of which minors support the toggle, of which release each
 /// one gets, and of what to tell a user who asks for one that has none.
 fn xdebug_status(minor: &str) -> XdebugStatus {
-    let row = |version, formula, arm64, amd64| {
-        XdebugStatus::Available(XdebugBottle { version, formula, arm64, amd64 })
+    xdebug_status_on(minor, std::env::consts::OS)
+}
+
+/// [`xdebug_status`] for a NAMED os, so both answers are measurable from either host.
+fn xdebug_status_on(minor: &str, os: &str) -> XdebugStatus {
+    let pinned = match xdebug_row(minor) {
+        Some(b) => XdebugStatus::Available(b),
+        None => return xdebug_absence(minor),
     };
+    // …and a pinned bottle still has to EXIST on this os. Asked of the same table a download
+    // would read (`ships_on`), never of a per-os list kept here, so the gate cannot drift
+    // from what the downloader can fetch.
+    //
+    // Asked of the ROW rather than through this function's own callers: `ships_on` reaches
+    // `bundle_manifest`, whose xdebug arm needs the row. Calling `xdebug_bottle` there — as
+    // the first version of this did — is a cycle, and it aborted the test binary with a
+    // stack overflow rather than failing an assertion (W10, ledger #642).
+    match pinned {
+        XdebugStatus::Available(b) if !ships_on(&format!("xdebug-{minor}"), b.version, os) => {
+            XdebugStatus::NotOnThisOs
+        }
+        other => other,
+    }
+}
+
+/// Why a minor has NO pinned row — the two absences, kept apart.
+fn xdebug_absence(minor: &str) -> XdebugStatus {
     match minor {
-        // Measured, not assumed. Both exports checked with `nm -gU`; 7.4's build
-        // shows ~22,400 symbols and not the one that matters.
         "7.4" => XdebugStatus::CannotLoadExtensions {
             measured: "rexenv's own 7.4.33 build, 14 Aug 2026",
         },
         "8.0" => XdebugStatus::CannotLoadExtensions {
             measured: "static-php.dev's 8.0.30 build, Nov 2024",
         },
+        _ => XdebugStatus::NotPinned,
+    }
+}
+
+/// The pinned Xdebug ROW for a minor — the table alone, with no os rule applied.
+///
+/// Separate from [`xdebug_status`] because [`bundle_manifest`] needs the row while
+/// `xdebug_status` now carries a POLICY that asks `bundle_manifest` back. Row and policy in
+/// one function is what made that a cycle.
+fn xdebug_row(minor: &str) -> Option<XdebugBottle> {
+    let row = |version, formula, arm64, amd64| Some(XdebugBottle { version, formula, arm64, amd64 });
+    match minor {
+        // Measured, not assumed. Both exports checked with `nm -gU`; 7.4's build
+        // shows ~22,400 symbols and not the one that matters.
         "8.1" => row(XDEBUG_VERSION, "xdebug@8.1", XDEBUG_PHP81_BOTTLE_ARM64_SHA256, XDEBUG_PHP81_BOTTLE_AMD64_SHA256),
         "8.2" => row(XDEBUG_VERSION, "xdebug@8.2", XDEBUG_PHP82_BOTTLE_ARM64_SHA256, XDEBUG_PHP82_BOTTLE_AMD64_SHA256),
         "8.3" => row(XDEBUG_VERSION, "xdebug@8.3", XDEBUG_PHP83_BOTTLE_ARM64_SHA256, XDEBUG_PHP83_BOTTLE_AMD64_SHA256),
         "8.4" => row(XDEBUG_VERSION, "xdebug@8.4", XDEBUG_PHP84_BOTTLE_ARM64_SHA256, XDEBUG_PHP84_BOTTLE_AMD64_SHA256),
         "8.5" => row(XDEBUG_VERSION, "xdebug@8.5", XDEBUG_PHP85_BOTTLE_ARM64_SHA256, XDEBUG_PHP85_BOTTLE_AMD64_SHA256),
-        _ => XdebugStatus::NotPinned,
+        _ => None,
     }
 }
+    // …and a pinned bottle still has to EXIST on this OS. Asked of the same table a
+    // download would read, never of a per-OS list kept here (`ships_on`): the gate cannot
+    // then drift from what the downloader can fetch. Asked with the bottle already in hand
 
 /// The pinned row for a minor, dropping the reason. For callers that only need
 /// to know WHETHER, never why — everything user-facing goes through
@@ -600,7 +647,12 @@ pub fn xdebug_supported(minor: &str) -> bool {
 /// load extensions and actively wrong for a minor whose bottle is merely
 /// missing — there may be nothing newer to switch to.
 pub fn xdebug_unavailable_reason(minor: &str) -> Option<String> {
-    match xdebug_status(minor) {
+    xdebug_unavailable_reason_on(minor, std::env::consts::OS)
+}
+
+/// [`xdebug_unavailable_reason`] for a NAMED os — the sentence a user on `os` would read.
+fn xdebug_unavailable_reason_on(minor: &str, os: &str) -> Option<String> {
+    match xdebug_status_on(minor, os) {
         XdebugStatus::Available(_) => None,
         XdebugStatus::CannotLoadExtensions { measured } => Some(format!(
             "Xdebug isn't available for PHP {minor} — its static build exports no Zend \
@@ -611,6 +663,15 @@ pub fn xdebug_unavailable_reason(minor: &str) -> Option<String> {
             "Xdebug isn't available for PHP {minor} yet — rexenv has no Xdebug build \
              pinned for this version. Nothing is wrong with your site; the toggle will \
              work once one ships."
+        )),
+        // No way out is offered on purpose: unlike the two above, this is not about the
+        // site's PHP at all, so "switch to a newer PHP" would send the user to change
+        // something that would not help.
+        XdebugStatus::NotOnThisOs => Some(format!(
+            "Xdebug isn't part of rexenv on {} yet — its builds have to match each PHP \
+             version's compiler exactly, so they are pinned per version and none is \
+             pinned here. Nothing is wrong with your site or your PHP {minor}.",
+            if os == "windows" { "Windows" } else { crate::platform::words::current().os_name }
         )),
     }
 }
@@ -1163,6 +1224,22 @@ pub fn is_self_distributed(url: &str) -> bool {
 /// because it is not distributed at all.
 pub fn artifact_is_self_distributed(name: &str, version: &str, arch: Arch) -> bool {
     manifest(name, version, "macos", arch).is_some_and(|s| is_self_distributed(&s.url))
+}
+
+/// **Does `name`@`version` ship on `os` at all?** — the one question a feature gate asks.
+///
+/// Reads the same two disjoint tables a resolve would ([`manifest`] and [`bundle_manifest`]),
+/// so D4's "what is in Windows v1" list is not a SECOND copy of the pins that could drift from
+/// them: it IS the pins. Redis has no official Windows build, Apache on Windows would mean a
+/// third-party trust decision, and MariaDB has no Windows pin — so none of them has a Windows
+/// arm, and this returns false there without anyone maintaining a list (W10, ledger #642).
+///
+/// Arch-independent by construction: both tables match on `(name, os, version)` and differ only
+/// in what each arm BUILDS from the arch, so either answers the same. Pinned by a test rather
+/// than trusted, because a future arm could match on arch and quietly make this half-true.
+pub fn ships_on(name: &str, version: &str, os: &str) -> bool {
+    manifest(name, version, os, Arch::X86_64).is_some()
+        || bundle_manifest(name, version, os, Arch::X86_64).is_some()
 }
 
 /// A sibling of `url` in the same directory — same release, by construction.
@@ -1862,7 +1939,9 @@ pub fn bundle_manifest(name: &str, version: &str, os: &str, arch: Arch) -> Optio
         // release, and gating on a single version would make its bundle
         // unresolvable rather than merely older.
         (n, "macos", v) if n.starts_with("xdebug-") => {
-            let bottle = xdebug_bottle(n.strip_prefix("xdebug-")?)?;
+            // The ROW, never `xdebug_bottle`: that one applies the os policy, which asks
+            // this table back (see `xdebug_status_on`).
+            let bottle = xdebug_row(n.strip_prefix("xdebug-")?)?;
             // Cache-dir identity is honest: only THIS minor's pinned release
             // resolves. Comparing against the row rather than one app-wide
             // constant is the whole point — see [`XdebugBottle::version`].
@@ -4100,9 +4179,12 @@ mod tests {
     fn every_offered_php_minor_has_an_explicit_xdebug_verdict() {
         let mut available = 0;
         let mut cannot_load = 0;
+        // The table's own verdicts, asked of macOS explicitly — so this half reads the same
+        // on any host that runs it.
+        let mut not_here = 0;
         for v in PHP_VERSIONS {
             let minor = v.rsplit_once('.').map(|(m, _)| m).unwrap_or(v);
-            match xdebug_status(minor) {
+            match xdebug_status_on(minor, "macos") {
                 XdebugStatus::Available(b) => {
                     available += 1;
                     assert_eq!(
@@ -4126,12 +4208,36 @@ mod tests {
                      (CannotLoadExtensions), or take the version out of PHP_VERSIONS. \
                      Falling through to NotPinned tells the user a reason nobody chose."
                 ),
+                // Also an explicit verdict — the minor HAS a bottle, this OS has none
+                // (D4/W10, #642). Counted, not panicked: on a host where Xdebug does not
+                // ship this is the right answer for every offered minor.
+                XdebugStatus::NotOnThisOs => not_here += 1,
             }
         }
-        // Landmarks. A table gutted to one arm would satisfy every assertion
-        // above by having nothing to iterate.
+        // Landmarks. A table gutted to one arm would satisfy every assertion above by
+        // having nothing to iterate.
+        //
+        // Which landmark applies depends on whether Xdebug ships here — asked of the
+        // manifest table DIRECTLY, never through `xdebug_status`. Asking the function under
+        // test would make this vacuous in the one direction that matters: a post-check that
+        // wrongly fired on macOS would flip the expectation with it and still pass.
         assert!(available >= 5, "only {available} minors with a pinned bottle");
+        assert_eq!(not_here, 0, "bottles ship on macOS, so no minor may answer NotOnThisOs there");
         assert_eq!(cannot_load, 2, "expected exactly 7.4 and 8.0 to be unloadable");
+
+        // …and D4's half, measured from this host rather than only on Windows: every minor
+        // whose bottle exists answers NotOnThisOs there, because no xdebug bundle has a
+        // Windows arm. The two absences stay apart — 7.4 and 8.0 keep saying why.
+        let mut windows_not_here = 0;
+        for v in PHP_VERSIONS {
+            let minor = v.rsplit_once('.').map(|(m, _)| m).unwrap_or(v);
+            match (xdebug_status_on(minor, "macos"), xdebug_status_on(minor, "windows")) {
+                (XdebugStatus::Available(_), XdebugStatus::NotOnThisOs) => windows_not_here += 1,
+                (XdebugStatus::CannotLoadExtensions { .. }, XdebugStatus::CannotLoadExtensions { .. }) => {}
+                (mac, win) => panic!("{minor}: macOS {mac:?} but Windows {win:?}"),
+            }
+        }
+        assert_eq!(windows_not_here, available, "every pinned bottle must be absent on Windows (D4)");
 
         // NotPinned must still be REACHABLE — it is the honest answer for a
         // minor rexenv does not offer, and a version that no longer exists.
@@ -4146,7 +4252,16 @@ mod tests {
     /// survived: it was correct until the day it silently was not.
     #[test]
     fn the_xdebug_refusal_says_which_kind_of_unavailable_it_is() {
-        assert!(xdebug_unavailable_reason("8.3").is_none(), "8.3 has a pinned bottle");
+        assert!(xdebug_unavailable_reason_on("8.3", "macos").is_none(), "8.3 has a pinned bottle");
+
+        // The THIRD kind of unavailable, read from either host. It may not borrow either
+        // other sentence: nothing is wrong with the PHP build, and there is no newer PHP to
+        // move to, so no way out is offered.
+        let why = xdebug_unavailable_reason_on("8.3", "windows").expect("no Xdebug ships on Windows");
+        assert!(why.contains("Windows"), "the sentence must name the OS it is about: {why}");
+        assert!(why.contains("8.3"), "it must name the version the user asked about: {why}");
+        assert!(!why.contains("exports no Zend symbols"), "that is a claim about the PHP build: {why}");
+        assert!(!why.contains("or newer"), "there is no way out to offer here: {why}");
 
         for minor in ["7.4", "8.0"] {
             let why = xdebug_unavailable_reason(minor).expect("no bottle for this minor");
@@ -5417,6 +5532,35 @@ mod tests {
         assert!(manifest("frankenphp", FRANKENPHP_VERSION, "windows", Arch::X86_64).is_none());
         for (name, version) in [("redis", REDIS_VERSION), ("mariadb", MARIADB_VERSION), ("httpd", HTTPD_VERSION)] {
             assert!(bundle_manifest(name, version, "windows", Arch::X86_64).is_none(), "{name}");
+            // …and the feature gate reads that same absence rather than a list of its own.
+            assert!(!ships_on(name, version, "windows"), "{name} must not ship on Windows (D4)");
+            assert!(ships_on(name, version, "macos"), "{name} ships on macOS");
+        }
+    }
+
+    /// Ledger #642 — **`ships_on` answers the same for either arch.** Both tables match on
+    /// `(name, os, version)` and differ only in what each arm builds from the arch, so the
+    /// gate may ask with one. An arm that ever matched on arch would make this half-true and
+    /// silently gate a feature on the machine's CPU, so it is measured, not assumed.
+    #[test]
+    fn ships_on_does_not_depend_on_the_arch() {
+        let names: Vec<(&str, &str)> = DEFAULT_STACK
+            .iter()
+            .copied()
+            .chain([
+                ("redis", REDIS_VERSION),
+                ("mariadb", MARIADB_VERSION),
+                ("httpd", HTTPD_VERSION),
+                ("frankenphp", FRANKENPHP_VERSION),
+            ])
+            .collect();
+        assert!(names.len() > 5, "too few names to be a real sweep");
+        for (name, version) in names {
+            for os in ["macos", "windows"] {
+                let arm = manifest(name, version, os, Arch::Arm64).is_some()
+                    || bundle_manifest(name, version, os, Arch::Arm64).is_some();
+                assert_eq!(arm, ships_on(name, version, os), "{name} {version} on {os}");
+            }
         }
     }
 

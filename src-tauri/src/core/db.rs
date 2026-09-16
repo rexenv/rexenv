@@ -224,11 +224,31 @@ impl DbEngine {
     /// Whether this engine has a working macOS binary + lifecycle (so it can be
     /// listed/started). All four ship on macOS now; the gate stays for the
     /// windows/linux stubs era.
+    /// Whether this engine ships on THIS OS — **the one filter every surface already goes
+    /// through**: the Databases page, Services' rows, the reserved-port list, adoption, the
+    /// download plan, the MCP read context and `start_database`'s refusal. An engine that is
+    /// not available here is therefore not offered, not adopted, not prefetched and not
+    /// started, from one answer.
+    ///
+    /// The answer is the PINS, not a list kept here (`binaries::ships_on`): D4 leaves Redis
+    /// out of Windows v1 because there is no official build, and MariaDB because there is no
+    /// Windows pin and MySQL 8.4/8.0 both ship there. Both facts live in the manifest tables
+    /// already, and a second copy of them here is exactly the drift this project has paid for
+    /// before — so the day a Redis pin lands, the engine appears without anyone editing this
+    /// function (W10, ledger #642).
     pub fn available(&self) -> bool {
-        matches!(
-            self,
-            DbEngine::Mysql | DbEngine::Mariadb | DbEngine::Postgres | DbEngine::Redis
-        )
+        self.available_on(std::env::consts::OS)
+    }
+
+    /// [`Self::available`] for a NAMED os.
+    ///
+    /// The os is a parameter for the same reason `binaries::manifest` and `shape_of_on` take
+    /// one: otherwise this gate's Windows answer could only be measured ON Windows, and the
+    /// bar runs `cargo check` there, not `cargo test` (W12 is when a Windows runner arrives).
+    /// A guard whose interesting half cannot fail on the machine that runs it is not a guard —
+    /// so both answers are asked of the pins from either host (W10, ledger #642).
+    pub fn available_on(&self, os: &str) -> bool {
+        self.versions().iter().any(|v| binaries::ships_on(self.key(), v, os))
     }
 
     /// Whether the site stack REQUIRES this engine — required engines are
@@ -661,6 +681,26 @@ mod tests {
         assert_ne!(default_dir, lts);
         let pg17 = DbEngine::Postgres.data_dir(&*plat, "17.11.0").unwrap();
         assert!(pg17.ends_with("postgres/17/data"), "{}", pg17.display());
+    }
+
+    /// Ledger #642 — **the engine gate reads the pins, per OS.** MySQL and PostgreSQL ship
+    /// on both; Redis (no official Windows build) and MariaDB (no Windows pin — MySQL 8.4
+    /// and 8.0 both ship there, so D4 left it out of v1) ship only on macOS. Asked for BOTH
+    /// os values from either host: the bar only `cargo check`s for Windows, so a gate read
+    /// from `std::env::consts::OS` alone would have a half nobody could fail.
+    #[test]
+    fn an_engine_is_available_where_its_pins_are() {
+        for e in DbEngine::ALL {
+            let by_pins = e.versions().iter().any(|v| binaries::ships_on(e.key(), v, "macos"));
+            assert!(by_pins, "{} has no macOS pin", e.key());
+            assert!(e.available_on("macos"), "{} must be available on macOS", e.key());
+        }
+        for e in [DbEngine::Mysql, DbEngine::Postgres] {
+            assert!(e.available_on("windows"), "{} ships on Windows", e.key());
+        }
+        for e in [DbEngine::Mariadb, DbEngine::Redis] {
+            assert!(!e.available_on("windows"), "{} is not in Windows v1 (D4)", e.key());
+        }
     }
 
     #[test]

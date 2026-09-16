@@ -1580,6 +1580,21 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
 - **W10 — Feature gates per D4.** Refused in core, honest in the UI, one arm to enable later.
   MariaDB joins Redis, Apache and Xdebug unless ruled in. §3a Q3's per-OS answers land with
   the feature each one gates, not here in a batch.
+  **Core half done 16 Sep 2026 (ledger #642), L0.** The gate is not a list: `binaries::ships_on`
+  asks `manifest`/`bundle_manifest`, which are already keyed by OS, so D4's Windows v1 set IS the
+  pins — the day a Redis pin lands the engine appears with no gate edited. Four call sites:
+  `DbEngine::available_on` (the one filter `db_status`, the port list, adoption, the download plan
+  and the MCP context already share), `ensure_server_available_on`, `xdebug_status_on` and
+  `spawn_db`. Each takes the os as a parameter, because the bar only `cargo check`s for Windows —
+  a gate that read `std::env::consts::OS` would have an untestable half until W12's runner, and an
+  untestable refusal is one nobody has seen refuse. Plants 6/6.
+  **Two traps, both self-inflicted, recorded because they cost a chain each:** the os rule inside
+  `xdebug_status` closed a cycle through `bundle_manifest` and blew the test binary's stack (hence
+  `xdebug_row`, the table, separate from the policy); and the plant harness counted multi-line
+  anchors with `grep -cF`, which treats each newline as a pattern, so three plants reported 2/198/360
+  matches and were skipped — non-verdicts that would have read as done.
+  **Left:** `NewSiteDialog.tsx` offers Apache from a hardcoded `SERVERS` array, so the Windows
+  refusal arrives at create time rather than the option simply not being there.
 - **W11 — Packaging and updates per D5.** NSIS bundle, signing (only after D5's measurement and ruling), a Windows job in
   `.github/workflows/release.yml`, Windows `AppBundle`, winget manifest.
 - **W12 — Launch gates.** `verify.sh` runnable on the Windows runner (Git Bash);

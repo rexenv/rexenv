@@ -534,6 +534,17 @@ impl ServiceManager {
         if self.dbs.contains_key(&engine) {
             return Ok(None);
         }
+        // The gate `db_status`, the port list and adoption all already honour — enforced
+        // here too, because this is the one path they do NOT come through: a SITE carries a
+        // stored engine (`SiteDbEngine`), so a database created on a Mac and opened on a
+        // Windows build would otherwise try to start an engine that does not ship here and
+        // fail somewhere less honest than this (W10, ledger #642).
+        if !engine.available() {
+            return Err(Error::Other(format!(
+                "{} is not available on this platform yet",
+                engine.label()
+            )));
+        }
         ports::ensure_free(platform, engine.port(), ports::Proto::Tcp, engine.label())?;
         let child = engine.start(platform, &self.db_version(engine)).await?;
         self.dbs.insert(engine, child.into());
@@ -3747,6 +3758,27 @@ mod tests {
             start.elapsed() < Duration::from_millis(1600),
             "4×500ms probes ran concurrently, took {:?}",
             start.elapsed()
+        );
+    }
+
+    /// Ledger #642 — **the one start path that does NOT come through the `available()` filter
+    /// enforces it itself.** `db_status`, the reserved-port list and adoption all filter on
+    /// `available()`, so an engine that does not ship here never reaches them. A SITE is
+    /// different: it carries a stored `SiteDbEngine`, so a MariaDB site created on a Mac and
+    /// opened on a Windows build arrives at `spawn_db` directly — and without this it would
+    /// port-gate, then try to start an engine with no artifact, failing somewhere less honest.
+    ///
+    /// Read from the module's own production source, so a refusal deleted by hand is seen.
+    #[test]
+    fn spawn_db_refuses_an_engine_that_does_not_ship_here() {
+        let src = crate::core::copy_scan::production_source(include_str!("service_manager.rs"));
+        let from = src.find("pub async fn spawn_db").expect("the stripper ate spawn_db");
+        let to = src[from..].find("pub async fn ensure_db").expect("ensure_db follows spawn_db");
+        let body = &src[from..from + to];
+        assert!(
+            body.contains("if !engine.available()"),
+            "spawn_db does not check that the engine ships here — a site's stored engine is the \
+             one that gets here without passing available():\n{body}"
         );
     }
 

@@ -67,7 +67,28 @@ pub(crate) fn validate_domain(domain: &str) -> Result<()> {
 /// refused here in CORE, so no IPC path can create a site the stack would
 /// silently serve through nginx while claiming another server (M7).
 fn ensure_server_available(server: WebServer) -> Result<()> {
-    if matches!(server, WebServer::Nginx | WebServer::Frankenphp | WebServer::Apache) {
+    ensure_server_available_on(server, std::env::consts::OS)
+}
+
+/// [`ensure_server_available`] for a NAMED os — the os is a parameter so BOTH answers can be
+/// measured from either host. The bar only `cargo check`s for Windows, so a gate that read
+/// `std::env::consts::OS` directly would have an untestable half until W12's Windows runner,
+/// and an untestable refusal is one nobody has seen refuse (W10, ledger #642).
+fn ensure_server_available_on(server: WebServer, os: &str) -> Result<()> {
+    // Nginx is the one server that ships everywhere. The other two are asked of the pins
+    // rather than listed here: FrankenPHP and Apache each have a macOS artifact and no
+    // Windows one — Apache on Windows would mean Apache Lounge, a third-party trust decision
+    // D4 left out of v1 — so both refuse there, and both appear the day a pin lands, without
+    // this function being edited.
+    let shipped = match server {
+        WebServer::Nginx => true,
+        WebServer::Frankenphp => {
+            binaries::ships_on("frankenphp", binaries::FRANKENPHP_VERSION, os)
+        }
+        WebServer::Apache => binaries::ships_on("httpd", binaries::HTTPD_VERSION, os),
+        _ => false,
+    };
+    if shipped {
         Ok(())
     } else {
         Err(Error::Other(format!(
@@ -2673,6 +2694,30 @@ mod tests {
     use super::*;
     use crate::state::db;
     use crate::state::models::{SiteDbEngine, SiteType, WebServer};
+
+    /// Ledger #642 — **the web-server gate reads the pins, per OS.** Nginx ships everywhere;
+    /// FrankenPHP and Apache have a macOS artifact and no Windows one (D4 — Apache on Windows
+    /// would mean Apache Lounge, a third-party trust decision left out of v1).
+    ///
+    /// Asked for BOTH os values from either host. The bar only `cargo check`s for Windows, so
+    /// a gate reading `std::env::consts::OS` alone would have a half that cannot fail on the
+    /// machine running the test — which is not a guard, it is a comment.
+    #[test]
+    fn the_web_server_gate_reads_the_pins_per_os() {
+        for server in [WebServer::Nginx, WebServer::Frankenphp, WebServer::Apache] {
+            assert!(ensure_server_available_on(server, "macos").is_ok(), "{server:?} on macOS");
+        }
+        assert!(ensure_server_available_on(WebServer::Nginx, "windows").is_ok());
+        for server in [WebServer::Frankenphp, WebServer::Apache] {
+            let e = ensure_server_available_on(server, "windows")
+                .expect_err("not in Windows v1 (D4)")
+                .to_string();
+            assert!(e.contains(server.as_db()), "the refusal must name the server: {e}");
+            assert!(e.contains("not available on this platform yet"), "{e}");
+        }
+        // OpenLiteSpeed has no artifact anywhere — refused on both, as it always was.
+        assert!(ensure_server_available_on(WebServer::Openlitespeed, "macos").is_err());
+    }
 
     /// **A create refused for its shape leaves nothing behind — no folder, no
     /// starter page.** The refusal used to live only at the insert chokepoint,

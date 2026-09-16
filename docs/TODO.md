@@ -510,6 +510,17 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     open. **Also ruled:** `app_update`'s "this Mac's macOS version" wording stays macOS-only until the
     Windows updater (W11), which is why the Rust scan names it as an exception
   - [ ] W10 — Redis/Apache/Xdebug/MariaDB (per D4) refused in core with an honest message
+    **Core half done 16 Sep 2026 (ledger #642), L0:** one predicate — `binaries::ships_on` — answers
+    "is this pinned on this OS", and the four gates ask it: `DbEngine::available_on` (Redis and
+    MariaDB out on Windows, which removes them from the Databases page, Services' rows, the port
+    list, adoption, the download plan and the MCP context at once), `ensure_server_available_on`
+    (Apache and FrankenPHP), `xdebug_status_on` (a fourth verdict, `NotOnThisOs`, with its own
+    sentence that offers no way out because there is none), and `spawn_db` (the one start path a
+    site's stored engine reaches without passing the filter). Every gate takes the os as a
+    parameter, so both answers are measurable from the Mac. Plants 6/6.
+    **Left:** the New Site dialog still offers Apache from a hardcoded `SERVERS` list, so on Windows
+    the refusal lands at create time instead of the option being absent — the same "frontend holds a
+    second copy" shape the Xdebug rows already avoid by reading `PhpVersionView`.
   - [ ] W11 — NSIS installer, Authenticode (if D5 rules it in), Windows release job, updater, winget
   - [ ] W12 — launch gates: verify on the Windows runner, SMOKE-TEST + INSTALL Windows
     sections, clean Windows 11 VM pass
