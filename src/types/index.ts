@@ -1101,6 +1101,9 @@ export interface PlatformWords {
   osName: string; // this OS's name, for a sentence that must say it
   caTarget: string; // what a local CA is added to, as a sentence uses it
   elevationNote: string; // an agent consent line's note when the OS will prompt too
+  host: string; // this machine, as a sentence points at it
+  trayHome: string; // where an app with no window on screen lives
+  appSearch: string; // where the app looked for editors/browsers, as the "none detected" tooltip says it
   /** macOS draws its window controls over the page (the shell reserves a row for them); Windows draws its
    *  own title bar above it, so there is nothing to reserve (#636). */
   windowControlsInContent: boolean;

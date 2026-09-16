@@ -1055,7 +1055,9 @@ impl std::fmt::Display for SwapFailure {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::NotWritable => write!(f, "the folder is not writable"),
-            Self::PolicyBlocked => write!(f, "macOS refused the operation (operation not permitted)"),
+            Self::PolicyBlocked => {
+                write!(f, "{} refused the operation (operation not permitted)", crate::platform::words::current().os_name)
+            }
             Self::CrossDevice => write!(f, "the two paths are on different volumes"),
             Self::ReadOnly => write!(f, "the volume is read-only"),
             Self::Unsupported => write!(f, "this filesystem has no atomic swap"),

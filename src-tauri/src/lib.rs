@@ -1634,7 +1634,7 @@ fn first_window_decision(app: &tauri::AppHandle, needs_window: bool) {
         return;
     }
     if !needs_window {
-        log::info!("launched at login — staying in the menu bar");
+        log::info!("launched at login — staying in the {}", crate::platform::words::current().tray_home);
         return;
     }
     log::info!("launched at login with setup incomplete — showing the window");

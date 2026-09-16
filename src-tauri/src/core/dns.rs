@@ -398,7 +398,8 @@ pub fn configure_resolver(platform: &dyn Platform, tld: &str, port: u16) -> Resu
     platform.privileges().run_privileged(
         &cmd,
         &crate::platform::traits::PromptReason::new(format!(
-            "add a DNS resolver so .{tld} sites open on this Mac"
+            "add a DNS resolver so .{tld} sites open on {}",
+            crate::platform::words::current().host
         )),
     )?;
     Ok(())

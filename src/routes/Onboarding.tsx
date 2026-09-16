@@ -411,13 +411,14 @@ function DoneChip({ label }: { label: string }) {
  *  decision made visible, and without it this is a wall. */
 function EdgeConflictNotice() {
   const { data } = useQuery({ queryKey: ["setup-edge-conflict"], queryFn: setupEdgeConflict });
+  const words = usePlatformWords();
   if (!data) return null;
   const holder = data.app ?? data.holder ?? "Another app";
   const quit = data.app ?? "it";
   return (
     <div className="mt-6 w-full max-w-[440px] rounded-[11px] border border-status-warning-border bg-status-warning-bg px-3.5 py-3 text-left">
       <div className="text-[0.78125rem] font-medium text-rex-text">
-        {holder} is answering HTTPS on this Mac.
+        {holder} is answering HTTPS on {words.host}.
       </div>
       <div className="mt-1 text-[0.71875rem] leading-[1.55] text-rex-text-muted">
         rexenv needs port 443 to serve sites, so they won't load while {quit === "it" ? "it" : quit} has

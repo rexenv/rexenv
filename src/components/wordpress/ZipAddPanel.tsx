@@ -13,6 +13,7 @@
  *  target that silently does nothing is worse than a button that always
  *  works. Multi-select in the native dialog covers the batch case. */
 import { baseName } from "@/lib/path";
+import { usePlatformWords } from "@/lib/usePlatformWords";
 import { useState } from "react";
 import { FileArchive, Plus, X } from "lucide-react";
 import { CHECK_INPUT } from "@/lib/utils";
@@ -39,6 +40,7 @@ export function ZipAddPanel({
   const [files, setFiles] = useState<string[]>([]);
   const [activate, setActivate] = useState(kind === "plugin");
   const [starting, setStarting] = useState(false);
+  const words = usePlatformWords();
 
   const pick = async () => {
     try {
@@ -113,7 +115,7 @@ export function ZipAddPanel({
         </button>
       </div>
       <div className="text-[0.6875rem] text-rex-text-muted">
-        Installs a {kind} from a .zip on this Mac — the same thing wp-admin's “Upload{" "}
+        Installs a {kind} from a .zip on {words.host} — the same thing wp-admin's “Upload{" "}
         {kind}” does, run through WP-CLI so you can watch it and cancel it. The file is
         read where it sits; nothing is uploaded anywhere.
       </div>

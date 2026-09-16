@@ -805,7 +805,7 @@ mod tests {
 
         for (phrase, why) in [
             (
-                "is answering HTTPS on this Mac",
+                "is answering HTTPS on ",
                 "WHAT is wrong, in the reader's terms. At onboarding they have no sites and no \
                  mental model of an edge, so the Start-all sentence (\"services are running, \
                  but…\") is meaningless here",

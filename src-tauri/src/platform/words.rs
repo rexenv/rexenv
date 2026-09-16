@@ -42,6 +42,14 @@ pub struct PlatformWords {
     pub ca_target: &'static str,
     /// The note an agent's consent line carries when the step will also raise the OS's own prompt.
     pub elevation_note: &'static str,
+    /// This machine, as a sentence points at it ("… won't resolve on this Mac", "this Mac has 2 GB free").
+    /// W9 S3b, ledger #639.
+    pub host: &'static str,
+    /// Where an app with no window on screen lives, as a sentence uses it ("staying in the menu bar").
+    pub tray_home: &'static str,
+    /// Where the app looked for the user's editors, browsers and terminals, as the "none detected" tooltip
+    /// says it — the places [`crate::platform::AppCatalog`] actually searches on this OS.
+    pub app_search: &'static str,
     /// Whether this OS draws its window controls INSIDE the page — macOS's traffic lights over a
     /// `titleBarStyle: "Overlay"` window, which the shell reserves a row for. Windows draws its own title
     /// bar above the page, so reserving that row there leaves a dead strip (W9 S1, ruling Q1, ledger #636).
@@ -64,6 +72,9 @@ pub const MACOS: PlatformWords = PlatformWords {
     os_name: "macOS",
     ca_target: "your Mac",
     elevation_note: "macOS will also ask for your password",
+    host: "this Mac",
+    tray_home: "menu bar",
+    app_search: "/Applications and ~/Applications",
     window_controls_in_content: true,
 };
 
@@ -83,6 +94,9 @@ pub const WINDOWS: PlatformWords = PlatformWords {
     os_name: "Windows",
     ca_target: "Windows",
     elevation_note: "Windows will also ask for approval",
+    host: "this PC",
+    tray_home: "notification area",
+    app_search: "the installed-programs list, Program Files and %LOCALAPPDATA%",
     window_controls_in_content: false,
 };
 
@@ -102,7 +116,7 @@ pub fn current() -> &'static PlatformWords {
 mod tests {
     use super::*;
 
-    fn fields(w: &PlatformWords) -> [&'static str; 15] {
+    fn fields(w: &PlatformWords) -> [&'static str; 18] {
         [
             w.reveal,
             w.file_manager,
@@ -119,6 +133,9 @@ mod tests {
             w.os_name,
             w.ca_target,
             w.elevation_note,
+            w.host,
+            w.tray_home,
+            w.app_search,
         ]
     }
 
@@ -140,6 +157,11 @@ mod tests {
         assert_eq!(MACOS.privileged_prompt, "asks for your password once");
         assert_eq!(MACOS.ca_target, "your Mac");
         assert_eq!(MACOS.elevation_note, "macOS will also ask for your password");
+        // The host, tray-home and app-search words, moved here by W9 S3b (#639) — again, the text those
+        // sentences already read on a Mac.
+        assert_eq!(MACOS.host, "this Mac");
+        assert_eq!(MACOS.tray_home, "menu bar");
+        assert_eq!(MACOS.app_search, "/Applications and ~/Applications");
     }
 
     /// Ledger #626 — no Windows word names a macOS thing.
@@ -157,6 +179,13 @@ mod tests {
         assert!(WINDOWS.trust_store.contains("Trusted Root"), "{}", WINDOWS.trust_store);
         assert!(WINDOWS.privileged_prompt.contains("administrator"), "UAC asks for approval, not a password: {}", WINDOWS.privileged_prompt);
         assert_eq!(WINDOWS.os_name, "Windows");
+        assert_eq!(WINDOWS.host, "this PC");
+        assert!(WINDOWS.tray_home.contains("notification area"), "{}", WINDOWS.tray_home);
+        assert!(
+            WINDOWS.app_search.contains("Program Files") && WINDOWS.app_search.contains("installed-programs"),
+            "the tooltip must name where the Windows catalog actually looks: {}",
+            WINDOWS.app_search
+        );
     }
 
     /// Ledger #636 — the window's controls: macOS draws them over the page (the shell reserves a row),
@@ -206,6 +235,10 @@ mod tests {
                 let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
                 if !(name.ends_with(".ts") || name.ends_with(".tsx"))
                     || ["mock.ts", "DevUiReview.tsx", "DevGitPanel.tsx"].contains(&name.as_str())
+                    // The IPC wrappers' only macOS words are the `isTauri()`-false mock fallbacks —
+                    // the browser shell's fixtures, like mock.ts, and shaped like a real macOS answer
+                    // on purpose. Nothing here is rendered.
+                    || path.to_string_lossy().replace('\\', "/").ends_with("lib/ipc/index.ts")
                 {
                     continue;
                 }
@@ -216,7 +249,16 @@ mod tests {
                     if t.starts_with("//") || t.starts_with('*') || t.starts_with("/*") {
                         continue;
                     }
-                    if ["Finder", "xcode-select", "brew install", "keychain", "your Mac", "with macOS"]
+                    if [
+                        "Finder",
+                        "xcode-select",
+                        "brew install",
+                        "keychain",
+                        "your Mac",
+                        "with macOS",
+                        "this Mac",
+                        "/Applications",
+                    ]
                         .iter()
                         .any(|w| line.contains(w))
                     {
@@ -227,6 +269,89 @@ mod tests {
         }
         assert!(scanned > 50, "scanned only {scanned} files — the walk is not reading the frontend");
         assert!(offenders.is_empty(), "macOS words written into the UI instead of asked for:\n{}", offenders.join("\n"));
+    }
+
+    /// Ledger #639 — **the Rust source names no macOS thing either.** The frontend scan's twin, over both
+    /// crates, because a sentence a user reads is written in Rust as often as in TSX: a prompt's reason, a
+    /// disk-space message, a `Display` impl, a log line. Test modules are stripped
+    /// (`copy_scan::production_source`), so a fixture path like `/Applications/Herd.app` — a macOS fixture on
+    /// purpose — is not an offender, and neither is prose in a comment.
+    #[test]
+    fn the_rust_source_names_macos_things_only_through_the_platform() {
+        // (file, the phrase it may still write, why) — a code path that only ever runs on macOS may say so.
+        const ALLOWED: &[(&str, &str, &str)] = &[
+            ("core/app_update.rs", "this Mac", "self-update is macOS-only until the Windows updater (W11)"),
+            ("core/app_update.rs", "/Applications", "the .app bundle it swaps itself into lives there"),
+            (
+                "core/service_manager.rs",
+                "this Mac",
+                "macos_floor_note reads a Mach-O load command — macOS by construction",
+            ),
+        ];
+        const FORBIDDEN: &[&str] = &[
+            "this Mac",
+            "your Mac",
+            "login keychain",
+            "macOS will also ask",
+            "Show in Finder",
+            "xcode-select",
+            "brew install",
+            "/Applications",
+            "menu bar",
+        ];
+
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let (mut offenders, mut scanned, mut landmark) = (Vec::new(), 0, false);
+        let mut stack = vec![root.join("src"), root.join("../cli/src")];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).expect("read a rust source directory") {
+                let path = entry.expect("a directory entry").path();
+                let as_text = path.to_string_lossy().replace('\\', "/");
+                if path.is_dir() {
+                    // The macOS impls are where macOS things BELONG.
+                    if !as_text.ends_with("/platform/macos") {
+                        stack.push(path);
+                    }
+                    continue;
+                }
+                if !as_text.ends_with(".rs") || as_text.ends_with("/platform/words.rs") {
+                    continue;
+                }
+                scanned += 1;
+                let text = std::fs::read_to_string(&path).expect("read a rust source file");
+                // `production_lines` drops test modules; the prose has to go too, or every
+                // "on macOS this is what App Management looks like" comment reads as a violation —
+                // and those comments are how the platform boundary is explained.
+                let prod: String = crate::core::copy_scan::production_lines(&text)
+                    .into_iter()
+                    .map(|(_, l)| l)
+                    .filter(|l| {
+                        let t = l.trim_start();
+                        !(t.starts_with("//") || t.starts_with('*') || t.starts_with("/*"))
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                if as_text.ends_with("/core/dns.rs") {
+                    landmark |= prod.contains("pub fn configure_resolver");
+                }
+                for phrase in FORBIDDEN {
+                    if !prod.contains(phrase) {
+                        continue;
+                    }
+                    if ALLOWED.iter().any(|(f, p, _)| p == phrase && as_text.ends_with(f)) {
+                        continue;
+                    }
+                    offenders.push(format!("{as_text}: {phrase:?}"));
+                }
+            }
+        }
+        assert!(scanned > 100, "scanned only {scanned} files — the walk is not reading the source");
+        assert!(landmark, "core/dns.rs came back without its production code — the strip ate the source");
+        assert!(
+            offenders.is_empty(),
+            "macOS words written into the Rust source instead of asked for (platform::words::current()):\n{}",
+            offenders.join("\n")
+        );
     }
 
     /// The browser shell's words (`src/lib/mock.ts` `mockPlatformWords`) are `MACOS`, word for word.

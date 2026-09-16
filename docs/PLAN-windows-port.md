@@ -1546,6 +1546,16 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   (`core/dns.rs`'s prompt reason and the onboarding copy `core/proxy.rs` guards), `lib.rs`'s "staying in the
   menu bar", `traits.rs`'s "macOS refused the operation", Settings' two "/Applications and ~/Applications"
   tooltips — and a Rust-side scan, since nothing yet stops a literal being typed back there.
+  **S3b done 16 Sep 2026 (ledger #639), L0.** Three more words — `host` ("this Mac" / "this PC"), `tray_home`
+  ("menu bar" / "notification area") and `app_search` (`/Applications and ~/Applications` / the installed-
+  programs list, Program Files and `%LOCALAPPDATA%`, which is where `app_catalog.rs` actually looks) — and
+  the eight sentences that wrote them: the resolver prompt, the disk-shortfall message, `SwapFailure`'s
+  Display, the login-launch log line, Onboarding's edge-conflict notice, the zip panel, Settings' two
+  detection tooltips and its three "on this Mac" lines. `settings_access.rs`'s denial reason is a
+  `&'static str`, so it was reworded ("hold rexenv on a superseded build") rather than made dynamic.
+  The new guard is the frontend scan's twin over `src-tauri/src` + `cli/src`; its first run read doc comments
+  as violations, so it strips comment lines the same way. Three exceptions are named with their reason, all
+  macOS-only code paths. Left for the owner: the Dell look at the Windows wording once S4 and S5 land.
   *Done when:* on the Dell, no screen names a Mac thing; Ctrl+R does not reload; the window looks like a
   Windows app (native title bar, no dead row); and a path shown as an example reads `C:\…`.
 - **W10 — Feature gates per D4.** Refused in core, honest in the UI, one arm to enable later.

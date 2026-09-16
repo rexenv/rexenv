@@ -151,6 +151,7 @@ function ThemeSetting() {
 /** General prefs card: compact Default-PHP select + Sites-folder picker. */
 function GeneralPrefsCard() {
   const qc = useQueryClient();
+  const words = usePlatformWords();
   const { data: versions = [] } = useQuery({ queryKey: ["php-versions"], queryFn: listPhpVersions });
   const installed = versions.filter((v) => v.installed);
   const currentPhp = versions.find((v) => v.isDefault)?.minor ?? installed[0]?.minor ?? "";
@@ -254,7 +255,7 @@ function GeneralPrefsCard() {
         {editors.length === 0 ? (
           <span
             className="font-mono text-[0.71875rem] text-rex-text-muted"
-            title="Looked in /Applications and ~/Applications for VS Code, Cursor, PhpStorm, Windsurf, Zed, Sublime Text, WebStorm, VSCodium, Nova and TextMate."
+            title={`Looked in ${words.appSearch} for VS Code, Cursor, PhpStorm, Windsurf, Zed, Sublime Text, WebStorm, VSCodium, Nova and TextMate.`}
           >
             No code editor detected
           </span>
@@ -278,7 +279,7 @@ function GeneralPrefsCard() {
         {browsers.length === 0 ? (
           <span
             className="font-mono text-[0.71875rem] text-rex-text-muted"
-            title="Looked in /Applications and ~/Applications for Safari, Chrome, Firefox, Brave, Edge, Arc, Opera, Vivaldi, Chromium and friends."
+            title={`Looked in ${words.appSearch} for Safari, Chrome, Firefox, Brave, Edge, Arc, Opera, Vivaldi, Chromium and friends.`}
           >
             No browser detected
           </span>
@@ -952,7 +953,7 @@ function DnsSslSetting() {
           <div className="mt-3 rounded-[11px] border border-status-warning-border bg-rex-well px-[14px] py-[11px]">
             <div className="text-[0.8125rem] font-medium text-rex-text">
               {unresolvable.length === 1 ? "A TLD your sites use" : "TLDs your sites use"} can't be
-              resolved on this Mac
+              resolved on {words.host}
             </div>
             {/* Said plainly because everything ELSE about these sites is fine:
                 nginx serves them, the edge routes them, the certificate covers
@@ -1283,7 +1284,7 @@ function DefaultTldCard() {
             alternative={
               <>
                 Or leave it alone — new sites under <span className="font-mono">.{value}</span>{" "}
-                won't resolve on this Mac until rexenv answers it.
+                won't resolve on {words.host} until rexenv answers it.
               </>
             }
           />
@@ -1404,6 +1405,7 @@ function ServicePrefsCard() {
  */
 function MailCatchAllCard() {
   const qc = useQueryClient();
+  const words = usePlatformWords();
   const { data: on } = useQuery({ queryKey: ["mail-catch-all"], queryFn: mailCatchAll });
   const toggle = useMutation({
     mutationFn: (next: boolean) => setMailCatchAll(next),
@@ -1412,7 +1414,7 @@ function MailCatchAllCard() {
       toast.info(
         next
           ? "Mail from your sites is caught in Mailpit again."
-          : "Your sites now send mail for real. Anything they mail will leave this Mac.",
+          : `Your sites now send mail for real. Anything they mail will leave ${words.host}.`,
       );
     },
     onError: (e) => toastBackendError(e),

@@ -495,9 +495,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     privileged prompt, the OS's name, what a CA is added to, and an agent consent line's note are platform
     words now — Settings' Local CA card, its TLD copy, SiteDetail's domain dialog, Onboarding's first screen
     and the five MCP descriptions. Plants 5/5; the frontend scan widened to "keychain", "your Mac" and "with
-    macOS". **Left:** S3b (the Rust half — "this Mac", the menu-bar log line, "macOS refused the operation",
-    the two "/Applications and ~/Applications" tooltips, and a Rust-side scan), S4 (the paths), S5 (DESIGN's
-    Windows section)
+    macOS". **S3b done the same day (ledger #639), L0:** `host`, `trayHome` and `appSearch`
+    joined the words, and a scan over BOTH Rust crates now forbids a macOS literal in any sentence — three
+    named exceptions, each with its reason. Plants 6/6. **Left:** S4 (the paths), S5 (DESIGN's Windows
+    section)
   - [ ] W10 — Redis/Apache/Xdebug/MariaDB (per D4) refused in core with an honest message
   - [ ] W11 — NSIS installer, Authenticode (if D5 rules it in), Windows release job, updater, winget
   - [ ] W12 — launch gates: verify on the Windows runner, SMOKE-TEST + INSTALL Windows

@@ -504,10 +504,11 @@ pub struct DiskShortfall {
 impl DiskShortfall {
     pub fn message(&self) -> String {
         format!(
-            "Not enough disk space for the copy: it needs about {} and this Mac has {} \
+            "Not enough disk space for the copy: it needs about {} and {} has {} \
              free. The estimate is deliberately generous — a text dump is often larger \
              than the database it copies — so freeing space a little past it is enough.",
             human_bytes(self.estimated_dump_bytes),
+            crate::platform::words::current().host,
             human_bytes(self.free_bytes)
         )
     }

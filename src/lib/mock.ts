@@ -22,6 +22,9 @@ export const mockPlatformWords: PlatformWords = {
   osName: "macOS",
   caTarget: "your Mac",
   elevationNote: "macOS will also ask for your password",
+  host: "this Mac",
+  trayHome: "menu bar",
+  appSearch: "/Applications and ~/Applications",
   windowControlsInContent: true,
 };
 

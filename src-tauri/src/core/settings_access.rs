@@ -140,7 +140,7 @@ pub fn cli_access(key: &str) -> CliAccess {
         ),
         "app_update_release_serial" => CliAccess::Denied(
             "the app update chain's rollback protection — writing this key re-opens a \
-             replayed older release, which is how a host would hold this Mac on a \
+             replayed older release, which is how a host would hold rexenv on a \
              superseded build",
         ),
         "app_update_check" => CliAccess::ReadOnly(
