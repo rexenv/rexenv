@@ -500,8 +500,13 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     named exceptions, each with its reason. Plants 6/6. **S4 done the same day (ledger #640), L0:**
     `routesLabel`, `homePrefix` and `importSearch` joined the words, the teardown sentences stopped promising
     `/etc/resolver`, and the frontend scan now forbids `~/` and `/etc/resolver` outright. Plants 5/5.
-    **Left:** S5 (DESIGN's Windows section). **Open for the owner:** the Valet/Herd/Local importer cannot
-    work on Windows as written (macOS-shaped homes) — port it, or say so on the card
+    **S5 done the same day:** `docs/DESIGN.md` has a Windows section — the OS's own title bar
+    (and why fake traffic lights are the dishonesty the rules forbid), the browser accelerator keys, the OS's
+    nouns coming from the platform, and the three bundled type families. **Left to close W9:** the owner's
+    look on the Dell at the Windows wording (Settings' Local CA card, Onboarding's first screen, SiteDetail's
+    domain copy, the teardown confirmation) — the build will be staged for them. **Open for the owner:** the
+    Valet/Herd/Local importer cannot work on Windows as written (macOS-shaped homes) — port it, or say so on
+    the card
   - [ ] W10 — Redis/Apache/Xdebug/MariaDB (per D4) refused in core with an honest message
   - [ ] W11 — NSIS installer, Authenticode (if D5 rules it in), Windows release job, updater, winget
   - [ ] W12 — launch gates: verify on the Windows runner, SMOKE-TEST + INSTALL Windows

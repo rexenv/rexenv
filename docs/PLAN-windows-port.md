@@ -1556,6 +1556,18 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   The new guard is the frontend scan's twin over `src-tauri/src` + `cli/src`; its first run read doc comments
   as violations, so it strips comment lines the same way. Three exceptions are named with their reason, all
   macOS-only code paths. Left for the owner: the Dell look at the Windows wording once S4 and S5 land.
+  **S4 done 16 Sep 2026 (ledger #640), L0.** Three path words — `routes_label` ("file under /etc/resolver" /
+  "NRPT rule", the name `WindowsDns::route_label` already used), `home_prefix` ("~" / "%USERPROFILE%") and
+  `import_search` — and the five places that wrote a path themselves: the teardown confirmation, the uninstall
+  toast (whose "run `valet install`" advice became "the other tool will need to put its own back", Valet not
+  being a Windows thing), the MCP card's config path, Import's empty state, and the sites-folder tooltip.
+  That last needed no word: `default_sites_dir` is `<home>/rexenv/Sites` on every OS and the resolved path is
+  already on screen above the button, so the literal was simply dropped. The frontend scan now forbids `~/`
+  and `/etc/resolver`, which immediately caught two comments spelling `/etc/resolver/test`. Plants 5/5.
+  **Measured, and open for the owner:** the Valet/Herd/Local importer cannot work on Windows as written —
+  `valet_homes`, `herd_home` and `local_home` all build macOS layouts (`Library/Application Support`), while
+  Herd on Windows keeps its tree under `%LOCALAPPDATA%`. On the Dell that card will always say "none found".
+  Its words are honest now; whether to port the importer or say so plainly is the owner's call.
   *Done when:* on the Dell, no screen names a Mac thing; Ctrl+R does not reload; the window looks like a
   Windows app (native title bar, no dead row); and a path shown as an example reads `C:\…`.
 - **W10 — Feature gates per D4.** Refused in core, honest in the UI, one arm to enable later.

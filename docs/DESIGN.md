@@ -518,6 +518,37 @@ the shipped UI toward one.
   (`scripts/wk-checks/`), not Chrome — pill widths, %-height chains and dialog
   behaviour all differ there.
 
+## Windows — where the same design lands differently (W9, Sep 2026)
+
+One visual system, two hosts. The rules above are unchanged; these are the four places the
+SAME design has to be drawn or spoken differently, each measured on the Dell rather than assumed.
+
+- **The window wears the OS's own title bar.** macOS draws its traffic lights OVER the page
+  (`titleBarStyle: "Overlay"`), so the sidebar reserves a ~12px row for them; Windows draws a real
+  title bar above the page, and reserving there leaves a dead strip under it. The sidebar renders
+  that spacer behind `windowControlsInContent` (`platform/words.rs`, ledger #636) — never
+  unconditionally. `titleBarStyle`/`hiddenTitle` are macOS-only keys in Tauri; there is no Windows
+  equivalent to "fix", and fake traffic lights would be exactly the dishonesty the rules above forbid.
+  The drag region stays ours on both.
+- **The browser's keys are not the app's keys.** WebView2 ships Ctrl+R, F5, Ctrl+P, Ctrl+F and F12
+  enabled, so a desktop app reloads to a blank page on a stray Ctrl+R. rexenv asks the webview for
+  `SetAreBrowserAcceleratorKeysEnabled(false)` at startup (ledger #637); Ctrl+A/C/V/Z keep working,
+  because those are the text field's, not the browser's. Verified on the Dell, key by key.
+- **The OS's own nouns come from the platform, never from a screen.** No component writes "Finder",
+  "login keychain", "your Mac", "menu bar", `~/…` or `/etc/resolver`: they are fields of
+  `PlatformWords`, served by one IPC call, and two scans — one over `src/**.ts(x)`, one over both Rust
+  crates — fail the build if a literal is typed back (ledgers #626, #638, #639, #640). This is a
+  design rule, not a plumbing detail: a Windows user told to look in Finder has been shown someone
+  else's computer. Where the word is not just a name but a place, it names what the code actually
+  does — Windows' "NRPT rule" is what `WindowsDns::route_label` says, and the app-search tooltip lists
+  the folders `app_catalog.rs` really reads.
+- **The three type families ship with the app.** Inter, JetBrains Mono and Space Grotesk come from
+  `@fontsource`, bundled, so the Windows build renders the same roles rather than falling back to
+  Segoe UI. (Written down because the first answer here was wrong: the fallback was assumed, then the
+  bundle was checked, then the Dell was looked at.)
+
+The costs are recorded where they were paid: `docs/PLAN-windows-port.md` §5 W9, with the Dell runs.
+
 ## Intentional divergences from the comps — do NOT "fix" toward them
 
 The comps predate the real architecture. Correct as shipped:
