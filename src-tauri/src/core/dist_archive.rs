@@ -951,14 +951,21 @@ mod tests {
         fn stop(&self, pid: u32) -> Result<()> {
             self.stop_group(pid)
         }
+        /// **The real platform's group kill — and this is the stub the cancel path
+        /// actually calls.** It shelled out to `/bin/kill` because "`platform::macos` is
+        /// private"; `platform::current().supervisor()` is the public door that was
+        /// wanted, and it ends a job object on Windows and a process group on unix. There
+        /// is no `kill` binary on Windows, so the cancel did nothing there, the fixture's
+        /// `ping -n 301` ran its full 300 seconds and the suite HUNG on the Dell (tenth
+        /// run, 17 Sep 2026) — visible only once #672 fixed the quoting, because before
+        /// that the script produced nothing and the test failed before reaching cancel.
+        /// Third instance of one defect (#663 `php.rs`, `Killer` below, this): a stub that
+        /// promises to end a process must end it on every host it compiles for. The
+        /// `kill` scan guard cannot see any of them — `copy_scan::production_source`
+        /// strips `#[cfg(test)]` modules, which is right for production and blind to
+        /// exactly the fixtures this bug lives in.
         fn stop_group(&self, pgid: u32) -> Result<()> {
-            // The real group kill, via /bin/kill — `platform::macos` is private
-            // and this test needs the grandchildren to die, not just the shell.
-            let _ = std::process::Command::new("/bin/kill")
-                .arg("-KILL")
-                .arg(format!("-{pgid}"))
-                .status();
-            Ok(())
+            crate::platform::current().supervisor().stop_group(pgid)
         }
     }
 
@@ -1047,12 +1054,18 @@ mod tests {
         fn stop(&self, pid: u32) -> Result<()> {
             self.stop_group(pid)
         }
+        /// **Through the real platform, never a `kill` binary** — the correction #663 made
+        /// in `php.rs`'s `GroupStub` and that row said belonged "in the stub, where the
+        /// promise was written". This stub two files away still shelled out to
+        /// `/bin/kill`, which does not exist on Windows: the cancel did nothing, the
+        /// fixture's `ping -n 301` ran its full 300 seconds, and the suite hung on the
+        /// Dell (17 Sep 2026, the tenth run). It surfaced only once #672 fixed the quoting
+        /// — before that the script produced nothing and the test failed before reaching
+        /// the cancel. A stub that promises to end a process must end it on every host it
+        /// compiles for; the platform's own `stop_group` ends a job object on Windows and
+        /// a process group on unix.
         fn stop_group(&self, pgid: u32) -> Result<()> {
-            let _ = std::process::Command::new("/bin/kill")
-                .arg("-KILL")
-                .arg(format!("-{pgid}"))
-                .status();
-            Ok(())
+            crate::platform::current().supervisor().stop_group(pgid)
         }
     }
 
