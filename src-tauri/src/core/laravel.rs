@@ -84,8 +84,28 @@ pub fn clear_failed_skeleton(project: &Path) -> Result<()> {
     for entry in std::fs::read_dir(project)? {
         let entry = entry?;
         // `file_type` does not follow symlinks: a link is removed as a link,
-        // never walked into.
-        if entry.file_type()?.is_dir() {
+        // never walked into. A LINK is checked first, because on Windows the kind
+        // of link decides the call: a directory symlink reports `is_dir() == false`
+        // here (it is a link, not a directory) and `remove_file` on it fails with
+        // "Access is denied" — measured on the Dell 17 Sep 2026, where it stopped
+        // this function dead. `remove_dir` removes that link and leaves its target
+        // alone; a file symlink takes `remove_file`, as on unix, where either call
+        // works and this branch simply picks the same one it always did.
+        let kind = entry.file_type()?;
+        if kind.is_symlink() {
+            // Neither call works on both, and which one is needed depends on the OS AND
+            // on what the link points at — measured both ways 17 Sep 2026:
+            //
+            //   macOS    remove_file(dir link) ok        remove_dir(dir link) NotADirectory
+            //   Windows  remove_file(dir link) denied    remove_dir(dir link) ok
+            //
+            // So: try the file form, fall back to the directory form. Deliberately not
+            // `entry.path().is_dir()` — that FOLLOWS the link, which gets a dangling one
+            // wrong, and is what made my first attempt at this fail on macOS.
+            if std::fs::remove_file(entry.path()).is_err() {
+                std::fs::remove_dir(entry.path())?;
+            }
+        } else if kind.is_dir() {
             std::fs::remove_dir_all(entry.path())?;
         } else {
             std::fs::remove_file(entry.path())?;
