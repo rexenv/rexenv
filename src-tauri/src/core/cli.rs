@@ -348,6 +348,14 @@ mod tests {
     /// directory starts empty, and nothing checked it, so a dirty one produced a
     /// failure that pointed at the code under test instead of at the fixture.
     /// Planting the leftover here is the whole test: it is what a reused pid does.
+    // The three tests below are about the SYMLINK install, which is the unix one. On
+    // Windows `cli_install()` answers `CopyOnUserPath` and `ShellRunner::symlink_file`
+    // is unsupported by default — the trait says so in as many words ("the Windows CLI
+    // install is a PATH entry, not a link"), so these ran there only to fail on a path
+    // production never takes (W12: three of the 79). The copy install has its own tests
+    // below (`replace_copy`, `aside_path`, `status_of_copy`), which DO run on both, so
+    // cfg-ing these leaves no Windows surface uncovered.
+    #[cfg(unix)]
     #[test]
     fn the_fixture_directory_starts_empty_even_if_a_previous_run_left_it_dirty() {
         let dir = scratch("selfcheck");
@@ -365,6 +373,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn symlink_install_is_idempotent_and_replaces_a_stale_link() {
         let dir = scratch("link");
@@ -380,6 +389,7 @@ mod tests {
         assert_eq!(std::fs::read_link(&dst).unwrap(), src_b);
     }
 
+    #[cfg(unix)]
     #[test]
     fn status_reads_missing_stale_and_current_links() {
         let dir = scratch("status");
