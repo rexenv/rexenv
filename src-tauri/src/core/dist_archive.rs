@@ -919,8 +919,14 @@ mod tests {
                 .map(|(_, v)| PathBuf::from(v))
                 .expect("TMPDIR must be set for the child");
             *self.seen_tmpdir.lock().unwrap() = Some(tmp);
-            let mut cmd = std::process::Command::new("/bin/sh");
-            cmd.arg("-c")
+            // The interpreter moves with the script (`script_for`): `/bin/sh` does not
+            // exist on Windows, which is where these tests died with os error 3.
+            #[cfg(unix)]
+            let (shell, flag) = ("/bin/sh", "-c");
+            #[cfg(windows)]
+            let (shell, flag) = ("cmd", "/c");
+            let mut cmd = std::process::Command::new(shell);
+            cmd.arg(flag)
                 .arg(&self.script)
                 .current_dir(cwd)
                 .env_clear()
@@ -978,14 +984,36 @@ mod tests {
     /// Litter exactly as dist-archive does — a directory in `$TMPDIR` that
     /// nothing ever removes — then behave as `outcome` says.
     fn script_for(outcome: &str) -> String {
-        let litter = r##"mkdir -p "$TMPDIR/my-plugin.zip6a72" && echo copy > "$TMPDIR/my-plugin.zip6a72/big.bin";"##;
-        match outcome {
-            "ok" => format!(
-                r##"{litter} echo PK > "$TMPDIR/../out/my-plugin.1.2.3.zip"; echo Success"##
-            ),
-            "failed" => format!(r##"{litter} echo failed >&2; exit 1"##),
-            "cancelled" => format!(r##"{litter} sleep 300; :"##),
-            other => panic!("unknown outcome {other}"),
+        #[cfg(unix)]
+        {
+            let litter = r##"mkdir -p "$TMPDIR/my-plugin.zip6a72" && echo copy > "$TMPDIR/my-plugin.zip6a72/big.bin";"##;
+            match outcome {
+                "ok" => format!(
+                    r##"{litter} echo PK > "$TMPDIR/../out/my-plugin.1.2.3.zip"; echo Success"##
+                ),
+                "failed" => format!(r##"{litter} echo failed >&2; exit 1"##),
+                "cancelled" => format!(r##"{litter} sleep 300; :"##),
+                other => panic!("unknown outcome {other}"),
+            }
+        }
+        #[cfg(windows)]
+        {
+            // Measured on the Dell rather than translated by eye, and one of the
+            // measurements changed the shape: `mkdir` on an EXISTING directory exits 1,
+            // and `2>nul` hides the message without changing that — so `&&` would drop
+            // the litter on any re-run and the sweep would then be proving nothing.
+            // `&` (run regardless) is the separator, `%TMPDIR%` does expand from the env
+            // block the parent hands the child, `exit /b 1` sets the code, and
+            // `ping -n 301` is the 300-second wait cancel has to interrupt.
+            let litter = r##"mkdir "%TMPDIR%\my-plugin.zip6a72" 2>nul & echo copy > "%TMPDIR%\my-plugin.zip6a72\big.bin" &"##;
+            match outcome {
+                "ok" => format!(
+                    r##"{litter} echo PK > "%TMPDIR%\..\out\my-plugin.1.2.3.zip" & echo Success"##
+                ),
+                "failed" => format!(r##"{litter} echo failed 1>&2 & exit /b 1"##),
+                "cancelled" => format!(r##"{litter} ping -n 301 127.0.0.1 >nul"##),
+                other => panic!("unknown outcome {other}"),
+            }
         }
     }
 
