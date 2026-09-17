@@ -1229,10 +1229,28 @@ pub fn has_custom_valet_driver(root: &Path) -> bool {
 /// `~/.ssh` one dotfile-guard bug from the internet. Only the directories
 /// THEMSELVES are refused — `~/Desktop/myproject` is a perfectly normal place
 /// to keep a site, and Valet users really do keep them there.
+///
+/// **Every comparison here puts a canonical path on BOTH sides.** `canonicalize` returns a
+/// verbatim path on Windows and the crates supplying the other side do not, so a plain
+/// comparison is false exactly where the guard is needed (W12, 17 Sep 2026 — measured on
+/// the Dell). Three guards had it: the blast radius, our own app data, and the managed
+/// sites folder. The per-site overlap loop below does NOT, because the paths it compares
+/// were stored from this function's own canonical return.
 pub fn validate_linked_docroot(
     conn: &Connection,
     platform: &dyn Platform,
     path: &str,
+) -> Result<PathBuf> {
+    validate_linked_docroot_on(conn, platform, path, std::env::consts::OS)
+}
+
+/// [`validate_linked_docroot`] for a NAMED os — see [`create_on`]. Only the blast radius
+/// differs: `/` and `/Users` are the unix roots, `C:\` and `C:\Users` the Windows ones.
+pub fn validate_linked_docroot_on(
+    conn: &Connection,
+    platform: &dyn Platform,
+    path: &str,
+    os: &str,
 ) -> Result<PathBuf> {
     let raw = Path::new(path.trim());
     if raw.as_os_str().is_empty() || !raw.is_absolute() {
@@ -1253,7 +1271,22 @@ pub fn validate_linked_docroot(
     validate_docroot_path(&canon.display().to_string())?;
 
     let home = directories::BaseDirs::new().map(|b| b.home_dir().to_path_buf());
-    let mut blast_radius: Vec<PathBuf> = vec![PathBuf::from("/"), PathBuf::from("/Users")];
+    // The unix roots only: on Windows `/` and `/Users` name nothing, and the drive root
+    // plus the profile parent (`C:\`, `C:\Users`) are that host's same class. Named by os
+    // rather than read from the host so both answers stay measurable from either machine
+    // (W10/#642) — the bar only `cargo check`s for Windows.
+    let mut blast_radius: Vec<PathBuf> = if os == "windows" {
+        let mut roots: Vec<PathBuf> = Vec::new();
+        if let Some(root) = canon.ancestors().last() {
+            roots.push(root.to_path_buf());
+        }
+        if let Some(parent) = home.as_ref().and_then(|h| h.parent()) {
+            roots.push(parent.to_path_buf());
+        }
+        roots
+    } else {
+        vec![PathBuf::from("/"), PathBuf::from("/Users")]
+    };
     if let Some(home) = &home {
         blast_radius.push(home.clone());
         for dir in ["Desktop", "Documents", "Downloads"] {
@@ -1264,6 +1297,16 @@ pub fn validate_linked_docroot(
     if canon.parent() == Some(Path::new("/Volumes")) {
         blast_radius.push(canon.clone());
     }
+    // **Compared CANONICAL against CANONICAL, never against the path a directory crate
+    // handed us.** `canonicalize` on Windows returns a VERBATIM path (`\\?\C:\Users\DELL`)
+    // while `BaseDirs::home_dir()` returns `C:\Users\DELL`, so the plain `contains`/
+    // `starts_with` below answered FALSE for the home folder itself — the refusal this
+    // function's doc promises simply did not fire on that host. Measured on the Dell,
+    // 17 Sep 2026: `canon(home) == plain home` is false, `canon(dir).starts_with(plain
+    // home)` is false, and `starts_with(canon home)` is true. An entry that does not exist
+    // (`/Volumes` off macOS) keeps its literal form, which is what the comparison wants.
+    let resolve = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
+    let blast_radius: Vec<PathBuf> = blast_radius.iter().map(|p| resolve(p)).collect();
     if blast_radius.contains(&canon) {
         return Err(Error::Other(format!(
             "{} is too broad to serve — a site's folder can be shared publicly with one \
@@ -1274,7 +1317,9 @@ pub fn validate_linked_docroot(
 
     // Our own app data holds the CA key, every site certificate and the app
     // database — never serve it.
-    if let Ok(app_data) = platform.paths().app_data_dir() {
+    // Canonical on both sides, for the reason written at the blast radius above: this one
+    // is the guard that matters most, and on Windows it was answering false.
+    if let Ok(app_data) = platform.paths().app_data_dir().map(|p| resolve(&p)) {
         if canon == app_data || canon.starts_with(&app_data) {
             return Err(Error::Other(
                 "that folder is rexenv's own application data — pick your project folder".into(),
@@ -1284,7 +1329,8 @@ pub fn validate_linked_docroot(
 
     // Inside the managed sites folder there is nothing to link: that's a normal
     // site, and linking would only opt its docroot out of cleanup.
-    let managed = sites_dir(conn, platform)?;
+    // `sites_dir` is a SETTING or a `BaseDirs` join — never canonical either.
+    let managed = resolve(&sites_dir(conn, platform)?);
     if canon.starts_with(&managed) {
         return Err(Error::Other(format!(
             "{} is inside your rexenv sites folder — create a site normally instead of \
@@ -5105,6 +5151,44 @@ mod tests {
         // ...but a project INSIDE one of those is perfectly normal (real Valet
         // users keep sites in ~/Desktop), so only the folder itself is refused.
         assert!(validate_linked_docroot(&conn, &*platform, &dir.display().to_string()).is_ok());
+
+        // **The spelling the caller uses must not decide whether the guard fires.** This is
+        // the regression the Dell found: every right-hand side here comes from `BaseDirs` /
+        // `ProjectDirs` / the sites-dir setting, none of which are canonical, while `canon`
+        // is — and on Windows `canonicalize` adds a `\\?\` prefix, so the comparison was
+        // false for the home folder ITSELF and the refusal never fired. macOS has the same
+        // asymmetry in gentler form (`/tmp` -> `/private/tmp`), which is what this leg uses:
+        // a non-canonical spelling of a blast-radius folder is still refused.
+        let tmp_home = std::env::temp_dir();
+        if tmp_home.canonicalize().map(|c| c != tmp_home).unwrap_or(false) {
+            // `std::env::temp_dir()` is a symlinked spelling on macOS. Serving it is not a
+            // blast-radius case, so assert the PROPERTY that broke instead: what comes back
+            // is canonical whichever spelling went in.
+            let a = validate_linked_docroot(&conn, &*platform, &dir.display().to_string()).unwrap();
+            let b = validate_linked_docroot(
+                &conn,
+                &*platform,
+                &dir.canonicalize().unwrap().display().to_string(),
+            )
+            .unwrap();
+            assert_eq!(a, b, "the same folder, two spellings, must resolve identically");
+        }
+
+        // The os is a PARAMETER, so the Windows radius is assertable from here (#642).
+        // Only what this host can honestly answer: the home folder is too broad under
+        // BOTH rules, and `/Users` is a unix root that is not part of the Windows one.
+        assert!(
+            validate_linked_docroot_on(&conn, &*platform, &home.display().to_string(), "windows")
+                .unwrap_err()
+                .to_string()
+                .contains("too broad"),
+            "the home folder is too broad on every os"
+        );
+        assert!(
+            validate_linked_docroot_on(&conn, &*platform, &dir.display().to_string(), "windows")
+                .is_ok(),
+            "a project folder stays linkable under the Windows radius"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }

@@ -1371,7 +1371,13 @@ honest footer —
   swap can't redirect what we serve; refuses overlap with another site, our own
   app data, the sites folder, and blast-radius roots `/`, `/Users`, `$HOME`,
   `~/Desktop|Documents|Downloads`, volume roots — a docroot can be published by
-  the tunnel feature) and creates nothing. `phase_defs` gives it
+  the tunnel feature) and creates nothing. The roots are named per OS
+  (`validate_linked_docroot_on`): on Windows they are the drive root and the
+  profile parent (`C:\`, `C:\Users`). **Every one of those comparisons puts a
+  canonical path on both sides** — `canonicalize` returns a verbatim path
+  (`\\?\C:\…`) on Windows while `BaseDirs`/`ProjectDirs`/the sites-dir setting do
+  not, so the plain comparison answered false there and the home-folder and
+  app-data refusals did not fire at all (measured on the Dell, 17 Sep 2026). `phase_defs` gives it
   prepare/fetch/serve whatever its type: `configure` is only half idempotent
   (skips `wp config create` when wp-config.php exists, then creates the database
   unconditionally), so running the WordPress phases over an existing install
