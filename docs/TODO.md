@@ -590,19 +590,31 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     a red test:** `state/store.rs`'s SQL scan compared paths against `"src/state/"` and found ZERO
     hits on Windows — it failed only because it carries a canary. Scans without one (`mcp_server/
     user_sites.rs`, `mcp_server/scratch.rs`) would pass while seeing nothing.
-    **Worked down to 2 the same day, nine runs on the Dell:** 79 → 51 → 44 → 30 → 22 → 13 → 12 → 9
-    → **2** (`ea1ff92a`: 1305 passed of 1307), one commit per family, each measured there — ledger
-    #652–#671. **Not one was a claim that fails on Windows:** every single failure was a fixture
-    asserting a value it spelled itself where the code derives it, or a helper whose Windows arm
-    was missing. The two still red are `dist_archive`'s, and their cause is now measured: under
-    `cmd /c` every QUOTED path form is refused ("the filename, directory name, or volume label
-    syntax is incorrect") while the unquoted form works — and the script still exits 0, because
-    `&` runs `echo Success` regardless, so it wore the disguise of a run that succeeded and
-    produced nothing. **Left:** those 2, verify.sh's own Windows run, the SMOKE-TEST and INSTALL
-    Windows sections (D6 rules the floor: Windows 11 x64 supported, 10 22H2 best-effort, arm64
-    unsupported; D5 leaves signing undecided, so the SmartScreen wording stays the owner's
-    measurement to make), and the clean Windows 11 VM pass. Node 24.21.0 + npm/npx 11.19.1 +
-    pnpm 12.4.2 and python3 3.12.10 are installed on the Dell ✓ 17 Sep 2026
+    **Worked down to ZERO the same day, twelve runs on the Dell:** 79 → 51 → 44 → 30 → 22 → 13 →
+    12 → 9 → 2 → **0** — `cbfdf1b6`, **1307 passed, 0 failed in 26.48 s**, the first fully green
+    Windows suite this port has had. One commit per family, each measured there; ledger #652–#673.
+    **Not one was a claim that fails on Windows:** every single failure was a fixture asserting a
+    value it spelled itself where the code derives it, or a helper whose Windows arm was missing.
+    **The last two took four commits between them and are the ones worth reading:** under `cmd /c`
+    every QUOTED path form is refused ("the filename, directory name, or volume label syntax is
+    incorrect") while the unquoted form works — and the script still exits 0, because `&` runs
+    `echo Success` regardless, so it wore the disguise of a run that succeeded and produced nothing
+    (#672). Fixing that exposed a hang behind it: both archive stubs' cancel was a no-op on Windows,
+    first via `/bin/kill` and then via `platform::current().supervisor().stop_group`, which returns
+    `Ok(())` for a pid with no job object — and a stub-spawned child never has one. Runs ten and
+    eleven parked on it and were ended by hand; `taskkill /T /F` is what reaps the detached
+    grandchild (#673). **The `cli` crate is measured there too, the same day: 23 passed, 0 failed**
+    (`cbfdf1b6`) — and the number is worth writing down rather than repeating, because the Mac runs
+    **25**: two tests are gated off Windows, so "23, all green" means all of the ones that run, not
+    all of them. The two are named rather than counted, so the next reader can check the arithmetic:
+    `soft_request_gives_up_on_a_listener_that_accepts_and_never_answers` and
+    `soft_request_returns_the_data_when_the_app_answers`, both `#[cfg(unix)]` — the unix-socket
+    transport, which is D3's open item on Windows, so their absence is the port's shape and not an
+    oversight. **Left:** verify.sh's own Windows run, the SMOKE-TEST and INSTALL Windows
+    sections (D6 rules the floor: Windows 11 x64 supported, 10 22H2 best-effort, arm64 unsupported;
+    D5 leaves signing undecided, so the SmartScreen wording stays the owner's measurement to make),
+    and the clean Windows 11 VM pass. Node 24.21.0 + npm/npx 11.19.1 + pnpm 12.4.2 and python3
+    3.12.10 are installed on the Dell ✓ 17 Sep 2026
 
 - [x] **An older rexenv refuses a database a newer one migrated** ✓ 13 Sep 2026 — built the same
   day at the owner's go: `refuse_newer_schema` in `state::db::open` (before any pragma) and
