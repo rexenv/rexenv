@@ -1579,6 +1579,13 @@ pub fn set_php_version(conn: &Connection, id: &str, version: &str) -> Result<Opt
 /// Xdebug bottle (8.0: the static build can't dlopen any .so). Returns the
 /// updated site, or `None` if the id doesn't exist.
 pub fn set_xdebug(conn: &Connection, id: &str, enabled: bool) -> Result<Option<Site>> {
+    set_xdebug_on(conn, id, enabled, std::env::consts::OS)
+}
+
+/// [`set_xdebug`] for a NAMED os — see [`create_on`]. Xdebug has no Windows pins (D4), so
+/// there every enable is refused by `xdebug_unavailable_reason_on` before the flag is
+/// touched; a test about what the TOGGLE does has to be able to say which os it means.
+pub fn set_xdebug_on(conn: &Connection, id: &str, enabled: bool, os: &str) -> Result<Option<Site>> {
     if enabled {
         let Some(site) = get(conn, id)? else {
             return Ok(None);
@@ -1597,7 +1604,7 @@ pub fn set_xdebug(conn: &Connection, id: &str, enabled: bool) -> Result<Option<S
         // It used to say "its static build can't load extensions" for every
         // absence — true of 7.4 and 8.0, and a confident falsehood the day a
         // minor ships before its Xdebug bottle does.
-        if let Some(why) = crate::core::binaries::xdebug_unavailable_reason(&minor) {
+        if let Some(why) = crate::core::binaries::xdebug_unavailable_reason_on(&minor, os) {
             return Err(Error::Other(why));
         }
     }
@@ -3441,32 +3448,46 @@ mod tests {
         let site = create(&conn, sample("A", "a.test")).unwrap(); // nginx, PHP 8.3
         assert!(!site.xdebug);
 
-        // Happy path: on, then off.
-        let on = set_xdebug(&conn, &site.id, true).unwrap().unwrap();
+        // Happy path: on, then off. `_on("macos")` throughout, for the same reason the
+        // FrankenPHP leg below already names it: Xdebug has no Windows pins, so on the
+        // Dell every enable is refused before the flag this test is about is reached (W12).
+        let on = set_xdebug_on(&conn, &site.id, true, "macos").unwrap().unwrap();
         assert!(on.xdebug);
-        let off = set_xdebug(&conn, &site.id, false).unwrap().unwrap();
+        let off = set_xdebug_on(&conn, &site.id, false, "macos").unwrap().unwrap();
         assert!(!off.xdebug);
 
         // FrankenPHP refused (embedded PHP — the pools never serve it).
         // `_on("macos")`: FrankenPHP has no Windows pin, so the switch is refused there
         // before the Xdebug rule under test is reached (W12).
         set_web_server_on(&conn, &site.id, WebServer::Frankenphp, "macos").unwrap();
-        assert!(set_xdebug(&conn, &site.id, true).is_err());
+        assert!(set_xdebug_on(&conn, &site.id, true, "macos").is_err());
         set_web_server_on(&conn, &site.id, WebServer::Nginx, "macos").unwrap();
 
         // PHP 8.0 refused (static build can't dlopen any .so).
         set_php_version(&conn, &site.id, "8.0").unwrap();
-        assert!(set_xdebug(&conn, &site.id, true).is_err());
+        assert!(set_xdebug_on(&conn, &site.id, true, "macos").is_err());
         set_php_version(&conn, &site.id, "8.4").unwrap();
-        assert!(set_xdebug(&conn, &site.id, true).unwrap().unwrap().xdebug);
+        assert!(set_xdebug_on(&conn, &site.id, true, "macos").unwrap().unwrap().xdebug);
 
         // Disabling never validates (a stale flag must always be clearable).
         set_php_version(&conn, &site.id, "8.0").unwrap();
-        assert!(!set_xdebug(&conn, &site.id, false).unwrap().unwrap().xdebug);
+        assert!(!set_xdebug_on(&conn, &site.id, false, "macos").unwrap().unwrap().xdebug);
 
         // Unknown id → None, not an error.
-        assert!(set_xdebug(&conn, "nope", true).unwrap().is_none());
-        assert!(set_xdebug(&conn, "nope", false).unwrap().is_none());
+        assert!(set_xdebug_on(&conn, "nope", true, "macos").unwrap().is_none());
+        assert!(set_xdebug_on(&conn, "nope", false, "macos").unwrap().is_none());
+
+        // And the os is a real parameter, not decoration: the same enable that succeeds
+        // on macOS is refused on Windows, with the sentence that says why (D4).
+        //
+        // On a minor whose reason is the OS and nothing else — the site is left on 8.0 by
+        // the leg above, and 8.0's refusal is `CannotLoadExtensions` on every host, so
+        // asking there would have proven nothing about the os parameter. That is what my
+        // first version of this leg did, and the Mac caught it.
+        set_php_version(&conn, &site.id, "8.4").unwrap();
+        assert!(set_xdebug_on(&conn, &site.id, true, "macos").unwrap().unwrap().xdebug);
+        let win = set_xdebug_on(&conn, &site.id, true, "windows").unwrap_err().to_string();
+        assert!(win.contains("Windows"), "the refusal names the os: {win}");
     }
 
     #[test]
@@ -4426,19 +4447,35 @@ mod tests {
         // What a REAL folder can contain is accepted: spaces, unicode and an
         // apostrophe all survive a quoted path, and nothing here goes near a
         // shell. Refusing them would be sanitising by another name.
-        for good in ["/Users/dev/Sites", "/Users/dev/My Sites", "/Users/dev/Sites/café", "/Users/o'brien/Sites"] {
-            assert_eq!(set_sites_dir(&conn, good).unwrap(), good, "{good} must be allowed");
+        //
+        // The ROOT has to be this os's root, for the reason the refusals above split: a
+        // driveless path is not absolute on Windows, so `/Users/dev/Sites` was refused
+        // there as RELATIVE — and these are the cases the test says must be ALLOWED, so
+        // the fixture was convicting the setter of the fixture's own spelling (W12).
+        #[cfg(unix)]
+        let root = "/Users";
+        #[cfg(windows)]
+        let root = r"C:\Users";
+        let good_paths = [
+            format!("{root}/dev/Sites"),
+            format!("{root}/dev/My Sites"),
+            format!("{root}/dev/Sites/café"),
+            format!("{root}/o'brien/Sites"),
+        ];
+        for good in &good_paths {
+            assert_eq!(set_sites_dir(&conn, good).unwrap(), *good, "{good} must be allowed");
         }
         // Trimmed, not rejected, for the one case where whitespace is a paste
         // artefact rather than part of the name — including a TRAILING newline,
         // which a copied path routinely carries. The check runs on the trimmed
         // value, so what is stored has no line break in it and the refusal above
         // is about a break in the MIDDLE, which no trim can make safe.
-        assert_eq!(set_sites_dir(&conn, "  /Users/dev/Sites  ").unwrap(), "/Users/dev/Sites");
-        assert_eq!(set_sites_dir(&conn, "/Users/dev/Sites\n").unwrap(), "/Users/dev/Sites");
+        let plain = format!("{root}/dev/Sites");
+        assert_eq!(set_sites_dir(&conn, &format!("  {plain}  ")).unwrap(), plain);
+        assert_eq!(set_sites_dir(&conn, &format!("{plain}\n")).unwrap(), plain);
         assert_eq!(
             store::get_setting(&conn, SITES_DIR_KEY).unwrap().as_deref(),
-            Some("/Users/dev/Sites")
+            Some(plain.as_str())
         );
     }
 
@@ -5709,11 +5746,18 @@ mod tests {
         assert!(matches!(back.web_server, WebServer::Nginx));
 
         // Apache is a real backend now; OLS stays deferred; unknown id → None.
-        let ap = set_web_server(&conn, &site.id, WebServer::Apache).unwrap().expect("exists");
+        // `_on("macos")` for the same reason the FrankenPHP legs above name it: Apache has
+        // no Windows pin (D4), so on the Dell the switch is refused by the OS gate before
+        // the column behaviour under test is reached (W12).
+        let ap = set_web_server_on(&conn, &site.id, WebServer::Apache, "macos")
+            .unwrap()
+            .expect("exists");
         assert!(matches!(ap.web_server, WebServer::Apache));
-        set_web_server(&conn, &site.id, WebServer::Nginx).unwrap();
-        assert!(set_web_server(&conn, &site.id, WebServer::Openlitespeed).is_err());
-        assert!(set_web_server(&conn, "nope", WebServer::Nginx).unwrap().is_none());
+        set_web_server_on(&conn, &site.id, WebServer::Nginx, "macos").unwrap();
+        // OLS must be refused for being DEFERRED, not for the os — so it is asked on the
+        // host where every other server in this test is available.
+        assert!(set_web_server_on(&conn, &site.id, WebServer::Openlitespeed, "macos").is_err());
+        assert!(set_web_server_on(&conn, "nope", WebServer::Nginx, "macos").unwrap().is_none());
     }
 
     #[test]

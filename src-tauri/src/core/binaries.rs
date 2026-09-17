@@ -665,7 +665,10 @@ pub fn xdebug_unavailable_reason(minor: &str) -> Option<String> {
 }
 
 /// [`xdebug_unavailable_reason`] for a NAMED os — the sentence a user on `os` would read.
-fn xdebug_unavailable_reason_on(minor: &str, os: &str) -> Option<String> {
+///
+/// `pub(crate)` so `core::sites::set_xdebug_on` can name the os too: the toggle's own
+/// refusal is the first thing a Windows run hits, before the flag behaviour under test.
+pub(crate) fn xdebug_unavailable_reason_on(minor: &str, os: &str) -> Option<String> {
     match xdebug_status_on(minor, os) {
         XdebugStatus::Available(_) => None,
         XdebugStatus::CannotLoadExtensions { measured } => Some(format!(
