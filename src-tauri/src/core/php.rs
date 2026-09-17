@@ -2366,9 +2366,8 @@ mod tests {
 
         // Port 1 is never listening on a dev box without root — both pools
         // read "port closed"; only liveness + grace differ.
-        let alive = std::process::Command::new("sleep").arg("30").spawn().unwrap();
-        let mut dead = std::process::Command::new("true").spawn().unwrap();
-        let _ = dead.wait();
+        let alive = crate::test_support::live_child();
+        let dead = crate::test_support::dead_child();
 
         let mut pools = PhpFpmPools::default();
         pools.pools.push(Pool {
@@ -2482,7 +2481,7 @@ mod tests {
         let silent = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port = silent.local_addr().unwrap().port();
         let backdated = std::time::Instant::now() - Proc::START_GRACE - std::time::Duration::from_secs(1);
-        let master = std::process::Command::new("sleep").arg("30").spawn().unwrap();
+        let master = crate::test_support::live_child();
         let mut pools = PhpFpmPools::default();
         pools.pools.push(Pool {
             minor: "8.4".into(),
@@ -2506,8 +2505,10 @@ mod tests {
     }
 
     /// A process that burns a core, standing in for a php-cgi parent retrying a spawn.
+    /// The shape is per-OS (`yes` has no Windows equivalent on the process PATH), so it
+    /// lives with the other OS-specific fixtures.
     fn spinning_process() -> std::process::Child {
-        std::process::Command::new("yes").stdout(std::process::Stdio::null()).spawn().unwrap()
+        crate::test_support::spinning_child()
     }
 
     /// The churn breaker's mechanism (ledger #605): a pool process that used a quarter of a core
@@ -2520,7 +2521,7 @@ mod tests {
         let mut pools = PhpFpmPools::default();
         for (minor, child) in [
             ("8.3", spinning_process()),
-            ("8.4", std::process::Command::new("sleep").arg("30").spawn().unwrap()),
+            ("8.4", crate::test_support::live_child()),
         ] {
             pools.pools.push(Pool {
                 minor: minor.into(),
@@ -2623,7 +2624,7 @@ mod tests {
 
         // Poll 1 vs poll 2 for a probe-dead spawned pool.
         let platform = StubPlatform(StubSupervisor { cmd: None });
-        let alive = std::process::Command::new("sleep").arg("30").spawn().unwrap();
+        let alive = crate::test_support::live_child();
         let backdated =
             std::time::Instant::now() - Proc::START_GRACE - std::time::Duration::from_secs(1);
         let mut pools = PhpFpmPools::default();

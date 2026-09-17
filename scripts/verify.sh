@@ -82,7 +82,11 @@ esac
 # executed, and `cargo build --bin rexenv` stayed green beside it.
 WIN_TEST_FLAGS=()
 if [ "$HOST_OS" = windows ]; then
-  WIN_MANIFEST="$(pwd)/src-tauri/windows-test.manifest"
+  # A WINDOWS path, not the POSIX one Git Bash's `pwd` prints. `mt.exe` reads a
+  # `/c/Users/…` argument as an OPTION and refuses it — measured on the Dell:
+  # `mt : command line error c1010007: Unexpected/Unknown option "/c/Users/…"`,
+  # then LNK1327, on the first build script cargo linked.
+  WIN_MANIFEST="$(cygpath -m "$(pwd)/src-tauri/windows-test.manifest" 2>/dev/null || echo "$(pwd -W)/src-tauri/windows-test.manifest")"
   WIN_TEST_FLAGS=(--config "target.x86_64-pc-windows-msvc.rustflags=[\"-Clink-arg=/MANIFEST:EMBED\",\"-Clink-arg=/MANIFESTINPUT:$WIN_MANIFEST\"]")
 fi
 

@@ -142,7 +142,7 @@ mod tests {
         // Spawn two children; the parent-pid walk from OUR pid must find both
         // (that's what folds php-fpm/nginx workers into their service row).
         let mut kids: Vec<std::process::Child> = (0..2)
-            .map(|_| std::process::Command::new("sleep").arg("10").spawn().unwrap())
+            .map(|_| crate::test_support::live_child())
             .collect();
         let mut m = Monitor::new();
         m.refresh_processes();
