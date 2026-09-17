@@ -1,4 +1,4 @@
-# rexenv — release smoke test (clean Mac)
+# rexenv — release smoke test (clean Mac · Windows section at the end)
 
 Run this end-to-end on a **clean Mac or a fresh macOS user account** (no cached
 rexenv binaries) from the distributed **universal .dmg**, after the INSTALL.md
@@ -1434,6 +1434,98 @@ itself the first check.
 - [ ] Settings → Uninstall → **Remove rexenv's system changes**; confirm.
 - [ ] After: `ping foo.rex` no longer resolves; the local CA is no longer trusted (no cert warning is moot — it's gone); no rexenv services running.
 - [ ] Site files remain under `~/Library/Application Support/dev.rexenv.rexenv/` (not deleted).
+
+## Windows — what this checklist means on that OS
+
+Run everything above on Windows too, EXCEPT what this section changes or removes. The
+macOS file is written against a Mac's mechanisms (a `.dmg`, Gatekeeper, `/etc/resolver`,
+the login keychain, a root LaunchDaemon, the Dock); Windows reaches the same user-visible
+promises by different machinery, and a step that names a Mac mechanism is not a step a
+Windows tester can pass or fail.
+
+Environment: Windows ____ (11 x64 supported · 10 22H2 best-effort — D6) · rexenv version ____
+
+**Not in Windows v1 at all (D4, refused in core with an honest message).** Skip every
+section and leg about them; a refusal that NAMES the reason is the pass:
+- **Apache** (would mean Apache Lounge — a third-party trust decision) — skip
+  "Apache override"; instead confirm the New Site dialog does not OFFER Apache.
+- **FrankenPHP** — skip "FrankenPHP × the PHP version"; same check, the picker must not
+  offer it.
+- **Xdebug** — the per-site toggle is absent, and the refusal says "Xdebug isn't part of
+  rexenv on Windows yet — its builds have to match each PHP version's compiler exactly".
+- **Redis, MariaDB** — absent from Databases, Services, the port list and the download
+  plan. Their absence IS the check.
+
+### Install & first launch — replaces the `.dmg` section
+- [ ] **There is no installer yet** (W11 is open: NSIS, Authenticode, the Windows release
+  job and winget are unbuilt; `bundle.windows` in `tauri.conf.json` is empty). Until it
+  lands this checklist is run against a locally built `rexenv.exe`. **Do not write
+  SmartScreen steps from memory** — D5 leaves signing undecided until the owner measures
+  the unsigned download path (clicks, verbatim messages, whether "Run anyway" needs "More
+  info"), and that measurement is the gate for this section being finishable.
+- [ ] The app starts and shows its window; no console window appears behind it.
+
+### Where rexenv lives — replaces "The menu bar (no dock icon)"
+- [ ] rexenv is a **taskbar tray** app. **Left click opens the WINDOW; right click opens
+  the MENU** (ledger #624, the owner's Q2 ruling) — the opposite of macOS, deliberately.
+- [ ] The tray icon is the **colour** icon, not a template glyph: it must be legible on a
+  dark taskbar. **Tell:** a black square — macOS's `icon_as_template` leaking to Windows.
+- [ ] Closing the window leaves the app alive in the tray: `rex status` still answers and
+  an MCP client keeps working.
+- [ ] Every menu item that names a screen brings the window up on it, including from a
+  window that was closed.
+
+### First-run setup prompts — ONE elevated step, not three
+macOS asks three times (resolver, keychain, ports 80/443). Windows asks twice, and one of
+them is Windows' own dialog:
+- [ ] **One elevated (UAC) step** — the `.rex` NRPT rule
+  (`Add-DnsClientNrptRule -Namespace .rex -NameServers 127.0.0.1`). `.rex` only on a fresh
+  machine; other TLDs get theirs on first use.
+- [ ] **Windows' own certificate dialog** — "Security Warning: You are about to install a
+  certificate from a certification authority…" for rexenv's local CA, into **this user's**
+  Root store (never LocalMachine — ledger #613). A **No** reads as a cancel, and setup
+  offers the step again rather than continuing as if it succeeded.
+- [ ] **NO third prompt for ports 80/443.** Measured on the Dell under the desktop user's
+  unelevated token: the pinned `caddy.exe` binds `:443` and `:80` with no elevation. **Tell:**
+  a UAC prompt for the edge — something reintroduced a privileged bind.
+- [ ] **No Windows Defender Firewall alert.** The edge binds `127.0.0.1` only (owner's
+  ruling 14 Sep 2026); an all-interfaces bind raised "Windows Security Alert" on the Dell.
+  **Tell:** that alert appearing — `default_bind` was lost, and sites would be reachable
+  from the LAN.
+
+### DNS — the agent on :53, not :15353
+- [ ] `rex status` reads `DNS answering (agent, udp 53) · resolver installed · CA trusted`.
+  The port is the platform's `RESOLVER_PORT`, **53 on Windows** (NRPT has no port field —
+  D2), so a line saying 15353 is macOS's number leaking.
+- [ ] **DNS outlives the app**: quit rexenv, and `Resolve-DnsName probe.rex -Server 127.0.0.1`
+  still answers `127.0.0.1`. The agent is a **scheduled task**, `\rexenv\dns-agent`, run at
+  logon — not a LaunchAgent.
+- [ ] **The `hosts` file is never touched.** rexenv's rule is never to overwrite a file
+  somebody else owns, and `hosts` is shared by every tool on the machine (D2 refuses the
+  fallback). **Tell:** any `.rex` entry appearing in
+  `C:\Windows\System32\drivers\etc\hosts`.
+
+### Where things live on disk
+- [ ] App data: `%LOCALAPPDATA%\rexenv\rexenv\data` (with `config\`, `logs\`, `bin\`
+  under it).
+- [ ] The `rex` CLI is a **copy** on the user's `Path` at `%LOCALAPPDATA%\rexenv\bin`
+  (ledger #634) — beside the data tree, not inside it — not a symlink.
+
+### Updating — self-update is unported
+- [ ] **Settings → About must not offer a working-looking Apply.** `WindowsAppBundle::facts`
+  returns `Unported(...)`, so `app_update_readiness` comes back as an ERROR rather than as
+  a refusal sentence — look at what the card actually renders. **Tell:** an Apply button
+  that starts something and fails, or a blank/spinning card with no explanation. Either is
+  worth filing: the card is built to render a refusal AS a command with no button, and an
+  unported error is not that shape.
+
+### Clean uninstall — replaces the macOS one
+- [ ] Settings → Uninstall → **Remove rexenv's system changes**; confirm.
+- [ ] After: `Resolve-DnsName foo.rex -Server 127.0.0.1` no longer answers, the NRPT rule
+  for `.rex` is gone (`Get-DnsClientNrptRule`), the `\rexenv\dns-agent` task is gone, the
+  CA is out of the CurrentUser Root store, the `rex` copy and its `Path` entry are gone,
+  and no rexenv service is running.
+- [ ] Site files remain under `%LOCALAPPDATA%\rexenv\rexenv\data` (not deleted).
 
 ---
 Result: ____ / all pass.  Issues found: ________________________________________

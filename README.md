@@ -49,7 +49,7 @@ it on (`docs/ARCHITECTURE.md` §8.3).
 - **`docs/TODO.md`** — all open work (open items only; the shipped evidence log is archived).
 - **`docs/CLI-ROADMAP.md`** — the `rex` CLI: shipped command surface + remaining items.
 - **`CLAUDE.md`** — agent router: non-negotiable rules + "for X read Y" index.
-- **`docs/INSTALL.md`** / **`docs/SMOKE-TEST.md`** — user install guide / clean-Mac release checklist.
+- **`docs/INSTALL.md`** / **`docs/SMOKE-TEST.md`** — user install guide (macOS + Windows) / release checklist (clean Mac, with a Windows section).
 - **`docs/STATUS.md`** — generated (`scripts/status.py`): open work by section, ledger tally, plans in flight.
 - **`docs/archive/PLAN-*.md`** — design records for every shipped feature (why it is shaped the way it is); indexed in `docs/archive/README.md`. A plan lives in `docs/` only while in flight.
 - **`docs/archive/`** — historical: founding spec, design brief, phase task logs, audit record. May contradict current code.

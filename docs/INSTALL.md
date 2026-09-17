@@ -1,4 +1,11 @@
-# Installing rexenv (macOS)
+# Installing rexenv
+
+**macOS is below; Windows is at the end of this file** — the two installs share
+almost nothing mechanically (a `.dmg` and Gatekeeper against an installer and
+SmartScreen; `/etc/resolver` against NRPT; a keychain against the CurrentUser Root
+store), so each is written out rather than cross-referenced.
+
+## macOS
 
 rexenv is a local development environment — it runs your web/WordPress stack
 (web servers, PHP, databases, one-click WordPress, `.rex` domains with HTTPS)
@@ -7,7 +14,7 @@ natively on your Mac, no Docker.
 This is a **limited build shared directly** (not from the App Store and not yet
 notarized by Apple), so the **first launch needs one extra click** — see below.
 
-## Requirements
+### Requirements
 
 - **macOS 15 (Sequoia) or later.** (Raised from the previously stated 11 on
   15 Aug 2026 — that number was never true: the pinned nginx and cloudflared
@@ -31,7 +38,7 @@ notarized by Apple), so the **first launch needs one extra click** — see below
   You can turn the last one off — **Settings → About**, and "Check now" still works when
   you ask for it. Everything already cached keeps working with no network at all.
 
-### "8.4.24 exists" but rexenv is still on 8.4.23 — why that is normal
+#### "8.4.24 exists" but rexenv is still on 8.4.23 — why that is normal
 
 Expect a gap, usually of some weeks, and it is not a bug in either place.
 
@@ -53,13 +60,13 @@ If a patch matters to you urgently — a CVE you are exposed to — that is wort
 an issue rather than waiting: the pin can be moved in a release once a portable build of
 it exists.
 
-## Install
+### Install
 
 1. Open `rexenv_<version>_universal.dmg`.
 2. Drag **rexenv** into the **Applications** folder.
 3. Eject the disk image.
 
-## First launch (important — one-time step)
+### First launch (important — one-time step)
 
 Because this build isn't notarized by Apple yet, macOS Gatekeeper will refuse a
 normal double-click the first time ("rexenv can't be opened…" / "unidentified
@@ -74,7 +81,7 @@ next to the rexenv message, then **Open**.
 
 After you do this **once**, rexenv opens normally (double-click) from then on.
 
-## Where rexenv lives once it's open
+### Where rexenv lives once it's open
 
 rexenv is a **menu-bar app**: the crowned-R icon in your menu bar is its home, and it
 has **no dock icon**. Click the icon for the menu — the stack's status, Start/Stop all,
@@ -98,7 +105,7 @@ because there is nothing useful it could do quietly on a machine that can't reso
 > symptom is not two apps: it is one app that is the wrong version. Drag the old copy to
 > the Trash after updating.
 
-## First-run setup prompts (expected)
+### First-run setup prompts (expected)
 
 The first time you use rexenv it sets up local networking + HTTPS, so macOS will
 ask for permission a few times. These are expected and all stay on your machine:
@@ -123,13 +130,13 @@ You can grant these once and get on with it. (A future signed/notarized build wi
 reduce the first-launch friction; the local setup prompts are inherent to running a
 real HTTPS dev stack.)
 
-## Verify it works
+### Verify it works
 
 1. Open rexenv → **New site** → choose **WordPress** → create.
 2. Start services if prompted, then open the site — it should load at
    **`https://<name>.rex`** with a valid HTTPS lock.
 
-## Troubleshooting "it won't open"
+### Troubleshooting "it won't open"
 
 - **"can't be opened / unidentified developer"** → that's Gatekeeper; use the
   **right-click → Open** step above (only needed once).
@@ -142,7 +149,7 @@ real HTTPS dev stack.)
   been corrected away from, left behind in the one place a person reads *because*
   something is wrong.)
 
-## Updating
+### Updating
 
 **rexenv updates itself.** When a new version is published, Settings → About offers it:
 it downloads the new build, checks its signature and checksum, replaces `rexenv.app` in
@@ -196,7 +203,7 @@ app's own version afterwards, so a self-updated copy is not downgraded by a plai
 `brew upgrade`. `brew upgrade --greedy` and `brew reinstall` DO reinstall the cask's
 version over a newer one.
 
-## Uninstalling — do the in-app step FIRST
+### Uninstalling — do the in-app step FIRST
 
 rexenv installs privileged, system-level things that deleting the app cannot
 remove: a **root LaunchDaemon** running the edge proxy on :443,
@@ -208,3 +215,117 @@ login keychain.
 2. Then delete `rexenv.app` from Applications (and, if you want a full wipe,
    `~/Library/Application Support/dev.rexenv.rexenv/` — your site files live
    there unless you moved the Sites folder, so check before deleting).
+
+---
+
+## Windows
+
+> **Not yet installable.** rexenv has no Windows installer today: `bundle.windows` in
+> `src-tauri/tauri.conf.json` is empty, there is no Windows release job, and the NSIS
+> installer, code signing and the winget manifest are all open work (W11 in
+> `docs/TODO.md`). What exists is a Windows build you can compile and run — the whole
+> Rust suite passes there (1307 tests, 17 Sep 2026). This page describes what that build
+> does on your machine, so it is ready when the installer lands.
+
+### Requirements
+
+- **Windows 11 x64.** Windows 10 22H2 is best-effort — it left mainstream support on
+  14 Oct 2025. **arm64 is unsupported**: the x64 build runs under emulation, but the
+  official PHP Windows builds are x86/x64 only and PostgreSQL's portable build is x64
+  only, so nothing native exists to ship (D6, ruled 13 Sep 2026).
+- An internet connection on **first run** — rexenv downloads its components (PHP, Caddy,
+  nginx, MySQL, PostgreSQL, Mailpit, cloudflared) the first time, then works offline.
+  The Windows builds are the same versions as macOS from different publishers; every one
+  is checksum-locked (`docs/PORTS.md` names each archive and digest).
+- The same small read-only requests at launch as on macOS (php.net, and the signed
+  version lists on `raw.githubusercontent.com/rexenv/runtimes`). You can turn the release
+  check off in **Settings → About**.
+
+#### What is not in the Windows build
+
+Refused in core with a message that says why, rather than offered and then failing (D4):
+
+- **Apache** — on Windows that means Apache Lounge, a third-party trust decision nobody
+  has made yet.
+- **FrankenPHP** — pending its own proof.
+- **Xdebug** — its DLLs must match each PHP's NTS build and compiler exactly, so they are
+  pinned per version, and none is pinned here yet.
+- **Redis** — no official Windows build exists.
+- **MariaDB** — no Windows pin; MySQL 8.4 and 8.0 both ship, so v1 has a database either
+  way.
+
+### Where rexenv puts things
+
+| What | Where |
+|---|---|
+| App data (sites, database, certs) | `%LOCALAPPDATA%\rexenv\rexenv\data` |
+| Config, logs, downloaded binaries | `config\`, `logs\`, `bin\` under that folder |
+| The `rex` CLI | a **copy** at `%LOCALAPPDATA%\rexenv\bin`, added to your user `Path` |
+
+The `rex` copy is deliberate rather than a symlink: creating a symlink on Windows needs a
+privilege an ordinary account may not have, and a copy in rexenv's own folder is
+removable by the uninstall step without touching anything else (ledger #634).
+
+### Where rexenv lives once it's open
+
+rexenv is a **taskbar tray** app. **Left-click the tray icon to open the window;
+right-click for the menu** — the reverse of macOS, because that is what Windows users
+expect (ledger #624). The icon is the colour one, so it stays legible on a dark taskbar.
+
+**Closing the window does not quit rexenv.** The `rex` CLI and the AI-agent (MCP)
+endpoint are remote controls for the running app, so closing a window would take them
+down while your sites kept serving. Quit from the tray menu.
+
+### First-run setup prompts (expected)
+
+Windows asks **twice**, where macOS asks three times:
+
+1. **One administrator (UAC) prompt** — to add the `.rex` DNS rule so
+   `https://yoursite.rex` resolves to this computer. rexenv uses Windows' **NRPT**
+   (`Add-DnsClientNrptRule -Namespace .rex -NameServers 127.0.0.1`) and runs its own DNS
+   answerer on `127.0.0.1:53`. Other TLDs get their rule on first use.
+   **rexenv never edits your `hosts` file** — it is shared by every tool on the machine,
+   and rexenv's rule is never to overwrite a file somebody else owns (D2).
+2. **Windows' own certificate dialog** — "Security Warning: You are about to install a
+   certificate from a certification authority…", to trust rexenv's local CA so your sites
+   get a valid HTTPS lock. It goes into **your** user's Root store, never the machine's,
+   so it needs no elevation and affects no other account. Answering **No** cancels the
+   step; rexenv offers it again rather than pretending it worked.
+
+**There is no third prompt.** On macOS the edge server needs an admin password to bind
+ports 80/443; on Windows it does not — measured under an ordinary unelevated account, the
+bundled Caddy binds both. It binds **127.0.0.1 only**, which also means no Windows
+Defender Firewall alert, and that your sites are reachable from this computer only.
+Public sharing (Tunnels) is unaffected: cloudflared dials localhost.
+
+The DNS answerer runs as a **scheduled task at logon**, `\rexenv\dns-agent`, so `.rex`
+keeps resolving after you quit rexenv — the same promise as macOS, different machinery.
+
+### Verify it works
+
+1. Open rexenv → **New site** → **WordPress** → create.
+2. Start services if prompted, then open the site — it should load at
+   `https://<name>.rex` with a valid HTTPS lock.
+3. `rex status` should read `DNS answering (agent, udp 53) · resolver installed · CA trusted`.
+
+### Updating
+
+**rexenv cannot update itself on Windows yet** (W11). On macOS it replaces itself from
+Settings → About; here the pieces that would do it — reading the app's own install facts,
+staging a replacement, and swapping a running `.exe` — are unported, and the code says so
+by name: `WindowsAppBundle::facts` returns `Unported("windows app bundle facts
+(self-update, plan D5/W11)")`. Checking still works; applying does not. Until the updater
+lands, updating means running a newer build.
+
+### Uninstalling — do the in-app step FIRST
+
+rexenv installs things outside its own folder that deleting the app cannot remove: the
+`.rex` NRPT rule, the `\rexenv\dns-agent` scheduled task, the local CA in your Root
+store, and the `rex` copy on your `Path`.
+
+1. In the app: **Settings → "Remove system changes"** (one UAC prompt — removes the NRPT
+   rules, the scheduled task, the CA trust and the `rex` copy with its `Path` entry).
+2. Then remove the app itself, and — only if you want a full wipe —
+   `%LOCALAPPDATA%\rexenv`. **Your site files live under
+   `%LOCALAPPDATA%\rexenv\rexenv\data` unless you moved the Sites folder**, so check
+   before deleting.

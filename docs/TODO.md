@@ -614,7 +614,17 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     sections (D6 rules the floor: Windows 11 x64 supported, 10 22H2 best-effort, arm64 unsupported;
     D5 leaves signing undecided, so the SmartScreen wording stays the owner's measurement to make),
     and the clean Windows 11 VM pass. Node 24.21.0 + npm/npx 11.19.1 + pnpm 12.4.2 and python3
-    3.12.10 are installed on the Dell ✓ 17 Sep 2026
+    3.12.10 are installed on the Dell ✓ 17 Sep 2026.
+    **The SMOKE-TEST and INSTALL Windows sections are WRITTEN ✓ 17 Sep 2026 (ledger #674)**,
+    both sourced from code, rulings and Dell measurements rather than from the macOS pages
+    reworded: INSTALL nests the two OSes symmetrically and SMOKE-TEST names which of its
+    sections D4 excludes, which are replaced (install, first run, tray, DNS, uninstall) and
+    which carry over. They are UNRUN by a human on Windows — that run is what ticks them.
+    Two things are deliberately absent: SmartScreen's verbatim wording (D5 leaves signing
+    undecided until the owner measures the unsigned download path) and any claim that the
+    update card hides its button — `AppUpdateCard` has no OS gate; `WindowsAppBundle::facts`
+    returns `Unported(...)`, so readiness errors instead of refusing, and the checklist asks
+    the tester to look at what the card actually renders
 
 - [x] **An older rexenv refuses a database a newer one migrated** ✓ 13 Sep 2026 — built the same
   day at the owner's go: `refuse_newer_schema` in `state::db::open` (before any pragma) and
