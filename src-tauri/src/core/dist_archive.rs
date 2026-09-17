@@ -951,21 +951,58 @@ mod tests {
         fn stop(&self, pid: u32) -> Result<()> {
             self.stop_group(pid)
         }
-        /// **The real platform's group kill — and this is the stub the cancel path
-        /// actually calls.** It shelled out to `/bin/kill` because "`platform::macos` is
-        /// private"; `platform::current().supervisor()` is the public door that was
-        /// wanted, and it ends a job object on Windows and a process group on unix. There
-        /// is no `kill` binary on Windows, so the cancel did nothing there, the fixture's
-        /// `ping -n 301` ran its full 300 seconds and the suite HUNG on the Dell (tenth
-        /// run, 17 Sep 2026) — visible only once #672 fixed the quoting, because before
-        /// that the script produced nothing and the test failed before reaching cancel.
-        /// Third instance of one defect (#663 `php.rs`, `Killer` below, this): a stub that
-        /// promises to end a process must end it on every host it compiles for. The
-        /// `kill` scan guard cannot see any of them — `copy_scan::production_source`
-        /// strips `#[cfg(test)]` modules, which is right for production and blind to
-        /// exactly the fixtures this bug lives in.
+        /// **This stub kills the TREE itself, because nothing else can kill what it
+        /// spawned.** It is the stub the cancel path actually calls.
+        ///
+        /// Two wrong answers came before this one, and the second is why the comment is
+        /// this long. `/bin/kill -KILL -<pgid>` was first: there is no `kill` binary on
+        /// Windows, so the cancel did nothing, the fixture's `ping -n 301` ran its full
+        /// 300 seconds and the suite HUNG (the Dell, tenth run, 17 Sep 2026) — visible
+        /// only once #672 fixed the quoting, because before that the script produced
+        /// nothing and the test failed before reaching cancel. Then
+        /// `platform::current().supervisor().stop_group(pgid)`, which LOOKS right and is
+        /// also a no-op here: the Windows `stop_group` is `step_jobs().remove(&pgid)` and
+        /// returns `Ok(())` when the pid has no job — and a job is created only inside the
+        /// real `spawn_streamed`. This stub spawns a plain `Command` (it must: `step_jobs`
+        /// is private to `platform::windows`, and `run_step_streamed` registers no job
+        /// either), so the registry can never hold its pid. The eleventh run parked in
+        /// exactly the same place, which is what measuring instead of reasoning caught.
+        ///
+        /// Measured on the Dell, 17 Sep 2026, with the cancel shape this fixture uses
+        /// (`start /b ping … & ping …`): `child.kill()` leaves the detached grandchild
+        /// alive — 2 pings before, 2 after — which IS the hang; `taskkill /T /F /PID
+        /// <leader>` reaps leader and both children, 2 → 0 in 589 ms, exit 0.
         fn stop_group(&self, pgid: u32) -> Result<()> {
-            crate::platform::current().supervisor().stop_group(pgid)
+            kill_tree(pgid);
+            Ok(())
+        }
+    }
+
+    /// End a stub-spawned leader AND everything it started, on either host.
+    ///
+    /// The fixtures spawn a plain `Command`, so neither the Windows job registry nor a
+    /// unix process group is available to the platform's own `stop_group` — see
+    /// `FakeSupervisor::stop_group` for the two no-ops this replaced and the measurement
+    /// behind each branch. Best-effort by design: a leader that already exited is not an
+    /// error, and a cancel that cannot kill is the test's problem to observe, not this
+    /// helper's to hide.
+    fn kill_tree(pgid: u32) {
+        #[cfg(unix)]
+        {
+            // The group, as the real supervisor does: the leader is its own group leader
+            // (`process_group(0)` in the spawn above), so `-pgid` reaches the children.
+            let _ = std::process::Command::new("/bin/kill")
+                .arg("-KILL")
+                .arg(format!("-{pgid}"))
+                .status();
+        }
+        #[cfg(windows)]
+        {
+            // `/T` is the whole tree — without it the `start /b` grandchild survives and
+            // holds the wait open, which is precisely how this parked the suite twice.
+            let _ = std::process::Command::new("taskkill")
+                .args(["/T", "/F", "/PID", &pgid.to_string()])
+                .output();
         }
     }
 
@@ -1054,18 +1091,11 @@ mod tests {
         fn stop(&self, pid: u32) -> Result<()> {
             self.stop_group(pid)
         }
-        /// **Through the real platform, never a `kill` binary** — the correction #663 made
-        /// in `php.rs`'s `GroupStub` and that row said belonged "in the stub, where the
-        /// promise was written". This stub two files away still shelled out to
-        /// `/bin/kill`, which does not exist on Windows: the cancel did nothing, the
-        /// fixture's `ping -n 301` ran its full 300 seconds, and the suite hung on the
-        /// Dell (17 Sep 2026, the tenth run). It surfaced only once #672 fixed the quoting
-        /// — before that the script produced nothing and the test failed before reaching
-        /// the cancel. A stub that promises to end a process must end it on every host it
-        /// compiles for; the platform's own `stop_group` ends a job object on Windows and
-        /// a process group on unix.
+        /// The cancel thread's supervisor — same kill, same reason as
+        /// `FakeSupervisor::stop_group` above, which carries the measurement.
         fn stop_group(&self, pgid: u32) -> Result<()> {
-            crate::platform::current().supervisor().stop_group(pgid)
+            kill_tree(pgid);
+            Ok(())
         }
     }
 
