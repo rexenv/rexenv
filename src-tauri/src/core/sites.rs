@@ -3294,9 +3294,26 @@ mod tests {
             assert!(validate_docroot_path(ok).is_ok(), "{ok} must be allowed");
         }
         // The unescapable-across-nginx/Caddy/Apache set + control chars → rejected.
-        for bad in ["/a\"b", "/a$b", "/a{b", "/a}b", "/a\\b", "/a\nb", "/a\tb"] {
+        for bad in ["/a\"b", "/a$b", "/a{b", "/a}b", "/a\nb", "/a\tb"] {
             assert!(validate_docroot_path(bad).is_err(), "{bad:?} must be rejected");
         }
+        // The backslash is judged per folder NAME, deliberately (`config_breaking_char`,
+        // and `set_sites_dir` says so in as many words): on Windows it is the separator,
+        // so `/a\b` is the two folders `a` and `b` and nothing in either name is
+        // config-breaking. On unix it is an ordinary character inside one name, and
+        // refused. Asserting the unix answer everywhere made this fail on the Dell for a
+        // behaviour that is correct there (W12).
+        #[cfg(unix)]
+        assert!(validate_docroot_path("/a\\b").is_err(), "a backslash inside a NAME is rejected");
+        #[cfg(windows)]
+        assert!(
+            validate_docroot_path("/a\\b").is_ok(),
+            "on Windows `\\` separates folders — neither name is config-breaking"
+        );
+        // Either way a backslash INSIDE a folder name is refused, which is the claim
+        // that has to hold on both: Windows cannot put one in a name at all, so the
+        // quoted-path hazard this guards is unreachable there.
+        assert!(validate_docroot_path("/a/b\"c").is_err(), "a quote inside a name is rejected");
     }
 
     #[test]
@@ -4083,14 +4100,24 @@ mod tests {
 
         // move_dir into an unwritable parent: rename AND copy fail → error
         // mentions the failure, no partial target left, source intact.
-        let locked = root.join("locked");
-        std::fs::create_dir_all(&locked).unwrap();
-        crate::test_support::set_mode(&locked, 0o555).unwrap();
-        let denied = move_dir(&doc, &locked.join("acme.test")).unwrap_err().to_string();
-        assert!(denied.contains("nothing changed"), "{denied}");
-        assert!(doc.join("index.php").exists(), "source untouched on failure");
-        assert!(!locked.join("acme.test").exists(), "no partial target left");
-        crate::test_support::set_mode(&locked, 0o755).unwrap();
+        //
+        // Unix only, and this one is worth stating: `test_support::set_mode` is a NO-OP
+        // off unix, so on Windows the directory was never locked, `move_dir` SUCCEEDED,
+        // and `unwrap_err` panicked on `Ok(false)`. A no-op helper does not fail loudly
+        // the way `symlink`'s `Unsupported` did — it quietly makes the test assert
+        // something that cannot happen (W12). Locking a folder on Windows means ACLs,
+        // which is a different fixture, not a mode.
+        #[cfg(unix)]
+        {
+            let locked = root.join("locked");
+            std::fs::create_dir_all(&locked).unwrap();
+            crate::test_support::set_mode(&locked, 0o555).unwrap();
+            let denied = move_dir(&doc, &locked.join("acme.test")).unwrap_err().to_string();
+            assert!(denied.contains("nothing changed"), "{denied}");
+            assert!(doc.join("index.php").exists(), "source untouched on failure");
+            assert!(!locked.join("acme.test").exists(), "no partial target left");
+            crate::test_support::set_mode(&locked, 0o755).unwrap();
+        }
 
         let _ = std::fs::remove_dir_all(&root);
     }
