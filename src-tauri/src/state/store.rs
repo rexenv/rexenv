@@ -2054,7 +2054,7 @@ has never heard of cannot pass unread.";
             writers.join(", ")
         );
         assert!(
-            writers[0].ends_with("state/store.rs"),
+            writers[0].replace('\\', "/").ends_with("state/store.rs"),
             "the one writer of `sites.enabled` moved out of state/store.rs: {}",
             writers[0]
         );
@@ -2354,7 +2354,16 @@ has never heard of cannot pass unread.";
                 } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
                     if let Ok(text) = std::fs::read_to_string(&path) {
                         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-                        let rel = path.strip_prefix(root).unwrap_or(&path).display().to_string();
+                        // Forward slashes whatever the host uses: every comparison below
+                        // is against a `src/…` literal, and on Windows this walk yields
+                        // `src\state\store.rs`, so the scan matched NOTHING there and the
+                        // canary below was the only reason anyone found out (W12).
+                        let rel = path
+                            .strip_prefix(root)
+                            .unwrap_or(&path)
+                            .display()
+                            .to_string()
+                            .replace('\\', "/");
                         let prod = crate::core::copy_scan::production_source(&text);
                         let stripped: String = prod
                             .lines()

@@ -559,7 +559,14 @@ mod tests {
                 "wp-cli/dist-archive-command".to_string()
             ]
         );
-        assert_eq!(found.dir, "~/.wp-cli/packages", "the path is shown as the user knows it");
+        // `abbreviate_home` shows the path the way THIS OS writes it, which is the whole
+        // point of the message — a Windows user knows it as `~\.wp-cli\packages`.
+        let sep = std::path::MAIN_SEPARATOR;
+        assert_eq!(
+            found.dir,
+            format!("~{sep}.wp-cli{sep}packages"),
+            "the path is shown as the user knows it"
+        );
         let _ = std::fs::remove_dir_all(&home);
     }
 

@@ -637,7 +637,12 @@ mod tests {
         assert_eq!(by_key("mysql-error.log").category, LogCategory::Database);
         assert_eq!(by_key("mariadb-error.log").category, LogCategory::Database);
         assert_eq!(by_key("postgres-stdout.log").category, LogCategory::Database);
-        assert_eq!(by_key("nginx-access.log").path, "/logs/nginx-access.log");
+        // Built with `join`, so the separator is the host's. Spelling the expectation
+        // with `/` made this test fail on Windows while the code was right (W12).
+        assert_eq!(
+            by_key("nginx-access.log").path,
+            Path::new("/logs").join("nginx-access.log").to_string_lossy()
+        );
     }
 
     #[test]
@@ -785,7 +790,7 @@ mod tests {
         // No wp-config ⇒ everything off, default path.
         let s = wp_debug_log_status(&dir, "wp-content");
         assert!(!s.debug && !s.log_enabled && !s.exists);
-        assert!(s.path.ends_with("wp-content/debug.log"));
+        assert!(s.path.ends_with(&*Path::new("wp-content").join("debug.log").to_string_lossy()));
 
         // WP_DEBUG + WP_DEBUG_LOG true ⇒ enabled; existing file reports size.
         std::fs::write(

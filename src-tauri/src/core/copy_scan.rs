@@ -507,7 +507,16 @@ const LINK = "https://example.test/a//b";
                     continue;
                 }
                 if let Ok(raw) = std::fs::read_to_string(&p) {
-                    let rel = p.strip_prefix(root).unwrap_or(&p).display().to_string();
+                    // `/` on every host: the ALLOWED list below is spelled with forward
+                    // slashes, and a Windows walk yields `lib\ipc\index.ts`, which matches
+                    // none of it — the exemptions vanish and every file reads as an
+                    // offender (W12, measured on the Dell).
+                    let rel = p
+                        .strip_prefix(root)
+                        .unwrap_or(&p)
+                        .display()
+                        .to_string()
+                        .replace('\\', "/");
                     out.push((rel, strip_ts_comments(&raw)));
                 }
             }

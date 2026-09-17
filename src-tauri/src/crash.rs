@@ -140,7 +140,10 @@ mod tests {
             .expect("the hook did not write crash.log");
         for want in [
             "planted panic for ledger 596",
-            "src/crash.rs",
+            // Not "src/crash.rs": `Location::file()` uses the host's separator, so
+            // Windows writes `src\crash.rs` — correctly, since that is what the rest of
+            // the report and the backtrace say too. The file name is the claim.
+            "crash.rs",
             env!("CARGO_PKG_VERSION"),
             std::env::consts::OS,
             "backtrace:",
