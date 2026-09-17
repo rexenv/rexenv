@@ -554,6 +554,12 @@ mod tests {
         assert!(mail_env(&conn).is_empty(), "off must add nothing, not add a different sink");
     }
 
+    // The fixture IS a `#!/bin/sh` script standing in for `php`, which Windows cannot
+    // execute at all (`os error 193`, measured on the Dell — W12). Same reason
+    // `devtools`' probe_version test is unix-only, and stated the same way. What Windows
+    // therefore loses is real and worth naming: nothing checks the artisan argv shape
+    // (`--no-interaction` last, the project as cwd, stdin closed) on that OS.
+    #[cfg(unix)] // runs a `#!/bin/sh` script as the fake `php`
     #[test]
     fn artisan_raw_runs_in_the_project_with_no_interaction_last_and_returns_a_nonzero_exit() {
         let dir = std::env::temp_dir().join(format!("rexenv-laravel-{}-artisan", std::process::id()));

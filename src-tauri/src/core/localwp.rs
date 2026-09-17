@@ -608,7 +608,14 @@ mod tests {
         let ea = by("ea");
         assert_eq!(ea.status, SiteStatus::Importable);
         assert_eq!((ea.domain.as_str(), ea.renamed_from.as_deref()), ("ea.rex", Some("ea.local")));
-        let tail = Path::new("Local Sites").join("ea").join("app").join("public");
+        // Built the way the SCAN builds it: the registry says `~/Local Sites/ea`, and
+        // `expand_tilde` does `home.join("Local Sites/ea")` — an embedded `/` that stays
+        // verbatim on Windows — and then `docroot()` appends `app` and `public` with
+        // `join`. So the real path mixes separators, and the expectation has to be built
+        // the same way rather than from four clean `join`s (W12, second attempt: the
+        // first one fixed the fixture's own `join("app/public")` and still compared
+        // against an all-backslash tail).
+        let tail = Path::new("Local Sites/ea").join("app").join("public");
         assert!(
             ea.path.as_deref().unwrap().ends_with(&*tail.to_string_lossy()),
             "{:?} does not end with {tail:?}",

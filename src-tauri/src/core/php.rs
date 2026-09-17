@@ -2420,10 +2420,14 @@ mod tests {
             unimplemented!()
         }
         fn stop(&self, pid: u32) -> crate::error::Result<()> {
-            let _ = std::process::Command::new("kill")
-                .arg(pid.to_string())
-                .stderr(std::process::Stdio::null())
-                .status();
+            // The REAL platform's stop, not `Command::new("kill")`. There is no `kill`
+            // program on Windows, so this stub quietly did nothing there — the spinning
+            // child it claimed to end kept burning a core and the test's later `wait()`
+            // never returned. That parked the whole Windows suite three separate times,
+            // at ~1400-1800 CPU seconds a child, each ended by hand (W12). A stub whose
+            // doc says "really ends the process" has to do it on every host it compiles
+            // for.
+            let _ = crate::platform::current().supervisor().stop(pid);
             Ok(())
         }
         fn pid_command(&self, _pid: u32) -> Option<String> {
