@@ -823,9 +823,15 @@ mod tests {
 
     #[test]
     fn probing_a_dead_port_says_nothing_is_listening() {
-        assert_eq!(
-            probe("127.0.0.1", 9),
-            Probe::NotListening("nothing is listening on that port".into())
+        // Both wordings are the truth, and which one the OS gives is not this test's
+        // business: a closed port is REFUSED on macOS and SYN-retried into a 700ms
+        // timeout on Windows (measured on the Dell, W12). The claim is that the probe
+        // reports "not listening" and never pretends to have found a server.
+        let got = probe("127.0.0.1", 9);
+        let Probe::NotListening(why) = &got else { panic!("a dead port read as a server: {got:?}") };
+        assert!(
+            why == "nothing is listening on that port" || why == "the connection timed out",
+            "{why}"
         );
     }
 }

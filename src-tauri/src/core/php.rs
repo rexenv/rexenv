@@ -2582,6 +2582,11 @@ mod tests {
             held: None,
         });
         assert_eq!(pools.stop_spinning(&ours), vec!["8.3".to_string()]);
+        // Kill it HERE rather than trusting the stub's `stop`: that stub shells out to
+        // `kill`, which does not exist on Windows, so the spinning child outlived the
+        // test and the whole suite parked on this `wait` — twice, at ~1800 CPU seconds
+        // each (W12). The fixture owns what it spawned.
+        let _ = busy.kill();
         let _ = busy.wait();
     }
 

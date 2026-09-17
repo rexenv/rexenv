@@ -441,14 +441,20 @@ mod tests {
             self
         }
         fn wordpress(self, name: &str) -> Self {
-            let doc = self.0.join("Local Sites").join(name).join("app/public");
+            // `join("app").join("public")`, not `join("app/public")`: the embedded slash
+            // survives verbatim on Windows, so the fixture produced a MIXED path
+            // (`…\Local Sites/ea\app\public`) that matched nothing (W12).
+            let doc = self.0.join("Local Sites").join(name).join("app").join("public");
             std::fs::create_dir_all(&doc).unwrap();
             std::fs::write(doc.join("wp-config.php"), "<?php define( 'DB_HOST', 'localhost' );\n")
                 .unwrap();
             self
         }
         fn bare_folder(self, name: &str) -> Self {
-            std::fs::create_dir_all(self.0.join("Local Sites").join(name).join("app/public")).unwrap();
+            std::fs::create_dir_all(
+                self.0.join("Local Sites").join(name).join("app").join("public"),
+            )
+            .unwrap();
             self
         }
     }
@@ -602,7 +608,12 @@ mod tests {
         let ea = by("ea");
         assert_eq!(ea.status, SiteStatus::Importable);
         assert_eq!((ea.domain.as_str(), ea.renamed_from.as_deref()), ("ea.rex", Some("ea.local")));
-        assert!(ea.path.as_deref().unwrap().ends_with("Local Sites/ea/app/public"), "{:?}", ea.path);
+        let tail = Path::new("Local Sites").join("ea").join("app").join("public");
+        assert!(
+            ea.path.as_deref().unwrap().ends_with(&*tail.to_string_lossy()),
+            "{:?} does not end with {tail:?}",
+            ea.path
+        );
         assert_eq!(ea.php_minor.as_deref(), Some("8.1"));
         assert_eq!(ea.origin, Origin::Local { id: "aaa".into() });
 

@@ -5616,8 +5616,12 @@ mod packages_pin_guards {
                 } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
                     if let Ok(text) = std::fs::read_to_string(&path) {
                         let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+                        // Forward slashes on every host: the guards below compare these
+                        // against `src/core/…` literals, and a Windows walk yields
+                        // `src\core\wordpress.rs`, which matches none of them (W12 — the
+                        // same shape as state/store.rs and copy_scan.rs).
                         let rel = path.strip_prefix(root).unwrap_or(&path);
-                        out.push((rel.display().to_string(), strip_comments(&text)));
+                        out.push((rel.display().to_string().replace('\\', "/"), strip_comments(&text)));
                     }
                 }
             }
