@@ -558,14 +558,15 @@ enum XdebugStatus {
     NotOnThisOs,
 }
 
-/// The Xdebug status for a PHP minor: a pinned row, or the REASON there is none.
-/// The single source of which minors support the toggle, of which release each
-/// one gets, and of what to tell a user who asks for one that has none.
-fn xdebug_status(minor: &str) -> XdebugStatus {
-    xdebug_status_on(minor, std::env::consts::OS)
-}
-
-/// [`xdebug_status`] for a NAMED os, so both answers are measurable from either host.
+/// The Xdebug status for a PHP minor on a NAMED os: a pinned row, or the REASON
+/// there is none. The single source of which minors support the toggle, of which
+/// release each one gets, and of what to tell a user who asks for one that has none.
+///
+/// There is no host-reading wrapper beside this one: every caller either knows the
+/// os it means (`xdebug_bottle`/`xdebug_unavailable_reason` supply
+/// `std::env::consts::OS`) or is a test naming the os whose pins it is about. One
+/// name for one question — the wrapper that used to sit here became unreachable the
+/// moment its callers took the os as a parameter (W12).
 fn xdebug_status_on(minor: &str, os: &str) -> XdebugStatus {
     let pinned = match xdebug_row(minor) {
         Some(b) => XdebugStatus::Available(b),
@@ -626,7 +627,14 @@ fn xdebug_row(minor: &str) -> Option<XdebugBottle> {
 /// to know WHETHER, never why — everything user-facing goes through
 /// [`xdebug_unavailable_reason`] instead.
 fn xdebug_bottle(minor: &str) -> Option<XdebugBottle> {
-    match xdebug_status(minor) {
+    xdebug_bottle_on(minor, std::env::consts::OS)
+}
+
+/// [`xdebug_bottle`] for a NAMED os — the same reason `ships_on` and
+/// `xdebug_status_on` take one: on Windows these answer `None`, and a test that can
+/// only ask the HOST cannot state what macOS pins while running on the Dell (W12).
+fn xdebug_bottle_on(minor: &str, os: &str) -> Option<XdebugBottle> {
+    match xdebug_status_on(minor, os) {
         XdebugStatus::Available(b) => Some(b),
         _ => None,
     }
@@ -634,7 +642,12 @@ fn xdebug_bottle(minor: &str) -> Option<XdebugBottle> {
 
 /// Whether the per-site Xdebug toggle is available for a PHP minor.
 pub fn xdebug_supported(minor: &str) -> bool {
-    xdebug_bottle(minor).is_some()
+    xdebug_supported_on(minor, std::env::consts::OS)
+}
+
+/// [`xdebug_supported`] for a NAMED os.
+pub fn xdebug_supported_on(minor: &str, os: &str) -> bool {
+    xdebug_bottle_on(minor, os).is_some()
 }
 
 /// Why the toggle is unavailable, as a sentence for the user — or `None` when it
@@ -680,7 +693,12 @@ fn xdebug_unavailable_reason_on(minor: &str, os: &str) -> Option<String> {
 /// offered. For the UI: the version a debug pool will actually load, which is
 /// not app-wide (see [`XDEBUG_VERSION`]).
 pub fn xdebug_version_for(minor: &str) -> Option<&'static str> {
-    xdebug_bottle(minor).map(|b| b.version)
+    xdebug_version_for_on(minor, std::env::consts::OS)
+}
+
+/// [`xdebug_version_for`] for a NAMED os.
+pub fn xdebug_version_for_on(minor: &str, os: &str) -> Option<&'static str> {
+    xdebug_bottle_on(minor, os).map(|b| b.version)
 }
 
 /// The one-part bundle for an Xdebug row: a bare `xdebug.so` from the
@@ -3587,7 +3605,11 @@ mod tests {
         assert!(needs_repair(&platform, "php", v));
 
         // Give it the right marker and the licences it owes, and all three flip.
-        let spec = manifest("php", v, "macos", Arch::Arm64).unwrap();
+        // THIS host's pin, not macOS's: the assertions around it go through `is_cached`
+        // and `needs_repair`, which read `std::env::consts::OS` via the platform they are
+        // handed. Naming macOS here made the test compare a macOS checksum against a
+        // Windows resolve, and the claim — planner and resolve agree — is os-neutral (W12).
+        let spec = manifest("php", v, std::env::consts::OS, Arch::Arm64).unwrap();
         write_pin_marker(&dir, &spec.checksum);
         std::fs::create_dir_all(dir.join(LICENSES_DIR)).unwrap();
         std::fs::write(dir.join(LICENSES_DIR).join("PHP-3.01.txt"), "…").unwrap();
@@ -3638,9 +3660,12 @@ mod tests {
             assert_eq!(shape_of(n), Shape::Bundle);
             assert!(manifest(n, "1", "macos", Arch::Arm64).is_none(), "{n} is not a plain spec");
         }
-        // Everything else is a single executable published at `dir/<name>`.
+        // Everything else is a single executable published at `dir/<name>` — on macOS,
+        // which is the os every `manifest` call here names. `shape_of` read the HOST, so
+        // on Windows this compared a macOS pin against the Windows shape (nginx ships as
+        // a tree there) and failed for a reason that was not the claim (W12).
         for n in ["php", "php-fpm", "caddy", "nginx", "mailpit", "frankenphp", "cloudflared"] {
-            assert_eq!(shape_of(n), Shape::Single, "{n}");
+            assert_eq!(shape_of_on(n, "macos"), Shape::Single, "{n}");
         }
     }
 
@@ -4127,7 +4152,7 @@ mod tests {
     #[test]
     fn bundle_manifest_pins_xdebug_per_supported_minor() {
         for minor in ["8.1", "8.2", "8.3", "8.4", "8.5"] {
-            assert!(xdebug_supported(minor), "{minor}");
+            assert!(xdebug_supported_on(minor, "macos"), "{minor}");
             let (name, version) = xdebug_bundle_id(minor).unwrap();
             assert_eq!(name, format!("xdebug-{minor}"));
             // These minors are all inside Xdebug's current support window, so
@@ -4135,7 +4160,10 @@ mod tests {
             // reads, not from the constant, so a minor frozen at an older
             // release would show up here rather than hide behind the constant.
             assert_eq!(version, XDEBUG_VERSION);
-            assert_eq!(xdebug_version_for(minor), Some(version));
+            // Asked OF macOS, like the `bundle_manifest` calls below: the rows are
+            // macOS-only pins, and on a Windows host the host-reading form answers `None`
+            // (W12 — the accessor now takes the os for exactly this reason).
+            assert_eq!(xdebug_version_for_on(minor, "macos"), Some(version));
             for arch in [Arch::Arm64, Arch::X86_64] {
                 let bundle = bundle_manifest(&name, version, "macos", arch).unwrap();
                 assert_eq!(bundle.member, "xdebug.so");
@@ -4241,7 +4269,7 @@ mod tests {
 
         // NotPinned must still be REACHABLE — it is the honest answer for a
         // minor rexenv does not offer, and a version that no longer exists.
-        assert!(matches!(xdebug_status("8.9"), XdebugStatus::NotPinned));
+        assert!(matches!(xdebug_status_on("8.9", "macos"), XdebugStatus::NotPinned));
     }
 
     /// The refusal a user reads differs with the reason, and neither sentence
@@ -4289,10 +4317,13 @@ mod tests {
     fn xdebug_is_refused_for_php_80_and_unknown_minors() {
         // 8.0's static build exports no Zend symbols — dlopen fails, so the
         // toggle must be unofferable by construction.
+        // Asked OF macOS: on Windows nothing is pinned at all, so the host-reading form
+        // makes every line below true for the wrong reason — a refusal that proves
+        // nothing because there is nothing to refuse (W12).
         for minor in ["8.0", crate::core::php::unshipped_minor(), "9.0", ""] {
-            assert!(!xdebug_supported(minor), "{minor}");
+            assert!(!xdebug_supported_on(minor, "macos"), "{minor}");
             assert!(xdebug_bundle_id(minor).is_none());
-            assert!(xdebug_version_for(minor).is_none(), "{minor}");
+            assert!(xdebug_version_for_on(minor, "macos").is_none(), "{minor}");
             assert!(bundle_manifest(&format!("xdebug-{minor}"), XDEBUG_VERSION, "macos", Arch::Arm64)
                 .is_none());
         }
@@ -4341,7 +4372,7 @@ mod tests {
         // exactly like "this minor has no Xdebug".
         assert!(bundle_manifest("xdebug-8.4", XDEBUG_VERSION, "macos", Arch::Arm64).is_some());
         assert!(bundle_manifest("xdebug-8.4", frozen.version, "macos", Arch::Arm64).is_none());
-        assert_eq!(xdebug_version_for("8.4"), Some(XDEBUG_VERSION));
+        assert_eq!(xdebug_version_for_on("8.4", "macos"), Some(XDEBUG_VERSION));
     }
 
     #[test]

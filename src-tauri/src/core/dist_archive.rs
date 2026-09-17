@@ -796,8 +796,13 @@ mod tests {
         ] {
             assert!(err.contains(must_say), "the refusal never says `{must_say}`:\n{err}");
         }
+        // The refusal names the CANONICAL source, because that is what the code resolved
+        // (`canonicalize` at the top of the build). On Windows that carries the `\\?\`
+        // verbatim prefix, so comparing against the un-canonicalised fixture path failed
+        // while the message was right (W12).
+        let shown = f.real.canonicalize().unwrap_or_else(|_| f.real.clone());
         assert!(
-            err.contains(&f.real.display().to_string()),
+            err.contains(&shown.display().to_string()),
             "the refusal does not say WHERE to create the file:\n{err}"
         );
         for starter in DISTIGNORE_STARTER.lines() {

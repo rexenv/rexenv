@@ -2542,8 +2542,13 @@ mod tests {
         assert_eq!(pools.stop_spinning(&group), vec!["8.3".to_string()], "the spinning process is stopped");
         assert!(!pools.has("8.3", false));
         assert!(pools.has("8.4", false), "an idle process was stopped");
+        // By MINOR, not by index: `stop_spinning` rebuilds the vector, so `pools[0]` means
+        // "whatever survived first" — which reads as this assertion passing or failing for
+        // reasons that have nothing to do with the baseline (W12: it failed on Windows
+        // while naming the idle pool, and the idle pool is the only one left).
+        let idle = pools.pools.iter().find(|p| p.minor == "8.4").expect("the idle pool survives");
         assert!(
-            pools.pools[0].cpu.is_some_and(|(_, at)| at > window_ago),
+            idle.cpu.is_some_and(|(_, at)| at > window_ago),
             "a full window passed: the idle pool's baseline must move forward"
         );
         for p in &mut pools.pools {

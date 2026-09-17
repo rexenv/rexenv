@@ -3786,11 +3786,13 @@ mod tests {
     fn db_status_lists_available_engines_when_stopped() {
         let m = ServiceManager::default();
         let dbs: Vec<_> = m.db_status().iter().map(|d| d.engine).collect();
-        // Every engine ships on macOS now.
-        assert_eq!(
-            dbs,
-            vec![DbEngine::Mysql, DbEngine::Mariadb, DbEngine::Postgres, DbEngine::Redis]
-        );
+        // Derived from the same gate the code uses, not a macOS list typed out here:
+        // every engine ships on macOS, and Windows ships two (W10, #642). The claim is
+        // "db_status lists the AVAILABLE engines, in order" — which is true on both.
+        let expected: Vec<DbEngine> =
+            DbEngine::ALL.into_iter().filter(DbEngine::available).collect();
+        assert_eq!(dbs, expected);
+        assert!(expected.contains(&DbEngine::Mysql), "MySQL ships everywhere");
         assert!(m.db_status().iter().all(|d| d.pid.is_none()));
         // H2: nothing we started ⇒ nothing running, regardless of a foreign DB.
         assert!(m.db_status().iter().all(|d| !d.running));
@@ -3843,20 +3845,19 @@ mod tests {
         // When stopped: the available DB engines + every INSTALLED php minor (idle
         // rows — the list must not grow/shrink with Start/Stop all) + Nginx + Caddy +
         // Mailpit. FrankenPHP overrides appear only when running.
-        assert_eq!(
-            names,
-            vec![
-                "MySQL",
-                "MariaDB",
-                "PostgreSQL",
-                "Redis",
-                "PHP-FPM 8.1",
-                "PHP-FPM 8.3",
-                "Nginx",
-                "Caddy",
-                "Mailpit"
-            ]
+        // The DB half is derived (Windows ships fewer engines, W10/#642); the rest is
+        // fixed. The pool rows stay "PHP-FPM <minor>" on every OS on purpose — that
+        // string is the KEY the grouping and the version parse read, and only the
+        // LABEL changes per OS (#651).
+        let mut expected: Vec<String> = DbEngine::ALL
+            .into_iter()
+            .filter(DbEngine::available)
+            .map(|e| e.label().to_string())
+            .collect();
+        expected.extend(
+            ["PHP-FPM 8.1", "PHP-FPM 8.3", "Nginx", "Caddy", "Mailpit"].map(str::to_string),
         );
+        assert_eq!(names, expected);
         assert!(s.iter().all(|i| i.pid.is_none()));
         // An idle pool row still shows its (deterministic) pool port.
         assert_eq!(s.iter().find(|i| i.name == "PHP-FPM 8.3").unwrap().port, 9783);
