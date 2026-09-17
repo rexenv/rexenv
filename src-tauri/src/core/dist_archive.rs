@@ -1005,10 +1005,28 @@ mod tests {
             // `&` (run regardless) is the separator, `%TMPDIR%` does expand from the env
             // block the parent hands the child, `exit /b 1` sets the code, and
             // `ping -n 301` is the 300-second wait cancel has to interrupt.
-            let litter = r##"mkdir "%TMPDIR%\my-plugin.zip6a72" 2>nul & echo copy > "%TMPDIR%\my-plugin.zip6a72\big.bin" &"##;
+            //
+            // **The paths carry NO QUOTES, and that is the whole reason these two tests
+            // failed on the Dell twice** (`wp dist-archive reported success but produced
+            // no archive`). Under `cmd /c` every quoted path form is refused with "The
+            // filename, directory name, or volume label syntax is incorrect" — measured
+            // 17 Sep 2026, eight forms: `echo PK > "abs"`, `> "abs" echo PK`,
+            // `echo PK>"abs"`, the whole line re-quoted, and the same three with
+            // `%TMPDIR%` — while the UNQUOTED `echo PK > abs` exits 0 and writes the
+            // file. `..` is innocent (it survives once the quotes are gone) and so is
+            // expansion (`set` shows TMPDIR present under `env_clear`); the quotes were
+            // always the fault. The redirect still exits 0 when it fails, because `&`
+            // runs `echo Success` regardless — which is exactly why this wore the
+            // disguise of a successful run that produced nothing.
+            //
+            // The cost of dropping them: this only works while the fixture's paths have
+            // no spaces. They are `std::env::temp_dir()` joins under `%TEMP%`, so they do
+            // not — but a fixture rooted anywhere with a space needs a different form,
+            // not another pair of quotes.
+            let litter = r##"mkdir %TMPDIR%\my-plugin.zip6a72 2>nul & echo copy > %TMPDIR%\my-plugin.zip6a72\big.bin &"##;
             match outcome {
                 "ok" => format!(
-                    r##"{litter} echo PK > "%TMPDIR%\..\out\my-plugin.1.2.3.zip" & echo Success"##
+                    r##"{litter} echo PK > %TMPDIR%\..\out\my-plugin.1.2.3.zip & echo Success"##
                 ),
                 "failed" => format!(r##"{litter} echo failed 1>&2 & exit /b 1"##),
                 "cancelled" => format!(r##"{litter} ping -n 301 127.0.0.1 >nul"##),
