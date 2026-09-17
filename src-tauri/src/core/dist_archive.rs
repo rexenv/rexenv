@@ -1058,7 +1058,12 @@ mod tests {
                 Path::new("/bin/autoload.php"),
                 &f.root.join("packages"),
                 &f.link,
-                &[("PATH".to_string(), "/usr/bin:/bin".to_string())],
+                // The child is spawned with `env_clear()` and gets exactly this, so a unix
+                // PATH left the Windows child unable to start `ping` — the cancel arm's
+                // wait — while `echo`/`mkdir` kept working as cmd BUILTINS, which is why
+                // the failure read as "reported success but produced no archive" rather
+                // than as a missing program (#667, one file over).
+                &crate::test_support::minimal_env(),
                 cancel,
                 &mut |_| {},
                 &mut deliver,

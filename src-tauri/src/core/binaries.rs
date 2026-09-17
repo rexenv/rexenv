@@ -3630,8 +3630,21 @@ mod tests {
         std::fs::create_dir_all(dir.join(LICENSES_DIR)).unwrap();
         std::fs::write(dir.join(LICENSES_DIR).join("PHP-3.01.txt"), "…").unwrap();
         assert!(is_cached(&platform, "php", v));
-        assert_eq!(cached_path(&platform, "php", v).unwrap(), dir.join(&member));
-        assert_eq!(cached_bin(&platform, "php", v).unwrap(), dir.join(&member));
+        // **What a cache hit RESOLVES TO follows the artifact's shape on this os, and PHP
+        // has two.** `shape_of_on("php", "windows")` is `Dir` (the php.net zip is a tree),
+        // `Single` on macOS — so `cached_path` hands back the directory there and the
+        // member here, and `cached_bin`, which only ever answers for `Single`, is `None`
+        // on Windows. Asserting the macOS spelling on both hosts made this fail on the
+        // Dell for behaviour that is correct there (W12); deriving both from the same
+        // `shape_of_on` the code reads keeps one claim instead of two spellings.
+        let shape = shape_of_on("php", std::env::consts::OS);
+        let expected = if shape == Shape::Dir { dir.clone() } else { dir.join(&member) };
+        assert_eq!(cached_path(&platform, "php", v).unwrap(), expected);
+        assert_eq!(
+            cached_bin(&platform, "php", v),
+            (shape == Shape::Single).then(|| dir.join(&member)),
+            "cached_bin answers only for a single-binary shape"
+        );
         assert!(!needs_repair(&platform, "php", v), "a whole cache needs no repair");
 
         // Nothing on disk at all is neither cached nor a repair.

@@ -346,10 +346,19 @@ mod lock_tests {
         let db = Arc::new(Mutex::new(crate::state::db::open_in_memory().unwrap()));
         // A borrowed TLD: ours on disk now, their file kept in our backup — so the
         // root step has real work (a restore) and the record must go afterwards.
-        const THEIRS: &str = "nameserver 127.0.0.1\nport 53\n";
+        //
+        // **OUR file is written by the same `route_contents` the plan compares against, at
+        // the same `DEFAULT_DNS_PORT` the teardown plans with** — never a literal port.
+        // `RESOLVER_PORT` is 15353 on macOS and **53** on Windows, so a hardcoded
+        // `port 15353` made the file read as somebody ELSE's on the Dell: the plan took
+        // the Foreign arm and reported `left_alone: ["test"]` instead of restoring (W12).
+        // THEIRS is pinned to a port that is neither host's, so the borrowed file can
+        // never accidentally carry our signature on either one.
+        const THEIRS: &str = "nameserver 127.0.0.1\nport 5454\n";
         let backup = root.join("backup-test");
         std::fs::write(&backup, THEIRS).unwrap();
-        std::fs::write(root.join("resolver-test"), "nameserver 127.0.0.1\nport 15353\n").unwrap();
+        let ours = TmpDns(root.clone()).route_contents(dns::DEFAULT_DNS_PORT);
+        std::fs::write(root.join("resolver-test"), &ours).unwrap();
         crate::state::store::insert_resolver_takeover(
             &db.lock().unwrap(),
             "test",

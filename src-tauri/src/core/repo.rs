@@ -3204,13 +3204,20 @@ mod tests {
         // back in well under the grandchild's 30s lifetime.
         let plat = crate::platform::current();
         let start = std::time::Instant::now();
-        // The same scenario on both hosts, measured on the Dell 17 Sep 2026: `start /b`
-        // detaches the grandchild, the leader exits in ~15 ms, and a read of the pipe has
-        // still not returned three seconds later — the grandchild is holding it, which is
-        // exactly the hang this test exists for.
+        // The same scenario on both hosts, and BOTH halves have to hold at once: the
+        // leader must outlive the cap (or the cap is never what ends the run) while a
+        // detached grandchild holds the pipe (or a leader-only kill would not hang).
+        //
+        // The unix script gets that from `wait`. The first Windows version did NOT: it
+        // ended at `echo started`, and the Dell measured that leader exiting in **64 ms**,
+        // so `try_wait` broke the loop with Ok long before the 500 ms cap and the test
+        // failed on `a stalled probe must time out` — the fixture, not the claim (W12).
+        // Re-measured 17 Sep 2026 with a leader-side wait appended: the leader is still
+        // alive at 1200 ms AND `read_to_end` has not returned 900 ms after the cap, which
+        // is precisely the hang this test exists for.
         let (sh, args) = crate::test_support::shell_step(
             "sleep 30 & echo started; wait",
-            "start /b ping -n 31 127.0.0.1 >nul& echo started",
+            "start /b ping -n 31 127.0.0.1 >nul& echo started& ping -n 31 127.0.0.1 >nul",
         );
         let argv: Vec<&str> = args.iter().map(String::as_str).collect();
         let r = run_captured_with_cap(
@@ -3273,9 +3280,19 @@ mod tests {
 
     #[test]
     fn idle_watchdog_resets_on_every_line_so_streaming_steps_survive() {
-        // Emits a line every ~200ms for ~2s TOTAL — longer than the 1s idle
-        // limit. Each line resets the clock, so a slow-but-STREAMING step
-        // completes ok; only total silence trips the guard (the invariant).
+        // Emits a line every ~200ms for ~2s TOTAL — longer than the idle limit.
+        // Each line resets the clock, so a slow-but-STREAMING step completes ok;
+        // only total silence trips the guard (the invariant).
+        //
+        // **The limit follows the tick, because the two hosts' ticks differ by 5×.**
+        // `sleep 0.2` is ~200 ms; the shortest wait `cmd` actually has is `ping -n 2`,
+        // measured on the Dell at **1021 ms between lines** — so a 1 s limit failed there
+        // by ~21 ms, on a step that was streaming perfectly (W12). The alternatives were
+        // measured and are worse: `ping -w 300` gapped at 2002 ms, `powershell
+        // Start-Sleep -Milliseconds 300` did not sleep at all (1 ms), and a `for /l` spin
+        // emitted NO lines — `@(echo …& for /l …)` swallows them. So the Windows limit is
+        // 2 s against ~1 s ticks, which is the same margin-to-tick ratio as unix's 1 s
+        // against ~200 ms, and proves the same claim.
         let plat = crate::platform::current();
         let cancel = CancelToken::new();
         let mut n = 0u32;
@@ -3283,6 +3300,10 @@ mod tests {
             "for i in 1 2 3 4 5 6 7 8; do echo tick; sleep 0.2; done",
             "for /l %i in (1,1,8) do @(echo tick& ping -n 2 127.0.0.1 >nul)",
         );
+        #[cfg(unix)]
+        let idle = Duration::from_secs(1);
+        #[cfg(windows)]
+        let idle = Duration::from_secs(2);
         let r = run_step_streamed(
             plat.supervisor(),
             &sh,
@@ -3291,7 +3312,7 @@ mod tests {
             &crate::test_support::minimal_env(),
             &cancel,
             &mut |_| n += 1,
-            Some(Duration::from_secs(1)),
+            Some(idle),
         )
         .unwrap();
         assert!(r.ok, "a streaming step outliving the idle window must succeed");

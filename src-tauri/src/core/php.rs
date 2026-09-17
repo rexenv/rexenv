@@ -1826,7 +1826,17 @@ mod tests {
         // …and the set is not uniformly true, so an accessor stubbed to a
         // constant could not pass this. 8.0 ships and has no Xdebug.
         assert!(rows.iter().any(|r| !r.xdebug_supported), "no unsupported row — the fixture is too tidy");
-        assert!(rows.iter().any(|r| r.xdebug_supported));
+        // The other half of that landmark holds only where SOMETHING is pinned. Nothing is
+        // pinned for Windows (D4), so there every row is unsupported and this assertion is
+        // false for the correct reason — asked of the same table the rows come from rather
+        // than skipped, so the landmark still fails on a host that HAS pins and lost them.
+        let any_pinned_here =
+            all_minors().iter().any(|m| binaries::xdebug_supported_on(m, std::env::consts::OS));
+        assert_eq!(
+            rows.iter().any(|r| r.xdebug_supported),
+            any_pinned_here,
+            "the rows must carry support exactly where this os pins an Xdebug build"
+        );
     }
 
     /// The seed refreshes what it OWNS and touches nothing the user owns.

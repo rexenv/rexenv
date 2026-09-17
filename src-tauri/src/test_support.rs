@@ -201,6 +201,15 @@ pub(crate) fn stalling_command() -> std::process::Command {
 /// The two scripts are separate arguments because they are not translations of each other:
 /// `sleep 0.2` has no `cmd` equivalent, and `ping -n 2` is the idiom that waits a second.
 /// Passing both keeps each side readable instead of building one string with `cfg!`.
+///
+/// **`cmd` has no sub-second wait, and a caller whose timing matters must size its window
+/// to that.** Measured on the Dell, 17 Sep 2026, lines timestamped as they arrived:
+/// `ping -n 2` between echoes gives a **~1021 ms** gap (so a 1 s idle limit trips on a
+/// perfectly streaming step); `ping -n 2 -w 300` against an unroutable address is WORSE at
+/// 2002 ms; `powershell -NoProfile -Command Start-Sleep -Milliseconds 300` returns in
+/// ~1 ms, i.e. it does not sleep from here at all; and a `for /l` busy-spin inside
+/// `@(echo …& …)` emits **no lines at all**. `ping -n 2` remains the least-bad tick — the
+/// window is what moves (`idle_watchdog_resets_on_every_line_so_streaming_steps_survive`).
 pub(crate) fn shell_step(unix: &str, windows: &str) -> (std::path::PathBuf, Vec<String>) {
     #[cfg(unix)]
     {

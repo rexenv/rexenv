@@ -187,31 +187,39 @@ mod tests {
 
     #[test]
     fn find_tool_walks_path_in_shell_precedence_order() {
-        let base = std::env::temp_dir().join(format!("rexenv-devtools-{}", std::process::id()));
-        let first = base.join("first");
-        let second = base.join("second");
-        std::fs::create_dir_all(&first).unwrap();
-        std::fs::create_dir_all(&second).unwrap();
-        std::fs::write(second.join("node"), "#!/bin/sh\n").unwrap();
         // Driven through the UNIX rules by name, the way the Windows-shape test beside
         // this one drives `WINDOWS`. `find_tool` reads the HOST's rules, so a `:`-joined
         // PATH and an extensionless `node` are a unix PATH asserted on every machine —
         // on Windows the separator is `;` and a bare name needs PATHEXT, so this failed
         // there while saying nothing about the precedence it is named for (W12).
+        //
+        // **The directories are synthetic, and that is the second half of the same
+        // lesson.** The first fix drove the UNIX rules but still built the PATH from real
+        // temp dirs, so on Windows the value read `C:\...\first:C:\...\second` and
+        // `split(':')` cut the DRIVE LETTER off every entry — the run reported
+        // `\Users\DELL\...\second\node` where `C:\Users\DELL\...` was expected. A fixture
+        // for unix rules must carry no Windows path, and `find_tool_by` takes an injected
+        // `is_file`, so no real file is needed to prove a lookup ORDER.
         use crate::platform::path_lookup::UNIX;
+        let first = Path::new("/fx/first");
+        let second = Path::new("/fx/second");
         let path_val = format!("{}{}{}", first.display(), UNIX.separator, second.display());
         let env = vec![("PATH".to_string(), path_val)];
-        let real = |p: &Path| p.is_file();
+        // What "exists as a file" means here, set by the test rather than the disk.
+        let present = |paths: Vec<PathBuf>| {
+            move |p: &Path| -> bool { paths.iter().any(|q| q == p) }
+        };
+
         // Only `second` has node.
+        let real = present(vec![second.join("node")]);
         assert_eq!(find_tool_by(&UNIX, &env, "node", &real), Some(second.join("node")));
         assert_eq!(find_tool_by(&UNIX, &env, "pnpm", &real), None);
         // First hit wins once `first` gains one (an nvm shim beats /usr/bin).
-        std::fs::write(first.join("node"), "#!/bin/sh\n").unwrap();
+        let real = present(vec![first.join("node"), second.join("node")]);
         assert_eq!(find_tool_by(&UNIX, &env, "node", &real), Some(first.join("node")));
-        // A directory named like the tool is not a hit.
-        std::fs::create_dir_all(first.join("git")).unwrap();
+        // A directory named like the tool is not a hit: `is_file` is false for it.
+        let real = present(vec![]);
         assert_eq!(find_tool_by(&UNIX, &env, "git", &real), None);
-        let _ = std::fs::remove_dir_all(&base);
     }
 
     /// The Dell's own shape, 15 Sep 2026: the key spelled `Path`, a drive letter in every directory,

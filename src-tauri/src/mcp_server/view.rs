@@ -693,11 +693,18 @@ mod tests {
 
     const HOME: &str = "/Users/somebody";
 
-    /// app-data as a STRING built the same way the cases below build their lines, not by
-    /// `join`: on Windows `join` yields `\` while the `format!`ed fixture lines carry `/`,
-    /// so the prefixes never matched and nothing was scrubbed (W12). The scrubber itself
-    /// is plain prefix replacement — there is no OS rule in it, and this keeps the fixture
-    /// from inventing one.
+    /// app-data as a STRING, so the ROOT is spelled exactly once and the `{HOME}`-relative
+    /// lines below match it verbatim on every host: on Windows `join` yields `\` while a
+    /// `format!`ed fixture line carries `/`, so a `join`-built root matched nothing and
+    /// nothing was scrubbed (W12). The scrubber is plain prefix replacement — there is no
+    /// OS rule in it, and this keeps the fixture from inventing one.
+    ///
+    /// **The nested paths go the other way, and the pair is one decision.** `bin_dir()` and
+    /// friends are `app_data_dir().join(..)`, so their PREFIXES carry whatever `join`
+    /// produced; a nested line hand-spelled with `/` therefore missed the specific label
+    /// and fell through to `<rexenv-data>`. So: the root is a literal both sides share, and
+    /// anything BELOW it is built from the same `Paths` the labels come from — never
+    /// spelled a second time (#663).
     const DATA: &str = "Library/Application Support/rexenv";
 
     fn known(docroot: &str) -> KnownPaths {
@@ -716,25 +723,36 @@ mod tests {
         let dr = format!("{HOME}/Sites/probe.scratch.rex");
         let k = known(&dr);
 
+        // **Each nested path is built by the same `Paths` the labels come from**, never
+        // spelled a second time. `KnownPaths` takes its prefixes through `display()`, and
+        // `bin_dir()` is `app_data_dir().join("bin")` — so on Windows the prefix is
+        // `…rexenv\bin` while a hand-written `…rexenv/bin/…` line matched only the
+        // separator-free `<rexenv-data>` prefix, and the SPECIFIC label this case is named
+        // for silently lost. Same lesson as the localwp docroot (#663): build the
+        // expectation the way the code builds the value.
+        use crate::platform::traits::Paths as _;
+        let paths = FakePaths { data: std::path::PathBuf::from(format!("{HOME}/{DATA}")) };
+        let under = |dir: std::path::PathBuf, file: &str| dir.join(file).display().to_string();
+        let bin_phar = under(paths.bin_dir().unwrap(), "wp-cli.phar");
+        let log_file = under(paths.log_dir().unwrap(), "php-fpm-8.3.log");
+        let conf_file = under(paths.config_dir().unwrap(), "nginx.conf");
+        let db_file = under(paths.app_data_dir().unwrap(), "rexenv.sqlite3");
+
         let cases = [
             (format!("PHP Fatal error: boom in {dr}/wp-content/plugins/x.php on line 5"),
-             "<docroot>/wp-content/plugins/x.php"),
+             "<docroot>/wp-content/plugins/x.php".to_string()),
             // Nested under app-data: the SPECIFIC label wins, not `<rexenv-data>/bin/…`.
-            (format!("Error: {HOME}/Library/Application Support/rexenv/bin/wp-cli.phar not found"),
-             "<rexenv-bin>/wp-cli.phar"),
-            (format!("see {HOME}/Library/Application Support/rexenv/logs/php-fpm-8.3.log"),
-             "<rexenv-logs>/php-fpm-8.3.log"),
-            (format!("nginx: {HOME}/Library/Application Support/rexenv/config/nginx.conf"),
-             "<rexenv-config>/nginx.conf"),
-            (format!("db at {HOME}/Library/Application Support/rexenv/rexenv.sqlite3"),
-             "<rexenv-data>/rexenv.sqlite3"),
+            (format!("Error: {bin_phar} not found"), "<rexenv-bin>".to_string()),
+            (format!("see {log_file}"), "<rexenv-logs>".to_string()),
+            (format!("nginx: {conf_file}"), "<rexenv-config>".to_string()),
+            (format!("db at {db_file}"), "<rexenv-data>".to_string()),
             // Under home but none of rexenv's: the username still must not travel.
             (format!("required {HOME}/Projects/acme/vendor/autoload.php"),
-             "<home>/Projects/acme/vendor/autoload.php"),
+             "<home>/Projects/acme/vendor/autoload.php".to_string()),
         ];
         for (line, expected) in cases {
             let s = scrub_log_line(&line, &k);
-            assert!(s.contains(expected), "expected `{expected}` in `{s}`");
+            assert!(s.contains(expected.as_str()), "expected `{expected}` in `{s}`");
             assert!(!s.contains(HOME), "the OS username survived: {s}");
         }
 
