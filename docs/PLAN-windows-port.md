@@ -536,7 +536,7 @@ Lounge (a third-party trust decision); Xdebug DLLs must match PHP's NTS + compil
 *Recommendation:* v1 = Caddy, nginx, PHP 7.4–8.5, MySQL, PostgreSQL, Mailpit, Adminer,
 WP-CLI, Composer, cloudflared; FrankenPHP if W4 proves it. Redis, Apache and Xdebug are
 refused in CORE on Windows with an honest message — the shape OpenLiteSpeed already
-uses (`ensure_server_available`) — until each is proven.
+uses (`ensure_server_available_on`) — until each is proven.
 **MariaDB — RULED 13 Sep 2026: not in v1.** macOS ships it (bundle pins), there is no
 Windows pin, and it stays on the refusal list with an honest message (W10). *Why (owner):*
 MySQL 8.4 and 8.0 both ship on Windows, so MariaDB is redundant for v1, and a new pin is a

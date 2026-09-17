@@ -189,7 +189,7 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   Nginx. `ServiceManager::reconcile_overrides` keeps backends in sync on start/reload
   (config-diff restart on docroot/rewrite/env/pool change; a KIND change stops the old
   backend — different port + binary). OpenLiteSpeed is refused in CORE at create AND
-  switch (`ensure_server_available`) — no macOS binary exists (see TODO "Blocked").
+  switch (`ensure_server_available_on`) — no macOS binary exists (see TODO "Blocked").
 - **Multisite** (`sites.multisite`: none/subdomain/subdirectory → `RewriteMode`): the
   config generator has three rewrite templates. Subdomain adds `mysite.rex, *.mysite.rex`
   to both the Nginx `server_name` and the Caddy host list over the wildcard-SAN cert;

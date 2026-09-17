@@ -1450,7 +1450,7 @@ the first and exits) — its box stayed `[ ]` under a struck-through title, tick
   (upstream ships Linux tarballs only; no homebrew-core formula; the one
   community tap is frozen at EOL 1.4.51 and fails the trust model). A maintainer
   self-build is plausible but needs the same hosting infra as the Xdebug build.
-  Code is ready and honest: `ensure_server_available` refuses OLS in CORE at
+  Code is ready and honest: `ensure_server_available_on` refuses OLS in CORE at
   create AND switch, and `OverrideKind` means enabling it later is one new arm.
   On Linux (Phase 4) this is cheap — official tarballs exist.
 

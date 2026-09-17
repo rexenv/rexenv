@@ -61,15 +61,6 @@ pub(crate) fn validate_domain(domain: &str) -> Result<()> {
     Ok(())
 }
 
-/// Servers with a real backend on this platform. OpenLiteSpeed is BLOCKED on
-/// external work (no upstream macOS binary, no homebrew-core bottle; a
-/// maintainer self-build + self-host is the only path — see docs/TODO.md) —
-/// refused here in CORE, so no IPC path can create a site the stack would
-/// silently serve through nginx while claiming another server (M7).
-fn ensure_server_available(server: WebServer) -> Result<()> {
-    ensure_server_available_on(server, std::env::consts::OS)
-}
-
 /// The web servers a site can actually be created with on this build, in the order the New
 /// Site dialog offers them.
 ///
@@ -92,10 +83,18 @@ pub fn offered_web_servers_on(os: &str) -> Vec<WebServer> {
         .collect()
 }
 
-/// [`ensure_server_available`] for a NAMED os — the os is a parameter so BOTH answers can be
-/// measured from either host. The bar only `cargo check`s for Windows, so a gate that read
-/// `std::env::consts::OS` directly would have an untestable half until W12's Windows runner,
-/// and an untestable refusal is one nobody has seen refuse (W10, ledger #642).
+/// Servers with a real backend on a NAMED os. OpenLiteSpeed is BLOCKED on external work
+/// (no upstream macOS binary, no homebrew-core bottle; a maintainer self-build + self-host
+/// is the only path — see docs/TODO.md) — refused here in CORE, so no IPC path can create
+/// a site the stack would silently serve through nginx while claiming another server (M7).
+///
+/// The os is a parameter so BOTH answers can be measured from either host. The bar only
+/// `cargo check`s for Windows, so a gate that read `std::env::consts::OS` directly would
+/// have an untestable half until W12's Windows runner, and an untestable refusal is one
+/// nobody has seen refuse (W10, ledger #642). There is no host-reading wrapper beside it:
+/// every caller either takes the os already (`refuse_unbuildable_on`, `set_web_server_on`,
+/// `offered_web_servers_on`) or is a test naming the os it means — the wrapper that used
+/// to sit here became unreachable the moment the create path took the parameter (W12).
 fn ensure_server_available_on(server: WebServer, os: &str) -> Result<()> {
     // Nginx is the one server that ships everywhere. The other two are asked of the pins
     // rather than listed here: FrankenPHP and Apache each have a macOS artifact and no
@@ -507,8 +506,16 @@ fn unique_db_name(conn: &Connection, site_type: SiteType, domain: &str) -> Resul
 /// ownership explicitly; the flag is never taken from IPC input, so no caller
 /// can claim ownership of a path it doesn't own and get it deleted later.
 pub fn create(conn: &Connection, new: NewSite) -> Result<Site> {
+    create_on(conn, new, std::env::consts::OS)
+}
+
+/// [`create`] as the user of a NAMED os would run it. Only the availability gates read
+/// the os (see [`refuse_unbuildable_on`]); everything else about a site is the same
+/// everywhere. Tests about FrankenPHP or Apache name `"macos"`, because those servers
+/// have no Windows pin and `create` there refuses before the behaviour under test runs.
+pub fn create_on(conn: &Connection, new: NewSite, os: &str) -> Result<Site> {
     let git = validate_git_source(&new, &Ownership::User)?;
-    create_recording_ownership(conn, new, true, Ownership::User, git)
+    create_recording_ownership_on(conn, new, true, Ownership::User, git, os)
 }
 
 /// [`create`], with the docroot-ownership answer supplied by the caller that
@@ -564,8 +571,18 @@ pub fn offered_db_engines_on(os: &str) -> Vec<SiteDbEngine> {
 }
 
 fn refuse_unbuildable(conn: &Connection, new: &NewSite) -> Result<()> {
-    ensure_server_available(new.web_server)?;
-    ensure_engine_available_on(new.db_engine, std::env::consts::OS)?;
+    refuse_unbuildable_on(conn, new, std::env::consts::OS)
+}
+
+/// [`refuse_unbuildable`] for a NAMED os — the same reason `available_on`,
+/// `ensure_server_available_on` and `offered_db_engines_on` take one (W10, #642): the
+/// gates refuse FrankenPHP and Apache where they have no pin, so a test about what
+/// those servers DO can only run on the os that ships them. Without this the ten
+/// `sites` tests that name an override server passed on macOS and failed on Windows
+/// inside the gate, never reaching the behaviour they are named for (W12).
+fn refuse_unbuildable_on(conn: &Connection, new: &NewSite, os: &str) -> Result<()> {
+    ensure_server_available_on(new.web_server, os)?;
+    ensure_engine_available_on(new.db_engine, os)?;
     ensure_server_runs_php(new.web_server, &new.php_version)?;
     // The patch this site will really run — the user's selection floored by the
     // pin — because the PostgreSQL rule is a fact about the ARTIFACT, and the
@@ -582,9 +599,22 @@ fn create_recording_ownership(
     ownership: Ownership,
     git: Option<GitSource>,
 ) -> Result<Site> {
+    create_recording_ownership_on(conn, new, docroot_managed, ownership, git, std::env::consts::OS)
+}
+
+/// [`create_recording_ownership`] for a NAMED os — see [`create_on`].
+#[allow(clippy::too_many_arguments)]
+fn create_recording_ownership_on(
+    conn: &Connection,
+    new: NewSite,
+    docroot_managed: bool,
+    ownership: Ownership,
+    git: Option<GitSource>,
+    os: &str,
+) -> Result<Site> {
     validate_domain(&new.domain)?;
     validate_docroot_path(&new.path)?;
-    refuse_unbuildable(conn, &new)?;
+    refuse_unbuildable_on(conn, &new, os)?;
     if let Some(owner) = domain_taken_by(conn, &new.domain)? {
         return Err(Error::Other(format!(
             "{} already reaches the site \"{owner}\" — one hostname can only reach one site",
@@ -1336,7 +1366,18 @@ fn validate_docroot_path(path: &str) -> Result<()> {
 /// and Apache have backends (OLS is still deferred). The caller brings the new
 /// backend up / old down and reloads the edge.
 pub fn set_web_server(conn: &Connection, id: &str, server: WebServer) -> Result<Option<Site>> {
-    ensure_server_available(server)?;
+    set_web_server_on(conn, id, server, std::env::consts::OS)
+}
+
+/// [`set_web_server`] for a NAMED os — see [`create_on`]. Switching TO FrankenPHP is a
+/// macOS-only possibility today, and the tests about what the switch does say so.
+pub fn set_web_server_on(
+    conn: &Connection,
+    id: &str,
+    server: WebServer,
+    os: &str,
+) -> Result<Option<Site>> {
+    ensure_server_available_on(server, os)?;
     let Some(_site) = get(conn, id)? else { return Ok(None) };
     // The site keeps its PHP version across a server switch, so the pair has to
     // be checked here too — a 7.4 site switched to FrankenPHP is the same lie
@@ -2813,13 +2854,26 @@ mod tests {
     #[test]
     fn creation_asks_whether_the_engine_ships_here() {
         let src = crate::core::copy_scan::production_source(include_str!("sites.rs"));
-        let from = src.find("fn refuse_unbuildable").expect("the stripper ate refuse_unbuildable");
-        let to = src[from..].find("\n}").expect("refuse_unbuildable ends");
+        // TWO halves, because the gate now takes the os as a parameter (W12): the work is
+        // in `_on`, and the host-reading wrapper is what every production caller reaches.
+        // Checking only the first would pass with nothing calling it; only the second
+        // would pass with the gate deleted from the body.
+        let from = src.find("fn refuse_unbuildable_on").expect("the stripper ate refuse_unbuildable_on");
+        let to = src[from..].find("\n}").expect("refuse_unbuildable_on ends");
         let body = &src[from..from + to];
         assert!(
-            body.contains("ensure_engine_available_on(new.db_engine, std::env::consts::OS)?;"),
+            body.contains("ensure_engine_available_on(new.db_engine, os)?;"),
             "creation does not ask whether the engine ships here — a site could be created with an \
              engine that has no pin on this OS, and would fail later at spawn_db:\n{body}"
+        );
+        let wrapper_at =
+            src.find("fn refuse_unbuildable(").expect("the stripper ate refuse_unbuildable");
+        let wrapper_end = src[wrapper_at..].find("\n}").expect("refuse_unbuildable ends");
+        let wrapper = &src[wrapper_at..wrapper_at + wrapper_end];
+        assert!(
+            wrapper.contains("refuse_unbuildable_on(conn, new, std::env::consts::OS)"),
+            "the host-reading wrapper no longer reaches the gate — creation would ask nothing \
+             on the machine it runs on:\n{wrapper}"
         );
     }
 
@@ -3348,9 +3402,11 @@ mod tests {
         assert!(!off.xdebug);
 
         // FrankenPHP refused (embedded PHP — the pools never serve it).
-        set_web_server(&conn, &site.id, WebServer::Frankenphp).unwrap();
+        // `_on("macos")`: FrankenPHP has no Windows pin, so the switch is refused there
+        // before the Xdebug rule under test is reached (W12).
+        set_web_server_on(&conn, &site.id, WebServer::Frankenphp, "macos").unwrap();
         assert!(set_xdebug(&conn, &site.id, true).is_err());
-        set_web_server(&conn, &site.id, WebServer::Nginx).unwrap();
+        set_web_server_on(&conn, &site.id, WebServer::Nginx, "macos").unwrap();
 
         // PHP 8.0 refused (static build can't dlopen any .so).
         set_php_version(&conn, &site.id, "8.0").unwrap();
@@ -3374,9 +3430,19 @@ mod tests {
         site.php_version = "8.4".into();
         // Toggle off → the shared pool, exactly pool_port_for.
         assert_eq!(pool_port_for_site(&site), pool_port_for("8.4"));
-        // Toggle on → the minor's debug port.
+        // Toggle on → the minor's debug port WHERE ONE EXISTS. `debug_fpm_port` is gated
+        // on `binaries::xdebug_supported`, which has no Windows pins, so there the answer
+        // is the fallback below — and that fallback IS the rule this test is about: a
+        // toggled site never routes to a port nothing will ever listen on (W12).
         site.xdebug = true;
-        assert_eq!(pool_port_for_site(&site), php::debug_fpm_port("8.4").unwrap());
+        match php::debug_fpm_port("8.4") {
+            Some(debug) => assert_eq!(pool_port_for_site(&site), debug),
+            None => assert_eq!(
+                pool_port_for_site(&site),
+                pool_port_for("8.4"),
+                "no Xdebug pin on this OS: a toggled site falls back to the normal pool"
+            ),
+        }
         // A stale flag on an unsupported minor falls back to the normal pool —
         // never a port nothing will ever listen on.
         site.php_version = "8.0".into();
@@ -3764,11 +3830,12 @@ mod tests {
 
         let mut a = sample("A", &da);
         a.web_server = WebServer::Frankenphp;
-        let sa = create(&conn, a).unwrap();
+        let sa = create_on(&conn, a, "macos").unwrap();
 
         let mut b = sample("B", &db_);
         b.web_server = WebServer::Frankenphp;
-        let sb = create(&conn, b).expect("second colliding site is NOT refused anymore");
+        let sb =
+            create_on(&conn, b, "macos").expect("second colliding site is NOT refused anymore");
 
         // Distinct, both in the FrankenPHP range — the allocator picks the lowest
         // free (base, base+1), so they can't share a backend.
@@ -3880,7 +3947,7 @@ mod tests {
         let conn = db::open_in_memory().unwrap();
         let mut a = sample("A", "old.rex");
         a.web_server = WebServer::Frankenphp;
-        let created = create(&conn, a).unwrap();
+        let created = create_on(&conn, a, "macos").unwrap();
         let port = created.override_port.expect("frankenphp site has a recorded port");
 
         let updated = set_domain(&conn, &created.id, "new.rex").unwrap().unwrap();
@@ -4276,12 +4343,24 @@ mod tests {
         // so a quote or a backslash ends the string early and the tail becomes
         // config. Refused, never stripped — silently changing the folder would
         // create the user's sites somewhere they did not pick.
-        for bad in [
+        // The backslash is judged per folder NAME (`config_breaking_char`), so it is
+        // config-breaking inside a name on unix and the SEPARATOR on Windows — the same
+        // distinction `validate_docroot_path` draws (#661). Asserting the unix answer on
+        // both made this fail on the Dell for behaviour that is correct there (W12).
+        #[cfg(unix)]
+        let bad_paths = [
             "/Users/dev/My \"Sites\"",
             "/Users/dev/Sites\\evil",
             "/Users/dev/Sites\nlisten 1.2.3.4:80",
             "/Users/dev/Sites\rlisten 1.2.3.4:80",
-        ] {
+        ];
+        #[cfg(windows)]
+        let bad_paths = [
+            "C:\\Users\\dev\\My \"Sites\"",
+            "C:\\Users\\dev\\Sites\nlisten 1.2.3.4:80",
+            "C:\\Users\\dev\\Sites\rlisten 1.2.3.4:80",
+        ];
+        for bad in bad_paths {
             let err = set_sites_dir(&conn, bad).expect_err("must refuse").to_string();
             assert!(
                 err.contains("web-server configs"),
@@ -5416,8 +5495,9 @@ mod tests {
         new_ng.web_server = WebServer::Nginx;
         let mut new_fp = sample("FP", "fp.test");
         new_fp.web_server = WebServer::Frankenphp;
-        let mut ng = create(&conn, new_ng).unwrap();
-        let mut fp = create(&conn, new_fp).unwrap();
+        // Both `_on("macos")`: the pair is the point, and one of them is FrankenPHP.
+        let mut ng = create_on(&conn, new_ng, "macos").unwrap();
+        let mut fp = create_on(&conn, new_fp, "macos").unwrap();
         assert!(ng.enabled && fp.enabled, "a site is served the moment it is created");
 
         assert!(gets_nginx_block(&ng), "a served nginx site has a block");
@@ -5443,8 +5523,8 @@ mod tests {
         let mut fp = sample("FP", "fp.test");
         fp.site_type = SiteType::Php;
         fp.web_server = WebServer::Frankenphp;
-        let ng = create(&conn, ng).unwrap();
-        let fp = create(&conn, fp).unwrap();
+        let ng = create_on(&conn, ng, "macos").unwrap();
+        let fp = create_on(&conn, fp, "macos").unwrap();
 
         // Nginx serves only the nginx site; the FrankenPHP site is excluded.
         assert!(is_nginx_served(&ng));
@@ -5499,7 +5579,10 @@ mod tests {
         let mut n = sample("FP", "fp.test");
         n.web_server = WebServer::Frankenphp;
         n.php_version = "7.4".into();
-        let err = create(&conn, n).unwrap_err().to_string();
+        // `_on("macos")` so the refusal under test is the PHP-version one. On Windows the
+        // server gate refuses first, with a different sentence — a pass for the wrong
+        // reason (W12).
+        let err = create_on(&conn, n, "macos").unwrap_err().to_string();
         assert!(err.contains("FrankenPHP embeds its own PHP"), "{err}");
         assert!(err.contains("7.4") && err.contains("8.5"), "names both: {err}");
 
@@ -5515,7 +5598,7 @@ mod tests {
         let mut b = sample("B", "b.test");
         b.web_server = WebServer::Frankenphp;
         b.php_version = "8.5".into();
-        let b = create(&conn, b).unwrap();
+        let b = create_on(&conn, b, "macos").unwrap();
         assert!(set_php_version(&conn, &b.id, "7.4").is_err());
         assert_eq!(get(&conn, &b.id).unwrap().unwrap().php_version, "8.5");
 
@@ -5532,10 +5615,13 @@ mod tests {
         let site = create(&conn, new).unwrap();
 
         // Nginx → FrankenPHP → Nginx: only web_server changes; path/domain untouched.
-        let fp = set_web_server(&conn, &site.id, WebServer::Frankenphp).unwrap().expect("exists");
+        let fp = set_web_server_on(&conn, &site.id, WebServer::Frankenphp, "macos")
+            .unwrap()
+            .expect("exists");
         assert!(matches!(fp.web_server, WebServer::Frankenphp));
         assert_eq!(fp.path, site.path);
-        let back = set_web_server(&conn, &site.id, WebServer::Nginx).unwrap().unwrap();
+        let back =
+            set_web_server_on(&conn, &site.id, WebServer::Nginx, "macos").unwrap().unwrap();
         assert!(matches!(back.web_server, WebServer::Nginx));
 
         // Apache is a real backend now; OLS stays deferred; unknown id → None.
@@ -5615,7 +5701,9 @@ mod tests {
         let mut new = sample("LO", "lo.test");
         new.site_type = SiteType::Php;
         new.web_server = WebServer::Apache;
-        create(&conn, new).unwrap();
+        // Apache ships on macOS only (D4 left Apache Lounge out of the Windows v1), and
+        // this test is about how the enum PERSISTS, not about who ships it.
+        create_on(&conn, new, "macos").unwrap();
 
         // An unavailable server is refused at CREATE too (core guard, M7) —
         // not just at switch time.
