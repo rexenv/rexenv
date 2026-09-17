@@ -53,7 +53,40 @@ cd "$(dirname "$0")/.."
 # just gets no receipt.)
 TREE_BEFORE="$(./scripts/verify-receipt.sh fingerprint 2>/dev/null || true)"
 
-(cd src-tauri && cargo test --lib)
+# THIS host, in the same vocabulary live-checks.sh uses (its os column). Git Bash on a
+# Windows host reports MINGW64_NT-… — W12 runs this script there, so that spelling is
+# the point rather than an afterthought.
+case "$(uname -s)" in
+  Darwin) HOST_OS=macos ;;
+  MINGW*|MSYS*|CYGWIN*|Windows_NT) HOST_OS=windows ;;
+  *) HOST_OS=other ;;
+esac
+
+# The lib test binary needs an application manifest ON WINDOWS, and only there.
+#
+# Measured on the Dell 17 Sep 2026, the first time these tests ran on a Windows host:
+# the binary linked and then died at load with STATUS_ENTRYPOINT_NOT_FOUND (0xC0000139)
+# before one test ran. The missing entry point is comctl32's `TaskDialogIndirect`, which
+# exists only in Common-Controls v6 — the side-by-side assembly a binary must ASK for.
+# rfd (under tauri-plugin-dialog) imports it; Tauri embeds that dependency in the APP
+# exe's manifest, and a `cargo test` binary carries no manifest at all (measured: zero
+# manifest resources), so it binds the System32 v5.82 stub, which lacks the export.
+#
+# Why here and not in `build.rs`, which is where a reader would look first: a build
+# script's `rustc-link-arg` reaches EVERY artifact, and the app binary then dies with
+# LNK1123 against Tauri's own manifest resource (measured both ways: red with the arg,
+# `rexenv.exe` built clean the moment it was removed). The `-tests`/`-bins` suffixes do
+# not help — cargo refuses `-tests` by name, because this crate's tests live inside the
+# lib and it has no `[[test]]` target. Scoping the flags to the test INVOCATION is what
+# reaches that one binary and nothing else; proven on the Dell, same run: 1232 tests
+# executed, and `cargo build --bin rexenv` stayed green beside it.
+WIN_TEST_FLAGS=()
+if [ "$HOST_OS" = windows ]; then
+  WIN_MANIFEST="$(pwd)/src-tauri/windows-test.manifest"
+  WIN_TEST_FLAGS=(--config "target.x86_64-pc-windows-msvc.rustflags=[\"-Clink-arg=/MANIFEST:EMBED\",\"-Clink-arg=/MANIFESTINPUT:$WIN_MANIFEST\"]")
+fi
+
+(cd src-tauri && cargo test --lib ${WIN_TEST_FLAGS[@]+"${WIN_TEST_FLAGS[@]}"})
 # The `cli` crate ships its own binary and had NO tests until 12 Aug 2026, so
 # the bar never entered this directory — and the first bug it grew (`rex
 # --version` hanging forever against an app that accepts and never answers,

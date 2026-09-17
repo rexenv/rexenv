@@ -575,11 +575,23 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     path against the drive root and fetches nothing — silently green), `build.rs`'s macOS-only
     sidecar staging, and `windows-check.sh`'s inert SKIP on the one machine that could check
     natively. **The bulk is not scripts:** no Rust test had ever RUN on a Windows host —
-    `windows-check.sh` proves `cargo check` only — and that run is under way on the Dell (it needed
-    no install: rustup + MSVC Build Tools 2022 + SDK were already there; the tree went over as a
-    `git bundle`). **Left:** that result, Node 14 → 18+ and a real `python3` on the Dell (owner's
-    call, both are installs), the SMOKE-TEST and INSTALL Windows sections, and the clean Windows 11
-    VM pass
+    `windows-check.sh` proves `cargo check` only. **That run happened 17 Sep 2026, and this is its
+    result: `1232 passed; 79 failed` of 1311** (plus the `cli` crate's 23, all green). It needed no
+    toolchain install — rustup, MSVC Build Tools 2022 and the SDK were already on the Dell — and the
+    tree went over as a `git bundle`. Two fixes were needed before a test could even start: the
+    sidecar staging (ledger #652) and an application manifest for the test binary, which must come
+    from the test invocation because a `build.rs` link-arg breaks the app binary (ledger #653).
+    **The 79 are six families, and the code is right in most of them:** symlink fixtures (22, one
+    helper: `test_support::symlink`), test paths spelled with `/` where production uses `join`
+    (~10), fixtures spawning `yes`/`sleep`/`sh` (~10; `yes` never exits, so two tests hang), tests
+    demanding macOS-pinned artifacts (~10, e.g. a `php-fpm` pin on an OS with no php-fpm),
+    macOS-only tool scans (~6) and macOS home paths (2). Owner's ruling 17 Sep: work them family by
+    family, largest first, one commit each, each measured on the Dell. **Also found, and worse than
+    a red test:** `state/store.rs`'s SQL scan compared paths against `"src/state/"` and found ZERO
+    hits on Windows — it failed only because it carries a canary. Scans without one (`mcp_server/
+    user_sites.rs`, `mcp_server/scratch.rs`) would pass while seeing nothing. **Left:** the 79, Node
+    14 → 20 and a real `python3` on the Dell (owner said install both, 17 Sep), verify.sh's own
+    Windows run, the SMOKE-TEST and INSTALL Windows sections, and the clean Windows 11 VM pass
 
 - [x] **An older rexenv refuses a database a newer one migrated** ✓ 13 Sep 2026 — built the same
   day at the owner's go: `refuse_newer_schema` in `state::db::open` (before any pragma) and

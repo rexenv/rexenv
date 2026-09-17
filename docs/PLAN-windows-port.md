@@ -1644,9 +1644,41 @@ Each ends in something observable. W0–W2 change nothing a macOS user sees.
   (rustup, MSVC Build Tools 2022 and the 10.0.22621 SDK were already there, and `rustc` links);
   the tree reached it as a `git bundle`, so no credentials and no GitHub. Expect that run, not the
   script edits, to be the bulk of W12.
-  **Still host-blocked, and these DO need the owner:** Node is v14.17.6 (tsc 5.7 and eslint need
-  18+), so `npx tsc` / `npx eslint` cannot run there yet; and `python3` on PATH is the Microsoft
-  Store alias stub, so both `.py` gates fail on the name while `python` 3.9.7 works.
+  **THE RUN HAPPENED, 17 Sep 2026: `1232 passed; 79 failed` of 1311**, plus the `cli` crate's 23
+  all green. Two things had to be fixed before a single test could start, and both are the kind of
+  defect only a host finds: the sidecar staging (#652), and an application manifest for the test
+  binary. The second is worth the detail, because the obvious fix is the wrong one — the test
+  binary died at load with STATUS_ENTRYPOINT_NOT_FOUND looking for comctl32's `TaskDialogIndirect`
+  (Common-Controls v6, which a binary must ask for in a manifest; rfd under tauri-plugin-dialog
+  imports it; Tauri gives the APP exe that manifest and a `cargo test` binary has none). Putting the
+  linker arg in `build.rs` runs the tests AND kills the app binary with LNK1123 against Tauri's own
+  manifest resource; `rustc-link-arg-tests` is refused by cargo because the crate has no `[[test]]`
+  target. The arg belongs on the test INVOCATION, which is where `verify.sh`'s Windows arm now puts
+  it (#653).
+  **The 79 failures are six families, and in most of them the code is right and the test is old:**
+  symlink fixtures (22, all through `test_support::symlink`; measured on the Dell the same day,
+  `SeCreateSymbolicLinkPrivilege` IS available to an elevated task, so a Windows arm there would
+  really run — but a developer without Developer Mode or elevation would skip, so the helper must
+  try-and-skip rather than claim); test paths spelled `/logs/x` where production does
+  `log_dir.join(key)` (~10 — of 126 path comparisons against a `/` literal in the tree, exactly 2
+  are in production code, so this is a fixture assumption, not a port bug); fixtures spawning
+  `yes`/`sleep`/`sh` (~10; `yes` never exits, so two tests hang until the process is killed, and
+  `sh` gives `193: not a valid Win32 application`); tests demanding macOS-pinned artifacts (~10,
+  e.g. `plan_for_php_maps_minor_to_pinned_fpm_and_cli` wanting a `php-fpm` pin on an OS with no
+  php-fpm — the code is correct and the test encodes the old world); macOS-only tool scans (~6:
+  valet, localwp, firefox, devtools); macOS home paths (2). Owner's ruling: family by family,
+  largest first, one commit each, measured on the Dell.
+  **The find that is worse than a red test:** `state/store.rs`'s SQL scan compares paths against
+  `"src/state/"` and matched NOTHING on Windows — it went red only because it carries a canary
+  (`only 0 SQL hits — the matcher is broken`). The same shape without a canary passes while seeing
+  nothing: `mcp_server/user_sites.rs` (14 such comparisons) and `mcp_server/scratch.rs` (6) have
+  none. `platform/words.rs` is the counter-example that shows it was already known there — it
+  normalises with `replace('\\', "/")` before every comparison.
+  **Still host-blocked, and the owner ruled on 17 Sep to install both:** Node is v14.17.6 (tsc 5.7
+  and eslint need 18+), so `npx tsc` / `npx eslint` cannot run there yet; and `python3` on PATH is
+  the Microsoft Store alias stub, so both `.py` gates fail on the name while `python` 3.9.7 works.
+  Until those land, `verify.sh` has never completed on Windows, which is why #652's other three
+  arms (`sha256sum`, `cygpath`, `windows-check`'s native arm) are still unproven there.
   Still required: `verify.sh` runnable on the Windows runner (Git Bash);
   macOS-only examples tiered or ported; a Windows section in `docs/SMOKE-TEST.md` run on
   a clean Windows 11 VM; a Windows section in `docs/INSTALL.md` (SmartScreen, the UAC
