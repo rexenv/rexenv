@@ -193,17 +193,24 @@ mod tests {
         std::fs::create_dir_all(&first).unwrap();
         std::fs::create_dir_all(&second).unwrap();
         std::fs::write(second.join("node"), "#!/bin/sh\n").unwrap();
-        let path_val = format!("{}:{}", first.display(), second.display());
+        // Driven through the UNIX rules by name, the way the Windows-shape test beside
+        // this one drives `WINDOWS`. `find_tool` reads the HOST's rules, so a `:`-joined
+        // PATH and an extensionless `node` are a unix PATH asserted on every machine —
+        // on Windows the separator is `;` and a bare name needs PATHEXT, so this failed
+        // there while saying nothing about the precedence it is named for (W12).
+        use crate::platform::path_lookup::UNIX;
+        let path_val = format!("{}{}{}", first.display(), UNIX.separator, second.display());
         let env = vec![("PATH".to_string(), path_val)];
+        let real = |p: &Path| p.is_file();
         // Only `second` has node.
-        assert_eq!(find_tool(&env, "node"), Some(second.join("node")));
-        assert_eq!(find_tool(&env, "pnpm"), None);
+        assert_eq!(find_tool_by(&UNIX, &env, "node", &real), Some(second.join("node")));
+        assert_eq!(find_tool_by(&UNIX, &env, "pnpm", &real), None);
         // First hit wins once `first` gains one (an nvm shim beats /usr/bin).
         std::fs::write(first.join("node"), "#!/bin/sh\n").unwrap();
-        assert_eq!(find_tool(&env, "node"), Some(first.join("node")));
+        assert_eq!(find_tool_by(&UNIX, &env, "node", &real), Some(first.join("node")));
         // A directory named like the tool is not a hit.
         std::fs::create_dir_all(first.join("git")).unwrap();
-        assert_eq!(find_tool(&env, "git"), None);
+        assert_eq!(find_tool_by(&UNIX, &env, "git", &real), None);
         let _ = std::fs::remove_dir_all(&base);
     }
 
@@ -238,10 +245,18 @@ mod tests {
         let empty: Vec<(String, String)> = vec![("PATH".into(), "/nonexistent-x".into())];
         let node = resolve_node(&empty).unwrap_err().to_string();
         assert!(node.contains("login shell"), "{node}");
-        assert!(node.lines().last().unwrap().starts_with("$ "), "{node}");
+        // A command line, not a `$` prompt: macOS writes `$ brew install node` and
+        // Windows `> winget install …`, and both are the platform's own words. Asserting
+        // the unix prompt character made this fail on Windows for the one thing the test
+        // is NOT about (W12) — the claim is that the last line is something to paste.
+        let pasteable = |s: &str| {
+            let last = s.lines().last().unwrap_or_default().to_string();
+            last.starts_with("$ ") || last.starts_with("> ")
+        };
+        assert!(pasteable(&node), "{node}");
         let pnpm = resolve_package_manager(&empty, "pnpm").unwrap_err().to_string();
         assert!(pnpm.contains("corepack"), "{pnpm}");
-        assert!(pnpm.lines().last().unwrap().starts_with("$ corepack enable"), "{pnpm}");
+        assert!(pasteable(&pnpm) && pnpm.contains("corepack enable"), "{pnpm}");
         let npm = resolve_package_manager(&empty, "npm").unwrap_err().to_string();
         let words = crate::platform::words::current();
         assert_eq!(npm.lines().last().unwrap(), words.node_install, "{npm}");
