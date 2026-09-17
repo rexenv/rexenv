@@ -3230,10 +3230,14 @@ mod tests {
         let cancel = CancelToken::new();
         let mut lines = Vec::new();
         let start = std::time::Instant::now();
+        let (sh, args) = crate::test_support::shell_step(
+            "echo hello; sleep 30",
+            "echo hello& ping -n 31 127.0.0.1 >nul",
+        );
         let r = run_step_streamed(
             plat.supervisor(),
-            Path::new("/bin/sh"),
-            &["-c".into(), "echo hello; sleep 30".into()],
+            &sh,
+            &args,
             &std::env::temp_dir(),
             &[],
             &cancel,
@@ -3263,10 +3267,14 @@ mod tests {
         let plat = crate::platform::current();
         let cancel = CancelToken::new();
         let mut n = 0u32;
+        let (sh, args) = crate::test_support::shell_step(
+            "for i in 1 2 3 4 5 6 7 8; do echo tick; sleep 0.2; done",
+            "for /l %i in (1,1,8) do @(echo tick& ping -n 2 127.0.0.1 >nul)",
+        );
         let r = run_step_streamed(
             plat.supervisor(),
-            Path::new("/bin/sh"),
-            &["-c".into(), "for i in 1 2 3 4 5 6 7 8; do echo tick; sleep 0.2; done".into()],
+            &sh,
+            &args,
             &std::env::temp_dir(),
             &[],
             &cancel,
@@ -3285,10 +3293,12 @@ mod tests {
         // watchdog tests' limits, then a clean exit).
         let plat = crate::platform::current();
         let cancel = CancelToken::new();
+        let (sh, args) =
+            crate::test_support::shell_step("sleep 1; echo done", "ping -n 2 127.0.0.1 >nul& echo done");
         let r = run_step_streamed(
             plat.supervisor(),
-            Path::new("/bin/sh"),
-            &["-c".into(), "sleep 1; echo done".into()],
+            &sh,
+            &args,
             &std::env::temp_dir(),
             &[],
             &cancel,

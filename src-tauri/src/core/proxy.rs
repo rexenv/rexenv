@@ -986,10 +986,7 @@ mod tests {
         // A `caddy reload`/`stop` whose admin socket accepts but never answers must
         // be bounded and killed, not waited on forever (B5). A `sleep 30` child
         // stands in for the wedged CLI.
-        let child = std::process::Command::new("/bin/sh")
-            .args(["-c", "sleep 30"])
-            .spawn()
-            .expect("spawn sleeper");
+        let child = crate::test_support::live_child();
         let start = std::time::Instant::now();
         let e = wait_ok_within(child, "caddy reload", std::time::Duration::from_millis(300))
             .unwrap_err();
@@ -1003,10 +1000,10 @@ mod tests {
 
     #[test]
     fn wait_ok_within_reports_success_and_failure() {
-        let ok = std::process::Command::new("/bin/sh").args(["-c", "exit 0"]).spawn().unwrap();
+        let ok = crate::test_support::exiting_child(0);
         assert!(wait_ok_within(ok, "caddy reload", std::time::Duration::from_secs(5)).is_ok());
 
-        let bad = std::process::Command::new("/bin/sh").args(["-c", "exit 3"]).spawn().unwrap();
+        let bad = crate::test_support::exiting_child(3);
         let e = wait_ok_within(bad, "caddy stop", std::time::Duration::from_secs(5)).unwrap_err();
         assert!(e.to_string().contains("failed"), "{e}");
     }

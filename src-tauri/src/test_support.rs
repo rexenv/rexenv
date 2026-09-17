@@ -112,6 +112,108 @@ pub(crate) fn spinning_child() -> std::process::Child {
     }
 }
 
+/// A child that exits with `code`, for the "an ordinary failure is not a timeout" half
+/// of the timeout tests. Returns the spawned child; the caller waits on it.
+///
+/// Measured on the Dell 17 Sep 2026: `cmd /c exit 3` yields exit code 3, so the Windows
+/// arm carries the code the same way the unix one does.
+pub(crate) fn exiting_child(code: i32) -> std::process::Child {
+    #[cfg(unix)]
+    {
+        std::process::Command::new("/bin/sh")
+            .args(["-c", &format!("exit {code}")])
+            .spawn()
+            .expect("spawn a child with a chosen exit code")
+    }
+    #[cfg(windows)]
+    {
+        std::process::Command::new("cmd")
+            .args(["/c", &format!("exit {code}")])
+            .spawn()
+            .expect("spawn a child with a chosen exit code")
+    }
+}
+
+/// A child that writes one line to stdout and one to stderr, then exits 0 — the fixture
+/// for "both streams are drained, and kept apart".
+///
+/// The Windows form is `echo out& echo err 1>&2`: the `&` separates commands inside one
+/// `cmd /c`, and the redirect binds to the second one only (measured on the Dell).
+pub(crate) fn two_stream_command() -> std::process::Command {
+    #[cfg(unix)]
+    {
+        let mut cmd = std::process::Command::new("/bin/sh");
+        cmd.args(["-c", "echo out; echo err 1>&2"]);
+        cmd
+    }
+    #[cfg(windows)]
+    {
+        let mut cmd = std::process::Command::new("cmd");
+        cmd.args(["/c", "echo out& echo err 1>&2"]);
+        cmd
+    }
+}
+
+/// A child that writes far past the ~64KB pipe buffer before exiting — the fixture that
+/// caught a deadlock reported as a FAKE timeout (the old wait-then-read shape blocked the
+/// child on a full pipe and never reached `try_wait`).
+///
+/// Both forms were measured for size rather than assumed: the Windows loop produces
+/// 318,000 bytes in about two seconds on the Dell.
+pub(crate) fn chatty_command() -> std::process::Command {
+    #[cfg(unix)]
+    {
+        let mut cmd = std::process::Command::new("/bin/sh");
+        cmd.args(["-c", "head -c 300000 /dev/zero | tr '\\0' 'x'; echo done"]);
+        cmd
+    }
+    #[cfg(windows)]
+    {
+        let mut cmd = std::process::Command::new("cmd");
+        cmd.args([
+            "/c",
+            "for /l %i in (1,1,6000) do @echo xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        ]);
+        cmd
+    }
+}
+
+/// A `Command` (not a spawned child) that stays alive for about half a minute — for the
+/// timeout paths, which take a `Command` and own the spawn themselves.
+pub(crate) fn stalling_command() -> std::process::Command {
+    #[cfg(unix)]
+    {
+        let mut cmd = std::process::Command::new("/bin/sh");
+        cmd.args(["-c", "sleep 30"]);
+        cmd
+    }
+    #[cfg(windows)]
+    {
+        let mut cmd = std::process::Command::new("cmd");
+        cmd.args(["/c", "ping -n 31 127.0.0.1 >nul"]);
+        cmd
+    }
+}
+
+/// A shell step as `(program, args)` — for `run_step_streamed`, which takes a program PATH
+/// and an argv rather than a `Command`.
+///
+/// The two scripts are separate arguments because they are not translations of each other:
+/// `sleep 0.2` has no `cmd` equivalent, and `ping -n 2` is the idiom that waits a second.
+/// Passing both keeps each side readable instead of building one string with `cfg!`.
+pub(crate) fn shell_step(unix: &str, windows: &str) -> (std::path::PathBuf, Vec<String>) {
+    #[cfg(unix)]
+    {
+        let _ = windows;
+        (std::path::PathBuf::from("/bin/sh"), vec!["-c".to_string(), unix.to_string()])
+    }
+    #[cfg(windows)]
+    {
+        let _ = unix;
+        (std::path::PathBuf::from("cmd"), vec!["/c".to_string(), windows.to_string()])
+    }
+}
+
 /// chmod `path` to `mode`. A no-op off unix.
 pub(crate) fn set_mode(path: impl AsRef<std::path::Path>, mode: u32) -> std::io::Result<()> {
     #[cfg(unix)]

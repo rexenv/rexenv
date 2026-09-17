@@ -5019,8 +5019,7 @@ Error: WordPress installation doesn't verify against checksums.";
         // Simulates the offline language download: a child that would sit for
         // 30s (WP's download_url waits 300s) must be killed at the cap, not
         // waited out — the UI spinner rides on this returning.
-        let mut cmd = Command::new("/bin/sh");
-        cmd.args(["-c", "sleep 30"]);
+        let cmd = crate::test_support::stalling_command();
         let start = Instant::now();
         let e = run_with_timeout(cmd, Duration::from_millis(400), "sleep-test").unwrap_err();
         assert!(e.to_string().contains("timed out after 0s"), "{e}");
@@ -5033,8 +5032,7 @@ Error: WordPress installation doesn't verify against checksums.";
 
     #[test]
     fn run_with_timeout_returns_output_of_a_fast_child() {
-        let mut cmd = Command::new("/bin/sh");
-        cmd.args(["-c", "echo out; echo err 1>&2"]);
+        let cmd = crate::test_support::two_stream_command();
         let out = run_with_timeout(cmd, Duration::from_secs(10), "echo-test").unwrap();
         assert!(out.status.success());
         assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "out");
@@ -5047,8 +5045,7 @@ Error: WordPress installation doesn't verify against checksums.";
         // The old wait-then-read shape deadlocked here (child blocked writing,
         // try_wait never Some) and reported a FAKE timeout — a long
         // `plugin list --format=json` must never trip the guard by being long.
-        let mut cmd = Command::new("/bin/sh");
-        cmd.args(["-c", "head -c 300000 /dev/zero | tr '\\0' 'x'; echo done"]);
+        let cmd = crate::test_support::chatty_command();
         let out = run_with_timeout(cmd, Duration::from_secs(10), "chatty-test").unwrap();
         assert!(out.status.success());
         assert!(out.stdout.len() > 300_000, "full output drained: {}", out.stdout.len());
@@ -5544,8 +5541,7 @@ mod packages_pin_guards {
     /// a timeout (or the fallback would stop happening exactly when it matters).
     #[test]
     fn a_killed_child_reports_a_timeout_this_module_can_recognise() {
-        let mut sleeper = Command::new("/bin/sh");
-        sleeper.args(["-c", "sleep 5"]);
+        let sleeper = crate::test_support::stalling_command();
         let err = run_with_timeout(sleeper, Duration::from_millis(150), "wp plugin")
             .expect_err("a 5s child under a 150ms cap must be killed");
         assert!(
