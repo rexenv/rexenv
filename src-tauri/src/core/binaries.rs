@@ -184,7 +184,7 @@ pub const BUNDLED_APR_UTIL_VERSION: &str = "1.6.3";
 /// is the last release for PHP 7.4 and no later one will ever exist, so a single
 /// app-wide pin would make `xdebug-7.4` unresolvable by construction the day 7.4
 /// ships (`docs/archive/PLAN-php-74-support.md` §4.6). The per-minor version lives in
-/// [`xdebug_bottle`]'s table beside the digests it must agree with — one row, one
+/// [`xdebug_row`]'s table beside the digests it must agree with — one row, one
 /// version, one pair of hashes, so a minor cannot end up asking for a `.so` that
 /// was never pinned for it.
 pub const XDEBUG_VERSION: &str = "3.5.3";
@@ -563,7 +563,7 @@ enum XdebugStatus {
 /// release each one gets, and of what to tell a user who asks for one that has none.
 ///
 /// There is no host-reading wrapper beside this one: every caller either knows the
-/// os it means (`xdebug_bottle`/`xdebug_unavailable_reason` supply
+/// os it means (`xdebug_bottle_on`/`xdebug_unavailable_reason` supply
 /// `std::env::consts::OS`) or is a test naming the os whose pins it is about. One
 /// name for one question — the wrapper that used to sit here became unreachable the
 /// moment its callers took the os as a parameter (W12).
@@ -577,7 +577,7 @@ fn xdebug_status_on(minor: &str, os: &str) -> XdebugStatus {
     // from what the downloader can fetch.
     //
     // Asked of the ROW rather than through this function's own callers: `ships_on` reaches
-    // `bundle_manifest`, whose xdebug arm needs the row. Calling `xdebug_bottle` there — as
+    // `bundle_manifest`, whose xdebug arm needs the row. Calling `xdebug_bottle_on` there — as
     // the first version of this did — is a cycle, and it aborted the test binary with a
     // stack overflow rather than failing an assertion (W10, ledger #642).
     match pinned {
@@ -623,16 +623,17 @@ fn xdebug_row(minor: &str) -> Option<XdebugBottle> {
     // download would read, never of a per-OS list kept here (`ships_on`): the gate cannot
     // then drift from what the downloader can fetch. Asked with the bottle already in hand
 
-/// The pinned row for a minor, dropping the reason. For callers that only need
-/// to know WHETHER, never why — everything user-facing goes through
+/// The pinned row for a minor ON A NAMED OS, dropping the reason. For callers that only
+/// need to know WHETHER, never why — everything user-facing goes through
 /// [`xdebug_unavailable_reason`] instead.
-fn xdebug_bottle(minor: &str) -> Option<XdebugBottle> {
-    xdebug_bottle_on(minor, std::env::consts::OS)
-}
-
-/// [`xdebug_bottle`] for a NAMED os — the same reason `ships_on` and
-/// `xdebug_status_on` take one: on Windows these answer `None`, and a test that can
-/// only ask the HOST cannot state what macOS pins while running on the Dell (W12).
+///
+/// Takes the os for the same reason `ships_on` and `xdebug_status_on` do: on Windows these
+/// answer `None`, and a test that can only ask the HOST cannot state what macOS pins while
+/// running on the Dell (W12). The host-reading wrapper that used to sit beside it became
+/// unreachable the moment `xdebug_bundle_id` took an os too — the third time that happened
+/// in this port (`xdebug_status`, `ensure_server_available`), and each time only the bar
+/// saw it: `-D dead-code` is a clippy/`cargo check` verdict, and `cargo test --lib` stays
+/// green with the function sitting there uncalled.
 fn xdebug_bottle_on(minor: &str, os: &str) -> Option<XdebugBottle> {
     match xdebug_status_on(minor, os) {
         XdebugStatus::Available(b) => Some(b),
@@ -729,7 +730,14 @@ fn xdebug_spec(bottle: &XdebugBottle, arch: Arch) -> BundleSpec {
 /// bump busts the cache dir like every other binary — and a minor frozen at an
 /// older release keeps its own dir instead of colliding with the current one.
 pub fn xdebug_bundle_id(minor: &str) -> Option<(String, &'static str)> {
-    xdebug_bottle(minor).map(|b| (format!("xdebug-{minor}"), b.version))
+    xdebug_bundle_id_on(minor, std::env::consts::OS)
+}
+
+/// [`xdebug_bundle_id`] for a NAMED os — the rest of the Xdebug accessors take one for the
+/// same reason (#642, #657): nothing is pinned for Windows, so the host-reading form is
+/// `None` there and a test about the ID's SHAPE has to name the os whose pins it means.
+pub fn xdebug_bundle_id_on(minor: &str, os: &str) -> Option<(String, &'static str)> {
+    xdebug_bottle_on(minor, os).map(|b| (format!("xdebug-{minor}"), b.version))
 }
 
 /// Caddy uses `mac_arm64`/`mac_amd64`; static-php uses `macos-aarch64`/`macos-x86_64`.
@@ -1957,7 +1965,7 @@ pub fn bundle_manifest(name: &str, version: &str, os: &str, arch: Arch) -> Optio
         // release, and gating on a single version would make its bundle
         // unresolvable rather than merely older.
         (n, "macos", v) if n.starts_with("xdebug-") => {
-            // The ROW, never `xdebug_bottle`: that one applies the os policy, which asks
+            // The ROW, never `xdebug_bottle_on`: that one applies the os policy, which asks
             // this table back (see `xdebug_status_on`).
             let bottle = xdebug_row(n.strip_prefix("xdebug-")?)?;
             // Cache-dir identity is honest: only THIS minor's pinned release
@@ -3591,10 +3599,15 @@ mod tests {
         let v = "7.4.33"; // self-hosted: an ABSENT marker is stale for it
         let dir = root.join(format!("php-{v}"));
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("php"), "not really a binary").unwrap();
+        // The member name this OS publishes — `php` on unix, `php.exe` on Windows, from
+        // the same helper `published_member` uses. Writing the literal `php` made the
+        // whole test vacuous on Windows: nothing was where the resolve looks, so
+        // `needs_repair` said false and the fixture, not the claim, was what failed (W12).
+        let member = exe_name("php", std::env::consts::OS);
+        std::fs::write(dir.join(&member), "not really a binary").unwrap();
 
         // The binary exists — the OLD `is_cached` stopped here and said yes.
-        assert!(dir.join("php").exists());
+        assert!(dir.join(&member).exists());
         // …but it is not resolvable: no pin marker, and 7.4 is ours, so an
         // absent marker is stale. Planner and resolve now agree it is not.
         assert!(!is_cached(&platform, "php", v));
@@ -3614,8 +3627,8 @@ mod tests {
         std::fs::create_dir_all(dir.join(LICENSES_DIR)).unwrap();
         std::fs::write(dir.join(LICENSES_DIR).join("PHP-3.01.txt"), "…").unwrap();
         assert!(is_cached(&platform, "php", v));
-        assert_eq!(cached_path(&platform, "php", v).unwrap(), dir.join("php"));
-        assert_eq!(cached_bin(&platform, "php", v).unwrap(), dir.join("php"));
+        assert_eq!(cached_path(&platform, "php", v).unwrap(), dir.join(&member));
+        assert_eq!(cached_bin(&platform, "php", v).unwrap(), dir.join(&member));
         assert!(!needs_repair(&platform, "php", v), "a whole cache needs no repair");
 
         // Nothing on disk at all is neither cached nor a repair.
@@ -4153,7 +4166,7 @@ mod tests {
     fn bundle_manifest_pins_xdebug_per_supported_minor() {
         for minor in ["8.1", "8.2", "8.3", "8.4", "8.5"] {
             assert!(xdebug_supported_on(minor, "macos"), "{minor}");
-            let (name, version) = xdebug_bundle_id(minor).unwrap();
+            let (name, version) = xdebug_bundle_id_on(minor, "macos").unwrap();
             assert_eq!(name, format!("xdebug-{minor}"));
             // These minors are all inside Xdebug's current support window, so
             // they sit at the default — asserted from the SAME accessor the UI

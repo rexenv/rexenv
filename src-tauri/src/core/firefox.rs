@@ -188,22 +188,36 @@ mod tests {
         dir
     }
 
+    /// An absolute path this OS calls absolute, pointing at a directory that EXISTS —
+    /// `profiles()` drops rows whose directory is missing, and `/tmp` is neither absolute
+    /// nor present on Windows, so the `IsRelative=0` row vanished there and the count came
+    /// back 1 (W12).
+    #[cfg(unix)]
+    const ABSOLUTE_OTHER: &str = "/tmp";
+    #[cfg(windows)]
+    const ABSOLUTE_OTHER: &str = "C:\\Windows";
+
     #[test]
     fn parses_profiles_ini_relative_and_absolute() {
         let root = fake_root(
             "ini",
-            "[Install5]\nDefault=Profiles/a.default\nLocked=1\n\n\
-             [Profile1]\nName=default\nIsRelative=1\nPath=Profiles/a.default\nDefault=1\n\n\
-             [Profile0]\nName=other\nIsRelative=0\nPath=/tmp\n\n\
-             [General]\nVersion=2\n",
+            &format!(
+                "[Install5]\nDefault=Profiles/a.default\nLocked=1\n\n\
+                 [Profile1]\nName=default\nIsRelative=1\nPath=Profiles/a.default\nDefault=1\n\n\
+                 [Profile0]\nName=other\nIsRelative=0\nPath={ABSOLUTE_OTHER}\n\n\
+                 [General]\nVersion=2\n"
+            ),
         );
         std::fs::create_dir_all(root.join("Profiles/a.default")).unwrap();
         let got = profiles(&root);
         // Relative resolved under root; absolute kept; Install/General ignored;
         // nonexistent dirs dropped.
         assert_eq!(got.len(), 2);
-        assert_eq!(got[0], root.join("Profiles/a.default"));
-        assert_eq!(got[1], PathBuf::from("/tmp"));
+        assert_eq!(got[0], root.join("Profiles").join("a.default"));
+        // `IsRelative=0` means the path is kept as given — but only a path this OS calls
+        // absolute survives the existence check, and `/tmp` is not absolute on Windows
+        // (no drive), so there the row was dropped and the count came back 1 (W12).
+        assert_eq!(got[1], PathBuf::from(ABSOLUTE_OTHER));
     }
 
     /// A Windows `profiles.ini` as the Dell has it (Firefox 105, 14 Sep 2026, ledger #612): UTF-16LE

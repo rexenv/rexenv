@@ -1067,7 +1067,11 @@ mod tests {
         }
         // Requested minor's pool AND the always-included default minor's pool
         // (mirrors start_core), each exactly once.
-        let fpms: Vec<&&str> = names.iter().filter(|(n, _)| *n == "php-fpm").map(|(_, v)| v).collect();
+        // The POOL binary's name is the platform's, not the literal "php-fpm": a php-cgi
+        // group runs from the `php` tree (`PoolModel::catalog_name`, #627), so on Windows
+        // these rows are named `php` and the literal filtered everything out (W12).
+        let pool = plat.supervisor().php_pool_model().catalog_name();
+        let fpms: Vec<&&str> = names.iter().filter(|(n, _)| *n == pool).map(|(_, v)| v).collect();
         assert!(fpms.contains(&&php::patch_for_minor("8.1").unwrap()));
         assert!(fpms.contains(&&binaries::PHP_VERSION));
         assert_eq!(fpms.len(), 2, "{names:?}");
@@ -1124,9 +1128,13 @@ mod tests {
             &map,
             binaries::ADMINER_VERSION,
         );
+        // The pool binary THIS platform starts from, never the literal `php-fpm`
+        // (ledger #627) — the planner above derives it the same way, so a literal here
+        // filtered every row out on Windows and the test failed on its own spelling.
+        let pool_bin = plat.supervisor().php_pool_model().catalog_name();
         let fpm: Vec<&str> = start
             .iter()
-            .filter(|p| p.name == "php-fpm")
+            .filter(|p| p.name == pool_bin)
             .map(|p| p.version.as_str())
             .collect();
         // The fixture site is on another minor, so its pool is planned too — the
@@ -1155,7 +1163,16 @@ mod tests {
             .iter()
             .map(|p| (p.name.as_str(), p.version.as_str()))
             .collect();
-        assert_eq!(names, vec![("php-fpm", patch), ("php", patch)]);
+        // Pool binary + CLI — ONE item where they are the same binary, which is the
+        // Windows case (`pool_and_cli`, #627): a php-cgi group runs from the `php` tree the
+        // CLI is, so there the plan is `[("php", patch)]` and not two rows (W12).
+        let pool = plat.supervisor().php_pool_model().catalog_name();
+        let expected: Vec<(&str, &str)> = if pool == "php" {
+            vec![("php", patch)]
+        } else {
+            vec![(pool, patch), ("php", patch)]
+        };
+        assert_eq!(names, expected);
         assert!(
             plan_for_php_with(&*plat, "7.0", &PatchMap::new()).is_empty(),
             "unpinned minor → nothing to fetch"

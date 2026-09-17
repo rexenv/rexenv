@@ -693,10 +693,15 @@ mod tests {
 
     const HOME: &str = "/Users/somebody";
 
+    /// app-data as a STRING built the same way the cases below build their lines, not by
+    /// `join`: on Windows `join` yields `\` while the `format!`ed fixture lines carry `/`,
+    /// so the prefixes never matched and nothing was scrubbed (W12). The scrubber itself
+    /// is plain prefix replacement — there is no OS rule in it, and this keeps the fixture
+    /// from inventing one.
+    const DATA: &str = "Library/Application Support/rexenv";
+
     fn known(docroot: &str) -> KnownPaths {
-        let paths = FakePaths {
-            data: std::path::PathBuf::from(HOME).join("Library/Application Support/rexenv"),
-        };
+        let paths = FakePaths { data: std::path::PathBuf::from(format!("{HOME}/{DATA}")) };
         KnownPaths::with_home(&paths, docroot, Some(HOME))
     }
 

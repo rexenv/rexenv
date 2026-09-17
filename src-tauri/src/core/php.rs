@@ -324,7 +324,15 @@ mod pool_binary_tests {
 }
 
 pub fn debug_fpm_port(minor: &str) -> Option<u16> {
-    if !binaries::xdebug_supported(minor) {
+    debug_fpm_port_on(minor, std::env::consts::OS)
+}
+
+/// [`debug_fpm_port`] for a NAMED os — the gate it rests on (`xdebug_supported_on`) takes
+/// one for the same reason (W10/#642, W12): Xdebug is pinned per PHP version and nothing
+/// is pinned for Windows, so the host-reading form answers `None` there and a test about
+/// the PORT SCHEME could only ever run on macOS.
+pub fn debug_fpm_port_on(minor: &str, os: &str) -> Option<u16> {
+    if !binaries::xdebug_supported_on(minor, os) {
         return None;
     }
     Some(DEBUG_FPM_PORT_BASE + port_offset(minor)?)
@@ -1668,17 +1676,20 @@ mod tests {
 
     #[test]
     fn debug_fpm_port_covers_supported_minors_and_refuses_80() {
-        // Same 9900-based scheme, disjoint from the normal pool range.
-        assert_eq!(debug_fpm_port("8.1"), Some(9981));
-        assert_eq!(debug_fpm_port("8.4"), Some(9984));
-        assert_eq!(debug_fpm_port("8.5"), Some(9985));
+        // Same 9900-based scheme, disjoint from the normal pool range — asked OF macOS,
+        // where Xdebug is pinned. Nothing is pinned for Windows, so the host-reading form
+        // answers `None` for every minor and this says nothing about the SCHEME (W12).
+        assert_eq!(debug_fpm_port_on("8.1", "macos"), Some(9981));
+        assert_eq!(debug_fpm_port_on("8.4", "macos"), Some(9984));
+        assert_eq!(debug_fpm_port_on("8.5", "macos"), Some(9985));
         for minor in all_minors() {
-            if let (Some(d), Some(n)) = (debug_fpm_port(&minor), fpm_port(&minor)) {
+            if let (Some(d), Some(n)) = (debug_fpm_port_on(&minor, "macos"), fpm_port(&minor)) {
                 assert_ne!(d, n);
             }
         }
         // 8.0's static build can't dlopen — no debug port EXISTS for it, so no
-        // caller can ever route a site there.
+        // caller can ever route a site there. True on both, for different reasons.
+        assert_eq!(debug_fpm_port_on("8.0", "macos"), None);
         assert_eq!(debug_fpm_port("8.0"), None);
         assert_eq!(debug_fpm_port("8.3.31"), None);
         assert_eq!(debug_fpm_port("banana"), None);

@@ -1340,13 +1340,21 @@ mod tests {
     /// by-name exception collapses back into the membership check it replaces.
     #[test]
     fn every_family_name_has_the_shape_its_grant_declares() {
-        use crate::core::binaries::{shape_of, Shape};
+        // `shape_of_on("macos")`, not `shape_of`: the grants describe the macOS artifacts
+        // this updater ships, and PHP is a single executable there and a TREE on Windows
+        // (`php.exe` beside its DLLs), so the host-reading form answered `Dir` on the Dell
+        // and failed a claim about macOS (W12).
+        use crate::core::binaries::{shape_of_on, Shape};
         for n in Family::Php.names() {
-            assert_eq!(shape_of(n), Shape::Single, "{n}: the Php grant says a spawned executable");
+            assert_eq!(
+                shape_of_on(n, "macos"),
+                Shape::Single,
+                "{n}: the Php grant says a spawned executable"
+            );
         }
         for n in Family::Adminer.names() {
             assert_eq!(
-                shape_of(n),
+                shape_of_on(n, "macos"),
                 Shape::File,
                 "{n}: the Adminer grant says a plain file — no chmod, no codesign, never spawned"
             );

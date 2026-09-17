@@ -741,9 +741,11 @@ mod tests {
 
     #[test]
     fn availability_versions_and_key_lookup() {
-        // Implemented engines are available + carry a pinned version.
+        // Implemented engines are available + carry a pinned version — asked OF macOS,
+        // which is where all four ship. Windows has MySQL and PostgreSQL only (D4), so the
+        // host-reading form made this a claim about the machine running it (W12).
         for e in DbEngine::ALL {
-            assert!(e.available() && !e.default_version().is_empty());
+            assert!(e.available_on("macos") && !e.default_version().is_empty());
             // The default is offered, first in the set.
             assert_eq!(e.versions().first(), Some(&e.default_version()));
         }

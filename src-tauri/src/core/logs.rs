@@ -770,14 +770,24 @@ mod tests {
         let dir = std::env::temp_dir().join("rexenv-wp-debug-shared-parser");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
+        // An ABSOLUTE custom path, spelled the way this OS spells one: the parser keeps it
+        // as given only when `is_absolute()`, and `/tmp/split.log` is NOT absolute on
+        // Windows (no drive), so there it was joined onto the docroot and the test
+        // compared against a path the code was right to reject (W12).
+        #[cfg(unix)]
+        let custom = "/tmp/split.log";
+        #[cfg(windows)]
+        let custom = "C:/tmp/split.log";
         std::fs::write(
             dir.join("wp-config.php"),
-            "<?php\ndefine(\n  'WP_DEBUG',\n  true\n);\ndefine('WP_DEBUG_LOG', '/tmp/split.log');\n",
+            format!(
+                "<?php\ndefine(\n  'WP_DEBUG',\n  true\n);\ndefine('WP_DEBUG_LOG', '{custom}');\n"
+            ),
         )
         .unwrap();
         let status = wp_debug_log_status(&dir, "wp-content");
         assert!(status.debug, "a define split across lines must be seen");
-        assert_eq!(status.path, "/tmp/split.log");
+        assert_eq!(status.path, Path::new(custom).display().to_string());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
