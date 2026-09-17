@@ -3204,12 +3204,21 @@ mod tests {
         // back in well under the grandchild's 30s lifetime.
         let plat = crate::platform::current();
         let start = std::time::Instant::now();
+        // The same scenario on both hosts, measured on the Dell 17 Sep 2026: `start /b`
+        // detaches the grandchild, the leader exits in ~15 ms, and a read of the pipe has
+        // still not returned three seconds later — the grandchild is holding it, which is
+        // exactly the hang this test exists for.
+        let (sh, args) = crate::test_support::shell_step(
+            "sleep 30 & echo started; wait",
+            "start /b ping -n 31 127.0.0.1 >nul& echo started",
+        );
+        let argv: Vec<&str> = args.iter().map(String::as_str).collect();
         let r = run_captured_with_cap(
             plat.supervisor(),
-            Path::new("/bin/sh"),
-            &["-c", "sleep 30 & echo started; wait"],
+            &sh,
+            &argv,
             &std::env::temp_dir(),
-            &[],
+            &crate::test_support::minimal_env(),
             Duration::from_millis(500),
         );
         assert!(r.is_err(), "a stalled probe must time out");
@@ -3239,7 +3248,10 @@ mod tests {
             &sh,
             &args,
             &std::env::temp_dir(),
-            &[],
+            // Not `&[]`: `spawn_streamed` clears the environment and sets exactly what it
+            // is given, so an empty one leaves the child with no PATH and every program
+            // the script names fails to start (W12 — see `test_support::minimal_env`).
+            &crate::test_support::minimal_env(),
             &cancel,
             &mut |l| lines.push(l.to_string()),
             Some(Duration::from_millis(500)),
@@ -3276,7 +3288,7 @@ mod tests {
             &sh,
             &args,
             &std::env::temp_dir(),
-            &[],
+            &crate::test_support::minimal_env(),
             &cancel,
             &mut |_| n += 1,
             Some(Duration::from_secs(1)),
@@ -3300,7 +3312,7 @@ mod tests {
             &sh,
             &args,
             &std::env::temp_dir(),
-            &[],
+            &crate::test_support::minimal_env(),
             &cancel,
             &mut |_| {},
             None,

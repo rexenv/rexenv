@@ -214,6 +214,30 @@ pub(crate) fn shell_step(unix: &str, windows: &str) -> (std::path::PathBuf, Vec<
     }
 }
 
+/// The smallest environment a spawned step needs to find the programs its script names.
+///
+/// Empty on unix, where fixtures spell `/bin/sh` and `sleep` by absolute path or find them
+/// through the shell's own defaults. On Windows it carries `PATH=<SystemRoot>\System32`,
+/// and that is not a nicety: `ProcessSupervisor::spawn_streamed` calls `env_clear()` and
+/// then sets exactly what it was handed, so a step given `&[]` runs with NO `PATH` —
+/// `cmd.exe` still starts (the loader finds it), but everything the script names fails
+/// with "'ping' is not recognized as an internal or external command". Measured on the
+/// Dell 17 Sep 2026, where it was the whole of the `repo` watchdog family's failure.
+///
+/// `%SystemRoot%` cannot be used inside the script instead: with the environment cleared
+/// there is nothing for `cmd` to expand it from, so the directory is resolved HERE.
+pub(crate) fn minimal_env() -> Vec<(String, String)> {
+    #[cfg(unix)]
+    {
+        Vec::new()
+    }
+    #[cfg(windows)]
+    {
+        let root = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".to_string());
+        vec![("PATH".to_string(), format!(r"{root}\System32"))]
+    }
+}
+
 /// chmod `path` to `mode`. A no-op off unix.
 pub(crate) fn set_mode(path: impl AsRef<std::path::Path>, mode: u32) -> std::io::Result<()> {
     #[cfg(unix)]
