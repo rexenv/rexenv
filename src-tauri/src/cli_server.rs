@@ -28,6 +28,9 @@ use crate::error::{Error, Result};
 use crate::state::app::AppState;
 use serde::Deserialize;
 use serde_json::{json, Value};
+// Only the unix-socket `claim`/`bind` take a bare `Path`; on Windows they are gated out
+// and the import was a `-D unused-imports` red under clippy (W12).
+#[cfg(unix)]
 use std::path::Path;
 use std::time::Duration;
 use tauri::Manager;
@@ -2256,6 +2259,7 @@ mod tests {
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
 
+    #[cfg(unix)]
     fn scratch_sock(name: &str) -> std::path::PathBuf {
         // Keep it short: unix socket paths cap at ~104 bytes.
         std::env::temp_dir().join(format!("rexcli-{}-{name}.sock", std::process::id()))

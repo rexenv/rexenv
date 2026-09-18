@@ -12,6 +12,11 @@
 //! mutates nothing; adopted `Proc`s are Drop-safe). The stack guard stays
 //! CLOSED — this example cannot stop anything it didn't spawn.
 
+// Skipped on this host: `main` is a stub here, so every item below it is unreachable on
+// purpose. Silence the dead-code / unused-import reds that fact produces under
+// `clippy -D warnings` on the other OS (W12) -- and only there.
+#![cfg_attr(not(unix), allow(dead_code, unused_imports))]
+
 use rexenv_lib::cli_server;
 use rexenv_lib::state::app::{AppState, DnsMode, DnsState};
 use serde_json::Value;

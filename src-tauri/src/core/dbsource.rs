@@ -315,6 +315,9 @@ pub fn probe_socket(platform: &dyn crate::platform::traits::Platform, path: &Pat
 // #163's widened scan the day it was written.
 #[cfg(test)]
 mod socket_probe_tests {
+    // Every test below is `cfg(unix)`, so on Windows this import had nothing to import
+    // for -- a `-D unused-imports` red under clippy there (W12).
+    #[cfg(unix)]
     use super::*;
 
     /// A socket probe reads the greeting a TCP one would — the version off the

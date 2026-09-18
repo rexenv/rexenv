@@ -3596,7 +3596,7 @@ fn parse_stable_check(body: &[u8]) -> Result<Vec<WpCoreVersion>> {
                 .map(|t| (t, WpCoreVersion { version, status }))
         })
         .collect();
-    rows.sort_by(|a, b| b.0.cmp(&a.0));
+    rows.sort_by_key(|(t, _)| std::cmp::Reverse(*t));
     Ok(rows.into_iter().map(|(_, v)| v).collect())
 }
 

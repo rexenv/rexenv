@@ -247,18 +247,15 @@ pub(crate) fn minimal_env() -> Vec<(String, String)> {
     }
 }
 
-/// chmod `path` to `mode`. A no-op off unix.
+/// chmod `path` to `mode`. Unix only, and GATED rather than a no-op elsewhere, on
+/// purpose: the no-op let a Windows test assert that a "locked" folder refused a move
+/// nothing had locked (#661), and once its callers were gated it sat unused there -- a
+/// `-D dead-code` red the first time the bar ran on Windows (W12). A caller on another
+/// OS now fails to compile, which is the honest answer.
+#[cfg(unix)]
 pub(crate) fn set_mode(path: impl AsRef<std::path::Path>, mode: u32) -> std::io::Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = (path, mode);
-        Ok(())
-    }
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))
 }
 
 /// The `ExitStatus` a captured `Output` carries for a process that exited with

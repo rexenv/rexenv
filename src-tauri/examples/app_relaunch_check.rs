@@ -25,6 +25,11 @@
 //! the developer is running. Nothing outside the sandbox root is written, and no
 //! real rexenv process is signalled.
 
+// Skipped on this host: `main` is a stub here, so every item below it is unreachable on
+// purpose. Silence the dead-code / unused-import reds that fact produces under
+// `clippy -D warnings` on the other OS (W12) -- and only there.
+#![cfg_attr(not(target_os = "macos"), allow(dead_code, unused_imports))]
+
 use rexenv_lib::core::app_update::{parse_relaunch_args, RelaunchArgs, RELAUNCH_FLAG};
 use std::path::Path;
 use std::process::{Command, ExitCode};

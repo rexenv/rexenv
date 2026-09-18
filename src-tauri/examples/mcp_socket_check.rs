@@ -23,6 +23,11 @@
 //! and from M2a the named scratch site's TTL), which is why this example scopes
 //! and removes the feed rows it creates below.
 
+// Skipped on this host: `main` is a stub here, so every item below it is unreachable on
+// purpose. Silence the dead-code / unused-import reds that fact produces under
+// `clippy -D warnings` on the other OS (W12) -- and only there.
+#![cfg_attr(not(unix), allow(dead_code, unused_imports))]
+
 use rexenv_lib::state::app::AppState;
 use rexenv_lib::mcp_server;
 use serde_json::{json, Value};

@@ -42,6 +42,11 @@
 //! proving nothing. The fixture has to look like production (a real argv), which
 //! is the same lesson this project has now paid for three times.
 
+// Skipped on this host: `main` is a stub here, so every item below it is unreachable on
+// purpose. Silence the dead-code / unused-import reds that fact produces under
+// `clippy -D warnings` on the other OS (W12) -- and only there.
+#![cfg_attr(not(target_os = "macos"), allow(dead_code, unused_imports))]
+
 mod common;
 
 use std::path::PathBuf;

@@ -136,7 +136,7 @@ mod windows {
         let tls = https_get(&ca.cert_path).await;
         check.is(":443 serves the site over TLS with the local CA's certificate", tls.as_ref().is_ok_and(|(code, body)| *code == 200 && body == "edge-ok"), &format!("{tls:?}"));
         let redirect = plain_get(80);
-        check.is(":80 redirects to https", redirect.starts_with("HTTP/1.1 308"), &redirect.lines().next().unwrap_or("").to_string());
+        check.is(":80 redirects to https", redirect.starts_with("HTTP/1.1 308"), redirect.lines().next().unwrap_or(""));
 
         // ── 4. Where it binds, and who may open the socket. ──
         let netstat = Command::new("netstat").args(["-ano", "-p", "TCP"]).output().map(|o| String::from_utf8_lossy(&o.stdout).into_owned()).unwrap_or_default();

@@ -112,7 +112,7 @@ mod windows {
             .chain(group.zend_extensions.iter().copied().filter(|_| !loaded.contains(&"zend opcache".to_string())))
             .collect();
         check.is(&format!("all {} extensions the model names are loaded", group.extensions.len() + group.zend_extensions.len()), missing.is_empty(), &format!("missing {missing:?}"));
-        check.is("the SMTP keys point at Mailpit", json["smtp"] == "127.0.0.1" && json["smtp_port"] == mail::MAILPIT_SMTP_PORT.to_string(), &body);
+        check.is("the SMTP keys point at Mailpit", json["smtp"] == "127.0.0.1" && json["smtp_port"].as_str().and_then(|s| s.parse::<u16>().ok()) == Some(mail::MAILPIT_SMTP_PORT), &body);
         check.is("the Laravel mail env reached the request", json["mail_host"] == "127.0.0.1", &body);
         check.is("the user's setting is live", json["memory_limit"] == "384M", &body);
         check.is("no php.ini was loaded besides ours (-n -c)", json["ini"].as_str().is_some_and(|p| p.ends_with(&format!("php-cgi-{MINOR}.ini"))) && json["scanned"] == false, &body);

@@ -2311,6 +2311,7 @@ pub const ABOUT_MENU_EVENT: &str = "menu://about";
 /// Separate from the About item because it does something as well as going
 /// somewhere: the frontend navigates to the card AND runs a check, so a user who
 /// came to the menu bar asking gets an answer rather than a screen.
+#[cfg(target_os = "macos")]
 const CHECK_UPDATES_MENU_ID: &str = "rex-check-updates";
 pub const CHECK_UPDATES_MENU_EVENT: &str = "menu://check-updates";
 

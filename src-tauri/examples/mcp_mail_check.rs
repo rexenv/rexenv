@@ -46,6 +46,11 @@
 //! site that overrode its `From` header, which is the residual the tool's own
 //! note states to every agent and which no test can remove.
 
+// Skipped on this host: `main` is a stub here, so every item below it is unreachable on
+// purpose. Silence the dead-code / unused-import reds that fact produces under
+// `clippy -D warnings` on the other OS (W12) -- and only there.
+#![cfg_attr(not(unix), allow(dead_code, unused_imports))]
+
 mod common;
 
 use rexenv_lib::core::{self, binaries, mail};

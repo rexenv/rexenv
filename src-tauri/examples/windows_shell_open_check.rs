@@ -82,7 +82,7 @@ mod windows {
         while Instant::now() < deadline {
             if let Some(w) = windows()
                 .into_iter()
-                .find(|(_, c, t)| t.contains(fragment) && class.is_none_or(|want| c == want))
+                .find(|(_, c, t)| t.contains(fragment) && class.map_or(true, |want| c == want))
             {
                 return Some(w);
             }

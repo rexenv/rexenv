@@ -1105,7 +1105,7 @@ async fn drive<R: tauri::Runtime>(
             .await;
             let detected = match cloned {
                 Ok(Ok(d)) => d,
-                Ok(Err(e)) if entry.cancel.is_cancelled() => return JobEnd::Cancelled,
+                Ok(Err(_)) if entry.cancel.is_cancelled() => return JobEnd::Cancelled,
                 Ok(Err(e)) => return JobEnd::Failed(e.to_string()),
                 Err(e) => return JobEnd::Failed(format!("clone worker died: {e}")),
             };

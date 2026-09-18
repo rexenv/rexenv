@@ -624,7 +624,27 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     undecided until the owner measures the unsigned download path) and any claim that the
     update card hides its button — `AppUpdateCard` has no OS gate; `WindowsAppBundle::facts`
     returns `Unported(...)`, so readiness errors instead of refusing, and the checklist asks
-    the tester to look at what the card actually renders
+    the tester to look at what the card actually renders.
+    **verify.sh on the Dell, 18 Sep 2026 (ledger #675):** three runs capped inside `cargo build
+    --examples` (1 h, 2 h, 5 h — 184 examples each linking the whole lib; the third finished its
+    last example 19 s before the cap), then the fourth, all cached, reached clippy in an hour and
+    gave the bar's **first real Windows verdict: red, `rc=101`**. Nine lib findings — five
+    Windows-dead items, one real MSRV bug (`is_none_or` in `platform/windows/autostart.rs`,
+    stable 1.82 vs declared 1.77.2), three that are clippy-1.98-only and not Windows at all — then
+    70 more in the examples once the lib was clean. All fixed; `cargo xwin clippy --all-targets
+    -- -D warnings` from the Mac now exits 0, which is the first time that check has been runnable
+    from here. **The structural finding:** `windows-check.sh` runs `cargo check` with no clippy and
+    no `-D warnings`, so the Mac's Windows gate is strictly weaker than the macOS clippy gate and
+    could never have caught any of this — closing that is its own row below. **Left:** the bar's
+    Windows run past clippy (tsc, eslint, doc gates, windows-check unmeasured there), the SMOKE-TEST
+    and INSTALL sections run by a human on Windows, and the clean Windows 11 VM pass
+  - [ ] `windows-check.sh` should run clippy with `-D warnings` for the Windows target, not bare
+    `cargo check` — the gap ledger #675 measured: nine lib and 70 example reds the Mac-side gate
+    passed over. `cargo xwin clippy --all-targets --target x86_64-pc-windows-msvc -- -D warnings`
+    is runnable from the Mac (18 Sep 2026, ~16 s warm). Cost: a longer verify on the Mac. Also
+    found there: `build.rs` picks its sidecar marker by HOST cfg and `build-cli.sh` its arm by
+    `uname`, so a cross-compile never stages the Windows sidecar — the placeholder is the only
+    reason the check is green
 
 - [x] **An older rexenv refuses a database a newer one migrated** ✓ 13 Sep 2026 — built the same
   day at the owner's go: `refuse_newer_schema` in `state::db::open` (before any pragma) and

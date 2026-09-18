@@ -417,7 +417,7 @@ pub fn parse_pull_refs(stdout: &str) -> Vec<PullRef> {
             Some(PullRef { number, sha: oid.trim().to_string(), full_ref: name.to_string() })
         })
         .collect();
-    out.sort_by(|a, b| b.number.cmp(&a.number));
+    out.sort_by_key(|r| std::cmp::Reverse(r.number));
     out
 }
 

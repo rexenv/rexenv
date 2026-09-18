@@ -112,7 +112,10 @@ fn delete_value(sub: &str, what: &str) -> Result<()> {
 
 /// Enabled: the Run value is there and Task Manager has not disabled it.
 pub(super) fn is_enabled() -> Result<bool> {
-    if current_run_value().is_none_or(|v| v.trim().is_empty()) {
+    // `map_or(true, ..)`, not `is_none_or`: that one is stable since Rust 1.82 and the crate
+    // declares `rust-version = "1.77.2"` -- clippy's `incompatible_msrv` caught it the first
+    // time the bar ran on Windows (W12); the Mac never compiles this file.
+    if current_run_value().map_or(true, |v| v.trim().is_empty()) {
         return Ok(false);
     }
     let approved = open(APPROVED_KEY, KEY_READ).and_then(|k| read(&k, VALUE_NAME)).map(|(_, bytes)| bytes);
