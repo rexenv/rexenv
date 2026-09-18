@@ -2072,7 +2072,7 @@ fn cmd_site_server(words: &[String], json_output: bool) {
 /// One verb for read and write because it is one question from the user's side
 /// — which names does this site answer on — and the reply is always the whole
 /// list, so an add or a remove shows its own result rather than a bare "ok".
-const DOMAINS_USAGE: &str = "usage: rex site domains <domain> [--add <name> | --remove <name>]";
+const DOMAINS_USAGE: &str = "rex: usage: rex site domains <domain> [--add <name> | --remove <name>]";
 
 fn cmd_site_domains(words: &[String], json_output: bool) {
     // Both flags are optional and no flag means LIST, so a typo does not fail —
@@ -2080,7 +2080,7 @@ fn cmd_site_domains(words: &[String], json_output: bool) {
     // domains WITH `extra.rex` still among them, which reads as the state after
     // a removal rather than as a removal that never ran.
     reject_unknown_flags(words, "site domains", &["--add", "--remove"], DOMAINS_USAGE);
-    let site = find_site(words, DOMAINS_USAGE);
+    let site = find_site(words, DOMAINS_USAGE.trim_start_matches("rex: usage: "));
     let flag = |name: &str| {
         words.iter().position(|w| w == name).and_then(|i| words.get(i + 1)).cloned()
     };
@@ -2130,6 +2130,15 @@ fn cmd_site_domains(words: &[String], json_output: bool) {
 /// argument apart and the mistake is silent otherwise.
 fn cmd_site_enabled(words: &[String], enabled: bool, json_output: bool) {
     let verb = if enabled { "start" } else { "stop" };
+    // This one fails safe — a misspelt `--all` reaches `find_site` with no
+    // domain and is refused — but it takes the guard anyway, as defence
+    // against the reverse mistake: a flag the command does not have.
+    reject_unknown_flags(
+        words,
+        &format!("site {verb}"),
+        &["--all"],
+        &format!("rex: usage: rex site {verb} <domain> | rex site {verb} --all"),
+    );
     // `--all` is the Sites page's bulk switch, NOT `rex stop`: every site's
     // serving surface changes and rexenv's services stay up. Handled before
     // `find_site`, which would otherwise demand a domain.
@@ -2177,8 +2186,14 @@ fn cmd_site_enabled(words: &[String], enabled: bool, json_output: bool) {
     }
 }
 
+const RESTART_USAGE: &str = "rex: usage: rex site restart <domain> [--pool]";
+
 fn cmd_site_restart(words: &[String], json_output: bool) {
-    let site = find_site(words, "rex site restart <domain> [--pool]");
+    // A dropped `--pool` does not do nothing — it restarts the SITE's backend
+    // instead of the shared php-fpm pool every site on that minor uses. Two
+    // different actions, one of them the one that was asked for.
+    reject_unknown_flags(words, "site restart", &["--pool"], RESTART_USAGE);
+    let site = find_site(words, RESTART_USAGE.trim_start_matches("rex: usage: "));
     let pool = words.iter().any(|w| w == "--pool");
     let r = request("site.restart", json!({ "id": site["id"], "pool": pool }));
     if json_output {
@@ -2442,8 +2457,14 @@ fn cmd_site_env(words: &[String], json_output: bool) {
     }
 }
 
+const CERT_USAGE: &str = "rex: usage: rex site cert <domain> [--regenerate]";
+
 fn cmd_site_cert(words: &[String], json_output: bool) {
-    let site = find_site(words, "rex site cert <domain> [--regenerate]");
+    // Without the flag this command REPORTS, so a typo printed the expiry of
+    // the certificate it was asked to replace — an answer that looks like the
+    // state after a reissue, from a run that reissued nothing.
+    reject_unknown_flags(words, "site cert", &["--regenerate"], CERT_USAGE);
+    let site = find_site(words, CERT_USAGE.trim_start_matches("rex: usage: "));
     if words.iter().any(|w| w == "--regenerate") {
         let r = request("site.cert.regenerate", json!({ "id": site["id"] }));
         if json_output {
@@ -2725,7 +2746,7 @@ fn cmd_tunnel(words: &[String], json_output: bool) {
     }
 }
 
-const TLD_USAGE: &str = "usage: rex tld [--set <tld>] [--repair <tld>] [--remove <tld>]";
+const TLD_USAGE: &str = "rex: usage: rex tld [--set <tld>] [--repair <tld>] [--remove <tld>]";
 
 fn cmd_tld(words: &[String], json_output: bool) {
     // Every arm below is `if let Some(..) = flag_value(..)`, so a MISSPELT flag
@@ -3293,7 +3314,12 @@ fn cmd_db_reset(words: &[String], json_output: bool) {
     println!("✓ {domain} reset — fresh WordPress install");
 }
 
+const DB_VERSIONS_USAGE: &str = "rex: usage: rex db versions [--set <engine> <version>]";
+
 fn cmd_db_versions(words: &[String], json_output: bool) {
+    // Same shape: no `--set` means LIST, so `--sett mysql 8.4` printed the
+    // versions table and exited 0 while the pin stayed where it was.
+    reject_unknown_flags(words, "db versions", &["--set"], DB_VERSIONS_USAGE);
     if let (Some(engine), Some(version)) = (
         words.iter().position(|w| w == "--set").and_then(|i| words.get(i + 1)),
         words.iter().position(|w| w == "--set").and_then(|i| words.get(i + 2)),
@@ -3902,6 +3928,10 @@ mod tests {
         for (name, declared) in [
             ("fn cmd_tld(", r#"&["--repair", "--remove", "--set"]"#),
             ("fn cmd_site_domains(", r#"&["--add", "--remove"]"#),
+            ("fn cmd_site_restart(", r#"&["--pool"]"#),
+            ("fn cmd_site_cert(", r#"&["--regenerate"]"#),
+            ("fn cmd_db_versions(", r#"&["--set"]"#),
+            ("fn cmd_site_enabled(", r#"&["--all"]"#),
         ] {
             let body = ME
                 .split(name)

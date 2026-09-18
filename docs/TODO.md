@@ -1040,8 +1040,14 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   printed the default TLD, `site domains shop.rex --remov extra.rex` printed the list with
   `extra.rex` still in it, both exit 0 — and for `--remove` the missing password prompt reads as
   "already done". L1: the built `rex` now exits 2 before any socket call.
-  Still open: `repo`, `site cert`, `site enabled`, `site restart`, `mail`, `tunnel`, `db versions`,
-  `logs`, `site logs`, `doctor`, and `wp`'s per-arm sets.
+  `site restart`, `site cert`, `db versions` and `site start|stop` ✓ the same day — the first three
+  are the same fall-through-to-the-reading-arm shape (`--pol` restarts the SITE instead of the shared
+  pool; `--regen` prints the expiry of the certificate it was asked to replace; `--sett` prints the
+  versions table while the pin stays), the fourth fails safe and takes the guard against the reverse
+  mistake. Each usage line is ONE const now, with `find_site` handed the part after its own
+  `rex: usage: ` prefix — the first cut printed `usage: usage:`.
+  Still open: `repo`, `mail`, `tunnel`, `logs`, `site logs`, `doctor`, `site domain`, `site rename`,
+  and `wp`'s per-arm sets.
   **Pick the rest by what an ignored flag DOES, not by how destructive the verb
   sounds** — that was the first ordering here and it was wrong. On `db reset` and
   `site delete` a typo fails SAFE: a misspelt `--yes` leaves the prompt standing.
