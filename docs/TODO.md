@@ -1034,7 +1034,14 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 - [ ] **~16 flag-taking `rex` commands still ignore what they do not recognise**
   (3 Sep 2026, ledger #463/#466). Done: `site create`, `wp search-replace`,
-  `site delete`, `db reset`, `db import`.
+  `site delete`, `db reset`, `db import`; `tld` and `site domains` ✓ 18 Sep 2026 (#466 amended)
+  — a THIRD shape, and the one that does not fail but ANSWERS: every flag in both is an optional
+  `Some(..)`, so a misspelling matched no arm and fell through to the reading arm. `tld --remov x`
+  printed the default TLD, `site domains shop.rex --remov extra.rex` printed the list with
+  `extra.rex` still in it, both exit 0 — and for `--remove` the missing password prompt reads as
+  "already done". L1: the built `rex` now exits 2 before any socket call.
+  Still open: `repo`, `site cert`, `site enabled`, `site restart`, `mail`, `tunnel`, `db versions`,
+  `logs`, `site logs`, `doctor`, and `wp`'s per-arm sets.
   **Pick the rest by what an ignored flag DOES, not by how destructive the verb
   sounds** — that was the first ordering here and it was wrong. On `db reset` and
   `site delete` a typo fails SAFE: a misspelt `--yes` leaves the prompt standing.

@@ -2072,8 +2072,15 @@ fn cmd_site_server(words: &[String], json_output: bool) {
 /// One verb for read and write because it is one question from the user's side
 /// — which names does this site answer on — and the reply is always the whole
 /// list, so an add or a remove shows its own result rather than a bare "ok".
+const DOMAINS_USAGE: &str = "usage: rex site domains <domain> [--add <name> | --remove <name>]";
+
 fn cmd_site_domains(words: &[String], json_output: bool) {
-    let site = find_site(words, "rex site domains <domain> [--add <name> | --remove <name>]");
+    // Both flags are optional and no flag means LIST, so a typo does not fail —
+    // it lists. `rex site domains shop.rex --remov extra.rex` printed the
+    // domains WITH `extra.rex` still among them, which reads as the state after
+    // a removal rather than as a removal that never ran.
+    reject_unknown_flags(words, "site domains", &["--add", "--remove"], DOMAINS_USAGE);
+    let site = find_site(words, DOMAINS_USAGE);
     let flag = |name: &str| {
         words.iter().position(|w| w == name).and_then(|i| words.get(i + 1)).cloned()
     };
@@ -2718,7 +2725,16 @@ fn cmd_tunnel(words: &[String], json_output: bool) {
     }
 }
 
+const TLD_USAGE: &str = "usage: rex tld [--set <tld>] [--repair <tld>] [--remove <tld>]";
+
 fn cmd_tld(words: &[String], json_output: bool) {
+    // Every arm below is `if let Some(..) = flag_value(..)`, so a MISSPELT flag
+    // matches none of them and falls through to the bare `tld.get` at the
+    // bottom: `rex tld --remov foo` printed `.rex` and exited 0. The resolver
+    // file was still installed, and the output looked like an answer rather
+    // than a refusal — the worst shape for a verb that otherwise raises a
+    // password prompt, because the missing prompt reads as "already done".
+    reject_unknown_flags(words, "tld", &["--repair", "--remove", "--set"], TLD_USAGE);
     // `--repair` puts back an OS resolver file for a TLD your sites answer on:
     // the fix `rex doctor` names when it finds one missing. Separate from
     // `--set`, which only decides what NEW sites are called — conflating them
@@ -3867,6 +3883,71 @@ mod tests {
     /// And the diagnosis has to name its own fix: `doctor` is where a missing
     /// resolver is FOUND, and a finding with no next step is a finding people
     /// learn to scroll past.
+    /// **A command that reads a flag must also REFUSE its misspelling.**
+    ///
+    /// `rex tld` and `rex site domains` both read every flag as an optional
+    /// `Some(..)`, so a typo matched nothing and fell through to the reading
+    /// arm: `tld --remov x` printed the current default TLD, `site domains
+    /// shop.rex --remov extra.rex` printed the list with `extra.rex` still in
+    /// it. Both exited 0. That is the dangerous half of ledger #463 — not a
+    /// refusal, an ANSWER, describing a state the command did not reach.
+    ///
+    /// Read through a DIFFERENT syntactic form than the one the code declares
+    /// (the `flag_value(words, "--x")` / `flag("--x")` calls vs. the array
+    /// handed to `reject_unknown_flags`): a scan over the same lines would
+    /// delete its own evidence and pass while both sets were empty.
+    #[test]
+    fn every_flag_these_commands_read_is_a_flag_they_accept_and_vice_versa() {
+        const ME: &str = include_str!("main.rs");
+        for (name, declared) in [
+            ("fn cmd_tld(", r#"&["--repair", "--remove", "--set"]"#),
+            ("fn cmd_site_domains(", r#"&["--add", "--remove"]"#),
+        ] {
+            let body = ME
+                .split(name)
+                .nth(1)
+                .and_then(|b| b.split("\nfn ").next())
+                .unwrap_or_else(|| panic!("{name} is gone"));
+            assert!(
+                body.contains(declared),
+                "{name}: the accepted set is no longer {declared} — this test reads it \
+                 literally, so update both halves together"
+            );
+            let mut read: Vec<String> = Vec::new();
+            for line in body.lines() {
+                let line = line.trim_start();
+                // Comments spell flags too, including the misspellings the doc
+                // comments use as examples; and the declaration is not a read.
+                if line.starts_with("//") || line.contains("reject_unknown_flags") {
+                    continue;
+                }
+                for part in line.split("\"--").skip(1) {
+                    if let Some(rest) = part.split('"').next() {
+                        read.push(format!("--{rest}"));
+                    }
+                }
+            }
+            read.sort();
+            read.dedup();
+            assert!(!read.is_empty(), "{name}: the scan found no flag reads at all");
+            for f in &read {
+                assert!(
+                    declared.contains(f.as_str()),
+                    "{name} reads `{f}` but does not accept it — the command would refuse \
+                     the flag it was just given the code to handle"
+                );
+            }
+            for f in declared.trim_start_matches("&[").trim_end_matches(']').split(", ") {
+                let f = f.trim_matches('"');
+                assert!(
+                    read.contains(&f.to_string()),
+                    "{name} accepts `{f}` but nothing reads it — accepted and silently \
+                     dropped is the failure this check exists for"
+                );
+            }
+        }
+    }
+
     #[test]
     fn the_resolver_repair_is_its_own_flag_and_doctor_points_at_it() {
         const ME: &str = include_str!("main.rs");
@@ -3875,6 +3956,11 @@ mod tests {
             .nth(1)
             .and_then(|b| b.split("\nfn ").next())
             .expect("cmd_tld");
+        // The accepted-flag list names all three in one line, so it would answer this
+        // question with its own ordering rather than the dispatch's. Dropped before
+        // looking: what is being measured is which ARM is tried first.
+        let tld: String =
+            tld.lines().filter(|l| !l.contains("reject_unknown_flags")).collect::<Vec<_>>().join("\n");
         let repair = tld.find("\"--repair\"").expect("`rex tld --repair` is gone");
         let set = tld.find("\"--set\"").expect("`rex tld --set` is gone");
         assert!(
