@@ -275,14 +275,23 @@ fn install_script(src: &Path, dst: &Path) -> Result<String> {
     Ok(format!("mkdir -p '{dir}' && ln -sf '{src}' '{dst}'"))
 }
 
-/// Teardown: remove the symlink only when it is OURS (its target ends in the
-/// sidecar name — content-checked like the resolver sweep, so a foreign
-/// `rex` on PATH is never touched). Best-effort and unprivileged: teardown
-/// must not add a prompt, and a root-owned leftover link is harmless litter
-/// that the next install overwrites.
+/// The PATH symlink when it is OURS — its target is the bundled rex, or a
+/// dangling link whose target ends in the sidecar name (content-checked like
+/// the resolver sweep, so a foreign `rex` on PATH is never touched).
+fn our_symlink(platform: &dyn Platform) -> Option<PathBuf> {
+    let link = platform.paths().cli_symlink_path().ok()?;
+    let target = std::fs::read_link(&link).ok()?;
+    let ours_current = bundled_rex().is_ok_and(|b| b == target);
+    let sidecar = sidecar_file_name(std::env::consts::EXE_SUFFIX);
+    let dangling_rex = target.file_name().is_some_and(|n| n == std::ffi::OsStr::new(&sidecar)) && !target.exists();
+    (ours_current || dangling_rex).then_some(link)
+}
+
+/// Teardown, unprivileged half: remove the PATH install when it is ours. On
+/// Windows (ledger #634) the copy, a leftover `.old`, and the folder's `Path`
+/// entry — the folder is rexenv's own, so what is in it is ours. On macOS the
+/// symlink, which succeeds only when its directory is writable by the user.
 pub fn remove_symlink_best_effort(platform: &dyn Platform) {
-    // A copy install (Windows, ledger #634): the copy, a leftover `.old`, and the folder's `Path` entry — the
-    // folder is rexenv's own, so what is in it is ours.
     if let Ok(CliInstall::CopyOnUserPath(dir)) = platform.paths().cli_install() {
         let copy = copy_in(&dir);
         let _ = std::fs::remove_file(&copy);
@@ -290,14 +299,35 @@ pub fn remove_symlink_best_effort(platform: &dyn Platform) {
         let _ = platform.shell().remove_from_user_path(&dir);
         return;
     }
-    let Ok(link) = platform.paths().cli_symlink_path() else { return };
-    let Ok(target) = std::fs::read_link(&link) else { return };
-    let ours_current = bundled_rex().is_ok_and(|b| b == target);
-    let sidecar = sidecar_file_name(std::env::consts::EXE_SUFFIX);
-    let dangling_rex = target.file_name().is_some_and(|n| n == std::ffi::OsStr::new(&sidecar)) && !target.exists();
-    if ours_current || dangling_rex {
+    if let Some(link) = our_symlink(platform) {
         let _ = std::fs::remove_file(&link);
     }
+}
+
+/// Teardown, privileged half: the `rm` for our symlink when the unprivileged
+/// attempt could not take it, to be batched into teardown's ONE admin prompt.
+///
+/// Until 18 Sep 2026 this half did not exist and the link was called "harmless
+/// litter that the next install overwrites". On a clean Mac it is not
+/// harmless: `/usr/local/bin` does not exist there, the install's own
+/// `mkdir -p` creates it AS ROOT, and every later unlink fails silently — so
+/// "Remove rexenv's system changes" left `/usr/local/bin/rex` behind on the
+/// first VM uninstall, pointing into an app the user was about to delete.
+/// `None` when nothing of ours remains (the common dev-Mac case, where the
+/// directory is user-writable and the unprivileged half already won).
+pub fn teardown_root_command(platform: &dyn Platform) -> Option<String> {
+    let link = our_symlink(platform)?;
+    remove_script(&link).ok()
+}
+
+/// `rm -f '<link>'`, single-quoted like `install_script`; a path containing a
+/// quote is refused rather than escaped — no rexenv-controlled path has one.
+fn remove_script(link: &Path) -> Result<String> {
+    let link = link.display().to_string();
+    if link.contains('\'') {
+        return Err(Error::Other("refusing a path containing a quote".into()));
+    }
+    Ok(format!("rm -f '{link}'"))
 }
 
 #[cfg(test)]
@@ -409,6 +439,33 @@ mod tests {
         assert!(s.installed && s.current, "current link: {s:?}");
     }
 
+    /// Ledger #677 — teardown's privileged half names OUR link and only ours.
+    /// The unprivileged half removes it where it can; what it cannot remove is
+    /// handed to the one admin prompt as `rm -f`, never left as "litter".
+    #[test]
+    #[cfg(unix)] // symlinks: the Windows install is a copy (#634), which the copy tests cover
+    fn teardown_hands_a_root_owned_link_of_ours_to_the_prompt_and_leaves_a_foreign_one_alone() {
+        let dir = scratch("teardown-root-cmd");
+        // A dangling link whose target ends in the sidecar name is ours (the
+        // app it pointed into was deleted); one pointing at something else is not.
+        let ours = dir.join("rex");
+        std::os::unix::fs::symlink(dir.join("gone.app/Contents/MacOS/rex"), &ours).unwrap();
+        assert_eq!(remove_script(&ours).unwrap(), format!("rm -f '{}'", ours.display()));
+        assert!(remove_script(Path::new("/tmp/it's")).is_err(), "a quote is refused, never escaped");
+
+        let foreign = dir.join("foreign-rex");
+        std::os::unix::fs::symlink(dir.join("somewhere/else"), &foreign).unwrap();
+        // The content check is the same predicate `remove_symlink_best_effort` uses.
+        let sidecar = sidecar_file_name(std::env::consts::EXE_SUFFIX);
+        let is_ours = |l: &Path| {
+            let t = std::fs::read_link(l).unwrap();
+            t.file_name().is_some_and(|n| n == std::ffi::OsStr::new(&sidecar)) && !t.exists()
+        };
+        assert!(is_ours(&ours));
+        assert!(!is_ours(&foreign));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// Ledger #633 — the sidecar is looked for under this OS's executable name: `rex.exe` beside `rexenv.exe` on
     /// Windows, where a bare `rex` never exists, the card would stay hidden and nothing could be installed.
     #[test]
@@ -418,7 +475,8 @@ mod tests {
         let src = include_str!("cli.rs");
         let prod = src.split("\n#[cfg(test)]").next().unwrap_or(src);
         assert!(!prod.contains(".join(\"rex\")"), "a path is joined with a bare `rex` again");
-        for head in ["pub fn bundled_rex()", "pub fn remove_symlink_best_effort("] {
+        // The teardown predicate lives in `our_symlink` (shared by both teardown halves, #677).
+        for head in ["pub fn bundled_rex()", "fn our_symlink("] {
             let body = &prod[prod.find(head).expect(head)..];
             let body = &body[..body.find("\n}\n").expect("the function's end")];
             assert!(

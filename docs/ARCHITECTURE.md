@@ -1664,7 +1664,11 @@ words (the browser shell's mock and two dev review pages excepted).
   bundle. PATH install = one symlink `/usr/local/bin/rex → <bundle>/rex`
   (`Paths::cli_symlink_path`; unprivileged attempt first, one admin prompt
   fallback) from the Settings "Command-line tool" card; teardown removes the
-  link only when it is ours (content-checked).
+  link only when it is ours (content-checked) — unprivileged where the directory
+  allows it, otherwise as an `rm -f` batched into teardown's ONE admin prompt
+  (ledger #677, 18 Sep 2026: on a clean Mac `/usr/local/bin` does not exist, the
+  install's `mkdir -p` creates it as root, and the "best-effort" unlink then failed
+  silently on every clean uninstall, leaving a link into a deleted app).
   **On Windows the sidecar is `rex.exe` beside `rexenv.exe`** (W8 S4, ledger #633):
   `scripts/build-cli.sh` stages `binaries/rex-x86_64-pc-windows-msvc.exe` on a Windows
   host, and `core::cli::bundled_rex` looks for `sidecar_file_name(EXE_SUFFIX)` — a bare

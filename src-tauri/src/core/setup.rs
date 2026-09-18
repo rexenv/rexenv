@@ -86,6 +86,16 @@ pub fn run_system_teardown(
     if platform.edge().is_installed() {
         root_cmds.push(platform.edge().uninstall_command());
     }
+    //  - the `rex` PATH install: the symlink when ours (content-checked), or on
+    //    Windows the copy in rexenv's own folder and its user-Path entry (#634).
+    //    Unprivileged first; a link the user cannot unlink — `/usr/local/bin` is
+    //    root-owned on every clean Mac, because the install's `mkdir -p` made it
+    //    as root — rides in this same prompt (#677). It used to be left behind.
+    super::cli::remove_symlink_best_effort(platform);
+    let cli_in_batch = super::cli::teardown_root_command(platform);
+    if let Some(cmd) = &cli_in_batch {
+        root_cmds.push(cmd.clone());
+    }
     //  - resolver files: ours get removed, but any we BORROWED from Valet/Herd
     //    get THEIR file put back instead. Once we take a file over it carries
     //    our signature, so without this the sweep would delete it and the user
@@ -104,9 +114,14 @@ pub fn run_system_teardown(
     if !root_cmds.is_empty() {
         platform.privileges().run_privileged(
             &root_cmds.join(" ; "),
-            &crate::platform::traits::PromptReason::new(
-                "remove its system changes (DNS resolvers and the HTTPS server)",
-            ),
+            // The prompt names what this batch will actually touch: the rex
+            // command only when its removal rides along (an honest prompt is
+            // one whose sentence matches its command, DESIGN.md).
+            &crate::platform::traits::PromptReason::new(if cli_in_batch.is_some() {
+                "remove its system changes (DNS resolvers, the HTTPS server and the rex command)"
+            } else {
+                "remove its system changes (DNS resolvers and the HTTPS server)"
+            }),
         )?;
     }
     // Records + their backups die together, and only after the root step
@@ -120,10 +135,6 @@ pub fn run_system_teardown(
     };
     ssl::untrust_ca(platform, &ca)?;
     platform.dns_agent().uninstall()?;
-    // The `rex` PATH install — the symlink when ours (content-checked), or on
-    // Windows the copy in rexenv's own folder and its user-Path entry (#634);
-    // unprivileged best-effort: teardown must not add a prompt for harmless litter.
-    super::cli::remove_symlink_best_effort(platform);
     Ok(report)
 }
 
