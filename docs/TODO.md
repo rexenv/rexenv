@@ -78,11 +78,13 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   49 tools, the endpoint lists 50; a translocated first launch (zip/`cp`, not a Finder drag) writes
   the DNS LaunchAgent plist with the `/private/var/folders/…/AppTranslocation/…` path — self-heals
   on the next launch, DNS dead in between.
-- [ ] **Windows: `CertTrustManager::untrust_stale` is the `Ok(0)` default** — the stale-CA
-  sweep (#678, 18 Sep 2026) exists only on macOS. On Windows a hand-wiped app-data folder
-  leaves its old `rexenv Local CA` in the user Root store too (`platform/windows/cert_store.rs`
-  trusts by DER). Done when: `cert_store::untrust_stale` enumerates the store by subject,
-  removes every rexenv CA but the current one, and the Dell shows one root after two wipes.
+- [ ] **Windows stale-CA sweep: written, not yet run against a real Root store** — the code
+  landed 18 Sep 2026 (`platform/windows/cert_store.rs::untrust_stale`, #678) and its rule is
+  proven L0 from the Mac, but nothing has executed the FFI: the enumeration loop's ownership
+  (`CertFindCertificateInStore` frees the `prev` context it is handed) and the per-certificate
+  confirmation are reasoned, not observed. Done when: on the Dell, two hand wipes of app-data
+  leave exactly one `rexenv Local CA` in the user Root store, and the sweep's return count
+  matches — then the ledger #678 row's Windows clause becomes a live verdict.
 - [ ] **Homebrew-bottle bundles (redis / mariadb / httpd / xdebug) still need the Xcode
   Command Line Tools on a clean Mac.** Found 18 Sep 2026 by the first clean-VM smoke test:
   `prepare_binary` asked `otool` for every binary's dylib list and the CLT shim failed all

@@ -140,7 +140,14 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   fails the trust), and `ssl::untrust_ca` sweeps them as part of the uninstall. The sweep
   finds them by subject (`ssl::CA_COMMON_NAME`) through `security find-certificate`, makes
   the trust change in-process (the dialog is titled after the caller, #579), and deletes
-  the keychain item. Windows keeps the `Ok(0)` default — `docs/TODO.md`.
+  the keychain item. Windows sweeps the same way since 18 Sep 2026
+  (`platform/windows/cert_store.rs::untrust_stale`), with two differences worth knowing
+  before you touch it: CryptoAPI can only search the Root store by subject SUBSTRING, so the
+  hits are CANDIDATES and an exact common-name match (`cert_rules::is_rexenv_ca`) decides
+  what may be deleted — "rexenv Local CA Inc", someone else's certificate, would otherwise
+  be swept; and there is no warm authorization to ride, so Windows raises its own
+  confirmation per certificate. Four stale CAs there mean four dialogs. The live "two wipes
+  leave one root" check is still owed — `docs/TODO.md`.
 - **The keychain (CA trust) dialog is rexenv's too** (`platform/macos/keychain_trust.rs`,
   #579). It is titled after the process that calls the trust-settings API, so
   `security add-trusted-cert` read "security" — and running that same command inside

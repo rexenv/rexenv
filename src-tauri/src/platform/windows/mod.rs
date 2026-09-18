@@ -142,6 +142,11 @@ impl CertTrustManager for WindowsCertTrust {
     fn untrust_ca(&self, ca_cert_path: &Path) -> Result<()> {
         cert_store::untrust(ca_cert_path)
     }
+    /// The stale-CA sweep (#678), which was the `Ok(0)` default here until 18 Sep 2026: a
+    /// hand-wiped app-data folder left its old `rexenv Local CA` a trusted root on Windows too.
+    fn untrust_stale(&self, current_ca: &Path) -> Result<usize> {
+        cert_store::untrust_stale(current_ca)
+    }
     fn is_trusted(&self, ca_cert_path: &Path) -> bool {
         cert_store::is_trusted(ca_cert_path)
     }
