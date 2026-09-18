@@ -696,7 +696,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     it could say which. Measured both ways on the same file (rc=1 under `LC_ALL=en_US.UTF-8`, rc=0
     and correct under `LC_ALL=C`), fixed with `LC_ALL=C` and a tolerated zero, ledger #686 — which
     also corrects #681's "ledger-tally rc=0 on the Dell": that run used a non-login shell, which
-    never loaded `LANG` from the profile.
+    never loaded `LANG` from the profile. **Re-run at `61250118` with the fix in: all six gates
+    rc=0, the whole run in 110 s** (test-lib 87 s of it, cached). That is the restructured loop
+    doing what it was for — the Dell answers the one question the Mac cannot (do these tests PASS
+    on Windows) in under two minutes, instead of five hours spent relinking 184 examples to ask it.
     **verify.sh on the Dell, 18 Sep 2026 (ledger #675):** three runs capped inside `cargo build
     --examples` (1 h, 2 h, 5 h — 184 examples each linking the whole lib; the third finished its
     last example 19 s before the cap), then the fourth, all cached, reached clippy in an hour and
