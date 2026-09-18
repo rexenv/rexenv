@@ -829,7 +829,7 @@ pub(super) async fn resolve_php(state: &AppState, php_minor: &str) -> Result<std
             ))
         })?
     };
-    crate::core::binaries::resolve(state.platform.as_ref(), "php", &patch).await
+    crate::core::binaries::resolve_program(state.platform.as_ref(), "php", &patch).await
 }
 
 /// This registry's tools as MCP descriptors, for the union `tools/list`.

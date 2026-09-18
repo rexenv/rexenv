@@ -558,7 +558,7 @@ pub async fn repo_run_step<R: tauri::Runtime>(
                         .map_err(|_| Error::Other("database lock poisoned".into()))?;
                     php::patch_to_run(&conn, &entry.php_minor)?
                 };
-                let php_bin = binaries::resolve(state.platform.as_ref(), "php", &patch).await?;
+                let php_bin = binaries::resolve_program(state.platform.as_ref(), "php", &patch).await?;
                 let phar = binaries::resolve_file(
                     state.platform.as_ref(),
                     "composer",
@@ -743,7 +743,7 @@ pub async fn run_offered_steps<R: tauri::Runtime>(
                     .map_err(|_| Error::Other("database lock poisoned".into()))?;
                 php::patch_to_run(&conn, &entry.php_minor)?
             };
-            let php_bin = binaries::resolve(state.platform.as_ref(), "php", &patch).await?;
+            let php_bin = binaries::resolve_program(state.platform.as_ref(), "php", &patch).await?;
             let phar = binaries::resolve_file(
                 state.platform.as_ref(),
                 "composer",
@@ -1566,7 +1566,7 @@ pub async fn repo_dist_archive<R: tauri::Runtime>(
             .map_err(|_| Error::Other("database lock poisoned".into()))?;
         php::patch_to_run(&conn, &php_minor)?
     };
-    let php_bin = binaries::resolve(state.platform.as_ref(), "php", &patch).await?;
+    let php_bin = binaries::resolve_program(state.platform.as_ref(), "php", &patch).await?;
     let wp_phar =
         binaries::resolve_file(state.platform.as_ref(), "wp-cli", binaries::WP_CLI_VERSION).await?;
     // Writes ~370 KB once per version, then a single `is_file` on every later

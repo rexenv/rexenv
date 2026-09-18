@@ -3451,6 +3451,66 @@ fn publish(staging: &Path, dir: &Path, marker: &str) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+
+    /// **Nothing asks the FILE resolver for a program that is a DIRECTORY on some OS.**
+    ///
+    /// `resolve` refuses a tree with "`{name}` is a directory distribution — use resolve_dir",
+    /// and on Windows `php` and `nginx` ARE trees. Six callers asked it for `"php"` anyway:
+    /// the site Terminal tab, the Adminer verifier, three `repo` paths and the MCP scratch
+    /// runner. Every one of them was dead on Windows, and the Terminal tab rendered that
+    /// sentence — a function name — to the user (seen on the Dell, 19 Sep 2026).
+    ///
+    /// `resolve_program` already existed and says in its own doc comment that it is for
+    /// exactly this ("whatever shape it ships in on this OS"). So the bug was never the
+    /// missing capability; it was six callers reaching past it. A guard, not a fix, because
+    /// the seventh caller is the one nobody will remember.
+    ///
+    /// **Only LITERAL names can be checked.** A call whose name is a variable is counted and
+    /// reported, so this test says what it cannot see rather than implying it saw everything.
+    #[test]
+    fn no_caller_asks_the_file_resolver_for_a_directory_distribution() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let (mut offenders, mut dynamic, mut scanned) = (Vec::new(), 0usize, 0usize);
+        let mut stack = vec![root];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).expect("read dir").flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                    continue;
+                }
+                if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+                    continue;
+                }
+                scanned += 1;
+                let src = std::fs::read_to_string(&path).expect("read");
+                let lines: Vec<&str> = src.lines().collect();
+                for (i, line) in lines.iter().enumerate() {
+                    if line.trim_start().starts_with("//") || !line.contains("binaries::resolve(") {
+                        continue;
+                    }
+                    // The name is the second argument, which may sit on a later line.
+                    let window = lines[i..(i + 5).min(lines.len())].join(" ");
+                    let after = window.split("binaries::resolve(").nth(1).unwrap_or("");
+                    let Some(name) = after.split('"').nth(1) else {
+                        dynamic += 1;
+                        continue;
+                    };
+                    if ["macos", "windows"].iter().any(|os| shape_of_on(name, os) == Shape::Dir) {
+                        offenders.push(format!("{}:{}: resolve(…, {name:?}, …)", path.display(), i + 1));
+                    }
+                }
+            }
+        }
+        assert!(scanned > 50, "scanned only {scanned} files — the walk is not reading the source");
+        assert!(
+            offenders.is_empty(),
+            "these ask the FILE resolver for a program that is a DIRECTORY on some OS — \
+             `resolve_program` is the one that answers on both ({dynamic} more calls name \
+             the binary through a variable and cannot be checked here):\n{}",
+            offenders.join("\n")
+        );
+    }
     use super::*;
 
     /// A fixture zip at a fixture-owned temp path. A name ending in `/` is a

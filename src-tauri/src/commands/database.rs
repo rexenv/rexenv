@@ -321,7 +321,7 @@ pub async fn adminer_update_apply(
     let file = crate::core::binaries::resolve_file(platform, "adminer", &version).await?;
 
     // (3) Does it still bind? Refusing here has changed nothing.
-    let php = crate::core::binaries::resolve(
+    let php = crate::core::binaries::resolve_program(
         platform,
         "php",
         crate::core::binaries::PHP_VERSION,

@@ -73,7 +73,7 @@ pub async fn terminal_open(
     };
 
     let platform = state.platform.as_ref();
-    let php_bin = binaries::resolve(platform, "php", &patch).await?;
+    let php_bin = binaries::resolve_program(platform, "php", &patch).await?;
     let wp_phar = binaries::resolve_file(platform, "wp-cli", binaries::WP_CLI_VERSION).await?;
     let wp_dir = terminal::ensure_wp_wrapper(platform, &php_bin, &wp_phar)?;
     let php_dir = php_bin

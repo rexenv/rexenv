@@ -71,6 +71,15 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   install runs before the serve phase starts the stack (now that create starts a stopped stack,
   18 Sep 2026), so Mailpit is down while WP-CLI sends the install mail. Harmless, but it is the
   first red line a new user reads. Start Mailpit before `core install`, or suppress the mail.
+- [ ] **A stopped site's WordPress and Database tabs say nothing true** (seen on Windows,
+  19 Sep 2026; not established as Windows-only). The WordPress tab spins "Loading plugins…"
+  indefinitely — wp-cli cannot reach a database that is not running, and the spinner has no end
+  state. The Database tab prints the Adminer URL above a BLANK frame, because Adminer is not
+  serving. Both are honest-UI failures of the kind `docs/DESIGN.md` forbids, and the same site's
+  **Logs** tab is the proof they are fixable rather than inherent: it names the file, says
+  "WordPress debug logging is off — nothing is being written", and tells you what to turn on.
+  Done when: each tab, on a stopped site, says what is not running and offers the start.
+
 - [ ] **Smaller, same run:** sub-sites created on a subdomain multisite are recorded with `http://`
   URLs (main site is `https://`); `rex site create` names a site after its domain (`s1.rex`) where
   the dialog derives a name; Hello Dolly's row shows the terminal button and lands on an honest
@@ -593,6 +602,27 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     `failed to remove file … rexenv.exe: Access is denied (os error 5)` even with the app closed,
     and `Get-Process rexenv | Stop-Process` was not enough because the agent came straight back.
     The kill and the link have to happen in one breath (`taskkill /F /IM rexenv.exe /T` then build).
+    **Second pass, 19 Sep 2026 — the screens the first pass had NOT read**: Services, Databases,
+    Mail, Tunnels, the site's WordPress / Database / Logs / Terminal tabs, and the New-site dialog.
+    Clean, and worth naming because they are what W10 and #651 promised: Services lists
+    **PHP-CGI 8.2 / 8.3** and only MySQL + PostgreSQL, the DNS resolver row reads **:53 Running**
+    (and it was there after I had killed it, so the watchdog works), the New-site dialog says
+    "FrankenPHP and Apache aren't part of rexenv on Windows yet" and "MariaDB isn't part of rexenv
+    on Windows yet", and the Logs tab's empty state names the Windows path and says exactly why it
+    is empty. **Three things it found:**
+    1. **`rex` terminal, `repo`, Adminer-verify and MCP scratch were all DEAD on Windows** — six
+       callers asked `binaries::resolve` (the FILE resolver) for `"php"`, which is a ZipTree there,
+       so every one failed with "php is a directory distribution — use resolve_dir". The site's
+       Terminal tab rendered that sentence — a FUNCTION NAME — to the user. `resolve_program`
+       already existed for exactly this and says so in its own doc comment, so the bug was six
+       callers reaching past it, not a missing capability. Fixed, plus a scan (ledger #687) that
+       fails on the seventh: plant-proven by putting `terminal.rs` back.
+    2. A **stopped** site's WordPress tab shows "Loading plugins…" for as long as you leave it —
+       no error, no "start the site first". Still open (row below).
+    3. A **stopped** site's Database tab shows the Adminer URL above a blank white frame — Adminer
+       is not running and nothing says so. Still open (row below).
+    **Still unread:** Onboarding, which this machine is past — reaching it means resetting
+    first-run state, which is a smoke-test step rather than a look.
     **How it was looked at, for the next time:** an SSH session is not the interactive desktop —
     `CopyFromScreen` there saves a blank image — so both the app launch and every capture ran
     through `schtasks /run … /IT`, which executes in the logged-on session. Clicks were driven from
