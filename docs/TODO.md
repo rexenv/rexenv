@@ -630,8 +630,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
        not the default 8.3, so the prepended PATH and the per-site PHP are both right.
        **And then `wp --version` found a fourth layer** (ledger #689): the wrapper was an
        extensionless `wp` holding `#!/bin/sh`, so Windows raised "How do you want to open this
-       file?" — Internet Explorer among the choices — and returned nothing. It is `wp.cmd` now.
-       **Still owed:** nobody has run `wp` through the new wrapper on Windows.
+       file?" — Internet Explorer among the choices — and returned nothing. It is `wp.cmd` now, and
+       `wp --version` answers **WP-CLI 2.12.0** — measured with the stale extensionless `wp` still
+       beside it, which PowerShell ignored. **Four layers, one screen, all found by opening the tab
+       and typing two commands.** Still owed: a wp-cli command that touches the database (the site
+       was stopped), and a shell whose own PowerShell profile reorders PATH.
     2. A **stopped** site's WordPress tab shows "Loading plugins…" for as long as you leave it —
        no error, no "start the site first". Still open (row below).
     3. A **stopped** site's Database tab shows the Adminer URL above a blank white frame — Adminer
