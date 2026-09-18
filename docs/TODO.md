@@ -62,12 +62,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   row reads only `Adminer 6.0.2`; the older tree stays on disk but nothing offers it, so
   `docs/SMOKE-TEST.md`'s "a revert is a second press" cannot be done. Either offer the kept
   versions, or drop the row and the design note.
-- [ ] **Apache override: delete leaves `apache-<domain>-error.log`.** 18 Sep 2026 VM: rename cleaned
+- [x] **Apache override: delete leaves `apache-<domain>-error.log`.** ✓ 18 Sep 2026 — `apache::error_log_path` swept on delete and rename (ledger #302 amended).
   the old names; delete removed `.conf` and `-stdout.log` but not `-error.log` (app-data litter).
-- [ ] **Blank PHP starter: a stopped database reads as "no database".** With MySQL stopped from
+- [x] **Blank PHP starter: a stopped database reads as "no database".** ✓ 18 Sep 2026 — the template keeps `REXENV_DB` when the open throws; php-cli test (ledger #683).
   Services, `db.php` present, the starter page shows the "pick MySQL, MariaDB or PostgreSQL —
   generate the connection" card instead of "not connected" (SMOKE §Blank PHP row).
-- [ ] **WordPress create logs `error sending mail … 127.0.0.1:11025 connect refused`.** The one-click
+- [x] **WordPress create logs `error sending mail … 127.0.0.1:11025 connect refused`.** ✓ 18 Sep 2026 — `wp core install --skip-email`; nothing read that mail.
   install runs before the serve phase starts the stack (now that create starts a stopped stack,
   18 Sep 2026), so Mailpit is down while WP-CLI sends the install mail. Harmless, but it is the
   first red line a new user reads. Start Mailpit before `core install`, or suppress the mail.

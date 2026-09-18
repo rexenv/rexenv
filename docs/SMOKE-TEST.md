@@ -161,7 +161,7 @@ browser renders it.
       and the edit is what you see.
 - [x] Site → **Database** tab embeds Adminer on that database (it used to say "Blank ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
       PHP sites have no database"), and the row's database button is enabled.
-- [ ] **Stop MySQL from Services, reload the page:** the card reads **not connected**
+- [x] **Stop MySQL from Services, reload the page:** the card reads **not connected** ✓ 18 Sep 2026 VM after #683 (a NEW seeded site — an existing site keeps its generated index.php): "not connected · start MySQL from the Services screen"; MySQL back → connected.
       and names the engine to start — not a PHP fatal, not a blank page. (18 Sep 2026 VM: MySQL stopped from Services, but the starter showed the "pick MySQL, MariaDB or PostgreSQL" no-database card, not "not connected" — TODO row.)
 - [x] **Delete the site** → its database is gone from the Databases screen. A ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
       starter database rexenv created is rexenv's to remove.
@@ -501,7 +501,7 @@ asserts a disabled control), so this is the only place it is seen.
   refusal naming a hardcoded version instead of the majors it compared.
 
 ## Apache override — the per-site files go on delete AND on rename
-- [ ] Create a site, switch it to **Apache**, then **rename** it. In
+- [x] Create a site, switch it to **Apache**, then **rename** it. In ✓ 18 Sep 2026 VM (ledger #302 amended): after `rex site domain ap.rex ap2.rex` only `apache-ap2.rex.{conf,-error.log,-stdout.log}` remain; after delete none.
   `<app-data>/config/` and `<app-data>/logs/`, `apache-<OLD-domain>.conf` and
   `apache-<OLD-domain>-stdout.log` must be **gone**. Then **delete** the site and
   check the new names are gone too.

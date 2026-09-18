@@ -337,6 +337,46 @@ mod tests {
         std::fs::remove_dir_all(root).unwrap();
     }
 
+    /// #683 — a site WITH a database whose engine is stopped renders the
+    /// "not connected" panel (naming the engine to start), never the "No
+    /// database — db.php not found" panel. The page is real PHP, so this runs
+    /// it: the bundled php-cli from the dev cache, against a db.php whose port
+    /// nothing listens on. **The skip is loud on purpose** — a guard that
+    /// skips silently would keep counting.
+    #[test]
+    fn a_stopped_database_renders_not_connected_not_no_database() {
+        let Some(home) = std::env::var_os("HOME") else { return };
+        let bin = std::path::Path::new(&home).join("Library/Application Support/dev.rexenv.rexenv/bin");
+        let php = std::fs::read_dir(&bin)
+            .ok()
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("php-8") && !n.starts_with("php-fpm")))
+            .map(|p| p.join("php"))
+            .find(|p| p.is_file());
+        let Some(php) = php else {
+            eprintln!("SKIPPED a_stopped_database_renders_not_connected: no bundled php-cli under {}", bin.display());
+            return;
+        };
+        let root = scratch_docroot("starter-stopped");
+        let db = StarterDb::for_engine(crate::core::db::DbEngine::Mysql, "php_stopped_rex");
+        // Port 1: nothing listens there, which is what a stopped engine looks like to PDO.
+        let db = StarterDb { port: 1, ..db };
+        write_files(&root, Some(&db)).unwrap();
+        let out = std::process::Command::new(&php)
+            .arg("index.php")
+            .current_dir(&root)
+            .output()
+            .expect("php-cli runs");
+        let html = String::from_utf8_lossy(&out.stdout);
+        assert!(html.contains("not connected"), "the stopped-engine panel is missing:\n{}", &html[..html.len().min(600)]);
+        assert!(html.contains("php_stopped_rex"), "the panel names the database");
+        assert!(!html.contains("db.php not found"), "a site WITH a db.php rendered the no-database panel");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     #[test]
     fn no_database_means_no_db_php() {
         let root = &scratch_docroot("nodb");

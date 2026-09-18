@@ -1583,6 +1583,9 @@ pub async fn change_site_domain(
     if let Ok(log) = core::apache::log_path(state.platform.as_ref(), &old_domain) {
         let _ = std::fs::remove_file(log);
     }
+    if let Ok(log) = core::apache::error_log_path(state.platform.as_ref(), &old_domain) {
+        let _ = std::fs::remove_file(log);
+    }
     if let Ok(log) = core::tunnels::log_path(state.platform.as_ref(), &old_domain) {
         let _ = std::fs::remove_file(log);
     }

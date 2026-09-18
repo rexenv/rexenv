@@ -181,6 +181,17 @@ pub fn log_path(platform: &dyn Platform, domain: &str) -> Result<PathBuf> {
         .join(format!("apache-{domain}-stdout.log")))
 }
 
+/// The conf's `ErrorLog` — the richer per-site log httpd itself writes. It
+/// outlived every delete and rename until 18 Sep 2026 (clean-VM smoke: the
+/// `.conf` and `-stdout.log` went, `-error.log` stayed) because the sweeps
+/// were a hand-kept list beside a conf that names three files.
+pub fn error_log_path(platform: &dyn Platform, domain: &str) -> Result<PathBuf> {
+    Ok(platform
+        .paths()
+        .log_dir()?
+        .join(format!("apache-{domain}-error.log")))
+}
+
 /// The runtime dir (pidfile, mutexes) under app-data.
 pub fn run_dir(platform: &dyn Platform) -> Result<PathBuf> {
     Ok(platform.paths().app_data_dir()?.join("run"))

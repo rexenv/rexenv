@@ -1723,6 +1723,9 @@ pub fn teardown(conn: &Connection, platform: &dyn Platform, id: &str) -> Result<
     if let Ok(log) = apache::log_path(platform, &site.domain) {
         let _ = std::fs::remove_file(log);
     }
+    if let Ok(log) = apache::error_log_path(platform, &site.domain) {
+        let _ = std::fs::remove_file(log);
+    }
     if let Ok(log) = tunnels::log_path(platform, &site.domain) {
         let _ = std::fs::remove_file(log);
     }
@@ -4819,6 +4822,8 @@ mod tests {
             // Apache's pair, missing from the sweep until 13 Aug 2026.
             apache::config_path(&*platform, &site.domain).unwrap(),
             apache::log_path(&*platform, &site.domain).unwrap(),
+            // httpd's own ErrorLog, missing from both sweeps until 18 Sep 2026.
+            apache::error_log_path(&*platform, &site.domain).unwrap(),
             tunnels::log_path(&*platform, &site.domain).unwrap(),
         ];
         for p in &artifacts {

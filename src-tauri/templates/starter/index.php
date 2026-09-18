@@ -36,6 +36,15 @@ if (is_file(__DIR__ . '/db.php')) {
             ->fetchAll();
     } catch (Throwable $e) {
         $dbError = $e->getMessage();
+        // db.php defines REXENV_DB before it opens the connection, so a
+        // connection that fails still leaves the credentials — and the fact
+        // that this site HAS a database. Without this line a stopped engine
+        // rendered the "No database — db.php not found" panel over a db.php
+        // that was right there (18 Sep 2026); the "not connected" panel
+        // below is the one that names the engine to start.
+        if (defined('REXENV_DB')) {
+            $db = REXENV_DB;
+        }
     }
 }
 

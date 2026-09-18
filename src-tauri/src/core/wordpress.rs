@@ -3844,7 +3844,13 @@ pub fn install_wordpress(php_bin: &Path, wp_phar: &Path, opts: &WpInstall) -> Re
             php_bin,
             wp_phar,
             &[
-                "core", "install", &path, &url, &title, &au, &ap, &ae,
+                // `--skip-email`: the install mail went to a Mailpit that, on a
+                // first site, is not up yet (create starts the stack in its
+                // serve phase, AFTER the install — 18 Sep 2026), so the one-click
+                // install's log opened with `error sending mail … 127.0.0.1:11025
+                // connect refused`. Nothing reads that mail: the admin password
+                // rexenv sets is the one it shows.
+                "core", "install", "--skip-email", &path, &url, &title, &au, &ap, &ae,
             ],
             None,
         )?;
