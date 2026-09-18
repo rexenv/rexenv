@@ -5,22 +5,32 @@
 # not as a GitHub Actions job: the repo is private and has never run Actions, and the
 # release build is local for the same billing reason (docs/RELEASING.md).
 #
-# What it proves and what it does not. `cargo check` type-checks every target
-# (`--all-targets`: lib, bins, examples, tests) against the Windows std and the
-# Windows-only dependency tree, with the MSVC CRT/SDK that xwin fetches so C build
+# What it proves and what it does not. `cargo clippy --all-targets -- -D warnings`
+# type-checks AND lints every target (lib, bins, examples, tests) against the Windows std
+# and the Windows-only dependency tree, with the MSVC CRT/SDK that xwin fetches so C build
 # scripts (`ring`, bundled sqlite) run. It does NOT link, does NOT run a single test,
 # and says nothing about behaviour — a green here means "the Windows stubs are
 # reachable", not "rexenv works on Windows". That proof needs a Windows machine (plan §7).
+#
+# It ran a bare `cargo check` until 18 Sep 2026, and that is the gap ledger #675 measured:
+# the macOS side of verify.sh has always been `clippy --all-targets -- -D warnings`, so the
+# Windows side was strictly weaker than the gate standing beside it, and the FIRST time the
+# bar ran on a real Windows host it stopped at clippy with nine lib findings and seventy in
+# the examples — dead code and unused imports behind `cfg(unix)`/`cfg(target_os = "macos")`
+# users, and an `Option::is_none_or` (stable 1.82) against this crate's declared 1.77.2 MSRV.
+# Every one of them was invisible here, because `check` does not lint and nothing denied
+# warnings. The two sides now ask the same question of both targets.
 #
 # Part of verify.sh since it first went green (W1 complete, 12 Sep 2026). On a machine
 # without the toolchain or the licence consent it exits 3, and verify.sh prints that as
 # a SKIPPED line instead of failing; any other non-zero exit fails the bar.
 #
-#   ./scripts/windows-check.sh              check both crates, print the error inventory
+#   ./scripts/windows-check.sh              lint both crates, print the error inventory
 #   ./scripts/windows-check.sh > f 2>&1     the sanctioned way to keep its output
 #
 # Requires: `cargo install cargo-xwin --locked`, `brew install llvm lld` (clang-cl,
-# lld-link), `rustup target add x86_64-pc-windows-msvc`, and XWIN_ACCEPT_LICENSE=1 —
+# lld-link), `rustup target add x86_64-pc-windows-msvc`, `rustup component add clippy`,
+# and XWIN_ACCEPT_LICENSE=1 —
 # xwin downloads Microsoft's CRT and Windows SDK, which is Microsoft's licence to accept.
 # This script never accepts it on anyone's behalf — and cargo-xwin itself does not ask,
 # so the refusal below is the ONLY place consent is checked (ledger #583).
@@ -60,7 +70,7 @@ if [ "${REXENV_FORCE_XWIN:-0}" != "1" ]; then
       for crate in src-tauri cli; do
         log="$crate/target/windows-check.log"
         mkdir -p "$(dirname "$log")"
-        (cd "$crate" && cargo check --all-targets --keep-going --target "$TARGET") > "$log" 2>&1
+        (cd "$crate" && cargo clippy --all-targets --keep-going --target "$TARGET" -- -D warnings) > "$log" 2>&1
         code=$?
         if [ "$code" -eq 0 ]; then
           echo "windows-check: $crate — compiles for $TARGET (native host)"
@@ -88,6 +98,9 @@ LLD_BIN="$(brew --prefix lld 2>/dev/null)/bin"
 [ -x "$LLVM_BIN/clang-cl" ] || missing+=("brew install llvm")
 [ -x "$LLD_BIN/lld-link" ] || missing+=("brew install lld")
 rustup target list --installed 2>/dev/null | grep -qx "$TARGET" || missing+=("rustup target add $TARGET")
+# clippy, not just rustc: this script denies warnings, so a toolchain without the component
+# would fail in a way that reads like a code error rather than a missing tool.
+cargo clippy --version >/dev/null 2>&1 || missing+=("rustup component add clippy")
 if [ "${#missing[@]}" -gt 0 ]; then
   echo "windows-check: missing toolchain — run:" >&2
   printf '    %s\n' "${missing[@]}" >&2
@@ -136,7 +149,7 @@ for crate in src-tauri cli; do
   dir="$crate/target/xwin"
   mkdir -p "$dir"
   log="$dir/windows-check.log"
-  (cd "$crate" && CARGO_TARGET_DIR=target/xwin cargo xwin check --all-targets --keep-going --target "$TARGET") > "$log" 2>&1
+  (cd "$crate" && CARGO_TARGET_DIR=target/xwin cargo xwin clippy --all-targets --keep-going --target "$TARGET" -- -D warnings) > "$log" 2>&1
   code=$?
 
   # The inventory: every error header in OUR sources, with its first location.

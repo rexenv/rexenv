@@ -718,13 +718,18 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     `encoding="utf-8"` there and in notices-check.py. **Left:** the SMOKE-TEST and INSTALL
     Windows sections run by a human on Windows; `windows-check.sh` running clippy (row
     below); the clean Windows 11 VM pass.
-  - [ ] `windows-check.sh` should run clippy with `-D warnings` for the Windows target, not bare
-    `cargo check` — the gap ledger #675 measured: nine lib and 70 example reds the Mac-side gate
-    passed over. `cargo xwin clippy --all-targets --target x86_64-pc-windows-msvc -- -D warnings`
-    is runnable from the Mac (18 Sep 2026, ~16 s warm). Cost: a longer verify on the Mac. Also
-    found there: `build.rs` picks its sidecar marker by HOST cfg and `build-cli.sh` its arm by
-    `uname`, so a cross-compile never stages the Windows sidecar — the placeholder is the only
-    reason the check is green
+  - [x] `windows-check.sh` runs clippy with `-D warnings` for the Windows target instead of a bare
+    `cargo check` ✓ 18 Sep 2026 (ledger #684) — the gap #675 measured: nine lib and 70 example reds
+    the Mac-side gate passed over, because `check` does not lint and nothing denied warnings. Both
+    arms changed (cross and native-host), `clippy` added to the required-toolchain list. Plant-proven:
+    dropping the `cfg(target_os = "macos")` from `CHECK_UPDATES_MENU_ID` turns it RED and names
+    `src/lib.rs:2314`, while the macOS clippy on that same tree stays rc=0 — the finding is reachable
+    only from this gate. Warm cost **26 s**
+  - [ ] `build.rs` picks its `rex` sidecar marker by HOST cfg and `build-cli.sh` picks its arm by
+    `uname`, so a Mac cross-compiling to Windows never stages the Windows sidecar — `windows-check.sh`'s
+    labelled placeholder is the only reason the check gets past `tauri_build` (found 18 Sep 2026 while
+    running the Windows-target clippy by hand, ledger #684). Nothing is broken today; the cost is that
+    the marker says "this host's sidecar exists" when the question is the TARGET's
 
 - [x] **An older rexenv refuses a database a newer one migrated** ✓ 13 Sep 2026 — built the same
   day at the owner's go: `refuse_newer_schema` in `state::db::open` (before any pragma) and
