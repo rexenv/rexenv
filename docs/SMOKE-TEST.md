@@ -58,6 +58,13 @@ nothing.** The silent case is the one that ships to everybody.
   `queued` that never moves, a counter stuck short of its total, and no Retry — fixed
   only by quitting the app. That was a planned row whose resolve returned through the
   cache hit (#566).
+- [ ] **Reach the last step with a component still downloading or failed** (Continue early;
+  or pull the network for the failed case). The "Your kingdom is ready" step must SAY so —
+  "n of m ready" with a spinner, or "n failed" in red with a Retry — and never
+  "Everything's installed". **Tell:** the green ✓ Core components chip over failed rows in
+  the footer: that was 0.7.x, seen 18 Sep 2026 on a VM whose DNS relay was dead. **Passed
+  18 Sep 2026** on that VM: DNS broken → "Nearly there · 2 of 6 failed · Retry"; DNS fixed,
+  Retry → all six landed and the step flipped to "Your kingdom is ready" on its own.
 - [ ] **Leave the admin prompt open for a minute on the Domains step** while downloads are
   still running (open the footer later, or watch the Install rows before continuing). The
   byte counts must keep moving while the dialog sits there. **Tell:** progress that

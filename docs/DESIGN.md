@@ -35,6 +35,16 @@ the shipped UI toward one.
 - Progress moves only on real completions; 100% only when settled; failure/cancel
   FREEZE the bar in place, never roll it back.
 - Refusals name the consequence ("a tunnel would publish X"), never "busy".
+- **A summary that cannot fail is not a summary.** Onboarding's last step read
+  "Everything's installed ✓ Core components" as static copy — and rendered exactly that,
+  on the first clean-VM smoke test (18 Sep 2026), over six Install rows that had ALL failed
+  (the VM's DNS relay was dead; every download gave up). The sentence under it promised the
+  first site would be served instantly, and the site card then had to explain the
+  components were missing. The step now derives ONE verdict from the same rows the Install
+  step shows (`useCoreComponents`): ready → the old copy; still downloading → "n of m
+  ready", create now and it starts when they land; failed → the count, in the error colour,
+  with a Retry that re-runs those rows. The rule: any "done" the UI states about a set of
+  things is computed from those things, never typed beside them.
 - **A queue the user cannot see is said where they look.** A PHP pool whose every worker holds a
   request queues the next one silently — a slow page, then nginx's 504 — so its Services row says
   "all 10 workers busy — requests are queuing" as a sub-line in the warning text colour

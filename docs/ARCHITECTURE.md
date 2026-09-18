@@ -736,6 +736,10 @@ Live-proven end to end by `site_stop_start_check`.
   (`system_setup`, #567): as a plain call in the `async fn` that wait held a tokio
   worker — one the Install step's downloads share — for as long as the dialog stayed
   open.
+- **The wizard's last step derives its verdict from the Install rows** (`useCoreComponents`,
+  18 Sep 2026): "Everything's installed" only when every planned component is cached or
+  done; otherwise "n of m ready" or "n failed" + Retry. It was static copy, and the first
+  clean-VM run showed it green over six failed rows (`docs/DESIGN.md`, honest-UI rules).
 - **Every call that can raise a privileged prompt waits off the runtime, from an
   async caller** (`core::prompt::while_prompting`, #568). The admin-password and
   keychain dialogs stay open as long as the user takes; the platform call waits with

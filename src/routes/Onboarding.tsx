@@ -2,7 +2,7 @@ import { usePlatformWords } from "@/lib/usePlatformWords";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronRight, Globe, Lock, RotateCw, Shield } from "lucide-react";
+import { Check, ChevronRight, Globe, Loader2, Lock, RotateCw, Shield } from "lucide-react";
 import { coreBinariesPlan, dnsStatus, prefetchCoreBinaries, retryDownload, setupEdgeConflict, systemSetup } from "@/lib/ipc";
 import { onTitleBarMouseDown } from "@/lib/window-drag";
 import { useDownloads } from "@/lib/useDownloads";
@@ -239,15 +239,40 @@ function InstallRow({ planned, item }: { planned: PlannedDownload; item?: Downlo
   );
 }
 
-function Install() {
+/** The core-component set as the wizard sees it: the static plan with the live
+ *  hub item overlaid per row, and ONE verdict derived from all of them.
+ *
+ *  Shared by the Install step and the final step, because the final step used
+ *  to be a static "Everything's installed ✓ Core components" — rendered, on the
+ *  first clean-VM smoke test (18 Sep 2026), over six rows that had all FAILED
+ *  (a dead DNS relay, every download gave up). The step's own copy promised
+ *  "create your first site and rexenv will serve it instantly", and the site
+ *  card then had to say the components were missing. A summary that cannot
+ *  fail is not a summary; this one is the same fact the rows show. */
+function useCoreComponents() {
   const [plan, setPlan] = useState<PlannedDownload[] | null>(null);
   const downloads = useDownloads();
+  useEffect(() => {
+    void coreBinariesPlan().then(setPlan).catch(() => setPlan([]));
+  }, []);
+  const items = new Map(downloads.items.map((i) => [i.id, i]));
+  const phaseOf = (p: PlannedDownload): DownloadPhase =>
+    items.get(p.id)?.phase ?? (p.cached ? "cached" : "pending");
+  const rows = plan ?? [];
+  const done = rows.filter((p) => phaseOf(p) === "cached" || phaseOf(p) === "done");
+  const failed = rows.filter((p) => phaseOf(p) === "failed");
+  const verdict: "checking" | "ready" | "failed" | "downloading" =
+    plan === null ? "checking" : failed.length > 0 ? "failed" : done.length === rows.length ? "ready" : "downloading";
+  return { plan, items, total: rows.length, done: done.length, failed, verdict };
+}
+
+function Install() {
+  const { plan, items, verdict } = useCoreComponents();
   const fired = useRef(false);
   // Auto-prefetch on entering the step — fire WITHOUT awaiting: progress
   // arrives via download-progress events, failures land on their rows, and
   // continuing (or skipping) onboarding never cancels the backend downloads.
   useEffect(() => {
-    void coreBinariesPlan().then(setPlan).catch(() => setPlan([]));
     if (!fired.current) {
       fired.current = true;
       void prefetchCoreBinaries().catch(() => {
@@ -255,14 +280,7 @@ function Install() {
       });
     }
   }, []);
-
-  const items = new Map(downloads.items.map((i) => [i.id, i]));
-  const ready =
-    plan !== null &&
-    plan.every((p) => {
-      const phase = items.get(p.id)?.phase ?? (p.cached ? "cached" : "pending");
-      return phase === "cached" || phase === "done";
-    });
+  const ready = verdict === "ready";
 
   return (
     <div className="w-full max-w-[440px]">
@@ -438,26 +456,72 @@ function CommandLine({ command }: { command: string }) {
   );
 }
 
+/** The last step tells the truth the Install step's rows tell: ready, still
+ *  downloading, or failed — and only the first one gets "Everything's
+ *  installed". See `useCoreComponents` for the run that made this a rule. */
 export function OnboardingDone() {
+  const core = useCoreComponents();
+  const [retrying, setRetrying] = useState(false);
+  const retryAll = () => {
+    setRetrying(true);
+    void Promise.allSettled(core.failed.map((p) => retryDownload(p.name, p.version))).finally(() =>
+      setRetrying(false),
+    );
+  };
+  const copy =
+    core.verdict === "failed"
+      ? `Your local domains work over HTTPS, but ${core.failed.length} of ${core.total} core components failed to download. Retry them here or from the footer — a site can't start until they land.`
+      : core.verdict === "downloading"
+        ? `Your local domains work over HTTPS. Core components are still downloading (${core.done} of ${core.total} ready) — create your first site now and it starts as soon as they land.`
+        : "Everything's installed and your local domains work over HTTPS. Create your first site and rexenv will serve it instantly.";
+  const ready = core.verdict === "ready";
   return (
     <div className="flex flex-col items-center">
-      <div className="relative mb-6 flex h-[78px] w-[78px] items-center justify-center rounded-full border border-status-running-border bg-gradient-to-br from-rex-success-chip-from to-rex-success-chip-to shadow-[0_14px_38px_rgba(63,185,80,0.26)]">
-        <div
-          className="pointer-events-none absolute -inset-3 rounded-full blur-[7px]"
-          style={{ background: "radial-gradient(circle,rgba(63,185,80,.32),transparent 68%)" }}
-        />
-        <Check className="relative h-10 w-10 text-status-running" strokeWidth={2.4} />
-      </div>
+      {ready ? (
+        <div className="relative mb-6 flex h-[78px] w-[78px] items-center justify-center rounded-full border border-status-running-border bg-gradient-to-br from-rex-success-chip-from to-rex-success-chip-to shadow-[0_14px_38px_rgba(63,185,80,0.26)]">
+          <div
+            className="pointer-events-none absolute -inset-3 rounded-full blur-[7px]"
+            style={{ background: "radial-gradient(circle,rgba(63,185,80,.32),transparent 68%)" }}
+          />
+          <Check className="relative h-10 w-10 text-status-running" strokeWidth={2.4} />
+        </div>
+      ) : (
+        // The green medal is the ready state's; over a failed or half-done set it
+        // would say in icon what the copy below no longer says in words.
+        <div className="relative mb-6 flex h-[78px] w-[78px] items-center justify-center rounded-full border border-rex-border bg-rex-surface-1">
+          {core.verdict === "failed" ? (
+            <RotateCw className="relative h-9 w-9 text-status-error-bright" strokeWidth={2.2} />
+          ) : (
+            <Loader2 className="relative h-9 w-9 animate-rex-spin text-rex-text-muted motion-reduce:animate-none" strokeWidth={2.2} />
+          )}
+        </div>
+      )}
       <div className="font-display text-[2.125rem] font-semibold leading-[1.1] tracking-[-0.025em] text-rex-text-hero">
-        Your kingdom is ready
+        {ready ? "Your kingdom is ready" : "Nearly there"}
       </div>
       <div className="mt-3 max-w-[400px] text-[0.875rem] leading-[1.55] text-rex-text-muted">
-        Everything's installed and your local domains work over HTTPS. Create your first site and
-        rexenv will serve it instantly.
+        {copy}
       </div>
       <EdgeConflictNotice />
       <div className="mt-[18px] flex items-center gap-[14px]">
-        <DoneChip label="Core components" />
+        {core.verdict === "ready" ? (
+          <DoneChip label="Core components" />
+        ) : core.verdict === "failed" ? (
+          <button
+            onClick={retryAll}
+            disabled={retrying}
+            title={core.failed.map((p) => `${p.label}: ${core.items.get(p.id)?.error ?? "failed"}`).join("\n")}
+            className="inline-flex items-center gap-1.5 rounded-[6px] border border-rex-border-strong bg-rex-surface-2 px-2 py-1 font-mono text-[0.6875rem] text-status-error-bright transition-[filter] hover:brightness-110 disabled:opacity-60"
+          >
+            <RotateCw className={retrying ? "h-[12px] w-[12px] animate-rex-spin" : "h-[12px] w-[12px]"} strokeWidth={2.2} />
+            Core components · {core.failed.length} failed · Retry
+          </button>
+        ) : (
+          <span className="inline-flex items-center gap-1.5 font-mono text-[0.6875rem] text-rex-text-muted">
+            <Loader2 className="h-[13px] w-[13px] animate-rex-spin motion-reduce:animate-none" strokeWidth={2.2} />
+            Core components · {core.verdict === "checking" ? "checking…" : `${core.done} of ${core.total} ready`}
+          </span>
+        )}
         <DoneChip label="Domains & SSL" />
       </div>
     </div>
