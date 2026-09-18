@@ -35,6 +35,8 @@ const ERR_AUTHORIZATION_CANCELED: OSStatus = -60006;
 const ERR_SEC_USER_CANCELED: OSStatus = -128;
 /// `errSecDuplicateItem`: the CA is already in the keychain — the ordinary re-trust.
 const ERR_SEC_DUPLICATE_ITEM: OSStatus = -25299;
+/// `errSecItemNotFound`: no trust setting to remove for this certificate.
+const ERR_SEC_ITEM_NOT_FOUND: OSStatus = -25300;
 /// `kSecTrustSettingsDomainUser`: this user's trust settings. Never the admin or
 /// system domain — those need root, and trust is per-user by design.
 const TRUST_DOMAIN_USER: u32 = 0;
@@ -85,7 +87,11 @@ pub(super) fn der_from_pem(pem: &str) -> Result<Vec<u8>> {
 
 /// A `SecCertificate` for the PEM file at `path`. No dialog.
 fn certificate(path: &Path) -> Result<Owned> {
-    let der = der_from_pem(&std::fs::read_to_string(path)?)?;
+    certificate_from_der(&der_from_pem(&std::fs::read_to_string(path)?)?)
+}
+
+/// A `SecCertificate` for DER bytes. No dialog.
+fn certificate_from_der(der: &[u8]) -> Result<Owned> {
     let len = isize::try_from(der.len()).map_err(|_| Error::Other("the CA certificate is too large".into()))?;
     // SAFETY: `der` outlives the call; CFDataCreate copies the bytes.
     let data = Owned(unsafe { CFDataCreate(std::ptr::null(), der.as_ptr(), len) });
@@ -165,9 +171,106 @@ pub(super) fn untrust(ca_cert_path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// One certificate as `security find-certificate -a -Z -p` lists it: its SHA-1
+/// (the handle `security delete-certificate -Z` takes) and its DER.
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct ListedCert {
+    pub sha1: String,
+    pub der: Vec<u8>,
+}
+
+/// The rexenv CAs in a `find-certificate -a -c <cn> -Z -p` listing that are
+/// NOT `current_der` — the stale ones. Pure, so the shape of the listing is
+/// tested without a keychain.
+pub(super) fn stale_in_listing(listing: &str, current_der: &[u8]) -> Vec<ListedCert> {
+    let mut out = Vec::new();
+    let mut sha1: Option<String> = None;
+    let mut pem = String::new();
+    let mut in_pem = false;
+    for line in listing.lines() {
+        if let Some(h) = line.strip_prefix("SHA-1 hash: ") {
+            sha1 = Some(h.trim().to_string());
+        }
+        if line.starts_with("-----BEGIN CERTIFICATE-----") {
+            in_pem = true;
+            pem.clear();
+        }
+        if in_pem {
+            pem.push_str(line);
+            pem.push('\n');
+        }
+        if line.starts_with("-----END CERTIFICATE-----") {
+            in_pem = false;
+            if let (Some(h), Ok(der)) = (sha1.take(), der_from_pem(&pem)) {
+                if der != current_der {
+                    out.push(ListedCert { sha1: h, der });
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Untrust and delete every rexenv CA in the login keychain except the one at
+/// `current_ca` (#678). Each removal is the trust dialog — in practice one
+/// approval, because SecurityAgent keeps the right warm for a short while and
+/// this runs right after `trust`/`untrust` of the current CA. A cancel stops
+/// the sweep and reads as a cancel; what was already swept stays swept.
+///
+/// Enumeration and deletion go through `/usr/bin/security` (no dialog for
+/// either); only the trust change is made in-process, for the same reason
+/// `trust` is: the dialog is titled after the caller.
+pub(super) fn untrust_stale(current_ca: &Path, login_keychain: &str) -> Result<usize> {
+    let current = der_from_pem(&std::fs::read_to_string(current_ca)?)?;
+    let out = std::process::Command::new("security")
+        .args(["find-certificate", "-a", "-c", crate::core::ssl::CA_COMMON_NAME, "-Z", "-p"])
+        .arg(login_keychain)
+        .output()?;
+    // No match exits non-zero with nothing to sweep — not an error.
+    let listing = String::from_utf8_lossy(&out.stdout);
+    let mut swept = 0;
+    for stale in stale_in_listing(&listing, &current) {
+        let cert = certificate_from_der(&stale.der)?;
+        // SAFETY: `cert.0` is live for the call.
+        let removed = unsafe { SecTrustSettingsRemoveTrustSettings(cert.0, TRUST_DOMAIN_USER) };
+        // `errSecItemNotFound`: it was in the keychain but never trusted (or
+        // already untrusted) — nothing to remove, still ours to delete.
+        if removed != 0 && removed != ERR_SEC_ITEM_NOT_FOUND {
+            return Err(trust_error("remove the trust of a stale copy of", removed, &status_message(removed)));
+        }
+        // Best-effort: a cert that will not delete is untrusted litter, not a failure.
+        let _ = std::process::Command::new("security")
+            .args(["delete-certificate", "-Z", &stale.sha1])
+            .arg(login_keychain)
+            .output();
+        swept += 1;
+    }
+    Ok(swept)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #678 — the listing parser keeps every rexenv CA that is not the current
+    /// one, pairs each with the SHA-1 `delete-certificate -Z` needs, and never
+    /// lists the current CA as stale.
+    #[test]
+    fn the_stale_sweep_names_every_ca_but_the_current_one() {
+        let (a_pem, a_der) = ca_pem();
+        let (b_pem, b_der) = ca_pem();
+        let (c_pem, _) = ca_pem();
+        let listing = format!(
+            "SHA-256 hash: AA\nSHA-1 hash: 1111\n{a_pem}SHA-256 hash: BB\nSHA-1 hash: 2222\n{b_pem}SHA-1 hash: 3333\n{c_pem}"
+        );
+        let stale = stale_in_listing(&listing, &b_der);
+        assert_eq!(stale.len(), 2, "{stale:?}");
+        assert_eq!((stale[0].sha1.as_str(), &stale[0].der), ("1111", &a_der));
+        assert_eq!(stale[1].sha1, "3333");
+        assert!(stale.iter().all(|s| s.der != b_der), "the current CA is never stale");
+        assert!(stale_in_listing("", &b_der).is_empty(), "no match, nothing to sweep");
+        assert!(stale_in_listing(&format!("SHA-1 hash: 2222\n{b_pem}"), &b_der).is_empty());
+    }
 
     fn ca_pem() -> (String, Vec<u8>) {
         let mut params = rcgen::CertificateParams::new(Vec::<String>::new()).unwrap();

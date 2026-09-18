@@ -130,6 +130,17 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   changes.", in the branded applet and the osascript fallback alike. The reason is a
   required typed argument of `run_privileged`, not a `&str`: beside the script, swapped
   strings would compile and run the sentence as root.
+- **Stale rexenv CAs are swept, at trust time and at teardown** (`CertTrustManager::
+  untrust_stale`, `keychain_trust::untrust_stale`, #678, 18 Sep 2026). Every fresh app-data
+  folder mints a NEW local CA and trusts it; the ones earlier folders trusted stayed trusted
+  roots for private keys that no longer exist — four of them in one VM's login keychain
+  after four hand "resets", and "Remove rexenv's system changes" untrusted only the current
+  one. Now `ssl::trust_ca` sweeps the others best-effort right after the trust dialog (its
+  authorization is still warm, so in practice no extra prompt; a cancelled sweep never
+  fails the trust), and `ssl::untrust_ca` sweeps them as part of the uninstall. The sweep
+  finds them by subject (`ssl::CA_COMMON_NAME`) through `security find-certificate`, makes
+  the trust change in-process (the dialog is titled after the caller, #579), and deletes
+  the keychain item. Windows keeps the `Ok(0)` default — `docs/TODO.md`.
 - **The keychain (CA trust) dialog is rexenv's too** (`platform/macos/keychain_trust.rs`,
   #579). It is titled after the process that calls the trust-settings API, so
   `security add-trusted-cert` read "security" — and running that same command inside

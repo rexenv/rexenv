@@ -35,6 +35,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [ ] **Windows: `CertTrustManager::untrust_stale` is the `Ok(0)` default** — the stale-CA
+  sweep (#678, 18 Sep 2026) exists only on macOS. On Windows a hand-wiped app-data folder
+  leaves its old `rexenv Local CA` in the user Root store too (`platform/windows/cert_store.rs`
+  trusts by DER). Done when: `cert_store::untrust_stale` enumerates the store by subject,
+  removes every rexenv CA but the current one, and the Dell shows one root after two wipes.
 - [ ] **Homebrew-bottle bundles (redis / mariadb / httpd / xdebug) still need the Xcode
   Command Line Tools on a clean Mac.** Found 18 Sep 2026 by the first clean-VM smoke test:
   `prepare_binary` asked `otool` for every binary's dylib list and the CLT shim failed all

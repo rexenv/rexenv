@@ -52,13 +52,17 @@ pub fn ca_dir(paths: &dyn Paths) -> Result<PathBuf> {
 }
 
 /// Generate a fresh self-signed root CA. Returns `(cert_pem, key_pem)`. Pure — no fs.
+/// The subject every rexenv local CA carries — what the trust store is asked
+/// for when a stale one has to be found (`CertTrustManager::untrust_stale`).
+pub const CA_COMMON_NAME: &str = "rexenv Local CA";
+
 pub fn generate_ca() -> Result<(String, String)> {
     let mut params =
         CertificateParams::new(Vec::new()).map_err(|e| Error::Other(format!("ca params: {e}")))?;
     params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
 
     let mut dn = DistinguishedName::new();
-    dn.push(DnType::CommonName, "rexenv Local CA");
+    dn.push(DnType::CommonName, CA_COMMON_NAME);
     dn.push(DnType::OrganizationName, "rexenv");
     params.distinguished_name = dn;
 
@@ -468,6 +472,16 @@ fn parse_cert_info(cert_pem: &str, dir: &Path) -> Result<SiteCertInfo> {
 /// pref is on — see `core::firefox`); Firefox failure never fails the trust.
 pub fn trust_ca(platform: &dyn Platform, ca: &LocalCa) -> Result<()> {
     platform.cert_trust().trust_ca(&ca.cert_path)?;
+    // Every fresh app-data folder mints a NEW CA; the ones trusted by earlier
+    // folders (a hand "reset", 18 Sep 2026: four of them on one VM) stay
+    // trusted roots for keys that no longer exist. Sweep them now, while the
+    // trust dialog's authorization is still warm — best-effort, because a
+    // cancelled sweep must not read as "rexenv could not trust its CA".
+    match platform.cert_trust().untrust_stale(&ca.cert_path) {
+        Ok(0) => {}
+        Ok(n) => log::info!("ssl: untrusted {n} stale rexenv CA(s) left by earlier app-data folders"),
+        Err(e) => log::warn!("ssl: stale rexenv CAs were not swept: {e}"),
+    }
     if let Some(root) = platform.cert_trust().firefox_profiles_root() {
         match crate::core::firefox::enable_in_profiles(&root) {
             Ok(n) if n > 0 => log::info!("ssl: enabled OS-root import in {n} Firefox profile(s)"),
@@ -478,9 +492,16 @@ pub fn trust_ca(platform: &dyn Platform, ca: &LocalCa) -> Result<()> {
     Ok(())
 }
 
-/// Remove the local CA's trust.
+/// Remove the local CA's trust — the current one, and every stale rexenv CA an
+/// earlier app-data folder left trusted (#678). "Remove rexenv's system
+/// changes" means all of them, not the one this folder happens to hold.
 pub fn untrust_ca(platform: &dyn Platform, ca: &LocalCa) -> Result<()> {
-    platform.cert_trust().untrust_ca(&ca.cert_path)
+    platform.cert_trust().untrust_ca(&ca.cert_path)?;
+    let n = platform.cert_trust().untrust_stale(&ca.cert_path)?;
+    if n > 0 {
+        log::info!("ssl: untrusted {n} stale rexenv CA(s) as well");
+    }
+    Ok(())
 }
 
 #[cfg(test)]

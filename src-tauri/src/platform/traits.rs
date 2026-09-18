@@ -118,6 +118,14 @@ pub trait CertTrustManager: Send + Sync {
     fn trust_ca(&self, ca_cert_path: &std::path::Path) -> Result<()>;
     /// Remove the CA's trust setting.
     fn untrust_ca(&self, ca_cert_path: &std::path::Path) -> Result<()>;
+    /// Untrust (and drop from the store) every rexenv local CA that is NOT the
+    /// one at `current_ca` — the roots earlier app-data folders trusted and
+    /// left behind (#678). Returns how many were swept. Default `Ok(0)`: a
+    /// platform that has not implemented the sweep leaves them, which is what
+    /// every platform did until 18 Sep 2026 (Windows still does — TODO).
+    fn untrust_stale(&self, _current_ca: &std::path::Path) -> Result<usize> {
+        Ok(0)
+    }
     /// Whether the CA is currently trusted for THIS OS user. Trust is per-user
     /// (macOS: login keychain), so a fresh account needs its own [`trust_ca`]
     /// even when system-wide setup (e.g. the resolver file) already happened —

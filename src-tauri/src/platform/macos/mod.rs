@@ -186,6 +186,9 @@ impl CertTrustManager for MacosCertTrust {
     fn untrust_ca(&self, ca_cert_path: &Path) -> Result<()> {
         keychain_trust::untrust(ca_cert_path)
     }
+    fn untrust_stale(&self, current_ca: &Path) -> Result<usize> {
+        keychain_trust::untrust_stale(current_ca, &Self::login_keychain())
+    }
     fn is_trusted(&self, ca_cert_path: &Path) -> bool {
         // `security verify-cert` exits 0 iff the cert chains to a trust anchor
         // for THIS user (login-keychain trust settings included); an untrusted
