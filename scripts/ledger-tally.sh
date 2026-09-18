@@ -22,11 +22,23 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# BYTES, not characters. In a UTF-8 locale Git Bash's grep does not match a
+# pattern outside the BMP: on the Dell, 19 Sep 2026, `grep -c '| 🔨'` (U+1F528,
+# four bytes) counted ZERO against a ledger the Mac counted 14 in, while the
+# three-byte ✅ and ◐ counted correctly. Every pattern here is a fixed UTF-8
+# sequence, which is exactly what a byte-oriented grep is for.
+export LC_ALL=C
+
 LEDGER=docs/CLAIM-LEDGER.md
 
 # Verdicts are counted by their LEADING emoji in the verdict column — the same
 # one-liner the file documents, so this can never drift from the stated method.
-count_verdict() { grep -c "| $1" "$LEDGER"; }
+# `|| true` because `grep -c` EXITS 1 on zero matches, and under `set -e` that
+# killed this script mid-assignment with an empty log and rc=1 — the Windows
+# gate above failed for two minutes' worth of guessing before anyone could see
+# which count had gone to zero. A zero is data here: the `SUM != ROWS` check
+# below is what reports it, in a sentence.
+count_verdict() { grep -c "| $1" "$LEDGER" || true; }
 
 OK=$(count_verdict ✅)
 HALF=$(count_verdict ◐)

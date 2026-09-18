@@ -686,6 +686,17 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     update card hides its button — `AppUpdateCard` has no OS gate; `WindowsAppBundle::facts`
     returns `Unported(...)`, so readiness errors instead of refusing, and the checklist asks
     the tester to look at what the card actually renders.
+    **Second per-gate run, 19 Sep 2026 at `847f47ec`:** `cargo test --lib` **1313 passed, 0 failed**
+    (141 s including the relink) and the `cli` crate **25 passed, 0 failed** — the Mac's 27 minus the
+    two `#[cfg(unix)]` socket tests, so the arithmetic still names its own gap. `doc-counts`,
+    `check-app-manifest-test` and `status.py --check` green. **`ledger-tally` came back rc=1 with an
+    EMPTY log**, and the cause was not the machine but the SHELL: Git Bash's grep in a UTF-8 locale
+    does not match a pattern outside the BMP, so the 🔨 and 🚫 counts went to zero, and
+    `set -euo pipefail` plus `grep -c`'s exit-1-on-no-match killed the script mid-assignment before
+    it could say which. Measured both ways on the same file (rc=1 under `LC_ALL=en_US.UTF-8`, rc=0
+    and correct under `LC_ALL=C`), fixed with `LC_ALL=C` and a tolerated zero, ledger #686 — which
+    also corrects #681's "ledger-tally rc=0 on the Dell": that run used a non-login shell, which
+    never loaded `LANG` from the profile.
     **verify.sh on the Dell, 18 Sep 2026 (ledger #675):** three runs capped inside `cargo build
     --examples` (1 h, 2 h, 5 h — 184 examples each linking the whole lib; the third finished its
     last example 19 s before the cap), then the fourth, all cached, reached clippy in an hour and
