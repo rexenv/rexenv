@@ -617,6 +617,15 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
        already existed for exactly this and says so in its own doc comment, so the bug was six
        callers reaching past it, not a missing capability. Fixed, plus a scan (ledger #687) that
        fails on the seventh: plant-proven by putting `terminal.rs` back.
+       **Fixing it uncovered two more layers underneath, which is the case for looking rather than
+       reasoning** (ledger #688): with the resolver right, the tab then said
+       `spawn shell: CreateProcessW '"/bin/zsh -l"' … The system cannot find the path specified` —
+       the shell came from `$SHELL`, a unix convention, falling back to `/bin/zsh`. And behind
+       THAT, the PATH list was joined with `:` (on Windows `C:\php` and everything after it is one
+       unusable entry) and the line typed into the fresh shell was POSIX `export` syntax, which
+       PowerShell shows as an error at the prompt. `ShellRunner::interactive_shell` now has no
+       default — a default is macOS's answer wearing the trait's name — and the PATH halves take
+       the os. **Still owed:** nobody has typed a command into a working Windows terminal.
     2. A **stopped** site's WordPress tab shows "Loading plugins…" for as long as you leave it —
        no error, no "start the site first". Still open (row below).
     3. A **stopped** site's Database tab shows the Adminer URL above a blank white frame — Adminer

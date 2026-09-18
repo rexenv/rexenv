@@ -91,7 +91,7 @@ pub async fn terminal_open(
         None => PathBuf::from(&site.path),
     };
 
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+    let shell = platform.shell().interactive_shell();
     let id = uuid::Uuid::new_v4().to_string();
     let app_handle = app.clone();
     let event = output_event(&id);

@@ -581,6 +581,15 @@ pub trait ShellRunner: Send + Sync {
     /// carrying the exit status + stderr — never a silent success with empty output.
     fn run(&self, command: &str, args: &[String]) -> Result<String>;
 
+    /// The shell the BUILT-IN terminal spawns into its pty.
+    ///
+    /// No default, deliberately. The command layer used to read `$SHELL` and fall back to
+    /// `/bin/zsh` — a unix convention, unset on Windows — so the Windows terminal tried to
+    /// spawn `/bin/zsh` and died with "The system cannot find the path specified" (seen on
+    /// the Dell, 19 Sep 2026, #688). A default here would have been macOS's answer wearing
+    /// the trait's name, which is the shape of that bug. Every platform states its own.
+    fn interactive_shell(&self) -> String;
+
     /// Open a path or URL in the OS default handler (Finder for a folder, the
     /// default browser for an `http(s)` URL). macOS: `open <target>`.
     fn open(&self, target: &str) -> Result<()>;

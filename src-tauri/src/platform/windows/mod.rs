@@ -491,6 +491,13 @@ fn shell_open(target: &str) -> Result<()> {
 
 pub struct WindowsShell;
 impl ShellRunner for WindowsShell {
+    /// Windows PowerShell — on the box, on every supported version, and what a developer
+    /// opening a terminal here expects. `$SHELL` is not consulted: it is a unix convention
+    /// and anything that set it here would be pointing at a shell this OS cannot spawn.
+    fn interactive_shell(&self) -> String {
+        "powershell.exe".to_string()
+    }
+
     fn run(&self, _command: &str, _args: &[String]) -> Result<String> {
         Err(Error::Unported("windows shell runner"))
     }

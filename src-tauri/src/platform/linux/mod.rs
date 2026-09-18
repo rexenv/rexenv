@@ -117,6 +117,10 @@ impl PermissionManager for LinuxPermissions {
 
 pub struct LinuxShell;
 impl ShellRunner for LinuxShell {
+    fn interactive_shell(&self) -> String {
+        todo!()
+    }
+
     fn run(&self, _command: &str, _args: &[String]) -> Result<String> {
         todo!("linux shell runner")
     }

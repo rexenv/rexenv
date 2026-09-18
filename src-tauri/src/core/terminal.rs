@@ -105,13 +105,8 @@ impl TerminalSession {
             .take_writer()
             .map_err(|e| Error::Other(format!("pty writer: {e}")))?;
         // Re-prepend our PATH after rc runs (macOS path_helper / user rc reorders it).
-        if !cfg.path_prepend.is_empty() {
-            // Escape the dirs for the DOUBLE-quoted context so a dir couldn't
-            // break the export (B16 — consistency with the cli.rs/sh_quote quote
-            // discipline). The trailing literal `:$PATH` stays outside the escape
-            // so it still interpolates. Identity for real bin dirs (no `\"$` `).
-            let dirs = dq_escape(&join_paths(&cfg.path_prepend));
-            let _ = writeln!(writer, "export PATH=\"{dirs}:$PATH\"");
+        if let Some(line) = path_export_line(&cfg.path_prepend, std::env::consts::OS) {
+            let _ = writeln!(writer, "{line}");
             let _ = writer.flush();
         }
 
@@ -165,15 +160,42 @@ fn login_args(shell: &str) -> &'static [&'static str] {
 
 /// Build the `PATH` env value with our dirs prepended to the current `PATH`.
 fn prepend_path(dirs: &[PathBuf]) -> String {
-    let current = std::env::var("PATH").unwrap_or_default();
-    let mut parts = join_paths(dirs);
+    prepend_path_on(dirs, &std::env::var("PATH").unwrap_or_default(), std::env::consts::OS)
+}
+
+/// The decision behind [`prepend_path`], with the current PATH and the OS passed in so
+/// BOTH answers are measurable from either machine.
+fn prepend_path_on(dirs: &[PathBuf], current: &str, os: &str) -> String {
+    let mut parts = join_paths_on(dirs, os);
     if !current.is_empty() {
         if !parts.is_empty() {
-            parts.push(':');
+            parts.push(path_list_sep(os));
         }
-        parts.push_str(&current);
+        parts.push_str(current);
     }
     parts
+}
+
+/// The line TYPED into the fresh shell to put our dirs back at the front of `PATH`,
+/// or `None` where there is nothing to undo.
+///
+/// `PATH` is already correct on the spawned command (`cmd.env("PATH", …)`); this exists
+/// only because a macOS login shell REORDERS it afterwards — `/etc/zprofile` runs
+/// `path_helper`, which moves `/usr/bin` back in front of everything we prepended.
+///
+/// **Windows gets `None`, and that is the honest answer rather than a port.** There is no
+/// path_helper there, so nothing undoes the env we set; and the line is POSIX `export`
+/// syntax, so sending it to PowerShell would type a visible error into the user's prompt
+/// to fix a problem that OS does not have (#688).
+fn path_export_line(dirs: &[PathBuf], os: &str) -> Option<String> {
+    if os == "windows" || dirs.is_empty() {
+        return None;
+    }
+    // Escape the dirs for the DOUBLE-quoted context so a dir couldn't break the
+    // export (B16 — consistency with the cli.rs/sh_quote quote discipline). The
+    // trailing literal `:$PATH` stays outside the escape so it still interpolates.
+    // Identity for real bin dirs (no `\"$` `).
+    Some(format!("export PATH=\"{}:$PATH\"", dq_escape(&join_paths_on(dirs, os))))
 }
 
 /// Escape a string for embedding in a DOUBLE-quoted shell string: neutralize the
@@ -187,9 +209,27 @@ fn dq_escape(s: &str) -> String {
         .replace('`', "\\`")
 }
 
-/// Join dirs with the path separator (no trailing separator).
-fn join_paths(dirs: &[PathBuf]) -> String {
-    dirs.iter().map(|d| d.display().to_string()).collect::<Vec<_>>().join(":")
+/// What separates entries in a PATH LIST on `os` — not the path separator. Windows uses
+/// `;`, and a `:` there would make `C:\\php` and the rest one unusable entry, which is
+/// how the terminal's php and wp dirs would have been lost even after the shell was
+/// right (#688).
+fn path_list_sep(os: &str) -> char {
+    if os == "windows" {
+        ';'
+    } else {
+        ':'
+    }
+}
+
+/// Join dirs with the PATH-list separator for `os` (no trailing separator). There is no
+/// host-reading wrapper: the two callers already carry an `os`, and a wrapper that reads
+/// `std::env::consts::OS` would be dead code the bar denies — the third time that trap
+/// has fired on this port (#657, #666, #668).
+fn join_paths_on(dirs: &[PathBuf], os: &str) -> String {
+    dirs.iter()
+        .map(|d| d.display().to_string())
+        .collect::<Vec<_>>()
+        .join(&path_list_sep(os).to_string())
 }
 
 /// Where a terminal opened FROM a plugin/theme row starts: that asset's own
@@ -294,10 +334,32 @@ mod tests {
         assert!(login_args("").is_empty());
     }
 
+    /// **The terminal's PATH is joined and re-exported per OS, not per macOS.**
+    ///
+    /// Three layers of the same bug, each hiding the next, found by opening the Terminal tab
+    /// on Windows (#688): the shell was `$SHELL` or `/bin/zsh`; the PATH list was joined with
+    /// `:`, which on Windows makes `C:\php` and everything after it ONE unusable entry; and
+    /// the re-prepend typed POSIX `export` syntax at whatever shell came up.
+    #[test]
+    fn the_path_list_and_its_re_export_follow_the_os() {
+        let dirs = vec![PathBuf::from("C:\\php\\8.3"), PathBuf::from("C:\\rexenv\\bin")];
+        assert_eq!(join_paths_on(&dirs, "windows"), "C:\\php\\8.3;C:\\rexenv\\bin");
+        assert_eq!(join_paths_on(&dirs, "macos"), "C:\\php\\8.3:C:\\rexenv\\bin");
+        assert_eq!(
+            prepend_path_on(&dirs, "C:\\Windows", "windows"),
+            "C:\\php\\8.3;C:\\rexenv\\bin;C:\\Windows"
+        );
+        // Nothing is typed at a PowerShell prompt: PATH is already right on the spawned
+        // command, and only macOS's path_helper undoes it.
+        assert_eq!(path_export_line(&dirs, "windows"), None);
+        assert!(path_export_line(&dirs, "macos").expect("macos re-exports").starts_with("export PATH="));
+        assert_eq!(path_export_line(&[], "macos"), None, "nothing to prepend, nothing to type");
+    }
+
     #[test]
     fn join_and_prepend_paths() {
         let dirs = vec![PathBuf::from("/a b/bin"), PathBuf::from("/c/bin")];
-        assert_eq!(join_paths(&dirs), "/a b/bin:/c/bin");
+        assert_eq!(join_paths_on(&dirs, "macos"), "/a b/bin:/c/bin");
         let p = prepend_path(&dirs);
         // Our dirs come first, then the inherited PATH verbatim. Exact
         // equality on both branches — the old `contains(unwrap_or_default())`

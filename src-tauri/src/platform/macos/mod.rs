@@ -1524,6 +1524,12 @@ enum TermLaunch {
 
 pub struct MacosShell;
 impl ShellRunner for MacosShell {
+    /// The user's own shell, which is what Terminal.app would open; `/bin/zsh` is the
+    /// macOS default since Catalina and the only sane fallback when `$SHELL` is unset.
+    fn interactive_shell(&self) -> String {
+        std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string())
+    }
+
     fn run(&self, command: &str, args: &[String]) -> Result<String> {
         let out = std::process::Command::new(command).args(args).output()?;
         if out.status.success() {
