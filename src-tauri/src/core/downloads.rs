@@ -114,6 +114,14 @@ impl BatchSnapshot {
 pub struct Snapshot {
     pub batch: Option<BatchSnapshot>,
     pub items: Vec<ItemSnapshot>,
+    /// The hub's mutation counter at (or just before) the moment this was
+    /// read. Monotonic, so the UI can tell a stale seed from a live event:
+    /// the frontend keeps whichever snapshot has the higher `seq`, never the
+    /// one that merely ARRIVED last. Without it, a `downloads_state` fetch
+    /// answered before an event but applied after it silently wound the UI
+    /// back — and the onboarding gap (no listener mounted between the
+    /// Install step and the footer, 18 Sep 2026) had no way to catch up at all.
+    pub seq: u64,
 }
 
 /// One planned download for [`Hub::begin_batch`]: `cached` items are listed as
@@ -753,6 +761,10 @@ impl Hub {
 
     /// Current full state (batch progress + all item rows).
     pub fn snapshot(&self) -> Snapshot {
+        // Read the counter BEFORE the state: `mutate` bumps it after releasing
+        // the lock, so a seq read first can only be ≤ the state's true seq —
+        // a snapshot never claims to be newer than it is.
+        let seq = *self.tx.borrow();
         let s = self.state.lock().unwrap_or_else(|p| p.into_inner());
         let batch = s.batch.as_ref().map(|(action, ids)| {
             let count = |pred: fn(Phase) -> bool| {
@@ -770,6 +782,7 @@ impl Hub {
         Snapshot {
             batch,
             items: s.items.iter().map(|i| i.snap.clone()).collect(),
+            seq,
         }
     }
 
@@ -919,6 +932,24 @@ mod tests {
         assert_eq!((b.done, b.total), (1, 2), "the counter moves past the settled row");
         assert_eq!(b.failed, 1, "the failed row is counted as settled, not as still moving");
         assert_eq!(b.in_flight(), 0, "nothing is moving — the footer must not say Downloading");
+    }
+
+    /// **A snapshot carries a monotonic seq, so a late seed can never wind the
+    /// UI back over a live event.** The frontend keeps the higher seq.
+    #[test]
+    fn snapshot_seq_grows_with_every_mutation_and_never_overstates() {
+        let h = fresh();
+        let s0 = h.snapshot().seq;
+        h.begin_batch("Start all", &[planned("caddy", "2.11.4", false)]);
+        let s1 = h.snapshot().seq;
+        assert!(s1 > s0, "begin_batch is a mutation");
+        h.item_started("caddy", "2.11.4");
+        h.item_progress("caddy-2.11.4", 10, Some(100));
+        let s2 = h.snapshot().seq;
+        assert!(s2 > s1);
+        let again = h.snapshot();
+        assert_eq!(again.seq, s2, "reading is not a mutation");
+        assert_eq!(again.items[0].downloaded_bytes, 10);
     }
 
     /// **A batch whose every row gave up is OVER, not "Downloading 1 of n".**

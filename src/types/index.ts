@@ -1303,6 +1303,9 @@ export interface DownloadBatch {
 export interface DownloadsSnapshot {
   batch: DownloadBatch | null;
   items: DownloadItem[];
+  /** Hub mutation counter — monotonic. `useDownloads` keeps the snapshot with
+   *  the higher seq, never the one that merely arrived last. */
+  seq: number;
 }
 
 /** One planned core binary (onboarding Install rows): static row source with a

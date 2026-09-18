@@ -61,7 +61,14 @@ nothing.** The silent case is the one that ships to everybody.
   row `failed`, and the collapsed indicator STILL reading `Downloading 1 of 6` over a full
   bar — the batch counted only successes as settled. It must read `6 downloads failed` in
   red, and the panel header `0/6 · 6 failed`. **Passed 18 Sep 2026** (clean VM, DNS dead,
-  Start all): `6 downloads failed` in red, bar in the error state.
+  Start all): `6 downloads failed` in red, bar in the error state. **Third tell** (same
+  VM, same day): leave the Install step while rows are still failing, do the Domains step,
+  land in the app — and the footer shows rows "downloading 0 B" that never change, while
+  the log says every download gave up minutes ago. Nothing was listening between the two
+  screens and the footer seeded from the Install step's stale cache. It must show the
+  settled state within a second of the footer appearing. **Passed 18 Sep 2026** on that
+  path: the final wizard step already read "6 failed", and the footer landed on
+  `6 downloads failed` / `0/6 · 6 failed` with every row `failed` + Retry.
 - [ ] **Reach the last step with a component still downloading or failed** (Continue early;
   or pull the network for the failed case). The "Your kingdom is ready" step must SAY so —
   "n of m ready" with a spinner, or "n failed" in red with a Retry — and never

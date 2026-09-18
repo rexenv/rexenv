@@ -1752,7 +1752,7 @@ function AboutSetting() {
   const downloads = useQuery<DownloadsSnapshot>({
     queryKey: ["downloads"],
     enabled: false,
-  }).data ?? { batch: null, items: [] };
+  }).data ?? { batch: null, items: [], seq: 0 };
   const { data: info } = useQuery({ queryKey: ["app-info"], queryFn: getAppInfo });
   const [showLicenses, setShowLicenses] = useState(false);
   // A string opens externally (arrow-out icon, URL shown); a function runs

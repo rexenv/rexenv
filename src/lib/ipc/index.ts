@@ -913,7 +913,7 @@ export async function onTrayRoute(cb: (path: string) => void): Promise<() => voi
 /** Current download-manager state (seed on mount; live updates arrive via
  *  `onDownloadProgress` with the same snapshot shape). Empty outside Tauri. */
 export async function downloadsState(): Promise<DownloadsSnapshot> {
-  if (!isTauri()) return { batch: null, items: [] };
+  if (!isTauri()) return { batch: null, items: [], seq: 0 };
   return invoke<DownloadsSnapshot>("downloads_state");
 }
 

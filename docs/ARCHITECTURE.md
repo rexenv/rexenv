@@ -723,6 +723,16 @@ Live-proven end to end by `site_stop_start_check`.
   it IS the pool binary); the update apply's manifest check asks it too. The plans named `php-fpm` on every
   OS, so a Windows first run asked for a build that does not exist ("no binary manifest for php-fpm
   8.3.32", the Dell, 15 Sep 2026) and no site could begin.
+- **The download bridge cannot be watched with a gap, and a gap is closed on the next
+  mount** (`Snapshot::seq`, `useDownloads`, 18 Sep 2026). The hub pushes full snapshots as
+  `download-progress` events; the UI seeds once from `downloads_state` and then only
+  listens. Onboarding's Install step listens, its Domains step does not, and the footer
+  mounts minutes later — every event in between was lost and the footer then read the
+  cache the Install step had left (`staleTime: Infinity`): two rows "downloading 0 B" for
+  a batch that had entirely failed, with nothing left to emit, forever (clean VM). Now a
+  snapshot carries the hub's monotonic `seq`, a mounting listener registers FIRST and
+  refetches the seed second, and the cache keeps the higher seq — a seed answered before an
+  event but applied after it can no longer wind the UI back.
 - **A batch is over when every row has SETTLED, however it settled** (`BatchSnapshot::
   failed` + `in_flight`, 18 Sep 2026). The footer's "still moving" test was `done <
   total` with `done` counting only successes, so a first run whose six downloads all gave

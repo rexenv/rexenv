@@ -1026,7 +1026,7 @@ export function DevUiReview() {
               ],
             };
           }
-          return { batch: null, items: [] };
+          return { batch: null, items: [], seq: 0 };
         case "adminer_set_theme":
           return null;
         case "adminer_status":
@@ -1286,8 +1286,9 @@ export function DevUiReview() {
                           error: null,
                         },
                       ],
+                      seq: 1,
                     }
-                  : { batch: null, items: [] }
+                  : { batch: null, items: [], seq: 0 }
               }
             />
             <div className="mt-2 text-[0.71875rem] text-rex-text-muted">

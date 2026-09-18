@@ -4092,7 +4092,7 @@ pub(crate) mod tests {
             Box::pin(async {
                 Ok((
                     vec![crate::commands::downloads::PlannedInfo { id: "mysql@8.4.6".into(), name: "mysql".into(), version: "8.4.6".into(), label: "MySQL 8.4.6".into(), cached: true }],
-                    crate::core::downloads::Snapshot { batch: None, items: Vec::new() },
+                    crate::core::downloads::Snapshot { batch: None, items: Vec::new(), seq: 0 },
                 ))
             })
         }
