@@ -14,65 +14,65 @@ App version **0.7.0** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md`
 - `TODO.md:129` SHIPPED macOS BUG — new WordPress sites are missing core files (measured 14 Sep 2026)
 - `TODO.md:154` `frankenphp_mail_catch_check`'s catch-OFF backend sometimes accepts a request and never answers
 - `TODO.md:161` Windows launch
-- `TODO.md:890` The keychain (CA trust) dialog is rexenv's too
-- `TODO.md:1013` In-app self-update — a dmg user has no update path at all
-- `TODO.md:1189` A public tunnel for `mstest.rex` was running that this session never started
-- `TODO.md:1216` The pinned wp-cli phar (2.12.0) is not PHP 8.5-clean
-- `TODO.md:1250` Private-window flags for Arc, ChatGPT Atlas, Orion
-- `TODO.md:1259` Windows/Linux: `detect_browsers`/`open_in_browser` are the default empty stubs
-- `TODO.md:1268` Eliminate the bug class: bundled PHP with curl's THREADED resolver
-- `TODO.md:1343` Option, not a commitment: a self-built nginx (deployment target 12) would drop the app floor from 15 to 14
-- `TODO.md:1347` PHP 7.4 — the five residuals of a shipped feature
-- `TODO.md:1421` Radicle-hosted repos are unverified
-- `TODO.md:1423` Why that `rex` instance went deaf was never diagnosed
+- `TODO.md:896` The keychain (CA trust) dialog is rexenv's too
+- `TODO.md:1019` In-app self-update — a dmg user has no update path at all
+- `TODO.md:1195` A public tunnel for `mstest.rex` was running that this session never started
+- `TODO.md:1222` The pinned wp-cli phar (2.12.0) is not PHP 8.5-clean
+- `TODO.md:1256` Private-window flags for Arc, ChatGPT Atlas, Orion
+- `TODO.md:1265` Windows/Linux: `detect_browsers`/`open_in_browser` are the default empty stubs
+- `TODO.md:1274` Eliminate the bug class: bundled PHP with curl's THREADED resolver
+- `TODO.md:1349` Option, not a commitment: a self-built nginx (deployment target 12) would drop the app floor from 15 to 14
+- `TODO.md:1353` PHP 7.4 — the five residuals of a shipped feature
+- `TODO.md:1427` Radicle-hosted repos are unverified
+- `TODO.md:1429` Why that `rex` instance went deaf was never diagnosed
 
 ### Ledger-driven proof backlog — 2
 
-- `TODO.md:1436` `wp_plugins_check` failed its deactivate assertion once and has not reproduced — the product-bug flag raise…
-- `TODO.md:1488` Bedrock live provision — the committed example (#35), deliberately not built
+- `TODO.md:1442` `wp_plugins_check` failed its deactivate assertion once and has not reproduced — the product-bug flag raise…
+- `TODO.md:1494` Bedrock live provision — the committed example (#35), deliberately not built
 
 ### Release gates (human, scripted — see the docs named) — 13
 
-- `TODO.md:1564` PUBLISH-TESTING §B
-- `TODO.md:1565` PUBLISH-TESTING §D
-- `TODO.md:1583` Flip the release host back when `rexenv/rexenv` goes public
-- `TODO.md:1597` The self-update swap probe (T0) and the first real in-app update (T11)
-- `TODO.md:1602` PUBLISH-TESTING §K
-- `TODO.md:1603` PUBLISH-TESTING §F
-- `TODO.md:1604` PUBLISH-TESTING §G
-- `TODO.md:1610` Release 5.4 — clean-Mac smoke test
-- `TODO.md:1614` Tunnel probe session
-- `TODO.md:1618` Intel spot-run
-- `TODO.md:1621` The macOS floor is a claim about BOTH slices, and most of it has still never been measured
-- `TODO.md:1659` In-app verifies owed
-- `TODO.md:1671` PUBLISH-TESTING §E / §L
+- `TODO.md:1570` PUBLISH-TESTING §B
+- `TODO.md:1571` PUBLISH-TESTING §D
+- `TODO.md:1589` Flip the release host back when `rexenv/rexenv` goes public
+- `TODO.md:1603` The self-update swap probe (T0) and the first real in-app update (T11)
+- `TODO.md:1608` PUBLISH-TESTING §K
+- `TODO.md:1609` PUBLISH-TESTING §F
+- `TODO.md:1610` PUBLISH-TESTING §G
+- `TODO.md:1616` Release 5.4 — clean-Mac smoke test
+- `TODO.md:1620` Tunnel probe session
+- `TODO.md:1624` Intel spot-run
+- `TODO.md:1627` The macOS floor is a claim about BOTH slices, and most of it has still never been measured
+- `TODO.md:1665` In-app verifies owed
+- `TODO.md:1677` PUBLISH-TESTING §E / §L
 
 ### Parked (deliberate — needs explicit go; don't pick up silently) — 4
 
-- `TODO.md:1677` The live pool swap is still L3
-- `TODO.md:1681` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN 25 Aug 2026
-- `TODO.md:1690` Install WordPress into an empty LINKED folder
-- `TODO.md:1697` `rex` design-first set — ONE item left: raw `wp` passthrough
+- `TODO.md:1683` The live pool swap is still L3
+- `TODO.md:1687` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN 25 Aug 2026
+- `TODO.md:1696` Install WordPress into an empty LINKED folder
+- `TODO.md:1703` `rex` design-first set — ONE item left: raw `wp` passthrough
 
 ### Menu-bar app — 1
 
-- `TODO.md:1710` Hold the tray menu open while the stack MOVES
+- `TODO.md:1716` Hold the tray menu open while the stack MOVES
 
 ### Blocked on external work — 4
 
-- `TODO.md:1720` Xdebug on PHP 8.0
-- `TODO.md:1725` SMAppService privileged helper
-- `TODO.md:1727` Developer ID signing + notarization
-- `TODO.md:1729` OpenLiteSpeed override server
+- `TODO.md:1726` Xdebug on PHP 8.0
+- `TODO.md:1731` SMAppService privileged helper
+- `TODO.md:1733` Developer ID signing + notarization
+- `TODO.md:1735` OpenLiteSpeed override server
 
 ### Phase 4+ (next era) — 2
 
-- `TODO.md:1739` Linux platform impls — `platform/linux/mod.rs`. Windows moved to *Now* as
-- `TODO.md:1742` Public distribution (the open-sourcing half of the old "packaging polish" row)
+- `TODO.md:1745` Linux platform impls — `platform/linux/mod.rs`. Windows moved to *Now* as
+- `TODO.md:1748` Public distribution (the open-sourcing half of the old "packaging polish" row)
 
 ## Claim ledger (`scripts/ledger-tally.sh`)
 
-**✅ 603 · ◐ 54 · 🔨 14 · 🚫 17** of 688 rows, plus 15 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432, #486, #541).
+**✅ 604 · ◐ 54 · 🔨 14 · 🚫 17** of 689 rows, plus 15 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432, #486, #541).
 
 ## Plans in flight (`docs/PLAN-*.md`) and their own Status line
 

@@ -625,7 +625,13 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
        unusable entry) and the line typed into the fresh shell was POSIX `export` syntax, which
        PowerShell shows as an error at the prompt. `ShellRunner::interactive_shell` now has no
        default — a default is macOS's answer wearing the trait's name — and the PATH halves take
-       the os. **Still owed:** nobody has typed a command into a working Windows terminal.
+       the os. **Proven live the same night:** the tab opens a PowerShell prompt in the site's
+       folder and `php -v` answers **PHP 8.2.32 (cli) … Visual C++ 2019 x64** — the SITE's version,
+       not the default 8.3, so the prepended PATH and the per-site PHP are both right.
+       **And then `wp --version` found a fourth layer** (ledger #689): the wrapper was an
+       extensionless `wp` holding `#!/bin/sh`, so Windows raised "How do you want to open this
+       file?" — Internet Explorer among the choices — and returned nothing. It is `wp.cmd` now.
+       **Still owed:** nobody has run `wp` through the new wrapper on Windows.
     2. A **stopped** site's WordPress tab shows "Loading plugins…" for as long as you leave it —
        no error, no "start the site first". Still open (row below).
     3. A **stopped** site's Database tab shows the Adminer URL above a blank white frame — Adminer

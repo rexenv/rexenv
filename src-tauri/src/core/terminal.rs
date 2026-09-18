@@ -265,15 +265,43 @@ pub fn asset_cwd(docroot: &Path, content_rel: &str, kind: &str, name: &str) -> R
 pub fn ensure_wp_wrapper(platform: &dyn Platform, php_bin: &Path, wp_phar: &Path) -> Result<PathBuf> {
     let dir = platform.paths().app_data_dir()?.join("terminal").join("bin");
     std::fs::create_dir_all(&dir)?;
-    let wrapper = dir.join("wp");
-    let script = format!(
-        "#!/bin/sh\nexec \"{php}\" -d memory_limit=512M \"{phar}\" \"$@\"\n",
-        php = php_bin.display(),
-        phar = wp_phar.display(),
-    );
+    let (name, script) = wp_wrapper_for(php_bin, wp_phar, std::env::consts::OS);
+    let wrapper = dir.join(name);
     std::fs::write(&wrapper, script)?;
     platform.permissions().set_executable(&wrapper)?;
     Ok(dir)
+}
+
+/// The `wp` wrapper's FILE NAME and contents for `os`.
+///
+/// The name is the half that was wrong. An extensionless `wp` holding `#!/bin/sh` is a
+/// command on macOS and a mystery file on Windows: typing `wp --version` in the app's own
+/// terminal raised Windows' "How do you want to open this file?" picker — a list of
+/// installed apps, one keystroke from opening wp-cli in Internet Explorer — and returned
+/// nothing (seen on the Dell, 19 Sep 2026, #689). Windows runs a command because of its
+/// EXTENSION, so the wrapper is `wp.cmd` there.
+///
+/// `%*` forwards the arguments the way `"$@"` does, and `@echo off` keeps the shell from
+/// printing the wrapper's own line before every wp-cli run.
+fn wp_wrapper_for(php_bin: &Path, wp_phar: &Path, os: &str) -> (&'static str, String) {
+    if os == "windows" {
+        return (
+            "wp.cmd",
+            format!(
+                "@echo off\r\n\"{php}\" -d memory_limit=512M \"{phar}\" %*\r\n",
+                php = php_bin.display(),
+                phar = wp_phar.display(),
+            ),
+        );
+    }
+    (
+        "wp",
+        format!(
+            "#!/bin/sh\nexec \"{php}\" -d memory_limit=512M \"{phar}\" \"$@\"\n",
+            php = php_bin.display(),
+            phar = wp_phar.display(),
+        ),
+    )
 }
 
 #[cfg(test)]
@@ -340,6 +368,27 @@ mod tests {
     /// on Windows (#688): the shell was `$SHELL` or `/bin/zsh`; the PATH list was joined with
     /// `:`, which on Windows makes `C:\php` and everything after it ONE unusable entry; and
     /// the re-prepend typed POSIX `export` syntax at whatever shell came up.
+    /// **The `wp` wrapper is a command on this OS, not a file of the right shape.**
+    ///
+    /// An extensionless `wp` holding `#!/bin/sh` put wp-cli on PATH on macOS and put a
+    /// MYSTERY FILE on PATH on Windows: `wp --version` in the app's own terminal raised the
+    /// "How do you want to open this file?" picker — Internet Explorer among the choices —
+    /// and returned nothing (#689). Windows decides what runs by EXTENSION.
+    #[test]
+    fn the_wp_wrapper_is_named_and_written_for_its_os() {
+        let (php, phar) = (PathBuf::from("C:\\php\\php.exe"), PathBuf::from("C:\\wp\\wp-cli.phar"));
+        let (name, script) = wp_wrapper_for(&php, &phar, "windows");
+        assert_eq!(name, "wp.cmd", "Windows runs a command by its extension");
+        assert!(script.starts_with("@echo off"), "no echoed wrapper line before every run");
+        assert!(script.contains("%*"), "arguments forwarded: {script}");
+        assert!(!script.contains("#!"), "a shebang means nothing here: {script}");
+
+        let (name, script) = wp_wrapper_for(&php, &phar, "macos");
+        assert_eq!(name, "wp");
+        assert!(script.starts_with("#!/bin/sh"));
+        assert!(script.contains("\"$@\""), "arguments forwarded: {script}");
+    }
+
     #[test]
     fn the_path_list_and_its_re_export_follow_the_os() {
         let dirs = vec![PathBuf::from("C:\\php\\8.3"), PathBuf::from("C:\\rexenv\\bin")];
