@@ -1997,7 +1997,42 @@ async fn drive<R: tauri::Runtime>(
             None
         }
     };
+    // The stack was stopped, so nothing could be reloaded — START it, with the
+    // new site already in the list `start_core` reads. Until 18 Sep 2026 this
+    // settled ok as "serves on next stack start", which made the first site
+    // anyone creates the one site rexenv did NOT serve instantly (the clean-VM
+    // smoke test: WordPress installed, card green, Safari "can't connect",
+    // and a Restart button to find). The start is the Start-all sequence
+    // itself (`start_stack`): binaries prefetched, backends awaited, the
+    // privileged edge prompt off the runtime, the wire verified — so a foreign
+    // :443 or a port conflict fails THIS job with the same words Start all
+    // would use, and Retry re-runs exactly this step.
+    let started = if checks.is_none() {
+        append_line(
+            app,
+            entry,
+            "stack is stopped — starting it (the HTTPS edge may ask for your password)",
+        );
+        match crate::commands::services::start_stack(&state).await {
+            Ok(()) => true,
+            Err(e) => {
+                return JobEnd::Failed(format!(
+                    "created, but the stack wouldn't start — {} isn't being served yet. \
+                     Fix the cause below, then Retry.\n{e}",
+                    site.domain
+                ))
+            }
+        }
+    } else {
+        false
+    };
     match checks {
+        None if started => {
+            // `start_stack` already awaited every backend and verified OUR edge
+            // answers :443; the new site was in the config it wrote.
+            finish_phase(app, entry, progress, ix, "ok", None);
+            JobEnd::Ok(format!("created — serving at https://{}", site.domain))
+        }
         Some(checks) => {
             if let Err(e) = service_manager::await_ready(checks).await {
                 return JobEnd::Failed(format!("site not answering after reload: {e}"));
@@ -2026,13 +2061,7 @@ async fn drive<R: tauri::Runtime>(
             }
             JobEnd::Ok(format!("created — serving at https://{}", site.domain))
         }
-        None => {
-            finish_phase(app, entry, progress, ix, "skipped", Some("stack is stopped — nothing to reload"));
-            JobEnd::Ok(format!(
-                "created — stack is stopped, {} serves on next stack start",
-                site.domain
-            ))
-        }
+        None => unreachable!("a stopped stack was started above, or the job already ended"),
     }
 }
 

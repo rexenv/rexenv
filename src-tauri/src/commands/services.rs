@@ -76,7 +76,7 @@ type PhpSettingsMap = std::collections::HashMap<String, Vec<(String, String)>>;
 /// `.await`).
 #[allow(clippy::type_complexity)] // one snapshot tuple, unpacked immediately
 fn start_inputs(
-    state: &State<'_, AppState>,
+    state: &AppState,
 ) -> Result<(
     Vec<crate::state::models::Site>,
     Vec<String>,
@@ -122,8 +122,21 @@ fn start_inputs(
 /// Nginx + Caddy). Downloads binaries on first run; gated on free ports.
 #[tauri::command]
 pub async fn start_services(state: State<'_, AppState>) -> Result<()> {
+    start_stack(state.inner()).await
+}
+
+/// The Start-all sequence, callable from anywhere that holds the app state —
+/// the button, and a site provision whose serve phase finds the stack stopped
+/// (18 Sep 2026: a first site used to settle as "serves on next stack start",
+/// which the clean-VM smoke test read as the headline promise — "rexenv will
+/// serve it instantly" — being false for the very first site anyone creates).
+///
+/// Five phases, and which lock each holds is the point (M3/M4): downloads and
+/// readiness waits and the privileged edge prompt all run with the services
+/// lock FREE, so status polls stay live throughout.
+pub async fn start_stack(state: &AppState) -> Result<()> {
     let (sites, php_minors, php_settings, site_env, site_aliases, db_versions, php_patches, adminer_version, catch_mail) =
-        start_inputs(&state)?;
+        start_inputs(state)?;
     // Phase 0 (UNLOCKED): plan the full binary set, then prefetch every missing
     // one through the download hub — real progress events for the UI, EVERY
     // failure surfaced (not just the first), and no download ever streams while
@@ -182,14 +195,14 @@ pub async fn start_services(state: State<'_, AppState>) -> Result<()> {
     // our wildcard listener with no bind error anywhere, and every green check above
     // passes while all traffic lands on the other tool. Fail Start-all honestly,
     // naming the interceptor, instead of reporting a stack that can't serve.
-    verify_edge_wire(&state).await
+    verify_edge_wire(state).await
 }
 
 /// Positive wire-identity gate shared by Start-all and login auto-start: OUR edge
 /// must be what answers loopback `:443` (marker-header probe), else error naming
 /// the intercepting process. The watchdog keeps re-checking afterwards and flips
 /// the status truthfully (`edge-blocked` / `edge-unblocked` events).
-async fn verify_edge_wire(state: &State<'_, AppState>) -> Result<()> {
+async fn verify_edge_wire(state: &AppState) -> Result<()> {
     let wire = core::proxy::edge_wire(
         core::adminer::ADMINER_HOST,
         core::proxy::DEFAULT_HTTPS_PORT,

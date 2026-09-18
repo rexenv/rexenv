@@ -100,6 +100,15 @@ nothing.** The silent case is the one that ships to everybody.
 
 ## Core: WordPress over HTTPS (the headline flow)
 - [ ] **New site** → WordPress → create; install completes without error.
+- [ ] **With the stack STOPPED when you create it** (the first site on a clean Mac always
+      is): the card's serve phase reads `stack is stopped — starting it`, the branded
+      "rexenv wants to start its HTTPS server on ports 80 and 443" prompt appears from the
+      card, and the card settles `created — serving at https://<name>.rex`. **Tell:** a
+      green card whose serve phase says `skipped`, the site row `Stopped`, and the page
+      only loading after you find Restart — that was every 0.7.x first site (18 Sep 2026).
+      **Passed 18 Sep 2026** on the clean VM: `smoke2.rex` created from `Stopped 0/5`, the
+      prompt came from the card, both sites `Running`, `https://smoke2.rex` 200 with the
+      system trust store.
 - [ ] Site loads at **`https://<name>.rex`** with a valid lock (no cert warning).
 - [ ] **WP admin** opens (`/wp-admin`); "Log in as" magic link logs in.
 

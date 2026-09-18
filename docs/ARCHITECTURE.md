@@ -2619,6 +2619,19 @@ IPC surface — which is how a reader ends up designing against a system with on
     wired, serving site behind a "setup incomplete" badge whose Retry re-runs the
     clone, the database and Composer to reach the one step that was never rexenv's to
     guarantee. (Same "succeeded, but" shape as `serving_blocked`.)
+  - **A stopped stack is STARTED by the serve phase, not deferred** (18 Sep 2026). Until
+    then a site created with the stack down settled `ok` as "serves on next stack start"
+    (a decision recorded in `docs/archive/PLAN-site-provisioning-progress.md` §D, now
+    reversed), and the clean-VM smoke test showed what that meant for the FIRST site
+    anyone creates: WordPress installed, card green, Safari "can't connect", and a
+    Restart button to go and find — the headline promise ("rexenv will serve it
+    instantly") false on the headline flow. The serve phase now runs the Start-all
+    sequence itself (`commands::services::start_stack`, the body the button calls):
+    prefetch, `start_core` with the new site already in its list, `await_ready`, the
+    privileged edge prompt off the runtime, the wire verified. A foreign `:443` or a port
+    conflict therefore fails THIS job with Start all's own words, the row stays
+    `provisioned = 0` ("setup incomplete", Retry re-runs the serve step), and nothing
+    ever settles green over a site nobody can open.
   - **WordPress from a repository** (Stage 4) runs the SAME four phases a created
     WordPress site does, because each was already skip-aware — `core_download` when
     core is present, `configure` when `wp-config.php` is, `core_install` when

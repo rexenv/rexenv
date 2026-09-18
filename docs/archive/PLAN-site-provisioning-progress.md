@@ -89,6 +89,10 @@ display only, never triggers.
   (site actually answering), capped ≤99 before. Stack stopped: serve phase reports
   "skipped (stack stopped)", job settles ok at 100 with summary
   `created — stack is stopped, site serves on next stack start` (decided).
+  **REVERSED 18 Sep 2026:** the serve phase now STARTS a stopped stack (the Start-all
+  sequence, `commands::services::start_stack`) and settles `created — serving at …`;
+  the clean-VM smoke test showed the deferral made the first site anyone creates the one
+  rexenv did not serve. Current truth: `docs/ARCHITECTURE.md` (provisioning bullets).
 
 ## E. Failure / cancel
 

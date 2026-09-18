@@ -458,8 +458,8 @@ const PROV_OK = {
   status: "ok",
   phaseCursor: 6,
   pct: 100,
-  phases: PROV_PHASES("serve", "skipped"),
-  summary: "created — stack is stopped, shop.rex serves on next stack start",
+  phases: PROV_PHASES("serve", "ok"),
+  summary: "created — serving at https://shop.rex",
 };
 const PROV_FAILED = {
   ...PROV_BASE,
