@@ -145,7 +145,7 @@ COMMANDS:
   site open <domain>    Open https://<domain> in the browser
   site login <domain>   Open a logged-in wp-admin (magic link; --print to not open)
   site create <domain> [--name N] [--type wordpress|php|laravel] [--php 8.3]
-              [--server nginx|frankenphp|apache] [--db mysql|mariadb|postgres]
+              [--server nginx|frankenphp|apache] [--db mysql|mariadb|postgres|none]
               [--blueprint <name>] [--multisite subdomain|subdirectory]
               [--path <folder>]
                 Create a site (defaults mirror the app's New Site dialog;
@@ -1043,6 +1043,28 @@ fn unknown_flag<'a>(words: &'a [String], known: &[&str]) -> Option<&'a String> {
     words.iter().find(|w| w.starts_with("--") && !known.contains(&w.as_str()))
 }
 
+/// What a site row's database line says. A Blank-PHP site that never asked for
+/// a starter database (`starterDb` absent/false — the dialog's "None", or a
+/// `rex site create` without `--starter-db`) HAS no database: nothing was
+/// created, `db.php` was never written. Until 18 Sep 2026 `site info` printed
+/// `mysql (php_<name>_rex)` for it anyway — the row's engine default and a
+/// derived name, for a database that did not exist (clean-VM smoke test), and
+/// the delete line said "database + files removed". The engine and the name
+/// are facts only once the site has a database.
+fn database_label(site: &Value) -> String {
+    let php = site["type"].as_str() == Some("php");
+    if php && site["starterDb"] != json!(true) {
+        return "none — no database was created (a Blank-PHP site gets one with `--starter-db`, or the dialog's Database field)".into();
+    }
+    let str_of = |v: &Value| v.as_str().unwrap_or("?").to_string();
+    format!("{} ({})", str_of(&site["dbEngine"]), str_of(&site["dbName"]))
+}
+
+/// Whether deleting `site` drops a database as well as files.
+fn has_database(site: &Value) -> bool {
+    !(site["type"].as_str() == Some("php") && site["starterDb"] != json!(true))
+}
+
 /// `site create`'s value-taking flags, and the socket key each one fills. ONE
 /// list: the loop below sends them and the unknown-flag check measures against
 /// it, so a flag can never be accepted-but-unsent or refused-but-supported.
@@ -1090,6 +1112,13 @@ fn cmd_site_create(words: &[String], json_output: bool) {
     args.insert("domain".into(), json!(domain));
     for (flag, key) in CREATE_FLAGS {
         if let Some(v) = flag_value(words, flag) {
+            // `--db none` is the dialog's "None": no starter database. The
+            // server's engine field has no such variant — a Blank-PHP site
+            // without `--starter-db` already gets no database — so the flag
+            // is honoured by sending nothing, and rejected everywhere else.
+            if flag == "--db" && v == "none" {
+                continue;
+            }
             args.insert(key.into(), json!(v));
         }
     }
@@ -1117,7 +1146,7 @@ fn cmd_site_create(words: &[String], json_output: bool) {
         created["type"].as_str().unwrap_or("?"),
         created["phpVersion"].as_str().unwrap_or("?"),
         created["webServer"].as_str().unwrap_or("?"),
-        created["dbEngine"].as_str().unwrap_or("?"),
+        if has_database(&created) { created["dbEngine"].as_str().unwrap_or("?") } else { "no database" },
         created["domain"].as_str().unwrap_or(domain),
     );
     // Reported from the ROW the app wrote back, not from the flag we sent —
@@ -1236,7 +1265,7 @@ fn cmd_site_info(words: &[String], json_output: bool) {
         ),
     );
     field("server", str_of(&s["webServer"]));
-    field("database", format!("{} ({})", str_of(&s["dbEngine"]), str_of(&s["dbName"])));
+    field("database", database_label(s));
     field("path", str_of(&s["path"]));
     if let Some(days) = data["cert"]["daysLeft"].as_i64() {
         field("cert", format!("{days} days left (expires {})", str_of(&data["cert"]["notAfter"])));
@@ -3676,8 +3705,10 @@ fn cmd_site_delete(words: &[String], json_output: bool) {
             "✓ deleted {domain} (database removed; your folder at {} is untouched)",
             site["path"].as_str().unwrap_or("?")
         );
-    } else {
+    } else if has_database(&site) {
         println!("✓ deleted {domain} (database + files removed)");
+    } else {
+        println!("✓ deleted {domain} (files removed — it had no database)");
     }
 }
 
@@ -3738,6 +3769,23 @@ fn cmd_status(json_output: bool) {
 
 #[cfg(test)]
 mod tests {
+    /// #682 — the database line names an engine and a name only for a site
+    /// that has a database. A Blank-PHP site without a starter database is
+    /// "none", whatever the row's engine default and derived name say.
+    #[test]
+    fn a_blank_php_site_without_a_starter_database_is_reported_as_none() {
+        use serde_json::json;
+        let bare = json!({"type":"php","dbEngine":"mysql","dbName":"php_bare_rex"});
+        assert!(super::database_label(&bare).starts_with("none"), "{}", super::database_label(&bare));
+        assert!(!super::has_database(&bare));
+        let seeded = json!({"type":"php","starterDb":true,"dbEngine":"mysql","dbName":"php_seed_rex"});
+        assert_eq!(super::database_label(&seeded), "mysql (php_seed_rex)");
+        assert!(super::has_database(&seeded));
+        let wp = json!({"type":"wordpress","dbEngine":"mariadb","dbName":"wp_x_rex"});
+        assert_eq!(super::database_label(&wp), "mariadb (wp_x_rex)");
+        assert!(super::has_database(&wp));
+    }
+
     /// Ledger #630 — **`rex` finds the app's Windows pipe itself**: the name is the app's lock pipe name for the
     /// same config folder, whatever case it is spelled in, and the folder is `%LOCALAPPDATA%`'s. The literal is
     /// asserted in the app too (`app_pipe_rules.rs`), and this test reads that it still is.

@@ -52,12 +52,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   production). Fix: a space-free per-run TMPDIR that the same `Drop` guard removes (under the
   user's `$TMPDIR`/`var/folders`), then re-run SMOKE §Git assets 2–6 by hand.
   ✓ 18 Sep 2026 — `scratch_root` picks the OS temp dir (whitespace-checked, refusal otherwise), ledger #679; live on the VM.
-- [ ] **Site info claims a database that does not exist.** 18 Sep 2026 VM: a Blank PHP site created
-  with **Database: None** (dialog) or via `rex site create --type php` (which runs only
-  prepare/fetch/serve — no starter, no `db.php`, no database) is reported by `rex site info` /
-  `site_info` as `database mysql (php_<name>_rex)`, and delete says "database + files removed".
-  The record should carry "none", and the CLI should offer `--db none` (it rejects it today while
-  the dialog offers None) — or run the starter the dialog runs.
+- [x] **Site info claims a database that does not exist.** ✓ 18 Sep 2026 — `rex site info` /
+  `create` / `delete` now say "none" / "no database" for a Blank-PHP site without a starter
+  database, and `--db none` is accepted (ledger #682). The CLI's opt-in `--starter-db` default
+  is by design (#462), not the bug. Still open, narrower: the MCP `site_info` view and the app's
+  Site Settings tab serialize the same `dbEngine`/`dbName` for such a site — a `hasDatabase`
+  fact on the row would close both.
 - [ ] **Adminer: the documented revert does not exist.** After Update (5.4.2 → 6.0.2) the Databases
   row reads only `Adminer 6.0.2`; the older tree stays on disk but nothing offers it, so
   `docs/SMOKE-TEST.md`'s "a revert is a second press" cannot be done. Either offer the kept
@@ -700,9 +700,24 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     `tail: []` — the `cmd` child closed both pipes before printing a line — while passing 6/6 alone,
     3/3 in further parallel full runs and 1/1 single-threaded; a pid-reuse path through the job
     registry was checked and ruled out. The test now reports exit code, callback lines and tail on
-    failure, so the next one explains itself. **Left:** the bar's
-    Windows run past clippy (tsc, eslint, doc gates, windows-check unmeasured there), the SMOKE-TEST
-    and INSTALL sections run by a human on Windows, and the clean Windows 11 VM pass
+    failure, so the next one explains itself.
+    **Ruled 18 Sep 2026 (owner): the Dell runs ONLY what the Mac cannot.** Three verify.sh
+    runs had capped inside `cargo build --examples` (1h, 2h, 5h) and a fourth reached clippy
+    only because nothing had changed -- 184 examples each relink the whole lib, ~5h on that
+    laptop after ANY lib change, and the Mac's `cargo xwin clippy --all-targets` proves the
+    same "they compile for Windows" in 16 s. So the bar is not run whole there. The Dell
+    loop is now per gate, each with its own log and verdict line the moment it finishes
+    (`scripts/probes/`-style runner, `gates/summary.txt`): `cargo test --lib`, `cli` tests,
+    ledger-tally, doc-counts, check-app-manifest-test, status -- **~50 s warm, green on
+    `720465ae`: 1311/0, 23/0, every script gate rc=0.** notices-check is NOT a Dell gate:
+    it filters the macOS dependency graph and needs darwin-only crates cached offline
+    (`base64 0.21.7` was the first miss). **One real portability bug found by it:**
+    `status.py`'s `sh()` used `text=True`, which decodes with the locale -- cp1252 on
+    Windows -- and `ledger-tally.sh`'s UTF-8 tally marks killed the reader thread; the
+    earlier "status.py utf-8 helpers" fix (17 Sep) had missed that one call. Now
+    `encoding="utf-8"` there and in notices-check.py. **Left:** the SMOKE-TEST and INSTALL
+    Windows sections run by a human on Windows; `windows-check.sh` running clippy (row
+    below); the clean Windows 11 VM pass.
   - [ ] `windows-check.sh` should run clippy with `-D warnings` for the Windows target, not bare
     `cargo check` — the gap ledger #675 measured: nine lib and 70 example reds the Mac-side gate
     passed over. `cargo xwin clippy --all-targets --target x86_64-pc-windows-msvc -- -D warnings`

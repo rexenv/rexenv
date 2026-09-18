@@ -26,7 +26,7 @@ convention) — see "Infrastructure" for progress streaming.
 | `rex status` (`--json` global) | `services_status` + `dns_status` |
 | `rex start` / `rex stop` / `rex restart` | `start_services` / `stop_services` (restart = both) |
 | `rex site list` | `list_sites` + `sites_serving` |
-| `rex site create <domain> [--name --type --php --server --db]` | `create_site` |
+| `rex site create <domain> [--name --type --php --server --db]` (`--db none` = the dialog's None, 18 Sep 2026) | `create_site` |
 | `rex site delete <domain> [--yes]` | `delete_site` (domain→id lookup client-side) |
 | `rex site info <domain>` | `list_sites`+`sites_serving`+`sites_resources`+`site_cert_info`+`wp_info` |
 | `rex site open <domain>` | CLI-only (`open https://…`, domain validated via `site.list`) |
