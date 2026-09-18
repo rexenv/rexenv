@@ -678,6 +678,13 @@ site with a REAL plugin, which is the part the fixtures cannot buy.
 - [ ] Open a WordPress site you have NOT opened this session: the **WordPress tab and Magic Login are there on the first frame** — no second-late pop-in while `wp-info` resolves (8 Aug).
 
 ## Stopping ONE site (v44) — the shared services must NOT go with it
+- [x] **With the stack STOPPED (Stop all), hover a site row:** its "Open in browser" quick
+      action is disabled and its tooltip reads "Nothing is serving https://<name>.rex — Start
+      all first"; the site page's Open in browser likewise. Stop ONE site with the stack up
+      instead: the button stays enabled and opens rexenv's stopped page. **Tell:** Safari on
+      "can't connect" from a click rexenv offered (the clean-VM run, 18 Sep 2026). ✓ 18 Sep
+      2026, same VM, stack Stopped 0/6: the row's quick action, the site page's header
+      button and its Quick links tile all disabled with that tooltip.
 - [x] With at least two sites serving, row menu → **Stop site** on one. Its pill reads ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
       **Stopped by you**, and the toast says your other sites keep running.
 - [x] In a browser, the stopped site's URL shows rexenv's **"This site is stopped"** page — ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)

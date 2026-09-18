@@ -330,6 +330,7 @@ export function SiteDetail() {
             <Overview
               site={site}
               isWordpress={isWordpress}
+              isServing={isServing}
               options={options}
               switchPhpPending={switchPhp.isPending}
               switchServerPending={switchServer.isPending}
@@ -476,7 +477,16 @@ function SiteHeader({
                   : "Stop site"}
             </Button>
           )}
+          {/* Same rule as the list row: nothing answers a URL the stack is not
+              serving, so the button is disabled with the why — unless the user
+              stopped THIS site, whose URL shows rexenv's own stopped page. */}
           <SplitButton
+            disabled={status !== "running" && site.enabled !== false}
+            title={
+              status !== "running" && site.enabled !== false
+                ? `Nothing is serving ${url} — Start all first`
+                : undefined
+            }
             onClick={() => void openExternal(url).catch(toastBackendError)}
             menu={browserMenu}
             menuWidth={BROWSER_MENU_WIDTH}
@@ -507,6 +517,7 @@ function SiteHeader({
 function Overview({
   site,
   isWordpress,
+  isServing,
   options,
   switchPhpPending,
   switchServerPending,
@@ -518,6 +529,8 @@ function Overview({
 }: {
   site: Site;
   isWordpress: boolean;
+  /** Whether the stack answers this site's URL right now (the header's pill). */
+  isServing: boolean;
   options: { minor: string; eolSince: string | null }[];
   switchPhpPending: boolean;
   switchServerPending: boolean;
@@ -668,10 +681,14 @@ function Overview({
             Quick links
           </div>
           <div className="grid grid-cols-2 gap-[9px]">
+            {/* Same rule as the header: no link the stack is not serving,
+                unless the user stopped THIS site (its URL shows rexenv's page). */}
             <QuickTile
               icon={<PreferredBrowserIcon />}
               iconColor="text-rex-text-muted"
               label={browser ? `Open in ${browser.name}` : "Browser"}
+              disabled={!isServing && site.enabled !== false}
+              title={!isServing && site.enabled !== false ? `Nothing is serving ${url} — Start all first` : undefined}
               onClick={() => void openExternal(url).catch(toastBackendError)}
               menu={browserMenu}
               menuWidth={BROWSER_MENU_WIDTH}
@@ -1716,26 +1733,35 @@ export function QuickTile({
   menu,
   menuLabel,
   menuWidth = 210,
+  disabled,
+  title,
 }: {
   icon: React.ReactNode;
   iconColor: string;
   label: string;
   onClick?: () => void;
   span2?: boolean;
+  /** The tile does nothing right now, and `title` says why (a disabled
+   *  button swallows hover, so the why sits on the tile itself). */
+  disabled?: boolean;
+  title?: string;
   menu?: React.ReactNode;
   menuLabel?: string;
   menuWidth?: number;
 }) {
   return (
     <div
+      title={title}
       className={cn(
         "flex min-w-0 items-stretch rounded-[10px] border border-rex-border-subtle bg-rex-well text-[0.78125rem] text-rex-text-bright transition-colors hover:border-rex-border-strong hover:bg-rex-surface-2",
         span2 && "col-span-2",
+        disabled && "opacity-50 hover:border-rex-border-subtle hover:bg-rex-well",
       )}
     >
       <button
         onClick={onClick}
-        className="flex min-w-0 flex-1 items-center gap-[9px] rounded-[10px] px-[11px] py-[10px] text-left"
+        disabled={disabled}
+        className="flex min-w-0 flex-1 items-center gap-[9px] rounded-[10px] px-[11px] py-[10px] text-left disabled:cursor-default"
       >
         <span className={cn("flex flex-none", iconColor)}>{icon}</span>
         <span className="truncate">{label}</span>

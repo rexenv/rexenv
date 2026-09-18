@@ -331,11 +331,25 @@ export function SiteRow({
         className="ml-1 hidden items-center gap-px opacity-0 transition-opacity group-hover:opacity-100 lg:flex"
         onClick={(e) => e.stopPropagation()}
       >
+        {/* A site the STACK is not serving has nothing at its URL — the browser
+            would answer "can't connect" (the clean-VM run, 18 Sep 2026). The
+            button says so instead of opening it. A site stopped BY THE USER is
+            different: the edge is up and answers rexenv's own "this site is
+            stopped" page, which is worth a look (DESIGN.md, two stopped-nesses). */}
+        <span
+          title={
+            status !== "running" && !stoppedByUser
+              ? `Nothing is serving https://${site.domain} — Start all first`
+              : browser
+                ? `Open https://${site.domain} in ${browser.name}`
+                : `Open https://${site.domain}`
+          }
+        >
         <Button
           variant="ghost"
           size="icon"
           aria-label="Open in browser"
-          title={browser ? `Open https://${site.domain} in ${browser.name}` : `Open https://${site.domain}`}
+          disabled={status !== "running" && !stoppedByUser}
           onClick={() => void openExternal(`https://${site.domain}`).catch(toastBackendError)}
         >
           {/* Icon of the browser the click really uses — no chevron here: the
@@ -344,6 +358,7 @@ export function SiteRow({
               different browser for one link lives on the site page. */}
           <PreferredBrowserIcon />
         </Button>
+        </span>
         <Button
           variant="ghost"
           size="icon"

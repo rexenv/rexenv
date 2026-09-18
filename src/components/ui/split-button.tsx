@@ -21,6 +21,7 @@ export function SplitButton({
   variant = "secondary",
   size,
   disabled,
+  title,
   chevronLabel,
   className,
 }: {
@@ -33,6 +34,9 @@ export function SplitButton({
   variant?: ButtonProps["variant"];
   size?: ButtonProps["size"];
   disabled?: boolean;
+  /** Tooltip on the primary half — the WHY when it is disabled. A disabled
+   *  button swallows pointer events, so it goes on the wrapper too. */
+  title?: string;
   /** Accessible name for the chevron, e.g. "Choose a browser". */
   chevronLabel: string;
   className?: string;
@@ -40,18 +44,21 @@ export function SplitButton({
   const hasMenu = Array.isArray(menu) ? menu.length > 0 : !!menu;
   if (!hasMenu) {
     return (
-      <Button variant={variant} size={size} disabled={disabled} onClick={onClick} className={className}>
-        {children}
-      </Button>
+      <span title={title} className={cn("inline-flex", className)}>
+        <Button variant={variant} size={size} disabled={disabled} onClick={onClick} title={title}>
+          {children}
+        </Button>
+      </span>
     );
   }
   return (
-    <div className={cn("inline-flex", className)}>
+    <div className={cn("inline-flex", className)} title={title}>
       <Button
         variant={variant}
         size={size}
         disabled={disabled}
         onClick={onClick}
+        title={title}
         className="rounded-r-none"
       >
         {children}

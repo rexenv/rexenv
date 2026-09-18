@@ -88,6 +88,13 @@ the shipped UI toward one.
   agent view carries `stopped`, and the CLI's `stop` output says every time that
   this is not `rex stop`, because the two are one argument apart and the mistake
   is otherwise silent.
+- **A link the stack is not serving is not offered.** The row's and the site page's
+  "Open in browser" are disabled while nothing answers the site's URL, with the why
+  ("Nothing is serving https://x.rex — Start all first"): on the clean VM (18 Sep 2026)
+  the first click after creating a site opened Safari on "can't connect", because the
+  stack was still stopped. The user's OWN stopped site is the exception — its URL shows
+  rexenv's stopped page, which is the honest thing to look at — so the two
+  stopped-nesses above decide it, not the pill colour.
 - **A per-site Start reports what is TRUE, not what was asked.** Starting a site
   while the services are stopped records the switch and serves nothing; the toast
   is the backend's own sentence about why, never a success. Same rule as the
