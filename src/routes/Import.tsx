@@ -353,15 +353,26 @@ export function Import() {
       <TopBar
         title="Import from Valet, Herd or Local"
         subtitle={
-          isLoading
-            ? "Scanning…"
-            : scanning
-              ? "Rescanning…"
-              : `${candidates.length} found · ${ready.length} ready to import · scanned ${ago(dataUpdatedAt, now)}`
+          // No count where nobody looked. On Windows the card below says rexenv
+          // does not know these tools' layouts yet and did not scan (#641) --
+          // while this line read "0 found · 0 ready to import · scanned just
+          // now", which is the empty-scan report #641 exists to avoid, one
+          // element above the sentence denying it (seen on the Dell, 19 Sep 2026).
+          !words.importsOtherTools
+            ? "not scanned here yet"
+            : isLoading
+              ? "Scanning…"
+              : scanning
+                ? "Rescanning…"
+                : `${candidates.length} found · ${ready.length} ready to import · scanned ${ago(dataUpdatedAt, now)}`
         }
         showSearch={false}
         action={
-          <Button variant="secondary" onClick={() => void rescan()} disabled={scanning || running}>
+          <Button
+            variant="secondary"
+            onClick={() => void rescan()}
+            disabled={scanning || running || !words.importsOtherTools}
+          >
             <RefreshCw className={cn("mr-1.5 h-3.5 w-3.5", scanning && "animate-rex-spin")} />
             {scanning ? "Rescanning…" : "Rescan"}
           </Button>
@@ -928,6 +939,7 @@ export function ResolverConsent({
    *  a leftover file from an uninstalled Valet has nothing behind it. */
   reason?: ReactNode;
 }) {
+  const words = usePlatformWords();
   const qc = useQueryClient();
   const [agreed, setAgreed] = useState(false);
   const take = useMutation({
@@ -960,7 +972,7 @@ export function ResolverConsent({
             {drifted
               ? `rexenv had taken over ${tld.path}, but it's theirs again — so rexenv .${tld.tld} sites won't resolve until you take it over again or move them to .rex.`
               : (reason ??
-                `${tld.path} tells macOS where to send .${tld.tld} lookups. To serve these sites, rexenv needs to answer them instead.`)}
+                `${tld.path} tells ${words.osName} where to send .${tld.tld} lookups. To serve these sites, rexenv needs to answer them instead.`)}
           </div>
         </div>
       </div>

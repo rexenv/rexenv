@@ -541,7 +541,6 @@ function Overview({
   onViewLogs: () => void;
 }) {
   const url = `https://${site.domain}`;
-  const wpConfig = `${site.path}/wp-config.php`;
   // FrankenPHP serves every site with its EMBEDDED PHP, never the site's pool
   // — so for a FrankenPHP site the picker is read-only and the number shown is
   // the version that actually serves, not the stored one (ruled 15 Aug 2026;
@@ -555,6 +554,11 @@ function Overview({
   });
   const editor = usePreferredEditor();
   const words = usePlatformWords();
+  // Joined with the OS's separator, not a literal slash: this rendered
+  // `C:\Users\…\shop.rex/wp-config.php` on Windows (seen on the Dell, 19 Sep
+  // 2026). A hardcoded `/` is a path spelled the macOS way even though nothing
+  // about it reads as a macOS word.
+  const wpConfig = `${site.path}${words.pathSep}wp-config.php`;
   const editorMenu = useEditorMenu(site.path);
   const terminalMenu = useTerminalMenu(site.id);
   const browser = usePreferredBrowser();

@@ -69,6 +69,21 @@ pub struct PlatformWords {
     /// `titleBarStyle: "Overlay"` window, which the shell reserves a row for. Windows draws its own title
     /// bar above the page, so reserving that row there leaves a dead strip (W9 S1, ruling Q1, ledger #636).
     pub window_controls_in_content: bool,
+    /// What one PHP version's worker set IS on this OS, as a sentence names it. D1 ruled Windows runs a
+    /// php-cgi GROUP, not a php-fpm pool; #651 gave the SERVICE ROW a platform label and stopped there, so
+    /// Settings still told a Windows user their versions "each run a php-fpm pool" — the same wrong noun,
+    /// one surface further out (seen on the Dell 19 Sep 2026).
+    pub pool_kind: &'static str,
+    /// The bundled third-party tools this build actually contains, for the credits line. Not one list with
+    /// macOS's answer in it: D4 refuses Redis and MariaDB on Windows (`binaries::ships_on`), and the footer
+    /// named both there — a credits line for software that is not in the download (seen the same day). The
+    /// test below holds this against `DbEngine::available_on`, so a future pin cannot make it a half-truth.
+    pub bundled_tools: &'static str,
+    /// This OS's path separator, for the few places the UI must join one itself. SiteDetail built the
+    /// wp-config path as `${site.path}/wp-config.php` and rendered
+    /// `C:\Users\…\w7check.rex/wp-config.php` — mixed separators, because a literal slash is a path
+    /// spelled the macOS way even when nothing about it looks like a macOS word.
+    pub path_sep: &'static str,
 }
 
 pub const MACOS: PlatformWords = PlatformWords {
@@ -95,6 +110,9 @@ pub const MACOS: PlatformWords = PlatformWords {
     import_search: "~/.config/valet and in Herd's and Local's application-support folders",
     imports_other_tools: true,
     window_controls_in_content: true,
+    pool_kind: "php-fpm pool",
+    bundled_tools: "nginx, PHP, MySQL, MariaDB, PostgreSQL, Redis, Mailpit, Adminer & cloudflared",
+    path_sep: "/",
 };
 
 pub const WINDOWS: PlatformWords = PlatformWords {
@@ -121,6 +139,9 @@ pub const WINDOWS: PlatformWords = PlatformWords {
     import_search: "Valet's, Herd's and Local's own folders",
     imports_other_tools: false,
     window_controls_in_content: false,
+    pool_kind: "php-cgi group",
+    bundled_tools: "nginx, PHP, MySQL, PostgreSQL, Mailpit, Adminer & cloudflared",
+    path_sep: "\\",
 };
 
 /// This build's words.
@@ -192,6 +213,26 @@ mod tests {
         assert_eq!(MACOS.routes_label, "file under /etc/resolver");
         assert_eq!(MACOS.home_prefix, "~");
         assert_eq!(MACOS.import_search, "~/.config/valet and in Herd's and Local's application-support folders");
+    }
+
+    /// **The credits line names only what this build SHIPS**, held against the same predicate the
+    /// gates use (`DbEngine::available_on`) rather than against a reading of D4. The Windows footer
+    /// listed MariaDB and Redis — two engines `binaries::ships_on` refuses there — so it credited
+    /// software that is not in the download (seen on the Dell, 19 Sep 2026).
+    #[test]
+    fn the_credits_line_names_only_the_engines_this_os_ships() {
+        use crate::core::db::DbEngine;
+        for (words, os) in [(MACOS, "macos"), (WINDOWS, "windows")] {
+            for engine in DbEngine::ALL {
+                let name = engine.label();
+                assert_eq!(
+                    words.bundled_tools.contains(name),
+                    engine.available_on(os),
+                    "{os}: bundled_tools {:?} and available_on disagree about {name}",
+                    words.bundled_tools
+                );
+            }
+        }
     }
 
     /// Ledger #626 — no Windows word names a macOS thing.
@@ -292,7 +333,19 @@ mod tests {
                 let text = std::fs::read_to_string(&path).expect("read a source file");
                 for (i, line) in text.lines().enumerate() {
                     let t = line.trim_start();
-                    if t.starts_with("//") || t.starts_with('*') || t.starts_with("/*") {
+                    if t.starts_with("//") || t.starts_with('*') || t.starts_with("/*") || t.starts_with("{/*") {
+                        continue;
+                    }
+                    // (file, the phrase it may still write, why). A name that is a KEY, or a
+                    // sentence about macOS-ORIGIN data that can turn up on any OS, is not a
+                    // macOS word written where the platform should have been asked.
+                    let excused = [
+                        ("routes/Onboarding.tsx", "php-fpm", "a CHIP lookup key, not copy — the service's `name`, which #651 kept stable while moving the display label"),
+                        ("components/wordpress/WordPressManager.tsx", "macOS", "`.DS_Store`/`__MACOSX` found INSIDE a WordPress install — macOS-origin files, which reach a Windows machine with any repo cloned from a Mac"),
+                    ]
+                    .iter()
+                    .any(|(f, phrase, _)| path.to_string_lossy().replace('\\', "/").ends_with(f) && line.contains(phrase));
+                    if excused {
                         continue;
                     }
                     if [
@@ -301,8 +354,15 @@ mod tests {
                         "brew install",
                         "keychain",
                         "your Mac",
-                        "with macOS",
+                        // The BARE name, not only "with macOS": the Theme card read "System
+                        // follows your macOS appearance" and no phrase in this list matched it
+                        // (seen on the Dell 19 Sep 2026). The frontend never has a reason to
+                        // write this word — the OS's name is `os_name`.
+                        "macOS",
                         "this Mac",
+                        // An implementation name that is macOS's answer, not the question:
+                        // Windows runs a php-cgi group (D1). `pool_kind` is the word.
+                        "php-fpm",
                         "/Applications",
                         // A path spelled the macOS way. Measured 16 Sep 2026: after S4 the frontend
                         // writes no `~/…` of its own — every path it shows comes from the backend or

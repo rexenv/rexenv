@@ -30,6 +30,9 @@ export const mockPlatformWords: PlatformWords = {
   importSearch: "~/.config/valet and in Herd's and Local's application-support folders",
   importsOtherTools: true,
   windowControlsInContent: true,
+  poolKind: "php-fpm pool",
+  bundledTools: "nginx, PHP, MySQL, MariaDB, PostgreSQL, Redis, Mailpit, Adminer & cloudflared",
+  pathSep: "/",
 };
 
 export const mockAppInfo: AppInfo = {

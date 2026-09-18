@@ -374,7 +374,7 @@ function Domains() {
             {state === "error" ? "Try again" : "Set up domains & SSL"}
           </button>
           <div className="mt-3 font-mono text-[0.65625rem] text-rex-text-muted">
-            macOS will ask for permission (resolver + certificate)
+            {words.osName} will ask for permission (resolver + certificate)
           </div>
           {state === "error" && (
             <div className="mx-auto mt-3 max-w-[380px] text-[0.75rem] leading-[1.5] text-status-error-bright">

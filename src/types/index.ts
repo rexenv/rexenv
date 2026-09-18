@@ -1118,6 +1118,13 @@ export interface PlatformWords {
   /** macOS draws its window controls over the page (the shell reserves a row for them); Windows draws its
    *  own title bar above it, so there is nothing to reserve (#636). */
   windowControlsInContent: boolean;
+  /** What one PHP version's worker set IS here — "php-fpm pool" / "php-cgi group" (D1). */
+  poolKind: string;
+  /** The bundled tools this build actually contains, for the credits line — held against
+   *  `DbEngine::available_on` in Rust, because D4 refuses Redis and MariaDB on Windows. */
+  bundledTools: string;
+  /** This OS's path separator, for the few places the UI must join one itself. */
+  pathSep: string;
 }
 
 /** A detected code editor (mirrors the Rust EditorApp DTO). */

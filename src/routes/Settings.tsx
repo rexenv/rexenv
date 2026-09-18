@@ -86,6 +86,7 @@ function Notice({ children }: { children: React.ReactNode }) {
 }
 
 function ThemeSetting() {
+  const words = usePlatformWords();
   // Shared store (lib/theme) — stays in sync with the sidebar ThemeToggle.
   const theme = useSyncExternalStore(subscribeTheme, getStoredTheme);
   const choose = setTheme; // persists + applies + notifies immediately
@@ -100,7 +101,7 @@ function ThemeSetting() {
   return (
     <>
       <div className="mb-[14px] text-[0.78125rem] text-rex-text-muted">
-        Choose how rexenv looks. System follows your macOS appearance.
+        Choose how rexenv looks. System follows your {words.osName} appearance.
       </div>
       <div className="grid grid-cols-3 gap-[10px]">
         {TILES.map((t) => {
@@ -387,6 +388,7 @@ function PhpVersionRow({
   onUpdate: () => void;
   onExpand: () => void;
 }) {
+  const words = usePlatformWords();
   return (
     <div className="border-b border-rex-border-subtle last:border-b-0">
       {/* flex-wrap: at the 980px min window the action cluster is wider than
@@ -411,7 +413,7 @@ function PhpVersionRow({
         <span
           title={
             v.installed
-              ? `PHP ${v.minor} is installed and runs its own php-fpm pool.`
+              ? `PHP ${v.minor} is installed and runs its own ${words.poolKind}.`
               : `PHP ${v.minor} is not installed.`
           }
           className={cn(
@@ -654,6 +656,7 @@ function PhpIniSettingsEditor({ minor }: { minor: string }) {
 }
 
 export function PhpVersionsSetting() {
+  const words = usePlatformWords();
   const qc = useQueryClient();
   const { data: versions = [], isLoading } = useQuery({
     queryKey: ["php-versions"],
@@ -783,7 +786,7 @@ export function PhpVersionsSetting() {
         </span>
       </div>
       <div className="mt-1.5 text-[0.6875rem] text-rex-text-muted">
-        Installed versions each run a php-fpm pool; new sites use the default. A site can pick its own
+        Installed versions each run a {words.poolKind}; new sites use the default. A site can pick its own
         version in its detail view.
       </div>
       {/* A check that finds nothing must still visibly have run — the Import
@@ -1745,6 +1748,7 @@ const CHANGELOG_URL = "https://rexenv.rex.bd/docs/changelog/";
 /** The About section — identity, version, links, credits. */
 
 function AboutSetting() {
+  const words = usePlatformWords();
   // Read the download hub's snapshot PASSIVELY from the cache StatusFooter's
   // single `useDownloads()` mount keeps fresh — mounting a second one is what
   // that hook's own doc forbids. An empty snapshot before the footer has seeded
@@ -1844,7 +1848,7 @@ function AboutSetting() {
       {showLicenses && <LicensesDialog onClose={() => setShowLicenses(false)} />}
 
       <div className="text-center text-[0.71875rem] leading-[1.6] text-rex-text-muted">
-        Built on open source — nginx, PHP, MariaDB, PostgreSQL, Redis, Mailpit, Adminer & cloudflared.
+        Built on open source — {words.bundledTools}.
         <br />
         Made for developers who run their kingdom locally.
       </div>

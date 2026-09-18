@@ -548,6 +548,46 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     - Found, not fixed: `rex`'s stall notice ("no reply yet after 10s — the app is either still working or
       wedged") prints even while progress records are arriving — the timer is not reset by progress; seen on the
       Dell's `site create`, every OS
+  - [ ] **W9 screens, LOOKED AT on the Dell 19 Sep 2026** — the app built and run there, every screen
+    captured and read. The wording W9 shipped is CORRECT where it landed: Local CA card
+    ("trusted · Trusted Root store"), the re-trust sentence, "asks for an administrator's approval
+    once", the change-domain dialog ("register it with Windows"), Uninstall ("remove every rexenv
+    NRPT rule", no /etc/resolver), "Open rexenv at login" ("sign in to Windows … Task Manager's
+    Startup tab"), the AI-agents copy ("administrator password"), every path on Settings and
+    SiteDetail, and no dead strip under the OS title bar. **Five things it did NOT cover, found by
+    looking:**
+    1. Settings → General → Theme: "System follows your **macOS** appearance." — a macOS word on a
+       Windows screen, and not in W9's list because nobody had read that card.
+    2. Settings → About footer: "Built on open source — nginx, PHP, **MariaDB**, PostgreSQL,
+       **Redis**, Mailpit, Adminer & cloudflared." Both are refused on Windows by D4/#642
+       (`binaries::ships_on`), so the footer names two things this build does not contain.
+    3. Settings → Services: "Installed versions each run a **php-fpm** pool". D1 ruled Windows runs
+       a php-cgi GROUP; #651 gave the service ROW a platform label and this sentence was outside
+       the surface that fix covered.
+    4. SiteDetail → Overview: Config path renders `C:\Users\DELL\rexenv\Sites\w7check.rex**/**wp-config.php`
+       — mixed separators, so something joins that one with a literal `/` where Project path above
+       it uses `join`.
+    5. Import: the card says "rexenv doesn't know where Valet, Herd or Local keep their sites on
+       Windows yet, so it didn't look" (#641, correct) while the header above it reads
+       "0 found · 0 ready to import · **scanned just now**" — the counter reports an empty scan,
+       which is the exact claim #641 exists to avoid.
+    **All five fixed the same day, and the scan that should have caught them widened.** `pool_kind`
+    ("php-fpm pool" / "php-cgi group"), `bundled_tools` and `path_sep` joined `PlatformWords`; the
+    Theme card, both pool sentences, the credits line, the wp-config join and the Import header now
+    ask for them. The frontend scan forbids the BARE literal `macOS` (it only knew "with macOS", so
+    "your macOS appearance" walked past it) and `php-fpm`, with two named exceptions: a CHIP lookup
+    KEY, and the "N macOS system file(s) found" line about `.DS_Store`/`__MACOSX` INSIDE a
+    WordPress install, which reach a Windows machine with any repo cloned from a Mac.
+    **Widening it found three more nobody had seen on a screen:** Onboarding's "macOS will ask for
+    permission (resolver + certificate)", Import's "tells macOS where to send .rex lookups", and a
+    second "runs its own php-fpm pool" in the PHP version row. And the new credits test — held
+    against `DbEngine::available_on`, not against a reading of D4 — found that the footer never
+    named **MySQL** on either OS, the one engine every site gets by default.
+    **How it was looked at, for the next time:** an SSH session is not the interactive desktop —
+    `CopyFromScreen` there saves a blank image — so both the app launch and every capture ran
+    through `schtasks /run … /IT`, which executes in the logged-on session. Clicks were driven from
+    the screenshots and the click script REFUSES unless the foreground window is rexenv's own; it
+    refused once, correctly, when a PowerShell window took focus.
   - [ ] W9 — frontend on WebView2 (Windows paths, Ctrl shortcuts, fonts)
     **macOS words on the Windows screens** (seen in the real app on the Dell, W6 S5, 15 Sep 2026): Settings
     "trusted · login keychain" and "Local CA re-trusted in your login keychain." (`Settings.tsx:945`, `:856`),
