@@ -3264,12 +3264,19 @@ mod tests {
             Some(Duration::from_millis(500)),
         )
         .unwrap();
-        assert!(!r.ok, "a stalled step must not read as success");
-        assert!(!r.cancelled, "stall is not a user cancel");
+        // Every assertion below names the WHOLE result, not just the field it checks. On the
+        // Dell this failed twice in ~7 full-suite runs (18 Sep 2026) with `tail: []` and
+        // nothing else -- an empty tail plus not-ok plus not-cancelled means the child closed
+        // both pipes before printing a line and before the idle limit, i.e. `cmd` itself did
+        // not run the script -- and the message carried neither the exit code nor the lines
+        // the callback saw, so the failure could not say why. It passes 6/6 alone and 4/4 in
+        // further full runs; the next failure has to explain itself.
+        let seen = format!("exit={:?} ok={} cancelled={} lines={:?} tail={:?}", r.exit, r.ok, r.cancelled, lines, r.tail);
+        assert!(!r.ok, "a stalled step must not read as success: {seen}");
+        assert!(!r.cancelled, "stall is not a user cancel: {seen}");
         assert!(
             r.tail.iter().any(|l| l.contains("killed as stalled")),
-            "tail carries the stall notice: {:?}",
-            r.tail
+            "tail carries the stall notice: {seen}"
         );
         assert!(
             start.elapsed() < Duration::from_secs(10),

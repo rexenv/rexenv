@@ -635,7 +635,13 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     -- -D warnings` from the Mac now exits 0, which is the first time that check has been runnable
     from here. **The structural finding:** `windows-check.sh` runs `cargo check` with no clippy and
     no `-D warnings`, so the Mac's Windows gate is strictly weaker than the macOS clippy gate and
-    could never have caught any of this — closing that is its own row below. **Left:** the bar's
+    could never have caught any of this — closing that is its own row below. **An intermittent, measured
+    and not yet explained:** with the clippy fixes in, `cargo test --lib` on the Dell failed
+    `idle_watchdog_kills_a_silent_step_and_reports_the_stall` twice in ~7 full-suite runs with
+    `tail: []` — the `cmd` child closed both pipes before printing a line — while passing 6/6 alone,
+    3/3 in further parallel full runs and 1/1 single-threaded; a pid-reuse path through the job
+    registry was checked and ruled out. The test now reports exit code, callback lines and tail on
+    failure, so the next one explains itself. **Left:** the bar's
     Windows run past clippy (tsc, eslint, doc gates, windows-check unmeasured there), the SMOKE-TEST
     and INSTALL sections run by a human on Windows, and the clean Windows 11 VM pass
   - [ ] `windows-check.sh` should run clippy with `-D warnings` for the Windows target, not bare
