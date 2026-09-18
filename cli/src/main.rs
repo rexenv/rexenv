@@ -1294,8 +1294,13 @@ fn cmd_site_open(words: &[String]) {
     open_url(&format!("https://{}", site["domain"].as_str().unwrap_or_default()));
 }
 
+const LOGIN_USAGE: &str = "rex: usage: rex site login <domain> [--print]";
+
 fn cmd_site_login(words: &[String], json_output: bool) {
-    let site = find_site(words, "rex site login <domain> [--print]");
+    // Without `--print` this OPENS a browser, so a typo on a headless or SSH
+    // session sent a one-time login URL to a window nobody was looking at.
+    reject_unknown_flags(words, "site login", &["--print"], LOGIN_USAGE);
+    let site = find_site(words, LOGIN_USAGE.trim_start_matches("rex: usage: "));
     if site["type"] != json!("wordpress") {
         eprintln!("rex: `{}` is not a WordPress site", site["domain"].as_str().unwrap_or("?"));
         exit(1);
@@ -2278,11 +2283,16 @@ fn cmd_site_rename(words: &[String], json_output: bool) {
     println!("✓ {} is now named “{name}”", site["domain"].as_str().unwrap_or("?"));
 }
 
+const DOMAIN_USAGE: &str = "rex: usage: rex site domain <domain> <new-domain> [--yes]";
+
 fn cmd_site_domain(words: &[String], json_output: bool) {
-    let site = find_site(words, "rex site domain <domain> <new-domain> [--yes]");
+    // Fails safe (a misspelt `--yes` leaves the prompt), guarded for the
+    // reverse mistake — a flag this command does not have.
+    reject_unknown_flags(words, "site domain", &["--yes"], DOMAIN_USAGE);
+    let site = find_site(words, DOMAIN_USAGE.trim_start_matches("rex: usage: "));
     let old = site["domain"].as_str().unwrap_or("?").to_string();
     let Some(new_domain) = words.get(1).filter(|w| !w.starts_with("--")) else {
-        eprintln!("rex: usage: rex site domain <domain> <new-domain> [--yes]");
+        eprintln!("{DOMAIN_USAGE}");
         exit(1);
     };
     if !words.iter().any(|w| w == "--yes") {
@@ -2632,7 +2642,21 @@ fn cmd_config(words: &[String], json_output: bool) {
     }
 }
 
+const MAIL_USAGE: &str = "rex: usage: rex mail [list [--unread] [query] | open | mark-read | clear [--yes]]";
+
 fn cmd_mail(words: &[String], json_output: bool) {
+    // `--unrea` did not fail — it listed the WHOLE inbox, which is what an
+    // empty unread list looks like from the outside.
+    reject_unknown_flags(
+        words,
+        "mail",
+        match words.first().map(String::as_str) {
+            None | Some("list") => &["--unread"],
+            Some("clear") => &["--yes"],
+            _ => &[][..],
+        },
+        MAIL_USAGE,
+    );
     match words.first().map(String::as_str) {
         None | Some("list") => {
             // `mail.list` has always taken a search term and an unread filter —
@@ -2724,7 +2748,20 @@ fn cmd_mail(words: &[String], json_output: bool) {
     }
 }
 
+const TUNNEL_USAGE: &str = "rex: usage: rex tunnel [list | start <domain> [--yes] | stop <domain>]";
+
 fn cmd_tunnel(words: &[String], json_output: bool) {
+    // Fails safe on its own — a misspelt `--yes` leaves the "expose PUBLICLY?"
+    // prompt standing — and takes the guard for the reverse mistake.
+    reject_unknown_flags(
+        words,
+        "tunnel",
+        match words.first().map(String::as_str) {
+            Some("start") => &["--yes"],
+            _ => &[][..],
+        },
+        TUNNEL_USAGE,
+    );
     match words.first().map(String::as_str) {
         None | Some("list") => {
             let data = request("tunnel.list", Value::Null);
@@ -2888,6 +2925,22 @@ fn generate_password() -> String {
 }
 
 fn cmd_wp(words: &[String], json_output: bool) {
+    // Before `find_site`, and per arm: `--activate` means nothing to
+    // `user create` and `--delete-posts` nothing to `plugin install`.
+    // `search-replace` keeps its own call further down — that one also guards
+    // the POSITIONALS, which is a different failure (#466).
+    reject_unknown_flags(
+        words,
+        "wp",
+        match (words.get(1).map(String::as_str), words.get(2).map(String::as_str)) {
+            (Some("plugin") | Some("theme"), Some("install")) => &["--activate"],
+            (Some("user"), Some("create")) => &["--role"],
+            (Some("user"), Some("delete")) => &["--reassign", "--delete-posts"],
+            (Some("search-replace"), _) => &["--dry-run", "--yes"],
+            _ => &[][..],
+        },
+        WP_USAGE,
+    );
     let site = find_site(words, WP_USAGE);
     if site["type"] != json!("wordpress") {
         eprintln!("rex: `{}` is not a WordPress site", site["domain"].as_str().unwrap_or("?"));
@@ -3668,7 +3721,12 @@ fn lines_flag(words: &[String]) -> u64 {
     flag_value(words, "--lines").and_then(|v| v.parse().ok()).unwrap_or(100)
 }
 
+const LOGS_USAGE: &str = "rex: usage: rex logs [<key>] [--lines N] [--follow]";
+
 fn cmd_logs(words: &[String], json_output: bool) {
+    // A dropped `--lines 500` is not an error, it is 100 lines — the default,
+    // indistinguishable from a log that is only 100 lines long.
+    reject_unknown_flags(words, "logs", &["--lines", "--follow"], LOGS_USAGE);
     let key = words.first().filter(|w| !w.starts_with("--"));
     let Some(key) = key else {
         let data = request("logs.list", Value::Null);
@@ -3687,8 +3745,14 @@ fn cmd_logs(words: &[String], json_output: bool) {
     tail_loop(json!({ "key": key }), lines_flag(words), words.iter().any(|w| w == "--follow"));
 }
 
+const SITE_LOGS_USAGE: &str =
+    "rex: usage: rex site logs <domain> [--source K] [--lines N] [--follow]";
+
 fn cmd_site_logs(words: &[String], json_output: bool) {
-    let site = find_site(words, "rex site logs <domain> [--source K] [--lines N] [--follow]");
+    // No `--source` means "list the sources", so `--sourc app` printed the
+    // menu instead of the log: an answer, to a question nobody asked.
+    reject_unknown_flags(words, "site logs", &["--source", "--lines", "--follow"], SITE_LOGS_USAGE);
+    let site = find_site(words, SITE_LOGS_USAGE.trim_start_matches("rex: usage: "));
     let id = site["id"].clone();
     let Some(source) = flag_value(words, "--source") else {
         let data = request("logs.targets", json!({ "id": id }));
@@ -3972,6 +4036,13 @@ mod tests {
             "fn cmd_db_versions(",
             "fn cmd_site_enabled(",
             "fn cmd_repo(",
+            "fn cmd_mail(",
+            "fn cmd_tunnel(",
+            "fn cmd_logs(",
+            "fn cmd_site_logs(",
+            "fn cmd_site_login(",
+            "fn cmd_site_domain(",
+            "fn cmd_wp(",
         ] {
             let body = ME
                 .split(name)
@@ -4002,6 +4073,14 @@ mod tests {
                     declared.extend(flags_in(line));
                 } else {
                     read.extend(flags_in(line));
+                }
+                // The one flag read through a HELPER rather than in the body.
+                // Named here rather than dropped from the check: `--lines` is
+                // as droppable as any other (a lost `--lines 500` is 100 lines,
+                // which reads as a short log), and a scan that cannot see it
+                // would have to stop measuring the command that takes it.
+                if line.contains("lines_flag(") {
+                    read.push("--lines".to_string());
                 }
             }
             for v in [&mut declared, &mut read] {

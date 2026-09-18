@@ -1032,7 +1032,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     the code is finished, and leaving a plan "in flight" for weeks over a gate that needs a
     release to exist makes `status.py` lie about what is being worked on.
 
-- [ ] **~16 flag-taking `rex` commands still ignore what they do not recognise**
+- [x] **~16 flag-taking `rex` commands still ignore what they do not recognise** ✓ 18 Sep 2026
   (3 Sep 2026, ledger #463/#466). Done: `site create`, `wp search-replace`,
   `site delete`, `db reset`, `db import`; `tld` and `site domains` ✓ 18 Sep 2026 (#466 amended)
   — a THIRD shape, and the one that does not fail but ANSWERS: every flag in both is an optional
@@ -1056,8 +1056,18 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   **Also learned here:** the refusal must come BEFORE `find_site`, which asks the app over the
   socket — the first cut put it after and `rex repo … --them` hung with no rexenv running instead of
   refusing. The four earlier commands were already ordered that way; `repo` was not.
-  Still open: `mail`, `tunnel`, `logs`, `site logs`, `doctor`, `site domain`, `site rename`,
-  and `wp`'s per-arm sets.
+  `mail`, `tunnel`, `logs`, `site logs`, `site login`, `site domain` and `wp`'s per-arm sets ✓ the
+  same day, which closes the class for every flag-taking command. The ones that ANSWER rather than
+  fail: `mail list --unrea` listed the whole inbox (what an empty unread list looks like from
+  outside), `site logs --sourc app` printed the source MENU, `logs --line 500` printed the default
+  100 (indistinguishable from a short log), `site login --prin` opened a browser with a one-time
+  login URL on a session nobody was watching. `tunnel`, `site domain` and `site start|stop` fail
+  safe and took the guard against the reverse mistake.
+  **The test found one thing worth keeping:** `--lines` is read through the `lines_flag` HELPER, not
+  in either command's body, so the body scan called it accepted-but-unread. Named in the scan rather
+  than dropped from it — a lost `--lines` is as silent as any other.
+  Left deliberately: `site rename` (no flags; a `--x` is filtered out of the name and the empty name
+  is refused) and `doctor` (takes no words at all).
   **Pick the rest by what an ignored flag DOES, not by how destructive the verb
   sounds** — that was the first ordering here and it was wrong. On `db reset` and
   `site delete` a typo fails SAFE: a misspelt `--yes` leaves the prompt standing.
