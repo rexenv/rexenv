@@ -61,7 +61,7 @@ def rust_graph(targets=None):
             raw = subprocess.run(
                 ["cargo", "metadata", "--format-version", "1", "--locked", "--offline",
                  "--filter-platform", target, "--manifest-path", os.path.join(ROOT, manifest)],
-                check=True, capture_output=True, text=True,
+                check=True, capture_output=True, encoding="utf-8",
             ).stdout
             meta = json.loads(raw)
             packages = {p["id"]: p for p in meta["packages"]}
@@ -85,7 +85,7 @@ def rust_graph(targets=None):
 def npm_graph():
     raw = subprocess.run(
         ["pnpm", "list", "--prod", "--depth", "Infinity", "--json"],
-        cwd=ROOT, check=True, capture_output=True, text=True,
+        cwd=ROOT, check=True, capture_output=True, encoding="utf-8",
     ).stdout
     seen = set()
 

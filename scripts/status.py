@@ -36,7 +36,11 @@ MD_ESC = str.maketrans({"|": "\\|"})
 
 
 def sh(cmd):
-    return subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True).stdout.strip()
+    # `encoding=` is load-bearing: `text=True` alone decodes with the locale, which on
+    # Windows is cp1252, and `ledger-tally.sh` prints the tally marks in UTF-8 -- the
+    # reader thread died on byte 0x90, stdout came back None, and the gate crashed on
+    # `.strip()` the first time the bar's scripts ran on the Dell (18 Sep 2026).
+    return subprocess.run(cmd, cwd=ROOT, capture_output=True, encoding="utf-8").stdout.strip()
 
 
 def version():
