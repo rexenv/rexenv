@@ -723,6 +723,11 @@ Live-proven end to end by `site_stop_start_check`.
   it IS the pool binary); the update apply's manifest check asks it too. The plans named `php-fpm` on every
   OS, so a Windows first run asked for a build that does not exist ("no binary manifest for php-fpm
   8.3.32", the Dell, 15 Sep 2026) and no site could begin.
+- **A batch is over when every row has SETTLED, however it settled** (`BatchSnapshot::
+  failed` + `in_flight`, 18 Sep 2026). The footer's "still moving" test was `done <
+  total` with `done` counting only successes, so a first run whose six downloads all gave
+  up (clean VM, dead DNS relay) read `Downloading 1 of 6` over a full indeterminate bar,
+  beside six failed rows. Now `done + failed < total`; the panel header says `n failed`.
 - **A planned download row never outlives its resolve** (`Hub::item_settled`, called
   by `prefetch` for each item the moment its resolve returns). The resolvers' early
   returns — the cache hit, a failure before the first byte — report nothing, and a

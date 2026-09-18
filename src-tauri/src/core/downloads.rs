@@ -82,13 +82,29 @@ pub struct ItemSnapshot {
     pub error: Option<String>,
 }
 
-/// The active action's batch: how many of its downloads are complete.
+/// The active action's batch: how many of its downloads are complete, and how
+/// many gave up.
+///
+/// `failed` is its own count because the UI's "is anything still moving?"
+/// question is `done + failed < total`, not `done < total`: with `done` alone,
+/// six rows that had all given up read as `Downloading 1 of 6` with a full
+/// indeterminate bar (clean-VM smoke test, 18 Sep 2026 — the VM's DNS relay
+/// was dead). A batch whose every row has settled, however it settled, is over.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BatchSnapshot {
     pub action: String,
     pub done: usize,
+    pub failed: usize,
     pub total: usize,
+}
+
+impl BatchSnapshot {
+    /// Rows still pending, downloading or preparing — the batch is over when
+    /// this is zero, whichever way each row settled.
+    pub fn in_flight(&self) -> usize {
+        self.total.saturating_sub(self.done + self.failed)
+    }
 }
 
 /// Full hub state — emitted whole (small: at most a dozen items) so the UI can
@@ -738,17 +754,18 @@ impl Hub {
     /// Current full state (batch progress + all item rows).
     pub fn snapshot(&self) -> Snapshot {
         let s = self.state.lock().unwrap_or_else(|p| p.into_inner());
-        let batch = s.batch.as_ref().map(|(action, ids)| BatchSnapshot {
-            action: action.clone(),
-            done: ids
-                .iter()
-                .filter(|id| {
-                    s.items
-                        .iter()
-                        .any(|i| &i.snap.id == *id && i.snap.phase.is_complete())
-                })
-                .count(),
-            total: ids.len(),
+        let batch = s.batch.as_ref().map(|(action, ids)| {
+            let count = |pred: fn(Phase) -> bool| {
+                ids.iter()
+                    .filter(|id| s.items.iter().any(|i| &i.snap.id == *id && pred(i.snap.phase)))
+                    .count()
+            };
+            BatchSnapshot {
+                action: action.clone(),
+                done: count(Phase::is_complete),
+                failed: count(|p| p == Phase::Failed),
+                total: ids.len(),
+            }
         });
         Snapshot {
             batch,
@@ -900,6 +917,30 @@ mod tests {
         assert!(!s.items.iter().any(|i| i.phase == Phase::Pending), "{:?}", s.items);
         let b = s.batch.expect("the batch");
         assert_eq!((b.done, b.total), (1, 2), "the counter moves past the settled row");
+        assert_eq!(b.failed, 1, "the failed row is counted as settled, not as still moving");
+        assert_eq!(b.in_flight(), 0, "nothing is moving — the footer must not say Downloading");
+    }
+
+    /// **A batch whose every row gave up is OVER, not "Downloading 1 of n".**
+    /// The clean-VM first run: DNS dead, all six components fail, and the
+    /// footer read `Downloading 1 of 6` over a full bar because `done` was 0.
+    #[test]
+    fn a_batch_of_only_failures_has_nothing_in_flight() {
+        let h = fresh();
+        h.begin_batch(
+            "First-run setup",
+            &[planned("caddy", "2.11.4", false), planned("nginx", "1.30.3", false)],
+        );
+        assert_eq!(h.snapshot().batch.unwrap().in_flight(), 2);
+        h.item_started("caddy", "2.11.4");
+        h.item_failed("caddy-2.11.4", "can't reach github");
+        let b = h.snapshot().batch.unwrap();
+        assert_eq!((b.done, b.failed, b.total), (0, 1, 2));
+        assert_eq!(b.in_flight(), 1, "nginx is still to come");
+        h.item_settled("nginx-1.30.3", &Err(Error::Other("can't reach github".into())));
+        let b = h.snapshot().batch.unwrap();
+        assert_eq!((b.done, b.failed, b.total), (0, 2, 2));
+        assert_eq!(b.in_flight(), 0);
     }
 
     #[test]

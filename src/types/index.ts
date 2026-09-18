@@ -1291,6 +1291,10 @@ export interface DownloadItem {
 export interface DownloadBatch {
   action: string;
   done: number;
+  /** Rows that gave up. Settled, like `done`: the batch is still moving only
+   *  while `done + failed < total` — `done < total` alone read six failures as
+   *  "Downloading 1 of 6" (18 Sep 2026). */
+  failed: number;
   total: number;
 }
 

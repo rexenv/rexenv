@@ -171,6 +171,9 @@ export function DownloadPanel({ snapshot }: { snapshot: DownloadsSnapshot }) {
           </span>
           <span className="font-mono text-[0.625rem] text-rex-text-muted">
             {snapshot.batch.done}/{snapshot.batch.total}
+            {snapshot.batch.failed > 0 && (
+              <span className="text-status-error-bright"> · {snapshot.batch.failed} failed</span>
+            )}
           </span>
         </div>
       )}

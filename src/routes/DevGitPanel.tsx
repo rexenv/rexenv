@@ -778,7 +778,7 @@ export function DevGitPanel() {
           return null;
         case "downloads_state":
           return params.get("prov") === "fetch"
-            ? { batch: { action: "Create site", done: 0, total: 2 }, items: PROV_DL_ITEMS }
+            ? { batch: { action: "Create site", done: 0, failed: 0, total: 2 }, items: PROV_DL_ITEMS }
             : { batch: null, items: [] };
         // `?panel=wp-add` install-card mocks (`&install=running|partial`):
         case "wp_install_active":

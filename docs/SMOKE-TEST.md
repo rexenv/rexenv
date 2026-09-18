@@ -57,7 +57,11 @@ nothing.** The silent case is the one that ships to everybody.
   up to its total and disappear (or show a failed row WITH Retry). **Tell:** a row reading
   `queued` that never moves, a counter stuck short of its total, and no Retry — fixed
   only by quitting the app. That was a planned row whose resolve returned through the
-  cache hit (#566).
+  cache hit (#566). **Second tell** (18 Sep 2026, clean VM with a dead DNS relay): every
+  row `failed`, and the collapsed indicator STILL reading `Downloading 1 of 6` over a full
+  bar — the batch counted only successes as settled. It must read `6 downloads failed` in
+  red, and the panel header `0/6 · 6 failed`. **Passed 18 Sep 2026** (clean VM, DNS dead,
+  Start all): `6 downloads failed` in red, bar in the error state.
 - [ ] **Reach the last step with a component still downloading or failed** (Continue early;
   or pull the network for the failed case). The "Your kingdom is ready" step must SAY so —
   "n of m ready" with a spinner, or "n failed" in red with a Retry — and never

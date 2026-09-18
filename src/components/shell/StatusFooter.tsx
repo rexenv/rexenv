@@ -91,8 +91,12 @@ export function StatusFooter({ status }: { status: GlobalStatus }) {
   }, []);
   const watching = watchers.filter((w) => w.status === "running");
   const failed = downloads.items.filter((i) => i.phase === "failed");
+  // "Still moving" counts every SETTLED row, failed included: a batch whose
+  // six rows all gave up is over, and read "Downloading 1 of 6" over a full
+  // indeterminate bar until this counted `failed` too (18 Sep 2026).
   const batchActive =
-    downloads.batch !== null && downloads.batch.done < downloads.batch.total;
+    downloads.batch !== null &&
+    downloads.batch.done + downloads.batch.failed < downloads.batch.total;
   const showDownloads = batchActive || failed.length > 0;
   useEffect(() => {
     if (!showDownloads) setPanelOpen(false);
