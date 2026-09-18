@@ -13,15 +13,15 @@ Order on release day: this file against the built dmg, then PUBLISH-TESTING §A0
 publishing IS the §A sign-off.
 
 ## Install & first launch
-- [ ] .dmg mounts; drag rexenv → Applications works.
-- [ ] First launch via **right-click → Open** (or Privacy & Security → Open Anyway); app opens, no "damaged".
-- [ ] Subsequent launches open with a normal double-click.
+- [x] .dmg mounts; drag rexenv → Applications works. ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
+- [x] First launch via **right-click → Open** (or Privacy & Security → Open Anyway); app opens, no "damaged". ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
+- [x] Subsequent launches open with a normal double-click. ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
 
 ## App menu → About
-- [ ] **rexenv menu → "About rexenv" lands on Settings → About**, from whatever
+- [x] **rexenv menu → "About rexenv" lands on Settings → About**, from whatever ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
       screen was open — not the native macOS panel. The Build card shows version,
       commit, built-at, platform and Tauri, and its copy button yields all five.
-- [ ] Do it with the window **hidden** (Cmd-H first): the window comes back
+- [x] Do it with the window **hidden** (Cmd-H first): the window comes back ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
       focused. A menu item that opens something out of sight reads as dead.
 - [ ] **Cmd-C / Cmd-V / Cmd-Z still work** in a text field (the Edit menu comes
       from the default menu the About item edits, not from anything we wrote).
@@ -30,7 +30,7 @@ publishing IS the §A sign-off.
 Onboarding runs BEFORE any service starts, so "is what answers :443 ours?" is
 false on every clean first run. The rule is: **Foreign warns, NoAnswer says
 nothing.** The silent case is the one that ships to everybody.
-- [ ] **Clean Mac, nothing on :443 → NO warning anywhere in onboarding**, and it
+- [x] **Clean Mac, nothing on :443 → NO warning anywhere in onboarding**, and it ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
   never blocks. This is the ordinary state; reporting it would invent a problem
   out of normality. **Tell:** any foreign-proxy notice on a machine with a free
   port — that would have shown to every user alive.
@@ -42,8 +42,8 @@ nothing.** The silent case is the one that ships to everybody.
   not a broken one.
 
 ## Cold first run (downloads + system setup) — also exercises §2.4
-- [ ] On first use the app downloads its components (PHP, Nginx, MySQL, Caddy, WP-CLI…) with visible progress.
-- [ ] **On a Mac WITHOUT the Xcode Command Line Tools** (`xcode-select -p` fails — a fresh
+- [x] On first use the app downloads its components (PHP, Nginx, MySQL, Caddy, WP-CLI…) with visible progress. ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
+- [x] **On a Mac WITHOUT the Xcode Command Line Tools** (`xcode-select -p` fails — a fresh ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
   VM, not a dev machine): all six first-run components reach `ready`, and no "install
   developer tools?" dialog appears at any point. **Tell:** every row `failed` with
   `otool -L failed: xcode-select: error…` and macOS's own CLT dialog on top of the app —
@@ -51,7 +51,7 @@ nothing.** The silent case is the one that ships to everybody.
   A dev Mac cannot see this: the tools are there. **Passed 18 Sep 2026** with the fix, same
   VM (macOS 15.6.1 arm64, UTM, fresh app-data, `xcode-select -p` rc=2): all six `READY`
   in under two minutes, no dialog.
-- [ ] **Leave the Install step early.** (Added 11 Sep 2026 — users reported it.) Click
+- [x] **Leave the Install step early.** (Added 11 Sep 2026 — users reported it.) Click ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
   Continue while the components are still downloading, finish the wizard, and on "Create
   your first site" create one straight away. The footer's download indicator must count
   up to its total and disappear (or show a failed row WITH Retry). **Tell:** a row reading
@@ -69,7 +69,7 @@ nothing.** The silent case is the one that ships to everybody.
   settled state within a second of the footer appearing. **Passed 18 Sep 2026** on that
   path: the final wizard step already read "6 failed", and the footer landed on
   `6 downloads failed` / `0/6 · 6 failed` with every row `failed` + Retry.
-- [ ] **Reach the last step with a component still downloading or failed** (Continue early;
+- [x] **Reach the last step with a component still downloading or failed** (Continue early; ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
   or pull the network for the failed case). The "Your kingdom is ready" step must SAY so —
   "n of m ready" with a spinner, or "n failed" in red with a Retry — and never
   "Everything's installed". **Tell:** the green ✓ Core components chip over failed rows in
@@ -89,18 +89,18 @@ nothing.** The silent case is the one that ships to everybody.
   Import → take over a Valet/Herd TLD (or hand one back). While its admin prompt is open,
   the Sites list and status must still load. **Tell:** screens that spin until the prompt
   is answered — the database locked across the dialog (#569).
-- [ ] Admin prompt for the `.rex` DNS resolver appears and is accepted (`/etc/resolver/rex`; NO `/etc/resolver/test` on a fresh machine).
+- [x] Admin prompt for the `.rex` DNS resolver appears and is accepted (`/etc/resolver/rex`; NO `/etc/resolver/test` on a fresh machine). ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
   The dialog reads **rexenv** in bold with rexenv's logo on the lock, says "rexenv wants to
   add a DNS resolver so .rex sites open on this Mac." (#578), and no extra Dock icon
   appears while it is open (#577). **Tell:** "wants to make changes." with no reason — a
   prompt that lost its `PromptReason`. **Tell:** "osascript wants to make changes." over
   a plain lock — the branded applet failed to build or launch and the fallback ran; the
   log line `branded password prompt unavailable` names why.
-- [ ] Keychain prompt to trust the local CA appears and is accepted. It is titled **rexenv**
+- [x] Keychain prompt to trust the local CA appears and is accepted. It is titled **rexenv** ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
   with rexenv's logo (#579). **Tell:** a dialog titled "security" — the trust went through
   the `security` CLI again instead of the in-process call.
-- [ ] Admin prompt for the edge to bind ports 80/443 appears and is accepted.
-- [ ] **The PHP 7.4 licence texts arrive on the COLD path, not by repair.** (Added
+- [x] Admin prompt for the edge to bind ports 80/443 appears and is accepted. ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
+- [x] **The PHP 7.4 licence texts arrive on the COLD path, not by repair.** (Added ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
   17 Aug 2026 — this leg has never been exercised.) rexenv BUILDS 7.4, so it is the
   distributor and its licence texts must ship beside the bytes; `resolve` fetches them
   into the same staging dir so the publish is atomic — a published 7.4 either carries
@@ -117,8 +117,8 @@ nothing.** The silent case is the one that ships to everybody.
   means the archive URL or its pin is wrong.
 
 ## Core: WordPress over HTTPS (the headline flow)
-- [ ] **New site** → WordPress → create; install completes without error.
-- [ ] **With the stack STOPPED when you create it** (the first site on a clean Mac always
+- [x] **New site** → WordPress → create; install completes without error. ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
+- [x] **With the stack STOPPED when you create it** (the first site on a clean Mac always ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
       is): the card's serve phase reads `stack is stopped — starting it`, the branded
       "rexenv wants to start its HTTPS server on ports 80 and 443" prompt appears from the
       card, and the card settles `created — serving at https://<name>.rex`. **Tell:** a
@@ -127,22 +127,22 @@ nothing.** The silent case is the one that ships to everybody.
       **Passed 18 Sep 2026** on the clean VM: `smoke2.rex` created from `Stopped 0/5`, the
       prompt came from the card, both sites `Running`, `https://smoke2.rex` 200 with the
       system trust store.
-- [ ] Site loads at **`https://<name>.rex`** with a valid lock (no cert warning).
-- [ ] **WP admin** opens (`/wp-admin`); "Log in as" magic link logs in.
+- [x] Site loads at **`https://<name>.rex`** with a valid lock (no cert warning). ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
+- [ ] **WP admin** opens (`/wp-admin`); "Log in as" magic link logs in. (18 Sep 2026 VM: `/wp-admin/` → 302 to login checked over curl; the magic link itself not exercised.)
 
 ## Core: Laravel (the second create flow)
-- [ ] **New site** → Laravel → create; the card runs `installing Laravel` (Composer
+- [x] **New site** → Laravel → create; the card runs `installing Laravel` (Composer ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
       streams package lines) then `creating database + .env`, and settles ok.
-- [ ] Site loads at **`https://<name>.rex`** — the Laravel welcome page, valid lock.
-- [ ] **`https://<name>.rex/.env` 404s.** The served root is `public/`, so the file
+- [x] Site loads at **`https://<name>.rex`** — the Laravel welcome page, valid lock. ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
+- [x] **`https://<name>.rex/.env` 404s.** The served root is `public/`, so the file ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
       holding the site's DB credentials must not be reachable. This is the check
       that would catch a docroot regression, and nothing else on this list would.
-- [ ] `~/rexenv/Sites/<name>.rex/` holds the whole project (artisan, composer.json,
+- [x] `~/rexenv/Sites/<name>.rex/` holds the whole project (artisan, composer.json, ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
       `public/`), and `.env` names this site's database — not `sqlite`.
-- [ ] Databases screen lists that database **with the migration tables** (users,
+- [x] Databases screen lists that database **with the migration tables** (users, ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
       cache, jobs): the skeleton migrates into SQLite before `.env` is wired, so
       empty tables here means the re-run after wiring regressed.
-- [ ] New Site → Laravel / Blank PHP show **no** "Start from blueprint" field
+- [x] New Site → Laravel / Blank PHP show **no** "Start from blueprint" field ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
       (blueprints are WordPress-only); WordPress still shows it.
 
 ## Core: a Blank PHP site with a starter database (`core/starter.rs`)
@@ -151,15 +151,15 @@ nothing.** The silent case is the one that ships to everybody.
 engine; what only the packaged app can prove is the DIALOG and the page as a
 browser renders it.
 
-- [ ] **New site → Blank PHP → Database: MySQL** (the default) → Create. The card
+- [x] **New site → Blank PHP → Database: MySQL** (the default) → Create. The card ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
       shows a `db` and a `configure` phase; the first create on a clean Mac
       downloads the engine, which is exactly what the "None" option avoids.
-- [ ] The site opens on the **rexenv starter page**, not a `phpinfo()` dump: it names
+- [x] The site opens on the **rexenv starter page**, not a `phpinfo()` dump: it names ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
       the PHP version and web server, and the Sample data card reads **connected**
       with four seeded rows.
 - [ ] The site folder holds `index.php` **and** `db.php`. Edit `index.php`, reload,
       and the edit is what you see.
-- [ ] Site → **Database** tab embeds Adminer on that database (it used to say "Blank
+- [x] Site → **Database** tab embeds Adminer on that database (it used to say "Blank ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
       PHP sites have no database"), and the row's database button is enabled.
 - [ ] **Stop MySQL from Services, reload the page:** the card reads **not connected**
       and names the engine to start — not a PHP fatal, not a blank page.
@@ -666,7 +666,7 @@ site with a REAL plugin, which is the part the fixtures cannot buy.
       card says. Confirm the card says it (Settings → Services, catch-all ON).
 
 ## Database (Adminer deep-link)
-- [ ] Site → **Database** tab (or Sites row → Open database) lands **inside the site's DB** (tables listed), no manual login.
+- [x] Site → **Database** tab (or Sites row → Open database) lands **inside the site's DB** (tables listed), no manual login. ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
 - [ ] **Native confirm works** (ledger #166 leg C — the automated legs prove the panels
   are INSTALLED, only an eye can see one render): create a throwaway table, select it,
   **Drop** → a native sheet appears (not a silent no-op, which was the 2026 incident —
@@ -678,15 +678,15 @@ site with a REAL plugin, which is the part the fixtures cannot buy.
 - [ ] Open a WordPress site you have NOT opened this session: the **WordPress tab and Magic Login are there on the first frame** — no second-late pop-in while `wp-info` resolves (8 Aug).
 
 ## Stopping ONE site (v44) — the shared services must NOT go with it
-- [ ] With at least two sites serving, row menu → **Stop site** on one. Its pill reads
+- [x] With at least two sites serving, row menu → **Stop site** on one. Its pill reads ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
       **Stopped by you**, and the toast says your other sites keep running.
-- [ ] In a browser, the stopped site's URL shows rexenv's **"This site is stopped"** page —
+- [x] In a browser, the stopped site's URL shows rexenv's **"This site is stopped"** page — ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
       the brand mark, THIS site's hostname, and both ways to start it — not a certificate
       warning, not a 502, not Caddy's bare error text, and **not another site's content**
       (the fallthrough this design exists to prevent; the automated proof is
       `site_stop_start_check`). Check it in a light-themed browser too: the page follows
       `prefers-color-scheme`, and it must fetch nothing (no webfont, no remote logo).
-- [ ] The OTHER site still loads, and Services still shows the web tier running. A stopped
+- [x] The OTHER site still loads, and Services still shows the web tier running. A stopped ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
       site must never have stopped a php-fpm pool — every site on that PHP version shares it.
 - [ ] **Start site** → it serves again on the SAME certificate (no interstitial, no
       "certificate is not trusted" — the route kept its cert while stopped).
@@ -786,7 +786,7 @@ hand can prove a spec entry became the item it describes.*
   the menu-bar icon; the tray's **Open rexenv** brings both back. Look at the DOCK — do
   not trust `lsappinfo`: it reported `Foreground` for an app whose tile macOS had never
   added (2 Sep 2026), so the policy and the tile are two different facts.
-- [ ] Clicking the icon opens the MENU (not the window). **Open rexenv** brings the
+- [x] Clicking the icon opens the MENU (not the window). **Open rexenv** brings the ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9) — menu, not window; Open rexenv brought it to front
   window to the FRONT — in front of a full-screen browser, not behind it.
 - [ ] **Hold the menu open for ~30 seconds** (the refresh tick is 5s) while the stack is
   mid-start, so the status line and the greyed Start/Stop actually move. The numbers must
@@ -1466,9 +1466,11 @@ itself the first check.
 - [ ] With ~15+ sites the Sites list, search, and status footer stay responsive.
 
 ## Clean uninstall — §3
-- [ ] Settings → Uninstall → **Remove rexenv's system changes**; confirm.
-- [ ] After: `ping foo.rex` no longer resolves; the local CA is no longer trusted (no cert warning is moot — it's gone); no rexenv services running.
-- [ ] Site files remain under `~/Library/Application Support/dev.rexenv.rexenv/` (not deleted).
+- [x] Settings → Uninstall → **Remove rexenv's system changes**; confirm. ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
+- [x] After: `ping foo.rex` no longer resolves; the local CA is no longer trusted (no cert warning is moot — it's gone); no rexenv services running. ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
+- [x] Site files remain under `~/Library/Application Support/dev.rexenv.rexenv/` (not deleted). ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
+- [ ] **`/usr/local/bin/rex` is left behind by the uninstall** (18 Sep 2026 VM): the CLI symlink installed from Settings → General survives "Remove rexenv's system changes". Decide whether the uninstall should remove it (the Windows copy is documented as removable by the uninstall step, ledger #634) — or the card should say it stays.
+- [ ] **Stale CA trust entries** (same run): every fresh app-data folder mints a new local CA and trusts it; wiping app-data by hand and running again leaves the old CAs trusted in the login keychain (four of them on the VM after four wipes; the uninstall untrusts only the CURRENT one). Not a clean-Mac path, but a "reset" story would hit it.
 
 ## Windows — what this checklist means on that OS
 
