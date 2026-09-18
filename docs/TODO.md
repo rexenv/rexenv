@@ -1046,7 +1046,17 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   versions table while the pin stays), the fourth fails safe and takes the guard against the reverse
   mistake. Each usage line is ONE const now, with `find_site` handed the part after its own
   `rex: usage: ` prefix — the first cut printed `usage: usage:`.
-  Still open: `repo`, `mail`, `tunnel`, `logs`, `site logs`, `doctor`, `site domain`, `site rename`,
+  `repo` ✓ the same day, and it needed a PER-ARM table rather than a union: `--branch` means nothing
+  to `delete`, `--yes` nothing to `add`, and one set wide enough for every arm accepts them
+  everywhere. The flag that earns the table is `--theme`, read once for all arms — a misspelt
+  `--theme` sent `repo delete` at the PLUGIN of that name after a confirmation that named the theme.
+  `repo watch start` also read its two positionals straight out of `words`, so
+  `watch start --theme mydir build` took `--theme` as the directory (the #466 read-a-flag-as-a-value
+  shape, in the one arm that does not go through the flag-filtered `rest`).
+  **Also learned here:** the refusal must come BEFORE `find_site`, which asks the app over the
+  socket — the first cut put it after and `rex repo … --them` hung with no rexenv running instead of
+  refusing. The four earlier commands were already ordered that way; `repo` was not.
+  Still open: `mail`, `tunnel`, `logs`, `site logs`, `doctor`, `site domain`, `site rename`,
   and `wp`'s per-arm sets.
   **Pick the rest by what an ignored flag DOES, not by how destructive the verb
   sounds** — that was the first ordering here and it was wrong. On `db reset` and

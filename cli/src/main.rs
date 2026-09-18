@@ -1590,6 +1590,7 @@ fn follow_watch_log(w: &Value, dir: &str) {
 fn cmd_repo(words: &[String], json_output: bool) {
     // `rex repo tools` is app-wide, not site-scoped.
     if words.first().map(String::as_str) == Some("tools") {
+        reject_unknown_flags(words, "repo tools", &["--refresh"], REPO_USAGE);
         let refresh = words.iter().any(|w| w == "--refresh");
         let data = request("repo.tools", json!({ "refresh": refresh }));
         if json_output {
@@ -1616,6 +1617,27 @@ fn cmd_repo(words: &[String], json_output: bool) {
         return;
     }
 
+    // BEFORE `find_site`, which asks the app over the socket: a refusal that
+    // needs a running rexenv to be delivered is not a refusal a typo gets.
+    // PER-ARM, not a union: `--branch` means nothing to `delete` and `--yes`
+    // nothing to `add`, and a set wide enough for every arm accepts them
+    // everywhere. The flag that makes this worth the table is `--theme`, read
+    // ONCE above for every arm — a misspelt `--theme` does not fail, it sends
+    // the whole command to the PLUGIN of that name instead of the theme, which
+    // on `repo delete` is a different folder removed after a confirmation that
+    // named the right one.
+    let known: &[&str] = match words.get(1).map(String::as_str) {
+        Some("list") | None => &["--theme", "--status"],
+        Some("check") | Some("pull") | Some("fetch") | Some("checkout") | Some("push") => {
+            &["--theme", "--install"]
+        }
+        Some("link") => &["--theme", "--name"],
+        Some("watch") => &["--theme", "--tail"],
+        Some("add") => &["--theme", "--branch", "--name", "--install"],
+        Some("delete") => &["--theme", "--yes"],
+        _ => &["--theme"],
+    };
+    reject_unknown_flags(words, "repo", known, REPO_USAGE);
     let site = find_site(words, REPO_USAGE);
     let id = site["id"].clone();
     let theme = words.iter().any(|w| w == "--theme");
@@ -1831,8 +1853,18 @@ fn cmd_repo(words: &[String], json_output: bool) {
                 }
             }
             Some("start") => {
-                let (Some(dir), Some(script)) = (words.get(3), words.get(4)) else {
-                    eprintln!("rex: usage: rex repo <domain> watch start <dir> <script> [--theme] [--tail]");
+                // Both positional, and read straight out of `words` — so
+                // `watch start --theme mydir build` took `--theme` as the
+                // DIRECTORY and started a watcher on a folder of that name.
+                // The same read-a-flag-as-a-value shape `wp search-replace`
+                // had (#466), in the one arm here that does not go through
+                // `rest` (which filters flags out).
+                let (Some(dir), Some(script)) = (
+                    words.get(3).filter(|w| !w.starts_with("--")),
+                    words.get(4).filter(|w| !w.starts_with("--")),
+                ) else {
+                    eprintln!("rex: usage: rex repo <domain> watch start <dir> <script> [--theme] [--tail]\n\
+                               Put <dir> and <script> before the flags.");
                     exit(1);
                 };
                 let w = request(
@@ -3911,66 +3943,83 @@ mod tests {
     /// learn to scroll past.
     /// **A command that reads a flag must also REFUSE its misspelling.**
     ///
-    /// `rex tld` and `rex site domains` both read every flag as an optional
-    /// `Some(..)`, so a typo matched nothing and fell through to the reading
-    /// arm: `tld --remov x` printed the current default TLD, `site domains
-    /// shop.rex --remov extra.rex` printed the list with `extra.rex` still in
-    /// it. Both exited 0. That is the dangerous half of ledger #463 — not a
-    /// refusal, an ANSWER, describing a state the command did not reach.
+    /// The third shape of ledger #463/#466, and the one that does not fail but
+    /// ANSWERS. In these commands every flag is an optional `Some(..)`, so a
+    /// typo matched no arm and fell through to the arm that merely READS:
+    /// `tld --remov x` printed the current default TLD; `site domains shop.rex
+    /// --remov extra.rex` printed the list with `extra.rex` still in it;
+    /// `site restart --pol` restarted the SITE instead of the shared pool —
+    /// a different action, reported as a success. All exit 0.
     ///
     /// Read through a DIFFERENT syntactic form than the one the code declares
-    /// (the `flag_value(words, "--x")` / `flag("--x")` calls vs. the array
-    /// handed to `reject_unknown_flags`): a scan over the same lines would
-    /// delete its own evidence and pass while both sets were empty.
+    /// (the `== "--x"` / `flag_value(words, "--x")` reads vs. the `&["--x"]`
+    /// arrays handed to `reject_unknown_flags`): a scan over the same lines
+    /// would delete its own evidence and pass with both sets empty, which is
+    /// the trap #463's first version fell into.
+    ///
+    /// `cmd_repo` declares its set PER ARM, so what is compared there is the
+    /// union — every flag some arm accepts is read somewhere, and every flag
+    /// read is accepted by some arm. Which arm gets which is the table's own
+    /// business and is not measured here.
     #[test]
     fn every_flag_these_commands_read_is_a_flag_they_accept_and_vice_versa() {
         const ME: &str = include_str!("main.rs");
-        for (name, declared) in [
-            ("fn cmd_tld(", r#"&["--repair", "--remove", "--set"]"#),
-            ("fn cmd_site_domains(", r#"&["--add", "--remove"]"#),
-            ("fn cmd_site_restart(", r#"&["--pool"]"#),
-            ("fn cmd_site_cert(", r#"&["--regenerate"]"#),
-            ("fn cmd_db_versions(", r#"&["--set"]"#),
-            ("fn cmd_site_enabled(", r#"&["--all"]"#),
+        for name in [
+            "fn cmd_tld(",
+            "fn cmd_site_domains(",
+            "fn cmd_site_restart(",
+            "fn cmd_site_cert(",
+            "fn cmd_db_versions(",
+            "fn cmd_site_enabled(",
+            "fn cmd_repo(",
         ] {
             let body = ME
                 .split(name)
                 .nth(1)
                 .and_then(|b| b.split("\nfn ").next())
                 .unwrap_or_else(|| panic!("{name} is gone"));
-            assert!(
-                body.contains(declared),
-                "{name}: the accepted set is no longer {declared} — this test reads it \
-                 literally, so update both halves together"
-            );
-            let mut read: Vec<String> = Vec::new();
+            let flags_in = |line: &str| -> Vec<String> {
+                line.split("\"--")
+                    .skip(1)
+                    .filter_map(|p| p.split('"').next())
+                    // `starts_with("--")` spells a bare `"--"`, which is a
+                    // shape test, not a flag.
+                    .filter(|r| !r.is_empty())
+                    .map(|r| format!("--{r}"))
+                    .collect()
+            };
+            let (mut declared, mut read): (Vec<String>, Vec<String>) = (Vec::new(), Vec::new());
             for line in body.lines() {
                 let line = line.trim_start();
-                // Comments spell flags too, including the misspellings the doc
-                // comments use as examples; and the declaration is not a read.
-                if line.starts_with("//") || line.contains("reject_unknown_flags") {
+                // Comments spell flags too — including the misspellings the
+                // doc comments above use as examples.
+                if line.starts_with("//") {
                     continue;
                 }
-                for part in line.split("\"--").skip(1) {
-                    if let Some(rest) = part.split('"').next() {
-                        read.push(format!("--{rest}"));
-                    }
+                // `&["--x", …]` is the DECLARATION, everywhere it appears: the
+                // per-arm table in `cmd_repo` as well as the single call.
+                if line.contains("&[\"--") {
+                    declared.extend(flags_in(line));
+                } else {
+                    read.extend(flags_in(line));
                 }
             }
-            read.sort();
-            read.dedup();
+            for v in [&mut declared, &mut read] {
+                v.sort();
+                v.dedup();
+            }
+            assert!(!declared.is_empty(), "{name}: no accepted-flag list found");
             assert!(!read.is_empty(), "{name}: the scan found no flag reads at all");
             for f in &read {
                 assert!(
-                    declared.contains(f.as_str()),
+                    declared.contains(f),
                     "{name} reads `{f}` but does not accept it — the command would refuse \
                      the flag it was just given the code to handle"
                 );
             }
-            for f in declared.trim_start_matches("&[").trim_end_matches(']').split(", ") {
-                let f = f.trim_matches('"');
+            for f in &declared {
                 assert!(
-                    read.contains(&f.to_string()),
+                    read.contains(f),
                     "{name} accepts `{f}` but nothing reads it — accepted and silently \
                      dropped is the failure this check exists for"
                 );
