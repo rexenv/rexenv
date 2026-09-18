@@ -583,6 +583,16 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     second "runs its own php-fpm pool" in the PHP version row. And the new credits test — held
     against `DbEngine::available_on`, not against a reading of D4 — found that the footer never
     named **MySQL** on either OS, the one engine every site gets by default.
+    **All five RE-READ on the Dell at `a9d987bf` the same night, on screen:** "System follows your
+    **Windows** appearance"; the credits line reads "nginx, PHP, **MySQL**, PostgreSQL, Mailpit,
+    Adminer & cloudflared" (MariaDB and Redis gone, MySQL there for the first time); "each run a
+    **php-cgi group**"; the config path all backslashes; and Import's subtitle "not scanned here
+    yet" with Rescan disabled. Fixed and seen, not fixed and assumed.
+    **One thing the rebuild taught, worth its own line:** the dev binary IS the DNS agent, which by
+    design outlives the app and is put back by its watchdog — so `cargo build` failed with
+    `failed to remove file … rexenv.exe: Access is denied (os error 5)` even with the app closed,
+    and `Get-Process rexenv | Stop-Process` was not enough because the agent came straight back.
+    The kill and the link have to happen in one breath (`taskkill /F /IM rexenv.exe /T` then build).
     **How it was looked at, for the next time:** an SSH session is not the interactive desktop —
     `CopyFromScreen` there saves a blank image — so both the app launch and every capture ran
     through `schtasks /run … /IT`, which executes in the logged-on session. Clicks were driven from
