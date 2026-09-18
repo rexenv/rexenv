@@ -727,11 +727,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     dropping the `cfg(target_os = "macos")` from `CHECK_UPDATES_MENU_ID` turns it RED and names
     `src/lib.rs:2314`, while the macOS clippy on that same tree stays rc=0 — the finding is reachable
     only from this gate. Warm cost **26 s**
-  - [ ] `build.rs` picks its `rex` sidecar marker by HOST cfg and `build-cli.sh` picks its arm by
-    `uname`, so a Mac cross-compiling to Windows never stages the Windows sidecar — `windows-check.sh`'s
-    labelled placeholder is the only reason the check gets past `tauri_build` (found 18 Sep 2026 while
-    running the Windows-target clippy by hand, ledger #684). Nothing is broken today; the cost is that
-    the marker says "this host's sidecar exists" when the question is the TARGET's
+  - [x] `build.rs` picks its `rex` sidecar marker by HOST cfg ✓ 18 Sep 2026 — the marker now comes
+    from `TARGET`, and staging runs only when `TARGET == HOST`: `build-cli.sh` compiles for the machine
+    it runs on, so invoking it for a foreign target would stage the WRONG binary under the right name.
+    A cross build names the file it lacks and who stages it instead of failing mutely at `tauri_build`.
+    Plant-proven (ledger #685): `cargo xwin check` with no placeholder prints
+    `no rex sidecar for x86_64-pc-windows-msvc …` and skips `build-cli.sh`
 
 - [x] **An older rexenv refuses a database a newer one migrated** ✓ 13 Sep 2026 — built the same
   day at the owner's go: `refuse_newer_schema` in `state::db::open` (before any pragma) and

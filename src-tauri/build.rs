@@ -6,7 +6,7 @@ fn main() {
     // every other entry point. The cli crate has its own target dir, so the
     // nested cargo can't deadlock this build; after the first run it's a
     // cache hit.
-    // The same hole on a Windows HOST, found the first time the tests were run on one
+    // The same hole on a Windows host, found the first time the tests were run on one
     // (17 Sep 2026): the staging was macOS-only, so `cargo test` on the Dell reached
     // tauri_build with no `binaries/rex-x86_64-pc-windows-msvc.exe` and refused before
     // compiling anything. `scripts/build-cli.sh` already has the MINGW arm that builds
@@ -18,19 +18,40 @@ fn main() {
     // `sh` on both: measured on the Dell 17 Sep 2026, Git for Windows puts sh.exe,
     // date.exe and uname.exe on the PATH a build script inherits from bare cmd.exe,
     // so the Windows arm differs only in which file proves the staging already ran.
-    #[cfg(target_os = "macos")]
-    let marker = "binaries/rex-aarch64-apple-darwin";
-    #[cfg(target_os = "windows")]
-    let marker = "binaries/rex-x86_64-pc-windows-msvc.exe";
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    if !std::path::Path::new(marker).exists() {
-        let ok = std::process::Command::new("sh")
-            .arg("../scripts/build-cli.sh")
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false);
-        if !ok {
-            println!("cargo:warning=could not stage the rex CLI sidecar (scripts/build-cli.sh)");
+    //
+    // The marker names the TARGET's sidecar, read from `TARGET` — NOT `cfg(target_os)`, which
+    // in a build script is the HOST. Those agree for every native build, which is why the
+    // earlier host-cfg version was never seen to be wrong; cross-compiling separates them, and
+    // then it asserted "this Mac's sidecar exists" to answer "is there one for Windows". The
+    // only reason `cargo xwin` got past `tauri_build` was the labelled placeholder
+    // `windows-check.sh` stages itself (found 18 Sep 2026, ledger #684).
+    //
+    // And only a HOST build is staged: `build-cli.sh` compiles the CLI for the machine it runs
+    // on, so calling it for a foreign target would stage the wrong binary under the right name —
+    // worse than none. A cross build says what is missing and who stages it, and leaves
+    // `tauri_build` to refuse.
+    let target = std::env::var("TARGET").unwrap_or_default();
+    let host = std::env::var("HOST").unwrap_or_default();
+    let marker = format!(
+        "binaries/rex-{target}{}",
+        if target.contains("windows") { ".exe" } else { "" }
+    );
+    if !std::path::Path::new(&marker).exists() {
+        if target != host {
+            println!(
+                "cargo:warning=no `rex` sidecar for {target} at {marker}; \
+                 scripts/build-cli.sh stages it on a {target} host \
+                 (scripts/windows-check.sh stages a labelled placeholder for lint-only builds)"
+            );
+        } else {
+            let ok = std::process::Command::new("sh")
+                .arg("../scripts/build-cli.sh")
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false);
+            if !ok {
+                println!("cargo:warning=could not stage the rex CLI sidecar (scripts/build-cli.sh)");
+            }
         }
     }
     stamp_build_identity();
