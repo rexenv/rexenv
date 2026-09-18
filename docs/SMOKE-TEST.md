@@ -479,7 +479,7 @@ php-fpm pool. Two behaviours shipped together and they are deliberately
 different: at 8.x the mismatch is annotated, at 7.4 it is refused. Nothing
 automated covers the rendered state (ledger #333 is filed 🔨 at L2 — no wk-check
 asserts a disabled control), so this is the only place it is seen.
-- [ ] **The annotated picker.** Switch an 8.1 site to **FrankenPHP**, then open its
+- [x] **The annotated picker.** Switch an 8.1 site to **FrankenPHP**, then open its ✓ 18 Sep 2026 VM (an 8.3 site): select disabled, reads "8.5 — FrankenPHP's embedded PHP" with the Fixed-by-FrankenPHP sentence.
   Environment card. The PHP select is **disabled**, reads `8.5 — FrankenPHP's
   embedded PHP` (whatever the pin says — it comes from `frankenphp_embedded_php`,
   one backend constant, so a second copy cannot drift), and carries the sentence
@@ -488,7 +488,7 @@ asserts a disabled control), so this is the only place it is seen.
   **Tells:** the select still offers 8.1 and pretends switching works (the old
   silent-skew bug — the site is served by 8.5 while the UI says 8.1); or the card
   hardcodes a version rather than reading the backend's.
-- [ ] **Switch it back to Nginx** → the stored version RE-APPLIES: the picker is
+- [x] **Switch it back to Nginx** → the stored version RE-APPLIES: the picker is ✓ 18 Sep 2026 VM: picker live again at 8.3.
   live again and reads **8.1**, not 8.5. FrankenPHP never overwrote the row.
 - [x] **⚠ The 7.4 refusal, at all THREE doors** (#326). A major mismatch is not ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   skew — the removals PHP 8.0 made are the whole reason a site is pinned to 7.4,
@@ -652,7 +652,7 @@ site with a REAL plugin, which is the part the fixtures cannot buy.
       => $m->to('you@example.test')->subject('smoke'));"`). It arrives in **Mail**
       — the environment beat the file. Both surfaces, because the pool and the
       CLI carry the catch separately.
-- [ ] **A FrankenPHP site is caught too** (#514). Switch a WordPress site's web server
+- [x] **A FrankenPHP site is caught too** (#514). Switch a WordPress site's web server ✓ 18 Sep 2026 VM (after the FrankenPHP re-pin, #680): wp.rex on FrankenPHP → reset caught; catch-all OFF → the FrankenPHP backend respawned (new pid) and the reset was NOT caught; ON → respawned again and caught. No stack restart.
       to FrankenPHP, trigger a password reset: it lands in **Mail**. Then toggle the
       catch-all OFF → the site's Services row shows its FrankenPHP backend respawn
       (the toggle reconciles override backends, not only pools), and a reset now goes
@@ -760,7 +760,7 @@ site with a REAL plugin, which is the part the fixtures cannot buy.
   It prints the banner→resolver deltas and the break/recovery windows.
 - [x] Toggle **Share publicly**; a `*.trycloudflare.com` URL appears, badge Unverified → ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   **Live** once the probe confirms.
-- [ ] **An override site shares too** (per-backend origins, 15 Aug 2026 — ledger
+- [x] **An override site shares too** (per-backend origins, 15 Aug 2026 — ledger ✓ 18 Sep 2026 VM: blank.rex on FrankenPHP shared without refusal and a public URL was issued (content check from the second device not repeated — the URL was stopped before propagation).
   #332's live half): switch a site to FrankenPHP (or Apache), share it, and the
   public URL serves THAT site's content — not another site's (the old nginx-origin
   fallthrough). Sharing it while its server is stopped refuses with a message

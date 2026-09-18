@@ -937,20 +937,20 @@ pub async fn set_site_web_server(
             )?;
         }
     }
-    let (site, sites, php_patches) = {
+    // The new backend's binary is fetched BEFORE the row changes. Until 18 Sep
+    // 2026 the record was written first and the prefetch second, so a switch
+    // whose download failed (a stale FrankenPHP pin on the clean VM) left a row
+    // saying `frankenphp` while nginx went on serving the site — and every
+    // later edge reload failed on the binary that was never there. A record is
+    // a promise about what serves the site; it is made only once the thing
+    // that will serve it exists on disk. No-op when the cache is warm.
+    let (current, php_patches) = {
         let conn = lock(&state)?;
-        let updated = core::sites::set_web_server(&conn, &id, server)?;
-        (
-            updated,
-            core::sites::list(&conn)?,
-            core::php::effective_patches(&conn)?,
-        )
+        (core::sites::get(&conn, &id)?, core::php::effective_patches(&conn)?)
     };
-    if let Some(ref s) = site {
-        // The new backend's binary must be cached BEFORE the locked scope below
-        // (pool ensure / override reconcile download otherwise). No-op when warm.
-        let mut plan = if matches!(s.web_server, WebServer::Frankenphp) {
-            core::downloads::plan_for_override(state.platform.as_ref(), s.web_server)
+    if let Some(ref s) = current {
+        let mut plan = if matches!(server, WebServer::Frankenphp) {
+            core::downloads::plan_for_override(state.platform.as_ref(), server)
         } else {
             core::downloads::plan_for_pool_with(
                 state.platform.as_ref(),
@@ -958,10 +958,17 @@ pub async fn set_site_web_server(
                 &php_patches,
             )
         };
-        if matches!(s.web_server, WebServer::Apache) {
-            plan.extend(core::downloads::plan_for_override(state.platform.as_ref(), s.web_server));
+        if matches!(server, WebServer::Apache) {
+            plan.extend(core::downloads::plan_for_override(state.platform.as_ref(), server));
         }
         core::downloads::prefetch(state.platform.as_ref(), "Switch web server", &plan).await?;
+    }
+    let (site, sites) = {
+        let conn = lock(&state)?;
+        let updated = core::sites::set_web_server(&conn, &id, server)?;
+        (updated, core::sites::list(&conn)?)
+    };
+    if let Some(ref s) = site {
         // Readiness of a newly spawned FrankenPHP backend is awaited with the
         // services lock released (M4).
         let checks = {
@@ -1025,30 +1032,39 @@ pub(crate) async fn switch_php_version(
     id: &str,
     version: &str,
 ) -> Result<Option<Site>> {
-    let (site, sites, php_patches) = {
+    // The new minor's pool binary is fetched BEFORE the row changes — same
+    // rule as `set_site_web_server` (18 Sep 2026): a record that names a
+    // version whose binary never arrived is a promise nginx cannot keep.
+    let (current, php_patches) = {
         let conn = state
             .db
             .lock()
             .map_err(|_| Error::Other("database lock poisoned".into()))?;
-        let updated = core::sites::set_php_version(&conn, id, version)?;
-        (
-            updated,
-            core::sites::list(&conn)?,
-            core::php::effective_patches(&conn)?,
-        )
+        (core::sites::get(&conn, id)?, core::php::effective_patches(&conn)?)
     };
-    if let Some(ref s) = site {
-        let minor = core::php::minor_of(&s.php_version);
+    let minor = core::php::minor_of(version);
+    if let Some(ref s) = current {
         // A toggled site also needs the NEW minor's debug pool (and its
         // xdebug.so) — pool_port_for_site routes it there after the reload.
         let needs_debug = s.xdebug && core::binaries::xdebug_supported(&minor);
-        // Pool binary cached before the locked ensure below. No-op when warm.
         let plan = if needs_debug {
             core::downloads::plan_for_xdebug_with(state.platform.as_ref(), &minor, &php_patches)
         } else {
             core::downloads::plan_for_pool_with(state.platform.as_ref(), &minor, &php_patches)
         };
         core::downloads::prefetch(state.platform.as_ref(), "Switch PHP version", &plan).await?;
+    }
+    let (site, sites) = {
+        let conn = state
+            .db
+            .lock()
+            .map_err(|_| Error::Other("database lock poisoned".into()))?;
+        let updated = core::sites::set_php_version(&conn, id, version)?;
+        (updated, core::sites::list(&conn)?)
+    };
+    if let Some(ref s) = site {
+        let minor = core::php::minor_of(&s.php_version);
+        let needs_debug = s.xdebug && core::binaries::xdebug_supported(&minor);
         let checks = {
             let mut mgr = state.services.lock().await;
             if mgr.is_running() {

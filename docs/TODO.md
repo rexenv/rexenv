@@ -35,7 +35,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
-- [ ] **FrankenPHP 1.12.4 pin is STALE (18 Sep 2026)** — the live `frankenphp-mac-arm64` asset hashes to
+- [x] **FrankenPHP 1.12.4 pin is STALE (18 Sep 2026)** — the live `frankenphp-mac-arm64` asset hashes to
   `fb38e69514a04875b83900da0e1585d611fe0f52f3a904c50bef5605347e5dec`, the pin says `44308edd…`; the
   checksum guard fires and FrankenPHP is uninstallable for every user (upstream rebuilds assets in
   place, the documented signal). Re-pin per the procedure in `core/binaries.rs` (API digest +
@@ -43,6 +43,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   frankenphp` RECORDED `server = frankenphp` although the download failed — nginx kept serving
   while the row said FrankenPHP, and the next edge reload failed on the missing binary. The switch
   must not persist before the binary resolves.
+  ✓ 18 Sep 2026 — re-pinned (API digest + attestation + `frankenphp version`, both arches) and the switch now fetches before it writes (ledger #680); live on the VM: FrankenPHP downloaded, served, shared, caught mail.
 - [x] **Build zip (dist-archive) fails on every Mac — the TMPDIR has a space.** Clean-VM smoke
   18 Sep 2026: `wp dist-archive` writes its zip include-pattern file into `TMPDIR` and passes it as
   `-i@<file>` unquoted; rexenv points TMPDIR at `<app-data>/dist-archive-work/…`, so zip saw

@@ -766,6 +766,12 @@ Live-proven end to end by `site_stop_start_check`.
   18 Sep 2026): "Everything's installed" only when every planned component is cached or
   done; otherwise "n of m ready" or "n failed" + Retry. It was static copy, and the first
   clean-VM run showed it green over six failed rows (`docs/DESIGN.md`, honest-UI rules).
+- **A switch's binary is fetched before its row is written** (`set_site_web_server`,
+  `switch_php_version`, #680, 18 Sep 2026). The record used to change first and the
+  prefetch ran second, so a switch whose download failed — a stale FrankenPHP pin on the
+  clean VM — left `server = frankenphp` in the row while nginx went on serving, and every
+  later edge reload failed on the binary that was never there. The row is a promise about
+  what serves the site; it is made once the thing that will serve it exists on disk.
 - **Every call that can raise a privileged prompt waits off the runtime, from an
   async caller** (`core::prompt::while_prompting`, #568). The admin-password and
   keychain dialogs stay open as long as the user takes; the platform call waits with

@@ -419,8 +419,20 @@ const CLOUDFLARED_2026_6_1_MAC_AMD64_SHA256: &str = "d7a66b525fe76820da6e5406611
 // 8.5.8 (all 9 release assets replaced). Both hashes verified against the GitHub
 // API digest + SLSA attestation (workflow php/frankenphp static.yaml, commit
 // bc9c6db8) and both binaries run: "FrankenPHP v1.12.4 PHP 8.5.8 Caddy v2.11.4".
-const FRANKENPHP_1_12_4_MAC_ARM64_SHA256: &str = "44308eddac92d0207636b054ed66500f57b34b423f6df335073fd59007e78b0d";
-const FRANKENPHP_1_12_4_MAC_AMD64_SHA256: &str = "9aa5ea729ec9aee6fda6facfb7f874555cda7c07ac0933d72fb1b7045d7cd363";
+//
+// Re-pinned 2026-09-18: the assets were rebuilt in place again (arm64 on
+// 2026-07-19, x86_64 on 2026-07-20 — the daily cron, same tag). Caught by the
+// clean-VM smoke test, where the checksum guard made FrankenPHP uninstallable
+// (`checksum mismatch for …/frankenphp-mac-arm64`) — on the dev Mac the cache
+// still held the July bytes, so nothing there could see it. Same procedure:
+// GitHub API `digest` matched a fresh download of each asset; the sigstore
+// attestations (`repos/dunglas/frankenphp/attestations/sha256:<hash>`) name
+// each file as the subject, workflow `.github/workflows/static.yaml` of
+// `php/frankenphp`, commit e41b848e; both run — arm64 natively and x86_64 under
+// Rosetta: "FrankenPHP v1.12.4 PHP 8.5.8 Caddy v2.11.4" (embedded PHP unchanged,
+// so `FRANKENPHP_EMBEDDED_PHP` stays).
+const FRANKENPHP_1_12_4_MAC_ARM64_SHA256: &str = "fb38e69514a04875b83900da0e1585d611fe0f52f3a904c50bef5605347e5dec";
+const FRANKENPHP_1_12_4_MAC_AMD64_SHA256: &str = "0e97b3e2bb8e98c0f8c6275921e1d44fb6459abfaa3bc0525e56c07ae13aa55b";
 
 // PostgreSQL portable build SHA-256 (theseus-rs/postgresql-binaries — the project
 // PUBLISHES these `.sha256` files; cross-checked against a fresh download). A
