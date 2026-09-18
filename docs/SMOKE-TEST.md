@@ -43,6 +43,14 @@ nothing.** The silent case is the one that ships to everybody.
 
 ## Cold first run (downloads + system setup) — also exercises §2.4
 - [ ] On first use the app downloads its components (PHP, Nginx, MySQL, Caddy, WP-CLI…) with visible progress.
+- [ ] **On a Mac WITHOUT the Xcode Command Line Tools** (`xcode-select -p` fails — a fresh
+  VM, not a dev machine): all six first-run components reach `ready`, and no "install
+  developer tools?" dialog appears at any point. **Tell:** every row `failed` with
+  `otool -L failed: xcode-select: error…` and macOS's own CLT dialog on top of the app —
+  that was 0.7.0–0.7.2 on every clean Mac, found 18 Sep 2026 on the first VM run (#676).
+  A dev Mac cannot see this: the tools are there. **Passed 18 Sep 2026** with the fix, same
+  VM (macOS 15.6.1 arm64, UTM, fresh app-data, `xcode-select -p` rc=2): all six `READY`
+  in under two minutes, no dialog.
 - [ ] **Leave the Install step early.** (Added 11 Sep 2026 — users reported it.) Click
   Continue while the components are still downloading, finish the wizard, and on "Create
   your first site" create one straight away. The footer's download indicator must count

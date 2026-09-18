@@ -33,6 +33,11 @@ const MH_MAGIC_64: u32 = 0xfeed_facf;
 const FAT_MAGIC: u32 = 0xcafe_babe; // big-endian on disk
 const LC_VERSION_MIN_MACOSX: u32 = 0x24;
 const LC_BUILD_VERSION: u32 = 0x32;
+const LC_ID_DYLIB: u32 = 0x0d;
+const LC_LOAD_DYLIB: u32 = 0x0c;
+const LC_LOAD_WEAK_DYLIB: u32 = 0x8000_0018;
+const LC_REEXPORT_DYLIB: u32 = 0x8000_001f;
+const LC_LOAD_UPWARD_DYLIB: u32 = 0x8000_0023;
 /// `platform` value for macOS in LC_BUILD_VERSION. A binary built for iOS or the
 /// simulator carries a `minos` that says nothing about this machine.
 const PLATFORM_MACOS: u32 = 1;
@@ -58,46 +63,129 @@ fn decode(v: u32) -> (u32, u32, u32) {
 /// declares a non-macOS platform — all of which mean "this tells us nothing",
 /// never "it is fine". Callers must treat `None` as no information.
 pub fn min_macos(path: &Path) -> Option<(u32, u32, u32)> {
-    // The load commands live at the front; reading the whole binary to find them
-    // would mean reading ~50 MB of postgres to answer a question about 32 bytes.
-    let bytes = read_head(path, 64 * 1024)?;
-    let magic = u32_be(&bytes, 0)?;
+    let mut found = None;
+    walk_load_commands(path, |cmd, body| {
+        match cmd {
+            LC_BUILD_VERSION => {
+                if u32_le(body, 8)? == PLATFORM_MACOS {
+                    found = Some(decode(u32_le(body, 12)?));
+                    return Some(false);
+                }
+            }
+            LC_VERSION_MIN_MACOSX => {
+                found = Some(decode(u32_le(body, 8)?));
+                return Some(false);
+            }
+            _ => {}
+        }
+        Some(true)
+    })?;
+    found
+}
+
+/// What a Mach-O links against, read from its own load commands.
+///
+/// `id` is the install name a dylib declares (`LC_ID_DYLIB`; `None` for an
+/// executable). `deps` are every `LC_LOAD_DYLIB` / weak / re-export / upward
+/// load command in file order — the same list `otool -L` prints after its
+/// header line, minus the ID line it prepends for a dylib.
+///
+/// # Why this exists (18 Sep 2026, clean-Mac smoke test)
+///
+/// `prepare_binary` used to ask `otool -L` for this list. `/usr/bin/otool` is
+/// an Xcode Command Line Tools SHIM: on a Mac without the tools — every clean
+/// Mac — it pops the "install developer tools?" dialog and exits non-zero, so
+/// the first cold run failed on all six components with
+/// `otool -L failed: xcode-select: error: Unable to get active developer
+/// directory`. Every dev machine has the tools, which is exactly why 0.7.0 →
+/// 0.7.2 shipped with it. Reading the load commands here needs nothing
+/// installed, and the tests cross-check it against `otool` where that exists.
+///
+/// `None` means the file is not a 64-bit Mach-O this reader understands (or a
+/// load command is malformed) — no information, never "no deps".
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct LinkedDylibs {
+    pub id: Option<String>,
+    pub deps: Vec<String>,
+}
+
+pub fn linked_dylibs(path: &Path) -> Option<LinkedDylibs> {
+    let mut out = LinkedDylibs::default();
+    walk_load_commands(path, |cmd, body| {
+        match cmd {
+            LC_ID_DYLIB => out.id = Some(dylib_name(body)?),
+            LC_LOAD_DYLIB | LC_LOAD_WEAK_DYLIB | LC_REEXPORT_DYLIB | LC_LOAD_UPWARD_DYLIB => {
+                out.deps.push(dylib_name(body)?)
+            }
+            _ => {}
+        }
+        Some(true)
+    })?;
+    Some(out)
+}
+
+/// The path string of a `dylib_command`: `name.offset` (u32 at +8) points at a
+/// NUL-terminated string inside the command's own bytes.
+fn dylib_name(body: &[u8]) -> Option<String> {
+    let off = u32_le(body, 8)? as usize;
+    let rest = body.get(off..)?;
+    let end = rest.iter().position(|&b| b == 0).unwrap_or(rest.len());
+    String::from_utf8(rest[..end].to_vec()).ok()
+}
+
+/// Visit every load command of the FIRST 64-bit slice of `path`, in order.
+/// `f(cmd, bytes)` gets the command's own bytes (header included) and returns
+/// `Some(true)` to continue, `Some(false)` to stop early, `None` on malformed
+/// input — which makes the whole walk `None`.
+///
+/// Reads exactly what the header says it needs (`sizeofcmds`), so a binary with
+/// hundreds of load commands (postgres) is read whole and never truncated at an
+/// arbitrary head size.
+fn walk_load_commands(
+    path: &Path,
+    mut f: impl FnMut(u32, &[u8]) -> Option<bool>,
+) -> Option<()> {
+    let head = read_head(path, 4096)?;
+    let magic = u32_be(&head, 0)?;
     let start = if magic == FAT_MAGIC {
         // Fat: take the FIRST slice. rexenv's binaries are per-arch after
         // `prepare_binary`, so this is a robustness path rather than the norm —
         // and the first slice is the right answer only when every slice agrees,
         // which is why `docs/PORTS.md` still records the arch caveat.
-        let nfat = u32_be(&bytes, 4)?;
+        let nfat = u32_be(&head, 4)?;
         if nfat == 0 {
             return None;
         }
-        u32_be(&bytes, 8 + 8)? as usize // fat_arch: cputype, cpusubtype, offset
+        u32_be(&head, 8 + 8)? as usize // fat_arch: cputype, cpusubtype, offset
     } else {
         0
     };
-    if u32_le(&bytes, start)? != MH_MAGIC_64 {
+    // mach_header_64: magic, cputype, cpusubtype, filetype, ncmds, sizeofcmds…
+    let hdr = read_at(path, start, 32)?;
+    if u32_le(&hdr, 0)? != MH_MAGIC_64 {
         return None;
     }
-    let ncmds = u32_le(&bytes, start + 16)?;
-    let mut at = start + 32; // mach_header_64
+    let ncmds = u32_le(&hdr, 16)?;
+    let sizeofcmds = u32_le(&hdr, 20)? as usize;
+    // A header claiming megabytes of load commands is malformed, not interesting.
+    if sizeofcmds > 4 * 1024 * 1024 {
+        return None;
+    }
+    let cmds = read_at(path, start + 32, sizeofcmds)?;
+    let mut at = 0;
     for _ in 0..ncmds {
-        let cmd = u32_le(&bytes, at)?;
-        let size = u32_le(&bytes, at + 4)? as usize;
+        let cmd = u32_le(&cmds, at)?;
+        let size = u32_le(&cmds, at + 4)? as usize;
         if size < 8 {
             return None; // malformed: a zero-size command would loop forever
         }
-        match cmd {
-            LC_BUILD_VERSION => {
-                if u32_le(&bytes, at + 8)? == PLATFORM_MACOS {
-                    return Some(decode(u32_le(&bytes, at + 12)?));
-                }
-            }
-            LC_VERSION_MIN_MACOSX => return Some(decode(u32_le(&bytes, at + 8)?)),
-            _ => {}
+        let body = cmds.get(at..at + size)?;
+        if !f(cmd, body)? {
+            break;
         }
         at += size;
     }
-    None
+    Some(())
 }
 
 /// CPU types, as Mach-O writes them (the `0x0100_0000` bit is "64-bit").
@@ -159,6 +247,16 @@ fn arch_of(cputype: u32) -> Option<crate::platform::traits::Arch> {
         CPU_TYPE_ARM64 => Some(Arch::Arm64),
         _ => None,
     }
+}
+
+/// Exactly `len` bytes at `offset`, or `None` when the file is shorter.
+fn read_at(path: &Path, offset: usize, len: usize) -> Option<Vec<u8>> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut f = std::fs::File::open(path).ok()?;
+    f.seek(SeekFrom::Start(offset as u64)).ok()?;
+    let mut buf = vec![0u8; len];
+    f.read_exact(&mut buf).ok()?;
+    Some(buf)
 }
 
 fn read_head(path: &Path, max: usize) -> Option<Vec<u8>> {
@@ -372,6 +470,93 @@ mod tests {
     /// a test that skipped silently for weeks while a ledger row counted it
     /// (`REXENV_LARAVEL_DOTENV`): a guard against drift that is itself quiet is
     /// worth less than no guard, because the row goes on claiming it.
+    /// Build a thin 64-bit Mach-O header with the given load commands.
+    fn thin_macho(cmds: &[Vec<u8>]) -> Vec<u8> {
+        let size: usize = cmds.iter().map(Vec::len).sum();
+        let mut b = Vec::new();
+        b.extend_from_slice(&0xfeed_facfu32.to_le_bytes()); // magic
+        b.extend_from_slice(&0x0100_000cu32.to_le_bytes()); // cputype arm64
+        b.extend_from_slice(&0u32.to_le_bytes()); // cpusubtype
+        b.extend_from_slice(&2u32.to_le_bytes()); // filetype MH_EXECUTE
+        b.extend_from_slice(&(cmds.len() as u32).to_le_bytes());
+        b.extend_from_slice(&(size as u32).to_le_bytes());
+        b.extend_from_slice(&0u32.to_le_bytes()); // flags
+        b.extend_from_slice(&0u32.to_le_bytes()); // reserved
+        for c in cmds {
+            b.extend_from_slice(c);
+        }
+        b
+    }
+
+    /// A `dylib_command` as ld writes it: name at offset 24, NUL-padded to 8.
+    fn dylib_cmd(cmd: u32, name: &str) -> Vec<u8> {
+        let mut body = name.as_bytes().to_vec();
+        body.push(0);
+        while (24 + body.len()) % 8 != 0 {
+            body.push(0);
+        }
+        let mut c = Vec::new();
+        c.extend_from_slice(&cmd.to_le_bytes());
+        c.extend_from_slice(&((24 + body.len()) as u32).to_le_bytes());
+        c.extend_from_slice(&24u32.to_le_bytes()); // name.offset
+        c.extend_from_slice(&[0u8; 12]); // timestamp, current, compat
+        c.extend_from_slice(&body);
+        c
+    }
+
+    #[test]
+    fn linked_dylibs_reads_id_and_every_load_flavour_in_order_without_a_toolchain() {
+        let dir = std::env::temp_dir().join(format!("rexenv-macho-deps-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("lib.dylib");
+        let mut cmds = vec![
+            dylib_cmd(LC_ID_DYLIB, "@rpath/libme.dylib"),
+            dylib_cmd(LC_LOAD_DYLIB, "/usr/lib/libSystem.B.dylib"),
+            dylib_cmd(LC_LOAD_WEAK_DYLIB, "/opt/homebrew/opt/pcre2/lib/libpcre2-8.0.dylib"),
+        ];
+        // An unrelated command in the middle must be stepped over, not parsed.
+        let mut other = Vec::new();
+        other.extend_from_slice(&0x1du32.to_le_bytes()); // LC_CODE_SIGNATURE
+        other.extend_from_slice(&16u32.to_le_bytes());
+        other.extend_from_slice(&[0u8; 8]);
+        cmds.push(other);
+        cmds.push(dylib_cmd(LC_REEXPORT_DYLIB, "@loader_path/libre.dylib"));
+        cmds.push(dylib_cmd(LC_LOAD_UPWARD_DYLIB, "@loader_path/libup.dylib"));
+        std::fs::write(&f, thin_macho(&cmds)).unwrap();
+        let got = linked_dylibs(&f).expect("a well-formed Mach-O reads");
+        assert_eq!(got.id.as_deref(), Some("@rpath/libme.dylib"));
+        assert_eq!(
+            got.deps,
+            [
+                "/usr/lib/libSystem.B.dylib",
+                "/opt/homebrew/opt/pcre2/lib/libpcre2-8.0.dylib",
+                "@loader_path/libre.dylib",
+                "@loader_path/libup.dylib",
+            ]
+        );
+
+        // An executable has no ID; a dep-less one has an empty list, not None.
+        let exe = dir.join("exe");
+        std::fs::write(&exe, thin_macho(&[dylib_cmd(LC_LOAD_DYLIB, "/usr/lib/libSystem.B.dylib")]))
+            .unwrap();
+        let got = linked_dylibs(&exe).unwrap();
+        assert_eq!(got.id, None);
+        assert_eq!(got.deps, ["/usr/lib/libSystem.B.dylib"]);
+        let bare = dir.join("bare");
+        std::fs::write(&bare, thin_macho(&[])).unwrap();
+        assert_eq!(linked_dylibs(&bare), Some(LinkedDylibs::default()));
+
+        // Not a Mach-O, or a header whose commands run past the file: None.
+        let junk = dir.join("junk");
+        std::fs::write(&junk, b"#!/bin/sh\n").unwrap();
+        assert_eq!(linked_dylibs(&junk), None);
+        let truncated = dir.join("truncated");
+        let full = thin_macho(&[dylib_cmd(LC_LOAD_DYLIB, "/usr/lib/libz.1.dylib")]);
+        std::fs::write(&truncated, &full[..full.len() - 4]).unwrap();
+        assert_eq!(linked_dylibs(&truncated), None, "a short read must not become 'no deps'");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn the_parser_agrees_with_otool_on_every_binary_in_the_cache() {
         let Some(home) = std::env::var_os("HOME") else { return };
@@ -407,6 +592,18 @@ mod tests {
                     "{} — this parser disagrees with otool",
                     p.display()
                 );
+                // The same binary's dylib list — what `prepare_binary` now reads
+                // here instead of asking `otool -L` (which a clean Mac lacks).
+                let out = std::process::Command::new("otool").arg("-L").arg(&p).output().unwrap();
+                let otool: Vec<String> = String::from_utf8_lossy(&out.stdout)
+                    .lines()
+                    .skip(1)
+                    .filter_map(|l| l.split_whitespace().next().map(str::to_string))
+                    .collect();
+                let ours = linked_dylibs(&p).expect("cached binary reads");
+                let mut ours_flat = ours.id.clone().into_iter().collect::<Vec<_>>();
+                ours_flat.extend(ours.deps.clone());
+                assert_eq!(ours_flat, otool, "{} — dylib list disagrees with otool -L", p.display());
                 checked += 1;
             }
         }

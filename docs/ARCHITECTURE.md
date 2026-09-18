@@ -808,6 +808,19 @@ Live-proven end to end by `site_stop_start_check`.
   checksum-locked in a manifest (os+arch+version → url+checksum). Versions: `docs/PORTS.md`.
 - macOS `prepare_binary` order (non-negotiable): **de-quarantine → relink Homebrew dylibs
   to `/usr/lib` → ad-hoc codesign LAST.**
+- **`prepare_binary` needs NO Xcode Command Line Tools on the common path** (ledger #676).
+  A Mach-O's dylib list is read from its own load commands (`core/macho.rs::linked_dylibs`),
+  never asked of `otool` — `/usr/bin/otool` is a CLT shim that pops the "install developer
+  tools?" dialog and fails on every Mac without the tools, i.e. every clean Mac. That is
+  what 0.7.0–0.7.2 shipped: the first clean-VM smoke test (18 Sep 2026) failed all six
+  components at `otool -L failed: xcode-select: error: Unable to get active developer
+  directory`, invisible for two months because every dev machine has the tools. No pinned
+  single binary has a foreign dep, so caddy/nginx/php/mailpit/mysql/adminer now touch no
+  tool at all. `install_name_tool` (also CLT) is reached only when a rewrite is actually
+  needed — the Homebrew-bottle BUNDLES (redis/mariadb/httpd/xdebug) — and is preceded by a
+  quiet `xcode-select -p` probe (`clt_preflight`, the `git_preflight` shape) so a missing
+  toolchain is a plain error naming `xcode-select --install`, never a surprise dialog from
+  a background download. Bundles on a CLT-less Mac are the open half: `docs/TODO.md`.
 - Shapes: single Mach-O (`resolve`) · plain file like WP-CLI `.phar` (`resolve_file`, no
   chmod/codesign) · dir tree like MySQL/PostgreSQL (`Archive::TarGzTree` + `resolve_dir`;
   extraction guards against path/symlink escapes, L2) · **Windows zips** (12 Sep 2026, port

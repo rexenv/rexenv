@@ -26,6 +26,14 @@ notarized by Apple), so the **first launch needs one extra click** — see below
 - **Intel or Apple Silicon** — this is a **universal** build, it runs natively on both.
 - An internet connection on **first run** (rexenv downloads its components — PHP,
   Nginx, MySQL, Caddy, etc. — the first time; after that it works offline).
+- **No Xcode Command Line Tools, no Homebrew.** The core stack (Caddy, Nginx, PHP,
+  MySQL, Mailpit, Adminer, WP-CLI) installs on a Mac that has never seen a compiler. (This
+  was false in 0.7.0–0.7.2: preparing a download asked `otool`, a CLT shim, and the first
+  run failed every component on a clean Mac — caught by the first clean-VM smoke test,
+  18 Sep 2026.) The one exception is the Homebrew-bottle bundles — Redis, MariaDB, Apache
+  and Xdebug — whose dylibs must be relinked with `install_name_tool`; on a Mac without the
+  tools those fail with a message naming `xcode-select --install`, and nothing pops a
+  dialog. Tracked in `docs/TODO.md`.
 - After first run, rexenv makes a few small read-only requests of its own at launch,
   and again every six hours if it is left running. None of them downloads or installs
   anything, and if any of them fails the screen says so rather than guessing:

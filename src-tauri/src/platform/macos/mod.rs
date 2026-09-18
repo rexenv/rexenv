@@ -2079,41 +2079,25 @@ impl MacosBinaryProvider {
     /// Rewrite any non-system (e.g. Homebrew) dylib dependencies to macOS system
     /// libs so the binary runs without Homebrew. Errors if a dep has no system
     /// equivalent (so we never ship a binary that will fail to load).
+    ///
+    /// The dep list is READ FROM THE FILE (`core::macho::linked_dylibs`), never
+    /// asked of `otool`: `/usr/bin/otool` is an Xcode Command Line Tools shim
+    /// that pops an install dialog and fails on every Mac without the tools —
+    /// which is every clean Mac, and was every first cold run of 0.7.0–0.7.2
+    /// (18 Sep 2026, clean-VM smoke test: all six components
+    /// `otool -L failed: xcode-select: error: …`). No pinned single binary has
+    /// a foreign dep today, so on the common path this touches no tool at all;
+    /// `install_name_tool` is reached only when a rewrite is actually needed,
+    /// and then says plainly that it needs the tools (`clt_preflight`).
     fn relink_to_system_libs(path: &Path) -> Result<()> {
-        let out = std::process::Command::new("otool")
-            .arg("-L")
-            .arg(path)
-            .output()?;
-        if !out.status.success() {
-            return Err(Error::Other(format!(
-                "otool -L failed: {}",
-                String::from_utf8_lossy(&out.stderr).trim()
-            )));
-        }
-        let listing = String::from_utf8_lossy(&out.stdout);
-        for line in listing.lines().skip(1) {
-            let dep = match line.split_whitespace().next() {
-                Some(d) => d,
-                None => continue,
-            };
+        for dep in Self::load_command_deps(path)? {
             if dep.starts_with("/usr/lib/") || dep.starts_with("/System/") {
                 continue; // already a system lib
             }
-            let target = Self::system_lib_for(dep).ok_or_else(|| {
+            let target = Self::system_lib_for(&dep).ok_or_else(|| {
                 Error::Other(format!("no macOS system lib for dependency {dep}"))
             })?;
-            let st = std::process::Command::new("install_name_tool")
-                .arg("-change")
-                .arg(dep)
-                .arg(&target)
-                .arg(path)
-                .output()?;
-            if !st.status.success() {
-                return Err(Error::Other(format!(
-                    "install_name_tool -change {dep} {target} failed: {}",
-                    String::from_utf8_lossy(&st.stderr).trim()
-                )));
-            }
+            Self::install_name_tool(&["-change", &dep, &target], path)?;
         }
         Ok(())
     }
@@ -2245,43 +2229,56 @@ impl MacosBinaryProvider {
         Ok(found)
     }
 
-    /// The dependency paths from `otool -L` (skips the header line). For a
-    /// dylib this INCLUDES its own install name (ID) as the first entry.
+    /// The dependency paths as `otool -L` would list them (header line
+    /// dropped): for a dylib this INCLUDES its own install name (ID) as the
+    /// first entry. Read from the load commands — no toolchain involved.
     fn load_command_deps(path: &Path) -> Result<Vec<String>> {
-        let out = std::process::Command::new("otool").arg("-L").arg(path).output()?;
-        if !out.status.success() {
-            return Err(Error::Other(format!(
-                "otool -L {} failed: {}",
-                path.display(),
-                String::from_utf8_lossy(&out.stderr).trim()
-            )));
-        }
-        Ok(String::from_utf8_lossy(&out.stdout)
-            .lines()
-            .skip(1)
-            .filter_map(|l| l.split_whitespace().next().map(str::to_string))
-            .collect())
+        let linked = Self::linked_dylibs(path)?;
+        let mut out = linked.id.into_iter().collect::<Vec<_>>();
+        out.extend(linked.deps);
+        Ok(out)
     }
 
-    /// A dylib's install name (`otool -D`), or `None` for executables.
+    /// A dylib's install name (`LC_ID_DYLIB`), or `None` for executables.
     fn dylib_id(path: &Path) -> Result<Option<String>> {
-        let out = std::process::Command::new("otool").arg("-D").arg(path).output()?;
-        if !out.status.success() {
-            return Err(Error::Other(format!(
-                "otool -D {} failed: {}",
-                path.display(),
-                String::from_utf8_lossy(&out.stderr).trim()
-            )));
+        Ok(Self::linked_dylibs(path)?.id)
+    }
+
+    fn linked_dylibs(path: &Path) -> Result<crate::core::macho::LinkedDylibs> {
+        crate::core::macho::linked_dylibs(path).ok_or_else(|| {
+            Error::Other(format!(
+                "{} is not a 64-bit Mach-O this build can read — refusing to publish \
+                 a binary whose load commands cannot be checked",
+                path.display()
+            ))
+        })
+    }
+
+    /// `install_name_tool` IS the Xcode Command Line Tools, and its
+    /// `/usr/bin` shim pops a GUI install dialog when they are absent (same
+    /// shape as `git_preflight`). Probe quietly first so a missing toolchain is
+    /// a plain error naming the fix, never a surprise dialog from a download.
+    fn clt_preflight(what: &str) -> Result<()> {
+        let ok = std::process::Command::new("/usr/bin/xcode-select")
+            .arg("-p")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        if ok {
+            Ok(())
+        } else {
+            Err(Error::Other(format!(
+                "{what} needs the Xcode Command Line Tools (not installed). \
+                 Install them, then Retry:\n\
+                 $ xcode-select --install"
+            )))
         }
-        Ok(String::from_utf8_lossy(&out.stdout)
-            .lines()
-            .nth(1)
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(str::to_string))
     }
 
     fn install_name_tool(args: &[&str], path: &Path) -> Result<()> {
+        Self::clt_preflight(&format!("relinking {}", path.display()))?;
         let st = std::process::Command::new("install_name_tool")
             .args(args)
             .arg(path)

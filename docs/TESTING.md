@@ -815,7 +815,13 @@ same reason `core::updates` carries that seam). `both_manifest_modules_verify_th
 plants a flipped byte and requires BOTH documents to refuse it, which is what makes "one
 signature check in the codebase" a checked claim rather than a comment. `macho::archs` — the
 "is this build universal" test the swap will make — is L0 over synthetic Mach-O headers,
-because reading the header in Rust is what lets the check live in `core` at all. What L0
+because reading the header in Rust is what lets the check live in `core` at all. The same
+reader carries `macho::linked_dylibs` (#676, 18 Sep 2026): L0 over synthetic load commands
+for the list `prepare_binary` used to ask `otool` for — and the reason it is L0 is the
+reason it exists, because the one layer that could have caught "`otool` is a Command Line
+Tools shim" was a Mac WITHOUT the tools, which no dev machine is and no tier ran until the
+first clean VM. The dev-Mac cross-check against `otool -L` stays as the L1 for the parser
+itself. What L0
 cannot say here: that the live document verifies (T2, network tier), that a real bundle is
 staged and swapped (T3, sandbox tier), or that a real Mac lets it happen (T0/T11, L3).
 

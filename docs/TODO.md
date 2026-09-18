@@ -35,6 +35,17 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [ ] **Homebrew-bottle bundles (redis / mariadb / httpd / xdebug) still need the Xcode
+  Command Line Tools on a clean Mac.** Found 18 Sep 2026 by the first clean-VM smoke test:
+  `prepare_binary` asked `otool` for every binary's dylib list and the CLT shim failed all
+  six first-run components (ledger #676 — fixed for single binaries by reading the load
+  commands in `core/macho.rs`). Bundles are the other half: their `@@HOMEBREW_*@@` load
+  commands must be REWRITTEN to `@loader_path`, and the rewrite is `install_name_tool`,
+  which is CLT. Today that is a quiet `clt_preflight` error naming `xcode-select --install`
+  (no dialog). Closing it means an in-place Mach-O rewriter (a new path fits in the old
+  command's padded slot when shorter, which `@loader_path/../lib/x` usually is; longer
+  needs the `-headerpad` slack Homebrew bottles are built with — measure before building).
+  Done when: a clean user on the VM installs Redis with `xcode-select -p` failing.
 - [ ] **Windows: the Sites takeback banner names Valet/Herd and a "resolver file"** — `Sites.tsx`'s
   `ResolverDriftBanner` reads "Valet or Herd took <tld>'s resolver file back". **Measured 16 Sep 2026,
   and deliberately NOT fixed:** `drifted_takeovers` filters `list_resolver_takeovers` — only TLDs
