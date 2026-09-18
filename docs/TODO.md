@@ -43,13 +43,14 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   frankenphp` RECORDED `server = frankenphp` although the download failed — nginx kept serving
   while the row said FrankenPHP, and the next edge reload failed on the missing binary. The switch
   must not persist before the binary resolves.
-- [ ] **Build zip (dist-archive) fails on every Mac — the TMPDIR has a space.** Clean-VM smoke
+- [x] **Build zip (dist-archive) fails on every Mac — the TMPDIR has a space.** Clean-VM smoke
   18 Sep 2026: `wp dist-archive` writes its zip include-pattern file into `TMPDIR` and passes it as
   `-i@<file>` unquoted; rexenv points TMPDIR at `<app-data>/dist-archive-work/…`, so zip saw
   `@/Users/…/Library/Application` and died ("File not found or no read permission"). The dev-Mac
   examples use space-free fixture paths, which is why it never fired (fixtures-must-look-like-
   production). Fix: a space-free per-run TMPDIR that the same `Drop` guard removes (under the
   user's `$TMPDIR`/`var/folders`), then re-run SMOKE §Git assets 2–6 by hand.
+  ✓ 18 Sep 2026 — `scratch_root` picks the OS temp dir (whitespace-checked, refusal otherwise), ledger #679; live on the VM.
 - [ ] **Site info claims a database that does not exist.** 18 Sep 2026 VM: a Blank PHP site created
   with **Database: None** (dialog) or via `rex site create --type php` (which runs only
   prepare/fetch/serve — no starter, no `db.php`, no database) is reported by `rex site info` /

@@ -575,7 +575,7 @@ no SMOKE step today and is covered by `repo_*` examples only.*
   nothing, and the person who needs this is the one who has never met
   `.distignore`); or the tooltip says only "no .distignore found", which sends a
   developer to a search engine instead of to a fix.
-- [ ] **2. ⚠ Build it, then OPEN the zip. A failure here is a HOLD.** Add a
+- [x] **2. ⚠ Build it, then OPEN the zip. A failure here is a HOLD.** Add a ✓ 18 Sep 2026 (VM, after #679) — `airplane-mode.0.2.8.zip`, 16 entries, no `.git/` or `node_modules/`, toast with Show in Finder
   `.distignore` (the tooltip's starter list will do), refresh the panel, click
   **Build zip**. A job runs with a streamed log and a Cancel button, and a toast
   names the file with **Show in Finder**. Then actually open the archive —
@@ -587,7 +587,7 @@ no SMOKE step today and is covered by `repo_*` examples only.*
   client before anyone notices, and the tool rexenv drives calls that outcome a
   success. **This is the only step where the artefact has to be inspected rather
   than reported on** — every other check in this file can be read off a screen. (18 Sep 2026 VM: FAILED, HOLD — `wp dist-archive` died on `zip -i@…/Library/Application` — its include-pattern file lives in the TMPDIR rexenv sets under app-data, and the space in `Application Support` is not quoted. TODO row.)
-- [ ] **3. Nothing was written into your checkout.** In the checkout itself run
+- [x] **3. Nothing was written into your checkout.** In the checkout itself run ✓ 18 Sep 2026 (VM, after #679) — `git status` shows only the `.distignore` the test added
   `git status`. It must be **clean** — no stray `.zip`, no build directory.
   **Tell:** anything new. `wp dist-archive`'s own default writes the archive
   *beside* the source, and for a linked asset that is your own repository; the
@@ -601,7 +601,7 @@ no SMOKE step today and is covered by `repo_*` examples only.*
   match its own label is worse than a name that differs from it — and this is
   deliberately not hidden, so it should be visible and correct rather than
   smoothed over.
-- [ ] **5. Twice, and nothing is overwritten.** Click **Build zip** again without
+- [x] **5. Twice, and nothing is overwritten.** Click **Build zip** again without ✓ 18 Sep 2026 (VM, after #679) — second build landed as `airplane-mode.0.2.8-1.zip`, the first untouched
   moving the first file. The second lands as `…-1.zip`, the first is untouched.
   If the plugin has no `Version:` header, the toast says so quietly and the name
   carries no version — a note, not a failure.

@@ -2001,6 +2001,12 @@ IPC surface — which is how a reader ends up designing against a system with on
   128M). Switching PHP version or web server = config regen + reload, never a
   docroot/cert/DB rebuild. Domains are validated in core before becoming a
   path/config/cert/DB name (M7).
+- **dist-archive's scratch has no whitespace in its path** (`dist_archive::scratch_root`, #679,
+  18 Sep 2026). The tool hands `zip` an unquoted `-i@<TMPDIR file>`; under app-data that
+  path is `…/Library/Application Support/…` and every Build zip on every Mac died at the
+  space — invisible on the dev machine because the examples build under `temp_dir()`. The
+  per-run scratch now lives under the OS temp dir (checked whitespace-free; a machine with
+  no such dir is refused with the reason), swept by the same `Drop` guard as before (#232).
 - **The COMMAND SET is pinned, not just the phar (#228):** every `wp` rexenv runs FOR
   A USER has `WP_CLI_PACKAGES_DIR` pointed at a rexenv-owned path, so a user's
   `~/.wp-cli/packages` never extends it. Without that, a bug in any wp-dependent

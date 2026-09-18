@@ -374,11 +374,25 @@ pub fn run(
 pub struct ScratchDir(PathBuf);
 
 impl ScratchDir {
-    /// Create `<app-data>/dist-archive-work/<uuid>/{out,tmp}`.
+    /// Create `<scratch root>/rexenv-dist-archive/<uuid>/{out,tmp}`.
+    ///
+    /// # Why the root is NOT app-data any more (18 Sep 2026)
+    ///
+    /// `wp dist-archive` writes its zip include list into `TMPDIR` and hands
+    /// it to `zip` as `-i@<file>` — unquoted, inside a shell string it builds
+    /// itself. With `TMPDIR` under `~/Library/Application Support/…` the space
+    /// in `Application Support` ended the argument and every build on every Mac
+    /// died with "File not found or no read permission (i pattern file
+    /// '@/Users/…/Library/Application')". The dev-machine examples build their
+    /// fixtures under `std::env::temp_dir()`, which has no space, so the first
+    /// place this fired was the clean-VM smoke test. The scratch root is now
+    /// [`scratch_root`]: a path this process checked contains no whitespace,
+    /// which is the property the tool actually needs. The `Drop` sweep is
+    /// unchanged — the litter question is about *whether* it is removed, not
+    /// where it sat.
     pub fn create(paths: &dyn crate::platform::traits::Paths) -> Result<Self> {
-        let dir = paths
-            .app_data_dir()?
-            .join("dist-archive-work")
+        let dir = scratch_root(paths)?
+            .join("rexenv-dist-archive")
             .join(uuid::Uuid::new_v4().to_string());
         std::fs::create_dir_all(dir.join("out"))?;
         std::fs::create_dir_all(dir.join("tmp"))?;
@@ -399,6 +413,33 @@ impl ScratchDir {
     pub fn path(&self) -> &Path {
         &self.0
     }
+}
+
+/// The directory the per-run scratch lives under: the first of the OS temp
+/// dir and app-data whose path carries no whitespace, else an error that says
+/// so. `dist-archive` cannot take a `TMPDIR` with a space (see
+/// [`ScratchDir::create`]); a build that would fail on the path is refused
+/// with the reason rather than started.
+///
+/// macOS: `$TMPDIR` is `/var/folders/<xx>/<…>/T/`, never a space; Windows:
+/// `%TEMP%` is `C:\Users\<name>\AppData\Local\Temp`, a space only when the
+/// account name has one — then app-data (`%LOCALAPPDATA%`) has the same one,
+/// and the refusal is the honest answer until the tool quotes its own path.
+pub fn scratch_root(paths: &dyn crate::platform::traits::Paths) -> Result<PathBuf> {
+    let candidates = [std::env::temp_dir(), paths.app_data_dir()?];
+    candidates
+        .iter()
+        .find(|p| !p.to_string_lossy().chars().any(char::is_whitespace))
+        .cloned()
+        .ok_or_else(|| {
+            Error::Other(format!(
+                "no scratch directory without a space in its path ({} and {}) — \
+                 `wp dist-archive` passes its temp path to zip unquoted, so a build \
+                 there would fail at zip",
+                candidates[0].display(),
+                candidates[1].display()
+            ))
+        })
 }
 
 impl Drop for ScratchDir {
@@ -659,7 +700,7 @@ mod tests {
             PathBuf::from("/bin/wp-cli.phar"),
             PathBuf::from("/data/wp-packages/dist-archive-3.1.0/autoload.php"),
             PathBuf::from("/data/wp-packages/none"),
-            PathBuf::from("/data/dist-archive-work/x/tmp"),
+            PathBuf::from("/data/rexenv-dist-archive/x/tmp"),
         ]
     }
 
@@ -1157,6 +1198,43 @@ mod tests {
             go(&cancel)
         };
         (out, sup.scratch(), delivered)
+    }
+
+    /// #679 — the scratch root has no whitespace, whatever app-data looks like.
+    /// The production app-data path (`~/Library/Application Support/…`) is the
+    /// shape that broke every build; the fixture MUST look like it.
+    #[test]
+    fn the_scratch_root_never_carries_a_space_even_when_app_data_does() {
+        struct SpacedPaths(PathBuf);
+        impl crate::platform::traits::Paths for SpacedPaths {
+            fn app_data_dir(&self) -> Result<PathBuf> {
+                Ok(self.0.clone())
+            }
+            fn config_dir(&self) -> Result<PathBuf> {
+                Ok(self.0.join("config"))
+            }
+            fn log_dir(&self) -> Result<PathBuf> {
+                Ok(self.0.join("logs"))
+            }
+            fn bin_dir(&self) -> Result<PathBuf> {
+                Ok(self.0.join("bin"))
+            }
+            fn hosts_file(&self) -> PathBuf {
+                PathBuf::from("/etc/hosts")
+            }
+        }
+        let spaced = std::env::temp_dir().join(format!("rexenv-distarch-space-{}/Application Support/dev.rexenv.rexenv", std::process::id()));
+        let paths = SpacedPaths(spaced.clone());
+        let root = scratch_root(&paths).expect("the OS temp dir has no space here");
+        assert!(!root.to_string_lossy().contains(' '), "{}", root.display());
+        assert!(!root.starts_with(&spaced), "app-data (with its space) must not be chosen: {}", root.display());
+        let scratch = ScratchDir::create(&paths).unwrap();
+        for p in [scratch.tmp_dir(), scratch.out_dir()] {
+            assert!(!p.to_string_lossy().chars().any(char::is_whitespace), "{}", p.display());
+            assert!(p.is_dir());
+        }
+        drop(scratch);
+        let _ = std::fs::remove_dir_all(spaced.parent().unwrap().parent().unwrap());
     }
 
     #[test]

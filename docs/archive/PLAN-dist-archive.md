@@ -180,7 +180,7 @@ Ledger rows land in the SAME commit as the invariant comment they describe (CLAU
   reports it as a success. Ledger row, and **plant-proven** — delete the fixture's
   `.distignore` and the refusal must fire with a message a stranger can act on.
 
-- [x] **4 — Our temp dir, `TMPDIR`, and the sweep.** ✓ 5 Aug, ledger #232 — `ScratchDir` is a `Drop` guard so the three exits need not be enumerated correctly; `TMPDIR` redirects the tool's litter inside it; `out/` and `tmp/` split so the archive is unambiguous. Plant-proven, including the happy-path-only version that leaks on failure. Fresh dir per run under app-data;
+- [x] **4 — Our temp dir, `TMPDIR`, and the sweep.** (Root moved from app-data to the OS temp dir on 18 Sep 2026, ledger #679: the space in `Application Support` broke zip's unquoted `-i@` include file on every Mac.) ✓ 5 Aug, ledger #232 — `ScratchDir` is a `Drop` guard so the three exits need not be enumerated correctly; `TMPDIR` redirects the tool's litter inside it; `out/` and `tmp/` split so the archive is unambiguous. Plant-proven, including the happy-path-only version that leaks on failure. Fresh dir per run under app-data;
   `TMPDIR` set to it for the child; removed on ok / failed / **cancelled**. Ledger row
   covering all three exits — a sweep proven on the success path only is the
   coverage/surface family, and cancel is the leg that matters, since the tool litters
