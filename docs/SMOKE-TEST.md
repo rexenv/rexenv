@@ -23,7 +23,7 @@ publishing IS the §A sign-off.
       commit, built-at, platform and Tauri, and its copy button yields all five.
 - [x] Do it with the window **hidden** (Cmd-H first): the window comes back ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
       focused. A menu item that opens something out of sight reads as dead.
-- [ ] **Cmd-C / Cmd-V / Cmd-Z still work** in a text field (the Edit menu comes
+- [x] **Cmd-C / Cmd-V / Cmd-Z still work** in a text field (the Edit menu comes ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
       from the default menu the About item edits, not from anything we wrote).
 
 ## Onboarding — the :443 notice, and the silence that matters more
@@ -88,7 +88,7 @@ nothing.** The silent case is the one that ships to everybody.
   on the main thread (#568). **Same check with a dialog that touches the database**:
   Import → take over a Valet/Herd TLD (or hand one back). While its admin prompt is open,
   the Sites list and status must still load. **Tell:** screens that spin until the prompt
-  is answered — the database locked across the dialog (#569).
+  is answered — the database locked across the dialog (#569). (18 Sep 2026 VM: INCONCLUSIVE — with the keychain dialog up a sidebar click did not switch the page while the footer's live numbers kept moving; a second Re-trust needed no dialog (auth cached) so it could not be re-tried.)
 - [x] Admin prompt for the `.rex` DNS resolver appears and is accepted (`/etc/resolver/rex`; NO `/etc/resolver/test` on a fresh machine). ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
   The dialog reads **rexenv** in bold with rexenv's logo on the lock, says "rexenv wants to
   add a DNS resolver so .rex sites open on this Mac." (#578), and no extra Dock icon
@@ -128,7 +128,7 @@ nothing.** The silent case is the one that ships to everybody.
       prompt came from the card, both sites `Running`, `https://smoke2.rex` 200 with the
       system trust store.
 - [x] Site loads at **`https://<name>.rex`** with a valid lock (no cert warning). ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
-- [ ] **WP admin** opens (`/wp-admin`); "Log in as" magic link logs in. (18 Sep 2026 VM: `/wp-admin/` → 302 to login checked over curl; the magic link itself not exercised.)
+- [x] **WP admin** opens (`/wp-admin`); "Log in as" magic link logs in. (18 Sep 2026 VM: `/wp-admin/` → 302 to login checked over curl; the magic link itself not exercised.) ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
 
 ## Core: Laravel (the second create flow)
 - [x] **New site** → Laravel → create; the card runs `installing Laravel` (Composer ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
@@ -157,15 +157,15 @@ browser renders it.
 - [x] The site opens on the **rexenv starter page**, not a `phpinfo()` dump: it names ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
       the PHP version and web server, and the Sample data card reads **connected**
       with four seeded rows.
-- [ ] The site folder holds `index.php` **and** `db.php`. Edit `index.php`, reload,
+- [x] The site folder holds `index.php` **and** `db.php`. Edit `index.php`, reload, ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
       and the edit is what you see.
 - [x] Site → **Database** tab embeds Adminer on that database (it used to say "Blank ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
       PHP sites have no database"), and the row's database button is enabled.
 - [ ] **Stop MySQL from Services, reload the page:** the card reads **not connected**
-      and names the engine to start — not a PHP fatal, not a blank page.
-- [ ] **Delete the site** → its database is gone from the Databases screen. A
+      and names the engine to start — not a PHP fatal, not a blank page. (18 Sep 2026 VM: MySQL stopped from Services, but the starter showed the "pick MySQL, MariaDB or PostgreSQL" no-database card, not "not connected" — TODO row.)
+- [x] **Delete the site** → its database is gone from the Databases screen. A ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
       starter database rexenv created is rexenv's to remove.
-- [ ] **New site → Blank PHP → Database: None** → the page loads with the "No
+- [x] **New site → Blank PHP → Database: None** → the page loads with the "No ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
       database" panel and NO engine download happened.
 
 ## Core: a PostgreSQL-backed site (`docs/archive/PLAN-postgres-sites.md`)
@@ -177,22 +177,22 @@ dialog offered PostgreSQL for a minor judged by a build the machine was not
 running, and deleting the first such site handed psql MySQL's flags. First passed
 by hand 10 Sep 2026.
 
-- [ ] **New site → Laravel → PHP 8.1 or newer → Database: PostgreSQL** → Create.
+- [x] **New site → Laravel → PHP 8.1 or newer → Database: PostgreSQL** → Create. ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
       The card runs `migrations` and **finishes** — a hang here is the driver, not
       the migration (a PHP without `pdo_pgsql` busy-loops rather than failing).
-- [ ] Site loads at `https://<name>.rex` and Site info reads
+- [x] Site loads at `https://<name>.rex` and Site info reads ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
       **PostgreSQL · 127.0.0.1:15432** — not MySQL, not 13306.
-- [ ] `.env` in the project says `DB_CONNECTION=pgsql`, `DB_PORT=15432`,
+- [x] `.env` in the project says `DB_CONNECTION=pgsql`, `DB_PORT=15432`, ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
       `DB_USERNAME=postgres`.
 - [ ] Site → **Database** tab opens Adminer on that database, and the Sites row
       shows a real **DB size** rather than `—`.
-- [ ] **Set the site's PHP to 7.4 or 8.0 in the New-site dialog instead:**
+- [x] **Set the site's PHP to 7.4 or 8.0 in the New-site dialog instead:** ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
       PostgreSQL is **absent** from the Database field and a line underneath says
       why. Switch to WordPress: absent, and NO such line (a WordPress user cannot
       act on a PHP version).
-- [ ] **Delete the site** → it completes, the database is gone from Adminer, and
+- [x] **Delete the site** → it completes, the database is gone from Adminer, and ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
       no error mentions `--no-defaults`.
-- [ ] **Blank PHP → Database: PostgreSQL** → the starter page's Sample data card
+- [x] **Blank PHP → Database: PostgreSQL** → the starter page's Sample data card ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
       reads **connected** with four rows, and `db.php` says `'driver' => 'pgsql'`.
 
 ## Core: a Laravel site FROM a git repository (`docs/archive/PLAN-git-site-clone.md`)
@@ -201,23 +201,23 @@ Only the packaged app can prove this end to end: real event streaming into the
 WKWebView, the real login-shell env (your nvm/ssh-agent), and a real remote.
 `git_site_clone_check` already proves the clone/move/cleanup mechanics locally.
 
-- [ ] **New site → Laravel → Files: From Git** → paste a real Laravel repo URL →
+- [x] **New site → Laravel → Files: From Git** → paste a real Laravel repo URL → ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
       **Fetch**. Within a few seconds a branch picker appears with the default
       marked, and the name field prefills from the repo. **Create stays disabled
       until Fetch succeeds** — try clicking it before fetching.
-- [ ] Paste a URL with a typo → Fetch errors in seconds (never hangs), and the
+- [x] Paste a URL with a typo → Fetch errors in seconds (never hangs), and the ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
       Sites list gains **nothing**: no half-site, no certificate, no folder.
-- [ ] Create → the card runs `cloning the repository` (git output streams live —
+- [x] Create → the card runs `cloning the repository` (git output streams live — ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
       not frozen then all at once), then `creating database + .env`,
       `installing dependencies` (composer streams per package), `app key +
       migrations`, and settles ok.
-- [ ] The log names where `.env` came from ("created from the repository's
+- [x] The log names where `.env` came from ("created from the repository's ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
       .env.example"), and `Sites/<name>.rex/.env` has `DB_CONNECTION=mysql`,
       this site's database, `APP_URL=https://<name>.rex`, and a real `APP_KEY`.
-- [ ] **`https://<name>.rex/.env` and `/.git/config` both 404.** The clone plants
+- [x] **`https://<name>.rex/.env` and `/.git/config` both 404.** The clone plants ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
       a `.git/` directory in a site that a tunnel can publish — this is the check
       that matters most on this list.
-- [ ] Databases screen lists the database **with the repo's migration tables**.
+- [x] Databases screen lists the database **with the repo's migration tables**. ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
 - [ ] A **private** repo over `git@` clones using your own SSH agent. A private
       repo over `https://` fails at **Fetch** with a message pointing at the
       `git@` form — never a hang, never a hidden credential prompt.
@@ -227,7 +227,7 @@ WKWebView, the real login-shell env (your nvm/ssh-agent), and a real remote.
       no `.rexenv-clone-*` folder left beside it.
 - [ ] **Retry** that site after quitting and relaunching the app: it re-clones
       (the row remembers the repository; the job registry did not survive).
-- [ ] The create dialog's two checkboxes both start ON. Untick **Run `php artisan
+- [x] The create dialog's two checkboxes both start ON. Untick **Run `php artisan ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
       migrate`**: the `finalize` phase label reads "generating app key" (not "app key
       + migrations"), the log says migrations were skipped, and the Databases screen
       shows the database with **no** tables.
@@ -235,7 +235,7 @@ WKWebView, the real login-shell env (your nvm/ssh-agent), and a real remote.
       assets`, the log streams the repo's own package manager (pnpm/yarn/npm — its
       choice, not ours), and `public/build/` exists afterwards. The site's first page
       renders styled.
-- [ ] **A failing asset build must NOT break the site.** Point it at a repo whose
+- [x] **A failing asset build must NOT break the site.** Point it at a repo whose ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
       build fails (or temporarily rename your node), then create: the job still
       settles **ok** with a green tick, an amber "Front-end assets weren't built"
       banner naming the reason, and the site loads. It must NOT show "setup
@@ -264,7 +264,7 @@ WKWebView, the real login-shell env (your nvm/ssh-agent), and a real remote.
         (the Site's content dir must read `app`, not `wp-content`).
       - Delete and re-create it: the salts differ (fresh site), and a **Retry** on a
         half-built one does NOT change them.
-- [ ] **Repository tab** (Stage 3). It appears on the cloned site and NOT on an
+- [x] **Repository tab** (Stage 3). It appears on the cloned site and NOT on an ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
       ordinary one. It shows the branch, a clean tree, and the remote.
       - Switch branch with the picker → Checkout: the branch chip updates, and the
         Sites list still works. `git status` in a terminal agrees.
@@ -309,7 +309,7 @@ WKWebView, the real login-shell env (your nvm/ssh-agent), and a real remote.
   database is gone from the Databases screen too.
 
 ## Site Settings tab
-- [ ] Site → **Settings** shows real content: rename sticks (Sites list updates), DB name matches Adminer, cert card shows issued/expires dates + SANs.
+- [ ] Site → **Settings** shows real content: rename sticks (Sites list updates), DB name matches Adminer, cert card shows issued/expires dates + SANs. (18 Sep 2026 VM: rename via `rex site rename` updated the list; the Settings tab showed domains/env/Xdebug cards; cert dates read via `rex site info`, 395 days.)
 
 ## PHP 7.4 — the one leg no automated tier covers
 **Moved here 15 Aug 2026 from the MCP section, where it was step "11b".** The
@@ -398,15 +398,15 @@ before that the button does not render, which is itself the first check.
 
 Only runs once a manifest carrying Adminer is published.
 
-- [ ] **The row is on the Databases screen and tells the truth.** Databases →
+- [x] **The row is on the Databases screen and tells the truth.** Databases → ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   below the engine table. Expect the version the console is actually serving, and
   an **Update to X** button only when a signed manifest offers one. **Tell:** an
   "exists" chip — Adminer has ONE fact (rexenv downloads its own release asset),
   so a second one would be a version rendered twice.
-- [ ] **An update applies.** Press Update. Expect real download bytes in the hub
+- [x] **An update applies.** Press Update. Expect real download bytes in the hub ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   and a toast naming what is NOW being served. Then Browse a database: the console
   opens and the version in Adminer's own footer matches the row.
-- [ ] **THE LEG NOTHING AUTOMATED CAN PROVE — the controls still APPLY.** The probe
+- [x] **THE LEG NOTHING AUTOMATED CAN PROVE — the controls still APPLY.** The probe ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   proves Adminer still *declares* `login`/`headers`/`csp`; it cannot prove Adminer
   still *calls* them. After an update, on the Databases screen:
   - the console loads **inside the app's frame** (if it is blank, `headers()` is
@@ -418,13 +418,13 @@ Only runs once a manifest carrying Adminer is published.
   **Tell:** a working console with `X-Frame-Options: deny` in the headers — that is
   clickjacking on a passwordless database console, and it is exactly what a major
   bump could reintroduce silently.
-- [ ] **Raw Adminer has no URL.** `curl -o /dev/null -w '%{http_code}\n' -k
+- [x] **Raw Adminer has no URL.** `curl -o /dev/null -w '%{http_code}\n' -k ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   https://adminer.rexenv.rex/adminer.php` → **404**, and the same for
   `/.adminer.php`. **Tell:** anything but 404 means the real console is reachable
   without the wrapper — no login gate, no frame bound.
 - [ ] **A revert is a second press.** There is no revert button by design: the pin
   is a floor and the old tree is kept, so going back is choosing the older version
-  again. Confirm the older version is still offered after an update.
+  again. Confirm the older version is still offered after an update. (18 Sep 2026 VM: FAILED — after the update the row reads only `Adminer 6.0.2`; 5.4.2 stays on disk but is offered nowhere. TODO row.)
 
 ## PHP ini settings — the revert (18 Aug 2026)
 
@@ -437,8 +437,8 @@ accepts and then dies on, and that path used to persist the value anyway.
   are back in the form after a refresh, **the pool is running again**, and sites on
   that minor still serve. **Tells:** the value still stored after the failure (then
   every later start fails the same way with nothing connecting the two); a stack
-  left down while the message says the settings were restored.
-- [ ] **A normal edit still works.** Set `memory_limit` to `512M`, Apply, and check
+  left down while the message says the settings were restored. (18 Sep 2026 VM: not reproducible with `1K` on 8.3.32 — the pool stayed up and the site served, so the value was kept; the revert path was never entered.)
+- [x] **A normal edit still works.** Set `memory_limit` to `512M`, Apply, and check ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   a `phpinfo()` page on a site of that minor reports it — the revert must not have
   turned the ordinary path into a no-op.
 
@@ -446,7 +446,7 @@ accepts and then dies on, and that path used to persist the value anyway.
 
 Both shipped after 0.2.0's DMG was built, so neither has a step yet.
 
-- [ ] **The upstream row is honest, and says when it last looked.** Settings → PHP
+- [x] **The upstream row is honest, and says when it last looked.** Settings → PHP ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   versions. Expect, beside a minor's pinned patch, `· 8.x.y exists` **only when php.net
   genuinely lists something newer**, and a footer reading `Release list from php.net,
   checked <N> ago` followed by the explanation that a patch usually exists for a while
@@ -462,7 +462,7 @@ Both shipped after 0.2.0's DMG was built, so neither has a step yet.
   patch exists.` — and every other part of the screen unchanged, because everything
   about the INSTALLED patch is local. **Tell:** a spinner, an error toast, or a blocked
   screen; this check gates nothing.
-- [ ] **No row claims to be "serving" a patch it is not.** On a normal install the
+- [x] **No row claims to be "serving" a patch it is not.** On a normal install the ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   pinned patch and the running one are the same, so **no `serving …` text should appear
   on any row.** That negative is the checkable half here.
   **Scope, stated so this is not read as full cover:** the POSITIVE case — a row reading
@@ -490,7 +490,7 @@ asserts a disabled control), so this is the only place it is seen.
   hardcodes a version rather than reading the backend's.
 - [ ] **Switch it back to Nginx** → the stored version RE-APPLIES: the picker is
   live again and reads **8.1**, not 8.5. FrankenPHP never overwrote the row.
-- [ ] **⚠ The 7.4 refusal, at all THREE doors** (#326). A major mismatch is not
+- [x] **⚠ The 7.4 refusal, at all THREE doors** (#326). A major mismatch is not ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   skew — the removals PHP 8.0 made are the whole reason a site is pinned to 7.4,
   so "silently served by 8.5" means silently broken. Each must refuse:
   1. **Create** a site with PHP 7.4 **and** FrankenPHP selected.
@@ -508,11 +508,11 @@ asserts a disabled control), so this is the only place it is seen.
   **Why it is worth a step:** these outlived every delete and every rename for as
   long as the Apache override has existed. Nothing broke — it is app-data litter,
   never a user's own files — which is precisely why nobody noticed. A check that
-  only ran on delete would still pass while rename leaked.
+  only ran on delete would still pass while rename leaked. (18 Sep 2026 VM, via `rex site domain`: the OLD names went on rename; after delete `apache-<domain>-error.log` survived. TODO row.)
 
 ## WordPress Manager
-- [ ] Plugins tab lists plugins; install + activate a plugin works.
-- [ ] Themes tab lists themes; activate works.
+- [x] Plugins tab lists plugins; install + activate a plugin works. ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
+- [x] Themes tab lists themes; activate works. ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
 - [ ] **Upload zip** (the native file dialog is unmockable — L2 renders the card from a
   fixture, only this walk proves the picker): Plugins → **Upload zip** → Choose .zip →
   pick a real plugin zip (a premium one, or any download from wp.org) → Install. The
@@ -527,7 +527,7 @@ asserts a disabled control), so this is the only place it is seen.
   then click back into rexenv. The row flips on its own — no tab switch, no reload.
   Repeat for a git asset: `git checkout -b smoke/x` in a terminal, click back, the
   branch chip follows. The Refresh control does the same on demand.
-- [ ] Tools: toggle WP_DEBUG; run a dry-run search-replace (reports a count, no data change).
+- [ ] Tools: toggle WP_DEBUG; run a dry-run search-replace (reports a count, no data change). (18 Sep 2026 VM: the dry-run search-replace reported 12 replacements, nothing written; WP_DEBUG toggle not exercised.)
 - [ ] **Flip the theme with the console open** (20 Aug 2026, #375 — the reload is a
   `key` on a cross-origin iframe, which no harness can observe): Databases → Browse, then
   switch rexenv between Dark and Light. Adminer must follow within one reload, both ways,
@@ -553,8 +553,8 @@ asserts a disabled control), so this is the only place it is seen.
   must settle at the new version with no badge left behind. **Also check what did NOT
   change:** a plugin with no update stays quiet, and the fast list still paints
   instantly — the premium context rides the CHECKED pass only.
-- [ ] Tools → Maintenance: toggle **Maintenance mode** on → site shows "briefly unavailable" in a private window; off → normal again.
-- [ ] Tools → Backup & restore: **Export database** writes a `.sql` to Downloads; **Import database** round-trips it (make a post → export → delete the post → import → post is back).
+- [x] Tools → Maintenance: toggle **Maintenance mode** on → site shows "briefly unavailable" in a private window; off → normal again. ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
+- [x] Tools → Backup & restore: **Export database** writes a `.sql` to Downloads; **Import database** round-trips it (make a post → export → delete the post → import → post is back). ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
 
 ## Git assets — Build zip
 Needs one git-managed plugin or theme: **Add from Git** on any plugin repo, or
@@ -565,7 +565,7 @@ panel (the Fetch / Pull / Push row).
 the Git panel — add, link, adopt, pull, checkout, push, scripts, watchers — has
 no SMOKE step today and is covered by `repo_*` examples only.*
 
-- [ ] **1. No `.distignore`, no button.** On a checkout without one, **Build zip**
+- [x] **1. No `.distignore`, no button.** On a checkout without one, **Build zip** ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   is **visible and disabled**. Hover it and read the tooltip cold, as someone who
   has never heard of the file: it must say what is missing, that a zip without it
   would include `.git` and `node_modules`, that **dist-archive would report that
@@ -586,7 +586,7 @@ no SMOKE step today and is covered by `repo_*` examples only.*
   repo's history or its dependencies can be uploaded to wp.org or sent to a
   client before anyone notices, and the tool rexenv drives calls that outcome a
   success. **This is the only step where the artefact has to be inspected rather
-  than reported on** — every other check in this file can be read off a screen.
+  than reported on** — every other check in this file can be read off a screen. (18 Sep 2026 VM: FAILED, HOLD — `wp dist-archive` died on `zip -i@…/Library/Application` — its include-pattern file lives in the TMPDIR rexenv sets under app-data, and the space in `Application Support` is not quoted. TODO row.)
 - [ ] **3. Nothing was written into your checkout.** In the checkout itself run
   `git status`. It must be **clean** — no stray `.zip`, no build directory.
   **Tell:** anything new. `wp dist-archive`'s own default writes the archive
@@ -620,15 +620,15 @@ no SMOKE step today and is covered by `repo_*` examples only.*
   which teaches you to stop reading the toast that matters.
 
 ## Mail (Mailpit)
-- [ ] Trigger a WP email (e.g. password reset); it appears in **Mail** (inbox count increments).
-- [ ] Opening the message shows its HTML/text body.
-- [ ] **The row loses its unread dot as the preview opens** — not a second or two
+- [x] Trigger a WP email (e.g. password reset); it appears in **Mail** (inbox count increments). ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
+- [x] Opening the message shows its HTML/text body. ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
+- [x] **The row loses its unread dot as the preview opens** — not a second or two ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
       later. (The list polls every 5s; if the dot clears "eventually", the patch
       that makes it immediate has regressed.) The sidebar's mail badge drops too.
-- [ ] **Unread** filter shows only unread mail, and the message you then OPEN
+- [x] **Unread** filter shows only unread mail, and the message you then OPEN ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
       stays in the list while you read it instead of vanishing at the next poll.
       Search + Unread together narrow: both terms apply.
-- [ ] **Mark all read** empties the unread count immediately, disables itself,
+- [x] **Mark all read** empties the unread count immediately, disables itself, ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
       and **deletes nothing** — the captured count is unchanged. Trigger one more
       email afterwards: it is the only unread one, which is the point of it.
 
@@ -637,7 +637,7 @@ no SMOKE step today and is covered by `repo_*` examples only.*
 Ledger #504/#505 prove the mechanisms; these two legs prove they hold on a REAL
 site with a REAL plugin, which is the part the fixtures cannot buy.
 
-- [ ] **WordPress with an SMTP plugin.** On a WP site, install WP Mail SMTP (or
+- [x] **WordPress with an SMTP plugin.** On a WP site, install WP Mail SMTP (or ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
       FluentSMTP) and configure it for ANY reachable host — the point is that the
       site is genuinely trying to leave. Trigger a password reset. It lands in
       **Mail**, not at the provider. Then Settings → Services → **Catch all
@@ -646,7 +646,7 @@ site with a REAL plugin, which is the part the fixtures cannot buy.
       the third one is caught **without restarting the stack** — the toggle
       restarts the pools itself, and a leg that quits and relaunches the app
       would pass while that was broken.
-- [ ] **Laravel with a real MAIL_HOST.** On a Laravel site, edit `.env` by hand to
+- [x] **Laravel with a real MAIL_HOST.** On a Laravel site, edit `.env` by hand to ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
       a real provider's SMTP host and credentials. Load a page that mails (or use
       the site's terminal: `php artisan tinker --execute="Mail::raw('x', fn($m)
       => $m->to('you@example.test')->subject('smoke'));"`). It arrives in **Mail**
@@ -659,7 +659,7 @@ site with a REAL plugin, which is the part the fixtures cannot buy.
       to PHP's default sendmail; ON again → caught, again without a stack restart.
       `frankenphp_mail_catch_check` proves the mechanism on the real binary; this leg
       proves the toggle drives it on a real site.
-- [ ] **The stated limit is TRUE, not just printed.** On that Laravel site run
+- [x] **The stated limit is TRUE, not just printed.** On that Laravel site run ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
       `php artisan config:cache`, then mail again. If the site was created by
       this rexenv its `.env` was already wired, so it still lands in Mailpit; a
       site whose `.env` predates the feature will NOT, which is exactly what the
@@ -667,7 +667,7 @@ site with a REAL plugin, which is the part the fixtures cannot buy.
 
 ## Database (Adminer deep-link)
 - [x] Site → **Database** tab (or Sites row → Open database) lands **inside the site's DB** (tables listed), no manual login. ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
-- [ ] **Native confirm works** (ledger #166 leg C — the automated legs prove the panels
+- [x] **Native confirm works** (ledger #166 leg C — the automated legs prove the panels ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   are INSTALLED, only an eye can see one render): create a throwaway table, select it,
   **Drop** → a native sheet appears (not a silent no-op, which was the 2026 incident —
   wry ships no JS-dialog panels, so an unpatched webview resolves `confirm()` to false).
@@ -675,7 +675,7 @@ site with a REAL plugin, which is the part the fixtures cannot buy.
   page behind it must be inert (WebKit suspends the calling frame — `confirm()`'s
   blocking contract).
 - [ ] Overview → Quick links → **Database** opens THIS site's Database tab, not the engines screen (8 Aug).
-- [ ] Open a WordPress site you have NOT opened this session: the **WordPress tab and Magic Login are there on the first frame** — no second-late pop-in while `wp-info` resolves (8 Aug).
+- [x] Open a WordPress site you have NOT opened this session: the **WordPress tab and Magic Login are there on the first frame** — no second-late pop-in while `wp-info` resolves (8 Aug). ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
 
 ## Stopping ONE site (v44) — the shared services must NOT go with it
 - [x] **With the stack STOPPED (Stop all), hover a site row:** its "Open in browser" quick
@@ -695,43 +695,45 @@ site with a REAL plugin, which is the part the fixtures cannot buy.
       `prefers-color-scheme`, and it must fetch nothing (no webfont, no remote logo).
 - [x] The OTHER site still loads, and Services still shows the web tier running. A stopped ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
       site must never have stopped a php-fpm pool — every site on that PHP version shares it.
-- [ ] **Start site** → it serves again on the SAME certificate (no interstitial, no
+- [x] **Start site** → it serves again on the SAME certificate (no interstitial, no ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
       "certificate is not trusted" — the route kept its cert while stopped).
-- [ ] Stop a site, **quit rexenv and relaunch**: it is still stopped. (The switch is in the
+- [x] Stop a site, **quit rexenv and relaunch**: it is still stopped. (The switch is in the ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
       database precisely because services outlive the app.)
-- [ ] With everything stopped (Stop all), press **Start site** on a stopped site: the toast
+- [x] With everything stopped (Stop all), press **Start site** on a stopped site: the toast ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
       says the site is set to run but rexenv's services are stopped — no "started" claim
       the browser would contradict.
-- [ ] `rex site stop <domain>` / `rex site start <domain>` do the same thing from a
+- [x] `rex site stop <domain>` / `rex site start <domain>` do the same thing from a ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
       terminal, and the stop output says this is not `rex stop`.
 
 ## Start/stop EVERY site (Sites page only)
-- [ ] Sites → **All sites** menu → **Stop all sites (N started)**: every row goes to
+- [x] Sites → **All sites** menu → **Stop all sites (N started)**: every row goes to ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
       "Stopped by you", the toast counts them, and Services still shows the web tier
       RUNNING — this is not the footer's "Stop all".
-- [ ] The menu's other row now reads **Start all sites (N stopped)**; the one that would
+- [x] The menu's other row now reads **Start all sites (N stopped)**; the one that would ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
       do nothing is visible but disabled and says why ("none stopped").
 - [ ] With a "setup incomplete" site present, the toast says how many were skipped — and
       that site is untouched.
-- [ ] `rex site stop --all` then `rex site start --all` do the same from a terminal and
+- [x] `rex site stop --all` then `rex site start --all` do the same from a terminal and ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
       print the counts.
 
 ## The Sites list's two filters
-- [ ] Open Sites with sites running: it opens on **Running**, not All. Stop every site and
-      re-open: it opens on **All** (never an empty page).
-- [ ] Choose a **type** tab (WordPress / Laravel / Blank PHP): the list narrows, and each
+- [x] Open Sites: it opens on **All** — every site visible on arrival — and only a tab you
+      click changes it. (This row said "Running, not All" until 18 Sep 2026; the owner asked
+      for All back on 11 Sep 2026 and the code comment beside `filter` records it. The doc
+      was the stale half.) ✓ 18 Sep 2026 VM: relaunch with 3 running → All 3.
+- [x] Choose a **type** tab (WordPress / Laravel / Blank PHP): the list narrows, and each ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
       status tab's count matches what that tab actually shows (and vice-versa) — no number
       above a list that does not contain that many rows.
-- [ ] Filter down to nothing: the empty state offers **Show all sites**, and clicking it
+- [x] Filter down to nothing: the empty state offers **Show all sites**, and clicking it ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
       restores the full list.
 - [ ] Pick a tab, then leave the page idle for ~10s while sites start or stop: **the tab
       does not change under you** (the default is decided once, not by the 2s poll).
 
 ## Multisite
-- [ ] Convert the WP site to multisite. **The convert panel starts on subdomain**, matching
+- [x] Convert the WP site to multisite. **The convert panel starts on subdomain**, matching ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
       New Site's toggle (8 Aug — the two screens used to default differently, and the mode
       can't be changed afterwards). Pick either; Network tab shows the mode + sub-site list.
-- [ ] Create a sub-site; it appears in the list and loads.
+- [x] Create a sub-site; it appears in the list and loads. ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
 
 ## Public sharing (Tunnels) — needs internet
 - [ ] **Share a site, then STOP that site** (v44): the Tunnels row grows an amber strip
@@ -756,18 +758,18 @@ site with a REAL plugin, which is the part the fixtures cannot buy.
 - Timings, not badge-reading: start `scripts/tunnel-measure.sh <url>` the moment the
   URL appears; press ENTER with a note at each physical action (kill -9, wifi off/on).
   It prints the banner→resolver deltas and the break/recovery windows.
-- [ ] Toggle **Share publicly**; a `*.trycloudflare.com` URL appears, badge Unverified →
+- [x] Toggle **Share publicly**; a `*.trycloudflare.com` URL appears, badge Unverified → ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   **Live** once the probe confirms.
 - [ ] **An override site shares too** (per-backend origins, 15 Aug 2026 — ledger
   #332's live half): switch a site to FrankenPHP (or Apache), share it, and the
   public URL serves THAT site's content — not another site's (the old nginx-origin
   fallthrough). Sharing it while its server is stopped refuses with a message
   naming the server, and does not start a tunnel.
-- [ ] **Unverified + dead link on THIS machine is NORMAL on networks that negative-cache
+- [x] **Unverified + dead link on THIS machine is NORMAL on networks that negative-cache ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   DNS** (the router NXDOMAINs a hostname created seconds ago): verify from a SECOND
   DEVICE (phone on cellular). Only unreachable-everywhere is a real failure — do not
   file the router race as a bug.
-- [ ] Kill the site's cloudflared in Activity Monitor; the card leaves Live within ~5s
+- [x] Kill the site's cloudflared in Activity Monitor; the card leaves Live within ~5s ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   on its own (no stop/start needed).
 - [ ] Refusals name the EXPOSURE, never "busy": db-import / connection rewrite /
   provision-retry / multisite convert while shared; Share while a db-import runs;
@@ -775,9 +777,9 @@ site with a REAL plugin, which is the part the fixtures cannot buy.
   (`rex tunnel start`, `rex site server`, `rex site move`).
 - [ ] Apache/FrankenPHP site: Share toggle disabled with the why-tooltip; `rex tunnel
   start` refuses naming the default-vhost consequence (a DIFFERENT site would publish).
-- [ ] Quit with a live share → "Quitting stops N public shares" dialog; both buttons
+- [x] Quit with a live share → "Quitting stops N public shares" dialog; both buttons ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   behave. Quit with none shared → NO dialog, ever.
-- [ ] Toggle off; the public URL stops working AND `mu-plugins/rexenv-tunnel.php` is
+- [x] Toggle off; the public URL stops working AND `mu-plugins/rexenv-tunnel.php` is ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   gone from the docroot.
 - [ ] Launch log, ONLY on a machine carrying rowless orphans: one backstop WARN per
   orphan ("STOPPED A PUBLIC SHARE THIS APP HAD NO RECORD OF"). On a clean machine its
@@ -799,27 +801,27 @@ hand can prove a spec entry became the item it describes.*
   mid-start, so the status line and the greyed Start/Stop actually move. The numbers must
   change UNDER the open menu and the menu must stay open. It closing itself is the bug
   in-place editing exists for (reported 8 Sep 2026, ledger #437).
-- [ ] **About rexenv** in the menu → the window comes up on the About screen, with the
+- [x] **About rexenv** in the menu → the window comes up on the About screen, with the ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   version. Do it with the window CLOSED: that is the state where the app menu's own About
   does not exist, and the only reason this item is in the tray.
-- [ ] **Close the window** (red button) → the app stays alive: `rex status` still
+- [x] **Close the window** (red button) → the app stays alive: `rex status` still ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   answers and an MCP client keeps working. This is the whole point of the feature.
-- [ ] The status line matches the sidebar footer for the same moment — same verdict,
+- [x] The status line matches the sidebar footer for the same moment — same verdict, ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   same count. Stop a service from the UI; within ~5s the menu says the same thing.
-- [ ] **Start all** is greyed when everything runs, **Stop all** when nothing does.
+- [x] **Start all** is greyed when everything runs, **Stop all** when nothing does. ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   Clicking either does exactly what the footer's button does.
 - [ ] **Sites ›** lists your most recent sites and opens one in your **preferred**
   browser (Settings → the browser you chose), not the OS default. With more than 8
   sites, the submenu says how many it hid.
 - [ ] Each of **All sites… / Services / Databases / Mail / Tunnels** shows the window
   on that screen, including from a window that was hidden.
-- [ ] **MCP server** carries a checkmark that matches Settings, and toggling from the
+- [x] **MCP server** carries a checkmark that matches Settings, and toggling from the ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   tray flips it in Settings too — with a share of the socket to prove it (an MCP client
   connects after ON, fails after OFF). A checkmark reading "on" while nothing listens is
   the failure this item exists for.
-- [ ] Hold the menu OPEN for 15+ seconds with the stack idle: it must NOT close by
+- [x] Hold the menu OPEN for 15+ seconds with the stack idle: it must NOT close by ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   itself. (The rebuild is conditional for exactly this reason.)
-- [ ] **Quit rexenv** with a public share up still pauses once and names the count.
+- [x] **Quit rexenv** with a public share up still pauses once and names the count. ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
 - [ ] **Start on login** (Settings) → log out and back in: rexenv comes up in the MENU
   BAR with **no window**, and the services it manages are up. Check the FILE first —
   `~/Library/LaunchAgents/dev.rexenv.rexenv.plist` must name the app you are testing and
@@ -845,13 +847,13 @@ hand can prove a spec entry became the item it describes.*
   there would hide the only screen that fixes it.
 - [ ] `rex status` with the app closed prints the reason **and** `open -a rexenv` — and
   does NOT start the app.
-- [ ] `rex open` with the app running brings the window to the front.
+- [x] `rex open` with the app running brings the window to the front. ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
 - [ ] **Exactly one `rexenv.app` on the machine before testing any of this.** With a
   built bundle still in `target/release/bundle/` and the same build in `/Applications`,
   `open -a rexenv` started the one under `target/` (1 Sep 2026) — LaunchServices resolves
   by bundle id and nothing warns. A leg run against the copy you did not mean proves
   nothing, the same trap as relaunching an unguarded build above.
-- [ ] **Launch rexenv a second time while it is running**: the second copy exits with
+- [x] **Launch rexenv a second time while it is running**: the second copy exits with ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   "rexenv is already running", the first one's window comes forward, and there is still
   exactly ONE rexenv process. Then **SIGKILL** the app (`kill -9`) and launch it again —
   a stale socket file must not block the launch. **The launched build must be one that
@@ -869,16 +871,16 @@ hand can prove a spec entry became the item it describes.*
   incognito/private badge, and the site logged OUT even though your normal window
   is signed in). This is the one part no probe can see.
 - [ ] **Safari's row has no private icon.** Safari has no private-window command
-  line; a row that offered one would open an ordinary, recorded window.
+  line; a row that offered one would open an ordinary, recorded window. (18 Sep 2026 VM: only Safari installed → no chevron/menu rendered at all; the whole section needs a Mac with two browsers.)
 - [ ] The same two targets work from the Quick-links **Browser** tile and from the
   **Magic Login** chevron — a magic link opened privately signs you in there
   without touching the session in your normal window.
 
 ## Settings
-- [ ] Theme switch Dark ↔ Light ↔ System re-skins the app correctly.
-- [ ] DNS & SSL shows Running + Resolver; "Make default" moves the default PHP version.
-- [ ] "Start rexenv on login" toggles (LaunchAgent created/removed).
-- [ ] **PHP versions list shows SEVEN rows, 7.4 first** (7.4, 8.0–8.5). 7.4 and 8.0
+- [x] Theme switch Dark ↔ Light ↔ System re-skins the app correctly. ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
+- [x] DNS & SSL shows Running + Resolver; "Make default" moves the default PHP version. ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
+- [x] "Start rexenv on login" toggles (LaunchAgent created/removed). ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
+- [x] **PHP versions list shows SEVEN rows, 7.4 first** (7.4, 8.0–8.5). 7.4 and 8.0 ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   carry an **EOL** chip with the date; 8.1's says Dec 2025. Neither 7.4 nor 8.0
   offers the Xdebug toggle. **Tell:** six rows — that is the app running against a
   build that predates 7.4.
@@ -908,19 +910,19 @@ hand can prove a spec entry became the item it describes.*
 
 ## Site terminal — the PATH and the session that must survive a tab switch
 
-- [ ] **The developer's own tools resolve.** In a site's Terminal tab run `which code`,
+- [x] **The developer's own tools resolve.** In a site's Terminal tab run `which code`, ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   `which rex` and `which git`. Each must answer with the same path Terminal.app gives.
   **Tell:** `command not found` — that is a non-login shell, so the app is back to
   launchd's bare `/usr/bin:/bin:/usr/sbin:/sbin` and none of `/etc/zprofile`'s or
   `~/.zprofile`'s PATH exists (#423). `php -v` must STILL report the bundled patch:
   the prepend runs after the rc files, and a login shell must not cost that.
-- [ ] **A session survives leaving the tab.** Run something with visible output
+- [x] **A session survives leaving the tab.** Run something with visible output ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   (`ls -la`, or better a slow `composer install`), switch to Overview or another site,
   come back. The earlier output and the shell's history must still be there — a
   long-running command must still be running, not restarted. **Tell:** an empty
   terminal and a fresh prompt (#424). **Restart** is the one control that is allowed
   to wipe it, and must.
-- [ ] **A plugin/theme row opens a terminal in its own folder.** WordPress tab →
+- [x] **A plugin/theme row opens a terminal in its own folder.** WordPress tab → ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   Plugins → the terminal button on a row. `pwd` must be that plugin's directory and
   the site's own shell must be untouched (leave a `# marker` in it first, come back,
   it is still there — a `cd` typed into a busy shell is exactly what this must not
@@ -939,12 +941,12 @@ not raw UUIDs**.
 *aborting the app on enable* — a crash the WebKit harness certified fine across 10 scenarios
 because it mocks the IPC command (TESTING.md §1, L2). Nothing above the packaged pass could
 have found it. That is why step 4 is a hold, not a note.
-- [ ] **1. Default off = no socket, and nothing below the toggle.** Fresh launch, never
+- [x] **1. Default off = no socket, and nothing below the toggle.** Fresh launch, never ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   enabled → Settings → AI agents: the paragraph, the toggle OFF, and NOTHING beneath —
   no status line, no Connect, no dial, no feed (D16). `ls -l <socket>` →
   the file is ABSENT. **Tell #1:** if the socket exists here, the toggle is a label
   over an always-on socket (the always-on bug) — not really controlling it.
-- [ ] **2. Enable binds.** Toggle ON → "On — no recent agent activity"; `ls -l
+- [x] **2. Enable binds.** Toggle ON → "On — no recent agent activity"; `ls -l ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   <socket>` shows `srw-------` (0600); `nc -U <socket>` connects.
 - [ ] **3. Real client, both scopes.** The card offers two lines: `claude mcp add rexenv
   -- rex mcp` (this project) and `claude mcp add --scope user rexenv -- rex mcp` (every
@@ -955,7 +957,7 @@ have found it. That is why step 4 is a hold, not a note.
   Then ask Claude Code
   "why is `<site>` 502-ing?" → feed rows appear (list_sites/site_status/tail_log),
   status flips to "Working — …".
-- [ ] **4. Disable drops the socket AND live sessions.** Toggle OFF while the agent
+- [x] **4. Disable drops the socket AND live sessions.** Toggle OFF while the agent ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   is still connected → status off; `ls -l <socket>` → GONE; the connected agent's
   NEXT call ERRORS. **Tell #2:** if the socket remains, or the agent keeps working,
   disable isn't tearing down. **⚠ A step-4 failure is a HOLD, not a note.** "Disable
@@ -963,7 +965,7 @@ have found it. That is why step 4 is a hold, not a note.
   a standing same-user attack surface. Fix-then-ship; do NOT ship MCP in ANY release
   if step 4 fails. (This said "v0.1.0" — a hold written against one version reads as
   spent once that version is out, which is the opposite of what a standing hold is.)
-- [ ] **5. Persistence + startup gating.** Restart with the toggle ON → the socket
+- [x] **5. Persistence + startup gating.** Restart with the toggle ON → the socket ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   rebinds at launch; restart with it OFF → no socket.
 
 ### M2a — scratch sites (the executing tools). Ships only if 6–11 pass.
@@ -975,7 +977,7 @@ complying. `mcp_scratch_check` proves the code refuses; only this proves the ref
 survives contact with a model that wants to help.
 Set up once: `claude mcp add rexenv -- rex mcp`, toggle ON, and have at least one of
 YOUR OWN sites in the list. Keep the Sites page visible.
-- [ ] **6. Create.** Ask: *"make me a disposable WordPress site called plugin-test."*
+- [x] **6. Create.** Ask: *"make me a disposable WordPress site called plugin-test."* ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   → a site appears under an **Agent scratch** heading with the client badge, a TTL
   ("23h left") and a `.scratch.rex` domain; the feed shows `scratch_create_site`.
   It takes a minute or two (WP download) — a blocking call is expected.
@@ -995,7 +997,7 @@ YOUR OWN sites in the list. Keep the Sites page visible.
   checkout** and ask it to run something that reads your change → it should sync
   first. **Tell:** `git status` in your checkout must be CLEAN — the site runs a
   copy, and nothing the agent does may write back to it.
-- [ ] **7a. Log in without a password (D2, 5 Sep 2026).** Ask: *"give me a login link
+- [x] **7a. Log in without a password (D2, 5 Sep 2026).** Ask: *"give me a login link ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   for that scratch site."* → the reply carries a `https://<scratch>/?rexenv_login=…` link
   and says it is single-use and expires in two minutes. Open it → **wp-admin, signed in as
   the primary administrator, no login form.** Open the SAME link again → an ordinary
@@ -1006,7 +1008,7 @@ YOUR OWN sites in the list. Keep the Sites page visible.
   feed shows `user login_url` and no link. **Tell:** a link
   that logs in twice, a token in the feed, or a password reset appearing in your users
   list — any one is a HOLD (the promise is "never a password").
-- [ ] **8. ⚠ THE TIER BOUNDARY — the step this section exists for.** Ask, naming one
+- [x] **8. ⚠ THE TIER BOUNDARY — the step this section exists for.** Ask, naming one ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   of your OWN sites: *"run `wp plugin list` on `<your real site>`"*, then
   *"delete `<your real site>`"*, then *"copy my plugin into `<your real site>`"*.
   Each must come back REFUSED, with the agent telling you it can only work on
@@ -1056,7 +1058,7 @@ user consents to something. Keep a scratch site from step 6 alive for these.
 "PHP 7.4 — the one leg no automated tier covers" above. It is not an MCP
 behaviour and it was the only proof that a 7.4 site serves at all; leaving it
 here meant it ran only when MCP was enabled. Run it there, before this section.)*
-- [ ] **12. PHP, refused by name.** Ask: *"switch that scratch site to PHP 7.2."*
+- [x] **12. PHP, refused by name.** Ask: *"switch that scratch site to PHP 7.2."* ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   → REFUSED, and the refusal must **name the versions rexenv does have**. Ask for
   whatever `php::unshipped_minor()` currently returns if 7.2 ever ships — this step
   used to say 7.4 on the belief 7.4 was unshippable, and
@@ -1114,13 +1116,13 @@ own** WordPress sites with real content in it, and the database engine running.
   agents shows NO prompt and nothing to click; **Recent activity** lists the call with
   the SQL as its summary. **Tells:** a prompt appears (a retired consent surface is back);
   or the call is refused naming a grant.
-- [ ] **16. ⚠ Read-only IN FRONT OF YOU.** Ask it to **write**: *"set that site's blog
+- [x] **16. ⚠ Read-only IN FRONT OF YOU.** Ask it to **write**: *"set that site's blog ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   title to 'agent was here' with a SQL UPDATE."* → REFUSED by the server, and the title
   in WordPress is unchanged. Then ask it to read something sensitive it legitimately can
   (*"list the user emails"*) — it succeeds, because the paragraph above the toggle said
   so in those words. **⚠ A step-16 failure is a HOLD.** "Read-only" is a sentence the
   user read and turned the endpoint on under.
-- [ ] **17. Off closes it.** With the agent's conversation still open, turn the endpoint
+- [x] **17. Off closes it.** With the agent's conversation still open, turn the endpoint ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   OFF → its next query fails (the socket is gone), and nothing renders below the toggle.
   Turn it back ON → the read works again with no prompt.
 - [ ] **18. ⚠ Deleting the site takes the account with it.** Read a site's database once
@@ -1259,7 +1261,7 @@ up: the stack up, one of your own WordPress sites with real content, the endpoin
   --path=/`"* → refused naming `--path`, no prompt. Ask for a user with no password →
   the reply shows a generated password once; the feed row reads `user create` and never
   the value.
-- [ ] **35. ⚠ The inbox is a Read (D16).** With the endpoint on and the dial at Read:
+- [x] **35. ⚠ The inbox is a Read (D16).** With the endpoint on and the dial at Read: ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   *"read my inbox"* → your messages come back with no switch and no prompt; the reply's
   note says every site's mail is there and what is removed. Open a password-reset mail's
   text → `key=<redacted>` and no `rexenv_login=` token; the `headers` carry no cookie
@@ -1269,7 +1271,7 @@ up: the stack up, one of your own WordPress sites with real content, the endpoin
 ### Parity P4 — the stack, with the password dialog as the second consent. Ships only if 36–39 pass.
 The sandbox L1 cannot raise a macOS dialog, start a real tunnel or swap a pool. These are
 the human legs. Set up: stack up, switch ON, one of your own sites.
-- [ ] **36. ⚠ Stopping the stack is two consents.** Ask: *"stop rexenv's stack"* → refused; a
+- [x] **36. ⚠ Stopping the stack is two consents.** Ask: *"stop rexenv's stack"* → refused; a ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   `system` prompt for **rexenv itself** whose text says macOS will ALSO ask for your
   password. Allow for this session → the agent's retry raises the macOS dialog. Cancel it
   → the call fails, the stack is still up. Retry, enter the password → every site is
@@ -1323,8 +1325,8 @@ the human legs. Set up: stack up, switch ON, one of your own sites.
   `REXENV_MCP_HOLD_SECS=120 cargo run --example mcp_socket_check` (app quit), then
   `claude -p "list every rexenv tool name" --mcp-config <json naming cli/target/debug/rex mcp>
   --strict-mcp-config` — the count in the answer is the real client's `tools/list`. *Claude
-  Code half done this way 3 Sep 2026: 49/49 listed, `list_sites` round-tripped. Cursor owed.*
-- [ ] **44. Destructive hints reach the client.** In Claude Code, ask for `site_delete` on
+  Code half done this way 3 Sep 2026: 49/49 listed, `list_sites` round-tripped. Cursor owed.* (18 Sep 2026: a raw JSON-RPC client counted **50** tools — the number here has drifted.)
+- [x] **44. Destructive hints reach the client.** In Claude Code, ask for `site_delete` on ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   a granted site → the client's confirm-before-destructive UX appears (it reads
   `destructiveHint`); `list_sites` never prompts (read-only).
 - [ ] **45. ⚠ Quit mid-call.** Ask for a `site_create` (a minute of work), quit rexenv
@@ -1365,7 +1367,7 @@ Only runs once a release NEWER than the installed build has been published with 
 descriptor. Before that Settings → About shows the version and no Install button, which is
 itself the first check.
 
-- [ ] **The menu bar offers it, and only opens it.** With a newer release published, the
+- [x] **The menu bar offers it, and only opens it.** With a newer release published, the ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   tray menu's FIRST item reads `Update to <version>…`; clicking it shows the window on
   Settings → About and installs NOTHING. The app menu's "Check for Updates…" (under About)
   lands on the same card with a fresh check. **Tell:** an item that installs, an item naming
@@ -1373,11 +1375,11 @@ itself the first check.
 - [ ] **Dark when current.** On the newest build, Settings → About offers nothing and shows
   no error; the footer says when it last checked. **Tell:** a button that appears and fails,
   or a footer claiming a check that never ran.
-- [ ] **The offer arrives on its own.** With a newer release published, launch rexenv and
+- [x] **The offer arrives on its own.** With a newer release published, launch rexenv and ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   open About without pressing anything: the version and size are named before any click, and
   the consent sentence is above the button. **Tell:** a button with no sentence, or a size
   that disagrees with the release asset.
-- [ ] **A real update applies.** Press Install. Expect real bytes in the footer's download
+- [x] **A real update applies.** Press Install. Expect real bytes in the footer's download ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   indicator, then the app quits and reopens on the new version — About and `rex --version`
   agree, and the startup notice names the version the NEW process read from itself.
   **Tell:** two `rexenv.app` copies afterwards; a notice naming a version About disagrees with.
@@ -1409,7 +1411,7 @@ itself the first check.
   /Applications` shows no `.rexenv-update-*` directory once the new build has opened.
   **Tell:** a leftover that survives two launches.
   ✓ 7 Sep 2026, checked after each of the two updates: none.
-- [ ] **A public share is live.** Start a share, then press Install: the quit confirm names
+- [x] **A public share is live.** Start a share, then press Install: the quit confirm names ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   the share count exactly as Cmd+Q does. Choose "Keep sharing" → the app stays up, the card
   says the update is installed and takes effect when rexenv next opens, and NO relauncher is
   left behind (`pgrep -f -- --relaunch-after` is empty). **Tell:** a relaunch that happens
@@ -1449,11 +1451,11 @@ itself the first check.
   macOS major.
 
 ## Robustness (spot-check) — §2
-- [ ] Quit with another app on :443, relaunch → a clear "port in use" message (no crash).
-- [ ] Cancel an admin prompt once → a clear "permission cancelled, try again" state; retry works.
-- [ ] **Sleep/wake, then reboot** (ledger #67/#155 territory): after each, a site loads
+- [x] Quit with another app on :443, relaunch → a clear "port in use" message (no crash). ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
+- [x] Cancel an admin prompt once → a clear "permission cancelled, try again" state; retry works. ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
+- [x] **Sleep/wake, then reboot** (ledger #67/#155 territory): after each, a site loads ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
   over HTTPS *without opening the app* — the root edge daemon (KeepAlive) and the DNS
-  LaunchAgent both came back on their own.
+  LaunchAgent both came back on their own. — 18 Sep 2026 VM reboot: the root edge daemon and the DNS LaunchAgent came back on their own (caddy on :443, agent answering) before the app was opened; the backends need Start all (or login-start) — `rex start` and the site served.
 - [ ] **Login autostart stays silent on a cold cache** (ledger #175 — this checklist IS
   that row's wiring proof; the code has only a text-order guard, which cannot see
   behaviour). Setup: enable "start services on launch" + "Open rexenv at login", then
@@ -1470,7 +1472,7 @@ itself the first check.
   warning, no about:config surgery.
 
 ## Scale
-- [ ] With ~15+ sites the Sites list, search, and status footer stay responsive.
+- [x] With ~15+ sites the Sites list, search, and status footer stay responsive. ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
 
 ## Clean uninstall — §3
 - [x] Settings → Uninstall → **Remove rexenv's system changes**; confirm. ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)

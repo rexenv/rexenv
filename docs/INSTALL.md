@@ -21,8 +21,9 @@ notarized by Apple), so the **first launch needs one extra click** — see below
   builds require macOS 15, MySQL/MariaDB/Redis require 14, so on macOS 11–14
   the app installed and then could not run its own web server. The stated
   floor now matches the measured one — `docs/PORTS.md` carries the per-binary
-  numbers.) **PostgreSQL is the one exception in the other direction: its
-  pinned builds currently require macOS 26** — tracked in `docs/TODO.md`.
+  numbers.) PostgreSQL's pinned builds were re-pinned on 30 Aug 2026 for that same
+  floor — 18.6.0 starts and serves a Laravel site on macOS 15.6 (measured on a clean
+  VM, 18 Sep 2026); this line said "requires macOS 26" until then.
 - **Intel or Apple Silicon** — this is a **universal** build, it runs natively on both.
 - An internet connection on **first run** (rexenv downloads its components — PHP,
   Nginx, MySQL, Caddy, etc. — the first time; after that it works offline).

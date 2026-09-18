@@ -35,6 +35,47 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [ ] **FrankenPHP 1.12.4 pin is STALE (18 Sep 2026)** — the live `frankenphp-mac-arm64` asset hashes to
+  `fb38e69514a04875b83900da0e1585d611fe0f52f3a904c50bef5605347e5dec`, the pin says `44308edd…`; the
+  checksum guard fires and FrankenPHP is uninstallable for every user (upstream rebuilds assets in
+  place, the documented signal). Re-pin per the procedure in `core/binaries.rs` (API digest +
+  sigstore attestation + `frankenphp version`), both arches. **Also:** `rex site server blank.rex
+  frankenphp` RECORDED `server = frankenphp` although the download failed — nginx kept serving
+  while the row said FrankenPHP, and the next edge reload failed on the missing binary. The switch
+  must not persist before the binary resolves.
+- [ ] **Build zip (dist-archive) fails on every Mac — the TMPDIR has a space.** Clean-VM smoke
+  18 Sep 2026: `wp dist-archive` writes its zip include-pattern file into `TMPDIR` and passes it as
+  `-i@<file>` unquoted; rexenv points TMPDIR at `<app-data>/dist-archive-work/…`, so zip saw
+  `@/Users/…/Library/Application` and died ("File not found or no read permission"). The dev-Mac
+  examples use space-free fixture paths, which is why it never fired (fixtures-must-look-like-
+  production). Fix: a space-free per-run TMPDIR that the same `Drop` guard removes (under the
+  user's `$TMPDIR`/`var/folders`), then re-run SMOKE §Git assets 2–6 by hand.
+- [ ] **Site info claims a database that does not exist.** 18 Sep 2026 VM: a Blank PHP site created
+  with **Database: None** (dialog) or via `rex site create --type php` (which runs only
+  prepare/fetch/serve — no starter, no `db.php`, no database) is reported by `rex site info` /
+  `site_info` as `database mysql (php_<name>_rex)`, and delete says "database + files removed".
+  The record should carry "none", and the CLI should offer `--db none` (it rejects it today while
+  the dialog offers None) — or run the starter the dialog runs.
+- [ ] **Adminer: the documented revert does not exist.** After Update (5.4.2 → 6.0.2) the Databases
+  row reads only `Adminer 6.0.2`; the older tree stays on disk but nothing offers it, so
+  `docs/SMOKE-TEST.md`'s "a revert is a second press" cannot be done. Either offer the kept
+  versions, or drop the row and the design note.
+- [ ] **Apache override: delete leaves `apache-<domain>-error.log`.** 18 Sep 2026 VM: rename cleaned
+  the old names; delete removed `.conf` and `-stdout.log` but not `-error.log` (app-data litter).
+- [ ] **Blank PHP starter: a stopped database reads as "no database".** With MySQL stopped from
+  Services, `db.php` present, the starter page shows the "pick MySQL, MariaDB or PostgreSQL —
+  generate the connection" card instead of "not connected" (SMOKE §Blank PHP row).
+- [ ] **WordPress create logs `error sending mail … 127.0.0.1:11025 connect refused`.** The one-click
+  install runs before the serve phase starts the stack (now that create starts a stopped stack,
+  18 Sep 2026), so Mailpit is down while WP-CLI sends the install mail. Harmless, but it is the
+  first red line a new user reads. Start Mailpit before `core install`, or suppress the mail.
+- [ ] **Smaller, same run:** sub-sites created on a subdomain multisite are recorded with `http://`
+  URLs (main site is `https://`); `rex site create` names a site after its domain (`s1.rex`) where
+  the dialog derives a name; Hello Dolly's row shows the terminal button and lands on an honest
+  "Terminal unavailable" panel where SMOKE says such rows show no button; SMOKE's MCP row 43 says
+  49 tools, the endpoint lists 50; a translocated first launch (zip/`cp`, not a Finder drag) writes
+  the DNS LaunchAgent plist with the `/private/var/folders/…/AppTranslocation/…` path — self-heals
+  on the next launch, DNS dead in between.
 - [ ] **Windows: `CertTrustManager::untrust_stale` is the `Ok(0)` default** — the stale-CA
   sweep (#678, 18 Sep 2026) exists only on macOS. On Windows a hand-wiped app-data folder
   leaves its old `rexenv Local CA` in the user Root store too (`platform/windows/cert_store.rs`
