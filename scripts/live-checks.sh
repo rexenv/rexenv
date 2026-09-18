@@ -94,6 +94,7 @@ caddy_fetch                    network both
 caddy_recovery_demo            system  both
 caddy_serve                    service both
 cert_trust_prompt_check        system  macos
+windows_stale_ca_sweep         system  windows
 cli_repo_check                 system  macos
 cli_socket_check               stack   macos
 cli_wp_install_check           network both

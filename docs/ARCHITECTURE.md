@@ -146,8 +146,12 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   hits are CANDIDATES and an exact common-name match (`cert_rules::is_rexenv_ca`) decides
   what may be deleted — "rexenv Local CA Inc", someone else's certificate, would otherwise
   be swept; and there is no warm authorization to ride, so Windows raises its own
-  confirmation per certificate. Four stale CAs there mean four dialogs. The live "two wipes
-  leave one root" check is still owed — `docs/TODO.md`.
+  confirmation per certificate — MEASURED on a real store 19 Sep 2026, two dialogs for the two
+  changes, so four stale CAs there mean four. The live check is
+  `examples/windows_stale_ca_sweep.rs` (system tier, Windows): it trusts a throwaway CA from the
+  production generator beside the machine's real root, names the REAL one as `current` — a pair of
+  throwaways would make the machine's own root a third certificate for the sweep to delete — and
+  reads the store back through PowerShell rather than through the module under test.
 - **The keychain (CA trust) dialog is rexenv's too** (`platform/macos/keychain_trust.rs`,
   #579). It is titled after the process that calls the trust-settings API, so
   `security add-trusted-cert` read "security" — and running that same command inside

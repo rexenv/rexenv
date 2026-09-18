@@ -78,13 +78,16 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   49 tools, the endpoint lists 50; a translocated first launch (zip/`cp`, not a Finder drag) writes
   the DNS LaunchAgent plist with the `/private/var/folders/…/AppTranslocation/…` path — self-heals
   on the next launch, DNS dead in between.
-- [ ] **Windows stale-CA sweep: written, not yet run against a real Root store** — the code
-  landed 18 Sep 2026 (`platform/windows/cert_store.rs::untrust_stale`, #678) and its rule is
-  proven L0 from the Mac, but nothing has executed the FFI: the enumeration loop's ownership
-  (`CertFindCertificateInStore` frees the `prev` context it is handed) and the per-certificate
-  confirmation are reasoned, not observed. Done when: on the Dell, two hand wipes of app-data
-  leave exactly one `rexenv Local CA` in the user Root store, and the sweep's return count
-  matches — then the ledger #678 row's Windows clause becomes a live verdict.
+- [x] **Windows stale-CA sweep** ✓ 19 Sep 2026 — code 18 Sep (`cert_store::untrust_stale`, #678),
+  run against a real Root store the next day on the Dell with the owner at the keyboard
+  (`examples/windows_stale_ca_sweep.rs`, system tier, Windows only): a throwaway CA from the
+  production generator trusted beside the machine's real rexenv root, sweep returns **1**, store
+  ends with exactly one root and it is the real one — read back through PowerShell, not through the
+  module under test. The real CA is the `current` argument on purpose; a pair of throwaways would
+  have made the machine's own root a third certificate for the sweep to take.
+  **Measured, where the code had only reasoned:** two confirmations, one per change — the removal
+  raises its own, so Windows has no warm authorization to ride. Not covered: the multi-stale case
+  (one was swept, not four).
 - [ ] **Homebrew-bottle bundles (redis / mariadb / httpd / xdebug) still need the Xcode
   Command Line Tools on a clean Mac.** Found 18 Sep 2026 by the first clean-VM smoke test:
   `prepare_binary` asked `otool` for every binary's dylib list and the CLT shim failed all

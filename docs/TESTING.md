@@ -1173,6 +1173,7 @@ written procedure; "manual" means scripted-for-a-human, never remembered.
 | Gatekeeper/quarantine first launch from the dmg | PUBLISH-TESTING §A |
 | Privileged prompts (foreground, cancel/retry) + root daemon on-disk ownership (ledger #67/#155) | SMOKE-TEST robustness + PUBLISH-TESTING §B |
 | Keychain CA trust dialog | `cert_trust_prompt_check` (system tier: cancel mapping, trust + untrust through the real API from a non-main thread, fixture-owned CA removed by its own SHA-1) + SMOKE-TEST first-run (the rexenv name + logo, which only a bundle has) |
+| Windows stale-CA sweep | `windows_stale_ca_sweep` (system tier, Windows only: a throwaway CA from the production generator trusted beside the machine's REAL root, which is named as `current` — two throwaways would make the real root a third certificate for a sweep that DELETES. The store is counted through PowerShell, not through the module under test, and the fixture leaves by its own thumbprint because the real CA shares its name.) **Does not cover** the multi-stale case: one stale CA was swept, not four |
 | Second-device tunnel reach; router DNS negative-cache | SMOKE-TEST tunnels (explicitly not-a-bug note) |
 | Resolver takeover/restore on a clean VM | PUBLISH-TESTING §F |
 | Sleep/wake + reboot edge recovery; DNS agent handoff (#46) | SMOKE-TEST robustness (added, T13) |
