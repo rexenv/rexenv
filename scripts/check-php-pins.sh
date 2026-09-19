@@ -20,9 +20,18 @@
 # carries a `PINS` list that must mirror `PHP_VERSIONS` in `core/binaries.rs`,
 # duplicated because the app repo is private and runtimes cannot read it.
 #
-# Most drift is harmless: discovery starts AT the pin, so a stale patch can only
-# offer something the app already has, which the app then filters out as not newer
-# than its own pin. A wasted probe, never a wrong install.
+# Drift has TWO directions, and only one of them is harmless:
+#
+# - `PINS` BELOW the app's pin (a stale patch): discovery starts AT the pin, so it
+#   can only offer something the app already has, which the app filters out as not
+#   newer than its own. A wasted probe, never a wrong install.
+# - `PINS` CATCHING UP to a version the manifest already carries: discovery probes
+#   strictly ABOVE the pin, and the manifest is a REPLACEMENT document — so the
+#   moment a published patch becomes the pin it stops being discovered and would
+#   fall out of the next publish. That happened on 19 Sep 2026 (8.1.34, 8.4.23,
+#   8.5.8: eighteen entries, refused by the publisher's drop guard). The publisher
+#   now carries the published set forward (rexenv/runtimes#4); before that, this
+#   direction was a silent deletion. rexenv/rexenv#1.
 #
 # **A missing MINOR is not harmless, and it is silent.** Discovery never probes a
 # minor it has never heard of, so shipping 8.6 without adding it to `PINS` means
@@ -101,8 +110,10 @@ for patch in $ours; do
   elif [ "$their_patch" != "$patch" ]; then
     # The bounded case: worth saying, not worth failing.
     echo "stale    $minor — app pins $patch, runtimes says $their_patch."
-    echo "         Harmless (discovery starts at the pin and the app floors anything older),"
-    echo "         but update it while you are there."
+    echo "         A pin below the app's is a wasted probe (discovery starts at the pin, the app"
+    echo "         floors anything older) — update it while you are there. A pin that catches up"
+    echo "         to a PUBLISHED patch is the other direction: covered by the publisher's"
+    echo "         carry-forward (rexenv/runtimes#4), a silent deletion before it."
   fi
 done
 
@@ -124,7 +135,8 @@ if [ "$app_ceiling" != "$their_ceiling" ]; then
 fi
 if [ "$app_adminer" != "$their_adminer" ]; then
   echo "stale    adminer — app pins $app_adminer, runtimes says $their_adminer."
-  echo "         Harmless (discovery starts at the pin and the app floors anything older)."
+  echo "         A pin below the app's is a wasted probe; one that catches up to a published"
+  echo "         version is what the publisher's carry-forward covers (rexenv/runtimes#4)."
 fi
 
 [ "$status" -eq 0 ] && echo "pins: every minor this app ships can receive updates, and the adminer ceilings agree"

@@ -887,6 +887,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     - [x] ✓ 19 Sep 2026 — `remove_symlink_best_effort` removes the folder when empty. `uninstall.exe` leaves an EMPTY `%LOCALAPPDATA%\rexenv\bin` behind (the `rex` copy's
       folder, made by the Settings install, removed by the Settings uninstall — the directory
       itself is never deleted). Remove it when the copy goes.
+    - [ ] rexenv/rexenv#1 — `ADMINER_VERSION` is eight releases behind the manifest (5.4.2 vs
+      6.0.2 published, 6.1.0 next): re-pin to 6.1.0 + its sha256 AFTER runtimes serial 6 is
+      published (rexenv/runtimes#4 unblocks that publish). The issue's other half — the pins
+      script explaining the wrong drift direction — is done 19 Sep 2026 (`check-php-pins.sh`
+      names both directions).
     - [ ] The installer's "rexenv is running! Click OK to kill it" names the DNS agent as if it
       were the app (measured run 2). Correct as far as it goes — the task restarts the agent on
       the new binary — but a sentence that says so would spare the user the guess.
