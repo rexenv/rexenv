@@ -543,9 +543,22 @@ MySQL 8.4 and 8.0 both ship on Windows, so MariaDB is redundant for v1, and a ne
 new trust decision, a notices row and a sweep target. Windows users asking for it is the
 evidence that would add it.
 
-**D5 — Signing, installer, updates, distribution.** **RULED 13 Sep 2026: signing is NOT
-decided — measure first.** NSIS (per-user, no admin to install) and the distribution line
-stand as the direction.
+**D5 — Signing, installer, updates, distribution.** **RULED 19 Sep 2026: UNSIGNED, and the
+question is closed.** The owner: rexenv is open source and earns nothing, so it spends
+nothing — the same answer macOS got, for the same reason, and not a judgement about the
+cost of SmartScreen. Azure Trusted Signing is out. **This unblocks W11**, which was waiting
+on a decision that no longer needs a measurement to make.
+*What this does NOT touch:* the updater's signed manifest. That is rexenv's OWN Ed25519 key
+signing `latest.json` — free, already how macOS ships, and unrelated to the paid
+Authenticode certificate this ruling declines. "Signed" means two different things in this
+section and conflating them would read as "no self-update on Windows".
+*What survives the ruling, as DOCUMENTATION rather than a decision:* the measurement below.
+Every Windows user will meet SmartScreen, so `docs/INSTALL.md` has to say exactly what they
+will see and how to get past it — which needs the same numbers, taken after the installer
+exists instead of before. It is no longer a W11 prerequisite; it is a W11 output.
+**The superseded ruling, kept because the reasoning is still the reasoning:** *RULED 13 Sep
+2026: signing is NOT decided — measure first.* NSIS (per-user, no admin to install) and the
+distribution line stand as the direction.
 *Why not decide now (owner):* Azure Trusted Signing needs an account — a recurring
 commitment — and macOS got the opposite ruling: no $99 Developer ID, ad-hoc signing plus
 de-quarantine. But the cost of going unsigned is higher on Windows: macOS pays one `xattr`

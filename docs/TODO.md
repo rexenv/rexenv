@@ -162,8 +162,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   Not "fill the stubs": Unix-only code outside `platform/`, no php-fpm, no `/etc/resolver`,
   no unix sockets on Windows. Reasoning, measurements and "Done when" per task:
   `docs/PLAN-windows-port.md`. W0–W2 can start now; W3+ wait on the owner's D1–D6.
-  - [ ] D5 signing — open for ONE reason: the owner decides Authenticode after an unsigned
-    NSIS installer is measured on the Dell (plan §3 D5). Every other ruling is in: D3 named
+  - [x] D5 signing ✓ **RULED 19 Sep 2026: unsigned.** The owner: rexenv is open source and earns
+    nothing, so it spends nothing — the same answer macOS got, for the same reason. Authenticode is
+    out, and the measurement it was waiting for is now a W11 output (what INSTALL must tell a user
+    they will see) rather than a decision gate. Every other ruling was already in: D3 named
     pipes + `LocalIpc` (12 Sep 2026); **13 Sep 2026** D1 php-cgi group accepted with the php-src correction (supervision,
     positive ID and worker count written in plan §3 D1(a)/(b) before W3), D2 agent on :53 +
     NRPT accepted and the `hosts` fallback REFUSED (:53 taken → refuse naming the holder),
@@ -734,7 +736,17 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     (domain change, the teardown confirmation with its card, and Import).
     **Found by looking:** the PHP rows say "PHP-FPM 8.2/8.3" on a machine with no php-fpm — its own row
     above.
-  - [ ] W11 — NSIS installer, Authenticode (if D5 rules it in), Windows release job, updater, winget
+  - [ ] W11 — NSIS installer, Windows release job, updater, winget. **UNBLOCKED 19 Sep 2026:
+    the owner ruled D5 — unsigned, question closed.** rexenv is open source and earns nothing, so
+    it spends nothing; the same answer macOS got, for the same reason. Authenticode is out of the
+    row, not deferred in it. **Not affected:** the updater's signed manifest, which is rexenv's own
+    Ed25519 key over `latest.json` — free, already how macOS ships, and a different sense of the
+    word "signed" than the certificate this declines. **The D5 measurement survives as a W11
+    OUTPUT, not a prerequisite:** every Windows user meets SmartScreen, so `docs/INSTALL.md` owes
+    them the verbatim wording, the click count per browser, whether "Run anyway" is reachable
+    without "More info", and whether a new hash repeats it — measured once the installer exists.
+    **Open question, not yet answered:** whether winget's community repo accepts an unsigned
+    installer, and on what terms.
   - [ ] W12 — launch gates: verify on the Windows runner, SMOKE-TEST + INSTALL Windows
     sections, clean Windows 11 VM pass
     **The example half is done 16 Sep 2026 (ledger #645):** the tier table grew an os column
@@ -789,7 +801,8 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     transport, which is D3's open item on Windows, so their absence is the port's shape and not an
     oversight. **Left:** verify.sh's own Windows run, the SMOKE-TEST and INSTALL Windows
     sections (D6 rules the floor: Windows 11 x64 supported, 10 22H2 best-effort, arm64 unsupported;
-    D5 leaves signing undecided, so the SmartScreen wording stays the owner's measurement to make),
+    D5 ruled unsigned 19 Sep 2026, so the SmartScreen wording is a measurement the installer owes,
+    not a decision anyone is waiting on),
     and the clean Windows 11 VM pass. Node 24.21.0 + npm/npx 11.19.1 + pnpm 12.4.2 and python3
     3.12.10 are installed on the Dell ✓ 17 Sep 2026.
     **The SMOKE-TEST and INSTALL Windows sections are WRITTEN ✓ 17 Sep 2026 (ledger #674)**,
@@ -797,8 +810,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     reworded: INSTALL nests the two OSes symmetrically and SMOKE-TEST names which of its
     sections D4 excludes, which are replaced (install, first run, tray, DNS, uninstall) and
     which carry over. They are UNRUN by a human on Windows — that run is what ticks them.
-    Two things are deliberately absent: SmartScreen's verbatim wording (D5 leaves signing
-    undecided until the owner measures the unsigned download path) and any claim that the
+    Two things are deliberately absent: SmartScreen's verbatim wording (nobody has downloaded an
+    unsigned rexenv installer yet, because there is no installer yet — D5 is ruled, so this is now
+    a thing to MEASURE rather than a thing to decide) and any claim that the
     update card hides its button — `AppUpdateCard` has no OS gate; `WindowsAppBundle::facts`
     returns `Unported(...)`, so readiness errors instead of refusing, and the checklist asks
     the tester to look at what the card actually renders.

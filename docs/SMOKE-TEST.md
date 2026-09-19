@@ -1503,12 +1503,13 @@ section and leg about them; a refusal that NAMES the reason is the pass:
   plan. Their absence IS the check.
 
 ### Install & first launch — replaces the `.dmg` section
-- [ ] **There is no installer yet** (W11 is open: NSIS, Authenticode, the Windows release
-  job and winget are unbuilt; `bundle.windows` in `tauri.conf.json` is empty). Until it
-  lands this checklist is run against a locally built `rexenv.exe`. **Do not write
-  SmartScreen steps from memory** — D5 leaves signing undecided until the owner measures
-  the unsigned download path (clicks, verbatim messages, whether "Run anyway" needs "More
-  info"), and that measurement is the gate for this section being finishable.
+- [ ] **There is no installer yet** (W11 is open: NSIS, the Windows release job and winget
+  are unbuilt; `bundle.windows` in `tauri.conf.json` is empty). Until it lands this
+  checklist is run against a locally built `rexenv.exe`. **Do not write SmartScreen steps
+  from memory** — rexenv ships UNSIGNED (D5, ruled 19 Sep 2026: open source, no income, no
+  spend — the same answer macOS got), so every user meets SmartScreen and this section owes
+  them the real thing: the clicks, the messages verbatim, and whether "Run anyway" needs
+  "More info" first. That is a measurement waiting on the installer, not on a decision.
 - [ ] The app starts and shows its window; no console window appears behind it.
 
 ### Where rexenv lives — replaces "The menu bar (no dock icon)"

@@ -230,11 +230,16 @@ login keychain.
 ## Windows
 
 > **Not yet installable.** rexenv has no Windows installer today: `bundle.windows` in
-> `src-tauri/tauri.conf.json` is empty, there is no Windows release job, and the NSIS
-> installer, code signing and the winget manifest are all open work (W11 in
-> `docs/TODO.md`). What exists is a Windows build you can compile and run — the whole
-> Rust suite passes there (1307 tests, 17 Sep 2026). This page describes what that build
-> does on your machine, so it is ready when the installer lands.
+> `src-tauri/tauri.conf.json` is empty, and the NSIS installer, the Windows release job and
+> the winget manifest are all open work (W11 in `docs/TODO.md`). What exists is a Windows
+> build you can compile and run — the whole Rust suite passes there (1313 tests, 19 Sep
+> 2026). This page describes what that build does on your machine, so it is ready when the
+> installer lands.
+>
+> **When it does land it will be unsigned**, like the macOS build: rexenv is open source
+> and earns nothing, so it buys no code-signing certificate. Windows will show
+> "Windows protected your PC" on the download, and this page will say exactly what you see
+> and which button gets past it — measured, once there is something to download.
 
 ### Requirements
 
