@@ -792,9 +792,19 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     deleted until it exits. That is exactly `AppBundle::swap`'s existing contract ("nothing is
     deleted on any path"), so Windows gets the SAME swap macOS has and the relauncher shrinks to
     what it is on macOS: the thing that restarts, not the thing that swaps.
-    **Open questions, not yet answered:** whether winget's community repo accepts an unsigned
-    installer and on what terms; whether the WebView2 bootstrapper stays admin-free under a
-    currentUser install (the Dell already HAS WebView2, so that machine cannot answer it).
+    **winget answered 19 Sep 2026, from Microsoft's own docs** (read, not submitted — the real
+    proof is a merged PR): **no Authenticode requirement exists.** Nothing in the submission
+    requirements, the contributing guide or the validation troubleshooting makes signing a
+    condition. What the pipeline's "SmartScreen validation" checks is the **URL's reputation**,
+    not the binary's signature — `winget-pkgs-submission-test/Troubleshoot.md`: *"SmartScreen
+    validation errors indicate that the URL you provided has a bad reputation"* — and a GitHub
+    release URL has none of that problem. "Binary validation" beside it is static analysis, hash
+    and malware scanning: *"Binary validation errors indicate that the installer failed static
+    analysis"*. So an unsigned installer is submittable; the cost stays where D5 already put it,
+    on the user meeting SmartScreen on first run, with reputation accruing per hash.
+    **Still open:** whether the WebView2 bootstrapper stays admin-free under a currentUser install
+    (the Dell already HAS WebView2, so that machine cannot answer it — the clean Windows 11 pass
+    can).
   - [ ] W12 — launch gates: verify on the Windows runner, SMOKE-TEST + INSTALL Windows
     sections, clean Windows 11 VM pass
     **The example half is done 16 Sep 2026 (ledger #645):** the tier table grew an os column
