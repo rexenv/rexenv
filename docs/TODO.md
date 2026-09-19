@@ -639,14 +639,29 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
        no error, no "start the site first". Still open (row below).
     3. A **stopped** site's Database tab shows the Adminer URL above a blank white frame — Adminer
        is not running and nothing says so. Still open (row below).
-    **Still unread:** Onboarding, which this machine is past — reaching it means resetting
-    first-run state, which is a smoke-test step rather than a look.
+    **Onboarding read too, 19 Sep 2026 — all four screens, without resetting anything.** The gate
+    is `!resolverInstalled || !caTrusted`, real system state, so "resetting first-run" would have
+    meant untrusting this machine's CA or dropping its NRPT rule. `/onboarding` is its own route and
+    the gate only runs at `/`, so the app was pointed at that path instead: a temporary `devUrl` on
+    the Dell's checkout plus a static server with an SPA fallback. Nothing on that machine changed,
+    and the checkout was reverted (`git status` clean) and rebuilt afterwards.
+    All four are clean, and screen 3 is where tonight's fix shows: "rexenv adds a private
+    certificate authority to **Windows**" and "**Windows** will ask for permission (resolver +
+    certificate)" — it read "macOS will ask" this morning. Screen 2 lists Caddy, Nginx, MySQL 8.4,
+    Mailpit, Adminer and PHP 8.2/8.3 with no MariaDB or Redis (D4), and screen 4's port-443 warning
+    reads "Another app is answering HTTPS on **this PC**". The button that makes the system changes
+    was NOT pressed.
     **How it was looked at, for the next time:** an SSH session is not the interactive desktop —
     `CopyFromScreen` there saves a blank image — so both the app launch and every capture ran
     through `schtasks /run … /IT`, which executes in the logged-on session. Clicks were driven from
     the screenshots and the click script REFUSES unless the foreground window is rexenv's own; it
     refused once, correctly, when a PowerShell window took focus.
-  - [ ] W9 — frontend on WebView2 (Windows paths, Ctrl shortcuts, fonts)
+  - [x] W9 — frontend on WebView2 (Windows paths, Ctrl shortcuts, fonts) ✓ 19 Sep 2026 — the row's
+    own closing condition was a look at the Windows wording on the Dell (Settings' Local CA card,
+    Onboarding's first screen, SiteDetail's domain copy, the teardown confirmation). All four were
+    read that day, along with every other screen the app has; what the looking found is in the row
+    above, fixed and re-read on the same machine. What remains from that pass is tracked as its own
+    rows — a stopped site's WordPress and Database tabs, and the Valet/Herd/Local import port.
     **macOS words on the Windows screens** (seen in the real app on the Dell, W6 S5, 15 Sep 2026): Settings
     "trusted · login keychain" and "Local CA re-trusted in your login keychain." (`Settings.tsx:945`, `:856`),
     "Reinstall rexenv's certificate authority in your system keychain." (`:1012`), "asks for your password
