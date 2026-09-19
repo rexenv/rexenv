@@ -869,9 +869,22 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     agent + 16 service processes, `hosts` untouched, `rex doctor` all green but PATH. Found: #692
     (Finish-page copy cannot start services), #691 (false "Another app is answering HTTPS"), the
     "this Mac's macOS" sentence in a Windows log (neutral now). **Still open from run 1:**
-    - [ ] run 2 with the guard build: the second-hash SmartScreen half, the Finish-page start that
-      hops and then starts services, Settings → Command-line tool → Install (`rex` on PATH), the
-      in-app update rows (needs a published newer build), and the uninstall rows — run LAST.
+    - [x] run 2 with the guard build, 19 Sep 2026 (`46ccefed`, installed over run 1's copy):
+      second-hash SmartScreen repeats verbatim ✓; the Finish-page copy hops (parent = a fresh
+      `explorer.exe`) and Start all runs 5/5 ✓; `rex` on the Path ✓; Settings → Services →
+      Uninstall (UAC + Windows' "Root Certificate Store" DELETE dialog) leaves NRPT 0 / CA 0 /
+      task gone / data kept ✓; `uninstall.exe` removes exe, HKCU entry, both shortcuts ✓. Rows in
+      `docs/SMOKE-TEST.md`. Still unrun: the in-app update rows (need a published newer build).
+    - [ ] WebView2's DEFAULT context menu (Back / Refresh / Save as / Print / More tools) shows
+      inside the app on Windows — seen run 2 in Settings. macOS's webview shows none; this one
+      offers "Save as" and "Print" of the app's own UI. Suppress it (`ICoreWebView2Settings::
+      AreDefaultContextMenusEnabled`, or the `contextmenu` event) — an honest-UI item.
+    - [ ] `uninstall.exe` leaves an EMPTY `%LOCALAPPDATA%\rexenv\bin` behind (the `rex` copy's
+      folder, made by the Settings install, removed by the Settings uninstall — the directory
+      itself is never deleted). Remove it when the copy goes.
+    - [ ] The installer's "rexenv is running! Click OK to kill it" names the DNS agent as if it
+      were the app (measured run 2). Correct as far as it goes — the task restarts the agent on
+      the new binary — but a sentence that says so would spare the user the guess.
     - [ ] Chrome's download wording (no Chrome on the VM); the certificate dialog's **No** path;
       WebView2's `downloadBootstrapper` on a machine without it (the VM had 153).
     - [ ] `rex status` names the pool `PHP-FPM 8.3` on Windows, where the pool is `php-cgi`

@@ -1509,12 +1509,14 @@ macOS got). **First run 19 Sep 2026** on a clean Windows 11 Pro 24H2 (26100.4349
 the Mac, so an ARM guest running the x64 build under emulation (D6; timings there are not a
 PC's) — with `rexenv_0.7.0_x64-setup.exe` built at `276fc7cb`; the ticks below are that run's,
 driven from a screenshot-guarded click helper over SSH. It found two bugs the Dell could not
-(#691, #692) and the fixed build has NOT been installed yet — the unticked rows and the
-"second build" halves wait for it.
+(#691, #692). **Run 2, the same day**, installed the guard build (`46ccefed`) OVER that copy and
+ran the rest: second-hash SmartScreen, the Finish-page start that now hops and starts services,
+`rex` on the Path, and the two uninstall halves.
 - [x] Edge, 19 Sep 2026 (no Chrome on the VM — Chrome's shelf wording is still unmeasured): ZoneId=3,
   sha256 matched the Dell's build. SmartScreen DID appear, verbatim in `docs/INSTALL.md`: "Windows
   protected your PC" with **Run anyway behind More info**, then straight into the NSIS wizard — no
-  "Open File - Security Warning" behind it. Second build: not yet. ~~**Download through a browser** (Edge AND Chrome), so the file carries the Mark of the~~
+  "Open File - Security Warning" behind it. **Second build (run 2): the same two SmartScreen
+  screens again, verbatim** — a new hash is a new stranger. ~~**Download through a browser** (Edge AND Chrome), so the file carries the Mark of the~~
   Web. Record each browser's own download warning verbatim. **Do not write SmartScreen steps
   from memory.** What IS measured, and lives in `docs/INSTALL.md`: the "Open File - Security
   Warning" dialog, verbatim, with **Run on the first screen** and no "More info" to find.
@@ -1538,12 +1540,15 @@ driven from a screenshot-guarded click helper over SSH. It found two bugs the De
 - [x] 19 Sep 2026: started by the Finish page and again from Explorer — window up, onboarding
   "Welcome", no console. The app starts from the Start Menu entry and shows its window; no console window
   appears behind it (a `windows_subsystem` regression shows as a black console).
-- [ ] **The copy the Finish page starts can start services.** Before #692 it could NOT: "Run
+- [x] Run 2: the Finish-page copy's parent is a fresh `explorer.exe` (the hop), `rex --version`
+  reads `46ccefedb4`, Stop all → Start all from the tray: 5/5 running. **The copy the Finish page starts can start services.** Before #692 it could NOT: "Run
   rexenv" left it in a job with limits `0x0`, and Start all failed on `mysqld` with the #600
   access-denied wording (19 Sep 2026); the same copy from Explorer started all five. With the
   guard: the Finish-page copy hops through Explorer once (a brief flash, one window) and Start
   all works. **Tell:** the access-denied toast, or two rexenv windows.
-- [ ] **`rex` on the PATH** — Settings → General → Command-line tool offers Install; after it,
+- [x] Run 2: Install → no prompt; user `Path` gains `%LOCALAPPDATA%\rexenv\bin`, `rex.exe` copied
+  there (1,009,152 B), a shell with the user Path answers `rex status`; the card then reads
+  "Installed — … Reinstall". **`rex` on the PATH** — Settings → General → Command-line tool offers Install; after it,
   a NEW terminal answers `rex status`. The copy is `%LOCALAPPDATA%\rexenv\bin\rex.exe`.
 
 ### In-app self-update — replaces the macOS section (unrun; needs a SECOND installed build)
@@ -1640,12 +1645,27 @@ could not be read" — a build from `a0d4868f` on fetches `app-manifest-windows.
 sentence is now OS-neutral.
 
 ### Clean uninstall — replaces the macOS one
-- [ ] Settings → Uninstall → **Remove rexenv's system changes**; confirm.
-- [ ] After: `Resolve-DnsName foo.rex -Server 127.0.0.1` no longer answers, the NRPT rule
+- [x] Run 2: it lives under Settings → **Services** → Uninstall; the confirm reads "This stops
+  all services, deletes every rexenv NRPT rule (.rex and any other TLDs), and untrusts the
+  local CA (Windows will also ask for approval). Your sites and databases are kept."; then one
+  UAC and Windows' own "Root Certificate Store — Do you want to DELETE the following
+  certificate from the Root Store?" (subject, serial, both thumbprints). Settings → Uninstall → **Remove rexenv's system changes**; confirm.
+- [x] Run 2: NRPT rules 0, CurrentUser Root 0 rexenv certs, task gone (`schtasks` "cannot find
+  the path"), services 0, `Path` entry and `bin\rex.exe` gone, data kept. **`.rex` still
+  resolved while the app was open** — the in-process fallback resolver holds `127.0.0.1:53`
+  until Quit, by design; after Quit it does not. After: `Resolve-DnsName foo.rex -Server 127.0.0.1` no longer answers, the NRPT rule
   for `.rex` is gone (`Get-DnsClientNrptRule`), the `\rexenv\dns-agent` task is gone, the
   CA is out of the CurrentUser Root store, the `rex` copy and its `Path` entry are gone,
   and no rexenv service is running.
-- [ ] Site files remain under `%LOCALAPPDATA%\rexenv\rexenv\data` (not deleted).
+- [x] Run 2: `rexenv.db` still there. Site files remain under `%LOCALAPPDATA%\rexenv\rexenv\data` (not deleted).
+- [x] Run 2: **Apps & Features' `uninstall.exe`** — one page ("Uninstalling from: …\rexenv\", a
+  "Delete the application data" box, unticked by default) → Uninstall → Close, no UAC:
+  `rexenv.exe`, the HKCU entry, the Start Menu and desktop shortcuts are gone; the data tree
+  and an EMPTY `%LOCALAPPDATA%\rexenv\bin` stay (the `rex` copy was removed by the step above;
+  the directory is nobody's to delete — docs/TODO.md W12 lists it).
+- [x] Run 2, installing OVER a running copy: only the DNS agent was alive (the app had quit),
+  and the NSIS installer said **"rexenv is running! Click OK to kill it"** — the agent IS
+  `rexenv.exe`. OK killed it; its logon task restarted it after the install, on the new binary.
 
 ---
 Result: ____ / all pass.  Issues found: ________________________________________
