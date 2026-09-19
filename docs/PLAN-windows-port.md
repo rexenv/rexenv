@@ -606,6 +606,27 @@ the old file cannot be deleted until its process exits. The relauncher is still 
 but only to RESTART, not to swap.
 Distribution: GitHub release + a winget manifest (the Homebrew tap's counterpart).
 
+**The Windows descriptor, and what `rexenv/runtimes` must publish** (19 Sep 2026). The app
+reads `app-manifest-windows.json` + `.sig` from `rexenv/runtimes`' default branch
+(`core::app_update::manifest_urls_on`), same schema and same key as `app-manifest.json`. The
+runtimes publisher does not know about it yet. What its `publish-app-manifest.sh` needs, as a
+`--windows` mode — every line below is the macOS line's counterpart, and nothing else changes:
+
+| macOS (today) | Windows (`--windows`) | why |
+|---|---|---|
+| `DOC="app-manifest.json"` | `DOC="app-manifest-windows.json"` | its own serial, read-then-incremented from ITS file |
+| `ASSET="rexenv_${V}_universal.app.tar.gz"` | `ASSET="rexenv_${V}_x64.zip"` | the install directory's contents, flat (`release-windows-check.sh`) |
+| `MIN_MACOS="15.0"` → `minimumSystemVersion` | `"minimumSystemVersion": ""` | no floor: `offer_for` on Windows has no host version to compare (D6 is the floor, enforced by the installer, not the descriptor) |
+| `tar -tzf … first entry = rexenv.app/` | `unzip -Z1 … = rexenv.exe` + `rex.exe`, nothing else | the shape the swap's extractor expects, checked at the last point before a signature makes it trusted |
+| commit `app-manifest.json` + `.sig` | commit the two Windows files | a COMMIT on the default branch, never a release, for the reason the macOS one gives |
+
+Same `EXPECTED_PUBKEY`, same `manifest-signing` environment, same `concurrency` group rule
+(a separate group: `publish-app-manifest-windows`, because the two serials are independent).
+The workflow gets a `windows` boolean input that passes the flag. Until this lands, no
+installed Windows rexenv is offered anything — `scripts/check-app-manifest.sh --windows`
+reports "nothing is published yet" rather than a failure, which is the truth. This is the
+owner's repository and key; the change is a PR there, not a commit here.
+
 **D6 — Supported Windows and architectures.** **RULED 13 Sep 2026: accepted** — Windows 11
 x64 supported; Windows 10 22H2 best-effort; arm64 runs the x64 build under emulation,
 unsupported.

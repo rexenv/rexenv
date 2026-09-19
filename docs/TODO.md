@@ -824,7 +824,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     the embedded payload, the update key, and the executable's own `ProductVersion`/`ProductName`
     (the words the swap verifies); the workflow attaches it; `check-app-manifest.sh --windows`
     reads the second document. (2) `rexenv/runtimes` does not yet publish
-    `app-manifest-windows.json` + `.sig` — the owner's repo and key; (3) ✓
+    `app-manifest-windows.json` + `.sig` — the owner's repo and key. **What that publisher must
+    do is now written down line by line** (`docs/PLAN-windows-port.md` D5: its own document and
+    serial, the `_x64.zip` asset, no macOS floor, the flat-zip shape check, the same key and
+    environment) — a PR on `rexenv/runtimes`, not a commit here; (3) ✓
     `windows_app_bundle_swap_check` (sandbox tier, Windows): **24 checks green on the Dell** —
     stage from a flat zip, verify off VERSIONINFO and the PE header (the version read back
     through PowerShell as an independent oracle), `uninstall.exe` carried across, the directory
@@ -838,6 +841,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     pid whose creation-time token does not match as already gone. **Still owed:** the swap
     against a real `%LOCALAPPDATA%\rexenv` and the relaunch THROUGH the quit gate — both need
     an installed copy, which no machine has yet (clean Win11 VM), and (2) above.
+    **winget, 19 Sep 2026:** `scripts/winget-manifest.sh` renders the version, installer and
+    locale manifests from the PUBLISHED asset (downloaded and hashed, the API digest cross-checked),
+    or from a local installer with `--local` before a release exists. Rendered from the first
+    installer on both the Dell and the Mac — identical sha — and **`winget validate` on the Dell:
+    "Manifest validation succeeded"**. Not yet done, and cannot be until a release with the
+    installer is published: the winget-pkgs PR itself.
   - [ ] W12 — launch gates: verify on the Windows runner, SMOKE-TEST + INSTALL Windows
     sections, clean Windows 11 VM pass
     **The example half is done 16 Sep 2026 (ledger #645):** the tier table grew an os column

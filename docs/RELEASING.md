@@ -227,6 +227,17 @@ release** — which is the property that makes a stolen key survivable. Ledger
    is a universal `.app.tar.gz`. **The runtimes workflow does not publish it yet**: that is
    the open half of W11's updater row in `docs/TODO.md`, and until it exists no installed
    Windows rexenv is offered anything, exactly as step 8 says of macOS.
+   **And the winget manifest** (the tap's Windows counterpart): `./scripts/winget-manifest.sh`
+   renders the three manifests for the tap's latest release into
+   `src-tauri/target/winget/<version>/` — the installer URL and sha256 from the PUBLISHED
+   asset, downloaded and hashed here rather than trusted from the API, `Scope: user` because
+   that is the only mode rexenv ships, and `AppsAndFeaturesEntries` naming the uninstall entry
+   the NSIS installer writes (`ProductCode: rexenv`). `winget validate --manifest <dir>` on a
+   Windows machine says "Manifest validation succeeded" (measured 19 Sep 2026 against the
+   first installer, rendered from `--local`). Submission is a PR to `microsoft/winget-pkgs`
+   under `manifests/r/rexenv/rexenv/<version>/`, one version per PR — their rule. No signing
+   requirement stands in the way (their SmartScreen check is the URL's reputation, not the
+   binary's signature; `docs/TODO.md` W11).
 9. `./scripts/check-app-manifest.sh` (and `--windows` for the second document) — verifies
    the published descriptor against the key compiled into THIS tree, warns when the tap is ahead of it (the forgotten step 7), and
    compares the descriptor's sha256 to the published asset's digest.
