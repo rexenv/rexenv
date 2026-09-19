@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "release:mac": "bash scripts/release-mac.sh",
+    "release:win": "bash scripts/release-windows.sh",
     "typecheck": "tsc --noEmit",
     "verify": "bash scripts/verify.sh",
     "verify:full": "bash scripts/verify-full.sh",

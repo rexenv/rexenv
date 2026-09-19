@@ -155,3 +155,76 @@ jobs:
             "$DMG" "rexenv_${V}_universal.dmg.sha256" \
             "$TAR" "$TAR.sha256"
           echo "draft release $TAG created — run §A on the attached dmg, then publish it"
+
+  # ── The Windows half. It ATTACHES to the draft the macOS job created rather
+  #    than creating its own: one release, one tag, both platforms' assets.
+  #
+  #    **This job has never run.** The repo is private, so neither has the one
+  #    above — and that is exactly why the substance lives in scripts instead of
+  #    in these steps. `release-windows.sh` (the pre-clean + the nsis-only build)
+  #    and `release-windows-check.sh` (the §A0 half: one installer, the sidecar,
+  #    the PE architecture, the embedded payload, and NotSigned) were measured on
+  #    a real Windows machine 19 Sep 2026, plants included. What is unproven here
+  #    is the YAML, not the release.
+  release-windows:
+    name: Build the Windows installer and attach it to the draft
+    needs: release
+    runs-on: windows-latest
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the tag matches every declared version
+        run: ./scripts/check-versions.sh "${TAG#v}"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src-tauri
+            cli
+
+      # ── The same bar as the macOS job, deliberately. A Windows job that runs
+      #    LESS than verify.sh is a weaker gate nobody declared — the mistake
+      #    ledger #684 records, where the Windows check was `cargo check` beside a
+      #    macOS `clippy -D warnings`. If this proves too slow on a hosted runner,
+      #    the answer is to make the bar faster or split it openly, not to quietly
+      #    run a subset here.
+      - name: verify.sh (lib tests + examples + clippy + tsc)
+        run: |
+          set -uo pipefail
+          ./scripts/verify.sh > verify.log 2>&1
+          code=$?
+          cat verify.log
+          exit $code
+
+      - name: Build the installer (pre-clean + nsis only + §A0-windows)
+        run: pnpm release:win
+
+      - name: Attach the installer to the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          V="${TAG#v}"
+          SETUP="src-tauri/target/release/bundle/nsis/rexenv_${V}_x64-setup.exe"
+          sha256sum "$SETUP" | awk '{print $1 "  rexenv_'"$V"'_x64-setup.exe"}' > "rexenv_${V}_x64-setup.exe.sha256"
+          cat "rexenv_${V}_x64-setup.exe.sha256"
+          gh release upload "$TAG" "$SETUP" "rexenv_${V}_x64-setup.exe.sha256" --clobber
+          echo "attached the Windows installer to draft $TAG"

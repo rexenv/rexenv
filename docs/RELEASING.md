@@ -20,7 +20,15 @@ git push origin v<X.Y.Z>            (or: Actions → "Release" → Run workflow)
         │  §A0 artefact integrity (per-slice payloads, lipo, codesign) — automated,
         │                     on the .app AND on the bundle extracted from the archive
         ▼
-   DRAFT GitHub Release  ·  dmg + tar.gz + both .sha256 attached
+        │
+        │  ── and, on a windows-latest runner, the same tag's Windows half:
+        │  version guard (the same script) · scripts/verify.sh (the same bar)
+        │  pnpm release:win  → rexenv_<X.Y.Z>_x64-setup.exe   (NSIS, per-user, UNSIGNED)
+        │  §A0-windows (one installer, the rex sidecar, PE x64, embedded payload,
+        │                     NotSigned) — then ATTACHED to the draft above, not a
+        │                     second release. **Never run: the repo is private.**
+        ▼
+   DRAFT GitHub Release  ·  dmg + tar.gz + setup.exe + their .sha256 attached
         │
         │  ← THE HUMAN GATE: download the dmg, run PUBLISH-TESTING §A
         │    (quarantine → Gatekeeper blocks → xattr -rd → launches).
@@ -113,7 +121,25 @@ release** — which is the property that makes a stolen key survivable. Ledger
    Every build after them refuses on its own.
 2. `./scripts/verify.sh` — the bar, same as in CI. Green verdict = its own
    `verify: all green` line.
-3. `pnpm release:mac` → `src-tauri/target/universal-apple-darwin/release/bundle/dmg/rexenv_<X.Y.Z>_universal.dmg`.
+3. `pnpm release:win` (on Windows, in Git Bash) → `src-tauri/target/release/bundle/nsis/rexenv_<X.Y.Z>_x64-setup.exe`.
+   Runs `scripts/release-windows.sh`, which PRE-CLEANS for the Windows reason: the
+   app's DNS agent is the app's own binary, it outlives the app by design and its
+   watchdog puts it back, so a link step that has to replace `rexenv.exe` dies with
+   `Access is denied (os error 5)` naming neither the holder nor the fact that
+   closing the app does not release it (measured 19 Sep 2026). It kills by image
+   name — ours — and then PROVES the file is writable before starting a 20-minute
+   build that would otherwise fail at the end. It builds `--bundles nsis` only:
+   `bundle.targets` is `"all"`, which on Windows also means an MSI, and WiX installs
+   per-machine and wants admin — the opposite of D5. The narrowing lives in the
+   script, not the config, so the macOS build is not changed for a Windows reason.
+   **After the build it runs `scripts/release-windows-check.sh`** — §A0's Windows
+   half: exactly one installer named for the version, the `rex` sidecar present, the
+   PE machine field read off the header (not the filename), the embedded
+   `Dist_Archive_Command` payload, and `NotSigned` — asserted, because
+   `docs/INSTALL.md` promises the user a specific "Unknown Publisher" dialog and that
+   page becomes a lie the day a certificate appears without it being rewritten.
+
+4. `pnpm release:mac` → `src-tauri/target/universal-apple-darwin/release/bundle/dmg/rexenv_<X.Y.Z>_universal.dmg`.
    Runs `scripts/release-mac.sh`, which PRE-CLEANS before building. `tauri build`
    shells out to a generated `bundle_dmg.sh` that attaches a temporary
    `rw.<pid>.<name>.dmg`; when that dies partway the image stays ATTACHED and every
@@ -132,11 +158,11 @@ release** — which is the property that makes a stolen key survivable. Ledger
    both shapes break the in-app extractor), and re-runs §A0 **on the bundle that comes
    back out of the archive**, which is the copy an updating user actually receives.
    Checking the artefact and shipping a different one is the gap that closes.
-4. Run `docs/PUBLISH-TESTING.md` **§A0 by hand** for the .app and the dmg — CI normally
+5. Run `docs/PUBLISH-TESTING.md` **§A0 by hand** for the .app and the dmg — CI normally
    does it (the per-slice `lipo`/`strings`/`codesign` checks in `release.yml`'s "§A0
    artefact integrity" step are the script; copy them). The EXTRACTED-bundle half of §A0
    already ran in step 3. Then **§A**, which was always human-only.
-5. Release it, draft-first — publishing IS the §A sign-off, that rule does not relax:
+6. Release it, draft-first — publishing IS the §A sign-off, that rule does not relax:
    ```sh
    V=<X.Y.Z>
    DMG=src-tauri/target/universal-apple-darwin/release/bundle/dmg/rexenv_${V}_universal.dmg
@@ -174,18 +200,18 @@ release** — which is the property that makes a stolen key survivable. Ledger
    down on its own once it is public. It exists because this paragraph is a memory,
    and the piped-verdict rule proved that a rule relying on memory is not a control —
    it was walked into by the person who wrote it, in the session he wrote it.
-6. Publish the tap release → **Update cask** runs on that publish and bumps the cask
+7. Publish the tap release → **Update cask** runs on that publish and bumps the cask
    within a minute (Actions → Update cask → Run workflow if it did not).
    Publishing is also what makes the update archive reachable at all: a draft's assets
    answer 404 for everyone, so the §A gate protects in-app updaters for free.
-7. **`rexenv/runtimes` → Actions → "Publish app update manifest"** — dry run first, then
+8. **`rexenv/runtimes` → Actions → "Publish app update manifest"** — dry run first, then
    for real. It reads the tap's `releases/latest` (so it can never name a draft or a
    prerelease), takes the archive's immutable API digest, re-hashes what it downloaded,
    increments its own serial, signs with the reviewer-gated key and commits
    `app-manifest.json` + `.sig`. **Until this runs, no installed rexenv is offered
    anything** — the dmg is downloadable, the cask is bumped, the website is updated, and
    the feature that just shipped is off. That is the whole reason step 8 exists.
-8. `./scripts/check-app-manifest.sh` — verifies the published descriptor against the key
+9. `./scripts/check-app-manifest.sh` — verifies the published descriptor against the key
    compiled into THIS tree, warns when the tap is ahead of it (the forgotten step 7), and
    compares the descriptor's sha256 to the published asset's digest.
    **Run within five minutes of step 7 and it may say "only the CDN is behind".** Installed

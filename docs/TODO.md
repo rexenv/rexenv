@@ -768,6 +768,23 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     answer, which is the fixture-shaped-like-production trap in its purest form: the MACHINE was
     the fixture. That half moves to the clean Windows 11 VM pass (W12), where the defaults are the
     defaults, and SMOKE-TEST now asks for it by name.
+    **Release path built 19 Sep 2026** — `scripts/release-windows.sh` (`pnpm release:win`) and
+    `scripts/release-windows-check.sh`, mirroring the macOS pair. The wrapper earns its existence
+    for the Windows reason: the DNS agent IS the app's binary, outlives the app and is restored by
+    its watchdog, so the link step dies with `Access is denied (os error 5)` naming nothing — it
+    kills by image name and then PROVES the file is writable before starting a 20-minute build.
+    It builds `--bundles nsis` only, in the script rather than by narrowing `bundle.targets`,
+    which would have changed the macOS build for a Windows reason. The check is §A0's Windows
+    half: one installer named for the version, the `rex` sidecar present, the PE machine field
+    read off the header rather than the filename, the embedded `Dist_Archive_Command`, and
+    `NotSigned` asserted — because `docs/INSTALL.md` promises a specific "Unknown Publisher"
+    dialog and that page is a lie the day a certificate appears silently. **Measured on the Dell
+    against the real artefact: all green; plants 2/2** (sidecar removed → named; a second
+    installer → named). The `release-windows` job attaches to the draft the macOS job creates —
+    one release, both platforms — and runs the SAME `verify.sh`, because a Windows job that runs
+    less is ledger #684's mistake in a new place. **The job itself has never executed** (the repo
+    is private, so neither has the macOS one), which is why the substance is in the scripts.
+    `actionlint` is clean.
     **Open questions, not yet answered:** whether winget's community repo accepts an unsigned
     installer and on what terms; whether the WebView2 bootstrapper stays admin-free under a
     currentUser install (the Dell already HAS WebView2, so that machine cannot answer it).
