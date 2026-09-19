@@ -863,6 +863,16 @@ staged and swapped (T3, sandbox tier), or that a real Mac lets it happen (T0/T11
   real `%LOCALAPPDATA%\rexenv` (no machine has an installed copy yet), the relaunch, or the
   `DisplayVersion` rewrite — SMOKE-TEST's Windows section, once an installer has been installed.
   The pure half beneath it (`app_bundle_rules.rs`) runs on the macOS host as well. Ledger #690.
+- `windows_app_relaunch_check` (sandbox, Windows only) — the ORDERING, as `app_relaunch_check`
+  proves it on macOS: the REAL app binary in relauncher mode, a fixture parent (`ping -n 30`),
+  and the launch measured against that parent's death — nothing starts while it lives, the
+  bundle starts once it is gone, and a pid whose creation-time token does not match is treated
+  as already gone rather than waited on. The fixture "app" is a copy of the example itself,
+  which writes a marker and exits when `REXENV_RELAUNCH_MARKER` is in its environment — the
+  relauncher inherits and passes the environment on, so no argument the real relauncher never
+  passes is needed. Refuses a stale app binary, for the reason `app_relaunch_check` records.
+  **6 checks, all green on the Dell, 19 Sep 2026.** Does NOT cover the real app quitting
+  through the quit gate and reopening on a swapped directory — SMOKE-TEST's Windows section.
 - `app_update_check` (network) — the app's OWN update descriptor, fetched from where it is
   published and verified against the key compiled into the running binary: the half a
   user's "Check now" runs, where a publisher signing with a rotated key, or a document

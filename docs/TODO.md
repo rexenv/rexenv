@@ -832,8 +832,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     directory byte-identical, the sweep keeping the previous directory until told the app is
     healthy. First run failed one leg for a FIXTURE reason worth writing down: `timeout.exe`
     exits at once when stdin is redirected, so the "still running" waiter is `ping -n 60`.
-    **Still owed:** the swap against a real `%LOCALAPPDATA%\rexenv` and the relaunch — both
-    need an installed copy, which no machine has yet (clean Win11 VM), and (2) above.
+    **The relaunch is measured too** — `windows_app_relaunch_check`, 6 checks green on the Dell:
+    the real app binary in relauncher mode starts nothing while its parent lives, starts the
+    bundle once the parent is gone (`WaitForSingleObject` on the process handle), and treats a
+    pid whose creation-time token does not match as already gone. **Still owed:** the swap
+    against a real `%LOCALAPPDATA%\rexenv` and the relaunch THROUGH the quit gate — both need
+    an installed copy, which no machine has yet (clean Win11 VM), and (2) above.
   - [ ] W12 — launch gates: verify on the Windows runner, SMOKE-TEST + INSTALL Windows
     sections, clean Windows 11 VM pass
     **The example half is done 16 Sep 2026 (ledger #645):** the tier table grew an os column

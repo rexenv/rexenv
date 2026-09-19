@@ -146,6 +146,13 @@ pub fn creation_ticks(pid: u32) -> Option<u64> {
     }
 }
 
+/// A process's start-time token as the relaunch argv carries it — the same name
+/// and contract as macOS's, so a live check can spawn the relauncher by hand on
+/// either OS. `None` when the pid is gone.
+pub fn process_start_token(pid: u32) -> Option<String> {
+    creation_ticks(pid).map(rules::relaunch_token)
+}
+
 pub struct WindowsAppBundle;
 
 impl WindowsAppBundle {

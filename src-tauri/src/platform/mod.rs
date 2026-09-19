@@ -167,6 +167,8 @@ pub use windows::app_bundle::run_relauncher;
 /// Re-exported for the live check that spawns guards by hand.
 #[cfg(target_os = "macos")]
 pub use macos::process_start_token;
+#[cfg(target_os = "windows")]
+pub use windows::app_bundle::process_start_token;
 
 /// Bring rexenv to the front. Needed because it is an ACCESSORY app (menu bar,
 /// no dock tile): nothing activates it on the user's behalf, so a window it
