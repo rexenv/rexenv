@@ -818,11 +818,15 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     `ProgramFiles`, neutral docs on `BundleFacts` / `StagedExpect`), chosen over a Windows
     bolt-on because Linux comes next; `core::app_update` grew `staged_expect_on(os)`,
     `Refusal::PerMachineInstall` and per-OS descriptor URLs. **Proven:** L0 on the Mac (rules,
-    core), Windows-target clippy. **NOT proven, and the next three things in order:** (1) the
-    release does not yet produce the update archive (`rexenv_<v>_x64.zip` of the install
-    directory's contents) or attach it; (2) `rexenv/runtimes` does not yet publish
-    `app-manifest-windows.json` + `.sig`; (3) nothing has staged and swapped a real directory
-    on Windows — a fixture-owned example on the Dell in the `app_bundle_swap_check` shape.
+    core), Windows-target clippy. **NOT proven, and the next three things in order:**
+    (1) ✓ the release produces `rexenv_<v>_x64.zip` — the install directory's contents, flat,
+    without `uninstall.exe` — and `release-windows-check.sh` extracts it and re-checks PE x64,
+    the embedded payload, the update key, and the executable's own `ProductVersion`/`ProductName`
+    (the words the swap verifies); the workflow attaches it; `check-app-manifest.sh --windows`
+    reads the second document. (2) `rexenv/runtimes` does not yet publish
+    `app-manifest-windows.json` + `.sig` — the owner's repo and key; (3) nothing has staged and
+    swapped a real directory on Windows — a fixture-owned example on the Dell in the
+    `app_bundle_swap_check` shape.
   - [ ] W12 — launch gates: verify on the Windows runner, SMOKE-TEST + INSTALL Windows
     sections, clean Windows 11 VM pass
     **The example half is done 16 Sep 2026 (ledger #645):** the tier table grew an os column

@@ -24,9 +24,13 @@ git push origin v<X.Y.Z>            (or: Actions → "Release" → Run workflow)
         │  ── and, on a windows-latest runner, the same tag's Windows half:
         │  version guard (the same script) · scripts/verify.sh (the same bar)
         │  pnpm release:win  → rexenv_<X.Y.Z>_x64-setup.exe   (NSIS, per-user, UNSIGNED)
-        │  §A0-windows (one installer, the rex sidecar, PE x64, embedded payload,
-        │                     NotSigned) — then ATTACHED to the draft above, not a
-        │                     second release. **Never run: the repo is private.**
+        │                    + rexenv_<X.Y.Z>_x64.zip         (the in-app update: the
+        │                      install directory's contents, flat — no uninstall.exe)
+        │  §A0-windows (one installer, the rex sidecar, PE x64, embedded payload +
+        │                     update key, NotSigned; the zip extracted and re-checked,
+        │                     its VERSIONINFO read the way the swap reads it) — then
+        │                     ATTACHED to the draft above, not a second release.
+        │                     **Never run: the repo is private.**
         ▼
    DRAFT GitHub Release  ·  dmg + tar.gz + setup.exe + their .sha256 attached
         │
@@ -138,6 +142,13 @@ release** — which is the property that makes a stolen key survivable. Ledger
    `Dist_Archive_Command` payload, and `NotSigned` — asserted, because
    `docs/INSTALL.md` promises the user a specific "Unknown Publisher" dialog and that
    page becomes a lie the day a certificate appears without it being rewritten.
+   **It also produces the update archive**, `rexenv_<X.Y.Z>_x64.zip`: `rexenv.exe` and
+   `rex.exe` at the root and nothing else. Flat because the swap's extractor strips
+   nothing; without `uninstall.exe` because the installer writes that at install time and
+   the swap carries the installed one across (`platform/windows/app_bundle.rs`). The
+   archive is extracted and re-checked — PE x64, the embedded payload, the update key, and
+   the executable's own `ProductVersion`/`ProductName`, the words the swap verifies —
+   because what a user receives is what comes OUT of it, not what went in.
 
 4. `pnpm release:mac` → `src-tauri/target/universal-apple-darwin/release/bundle/dmg/rexenv_<X.Y.Z>_universal.dmg`.
    Runs `scripts/release-mac.sh`, which PRE-CLEANS before building. `tauri build`
@@ -211,8 +222,13 @@ release** — which is the property that makes a stolen key survivable. Ledger
    `app-manifest.json` + `.sig`. **Until this runs, no installed rexenv is offered
    anything** — the dmg is downloadable, the cask is bumped, the website is updated, and
    the feature that just shipped is off. That is the whole reason step 8 exists.
-9. `./scripts/check-app-manifest.sh` — verifies the published descriptor against the key
-   compiled into THIS tree, warns when the tap is ahead of it (the forgotten step 7), and
+   **Windows has its own document, `app-manifest-windows.json` + `.sig`** — same schema,
+   same key, same serial rule — because one `release` names one artifact and the macOS one
+   is a universal `.app.tar.gz`. **The runtimes workflow does not publish it yet**: that is
+   the open half of W11's updater row in `docs/TODO.md`, and until it exists no installed
+   Windows rexenv is offered anything, exactly as step 8 says of macOS.
+9. `./scripts/check-app-manifest.sh` (and `--windows` for the second document) — verifies
+   the published descriptor against the key compiled into THIS tree, warns when the tap is ahead of it (the forgotten step 7), and
    compares the descriptor's sha256 to the published asset's digest.
    **Run within five minutes of step 7 and it may say "only the CDN is behind".** Installed
    apps read `raw.githubusercontent.com`, which caches the file (the new one appeared 3 min

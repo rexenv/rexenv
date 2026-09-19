@@ -224,7 +224,11 @@ jobs:
           set -euo pipefail
           V="${TAG#v}"
           SETUP="src-tauri/target/release/bundle/nsis/rexenv_${V}_x64-setup.exe"
+          ZIP="src-tauri/target/release/bundle/nsis/rexenv_${V}_x64.zip"
           sha256sum "$SETUP" | awk '{print $1 "  rexenv_'"$V"'_x64-setup.exe"}' > "rexenv_${V}_x64-setup.exe.sha256"
-          cat "rexenv_${V}_x64-setup.exe.sha256"
-          gh release upload "$TAG" "$SETUP" "rexenv_${V}_x64-setup.exe.sha256" --clobber
-          echo "attached the Windows installer to draft $TAG"
+          cat "rexenv_${V}_x64-setup.exe.sha256" "$ZIP.sha256"
+          # The update archive rides along: an in-app update downloads the install
+          # directory's contents, not the installer. Neither name ends in
+          # `_universal.dmg`, which is the suffix the tap's update-cask.yml selects by.
+          gh release upload "$TAG" "$SETUP" "rexenv_${V}_x64-setup.exe.sha256" "$ZIP" "$ZIP.sha256" --clobber
+          echo "attached the Windows installer and update archive to draft $TAG"

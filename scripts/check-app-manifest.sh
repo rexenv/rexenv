@@ -44,10 +44,17 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-DOC_URL="${CHECK_APP_MANIFEST_DOC_URL:-https://raw.githubusercontent.com/rexenv/runtimes/main/app-manifest.json}"
+# `--windows`: the SECOND descriptor. Each OS reads its own (`core::app_update::
+# manifest_urls_on`), because one `release` names one artifact and the macOS one is
+# a universal .app.tar.gz no Windows machine can use. Same key, same rules, same
+# forgotten-second-click — so the same check, pointed at the other document.
+DOC_NAME="app-manifest.json"
+[ "${1:-}" = "--windows" ] && DOC_NAME="app-manifest-windows.json"
+
+DOC_URL="${CHECK_APP_MANIFEST_DOC_URL:-https://raw.githubusercontent.com/rexenv/runtimes/main/$DOC_NAME}"
 SIG_URL="${CHECK_APP_MANIFEST_SIG_URL:-$DOC_URL.sig}"
 # The committed file itself, not the CDN's copy of it (API cache: 60 s, raw: 300 s).
-API_DOC_URL="${CHECK_APP_MANIFEST_API_DOC_URL:-https://api.github.com/repos/rexenv/runtimes/contents/app-manifest.json}"
+API_DOC_URL="${CHECK_APP_MANIFEST_API_DOC_URL:-https://api.github.com/repos/rexenv/runtimes/contents/$DOC_NAME}"
 API_SIG_URL="${CHECK_APP_MANIFEST_API_SIG_URL:-$API_DOC_URL.sig}"
 TAP="rexenv/homebrew-tap"
 
