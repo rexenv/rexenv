@@ -106,8 +106,8 @@ pub struct PhpSettingInput {
 }
 
 /// The whitelisted ini settings for one PHP minor: every editable key, with the
-/// stored value if any. Keys the user never set report `value: None` and apply
-/// the shown default.
+/// stored value if any. Keys the user never set report `value: None` and the pool
+/// runs the shown default (written explicitly — `core::php::effective_settings`).
 #[tauri::command]
 pub fn get_php_settings(state: State<'_, AppState>, minor: String) -> Result<Vec<PhpSettingView>> {
     let conn = lock(&state)?;

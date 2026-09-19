@@ -1481,6 +1481,16 @@ itself the first check.
 - [x] **`/usr/local/bin/rex` is removed by the uninstall, inside the one admin prompt** (ledger #677). It was left behind on the first VM uninstall of 18 Sep 2026: `/usr/local/bin` is root-owned on a clean Mac (the CLI install's own `mkdir -p` made it), so the unprivileged unlink failed silently. **Tell:** the link still there after Remove, pointing into the app you are about to drag to the Trash. ✓ 18 Sep 2026, same VM, fixed build: one prompt (its sentence now names the rex command), link gone, resolver gone.
 - [x] **Stale CA trust entries are swept** (ledger #678). Every fresh app-data folder mints a new local CA; until 18 Sep 2026 the ones earlier folders trusted stayed trusted roots (four on the VM after four hand wipes) and the uninstall untrusted only the current one. Now trusting a CA sweeps the others and the uninstall untrusts all of them. **Tell:** `security dump-trust-settings` listing more than one `rexenv Local CA` after setup. ✓ 18 Sep 2026, same VM: 4 trusted / 5 in the keychain before the Domains step → 1 / 1 after, ONE keychain dialog, log `untrusted 4 stale rexenv CA(s)`.
 
+### PHP defaults are rexenv's, not PHP's (19 Sep 2026, ledger #694)
+- [ ] On a fresh install, Settings → Services → PHP → ini settings shows every field EMPTY with
+  placeholders 1G / 5G / 8G / 60 / -1 / 5000, and a site's `phpinfo()` (or `php -i` through the
+  pool — not the CLI) reports exactly those: `memory_limit 1G`, `upload_max_filesize 5G`,
+  `post_max_size 8G`, `max_input_vars 5000`, `max_execution_time 60`. **Tell:** 128M or 2M
+  anywhere — the defaults are placeholders again, not written.
+- [ ] A 200 MB upload through a site (WP media, or a plain form) is accepted by nginx AND PHP —
+  the nginx global `client_max_body_size` is derived from the same defaults (8G). **Tell:** a
+  413 from nginx on a body PHP would take.
+
 ## Windows — what this checklist means on that OS
 
 Run everything above on Windows too, EXCEPT what this section changes or removes. The

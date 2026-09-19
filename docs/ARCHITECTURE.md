@@ -2039,7 +2039,9 @@ IPC surface — which is how a reader ends up designing against a system with on
   from WordPress is a bug report. A new minor without a date fails the build.
 - Provision (`core/sites.rs`): docroot + cert + DB + config gen + WP core install via
   WP-CLI. WP-CLI always runs PHP with `-d memory_limit=512M` (core extraction OOMs at
-  128M). Switching PHP version or web server = config regen + reload, never a
+  PHP's 128M; the pools run rexenv's own defaults — 1G / 5G uploads / 8G post / 5000
+  input vars / 60 s — written into every pool config, `php::effective_settings`, owner
+  ruling 19 Sep 2026). Switching PHP version or web server = config regen + reload, never a
   docroot/cert/DB rebuild. Domains are validated in core before becoming a
   path/config/cert/DB name (M7).
 - **dist-archive's scratch has no whitespace in its path** (`dist_archive::scratch_root`, #679,

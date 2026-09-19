@@ -752,7 +752,11 @@ pub fn generate_nginx_config(cfg: &NginxConfig) -> String {
     );
     s.push_str("\tdefault_type application/octet-stream;\n");
     s.push_str("\tsendfile on;\n");
-    s.push_str("\tclient_max_body_size 128m;\n");
+    // The global limit is the pools' DEFAULT body ceiling (max of the default
+    // upload/post sizes), derived, so a minor with nothing stored — absent from
+    // `nginx_body_limits` — never meets a 413 for a body PHP would take. A typed
+    // 128m here outlived the 2M/8M PHP defaults it matched (19 Sep 2026).
+    s.push_str(&format!("\tclient_max_body_size {};\n", crate::core::php::default_body_limit()));
     s.push_str(&format!(
         "\tclient_body_temp_path \"{t}/client_body\";\n\
          \tfastcgi_temp_path \"{t}/fastcgi\";\n\
@@ -1392,7 +1396,8 @@ mod tests {
         // Inside the server block, mirroring the site's PHP upload/post sizes…
         assert!(out.contains("client_max_body_size 67108864;"), "got: {out}");
         // …while the http-level default stays for sites without settings.
-        assert!(out.contains("client_max_body_size 128m;"));
+        assert!(out.contains(&format!("client_max_body_size {};", crate::core::php::default_body_limit())), "got: {out}");
+        assert_eq!(crate::core::php::default_body_limit(), 8u64 << 30, "the default post size is the ceiling");
         let none = generate_nginx_config(&nginx_cfg(RewriteMode::Single));
         assert_eq!(none.matches("client_max_body_size").count(), 1);
     }

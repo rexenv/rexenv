@@ -591,8 +591,8 @@ function PhpVersionRow({
 }
 
 /** Per-version ini overrides for the shared php-fpm pool (memory_limit etc.).
- *  Empty field = PHP's compiled default (shown as placeholder — no php.ini is
- *  loaded). Save validates on the backend, gates the rewritten pool config on
+ *  Empty field = rexenv's default (shown as placeholder), which is written into
+ *  the pool config too. Save validates on the backend, gates the rewritten pool config on
  *  `php-fpm -t`, restarts the pool, and reloads nginx so its upload body limit
  *  tracks upload_max_filesize/post_max_size. */
 function PhpIniSettingsEditor({ minor }: { minor: string }) {
@@ -646,7 +646,7 @@ function PhpIniSettingsEditor({ minor }: { minor: string }) {
           {apply.isPending ? "Applying…" : "Save & restart pool"}
         </Button>
         <div className="text-[0.6875rem] leading-snug text-rex-text-muted">
-          Empty = PHP default (placeholder). Applies to every nginx-served site on PHP {minor};
+          Empty = rexenv's default (placeholder), written to the pool. Applies to every nginx-served site on PHP {minor};
           FrankenPHP sites use their own embedded PHP. Requests are still recycled after 5&nbsp;min
           wall-clock unless max_execution_time is set higher (0 keeps the 5-min cap).
         </div>

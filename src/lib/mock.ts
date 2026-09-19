@@ -223,12 +223,12 @@ export const mockAppUpdateReadiness = null;
 
 /** Whitelisted keys + PHP compiled defaults (mirrors core::php::SETTINGS). */
 export const mockPhpSettings: PhpSetting[] = [
-  { key: "memory_limit", value: null, default: "128M" },
-  { key: "upload_max_filesize", value: null, default: "2M" },
-  { key: "post_max_size", value: null, default: "8M" },
+  { key: "memory_limit", value: null, default: "1G" },
+  { key: "upload_max_filesize", value: null, default: "5G" },
+  { key: "post_max_size", value: null, default: "8G" },
   { key: "max_execution_time", value: null, default: "30" },
   { key: "max_input_time", value: null, default: "-1" },
-  { key: "max_input_vars", value: null, default: "1000" },
+  { key: "max_input_vars", value: null, default: "5000" },
 ];
 
 export const mockDatabases: DbStatus[] = [

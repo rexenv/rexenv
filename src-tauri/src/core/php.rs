@@ -704,25 +704,30 @@ pub enum SettingKind {
     Int { min: i64, max: i64 },
 }
 
-/// One whitelisted setting: key, validation kind, and PHP's compiled default
-/// (what actually applies when unset — our static builds load NO php.ini).
+/// One whitelisted setting: key, validation kind, and rexenv's default — what
+/// applies when the user has not set the key. Since 19 Sep 2026 (owner ruling)
+/// the default is WRITTEN into every pool config (`effective_settings`), not
+/// left to PHP's compiled value: a dev machine wants 1G / 5G uploads out of the
+/// box, and PHP's 128M / 2M are the numbers every WordPress import trips over.
 pub struct SettingSpec {
     pub key: &'static str,
     pub kind: SettingKind,
     pub default: &'static str,
 }
 
-/// The editable per-version ini settings. `max_execution_time` default is the
-/// server-SAPI 30 (CLI's 0 doesn't apply to pools); `max_input_time` -1 means
-/// "use max_execution_time".
+/// The editable per-version ini settings and rexenv's defaults (owner, 19 Sep
+/// 2026: memory 1G, uploads 5G under an 8G post body, 5000 input vars, 60 s —
+/// PHP's own are 128M / 2M / 8M / 1000 / 30). `max_input_time` -1 means "use
+/// max_execution_time". `upload_max_filesize` ≤ `post_max_size` is validated, so
+/// the two defaults must keep that order.
 pub const SETTINGS: &[SettingSpec] = &[
-    SettingSpec { key: "memory_limit", kind: SettingKind::SizeOrUnlimited, default: "128M" },
-    SettingSpec { key: "upload_max_filesize", kind: SettingKind::Size, default: "2M" },
-    SettingSpec { key: "post_max_size", kind: SettingKind::Size, default: "8M" },
+    SettingSpec { key: "memory_limit", kind: SettingKind::SizeOrUnlimited, default: "1G" },
+    SettingSpec { key: "upload_max_filesize", kind: SettingKind::Size, default: "5G" },
+    SettingSpec { key: "post_max_size", kind: SettingKind::Size, default: "8G" },
     SettingSpec {
         key: "max_execution_time",
         kind: SettingKind::Int { min: 0, max: 86_400 },
-        default: "30",
+        default: "60",
     },
     SettingSpec {
         key: "max_input_time",
@@ -732,12 +737,26 @@ pub const SETTINGS: &[SettingSpec] = &[
     SettingSpec {
         key: "max_input_vars",
         kind: SettingKind::Int { min: 1, max: 1_000_000 },
-        default: "1000",
+        default: "5000",
     },
 ];
 
 fn setting_spec(key: &str) -> Option<&'static SettingSpec> {
     SETTINGS.iter().find(|s| s.key == key)
+}
+
+/// What a pool config is written with: every whitelisted key, the stored value
+/// where there is one and rexenv's default otherwise — in `SETTINGS` order. The
+/// ONE place the defaults become real; a pool written from raw stored pairs runs
+/// PHP's compiled numbers for everything the user never touched.
+pub fn effective_settings(stored: &[(String, String)]) -> Vec<(String, String)> {
+    SETTINGS
+        .iter()
+        .map(|s| {
+            let v = stored.iter().find(|(k, _)| k == s.key).map(|(_, v)| v.clone());
+            (s.key.to_string(), v.unwrap_or_else(|| s.default.to_string()))
+        })
+        .collect()
 }
 
 /// Parse a PHP size-shorthand string (`64M`, `1G`, `524288`) to bytes, or `None`
@@ -826,6 +845,14 @@ fn display_size(bytes: u64) -> String {
     }
 }
 
+/// nginx's GLOBAL `client_max_body_size`, in bytes: the larger of the default
+/// upload and post sizes — what a pool with nothing stored runs, so the server
+/// block that has no per-minor limit still admits every body PHP would accept.
+pub fn default_body_limit() -> u64 {
+    let d = |key: &str| parse_php_size(setting_spec(key).expect("whitelisted").default).unwrap_or(0);
+    d("upload_max_filesize").max(d("post_max_size"))
+}
+
 /// The nginx `client_max_body_size` each minor needs so nginx never 413s a body
 /// PHP would accept: max(effective upload_max_filesize, effective post_max_size),
 /// in bytes, for every minor that stores either key. Minors with neither key set
@@ -874,6 +901,9 @@ pub async fn test_settings_candidate(
     if !binaries::is_cached(platform, model.catalog_name(), patch) {
         return Ok(());
     }
+    // The candidate must be what the pool will actually run: the defaults included.
+    let effective = effective_settings(pairs);
+    let pairs = effective.as_slice();
     match model {
         crate::platform::traits::PoolModel::Fpm => {
             let bin = binaries::resolve(platform, "php-fpm", patch).await?; // cache hit
@@ -1068,7 +1098,8 @@ impl PhpFpmPools {
         let port =
             fpm_port(minor).ok_or_else(|| Error::Other(format!("no fpm port for {minor}")))?;
         ports::ensure_free(platform, port, ports::Proto::Tcp, "PHP-FPM")?;
-        let settings = self.settings.get(minor).map(Vec::as_slice).unwrap_or(&[]);
+        let settings = effective_settings(self.settings.get(minor).map(Vec::as_slice).unwrap_or(&[]));
+        let settings = settings.as_slice();
         let model = platform.supervisor().php_pool_model();
         let pool_bin = model.catalog_name();
         let child = match model {
@@ -1130,7 +1161,8 @@ impl PhpFpmPools {
             .await?
             .join("xdebug.so");
         services::assert_fpm_loads_xdebug(platform, &bin, &so)?;
-        let settings = self.settings.get(minor).map(Vec::as_slice).unwrap_or(&[]);
+        let settings = effective_settings(self.settings.get(minor).map(Vec::as_slice).unwrap_or(&[]));
+        let settings = settings.as_slice();
         let conf = services::write_fpm_config(
             platform,
             &format!("{minor}-debug"),
@@ -1549,9 +1581,9 @@ mod tests {
 
     #[test]
     fn validate_settings_catches_upload_exceeding_post_max_size() {
-        // upload > EFFECTIVE post (default 8M when unset) → PHP would silently cap
+        // upload > EFFECTIVE post (default 8G when unset) → PHP would silently cap
         // uploads at post_max_size, so the pair must be rejected as a set.
-        assert!(validate_settings(&pairs(&[("upload_max_filesize", "64M")])).is_err());
+        assert!(validate_settings(&pairs(&[("upload_max_filesize", "9G")])).is_err());
         assert!(validate_settings(&pairs(&[
             ("upload_max_filesize", "64M"),
             ("post_max_size", "32M")
@@ -1570,14 +1602,29 @@ mod tests {
     fn nginx_body_limits_mirror_effective_upload_and_post() {
         let mut map = std::collections::HashMap::new();
         map.insert("8.3".to_string(), pairs(&[("upload_max_filesize", "64M"), ("post_max_size", "80M")]));
-        // Only post set: effective upload stays at its 2M default → limit = post.
+        // Only post set: effective upload is the 5G default → limit = upload.
         map.insert("8.2".to_string(), pairs(&[("post_max_size", "16M")]));
         // Neither body key set: no per-server limit (global default applies).
         map.insert("8.1".to_string(), pairs(&[("memory_limit", "1G")]));
         let limits = nginx_body_limits(&map);
         assert_eq!(limits.get("8.3"), Some(&(80u64 << 20)));
-        assert_eq!(limits.get("8.2"), Some(&(16u64 << 20)));
+        assert_eq!(limits.get("8.2"), Some(&(5u64 << 30)));
         assert_eq!(limits.get("8.1"), None);
+    }
+
+    /// The defaults are real only if they are WRITTEN: every whitelisted key reaches
+    /// the pool config, stored values win, order is the spec's.
+    #[test]
+    fn every_whitelisted_key_reaches_the_pool_config_with_stored_values_winning() {
+        let out = effective_settings(&pairs(&[("memory_limit", "256M")]));
+        assert_eq!(out.len(), SETTINGS.len());
+        assert_eq!(out[0], ("memory_limit".to_string(), "256M".to_string()));
+        assert!(out.contains(&("upload_max_filesize".to_string(), "5G".to_string())));
+        assert!(out.contains(&("post_max_size".to_string(), "8G".to_string())));
+        assert!(out.contains(&("max_input_vars".to_string(), "5000".to_string())));
+        assert!(out.contains(&("max_execution_time".to_string(), "60".to_string())));
+        // The two body defaults keep the order validation demands of the user.
+        validate_settings(&effective_settings(&[])).expect("the defaults validate as a set");
     }
 
     #[test]
