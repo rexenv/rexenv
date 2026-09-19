@@ -20,7 +20,7 @@ use windows_sys::Win32::Security::Authorization::{
     SDDL_REVISION_1, SE_FILE_OBJECT,
 };
 use windows_sys::Win32::Security::{
-    GetSecurityDescriptorDacl, GetTokenInformation, TokenUser, ACL, DACL_SECURITY_INFORMATION,
+    GetSecurityDescriptorDacl, GetTokenInformation, TokenOwner, TokenUser, ACL, TOKEN_OWNER, DACL_SECURITY_INFORMATION,
     PROTECTED_DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, SECURITY_ATTRIBUTES, TOKEN_QUERY,
     TOKEN_USER,
 };
@@ -180,6 +180,53 @@ pub(super) fn current_user_sid() -> Result<String> {
         CloseHandle(token);
     }
     sid
+}
+
+/// The SID Windows stamps as OWNER on files this process creates — the token's
+/// default owner, which for an account in Administrators is `BUILTIN\Administrators`
+/// (S-1-5-32-544), not the account itself. Measured 19 Sep 2026 on the clean
+/// Windows 11 VM: `%LOCALAPPDATA%` and the per-user install directory the installer
+/// made were both owned by Administrators, so "owner == my user SID" called the
+/// user's own install foreign (ledger #693).
+pub(super) fn current_token_owner_sid() -> Result<String> {
+    let mut token: HANDLE = null_mut();
+    // SAFETY: as in `current_user_sid`.
+    if unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) } == 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    let mut needed = 0u32;
+    // SAFETY: a size query, as in `token_user_sid`.
+    unsafe {
+        GetTokenInformation(token, TokenOwner, null_mut(), 0, &mut needed);
+    }
+    if needed == 0 {
+        // SAFETY: opened above, closed once.
+        unsafe { CloseHandle(token) };
+        return Err(std::io::Error::last_os_error().into());
+    }
+    let mut buffer = vec![0u8; needed as usize];
+    // SAFETY: `buffer` is `needed` bytes long, as the size query asked for.
+    let ok = unsafe { GetTokenInformation(token, TokenOwner, buffer.as_mut_ptr().cast(), needed, &mut needed) };
+    // SAFETY: opened above, closed exactly once, here.
+    unsafe { CloseHandle(token) };
+    if ok == 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    // SAFETY: the buffer holds a TOKEN_OWNER whose SID pointer points into `buffer`,
+    // alive until this function returns; copied out unaligned like TOKEN_USER above.
+    let owner = unsafe { std::ptr::read_unaligned(buffer.as_ptr().cast::<TOKEN_OWNER>()) };
+    let mut text: PWSTR = null_mut();
+    // SAFETY: a valid SID; `text` receives a LocalAlloc'ed string, freed once below.
+    if unsafe { ConvertSidToStringSidW(owner.Owner, &mut text) } == 0 || text.is_null() {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    let sid = unsafe {
+        let len = (0..).take_while(|&i| *text.add(i) != 0).count();
+        let sid = String::from_utf16_lossy(std::slice::from_raw_parts(text, len));
+        LocalFree(text.cast());
+        sid
+    };
+    Ok(sid)
 }
 
 fn token_user_sid(token: HANDLE) -> Result<String> {

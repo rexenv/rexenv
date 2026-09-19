@@ -182,9 +182,14 @@ impl WindowsAppBundle {
         ok
     }
 
-    /// The owner SID of `path` equals this account's SID.
+    /// The owner SID of `path` is this account's — OR the SID this account's token
+    /// stamps as owner on what it creates (`BUILTIN\Administrators` for an admin
+    /// account, which is what an installer run by that account leaves on the install
+    /// directory; measured 19 Sep 2026, ledger #693). Comparing against the user SID
+    /// alone called every admin user's own install foreign and refused the update.
     fn owned_by_me(path: &Path) -> bool {
         let Ok(me) = super::acl::current_user_sid() else { return false };
+        let default_owner = super::acl::current_token_owner_sid().unwrap_or_default();
         let wpath = wide(path);
         let mut owner: *mut std::ffi::c_void = std::ptr::null_mut();
         let mut descriptor: *mut std::ffi::c_void = std::ptr::null_mut();
@@ -212,7 +217,7 @@ impl WindowsAppBundle {
                 }
                 let s = String::from_utf16_lossy(std::slice::from_raw_parts(text, n));
                 LocalFree(text.cast());
-                s.eq_ignore_ascii_case(&me)
+                s.eq_ignore_ascii_case(&me) || (!default_owner.is_empty() && s.eq_ignore_ascii_case(&default_owner))
             } else {
                 false
             };

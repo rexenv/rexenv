@@ -89,6 +89,9 @@ pub struct PlatformWords {
     /// Windows: run the installer again. The refusal in `core::app_update` says this
     /// sentence and nothing OS-shaped of its own.
     pub reinstall_to_home: &'static str,
+    /// The command that takes ownership of a folder this account cannot replace, ready for a path
+    /// to be appended (the updater's two refusals that end in a copyable fix).
+    pub take_ownership: &'static str,
 }
 
 pub const MACOS: PlatformWords = PlatformWords {
@@ -119,6 +122,7 @@ pub const MACOS: PlatformWords = PlatformWords {
     bundled_tools: "nginx, PHP, MySQL, MariaDB, PostgreSQL, Redis, Mailpit, Adminer & cloudflared",
     path_sep: "/",
     reinstall_to_home: "Move rexenv.app into Applications in Finder, open it from there, then update.",
+    take_ownership: "sudo chown -R \"$USER\"",
 };
 
 pub const WINDOWS: PlatformWords = PlatformWords {
@@ -149,6 +153,7 @@ pub const WINDOWS: PlatformWords = PlatformWords {
     bundled_tools: "nginx, PHP, MySQL, PostgreSQL, Mailpit, Adminer & cloudflared",
     path_sep: "\\",
     reinstall_to_home: "Run the rexenv installer again so it lands in %LOCALAPPDATA%\\rexenv, open it from there, then update.",
+    take_ownership: "takeown /R /F",
 };
 
 /// This build's words.

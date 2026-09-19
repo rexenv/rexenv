@@ -519,12 +519,14 @@ impl Refusal {
             Self::ParentNotWritable { parent } => format!(
                 "rexenv can't replace itself: {parent} is not writable by this account. Ask \
                  an admin to update rexenv, or take ownership of the folder first:\n\
-                 $ sudo chown -R \"$USER\" {parent}"
+                 $ {} {parent}",
+                crate::platform::words::current().take_ownership
             ),
             Self::ForeignOwner { bundle } => format!(
                 "{bundle} belongs to another account, so rexenv could not clean up after \
                  replacing it. Have that account update rexenv, or take ownership first:\n\
-                 $ sudo chown -R \"$USER\" {bundle}"
+                 $ {} {bundle}",
+                crate::platform::words::current().take_ownership
             ),
             Self::NotEnoughSpace { need, have } => format!(
                 "Not enough free space to install the update: it needs about {} MB free and \

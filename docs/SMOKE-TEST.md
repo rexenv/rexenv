@@ -1555,7 +1555,14 @@ ran the rest: second-hash SmartScreen, the Finish-page start that now hops and s
 The swap and the relaunch are measured on fixtures on the Dell
 (`windows_app_bundle_swap_check`, `windows_app_relaunch_check` — `docs/TESTING.md`); what no
 fixture can do is the real install directory, the real quit gate and the real registry entry.
-- [ ] With an older build installed and a newer release published (its `rexenv_<X.Y.Z>_x64.zip`
+- [x] 19 Sep 2026, run 3: a throwaway 0.7.9 build installed, 0.8.0 published with its Windows
+  descriptor (serial 1): About → Check now → "rexenv 0.8.0 · 13.2 MB has been published", the
+  Settings badge reads 0.8.0. Two things it took to get there, both real: (1) this VM's database
+  still held the macOS descriptor (serial 5) from run 1's pre-per-OS build, so the Windows
+  document (serial 1) was refused as a replay — a state no shipped Windows user can be in, cleared
+  by hand here; (2) the offer came with a REFUSAL, "belongs to another account … sudo chown" —
+  the install directory is owned by `BUILTIN\Administrators` for an admin account, fixed in
+  ledger #693 (ships in 0.8.1). With an older build installed and a newer release published (its `rexenv_<X.Y.Z>_x64.zip`
   attached and `app-manifest-windows.json` signed on `rexenv/runtimes`), Settings → About
   offers the update; the consent sentence is the Windows one (no "rexenv.app", no
   Applications folder).
