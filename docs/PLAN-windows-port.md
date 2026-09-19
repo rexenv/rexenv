@@ -584,8 +584,26 @@ rollback — OS-independent: carries; (4) the signing key forced onto the build 
 OS-independent: carries; (5) `rustls-platform-verifier` trusting rexenv's own CA — on Windows
 it asks CryptoAPI, which reads the CurrentUser Root store W5 installs into: carries. Four of
 five hold from the text alone, so rexenv's OWN signed-manifest channel is the expected
-answer; what is new is the swap (a running `.exe` cannot be replaced: stage, exit through
-the gate, a relauncher swaps and starts).
+answer; what is new is the swap. **That sentence used to read "a running `.exe` cannot be
+replaced: stage, exit through the gate, a relauncher swaps and starts" — and its premise
+is wrong, measured on the Dell 19 Sep 2026.** A running `.exe` cannot be DELETED or
+OVERWRITTEN, but it CAN be renamed, and a new file moves into the vacated name while the
+old process keeps running from the renamed file:
+
+| operation on a running `.exe` | result |
+|---|---|
+| delete | refused |
+| overwrite in place | refused |
+| **rename away** | **ok** |
+| **move a new file into the vacated name** | **ok** |
+| the renamed-away process | keeps running |
+| delete the renamed-away file while it runs | refused |
+
+So Windows gets the SAME swap macOS has — `AppBundle::swap`'s contract already says
+"put the staged bundle at the install path and the installed one in staging… nothing is
+deleted on any path", and the last row is why that last clause is not merely tidy there:
+the old file cannot be deleted until its process exits. The relauncher is still needed,
+but only to RESTART, not to swap.
 Distribution: GitHub release + a winget manifest (the Homebrew tap's counterpart).
 
 **D6 — Supported Windows and architectures.** **RULED 13 Sep 2026: accepted** — Windows 11

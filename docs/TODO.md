@@ -785,6 +785,13 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     less is ledger #684's mistake in a new place. **The job itself has never executed** (the repo
     is private, so neither has the macOS one), which is why the substance is in the scripts.
     `actionlint` is clean.
+    **Updater design corrected by measurement, 19 Sep 2026.** The plan assumed "a running `.exe`
+    cannot be replaced", so the swap would have to happen after exit, from a relauncher. Measured
+    on the Dell: delete and overwrite are refused, but **rename away and move-in both succeed**
+    while the old process keeps running from the renamed file — and the renamed file cannot be
+    deleted until it exits. That is exactly `AppBundle::swap`'s existing contract ("nothing is
+    deleted on any path"), so Windows gets the SAME swap macOS has and the relauncher shrinks to
+    what it is on macOS: the thing that restarts, not the thing that swaps.
     **Open questions, not yet answered:** whether winget's community repo accepts an unsigned
     installer and on what terms; whether the WebView2 bootstrapper stays admin-free under a
     currentUser install (the Dell already HAS WebView2, so that machine cannot answer it).
