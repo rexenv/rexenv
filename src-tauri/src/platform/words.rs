@@ -84,6 +84,11 @@ pub struct PlatformWords {
     /// `C:\Users\…\w7check.rex/wp-config.php` — mixed separators, because a literal slash is a path
     /// spelled the macOS way even when nothing about it looks like a macOS word.
     pub path_sep: &'static str,
+    /// What to do when rexenv is running from somewhere it was not installed to, so an
+    /// update has nothing it may safely replace. macOS: drag the bundle into Applications;
+    /// Windows: run the installer again. The refusal in `core::app_update` says this
+    /// sentence and nothing OS-shaped of its own.
+    pub reinstall_to_home: &'static str,
 }
 
 pub const MACOS: PlatformWords = PlatformWords {
@@ -113,6 +118,7 @@ pub const MACOS: PlatformWords = PlatformWords {
     pool_kind: "php-fpm pool",
     bundled_tools: "nginx, PHP, MySQL, MariaDB, PostgreSQL, Redis, Mailpit, Adminer & cloudflared",
     path_sep: "/",
+    reinstall_to_home: "Move rexenv.app into Applications in Finder, open it from there, then update.",
 };
 
 pub const WINDOWS: PlatformWords = PlatformWords {
@@ -142,6 +148,7 @@ pub const WINDOWS: PlatformWords = PlatformWords {
     pool_kind: "php-cgi group",
     bundled_tools: "nginx, PHP, MySQL, PostgreSQL, Mailpit, Adminer & cloudflared",
     path_sep: "\\",
+    reinstall_to_home: "Run the rexenv installer again so it lands in %LOCALAPPDATA%\\rexenv, open it from there, then update.",
 };
 
 /// This build's words.

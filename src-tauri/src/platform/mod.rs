@@ -46,6 +46,12 @@ mod linux;
 #[cfg(all(test, not(target_os = "windows")))]
 #[path = "windows/owner_only.rs"]
 mod windows_owner_only;
+// The self-update's path and version rules (install kind, stage-dir names, the
+// VERSIONINFO words → `a.b.c`): pure, so the macOS host proves them too.
+#[cfg(all(test, not(target_os = "windows")))]
+#[allow(dead_code)]
+#[path = "windows/app_bundle_rules.rs"]
+mod windows_app_bundle_rules;
 // Same for the PE header check `WindowsBinaryProvider` refuses non-x64 artifacts with.
 // `dead_code` allowed: only its tests use it here; the Windows build uses the rest.
 #[cfg(all(test, not(target_os = "windows")))]
@@ -154,6 +160,8 @@ pub use macos::webview_dialogs::install_js_dialog_panels;
 pub use macos::parent_death_guard::run as run_tunnel_guard;
 #[cfg(target_os = "macos")]
 pub use macos::relauncher::run as run_relauncher;
+#[cfg(target_os = "windows")]
+pub use windows::app_bundle::run_relauncher;
 
 /// A process's start-time token — the guard's second identity for its parent.
 /// Re-exported for the live check that spawns guards by hand.

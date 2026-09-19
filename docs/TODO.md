@@ -805,6 +805,24 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     **Still open:** whether the WebView2 bootstrapper stays admin-free under a currentUser install
     (the Dell already HAS WebView2, so that machine cannot answer it — the clean Windows 11 pass
     can).
+    **Updater, the app side, landed 19 Sep 2026 (ledger #690).** `AppBundle` for Windows:
+    facts (the install directory is the bundle; kind off `%LOCALAPPDATA%\rexenv` vs Program
+    Files vs a cargo `target` dir; writability by a real probe file; owner by SID; the volume's
+    read-only flag and free space; no symlink or junction on the way), stage (the guarded zip
+    extractor, then the executable's OWN `VERSIONINFO` for version and `ProductName`, the PE
+    machine field, the `rex.exe` sidecar, and `uninstall.exe` copied across from the installed
+    directory), a rename-pair directory swap with restore, the HKCU uninstall entry's
+    `DisplayVersion` rewritten, a sweep that classifies by the version inside, and a relauncher
+    that waits on the parent's process handle after checking its creation-time token. The
+    trait's vocabulary was made platform-neutral first (`InstallKind::ProgramsPerUser` /
+    `ProgramFiles`, neutral docs on `BundleFacts` / `StagedExpect`), chosen over a Windows
+    bolt-on because Linux comes next; `core::app_update` grew `staged_expect_on(os)`,
+    `Refusal::PerMachineInstall` and per-OS descriptor URLs. **Proven:** L0 on the Mac (rules,
+    core), Windows-target clippy. **NOT proven, and the next three things in order:** (1) the
+    release does not yet produce the update archive (`rexenv_<v>_x64.zip` of the install
+    directory's contents) or attach it; (2) `rexenv/runtimes` does not yet publish
+    `app-manifest-windows.json` + `.sig`; (3) nothing has staged and swapped a real directory
+    on Windows — a fixture-owned example on the Dell in the `app_bundle_swap_check` shape.
   - [ ] W12 — launch gates: verify on the Windows runner, SMOKE-TEST + INSTALL Windows
     sections, clean Windows 11 VM pass
     **The example half is done 16 Sep 2026 (ledger #645):** the tier table grew an os column

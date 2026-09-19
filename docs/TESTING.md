@@ -844,6 +844,14 @@ staged and swapped (T3, sandbox tier), or that a real Mac lets it happen (T0/T11
   `cargo run --example` does not rebuild it — the failure `tunnel_parent_death_check`
   records, where both plants came back green against yesterday's build. **Plant-proven**:
   deleting the wait makes the ordering leg fail. Ledger #531.
+- **Windows, as of 19 Sep 2026: L0 only.** `platform/windows/app_bundle_rules.rs` (install
+  kind off the installer's real paths, stage-dir names, `VS_FIXEDFILEINFO` words → `a.b.c`,
+  previous-vs-stale) runs on the macOS host, `core::app_update` proves the per-OS
+  `staged_expect_on`, the `PerMachineInstall` refusal and the per-OS descriptor URLs, and
+  `windows-check.sh` lints the FFI half. **Nothing has staged or swapped a real directory on
+  Windows yet** — that needs the update archive the release does not produce yet, then a
+  fixture-owned example on the Dell (the `app_bundle_swap_check` shape, with a zip and
+  VERSIONINFO in place of a tar and `Info.plist`).
 - `app_update_check` (network) — the app's OWN update descriptor, fetched from where it is
   published and verified against the key compiled into the running binary: the half a
   user's "Check now" runs, where a publisher signing with a rotated key, or a document

@@ -3329,7 +3329,7 @@ fn extract_zip_member(archive: &Path, member: &str, dest: &Path) -> Result<()> {
 /// zip ships one, and a link is how a later entry gets written outside `dest`.
 /// File modes are not carried over — the zips pinned here are Windows builds,
 /// where there is no executable bit to lose.
-fn extract_zip_tree(archive: &Path, dest: &Path, strip: usize) -> Result<()> {
+pub(crate) fn extract_zip_tree(archive: &Path, dest: &Path, strip: usize) -> Result<()> {
     let mut zip = open_zip(archive)?;
     for i in 0..zip.len() {
         let mut entry = zip.by_index(i).map_err(zip_err)?;

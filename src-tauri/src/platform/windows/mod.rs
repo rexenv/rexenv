@@ -18,6 +18,8 @@ use std::process::Child;
 mod acl;
 mod af_unix;
 mod agent_output;
+pub mod app_bundle;
+mod app_bundle_rules;
 mod app_catalog;
 mod app_pipe;
 mod app_pipe_rules;
@@ -970,38 +972,7 @@ impl DnsAgentManager for WindowsDnsAgent {
         Ok(())
     }
 }
-pub struct WindowsAppBundle;
-impl AppBundle for WindowsAppBundle {
-    fn facts(&self, _exe: &Path) -> Result<BundleFacts> {
-        Err(Error::Unported("windows app bundle facts (self-update, plan D5/W11)"))
-    }
-    fn stage(
-        &self,
-        _facts: &BundleFacts,
-        _archive: &Path,
-        _expect: &StagedExpect,
-    ) -> Result<StagedBundle> {
-        Err(Error::Unported("windows stage a replacement bundle"))
-    }
-    fn swap(
-        &self,
-        _installed: &Path,
-        _staged: &StagedBundle,
-    ) -> std::result::Result<SwapReceipt, SwapFailure> {
-        Err(SwapFailure::Other(Error::Unported("windows swap the bundle").to_string()))
-    }
-    fn spawn_relauncher(&self, _bundle: &Path) -> Result<()> {
-        Err(Error::Unported("windows relauncher"))
-    }
-    fn sweep_leftovers(
-        &self,
-        _parent: &Path,
-        _my_version: &str,
-        _delete_previous: bool,
-    ) -> Result<Vec<Leftover>> {
-        Err(Error::Unported("windows sweep update leftovers"))
-    }
-}
+pub use app_bundle::WindowsAppBundle;
 pub struct WindowsLocalIpc;
 impl LocalIpc for WindowsLocalIpc {
     /// An AF_UNIX stream (`af_unix.rs`, ledger #611): what this trait dials — Caddy's admin socket

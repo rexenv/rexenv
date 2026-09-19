@@ -75,6 +75,25 @@ pub const APP_MANIFEST_URL: &str =
     "https://raw.githubusercontent.com/rexenv/runtimes/main/app-manifest.json";
 pub const APP_MANIFEST_SIG_URL: &str =
     "https://raw.githubusercontent.com/rexenv/runtimes/main/app-manifest.json.sig";
+/// The Windows descriptor: the SAME schema, a different document, because one
+/// `release` names one artifact and the macOS one is a universal `.app.tar.gz`
+/// that no Windows machine can use. A second document rather than a per-OS map
+/// inside the first, so the macOS contract — signed bytes, a serial, one key —
+/// does not change for a Windows reason, and an old macOS build keeps parsing
+/// what it always parsed. Published beside the first from `rexenv/runtimes`.
+pub const APP_MANIFEST_URL_WINDOWS: &str =
+    "https://raw.githubusercontent.com/rexenv/runtimes/main/app-manifest-windows.json";
+pub const APP_MANIFEST_SIG_URL_WINDOWS: &str =
+    "https://raw.githubusercontent.com/rexenv/runtimes/main/app-manifest-windows.json.sig";
+
+/// `(descriptor, signature)` URLs for `os` — the one place the choice is made.
+pub fn manifest_urls_on(os: &str) -> (&'static str, &'static str) {
+    if os == "windows" {
+        (APP_MANIFEST_URL_WINDOWS, APP_MANIFEST_SIG_URL_WINDOWS)
+    } else {
+        (APP_MANIFEST_URL, APP_MANIFEST_SIG_URL)
+    }
+}
 
 /// Path prefixes an app artifact may be downloaded from.
 ///
@@ -448,6 +467,10 @@ pub enum Refusal {
     ReadOnlyVolume { path: String },
     Translocated { path: String },
     NotInApplications { parent: String },
+    /// Windows: installed for all users under Program Files. Replacing it needs
+    /// admin, and an update never prompts (the same rule as `ParentNotWritable`),
+    /// so the fix is the per-user install rexenv actually ships.
+    PerMachineInstall { path: String },
     SymlinkedPath { path: String },
     ParentNotWritable { parent: String },
     ForeignOwner { bundle: String },
@@ -466,7 +489,7 @@ impl Refusal {
     /// A refusal with a command in it is a fix the user can read before running.
     pub fn message(&self) -> String {
         match self {
-            Self::NotABundle => "rexenv is not running from an app bundle, so there is \
+            Self::NotABundle => "rexenv is not running from an installed copy, so there is \
                  nothing to replace. Open the installed rexenv and update from there."
                 .into(),
             Self::ReadOnlyVolume { path } => format!(
@@ -479,8 +502,14 @@ impl Refusal {
                  rexenv.app into Applications in Finder, open it from there, then update."
             ),
             Self::NotInApplications { parent } => format!(
-                "rexenv is running from {parent}, not an Applications folder. Move rexenv.app \
-                 into Applications in Finder, open it from there, then update."
+                "rexenv is running from {parent}, not where it is installed. {}",
+                crate::platform::words::current().reinstall_to_home
+            ),
+            Self::PerMachineInstall { path } => format!(
+                "rexenv is installed for all users ({path}), and replacing it would need an \
+                 administrator. rexenv never asks for that to update itself. Uninstall it from \
+                 Apps & Features and run the installer again — it installs for this account \
+                 only, with no prompt — then update from there."
             ),
             Self::SymlinkedPath { path } => format!(
                 "rexenv was opened through a link ({path}), so the copy that is running and \
@@ -535,7 +564,10 @@ pub fn preflight(
         K::Elsewhere => {
             return Err(Refusal::NotInApplications { parent: facts.parent.display().to_string() })
         }
-        K::Applications | K::UserApplications => {}
+        K::ProgramFiles => {
+            return Err(Refusal::PerMachineInstall { path: facts.bundle.display().to_string() })
+        }
+        K::Applications | K::UserApplications | K::ProgramsPerUser => {}
     }
     if facts.read_only {
         return Err(Refusal::ReadOnlyVolume { path: facts.parent.display().to_string() });
@@ -562,7 +594,29 @@ pub fn preflight(
 /// running app's. `rex` is in the required list because a bundle without it
 /// silently breaks every terminal the user has open on the CLI.
 pub fn staged_expect(version: &str) -> crate::platform::traits::StagedExpect {
+    staged_expect_on(version, std::env::consts::OS)
+}
+
+/// The decision behind [`staged_expect`], with the OS passed in so both answers
+/// are measurable from either machine.
+///
+/// Windows differs in every field but the version: the executable carries its
+/// extension, the identity is the `ProductName` the build stamps into
+/// VERSIONINFO (there is no bundle id to check), the one supported machine is
+/// x64 (D6), and `codesign` is OFF by ruling — rexenv ships unsigned there (D5),
+/// so a signature check would either fail every real build or pass vacuously.
+pub fn staged_expect_on(version: &str, os: &str) -> crate::platform::traits::StagedExpect {
     use crate::platform::traits::{Arch, StagedExpect};
+    if os == "windows" {
+        return StagedExpect {
+            version: version.to_string(),
+            identifier: "rexenv".into(),
+            executable: "rexenv.exe".into(),
+            archs: vec![Arch::X86_64],
+            required_binaries: vec!["rex.exe".into()],
+            codesign: false,
+        };
+    }
     StagedExpect {
         version: version.to_string(),
         identifier: "dev.rexenv.rexenv".into(),
@@ -623,7 +677,8 @@ pub async fn fetch(deadline: std::time::Duration) -> Result<(Vec<u8>, String)> {
             "this build has no update key pinned, so it does not check for app updates".into(),
         ));
     }
-    updates::fetch_signed_pair(APP_MANIFEST_URL, APP_MANIFEST_SIG_URL, MAX_DOC, deadline).await
+    let (doc, sig) = manifest_urls_on(std::env::consts::OS);
+    updates::fetch_signed_pair(doc, sig, MAX_DOC, deadline).await
 }
 
 /// The offer the TRAY is allowed to read: an in-process snapshot, installed by
@@ -1471,9 +1526,51 @@ mod tests {
         assert!(m.contains("Not enough free space") && m.contains("Nothing was downloaded"), "{m}");
     }
 
+    /// Windows differs from macOS in every field but the version, and each
+    /// difference is a ruling: `.exe` names, x64 only (D6), no signature (D5).
+    /// The identity is the VERSIONINFO `ProductName`, the one string a Windows
+    /// build carries that a bundle id would have carried on macOS.
+    #[test]
+    fn what_a_staged_bundle_must_be_on_windows_follows_d5_and_d6() {
+        let e = staged_expect_on("0.6.0", "windows");
+        assert_eq!(e.version, "0.6.0");
+        assert_eq!(e.executable, "rexenv.exe");
+        assert_eq!(e.identifier, "rexenv");
+        assert!(e.required_binaries.iter().any(|b| b == "rex.exe"));
+        assert_eq!(e.archs, vec![crate::platform::traits::Arch::X86_64], "x64 only, D6");
+        assert!(!e.codesign, "unsigned by ruling (D5) — a check would pass vacuously or fail every build");
+        // And the macOS answer is unchanged by the Windows one existing.
+        assert_eq!(staged_expect_on("0.6.0", "macos").executable, "rexenv");
+    }
+
+    /// A per-user Windows install is the ordinary case there; a per-machine one
+    /// is refused with the per-user reinstall named, and never with a prompt.
+    #[test]
+    fn a_per_user_windows_install_is_fine_and_a_per_machine_one_is_refused_without_a_prompt() {
+        use crate::platform::traits::InstallKind as K;
+        assert!(preflight(&facts(K::ProgramsPerUser), 1).is_ok());
+        let m = preflight(&facts(K::ProgramFiles), 1).unwrap_err().message();
+        assert!(m.contains("all users") && m.contains("installer again"), "{m}");
+        for forbidden in ["osascript", "sudo", "password"] {
+            assert!(!m.to_lowercase().contains(forbidden), "{m} — this is not a prompt");
+        }
+    }
+
+    /// Each OS fetches its own descriptor: one `release` names one artifact, and
+    /// a Windows machine handed the universal `.app.tar.gz` could do nothing with
+    /// it but refuse — after the download.
+    #[test]
+    fn each_os_reads_its_own_descriptor_and_the_macos_urls_did_not_move() {
+        assert_eq!(manifest_urls_on("macos"), (APP_MANIFEST_URL, APP_MANIFEST_SIG_URL));
+        let (doc, sig) = manifest_urls_on("windows");
+        assert!(doc.ends_with("/app-manifest-windows.json") && sig == format!("{doc}.sig"));
+        assert!(doc.starts_with("https://raw.githubusercontent.com/rexenv/runtimes/main/"));
+        assert_ne!(doc, APP_MANIFEST_URL);
+    }
+
     #[test]
     fn what_a_staged_bundle_must_be_is_stated_once_and_includes_the_rex_sidecar() {
-        let e = staged_expect("0.6.0");
+        let e = staged_expect_on("0.6.0", "macos");
         assert_eq!(e.version, "0.6.0");
         assert_eq!(e.identifier, "dev.rexenv.rexenv");
         assert_eq!(e.executable, "rexenv");

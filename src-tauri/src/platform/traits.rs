@@ -982,13 +982,28 @@ pub trait DnsAgentManager: Send + Sync {
 /// facts rather than something only a real Mac can answer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
+/// Where the running app is installed, as far as the platform can tell from the
+/// path. **Each OS reports only the kinds that exist there** — a disk image is a
+/// macOS fact and a per-user Programs folder is a Windows one — and `core` decides
+/// what each kind MEANS for an update, so the vocabulary is shared and the meaning
+/// is in one place. Linux adds its own when it lands.
 pub enum InstallKind {
-    /// The ordinary case: `/Applications/<name>.app`.
+    /// macOS, the ordinary case: `/Applications/<name>.app`.
     Applications,
-    /// `~/Applications/<name>.app` — replaceable, and nobody else's business.
+    /// macOS, `~/Applications/<name>.app` — replaceable, and nobody else's business.
     UserApplications,
-    /// Not inside a `.app` at all: `cargo run`, or a bare binary. There is no
-    /// bundle to replace.
+    /// Windows, the ordinary case: the per-user install the NSIS `currentUser`
+    /// mode makes, `%LOCALAPPDATA%\<name>` (measured off tauri-bundler's
+    /// `installer.nsi`, 19 Sep 2026: `StrCpy $INSTDIR "$LOCALAPPDATA\${PRODUCTNAME}"`,
+    /// uninstall entry under HKCU). Replaceable with no privilege at all.
+    ProgramsPerUser,
+    /// Windows, a per-machine install under `%ProgramFiles%` — the `perMachine`
+    /// mode rexenv does not ship (D5) but a user could have chosen. Replacing it
+    /// needs admin, and rexenv raises no prompt for an update, so it is refused
+    /// with the fix named.
+    ProgramFiles,
+    /// Not installed at all: `cargo run`, or a bare binary in a `target/` tree.
+    /// There is nothing to replace.
     DevBuild,
     /// Running from a mounted image (`/Volumes/…`) — read-only, and the answer
     /// is to drag the app to Applications rather than to work around it.
@@ -998,16 +1013,22 @@ pub enum InstallKind {
     /// There is no supported way to find the original, so the answer is the same
     /// sentence as `DiskImage`.
     Translocated,
-    /// A `.app` somewhere else — Downloads, a project folder, a second copy.
+    /// Installed somewhere else — Downloads, a project folder, a second copy.
     Elsewhere,
 }
 
 /// What the platform can SEE about the installed bundle. Facts only: no
 /// decision, no message, nothing that needs a policy to state.
+///
+/// "Bundle" is the unit the OS installs and the update replaces WHOLE: the
+/// `.app` directory on macOS, the install directory (`rexenv.exe`, `rex.exe`,
+/// `uninstall.exe`) on Windows. Both are swapped as a directory, which is what
+/// keeps "no write inside the running copy" true on both.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BundleFacts {
-    /// `…/rexenv.app`, derived from the running executable.
+    /// `…/rexenv.app` on macOS, `…\rexenv` (the install directory) on Windows —
+    /// derived from the running executable.
     pub bundle: PathBuf,
     /// The directory the bundle sits in — and therefore where a replacement is
     /// staged, which is what makes a cross-device rename impossible by
@@ -1016,18 +1037,25 @@ pub struct BundleFacts {
     pub kind: InstallKind,
     /// A Homebrew cask manages this install. Not a refusal — the bundle is the
     /// user's either way — but the card says `brew upgrade --cask rexenv` also
-    /// works, and the tap's README says what `--greedy` still does.
+    /// works, and the tap's README says what `--greedy` still does. Always false
+    /// where Homebrew does not exist.
     pub homebrew: bool,
-    /// The parent directory is writable by THIS user (`access(W_OK)`), so the
-    /// staging directory and the rename can happen with no privilege at all.
+    /// The parent directory is writable by THIS user (`access(W_OK)` on macOS; a
+    /// real create-and-delete probe on Windows, where ACLs make a static answer
+    /// a guess), so the staging directory and the rename can happen with no
+    /// privilege at all.
     pub parent_writable: bool,
-    /// The bundle belongs to this uid. A bundle another login installed can be
-    /// renamed by an admin but its leftovers could never be cleaned up.
+    /// The bundle belongs to this user (uid on macOS, the owner SID on Windows).
+    /// A bundle another login installed can be renamed by an admin but its
+    /// leftovers could never be cleaned up.
     pub owned_by_me: bool,
     /// The parent's filesystem is mounted read-only.
     pub read_only: bool,
-    /// `canonicalize(exe) == exe`: no symlink in the path. A symlinked launch
-    /// means the running exe and the bundle being replaced can disagree.
+    /// No symlink (or junction) anywhere in the path to the executable. A linked
+    /// launch means the running exe and the bundle being replaced can disagree.
+    /// macOS asks `canonicalize(exe) == exe`; Windows walks the ancestors with
+    /// `symlink_metadata`, because `canonicalize` there answers in `\\?\` form
+    /// and a string comparison would refuse every install.
     pub canonical: bool,
     /// Free bytes on the parent's volume.
     pub free_parent_bytes: u64,
@@ -1038,25 +1066,37 @@ pub struct BundleFacts {
 /// Passed in rather than read from a constant so the checks can be driven over a
 /// fixture bundle in a test — a verifier that only ever runs against the real
 /// app is a verifier nobody has watched fail.
+///
+/// The fields name WHAT must be true; each platform reads it from where its
+/// bundles keep it — `Info.plist` on macOS, the executable's `VERSIONINFO`
+/// resource on Windows. `core::app_update::staged_expect_on` builds the values
+/// per OS, so the executable is `rexenv` on one and `rexenv.exe` on the other.
 #[derive(Debug, Clone)]
 pub struct StagedExpect {
-    /// `CFBundleShortVersionString` must equal this — the version the signed
+    /// The bundle's own version must equal this — the version the signed
     /// descriptor named, so a stale archive is caught before it is installed.
+    /// macOS: `CFBundleShortVersionString`; Windows: `VS_FIXEDFILEINFO`'s product
+    /// version, read from `rexenv.exe`.
     pub version: String,
-    /// `CFBundleIdentifier` must equal this.
+    /// The bundle's own identity must equal this. macOS: `CFBundleIdentifier`;
+    /// Windows: the `ProductName` string in `VERSIONINFO`.
     pub identifier: String,
-    /// `CFBundleExecutable` must equal this, and the file must exist: the
-    /// relaunch resolves the binary through this key.
+    /// The executable's file name (`rexenv` / `rexenv.exe`), which must exist:
+    /// the relaunch resolves the binary through this.
     pub executable: String,
-    /// Every Mach-O named here must contain exactly these architectures.
-    /// Parameterised because a fixture bundle is single-arch while the shipped
-    /// one is universal.
+    /// Every executable named here must run on every machine this build supports:
+    /// on macOS each Mach-O must contain exactly these slices; on Windows the PE
+    /// machine must be one of them (`X86_64` today, D6). Parameterised because a
+    /// fixture bundle is single-arch while the shipped macOS one is universal.
     pub archs: Vec<Arch>,
-    /// Files under `Contents/MacOS/` that must be present — the `rex` sidecar,
-    /// whose absence would silently break every terminal after an update.
+    /// Sibling binaries that must be present beside the executable — the `rex`
+    /// sidecar, whose absence would silently break every terminal after an
+    /// update.
     pub required_binaries: Vec<String>,
-    /// Run `codesign --verify --deep --strict`. Off for fixtures that were never
-    /// signed; ON for anything a user would launch.
+    /// Verify the platform's code signature (`codesign --verify --deep --strict`).
+    /// Off for fixtures that were never signed, and off on Windows by ruling —
+    /// rexenv ships unsigned there (D5), so there is nothing to verify and a
+    /// check that passed would be a lie.
     pub codesign: bool,
 }
 
@@ -1130,9 +1170,10 @@ impl std::fmt::Display for SwapFailure {
 #[derive(Debug, Clone)]
 pub struct Leftover {
     pub path: PathBuf,
-    /// The version inside it, when its `Info.plist` could be read. The sweep
-    /// classifies by THIS rather than by a marker file: a crash between the swap
-    /// and any write cannot make a version lie about itself.
+    /// The version inside it, when the bundle's own record could be read
+    /// (`Info.plist`; `rexenv.exe`'s VERSIONINFO). The sweep classifies by THIS
+    /// rather than by a marker file: a crash between the swap and any write
+    /// cannot make a version lie about itself.
     pub version: Option<String>,
     pub deleted: bool,
 }
@@ -1144,8 +1185,12 @@ pub struct Leftover {
 /// live in `core::app_update`, over [`BundleFacts`], so they are provable
 /// without a Mac and without an installed app.
 ///
-/// macOS is real; Windows and Linux are `todo!()` until someone ports them,
-/// which is the standing rule for a new capability.
+/// macOS and Windows are real; Linux is `todo!()` until it is ported, which is
+/// the standing rule for a new capability. The Windows swap is the same shape as
+/// the macOS fallback — rename the running directory aside, move the staged one
+/// in — because that is what a running `.exe` allows: it cannot be deleted or
+/// overwritten, but it and its directory can be renamed, and the process keeps
+/// running from the renamed file (measured on a real machine, 19 Sep 2026).
 pub trait AppBundle: Send + Sync {
     /// What can be seen about the bundle the running executable belongs to.
     fn facts(&self, exe: &Path) -> Result<BundleFacts>;

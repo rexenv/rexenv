@@ -1039,6 +1039,24 @@ honest footer —
   swap and any write cannot mislead the sweep. **No path here is privileged**: an
   unwritable folder, a translocated or `/Volumes` launch, a symlinked path or a foreign
   owner is a refusal that names the consequence and carries a copy-paste fix.
+  **On Windows the same shape, minus the atomic exchange** (`platform/windows/app_bundle.rs`,
+  19 Sep 2026). The "bundle" is the install DIRECTORY the NSIS installer makes —
+  `rexenv.exe`, `rex.exe`, `uninstall.exe`, nothing else — and it is swapped whole, because a
+  running `.exe` cannot be deleted or overwritten but it and its directory CAN be renamed,
+  and the process keeps running from the renamed file (measured on the Dell; the plan had
+  assumed the opposite and would have built a relauncher that swapped after exit). So the
+  swap is macOS's `RenamePair` fallback as the only path, restore included. Verification
+  reads the executable's OWN `VERSIONINFO` (product version and `ProductName`) rather than a
+  file written beside it, and the PE machine field rather than the filename; `codesign` is
+  off by ruling, since the build is unsigned (D5). Two Windows-only facts shape the rest:
+  `uninstall.exe` is written by the installer, not the build, so the staged directory gets
+  the installed one copied in before the swap and the HKCU uninstall entry's
+  `DisplayVersion` rewritten after it; and each OS fetches its OWN descriptor
+  (`app-manifest-windows.json`, same schema, same key) because one `release` names one
+  artifact and the macOS one is a universal `.app.tar.gz`. `InstallKind` grew
+  `ProgramsPerUser` (the ordinary case) and `ProgramFiles` (per-machine — refused with the
+  per-user reinstall named, never a UAC prompt); the vocabulary was made platform-neutral
+  for this rather than bolted on, because Linux is next.
   **The relaunch** (T4) is a QUIT: `app_update_apply` ends in `app.exit(0)`, so
   `ExitRequested` runs the same live-share confirm every other quit passes through, and
   `RunEvent::Exit` — reached only once that gate agreed — spawns a detached helper

@@ -35,13 +35,15 @@ fn main() {
         if let Some(args) = rexenv_lib::core::tunnels::parse_guard_args(&argv) {
             std::process::exit(rexenv_lib::platform::run_tunnel_guard(args));
         }
-        // The relauncher: waits for the process that swapped the bundle to be
-        // gone, then reopens rexenv. Spawned by the OLD build, so this flag is a
-        // cross-version contract — and checked here, before Tauri, because it
-        // must open no window and touch no app state.
-        if let Some(args) = rexenv_lib::core::app_update::parse_relaunch_args(&argv) {
-            std::process::exit(rexenv_lib::platform::run_relauncher(args));
-        }
+    }
+    // The relauncher: waits for the process that swapped the bundle to be gone,
+    // then reopens rexenv. Spawned by the OLD build, so this flag is a
+    // cross-version contract — and checked here, before Tauri, because it must
+    // open no window and touch no app state. macOS and Windows; Linux with its
+    // port.
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    if let Some(args) = rexenv_lib::core::app_update::parse_relaunch_args(&argv) {
+        std::process::exit(rexenv_lib::platform::run_relauncher(args));
     }
     rexenv_lib::run();
 }
