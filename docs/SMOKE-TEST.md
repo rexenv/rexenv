@@ -1507,9 +1507,13 @@ section and leg about them; a refusal that NAMES the reason is the pass:
   are unbuilt; `bundle.windows` in `tauri.conf.json` is empty). Until it lands this
   checklist is run against a locally built `rexenv.exe`. **Do not write SmartScreen steps
   from memory** — rexenv ships UNSIGNED (D5, ruled 19 Sep 2026: open source, no income, no
-  spend — the same answer macOS got), so every user meets SmartScreen and this section owes
-  them the real thing: the clicks, the messages verbatim, and whether "Run anyway" needs
-  "More info" first. That is a measurement waiting on the installer, not on a decision.
+  spend — the same answer macOS got). **Half of that is now measured and lives in
+  `docs/INSTALL.md`:** the "Open File - Security Warning" dialog, verbatim, with **Run on the
+  first screen** and no "More info" to find. **The other half is what THIS checklist is for.**
+  SmartScreen's own "Windows protected your PC" never appeared during that measurement, and
+  the reason is why it belongs here: the machine has `EnableSmartScreen = 0` by policy. A
+  clean Windows 11 install does not, so this is the run that answers it — record the dialog
+  verbatim, where "Run anyway" sits, and whether a second build (a new hash) repeats it.
 - [ ] The app starts and shows its window; no console window appears behind it.
 
 ### Where rexenv lives — replaces "The menu bar (no dock icon)"

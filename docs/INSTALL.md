@@ -237,9 +237,31 @@ login keychain.
 > installer lands.
 >
 > **When it does land it will be unsigned**, like the macOS build: rexenv is open source
-> and earns nothing, so it buys no code-signing certificate. Windows will show
-> "Windows protected your PC" on the download, and this page will say exactly what you see
-> and which button gets past it — measured, once there is something to download.
+> and earns nothing, so it buys no code-signing certificate. What that costs you is below.
+
+#### What Windows says about an unsigned installer
+
+rexenv's installer carries no code-signing certificate, so Windows warns about it. The
+first installer was built 19 Sep 2026 (`rexenv_0.7.0_x64-setup.exe`, 9.7 MB) and this is
+what it actually showed, word for word, on a file marked as downloaded from the internet:
+
+> **Open File - Security Warning**
+> The publisher could not be verified. Are you sure you want to run this software?
+> Name: `…\Downloads\rexenv_0.7.0_x64-setup.exe` · Publisher: **Unknown Publisher** ·
+> Type: Application
+> **[ Run ]  [ Cancel ]** · ☑ Always ask before opening this file
+> *This file does not have a valid digital signature that verifies its publisher. You
+> should only run software from publishers you trust.*
+
+**Run is on that first screen.** There is no "More info" to find first — one click and the
+installer starts. "Unknown Publisher" is accurate and is what an unsigned build says.
+
+**Windows may also show SmartScreen's own "Windows protected your PC" screen**, which is a
+different dialog with the button behind a **More info** link. This page does not yet tell
+you what that one says, and the honest reason is worth knowing: the machine it was measured
+on has SmartScreen turned off by policy (`EnableSmartScreen = 0`), so it could not raise it.
+Measuring there and writing "no SmartScreen" would have been a comfortable, false answer.
+That half is measured on a clean Windows 11 machine before release.
 
 ### Requirements
 

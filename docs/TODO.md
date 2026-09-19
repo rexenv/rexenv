@@ -755,9 +755,19 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     **`rexenv_0.7.0_x64-setup.exe`, 9.7 MB**, `Get-AuthenticodeSignature` = `NotSigned` (as ruled).
     The `rex` sidecar is in it — `build-cli.sh`'s MINGW arm ran as `beforeBuildCommand` and Tauri
     put `rex.exe` beside the app, which is where `core::cli::bundled_rex` looks.
-    **Measured so far: nothing about what a USER sees.** The file is staged at
-    `C:\Users\DELL\Downloads` carrying a real `Zone.Identifier` (`ZoneId=3`, a GitHub release
-    URL) — the exact flag a browser writes and SmartScreen reads — and awaits a double-click.
+    **First user-facing measurement, 19 Sep 2026** (owner double-clicked it in Explorer, from
+    Downloads, carrying a real `Zone.Identifier` — `ZoneId=3` and a GitHub release URL, the exact
+    flag a browser writes): Windows showed **"Open File - Security Warning"** — "The publisher
+    could not be verified", **Publisher: Unknown Publisher**, and **[Run] [Cancel] with Run on the
+    first screen**. No "More info" to find first. That answers D5's item (3); the verbatim text is
+    in `docs/INSTALL.md`. Cancelled, not run — the install path is still unmeasured.
+    **What that measurement CANNOT say, and nearly said anyway:** SmartScreen's own "Windows
+    protected your PC" never appeared, and the reason is not that an unsigned rexenv escapes it —
+    the Dell has `HKLM\SOFTWARE\Policies\Microsoft\Windows\System\EnableSmartScreen = 0`.
+    Measuring there and writing "no SmartScreen dialog" would have been a comfortable false
+    answer, which is the fixture-shaped-like-production trap in its purest form: the MACHINE was
+    the fixture. That half moves to the clean Windows 11 VM pass (W12), where the defaults are the
+    defaults, and SMOKE-TEST now asks for it by name.
     **Open questions, not yet answered:** whether winget's community repo accepts an unsigned
     installer and on what terms; whether the WebView2 bootstrapper stays admin-free under a
     currentUser install (the Dell already HAS WebView2, so that machine cannot answer it).
