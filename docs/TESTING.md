@@ -854,8 +854,10 @@ staged and swapped (T3, sandbox tier), or that a real Mac lets it happen (T0/T11
   around with VERSIONINFO, its version read back through PowerShell as an oracle that shares
   no code with the crate), zipped flat the way the release does it, extracted through the
   guarded extractor, verified off the executable's own VERSIONINFO and PE header, `uninstall.exe`
-  carried across, and the installed directory renamed aside and the staged one in **while a
-  process is running from it** — the measured Windows fact the whole design rests on, asserted
+  carried across, and each installed FILE moved aside and the staged one in **while a
+  process is running from it and a file is held open in the data tree beneath the install
+  directory** (the leg the first real update failed — a directory rename is refused with an
+  open handle anywhere below it, ledger #695) — the measured Windows facts the design rests on, asserted
   here rather than remembered. The load-bearing legs are the failures: a wrong version, a wrong
   `ProductName`, a missing sidecar, a wrapper directory in the archive and an executable with
   no version information are each refused, the installed directory is compared byte for byte

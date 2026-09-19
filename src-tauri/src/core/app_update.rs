@@ -849,12 +849,13 @@ pub struct UpdateNotice {
 /// their sites keep serving, because services outlive the app.
 pub fn consent_sentence(offer: &Offer, homebrew: bool) -> String {
     let mb = (offer.size_bytes as f64 / 1_000_000.0).round() as u64;
+    let words = crate::platform::words::current();
     let mut s = format!(
         "Downloads rexenv {} ({mb} MB), checks its signature and checksum, replaces \
-         rexenv.app in one step, then quits and reopens on {}. Your sites, databases and \
+         {} in one step, then quits and reopens on {}. Your sites, databases and \
          DNS keep running throughout — services outlive the app. Open terminals and \
          running jobs close with it, exactly as they do when you quit.",
-        offer.version, offer.version
+        offer.version, words.update_replaces, offer.version
     );
     if homebrew {
         s.push_str(
@@ -862,13 +863,10 @@ pub fn consent_sentence(offer: &Offer, homebrew: bool) -> String {
              sees this version afterwards.",
         );
     }
-    // Ad-hoc signing means every build has a new identity, so anything macOS
-    // granted THIS copy is asked again. Saying it before the click is the
-    // difference between a surprise and a decision.
-    s.push_str(
-        " macOS may ask again for permissions it had granted this copy: rexenv has no \
-         Apple developer signature yet, so each build is a new identity to it.",
-    );
+    // Ad-hoc signing means every macOS build has a new identity, so anything
+    // macOS granted THIS copy is asked again. Saying it before the click is the
+    // difference between a surprise and a decision. Empty on Windows.
+    s.push_str(words.update_reprompt);
     s
 }
 
@@ -1628,8 +1626,13 @@ mod tests {
         assert!(s.contains("keep running"), "{s}");
         assert!(s.contains("close with it"), "{s}");
         // Ad-hoc signing means every build is a new identity to macOS, so the
-        // re-prompt is named BEFORE the click rather than discovered after it.
-        assert!(s.contains("permissions"), "{s}");
+        // re-prompt is named BEFORE the click rather than discovered after it —
+        // and never on Windows, where the sentence names program files, not an .app.
+        if cfg!(target_os = "macos") {
+            assert!(s.contains("permissions") && s.contains("rexenv.app"), "{s}");
+        } else {
+            assert!(!s.contains("permissions") && !s.contains("rexenv.app"), "{s}");
+        }
         assert!(!s.contains("brew"), "no Homebrew line when this is not a cask install");
         assert!(consent_sentence(&offer, true).contains("brew upgrade --cask rexenv"));
     }

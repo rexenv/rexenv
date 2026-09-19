@@ -9,15 +9,19 @@
 //!
 //!   a real install directory on disk → zip its contents flat → extract through
 //!   the guarded extractor → read the executable's OWN VERSIONINFO → check the PE
-//!   machine → carry `uninstall.exe` across → rename the installed directory aside
-//!   and the staged one in, while a process is running from it → sweep classifies
+//!   machine → carry `uninstall.exe` across → move each installed FILE aside and the
+//!   staged one in, while a process is running from it AND a file is held open in
+//!   the data tree beneath the install directory → sweep classifies
 //!   the leftovers by the version INSIDE them → the previous one survives until it
 //!   is told the new app is healthy.
 //!
 //! The Dell measured that Windows PERMITS the rename under a running process
 //! (`docs/PLAN-windows-port.md` D5). This is the other half: that rexenv's own
 //! code does it correctly, and — the part that matters more — that every failure
-//! leaves the installed directory exactly as it was.
+//! leaves the installed directory exactly as it was. The open-handle leg is the
+//! one the first real update failed (19 Sep 2026): the install directory is the
+//! app-data root, so it can never be renamed as a whole while rexenv runs — the
+//! first fixture had nothing open beneath it and passed anyway (ledger #695).
 //!
 //! # Fixture-owned, and that is the whole safety argument
 //!
@@ -301,6 +305,14 @@ async fn main() -> ExitCode {
         "after the swap Apps & Features could not remove rexenv",
     );
 
+    // The data tree lives UNDER the install directory and something in it is
+    // always open while rexenv runs (the database, at least). Hold one open
+    // through the swap: this is the leg the directory rename could never pass.
+    let data_dir = installed.join("rexenv").join("data");
+    std::fs::create_dir_all(&data_dir).expect("fixture data tree");
+    let held_path = data_dir.join("rexenv.db");
+    let held = std::fs::File::create(&held_path).expect("fixture open handle");
+
     let receipt = match bundles.swap(&installed, &staged) {
         Ok(r) => r,
         Err(e) => {
@@ -322,6 +334,12 @@ async fn main() -> ExitCode {
         installed.join("uninstall.exe").is_file(),
         "the swapped-in directory lost uninstall.exe",
     );
+    checks.is(
+        "the data tree under the install directory is untouched, its open file still where it was",
+        held_path.is_file() && held.metadata().is_ok() && !receipt.previous.join("rexenv").exists(),
+        "the swap moved or lost the app-data tree — a real update would strand the database",
+    );
+    drop(held);
     checks.is(
         "the previous directory survives, and the receipt says where",
         receipt.previous.is_dir()

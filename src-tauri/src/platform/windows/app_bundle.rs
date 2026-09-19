@@ -17,10 +17,17 @@
 //!   that swapped after exit; it now only restarts, as on macOS.
 //! - **Staged as a SIBLING**, in the install directory's parent, for the reason
 //!   macOS does it: a cross-volume rename is then impossible by construction.
-//! - **Two renames, not one.** Windows has no atomic directory exchange, so this
-//!   is macOS's `RenamePair` fallback as the only path, with the same restore if
-//!   the second rename fails. The window between them is real and is why the
-//!   DNS agent is re-launched afterwards rather than expected to survive.
+//! - **A rename pair PER FILE, never of the directory.** The install directory is
+//!   also the ROOT of the app-data tree (`%LOCALAPPDATA%\rexenv\rexenv\data`: the
+//!   database, logs, every binary), and a directory with an open handle anywhere
+//!   beneath it cannot be renamed — ACCESS_DENIED, measured 19 Sep 2026 on the
+//!   first real update (0.7.9 → 0.8.1, clean VM and the Dell alike): the swap
+//!   failed with "the folder is not writable" while the Dell fixture, whose
+//!   install directory held nothing open, had passed. A running `.exe` CAN be
+//!   renamed, so each staged file is moved aside and the new one moved in, with
+//!   every move undone if one fails; the data tree is never touched. The window
+//!   between moves is real and is why the DNS agent is re-launched afterwards
+//!   rather than expected to survive.
 //! - **The uninstaller travels.** `uninstall.exe` is written by the INSTALLER, not
 //!   the build, so a staged directory extracted from the update archive has none;
 //!   it is copied in from the installed directory before the swap, and the HKCU
@@ -436,21 +443,56 @@ impl AppBundle for WindowsAppBundle {
     }
 
     fn swap(&self, installed: &Path, staged: &StagedBundle) -> std::result::Result<SwapReceipt, SwapFailure> {
-        // Two renames with a restore — macOS's fallback is Windows' only path,
-        // because there is no atomic directory exchange here. Measured: renaming
-        // the directory a running .exe lives in succeeds, and the process keeps
-        // running from the renamed file.
+        // Per FILE (module doc): the install directory cannot be renamed while
+        // the app-data tree under it holds an open handle, but a running .exe
+        // can be. Each staged file: the installed one aside, the new one in.
         let aside = staged.stage_dir.join("previous");
-        std::fs::rename(installed, &aside).map_err(|e| Self::classify(&e))?;
-        if let Err(e) = std::fs::rename(&staged.path, installed) {
-            let failure = Self::classify(&e);
-            if std::fs::rename(&aside, installed).is_err() {
-                return Err(SwapFailure::Other(format!(
-                    "{failure}; the previous rexenv is at {} and can be moved back by hand",
-                    aside.display()
-                )));
+        std::fs::create_dir_all(&aside).map_err(|e| Self::classify(&e))?;
+        let names: Vec<std::ffi::OsString> = std::fs::read_dir(&staged.path)
+            .map_err(|e| Self::classify(&e))?
+            .flatten()
+            .filter(|e| e.path().is_file())
+            .map(|e| e.file_name())
+            .collect();
+        let mut moved_aside: Vec<std::ffi::OsString> = Vec::new();
+        let mut moved_in: Vec<std::ffi::OsString> = Vec::new();
+        let restore = |moved_in: &[std::ffi::OsString], moved_aside: &[std::ffi::OsString]| -> Vec<String> {
+            let mut stuck = Vec::new();
+            for n in moved_in {
+                if std::fs::rename(installed.join(n), staged.path.join(n)).is_err() {
+                    stuck.push(installed.join(n).display().to_string());
+                }
             }
-            return Err(failure);
+            for n in moved_aside {
+                if std::fs::rename(aside.join(n), installed.join(n)).is_err() {
+                    stuck.push(aside.join(n).display().to_string());
+                }
+            }
+            stuck
+        };
+        for name in &names {
+            let current = installed.join(name);
+            let step = (|| -> std::io::Result<()> {
+                if current.exists() {
+                    std::fs::rename(&current, aside.join(name))?;
+                    moved_aside.push(name.clone());
+                }
+                std::fs::rename(staged.path.join(name), &current)?;
+                moved_in.push(name.clone());
+                Ok(())
+            })();
+            if let Err(e) = step {
+                let failure = Self::classify(&e);
+                let stuck = restore(&moved_in, &moved_aside);
+                if !stuck.is_empty() {
+                    return Err(SwapFailure::Other(format!(
+                        "{failure}; the previous rexenv's files are under {} and could not all be moved back ({}) — move them back by hand",
+                        aside.display(),
+                        stuck.join(", ")
+                    )));
+                }
+                return Err(failure);
+            }
         }
         Self::record_installed_version(installed, "rexenv.exe");
         Ok(SwapReceipt { installed: installed.to_path_buf(), previous: aside, method: SwapMethod::RenamePair })

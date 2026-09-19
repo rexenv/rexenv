@@ -1581,7 +1581,8 @@ fixture can do is the real install directory, the real quit gate and the real re
   the relauncher waited for the old process, not merely for a timer. **Tell:** two rexenv
   windows, or none.
 - [ ] Afterwards: `%LOCALAPPDATA%\rexenv` holds the new `rexenv.exe`; the previous build sits
-  beside it in `.rexenv-update-<pid>\previous` **until the next launch sweeps it** (it cannot
+  beside it in `.rexenv-update-<pid>\previous` — the three FILES, not a directory: the data
+  tree under `%LOCALAPPDATA%\rexenv\rexenv\data` never moves (#695) — **until the next launch sweeps it** (it cannot
   be deleted while the old process runs — measured); `uninstall.exe` is still there (carried
   across — the installer wrote it, the build did not); and **Apps & Features shows the NEW
   version** (`DisplayVersion` rewritten; the entry exists, so it is rewritten — the fixture

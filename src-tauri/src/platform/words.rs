@@ -92,6 +92,12 @@ pub struct PlatformWords {
     /// The command that takes ownership of a folder this account cannot replace, ready for a path
     /// to be appended (the updater's two refusals that end in a copyable fix).
     pub take_ownership: &'static str,
+    /// The update consent sentence's middle: what is replaced ("rexenv.app" / "rexenv's program
+    /// files"). The macOS sentence leaked onto the first Windows update (19 Sep 2026).
+    pub update_replaces: &'static str,
+    /// The consent sentence's tail about re-granted permissions — macOS's ad-hoc identity;
+    /// empty on Windows, where nothing of the kind happens.
+    pub update_reprompt: &'static str,
 }
 
 pub const MACOS: PlatformWords = PlatformWords {
@@ -123,6 +129,9 @@ pub const MACOS: PlatformWords = PlatformWords {
     path_sep: "/",
     reinstall_to_home: "Move rexenv.app into Applications in Finder, open it from there, then update.",
     take_ownership: "sudo chown -R \"$USER\"",
+    update_replaces: "rexenv.app",
+    update_reprompt: " macOS may ask again for permissions it had granted this copy: rexenv has no \
+         Apple developer signature yet, so each build is a new identity to it.",
 };
 
 pub const WINDOWS: PlatformWords = PlatformWords {
@@ -154,6 +163,8 @@ pub const WINDOWS: PlatformWords = PlatformWords {
     path_sep: "\\",
     reinstall_to_home: "Run the rexenv installer again so it lands in %LOCALAPPDATA%\\rexenv, open it from there, then update.",
     take_ownership: "takeown /R /F",
+    update_replaces: "rexenv's program files (your data folder is not touched)",
+    update_reprompt: "",
 };
 
 /// This build's words.

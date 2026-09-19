@@ -973,10 +973,12 @@ const LINK = "https://example.test/a//b";
     /// distinctive phrases exist in `core/app_update.rs` and in no `.tsx` at all.
     #[test]
     fn the_consent_sentence_has_one_source() {
-        let core = std::fs::read_to_string(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/core/app_update.rs"),
-        )
-        .expect("core/app_update.rs");
+        // The sentence's ONE source is Rust: its shape in `core/app_update.rs`, its
+        // per-OS words in `platform/words.rs` (the macOS re-prompt tail lives there
+        // since 19 Sep 2026, when the macOS sentence leaked onto Windows).
+        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let core = std::fs::read_to_string(src.join("core/app_update.rs")).expect("core/app_update.rs")
+            + &std::fs::read_to_string(src.join("platform/words.rs")).expect("platform/words.rs");
         // Distinctive fragments — long enough that nothing else would contain
         // them by accident, short enough to survive ordinary rewording.
         let phrases = ["services outlive the app", "close with it", "Apple developer signature"];
