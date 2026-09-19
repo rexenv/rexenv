@@ -2178,6 +2178,19 @@ IPC surface — which is how a reader ends up designing against a system with on
 - **Mail:** php-fpm `sendmail_path` (DOUBLE-quoted in the pool ini — the parser strips
   bare quotes and app-data paths contain spaces) → Mailpit's `sendmail -t -S
   127.0.0.1:11025` shim → SMTP sink; inbox UI reads the HTTP API on 18025 (`core/mail.rs`).
+  - **The HTML preview's isolation is in the DOCUMENT, not on the frame — because a
+    sandbox costs the clicks.** The frame shipped with `sandbox=""`, which reads as maximum
+    isolation and also switches off top-level navigation and popups: every link in every
+    HTML mail did nothing when clicked, for the screen's whole life (19 Sep 2026).
+    `sandbox="allow-same-origin"` plus a listener from the app is not the repair either —
+    **measured in WebKit**: the parent can read the sandboxed document and never receives
+    its clicks. So `safeEmailHtml` prepends a `Content-Security-Policy` meta with
+    `script-src 'none'` as the FIRST thing in `<head>` (the engine enforces it, whatever a
+    parser misses), sweeps `script`/`iframe`/`object`/`embed`/`base`/`form`/meta-refresh,
+    strips every `on*` handler and every `javascript:` URL, and drops `target` from anchors;
+    the frame then renders that with no sandbox attribute. Every click is prevented; only
+    `http`/`https` reaches `openExternal`, anything else is named in a toast rather than
+    handed to the OS opener (ledger #697, `scripts/wk-checks/maillink.js`).
   - **The catch-all is TWO mechanisms, because one framework cannot see the other's.**
     `sendmail_path` catches PHP's own `mail()` — WordPress, when nothing has replaced
     PHPMailer's transport. It is **invisible to Laravel**: `config/mail.php` ships

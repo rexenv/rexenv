@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { toastBackendError } from "@/lib/toast";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { toast, toastBackendError } from "@/lib/toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCheck, ChevronRight, Globe, Mail as MailIcon, Search, Trash2 } from "lucide-react";
 import { PreferredBrowserIcon } from "@/components/ui/open-in";
@@ -660,8 +660,7 @@ function Preview({
       <div className="min-h-0 flex-1 overflow-auto">
         {tab === "html" &&
           (msg.html ? (
-            // Sandboxed: isolates the email's styles/scripts from the app.
-            <iframe title="HTML preview" sandbox="" srcDoc={msg.html} className="h-full w-full bg-white" />
+            <HtmlPreview html={msg.html} />
           ) : (
             <Empty label="No HTML part" />
           ))}
@@ -689,6 +688,100 @@ function Preview({
       </div>
     </div>
   );
+}
+
+/** An email's HTML, made safe to render, with its links made to work.
+ *
+ *  **Why not a sandbox.** The frame shipped with `sandbox=""`, which reads as
+ *  maximum isolation and also switches off top-level navigation and popups: every
+ *  link in every HTML mail did nothing at all when clicked, for as long as the
+ *  screen has existed (reported 19 Sep 2026). The obvious repair —
+ *  `sandbox="allow-same-origin"` plus a click listener from this side — does not
+ *  work either, and that was MEASURED in WebKit rather than reasoned about: the
+ *  parent can read the sandboxed document, but its listeners never receive the
+ *  frame's clicks, so the link navigated the frame anyway
+ *  (`scripts/wk-checks/maillink.js`).
+ *
+ *  **So the isolation is put in the document instead of on the frame**, and it is
+ *  the engine that enforces it, not this parser: a `Content-Security-Policy` meta
+ *  is prepended as the FIRST thing in `<head>` with `script-src 'none'`, so an
+ *  email's JavaScript cannot run even if the sweep below misses the tag that
+ *  carries it. The sweep is the second layer, not the only one: `script`,
+ *  `iframe`, `object`, `embed`, `base`, `form` and `meta refresh` go, every `on*`
+ *  attribute goes, and every `javascript:`/`vbscript:`/`data:text/html` URL goes.
+ *  Styles and images stay — that is what makes an email look like the email.
+ *
+ *  Anchors keep their href (the click handler reads it) and lose `target`, so
+ *  nothing can ask for the app's own window. */
+export function safeEmailHtml(html: string): string {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const csp = doc.createElement("meta");
+  csp.setAttribute("http-equiv", "Content-Security-Policy");
+  csp.setAttribute(
+    "content",
+    "script-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'",
+  );
+  doc.head.prepend(csp);
+  doc
+    .querySelectorAll("script, iframe, object, embed, base, form, meta[http-equiv='refresh' i]")
+    .forEach((el) => el.remove());
+  const URL_ATTRS = new Set(["href", "src", "action", "formaction", "xlink:href", "srcset", "background"]);
+  const DANGEROUS = /^\s*(javascript|vbscript|data:text\/html)/i;
+  doc.querySelectorAll("*").forEach((el) => {
+    for (const attr of Array.from(el.attributes)) {
+      const name = attr.name.toLowerCase();
+      if (name.startsWith("on")) el.removeAttribute(attr.name);
+      else if (URL_ATTRS.has(name) && DANGEROUS.test(attr.value)) el.removeAttribute(attr.name);
+    }
+    if (el.tagName === "A") el.removeAttribute("target");
+  });
+  return `<!doctype html>${doc.documentElement.outerHTML}`;
+}
+
+/** The email body, and the one place a link in it can lead.
+ *
+ *  Every click is prevented first, link or not: the frame must never navigate, and
+ *  the app must never follow somewhere an email chose. `http`/`https` opens in the
+ *  user's browser through the same path as every other external link. Anything
+ *  else — `mailto:`, `file:`, a custom scheme — is NAMED in a toast rather than
+ *  handed to `open_external`, whose non-http branch gives the string to the OS
+ *  opener: an email is the one HTML in this app a stranger wrote. */
+function HtmlPreview({ html }: { html: string }) {
+  const ref = useRef<HTMLIFrameElement>(null);
+  const safe = useMemo(() => safeEmailHtml(html), [html]);
+  useEffect(() => {
+    const frame = ref.current;
+    if (!frame) return;
+    let doc: Document | null = null;
+    const onClick = (e: MouseEvent) => {
+      e.preventDefault();
+      const target = e.target as Element | null;
+      const anchor = target?.closest?.("a[href]") as HTMLAnchorElement | null;
+      const href = anchor?.getAttribute("href")?.trim() ?? "";
+      if (!href || href.startsWith("#")) return;
+      if (/^https?:\/\//i.test(href)) {
+        void openExternal(href).catch(toastBackendError);
+      } else {
+        toast.info(`That link isn't a web address, so rexenv left it alone: ${href}`);
+      }
+    };
+    const attach = () => {
+      doc?.removeEventListener("click", onClick, true);
+      doc?.removeEventListener("auxclick", onClick, true);
+      doc = frame.contentDocument;
+      doc?.addEventListener("click", onClick, true);
+      doc?.addEventListener("auxclick", onClick, true);
+    };
+    // `srcDoc` can be parsed before this effect runs, so attach now AND on load.
+    attach();
+    frame.addEventListener("load", attach);
+    return () => {
+      frame.removeEventListener("load", attach);
+      doc?.removeEventListener("click", onClick, true);
+      doc?.removeEventListener("auxclick", onClick, true);
+    };
+  }, [safe]);
+  return <iframe ref={ref} title="HTML preview" srcDoc={safe} className="h-full w-full bg-white" />;
 }
 
 function Empty({ label }: { label: string }) {

@@ -1111,7 +1111,22 @@ export function DevUiReview() {
           const m = MAIL_FIXTURE.find((x) => x.id === id) ?? MAIL_FIXTURE[0];
           return {
             id: m.id, from: m.from, to: m.to, cc: [], subject: m.subject,
-            date: m.created, text: `${m.snippet}…`, html: "",
+            date: m.created, text: `${m.snippet}…`,
+            // A real WP mail is mostly LINKS, and the preview's job is that
+            // clicking one opens the browser. This said `html: ""` until 19 Sep
+            // 2026, so every check that ever ran on this screen looked at "No
+            // HTML part" — which is how `sandbox=""` sat in the frame, with every
+            // link in every HTML mail dead, for the screen's whole life (#697).
+            html:
+              `<p>${m.snippet}</p>` +
+              `<p><a href="https://example.test/reset?key=abc">Reset your password</a></p>` +
+              `<p><a href="mailto:someone@example.test">Mail the sender</a></p>` +
+              // The canary: an email that TRIES to run something. Two layers must
+              // stop it — the sweep removes these two, the CSP stops whatever a
+              // sweep would miss — and the wk-check reads the title back.
+              `<script>document.title = "PWNED"</script>` +
+              `<img src="x" onerror="document.title = 'PWNED'">` +
+              `<p>end</p>`,
             headers: [{ name: "Subject", value: m.subject }],
           };
         }

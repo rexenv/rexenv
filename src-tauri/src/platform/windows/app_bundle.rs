@@ -354,11 +354,10 @@ impl WindowsAppBundle {
     /// wrong twice: a dev build or a fixture swap has no uninstall entry to keep
     /// in step, and creating one would put a half-filled "rexenv" row into the
     /// user's Apps & Features — on the developer's own machine, from a test.
-    fn record_installed_version(installed: &Path, executable: &str) {
-        let Some(info) = version_info(&installed.join(executable)) else { return };
+    fn record_installed_version(version: &str) {
         let key = wide(rules::UNINSTALL_KEY);
         let name = wide("DisplayVersion");
-        let value = wide(&info.version);
+        let value = wide(version);
         // SAFETY: valid NUL-terminated strings; the handle is closed on every
         // path after a successful open; the byte length counts the terminator.
         unsafe {
@@ -370,7 +369,9 @@ impl WindowsAppBundle {
             let rc = RegSetValueExW(h, name.as_ptr(), 0, REG_SZ, value.as_ptr().cast(), (value.len() * 2) as u32);
             RegCloseKey(h);
             if rc != 0 {
-                log::warn!("app update: could not record {} in the uninstall entry (rc {rc})", info.version);
+                log::warn!("app update: could not record {version} in the uninstall entry (rc {rc})");
+            } else {
+                log::info!("app update: Apps & Features now reads {version}");
             }
         }
     }
@@ -446,6 +447,15 @@ impl AppBundle for WindowsAppBundle {
         // Per FILE (module doc): the install directory cannot be renamed while
         // the app-data tree under it holds an open handle, but a running .exe
         // can be. Each staged file: the installed one aside, the new one in.
+        // The version for Apps & Features is read from the STAGED executable, BEFORE
+        // anything moves: that is the path `verify_staged` has just read successfully,
+        // and reading it back after the rename returned nothing on the first real
+        // update — silently, because the old code's `else { return }` said nothing
+        // (19 Sep 2026: the swap worked, Apps & Features kept the old number).
+        let new_version = version_info(&staged.path.join("rexenv.exe")).map(|i| i.version);
+        if new_version.is_none() {
+            log::warn!("app update: the staged rexenv.exe carries no version information — Apps & Features will keep the old number");
+        }
         let aside = staged.stage_dir.join("previous");
         std::fs::create_dir_all(&aside).map_err(|e| Self::classify(&e))?;
         let names: Vec<std::ffi::OsString> = std::fs::read_dir(&staged.path)
@@ -494,7 +504,9 @@ impl AppBundle for WindowsAppBundle {
                 return Err(failure);
             }
         }
-        Self::record_installed_version(installed, "rexenv.exe");
+        if let Some(v) = new_version {
+            Self::record_installed_version(&v);
+        }
         Ok(SwapReceipt { installed: installed.to_path_buf(), previous: aside, method: SwapMethod::RenamePair })
     }
 

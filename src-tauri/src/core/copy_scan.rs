@@ -1635,6 +1635,87 @@ const LINK = "https://example.test/a//b";
     /// plugin list's update badge was `bg-amber-500/15 text-amber-400`: legible
     /// on the dark surface it was designed against, washed out on the light one,
     /// and — the part that matters — INVISIBLE to every check here, because
+    /// **An email's HTML is never allowed to run script, and its links never reach
+    /// the OS opener unchecked.**
+    ///
+    /// The preview shipped with `sandbox=""`, which reads as maximum isolation and
+    /// also switches off top-level navigation and popups: every link in every HTML
+    /// mail did nothing when clicked, for as long as the screen existed (19 Sep
+    /// 2026). `sandbox="allow-same-origin"` plus a listener from the app side does
+    /// not fix it either — MEASURED in WebKit: the parent can read the sandboxed
+    /// document, and never receives its clicks (`scripts/wk-checks/maillink.js`).
+    ///
+    /// So the isolation moved INTO the document, and this pins the three parts
+    /// that make that safe: the sanitiser exists and prepends a CSP that forbids
+    /// script; the frame renders the SANITISED string and carries no `sandbox`
+    /// attribute (one would kill the clicks again); and the click handler prevents
+    /// every default and only hands `http(s)` to `openExternal`.
+    #[test]
+    fn an_emails_html_can_neither_run_script_nor_hand_the_os_an_arbitrary_link() {
+        let mail = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../src/routes/Mail.tsx"),
+        )
+        .expect("src/routes/Mail.tsx");
+        let sanitiser = mail
+            .split("export function safeEmailHtml")
+            .nth(1)
+            .and_then(|b| b.split("\n}").next())
+            .expect("safeEmailHtml");
+        let dense_s: String = sanitiser.chars().filter(|c| !c.is_whitespace()).collect();
+        assert!(
+            dense_s.contains("\"script-src'none';"),
+            "the mail preview's CSP no longer forbids script — that is the layer the sanitiser \
+             cannot be trusted alone for: {sanitiser}"
+        );
+        assert!(
+            dense_s.contains("doc.head.prepend(csp)"),
+            "the CSP is no longer the FIRST thing in <head>; after a script it is too late"
+        );
+        for tag in ["script", "iframe", "object", "embed", "base", "form"] {
+            assert!(sanitiser.contains(tag), "the sweep no longer removes <{tag}>: {sanitiser}");
+        }
+        assert!(
+            dense_s.contains("name.startsWith(\"on\")"),
+            "the sweep stopped stripping on* handlers: {sanitiser}"
+        );
+        // The frame renders the sanitised string, and carries no sandbox — which
+        // would stop the clicks reaching the handler below (measured, not assumed).
+        assert!(
+            mail.contains("srcDoc={safe}"),
+            "the preview renders something other than the sanitised HTML"
+        );
+        // The ELEMENT, not the file: the comment above it names the two sandboxes
+        // that do not work, and a scan reading prose would fail on the explanation.
+        let element = mail
+            .split("<iframe")
+            .nth(1)
+            .and_then(|b| b.split("/>").next())
+            .expect("the preview's iframe element");
+        assert!(
+            !element.contains("sandbox"),
+            "the mail preview frame gained a sandbox attribute ({element:?}): in WebKit that stops \
+             the app receiving the frame's clicks, which is the bug this pair replaced"
+        );
+        let handler = mail
+            .split("const onClick")
+            .nth(1)
+            .and_then(|b| b.split("\n    };").next())
+            .expect("the mail preview's click handler");
+        let dense_h: String = handler.chars().filter(|c| !c.is_whitespace()).collect();
+        assert!(
+            dense_h.contains("e.preventDefault();"),
+            "the mail preview stopped preventing the click — the frame can navigate again"
+        );
+        assert!(
+            dense_h.contains("/^https?:\\/\\//i.test(href)"),
+            "the mail preview opens a link without testing that it is http(s): {handler}"
+        );
+        assert!(
+            dense_h.contains("openExternal(href)"),
+            "the mail preview no longer opens the href it tested: {handler}"
+        );
+    }
+
     /// `amber-400` is Tailwind's own palette rather than a rex token. The
     /// contrast guard below computes both themes for tokens; a raw hue has no
     /// light-theme value to compute, so it silently sat outside the check that

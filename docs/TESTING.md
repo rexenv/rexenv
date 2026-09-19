@@ -880,6 +880,14 @@ staged and swapped (T3, sandbox tier), or that a real Mac lets it happen (T0/T11
   passes is needed. Refuses a stale app binary, for the reason `app_relaunch_check` records.
   **6 checks, all green on the Dell, 19 Sep 2026.** Does NOT cover the real app quitting
   through the quit gate and reopening on a swapped directory — SMOKE-TEST's Windows section.
+- `maillink.js` (WebKit, `verify-full.sh`) — an HTML mail's links. The preview frame's
+  `sandbox=""` made every link in every HTML mail dead for the screen's whole life, and no
+  check saw it because both mail fixtures had no anchor in them — the harness mock literally
+  returned `html: ""`, so every assertion about this screen was made against "No HTML part".
+  The check clicks a real anchor with a real mouse (coordinates computed in the parent:
+  Playwright cannot evaluate inside the frame), and asserts what the click DID — the browser
+  opened, the frame did not navigate, a `mailto:` opened nothing, and the email's own script
+  canary never ran. Ledger #697.
 - `windows_job_guard_check` (sandbox, Windows only) — the FACT the start-up hop is decided on,
   read from inside real jobs: two jobs this example builds (limits `0x0`, the installer's shape;
   `0x2800`, the SSH shell's), a fixture copy of the example started suspended inside each and

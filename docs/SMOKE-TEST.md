@@ -622,6 +622,12 @@ no SMOKE step today and is covered by `repo_*` examples only.*
 ## Mail (Mailpit)
 - [x] Trigger a WP email (e.g. password reset); it appears in **Mail** (inbox count increments). ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
 - [x] Opening the message shows its HTML/text body. ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
+- [ ] **A link in the HTML body opens in the browser** (WP's password-reset link is one):
+      one click, the preferred browser opens it, and the preview itself does not navigate —
+      the frame keeps showing the email. A `mailto:` link opens nothing and says so in a
+      toast. **Tell:** a click that does nothing at all (the `sandbox=""` bug, #697, fixed
+      19 Sep 2026 after shipping dead for the screen's whole life), or the email's page
+      replacing the preview.
 - [x] **The row loses its unread dot as the preview opens** — not a second or two ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
       later. (The list polls every 5s; if the dot clears "eventually", the patch
       that makes it immediate has regressed.) The sidebar's mail badge drops too.
@@ -1561,7 +1567,7 @@ ran the rest: second-hash SmartScreen, the Finish-page start that now hops and s
   "Installed — … Reinstall". **`rex` on the PATH** — Settings → General → Command-line tool offers Install; after it,
   a NEW terminal answers `rex status`. The copy is `%LOCALAPPDATA%\rexenv\bin\rex.exe`.
 
-### In-app self-update — replaces the macOS section (unrun; needs a SECOND installed build)
+### In-app self-update — replaces the macOS section (RUN 19 Sep 2026, one row still open)
 The swap and the relaunch are measured on fixtures on the Dell
 (`windows_app_bundle_swap_check`, `windows_app_relaunch_check` — `docs/TESTING.md`); what no
 fixture can do is the real install directory, the real quit gate and the real registry entry.
@@ -1576,6 +1582,14 @@ fixture can do is the real install directory, the real quit gate and the real re
   attached and `app-manifest-windows.json` signed on `rexenv/runtimes`), Settings → About
   offers the update; the consent sentence is the Windows one (no "rexenv.app", no
   Applications folder).
+- [x] **Run 4, 19 Sep 2026 — the whole path, on the published 0.8.2.** A 0.7.9 carrying the swap
+  fix (#695) installed; About → Check now offered "rexenv 0.8.2 · 13.2 MB has been published" with
+  the WINDOWS consent sentence ("replaces rexenv's program files (your data folder is not
+  touched)", no Apple re-prompt line); Install swapped the three program files in place, the app
+  quit and **reopened by itself on 0.8.2**, the previous bundle was swept on that launch, and
+  `rex --version` read `0.8.2 (e457970201)`. The log names each step. **The one miss:** Apps &
+  Features still read 0.7.9 — the version was read off the just-renamed file and came back empty,
+  silently (#696, fixed; the next update is what proves the fix).
 - [ ] Press Install: the archive downloads into the ONE download hub, the app quits through
   the quit gate (a live share still asks), and rexenv **reopens on its own** on the new build —
   the relauncher waited for the old process, not merely for a timer. **Tell:** two rexenv

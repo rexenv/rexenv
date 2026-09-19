@@ -301,7 +301,14 @@ export function mockMailDetail(id: string): MailDetail {
     html:
       s.id === "m2"
         ? ""
-        : `<p>${s.snippet}</p><p>This is a <b>mock</b> HTML body shown in the browser-only dev build.</p>`,
+        : // A real WP mail is mostly links (reset, admin, unsubscribe), and the
+          // preview's whole job is that clicking one opens the browser — a
+          // fixture without an anchor let `sandbox=""` sit there for the
+          // screen's whole life with every check passing (#697).
+          `<p>${s.snippet}</p><p>This is a <b>mock</b> HTML body shown in the browser-only dev build.</p>` +
+          `<p><a href="https://example.test/reset?key=abc">Reset your password</a></p>` +
+          `<p><a href="mailto:someone@example.test">Mail the sender</a></p>` +
+          `<script>document.title = "PWNED"</script>`,
     headers: [
       { name: "From", value: s.from.address },
       { name: "To", value: s.to.map((t) => t.address).join(", ") },
