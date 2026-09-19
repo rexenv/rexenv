@@ -54,7 +54,9 @@ use windows_sys::Win32::Storage::FileSystem::{
     GetDiskFreeSpaceExW, GetFileVersionInfoSizeW, GetFileVersionInfoW, GetVolumeInformationW, VerQueryValueW,
     VS_FIXEDFILEINFO,
 };
-use windows_sys::Win32::System::Registry::{RegSetKeyValueW, HKEY_CURRENT_USER, REG_SZ};
+use windows_sys::Win32::System::Registry::{
+    RegCloseKey, RegOpenKeyExW, RegSetValueExW, HKEY_CURRENT_USER, KEY_SET_VALUE, REG_SZ,
+};
 use windows_sys::Win32::System::Threading::{
     GetProcessTimes, OpenProcess, WaitForSingleObject, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE,
 };
@@ -328,24 +330,29 @@ impl WindowsAppBundle {
     /// Rewrite the uninstall entry's version so Apps & Features agrees with the
     /// binary. Best-effort and logged: the app is already swapped, and a stale
     /// number in a settings page is not worth failing an update over.
+    ///
+    /// Only if the entry EXISTS. `RegSetKeyValueW` would create it, which is
+    /// wrong twice: a dev build or a fixture swap has no uninstall entry to keep
+    /// in step, and creating one would put a half-filled "rexenv" row into the
+    /// user's Apps & Features — on the developer's own machine, from a test.
     fn record_installed_version(installed: &Path, executable: &str) {
         let Some(info) = version_info(&installed.join(executable)) else { return };
         let key = wide(rules::UNINSTALL_KEY);
         let name = wide("DisplayVersion");
         let value = wide(&info.version);
-        // SAFETY: valid NUL-terminated strings; the byte length counts the terminator.
-        let rc = unsafe {
-            RegSetKeyValueW(
-                HKEY_CURRENT_USER,
-                key.as_ptr(),
-                name.as_ptr(),
-                REG_SZ,
-                value.as_ptr().cast(),
-                (value.len() * 2) as u32,
-            )
-        };
-        if rc != 0 {
-            log::warn!("app update: could not record {} in the uninstall entry (rc {rc})", info.version);
+        // SAFETY: valid NUL-terminated strings; the handle is closed on every
+        // path after a successful open; the byte length counts the terminator.
+        unsafe {
+            let mut h = std::ptr::null_mut();
+            if RegOpenKeyExW(HKEY_CURRENT_USER, key.as_ptr(), 0, KEY_SET_VALUE, &mut h) != 0 {
+                log::info!("app update: no uninstall entry to update (not an installed copy)");
+                return;
+            }
+            let rc = RegSetValueExW(h, name.as_ptr(), 0, REG_SZ, value.as_ptr().cast(), (value.len() * 2) as u32);
+            RegCloseKey(h);
+            if rc != 0 {
+                log::warn!("app update: could not record {} in the uninstall entry (rc {rc})", info.version);
+            }
         }
     }
 }

@@ -844,14 +844,25 @@ staged and swapped (T3, sandbox tier), or that a real Mac lets it happen (T0/T11
   `cargo run --example` does not rebuild it — the failure `tunnel_parent_death_check`
   records, where both plants came back green against yesterday's build. **Plant-proven**:
   deleting the wait makes the ordering leg fail. Ledger #531.
-- **Windows, as of 19 Sep 2026: L0 only.** `platform/windows/app_bundle_rules.rs` (install
-  kind off the installer's real paths, stage-dir names, `VS_FIXEDFILEINFO` words → `a.b.c`,
-  previous-vs-stale) runs on the macOS host, `core::app_update` proves the per-OS
-  `staged_expect_on`, the `PerMachineInstall` refusal and the per-OS descriptor URLs, and
-  `windows-check.sh` lints the FFI half. **Nothing has staged or swapped a real directory on
-  Windows yet** — that needs the update archive the release does not produce yet, then a
-  fixture-owned example on the Dell (the `app_bundle_swap_check` shape, with a zip and
-  VERSIONINFO in place of a tar and `Info.plist`).
+- `windows_app_bundle_swap_check` (sandbox, Windows only) — the Windows SWAP, on fixtures:
+  a real install directory whose executable is THIS build's `rexenv.exe` (the only `.exe`
+  around with VERSIONINFO, its version read back through PowerShell as an oracle that shares
+  no code with the crate), zipped flat the way the release does it, extracted through the
+  guarded extractor, verified off the executable's own VERSIONINFO and PE header, `uninstall.exe`
+  carried across, and the installed directory renamed aside and the staged one in **while a
+  process is running from it** — the measured Windows fact the whole design rests on, asserted
+  here rather than remembered. The load-bearing legs are the failures: a wrong version, a wrong
+  `ProductName`, a missing sidecar, a wrapper directory in the archive and an executable with
+  no version information are each refused, the installed directory is compared byte for byte
+  afterwards, and a failed stage leaves no staging directory behind. The sweep is driven from a
+  version above both fixtures (they are the same real build) and keeps the previous directory
+  until told the app is healthy. Runs on the REAL dev binary's facts too: a cargo `target` dir
+  is `DevBuild` and refused before any download. The registry is never touched: the uninstall
+  entry's `DisplayVersion` is rewritten only when the entry EXISTS, which a fixture's never
+  does. **24 checks, all green on the Dell, 19 Sep 2026.** Does NOT cover the swap against a
+  real `%LOCALAPPDATA%\rexenv` (no machine has an installed copy yet), the relaunch, or the
+  `DisplayVersion` rewrite — SMOKE-TEST's Windows section, once an installer has been installed.
+  The pure half beneath it (`app_bundle_rules.rs`) runs on the macOS host as well. Ledger #690.
 - `app_update_check` (network) — the app's OWN update descriptor, fetched from where it is
   published and verified against the key compiled into the running binary: the half a
   user's "Check now" runs, where a publisher signing with a rotated key, or a document

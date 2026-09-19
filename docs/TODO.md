@@ -824,9 +824,16 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     the embedded payload, the update key, and the executable's own `ProductVersion`/`ProductName`
     (the words the swap verifies); the workflow attaches it; `check-app-manifest.sh --windows`
     reads the second document. (2) `rexenv/runtimes` does not yet publish
-    `app-manifest-windows.json` + `.sig` — the owner's repo and key; (3) nothing has staged and
-    swapped a real directory on Windows — a fixture-owned example on the Dell in the
-    `app_bundle_swap_check` shape.
+    `app-manifest-windows.json` + `.sig` — the owner's repo and key; (3) ✓
+    `windows_app_bundle_swap_check` (sandbox tier, Windows): **24 checks green on the Dell** —
+    stage from a flat zip, verify off VERSIONINFO and the PE header (the version read back
+    through PowerShell as an independent oracle), `uninstall.exe` carried across, the directory
+    swapped **under a running process** (`RenamePair`), every refusal leaving the installed
+    directory byte-identical, the sweep keeping the previous directory until told the app is
+    healthy. First run failed one leg for a FIXTURE reason worth writing down: `timeout.exe`
+    exits at once when stdin is redirected, so the "still running" waiter is `ping -n 60`.
+    **Still owed:** the swap against a real `%LOCALAPPDATA%\rexenv` and the relaunch — both
+    need an installed copy, which no machine has yet (clean Win11 VM), and (2) above.
   - [ ] W12 — launch gates: verify on the Windows runner, SMOKE-TEST + INSTALL Windows
     sections, clean Windows 11 VM pass
     **The example half is done 16 Sep 2026 (ledger #645):** the tier table grew an os column
