@@ -1588,8 +1588,11 @@ fixture can do is the real install directory, the real quit gate and the real re
   touched)", no Apple re-prompt line); Install swapped the three program files in place, the app
   quit and **reopened by itself on 0.8.2**, the previous bundle was swept on that launch, and
   `rex --version` read `0.8.2 (e457970201)`. The log names each step. **The one miss:** Apps &
-  Features still read 0.7.9 — the version was read off the just-renamed file and came back empty,
-  silently (#696, fixed; the next update is what proves the fix).
+  Features still read 0.7.9. **Run 5 (0.8.2 → 0.8.3, same day) named the cause**: the entry moved
+  to 0.8.2 — the OLD version, written fresh — so a version read off a just-renamed path answers
+  for the file that used to be there, and the old code wrote that over itself and logged nothing.
+  Fixed in 0.8.3 (#696: read the STAGED executable, before anything moves); the first update from
+  a 0.8.3 install is what proves it.
 - [ ] Press Install: the archive downloads into the ONE download hub, the app quits through
   the quit gate (a live share still asks), and rexenv **reopens on its own** on the new build —
   the relauncher waited for the old process, not merely for a timer. **Tell:** two rexenv
