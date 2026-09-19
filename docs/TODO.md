@@ -171,7 +171,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     NRPT accepted and the `hosts` fallback REFUSED (:53 taken → refuse naming the holder),
     D4 accepted and MariaDB NOT in v1 (refused with an honest message; MySQL 8.4/8.0 cover it), D6 accepted (Win 11 x64; Win 10 22H2 best-effort;
     arm64 emulation unsupported)
-  - [ ] Measure before building on it (plan §3, Dell + VM): D1 — php-cgi's own parent
+  - [x] ✓ 19 Sep 2026 — every measurement the port BUILT on is in (D1 supervision W3, D2 :53 + NRPT
+    W6, the bind matrix, D5 through Edge on the clean VM: W12 runs 1–2, `docs/SMOKE-TEST.md`). The
+    residue named inside is measurement backlog, not a gate: mirrored WSL/`dnsTunneling`, ICS on, a
+    holder under another account, Chrome's shelf wording. Measure before building on it (plan §3, Dell + VM): D1 — php-cgi's own parent
     (children spawned, respawned, killed with the parent; the listener's owning pid; job
     breakaway from the app's launch contexts (SSH allows it, #600; a Task Scheduler task REFUSES it —
     ACCESS_DENIED from `proxy::start`, 14 Sep 2026, plan §3 D1; Explorer, Start, Windows Terminal
@@ -216,7 +219,8 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
       readers dropping any row whose `os` is not `macos`
     - [ ] `rexenv/runtimes` publisher: refuse an OS marker or a foreign arch in the macOS
       documents, and any per-OS row whose `os` is not the file's
-    - [ ] W11: the Windows reader fetches `manifest-windows.json` / `app-manifest-windows.json`
+    - [x] ✓ 19 Sep 2026 (`manifest_urls_on`, ledger #690; a pre-`a0d4868f` build reading the macOS
+      document is what run 1 of the VM pass saw). W11: the Windows reader fetches `manifest-windows.json` / `app-manifest-windows.json`
       only
   - [ ] Per-OS version answers (plan §3a Q3): PostgreSQL driver, Xdebug, curl resolver, the
     cache marker (the update catalogs are the row above) — each before the Windows feature it gates, each with a test that the
@@ -875,11 +879,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
       Uninstall (UAC + Windows' "Root Certificate Store" DELETE dialog) leaves NRPT 0 / CA 0 /
       task gone / data kept ✓; `uninstall.exe` removes exe, HKCU entry, both shortcuts ✓. Rows in
       `docs/SMOKE-TEST.md`. Still unrun: the in-app update rows (need a published newer build).
-    - [ ] WebView2's DEFAULT context menu (Back / Refresh / Save as / Print / More tools) shows
+    - [x] ✓ 19 Sep 2026 — `src/main.tsx` suppresses it outside inputs, editable regions and the
+      terminal. WebView2's DEFAULT context menu (Back / Refresh / Save as / Print / More tools) shows
       inside the app on Windows — seen run 2 in Settings. macOS's webview shows none; this one
       offers "Save as" and "Print" of the app's own UI. Suppress it (`ICoreWebView2Settings::
       AreDefaultContextMenusEnabled`, or the `contextmenu` event) — an honest-UI item.
-    - [ ] `uninstall.exe` leaves an EMPTY `%LOCALAPPDATA%\rexenv\bin` behind (the `rex` copy's
+    - [x] ✓ 19 Sep 2026 — `remove_symlink_best_effort` removes the folder when empty. `uninstall.exe` leaves an EMPTY `%LOCALAPPDATA%\rexenv\bin` behind (the `rex` copy's
       folder, made by the Settings install, removed by the Settings uninstall — the directory
       itself is never deleted). Remove it when the copy goes.
     - [ ] The installer's "rexenv is running! Click OK to kill it" names the DNS agent as if it
@@ -887,7 +892,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
       the new binary — but a sentence that says so would spare the user the guess.
     - [ ] Chrome's download wording (no Chrome on the VM); the certificate dialog's **No** path;
       WebView2's `downloadBootstrapper` on a machine without it (the VM had 153).
-    - [ ] `rex status` names the pool `PHP-FPM 8.3` on Windows, where the pool is `php-cgi`
+    - [x] ✓ 19 Sep 2026, display only — the Services row already carried its platform label (#651);
+      now `rex status` reads `PHP-CGI 8.3` on Windows too (`pool_display_name`); the key stays
+      `PHP-FPM 8.3` on every OS. `rex status` names the pool `PHP-FPM 8.3` on Windows, where the pool is `php-cgi`
       (`WebTarget::Pool::label`, `ports.rs`'s `PHP-FPM` service name) — the frontend's
       `pool_kind` words never reached the CLI/service labels.
     - [ ] `curl.exe` (schannel) fails the handshake against the edge with `SEC_E_ILLEGAL_MESSAGE`

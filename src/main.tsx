@@ -13,6 +13,16 @@ initTheme();
 // `refetchOnWindowFocus` mean "the user came back from wp-admin / a terminal".
 initWindowFocus();
 
+// WebView2 (Windows) offers its OWN context menu — Back / Refresh / Save as / Print /
+// More tools — over the app's UI (seen on the first installed copy, 19 Sep 2026);
+// WKWebView shows none. Suppress it everywhere except where a native menu is the
+// feature: text fields, editable regions and the terminal (xterm's own copy/paste).
+document.addEventListener("contextmenu", (e) => {
+  const t = e.target as HTMLElement | null;
+  if (t?.closest("input, textarea, [contenteditable=''], [contenteditable='true'], .xterm")) return;
+  e.preventDefault();
+});
+
 const queryClient = new QueryClient();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(

@@ -89,6 +89,17 @@ const SOFT_DEADLINE: Duration = Duration::from_secs(2);
 /// How long `request` stays silent before telling the user it is still waiting.
 const STALL_NOTICE_AFTER: Duration = Duration::from_secs(10);
 
+/// What a row is CALLED here: the app keys pools `PHP-FPM <minor>` on every OS, and on
+/// Windows the pool is a php-cgi group (D1) — so the table reads `PHP-CGI 8.3` there.
+/// Display only; `rex` never sends this name back.
+fn pool_display_name(name: &str) -> String {
+    if cfg!(target_os = "windows") {
+        name.strip_prefix("PHP-FPM").map(|rest| format!("PHP-CGI{rest}")).unwrap_or_else(|| name.to_string())
+    } else {
+        name.to_string()
+    }
+}
+
 /// **The CLI never starts the app.** It NAMES the command and stops there.
 ///
 /// `rex` is a remote control for a RUNNING app, so auto-spawning would launch a
@@ -3895,7 +3906,7 @@ fn cmd_status(json_output: bool) {
         let pid = s["pid"].as_u64().map(|p| p.to_string()).unwrap_or_else(|| "-".into());
         println!(
             "{:<name_w$}  {:<8} {:>7}  {:>6}  {:>6.1}  {:>6} MB",
-            s["name"].as_str().unwrap_or("?"),
+            pool_display_name(s["name"].as_str().unwrap_or("?")),
             if running { "running" } else { "idle" },
             pid,
             s["port"].as_u64().unwrap_or(0),

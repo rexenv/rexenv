@@ -289,14 +289,19 @@ fn our_symlink(platform: &dyn Platform) -> Option<PathBuf> {
 
 /// Teardown, unprivileged half: remove the PATH install when it is ours. On
 /// Windows (ledger #634) the copy, a leftover `.old`, and the folder's `Path`
-/// entry — the folder is rexenv's own, so what is in it is ours. On macOS the
-/// symlink, which succeeds only when its directory is writable by the user.
+/// entry — the folder is rexenv's own, so what is in it is ours, and the folder
+/// itself goes when it is empty (the Windows uninstaller does not know it; an
+/// empty `bin\` was what run 2 of the VM pass found left behind, 19 Sep 2026).
+/// On macOS the symlink, which succeeds only when its directory is writable by
+/// the user.
 pub fn remove_symlink_best_effort(platform: &dyn Platform) {
     if let Ok(CliInstall::CopyOnUserPath(dir)) = platform.paths().cli_install() {
         let copy = copy_in(&dir);
         let _ = std::fs::remove_file(&copy);
         let _ = std::fs::remove_file(aside_path(&copy));
         let _ = platform.shell().remove_from_user_path(&dir);
+        // `remove_dir` refuses a non-empty directory, so anything the user put there survives.
+        let _ = std::fs::remove_dir(&dir);
         return;
     }
     if let Some(link) = our_symlink(platform) {
