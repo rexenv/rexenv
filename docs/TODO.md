@@ -745,8 +745,22 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     OUTPUT, not a prerequisite:** every Windows user meets SmartScreen, so `docs/INSTALL.md` owes
     them the verbatim wording, the click count per browser, whether "Run anyway" is reachable
     without "More info", and whether a new hash repeats it — measured once the installer exists.
-    **Open question, not yet answered:** whether winget's community repo accepts an unsigned
-    installer, and on what terms.
+    **First installer BUILT 19 Sep 2026** — `bundle.windows` filled with two keys and nothing else:
+    `nsis.installMode: "currentUser"` (D5's per-user, no-admin direction) and
+    `webviewInstallMode: downloadBootstrapper` (the smallest; Win11 ships WebView2 and Win10 22H2
+    usually has it through Windows Update). `bundle.targets` is left at `"all"` on purpose — the
+    Windows release passes `--bundles nsis`, the way `release-mac.sh` already forwards its flags,
+    so no MSI is produced: WiX is per-machine and wants admin, which is the opposite of what D5
+    ruled. `npx tauri build --bundles nsis` on the Dell: 19 m 19 s release build, then makensis →
+    **`rexenv_0.7.0_x64-setup.exe`, 9.7 MB**, `Get-AuthenticodeSignature` = `NotSigned` (as ruled).
+    The `rex` sidecar is in it — `build-cli.sh`'s MINGW arm ran as `beforeBuildCommand` and Tauri
+    put `rex.exe` beside the app, which is where `core::cli::bundled_rex` looks.
+    **Measured so far: nothing about what a USER sees.** The file is staged at
+    `C:\Users\DELL\Downloads` carrying a real `Zone.Identifier` (`ZoneId=3`, a GitHub release
+    URL) — the exact flag a browser writes and SmartScreen reads — and awaits a double-click.
+    **Open questions, not yet answered:** whether winget's community repo accepts an unsigned
+    installer and on what terms; whether the WebView2 bootstrapper stays admin-free under a
+    currentUser install (the Dell already HAS WebView2, so that machine cannot answer it).
   - [ ] W12 — launch gates: verify on the Windows runner, SMOKE-TEST + INSTALL Windows
     sections, clean Windows 11 VM pass
     **The example half is done 16 Sep 2026 (ledger #645):** the tier table grew an os column
