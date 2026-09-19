@@ -127,7 +127,12 @@ it can:
   exists because `reqwest::Error::is_connect()` looked like the way to tell "nothing
   is listening" from "something answered wrongly", and is not: a TLS handshake against
   a plaintext server reports as a connect error, so the first mapping filed a real
-  blocker as an empty port. Three real sockets settled it in one run. The rule this
+  blocker as an empty port. Three real sockets settled it in one run. The same probe's
+  WAIT is per-OS for a measured reason too: Windows refuses a closed loopback port in
+  ~2 s (2.0–2.3 s on two machines, 19 Sep 2026), so the 500 ms that is enormous on macOS
+  read every empty `:443` as a timeout, and a timeout resolves to `Foreign` by design —
+  onboarding's last step told the first installed Windows copy "Another app is answering
+  HTTPS" with nothing there (`LISTEN_PROBE_WAIT`, #691). The rule this
   generalises: when a decision rests on how someone else's library classifies a
   failure, the classification is a FACT ABOUT THEIR CODE and belongs at L1 — reading
   the docs and believing them is how a posture ends up resting on a third party.
@@ -873,6 +878,21 @@ staged and swapped (T3, sandbox tier), or that a real Mac lets it happen (T0/T11
   passes is needed. Refuses a stale app binary, for the reason `app_relaunch_check` records.
   **6 checks, all green on the Dell, 19 Sep 2026.** Does NOT cover the real app quitting
   through the quit gate and reopening on a swapped directory — SMOKE-TEST's Windows section.
+- `windows_job_guard_check` (sandbox, Windows only) — the FACT the start-up hop is decided on,
+  read from inside real jobs: two jobs this example builds (limits `0x0`, the installer's shape;
+  `0x2800`, the SSH shell's), a fixture copy of the example started suspended inside each and
+  reporting what `own_job_limits()` says from there; then the hop itself — `explorer.exe <fixture>`
+  must start it where it is NOT confining (no job on the Win11 VM; a job with BREAKAWAY_OK on
+  the Win10 Dell), which is what makes the hop an escape rather than a restart in the same
+  job. Run it from the desktop (a `schtasks /it` task): from an SSH session Explorer opens
+  nothing and the leg fails for the session, not the code.
+  The fixture root is `common::fixture_base()`: `/private/tmp` on macOS, the temp dir on
+  Windows — `/private/tmp` is drive-relative there, fine for Rust's `fs` and useless for a
+  program handed the string (this leg first failed on the PATH, `None` at
+  `/private/tmp\rexenv-sandbox-…`, not on the claim). The fixture is named `rexenv-jobfixture.exe` so no process table can
+  confuse it with the app, and it reports to a file beside itself when Explorer (whose
+  environment it inherits) started it. Does NOT cover the real hop of an installed copy started
+  by the installer's Finish page — SMOKE-TEST's Windows section (ledger #692).
 - `app_update_check` (network) — the app's OWN update descriptor, fetched from where it is
   published and verified against the key compiled into the running binary: the half a
   user's "Check now" runs, where a publisher signing with a rotated key, or a document

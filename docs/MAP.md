@@ -17,7 +17,7 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
   `Paths`, `PermissionManager` and `BinaryProvider`, written but not yet run on Windows, and
   `ProcessSupervisor`'s identity and port-gate half, run on the Dell:
   `windows/acl.rs` + `windows/owner_only.rs` (ledger #597), `windows/pe.rs` (ledger #598),
-  `windows/process.rs` (Win32 reads) + `windows/port_table.rs` (their pure rules, tested on
+  `windows/process.rs` (Win32 reads), `windows/job_guard.rs` + `job_guard_rules.rs` (the one-hop start out of a launcher's job that forbids breakaway, #692) + `windows/port_table.rs` (their pure rules, tested on
   every host — ledger #599), and its spawn/stop half: `WindowsSupervisor`'s spawn family +
   `process.rs::Stoppable` + `windows/stop_policy.rs` (the stop sequencing, tested on every
   host — ledger #600); the PHP pool MODEL each platform runs (`traits::PoolModel` — php-fpm, or a

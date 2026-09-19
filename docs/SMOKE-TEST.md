@@ -1505,8 +1505,16 @@ section and leg about them; a refusal that NAMES the reason is the pass:
 ### Install & first launch — replaces the `.dmg` section
 The installer exists since 19 Sep 2026 (`pnpm release:win` → `rexenv_<X.Y.Z>_x64-setup.exe`,
 NSIS, per-user, UNSIGNED by ruling — D5: open source, no income, no spend, the same answer
-macOS got). **None of the rows below has been run on a machine with an installed copy yet.**
-- [ ] **Download through a browser** (Edge AND Chrome), so the file carries the Mark of the
+macOS got). **First run 19 Sep 2026** on a clean Windows 11 Pro 24H2 (26100.4349) VM — UTM on
+the Mac, so an ARM guest running the x64 build under emulation (D6; timings there are not a
+PC's) — with `rexenv_0.7.0_x64-setup.exe` built at `276fc7cb`; the ticks below are that run's,
+driven from a screenshot-guarded click helper over SSH. It found two bugs the Dell could not
+(#691, #692) and the fixed build has NOT been installed yet — the unticked rows and the
+"second build" halves wait for it.
+- [x] Edge, 19 Sep 2026 (no Chrome on the VM — Chrome's shelf wording is still unmeasured): ZoneId=3,
+  sha256 matched the Dell's build. SmartScreen DID appear, verbatim in `docs/INSTALL.md`: "Windows
+  protected your PC" with **Run anyway behind More info**, then straight into the NSIS wizard — no
+  "Open File - Security Warning" behind it. Second build: not yet. ~~**Download through a browser** (Edge AND Chrome), so the file carries the Mark of the~~
   Web. Record each browser's own download warning verbatim. **Do not write SmartScreen steps
   from memory.** What IS measured, and lives in `docs/INSTALL.md`: the "Open File - Security
   Warning" dialog, verbatim, with **Run on the first screen** and no "More info" to find.
@@ -1515,7 +1523,10 @@ macOS got). **None of the rows below has been run on a machine with an installed
   `EnableSmartScreen = 0` by policy. A clean Windows 11 install does not, so this is the run
   that answers it: record the dialog verbatim, where "Run anyway" sits (first screen or behind
   "More info"), and whether a second build (a new hash) repeats all of it.
-- [ ] **The install asks for NO admin.** Per-user (`installMode: currentUser`): it lands in
+- [x] 19 Sep 2026: no UAC at any wizard page; `%LOCALAPPDATA%\rexenv` = `rex.exe` (1,009,152 B),
+  `rexenv.exe`, `uninstall.exe`; `HKCU\…\Uninstall\rexenv` with `DisplayVersion 0.7.0`,
+  `InstallLocation` quoted, `Publisher rexenv`; Start Menu `rexenv.lnk`; desktop shortcut from the
+  Finish page. **The install asks for NO admin.** Per-user (`installMode: currentUser`): it lands in
   `%LOCALAPPDATA%\rexenv` — `rexenv.exe`, `rex.exe`, `uninstall.exe`, nothing else — and the
   uninstall entry is under **HKCU**, so Apps & Features lists rexenv with `DisplayVersion`
   equal to the release. **Tell:** a UAC prompt during install, or an entry under HKLM — the
@@ -1524,8 +1535,14 @@ macOS got). **None of the rows below has been run on a machine with an installed
   Apps & Features first), the installer's `downloadBootstrapper` fetches it. Record whether
   that step asked for admin: nothing has measured it, because every machine so far already
   had WebView2 (`docs/TODO.md` W11).
-- [ ] The app starts from the Start Menu entry and shows its window; no console window
+- [x] 19 Sep 2026: started by the Finish page and again from Explorer — window up, onboarding
+  "Welcome", no console. The app starts from the Start Menu entry and shows its window; no console window
   appears behind it (a `windows_subsystem` regression shows as a black console).
+- [ ] **The copy the Finish page starts can start services.** Before #692 it could NOT: "Run
+  rexenv" left it in a job with limits `0x0`, and Start all failed on `mysqld` with the #600
+  access-denied wording (19 Sep 2026); the same copy from Explorer started all five. With the
+  guard: the Finish-page copy hops through Explorer once (a brief flash, one window) and Start
+  all works. **Tell:** the access-denied toast, or two rexenv windows.
 - [ ] **`rex` on the PATH** — Settings → General → Command-line tool offers Install; after it,
   a NEW terminal answers `rex status`. The copy is `%LOCALAPPDATA%\rexenv\bin\rex.exe`.
 
@@ -1553,11 +1570,14 @@ fixture can do is the real install directory, the real quit gate and the real re
   removes the directory the swap put in place.
 
 ### Where rexenv lives — replaces "The menu bar (no dock icon)"
-- [ ] rexenv is a **taskbar tray** app. **Left click opens the WINDOW; right click opens
+- [x] 19 Sep 2026: right-click menu measured — "Stopped / Start all / Stop all / No sites yet /
+  All sites… / Services / Databases / Mail / Tunnels / MCP server / About rexenv / Open rexenv /
+  Quit rexenv" ("All running · 5 services" once started). Left-click: not driven. rexenv is a **taskbar tray** app. **Left click opens the WINDOW; right click opens
   the MENU** (ledger #624, the owner's Q2 ruling) — the opposite of macOS, deliberately.
-- [ ] The tray icon is the **colour** icon, not a template glyph: it must be legible on a
+- [x] 19 Sep 2026: the colour icon, in the overflow flyout (Windows 11 hides new tray icons
+  there by default). The tray icon is the **colour** icon, not a template glyph: it must be legible on a
   dark taskbar. **Tell:** a black square — macOS's `icon_as_template` leaking to Windows.
-- [ ] Closing the window leaves the app alive in the tray: `rex status` still answers and
+- [x] 19 Sep 2026: window closed, `rex status` answered with 5 running. Closing the window leaves the app alive in the tray: `rex status` still answers and
   an MCP client keeps working.
 - [ ] Every menu item that names a screen brings the window up on it, including from a
   window that was closed.
@@ -1565,46 +1585,59 @@ fixture can do is the real install directory, the real quit gate and the real re
 ### First-run setup prompts — ONE elevated step, not three
 macOS asks three times (resolver, keychain, ports 80/443). Windows asks twice, and one of
 them is Windows' own dialog:
-- [ ] **One elevated (UAC) step** — the `.rex` NRPT rule
+- [x] 19 Sep 2026: rexenv's own dialog first ("rexenv wants to add a DNS resolver so .rex sites
+  open on this PC. Windows will ask for your permission next."), then ONE UAC, then
+  `Get-DnsClientNrptRule` = `.rex → 127.0.0.1`. **One elevated (UAC) step** — the `.rex` NRPT rule
   (`Add-DnsClientNrptRule -Namespace .rex -NameServers 127.0.0.1`). `.rex` only on a fresh
   machine; other TLDs get theirs on first use.
-- [ ] **Windows' own certificate dialog** — "Security Warning: You are about to install a
+- [x] 19 Sep 2026: verbatim — "You are about to install a certificate from a certification
+  authority (CA) claiming to represent: rexenv Local CA … Thumbprint (sha1): 1A6A20BE …
+  Do you want to install this certificate? [Yes] [No]"; after Yes, `Cert:\CurrentUser\Root`
+  holds `CN=rexenv Local CA` with that thumbprint, NotAfter 2036. The No path: not driven.
+  **Windows' own certificate dialog** — "Security Warning: You are about to install a
   certificate from a certification authority…" for rexenv's local CA, into **this user's**
   Root store (never LocalMachine — ledger #613). A **No** reads as a cancel, and setup
   offers the step again rather than continuing as if it succeeded.
-- [ ] **NO third prompt for ports 80/443.** Measured on the Dell under the desktop user's
+- [x] 19 Sep 2026 (VM, unelevated user, Explorer-started copy): `rex start` → Caddy on
+  `127.0.0.1:443` and `:80`, no UAC, no dialog. **NO third prompt for ports 80/443.** Measured on the Dell under the desktop user's
   unelevated token: the pinned `caddy.exe` binds `:443` and `:80` with no elevation. **Tell:**
   a UAC prompt for the edge — something reintroduced a privileged bind.
-- [ ] **No Windows Defender Firewall alert.** The edge binds `127.0.0.1` only (owner's
+- [x] 19 Sep 2026: none; `netstat` shows `127.0.0.1:443`, `127.0.0.1:80`, `127.0.0.1:18088`.
+  **No Windows Defender Firewall alert.** The edge binds `127.0.0.1` only (owner's
   ruling 14 Sep 2026); an all-interfaces bind raised "Windows Security Alert" on the Dell.
   **Tell:** that alert appearing — `default_bind` was lost, and sites would be reachable
   from the LAN.
 
 ### DNS — the agent on :53, not :15353
-- [ ] `rex status` reads `DNS answering (agent, udp 53) · resolver installed · CA trusted`.
+- [x] 19 Sep 2026: exactly that line; `rex doctor` ✓ on DNS, resolvers, TLDs, edge ("answering
+  as rexenv on :443"), ports — its one finding is `rex not on PATH`, as designed before the
+  Settings install. `rex status` reads `DNS answering (agent, udp 53) · resolver installed · CA trusted`.
   The port is the platform's `RESOLVER_PORT`, **53 on Windows** (NRPT has no port field —
   D2), so a line saying 15353 is macOS's number leaking.
-- [ ] **DNS outlives the app**: quit rexenv, and `Resolve-DnsName probe.rex -Server 127.0.0.1`
+- [x] 19 Sep 2026: after Quit from the tray only `rexenv.exe --dns-agent` remains (task
+  `\rexenv\dns-agent`, Running, Interactive only), `probe.rex → 127.0.0.1`, and all 16
+  service processes kept running; `rex status` then says "rexenv isn't running — open the
+  app first". **DNS outlives the app**: quit rexenv, and `Resolve-DnsName probe.rex -Server 127.0.0.1`
   still answers `127.0.0.1`. The agent is a **scheduled task**, `\rexenv\dns-agent`, run at
   logon — not a LaunchAgent.
-- [ ] **The `hosts` file is never touched.** rexenv's rule is never to overwrite a file
+- [x] 19 Sep 2026: zero `.rex` lines in `hosts`. **The `hosts` file is never touched.** rexenv's rule is never to overwrite a file
   somebody else owns, and `hosts` is shared by every tool on the machine (D2 refuses the
   fallback). **Tell:** any `.rex` entry appearing in
   `C:\Windows\System32\drivers\etc\hosts`.
 
 ### Where things live on disk
-- [ ] App data: `%LOCALAPPDATA%\rexenv\rexenv\data` (with `config\`, `logs\`, `bin\`
+- [x] 19 Sep 2026: `bin\` (adminer 5.4.2, caddy 2.11.4, mailpit 1.30.3, mysql 8.4.6, nginx 1.30.4,
+  php 8.3.32, each with `.pinned-digest`), `ca\`, `config\`, `logs\`, `rexenv.db`. App data: `%LOCALAPPDATA%\rexenv\rexenv\data` (with `config\`, `logs\`, `bin\`
   under it).
 - [ ] The `rex` CLI is a **copy** on the user's `Path` at `%LOCALAPPDATA%\rexenv\bin`
   (ledger #634) — beside the data tree, not inside it — not a symlink.
 
-### Updating — self-update is unported
-- [ ] **Settings → About must not offer a working-looking Apply.** `WindowsAppBundle::facts`
-  returns `Unported(...)`, so `app_update_readiness` comes back as an ERROR rather than as
-  a refusal sentence — look at what the card actually renders. **Tell:** an Apply button
-  that starts something and fails, or a blank/spinning card with no explanation. Either is
-  worth filing: the card is built to render a refusal AS a command with no button, and an
-  unported error is not that shape.
+### Updating
+The Windows updater shipped 19 Sep 2026 (ledger #690) — its rows are the "In-app self-update"
+section above. What the first installed copy (built at `276fc7cb`, BEFORE per-OS descriptors)
+showed is worth one line: its log read the macOS descriptor and said "this Mac's macOS version
+could not be read" — a build from `a0d4868f` on fetches `app-manifest-windows.json`, and that
+sentence is now OS-neutral.
 
 ### Clean uninstall — replaces the macOS one
 - [ ] Settings → Uninstall → **Remove rexenv's system changes**; confirm.

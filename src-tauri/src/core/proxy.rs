@@ -114,6 +114,23 @@ pub enum EdgeWire {
     NoAnswer,
 }
 
+/// How long the listening probe waits for loopback to REFUSE before it stops
+/// being able to prove the port empty.
+///
+/// Half a second is enormous on macOS loopback, where a closed port refuses
+/// in microseconds. **Windows refuses a closed loopback port in ~2 s** — measured
+/// 19 Sep 2026 on two machines (a clean Windows 11 24H2 VM: 2313 / 2033 /
+/// 2058 ms for :443 / :18088 / :9999; the Windows 10 22H2 Dell, native x64:
+/// 2271 / 2038 / 2034 ms), so the number is Windows', not the emulation's. With
+/// the 500 ms wait every Windows install read a bare :443 as a TIMEOUT, the
+/// timeout resolved toward `Foreign` as designed, and onboarding's last step
+/// told every user "Another app is answering HTTPS on this PC" with nothing
+/// there — seen on the first installed copy, `docs/SMOKE-TEST.md`. The ambiguity
+/// rule is right; the wait simply has to be longer than the OS's own answer.
+/// `the_listen_probe_outlasts_the_os_refusal` pins the two numbers.
+pub const LISTEN_PROBE_WAIT: std::time::Duration =
+    std::time::Duration::from_millis(if cfg!(target_os = "windows") { 3_000 } else { 500 });
+
 /// Whether OUR edge is what actually ANSWERS loopback `:443` — the DNS
 /// `answers_as_ours` pattern applied to HTTPS. `admin_alive()` proves our caddy
 /// PROCESS runs; it cannot prove the wire is ours: on macOS a foreign proxy that
@@ -158,13 +175,9 @@ pub async fn edge_wire(host: &str, https_port: u16) -> EdgeWire {
     let addr = std::net::SocketAddr::from(([127, 0, 0, 1], https_port));
     // A REFUSED connect is the only proof that nothing is listening. A timeout
     // proves nothing, so it resolves toward `Foreign` with every other
-    // ambiguous case. Half a second is enormous on loopback.
-    match tokio::time::timeout(
-        std::time::Duration::from_millis(500),
-        tokio::net::TcpStream::connect(addr),
-    )
-    .await
-    {
+    // ambiguous case — which is why the wait must outlast how long THIS OS
+    // takes to refuse (`LISTEN_PROBE_WAIT`).
+    match tokio::time::timeout(LISTEN_PROBE_WAIT, tokio::net::TcpStream::connect(addr)).await {
         Ok(Err(_)) => return EdgeWire::NoAnswer,
         Ok(Ok(_)) => {}
         Err(_elapsed) => return EdgeWire::Foreign,
@@ -939,6 +952,22 @@ mod tests {
             "a second probe client appeared in proxy.rs — `edge_wire` is the one place the \
              wire is identified"
         );
+    }
+
+    /// The probe's wait has to outlast how long the OS takes to REFUSE a closed
+    /// loopback port, or "empty" is unprovable and every install reports a
+    /// foreign proxy. Windows measured at 2.0–2.3 s on two machines (19 Sep
+    /// 2026); macOS refuses at once. A wait that is shorter than the refusal is
+    /// the bug this commit fixed, and a wait that grows on macOS slows four
+    /// callers for nothing.
+    #[test]
+    fn the_listen_probe_outlasts_the_os_refusal() {
+        let wait = LISTEN_PROBE_WAIT.as_millis();
+        if cfg!(target_os = "windows") {
+            assert!(wait >= 2_500, "Windows refuses loopback in ~2.3 s; the probe waits {wait} ms");
+        } else {
+            assert_eq!(wait, 500, "the macOS wait moved for no measured reason");
+        }
     }
 
     #[test]

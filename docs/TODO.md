@@ -773,6 +773,14 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     for the Windows reason: the DNS agent IS the app's binary, outlives the app and is restored by
     its watchdog, so the link step dies with `Access is denied (os error 5)` naming nothing — it
     kills by image name and then PROVES the file is writable before starting a 20-minute build.
+    **Installed and run for the first time, 19 Sep 2026** — the clean Windows 11 VM pass (W12) took
+    the D5 outputs: SmartScreen verbatim ("Windows protected your PC", Run anyway behind More info,
+    no "Open File" dialog behind it), Edge's shelf wording, the per-user layout and HKCU entry, no
+    UAC in the wizard — all in `docs/INSTALL.md`. Two bugs only an installed copy could show, fixed
+    the same day: the Finish page's "Run rexenv" confines the app in a job that forbids breakaway,
+    so no service could start (#692, the one-hop guard); and `edge_wire`'s 500 ms wait read Windows'
+    ~2 s loopback refusal as a foreign proxy (#691). The fixed build is not yet installed — the
+    "second build" SmartScreen half and the Finish-page start with the guard are W12's next run.
     It builds `--bundles nsis` only, in the script rather than by narrowing `bundle.targets`,
     which would have changed the macOS build for a Windows reason. The check is §A0's Windows
     half: one installer named for the version, the `rex` sidecar present, the PE machine field
@@ -853,6 +861,26 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     installer is published: the winget-pkgs PR itself.
   - [ ] W12 — launch gates: verify on the Windows runner, SMOKE-TEST + INSTALL Windows
     sections, clean Windows 11 VM pass
+    **VM pass, run 1 — 19 Sep 2026** (Windows 11 Pro 24H2 26100.4349, ARM under UTM, x64 build
+    emulated; `rexenv_0.7.0_x64-setup.exe` at `276fc7cb`): SMOKE's Windows section is ticked row
+    by row with what was seen. Passed: SmartScreen path, per-user install, no UAC, onboarding's
+    four steps, the resolver pre-dialog + one UAC + Windows' certificate dialog, NRPT rule and
+    CurrentUser Root, six binaries pinned, tray menu, window-close keeps the app, Quit leaves the
+    agent + 16 service processes, `hosts` untouched, `rex doctor` all green but PATH. Found: #692
+    (Finish-page copy cannot start services), #691 (false "Another app is answering HTTPS"), the
+    "this Mac's macOS" sentence in a Windows log (neutral now). **Still open from run 1:**
+    - [ ] run 2 with the guard build: the second-hash SmartScreen half, the Finish-page start that
+      hops and then starts services, Settings → Command-line tool → Install (`rex` on PATH), the
+      in-app update rows (needs a published newer build), and the uninstall rows — run LAST.
+    - [ ] Chrome's download wording (no Chrome on the VM); the certificate dialog's **No** path;
+      WebView2's `downloadBootstrapper` on a machine without it (the VM had 153).
+    - [ ] `rex status` names the pool `PHP-FPM 8.3` on Windows, where the pool is `php-cgi`
+      (`WebTarget::Pool::label`, `ports.rs`'s `PHP-FPM` service name) — the frontend's
+      `pool_kind` words never reached the CLI/service labels.
+    - [ ] `curl.exe` (schannel) fails the handshake against the edge with `SEC_E_ILLEGAL_MESSAGE`
+      even with `-k --resolve adminer.rex:443:127.0.0.1`, while the app's own probe reads `Ours`
+      and `rex doctor` says "answering as rexenv on :443" — unexplained; a browser visit to a
+      real site is the row that settles whether it is curl's or the edge's.
     **The example half is done 16 Sep 2026 (ledger #645):** the tier table grew an os column
     (`both`/`macos`/`windows`, enforced like the tier itself), the runner skips what this host
     cannot run and says how many, and a skip is printed beside the verdict rather than folded

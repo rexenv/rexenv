@@ -33,6 +33,8 @@ mod elevation_rules;
 mod firefox_root;
 mod handles;
 mod ipc_rules;
+mod job_guard;
+mod job_guard_rules;
 mod junction;
 mod junction_rules;
 mod login_env;
@@ -54,6 +56,7 @@ pub(crate) use app_pipe::{
     HeldAppPipe,
 };
 pub(crate) use elevation::{run_ops_here, run_step};
+pub(crate) use job_guard::{own_job_limits, relaunch_outside_confining_job};
 pub(crate) use resolver_socket::bind_resolver_udp;
 
 pub struct WindowsPaths;

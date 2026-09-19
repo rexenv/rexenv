@@ -366,10 +366,24 @@ fn refuse_on_the_real_app_db(conn: &rusqlite::Connection, what: &str) {
     }
 }
 
+/// Where every fixture root lives: `/private/tmp` on macOS (the 103-byte socket
+/// ceiling, explained at [`sandbox`]), the user's temp dir on Windows — there the
+/// edge's admin endpoint is a named pipe with no such ceiling, and `/private/tmp`
+/// is a DRIVE-RELATIVE path: Rust's `fs` resolves it to `C:\private\tmp`, but a
+/// program handed the string as spelled (Explorer, in `windows_job_guard_check`)
+/// cannot open it — measured 19 Sep 2026, the leg failed "None" for the path, not
+/// the claim.
+pub fn fixture_base() -> PathBuf {
+    if cfg!(target_os = "windows") {
+        std::env::temp_dir()
+    } else {
+        PathBuf::from("/private/tmp")
+    }
+}
+
 pub fn pin_fixture_sites_dir(conn: &rusqlite::Connection, tag: &str) -> FixtureSitesDir {
     refuse_on_the_real_app_db(conn, "pin_fixture_sites_dir");
-    let path = PathBuf::from("/private/tmp")
-        .join(format!("rexenv-sites-{tag}-{}", std::process::id()));
+    let path = fixture_base().join(format!("rexenv-sites-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&path);
     std::fs::create_dir_all(&path).expect("fixture sites dir");
     rexenv_lib::state::store::set_setting(conn, "sites_dir", &path.to_string_lossy())
@@ -821,8 +835,7 @@ pub fn sandbox(tag: &str) -> (Box<dyn Platform>, SandboxGuard) {
     // `SandboxGuard`, and this is fixture scaffolding on a developer's machine
     // — but it IS a weaker directory, and that is the price of an edge that
     // starts.
-    let root = std::path::PathBuf::from("/private/tmp")
-        .join(format!("rexenv-sandbox-{tag}-{}", std::process::id()));
+    let root = fixture_base().join(format!("rexenv-sandbox-{tag}-{}", std::process::id()));
 
     // A sandbox root that is too LONG breaks the edge, and the failure names
     // nothing. Caddy's admin unix socket lives at `<root>/config/caddy-admin.sock`

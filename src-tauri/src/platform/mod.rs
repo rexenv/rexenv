@@ -52,6 +52,11 @@ mod windows_owner_only;
 #[allow(dead_code)]
 #[path = "windows/app_bundle_rules.rs"]
 mod windows_app_bundle_rules;
+// And the one-hop rule for a launcher whose job forbids breakaway (ledger #692).
+#[cfg(all(test, not(target_os = "windows")))]
+#[allow(dead_code)]
+#[path = "windows/job_guard_rules.rs"]
+mod windows_job_guard_rules;
 // Same for the PE header check `WindowsBinaryProvider` refuses non-x64 artifacts with.
 // `dead_code` allowed: only its tests use it here; the Windows build uses the rest.
 #[cfg(all(test, not(target_os = "windows")))]
@@ -235,6 +240,29 @@ pub fn run_elevated_step(argv: &[String]) -> Option<i32> {
         let _ = argv;
         None
     }
+}
+
+/// When this process was started inside a job that forbids its services to break away — the
+/// installer's Finish page did that on the first installed copy, 19 Sep 2026 (ledger #692) — ask
+/// Explorer to start rexenv again and return the code this copy exits with; `None` means run here.
+/// Always `None` off Windows. Checked by `main.rs` before Tauri boots, so the hop holds no pipe
+/// and no window the new copy will need.
+pub fn relaunch_outside_confining_job() -> Option<i32> {
+    #[cfg(target_os = "windows")]
+    {
+        windows::relaunch_outside_confining_job()
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        None
+    }
+}
+
+/// The limit flags of the job THIS process is in (`None` = no job) — the fact the hop above is
+/// decided on, re-exported for the live check that spawns fixtures inside jobs it builds. Windows-only.
+#[cfg(target_os = "windows")]
+pub fn own_job_limits() -> Option<u32> {
+    windows::own_job_limits()
 }
 
 /// Run Windows privileged ops in THIS process, with no dialog and no UAC — the elevated step's body, for a

@@ -623,7 +623,13 @@ Live-proven end to end by `site_stop_start_check`.
   group. A launcher whose job forbids breakaway gets a start error that says so, never a
   service that silently dies with the app — measured 14 Sep 2026 from a Task Scheduler task, which
   forbids it: `proxy::start` returned ACCESS_DENIED with that wording. So rexenv is never launched by a
-  scheduled task (plan §3 D1). Stop has no SIGTERM to send: a process with its
+  scheduled task (plan §3 D1). **The installer's own "Run rexenv" was such a launcher** — measured
+  19 Sep 2026 on the first installed copy (clean Windows 11 VM): Edge → `setup.exe` → NSIS's
+  `RunAsUser` left rexenv in a job with limits `0x0`, and Start all failed on the first service.
+  So before Tauri boots, `platform::relaunch_outside_confining_job` reads its OWN job's limits
+  (`QueryInformationJobObject(NULL, …)`); confined and not started by Explorer, it asks the
+  running Explorer to open its executable and exits — ONE hop, fail-open, before the app pipe
+  or a window exists (`windows/job_guard.rs`, #692). Stop has no SIGTERM to send: a process with its
   own clean-shutdown channel is asked through it and given 10 s — `mysqld`, run with
   `--no-monitor` so the pid rexenv holds IS the server (the default restart monitor's child
   survived the monitor's termination still holding the port, measured), via its

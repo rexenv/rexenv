@@ -45,5 +45,12 @@ fn main() {
     if let Some(args) = rexenv_lib::core::app_update::parse_relaunch_args(&argv) {
         std::process::exit(rexenv_lib::platform::run_relauncher(args));
     }
+    // A launcher's job that forbids breakaway would make EVERY service start fail
+    // with "access denied" — the installer's "Run rexenv" did exactly that on the
+    // first installed copy (19 Sep 2026). Hop out through Explorer, once, before
+    // the pipe or a window exists; off Windows this is always `None`.
+    if let Some(code) = rexenv_lib::platform::relaunch_outside_confining_job() {
+        std::process::exit(code);
+    }
     rexenv_lib::run();
 }

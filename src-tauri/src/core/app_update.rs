@@ -205,7 +205,7 @@ pub enum NoOffer {
     NeedsNewerMacos { needs: String, host: String },
     /// The build needs a newer rexenv than this one to install it safely.
     NeedsNewerApp { needs: String },
-    /// This Mac's macOS version could not be read, so the floor cannot be
+    /// This machine's OS version could not be read, so the floor cannot be
     /// checked. Fails closed: no offer, rather than an update that may not boot.
     HostVersionUnknown,
     /// The descriptor is signed but structurally wrong. Says which rule, because
@@ -221,13 +221,13 @@ impl NoOffer {
             }
             Self::Skipped { version } => format!("{version} was skipped"),
             Self::NeedsNewerMacos { needs, host } => {
-                format!("{needs} needs a newer macOS than this Mac's {host}")
+                format!("{needs} needs a newer OS than this machine's {host}")
             }
             Self::NeedsNewerApp { needs } => {
                 format!("it needs rexenv {needs} or newer to install")
             }
             Self::HostVersionUnknown => {
-                "this Mac's macOS version could not be read, so the release's floor \
+                "this machine's OS version could not be read, so the release's floor \
                  could not be checked"
                     .into()
             }

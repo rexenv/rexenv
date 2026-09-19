@@ -256,12 +256,31 @@ what it actually showed, word for word, on a file marked as downloaded from the 
 **Run is on that first screen.** There is no "More info" to find first — one click and the
 installer starts. "Unknown Publisher" is accurate and is what an unsigned build says.
 
-**Windows may also show SmartScreen's own "Windows protected your PC" screen**, which is a
-different dialog with the button behind a **More info** link. This page does not yet tell
-you what that one says, and the honest reason is worth knowing: the machine it was measured
-on has SmartScreen turned off by policy (`EnableSmartScreen = 0`), so it could not raise it.
-Measuring there and writing "no SmartScreen" would have been a comfortable, false answer.
-That half is measured on a clean Windows 11 machine before release.
+**On a Windows 11 with its defaults, SmartScreen speaks first, and it is a different dialog.**
+Measured 19 Sep 2026 on a clean Windows 11 Pro 24H2 (build 26100) install with SmartScreen
+on, downloading through Edge. Edge's download shelf first: *"rexenv_0.7.0_x64-setup.exe isn't
+commonly downloaded. Make sure you trust rexenv_0.7.0_x64-setup.exe before you open it."* —
+**Keep** is behind its "See more" menu. Opening the kept file:
+
+> **Windows protected your PC**
+> Microsoft Defender SmartScreen prevented an unrecognized app from starting. Running this
+> app might put your PC at risk.
+> More info · **[ Don't run ]**
+
+**"Run anyway" is not on that screen.** Click **More info**, and the same dialog adds
+*App: rexenv_0.7.0_x64-setup.exe · Publisher: Unknown publisher* and **[ Run anyway ] [ Don't
+run ]**. Run anyway starts the installer directly — the "Open File - Security Warning" above
+does NOT appear behind it. (That dialog is what a machine with SmartScreen turned off by
+policy shows instead — the two are alternatives, not a sequence.) A second build is a new
+hash and goes through all of it again; that is the cost D5 chose.
+
+The installer itself asks nothing more: Welcome → Choose Install Location
+(`C:\Users\<you>\AppData\Local\rexenv`, about 37 MB) → Install → Finish, with **Run rexenv** and
+**Create desktop shortcut** ticked. **No UAC prompt** — it is a per-user install. Let the Finish
+page start rexenv, or start it from the Start menu; both work. (The copy the installer starts
+is confined by the installer's own job, which would stop rexenv's servers from starting — so
+rexenv notices and reopens itself through Explorer once, before it shows anything. Measured on
+the first installed copy, 19 Sep 2026.)
 
 ### Requirements
 
@@ -317,7 +336,9 @@ down while your sites kept serving. Quit from the tray menu.
 Windows asks **twice**, where macOS asks three times:
 
 1. **One administrator (UAC) prompt** — to add the `.rex` DNS rule so
-   `https://yoursite.rex` resolves to this computer. rexenv uses Windows' **NRPT**
+   `https://yoursite.rex` resolves to this computer. rexenv says so first, in its own
+   dialog — *"rexenv wants to add a DNS resolver so .rex sites open on this PC. Windows will
+   ask for your permission next."* — and the UAC prompt follows your OK. rexenv uses Windows' **NRPT**
    (`Add-DnsClientNrptRule -Namespace .rex -NameServers 127.0.0.1`) and runs its own DNS
    answerer on `127.0.0.1:53`. Other TLDs get their rule on first use.
    **rexenv never edits your `hosts` file** — it is shared by every tool on the machine,
