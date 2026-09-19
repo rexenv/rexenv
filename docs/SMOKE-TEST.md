@@ -1503,18 +1503,54 @@ section and leg about them; a refusal that NAMES the reason is the pass:
   plan. Their absence IS the check.
 
 ### Install & first launch — replaces the `.dmg` section
-- [ ] **There is no installer yet** (W11 is open: NSIS, the Windows release job and winget
-  are unbuilt; `bundle.windows` in `tauri.conf.json` is empty). Until it lands this
-  checklist is run against a locally built `rexenv.exe`. **Do not write SmartScreen steps
-  from memory** — rexenv ships UNSIGNED (D5, ruled 19 Sep 2026: open source, no income, no
-  spend — the same answer macOS got). **Half of that is now measured and lives in
-  `docs/INSTALL.md`:** the "Open File - Security Warning" dialog, verbatim, with **Run on the
-  first screen** and no "More info" to find. **The other half is what THIS checklist is for.**
-  SmartScreen's own "Windows protected your PC" never appeared during that measurement, and
-  the reason is why it belongs here: the machine has `EnableSmartScreen = 0` by policy. A
-  clean Windows 11 install does not, so this is the run that answers it — record the dialog
-  verbatim, where "Run anyway" sits, and whether a second build (a new hash) repeats it.
-- [ ] The app starts and shows its window; no console window appears behind it.
+The installer exists since 19 Sep 2026 (`pnpm release:win` → `rexenv_<X.Y.Z>_x64-setup.exe`,
+NSIS, per-user, UNSIGNED by ruling — D5: open source, no income, no spend, the same answer
+macOS got). **None of the rows below has been run on a machine with an installed copy yet.**
+- [ ] **Download through a browser** (Edge AND Chrome), so the file carries the Mark of the
+  Web. Record each browser's own download warning verbatim. **Do not write SmartScreen steps
+  from memory.** What IS measured, and lives in `docs/INSTALL.md`: the "Open File - Security
+  Warning" dialog, verbatim, with **Run on the first screen** and no "More info" to find.
+  What is NOT: SmartScreen's own "Windows protected your PC" never appeared during that
+  measurement, and the reason is why it belongs here — that machine has
+  `EnableSmartScreen = 0` by policy. A clean Windows 11 install does not, so this is the run
+  that answers it: record the dialog verbatim, where "Run anyway" sits (first screen or behind
+  "More info"), and whether a second build (a new hash) repeats all of it.
+- [ ] **The install asks for NO admin.** Per-user (`installMode: currentUser`): it lands in
+  `%LOCALAPPDATA%\rexenv` — `rexenv.exe`, `rex.exe`, `uninstall.exe`, nothing else — and the
+  uninstall entry is under **HKCU**, so Apps & Features lists rexenv with `DisplayVersion`
+  equal to the release. **Tell:** a UAC prompt during install, or an entry under HKLM — the
+  installer was built per-machine, which is the mode D5 refused.
+- [ ] **WebView2.** On a machine WITHOUT the WebView2 runtime (a clean VM may have it; check
+  Apps & Features first), the installer's `downloadBootstrapper` fetches it. Record whether
+  that step asked for admin: nothing has measured it, because every machine so far already
+  had WebView2 (`docs/TODO.md` W11).
+- [ ] The app starts from the Start Menu entry and shows its window; no console window
+  appears behind it (a `windows_subsystem` regression shows as a black console).
+- [ ] **`rex` on the PATH** — Settings → General → Command-line tool offers Install; after it,
+  a NEW terminal answers `rex status`. The copy is `%LOCALAPPDATA%\rexenv\bin\rex.exe`.
+
+### In-app self-update — replaces the macOS section (unrun; needs a SECOND installed build)
+The swap and the relaunch are measured on fixtures on the Dell
+(`windows_app_bundle_swap_check`, `windows_app_relaunch_check` — `docs/TESTING.md`); what no
+fixture can do is the real install directory, the real quit gate and the real registry entry.
+- [ ] With an older build installed and a newer release published (its `rexenv_<X.Y.Z>_x64.zip`
+  attached and `app-manifest-windows.json` signed on `rexenv/runtimes`), Settings → About
+  offers the update; the consent sentence is the Windows one (no "rexenv.app", no
+  Applications folder).
+- [ ] Press Install: the archive downloads into the ONE download hub, the app quits through
+  the quit gate (a live share still asks), and rexenv **reopens on its own** on the new build —
+  the relauncher waited for the old process, not merely for a timer. **Tell:** two rexenv
+  windows, or none.
+- [ ] Afterwards: `%LOCALAPPDATA%\rexenv` holds the new `rexenv.exe`; the previous build sits
+  beside it in `.rexenv-update-<pid>\previous` **until the next launch sweeps it** (it cannot
+  be deleted while the old process runs — measured); `uninstall.exe` is still there (carried
+  across — the installer wrote it, the build did not); and **Apps & Features shows the NEW
+  version** (`DisplayVersion` rewritten; the entry exists, so it is rewritten — the fixture
+  runs could not reach this line).
+- [ ] The updated copy still resolves `.rex` and still serves HTTPS: the DNS agent was
+  re-launched onto the new binary and the CA did not change.
+- [ ] Apps & Features → Uninstall on the UPDATED copy works: the carried-across uninstaller
+  removes the directory the swap put in place.
 
 ### Where rexenv lives — replaces "The menu bar (no dock icon)"
 - [ ] rexenv is a **taskbar tray** app. **Left click opens the WINDOW; right click opens
