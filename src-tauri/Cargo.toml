@@ -1,6 +1,6 @@
 [package]
 name = "rexenv"
-version = "0.8.1"
+version = "0.8.2"
 description = "A native, lightweight, no-Docker local development environment"
 authors = ["rexenv"]
 license = "Apache-2.0"
