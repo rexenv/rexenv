@@ -18,6 +18,13 @@
 #     asset is DOWNLOADED and hashed here, because a hash nobody in this run
 #     computed is a hash this run is merely repeating (the runtimes publisher's rule);
 #   • the version — the release tag, checked to be plain three-segment semver;
+#   • every URL points at something the PUBLIC can open. `rexenv/rexenv` is a
+#     PRIVATE repo, so `PackageUrl`/`PublisherSupportUrl`/`LicenseUrl` pointing
+#     there answered 404 to everyone including winget's own URL validation
+#     (measured 20 Sep 2026, before the first submission). They name the tap,
+#     which is where the installer itself lives; `LicenseUrl` is omitted rather
+#     than pointed at a file nobody can read — the `License` field still says
+#     Apache-2.0. When the source repo goes public, both move back (docs/TODO.md);
 #   • the fields winget needs to recognise an installed copy — read off what the
 #     NSIS installer actually writes: `AppsAndFeaturesEntries` names the uninstall
 #     entry (`DisplayName` rexenv, `ProductCode` rexenv — the key's leaf under
@@ -153,11 +160,10 @@ PackageVersion: $V
 PackageLocale: en-US
 Publisher: rexenv
 PublisherUrl: https://github.com/rexenv
-PublisherSupportUrl: https://github.com/rexenv/rexenv/issues
+PublisherSupportUrl: https://github.com/$TAP/issues
 PackageName: rexenv
-PackageUrl: https://github.com/rexenv/rexenv
+PackageUrl: https://github.com/$TAP
 License: Apache-2.0
-LicenseUrl: https://github.com/rexenv/rexenv/blob/master/LICENSE
 ShortDescription: A native, lightweight, no-Docker local development environment for web & WordPress developers.
 Description: rexenv runs the whole local stack — edge proxy with auto-HTTPS, shared web server, multi-version PHP, MySQL/PostgreSQL, one-click WordPress, .rex DNS, mail catching, tunnels — from one window, with native binaries and no Docker.
 Moniker: rexenv

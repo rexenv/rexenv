@@ -236,8 +236,14 @@ release** — which is the property that makes a stolen key survivable. Ledger
    that is the only mode rexenv ships, and `AppsAndFeaturesEntries` naming the uninstall entry
    the NSIS installer writes (`ProductCode: rexenv`). `winget validate --manifest <dir>` on a
    Windows machine says "Manifest validation succeeded" (measured 19 Sep 2026 against the
-   first installer, rendered from `--local`). Submission is a PR to `microsoft/winget-pkgs`
-   under `manifests/r/rexenv/rexenv/<version>/`, one version per PR — their rule. No signing
+   first installer, rendered from `--local`). **Every URL in it must be one the PUBLIC can open**:
+   the first render pointed `PackageUrl`/`PublisherSupportUrl`/`LicenseUrl` at `rexenv/rexenv`, which
+   is private and answers 404 to everyone including winget's own URL validation — they name the tap
+   now, and `LicenseUrl` is omitted rather than pointed at a file nobody can read. Submission is a PR
+   to `microsoft/winget-pkgs` under `manifests/r/rexenv/rexenv/<version>/`, one version per PR — their
+   rule. Their repo is far too big to clone for three YAMLs: fork it (`gh repo fork --clone=false`),
+   branch from upstream `master`, PUT the three files through the contents API, then `gh pr create`
+   (first submission: 0.8.3, PR 437674, 20 Sep 2026). No signing
    requirement stands in the way (their SmartScreen check is the URL's reputation, not the
    binary's signature; `docs/TODO.md` W11).
 9. `./scripts/check-app-manifest.sh` (and `--windows` for the second document) — verifies

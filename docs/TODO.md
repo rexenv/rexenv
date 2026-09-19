@@ -861,8 +861,16 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     locale manifests from the PUBLISHED asset (downloaded and hashed, the API digest cross-checked),
     or from a local installer with `--local` before a release exists. Rendered from the first
     installer on both the Dell and the Mac — identical sha — and **`winget validate` on the Dell:
-    "Manifest validation succeeded"**. Not yet done, and cannot be until a release with the
-    installer is published: the winget-pkgs PR itself.
+    "Manifest validation succeeded"**. **SUBMITTED 20 Sep 2026 for 0.8.3 —
+    https://github.com/microsoft/winget-pkgs/pull/437674** (fork + branch + the three files through
+    the API; winget-pkgs is too big to clone for three YAMLs). One thing had to be fixed first and
+    it would have failed their URL validation, not ours: `PackageUrl`, `PublisherSupportUrl` and
+    `LicenseUrl` named `rexenv/rexenv`, which is PRIVATE — 404 to everyone. The generator now names
+    the public tap and omits `LicenseUrl` (the `License` field still says Apache-2.0), so a rendered
+    manifest cannot carry a URL the world cannot open.
+    - [ ] When `rexenv/rexenv` goes public, point `PackageUrl`/`PublisherSupportUrl` back at it and
+      restore `LicenseUrl` (`scripts/winget-manifest.sh`).
+    - [ ] Watch PR 437674 through their automated validation, and answer whatever it asks for.
   - [ ] W12 — launch gates: verify on the Windows runner, SMOKE-TEST + INSTALL Windows
     sections, clean Windows 11 VM pass
     **VM pass, run 1 — 19 Sep 2026** (Windows 11 Pro 24H2 26100.4349, ARM under UTM, x64 build
