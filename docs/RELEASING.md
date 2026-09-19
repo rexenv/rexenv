@@ -224,9 +224,10 @@ release** — which is the property that makes a stolen key survivable. Ledger
    the feature that just shipped is off. That is the whole reason step 8 exists.
    **Windows has its own document, `app-manifest-windows.json` + `.sig`** — same schema,
    same key, same serial rule — because one `release` names one artifact and the macOS one
-   is a universal `.app.tar.gz`. **The runtimes workflow does not publish it yet**: that is
-   the open half of W11's updater row in `docs/TODO.md`, and until it exists no installed
-   Windows rexenv is offered anything, exactly as step 8 says of macOS.
+   is a universal `.app.tar.gz`. **The runtimes publisher's `--windows` mode is a PR awaiting
+   merge** — https://github.com/rexenv/runtimes/pull/3 (the workflow's `windows` input runs
+   it; `dry_run` first, as for macOS). Until it is merged and run, no installed Windows rexenv
+   is offered anything, exactly as step 8 says of macOS.
    **And the winget manifest** (the tap's Windows counterpart): `./scripts/winget-manifest.sh`
    renders the three manifests for the tap's latest release into
    `src-tauri/target/winget/<version>/` — the installer URL and sha256 from the PUBLISHED

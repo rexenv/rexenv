@@ -827,7 +827,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     `app-manifest-windows.json` + `.sig` — the owner's repo and key. **What that publisher must
     do is now written down line by line** (`docs/PLAN-windows-port.md` D5: its own document and
     serial, the `_x64.zip` asset, no macOS floor, the flat-zip shape check, the same key and
-    environment) — a PR on `rexenv/runtimes`, not a commit here; (3) ✓
+    environment) — **and the PR is open: https://github.com/rexenv/runtimes/pull/3** (19 Sep
+    2026; `--windows` mode + a `windows` workflow input; shellcheck/actionlint clean, the key
+    tripwire verified on that path, the flat-zip shape branch exercised both ways; not runnable
+    end-to-end until a release carries the zip). Owner merges, then runs it `dry_run` first; (3) ✓
     `windows_app_bundle_swap_check` (sandbox tier, Windows): **24 checks green on the Dell** —
     stage from a flat zip, verify off VERSIONINFO and the PE header (the version read back
     through PowerShell as an independent oracle), `uninstall.exe` carried across, the directory
