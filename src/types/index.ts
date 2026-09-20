@@ -1127,6 +1127,10 @@ export interface PlatformWords {
   bundledTools: string;
   /** This OS's path separator, for the few places the UI must join one itself. */
   pathSep: string;
+  /** The origin this OS's webview serves rexenv's custom schemes from — macOS
+   *  `rexdb://localhost`, Windows `http://rexdb.localhost`. The Database
+   *  Browser's iframe src is built from it (#703). */
+  dbBrowserOrigin: string;
 }
 
 /** A detected code editor (mirrors the Rust EditorApp DTO). */

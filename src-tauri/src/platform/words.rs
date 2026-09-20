@@ -84,6 +84,16 @@ pub struct PlatformWords {
     /// `C:\Users\…\w7check.rex/wp-config.php` — mixed separators, because a literal slash is a path
     /// spelled the macOS way even when nothing about it looks like a macOS word.
     pub path_sep: &'static str,
+    /// The ORIGIN this OS's webview serves rexenv's own custom schemes from,
+    /// for the Database Browser's `rexdb:` frame.
+    ///
+    /// macOS answers `rexdb://localhost`; WebView2 serves the SAME handler at
+    /// `http://rexdb.localhost/` and does not know the scheme form at all. The
+    /// UI built the macOS shape on every platform, so on Windows the iframe's
+    /// src resolved to nothing: no request ever reached the handler and the
+    /// Database Browser was an empty panel (#703). A fact about the OS belongs
+    /// here, next to its path separator, not in a `navigator` sniff.
+    pub db_browser_origin: &'static str,
     /// What to do when rexenv is running from somewhere it was not installed to, so an
     /// update has nothing it may safely replace. macOS: drag the bundle into Applications;
     /// Windows: run the installer again. The refusal in `core::app_update` says this
@@ -127,6 +137,7 @@ pub const MACOS: PlatformWords = PlatformWords {
     pool_kind: "php-fpm pool",
     bundled_tools: "nginx, PHP, MySQL, MariaDB, PostgreSQL, Redis, Mailpit, Adminer & cloudflared",
     path_sep: "/",
+    db_browser_origin: "rexdb://localhost",
     reinstall_to_home: "Move rexenv.app into Applications in Finder, open it from there, then update.",
     take_ownership: "sudo chown -R \"$USER\"",
     update_replaces: "rexenv.app",
@@ -161,6 +172,7 @@ pub const WINDOWS: PlatformWords = PlatformWords {
     pool_kind: "php-cgi group",
     bundled_tools: "nginx, PHP, MySQL, PostgreSQL, Mailpit, Adminer & cloudflared",
     path_sep: "\\",
+    db_browser_origin: "http://rexdb.localhost",
     reinstall_to_home: "Run the rexenv installer again so it lands in %LOCALAPPDATA%\\rexenv, open it from there, then update.",
     take_ownership: "takeown /R /F",
     update_replaces: "rexenv's program files (your data folder is not touched)",
@@ -259,6 +271,25 @@ mod tests {
     }
 
     /// Ledger #626 — no Windows word names a macOS thing.
+    /// **Each OS's webview origin for rexenv's own schemes is ITS OWN.**
+    ///
+    /// macOS serves the Database Browser handler at `rexdb://localhost`;
+    /// WebView2 serves the same handler at `http://rexdb.localhost/` and does
+    /// not know the scheme form at all. The UI built the macOS spelling
+    /// everywhere, so on Windows the iframe src resolved to nothing — no
+    /// request reached the handler and the panel was empty (#703).
+    #[test]
+    fn each_os_names_its_own_db_browser_origin() {
+        assert_eq!(MACOS.db_browser_origin, "rexdb://localhost");
+        assert_eq!(WINDOWS.db_browser_origin, "http://rexdb.localhost");
+        assert_ne!(
+            MACOS.db_browser_origin, WINDOWS.db_browser_origin,
+            "one spelling for both is the bug this pins"
+        );
+        // Windows' must be a URL a webview can resolve, not a custom scheme.
+        assert!(WINDOWS.db_browser_origin.starts_with("http://"), "{}", WINDOWS.db_browser_origin);
+    }
+
     #[test]
     fn windows_words_name_no_macos_thing() {
         for word in fields(&WINDOWS) {

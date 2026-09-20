@@ -1635,6 +1635,36 @@ const LINK = "https://example.test/a//b";
     /// plugin list's update badge was `bg-amber-500/15 text-amber-400`: legible
     /// on the dark surface it was designed against, washed out on the light one,
     /// and — the part that matters — INVISIBLE to every check here, because
+    /// **The Database Browser's frame src comes from the PLATFORM, not a
+    /// hardcoded scheme.**
+    ///
+    /// `rexdb://localhost` is the macOS spelling; WebView2 serves the same
+    /// handler at `http://rexdb.localhost/`. Building the first everywhere made
+    /// the Windows iframe resolve to nothing — the panel was empty and NO
+    /// request ever reached the handler, which is why it read as a CSP problem
+    /// for a whole afternoon (#703).
+    #[test]
+    fn the_db_browser_frame_src_is_built_from_the_platforms_own_origin() {
+        let src = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../src/lib/adminer.ts"),
+        )
+        .expect("src/lib/adminer.ts");
+        let body = src
+            .split("export function adminerFrameSrc")
+            .nth(1)
+            .and_then(|b| b.split("\n}").next())
+            .expect("adminerFrameSrc");
+        assert!(
+            body.contains("${origin}"),
+            "the frame src no longer uses the origin it was handed: {body}"
+        );
+        assert!(
+            !body.contains("://"),
+            "the frame src hardcodes a scheme again — it must come from \
+             PlatformWords.dbBrowserOrigin: {body}"
+        );
+    }
+
     /// **An email's HTML is never allowed to run script, and its links never reach
     /// the OS opener unchecked.**
     ///

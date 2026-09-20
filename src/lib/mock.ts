@@ -8,6 +8,7 @@ import type { AdminerStatus, AppInfo, AppUpdateState, DbStatus, GlobalStatus, Ma
  *  arrives. Must match `src-tauri/src/platform/words.rs` `MACOS` (a test holds them together). */
 export const mockPlatformWords: PlatformWords = {
   reveal: "Show in Finder",
+  dbBrowserOrigin: "rexdb://localhost",
   fileManager: "Finder",
   loginItem: "rexenv launches when you sign in to your Mac (a macOS login item).",
   gitInstall: "On macOS it ships with the Xcode Command Line Tools — install them, then hit Re-detect:\n$ xcode-select --install",

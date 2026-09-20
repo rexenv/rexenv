@@ -45,13 +45,18 @@ export function adminerUrl(opts: AdminerTarget): string {
   return `https://${ADMINER_HOST}/?${adminerQuery(opts)}`;
 }
 
-/** Adminer src for the IN-APP `<iframe>`. Goes through the `rexdb://` custom
+/** Adminer src for the IN-APP `<iframe>`. Goes through the `rexdb:` custom
  *  protocol (Rust-side cookie jar) because WebKit withholds third-party cookies
  *  in cross-site iframes — a direct `https://` src loses the session on the
- *  login POST and every login bounces back to the form. (Windows webviews use
- *  `http://rexdb.localhost/` for custom schemes — Phase 4.) */
-export function adminerFrameSrc(opts: AdminerTarget): string {
-  return `rexdb://localhost/?${adminerQuery(opts)}`;
+ *  login POST and every login bounces back to the form.
+ *
+ *  `origin` is the platform's own (`PlatformWords.dbBrowserOrigin`), because the
+ *  SHAPE differs: macOS serves the handler at `rexdb://localhost`, WebView2 at
+ *  `http://rexdb.localhost/`. Hardcoding the macOS spelling made the Windows
+ *  iframe resolve to nothing — no request reached the handler and the Database
+ *  Browser was an empty panel (#703). */
+export function adminerFrameSrc(opts: AdminerTarget, origin: string): string {
+  return `${origin}/?${adminerQuery(opts)}`;
 }
 
 // NOTE: a site's MySQL database name must come from `site.dbName` (stored at

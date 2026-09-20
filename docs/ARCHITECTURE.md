@@ -2200,6 +2200,11 @@ IPC surface — which is how a reader ends up designing against a system with on
 - **Mail:** php-fpm `sendmail_path` (DOUBLE-quoted in the pool ini — the parser strips
   bare quotes and app-data paths contain spaces) → Mailpit's `sendmail -t -S
   127.0.0.1:11025` shim → SMTP sink; inbox UI reads the HTTP API on 18025 (`core/mail.rs`).
+  - **The Database Browser's URL is the PLATFORM's, before any CSP matters.** macOS serves
+    the `rexdb:` handler at `rexdb://localhost`, WebView2 at `http://rexdb.localhost/`; the UI
+    takes the origin from `PlatformWords::db_browser_origin` rather than spelling one. Building
+    the macOS shape everywhere left the Windows iframe pointing at nothing — no request reached
+    the handler at all, which is why two correct CSP fixes changed nothing (#703).
   - **The Database Browser needs BOTH CSPs to name the same frame.** The app's own
     `frame-src` (tauri.conf.json) must list the proxy scheme as the WEBVIEW serves it —
     `rexdb:` on macOS, `http://rexdb.localhost` on Windows — and Adminer's replayed

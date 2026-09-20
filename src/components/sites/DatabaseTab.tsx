@@ -9,9 +9,11 @@ import { Placeholder } from "@/components/common/Placeholder";
 import { AdminerFrame } from "@/components/database/AdminerFrame";
 import { DbImportCard } from "@/components/sites/DbImportCard";
 import { adminerFrameSrc, adminerUrl } from "@/lib/adminer";
+import { usePlatformWords } from "@/lib/usePlatformWords";
 import type { Site } from "@/types";
 
 export function DatabaseTab({ site }: { site: Site }) {
+  const words = usePlatformWords();
   // A flex column that participates in the tab region's height (the old
   // `space-y-4` block severed the percentage chain, collapsing the iframe to
   // its ~150px intrinsic default — §C2.2 — and with the cards above it the
@@ -39,7 +41,7 @@ export function DatabaseTab({ site }: { site: Site }) {
            iframeH=0 during the §C2 fix). min-h is the scroll floor. */
         <div className="flex min-h-[420px] flex-1 flex-col">
           <AdminerFrame
-            src={adminerFrameSrc({ engine: site.dbEngine, db: site.dbName })}
+            src={adminerFrameSrc({ engine: site.dbEngine, db: site.dbName }, words.dbBrowserOrigin)}
             externalUrl={adminerUrl({ engine: site.dbEngine, db: site.dbName })}
           />
         </div>

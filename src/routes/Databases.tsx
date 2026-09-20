@@ -18,6 +18,7 @@ import {
   setDbEngineVersion,
 } from "@/lib/ipc";
 import { adminerFrameSrc, adminerUrl } from "@/lib/adminer";
+import { usePlatformWords } from "@/lib/usePlatformWords";
 import type { DbStatus } from "@/types";
 
 function Meter({ label, value, pct }: { label: string; value: string; pct: number }) {
@@ -240,6 +241,7 @@ export function AdminerVersionCard() {
 
 export function Databases() {
   const navigate = useNavigate();
+  const words = usePlatformWords();
   const [browse, setBrowse] = useState<{
     engine: "mysql" | "mariadb" | "postgres";
     label: string;
@@ -279,7 +281,10 @@ export function Databases() {
           <span className="font-mono text-[0.75rem] text-rex-text-muted">{browse.label} · Adminer</span>
         </div>
         <div className="min-h-0 flex-1 overflow-hidden p-[18px]">
-          <AdminerFrame src={adminerFrameSrc({ engine })} externalUrl={adminerUrl({ engine })} />
+          <AdminerFrame
+            src={adminerFrameSrc({ engine }, words.dbBrowserOrigin)}
+            externalUrl={adminerUrl({ engine })}
+          />
         </div>
       </>
     );
