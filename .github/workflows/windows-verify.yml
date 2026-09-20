@@ -1,0 +1,73 @@
+# The BAR, on Windows — the same `scripts/verify.sh` the Mac runs.
+#
+# W12 asks for this and it had never run anywhere but a developer's own Dell
+# (21 Sep 2026, by hand: 1334 tests passed and two FAILED — both tests that had
+# asserted macOS's answer, neither able to fail on a Mac). A gate that only ever
+# runs on one OS is a gate for one OS.
+#
+# `workflow_dispatch` for now, deliberately: while `rexenv/rexenv` is private
+# every minute here is billed at the Windows 2× rate, so this is run when
+# someone asks for it. When the repo goes public (hosted runners are free and
+# unmetered there) add the `push` trigger and let it run on every change.
+name: verify (Windows)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-windows:
+    name: scripts/verify.sh on windows-latest
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup component add clippy
+          rustup default stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src-tauri
+            cli
+
+      # The sidecar the app crate's build.rs requires. `tauri build` runs this
+      # through beforeBuildCommand; `verify.sh` drives cargo directly, so a
+      # runner that skipped it would fail in build.rs rather than in a test.
+      - name: Stage the rex sidecar
+        run: sh scripts/build-cli.sh
+
+      # Redirected, never piped: a pipe replaces the exit code, which is the bug
+      # the whole receipt mechanism exists for (and verify.sh refuses it).
+      - name: verify.sh (lib tests + cli tests + examples + clippy + tsc + gates)
+        run: |
+          set -uo pipefail
+          ./scripts/verify.sh > verify-windows.log 2>&1
+          code=$?
+          cat verify-windows.log
+          exit $code
+
+      - name: Keep the log even when the bar is red
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-windows-log
+          path: verify-windows.log
+          if-no-files-found: warn

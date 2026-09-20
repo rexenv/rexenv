@@ -897,6 +897,12 @@ about Windows behaviour is proven one of three ways, cheapest first:
    waits. Screenshots and clicks go through `C:\Users\Public\rexenv-smoke` (the foreground
    guard refuses a click unless rexenv is frontmost).
 
+**The bar runs on Windows in CI too** — `.github/workflows/windows-verify.yml`, the same
+`scripts/verify.sh`, on `windows-latest`. `workflow_dispatch` only while `rexenv/rexenv` is
+private (Windows minutes bill at 2×); when the repo goes public, hosted runners are free and
+unmetered there, so the `push` trigger goes on and the OS stops being something a developer
+has to remember to check.
+
 **Run the BAR there too, not just the app.** `verify.sh` first ran on Windows 21 Sep 2026
 (Git Bash on the Dell): 1334 tests passed and **2 failed, both tests that had asserted macOS's
 answer** — the update refusal looked for `\n$ sudo chown` where Windows correctly says
