@@ -1508,6 +1508,9 @@ Windows tester can pass or fail.
 Environment: Windows ____ (11 x64 supported · 10 22H2 best-effort — D6) · rexenv version ____
 
 ### Two Windows-only rows, both found on a real machine 20 Sep 2026
+- [x] **PostgreSQL starts — including with UAC OFF.** ✓ 20 Sep 2026 (Win11 VM, `EnableLUA=0`,
+      0.8.5): Services → PostgreSQL → **7 of 7 running**, `:15432` listening, `health.log` empty
+      a minute later (#698 launches it through `pg_ctl`, #701 stops the watchdog racing it).
 - [ ] **PostgreSQL starts — including with UAC OFF.** Services → start PostgreSQL: it
       reaches Running and `netstat -ano | findstr :15432` shows it LISTENING. Then the case
       that broke it: on a machine with UAC disabled (`EnableLUA=0`, where EVERY process
@@ -1517,6 +1520,10 @@ Environment: Windows ____ (11 x64 supported · 10 22H2 best-effort — D6) · re
       PostgreSQL by a user with administrative permissions is not permitted" — that is the
       bug this row exists for. Stop all afterwards: the port must be FREE (a hard kill left
       backend processes holding it, which is why shutdown goes through `pg_ctl stop`).
+- [x] **The Database Browser renders.** ✓ 20 Sep 2026 (Win11 VM, 0.8.5): Databases → Browse on
+      MySQL shows Adminer 6.0.2 INSIDE the app, auto-logged-in as `root@localhost`, listing
+      `wp_lm_rex`. It took three fixes that all had to be right — the frame's URL (#703), the
+      app's own `frame-src` (#702) and Adminer's replayed `frame-ancestors` (#699).
 - [ ] **The Database Browser renders.** Databases → Browse on MySQL: Adminer appears INSIDE
       the app (table list, not an empty white/grey panel) and its buttons work. **Tell:** a
       blank frame with the URL bar above it filled in — the CSP refused the app's origin
