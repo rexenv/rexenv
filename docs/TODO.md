@@ -873,6 +873,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     - [ ] Watch PR 437674 through their automated validation, and answer whatever it asks for.
   - [ ] W12 — launch gates: verify on the Windows runner, SMOKE-TEST + INSTALL Windows
     sections, clean Windows 11 VM pass
+    **verify.sh RAN on Windows for the first time, 21 Sep 2026** (Git Bash, the Dell): 1334
+    passed, 2 failed — both TESTS that asserted macOS's answer (`$ sudo chown` where Windows
+    says `takeown /R /F`; a `:`-joined PATH where Windows uses `;`). Neither could fail on a
+    Mac. Fixed by asking the platform instead of spelling one OS's words; re-run on both.
     **VM pass, run 1 — 19 Sep 2026** (Windows 11 Pro 24H2 26100.4349, ARM under UTM, x64 build
     emulated; `rexenv_0.7.0_x64-setup.exe` at `276fc7cb`): SMOKE's Windows section is ticked row
     by row with what was seen. Passed: SmartScreen path, per-user install, no UAC, onboarding's

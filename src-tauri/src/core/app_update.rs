@@ -1502,7 +1502,14 @@ mod tests {
         f.parent_writable = false;
         let m = preflight(&f, 1).unwrap_err().message();
         assert!(m.contains("not writable"), "{m}");
-        assert!(m.contains("\n$ sudo chown"), "the fix must be a copyable command: {m}");
+        // The COMMAND is the platform's own: macOS says `sudo chown`, Windows
+        // `takeown /R /F`. Asserting macOS's words made this fail the first time
+        // the bar ran on Windows (20 Sep 2026) — on a correct message.
+        let take = crate::platform::words::current().take_ownership;
+        assert!(
+            m.contains(&format!("\n$ {take}")),
+            "the fix must be a copyable command ({take}): {m}"
+        );
         for forbidden in ["administrator", "osascript", "privileges", "password"] {
             assert!(!m.to_lowercase().contains(forbidden), "{m} — this is not a prompt");
         }

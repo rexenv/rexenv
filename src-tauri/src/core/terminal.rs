@@ -408,16 +408,24 @@ mod tests {
     #[test]
     fn join_and_prepend_paths() {
         let dirs = vec![PathBuf::from("/a b/bin"), PathBuf::from("/c/bin")];
+        // Both OSes from either machine — the separator is the point of the
+        // function, so the expectation names it rather than assuming this host's.
         assert_eq!(join_paths_on(&dirs, "macos"), "/a b/bin:/c/bin");
+        assert_eq!(join_paths_on(&dirs, "windows"), "/a b/bin;/c/bin");
+        // And the HOST's answer, built from the same separator the code uses:
+        // hardcoding `:` here passed on macOS and failed the first time the bar
+        // was ever run on Windows (20 Sep 2026), where PATH is `;`-separated.
+        let sep = path_list_sep(std::env::consts::OS);
+        let ours = join_paths_on(&dirs, std::env::consts::OS);
         let p = prepend_path(&dirs);
         // Our dirs come first, then the inherited PATH verbatim. Exact
         // equality on both branches — the old `contains(unwrap_or_default())`
         // degenerated to `contains("")` with PATH unset and could never fail.
         match std::env::var("PATH") {
             Ok(inherited) if !inherited.is_empty() => {
-                assert_eq!(p, format!("/a b/bin:/c/bin:{inherited}"));
+                assert_eq!(p, format!("{ours}{sep}{inherited}"));
             }
-            _ => assert_eq!(p, "/a b/bin:/c/bin"),
+            _ => assert_eq!(p, ours),
         }
     }
 }

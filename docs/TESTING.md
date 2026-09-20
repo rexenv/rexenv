@@ -897,6 +897,13 @@ about Windows behaviour is proven one of three ways, cheapest first:
    waits. Screenshots and clicks go through `C:\Users\Public\rexenv-smoke` (the foreground
    guard refuses a click unless rexenv is frontmost).
 
+**Run the BAR there too, not just the app.** `verify.sh` first ran on Windows 21 Sep 2026
+(Git Bash on the Dell): 1334 tests passed and **2 failed, both tests that had asserted macOS's
+answer** — the update refusal looked for `\n$ sudo chown` where Windows correctly says
+`takeown /R /F`, and the PATH join expected `:` where Windows uses `;`. Neither could ever fail
+on a Mac. A test asserts what the PLATFORM says (`platform::words::current()`, the code's own
+separator), never one OS's spelling of it.
+
 **The trap, measured 20 Sep 2026:** a bare `cargo`/`cargo-xwin` build of `rexenv.exe` is a DEV
 build — its webview loads `http://localhost:1420` and shows "can't reach this page", so the app
 looks headless or broken and no GUI check is possible. Only `tauri build` embeds the UI. Cross
