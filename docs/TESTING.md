@@ -880,6 +880,14 @@ staged and swapped (T3, sandbox tier), or that a real Mac lets it happen (T0/T11
   passes is needed. Refuses a stale app binary, for the reason `app_relaunch_check` records.
   **6 checks, all green on the Dell, 19 Sep 2026.** Does NOT cover the real app quitting
   through the quit gate and reopening on a swapped directory — SMOKE-TEST's Windows section.
+- `postgres_admin_token_check` (sandbox-adjacent, any OS) — the PostgreSQL LAUNCH path.
+  Starts the real cluster on its own port (refusing if anything already listens there),
+  asserts it ANSWERS a query rather than merely opening a port, and that the stop frees the
+  port again. Written for the machine the bug came from — Windows with UAC off, where every
+  process carries an Administrators token and `postgres.exe` refuses to run — and it prints
+  which launch path it took, so the macOS run is the control. Ledger #698; RAN green on the
+  Win11 VM 20 Sep 2026, where it found three separate reasons the first implementation could
+  not work (working directory, `output()` vs `status()`, and a shared log file).
 - `maillink.js` (WebKit, `verify-full.sh`) — an HTML mail's links. The preview frame's
   `sandbox=""` made every link in every HTML mail dead for the screen's whole life, and no
   check saw it because both mail fixtures had no anchor in them — the harness mock literally

@@ -105,5 +105,39 @@ async fn main() {
         "Set-Cookie never leaks to the webview"
     );
     println!("✓ login followed through to an authenticated page — the jar carried the session");
+
+    // 4. The CSP the WEBVIEW receives names the origin the app is framed from.
+    //
+    // The wrapper bakes macOS's origins, which is right for the direct https
+    // vhost and wrong for this proxied copy: on Windows the app is served from
+    // `http://tauri.localhost`, so the engine refused to frame Adminer and the
+    // Database Browser rendered EMPTY (ledger #699). Read off a REAL response
+    // here — the L0 test only proves the rewriter, not that the proxy calls it.
+    let csp = [&form, &post]
+        .iter()
+        .filter_map(|r| {
+            r.headers
+                .iter()
+                .find(|(n, _)| n == "content-security-policy")
+                .map(|(_, v)| v.clone())
+        })
+        .next()
+        .expect("Adminer sent a Content-Security-Policy");
+    for origin in ["tauri://localhost", "http://tauri.localhost", "https://tauri.localhost"] {
+        assert!(
+            csp.contains(origin),
+            "the replayed CSP does not let the app frame it ({origin} missing): {csp}"
+        );
+    }
+    assert_eq!(
+        csp.matches("frame-ancestors").count(),
+        1,
+        "exactly one frame-ancestors survives the rewrite: {csp}"
+    );
+    assert!(
+        csp.contains("'strict-dynamic'") && csp.contains("nonce-"),
+        "the rewrite mangled the script policy — Adminer's own JS would stop: {csp}"
+    );
+    println!("✓ the replayed CSP names every origin rexenv's webview is served from");
     println!("✓ adminer_proxy_check passed");
 }

@@ -157,7 +157,29 @@ pub fn start(platform: &dyn Platform, basedir: &Path, datadir: &Path, port: u16)
 
     // `-w` waits until the server is ACCEPTING CONNECTIONS, so the pid file
     // below exists and the port is open by the time this returns.
-    let out = Command::new(pg_ctl_bin(basedir))
+    //
+    // Two rules here, both measured on the VM, both silent failures otherwise:
+    //
+    // 1. The wait is `status()`, never `output()`. `output()` waits for the
+    //    pipes to reach EOF, and the server pg_ctl detaches INHERITS them — so
+    //    the call would not return until PostgreSQL itself exited (the check
+    //    hung for three minutes with a healthy server listening).
+    // 2. pg_ctl's OWN output goes to its own file, never the server's log.
+    //    `pg_ctl -l` hands the server's stdout to a `cmd` redirect, which opens
+    //    that file with sharing that a second writer breaks: pointing both at
+    //    one file made every start fail with "The process cannot access the
+    //    file because it is being used by another process" — and the server
+    //    never ran at all.
+    let own_log = log.with_file_name("pg_ctl.log");
+    let sink = std::fs::File::create(&own_log)?;
+    let status = Command::new(pg_ctl_bin(basedir))
+        // The child runs under a RESTRICTED token, which the working directory
+        // must be reachable from: inherit the caller's and the server dies with
+        // "The current directory is invalid" before it reads a single setting
+        // (measured on the VM, where the app's own cwd is not one that token can
+        // use). The datadir is the one directory it must be able to reach
+        // anyway, so it is the honest choice.
+        .current_dir(datadir)
         .arg("-D")
         .arg(datadir)
         .arg("-l")
@@ -168,14 +190,17 @@ pub fn start(platform: &dyn Platform, basedir: &Path, datadir: &Path, port: u16)
         .arg("-o")
         .arg(pg_ctl_server_opts(port))
         .arg("start")
-        .output()
+        .stdin(std::process::Stdio::null())
+        .stdout(sink.try_clone()?)
+        .stderr(sink)
+        .status()
         .map_err(|e| Error::Other(format!("could not run pg_ctl: {e}")))?;
-    if !out.status.success() {
-        let why = String::from_utf8_lossy(&out.stderr);
-        let why = why.trim();
+    if !status.success() {
+        let why = std::fs::read_to_string(&own_log).unwrap_or_default();
+        let why = why.trim().lines().last().unwrap_or("").trim().to_string();
         return Err(Error::Other(format!(
             "PostgreSQL did not start (pg_ctl exit {:?}){}{} — see {}",
-            out.status.code(),
+            status.code(),
             if why.is_empty() { "" } else { ": " },
             why,
             log.display()
@@ -199,6 +224,7 @@ pub fn stop(platform: &dyn Platform, basedir: Option<&Path>, pid: u32) -> Result
         if let Some(basedir) = basedir {
             let datadir = data_dir(platform)?;
             let out = Command::new(pg_ctl_bin(basedir))
+                .current_dir(&datadir)
                 .arg("-D")
                 .arg(&datadir)
                 .arg("-m")
@@ -207,13 +233,15 @@ pub fn stop(platform: &dyn Platform, basedir: Option<&Path>, pid: u32) -> Result
                 .arg("-t")
                 .arg("30")
                 .arg("stop")
-                .output();
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status();
             match out {
-                Ok(o) if o.status.success() => return Ok(()),
-                Ok(o) => log::warn!(
-                    "pg_ctl stop failed (exit {:?}): {} — falling back to stopping pid {pid}",
-                    o.status.code(),
-                    String::from_utf8_lossy(&o.stderr).trim()
+                Ok(s) if s.success() => return Ok(()),
+                Ok(s) => log::warn!(
+                    "pg_ctl stop failed (exit {:?}) — falling back to stopping pid {pid}",
+                    s.code()
                 ),
                 Err(e) => log::warn!("could not run pg_ctl stop: {e} — stopping pid {pid}"),
             }
