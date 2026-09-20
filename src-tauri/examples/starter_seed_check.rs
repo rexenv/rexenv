@@ -303,7 +303,7 @@ async fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let mut pg = Reaped::new(child, PG_PORT, "postgres");
+    let mut pg = Reaped::from_proc(child, PG_PORT, "postgres");
     for _ in 0..150 {
         if rexenv_lib::core::ports::is_listening(PG_PORT) {
             break;

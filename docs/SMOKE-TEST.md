@@ -1507,6 +1507,22 @@ Windows tester can pass or fail.
 
 Environment: Windows ____ (11 x64 supported · 10 22H2 best-effort — D6) · rexenv version ____
 
+### Two Windows-only rows, both found on a real machine 20 Sep 2026
+- [ ] **PostgreSQL starts — including with UAC OFF.** Services → start PostgreSQL: it
+      reaches Running and `netstat -ano | findstr :15432` shows it LISTENING. Then the case
+      that broke it: on a machine with UAC disabled (`EnableLUA=0`, where EVERY process
+      carries the Administrators token) it must still start, because rexenv launches it
+      through `pg_ctl` (#698). **Tell:** "PostgreSQL did not start within 15s", then three
+      watchdog restarts and `gave-up`, with `postgres-stdout.log` saying "Execution of
+      PostgreSQL by a user with administrative permissions is not permitted" — that is the
+      bug this row exists for. Stop all afterwards: the port must be FREE (a hard kill left
+      backend processes holding it, which is why shutdown goes through `pg_ctl stop`).
+- [ ] **The Database Browser renders.** Databases → Browse on MySQL: Adminer appears INSIDE
+      the app (table list, not an empty white/grey panel) and its buttons work. **Tell:** a
+      blank frame with the URL bar above it filled in — the CSP refused the app's origin
+      (#699), and nothing in any log says so.
+
+
 **Not in Windows v1 at all (D4, refused in core with an honest message).** Skip every
 section and leg about them; a refusal that NAMES the reason is the pass:
 - **Apache** (would mean Apache Lounge — a third-party trust decision) — skip

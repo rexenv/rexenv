@@ -256,7 +256,9 @@ impl Drop for EnginesAsFound {
                 );
                 continue;
             };
-            match engine.stop(&*self.platform, pid) {
+            // No version to hand it: this guard stops by PID what this run
+            // started (PostgreSQL's `pg_ctl` path wants one — #698).
+            match engine.stop(&*self.platform, pid, None) {
                 Ok(()) => println!("stopped the {:?} this run started (it was down before)", engine),
                 Err(e) => eprintln!("could not stop the {:?} this run started: {e}", engine),
             }
@@ -1112,6 +1114,17 @@ impl Reaped {
             port,
             marker: marker.into(),
         }
+    }
+
+    /// Take ownership of a handle a core start function already produced.
+    ///
+    /// `DbEngine::start` returns a `Proc`, not a `Child`: PostgreSQL is launched
+    /// through `pg_ctl` where a plain spawn could carry an admin token, and that
+    /// detaches (ledger #698). The sweep works either way — it stops by pid and
+    /// then frees the port.
+    pub fn from_proc(proc: Proc, port: u16, marker: impl Into<String>) -> Self {
+        let pid = proc.id();
+        Self { proc: Some(proc), pid, port, marker: marker.into() }
     }
 
     /// The spawned master's pid — valid for printing after reaping too.

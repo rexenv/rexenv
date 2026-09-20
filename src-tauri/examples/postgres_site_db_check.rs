@@ -158,8 +158,8 @@ async fn main() {
     println!("  drop={:?} drop2={:?} re-drop={:?} · still listed = {left}", d1.is_ok(), d2.is_ok(), redrop.is_ok());
     ok &= d1.is_ok() && d2.is_ok() && redrop.is_ok() && !left;
 
-    let _ = engine.stop(&*plat, pid);
-    let _ = child.wait();
+    let _ = engine.stop(&*plat, pid, None);
+    child.wait();
     let _ = std::fs::remove_dir_all(&tmp);
     // The engine datadir stays: it is the shared app-data cluster, the same one
     // the app uses, and this check created nothing in it but the two databases

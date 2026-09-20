@@ -12,7 +12,8 @@ use crate::core::db::SqlClient;
 use crate::error::{Error, Result};
 use crate::platform::traits::Platform;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command};
+use crate::core::proc::Proc;
+use std::process::Command;
 
 /// `postgres` server executable inside the extracted tree.
 pub fn postgres_bin(basedir: &Path) -> PathBuf {
@@ -78,25 +79,146 @@ pub fn initialize(platform: &dyn Platform, basedir: &Path, datadir: &Path) -> Re
     crate::core::db::clean_datadir_on_init_failure(datadir, result)
 }
 
-/// Start the shared PostgreSQL server (foreground, TCP-only) via `ProcessSupervisor`.
-pub fn start(platform: &dyn Platform, basedir: &Path, datadir: &Path, port: u16) -> Result<Child> {
-    let args = vec![
+/// `pg_ctl` — the wrapper PostgreSQL ships to start and stop a cluster.
+pub fn pg_ctl_bin(basedir: &Path) -> PathBuf {
+    basedir.join("bin/pg_ctl")
+}
+
+/// The server options every start passes, whichever way the server is launched:
+/// TCP-only on loopback (`unix_socket_directories=` empty also sidesteps macOS's
+/// ~104-char socket-path limit).
+fn server_args(datadir: &Path, port: u16) -> Vec<String> {
+    vec![
         "-D".to_string(),
         datadir.display().to_string(),
         "-p".to_string(),
         port.to_string(),
         "-c".to_string(),
         "listen_addresses=127.0.0.1".to_string(),
-        // Disable Unix sockets: TCP-only, and avoids the macOS socket-path limit.
         "-c".to_string(),
         "unix_socket_directories=".to_string(),
-    ];
-    let log = platform.paths().log_dir()?.join("postgres-stdout.log");
-    platform.supervisor().spawn_logged(&postgres_bin(basedir), &args, &log)
+    ]
 }
 
-/// Stop a running PostgreSQL by pid.
-pub fn stop(platform: &dyn Platform, pid: u32) -> Result<()> {
+/// The same options as ONE `-o` string for `pg_ctl`, which passes its `-o`
+/// value to the server. `-D` is `pg_ctl`'s own flag, so it is not repeated here.
+fn pg_ctl_server_opts(port: u16) -> String {
+    format!("-p {port} -c listen_addresses=127.0.0.1 -c unix_socket_directories=")
+}
+
+/// The pid of the running postmaster, read from the file it writes into its own
+/// datadir. First line, by PostgreSQL's documented format — the same file
+/// `pg_ctl` itself reads.
+fn postmaster_pid(datadir: &Path) -> Result<u32> {
+    let path = datadir.join("postmaster.pid");
+    let text = std::fs::read_to_string(&path)
+        .map_err(|e| Error::Other(format!("could not read {}: {e}", path.display())))?;
+    text.lines()
+        .next()
+        .and_then(|l| l.trim().parse::<u32>().ok())
+        .ok_or_else(|| Error::Other(format!("{} does not start with a pid", path.display())))
+}
+
+/// Start the shared PostgreSQL server (TCP-only).
+///
+/// **Two launch paths, and the second one is not a preference.** Where the OS
+/// can hand a plain spawn an administrator token
+/// ([`ProcessSupervisor::may_spawn_with_admin_token`] — Windows, whenever UAC is
+/// off or the app was started with "Run as administrator"), `postgres.exe`
+/// REFUSES to run at all:
+///
+/// > Execution of PostgreSQL by a user with administrative permissions is not
+/// > permitted.
+///
+/// Measured 20 Sep 2026 on a clean Windows 11 VM with `EnableLUA=0`, where every
+/// process carries that token: the server died on every start and the health
+/// watchdog respawn-looped it to `gave-up` while the log said only "did not start
+/// within 15s". `initdb` survives the same machine because it re-executes ITSELF
+/// under a restricted token; `postgres.exe` has no such code — `pg_ctl` is where
+/// PostgreSQL keeps it. So rexenv starts the server the way PostgreSQL's own
+/// tooling does, rather than reimplementing `CreateRestrictedToken`.
+///
+/// `pg_ctl` detaches, so the result is [`Proc::Adopted`]: a pid, not a child
+/// handle. That is the honest shape — the postmaster is this session's
+/// grandchild — and it is the shape the next launch would have adopted anyway.
+pub fn start(platform: &dyn Platform, basedir: &Path, datadir: &Path, port: u16) -> Result<Proc> {
+    let log = platform.paths().log_dir()?.join("postgres-stdout.log");
+    if let Some(parent) = log.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    if !platform.supervisor().may_spawn_with_admin_token() {
+        let child = platform.supervisor().spawn_logged(
+            &postgres_bin(basedir),
+            &server_args(datadir, port),
+            &log,
+        )?;
+        return Ok(Proc::from(child));
+    }
+
+    // `-w` waits until the server is ACCEPTING CONNECTIONS, so the pid file
+    // below exists and the port is open by the time this returns.
+    let out = Command::new(pg_ctl_bin(basedir))
+        .arg("-D")
+        .arg(datadir)
+        .arg("-l")
+        .arg(&log)
+        .arg("-w")
+        .arg("-t")
+        .arg("30")
+        .arg("-o")
+        .arg(pg_ctl_server_opts(port))
+        .arg("start")
+        .output()
+        .map_err(|e| Error::Other(format!("could not run pg_ctl: {e}")))?;
+    if !out.status.success() {
+        let why = String::from_utf8_lossy(&out.stderr);
+        let why = why.trim();
+        return Err(Error::Other(format!(
+            "PostgreSQL did not start (pg_ctl exit {:?}){}{} — see {}",
+            out.status.code(),
+            if why.is_empty() { "" } else { ": " },
+            why,
+            log.display()
+        )));
+    }
+    Ok(Proc::Adopted(postmaster_pid(datadir)?))
+}
+
+/// Stop a running PostgreSQL.
+///
+/// Where the server was started through `pg_ctl` (see [`start`]), it is stopped
+/// the same way: `-m fast` rolls back open transactions and shuts the cluster
+/// down cleanly. Terminating the postmaster instead would be a hard kill on that
+/// OS — its backend and auxiliary processes are SEPARATE processes that would
+/// survive, keep the datadir locked and the port held, and the next start would
+/// fail on a cluster that never checkpointed. `basedir` is `None` when the
+/// caller cannot resolve it (an uncached version), and then the supervisor's
+/// plain stop is all there is.
+pub fn stop(platform: &dyn Platform, basedir: Option<&Path>, pid: u32) -> Result<()> {
+    if platform.supervisor().may_spawn_with_admin_token() {
+        if let Some(basedir) = basedir {
+            let datadir = data_dir(platform)?;
+            let out = Command::new(pg_ctl_bin(basedir))
+                .arg("-D")
+                .arg(&datadir)
+                .arg("-m")
+                .arg("fast")
+                .arg("-w")
+                .arg("-t")
+                .arg("30")
+                .arg("stop")
+                .output();
+            match out {
+                Ok(o) if o.status.success() => return Ok(()),
+                Ok(o) => log::warn!(
+                    "pg_ctl stop failed (exit {:?}): {} — falling back to stopping pid {pid}",
+                    o.status.code(),
+                    String::from_utf8_lossy(&o.stderr).trim()
+                ),
+                Err(e) => log::warn!("could not run pg_ctl stop: {e} — stopping pid {pid}"),
+            }
+        }
+    }
     platform.supervisor().stop(pid)
 }
 
@@ -325,6 +447,44 @@ pub fn db_sizes(client: &SqlClient, port: u16) -> Result<Vec<(String, u64)>> {
 
 #[cfg(test)]
 mod tests {
+
+    /// **The two launch paths pass the SAME server settings.**
+    ///
+    /// One is `postgres`'s argv, the other one `-o` string handed to `pg_ctl`;
+    /// they are written separately, so nothing but this stops them drifting —
+    /// and a cluster that listens on a different address, or opens a Unix socket
+    /// on one OS only, is exactly the kind of difference nobody notices until a
+    /// connection fails on one platform.
+    #[test]
+    fn both_launch_paths_carry_the_same_server_settings() {
+        let args = server_args(Path::new("/tmp/pgdata"), 15432).join(" ");
+        let opts = pg_ctl_server_opts(15432);
+        for setting in ["-p 15432", "-c listen_addresses=127.0.0.1", "-c unix_socket_directories="] {
+            assert!(args.contains(setting), "postgres argv lost {setting:?}: {args}");
+            assert!(opts.contains(setting), "pg_ctl -o lost {setting:?}: {opts}");
+        }
+        // `-D` is pg_ctl's OWN flag; repeating it inside `-o` makes pg_ctl pass a
+        // second datadir to the server, which then refuses to start.
+        assert!(!opts.contains("-D"), "pg_ctl -o must not carry -D: {opts}");
+        assert!(args.contains("/tmp/pgdata"), "{args}");
+    }
+
+    /// The pid comes from the file PostgreSQL itself writes — the same one
+    /// `pg_ctl` reads — and a file that is not that shape is an error, never a
+    /// guess: a wrong pid here is a pid rexenv would later STOP.
+    #[test]
+    fn the_postmaster_pid_is_the_first_line_or_an_error() {
+        let dir = std::env::temp_dir().join(format!("rexenv-pgpid-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("fixture dir");
+        let pid_file = dir.join("postmaster.pid");
+        std::fs::write(&pid_file, "4242\n/tmp/pgdata\n1758000000\n15432\n").expect("write");
+        assert_eq!(postmaster_pid(&dir).expect("pid"), 4242);
+        std::fs::write(&pid_file, "not-a-pid\nrest\n").expect("write");
+        assert!(postmaster_pid(&dir).is_err(), "a non-numeric first line was accepted");
+        std::fs::remove_file(&pid_file).expect("rm");
+        assert!(postmaster_pid(&dir).is_err(), "a missing pid file was accepted");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
     use super::*;
 
     #[test]

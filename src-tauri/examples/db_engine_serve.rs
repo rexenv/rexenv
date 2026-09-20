@@ -21,7 +21,7 @@ use std::time::Duration;
 async fn bring_up(
     plat: &dyn rexenv_lib::platform::traits::Platform,
     engine: DbEngine,
-) -> Option<(u32, std::process::Child)> {
+) -> Option<(u32, rexenv_lib::core::proc::Proc)> {
     if let Err(e) = ports::ensure_free(plat, engine.port(), ports::Proto::Tcp, engine.label()) {
         eprintln!("{} port busy: {e}", engine.label());
         return None;
@@ -58,8 +58,8 @@ async fn main() {
         let up = DbEngine::Mysql.running();
         println!("  pid {pid} · listening on :{} = {up}", DbEngine::Mysql.port());
         ok &= up;
-        let _ = DbEngine::Mysql.stop(&*plat, pid);
-        let _ = child.wait();
+        let _ = DbEngine::Mysql.stop(&*plat, pid, None);
+        child.wait();
         println!("  stopped");
     } else {
         ok = false;
@@ -79,8 +79,8 @@ async fn main() {
         let queried = out.status.success() && ver.starts_with("PostgreSQL");
         println!("  psql SELECT version() → {ver}");
         ok &= up && queried;
-        let _ = DbEngine::Postgres.stop(&*plat, pid);
-        let _ = child.wait();
+        let _ = DbEngine::Postgres.stop(&*plat, pid, None);
+        child.wait();
         println!("  stopped");
     } else {
         ok = false;
@@ -90,7 +90,7 @@ async fn main() {
     println!("\n=== deferred engines (uniform shape) ===");
     for e in [DbEngine::Mariadb] {
         match e.start(&*plat, e.default_version()).await {
-            Ok(mut c) => { let _ = e.stop(&*plat, c.id()); let _ = c.wait(); println!("  {} started (unexpected)", e.label()); }
+            Ok(mut c) => { let _ = e.stop(&*plat, c.id(), None); c.wait(); println!("  {} started (unexpected)", e.label()); }
             Err(err) => println!("  {:<8} → {err}", e.label()),
         }
     }

@@ -1099,7 +1099,14 @@ honest footer —
   `/adminer.php` used to serve Adminer with **no wrapper at all** — no login gate, no
   frame bound. `adminer::effective_version` is the ONE answer to "which Adminer", the row
   lives on the Databases screen (its only entry point), and there is no "exists" chip
-  because rexenv downloads Adminer's own release asset. Ledger #361–#369; design in
+  because rexenv downloads Adminer's own release asset. **The frame bound has TWO forms,
+  because the console is served two ways:** the wrapper bakes `frame-ancestors` for the
+  DIRECT https vhost (which a page in the user's browser can also reach — the clickjacking
+  case), while the `rexdb:` proxy substitutes every origin rexenv's own webview is served
+  from before replaying the header. Without that substitution the Database Browser rendered
+  EMPTY on Windows, where the app runs at `http://tauri.localhost` and the baked list named
+  only macOS's origins (reported 20 Sep 2026; a blocked frame is silent). Nothing else in
+  the CSP is touched — the script nonce is in it. Ledger #361–#369, #699; design in
   `docs/archive/PLAN-adminer-updates.md`.
 - **A PHP version resolves to the source that PUBLISHES it.** Most come from
   static-php.dev's bulk builds; the ones nobody publishes portably are built by
@@ -2154,6 +2161,18 @@ IPC surface — which is how a reader ends up designing against a system with on
   on 15432 (#549); the download planner asks the same question, because a spawn
   under the services lock must hit cache (#175). Per-site Adminer deep links
   carry the site's engine (the wrapper's loopback gate covers all three ports).
+- **PostgreSQL is started through `pg_ctl` where a spawn can carry an admin token.**
+  `postgres.exe` REFUSES to run under an Administrators token ("Execution of PostgreSQL by
+  a user with administrative permissions is not permitted"), and on Windows every process
+  gets one when UAC is off — measured 20 Sep 2026 on a clean VM with `EnableLUA=0`, where
+  the engine respawn-looped to `gave-up` while the UI said only "did not start within 15s".
+  `initdb` survives it by re-executing itself under a restricted token; `postgres.exe` has
+  no such code, and `pg_ctl` is where PostgreSQL keeps it, so rexenv launches through
+  `pg_ctl` rather than reimplementing `CreateRestrictedToken`. It detaches, so the handle is
+  `Proc::Adopted`, and shutdown is `pg_ctl stop -m fast` — a hard kill of the postmaster
+  there leaves its backend processes holding the datadir and the port. The switch is a
+  platform CAPABILITY (`ProcessSupervisor::may_spawn_with_admin_token`), never a `cfg`:
+  `core/` may not name an OS. Ledger #698.
 - **Tool results ≠ app errors:** `wp core verify-checksums` exits 0 even with
   "should not exist" extras (verified live) — verdicts derive from PARSED findings,
   never exit codes alone; extras triage as benign only when the basename is known OS

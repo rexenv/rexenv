@@ -131,8 +131,8 @@ async fn main() {
 
     // Cleanup: drop the check DB, stop the engine, remove the docroot.
     let _ = engine.drop_database(&client, engine.port(), DB);
-    let _ = engine.stop(&*plat, pid);
-    let _ = child.wait();
+    let _ = engine.stop(&*plat, pid, None);
+    child.wait();
     let _ = std::fs::remove_dir_all(&docroot);
     // The engine datadir keeps the bootstrap system tables — that's the real
     // shared datadir (app-data/mariadb), same one the app will use. Leave it.

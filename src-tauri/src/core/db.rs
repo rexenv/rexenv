@@ -7,13 +7,13 @@
 //! its behavior is unchanged; MariaDB / PostgreSQL / Redis delegate to their own
 //! modules the same way.
 
+use crate::core::proc::Proc;
 use crate::core::{binaries, database, mariadb, ports, postgres, redis};
 use crate::error::{Error, Result};
 use crate::platform::traits::Platform;
 use crate::state::models::SiteDbEngine;
 use rusqlite::Connection;
 use std::path::{Path, PathBuf};
-use std::process::Child;
 
 /// The SQL CLIENT BINARY (`bin/mysql` / `bin/mariadb`), as a type instead of a
 /// bare `&Path`.
@@ -371,7 +371,7 @@ impl DbEngine {
     /// Resolve the binary for `version`, initialize that version-series'
     /// datadir if needed, and start the server (foreground, supervised) on the
     /// engine's port. Returns the child handle.
-    pub async fn start(&self, platform: &dyn Platform, version: &str) -> Result<Child> {
+    pub async fn start(&self, platform: &dyn Platform, version: &str) -> Result<Proc> {
         let datadir = self.data_dir(platform, version)?;
         match self {
             DbEngine::Mysql => {
@@ -381,7 +381,7 @@ impl DbEngine {
                     std::fs::create_dir_all(parent)?;
                 }
                 database::initialize(platform, &basedir, &datadir)?;
-                database::start(platform, &basedir, &datadir, self.port(), &socket)
+                database::start(platform, &basedir, &datadir, self.port(), &socket).map(Proc::from)
             }
             DbEngine::Postgres => {
                 let basedir = binaries::resolve_dir(platform, "postgres", version).await?;
@@ -392,11 +392,11 @@ impl DbEngine {
                 let basedir = binaries::resolve_bundle(platform, "mariadb", version).await?;
                 let socket = mariadb::socket_path(platform)?;
                 mariadb::initialize(platform, &basedir, &datadir)?;
-                mariadb::start(platform, &basedir, &datadir, self.port(), &socket)
+                mariadb::start(platform, &basedir, &datadir, self.port(), &socket).map(Proc::from)
             }
             DbEngine::Redis => {
                 let basedir = binaries::resolve_bundle(platform, "redis", version).await?;
-                redis::start(platform, &basedir, &datadir, self.port())
+                redis::start(platform, &basedir, &datadir, self.port()).map(Proc::from)
             }
         }
     }
@@ -431,7 +431,24 @@ impl DbEngine {
     }
 
     /// Stop a running engine by pid.
-    pub fn stop(&self, platform: &dyn Platform, pid: u32) -> Result<()> {
+    /// Stop the engine. `version` is what resolves PostgreSQL's `pg_ctl`, which
+    /// is how a cluster started through it must be shut down (`postgres::stop`,
+    /// ledger #698); every other engine ignores it. `None` is for a caller that
+    /// does not know the selected version — an example's cleanup guard, which
+    /// stops by pid what it started — and falls back to the supervisor's plain
+    /// stop.
+    pub fn stop(&self, platform: &dyn Platform, pid: u32, version: Option<&str>) -> Result<()> {
+        if matches!(self, DbEngine::Postgres) {
+            let basedir = version.and_then(|v| {
+                platform
+                    .paths()
+                    .bin_dir()
+                    .ok()
+                    .map(|d| d.join(format!("postgres-{v}")))
+                    .filter(|d| d.is_dir())
+            });
+            return postgres::stop(platform, basedir.as_deref(), pid);
+        }
         platform.supervisor().stop(pid)
     }
 

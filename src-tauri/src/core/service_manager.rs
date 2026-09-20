@@ -547,7 +547,7 @@ impl ServiceManager {
         }
         ports::ensure_free(platform, engine.port(), ports::Proto::Tcp, engine.label())?;
         let child = engine.start(platform, &self.db_version(engine)).await?;
-        self.dbs.insert(engine, child.into());
+        self.dbs.insert(engine, child);
         Ok(Some(ReadyCheck {
             service: engine.label().to_string(),
             log: stdout_log(platform, engine.key())?,
@@ -572,7 +572,7 @@ impl ServiceManager {
     /// Stop a database engine we manage (no-op if not running).
     pub fn stop_db(&mut self, platform: &dyn Platform, engine: DbEngine) -> Result<()> {
         if let Some(mut child) = self.dbs.remove(&engine) {
-            let _ = engine.stop(platform, child.id());
+            let _ = engine.stop(platform, child.id(), Some(self.db_version(engine).as_str()));
             child.wait();
         }
         Ok(())
@@ -1667,7 +1667,7 @@ impl ServiceManager {
         }
         for (engine, mut child) in std::mem::take(&mut self.dbs) {
             if may_foreign || !child.is_adopted() {
-                let _ = engine.stop(platform, child.id());
+                let _ = engine.stop(platform, child.id(), Some(self.db_version(engine).as_str()));
                 child.wait();
             } else {
                 log::warn!("rexenv: stack guard — leaving adopted {engine:?} running");

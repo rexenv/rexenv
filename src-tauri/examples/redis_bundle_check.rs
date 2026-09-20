@@ -111,8 +111,8 @@ async fn main() {
         ok &= pong == "PONG" && set == "OK" && got == "bundle-works";
     }
 
-    let _ = DbEngine::Redis.stop(&*plat, pid);
-    let _ = child.wait();
+    let _ = DbEngine::Redis.stop(&*plat, pid, None);
+    child.wait();
     println!("  stopped");
 
     if ok {

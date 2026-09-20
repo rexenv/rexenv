@@ -268,6 +268,14 @@ impl ProcessSupervisor for WindowsSupervisor {
         Err(Error::Other(format!("step {pgid}'s processes were still running 5 s after its job was terminated")))
     }
     /// A service: stdout and stderr appended to its log, stdin closed, [`SERVICE_FLAGS`].
+    fn may_spawn_with_admin_token(&self) -> bool {
+        // Not "is rexenv elevated right now": with UAC off every process on the
+        // machine carries the token, and the answer must not change between two
+        // starts of the same app. PostgreSQL is launched through `pg_ctl` here
+        // either way, which is correct whether or not the token is present.
+        true
+    }
+
     fn spawn_logged_env(
         &self,
         program: &Path,

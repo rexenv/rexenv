@@ -277,6 +277,54 @@ const DEV_FRAME_ANCESTOR: &str = " http://localhost:1420";
 #[cfg(not(debug_assertions))]
 const DEV_FRAME_ANCESTOR: &str = "";
 
+/// The origins rexenv's OWN webview frames the Database Browser from.
+///
+/// The wrapper's baked `frame-ancestors` names macOS's origins only, and that is
+/// the right list for the DIRECT https vhost — a page in the user's browser can
+/// reach `adminer.rexenv.rex` too, and framing it there is the clickjacking case
+/// the directive exists for. It is the WRONG list for the copy replayed through
+/// the `rexdb:` proxy: on Windows the app is served from `http://tauri.localhost`
+/// (WebView2's default; `https://` only when `useHttpsScheme` is set), so the
+/// engine refused to frame Adminer and the Database Browser rendered EMPTY —
+/// reported 20 Sep 2026, and silent, because a blocked frame logs to a webview
+/// console nobody sees.
+///
+/// Listing all three costs nothing here: the proxied copy is served from
+/// `rexdb:`/`http://rexdb.localhost`, an origin only rexenv's own scheme handler
+/// answers, so no browser can load this document at all — whatever it says about
+/// who may frame it.
+pub const PROXY_FRAME_ANCESTORS: &str =
+    "tauri://localhost http://tauri.localhost https://tauri.localhost";
+
+/// Replace a response CSP's `frame-ancestors` with [`PROXY_FRAME_ANCESTORS`]
+/// (plus the dev-server origin in debug builds), leaving every other directive —
+/// script-src's nonce and `strict-dynamic` above all — exactly as Adminer sent
+/// it. A CSP that carries no `frame-ancestors` gets one appended, so the
+/// replayed document is never MORE frameable than the wrapper intended.
+pub fn rewrite_frame_ancestors(csp: &str) -> String {
+    let ours = format!("frame-ancestors {PROXY_FRAME_ANCESTORS}{DEV_FRAME_ANCESTOR}");
+    let mut out: Vec<String> = Vec::new();
+    let mut replaced = false;
+    for directive in csp.split(';') {
+        let trimmed = directive.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if trimmed.to_ascii_lowercase().starts_with("frame-ancestors") {
+            if !replaced {
+                out.push(ours.clone());
+                replaced = true;
+            }
+            continue;
+        }
+        out.push(trimmed.to_string());
+    }
+    if !replaced {
+        out.push(ours);
+    }
+    out.join("; ")
+}
+
 /// The wrapper written to disk, with the dev-only frame-ancestor resolved for
 /// this build profile (the `__REXENV_DEV_ANCESTOR__` placeholder in
 /// [`WRAPPER_INDEX_PHP`]).
@@ -779,6 +827,14 @@ pub async fn forward(
             continue;
         }
         let Ok(v) = value.to_str() else { continue };
+        // The webview frames this document from the APP's origin, which is not
+        // the one the wrapper's baked list names on every platform (see
+        // `PROXY_FRAME_ANCESTORS`). Everything else in the CSP is replayed
+        // untouched — the script nonce is in there.
+        if n == "content-security-policy" {
+            headers.push((n, rewrite_frame_ancestors(v)));
+            continue;
+        }
         // Absolute self-redirects must stay on the proxy origin; relative ones
         // (Adminer's norm) already resolve against `rexdb://localhost`.
         if n == "location" {
@@ -907,6 +963,35 @@ mod tests {
         // Extraction markers the example relies on stay present.
         assert!(WRAPPER_INDEX_PHP.contains("rexenv-loopback-gate:start"));
         assert!(WRAPPER_INDEX_PHP.contains("rexenv-loopback-gate:end"));
+    }
+
+    /// **The replayed CSP names the origin the APP actually frames from, and
+    /// changes nothing else.**
+    ///
+    /// The wrapper bakes macOS's origins; on Windows the app is served from
+    /// `http://tauri.localhost`, so the Database Browser rendered EMPTY (20 Sep
+    /// 2026) — a blocked frame is silent. The proxy rewrites that one directive
+    /// for the copy it replays; the script nonce and `strict-dynamic` must
+    /// survive verbatim, or Adminer's own JavaScript stops running.
+    #[test]
+    fn the_proxied_csp_swaps_only_frame_ancestors() {
+        let adminer = "script-src 'self' 'nonce-ABC' 'strict-dynamic'; \
+                       connect-src 'self' https://www.adminer.org; object-src 'none'; \
+                       frame-ancestors tauri://localhost https://tauri.localhost";
+        let out = rewrite_frame_ancestors(adminer);
+        assert!(out.contains("http://tauri.localhost"), "{out}");
+        assert!(out.contains("tauri://localhost"), "{out}");
+        assert!(out.contains("'nonce-ABC' 'strict-dynamic'"), "the nonce was mangled: {out}");
+        assert!(out.contains("object-src 'none'"), "{out}");
+        assert_eq!(out.matches("frame-ancestors").count(), 1, "{out}");
+        // A CSP without the directive gets one — never MORE frameable than the
+        // wrapper meant.
+        let none = rewrite_frame_ancestors("default-src 'none'");
+        assert!(none.starts_with("default-src 'none'; frame-ancestors "), "{none}");
+        // Case is the header's business, not ours.
+        let upper = rewrite_frame_ancestors("Frame-Ancestors 'none'; img-src *");
+        assert_eq!(upper.matches("frame-ancestors").count(), 1, "{upper}");
+        assert!(!upper.contains("'none'"), "the old list survived: {upper}");
     }
 
     #[test]

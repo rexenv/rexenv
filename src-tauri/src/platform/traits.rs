@@ -209,6 +209,18 @@ mod prompt_reason_tests {
 /// databases, the edge router). Spawning is similar across OSes; this wraps it
 /// behind a trait so supervision policy stays in one place.
 pub trait ProcessSupervisor: Send + Sync {
+    /// Whether a plain spawn on this OS can carry an ADMINISTRATOR token.
+    ///
+    /// Windows can, and not only through "Run as administrator": with UAC off
+    /// (`EnableLUA=0`) every process the user starts gets the full
+    /// Administrators token. It matters because some servers refuse to run under
+    /// one — PostgreSQL's `postgres.exe` exits immediately with "Execution of
+    /// PostgreSQL by a user with administrative permissions is not permitted"
+    /// (measured 20 Sep 2026 on a clean Win11 VM; `core::postgres::start`).
+    /// Unix has no such token, so the default is `false`.
+    fn may_spawn_with_admin_token(&self) -> bool {
+        false
+    }
     /// Spawn `program` with `args`; returns the child handle (stdio inherited).
     fn spawn(&self, program: &std::path::Path, args: &[String]) -> Result<Child>;
     /// Spawn `program` with its stdout+stderr redirected (appended) to `log_path`

@@ -145,8 +145,8 @@ async fn main() {
         ok &= cok && dbs == "rexenv_check" && dok;
     }
 
-    let _ = DbEngine::Mariadb.stop(&*plat, pid);
-    let _ = child.wait();
+    let _ = DbEngine::Mariadb.stop(&*plat, pid, None);
+    child.wait();
     println!("  stopped");
 
     if ok {
