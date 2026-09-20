@@ -900,14 +900,16 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
       published (rexenv/runtimes#4 unblocks that publish). The issue's other half — the pins
       script explaining the wrong drift direction — is done 19 Sep 2026 (`check-php-pins.sh`
       names both directions).
-    - [◐] **The DNS agent's scheduled task went missing, and the watchdog could only say so.**
-      **Half done 20 Sep 2026 (#704): the kickstart now RE-REGISTERS a missing task** from
+    - [x] **The DNS agent's scheduled task went missing, and the watchdog could only say so.**
+      ✓ 20 Sep 2026 — #704, proven on the VM: task deleted by hand + agent killed → the
+      watchdog's next tick registered it again from rexenv's own definition, the agent came
+      back and `lm.rex` resolved again. **The kickstart now RE-REGISTERS a missing task** from
       rexenv's own copy of the definition, so the watchdog heals it instead of logging at it.
       **The first suspect was measured and cleared:** a reinstall over a RUNNING copy leaves the
       task registered — it kills the AGENT, and the per-minute task brings it back within the
       minute (`.rex` resolved again 60s later on the VM). What actually removed it is still
-      unknown; the healing makes it survivable either way. Still to run: delete the task on the
-      VM and watch the watchdog put it back.
+      unknown; the healing makes it survivable either way — and a machine that loses it now
+      repairs itself within a watchdog tick instead of losing `.rex` at the next boot.
       ORIGINAL REPORT ——
       Seen on the VM 20 Sep 2026 in `health.log`: `[restart-failed] DNS: resolver agent kickstart
       failed: could not restart rexenv's DNS agent task (\rexenv\dns-agent): ERROR: The system
