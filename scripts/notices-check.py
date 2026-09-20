@@ -29,6 +29,7 @@ Usage: scripts/notices-check.py   (exit 0 = matches, 1 = drift)
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 
@@ -49,20 +50,37 @@ VENDORED_HEADING = re.compile(r"^## Vendored PHP \(compiled into the app binary;
 COMPOSER_INSTALLED = os.path.join(ROOT, "src-tauri/resources/wp-dist-archive/vendor/composer/installed.json")
 
 
+class GraphUnresolvable(Exception):
+    """This HOST cannot resolve that target's graph offline.
+
+    `cargo metadata --filter-platform <t> --offline` needs every crate the target pulls in to be
+    in the local registry cache. A Mac has both (cargo-xwin fetches the windows-* families), a
+    Windows box has only its own — so the macOS graph is unresolvable there, with `--offline`
+    doing exactly what it is for. Measured 21 Sep 2026, the first time `verify.sh` ran on
+    Windows: the check died with a raw traceback, which reads like a broken script rather than a
+    host that cannot answer.
+    """
+
+
 def rust_graph(targets=None):
     """(name, version) -> licence for every registry crate reachable without dev edges.
 
     `targets` so the Windows graph is read by the SAME walk as the macOS one — two graphs built
     by two rules is how this file drifted before.
+
+    Raises [`GraphUnresolvable`] when this host has no cached crates for a target.
     """
     out = {}
     for manifest in MANIFESTS:
         for target in targets or TARGETS:
-            raw = subprocess.run(
+            done = subprocess.run(
                 ["cargo", "metadata", "--format-version", "1", "--locked", "--offline",
                  "--filter-platform", target, "--manifest-path", os.path.join(ROOT, manifest)],
-                check=True, capture_output=True, encoding="utf-8",
-            ).stdout
+                capture_output=True, encoding="utf-8",
+            )
+            if done.returncode != 0:
+                raise GraphUnresolvable(f"{target} ({manifest}): {done.stderr.strip().splitlines()[-1] if done.stderr.strip() else 'cargo metadata failed'}")
+            raw = done.stdout
             meta = json.loads(raw)
             packages = {p["id"]: p for p in meta["packages"]}
             nodes = {n["id"]: n for n in meta["resolve"]["nodes"]}
@@ -82,9 +100,24 @@ def rust_graph(targets=None):
     return out
 
 
+def tool(name):
+    """The executable, resolved the way THIS OS names it.
+
+    On Windows `pnpm` is `pnpm.cmd` — a batch shim — and Python's CreateProcess does not try
+    extensions, so a bare `"pnpm"` dies with `WinError 2: The system cannot find the file
+    specified` even with pnpm on PATH. Measured 21 Sep 2026, the first Windows run of the bar.
+    `shutil.which` applies PATHEXT, so it finds the shim on Windows and the plain binary
+    everywhere else.
+    """
+    found = shutil.which(name)
+    if not found:
+        sys.exit(f"notices-check: {name} is not on PATH — install it and run the bar again")
+    return found
+
+
 def npm_graph():
     raw = subprocess.run(
-        ["pnpm", "list", "--prod", "--depth", "Infinity", "--json"],
+        [tool("pnpm"), "list", "--prod", "--depth", "Infinity", "--json"],
         cwd=ROOT, check=True, capture_output=True, encoding="utf-8",
     ).stdout
     seen = set()
@@ -158,13 +191,32 @@ def compare(label, graph, head, stated, rows, licences):
 
 
 def main():
-    rust = rust_graph()
-    windows = rust_graph(TARGETS_WINDOWS)
+    # A host checks the graphs it can RESOLVE, and says which it could not: the macOS job
+    # checks both (a Mac caches the windows-* families through cargo-xwin), the Windows job
+    # checks its own. Skipping is stated, never silent — and a host that can resolve NEITHER
+    # is a broken checkout, not a platform difference.
+    skipped = []
+    try:
+        rust = rust_graph()
+    except GraphUnresolvable as e:
+        rust, _ = None, skipped.append(f"macOS graph — {e}")
+    try:
+        windows = rust_graph(TARGETS_WINDOWS)
+    except GraphUnresolvable as e:
+        windows, _ = None, skipped.append(f"Windows graph — {e}")
+    if rust is None and windows is None:
+        print("notices-check: neither Rust graph could be resolved on this host:")
+        for s in skipped:
+            print(f"  {s}")
+        return 1
     npm = npm_graph()
-    problems = compare("rust", rust, *section("## Rust crates", RUST_HEADING), rust)
-    problems += compare(
-        "rust (windows)", windows, *section("## Windows Rust crates", WINDOWS_HEADING), windows
-    )
+    problems = []
+    if rust is not None:
+        problems += compare("rust", rust, *section("## Rust crates", RUST_HEADING), rust)
+    if windows is not None:
+        problems += compare(
+            "rust (windows)", windows, *section("## Windows Rust crates", WINDOWS_HEADING), windows
+        )
     problems += compare("npm", npm, *section("## npm packages", NPM_HEADING), None)
     composer = composer_graph()
     problems += compare(
@@ -175,11 +227,14 @@ def main():
         for p in problems:
             print(f"  {p}")
         return 1
+    mac_says = f"{len(rust)} Rust crates (arm64 + x86_64, app + rex CLI)" if rust is not None else "macOS graph SKIPPED"
+    win_says = f"{len(windows)} for the x86_64 Windows graph" if windows is not None else "Windows graph SKIPPED"
     print(
-        f"notices-check: {len(rust)} Rust crates (arm64 + x86_64, app + rex CLI) with rows and "
-        f"licences; {len(windows)} for the x86_64 Windows graph; {len(npm)} npm packages with "
-        f"rows; {len(composer)} vendored composer packages with rows and licences"
+        f"notices-check: {mac_says} with rows and licences; {win_says}; {len(npm)} npm packages "
+        f"with rows; {len(composer)} vendored composer packages with rows and licences"
     )
+    for s in skipped:
+        print(f"  skipped on this host: {s} — the job on that OS checks it")
     return 0
 
 

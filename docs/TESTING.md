@@ -910,6 +910,13 @@ answer** — the update refusal looked for `\n$ sudo chown` where Windows correc
 on a Mac. A test asserts what the PLATFORM says (`platform::words::current()`, the code's own
 separator), never one OS's spelling of it.
 
+**What the first Windows runs found, all four of the same family** — something that spelled
+macOS's answer and could never fail on a Mac: two TESTS (`$ sudo chown` where Windows says
+`takeown /R /F`; a `:`-joined PATH where Windows uses `;`), and two in `notices-check.py` (the
+macOS crate graph cannot be resolved `--offline` on a Windows host — it is SKIPPED there now,
+stated with its reason, while the macOS job still checks both; and `pnpm` is `pnpm.cmd` on
+Windows, which `subprocess` cannot start without `shutil.which`).
+
 **The trap, measured 20 Sep 2026:** a bare `cargo`/`cargo-xwin` build of `rexenv.exe` is a DEV
 build — its webview loads `http://localhost:1420` and shows "can't reach this page", so the app
 looks headless or broken and no GUI check is possible. Only `tauri build` embeds the UI. Cross
