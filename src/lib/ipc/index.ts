@@ -634,14 +634,23 @@ export async function appUpdateReadiness(): Promise<AppUpdateReadiness | null> {
   return invoke<AppUpdateReadiness | null>("app_update_readiness");
 }
 
-/** Install the offered release and quit, so the new build reopens.
+/** Install the offered release. The app keeps running afterwards.
  *
- *  The window goes away as part of succeeding, so this resolves and then the
- *  process ends — the "updated to X" sentence belongs to the NEXT process,
- *  which reads its own version rather than trusting this one's hope. */
+ *  It used to quit here, which took the window away under the user's hands. The
+ *  swap lands, this resolves, and the caller TELLS the user rexenv is about to
+ *  close and reopen; {@link appUpdateRestart} is what the OK button calls. */
 export async function appUpdateApply(): Promise<AppUpdateOutcome> {
-  if (!isTauri()) return { swapped: true, version: "0.0.0" };
+  if (!isTauri()) return { swapped: true, version: "0.0.0", notice: "" };
   return invoke<AppUpdateOutcome>("app_update_apply");
+}
+
+/** Quit and reopen on the build {@link appUpdateApply} just installed.
+ *
+ *  Resolves only outside Tauri — inside it the process ends, so nothing after
+ *  the await runs. Refuses if no apply has completed in this process. */
+export async function appUpdateRestart(): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("app_update_restart");
 }
 
 /** Set aside exactly this version, or clear the skip by passing nothing.

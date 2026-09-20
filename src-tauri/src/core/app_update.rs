@@ -847,14 +847,31 @@ pub struct UpdateNotice {
 /// describes — this project has a guard about exactly that. It names what will
 /// happen in the order it happens, including the part users care about most:
 /// their sites keep serving, because services outlive the app.
+/// What the app says AFTER the swap and BEFORE it closes — the one-button
+/// dialog's body.
+///
+/// Here rather than in the TSX for the same reason [`consent_sentence`] is: it
+/// describes a RULE (what a restart does to the stack, and what dismissing it
+/// means), and a copy in the card is a copy that drifts the first time the rule
+/// changes. The apply hands it back with the outcome, so the card renders a
+/// string Rust sent.
+pub fn restart_sentence(version: &str) -> String {
+    format!(
+        "rexenv will now close and open again on {version}. Your sites, databases and DNS \
+         keep running throughout — services outlive the app. Open terminals and running jobs \
+         close with it. If you dismiss this, the new version starts the next time you open \
+         rexenv."
+    )
+}
+
 pub fn consent_sentence(offer: &Offer, homebrew: bool) -> String {
     let mb = (offer.size_bytes as f64 / 1_000_000.0).round() as u64;
     let words = crate::platform::words::current();
     let mut s = format!(
         "Downloads rexenv {} ({mb} MB), checks its signature and checksum, replaces \
-         {} in one step, then quits and reopens on {}. Your sites, databases and \
-         DNS keep running throughout — services outlive the app. Open terminals and \
-         running jobs close with it, exactly as they do when you quit.",
+         {} in one step, then ASKS before it closes and reopens on {}. Your sites, \
+         databases and DNS keep running throughout — services outlive the app. Open \
+         terminals and running jobs close with it, exactly as they do when you quit.",
         offer.version, words.update_replaces, offer.version
     );
     if homebrew {
@@ -1608,6 +1625,25 @@ mod tests {
 
     /// The consent sentence says what the click DOES, in the order it happens,
     /// and it lives here rather than in the TSX so there is one source for it.
+    /// **The restart notice says what the restart costs, and what dismissing it
+    /// means.**
+    ///
+    /// The app used to quit the instant the swap landed; the dialog this feeds
+    /// is what replaced that (#700). A notice that named only the version would
+    /// be a worse surprise than none: the user is about to lose their terminals.
+    #[test]
+    fn the_restart_notice_names_what_closes_and_what_dismissing_does() {
+        let s = restart_sentence("0.9.1");
+        assert!(s.contains("0.9.1"), "{s}");
+        assert!(s.contains("close and open again"), "it must say the app CLOSES: {s}");
+        assert!(s.contains("keep running"), "the stack's survival is the reassurance: {s}");
+        assert!(s.contains("close with it"), "terminals and jobs go: {s}");
+        assert!(
+            s.contains("next time you open"),
+            "dismissing must be explained, not punished: {s}"
+        );
+    }
+
     #[test]
     fn the_consent_sentence_names_the_size_the_quit_and_what_keeps_running() {
         let offer = Offer {

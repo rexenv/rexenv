@@ -776,6 +776,8 @@ export interface AppUpdateState {
 export interface AppUpdateOutcome {
   swapped: boolean;
   version: string;
+  /** The restart dialog's body, written in Rust beside the rule it describes. */
+  notice: string;
 }
 
 /** Whether this installation can take the offered update, and the sentence

@@ -1598,6 +1598,12 @@ fixture can do is the real install directory, the real quit gate and the real re
   attached and `app-manifest-windows.json` signed on `rexenv/runtimes`), Settings → About
   offers the update; the consent sentence is the Windows one (no "rexenv.app", no
   Applications folder).
+- [ ] **The app says it is about to close, and waits.** After Install finishes, a dialog
+      names the new version and says rexenv will close and open again, what keeps running,
+      what closes with it, and what dismissing means. It has ONE button (OK) — no Cancel.
+      Nothing happens until you press it; pressing it quits and the app reopens on the new
+      version. **Tell:** the window vanishing on its own the moment the install finishes
+      (#700, fixed 20 Sep 2026), or a dialog whose OK does nothing.
 - [x] **Run 4, 19 Sep 2026 — the whole path, on the published 0.8.2.** A 0.7.9 carrying the swap
   fix (#695) installed; About → Check now offered "rexenv 0.8.2 · 13.2 MB has been published" with
   the WINDOWS consent sentence ("replaces rexenv's program files (your data folder is not

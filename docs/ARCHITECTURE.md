@@ -2197,6 +2197,14 @@ IPC surface — which is how a reader ends up designing against a system with on
 - **Mail:** php-fpm `sendmail_path` (DOUBLE-quoted in the pool ini — the parser strips
   bare quotes and app-data paths contain spaces) → Mailpit's `sendmail -t -S
   127.0.0.1:11025` shim → SMTP sink; inbox UI reads the HTTP API on 18025 (`core/mail.rs`).
+  - **The self-update never closes the app on its own.** The apply swaps and RETURNS;
+    the app then says "rexenv X is installed — it will now close and open again", and the
+    OK button is what calls `app_update_restart`, which arms the relaunch and quits through
+    the ONE quit gate. It used to `app.exit(0)` the moment the swap landed, so the window
+    vanished under the user's hands with no warning (owner, 20 Sep 2026). Between the two
+    the app runs on a bundle already replaced on disk — the state the relauncher was built
+    for — and dismissing the dialog is allowed: the sentence says the new version starts at
+    the next ordinary launch, which is what happens. Ledger #700.
   - **The HTML preview's isolation is in the DOCUMENT, not on the frame — because a
     sandbox costs the clicks.** The frame shipped with `sandbox=""`, which reads as maximum
     isolation and also switches off top-level navigation and popups: every link in every

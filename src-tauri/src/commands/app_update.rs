@@ -64,10 +64,13 @@ pub async fn app_update_check(
 pub struct ApplyOutcome {
     pub swapped: bool,
     pub version: String,
+    /// What the dialog before the restart says — written in `core`, beside the
+    /// rule it describes, never in the card (ledger #700).
+    pub notice: String,
 }
 
-/// Install the offered release and quit, so the relauncher can reopen the new
-/// build.
+/// Install the offered release. The app keeps running; the restart is a
+/// separate, user-acknowledged step.
 ///
 /// # The order, and what each step costs if it fails
 ///
@@ -81,9 +84,12 @@ pub struct ApplyOutcome {
 /// 4. **Stage, verify, swap.** Atomic; every failure before it leaves the
 ///    installed bundle untouched.
 /// 5. **Record** what happened, for the next process to report.
-/// 6. **Quit** — `app.exit(0)`, which raises `ExitRequested` and passes through
-///    the ONE quit gate exactly like every other quit. `AppHandle::restart` is
-///    never called: it would skip that gate entirely (ledger #529).
+/// 6. **Hand back** — and that is all. The quit belongs to
+///    [`app_update_restart`], which the OK button of the "rexenv is about to
+///    close and open again" dialog calls: this command used to `app.exit(0)`
+///    here, and the window went away under the user's hands (#700). The quit is
+///    still the ONE quit gate when it comes; `AppHandle::restart` is never
+///    called, since it would skip that gate entirely (ledger #529).
 ///
 /// # Why this does not refuse a busy app
 ///
@@ -96,10 +102,7 @@ pub struct ApplyOutcome {
 /// check here — and the consent sentence says plainly that terminals and running
 /// jobs close with it.
 #[tauri::command]
-pub async fn app_update_apply(
-    app: tauri::AppHandle,
-    state: State<'_, AppState>,
-) -> Result<ApplyOutcome> {
+pub async fn app_update_apply(state: State<'_, AppState>) -> Result<ApplyOutcome> {
     let _claim = crate::commands::php::InFlight::claim("app")?;
     let platform = crate::platform::current();
 
@@ -134,13 +137,44 @@ pub async fn app_update_apply(
         }
     }
 
-    // Tell the exit hook there is a relaunch owed. Set BEFORE the exit and read
-    // in `RunEvent::Exit`, which is the point after the quit gate has already
-    // agreed — a cancelled quit therefore leaves no helper waiting.
-    crate::relaunch_after_exit(receipt.installed.clone());
+    // The swap is done; the QUIT is not this command's to make. rexenv used to
+    // exit here, so the window vanished under the user's hands with no warning —
+    // the owner's ruling (20 Sep 2026) is that an app must say "I am about to
+    // quit and reopen" and wait to be told go. The path is parked for
+    // `app_update_restart`, which is what the button behind that dialog calls.
+    crate::swapped_awaiting_restart(receipt.installed.clone());
     let version = offer.version.clone();
+    let notice = core::app_update::restart_sentence(&version);
+    Ok(ApplyOutcome { swapped: true, version, notice })
+}
+
+/// Quit and reopen on the build [`app_update_apply`] just swapped in — the OK
+/// button of the dialog that apply's caller shows.
+///
+/// Separate from the apply on purpose: between the two the app is RUNNING on a
+/// bundle that has already been replaced on disk, which is exactly the state the
+/// relauncher was built for, and the user is the one who decides when to cross
+/// it. Refuses when no apply has completed in this process, because quitting an
+/// app that has nothing new to reopen into is just a quit the user did not ask
+/// for.
+///
+/// The quit is `app.exit(0)` — the ONE quit gate, like every other quit
+/// (`AppHandle::restart` would skip it, ledger #529). A gate that says no leaves
+/// the relaunch armed but the process alive, which is the pre-existing
+/// behaviour: nothing waits on a pid that is not going to die.
+#[tauri::command]
+pub fn app_update_restart(app: tauri::AppHandle) -> Result<()> {
+    let bundle = crate::take_swapped_awaiting_restart().ok_or_else(|| {
+        Error::Other(
+            "there is no installed update waiting to be opened — install one first".into(),
+        )
+    })?;
+    // Set BEFORE the exit and read in `RunEvent::Exit`, which is the point after
+    // the quit gate has already agreed — a cancelled quit therefore leaves no
+    // helper waiting.
+    crate::relaunch_after_exit(bundle);
     app.exit(0);
-    Ok(ApplyOutcome { swapped: true, version })
+    Ok(())
 }
 
 /// The sentence shown above the Update button, and the facts the card needs to

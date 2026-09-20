@@ -57,6 +57,7 @@ export function ConfirmDialog({
   confirmLabel = "Confirm",
   danger = false,
   confirmPhrase,
+  showCancel = true,
   onConfirm,
   onCancel,
 }: {
@@ -65,6 +66,11 @@ export function ConfirmDialog({
   confirmLabel?: string;
   danger?: boolean;
   confirmPhrase?: string;
+  /** `false` for an ACKNOWLEDGEMENT: one button, because there is no second
+   *  answer. Dismissing is still possible (Esc, the backdrop) — a dialog that
+   *  traps the window would be lying about who is in control — so the message
+   *  must say what happens when it is dismissed. */
+  showCancel?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -77,9 +83,11 @@ export function ConfirmDialog({
       {message && <div className="mt-2 text-[0.8125rem] leading-[1.55] text-rex-text-muted">{message}</div>}
       {gated && <TypeToConfirm phrase={confirmPhrase} value={typed} onChange={setTyped} autoFocus />}
       <div className="mt-5 flex justify-end gap-2">
-        <Button variant="secondary" onClick={onCancel}>
-          Cancel
-        </Button>
+        {showCancel && (
+          <Button variant="secondary" onClick={onCancel}>
+            Cancel
+          </Button>
+        )}
         <Button
           variant={danger ? "danger" : "primary"}
           disabled={gated && !match}
@@ -164,6 +172,7 @@ type ConfirmReq = {
   message?: React.ReactNode;
   confirmLabel?: string;
   danger?: boolean;
+  showCancel?: boolean;
   resolve: (v: boolean) => void;
 };
 type PromptReq = {
@@ -189,6 +198,17 @@ export function confirm(opts: Omit<ConfirmReq, "kind" | "resolve">): Promise<boo
   return new Promise((resolve) => useDialogStore.getState().open({ kind: "confirm", resolve, ...opts }));
 }
 
+/** A dialog with ONE button, for something the app is about to do rather than
+ *  something it is asking permission for — the restart after a self-update is
+ *  the case it was added for (20 Sep 2026). Resolves true when the button is
+ *  pressed and false when the dialog is dismissed, so the caller can tell the
+ *  two apart and say what dismissing meant. */
+export function acknowledge(opts: Omit<ConfirmReq, "kind" | "resolve" | "showCancel">): Promise<boolean> {
+  return new Promise((resolve) =>
+    useDialogStore.getState().open({ kind: "confirm", resolve, showCancel: false, ...opts }),
+  );
+}
+
 /** In-app `window.prompt` — resolves the entered text, or null if cancelled. */
 export function promptText(opts: Omit<PromptReq, "kind" | "resolve">): Promise<string | null> {
   return new Promise((resolve) => useDialogStore.getState().open({ kind: "prompt", resolve, ...opts }));
@@ -206,6 +226,7 @@ export function DialogHost() {
         message={current.message}
         confirmLabel={current.confirmLabel}
         danger={current.danger}
+        showCancel={current.showCancel}
         onConfirm={() => {
           current.resolve(true);
           close();

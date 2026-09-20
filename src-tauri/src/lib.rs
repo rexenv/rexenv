@@ -1290,6 +1290,7 @@ pub fn run() {
             commands::app_update::app_update_state,
             commands::app_update::app_update_check,
             commands::app_update::app_update_apply,
+            commands::app_update::app_update_restart,
             commands::app_update::app_update_readiness,
             commands::app_update::app_update_skip,
             commands::app_update::app_update_set_auto_check,
@@ -1707,6 +1708,32 @@ pub fn relaunch_after_exit(bundle: std::path::PathBuf) {
     if let Ok(mut slot) = RELAUNCH_AFTER_EXIT.lock() {
         *slot = Some(bundle);
     }
+}
+
+/// Where a SWAPPED build is waiting, between the swap and the user agreeing to
+/// the restart.
+///
+/// The apply no longer quits on its own: it swaps, and then the app TELLS the
+/// user it is about to quit and reopen and waits for them to say go (owner
+/// ruling 20 Sep 2026 — "the app must not restart itself without asking").
+/// Nothing here arms the relaunch; [`relaunch_after_exit`] does, and only once
+/// the user has clicked through, so an app that is never clicked simply keeps
+/// running and the swapped build takes effect at the next ordinary launch.
+static SWAPPED_AWAITING_RESTART: std::sync::Mutex<Option<std::path::PathBuf>> =
+    std::sync::Mutex::new(None);
+
+/// Record that a swap landed at `bundle` and the restart is owed to the user.
+pub fn swapped_awaiting_restart(bundle: std::path::PathBuf) {
+    if let Ok(mut slot) = SWAPPED_AWAITING_RESTART.lock() {
+        *slot = Some(bundle);
+    }
+}
+
+/// Take the swapped bundle, if this process has one waiting. `None` means no
+/// apply has completed in this process — a restart command must then refuse
+/// rather than quit an app that has nothing new to reopen into.
+pub fn take_swapped_awaiting_restart() -> Option<std::path::PathBuf> {
+    SWAPPED_AWAITING_RESTART.lock().ok()?.take()
 }
 
 /// One app-update check: fetch unlocked, accept + record under a brief lock.
@@ -2605,14 +2632,33 @@ mod tests {
         }
         assert!(scanned > 100, "the scan only read {scanned} files — it stopped working");
 
-        // And the apply must END in the gate rather than in an exit of its own.
+        // And the quit must go through the gate rather than an exit of its own.
+        // It no longer lives in the apply: since 20 Sep 2026 the apply SWAPS and
+        // returns, and the quit is `app_update_restart` — the OK button of the
+        // dialog that tells the user the app is about to close and reopen.
         let cmd = crate::core::copy_scan::production_source(include_str!(
             "commands/app_update.rs"
         ));
         assert!(cmd.contains("app_update_apply"), "sliced the wrong file");
         assert!(
             cmd.contains(&format!("app.{}", "exit(0)")),
-            "the apply must quit through app.exit(0), which raises ExitRequested"
+            "the restart must quit through app.exit(0), which raises ExitRequested"
+        );
+        // The apply itself must NOT quit: the user is told first and clicks OK.
+        // Sliced between the two functions rather than by attribute, because the
+        // text between them is whatever the file happens to carry.
+        // The apply's BODY, not the span up to the next function: the prose
+        // between them explains the quit and would fail a scan that read it.
+        let from = cmd.find("pub async fn app_update_apply").expect("the apply");
+        let body_end = cmd[from..].find("\n}\n").expect("the apply's closing brace") + from;
+        assert!(
+            cmd.find("pub fn app_update_restart").is_some_and(|r| r > body_end),
+            "app_update_restart must be its own function, after the apply"
+        );
+        assert!(
+            !cmd[from..body_end].contains(&format!("app.{}", "exit(0)")),
+            "app_update_apply quits on its own again — the user must be told the app is \
+             about to close and reopen, and clicking OK is what quits it"
         );
         assert!(
             !cmd.contains(&format!("std::process::{}", "exit(")),
@@ -2767,6 +2813,7 @@ mod tests {
             // reached the apply would be a second path past the only sentence
             // that tells a user what pressing it costs.
             "app_update_apply",
+            "app_update_restart",
             // The browser preference lives in open_external, once.
             "shell().open",
             // The MCP flag without the bind: the toggle would read "on" while

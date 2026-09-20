@@ -65,6 +65,7 @@ mod tests {
         ("app_update_set_auto_check", Never(UPDATE_FLOW)),
         ("app_update_skip", Never(UPDATE_FLOW)),
         ("app_update_apply", Never(UPDATE_FLOW)),
+        ("app_update_restart", Never(UPDATE_FLOW)),
         // ── blueprints
         ("list_blueprints", Tool("blueprints_list")),
         // ── database

@@ -927,6 +927,30 @@ export function DevUiReview() {
         // one state proves that one state renders — and the states that must be
         // right (nothing offered, a refusal, a failed check) are exactly the
         // ones nobody looks at.
+        // The install and the restart are TWO commands since 20 Sep 2026: the
+        // apply swaps and returns, the app tells the user it is about to close
+        // and reopen, and only the OK button restarts. Both are recorded so a
+        // check can prove the ORDER — a restart that fired without the click is
+        // the bug this shape replaced.
+        case "app_update_apply": {
+          const w = window as unknown as { __rexUpdate?: unknown[] };
+          (w.__rexUpdate ??= []).push({ cmd });
+          return {
+            swapped: true,
+            version: "0.6.0",
+            // Deliberately NOT the shipped wording: that sentence lives in Rust
+            // (`core::app_update::restart_sentence`) and no .tsx may spell it out
+            // — including this fixture, or the guard that keeps ONE source would
+            // have a second one to point at. A marker string proves the card
+            // renders what the backend sent rather than a copy of its own.
+            notice: "FIXTURE restart notice from the backend — rendered verbatim.",
+          };
+        }
+        case "app_update_restart": {
+          const w = window as unknown as { __rexUpdate?: unknown[] };
+          (w.__rexUpdate ??= []).push({ cmd });
+          return null;
+        }
         case "app_update_state": {
           const running = "0.5.0";
           const offer = {

@@ -888,6 +888,10 @@ staged and swapped (T3, sandbox tier), or that a real Mac lets it happen (T0/T11
   which launch path it took, so the macOS run is the control. Ledger #698; RAN green on the
   Win11 VM 20 Sep 2026, where it found three separate reasons the first implementation could
   not work (working directory, `output()` vs `status()`, and a shared log file).
+- `appupdaterestart.js` (WebKit, `verify-full.sh`) — the self-update's restart. The apply
+  and the restart are two commands; the check proves the order (install → dialog → nothing
+  restarted yet → OK → exactly one restart), that there is no Cancel to give, and that the
+  dialog renders the sentence the backend sent rather than a copy of its own. Ledger #700.
 - `maillink.js` (WebKit, `verify-full.sh`) — an HTML mail's links. The preview frame's
   `sandbox=""` made every link in every HTML mail dead for the screen's whole life, and no
   check saw it because both mail fixtures had no anchor in them — the harness mock literally

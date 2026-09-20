@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   appUpdateApply,
+  appUpdateRestart,
   appUpdateCheck,
   appUpdateReadiness,
   appUpdateSetAutoCheck,
@@ -9,6 +10,7 @@ import {
   appUpdateState,
 } from "@/lib/ipc";
 import { Checkbox } from "@/components/ui/checkbox";
+import { acknowledge } from "@/components/ui/dialog";
 import { toastBackendError } from "@/lib/toast";
 import { agoLabel } from "@/routes/Sites";
 import { fmtBytes, pctOf, Track } from "@/components/shell/DownloadPanel";
@@ -80,12 +82,25 @@ export function AppUpdateCard({ downloads }: { downloads: DownloadsSnapshot }) {
     onError: (e) => toastBackendError(e),
   });
 
-  // No success toast: the window goes away as part of succeeding. The sentence
-  // naming the new version belongs to the NEXT process, which reads its own
-  // version instead of trusting this one's hope.
+  // The install does NOT take the window away any more: it swaps, and then the
+  // app says what is about to happen and waits to be told go (owner ruling,
+  // 20 Sep 2026 — an app that restarts itself mid-sentence is a surprise, not a
+  // feature). Dismissing the dialog is allowed and the sentence says what that
+  // means, because the swapped build is already on disk either way.
   const apply = useMutation({
     mutationFn: appUpdateApply,
     onError: (e) => toastBackendError(e),
+    onSuccess: async (outcome) => {
+      const go = await acknowledge({
+        title: `rexenv ${outcome.version} is installed`,
+        // The sentence is Rust's (`core::app_update::restart_sentence`): it
+        // describes what a restart does, which is a rule, and a copy here is a
+        // copy that drifts (the guard in copy_scan enforces it).
+        message: outcome.notice,
+        confirmLabel: "OK",
+      });
+      if (go) await appUpdateRestart().catch(toastBackendError);
+    },
   });
 
   if (!st?.enabled) return null;
