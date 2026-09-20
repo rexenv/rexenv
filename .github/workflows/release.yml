@@ -60,9 +60,11 @@ jobs:
             git push origin "refs/tags/$TAG"
           fi
 
+      # No `version:` — pnpm/action-setup reads `packageManager` from package.json,
+      # so CI runs the pnpm this repo declares. Pinning 11 here while developers ran
+      # 12 made `pnpm list --prod` report 112 packages against the notices file's 127
+      # (21 Sep 2026): a red bar on Windows CI that no machine could reproduce.
       - uses: pnpm/action-setup@v4
-        with:
-          version: 11
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -180,9 +182,11 @@ jobs:
       - name: Check the tag matches every declared version
         run: ./scripts/check-versions.sh "${TAG#v}"
 
+      # No `version:` — pnpm/action-setup reads `packageManager` from package.json,
+      # so CI runs the pnpm this repo declares. Pinning 11 here while developers ran
+      # 12 made `pnpm list --prod` report 112 packages against the notices file's 127
+      # (21 Sep 2026): a red bar on Windows CI that no machine could reproduce.
       - uses: pnpm/action-setup@v4
-        with:
-          version: 11
       - uses: actions/setup-node@v4
         with:
           node-version: 22

@@ -1,6 +1,7 @@
 {
   "name": "rexenv",
   "private": true,
+  "packageManager": "pnpm@12.4.2",
   "license": "Apache-2.0",
   "version": "0.8.5",
   "type": "module",
