@@ -880,6 +880,28 @@ staged and swapped (T3, sandbox tier), or that a real Mac lets it happen (T0/T11
   passes is needed. Refuses a stale app binary, for the reason `app_relaunch_check` records.
   **6 checks, all green on the Dell, 19 Sep 2026.** Does NOT cover the real app quitting
   through the quit gate and reopening on a swapped directory — SMOKE-TEST's Windows section.
+## Proving a Windows claim
+
+`verify.sh`'s `windows-check` cross-compiles both crates for x64 Windows. That is a COMPILE
+gate: it says the code builds there, never that the feature works there. Four Windows-only
+defects shipped in one week past a green `windows-check` (#698, #699, #701, #703). A claim
+about Windows behaviour is proven one of three ways, cheapest first:
+
+1. **A headless example on Windows.** Cross-build just the example
+   (`cargo xwin build --release --target x86_64-pc-windows-msvc --example <name>`), copy it to
+   the VM or the Dell and run it. `postgres_admin_token_check` and `adminer_proxy_check` are
+   the shape: they exercise the real path with no GUI, so they can run over SSH.
+2. **The real installer on the VM.** Build it on the Dell (`scripts/release-windows.sh` →
+   `npx tauri build`), install with `/S`, and read logs/ports/registry over SSH.
+3. **The GUI on the VM**, for anything a user must SEE — a frame that renders, a dialog that
+   waits. Screenshots and clicks go through `C:\Users\Public\rexenv-smoke` (the foreground
+   guard refuses a click unless rexenv is frontmost).
+
+**The trap, measured 20 Sep 2026:** a bare `cargo`/`cargo-xwin` build of `rexenv.exe` is a DEV
+build — its webview loads `http://localhost:1420` and shows "can't reach this page", so the app
+looks headless or broken and no GUI check is possible. Only `tauri build` embeds the UI. Cross
+builds are for EXAMPLES; the app itself comes from the Dell.
+
 - `postgres_admin_token_check` (sandbox-adjacent, any OS) — the PostgreSQL LAUNCH path.
   Starts the real cluster on its own port (refusing if anything already listens there),
   asserts it ANSWERS a query rather than merely opening a port, and that the stop frees the

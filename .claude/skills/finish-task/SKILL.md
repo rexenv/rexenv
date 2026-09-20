@@ -24,6 +24,23 @@ A doc that is now WRONG outranks one that is merely incomplete: if the fix close
 a gap some doc lists as open, correct that entry. Say what it cost, not just what
 it does — the failure that motivated a rule is the half that survives.
 
+## 1b. Both platforms — did this ship for Windows too?
+
+macOS and Windows are both shipping targets (CLAUDE.md, "Both platforms"). Before
+the commit, answer these out loud:
+
+- Did anything OS-shaped get spelled INLINE — a path, a URL or origin, a command
+  line, a refusal, a user-facing sentence? It belongs in `platform/words.rs` or a
+  `platform/traits.rs` capability, with BOTH answers filled in. (`rexdb://localhost`
+  hardcoded for macOS is how the Windows Database Browser shipped blank, #703.)
+- Does `core/` name an OS? It may not — ask for a capability instead (#698).
+- Is a policy enforced at two ends (a CSP, a header, a URL shape)? Check every end,
+  not the one you changed (#699 + #702 + #703 were all needed for ONE panel).
+- Is the claim proven on Windows, or only compiled there? `windows-check` is a
+  compile gate. If there is no Windows run, the ledger verdict is `◐` and
+  `docs/SMOKE-TEST.md`'s Windows section carries the row —
+  `docs/TESTING.md` §"Proving a Windows claim" says how to get a real one.
+
 ## 2. Tick the TODO row, in this commit
 
 `- [x] **title** ✓ <d Mon yyyy> — <one line of evidence: test/example/ledger #>`.

@@ -100,6 +100,11 @@ because"), its ledger row lands in the SAME commit.
 
 ## Working conventions
 
+- **Both platforms, same change.** macOS and Windows are both shipping targets. Anything
+  OS-shaped — a path, a URL or origin, a command line, a refusal, a user-facing sentence —
+  goes in `platform/words.rs` or behind a `platform/traits.rs` capability, never inline in
+  one OS's spelling. `verify.sh`'s `windows-check` only proves it COMPILES there; a Windows
+  claim needs a Windows run (`docs/TESTING.md` §"Proving a Windows claim").
 - **Plan first.** Non-trivial work starts with a written plan (`docs/PLAN-<feature>.md`
   while in flight; it moves to `docs/archive/` when shipped); surface assumptions before
   building. One task at a time. `./scripts/status.py` shows what is open and in flight.

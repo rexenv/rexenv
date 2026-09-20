@@ -4,7 +4,9 @@ rexenv is a native, **no-Docker** local development environment for web & WordPr
 developers: a Tauri 2 desktop app (Rust backend + React/TS frontend) that runs the whole
 local stack — edge proxy with auto-HTTPS, shared web server, multi-version PHP, MySQL/
 PostgreSQL, one-click WordPress, `.rex` DNS, mail catching, tunnels — from one UI.
-**macOS is complete** (Phases 1–3 shipped); Windows is being ported (unfilled stubs fail as `Error::Unported`); Linux stubs are `todo!()`.
+**rexenv ships on macOS AND Windows** — both are shipping platforms, and every new feature is
+built for both IN THE SAME CHANGE (see "Both platforms" below). Linux stubs are `todo!()`;
+any Windows stub still unfilled fails as `Error::Unported`, never silently.
 
 This file is a ROUTER. Read only what the task needs (table at the bottom).
 The system mental model lives in `docs/ARCHITECTURE.md` — read it for any feature or bug.
@@ -33,14 +35,41 @@ headers saying "not started" about shipped features. Derived beats typed.
 | `live-check` | an L1 proof is owed, or "run it live" — examples by tier, fixture-owned everything |
 | `release` | bump / tag / dmg — the order, the four manifests, the human gates the agent cannot run |
 
+## Both platforms, in the same change (non-negotiable)
+
+A feature that works on one OS is half a feature. macOS and Windows are both shipping
+targets, so "Windows later" is not a plan — it is a bug with a date on it. Owner ruling,
+20 Sep 2026, after a week in which four separate Windows-only defects shipped to a user
+because the work had been written for macOS and compiled for Windows.
+
+- **Write the OS-shaped VALUE once, per OS.** A path, a URL or origin, a command line, a
+  refusal, a user-facing sentence that differs → `platform/words.rs` (`PlatformWords`) or a
+  trait in `platform/traits.rs`. Spelling macOS's answer inline and "handling Windows later"
+  is how the Database Browser shipped pointing at `rexdb://localhost`, a URL no Windows
+  webview can load (#703) — the file even carried a "Windows … Phase 4" comment.
+- **`core/` may not name an OS.** No `cfg(target_os)` there (a guard enforces it): ask the
+  platform for a CAPABILITY instead — `may_spawn_with_admin_token` is the shape (#698).
+- **A UI string that describes a RULE lives in Rust**, beside the rule, and the TSX renders
+  what it is sent (the consent and restart sentences; `copy_scan` enforces it).
+- **Both ends of a policy, not one.** The Database Browser needed the app's own `frame-src`,
+  Adminer's replayed `frame-ancestors` AND the frame's URL to be right (#699, #702, #703):
+  fixing two of three still rendered an empty panel.
+- **`verify.sh`'s `windows-check` is a COMPILE gate, not a verdict.** It says the Windows
+  build exists, never that the feature works there. A Windows claim needs a Windows RUN —
+  `docs/TESTING.md` §"Proving a Windows claim" has the three ways and the one trap (a bare
+  `cargo`/`cargo-xwin` binary is a DEV build whose webview loads `localhost:1420`; only
+  `tauri build` on the Dell produces something a GUI can be tested in).
+- **The ledger row says which OS the proof came from.** "Proven" with a macOS-only L1 is a
+  `◐`, and `docs/SMOKE-TEST.md`'s Windows section carries the row a human must run.
+
 ## Architecture rule (non-negotiable)
 
 - `commands/` are **thin** Tauri IPC handlers — translate calls, invoke `core/`, nothing else.
 - `core/` is **platform-agnostic** ("the what") — never imports OS-specific code.
 - ALL OS-specific code lives ONLY in `src-tauri/src/platform/`, behind the 13 Rust traits
-  in `platform/traits.rs`, impls selected via `#[cfg(target_os)]`. macOS impls are real;
-  unfilled `windows/` stubs return `Error::Unported` or panic via `unported!` (never `todo!()`,
-  ledger #595), `linux/` stays `todo!()`. The traits are designed so adding an OS = filling
+  in `platform/traits.rs`, impls selected via `#[cfg(target_os)]`. macOS AND Windows impls are
+  real for everything that ships; a Windows stub that is still empty returns `Error::Unported`
+  or panics via `unported!` (never `todo!()`, ledger #595), `linux/` stays `todo!()`. The traits are designed so adding an OS = filling
   stubs — but measured 12 Sep 2026 the tree is NOT there yet: the `rex` CLI's unix socket
   and macOS-only binary URLs still live outside `platform/` (the app lib itself now
   compiles for Windows), and php-fpm / `/etc/resolver` /
@@ -136,6 +165,8 @@ change touched — in that same commit, not a follow-up.**
 | install/first-run behaviour, or a user-facing prompt | `docs/INSTALL.md` |
 | the release pipeline or the cask | `docs/RELEASING.md` (cask lives in `rexenv/homebrew-tap`) |
 | a design token, a component rule, an honest-UI promise | `docs/DESIGN.md` |
+| a value that DIFFERS per OS (path, URL/origin, command, refusal, sentence) | `platform/words.rs` or a `platform/traits.rs` capability — never inline, never one OS's spelling (see "Both platforms") |
+| a feature or fix a Windows user will meet | `docs/SMOKE-TEST.md`'s Windows section + the ledger row naming which OS the proof came from |
 | a `rex` command or its IPC | `docs/CLI-ROADMAP.md` |
 
 Two rules with teeth, learned the hard way:
