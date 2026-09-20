@@ -18,6 +18,18 @@ pub enum Proc {
     /// `ProcessSupervisor::stop` like any other service; never killed
     /// implicitly (it isn't our child and outliving the app is intended).
     Adopted(u32),
+    /// Started by THIS session through a launcher that detaches the server —
+    /// PostgreSQL through `pg_ctl` on Windows, which is the only way the server
+    /// runs there (#698). A pid like [`Proc::Adopted`], because there is no
+    /// child handle to hold, but with the spawn instant, because it is OURS and
+    /// the watchdog's start grace must apply.
+    ///
+    /// Adopting it instead cost a shipped bug: `pg_ctl -w` takes seconds to
+    /// return, an adopted handle is never "starting", so the watchdog fired
+    /// mid-start, tried to respawn, and refused its OWN server's port —
+    /// "[restart-failed] … already in use by postgres.exe" with the cluster
+    /// serving perfectly (measured on the VM, 20 Sep 2026).
+    Detached(u32, Instant),
 }
 
 impl Proc {
@@ -34,7 +46,7 @@ impl Proc {
     pub fn id(&self) -> u32 {
         match self {
             Proc::Child(c, _) => c.id(),
-            Proc::Adopted(pid) => *pid,
+            Proc::Adopted(pid) | Proc::Detached(pid, _) => *pid,
         }
     }
 
@@ -42,6 +54,8 @@ impl Proc {
     /// spawned by this process — the `stack_guard` provenance check: a non-app
     /// process may stop only what it spawned.
     pub fn is_adopted(&self) -> bool {
+        // `Detached` is NOT adopted: this session started it, so the provenance
+        // check ("may stop only what it spawned") answers yes for it.
         matches!(self, Proc::Adopted(_))
     }
 
@@ -49,7 +63,7 @@ impl Proc {
     /// never "starting" — they were already serving when we picked them up.
     pub fn within_grace(&self, window: Duration) -> bool {
         match self {
-            Proc::Child(_, spawned) => spawned.elapsed() < window,
+            Proc::Child(_, spawned) | Proc::Detached(_, spawned) => spawned.elapsed() < window,
             Proc::Adopted(_) => false,
         }
     }
@@ -101,7 +115,9 @@ impl Proc {
     pub fn alive(&mut self) -> bool {
         match self {
             Proc::Child(c, _) => matches!(c.try_wait(), Ok(None)),
-            Proc::Adopted(pid) => crate::platform::current().supervisor().pid_alive(*pid),
+            Proc::Adopted(pid) | Proc::Detached(pid, _) => {
+                crate::platform::current().supervisor().pid_alive(*pid)
+            }
         }
     }
 }
@@ -115,6 +131,26 @@ impl From<Child> for Proc {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **A detached process is OURS: it gets the start grace, and the
+    /// provenance check says we may stop it.**
+    ///
+    /// `Adopted` was the first shape for a `pg_ctl`-started PostgreSQL and it
+    /// cost a shipped bug: an adopted handle is never "starting", `pg_ctl -w`
+    /// takes seconds, so the watchdog fired mid-start, respawned, and refused
+    /// its OWN server's port — the app reported PostgreSQL dead while the
+    /// cluster was serving (VM, 20 Sep 2026).
+    #[test]
+    fn a_detached_process_is_ours_and_starting() {
+        let now = Proc::Detached(4242, Instant::now());
+        assert_eq!(now.id(), 4242);
+        assert!(!now.is_adopted(), "we started it — provenance must say so");
+        assert!(now.starting(), "the watchdog must leave a detached start alone");
+        let old = Proc::Detached(4242, Instant::now() - Proc::START_GRACE - Duration::from_secs(1));
+        assert!(!old.starting(), "the grace is a window, not a permanent shield");
+        // Adopted keeps its meaning: a prior session's process is never starting.
+        assert!(!Proc::Adopted(4242).starting());
+    }
 
     #[test]
     fn adopted_reports_pid_and_never_waits_or_kills() {

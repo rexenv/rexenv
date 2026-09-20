@@ -2169,7 +2169,10 @@ IPC surface — which is how a reader ends up designing against a system with on
   `initdb` survives it by re-executing itself under a restricted token; `postgres.exe` has
   no such code, and `pg_ctl` is where PostgreSQL keeps it, so rexenv launches through
   `pg_ctl` rather than reimplementing `CreateRestrictedToken`. It detaches, so the handle is
-  `Proc::Adopted`, and shutdown is `pg_ctl stop -m fast` — a hard kill of the postmaster
+  `Proc::Detached` — a pid with the SPAWN TIME, because it is ours: `Adopted` looked right and
+  cost a shipped bug, since an adopted process is never "starting" and the watchdog respawned a
+  cluster still coming up, then refused its own port (#701). Shutdown is
+  `pg_ctl stop -m fast` — a hard kill of the postmaster
   there leaves its backend processes holding the datadir and the port. The switch is a
   platform CAPABILITY (`ProcessSupervisor::may_spawn_with_admin_token`), never a `cfg`:
   `core/` may not name an OS. Ledger #698.
@@ -2197,6 +2200,12 @@ IPC surface — which is how a reader ends up designing against a system with on
 - **Mail:** php-fpm `sendmail_path` (DOUBLE-quoted in the pool ini — the parser strips
   bare quotes and app-data paths contain spaces) → Mailpit's `sendmail -t -S
   127.0.0.1:11025` shim → SMTP sink; inbox UI reads the HTTP API on 18025 (`core/mail.rs`).
+  - **The Database Browser needs BOTH CSPs to name the same frame.** The app's own
+    `frame-src` (tauri.conf.json) must list the proxy scheme as the WEBVIEW serves it —
+    `rexdb:` on macOS, `http://rexdb.localhost` on Windows — and Adminer's replayed
+    `frame-ancestors` must name the app's origin (#699). Fixing one and not the other still
+    renders an empty panel, which is how 0.8.4 shipped (#702); `connect-src` already carried
+    `http://ipc.localhost` for exactly the same reason.
   - **The self-update never closes the app on its own.** The apply swaps and RETURNS;
     the app then says "rexenv X is installed — it will now close and open again", and the
     OK button is what calls `app_update_restart`, which arms the relaunch and quits through

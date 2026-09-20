@@ -206,7 +206,9 @@ pub fn start(platform: &dyn Platform, basedir: &Path, datadir: &Path, port: u16)
             log.display()
         )));
     }
-    Ok(Proc::Adopted(postmaster_pid(datadir)?))
+    // `Detached`, not `Adopted`: this session started it, and the watchdog's
+    // start grace must apply to it (see `Proc::Detached`).
+    Ok(Proc::Detached(postmaster_pid(datadir)?, std::time::Instant::now()))
 }
 
 /// Stop a running PostgreSQL.
