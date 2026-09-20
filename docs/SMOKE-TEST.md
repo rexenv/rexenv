@@ -1605,6 +1605,11 @@ fixture can do is the real install directory, the real quit gate and the real re
   attached and `app-manifest-windows.json` signed on `rexenv/runtimes`), Settings → About
   offers the update; the consent sentence is the Windows one (no "rexenv.app", no
   Applications folder).
+- [x] **The app says it is about to close, and waits.** ✓ 20 Sep 2026 (Win11 VM, a real
+      0.8.4 → 0.8.5 in-app update): the swap landed and the window stayed; the dialog said
+      "rexenv 0.8.5 is installed — rexenv will now close and open again on 0.8.5 …" with ONE
+      button; nothing happened until OK, and OK quit and reopened it on 0.8.5. Apps & Features
+      read 0.8.5 afterwards (#696's first proof).
 - [ ] **The app says it is about to close, and waits.** After Install finishes, a dialog
       names the new version and says rexenv will close and open again, what keeps running,
       what closes with it, and what dismissing means. It has ONE button (OK) — no Cancel.
