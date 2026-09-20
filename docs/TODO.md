@@ -900,6 +900,15 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
       published (rexenv/runtimes#4 unblocks that publish). The issue's other half — the pins
       script explaining the wrong drift direction — is done 19 Sep 2026 (`check-php-pins.sh`
       names both directions).
+    - [ ] **The DNS agent's scheduled task went missing, and the watchdog could only say so.**
+      Seen on the VM 20 Sep 2026 in `health.log`: `[restart-failed] DNS: resolver agent kickstart
+      failed: could not restart rexenv's DNS agent task (\rexenv\dns-agent): ERROR: The system
+      cannot find the file specified.` The task had existed (the agent had been serving); what
+      removed it is unknown — an update, an uninstall/reinstall over the top, or a Windows
+      cleanup. Two halves: find out what removes it (reinstall over a running copy is the first
+      suspect, since that is what this VM had just done), and make the kickstart RE-CREATE a task
+      that is gone rather than fail at it — the agent is what makes `.rex` resolve, so a missing
+      task is a dead TLD at the next boot.
     - [ ] The installer's "rexenv is running! Click OK to kill it" names the DNS agent as if it
       were the app (measured run 2). Correct as far as it goes — the task restarts the agent on
       the new binary — but a sentence that says so would spare the user the guess.
