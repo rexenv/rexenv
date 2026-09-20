@@ -965,8 +965,43 @@ impl DnsAgentManager for WindowsDnsAgent {
         let _ = Self::schtasks(&["/End", "/TN", logon_task::DNS_AGENT_TASK]);
         Self::schtasks_ok("start", &["/Run", "/TN", logon_task::DNS_AGENT_TASK])
     }
-    /// End the running agent and start it again, under the same registration.
+    /// End the running agent and start it again — RE-REGISTERING first if the task
+    /// has gone missing.
+    ///
+    /// A kickstart used to be `/End` + `/Run`, which fails outright when there is no
+    /// task: `could not restart rexenv's DNS agent task (\rexenv\dns-agent): ERROR:
+    /// The system cannot find the file specified` — seen on the VM 20 Sep 2026, with
+    /// the health watchdog able to do nothing but log it. That is the worst thing to
+    /// be passive about: the task is what starts the resolver at logon, so a missing
+    /// one is `.rex` dead at the next boot, discovered by a user whose sites stopped
+    /// resolving.
+    ///
+    /// rexenv keeps its own copy of the definition it registered
+    /// ([`Self::definition_path`]), so healing needs no arguments — and what it
+    /// registers is what it registered before, not a guess. (The INSTALLER is not
+    /// what removes it: measured on the VM the same day, a reinstall over a running
+    /// copy leaves the task registered — it kills the agent, and this per-minute
+    /// task is what brings it back within the minute.)
     fn kickstart(&self) -> Result<()> {
+        if !self.is_installed() {
+            let path = self.definition_path()?;
+            if !path.exists() {
+                return Err(Error::Other(format!(
+                    "rexenv's DNS agent task ({}) is gone and so is the definition it was \
+                     registered from ({}) — reopen rexenv, which registers it again",
+                    logon_task::DNS_AGENT_TASK,
+                    path.display()
+                )));
+            }
+            let file = path.display().to_string();
+            Self::schtasks_ok(
+                "re-register",
+                &["/Create", "/TN", logon_task::DNS_AGENT_TASK, "/XML", &file, "/F"],
+            )?;
+            log::warn!(
+                "dns: the agent's scheduled task was missing and has been registered again from {file}"
+            );
+        }
         let _ = Self::schtasks(&["/End", "/TN", logon_task::DNS_AGENT_TASK]);
         Self::schtasks_ok("restart", &["/Run", "/TN", logon_task::DNS_AGENT_TASK])
     }
