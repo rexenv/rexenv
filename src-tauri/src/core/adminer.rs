@@ -1153,13 +1153,24 @@ mod tests {
         let _catalog = binaries::catalog_test_lock();
         let conn = crate::state::db::open_in_memory().unwrap();
         let pin = binaries::ADMINER_VERSION;
+        // A version ABOVE the pin, derived from it: the fixture used to spell one
+        // out, so re-pinning 5.4.2 → 6.1.0 (21 Sep 2026) turned "newer than the
+        // pin" into "older" and the floor swallowed it. A patch bump stays under
+        // `ADMINER_MAX_MAJOR`, which the vouching step also enforces.
+        let newer = {
+            let mut parts: Vec<u32> =
+                pin.split('.').map(|n| n.parse().expect("the pin is major.minor.patch")).collect();
+            *parts.last_mut().unwrap() += 1;
+            parts.iter().map(|n| n.to_string()).collect::<Vec<_>>().join(".")
+        };
+        assert!(newer.as_str() > pin, "{newer} must sort above the pin {pin}");
 
         // No choice → the pin, byte for byte.
         assert_eq!(effective_version_for(&conn, Arch::Arm64), pin);
 
         // A choice nothing vouches for → still the pin. This is the state after a
         // publish that dropped the entry, and it must not be a dangling version.
-        set_selected_version(&conn, Some("6.0.1")).unwrap();
+        set_selected_version(&conn, Some(&newer)).unwrap();
         assert_eq!(
             effective_version_for(&conn, Arch::Arm64),
             pin,
@@ -1169,14 +1180,14 @@ mod tests {
         // Vouched by the catalog → honoured.
         binaries::install_catalog(crate::core::updates::catalog_for_tests(&[(
             "adminer",
-            "6.0.1",
+            &newer,
             crate::core::updates::ANY_ARCH,
-            "https://github.com/vrana/adminer/releases/download/v6.0.1/adminer-6.0.1-en.php",
+            &format!("https://github.com/vrana/adminer/releases/download/v{newer}/adminer-{newer}-en.php"),
             &"c".repeat(64),
         )]));
-        assert_eq!(effective_version_for(&conn, Arch::Arm64), "6.0.1");
+        assert_eq!(effective_version_for(&conn, Arch::Arm64), newer);
         // Arch-free: the other Mac gets the same answer.
-        assert_eq!(effective_version_for(&conn, Arch::X86_64), "6.0.1");
+        assert_eq!(effective_version_for(&conn, Arch::X86_64), newer);
 
         // OLDER than the pin → ignored. The pin is a floor, not a default.
         //
@@ -1189,9 +1200,9 @@ mod tests {
         binaries::install_catalog(crate::core::updates::catalog_for_tests(&[
             (
                 "adminer",
-                "6.0.1",
+                &newer,
                 crate::core::updates::ANY_ARCH,
-                "https://github.com/vrana/adminer/releases/download/v6.0.1/adminer-6.0.1-en.php",
+                &format!("https://github.com/vrana/adminer/releases/download/v{newer}/adminer-{newer}-en.php"),
                 &"c".repeat(64),
             ),
             (

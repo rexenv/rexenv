@@ -20,6 +20,7 @@ line of every IN-FLIGHT docs/PLAN-*.md (shipped plans live in docs/archive/), an
 summary written by a person — see memory: summaries restate nothing, they link or
 generate.
 """
+import difflib
 import json
 import re
 import subprocess
@@ -142,9 +143,22 @@ def main(argv):
         print(f"wrote {OUT.relative_to(ROOT)}")
         return 0
     if "--check" in argv:
-        if not OUT.exists() or OUT.read_text(encoding="utf-8") != report:
+        current = OUT.read_text(encoding="utf-8") if OUT.exists() else ""
+        if current != report:
             print("status: docs/STATUS.md is stale — run ./scripts/status.py --write "
                   "and commit it with the change that moved it.", file=sys.stderr)
+            # WHAT drifted, not just that something did. Without this the gate is a
+            # dead end on any machine you cannot reproduce on: the first Windows CI
+            # run failed here while the same commit matched on a Mac AND on the
+            # Windows laptop, and there was nothing to read (21 Sep 2026).
+            diff = list(difflib.unified_diff(
+                current.splitlines(), report.splitlines(),
+                "docs/STATUS.md (committed)", "generated from this tree", lineterm="", n=1,
+            ))
+            for line in diff[:40]:
+                print(f"  {line}", file=sys.stderr)
+            if len(diff) > 40:
+                print(f"  … {len(diff) - 40} more diff lines", file=sys.stderr)
             return 1
         print("status: docs/STATUS.md matches the tree")
         return 0
