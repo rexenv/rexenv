@@ -1658,7 +1658,14 @@ fixture can do is the real install directory, the real quit gate and the real re
   thumbprint is unchanged (`1A6A20BE…` before and after), `lm.rex` → 127.0.0.1 and HTTPS 200.
   The updated copy still resolves `.rex` and still serves HTTPS: the DNS agent was
   re-launched onto the new binary and the CA did not change.
-- [ ] Apps & Features → Uninstall on the UPDATED copy works: the carried-across uninstaller
+- [ ] ◐ 21 Sep 2026, run 6 (published 0.8.4 → 0.8.5 in-app, then the carried-across
+  `uninstall.exe /S`, WITHOUT the in-app "Remove system changes" first): it removed `rex.exe`
+  (a swapped file), itself, the HKCU entry and both shortcuts, and kept the data — but
+  **`rexenv.exe` stayed**: the `\rexenv\dns-agent` task, which only the in-app step removes, re-ran
+  the agent from it within the minute, so the file was locked when the uninstaller got to it,
+  and the agent went on answering `:53` from an uninstalled app (docs/TODO.md W12). The row as
+  written — in-app step first — is still to run; it needs the Root-store DELETE dialog clicked
+  and a re-onboarding after. Apps & Features → Uninstall on the UPDATED copy works: the carried-across uninstaller
   removes the directory the swap put in place.
 
 ### Where rexenv lives — replaces "The menu bar (no dock icon)"

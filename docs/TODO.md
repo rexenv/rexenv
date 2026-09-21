@@ -862,6 +862,15 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
       while the quit gate's "Stop sharing?" is still on screen, unanswered — the card read the
       restart call's "not quitting (yet)" as the user's answer. Only "Keep sharing" should put it
       there; while the gate is open it should say nothing new.
+    - [ ] **Uninstalling from Apps & Features without the in-app step leaves a live agent.** Measured
+      21 Sep 2026 on the VM (SMOKE-TEST run 6): `uninstall.exe` removed everything it owns except
+      `rexenv.exe`, because the `\rexenv\dns-agent` task — per-user, and left registered — re-ran the
+      agent from it within the minute and held the file. Result: an uninstalled app whose resolver
+      still answers `127.0.0.1:53` every minute, forever. INSTALL.md says "in-app step FIRST", but
+      Apps & Features is where people uninstall. The task is the user's own, so the uninstaller can
+      end and delete it without UAC (a Tauri NSIS `installerHooks` pre-uninstall: `schtasks /End` +
+      `/Delete /TN \rexenv\dns-agent /F`, then stop the agent) — NRPT and the CA still need the
+      in-app step, and the uninstaller should keep saying so.
     - [ ] `%LOCALAPPDATA%\rexenv\rexenv-0.8.3.bak` (38 MB, 19 Sep) sits beside the app for good: a
       pre-#695 swap left it, and the launch sweep looks only for `.rexenv-update-*`. Sweep the old
       name once, or say why not.
