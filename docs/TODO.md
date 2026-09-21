@@ -873,6 +873,15 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     - [ ] Watch PR 437674 through their automated validation, and answer whatever it asks for.
   - [ ] W12 — launch gates: verify on the Windows runner, SMOKE-TEST + INSTALL Windows
     sections, clean Windows 11 VM pass
+    **✓ verify on the Windows RUNNER — green 21 Sep 2026**, `.github/workflows/windows-verify.yml`
+    run 35565978803 on `92fe2c2a`: `verify: all green` in 57.0 min (cold cache — the first run
+    that succeeded, so the rust-cache is saved from here). It took seven fixes to get there, and
+    every one was something that spelled macOS's answer or assumed a developer's machine: two
+    tests (`sudo chown`, a `:`-joined PATH), the notices check's macOS graph (`--offline` on a
+    Windows host) and its `pnpm` (`pnpm.cmd`), pnpm 11 pinned in CI vs 12.4.2 everywhere else
+    (112 vs 127 npm packages), the lockfile that declaration left behind, and `status.py`
+    running the WSL launcher as `bash` on the runner. Timings measured so far: runner 52–58 min
+    cold (four runs), the Dell 17.3 min warm.
     **verify.sh RAN on Windows for the first time, 21 Sep 2026** (Git Bash, the Dell): 1334
     passed, 2 failed — both TESTS that asserted macOS's answer (`$ sudo chown` where Windows
     says `takeown /R /F`; a `:`-joined PATH where Windows uses `;`). Neither could fail on a
