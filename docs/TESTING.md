@@ -917,6 +917,14 @@ macOS crate graph cannot be resolved `--offline` on a Windows host — it is SKI
 stated with its reason, while the macOS job still checks both; and `pnpm` is `pnpm.cmd` on
 Windows, which `subprocess` cannot start without `shutil.which`).
 
+**And a CI-only one, 21 Sep 2026:** on GitHub's windows runner `bash` resolves to
+`C:\Windows\System32\bash.exe` — the WSL launcher — before Git Bash. With no distro it
+prints "You can resolve this by installing a distribution…" in UTF-16 and exits 1, which
+`status.py` captured and embedded in `docs/STATUS.md`, so the gate said "stale" on CI while
+matching on every machine a developer could try. It picks the bash Git ships now, and refuses
+the WSL shim by name. The gate also PRINTS the diff when it fails — without that this was
+unfindable from the outside.
+
 **The trap, measured 20 Sep 2026:** a bare `cargo`/`cargo-xwin` build of `rexenv.exe` is a DEV
 build — its webview loads `http://localhost:1420` and shows "can't reach this page", so the app
 looks headless or broken and no GUI check is possible. Only `tauri build` embeds the UI. Cross
