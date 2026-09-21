@@ -1511,7 +1511,7 @@ Environment: Windows ____ (11 x64 supported · 10 22H2 best-effort — D6) · re
 - [x] **PostgreSQL starts — including with UAC OFF.** ✓ 20 Sep 2026 (Win11 VM, `EnableLUA=0`,
       0.8.5): Services → PostgreSQL → **7 of 7 running**, `:15432` listening, `health.log` empty
       a minute later (#698 launches it through `pg_ctl`, #701 stops the watchdog racing it).
-- [ ] **PostgreSQL starts — including with UAC OFF.** Services → start PostgreSQL: it
+      The check itself: Services → start PostgreSQL: it
       reaches Running and `netstat -ano | findstr :15432` shows it LISTENING. Then the case
       that broke it: on a machine with UAC disabled (`EnableLUA=0`, where EVERY process
       carries the Administrators token) it must still start, because rexenv launches it
@@ -1524,7 +1524,7 @@ Environment: Windows ____ (11 x64 supported · 10 22H2 best-effort — D6) · re
       MySQL shows Adminer 6.0.2 INSIDE the app, auto-logged-in as `root@localhost`, listing
       `wp_lm_rex`. It took three fixes that all had to be right — the frame's URL (#703), the
       app's own `frame-src` (#702) and Adminer's replayed `frame-ancestors` (#699).
-- [ ] **The Database Browser renders.** Databases → Browse on MySQL: Adminer appears INSIDE
+      The check itself: Databases → Browse on MySQL: Adminer appears INSIDE
       the app (table list, not an empty white/grey panel) and its buttons work. **Tell:** a
       blank frame with the URL bar above it filled in — the CSP refused the app's origin
       (#699), and nothing in any log says so.
@@ -1610,7 +1610,7 @@ fixture can do is the real install directory, the real quit gate and the real re
       "rexenv 0.8.5 is installed — rexenv will now close and open again on 0.8.5 …" with ONE
       button; nothing happened until OK, and OK quit and reopened it on 0.8.5. Apps & Features
       read 0.8.5 afterwards (#696's first proof).
-- [ ] **The app says it is about to close, and waits.** After Install finishes, a dialog
+      The check itself: after Install finishes, a dialog
       names the new version and says rexenv will close and open again, what keeps running,
       what closes with it, and what dismissing means. It has ONE button (OK) — no Cancel.
       Nothing happens until you press it; pressing it quits and the app reopens on the new
@@ -1703,8 +1703,12 @@ them is Windows' own dialog:
 - [x] 19 Sep 2026: `bin\` (adminer 5.4.2, caddy 2.11.4, mailpit 1.30.3, mysql 8.4.6, nginx 1.30.4,
   php 8.3.32, each with `.pinned-digest`), `ca\`, `config\`, `logs\`, `rexenv.db`. App data: `%LOCALAPPDATA%\rexenv\rexenv\data` (with `config\`, `logs\`, `bin\`
   under it).
-- [ ] The `rex` CLI is a **copy** on the user's `Path` at `%LOCALAPPDATA%\rexenv\bin`
-  (ledger #634) — beside the data tree, not inside it — not a symlink.
+- [x] The `rex` CLI is a **copy** on the user's `Path` at `%LOCALAPPDATA%\rexenv\bin`
+  (ledger #634) — beside the data tree, not inside it — not a symlink. ✓ 16 Sep 2026 on the Dell
+  (#634's L1: the folder held `rex.exe` with the sidecar's SHA-256 — byte-identical, so a copy;
+  the user `Path` gained exactly that one entry, `REG_SZ` kept; `where.exe rex` and a fresh
+  desktop process's `Get-Command rex` both found it) and 19 Sep on the clean VM (run 2,
+  "`rex` on the Path").
 
 ### Updating
 The Windows updater shipped 19 Sep 2026 (ledger #690) — its rows are the "In-app self-update"
