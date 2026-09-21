@@ -1739,6 +1739,10 @@ sentence is now OS-neutral.
 - [x] Run 2, installing OVER a running copy: only the DNS agent was alive (the app had quit),
   and the NSIS installer said **"rexenv is running! Click OK to kill it"** — the agent IS
   `rexenv.exe`. OK killed it; its logon task restarted it after the install, on the new binary.
+- [x] ✓ 21 Sep 2026 (Dell, Win10 22H2, installer 7388104…): the same over-a-running-copy install
+  now says **"rexenv is still running: the app, or the small background resolver…"** with the
+  "starts again on its own" line (`src-tauri/nsis/English.nsh`). OK → the app closed, Setup
+  completed, Finish reopened the app, and the agent was back beside it.
 
 ---
 Result: ____ / all pass.  Issues found: ________________________________________

@@ -282,10 +282,14 @@ is confined by the installer's own job, which would stop rexenv's servers from s
 rexenv notices and reopens itself through Explorer once, before it shows anything. Measured on
 the first installed copy, 19 Sep 2026.)
 
-**Installing a newer build over an installed one** asks one more thing: *"rexenv is running!
-Click OK to kill it"* — even with the window closed and rexenv quit, because the `.rex` DNS
-answerer is the same `rexenv.exe`. OK is right: it comes back on the new build by itself a
-few seconds later (its logon task restarts it), and `.rex` keeps resolving.
+**Installing a newer build over an installed one** asks one more thing: *"rexenv is still
+running: the app, or the small background resolver that keeps your .rex sites answering after
+you quit. Click OK to stop it and continue…"* — it asks even with the window closed and rexenv
+quit, because the `.rex` DNS answerer is the same `rexenv.exe`. OK is right: it comes back on
+the new build by itself a few seconds later (its logon task restarts it), and `.rex` keeps
+resolving. (Up to 0.8.5 this read Tauri's stock *"rexenv is running! Click OK to kill it"*,
+which told a user who had quit that the app was still open; the words now live in
+`src-tauri/nsis/English.nsh`.)
 
 ### Requirements
 

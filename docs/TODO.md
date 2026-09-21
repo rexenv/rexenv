@@ -937,7 +937,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
       suspect, since that is what this VM had just done), and make the kickstart RE-CREATE a task
       that is gone rather than fail at it — the agent is what makes `.rex` resolve, so a missing
       task is a dead TLD at the next boot.
-    - [◐] **Done in code 21 Sep 2026, awaiting the VM look:** `src-tauri/nsis/English.nsh` (wired
+    - [x] ✓ 21 Sep 2026, seen on the Dell (Win10 22H2, installer `7388104…`, app running): the
+      MessageBox reads the new sentence; OK → Setup completed → Finish reopened the app, and the
+      DNS agent came back on its own (SMOKE-TEST Windows run-2 block). **Code:** `src-tauri/nsis/English.nsh` (wired
       through `customLanguageFiles`) replaces the three running-app strings — `appRunningOkKill`
       now says rexenv is running as "the app, or the small background resolver that keeps your
       .rex sites answering", that OK stops it, and that the resolver comes back by itself. The
