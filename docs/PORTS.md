@@ -49,7 +49,7 @@ binary, update THIS file in the same commit.
 | MariaDB | 12.3.2 (default) / 11.4.12 LTS (`mariadb@11.4` bottle, identical layout+closure) | bottle BUNDLE: mariadb (server + client + dump + bootstrap SQL/errmsg/charsets ONLY — plugins/scripts excluded) + openssl@3 3.6.3 + pcre2 10.47. groonga/lz4/lzo/xz/zstd are plugin-only deps, not bundled. Init = `mariadbd --bootstrap` fed the bundled SQL over stdin (`core/mariadb.rs`) |
 | Apache httpd | 2.4.68 | bottle BUNDLE: httpd (`bin/httpd` + ONLY the 10 modules the generated conf loads + `.bottle/etc/httpd/mime.types`) + apr 1.7.6 + apr-util 1.6.3 + pcre2 10.47. mod_ssl/mod_http2/mod_brotli excluded ⇒ openssl/nghttp2/brotli never bundled. Per-site loopback override backend; `.php` → the site's shared php-fpm pool via mod_proxy_fcgi (`core/apache.rs`) |
 | Mailpit | 1.30.3 | |
-| Adminer | 5.4.2 | single `.php`, OS-agnostic |
+| Adminer | 6.1.0 | single `.php`, OS-agnostic. sha256 `d21891f4…6d2000` (`ADMINER_6_1_0_SHA256`). Re-pinned from 5.4.2 on 21 Sep 2026 (rexenv/runtimes#5); this row still read 5.4.2 until the 0.8.6 release commit, because the re-pin commit changed the code and its fixtures but not this table |
 | cloudflared | 2026.6.1 | |
 
 ### Windows x64 artifacts (`manifest(…, "windows", …)`, port W2 — 12 Sep 2026)
