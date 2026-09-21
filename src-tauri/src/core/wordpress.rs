@@ -29,7 +29,7 @@
 //! - **Coverage is a property of this tree, not a list.** The ledger row named
 //!   four spawn sites; by the time it was worked there were seven, two added
 //!   after it was written. So there is ONE argv builder ([`wp_argv_prefix`]) and
-//!   ONE `Command::new(php_bin)` ([`wp_command`]), and
+//!   ONE `platform::command(php_bin)` ([`wp_command`]), and
 //!   `every_wp_cli_argv_in_the_tree_is_pinned` fails the build when a second of
 //!   either appears. Counting the sites is what would have shipped a guard
 //!   narrower than its own claim.
@@ -552,7 +552,7 @@ fn is_timeout_error(e: &Error) -> bool {
 }
 
 /// The bundled PHP running the pinned phar with the command set pinned — the
-/// ONE `Command::new(php_bin)` in the tree, so a captured spawn cannot be
+/// ONE `platform::command(php_bin)` in the tree, so a captured spawn cannot be
 /// assembled without the pin. Streamed spawns cannot use a `Command` (they go
 /// through `ProcessSupervisor`) and pair [`wp_argv_prefix`] with
 /// [`wp_packages::with_pinned_packages`] instead.
@@ -564,7 +564,7 @@ fn is_timeout_error(e: &Error) -> bool {
 /// wp-cli argument, so ours is the first required file — a later one cannot
 /// register a shutdown function ahead of it.
 fn wp_command(php_bin: &Path, wp_phar: &Path) -> Command {
-    let mut cmd = Command::new(php_bin);
+    let mut cmd = crate::platform::command(php_bin);
     cmd.args(wp_argv_prefix(wp_phar));
     if let Some(require) = eoo_require_arg(wp_phar) {
         cmd.arg(require);
@@ -5480,7 +5480,7 @@ mod packages_pin_guards {
 
     /// Source with comments removed, because a guard that scans prose reads its
     /// OWN explanation and passes: these very tests quote both the marker and
-    /// `Command::new(php_bin)` while explaining why there may be only one of
+    /// `platform::command(php_bin)` while explaining why there may be only one of
     /// each. That is not hypothetical — the #235 copy guard shipped defective
     /// for exactly this reason and only planting found it. Canary in
     /// [`the_scan_reads_code_and_not_its_own_comments`].
@@ -5692,7 +5692,7 @@ mod packages_pin_guards {
     #[test]
     fn every_captured_wp_cli_spawn_goes_through_the_pinned_command() {
         let sources = rust_sources();
-        // A WP-CLI spawn, not merely a PHP one. `Command::new(php_bin)` alone
+        // A WP-CLI spawn, not merely a PHP one. `platform::command(php_bin)` alone
         // convicted `adminer::verify_pair`, which runs PHP against a candidate
         // Adminer and never goes near wp-cli — a guard matching more than its own
         // claim, which is the mirror image of the family this file's other
@@ -5700,7 +5700,7 @@ mod packages_pin_guards {
         // so the spawn is in scope exactly when it also carries the wp phar.
         let spawns: Vec<&str> = sources
             .iter()
-            .filter(|(_, t)| t.contains("Command::new(php_bin)") && t.contains("wp_phar"))
+            .filter(|(_, t)| t.contains("platform::command(php_bin)") && t.contains("wp_phar"))
             .map(|(p, _)| p.as_str())
             .collect();
         assert_eq!(
@@ -5719,9 +5719,9 @@ mod packages_pin_guards {
         )));
         assert!(this.contains("fn wp_command("), "the scan lost the function it is about");
         assert_eq!(
-            this.matches("Command::new(php_bin)").count(),
+            this.matches("platform::command(php_bin)").count(),
             1,
-            "`wp_command` is no longer the only `Command::new(php_bin)` in this module — the \
+            "`wp_command` is no longer the only `platform::command(php_bin)` in this module — the \
              others are wp-cli spawns running whatever the user installed globally."
         );
     }

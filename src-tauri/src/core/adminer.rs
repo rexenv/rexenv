@@ -432,7 +432,7 @@ pub fn verify_pair(php_bin: &std::path::Path, adminer_php: &std::path::Path) -> 
         std::fs::copy(adminer_php, dir.join(STAGED_ADMINER))?;
         let probe = dir.join(".rexenv-probe.php");
         std::fs::write(&probe, PROBE_PHP)?;
-        Ok(std::process::Command::new(php_bin)
+        Ok(crate::platform::command(php_bin)
             .arg("-d")
             .arg("display_errors=0")
             // Adminer starts a session at include time; keep it in the throwaway

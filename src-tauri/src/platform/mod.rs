@@ -293,6 +293,27 @@ pub fn host_local_ipc() -> &'static dyn traits::LocalIpc {
     }
 }
 
+/// A `Command` for a helper rexenv runs itself — a database client or dump, WP-CLI,
+/// `nginx -t`, `pg_ctl` — and **the ONE way `core/` builds one** (a source scan in
+/// this module's tests refuses a bare `Command::new` there).
+///
+/// On Windows it carries `CREATE_NO_WINDOW`. A release build has no console
+/// (`windows_subsystem = "windows"`), so every console program it starts without
+/// that flag gets a console of its OWN — a visible window, and on Windows 11 a
+/// Windows Terminal tab. Measured 21 Sep 2026 on the VM: Start all left an empty
+/// terminal titled `…\pg_ctl.exe` on the desktop for as long as PostgreSQL ran
+/// (the server inherits that console, so closing the "empty" window would have
+/// killed the database), and opening Tunnels left one titled `…\php.exe`. Every
+/// spawn in `core/` had been written on macOS, where there is no such thing.
+/// Elsewhere this is `Command::new`.
+pub fn command(program: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
+    #[allow(unused_mut)]
+    let mut cmd = std::process::Command::new(program);
+    #[cfg(target_os = "windows")]
+    windows::hide_console(&mut cmd);
+    cmd
+}
+
 /// Tell a person the app panicked, where nothing else would — called by the
 /// panic hook (`crash::install`), for the first panic of a process only.
 ///
@@ -365,6 +386,55 @@ mod stub_guard {
         assert!(
             found.is_empty(),
             "platform/windows has {} todo!/unimplemented! — return Error::Unported, or unported! where the trait cannot return an error: {found:?}",
+            found.len()
+        );
+    }
+
+    /// Ledger #705 — every helper the app starts comes from `platform::command`,
+    /// never a bare `Command::new`: on Windows the bare one gives a console program
+    /// its OWN console, a visible window (a pg_ctl terminal that hosted PostgreSQL,
+    /// measured on the VM 21 Sep 2026). Scans all of `src/` but `platform/` — the
+    /// one place that picks per-OS flags itself — and `test_support.rs`, which never
+    /// ships. Text, so it holds on the macOS test host too.
+    #[test]
+    fn helpers_are_built_by_platform_command_never_a_bare_command_new() {
+        fn walk(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+            for e in std::fs::read_dir(dir).expect("read src dir").flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    walk(&p, out);
+                } else if p.extension().and_then(|x| x.to_str()) == Some("rs") {
+                    out.push(p);
+                }
+            }
+        }
+        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut files = Vec::new();
+        walk(&src, &mut files);
+        let forbidden = ["Command::new("];
+        assert_eq!(
+            hits("fn f() {\n    let c = std::process::Command::new(\"x\");\n}\n", &forbidden).len(),
+            1,
+            "the matcher cannot see a bare Command::new at all"
+        );
+        let mut found = Vec::new();
+        let mut scanned_core = 0;
+        for f in &files {
+            let rel = f.strip_prefix(&src).unwrap().to_string_lossy().replace('\\', "/");
+            if rel.starts_with("platform/") || rel == "test_support.rs" {
+                continue;
+            }
+            if rel.starts_with("core/") {
+                scanned_core += 1;
+            }
+            let text = std::fs::read_to_string(f).expect("read source");
+            found.extend(hits(&text, &forbidden).into_iter().map(|l| format!("{rel}: {l}")));
+        }
+        assert!(scanned_core > 20, "the walk missed core/ — a zero from an empty scan proves nothing");
+        assert!(
+            found.is_empty(),
+            "{} bare Command::new outside platform/ — use crate::platform::command, or a Windows \
+             user gets a console window per call: {found:#?}",
             found.len()
         );
     }

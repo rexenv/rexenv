@@ -854,9 +854,17 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     **The relaunch is measured too** — `windows_app_relaunch_check`, 6 checks green on the Dell:
     the real app binary in relauncher mode starts nothing while its parent lives, starts the
     bundle once the parent is gone (`WaitForSingleObject` on the process handle), and treats a
-    pid whose creation-time token does not match as already gone. **Still owed:** the swap
-    against a real `%LOCALAPPDATA%\rexenv` and the relaunch THROUGH the quit gate — both need
-    an installed copy, which no machine has yet (clean Win11 VM), and (2) above.
+    pid whose creation-time token does not match as already gone. **Both owed legs measured 21 Sep
+    2026 on the VM** (SMOKE-TEST run 6): the published 0.8.4 → 0.8.5 swapped the real
+    `%LOCALAPPDATA%\rexenv`, and with a live share the restart went THROUGH the quit gate ("Stop
+    sharing?" → Quit) and reopened once on 0.8.5. Two things it found, both small:
+    - [ ] The update card says **"You chose to keep rexenv running, so the new version is waiting"**
+      while the quit gate's "Stop sharing?" is still on screen, unanswered — the card read the
+      restart call's "not quitting (yet)" as the user's answer. Only "Keep sharing" should put it
+      there; while the gate is open it should say nothing new.
+    - [ ] `%LOCALAPPDATA%\rexenv\rexenv-0.8.3.bak` (38 MB, 19 Sep) sits beside the app for good: a
+      pre-#695 swap left it, and the launch sweep looks only for `.rexenv-update-*`. Sweep the old
+      name once, or say why not.
     **winget, 19 Sep 2026:** `scripts/winget-manifest.sh` renders the version, installer and
     locale manifests from the PUBLISHED asset (downloaded and hashed, the API digest cross-checked),
     or from a local installer with `--local` before a release exists. Rendered from the first
@@ -945,10 +953,17 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
       .rex sites answering", that OK stops it, and that the resolver comes back by itself. The
       other 24 strings are Tauri's verbatim. The first build FAILED on a double BOM (Tauri
       prepends its own; the file brought one too) — ASCII and BOM-less now; the Dell's build
-      then went §A0 green. Still to see: the MessageBox itself, installing over a running copy.
+      then went §A0 green.
       ORIGINAL — The installer's "rexenv is running! Click OK to kill it" names the DNS agent as if it
       were the app (measured run 2). Correct as far as it goes — the task restarts the agent on
       the new binary — but a sentence that says so would spare the user the guess.
+    - [x] ✓ 21 Sep 2026, proven on the VM with the fixed build — a 200 ms window watcher saw NO
+      rexenv console through Start all (PostgreSQL via `pg_ctl`), a share, a WordPress create +
+      delete, Tunnels and Adminer on PostgreSQL (ledger #705 ✅). Ships in the next release.
+      **Console windows from every helper spawn (#705), found 21 Sep 2026 on the VM:** Start
+      all left an empty Windows Terminal titled `…\pg_ctl.exe` (hosting PostgreSQL — closing it
+      stops the database), Tunnels left one titled `…\php.exe`. Fixed in code: `platform::command`
+      (`CREATE_NO_WINDOW` on Windows) for all 22 helper spawns in `core/` + a source-scan guard.
     - [ ] Chrome's download wording (no Chrome on the VM); the certificate dialog's **No** path;
       WebView2's `downloadBootstrapper` on a machine without it (the VM had 153).
     - [x] ✓ 19 Sep 2026, display only — the Services row already carried its platform label (#651);

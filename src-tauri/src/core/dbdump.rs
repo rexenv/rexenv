@@ -433,7 +433,7 @@ fn client_script_forcing(
     script: &str,
 ) -> std::result::Result<String, String> {
     use std::io::Write;
-    let mut child = std::process::Command::new(client.path())
+    let mut child = crate::platform::command(client.path())
         .arg(format!("--defaults-extra-file={}", defaults.path().display())) // MUST be first
         .args(["--connect-timeout=10", "-N", "-B", "--force"])
         .arg(db)
@@ -465,7 +465,7 @@ pub(crate) fn client_query(
     defaults: &DefaultsFile,
     sql: &str,
 ) -> std::result::Result<String, String> {
-    let out = std::process::Command::new(client.path())
+    let out = crate::platform::command(client.path())
         .arg(format!("--defaults-extra-file={}", defaults.path().display())) // MUST be first
         .args(["--connect-timeout=10", "-N", "-B", "-e", sql])
         .output()
@@ -839,7 +839,7 @@ pub fn dump(
     args.push(format!("--result-file={}", partial.display()));
     args.push(req.db.to_string());
 
-    let mut child = std::process::Command::new(req.tool)
+    let mut child = crate::platform::command(req.tool)
         .args(&args)
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())

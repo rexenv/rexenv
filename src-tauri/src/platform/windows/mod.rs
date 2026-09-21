@@ -177,6 +177,13 @@ impl PrivilegeManager for WindowsPrivileges {
     }
 }
 
+/// `platform::command`'s Windows half: a console program started from the
+/// console-less app must not get a console of its own (see there).
+pub(crate) fn hide_console(cmd: &mut std::process::Command) {
+    use std::os::windows::process::CommandExt;
+    cmd.creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW);
+}
+
 /// Identity and the port gate (`process.rs`, `port_table.rs`, ledger #599); spawning
 /// services that outlive the app and stopping them (ledger #600).
 pub struct WindowsSupervisor;

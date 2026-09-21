@@ -125,7 +125,7 @@ pub fn client_base_args(port: u16) -> [String; 6] {
 /// client BINARY (`bin/mysql` from the MySQL tree, or `bin/mariadb` from the
 /// mariadb bundle — same protocol, same flags); `what` labels the error.
 pub(crate) fn mysql_exec(client: &SqlClient, port: u16, sql: &str, what: &str) -> Result<()> {
-    let out = std::process::Command::new(client.path())
+    let out = crate::platform::command(client.path())
         .args(client_base_args(port))
         .args(["-e", sql])
         .output()?;
@@ -165,7 +165,7 @@ pub(crate) fn export_to_downloads(dump: &Path, port: u16, domain: &str, name: &s
     // ("unknown variable") and would break every export; mariadb-dump
     // 11.4/12.3 only WARNS and ignores it, dead weight spraying a warning per
     // export. So this one path keeps an unbounded connect (B25).
-    let out = std::process::Command::new(dump)
+    let out = crate::platform::command(dump)
         .args([
             "--no-defaults",
             "--protocol=TCP",
@@ -226,7 +226,7 @@ pub(crate) fn import_from_file(client: &SqlClient, port: u16, name: &str, file: 
             file.display()
         )));
     }
-    let out = std::process::Command::new(client.path())
+    let out = crate::platform::command(client.path())
         .args(client_base_args(port))
         .arg(name)
         .stdin(std::process::Stdio::from(f))
@@ -294,7 +294,7 @@ pub(crate) fn drop_database(client: &SqlClient, port: u16, name: &str) -> Result
 /// #329 lesson (a type sees every caller; a grep sees its pattern) applied to
 /// the module boundary.
 pub(crate) fn db_sizes(client: &SqlClient, port: u16) -> Result<Vec<(String, u64)>> {
-    let out = std::process::Command::new(client.path())
+    let out = crate::platform::command(client.path())
         .args(client_base_args(port))
         .args([
             "-N", // no header

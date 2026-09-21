@@ -119,7 +119,7 @@ fn bootstrap(basedir: &Path, datadir: &Path) -> Result<()> {
 
     // Run-to-completion helper with piped stdin (same pattern as the bundled
     // mysql client in core::database::import_from_file — no shell involved).
-    let mut child = std::process::Command::new(mariadbd_bin(basedir))
+    let mut child = crate::platform::command(mariadbd_bin(basedir))
         .args(&args)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::null())

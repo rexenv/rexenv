@@ -72,7 +72,7 @@ fn probe_version(path: &Path) -> Option<String> {
 /// [`probe_version`] with an injectable bound (tests use a short one so the
 /// hung-binary case doesn't wait out the real 10s).
 fn probe_version_with(path: &Path, timeout: std::time::Duration) -> Option<String> {
-    let mut cmd = std::process::Command::new(path);
+    let mut cmd = crate::platform::command(path);
     cmd.arg("--version");
     // The drain-on-threads runner (B25 stage 2): kills on expiry, reaps, and a
     // chatty tool can't fake-timeout on a full pipe.

@@ -150,7 +150,7 @@ pub fn feed(
         .map_err(|e| Error::Other(format!("open {}: {e}", artifact.display())))?;
     let mut reader = std::io::BufReader::new(file);
 
-    let mut child = std::process::Command::new(client.path())
+    let mut child = crate::platform::command(client.path())
         .args(client_base_args(port))
         .arg(name)
         .stdin(std::process::Stdio::piped())
@@ -301,7 +301,7 @@ pub fn list_tables(client: &SqlClient, port: u16, name: &str) -> Result<Vec<Stri
         "SELECT table_name FROM information_schema.tables WHERE table_schema = '{}'",
         name.replace('\\', "\\\\").replace('\'', "''")
     );
-    let out = std::process::Command::new(client.path())
+    let out = crate::platform::command(client.path())
         .args(client_base_args(port))
         .args(["-N", "-B", "-e", &sql])
         .output()?;
@@ -321,7 +321,7 @@ pub fn list_tables(client: &SqlClient, port: u16, name: &str) -> Result<Vec<Stri
 /// Does a database exist on our engine right now? The live half of the
 /// provenance question — consulted only when nothing is recorded.
 pub fn database_exists(client: &SqlClient, port: u16, name: &str) -> Result<bool> {
-    let out = std::process::Command::new(client.path())
+    let out = crate::platform::command(client.path())
         .args(client_base_args(port))
         .args(["-N", "-B", "-e", "SHOW DATABASES"])
         .output()?;

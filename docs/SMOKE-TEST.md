@@ -1528,6 +1528,15 @@ Environment: Windows ____ (11 x64 supported · 10 22H2 best-effort — D6) · re
       the app (table list, not an empty white/grey panel) and its buttons work. **Tell:** a
       blank frame with the URL bar above it filled in — the CSP refused the app's origin
       (#699), and nothing in any log says so.
+- [x] ✓ 21 Sep 2026 (Win11 VM, the fixed build, a 200 ms window watcher): Start all with
+      PostgreSQL, a share started and stopped, a WordPress site created and deleted, Tunnels,
+      Adminer on PostgreSQL — no rexenv console window at all (#705).
+      **No console window, ever.** Start all (PostgreSQL included), open Tunnels, share a site,
+      Browse a database, create a WordPress site: NO terminal / console window appears at any
+      point, and none is left on the desktop afterwards (#705). **Tell:** an empty Windows
+      Terminal titled `…\pg_ctl.exe` or `…\php.exe` — found 21 Sep 2026 on the VM with 0.8.4
+      and 0.8.5. Do NOT close a pg_ctl one to "tidy up": PostgreSQL inherited that console and
+      closing it stops the database.
 
 
 **Not in Windows v1 at all (D4, refused in core with an honest message).** Skip every
@@ -1627,18 +1636,27 @@ fixture can do is the real install directory, the real quit gate and the real re
   for the file that used to be there, and the old code wrote that over itself and logged nothing.
   Fixed in 0.8.3 (#696: read the STAGED executable, before anything moves); the first update from
   a 0.8.3 install is what proves it.
-- [ ] Press Install: the archive downloads into the ONE download hub, the app quits through
+- [x] ✓ 21 Sep 2026, run 6 (Win11 VM, the published 0.8.4 → the published 0.8.5, a live share on
+  `lm.rex`): Install → progress bar → "rexenv 0.8.5 is installed" with one OK → OK raised
+  **"Stop sharing? Quitting stops 1 public share — its link goes dead immediately."** [Quit]
+  [Keep sharing] → Quit → rexenv reopened by itself, ONE window, toast "rexenv is now 0.8.5
+  (updated from 0.8.4)"; the share was gone. Press Install: the archive downloads into the ONE download hub, the app quits through
   the quit gate (a live share still asks), and rexenv **reopens on its own** on the new build —
   the relauncher waited for the old process, not merely for a timer. **Tell:** two rexenv
   windows, or none.
-- [ ] Afterwards: `%LOCALAPPDATA%\rexenv` holds the new `rexenv.exe`; the previous build sits
+- [x] ✓ run 6: `rexenv.exe` 0.8.5, no `.rexenv-update-*` left (swept at the relaunch),
+  `uninstall.exe` still there (dated the 0.8.4 install), `DisplayVersion` 0.8.5, `rexenv.db` in
+  place. One stray: `rexenv-0.8.3.bak` (38 MB, 19 Sep) from a pre-#695 swap — nothing sweeps it
+  (docs/TODO.md W12). Afterwards: `%LOCALAPPDATA%\rexenv` holds the new `rexenv.exe`; the previous build sits
   beside it in `.rexenv-update-<pid>\previous` — the three FILES, not a directory: the data
   tree under `%LOCALAPPDATA%\rexenv\rexenv\data` never moves (#695) — **until the next launch sweeps it** (it cannot
   be deleted while the old process runs — measured); `uninstall.exe` is still there (carried
   across — the installer wrote it, the build did not); and **Apps & Features shows the NEW
   version** (`DisplayVersion` rewritten; the entry exists, so it is rewritten — the fixture
   runs could not reach this line).
-- [ ] The updated copy still resolves `.rex` and still serves HTTPS: the DNS agent was
+- [x] ✓ run 6: the agent was restarted at the swap (new pid, its exe reads 0.8.5), the CA
+  thumbprint is unchanged (`1A6A20BE…` before and after), `lm.rex` → 127.0.0.1 and HTTPS 200.
+  The updated copy still resolves `.rex` and still serves HTTPS: the DNS agent was
   re-launched onto the new binary and the CA did not change.
 - [ ] Apps & Features → Uninstall on the UPDATED copy works: the carried-across uninstaller
   removes the directory the swap put in place.
@@ -1653,7 +1671,9 @@ fixture can do is the real install directory, the real quit gate and the real re
   dark taskbar. **Tell:** a black square — macOS's `icon_as_template` leaking to Windows.
 - [x] 19 Sep 2026: window closed, `rex status` answered with 5 running. Closing the window leaves the app alive in the tray: `rex status` still answers and
   an MCP client keeps working.
-- [ ] Every menu item that names a screen brings the window up on it, including from a
+- [x] ✓ 21 Sep 2026 (Win11 VM, 0.8.5): window closed each time, then overflow → right-click →
+  Services, Databases, Mail, Tunnels, All sites… — each opened the window ON that screen.
+  Every menu item that names a screen brings the window up on it, including from a
   window that was closed.
 
 ### First-run setup prompts — ONE elevated step, not three

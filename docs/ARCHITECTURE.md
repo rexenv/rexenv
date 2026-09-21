@@ -620,7 +620,12 @@ Live-proven end to end by `site_stop_start_check`.
   service is spawned with `CREATE_BREAKAWAY_FROM_JOB`, because a launcher inside a
   kill-on-close job — an SSH session measurably is one, a terminal or IDE can be — takes
   every child without it down with the job; plus `CREATE_NO_WINDOW` and its own process
-  group. A launcher whose job forbids breakaway gets a start error that says so, never a
+  group. A HELPER the app runs and waits on (a DB client or dump, WP-CLI, `nginx -t`,
+  `pg_ctl`) is not a service and does not break away, but it must not get a console either:
+  `core/` builds every one through `platform::command`, which adds `CREATE_NO_WINDOW` on
+  Windows (#705). Before that, all 22 were bare `Command::new`s written on macOS, and on the
+  VM Start all left an empty `pg_ctl.exe` terminal on the desktop that PostgreSQL itself was
+  attached to — close it and the database stopped. A launcher whose job forbids breakaway gets a start error that says so, never a
   service that silently dies with the app — measured 14 Sep 2026 from a Task Scheduler task, which
   forbids it: `proxy::start` returned ACCESS_DENIED with that wording. So rexenv is never launched by a
   scheduled task (plan §3 D1). **The installer's own "Run rexenv" was such a launcher** — measured

@@ -13,7 +13,6 @@ use crate::error::{Error, Result};
 use crate::platform::traits::Platform;
 use std::path::{Path, PathBuf};
 use crate::core::proc::Proc;
-use std::process::Command;
 
 /// `postgres` server executable inside the extracted tree.
 pub fn postgres_bin(basedir: &Path) -> PathBuf {
@@ -172,7 +171,7 @@ pub fn start(platform: &dyn Platform, basedir: &Path, datadir: &Path, port: u16)
     //    never ran at all.
     let own_log = log.with_file_name("pg_ctl.log");
     let sink = std::fs::File::create(&own_log)?;
-    let status = Command::new(pg_ctl_bin(basedir))
+    let status = crate::platform::command(pg_ctl_bin(basedir))
         // The child runs under a RESTRICTED token, which the working directory
         // must be reachable from: inherit the caller's and the server dies with
         // "The current directory is invalid" before it reads a single setting
@@ -225,7 +224,7 @@ pub fn stop(platform: &dyn Platform, basedir: Option<&Path>, pid: u32) -> Result
     if platform.supervisor().may_spawn_with_admin_token() {
         if let Some(basedir) = basedir {
             let datadir = data_dir(platform)?;
-            let out = Command::new(pg_ctl_bin(basedir))
+            let out = crate::platform::command(pg_ctl_bin(basedir))
                 .current_dir(&datadir)
                 .arg("-D")
                 .arg(&datadir)
@@ -310,7 +309,7 @@ fn psql_run(
     what: &str,
 ) -> Result<String> {
     let (k, v) = connect_timeout_env();
-    let out = Command::new(client.path())
+    let out = crate::platform::command(client.path())
         .args(psql_base_args(port, dbname))
         .args(args)
         .env(k, v)
@@ -421,7 +420,7 @@ pub fn export_to_downloads(dump: &Path, port: u16, domain: &str, name: &str) -> 
     validate_db_name(name)?;
     let dest = dump_dest(domain)?;
     let (k, v) = connect_timeout_env();
-    let out = Command::new(dump)
+    let out = crate::platform::command(dump)
         .args([
             "--host=127.0.0.1".to_string(),
             format!("--port={port}"),

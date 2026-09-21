@@ -199,7 +199,7 @@ pub(crate) fn run_sql(client: &SqlClient, port: u16, sql: &str, what: &str) -> R
             client.engine().label()
         )));
     }
-    let mut child = std::process::Command::new(client.path())
+    let mut child = crate::platform::command(client.path())
         .args(client_base_args(port))
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::null())

@@ -960,8 +960,8 @@ mod tests {
         // crashed-cloudflared stand-in), sleep stays alive and is killed +
         // reaped by this test before it returns.
         let reg = Tunnels::default();
-        let dead = std::process::Command::new("/usr/bin/true").spawn().expect("spawn true");
-        let live = std::process::Command::new("/bin/sleep").arg("30").spawn().expect("spawn sleep");
+        let dead = crate::platform::command("/usr/bin/true").spawn().expect("spawn true");
+        let live = crate::platform::command("/bin/sleep").arg("30").spawn().expect("spawn sleep");
         reg.0.lock().unwrap().insert("dead.rex".into(), entry(dead));
         reg.0.lock().unwrap().insert("live.rex".into(), entry(live));
 

@@ -904,7 +904,7 @@ pub fn reload_nginx(
     // 1) Validate — the diagnosis lives here, not in the reload's exit code.
     let mut test_args = vec!["-t".to_string()];
     test_args.extend(nginx_args(conf, prefix, None));
-    let test = std::process::Command::new(nginx_bin).args(&test_args).output()?;
+    let test = crate::platform::command(nginx_bin).args(&test_args).output()?;
     if !test.status.success() {
         return Err(Error::Other(format!(
             "the generated nginx config is invalid, so it was NOT applied:\n{}",
@@ -915,7 +915,7 @@ pub fn reload_nginx(
     // 2) The ordinary path.
     let mut args = vec!["-s".to_string(), "reload".to_string()];
     args.extend(nginx_args(conf, prefix, None));
-    let out = std::process::Command::new(nginx_bin).args(&args).output()?;
+    let out = crate::platform::command(nginx_bin).args(&args).output()?;
     if out.status.success() {
         return Ok(ReloadOutcome::Reloaded);
     }

@@ -335,7 +335,7 @@ pub fn artisan_raw(
     env: &[(String, String)],
     timeout: std::time::Duration,
 ) -> Result<std::process::Output> {
-    let mut cmd = std::process::Command::new(php);
+    let mut cmd = crate::platform::command(php);
     cmd.arg(project.join("artisan"))
         .args(args)
         .arg("--no-interaction")
