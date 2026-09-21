@@ -48,7 +48,10 @@
     },
     "windows": {
       "nsis": {
-        "installMode": "currentUser"
+        "installMode": "currentUser",
+        "customLanguageFiles": {
+          "English": "nsis/English.nsh"
+        }
       },
       "webviewInstallMode": {
         "type": "downloadBootstrapper"

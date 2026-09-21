@@ -937,7 +937,14 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
       suspect, since that is what this VM had just done), and make the kickstart RE-CREATE a task
       that is gone rather than fail at it — the agent is what makes `.rex` resolve, so a missing
       task is a dead TLD at the next boot.
-    - [ ] The installer's "rexenv is running! Click OK to kill it" names the DNS agent as if it
+    - [◐] **Done in code 21 Sep 2026, awaiting the VM look:** `src-tauri/nsis/English.nsh` (wired
+      through `customLanguageFiles`) replaces the three running-app strings — `appRunningOkKill`
+      now says rexenv is running as "the app, or the small background resolver that keeps your
+      .rex sites answering", that OK stops it, and that the resolver comes back by itself. The
+      other 24 strings are Tauri's verbatim. The first build FAILED on a double BOM (Tauri
+      prepends its own; the file brought one too) — ASCII and BOM-less now; the Dell's build
+      then went §A0 green. Still to see: the MessageBox itself, installing over a running copy.
+      ORIGINAL — The installer's "rexenv is running! Click OK to kill it" names the DNS agent as if it
       were the app (measured run 2). Correct as far as it goes — the task restarts the agent on
       the new binary — but a sentence that says so would spare the user the guess.
     - [ ] Chrome's download wording (no Chrome on the VM); the certificate dialog's **No** path;
