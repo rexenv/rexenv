@@ -374,6 +374,15 @@ keeps resolving after you quit rexenv — the same promise as macOS, different m
    `https://<name>.rex` with a valid HTTPS lock.
 3. `rex status` should read `DNS answering (agent, udp 53) · resolver installed · CA trusted`.
 
+**Testing from a terminal with Windows' own `curl.exe`:** add `--ssl-no-revoke`
+(`curl.exe --ssl-no-revoke https://<name>.rex/`). Without it, curl's schannel backend refuses
+with `CRYPT_E_NO_REVOCATION_CHECK` — it insists on checking revocation, and a local-CA
+certificate has no revocation server to ask. Browsers, PowerShell's `Invoke-WebRequest`, and
+PHP's curl inside your sites don't insist, so this is curl-only. A `SEC_E_ILLEGAL_MESSAGE`
+instead means the name is not one of your sites (or you asked for `https://127.0.0.1/`):
+there is no certificate for it, so the edge ends the handshake — macOS's curl says
+`tlsv1 alert internal error` for the same thing. (Measured on the Dell, 21 Sep 2026.)
+
 ### Updating
 
 **rexenv cannot update itself on Windows yet** (W11). On macOS it replaces itself from

@@ -956,7 +956,14 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
       `PHP-FPM 8.3` on every OS. `rex status` names the pool `PHP-FPM 8.3` on Windows, where the pool is `php-cgi`
       (`WebTarget::Pool::label`, `ports.rs`'s `PHP-FPM` service name) — the frontend's
       `pool_kind` words never reached the CLI/service labels.
-    - [ ] `curl.exe` (schannel) fails the handshake against the edge with `SEC_E_ILLEGAL_MESSAGE`
+    - [x] ✓ 21 Sep 2026, explained on the Dell — not the edge's fault, two separate curl facts
+      (INSTALL.md §Windows "Verify it works"): `SEC_E_ILLEGAL_MESSAGE` is Caddy's TLS alert for
+      an SNI it has no certificate for — `adminer.rex` was not a site there, and macOS's curl
+      gives `tlsv1 alert internal error` for the same request; a real site through the agent's
+      DNS failed instead with `CRYPT_E_NO_REVOCATION_CHECK` (schannel demands a revocation
+      check a local-CA leaf cannot offer) and answered 200 with `--ssl-no-revoke`, as did
+      `-k --resolve`. rexenv's own probes are rustls and PHP's curl is OpenSSL, so neither
+      meets it. ORIGINAL — `curl.exe` (schannel) fails the handshake against the edge with `SEC_E_ILLEGAL_MESSAGE`
       even with `-k --resolve adminer.rex:443:127.0.0.1`, while the app's own probe reads `Ours`
       and `rex doctor` says "answering as rexenv on :443" — unexplained; a browser visit to a
       real site is the row that settles whether it is curl's or the edge's.
