@@ -35,6 +35,14 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [ ] **macOS 13 floor — three tiers, planned, not started** (owner ruled 23 Sep 2026):
+  macOS 15 stays the STANDARD (every feature, latest pins); the app also RUNS on 13 and 14
+  with a per-host pin set (`BinaryTier`, derived from the host every launch) and a
+  "needs macOS 14" refusal for PostgreSQL and PHP 8.0 on 13; self-builds
+  (`rexenv/runtimes`) flip refusals to pins later. Every `minos` measured both slices,
+  the pin set, the design and the task list T0–T8: `docs/PLAN-macos-13-floor.md` §6–§7.
+  Ship line is T0–T8; proof is a real 13 + 14 VM (T7), never `minos` alone.
+
 - [x] **A typed bare `name.rex` goes to Google instead of the site** (owner report, 22 Sep 2026;
   `name.rex/` and `http://name.rex` worked). Browsers classify address-bar text against the public
   TLD list before any DNS lookup. Firefox fix + a hint for the browsers that have no setting.
@@ -1964,14 +1972,6 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)
 
-- [ ] **macOS 13 floor** — measured 23 Sep 2026, not started: `docs/PLAN-macos-13-floor.md`
-  has every component's `minos` (both slices, current pin AND the newest 13-capable build).
-  Summary: the default stack is held at 15 by cloudflared alone (2025.4.0 is the last 13.0
-  build); MySQL needs 8.4.3 / 8.0.40 (`macos14` tarballs = 13.0); every Homebrew bundle needs
-  its last ventura tag re-pinned by digest (Homebrew no longer builds for 13); **PHP 8.0.30
-  (arm64 14.0) and PostgreSQL (no theseus arm64 build below 14.0) have no upstream answer** —
-  self-build or a "macOS 14+" per-item refusal. Floor 14 is cloudflared alone. Any claim
-  needs a macOS 13/14 VM run; `minos` is metadata. Owner's call.
 
 - [ ] **The live pool swap is still L3.** `php_update_check` proves the chain up
   to "a pool on the new patch answers on a FIXTURE port". Stopping the running
