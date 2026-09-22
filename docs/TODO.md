@@ -1906,9 +1906,11 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
 - [ ] **Intel spot-run**: x86_64 bottle digests + MySQL 8.0.44 x86_64 were hashed
   from real downloads but never RUN (PORTS.md caveat) — run-verify on the next
   Intel machine.
-- [ ] ⚠ **The macOS floor is a claim about BOTH slices, and most of it has still never
-  been measured** (narrowed 30 Aug 2026 — it used to say "half", and one row of the table
-  is now genuinely both-slice). PORTS.md's `minos` table is measured from this machine's
+- [ ] ⚠ **The macOS floor is a claim about BOTH slices — the metadata half is now
+  measured, the run half is not** (narrowed 23 Sep 2026: `docs/PLAN-macos-13-floor.md`
+  swept every default-stack, PHP, FrankenPHP, cloudflared and PostgreSQL artifact on BOTH
+  slices; only the bottle bundles' x86_64 blobs and MySQL 8.0.44 x86_64 remain arm64-only.
+  The paragraph below is the 30 Aug state, kept for the reasoning). PORTS.md's `minos` table is measured from this machine's
   binary cache, which only ever downloads the host arch, so every number in it is an
   **arm64** number **except PostgreSQL**, and `minimumSystemVersion: 15.0` is asserted for
   x86_64 on the assumption that upstream builds both slices to the same deployment target.
@@ -1961,6 +1963,15 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   tcpdump one-off, re-run per reqwest bump).
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)
+
+- [ ] **macOS 13 floor** — measured 23 Sep 2026, not started: `docs/PLAN-macos-13-floor.md`
+  has every component's `minos` (both slices, current pin AND the newest 13-capable build).
+  Summary: the default stack is held at 15 by cloudflared alone (2025.4.0 is the last 13.0
+  build); MySQL needs 8.4.3 / 8.0.40 (`macos14` tarballs = 13.0); every Homebrew bundle needs
+  its last ventura tag re-pinned by digest (Homebrew no longer builds for 13); **PHP 8.0.30
+  (arm64 14.0) and PostgreSQL (no theseus arm64 build below 14.0) have no upstream answer** —
+  self-build or a "macOS 14+" per-item refusal. Floor 14 is cloudflared alone. Any claim
+  needs a macOS 13/14 VM run; `minos` is metadata. Owner's call.
 
 - [ ] **The live pool swap is still L3.** `php_update_check` proves the chain up
   to "a pool on the new patch answers on a FIXTURE port". Stopping the running

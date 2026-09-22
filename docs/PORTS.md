@@ -107,15 +107,19 @@ wrong number survives — it is only load-bearing on the day something else move
 
 | Binary | minos |
 |---|---|
-| Caddy 2.11.4, Mailpit 1.30.3, FrankenPHP 1.12.4, **PHP 7.4.33 / 8.1.34 / 8.2.32 / 8.3.32 / 8.4.23 / 8.5.8** | 12.0 |
-| **PHP 8.0.30** (cli + fpm — the one PHP row that is NOT 12.0), MySQL 8.0.44 / 8.4.6, MariaDB 11.4.12 / 12.3.2, Redis 8.8.0, Apache httpd 2.4.68, Xdebug 3.5.3 bottles | 14.0 |
+| Caddy 2.11.4, Mailpit 1.30.3, FrankenPHP 1.12.4, **PHP 7.4.33 / 8.1.34 / 8.2.32 / 8.3.32 / 8.4.23 / 8.5.8** | 12.0 — **both slices** (23 Sep 2026 sweep, every artifact fetched and read) |
+| **PHP 8.0.30** (cli + fpm — the one PHP row that is NOT 12.0; static-php.dev, not ours) | **14.0 arm64 / 13.0 x86_64** — the one pinned binary whose two slices DISAGREE (23 Sep 2026) |
+| MySQL 8.0.44 / 8.4.6 (arm64 both-slice for 8.4.6's `macos15` build: 14.0 / 14.0), MariaDB 11.4.12 / 12.3.2, Redis 8.8.0, Apache httpd 2.4.68, Xdebug 3.5.3 bottles | 14.0 (arm64; the sonoma x86_64 bottles are still unswept) |
 | **cloudflared 2026.6.1** | **15.0** — the default stack's floor, and since 31 Aug 2026 the ONLY binary at it. **nginx 1.30.4 (ours) is 12.0 on both slices**, where the third-party 1.30.3 was 15.0 arm64 / **26.0 x86_64** |
 | **PostgreSQL 16.15.0 / 17.11.0 / 18.6.0** | **15.0** — measured 30 Aug 2026 on EVERY executable and dylib in all six shipped tarballs (`vtool -show-build`), so PostgreSQL no longer sets the app floor. The previous pins (16.14.0 / 17.10.0 / 18.4.0, June builds off macOS-26 runners) carried **26.0**, presumed-but-untestable death below macOS 26; re-pinning answered that question instead of waiting for a VM to ask it |
 
-**Arch caveat: every number above is the arm64 slice — EXCEPT PostgreSQL.** The cache
-holds only what this machine downloaded, so the rest of the x86_64 artifacts' `minos`
-has never been measured — the same standing gap as the un-run Intel digests at the foot
-of this file. An Intel pass should re-run the sweep, not just the smoke test.
+**Arch caveat, narrowed 23 Sep 2026: the x86_64 slice is now MEASURED for the default
+stack, every PHP build, FrankenPHP, cloudflared and PostgreSQL** (each artifact fetched from
+upstream and every Mach-O in it read — `docs/PLAN-macos-13-floor.md` §2 has the method and
+§3 the per-version numbers, including the builds that would run on macOS 13). Still
+arm64-only: the Homebrew bottle bundles' x86_64 (`sonoma`) blobs and MySQL 8.0.44, which
+this machine's cache never downloaded. The un-run Intel digests at the foot of this file are
+a separate gap — a measured `minos` is not a run.
 PostgreSQL's row covers both slices because the 30 Aug re-pin downloaded them: the
 x86_64 tarballs were fetched and swept here, and the old x86_64 18.4.0 measured **26.0**
 just like its arm64 twin, so the two slices moved together in both directions.
