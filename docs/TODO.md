@@ -2016,6 +2016,17 @@ the first and exits) — its box stayed `[ ]` under a struck-through title, tick
 
 ## Blocked on external work
 
+- [ ] ⚠ **Homebrew publishes NO Intel macOS bottle for `redis` or `mariadb` any more**
+  (found 23 Sep 2026 while walking ghcr for `docs/PLAN-macos-13-floor.md`: `formulae.brew.sh`
+  lists only `arm64_*` + Linux for redis 8.10.2 and mariadb 13.0.2; `mariadb@11.4`,
+  `openssl@3`, `pcre2`, `httpd`, `apr`, `apr-util` still carry a `sonoma` x86_64 bottle).
+  The pinned `sonoma` x86_64 blobs (Redis 8.8.0, MariaDB 12.3.2) still resolve — ghcr is
+  content-addressed — so nothing is broken TODAY, but the **next routine bump of either
+  formula has no x86_64 bottle to pin**, and `manifest_sweep_check` would only say so after
+  the bump. Options, in order of cost: freeze the Intel pin at the last x86_64 tag while
+  arm64 moves (a per-arch version, which the descriptor does not model); self-build like
+  nginx/PHP (`rexenv/runtimes`, both slices); or drop Redis/MariaDB on Intel with a refusal
+  that names Homebrew's decision. Owner's call before the next bump, not after.
 - [ ] **Xdebug on PHP 8.0** — the Nov 2024 static-php 8.0.30 build exports zero
   Zend symbols (`nm -gU` = 0; dlopen fails `_OnUpdateBool`), upstream still
   serves that exact build (re-verified 16 Jul 2026). 8.1–8.5 solved via the
