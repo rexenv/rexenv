@@ -34,6 +34,7 @@ export const mockPlatformWords: PlatformWords = {
   poolKind: "php-fpm pool",
   bundledTools: "nginx, PHP, MySQL, MariaDB, PostgreSQL, Redis, Mailpit, Adminer & cloudflared",
   pathSep: "/",
+  searchingBrowsers: "Chrome and Safari",
 };
 
 export const mockAppInfo: AppInfo = {

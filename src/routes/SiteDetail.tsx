@@ -397,6 +397,7 @@ function SiteHeader({
   togglePending?: boolean;
 }) {
   const t = siteTypeMeta(site.type);
+  const words = usePlatformWords();
   const url = `https://${site.domain}`;
   // The button wears the icon of the browser the click will ACTUALLY use —
   // `PreferredBrowserIcon`, the one component every open-in-browser control shares.
@@ -442,7 +443,12 @@ function SiteHeader({
               />
             </div>
             <div className="mt-1 flex items-center gap-2 font-mono text-[0.78125rem] text-rex-text-muted">
-              <span className="truncate">{site.domain}</span>
+              <span
+                className="truncate"
+                title={`Typing it into ${words.searchingBrowsers}? Add a slash — ${site.domain}/ — or they search for it instead.`}
+              >
+                {site.domain}
+              </span>
               <span className="flex-none text-[0.6875rem] text-rex-text-muted">· :443</span>
             </div>
           </div>

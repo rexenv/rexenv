@@ -1476,6 +1476,11 @@ itself the first check.
   resolving indefinitely (not just while caches last).
 - [ ] **Firefox, fresh profile** (ledger #154): a site loads with the lock — no cert
   warning, no about:config surgery.
+- [ ] **Firefox opens a typed bare `name.rex`** (ledger #706): after onboarding (or Settings →
+  Firefox → "Open typed addresses in Firefox" → Enable, then restart Firefox), type `acme.rex`
+  with no slash → the site, not a search. **Tell:** a Google results page — check the profile's
+  `user.js` for `browser.fixup.domainsuffixwhitelist.rex`. In Chrome/Safari the same text still
+  searches (expected); the default-TLD card and the domain's tooltip on a site page say so.
 
 ## Scale
 - [x] With ~15+ sites the Sites list, search, and status footer stay responsive. ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2)
@@ -1506,6 +1511,12 @@ promises by different machinery, and a step that names a Mac mechanism is not a 
 Windows tester can pass or fail.
 
 Environment: Windows ____ (11 x64 supported · 10 22H2 best-effort — D6) · rexenv version ____
+
+### Typed addresses in Firefox on Windows (ledger #706 — proven on macOS only)
+- [ ] Settings → Firefox → **Open typed addresses in Firefox** → Enable; restart Firefox; type
+      `acme.rex` with no slash → the site opens. The `user.js` under
+      `%APPDATA%\Mozilla\Firefox\Profiles\…` carries the line. The Settings hint and the
+      site-page tooltip name **Chrome and Edge**, never Safari.
 
 ### Two Windows-only rows, both found on a real machine 20 Sep 2026
 - [x] **PostgreSQL starts — including with UAC OFF.** ✓ 20 Sep 2026 (Win11 VM, `EnableLUA=0`,

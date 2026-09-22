@@ -508,13 +508,21 @@ pub struct FirefoxTrustStatus {
     pub trust: core::firefox::FirefoxTrust,
     /// The CA certificate to import manually (Authorities → Import).
     pub ca_path: String,
+    /// The TLDs rexenv answers on — what a typed `name.<tld>` should open.
+    pub tlds: Vec<String>,
+    /// Profiles that open a typed `name.<tld>` for EVERY one of `tlds`
+    /// instead of searching it (`core::firefox::allow_tlds_in_profiles`).
+    pub typing: usize,
 }
 
 fn firefox_status_for(state: &State<'_, AppState>) -> FirefoxTrustStatus {
     let root = state.platform.cert_trust().firefox_profiles_root();
+    let tlds = core::dns::answered_tlds(state.platform.as_ref());
     FirefoxTrustStatus {
         trust: core::firefox::status(root.as_deref()),
         ca_path: state.ca.cert_path.display().to_string(),
+        typing: core::firefox::tlds_allowed_count(root.as_deref(), &tlds),
+        tlds,
     }
 }
 
@@ -536,6 +544,23 @@ pub fn trust_ca_in_firefox(state: State<'_, AppState>) -> Result<FirefoxTrustSta
     };
     let written = core::firefox::enable_in_profiles(&root)?;
     log::info!("firefox: forced OS-root import in {written} profile(s)");
+    Ok(firefox_status_for(&state))
+}
+
+/// Make a typed `name.<tld>` open the site in Firefox instead of searching it,
+/// for every TLD rexenv answers on (`browser.fixup.domainsuffixwhitelist.<tld>`
+/// in each profile's `user.js`). Plain file writes, no prompt; takes effect when
+/// Firefox restarts. Returns the refreshed status.
+#[tauri::command]
+pub fn allow_tlds_in_firefox(state: State<'_, AppState>) -> Result<FirefoxTrustStatus> {
+    let Some(root) = state.platform.cert_trust().firefox_profiles_root() else {
+        return Err(crate::error::Error::Other(
+            "Firefox was not found for this user (no profiles.ini).".into(),
+        ));
+    };
+    let tlds = core::dns::answered_tlds(state.platform.as_ref());
+    let written = core::firefox::allow_tlds_in_profiles(&root, &tlds)?;
+    log::info!("firefox: typed-address pref added in {written} profile(s)");
     Ok(firefox_status_for(&state))
 }
 

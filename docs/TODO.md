@@ -35,6 +35,14 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [x] **A typed bare `name.rex` goes to Google instead of the site** (owner report, 22 Sep 2026;
+  `name.rex/` and `http://name.rex` worked). Browsers classify address-bar text against the public
+  TLD list before any DNS lookup. Firefox fix + a hint for the browsers that have no setting.
+  ✓ 22 Sep 2026 — Firefox's `browser.fixup.domainsuffixwhitelist.<tld>` written on TLD install, CA
+  trust and from Settings; "add a slash" hint on the default-TLD card and the site-page domain
+  tooltip (ledger #706: 4 L0 tests, plant-proven; live on Firefox 156 via BiDi `uriFixup`,
+  `acme.rex` SEARCH → URL). Windows run owed: SMOKE-TEST Windows section.
+
 - [x] **FrankenPHP 1.12.4 pin is STALE (18 Sep 2026)** — the live `frankenphp-mac-arm64` asset hashes to
   `fb38e69514a04875b83900da0e1585d611fe0f52f3a904c50bef5605347e5dec`, the pin says `44308edd…`; the
   checksum guard fires and FrankenPHP is uninstallable for every user (upstream rebuilds assets in

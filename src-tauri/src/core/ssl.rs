@@ -489,6 +489,10 @@ pub fn trust_ca(platform: &dyn Platform, ca: &LocalCa) -> Result<()> {
             Err(e) => log::warn!("ssl: could not update Firefox profiles: {e}"),
         }
     }
+    crate::core::firefox::allow_tlds_best_effort(
+        platform.cert_trust().firefox_profiles_root(),
+        &crate::core::dns::answered_tlds(platform),
+    );
     Ok(())
 }
 

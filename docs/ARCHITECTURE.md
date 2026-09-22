@@ -169,6 +169,16 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   `profiles.ini` is read in whatever encoding it was saved — the Dell's is **UTF-16LE with a BOM**
   (the Mac's is plain UTF-8), and read as UTF-8 it yielded no profile, so Settings called Firefox
   not installed and the trust step wrote nowhere, silently.
+- **A typed bare `name.rex` is a SEARCH in every browser by default** (#706): the address bar
+  decides URL-or-search against the public TLD list BEFORE any DNS lookup, so the query never
+  reaches rexenv's resolver — while `name.rex/` or `https://name.rex` opens. Nothing server-side
+  can change that. Firefox has a per-suffix pref, `browser.fixup.domainsuffixwhitelist.<tld>`,
+  and `core/firefox.rs` writes it into the same `user.js` when a TLD's route is installed
+  (`dns::configure_resolver`), on the CA trust (`ssl::trust_ca`, every TLD rexenv answers on)
+  and from Settings (a Firefox added later). Best-effort like the trust pref; a `false` the user
+  wrote is theirs and is never flipped. Chrome, Safari and Edge have no such setting, so the UI
+  says "add a slash" instead — Settings' default-TLD card and the SiteDetail domain's tooltip,
+  naming the browsers from `PlatformWords::searching_browsers` (Safari on macOS, Edge on Windows).
 - **CA trust on Windows = this user's Root certificate store** (`platform/windows/cert_store.rs`, #613):
   the CurrentUser `Root` store, never LocalMachine's (per-user, no elevation — the login keychain's
   counterpart). The add and the delete make WINDOWS ask the user ("Security Warning: You are about to

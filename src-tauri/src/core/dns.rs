@@ -402,7 +402,23 @@ pub fn configure_resolver(platform: &dyn Platform, tld: &str, port: u16) -> Resu
             crate::platform::words::current().host
         )),
     )?;
+    // The moment rexenv starts answering `.{tld}` is the moment a typed
+    // `name.{tld}` should open in Firefox too (`core::firefox`). Best-effort.
+    crate::core::firefox::allow_tlds_best_effort(
+        platform.cert_trust().firefox_profiles_root(),
+        &[tld.to_string()],
+    );
     Ok(())
+}
+
+/// Every TLD rexenv answers on with the default port — its installed routes plus
+/// the backbone, which is always ours. What the Firefox typed-address pref covers.
+pub fn answered_tlds(platform: &dyn Platform) -> Vec<String> {
+    let mut tlds = installed_tlds(platform, DEFAULT_DNS_PORT);
+    tlds.push(crate::core::tld::BACKBONE_TLD.to_string());
+    tlds.sort();
+    tlds.dedup();
+    tlds
 }
 
 /// Remove OUR resolver file for a TLD — a root op behind a privileged prompt,
@@ -1409,7 +1425,18 @@ mod tests {
                 unimplemented!()
             }
             fn cert_trust(&self) -> &dyn CertTrustManager {
-                unimplemented!()
+                // Installing a resolver asks where Firefox keeps its profiles (the
+                // typed-address pref, ledger #706); this one has none — a no-op.
+                struct NoFirefox;
+                impl CertTrustManager for NoFirefox {
+                    fn trust_ca(&self, _: &std::path::Path) -> Result<()> {
+                        unimplemented!()
+                    }
+                    fn untrust_ca(&self, _: &std::path::Path) -> Result<()> {
+                        unimplemented!()
+                    }
+                }
+                &NoFirefox
             }
             fn autostart(&self) -> &dyn AutostartManager {
                 unimplemented!()

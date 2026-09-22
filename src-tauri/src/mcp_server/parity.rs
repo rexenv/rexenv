@@ -142,6 +142,7 @@ mod tests {
         ("regenerate_certs", Never(AMPLIFIER)),
         ("trust_local_ca", Never(AMPLIFIER)),
         ("trust_ca_in_firefox", Never(AMPLIFIER)),
+        ("allow_tlds_in_firefox", Never("writes the person's own browser profiles (user.js); it rides the resolver install and the CA trust already, and firefox_trust_status's counts reach stack_status")),
         // ── terminal
         ("terminal_open", Never(PTY)),
         ("terminal_write", Never(PTY)),

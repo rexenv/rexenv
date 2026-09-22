@@ -1230,6 +1230,7 @@ pub fn run() {
             commands::system::trust_local_ca,
             commands::system::firefox_trust_status,
             commands::system::trust_ca_in_firefox,
+            commands::system::allow_tlds_in_firefox,
             commands::system::regenerate_certs,
             commands::system::autostart_status,
             commands::system::set_autostart,

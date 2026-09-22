@@ -176,6 +176,106 @@ pub fn status(root: Option<&Path>) -> FirefoxTrust {
     }
 }
 
+// ── Typed addresses: `foo.rex` in the address bar ──────────────────────────
+//
+// Every browser decides whether address-bar text is a URL or a search BEFORE
+// any DNS lookup, by checking its end against the public TLD list. `.rex` is
+// not on it, so a bare `foo.rex` goes to the search engine and never reaches
+// our resolver; `foo.rex/` or `http://foo.rex` open the site. Chrome, Safari
+// and Edge offer no setting for this. Firefox does: one boolean per suffix,
+// `browser.fixup.domainsuffixwhitelist.<tld>`, and `user.js` is the same
+// sanctioned override file the trust pref above uses (ledger #706).
+
+/// Firefox's per-suffix pref prefix: `true` makes a typed `name.<tld>` a URL.
+pub const FIXUP_PREF_PREFIX: &str = "browser.fixup.domainsuffixwhitelist.";
+
+/// Marker above the lines we add, like [`USER_JS_MARKER`].
+const FIXUP_MARKER: &str =
+    "// Added by rexenv: open typed name.<tld> addresses instead of searching them. Safe to delete.";
+
+/// The value an uncommented `user.js` line sets for `tld`'s fixup pref, if any.
+/// A `false` the user wrote is THEIR decision about their browser: we never
+/// flip it (unlike the trust pref, which rexenv HTTPS depends on).
+fn fixup_value(user_js: &str, tld: &str) -> Option<bool> {
+    let key = format!("\"{FIXUP_PREF_PREFIX}{tld}\",");
+    user_js.lines().rev().find_map(|l| {
+        let squashed: String = l.chars().filter(|c| !c.is_whitespace()).collect();
+        if squashed.starts_with("//") {
+            return None;
+        }
+        let rest = &squashed[squashed.find(&key)? + key.len()..];
+        Some(rest.starts_with("true"))
+    })
+}
+
+/// Append a fixup line for every `tld` the file has no line for. `None` = nothing
+/// to write. A TLD that is not a valid label is skipped — it is spliced into a
+/// JavaScript string, so nothing but `a–z` may reach it.
+fn merged_fixup_js(existing: &str, tlds: &[String]) -> Option<String> {
+    let missing: Vec<&String> = tlds
+        .iter()
+        .filter(|t| crate::core::tld::is_valid_label(t) && fixup_value(existing, t).is_none())
+        .collect();
+    if missing.is_empty() {
+        return None;
+    }
+    let mut out = existing.to_string();
+    if !out.is_empty() && !out.ends_with('\n') {
+        out.push('\n');
+    }
+    if !out.is_empty() && !out.ends_with("\n\n") {
+        out.push('\n');
+    }
+    out.push_str(FIXUP_MARKER);
+    out.push('\n');
+    for tld in missing {
+        out.push_str(&format!("user_pref(\"{FIXUP_PREF_PREFIX}{tld}\", true);\n"));
+    }
+    Some(out)
+}
+
+/// Let every profile under `root` open typed `name.<tld>` addresses for each of
+/// `tlds`. Returns how many profiles were WRITTEN; idempotent, like
+/// [`enable_in_profiles`]. Firefox reads `user.js` at startup, so a running
+/// Firefox needs a restart.
+pub fn allow_tlds_in_profiles(root: &Path, tlds: &[String]) -> Result<usize> {
+    let mut written = 0;
+    for profile in profiles(root) {
+        let user_js = profile.join("user.js");
+        let existing = std::fs::read_to_string(&user_js).unwrap_or_default();
+        if let Some(merged) = merged_fixup_js(&existing, tlds) {
+            std::fs::write(&user_js, merged)?;
+            written += 1;
+        }
+    }
+    Ok(written)
+}
+
+/// How many profiles under `root` open EVERY one of `tlds` when typed.
+pub fn tlds_allowed_count(root: Option<&Path>, tlds: &[String]) -> usize {
+    let Some(root) = root else { return 0 };
+    profiles(root)
+        .iter()
+        .filter(|p| {
+            let js = std::fs::read_to_string(p.join("user.js")).unwrap_or_default();
+            tlds.iter().all(|t| fixup_value(&js, t) == Some(true))
+        })
+        .count()
+}
+
+/// The courtesy write, for the moments rexenv starts answering on a TLD (its
+/// resolver installed) or the user re-runs the CA trust. Best-effort: a missing,
+/// locked or odd Firefox profile never fails the operation it rides on — the
+/// site opens in every browser with `name.<tld>/` regardless.
+pub fn allow_tlds_best_effort(root: Option<std::path::PathBuf>, tlds: &[String]) {
+    let Some(root) = root else { return };
+    match allow_tlds_in_profiles(&root, tlds) {
+        Ok(0) => {}
+        Ok(n) => log::info!("firefox: typed .{} addresses now open in {n} profile(s)", tlds.join(", .")),
+        Err(e) => log::warn!("firefox: could not add the typed-address pref: {e}"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -310,5 +410,62 @@ mod tests {
         // No Firefox at all.
         let none = status(None);
         assert!(!none.installed && none.profiles == 0);
+    }
+
+    fn tlds(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| s.to_string()).collect()
+    }
+
+    /// Typed `foo.rex` opens in Firefox: one line per TLD, appended under a
+    /// marker, the user's own lines kept, and a re-run writes nothing.
+    #[test]
+    fn fixup_appends_missing_tlds_once() {
+        let existing = "user_pref(\"foo\", 1);\nuser_pref(\"browser.fixup.domainsuffixwhitelist.rex\", true);";
+        let merged = merged_fixup_js(existing, &tlds(&["rex", "test"])).unwrap();
+        assert!(merged.starts_with(existing), "the user's lines come first, untouched");
+        assert!(merged.contains(FIXUP_MARKER));
+        assert!(merged.contains("user_pref(\"browser.fixup.domainsuffixwhitelist.test\", true);"));
+        assert_eq!(merged.matches("domainsuffixwhitelist.rex").count(), 1, "rex was already there");
+        assert!(merged_fixup_js(&merged, &tlds(&["rex", "test"])).is_none());
+        // The trust pref's own file content does not count as a fixup line.
+        assert!(merged_fixup_js(&merged_user_js("").unwrap(), &tlds(&["rex"])).is_some());
+    }
+
+    /// A `false` the user set is theirs: kept, not flipped, not counted as allowed.
+    /// A commented-out line is no decision at all.
+    #[test]
+    fn fixup_respects_a_users_false_and_ignores_comments() {
+        let off = " user_pref( \"browser.fixup.domainsuffixwhitelist.rex\" , false );";
+        assert_eq!(fixup_value(off, "rex"), Some(false));
+        assert!(merged_fixup_js(off, &tlds(&["rex"])).is_none());
+        let commented = "// user_pref(\"browser.fixup.domainsuffixwhitelist.rex\", true);";
+        assert_eq!(fixup_value(commented, "rex"), None);
+        // `.re` is not `.rex`: the key ends at the closing quote.
+        assert_eq!(fixup_value("user_pref(\"browser.fixup.domainsuffixwhitelist.rex\", true);", "re"), None);
+    }
+
+    /// The TLD is spliced into a JS string: anything but a valid label is dropped.
+    #[test]
+    fn fixup_never_writes_an_invalid_label() {
+        assert!(merged_fixup_js("", &tlds(&["x\", true); evil(\""])).is_none());
+        assert!(merged_fixup_js("", &tlds(&["REX", ""])).is_none());
+    }
+
+    #[test]
+    fn allow_tlds_writes_once_and_counts() {
+        let root = fake_root("fixup", "[Profile0]\nName=default\nIsRelative=1\nPath=p0\n");
+        std::fs::create_dir_all(root.join("p0")).unwrap();
+        let both = tlds(&["rex", "test"]);
+        assert_eq!(tlds_allowed_count(Some(&root), &both), 0);
+        assert_eq!(allow_tlds_in_profiles(&root, &tlds(&["rex"])).unwrap(), 1);
+        assert_eq!(tlds_allowed_count(Some(&root), &both), 0, "test is still missing");
+        assert_eq!(allow_tlds_in_profiles(&root, &both).unwrap(), 1);
+        assert_eq!(allow_tlds_in_profiles(&root, &both).unwrap(), 0);
+        assert_eq!(tlds_allowed_count(Some(&root), &both), 1);
+        // The trust pref and the fixup lines share the file without disturbing each other.
+        assert_eq!(enable_in_profiles(&root).unwrap(), 1);
+        assert_eq!(tlds_allowed_count(Some(&root), &both), 1);
+        assert_eq!(status(Some(&root)).forced, 1);
+        assert_eq!(tlds_allowed_count(None, &both), 0);
     }
 }

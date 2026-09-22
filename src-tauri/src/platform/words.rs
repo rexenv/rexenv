@@ -108,6 +108,10 @@ pub struct PlatformWords {
     /// The consent sentence's tail about re-granted permissions — macOS's ad-hoc identity;
     /// empty on Windows, where nothing of the kind happens.
     pub update_reprompt: &'static str,
+    /// The browsers on this OS that turn a typed `name.rex` into a web search — they check the ending
+    /// against the public TLD list before any DNS lookup, and have no setting for it (Firefox does, and
+    /// `core::firefox` sets it). Safari is macOS's; Windows' own is Edge. The hint names what the user has.
+    pub searching_browsers: &'static str,
 }
 
 pub const MACOS: PlatformWords = PlatformWords {
@@ -143,6 +147,7 @@ pub const MACOS: PlatformWords = PlatformWords {
     update_replaces: "rexenv.app",
     update_reprompt: " macOS may ask again for permissions it had granted this copy: rexenv has no \
          Apple developer signature yet, so each build is a new identity to it.",
+    searching_browsers: "Chrome and Safari",
 };
 
 pub const WINDOWS: PlatformWords = PlatformWords {
@@ -177,6 +182,7 @@ pub const WINDOWS: PlatformWords = PlatformWords {
     take_ownership: "takeown /R /F",
     update_replaces: "rexenv's program files (your data folder is not touched)",
     update_reprompt: "",
+    searching_browsers: "Chrome and Edge",
 };
 
 /// This build's words.
@@ -195,7 +201,7 @@ pub fn current() -> &'static PlatformWords {
 mod tests {
     use super::*;
 
-    fn fields(w: &PlatformWords) -> [&'static str; 21] {
+    fn fields(w: &PlatformWords) -> [&'static str; 22] {
         [
             w.reveal,
             w.file_manager,
@@ -218,6 +224,7 @@ mod tests {
             w.routes_label,
             w.home_prefix,
             w.import_search,
+            w.searching_browsers,
         ]
     }
 
@@ -317,6 +324,7 @@ mod tests {
         assert!(!WINDOWS.routes_label.contains("/etc/resolver"));
         assert_eq!(WINDOWS.home_prefix, "%USERPROFILE%");
         assert!(!WINDOWS.import_search.contains('~'), "{}", WINDOWS.import_search);
+        assert!(!WINDOWS.searching_browsers.contains("Safari"), "Safari does not run on Windows: {}", WINDOWS.searching_browsers);
     }
 
     /// Ledger #641 — rexenv looks for the other tools' sites only where it knows their layout. Scanning a

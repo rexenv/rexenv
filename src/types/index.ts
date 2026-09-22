@@ -1131,6 +1131,8 @@ export interface PlatformWords {
    *  `rexdb://localhost`, Windows `http://rexdb.localhost`. The Database
    *  Browser's iframe src is built from it (#703). */
   dbBrowserOrigin: string;
+  /** The browsers here that search a typed bare `name.rex` — "Chrome and Safari" / "Chrome and Edge". */
+  searchingBrowsers: string;
 }
 
 /** A detected code editor (mirrors the Rust EditorApp DTO). */
@@ -1173,6 +1175,8 @@ export interface FirefoxTrustStatus {
   profiles: number; // profiles found
   forced: number; // profiles whose user.js already forces the import pref
   caPath: string; // CA file for the manual Authorities → Import fallback
+  tlds: string[]; // the TLDs rexenv answers on
+  typing: number; // profiles where a typed name.<tld> opens (for every tld) instead of searching
 }
 
 /** TLD policy classification (mirrors the Rust core::tld::TldPolicy DTO).

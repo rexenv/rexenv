@@ -1921,7 +1921,7 @@ export async function trustLocalCa(): Promise<void> {
 
 /** Firefox trust state for the Settings SSL card. Mock fallback outside Tauri. */
 export async function firefoxTrustStatus(): Promise<FirefoxTrustStatus> {
-  if (!isTauri()) return { installed: false, profiles: 0, forced: 0, caPath: "" };
+  if (!isTauri()) return { installed: false, profiles: 0, forced: 0, caPath: "", tlds: [], typing: 0 };
   return invoke<FirefoxTrustStatus>("firefox_trust_status");
 }
 
@@ -1930,6 +1930,13 @@ export async function firefoxTrustStatus(): Promise<FirefoxTrustStatus> {
 export async function trustCaInFirefox(): Promise<FirefoxTrustStatus> {
   if (!isTauri()) throw new Error("Firefox trust requires the rexenv desktop app.");
   return invoke<FirefoxTrustStatus>("trust_ca_in_firefox");
+}
+
+/** Make a typed `name.<tld>` open the site in Firefox instead of searching it
+ *  (`browser.fixup.domainsuffixwhitelist.<tld>` per profile) — on Firefox restart. */
+export async function allowTldsInFirefox(): Promise<FirefoxTrustStatus> {
+  if (!isTauri()) throw new Error("Firefox settings require the rexenv desktop app.");
+  return invoke<FirefoxTrustStatus>("allow_tlds_in_firefox");
 }
 
 /** Regenerate every site's TLS cert (+ Adminer) and reload the edge. Returns the count. */

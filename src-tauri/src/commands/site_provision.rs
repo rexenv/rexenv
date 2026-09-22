@@ -2578,7 +2578,18 @@ mod tests {
             unimplemented!("the create path must not reach the edge")
         }
         fn cert_trust(&self) -> &dyn crate::platform::traits::CertTrustManager {
-            unimplemented!()
+            // Installing a resolver asks where Firefox keeps its profiles (the typed-address
+            // pref, ledger #706); this one has none, so that step is a no-op.
+            struct NoFirefox;
+            impl crate::platform::traits::CertTrustManager for NoFirefox {
+                fn trust_ca(&self, _: &std::path::Path) -> crate::error::Result<()> {
+                    unimplemented!()
+                }
+                fn untrust_ca(&self, _: &std::path::Path) -> crate::error::Result<()> {
+                    unimplemented!()
+                }
+            }
+            &NoFirefox
         }
         fn supervisor(&self) -> &dyn crate::platform::traits::ProcessSupervisor {
             unimplemented!()

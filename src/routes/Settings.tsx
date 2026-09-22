@@ -54,6 +54,7 @@ import {
   sitesFolder,
   tldPolicy,
   trustCaInFirefox,
+  allowTldsInFirefox,
   trustLocalCa,
   wpCliPackages,
   scanValetImport,
@@ -1063,10 +1064,34 @@ function FirefoxTrustCard() {
     },
     onError: (e) => toastBackendError(e),
   });
+  const typing = useMutation({
+    mutationFn: allowTldsInFirefox,
+    onSuccess: () => {
+      toast.success("Typed addresses will open in Firefox — restart Firefox to apply.");
+      void qc.invalidateQueries({ queryKey: ["firefox-trust"] });
+    },
+    onError: (e) => toastBackendError(e),
+  });
 
   if (!ff?.installed) return null;
+  const endings = ff.tlds.map((t) => `name.${t}`).join(", ");
+  const typingDone = ff.typing >= ff.profiles;
   return (
     <div className="rounded-[13px] border border-rex-border-subtle bg-rex-surface-1 px-5">
+      {/* Firefox is the one browser with a setting for this: a per-TLD pref in
+          user.js (`core::firefox`). rexenv also writes it when a TLD's route is
+          installed and on Re-trust; this row is for a Firefox added later. */}
+      <ActionRow
+        title="Open typed addresses in Firefox"
+        desc={
+          typingDone
+            ? `Typing ${endings} opens the site in all ${ff.profiles} profile${ff.profiles === 1 ? "" : "s"} — restart Firefox if it still searches.`
+            : `Firefox searches a typed ${endings} instead of opening it — let it treat rexenv's endings as addresses.`
+        }
+        busy={typing.isPending}
+        label={typingDone ? "Re-apply" : "Enable"}
+        onClick={() => typing.mutate()}
+      />
       <ActionRow
         title="Trust HTTPS in Firefox"
         desc={
@@ -1308,6 +1333,15 @@ function DefaultTldCard() {
         during onboarding and rexenv's own tools use it. Any other TLD (including{" "}
         <span className="font-mono">.test</span>) {words.privilegedPrompt}, when its first
         site is created.
+      </div>
+      {/* Browsers decide URL-or-search from the public TLD list BEFORE any DNS
+          lookup, so a bare `acme.rex` never reaches rexenv's resolver in these.
+          Nothing on this side can change that; the trailing slash can. */}
+      <div className="mt-2.5 text-[0.71875rem] text-rex-text-muted" data-probe="typed-address-hint">
+        Typing an address? {words.searchingBrowsers} search a bare{" "}
+        <span className="font-mono">name.{current}</span> instead of opening it — add a slash (
+        <span className="font-mono">name.{current}/</span>) or <span className="font-mono">https://</span>,
+        or open the site from rexenv.
       </div>
     </div>
   );
