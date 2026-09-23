@@ -1,7 +1,7 @@
 //! Manual check for the MULTI-VERSION PHP binary provider (Phase 2 task 1.1).
 //! Run: `cargo run --example php_versions_check`
 //!
-//! For every version in `binaries::PHP_VERSIONS`, this downloads + verifies +
+//! For every version in `binaries::pins().php_versions`, this downloads + verifies +
 //! extracts + signs the pinned `php` (cli) and `php-fpm` builds under app-data
 //! (reusing the Phase-1 BinaryProvider + prepare_binary path), then ASSERTS what
 //! it got. Each version caches independently under `bin_dir/php-<version>/` and
@@ -120,7 +120,7 @@ async fn main() {
         failures.push(msg);
     };
 
-    for v in binaries::PHP_VERSIONS {
+    for v in binaries::pins().php_versions {
         println!("=== PHP {v} ===");
 
         // CLI: resolve, then prove it is THIS version and can serve WordPress.
@@ -201,7 +201,7 @@ async fn main() {
     if failures.is_empty() {
         println!(
             "OK — all {} PHP versions resolved, reported their pinned version, carry mysqli, and match {}.",
-            binaries::PHP_VERSIONS.len(),
+            binaries::pins().php_versions.len(),
             main_arch()
         );
     } else {

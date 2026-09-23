@@ -46,7 +46,7 @@ async fn main() {
     let plat = platform::current();
     let mut ok = true;
 
-    let minor = php::minor_of(binaries::PHP_VERSION);
+    let minor = php::minor_of(binaries::pins().php);
     let patch = php::patch_for_minor(&minor).expect("default minor pinned");
     let (bundle, bundle_version) =
         binaries::xdebug_bundle_id(&minor).expect("default minor supports xdebug");

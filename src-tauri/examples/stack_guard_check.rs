@@ -39,7 +39,7 @@ async fn main() {
 
     // 1) recover_stale_edge must REFUSE (error naming the guard), edge survives.
     if edge_before {
-        let caddy = binaries::resolve(&*plat, "caddy", binaries::CADDY_VERSION)
+        let caddy = binaries::resolve(&*plat, "caddy", binaries::pins().caddy)
             .await
             .expect("resolve caddy");
         match proxy::recover_stale_edge(&*plat, &caddy) {

@@ -140,7 +140,7 @@ echo "HOST={$_SERVER['HTTP_HOST']} URI={$_SERVER['REQUEST_URI']}\n";
 #[tokio::main]
 async fn main() {
     let plat = platform::current();
-    let php = binaries::resolve(&*plat, "php", binaries::PHP_VERSION).await.expect("php");
+    let php = binaries::resolve(&*plat, "php", binaries::pins().php).await.expect("php");
 
     let dir = std::env::temp_dir().join("rexenv-tunnel-muplugin-check");
     let _ = std::fs::remove_dir_all(&dir);

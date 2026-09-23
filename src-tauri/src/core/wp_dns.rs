@@ -121,7 +121,7 @@ pub fn ares_minors_in_use(sites: &[Site]) -> Vec<String> {
 pub fn effective_php_version(site: &Site) -> String {
     match site.web_server {
         crate::state::models::WebServer::Frankenphp => {
-            crate::core::binaries::FRANKENPHP_EMBEDDED_PHP.to_string()
+            crate::core::binaries::pins().frankenphp_embedded_php.to_string()
         }
         _ => site.php_version.clone(),
     }
@@ -373,7 +373,7 @@ mod tests {
     fn every_pinned_php_has_a_measured_curl_resolver() {
         let mut ares = 0;
         let mut threaded = 0;
-        for v in crate::core::binaries::PHP_VERSIONS {
+        for v in crate::core::binaries::pins().php_versions {
             let minor = v.rsplit_once('.').map(|(m, _)| m).unwrap_or(v);
             match resolver_for(minor) {
                 Some(CurlResolver::Ares) => ares += 1,

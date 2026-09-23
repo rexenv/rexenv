@@ -37,11 +37,11 @@ async fn main() {
     // back ACTIVE instead of inactive on 21 Aug 2026. Half a fixture is not one.
     let _sites_dir = common::pin_fixture_sites_dir(&conn, "wpthemes");
     let ca = ssl::load_or_create(plat.paths(), plat.permissions()).unwrap();
-    let php = binaries::resolve(&*plat, "php", binaries::PHP_VERSION).await.unwrap();
-    let wp = binaries::resolve_file(&*plat, "wp-cli", binaries::WP_CLI_VERSION).await.unwrap();
-    let mysql_base = binaries::resolve_dir(&*plat, "mysql", binaries::MYSQL_VERSION).await.unwrap();
+    let php = binaries::resolve(&*plat, "php", binaries::pins().php).await.unwrap();
+    let wp = binaries::resolve_file(&*plat, "wp-cli", binaries::pins().wp_cli).await.unwrap();
+    let mysql_base = binaries::resolve_dir(&*plat, "mysql", binaries::pins().mysql).await.unwrap();
     let (db_client, _) = rexenv_lib::core::db::DbEngine::Mysql
-        .sql_client_bins(&*plat, rexenv_lib::core::binaries::MYSQL_VERSION)
+        .sql_client_bins(&*plat, rexenv_lib::core::binaries::pins().mysql)
         .await
         .expect("bundled MySQL client");
 

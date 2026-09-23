@@ -121,7 +121,7 @@ mod windows {
         check.is("the spawned group stops", ports::wait_free(&*plat, port, Proto::Tcp, 50, Duration::from_millis(100)), "port held");
 
         // ── The adopted path: a group whose worker cannot be spawned. ──
-        let cached = binaries::cached_path(&*plat, "php", binaries::PHP_VERSION).expect("php cached by ensure");
+        let cached = binaries::cached_path(&*plat, "php", binaries::pins().php).expect("php cached by ensure");
         let php_dir = root.join("php");
         let copied = copy_tree(&cached, &php_dir);
         check.is("the PHP tree is copied into the fixture", copied.is_ok(), &format!("{copied:?}"));

@@ -78,7 +78,7 @@ mod windows {
         };
         let port = fpm_port(MINOR).expect("pool port");
 
-        let cached = match binaries::resolve_dir(&*plat, "php", binaries::PHP_VERSION).await {
+        let cached = match binaries::resolve_dir(&*plat, "php", binaries::pins().php).await {
             Ok(dir) => dir,
             Err(e) => {
                 check.is("PHP resolves", false, &e.to_string());

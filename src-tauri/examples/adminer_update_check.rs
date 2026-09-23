@@ -30,7 +30,7 @@ mod common;
 async fn main() -> ExitCode {
     let (plat, _sandbox) = common::sandbox("adminer_upd");
     let mut checks = common::Check::new("adminer_update_check");
-    let pinned = binaries::ADMINER_VERSION;
+    let pinned = binaries::pins().adminer;
     println!("this build pins Adminer {pinned} (ceiling: major <= {})\n", updates::ADMINER_MAX_MAJOR);
 
     checks.is(
@@ -114,7 +114,7 @@ async fn main() -> ExitCode {
     // THE STEP PHP HAS NO EQUIVALENT OF. A digest match proves we got bytes
     // somebody signed for; it says nothing about whether rexenv's login gate and
     // frame protections still have a hook to hang on.
-    let php = match binaries::resolve(&*plat, "php", binaries::PHP_VERSION).await {
+    let php = match binaries::resolve(&*plat, "php", binaries::pins().php).await {
         Ok(p) => p,
         Err(e) => {
             eprintln!("resolving php FAILED: {e}");

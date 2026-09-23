@@ -32,7 +32,7 @@ async fn main() -> ExitCode {
     // Default to the pinned default; accept any pinned version as argv[1].
     let version = std::env::args()
         .nth(1)
-        .unwrap_or_else(|| binaries::PHP_VERSION.to_string());
+        .unwrap_or_else(|| binaries::pins().php.to_string());
     let minor = rexenv_lib::core::php::minor_of(&version);
     assert!(
         rexenv_lib::core::php::patch_for_minor(&minor).is_some(),

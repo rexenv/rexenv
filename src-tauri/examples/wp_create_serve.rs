@@ -46,14 +46,14 @@ async fn main() {
     let conn = common::sandbox_db(&*plat);
     let ca = ssl::load_or_create(plat.paths(), plat.permissions()).unwrap();
 
-    let php = binaries::resolve(&*plat, "php", binaries::PHP_VERSION).await.unwrap();
-    let php_fpm = binaries::resolve(&*plat, "php-fpm", binaries::PHP_VERSION).await.unwrap();
-    let nginx = binaries::resolve(&*plat, "nginx", binaries::NGINX_VERSION).await.unwrap();
-    let caddy = binaries::resolve(&*plat, "caddy", binaries::CADDY_VERSION).await.unwrap();
-    let wp = binaries::resolve_file(&*plat, "wp-cli", binaries::WP_CLI_VERSION).await.unwrap();
-    let mysql_base = binaries::resolve_dir(&*plat, "mysql", binaries::MYSQL_VERSION).await.unwrap();
+    let php = binaries::resolve(&*plat, "php", binaries::pins().php).await.unwrap();
+    let php_fpm = binaries::resolve(&*plat, "php-fpm", binaries::pins().php).await.unwrap();
+    let nginx = binaries::resolve(&*plat, "nginx", binaries::pins().nginx).await.unwrap();
+    let caddy = binaries::resolve(&*plat, "caddy", binaries::pins().caddy).await.unwrap();
+    let wp = binaries::resolve_file(&*plat, "wp-cli", binaries::pins().wp_cli).await.unwrap();
+    let mysql_base = binaries::resolve_dir(&*plat, "mysql", binaries::pins().mysql).await.unwrap();
     let (db_client, _) = rexenv_lib::core::db::DbEngine::Mysql
-        .sql_client_bins(&*plat, rexenv_lib::core::binaries::MYSQL_VERSION)
+        .sql_client_bins(&*plat, rexenv_lib::core::binaries::pins().mysql)
         .await
         .expect("bundled MySQL client");
 

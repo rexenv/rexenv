@@ -177,7 +177,7 @@ async fn legs(
         eprintln!("FAIL 5: writing the starter files failed: {e}");
         return false;
     }
-    let php = match binaries::resolve(plat, "php", binaries::PHP_VERSION).await {
+    let php = match binaries::resolve(plat, "php", binaries::pins().php).await {
         Ok(p) => p,
         Err(e) => {
             // A missing PHP is a precondition failure, not a passing run: the
@@ -192,7 +192,7 @@ async fn legs(
             .output()
             .expect("run php -l");
         let good = out.status.success();
-        println!("5. {file} parses under PHP {} → {}", binaries::PHP_VERSION, if good { "PASS" } else { "FAIL" });
+        println!("5. {file} parses under PHP {} → {}", binaries::pins().php, if good { "PASS" } else { "FAIL" });
         if !good {
             eprintln!("{}", String::from_utf8_lossy(&out.stdout).trim());
         }
@@ -237,7 +237,7 @@ async fn main() -> ExitCode {
     let mut ok = true;
 
     // ── MySQL ───────────────────────────────────────────────────────────────
-    let basedir = match binaries::resolve_dir(&*plat, "mysql", binaries::MYSQL_VERSION).await {
+    let basedir = match binaries::resolve_dir(&*plat, "mysql", binaries::pins().mysql).await {
         Ok(b) => b,
         Err(e) => {
             eprintln!("mysql tree unavailable: {e}");
@@ -268,7 +268,7 @@ async fn main() -> ExitCode {
         eprintln!("sandbox mysqld never came up on :{MYSQL_PORT}");
         return ExitCode::FAILURE;
     }
-    let my_client = match DbEngine::Mysql.sql_client_bins(&*plat, binaries::MYSQL_VERSION).await {
+    let my_client = match DbEngine::Mysql.sql_client_bins(&*plat, binaries::pins().mysql).await {
         Ok((c, _)) => c,
         Err(e) => {
             eprintln!("bundled MySQL client unavailable: {e}");

@@ -199,14 +199,14 @@ async fn main() {
         println!("adopted {n} running database engine(s)");
     }
 
-    let wp_phar = binaries::resolve_file(handle.state::<AppState>().platform.as_ref(), "wp-cli", binaries::WP_CLI_VERSION)
+    let wp_phar = binaries::resolve_file(handle.state::<AppState>().platform.as_ref(), "wp-cli", binaries::pins().wp_cli)
         .await
         .expect("wp-cli");
 
     let mut outcomes: Vec<Outcome> = Vec::new();
     let started_all = Instant::now();
 
-    for version in binaries::PHP_VERSIONS {
+    for version in binaries::pins().php_versions {
         let minor = php::minor_of(version);
         if !wanted("MATRIX_PHP", &minor) {
             continue;
@@ -379,7 +379,7 @@ async fn run_one(
     if advisory_failed {
         let first = fin.as_ref().and_then(|s| s.error.clone()).unwrap_or_default();
         notes.push(format!("failed, named: {}", first.lines().next().unwrap_or("")));
-        let newest = php::minor_of(binaries::PHP_VERSIONS.last().unwrap());
+        let newest = php::minor_of(binaries::pins().php_versions.last().unwrap());
         {
             let state = handle.state::<AppState>();
             let conn = state.db.lock().unwrap();

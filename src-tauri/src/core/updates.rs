@@ -806,7 +806,7 @@ pub fn floored(minor: &str, selected: Option<&str>) -> Option<String> {
 /// track-free, because Adminer's tracks are not a compatibility boundary the way
 /// a PHP minor is (see [`Family::is_upgrade`]).
 pub fn adminer_floored(selected: Option<&str>) -> String {
-    let pin = crate::core::binaries::ADMINER_VERSION;
+    let pin = crate::core::binaries::pins().adminer;
     match selected {
         Some(sel) if segments(sel) > segments(pin) => sel.to_string(),
         _ => pin.to_string(),
@@ -899,7 +899,7 @@ mod tests {
     }
 
     fn doc(serial: u64, versions: &[&str]) -> Vec<u8> {
-        let minor = php::minor_of(binaries::PHP_VERSION);
+        let minor = php::minor_of(binaries::pins().php);
         let arts: Vec<String> = versions
             .iter()
             .flat_map(|v| ["arm64", "x86_64"].map(move |a| (v, a)))
@@ -968,7 +968,7 @@ mod tests {
     #[test]
     fn a_valid_signature_verifies_and_any_tamper_refuses() {
         let (pub_hex, kp) = keypair();
-        let minor = php::minor_of(binaries::PHP_VERSION);
+        let minor = php::minor_of(binaries::pins().php);
         let d = doc(1, &[&format!("{minor}.9999")]);
         let sig = sign(&kp, &d);
 
@@ -1005,7 +1005,7 @@ mod tests {
     fn an_older_serial_is_refused_and_leaves_the_stored_one_intact() {
         let (pub_hex, kp) = keypair();
         let conn = crate::state::db::open_in_memory().unwrap();
-        let minor = php::minor_of(binaries::PHP_VERSION);
+        let minor = php::minor_of(binaries::pins().php);
         let newv = format!("{minor}.9999");
         let oldv = format!("{minor}.9998");
 
@@ -1044,7 +1044,7 @@ mod tests {
     fn the_same_serial_is_accepted_as_a_no_op_and_never_called_a_replay() {
         let (pub_hex, kp) = keypair();
         let conn = crate::state::db::open_in_memory().unwrap();
-        let minor = php::minor_of(binaries::PHP_VERSION);
+        let minor = php::minor_of(binaries::pins().php);
         let newv = format!("{minor}.9999");
         let oldv = format!("{minor}.9998");
 
@@ -1054,7 +1054,7 @@ mod tests {
         // Re-fetching the IDENTICAL document: accepted, catalog returned.
         let again = accept_with(&pub_hex, &conn, &d7, &sign(&kp, &d7))
             .expect("re-reading our own current manifest must not be an error");
-        assert_eq!(again.newer_than(Family::Php, binaries::PHP_VERSION, "arm64"), None);
+        assert_eq!(again.newer_than(Family::Php, binaries::pins().php, "arm64"), None);
         assert!(again.versions().iter().any(|v| v == &newv));
 
         // A DIFFERENT document at the same serial changes nothing on disk.
@@ -1075,7 +1075,7 @@ mod tests {
     fn a_tampered_cache_is_refused_on_every_read_not_trusted_from_a_flag() {
         let (pub_hex, kp) = keypair();
         let conn = crate::state::db::open_in_memory().unwrap();
-        let minor = php::minor_of(binaries::PHP_VERSION);
+        let minor = php::minor_of(binaries::pins().php);
         let d = doc(1, &[&format!("{minor}.9999")]);
         accept_with(&pub_hex, &conn, &d, &sign(&kp, &d)).unwrap();
 
@@ -1100,7 +1100,7 @@ mod tests {
     /// **The floor is the compiled-in pin, and a selection may only raise it.**
     #[test]
     fn a_selection_can_only_move_a_minor_forward_from_its_pin() {
-        let minor = php::minor_of(binaries::PHP_VERSION);
+        let minor = php::minor_of(binaries::pins().php);
         let pin = php::patch_for_minor(&minor).unwrap();
 
         // No selection → today's answer, byte for byte.
@@ -1123,7 +1123,7 @@ mod tests {
     /// perfectly well-formed** — so a rejection can only be the limit under test.
     #[test]
     fn the_structural_limits_each_drop_an_otherwise_valid_entry() {
-        let minor = php::minor_of(binaries::PHP_VERSION);
+        let minor = php::minor_of(binaries::pins().php);
         let good = Artifact {
             name: "php".into(),
             version: format!("{minor}.9999"),
@@ -1377,7 +1377,7 @@ mod tests {
             );
         }
         // …and the reverse: PHP must never be arch-free.
-        let minor = php::minor_of(binaries::PHP_VERSION);
+        let minor = php::minor_of(binaries::pins().php);
         let php_any = Artifact {
             name: "php".into(),
             version: format!("{minor}.9999"),
@@ -1427,7 +1427,7 @@ mod tests {
     /// refuses the feature.
     #[test]
     fn a_family_offers_only_its_own_versions_and_upgrades_by_its_own_rule() {
-        let minor = php::minor_of(binaries::PHP_VERSION);
+        let minor = php::minor_of(binaries::pins().php);
         let php_v = format!("{minor}.9999");
         let mut entries: Vec<Artifact> = Family::Php
             .names()
@@ -1461,7 +1461,7 @@ mod tests {
 
         // PHP does not cross minors, and does not see Adminer's rows.
         assert_eq!(
-            cat.newer_than(Family::Php, binaries::PHP_VERSION, "arm64").as_deref(),
+            cat.newer_than(Family::Php, binaries::pins().php, "arm64").as_deref(),
             Some(php_v.as_str())
         );
         let other = php::unshipped_patch();
@@ -1473,7 +1473,7 @@ mod tests {
         // `adminer` row at the PHP version and every Update button would have
         // gone dark — silently, with every other test still green.
         assert!(
-            cat.newer_than(Family::Php, binaries::PHP_VERSION, "arm64").is_some(),
+            cat.newer_than(Family::Php, binaries::pins().php, "arm64").is_some(),
             "adding a family darkened the PHP family's offers"
         );
 
@@ -1482,7 +1482,7 @@ mod tests {
         let half = VersionCatalog {
             entries: cat.entries.iter().filter(|a| a.name != "php-fpm").cloned().collect(),
         };
-        assert_eq!(half.newer_than(Family::Php, binaries::PHP_VERSION, "arm64"), None);
+        assert_eq!(half.newer_than(Family::Php, binaries::pins().php, "arm64"), None);
         assert_eq!(half.newer_than(Family::Adminer, "5.4.2", "arm64").as_deref(), Some("6.0.1"));
     }
 

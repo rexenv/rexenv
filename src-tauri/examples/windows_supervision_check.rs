@@ -71,10 +71,10 @@ mod windows {
         let _ = std::fs::remove_dir_all(&root);
         let plat = common::sandbox_platform_at(root.clone());
 
-        let basedir = binaries::resolve_dir(&*plat, "mysql", binaries::MYSQL_VERSION)
+        let basedir = binaries::resolve_dir(&*plat, "mysql", binaries::pins().mysql)
             .await
             .expect("resolve mysql on Windows");
-        let mailpit = binaries::resolve(&*plat, "mailpit", binaries::MAILPIT_VERSION)
+        let mailpit = binaries::resolve(&*plat, "mailpit", binaries::pins().mailpit)
             .await
             .expect("resolve mailpit on Windows");
         println!("  · mysql {} · mailpit {}", basedir.display(), mailpit.display());
@@ -135,7 +135,7 @@ mod windows {
         let greeting = mysql_greeting(database::MYSQL_PORT);
         check.is(
             "MySQL still answers with its own handshake",
-            greeting.contains(binaries::MYSQL_VERSION),
+            greeting.contains(binaries::pins().mysql),
             &format!("{greeting:?}"),
         );
 

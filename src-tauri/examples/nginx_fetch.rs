@@ -8,7 +8,7 @@ use rexenv_lib::platform;
 #[tokio::main]
 async fn main() {
     let plat = platform::current();
-    match binaries::resolve(&*plat, "nginx", binaries::NGINX_VERSION).await {
+    match binaries::resolve(&*plat, "nginx", binaries::pins().nginx).await {
         Ok(path) => {
             println!("nginx cached at: {}", path.display());
             // `nginx -v` prints to stderr and exits without starting.

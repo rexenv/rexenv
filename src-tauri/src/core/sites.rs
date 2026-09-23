@@ -104,9 +104,9 @@ fn ensure_server_available_on(server: WebServer, os: &str) -> Result<()> {
     let shipped = match server {
         WebServer::Nginx => true,
         WebServer::Frankenphp => {
-            binaries::ships_on("frankenphp", binaries::FRANKENPHP_VERSION, os)
+            binaries::ships_on("frankenphp", binaries::pins().frankenphp, os)
         }
-        WebServer::Apache => binaries::ships_on("httpd", binaries::HTTPD_VERSION, os),
+        WebServer::Apache => binaries::ships_on("httpd", binaries::pins().httpd, os),
         _ => false,
     };
     if shipped {
@@ -141,7 +141,7 @@ fn ensure_server_runs_php(server: WebServer, php_version: &str) -> Result<()> {
         return Ok(());
     }
     let major = |v: &str| v.split('.').next().unwrap_or_default().to_string();
-    let embedded = binaries::FRANKENPHP_EMBEDDED_PHP;
+    let embedded = binaries::pins().frankenphp_embedded_php;
     if major(php_version) == major(embedded) {
         return Ok(());
     }
@@ -2729,7 +2729,7 @@ pub fn rebuild_configs_for(
     // that pool's own settings already allow: the floor can only raise a limit,
     // never hold a user who configured more down to it.
     let adminer_cap =
-        adminer::import_cap(body_limits.get(&php::minor_of(binaries::PHP_VERSION)).copied());
+        adminer::import_cap(body_limits.get(&php::minor_of(binaries::pins().php)).copied());
     nginx_sites.push(services::NginxSite {
         domain: adminer::ADMINER_HOST.to_string(),
         // The tooling vhost answers on ONE name, by design (#24: it has no site

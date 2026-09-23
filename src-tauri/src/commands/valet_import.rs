@@ -460,7 +460,7 @@ fn enrich(
         // honour — our default is as good a choice as any, and the row stays
         // importable rather than nagging for a decision that doesn't exist.
         None => {
-            c.php_target = Some(core::php::minor_of(core::binaries::PHP_VERSION));
+            c.php_target = Some(core::php::minor_of(core::binaries::pins().php));
         }
     }
 
@@ -1317,7 +1317,7 @@ fn choose_php(
                 c.php_minor.as_deref().unwrap_or("(unknown)")
             ))
         }
-        (None, None) => core::php::minor_of(core::binaries::PHP_VERSION),
+        (None, None) => core::php::minor_of(core::binaries::pins().php),
     };
     if !available.contains(&php) {
         return Err(format!("PHP {php} isn't one rexenv ships"));
@@ -1865,7 +1865,7 @@ mod folding_a_link_farm {
         // No pin at all: their global PHP — the default is an honest pick, but
         // only when the default is itself something this build ships.
         let unpinned = candidate("b.test", "/p/b", SiteStatus::Importable);
-        let default = crate::core::php::minor_of(crate::core::binaries::PHP_VERSION);
+        let default = crate::core::php::minor_of(crate::core::binaries::pins().php);
         assert_eq!(choose_php(&unpinned, None, std::slice::from_ref(&default)).unwrap(), default);
     }
 

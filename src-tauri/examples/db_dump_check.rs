@@ -63,7 +63,7 @@ async fn main() {
     let mut ok = true;
 
     // ── a sandbox MySQL as the "source" ─────────────────────────────────────
-    let basedir = binaries::resolve_dir(&*plat, "mysql", binaries::MYSQL_VERSION)
+    let basedir = binaries::resolve_dir(&*plat, "mysql", binaries::pins().mysql)
         .await
         .expect("mysql tree (cached)");
     let datadir = sandbox.root().join("mysql-src-data");
@@ -83,7 +83,7 @@ async fn main() {
     assert!(database::mysql_running(PORT), "sandbox mysqld came up");
 
     let (client, _) = rexenv_lib::core::db::DbEngine::Mysql
-        .sql_client_bins(&*plat, rexenv_lib::core::binaries::MYSQL_VERSION)
+        .sql_client_bins(&*plat, rexenv_lib::core::binaries::pins().mysql)
         .await
         .expect("bundled MySQL client");
     rexenv_lib::core::db::DbEngine::Mysql.create_database(&client, PORT, DB).expect("create source db");
@@ -124,11 +124,11 @@ async fn main() {
 
     println!("\n=== 2. the gate refuses a self-import before any connection ===");
     // Pretend OUR engine runs on this port: two facts agree -> it's "us".
-    let ours = vec![OurEngine { port: PORT, version: binaries::MYSQL_VERSION.into() }];
+    let ours = vec![OurEngine { port: PORT, version: binaries::pins().mysql.into() }];
     let is_ours = dbdump::server_is_ours("127.0.0.1", PORT, &identity, &ours);
     let verdict = compat(
         &Source { vendor: Some(Vendor::Mysql), version: Version::parse("8.4.6") },
-        &Target { vendor: Vendor::Mysql, version: Version::parse(binaries::MYSQL_VERSION).unwrap() },
+        &Target { vendor: Vendor::Mysql, version: Version::parse(binaries::pins().mysql).unwrap() },
     );
     let refused = dbdump::gate(Some((SelfImport::ThisSite, DB.into())), &verdict, false);
     println!("  server_is_ours={is_ours}; gate -> {}", match &refused {
@@ -187,7 +187,7 @@ async fn main() {
         source_vendor: Vendor::Mysql,
         source_version: "8.4.6",
         target_engine: "mysql",
-        target_version: binaries::MYSQL_VERSION,
+        target_version: binaries::pins().mysql,
         dump_tool_label: "mysqldump 8.4.6",
         dest_dir: &dest,
         skip_tables: &[],
@@ -382,7 +382,7 @@ async fn main() {
     // The REAL dump tool with the production flag set (proven accepted by
     // db_dump_flags_check), stdout piped and DELIBERATELY unread.
     let (_, dump_bin) = rexenv_lib::core::db::DbEngine::Mysql
-        .sql_client_bins(&*plat, binaries::MYSQL_VERSION)
+        .sql_client_bins(&*plat, binaries::pins().mysql)
         .await
         .expect("dump tool");
     let mut dump_child = std::process::Command::new(&dump_bin)

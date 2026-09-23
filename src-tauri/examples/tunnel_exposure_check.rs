@@ -223,7 +223,7 @@ async fn main() {
     let ports = Ports { http: 8080, https: HTTPS, nginx: services::NGINX_HTTP_PORT };
     let mut mgr = ServiceManager::with_ports(ports);
     let minors = corephp::installed_minors(&conn).expect("php minors");
-    let start = mgr.start_all(&*plat, &ca, &all, &minors, binaries::ADMINER_VERSION, true).await;
+    let start = mgr.start_all(&*plat, &ca, &all, &minors, binaries::pins().adminer, true).await;
     // Handed over BEFORE the result is inspected: a partial start leaves
     // children running, and `fail` must be able to stop them.
     *STACK.lock().expect("stack slot") = Some(mgr);
@@ -247,10 +247,10 @@ async fn main() {
     // reap, URL capture) living in an example that already had WordPress, and a
     // second copy of the thing that stops a public tunnel leaking is a second
     // thing to keep correct.
-    let php = binaries::resolve(&*plat, "php", binaries::PHP_VERSION).await.expect("php");
-    let wp = binaries::resolve_file(&*plat, "wp-cli", binaries::WP_CLI_VERSION).await.expect("wp-cli");
+    let php = binaries::resolve(&*plat, "php", binaries::pins().php).await.expect("php");
+    let wp = binaries::resolve_file(&*plat, "wp-cli", binaries::pins().wp_cli).await.expect("wp-cli");
     let (db_client, _) = rexenv_lib::core::db::DbEngine::Mysql
-        .sql_client_bins(&*plat, rexenv_lib::core::binaries::MYSQL_VERSION)
+        .sql_client_bins(&*plat, rexenv_lib::core::binaries::pins().mysql)
         .await
         .expect("bundled MySQL client");
     if let Err(e) = wordpress::install_for_site(
@@ -270,7 +270,7 @@ async fn main() {
     }
 
     // ── The tunnel, started as late as possible ─────────────────────────────
-    let bin = binaries::resolve(&*plat, "cloudflared", binaries::CLOUDFLARED_VERSION)
+    let bin = binaries::resolve(&*plat, "cloudflared", binaries::pins().cloudflared)
         .await
         .expect("cloudflared");
     // Not `wait()`ed on deliberately: the pid is handed to `adopt_public_tunnel`
@@ -569,7 +569,7 @@ async fn main() {
     }
     println!("9 · origin_port({OVERRIDE}) = {fp_port} (nginx is {})", services::NGINX_HTTP_PORT);
 
-    let fp_bin = binaries::resolve(&*plat, "frankenphp", binaries::FRANKENPHP_VERSION)
+    let fp_bin = binaries::resolve(&*plat, "frankenphp", binaries::pins().frankenphp)
         .await
         .expect("frankenphp binary");
     let fp_conf = frankenphp::write_config(

@@ -14,10 +14,10 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Pinned Caddy version (edge router).
-pub const CADDY_VERSION: &str = "2.11.4";
+const CADDY_VERSION: &str = "2.11.4";
 /// Default PHP version (static-php build; provides `php` cli and `php-fpm`).
 /// Used where a single version is implied (Phase 1 paths). Must be in [`PHP_VERSIONS`].
-pub const PHP_VERSION: &str = "8.3.32";
+const PHP_VERSION: &str = "8.3.32";
 /// All PHP versions with pinned static-php "bulk" builds (one minor each, newest
 /// last). The per-version FPM pool manager + UI (Phase 2 §1.2/§1.5) install from
 /// this set; each caches independently under `bin_dir/php-<version>/`.
@@ -36,7 +36,7 @@ pub const PHP_VERSION: &str = "8.3.32";
 /// pinning the same version numbers to our own build is what makes an updated
 /// machine get the driver too. The digests differ from upstream's for the same
 /// version string, which is exactly what `cache_matches_pin` exists to notice.
-pub const PHP_VERSIONS: &[&str] =
+const PHP_VERSIONS: &[&str] =
     &["7.4.33", "8.0.30", "8.1.34", "8.2.32", "8.3.32", "8.4.23", "8.5.8"];
 /// PHP minor used for the **debug build** (Xdebug compiled in) that backs the §8.2
 /// per-site Xdebug debug pool. The stock static-php "bulk" builds ship NO Xdebug
@@ -69,25 +69,25 @@ pub const PHP_DEBUG_XDEBUG_VERSION: &str = "3.4.5";
 const PHP_DEBUG_TAG: &str = "";
 /// Pinned nginx version — rexenv's OWN macOS build (`rexenv/runtimes`), not a
 /// third party's, since 30 Aug 2026. See the SHA-256 constants for why.
-pub const NGINX_VERSION: &str = "1.30.4";
+const NGINX_VERSION: &str = "1.30.4";
 /// Default MySQL version (official macOS tarball — a full bin/lib/share tree).
 /// Must be in [`MYSQL_VERSIONS`].
-pub const MYSQL_VERSION: &str = "8.4.6";
+const MYSQL_VERSION: &str = "8.4.6";
 /// All MySQL versions with pinned tarballs (per-engine version switch — the
 /// Databases page picker). Each SERIES keeps its own datadir; the default
 /// series stays on the legacy `mysql/data` path.
-pub const MYSQL_VERSIONS: &[&str] = &["8.4.6", "8.0.44"];
+const MYSQL_VERSIONS: &[&str] = &["8.4.6", "8.0.44"];
 /// Pinned WP-CLI version (a .phar run via the bundled PHP; OS-agnostic).
-pub const WP_CLI_VERSION: &str = "2.12.0";
+const WP_CLI_VERSION: &str = "2.12.0";
 /// Pinned Composer version (a .phar, ALWAYS run via the SITE's bundled PHP so
 /// `composer install` platform checks match the PHP the plugin runs on; a
 /// system composer is never executed — it can be a non-phar wrapper, e.g.
 /// Herd's). Downloaded + sha-verified against getcomposer.org's published
 /// .sha256sum + run-tested on the static PHP at pin time.
-pub const COMPOSER_VERSION: &str = "2.10.2";
+const COMPOSER_VERSION: &str = "2.10.2";
 /// Pinned FrankenPHP version (one static binary: embedded PHP + Caddy). Used as a
 /// per-site override server on an internal loopback port — Phase 2 §2.
-pub const FRANKENPHP_VERSION: &str = "1.12.4";
+const FRANKENPHP_VERSION: &str = "1.12.4";
 /// The PHP compiled INTO the pinned FrankenPHP binary. FrankenPHP does not use
 /// rexenv's php-fpm pools — a FrankenPHP site is served by THIS PHP whatever its
 /// `php_version` says. Recorded as data (it was only ever a sentence in the
@@ -95,21 +95,21 @@ pub const FRANKENPHP_VERSION: &str = "1.12.4";
 /// cannot honour, instead of the site quietly running something else.
 /// **Moves with `FRANKENPHP_VERSION`** — the re-pin procedure prints it
 /// (`frankenphp version` → "FrankenPHP v1.12.4 PHP 8.5.8 Caddy v2.11.4").
-pub const FRANKENPHP_EMBEDDED_PHP: &str = "8.5.8";
+const FRANKENPHP_EMBEDDED_PHP: &str = "8.5.8";
 /// Default PostgreSQL version (theseus-rs portable build — a full bin/lib/share
 /// tree, like MySQL). Phase 2 §5.3. Must be in [`POSTGRES_VERSIONS`].
-pub const POSTGRES_VERSION: &str = "18.6.0";
+const POSTGRES_VERSION: &str = "18.6.0";
 /// All PostgreSQL versions with pinned builds (per-engine version switch).
 /// PG major datadirs are mutually INCOMPATIBLE — per-series datadirs are load-
 /// bearing here, not just tidy.
-pub const POSTGRES_VERSIONS: &[&str] = &["18.6.0", "17.11.0", "16.15.0"];
+const POSTGRES_VERSIONS: &[&str] = &["18.6.0", "17.11.0", "16.15.0"];
 /// Pinned Mailpit version (one static Go binary: SMTP sink + web UI/API). Phase 3 §2.1.
-pub const MAILPIT_VERSION: &str = "1.30.3";
+const MAILPIT_VERSION: &str = "1.30.3";
 /// Pinned Adminer version (a single `adminer.php`, all drivers, run via the bundled
 /// PHP — OS-agnostic, like WP-CLI). Phase 3 §5.1.
-pub const ADMINER_VERSION: &str = "6.1.0";
+const ADMINER_VERSION: &str = "6.1.0";
 /// Pinned cloudflared version (one static Go binary; quick-tunnel public sharing). Phase 3 §9.1.
-pub const CLOUDFLARED_VERSION: &str = "2026.6.1";
+const CLOUDFLARED_VERSION: &str = "2026.6.1";
 /// Pinned Redis version — the FIRST Homebrew-bottle BUNDLE (no portable static
 /// build exists): the redis bottle's `bin/` merged with the openssl@3 bottle's
 /// two dylibs, relinked to `@loader_path` by `prepare_binary_tree` (the shipped
@@ -175,6 +175,97 @@ impl BinaryTier {
     }
 }
 
+/// Every version the app resolves, as ONE value chosen by the host's
+/// [`BinaryTier`] — the only door to the `*_VERSION` constants, which are private
+/// to this file on purpose.
+///
+/// **Why a struct and not the constants.** Before this, 18 files read
+/// `binaries::MYSQL_VERSION` and friends directly; a tier that hands a macOS 13
+/// host an older MySQL would have had to find and patch every one of them, and
+/// the one it missed would resolve the standard pin on a host that cannot load
+/// it. Making the constants private turns "every consumer goes through the tier"
+/// from a rule someone remembers into a compile error — the structural guard
+/// `docs/PLAN-macos-13-floor.md` §7 T1 asks for, without a source scan.
+///
+/// Fields are the Standard set's literals, so every value is `'static` and the
+/// struct is `Copy`; a call to [`pins`] costs one lock read. **Until T2 lands,
+/// every tier answers the Standard set** — the shape is in, the legacy values are
+/// not, and `for_tier` says so in the one place they will go.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PinSet {
+    pub php_versions: &'static [&'static str],
+    pub mysql_versions: &'static [&'static str],
+    pub postgres_versions: &'static [&'static str],
+    pub redis_versions: &'static [&'static str],
+    pub mariadb_versions: &'static [&'static str],
+    pub frankenphp_embedded_php: &'static str,
+    pub caddy: &'static str,
+    pub php: &'static str,
+    pub nginx: &'static str,
+    pub mysql: &'static str,
+    pub wp_cli: &'static str,
+    pub composer: &'static str,
+    pub frankenphp: &'static str,
+    pub postgres: &'static str,
+    pub mailpit: &'static str,
+    pub adminer: &'static str,
+    pub cloudflared: &'static str,
+    pub redis: &'static str,
+    pub mariadb: &'static str,
+    pub httpd: &'static str,
+    pub xdebug: &'static str,
+    pub bundled_openssl: &'static str,
+    pub bundled_pcre2: &'static str,
+    pub bundled_apr: &'static str,
+    pub bundled_apr_util: &'static str,
+}
+
+/// The compiled-in pins: macOS 15+ and every non-macOS host.
+const STANDARD_PINS: PinSet = PinSet {
+    php_versions: PHP_VERSIONS,
+    mysql_versions: MYSQL_VERSIONS,
+    postgres_versions: POSTGRES_VERSIONS,
+    redis_versions: REDIS_VERSIONS,
+    mariadb_versions: MARIADB_VERSIONS,
+    frankenphp_embedded_php: FRANKENPHP_EMBEDDED_PHP,
+    caddy: CADDY_VERSION,
+    php: PHP_VERSION,
+    nginx: NGINX_VERSION,
+    mysql: MYSQL_VERSION,
+    wp_cli: WP_CLI_VERSION,
+    composer: COMPOSER_VERSION,
+    frankenphp: FRANKENPHP_VERSION,
+    postgres: POSTGRES_VERSION,
+    mailpit: MAILPIT_VERSION,
+    adminer: ADMINER_VERSION,
+    cloudflared: CLOUDFLARED_VERSION,
+    redis: REDIS_VERSION,
+    mariadb: MARIADB_VERSION,
+    httpd: HTTPD_VERSION,
+    xdebug: XDEBUG_VERSION,
+    bundled_openssl: BUNDLED_OPENSSL_VERSION,
+    bundled_pcre2: BUNDLED_PCRE2_VERSION,
+    bundled_apr: BUNDLED_APR_VERSION,
+    bundled_apr_util: BUNDLED_APR_UTIL_VERSION,
+};
+
+impl PinSet {
+    /// The pin set a tier resolves. Legacy tiers are filled in by T2 of
+    /// `docs/PLAN-macos-13-floor.md`; until then they are the Standard set, which
+    /// is exactly what those hosts got before the tier existed.
+    pub const fn for_tier(tier: BinaryTier) -> PinSet {
+        match tier {
+            BinaryTier::Standard | BinaryTier::Legacy14 | BinaryTier::Legacy13 => STANDARD_PINS,
+        }
+    }
+}
+
+/// The pins for THIS host — [`PinSet::for_tier`] of [`tier`]. Every consumer
+/// outside this file reads versions here and nowhere else.
+pub fn pins() -> PinSet {
+    PinSet::for_tier(tier())
+}
+
 /// The tier this process resolves pins for. `Standard` until `install_tier`
 /// runs — which is every test, every example and every non-macOS launch, so the
 /// empty state is exactly today's behaviour and not a degraded one.
@@ -223,34 +314,34 @@ pub const DEFAULT_STACK: &[(&str, &str)] = &[
     ("cloudflared", CLOUDFLARED_VERSION),
 ];
 
-pub const REDIS_VERSION: &str = "8.8.0";
+const REDIS_VERSION: &str = "8.8.0";
 /// Offered Redis versions (single — homebrew-core keeps no versioned redis
 /// formula worth pinning; the picker hides for a one-entry set).
-pub const REDIS_VERSIONS: &[&str] = &["8.8.0"];
+const REDIS_VERSIONS: &[&str] = &["8.8.0"];
 /// Pinned MariaDB version (bottle bundle: server/client/dump + bootstrap SQL/
 /// errmsg/charsets from the mariadb bottle, plus openssl@3 + pcre2 dylibs —
 /// the ONLY libs `mariadbd`/clients actually link. groonga/lz4/lzo/xz/zstd are
 /// PLUGIN-only deps (mroonga/connect); those plugins are excluded, so their
 /// libs aren't bundled).
-pub const MARIADB_VERSION: &str = "12.3.2";
+const MARIADB_VERSION: &str = "12.3.2";
 /// All MariaDB versions with pinned bottle bundles (per-engine version switch).
 /// 11.4 is the long-term-support series many hosts run (versioned formula
 /// `mariadb@11.4` — same bottle layout, same runtime closure, verified).
-pub const MARIADB_VERSIONS: &[&str] = &["12.3.2", "11.4.12"];
+const MARIADB_VERSIONS: &[&str] = &["12.3.2", "11.4.12"];
 /// openssl@3 version bundled INTO dylib bundles (redis, mariadb).
 /// Not a standalone binary — only ever a [`BundlePart`].
-pub const BUNDLED_OPENSSL_VERSION: &str = "3.6.3";
+const BUNDLED_OPENSSL_VERSION: &str = "3.6.3";
 /// pcre2 version bundled into the mariadb + httpd bundles (both link libpcre2-8).
-pub const BUNDLED_PCRE2_VERSION: &str = "10.47";
+const BUNDLED_PCRE2_VERSION: &str = "10.47";
 /// Pinned Apache httpd version (bottle bundle: httpd + apr + apr-util + pcre2).
 /// The `bin/httpd` core links ONLY apr/apr-util/pcre2 (+ system expat/iconv);
 /// openssl/brotli/nghttp2 are deps of mod_ssl/mod_brotli/mod_http2 — those
 /// modules are excluded (TLS/H2 are the edge's job), so their libs never enter
 /// the bundle. Runs per-site as a loopback OVERRIDE backend (`core/apache.rs`).
-pub const HTTPD_VERSION: &str = "2.4.68";
+const HTTPD_VERSION: &str = "2.4.68";
 /// apr / apr-util versions bundled into the httpd bundle.
-pub const BUNDLED_APR_VERSION: &str = "1.7.6";
-pub const BUNDLED_APR_UTIL_VERSION: &str = "1.6.3";
+const BUNDLED_APR_VERSION: &str = "1.7.6";
+const BUNDLED_APR_UTIL_VERSION: &str = "1.6.3";
 /// Xdebug version pinned for the CURRENT PHP minors (per-site toggle, §8.2). ONE
 /// `xdebug.so` per PHP minor from shivammathur/homebrew-extensions bottles (the
 /// tap GitHub Actions setup-php uses on macOS) — they dlopen straight into our
@@ -267,7 +358,7 @@ pub const BUNDLED_APR_UTIL_VERSION: &str = "1.6.3";
 /// [`xdebug_row`]'s table beside the digests it must agree with — one row, one
 /// version, one pair of hashes, so a minor cannot end up asking for a `.so` that
 /// was never pinned for it.
-pub const XDEBUG_VERSION: &str = "3.5.3";
+const XDEBUG_VERSION: &str = "3.5.3";
 
 /// How a downloaded artifact is packaged.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -3537,7 +3628,7 @@ fn publish(staging: &Path, dir: &Path, marker: &str) -> Result<()> {
 
 #[cfg(test)]
 mod tier_tests {
-    use super::{install_tier, tier, BinaryTier};
+    use super::{install_tier, pins, tier, BinaryTier, PinSet, PHP_VERSION, PHP_VERSIONS};
 
     /// `TIER` is process-global and tests run in parallel; the one test that
     /// installs a tier holds this so a pure `for_host` test never observes it.
@@ -3581,6 +3672,22 @@ mod tier_tests {
         for t in [BinaryTier::Legacy13, BinaryTier::Legacy14, BinaryTier::Standard] {
             assert_eq!(BinaryTier::for_host(t.floor()), Some(t));
         }
+    }
+
+    #[test]
+    fn pins_follow_the_installed_tier() {
+        let _g = lock();
+        // Every tier answers the Standard set until T2 — but through the tier,
+        // not around it. Plant: with `pins()` returning `STANDARD_PINS` directly
+        // this still passes today, so the load-bearing half is `for_tier` being
+        // the one match arm T2 edits; the test pins the SHAPE (a tier in, a set
+        // out) and T2's tests pin the values.
+        install_tier(BinaryTier::Legacy13);
+        assert_eq!(pins(), PinSet::for_tier(BinaryTier::Legacy13));
+        install_tier(BinaryTier::Standard);
+        assert_eq!(pins(), PinSet::for_tier(BinaryTier::Standard));
+        assert_eq!(pins().php, PHP_VERSION);
+        assert_eq!(pins().php_versions, PHP_VERSIONS);
     }
 
     #[test]

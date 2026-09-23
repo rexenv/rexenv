@@ -46,7 +46,7 @@ mod windows {
             return check.verdict();
         };
 
-        let php = binaries::resolve_program(&*plat, "php", binaries::PHP_VERSION).await;
+        let php = binaries::resolve_program(&*plat, "php", binaries::pins().php).await;
         check.is("resolve_program finds php.exe inside the tree", php.as_ref().is_ok_and(|p| p.ends_with("php.exe")), &format!("{php:?}"));
         let Ok(php) = php else { return check.verdict() };
         let dir = php.parent().unwrap().to_path_buf();
@@ -66,11 +66,11 @@ mod windows {
 
         // A stale file is corrected on the next resolve.
         std::fs::write(&ini, "; stale\n").unwrap();
-        let again = binaries::resolve_program(&*plat, "php", binaries::PHP_VERSION).await;
+        let again = binaries::resolve_program(&*plat, "php", binaries::pins().php).await;
         check.is("a php.ini that differs is rewritten on the next resolve", again.is_ok() && std::fs::read_to_string(&ini).ok().as_deref() == Some(want.as_str()), "not rewritten");
 
         // WP-CLI through that PHP, and a real HTTPS download with no CA configured in PHP.
-        let wp = binaries::resolve_file(&*plat, "wp-cli", binaries::WP_CLI_VERSION).await.expect("wp-cli phar");
+        let wp = binaries::resolve_file(&*plat, "wp-cli", binaries::pins().wp_cli).await.expect("wp-cli phar");
         let info = wordpress::wp_cli(&php, &wp, &["--info"], None);
         let info_text = info.as_ref().map(|o| String::from_utf8_lossy(&o.stdout).into_owned()).unwrap_or_default();
         check.is("wp --info runs through the tree's PHP", info.as_ref().is_ok_and(|o| o.status.success()) && info_text.contains("PHP version"), &format!("{info:?}"));

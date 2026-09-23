@@ -603,8 +603,8 @@ impl ServiceManager {
         // php-fpm is resolved per version by the pool manager; DB engines resolve
         // their own binaries via `DbEngine::start`.
         // A single binary on one OS, a tree on another — `resolve_program` answers both.
-        let nginx = binaries::resolve_program(platform, "nginx", binaries::NGINX_VERSION).await?;
-        let caddy = binaries::resolve(platform, "caddy", binaries::CADDY_VERSION).await?;
+        let nginx = binaries::resolve_program(platform, "nginx", binaries::pins().nginx).await?;
+        let caddy = binaries::resolve(platform, "caddy", binaries::pins().caddy).await?;
         self.bins = Some(Bins { nginx, caddy });
         Ok(())
     }
@@ -706,7 +706,7 @@ impl ServiceManager {
         // PHP-FPM: one pool per installed PHP version (always at least the default,
         // so the single-site path keeps working). Pools own their deterministic ports.
         let mut minors: Vec<String> = php_minors.to_vec();
-        let default_minor = php::minor_of(binaries::PHP_VERSION);
+        let default_minor = php::minor_of(binaries::pins().php);
         if !minors.contains(&default_minor) {
             minors.push(default_minor);
         }
@@ -936,7 +936,7 @@ impl ServiceManager {
         let bin = match &self.mailpit_bin {
             Some(p) => p.clone(),
             None => {
-                let p = binaries::resolve(platform, "mailpit", binaries::MAILPIT_VERSION).await?;
+                let p = binaries::resolve(platform, "mailpit", binaries::pins().mailpit).await?;
                 self.mailpit_bin = Some(p.clone());
                 p
             }
@@ -965,7 +965,7 @@ impl ServiceManager {
         if let Some(p) = &self.frankenphp_bin {
             return Ok(p.clone());
         }
-        let p = binaries::resolve(platform, "frankenphp", binaries::FRANKENPHP_VERSION).await?;
+        let p = binaries::resolve(platform, "frankenphp", binaries::pins().frankenphp).await?;
         self.frankenphp_bin = Some(p.clone());
         Ok(p)
     }
@@ -1303,7 +1303,7 @@ impl ServiceManager {
                     .paths()
                     .bin_dir()
                     .ok()?
-                    .join(format!("httpd-{}", binaries::HTTPD_VERSION));
+                    .join(format!("httpd-{}", binaries::pins().httpd));
                 apache::desired_config(
                     platform, &basedir, docroot, domain, port, fpm_port, rewrite, env,
                 )
@@ -1329,7 +1329,7 @@ impl ServiceManager {
         if let Some(p) = &self.httpd_dir {
             return Ok(p.clone());
         }
-        let p = binaries::resolve_bundle(platform, "httpd", binaries::HTTPD_VERSION).await?;
+        let p = binaries::resolve_bundle(platform, "httpd", binaries::pins().httpd).await?;
         self.httpd_dir = Some(p.clone());
         Ok(p)
     }
@@ -1605,7 +1605,7 @@ impl ServiceManager {
     /// toggle) must not stream a download while holding the services lock.
     pub fn set_mail_catch_from(&mut self, platform: &dyn Platform, enabled: bool) {
         if self.mailpit_bin.is_none() {
-            self.mailpit_bin = binaries::cached_bin(platform, "mailpit", binaries::MAILPIT_VERSION);
+            self.mailpit_bin = binaries::cached_bin(platform, "mailpit", binaries::pins().mailpit);
         }
         self.pools.set_mail_catch(mail::catch_for(self.mailpit_bin.as_deref(), enabled));
     }
@@ -1696,7 +1696,7 @@ impl ServiceManager {
     /// included: it's root-owned and stopped via its admin API in `stop_all`.
     fn managed_ports(&self) -> Vec<u16> {
         let mut ports = vec![self.ports.nginx];
-        // Every pinned PHP minor's pool port (derived from binaries::PHP_VERSIONS, so a
+        // Every pinned PHP minor's pool port (derived from binaries::pins().php_versions, so a
         // future 8.4 pool is swept too — not a hardcoded list that would miss it).
         for minor in php::all_minors() {
             if let Some(p) = php::fpm_port(&minor) {
@@ -1825,7 +1825,7 @@ impl ServiceManager {
         // both halves are a path, a fixed SMTP port and a constant env set).
         if self.mailpit_bin.is_none() {
             self.mailpit_bin =
-                binaries::cached_bin(platform, "mailpit", binaries::MAILPIT_VERSION);
+                binaries::cached_bin(platform, "mailpit", binaries::pins().mailpit);
         }
         self.pools.set_mail_catch(mail::catch_for(self.mailpit_bin.as_deref(), catch_mail));
 
@@ -1903,8 +1903,8 @@ impl ServiceManager {
                 // existed there, so every adopting launch on Windows left `bins` empty and each reload after
                 // it (a site create, a delete, a server switch) failed "services not started" (ledger #635).
                 if self.bins.is_none() {
-                    let nginx = binaries::cached_program(platform, "nginx", binaries::NGINX_VERSION);
-                    let caddy = binaries::cached_bin(platform, "caddy", binaries::CADDY_VERSION);
+                    let nginx = binaries::cached_program(platform, "nginx", binaries::pins().nginx);
+                    let caddy = binaries::cached_bin(platform, "caddy", binaries::pins().caddy);
                     if let (Some(nginx), Some(caddy)) = (nginx, caddy) {
                         self.bins = Some(Bins { nginx, caddy });
                     }
@@ -1915,11 +1915,11 @@ impl ServiceManager {
             // of resolve*() can't apply here.
             if self.frankenphp_bin.is_none() {
                 self.frankenphp_bin =
-                    binaries::cached_bin(platform, "frankenphp", binaries::FRANKENPHP_VERSION);
+                    binaries::cached_bin(platform, "frankenphp", binaries::pins().frankenphp);
             }
             if self.httpd_dir.is_none() {
                 self.httpd_dir =
-                    binaries::cached_bundle_dir(platform, "httpd", binaries::HTTPD_VERSION, "bin/httpd");
+                    binaries::cached_bundle_dir(platform, "httpd", binaries::pins().httpd, "bin/httpd");
             }
         }
         adopted
@@ -1936,7 +1936,7 @@ impl ServiceManager {
         // download): admin-API stop + best-effort reap. Skipped on a fresh install
         // (nothing to stop before the first Start all downloads Caddy). Found through
         // the cache's own naming — `caddy.exe` on Windows (ledger #635).
-        if let Some(caddy) = binaries::cached_bin(platform, "caddy", binaries::CADDY_VERSION) {
+        if let Some(caddy) = binaries::cached_bin(platform, "caddy", binaries::pins().caddy) {
             let _ = proxy::stop_edge(platform, &caddy);
         }
     }

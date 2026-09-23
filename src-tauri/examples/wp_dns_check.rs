@@ -119,7 +119,7 @@ async fn main() {
 
     // 4) The bundled PHP — the build the bug lives in.
     let plat = platform::current();
-    let php = binaries::resolve(&*plat, "php", binaries::PHP_VERSION)
+    let php = binaries::resolve(&*plat, "php", binaries::pins().php)
         .await
         .expect("resolve the bundled php");
     let url = format!("http://{PROBE_HOST}:{FIXTURE_PORT}/");
@@ -196,10 +196,10 @@ async fn main() {
     } else {
         wp_dns::CurlResolver::Ares
     };
-    let minor = binaries::PHP_VERSION
+    let minor = binaries::pins().php
         .rsplit_once('.')
         .map(|(m, _)| m)
-        .unwrap_or(binaries::PHP_VERSION);
+        .unwrap_or(binaries::pins().php);
     let recorded = wp_dns::resolver_for(minor);
     check(
         recorded == Some(measured),

@@ -513,7 +513,7 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE sites ADD COLUMN git_build_assets INTEGER;",
     // v36 — `php_versions.patch` is DERIVED, so it stops being stored.
     //
-    // The column mirrored `binaries::PHP_VERSIONS`' pin for each minor, and a
+    // The column mirrored `binaries::pins().php_versions`' pin for each minor, and a
     // mirror that can disagree with the thing it mirrors is the shape this
     // codebase removes everywhere else. It had already produced two live bugs
     // in one statement: the patch was overwritten at seed time, consuming the

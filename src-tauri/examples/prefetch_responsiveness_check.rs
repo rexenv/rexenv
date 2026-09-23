@@ -24,10 +24,10 @@ async fn main() {
 
     // Go cold on the small binaries.
     for (name, version) in [
-        ("caddy", binaries::CADDY_VERSION),
-        ("nginx", binaries::NGINX_VERSION),
-        ("mailpit", binaries::MAILPIT_VERSION),
-        ("adminer", binaries::ADMINER_VERSION),
+        ("caddy", binaries::pins().caddy),
+        ("nginx", binaries::pins().nginx),
+        ("mailpit", binaries::pins().mailpit),
+        ("adminer", binaries::pins().adminer),
     ] {
         let dir = bin_dir.join(format!("{name}-{version}"));
         std::fs::remove_dir_all(&dir).ok();

@@ -7,7 +7,7 @@
 //! **the site's** PHP, deliberately, so a plugin's platform checks match the
 //! interpreter it will actually execute on. That makes "this PHP can run our
 //! tools" a claim about EVERY pinned minor, and nothing checked it: the WordPress
-//! examples resolve `binaries::PHP_VERSION` and create sites on `"8.3"`, so they
+//! examples resolve `binaries::pins().php` and create sites on `"8.3"`, so they
 //! prove the default and assume the rest.
 //!
 //! It cost a real failure. A self-built PHP 7.4 shipped without `phar`, and since
@@ -82,15 +82,15 @@ async fn main() -> ExitCode {
     let plat = platform::current();
     let mut checks = common::Check::new("php_tools_check");
 
-    let wp = binaries::resolve_file(&*plat, "wp-cli", binaries::WP_CLI_VERSION)
+    let wp = binaries::resolve_file(&*plat, "wp-cli", binaries::pins().wp_cli)
         .await
         .expect("resolve wp-cli phar");
-    let composer = binaries::resolve_file(&*plat, "composer", binaries::COMPOSER_VERSION)
+    let composer = binaries::resolve_file(&*plat, "composer", binaries::pins().composer)
         .await
         .expect("resolve composer phar");
     println!("wp-cli  {}\ncomposer {}\n", wp.display(), composer.display());
 
-    for version in binaries::PHP_VERSIONS {
+    for version in binaries::pins().php_versions {
         let php = match binaries::resolve(&*plat, "php", version).await {
             Ok(p) => p,
             Err(e) => {

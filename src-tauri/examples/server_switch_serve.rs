@@ -71,7 +71,7 @@ async fn main() -> std::process::ExitCode {
 
     let mut mgr = ServiceManager::with_ports(Ports { http: 8080, https: CADDY_HTTPS, nginx: services::NGINX_HTTP_PORT });
     let all = sites::list(&conn).unwrap();
-    if let Err(e) = mgr.start_all(&*plat, &ca, &all, &["8.3".to_string()], binaries::ADMINER_VERSION, true).await {
+    if let Err(e) = mgr.start_all(&*plat, &ca, &all, &["8.3".to_string()], binaries::pins().adminer, true).await {
         eprintln!("start_all failed: {e}");
         // `FAILURE` rather than `process::exit(1)`: exit runs no destructors, so it
         // skipped the ServiceManager's own Drop and left whatever `start_core` had

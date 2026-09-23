@@ -26,8 +26,8 @@ const LONG: &str = "wp-includes/php-ai-client/src/Providers/Http/Contracts/WithR
 async fn main() -> std::process::ExitCode {
     let mut check = Check::new("wp_core_zip_check");
     let plat = rexenv_lib::platform::current();
-    let php = binaries::resolve_program(&*plat, "php", binaries::PHP_VERSION).await.expect("php");
-    let wp = binaries::resolve_file(&*plat, "wp-cli", binaries::WP_CLI_VERSION).await.expect("wp-cli");
+    let php = binaries::resolve_program(&*plat, "php", binaries::pins().php).await.expect("php");
+    let wp = binaries::resolve_file(&*plat, "wp-cli", binaries::pins().wp_cli).await.expect("wp-cli");
     let root = std::env::temp_dir().join(format!("rexenv-wp-core-zip-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).unwrap();

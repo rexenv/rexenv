@@ -86,31 +86,31 @@ async fn main() -> ExitCode {
     // 1. Enumerate — from the constants, not a retyped list.
     let mut targets: Vec<Target> = Vec::new();
     for arch in [Arch::Arm64, Arch::X86_64] {
-        push_single(&mut targets, "macos", "caddy", binaries::CADDY_VERSION, arch);
-        push_single(&mut targets, "macos", "nginx", binaries::NGINX_VERSION, arch);
-        push_single(&mut targets, "macos", "mailpit", binaries::MAILPIT_VERSION, arch);
-        push_single(&mut targets, "macos", "cloudflared", binaries::CLOUDFLARED_VERSION, arch);
-        push_single(&mut targets, "macos", "frankenphp", binaries::FRANKENPHP_VERSION, arch);
-        push_single(&mut targets, "macos", "adminer", binaries::ADMINER_VERSION, arch);
-        push_single(&mut targets, "macos", "wp-cli", binaries::WP_CLI_VERSION, arch);
-        push_single(&mut targets, "macos", "composer", binaries::COMPOSER_VERSION, arch);
-        for v in binaries::PHP_VERSIONS {
+        push_single(&mut targets, "macos", "caddy", binaries::pins().caddy, arch);
+        push_single(&mut targets, "macos", "nginx", binaries::pins().nginx, arch);
+        push_single(&mut targets, "macos", "mailpit", binaries::pins().mailpit, arch);
+        push_single(&mut targets, "macos", "cloudflared", binaries::pins().cloudflared, arch);
+        push_single(&mut targets, "macos", "frankenphp", binaries::pins().frankenphp, arch);
+        push_single(&mut targets, "macos", "adminer", binaries::pins().adminer, arch);
+        push_single(&mut targets, "macos", "wp-cli", binaries::pins().wp_cli, arch);
+        push_single(&mut targets, "macos", "composer", binaries::pins().composer, arch);
+        for v in binaries::pins().php_versions {
             push_single(&mut targets, "macos", "php", v, arch);
             push_single(&mut targets, "macos", "php-fpm", v, arch);
         }
-        for v in binaries::MYSQL_VERSIONS {
+        for v in binaries::pins().mysql_versions {
             push_single(&mut targets, "macos", "mysql", v, arch);
         }
-        for v in binaries::POSTGRES_VERSIONS {
+        for v in binaries::pins().postgres_versions {
             push_single(&mut targets, "macos", "postgres", v, arch);
         }
-        for v in binaries::REDIS_VERSIONS {
+        for v in binaries::pins().redis_versions {
             push_bundle(&mut targets, "redis", v, arch);
         }
-        for v in binaries::MARIADB_VERSIONS {
+        for v in binaries::pins().mariadb_versions {
             push_bundle(&mut targets, "mariadb", v, arch);
         }
-        push_bundle(&mut targets, "httpd", binaries::HTTPD_VERSION, arch);
+        push_bundle(&mut targets, "httpd", binaries::pins().httpd, arch);
         for minor in php::all_minors() {
             if let Some((bundle, version)) = binaries::xdebug_bundle_id(&minor) {
                 push_bundle(&mut targets, &bundle, version, arch);
@@ -120,17 +120,17 @@ async fn main() -> ExitCode {
     // Windows x64 (port W2). ONE target per pin: every `Arch` resolves the same x64
     // URL there, so asking for both would probe it twice. The .phar/.php artifacts
     // are OS-agnostic and were swept above.
-    push_single(&mut targets, "windows", "caddy", binaries::CADDY_VERSION, Arch::X86_64);
-    push_single(&mut targets, "windows", "nginx", binaries::NGINX_VERSION, Arch::X86_64);
-    push_single(&mut targets, "windows", "mailpit", binaries::MAILPIT_VERSION, Arch::X86_64);
-    push_single(&mut targets, "windows", "cloudflared", binaries::CLOUDFLARED_VERSION, Arch::X86_64);
-    for v in binaries::PHP_VERSIONS {
+    push_single(&mut targets, "windows", "caddy", binaries::pins().caddy, Arch::X86_64);
+    push_single(&mut targets, "windows", "nginx", binaries::pins().nginx, Arch::X86_64);
+    push_single(&mut targets, "windows", "mailpit", binaries::pins().mailpit, Arch::X86_64);
+    push_single(&mut targets, "windows", "cloudflared", binaries::pins().cloudflared, Arch::X86_64);
+    for v in binaries::pins().php_versions {
         push_single(&mut targets, "windows", "php", v, Arch::X86_64);
     }
-    for v in binaries::MYSQL_VERSIONS {
+    for v in binaries::pins().mysql_versions {
         push_single(&mut targets, "windows", "mysql", v, Arch::X86_64);
     }
-    for v in binaries::POSTGRES_VERSIONS {
+    for v in binaries::pins().postgres_versions {
         push_single(&mut targets, "windows", "postgres", v, Arch::X86_64);
     }
     // The count floor is the drift alarm for the LIST itself: pins only ever

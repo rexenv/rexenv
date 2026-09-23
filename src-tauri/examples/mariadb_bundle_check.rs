@@ -77,8 +77,8 @@ async fn main() {
     let plat = platform::current();
     let mut ok = true;
 
-    println!("=== resolve_bundle(mariadb {}) ===", binaries::MARIADB_VERSION);
-    let basedir = binaries::resolve_bundle(&*plat, "mariadb", binaries::MARIADB_VERSION)
+    println!("=== resolve_bundle(mariadb {}) ===", binaries::pins().mariadb);
+    let basedir = binaries::resolve_bundle(&*plat, "mariadb", binaries::pins().mariadb)
         .await
         .expect("resolve mariadb bundle");
     println!("  published at {}", basedir.display());
@@ -132,7 +132,7 @@ async fn main() {
 
     if up {
         let (client, _) = DbEngine::Mariadb
-            .sql_client_bins(&*plat, binaries::MARIADB_VERSION)
+            .sql_client_bins(&*plat, binaries::pins().mariadb)
             .await
             .expect("bundled MariaDB client");
         let (vok, ver) = sql(client.path(), port, "SELECT VERSION()");

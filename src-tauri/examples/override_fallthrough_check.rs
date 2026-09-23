@@ -103,7 +103,7 @@ async fn main() {
     let nginx_bin = rexenv_lib::core::binaries::resolve(
         &*plat,
         "nginx",
-        rexenv_lib::core::binaries::NGINX_VERSION,
+        rexenv_lib::core::binaries::pins().nginx,
     )
     .await
     .expect("nginx");

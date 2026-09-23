@@ -55,7 +55,7 @@ async fn main() -> std::process::ExitCode {
     if admin_before {
         println!("NOTE: something already holds :2019 (not ours) — the admin check reads the delta");
     }
-    let bin = binaries::resolve(&*plat, "frankenphp", binaries::FRANKENPHP_VERSION).await.unwrap();
+    let bin = binaries::resolve(&*plat, "frankenphp", binaries::pins().frankenphp).await.unwrap();
     let conf = frankenphp::write_config(&*plat, DOMAIN, &docroot, PORT, RewriteMode::Single, &[], None).unwrap();
     // Drop-GUARDED: the readiness gate on the next line PANICS on timeout, and a
     // raw `Child` is not killed by an unwind — so the failing run would leave

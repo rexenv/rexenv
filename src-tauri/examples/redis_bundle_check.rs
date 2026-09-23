@@ -59,8 +59,8 @@ async fn main() {
     let plat = platform::current();
     let mut ok = true;
 
-    println!("=== resolve_bundle(redis {}) ===", binaries::REDIS_VERSION);
-    let basedir = binaries::resolve_bundle(&*plat, "redis", binaries::REDIS_VERSION)
+    println!("=== resolve_bundle(redis {}) ===", binaries::pins().redis);
+    let basedir = binaries::resolve_bundle(&*plat, "redis", binaries::pins().redis)
         .await
         .expect("resolve redis bundle");
     println!("  published at {}", basedir.display());

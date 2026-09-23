@@ -74,7 +74,7 @@ mod windows {
 
         let ca = ssl::load_or_create(plat.paths(), plat.permissions());
         check.is("the local CA is created", ca.is_ok(), &format!("{:?}", ca.as_ref().err()));
-        let caddy = binaries::resolve(&*plat, "caddy", binaries::CADDY_VERSION).await;
+        let caddy = binaries::resolve(&*plat, "caddy", binaries::pins().caddy).await;
         check.is("Caddy resolves", caddy.is_ok(), &format!("{caddy:?}"));
         let (Ok(ca), Ok(caddy)) = (ca, caddy) else { return finish(check, &root) };
         let cert = ssl::ensure_site_cert(plat.paths(), plat.permissions(), &ca, HOST);

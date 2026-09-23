@@ -21,8 +21,8 @@ use rexenv_lib::platform;
 async fn main() {
     let plat = platform::current();
 
-    let php = binaries::resolve(&*plat, "php", binaries::PHP_VERSION).await.expect("php");
-    let adminer = binaries::resolve_file(&*plat, "adminer", binaries::ADMINER_VERSION)
+    let php = binaries::resolve(&*plat, "php", binaries::pins().php).await.expect("php");
+    let adminer = binaries::resolve_file(&*plat, "adminer", binaries::pins().adminer)
         .await
         .expect("resolve adminer");
     println!("✓ resolved {}", adminer.display());

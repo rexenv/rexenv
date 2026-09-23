@@ -429,7 +429,7 @@ mod tests {
         ]
         .into_iter()
         .collect();
-        for full in crate::core::binaries::PHP_VERSIONS {
+        for full in crate::core::binaries::pins().php_versions {
             let minor = full.rsplit_once('.').map(|(m, _)| m).unwrap_or(full);
             if let Some(p) = crate::core::php::fpm_port(minor) {
                 derived.insert(p);

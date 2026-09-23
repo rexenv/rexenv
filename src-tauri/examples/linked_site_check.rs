@@ -98,7 +98,7 @@ async fn main() {
 
     println!("\n=== serve it from where it lives ===");
     let cfg = sites::rebuild_configs(&conn, &*plat, &ca, NGINX_PORT, 8081, 8444).unwrap();
-    let nginx_bin = binaries::resolve(&*plat, "nginx", binaries::NGINX_VERSION).await.unwrap();
+    let nginx_bin = binaries::resolve(&*plat, "nginx", binaries::pins().nginx).await.unwrap();
     // Drop-guarded: every check below can panic, and a leaked master's workers
     // would keep the port (examples/common).
     let mut nginx = Reaped::new(

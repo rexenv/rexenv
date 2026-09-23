@@ -79,14 +79,14 @@ impl Drop for StashedCache {
 async fn main() {
     let plat = platform::current();
     let bin_dir = plat.paths().bin_dir().expect("bin dir");
-    let cache = bin_dir.join(format!("wp-cli-{}", binaries::WP_CLI_VERSION));
+    let cache = bin_dir.join(format!("wp-cli-{}", binaries::pins().wp_cli));
     let mut stash = StashedCache::take(cache.clone());
     println!("cleared cache: {} (kept aside until the re-download lands)", cache.display());
 
     // Watch the hub while the resolve runs; record the phase sequence and the
     // byte high-water mark, printing transitions + quartile progress.
     let mut rx = downloads::hub().subscribe();
-    let id = downloads::item_id("wp-cli", binaries::WP_CLI_VERSION);
+    let id = downloads::item_id("wp-cli", binaries::pins().wp_cli);
     let watcher = tokio::spawn(async move {
         let mut phases: Vec<Phase> = Vec::new();
         let mut max_bytes = 0u64;
@@ -133,7 +133,7 @@ async fn main() {
         (phases, max_bytes, total, saw_rate)
     });
 
-    let path = binaries::resolve_file(&*plat, "wp-cli", binaries::WP_CLI_VERSION)
+    let path = binaries::resolve_file(&*plat, "wp-cli", binaries::pins().wp_cli)
         .await
         .expect("resolve wp-cli");
     let (phases, max_bytes, total, saw_rate) = watcher.await.expect("watcher task");
@@ -171,14 +171,14 @@ async fn main() {
     // settle, and the batch must reach its total.
     let stale_plan = vec![downloads::PlannedBinary {
         name: "wp-cli".into(),
-        version: binaries::WP_CLI_VERSION.into(),
+        version: binaries::pins().wp_cli.into(),
         cached: false,
     }];
     downloads::prefetch(&*plat, "Create site", &stale_plan)
         .await
         .expect("a cache hit resolves");
     let snap = downloads::hub().snapshot();
-    let id = downloads::item_id("wp-cli", binaries::WP_CLI_VERSION);
+    let id = downloads::item_id("wp-cli", binaries::pins().wp_cli);
     let row = snap.items.iter().find(|i| i.id == id).expect("the planned row");
     assert_eq!(
         row.phase,

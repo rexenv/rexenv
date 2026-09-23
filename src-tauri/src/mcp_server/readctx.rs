@@ -247,7 +247,7 @@ impl<'a> ReadCtx<'a> {
             autostart: platform.autostart().is_enabled().ok(),
             unresolvable_tlds,
             firefox: core::firefox::status(platform.cert_trust().firefox_profiles_root().as_deref()),
-            frankenphp_php: core::php::minor_of(core::binaries::FRANKENPHP_EMBEDDED_PHP),
+            frankenphp_php: core::php::minor_of(core::binaries::pins().frankenphp_embedded_php),
             engines,
         })
     }
@@ -443,7 +443,7 @@ mod tests {
         let v = serde_json::to_value(&snap).unwrap();
         assert_eq!(v["app"]["version"], env!("CARGO_PKG_VERSION"));
         assert!(v["app"]["commit"].as_str().is_some_and(|c| !c.is_empty()), "{v}");
-        assert_eq!(v["frankenphpPhp"], serde_json::json!(core::php::minor_of(core::binaries::FRANKENPHP_EMBEDDED_PHP)));
+        assert_eq!(v["frankenphpPhp"], serde_json::json!(core::php::minor_of(core::binaries::pins().frankenphp_embedded_php)));
         assert!(v["unresolvableTlds"].is_array());
         for k in ["installed", "profiles", "forced"] {
             assert!(v["firefox"].get(k).is_some(), "firefox.{k} missing: {v}");

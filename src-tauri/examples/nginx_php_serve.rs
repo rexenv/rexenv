@@ -28,10 +28,10 @@ async fn main() -> ExitCode {
     let mut checks = common::Check::new("nginx_php_serve");
     let domain = "test6.test";
 
-    let fpm_bin = binaries::resolve(&*plat, "php-fpm", binaries::PHP_VERSION)
+    let fpm_bin = binaries::resolve(&*plat, "php-fpm", binaries::pins().php)
         .await
         .expect("resolve php-fpm");
-    let nginx_bin = binaries::resolve(&*plat, "nginx", binaries::NGINX_VERSION)
+    let nginx_bin = binaries::resolve(&*plat, "nginx", binaries::pins().nginx)
         .await
         .expect("resolve nginx");
 

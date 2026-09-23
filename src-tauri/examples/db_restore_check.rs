@@ -67,7 +67,7 @@ async fn main() {
     let mut ok = true;
 
     // ── sandbox mysqld: source db with KNOWN row counts ─────────────────────
-    let basedir = binaries::resolve_dir(&*plat, "mysql", binaries::MYSQL_VERSION)
+    let basedir = binaries::resolve_dir(&*plat, "mysql", binaries::pins().mysql)
         .await
         .expect("mysql tree (cached)");
     let datadir = sandbox.root().join("mysql-data");
@@ -86,7 +86,7 @@ async fn main() {
     }
     assert!(database::mysql_running(PORT), "sandbox mysqld is up");
     let (client, _) = rexenv_lib::core::db::DbEngine::Mysql
-        .sql_client_bins(&*plat, rexenv_lib::core::binaries::MYSQL_VERSION)
+        .sql_client_bins(&*plat, rexenv_lib::core::binaries::pins().mysql)
         .await
         .expect("bundled MySQL client");
 
@@ -109,7 +109,7 @@ async fn main() {
     let dest = sandbox.root().join("db-imports");
     let verdict = compat(
         &Source { vendor: Some(Vendor::Mysql), version: Version::parse("8.4.6") },
-        &Target { vendor: Vendor::Mysql, version: Version::parse(binaries::MYSQL_VERSION).unwrap() },
+        &Target { vendor: Vendor::Mysql, version: Version::parse(binaries::pins().mysql).unwrap() },
     );
     let cleared = dbdump::gate(None, &verdict, false).expect("gate clears");
     let src_conn = DbConnection {
@@ -141,7 +141,7 @@ async fn main() {
         source_vendor: Vendor::Mysql,
         source_version: "8.4.6",
         target_engine: "mysql",
-        target_version: binaries::MYSQL_VERSION,
+        target_version: binaries::pins().mysql,
         dump_tool_label: "mysqldump 8.4.6",
         dest_dir: &dest,
     };

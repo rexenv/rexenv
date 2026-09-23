@@ -90,12 +90,12 @@ mod windows {
         let ca = step(check, "the local CA is created", ssl::load_or_create(plat.paths(), plat.permissions()))?;
 
         let t = Instant::now();
-        let mysql_base = step(check, "MySQL resolves", binaries::resolve_dir(plat, "mysql", binaries::MYSQL_VERSION).await)?;
-        let mailpit = step(check, "Mailpit resolves", binaries::resolve(plat, "mailpit", binaries::MAILPIT_VERSION).await)?;
-        let php = step(check, "the site's PHP resolves as php.exe", binaries::resolve_program(plat, "php", binaries::PHP_VERSION).await)?;
-        let wp = step(check, "WP-CLI resolves", binaries::resolve_file(plat, "wp-cli", binaries::WP_CLI_VERSION).await)?;
-        let nginx = step(check, "nginx resolves", binaries::resolve_program(plat, "nginx", binaries::NGINX_VERSION).await)?;
-        let (db_client, _) = step(check, "the bundled MySQL client resolves", DbEngine::Mysql.sql_client_bins(plat, binaries::MYSQL_VERSION).await)?;
+        let mysql_base = step(check, "MySQL resolves", binaries::resolve_dir(plat, "mysql", binaries::pins().mysql).await)?;
+        let mailpit = step(check, "Mailpit resolves", binaries::resolve(plat, "mailpit", binaries::pins().mailpit).await)?;
+        let php = step(check, "the site's PHP resolves as php.exe", binaries::resolve_program(plat, "php", binaries::pins().php).await)?;
+        let wp = step(check, "WP-CLI resolves", binaries::resolve_file(plat, "wp-cli", binaries::pins().wp_cli).await)?;
+        let nginx = step(check, "nginx resolves", binaries::resolve_program(plat, "nginx", binaries::pins().nginx).await)?;
+        let (db_client, _) = step(check, "the bundled MySQL client resolves", DbEngine::Mysql.sql_client_bins(plat, binaries::pins().mysql).await)?;
         println!("  · binaries in {:.0} s", t.elapsed().as_secs_f64());
 
         // ── The services create_site brings up. ──

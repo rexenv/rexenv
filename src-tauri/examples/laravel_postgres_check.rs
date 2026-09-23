@@ -47,7 +47,7 @@ const DB: &str = "rex_lvpg_check";
 ///
 /// **rexenv deletes superseded PHP trees at launch** (`gc_outdated_php_caches`)
 /// — the keep-set is what the registry says each minor should RUN, unioned with
-/// the live pool masters. This example runs `binaries::PHP_VERSION`, the PIN,
+/// the live pool masters. This example runs `binaries::pins().php`, the PIN,
 /// which on a machine whose registry selects a NEWER patch (an in-app update:
 /// 8.3.31 → 8.3.32) is exactly what the sweep is for. So the tree can vanish
 /// between one phase of this check and the next, and on 10 Sep 2026 it did:
@@ -141,7 +141,7 @@ async fn main() {
     // about the RUNTIME, and a version that differs is the interesting case.
     println!("\n=== what each bundled PHP says about pdo_pgsql ===");
     let mut phps = Vec::new();
-    for v in binaries::PHP_VERSIONS {
+    for v in binaries::pins().php_versions {
         match binaries::resolve(&*plat, "php", v).await {
             Ok(bin) => phps.push((*v, bin)),
             Err(e) => {
@@ -177,7 +177,7 @@ async fn main() {
     println!("\n=== and what a real connection does (default PHP) ===");
     let (v, php_bin) = phps
         .iter()
-        .find(|(v, _)| *v == binaries::PHP_VERSION)
+        .find(|(v, _)| *v == binaries::pins().php)
         .expect("the default PHP is in PHP_VERSIONS");
 
     // ext/pgsql is the control: it proves the SERVER is reachable, so a PDO
@@ -258,7 +258,7 @@ async fn main() {
             server.reap();
             std::process::exit(1);
         }
-        let composer = binaries::resolve_file(&*plat, "composer", binaries::COMPOSER_VERSION)
+        let composer = binaries::resolve_file(&*plat, "composer", binaries::pins().composer)
             .await
             .expect("composer phar");
         let project = std::env::temp_dir().join(format!("rexenv-lvpg-{}", std::process::id()));
@@ -356,7 +356,7 @@ async fn main() {
     println!(
         "\n{}",
         if ok {
-            if php::pdo_pgsql_supported(binaries::PHP_VERSION) {
+            if php::pdo_pgsql_supported(binaries::pins().php) {
                 "laravel on postgres: all green"
             } else {
                 "laravel on postgres: the gap is still real — recorded, refused at create, unchanged"

@@ -154,7 +154,7 @@ async fn main() {
 
     let patch = php::patch_for_minor("8.4").expect("pinned 8.4");
     let php_bin = binaries::resolve(&*plat, "php", patch).await.expect("php");
-    let wp_phar = binaries::resolve_file(&*plat, "wp-cli", binaries::WP_CLI_VERSION)
+    let wp_phar = binaries::resolve_file(&*plat, "wp-cli", binaries::pins().wp_cli)
         .await
         .expect("wp-cli phar");
 

@@ -102,7 +102,7 @@ async fn main() {
             .flatten()
             .filter(|m| can(m))
             .or_else(|| {
-                rexenv_lib::core::binaries::PHP_VERSIONS
+                rexenv_lib::core::binaries::pins().php_versions
                     .iter()
                     .rev()
                     .map(|v| php::minor_of(v))
@@ -151,7 +151,7 @@ async fn main() {
     // ── 4. A minor WITHOUT the driver is REFUSED, fast ───────────────────────
     // Before the slow leg, because it is the cheap one and because its failure
     // mode used to be a four-minute hang rather than an error.
-    let without = rexenv_lib::core::binaries::PHP_VERSIONS
+    let without = rexenv_lib::core::binaries::pins().php_versions
         .iter()
         .find(|v| !php::pdo_pgsql_supported(v))
         .map(|v| php::minor_of(v));

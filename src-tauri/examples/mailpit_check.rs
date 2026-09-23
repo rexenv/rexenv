@@ -23,7 +23,7 @@ async fn main() {
     let plat = platform::current();
 
     // Resolve (download + verify + sign) the Mailpit binary.
-    let bin = binaries::resolve(&*plat, "mailpit", binaries::MAILPIT_VERSION)
+    let bin = binaries::resolve(&*plat, "mailpit", binaries::pins().mailpit)
         .await
         .expect("resolve mailpit");
     println!("✓ resolved {}", bin.display());

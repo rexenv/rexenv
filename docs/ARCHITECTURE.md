@@ -881,8 +881,10 @@ Live-proven end to end by `site_stop_start_check`.
   `minos` above the host resolves the last build that loads there, or is refused with the
   macOS it needs. The platform derives the tier (`Platform::binary_tier`; default `Standard`,
   because a tier is a macOS fact and `core/` may not name an OS); `lib.rs` installs it once;
-  `binaries::tier()` is what a pin lookup consults. **As of T0 nothing consults it** — the
-  per-tier pin sets and the refusals are T1–T3 of that plan.
+  `binaries::pins()` — `PinSet::for_tier(tier())` — is the ONLY door to a version: the
+  `*_VERSION` constants are private to `binaries.rs`, so a consumer that spells one fails to
+  compile (ledger #708). **As of T1 every tier answers the Standard set** — the legacy values
+  and the refusals are T2–T3 of that plan.
 - macOS `prepare_binary` order (non-negotiable): **de-quarantine → relink Homebrew dylibs
   to `/usr/lib` → ad-hoc codesign LAST.**
 - **`prepare_binary` needs NO Xcode Command Line Tools on the common path** (ledger #676).

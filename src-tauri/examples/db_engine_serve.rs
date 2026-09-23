@@ -70,7 +70,7 @@ async fn main() {
     if let Some((pid, mut child)) = bring_up(&*plat, DbEngine::Postgres).await {
         let up = DbEngine::Postgres.running();
         println!("  pid {pid} · listening on :{} = {up}", DbEngine::Postgres.port());
-        let basedir = binaries::resolve_dir(&*plat, "postgres", binaries::POSTGRES_VERSION).await.unwrap();
+        let basedir = binaries::resolve_dir(&*plat, "postgres", binaries::pins().postgres).await.unwrap();
         let out = Command::new(postgres::psql_bin(&basedir))
             .args(["-h", "127.0.0.1", "-p", &DbEngine::Postgres.port().to_string(),
                    "-U", "postgres", "-tAc", "SELECT version();"])

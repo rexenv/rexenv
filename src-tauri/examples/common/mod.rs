@@ -50,7 +50,7 @@
 //! The shared binary cache is called a deliberate mutable exception above —
 //! examples add to it. What that missed is the other direction: the app REMOVES
 //! from it. `gc_outdated_php_caches` sweeps every PHP tree the registry does not
-//! select, at every launch. So an example that resolves `binaries::PHP_VERSION`
+//! select, at every launch. So an example that resolves `binaries::pins().php`
 //! (the PIN) on a machine whose registry selects a newer patch — an ordinary
 //! in-app PHP update — has downloaded a tree the app is entitled to delete, and
 //! may delete between two phases of the same run. On 10 Sep 2026 that killed
@@ -478,7 +478,7 @@ pub fn rexenv_service_ports() -> Vec<(u16, &'static str)> {
         (rexenv_lib::core::database::MYSQL_PORT, "rexenv's MySQL"),
         (rexenv_lib::core::db::MARIADB_PORT, "rexenv's MariaDB"),
     ];
-    for full in rexenv_lib::core::binaries::PHP_VERSIONS {
+    for full in rexenv_lib::core::binaries::pins().php_versions {
         let minor = full.rsplit_once('.').map(|(m, _)| m).unwrap_or(full);
         if let Some(p) = rexenv_lib::core::php::fpm_port(minor) {
             ports.push((p, "a rexenv php-fpm pool"));

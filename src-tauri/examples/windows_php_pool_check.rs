@@ -118,7 +118,7 @@ mod windows {
         check.is("no php.ini was loaded besides ours (-n -c)", json["ini"].as_str().is_some_and(|p| p.ends_with(&format!("php-cgi-{MINOR}.ini"))) && json["scanned"] == false, &body);
 
         // The preflight refuses what php-cgi itself exits 0 on.
-        let php_dir = binaries::cached_path(&*plat, "php", binaries::PHP_VERSION).expect("php cached");
+        let php_dir = binaries::cached_path(&*plat, "php", binaries::pins().php).expect("php cached");
         let bad = root.join("bad.ini");
         std::fs::write(&bad, format!("extension_dir = \"{}\"\nextension = does_not_exist\n", php_dir.join("ext").display())).unwrap();
         let refused = php_cgi::preflight(&*plat, &group, &php_dir, &bad).map_err(|e| e.to_string());

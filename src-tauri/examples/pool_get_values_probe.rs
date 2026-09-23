@@ -118,7 +118,7 @@ type Pool = (common::Reaped, Box<dyn rexenv_lib::platform::traits::Platform>, co
 async fn start_pool(check: &mut common::Check) -> Option<Pool> {
     use rexenv_lib::core::{binaries, services};
     let (plat, guard) = common::sandbox("getvalues");
-    let fpm = binaries::resolve(&*plat, "php-fpm", binaries::PHP_VERSION).await.ok()?;
+    let fpm = binaries::resolve(&*plat, "php-fpm", binaries::pins().php).await.ok()?;
     let conf = services::write_fpm_config(&*plat, "8.3", PORT, None, &[]).ok()?;
     let child = services::start_fpm(&*plat, &fpm, &conf);
     check.is("php-fpm starts on the fixture port", child.is_ok(), &format!("{:?}", child.as_ref().err()));
@@ -161,7 +161,7 @@ async fn start_pool(check: &mut common::Check) -> Option<Pool> {
     rexenv_lib::core::stack_guard::allow_real_stack_control();
     let plat = common::sandbox_platform_at(std::env::temp_dir().join("rexenv-get-values-probe").join("app"));
     let PoolModel::CgiGroup(group) = plat.supervisor().php_pool_model() else { return None };
-    let dir = binaries::resolve_dir(&*plat, "php", binaries::PHP_VERSION).await.ok()?;
+    let dir = binaries::resolve_dir(&*plat, "php", binaries::pins().php).await.ok()?;
     let child = php_cgi::start_group(&*plat, &group, &dir, "8.3", PORT, None, &[]);
     check.is("the php-cgi group starts on the fixture port", child.is_ok(), &format!("{:?}", child.as_ref().err()));
     Some((common::OwnedService::new(child.ok()?, "php-cgi group"), plat))

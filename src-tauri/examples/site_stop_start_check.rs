@@ -112,10 +112,10 @@ async fn main() -> ExitCode {
         std::fs::write(root.join("index.html"), marker(&s.domain)).expect("marker");
     }
 
-    let nginx_bin = binaries::resolve(&*plat, "nginx", binaries::NGINX_VERSION)
+    let nginx_bin = binaries::resolve(&*plat, "nginx", binaries::pins().nginx)
         .await
         .expect("nginx binary (warm cache)");
-    let caddy_bin = binaries::resolve(&*plat, "caddy", binaries::CADDY_VERSION)
+    let caddy_bin = binaries::resolve(&*plat, "caddy", binaries::pins().caddy)
         .await
         .expect("caddy binary (warm cache)");
 

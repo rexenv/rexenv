@@ -140,10 +140,10 @@ impl DbEngine {
     /// The DEFAULT pinned version of the engine (what a fresh install runs).
     pub fn default_version(&self) -> &'static str {
         match self {
-            DbEngine::Mysql => binaries::MYSQL_VERSION,
-            DbEngine::Mariadb => binaries::MARIADB_VERSION,
-            DbEngine::Postgres => binaries::POSTGRES_VERSION,
-            DbEngine::Redis => binaries::REDIS_VERSION,
+            DbEngine::Mysql => binaries::pins().mysql,
+            DbEngine::Mariadb => binaries::pins().mariadb,
+            DbEngine::Postgres => binaries::pins().postgres,
+            DbEngine::Redis => binaries::pins().redis,
         }
     }
 
@@ -151,10 +151,10 @@ impl DbEngine {
     /// first. A one-entry set means the UI hides the picker.
     pub fn versions(&self) -> &'static [&'static str] {
         match self {
-            DbEngine::Mysql => binaries::MYSQL_VERSIONS,
-            DbEngine::Mariadb => binaries::MARIADB_VERSIONS,
-            DbEngine::Postgres => binaries::POSTGRES_VERSIONS,
-            DbEngine::Redis => binaries::REDIS_VERSIONS,
+            DbEngine::Mysql => binaries::pins().mysql_versions,
+            DbEngine::Mariadb => binaries::pins().mariadb_versions,
+            DbEngine::Postgres => binaries::pins().postgres_versions,
+            DbEngine::Redis => binaries::pins().redis_versions,
         }
     }
 

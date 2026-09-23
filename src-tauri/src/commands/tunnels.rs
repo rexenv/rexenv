@@ -666,7 +666,7 @@ pub async fn start_tunnel<R: tauri::Runtime>(
     }
 
     let platform = state.platform.as_ref();
-    let bin = match binaries::resolve(platform, "cloudflared", binaries::CLOUDFLARED_VERSION).await
+    let bin = match binaries::resolve(platform, "cloudflared", binaries::pins().cloudflared).await
     {
         Ok(bin) => bin,
         Err(e) => {

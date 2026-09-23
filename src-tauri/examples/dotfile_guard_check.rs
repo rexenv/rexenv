@@ -42,9 +42,9 @@ async fn main() -> ExitCode {
     let domain = "dotguard.test";
 
     let fpm_bin =
-        binaries::resolve(&*plat, "php-fpm", binaries::PHP_VERSION).await.expect("php-fpm");
+        binaries::resolve(&*plat, "php-fpm", binaries::pins().php).await.expect("php-fpm");
     let nginx_bin =
-        binaries::resolve(&*plat, "nginx", binaries::NGINX_VERSION).await.expect("nginx");
+        binaries::resolve(&*plat, "nginx", binaries::pins().nginx).await.expect("nginx");
 
     // A docroot shaped like the incident: cloned repo droppings beside PHP.
     let docroot = sandbox.root().join("sites").join(domain).join("public");
@@ -120,7 +120,7 @@ async fn main() -> ExitCode {
     // The claim is per-TEMPLATE: apache.rs's deny is a mod_rewrite [R=404]
     // that must precede the WP routing, and only httpd can say whether that
     // ordering actually denies before mod_proxy_fcgi hands .php to the pool.
-    let basedir = binaries::resolve_bundle(&*plat, "httpd", binaries::HTTPD_VERSION)
+    let basedir = binaries::resolve_bundle(&*plat, "httpd", binaries::pins().httpd)
         .await
         .expect("httpd bundle (cached)");
     let apache_conf = apache::write_config(
@@ -152,7 +152,7 @@ async fn main() -> ExitCode {
     fpm.reap();
 
     // ── and against a REAL FrankenPHP (its embedded PHP, no pool) ──────────
-    let franken_bin = binaries::resolve(&*plat, "frankenphp", binaries::FRANKENPHP_VERSION)
+    let franken_bin = binaries::resolve(&*plat, "frankenphp", binaries::pins().frankenphp)
         .await
         .expect("frankenphp (cached)");
     let franken_conf = frankenphp::write_config(

@@ -54,7 +54,7 @@ pub fn pdo_pgsql_supported(patch: &str) -> bool {
 /// connection is available, and from the pins otherwise, so it names something
 /// the user can actually select.
 pub fn oldest_pdo_pgsql_minor() -> String {
-    binaries::PHP_VERSIONS
+    binaries::pins().php_versions
         .iter()
         .filter(|v| pdo_pgsql_supported(v))
         .map(|v| minor_of(v))
@@ -88,10 +88,10 @@ pub fn minor_of(version: &str) -> String {
 }
 
 /// All PHP minor series that have a pinned build (derived from
-/// [`binaries::PHP_VERSIONS`]), in the same order (newest last).
+/// [`binaries::pins().php_versions`]), in the same order (newest last).
 pub fn all_minors() -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
-    for patch in binaries::PHP_VERSIONS {
+    for patch in binaries::pins().php_versions {
         let m = minor_of(patch);
         if !out.contains(&m) {
             out.push(m);
@@ -103,15 +103,15 @@ pub fn all_minors() -> Vec<String> {
 /// The pinned patch build for a minor series (`"8.3"` → `"8.3.31"`), or `None`.
 /// Every PHP minor rexenv ships, oldest first — `["8.0", "8.1", …]`.
 ///
-/// Derived from [`binaries::PHP_VERSIONS`] rather than listed again: a refusal
+/// Derived from [`binaries::pins().php_versions`] rather than listed again: a refusal
 /// that names the available set is only useful while the set it names is the
 /// real one, and a second hand-maintained list is how that stops being true.
 pub fn available_minors() -> Vec<String> {
-    binaries::PHP_VERSIONS.iter().map(|p| minor_of(p)).collect()
+    binaries::pins().php_versions.iter().map(|p| minor_of(p)).collect()
 }
 
 pub fn patch_for_minor(minor: &str) -> Option<&'static str> {
-    binaries::PHP_VERSIONS
+    binaries::pins().php_versions
         .iter()
         .copied()
         .find(|p| minor_of(p) == minor)
@@ -368,7 +368,7 @@ pub fn debug_fpm_port_on(minor: &str, os: &str) -> Option<u16> {
 /// `is_default` beside it was overwritten from the pin on every launch (#340).
 /// Deriving the fact makes both unrepresentable rather than fixed.
 pub fn seed_registry(conn: &Connection) -> Result<()> {
-    let default_minor = minor_of(binaries::PHP_VERSION);
+    let default_minor = minor_of(binaries::pins().php);
     for minor in all_minors() {
         // Resolvable-ness is still asserted here even though the patch is no
         // longer stored: a minor in `all_minors()` with no pinned build is a
@@ -679,7 +679,7 @@ pub fn installed_minors(conn: &Connection) -> Result<Vec<String>> {
         .map(|v| v.minor)
         .collect();
     if minors.is_empty() {
-        minors.push(minor_of(binaries::PHP_VERSION));
+        minors.push(minor_of(binaries::pins().php));
     }
     Ok(minors)
 }
@@ -1522,7 +1522,7 @@ mod tests {
         let oldest = oldest_pdo_pgsql_minor();
         assert_eq!(oldest, "8.1");
         assert!(
-            binaries::PHP_VERSIONS
+            binaries::pins().php_versions
                 .iter()
                 .filter(|v| pdo_pgsql_supported(v))
                 .all(|v| minor_of(v) >= oldest),
@@ -1898,7 +1898,7 @@ mod tests {
         let conn = db::open_in_memory().unwrap();
         seed_registry(&conn).unwrap();
 
-        let pinned = minor_of(binaries::PHP_VERSION);
+        let pinned = minor_of(binaries::pins().php);
         let chosen = all_minors().into_iter().find(|m| *m != pinned).expect("a second minor");
         set_installed(&conn, &chosen, true).unwrap();
         set_default(&conn, &chosen).unwrap();
@@ -1968,7 +1968,7 @@ mod tests {
     fn the_effective_patch_honours_a_selection_but_never_below_the_pin() {
         let conn = db::open_in_memory().unwrap();
         seed_registry(&conn).unwrap();
-        let minor = minor_of(binaries::PHP_VERSION);
+        let minor = minor_of(binaries::pins().php);
         let pin = patch_for_minor(&minor).unwrap();
 
         // No selection → the pin, byte for byte. This is the whole install base.
@@ -2017,7 +2017,7 @@ mod tests {
     fn the_seed_cannot_write_a_selected_patch_even_when_handed_one() {
         let conn = db::open_in_memory().unwrap();
         seed_registry(&conn).unwrap();
-        let minor = minor_of(binaries::PHP_VERSION);
+        let minor = minor_of(binaries::pins().php);
 
         // Hand `upsert_php_version` a row that DOES carry a selection, on a fresh
         // row (the INSERT arm) and on an existing one (the conflict arm).
@@ -2049,7 +2049,7 @@ mod tests {
     #[test]
     fn a_pool_with_no_patch_snapshot_runs_the_compiled_in_pin() {
         let pools = PhpFpmPools::default();
-        let minor = minor_of(binaries::PHP_VERSION);
+        let minor = minor_of(binaries::pins().php);
         assert_eq!(pools.effective(&minor).unwrap(), patch_for_minor(&minor).unwrap());
         // A minor with no pin at all is an error, not a guess.
         assert!(pools.effective(unshipped_minor()).is_err());
@@ -2083,7 +2083,7 @@ mod tests {
     fn a_newly_pinned_minor_does_not_arrive_claiming_to_be_a_second_default() {
         let conn = db::open_in_memory().unwrap();
         seed_registry(&conn).unwrap();
-        let pinned = minor_of(binaries::PHP_VERSION);
+        let pinned = minor_of(binaries::pins().php);
         let chosen = all_minors().into_iter().find(|m| *m != pinned).expect("a second minor");
         set_installed(&conn, &chosen, true).unwrap();
         set_default(&conn, &chosen).unwrap();
@@ -2124,7 +2124,7 @@ mod tests {
         let rows = store::list_php_versions(&conn).unwrap();
         let defaults: Vec<&str> =
             rows.iter().filter(|v| v.is_default).map(|v| v.minor.as_str()).collect();
-        assert_eq!(defaults, vec![minor_of(binaries::PHP_VERSION).as_str()]);
+        assert_eq!(defaults, vec![minor_of(binaries::pins().php).as_str()]);
     }
 
     /// A FRESH database ends with exactly one default, which is the pin — the
@@ -2137,9 +2137,9 @@ mod tests {
         let rows = store::list_php_versions(&conn).unwrap();
         let defaults: Vec<&str> =
             rows.iter().filter(|v| v.is_default).map(|v| v.minor.as_str()).collect();
-        assert_eq!(defaults, vec![minor_of(binaries::PHP_VERSION).as_str()]);
+        assert_eq!(defaults, vec![minor_of(binaries::pins().php).as_str()]);
         // …and the pinned minor is the one seeded installed.
-        let pin = rows.iter().find(|v| v.minor == minor_of(binaries::PHP_VERSION)).unwrap();
+        let pin = rows.iter().find(|v| v.minor == minor_of(binaries::pins().php)).unwrap();
         assert!(pin.installed, "a fresh install must have its default minor enabled");
     }
 
@@ -2240,7 +2240,7 @@ mod tests {
     fn the_view_says_both_the_pinned_patch_and_the_one_actually_running() {
         let conn = db::open_in_memory().unwrap();
         seed_registry(&conn).unwrap();
-        let minor = minor_of(binaries::PHP_VERSION);
+        let minor = minor_of(binaries::pins().php);
         let pinned = patch_for_minor(&minor).unwrap().to_string();
         let row = |rows: Vec<PhpVersionView>| rows.into_iter().find(|r| r.minor == minor).unwrap();
 
@@ -2280,7 +2280,7 @@ mod tests {
 
         let rows = store::list_php_versions(&conn).unwrap();
         assert_eq!(rows.len(), all_minors().len());
-        let default_minor = minor_of(binaries::PHP_VERSION);
+        let default_minor = minor_of(binaries::pins().php);
         let def = rows.iter().find(|v| v.minor == default_minor).unwrap();
         assert!(def.is_default && def.installed);
         assert!(def.fpm_port == fpm_port(&default_minor).unwrap());
@@ -2303,7 +2303,7 @@ mod tests {
     fn set_default_switches_exclusively_and_requires_installed() {
         let conn = db::open_in_memory().unwrap();
         seed_registry(&conn).unwrap();
-        let default_minor = minor_of(binaries::PHP_VERSION); // 8.3, installed by seed
+        let default_minor = minor_of(binaries::pins().php); // 8.3, installed by seed
 
         // Can't default to an uninstalled version.
         assert!(set_default(&conn, "8.1").is_err());
@@ -2326,7 +2326,7 @@ mod tests {
 
         let conn = db::open_in_memory().unwrap();
         seed_registry(&conn).unwrap();
-        let default_minor = minor_of(binaries::PHP_VERSION); // "8.3"
+        let default_minor = minor_of(binaries::pins().php); // "8.3"
 
         // The default version can't be removed.
         assert!(set_installed(&conn, &default_minor, false).is_err());
@@ -2367,7 +2367,7 @@ mod tests {
         }
         assert_eq!(
             installed_minors(&conn).unwrap(),
-            vec![minor_of(binaries::PHP_VERSION)]
+            vec![minor_of(binaries::pins().php)]
         );
     }
 

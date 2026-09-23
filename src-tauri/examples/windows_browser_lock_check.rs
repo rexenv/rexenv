@@ -125,7 +125,7 @@ mod windows {
         let cert = ssl::ensure_site_cert(plat.paths(), plat.permissions(), &ca, HOST);
         check.is("a site certificate is issued", cert.is_ok(), &format!("{:?}", cert.as_ref().err()));
         let cert = cert.ok()?;
-        let caddy = binaries::resolve(plat, "caddy", binaries::CADDY_VERSION).await;
+        let caddy = binaries::resolve(plat, "caddy", binaries::pins().caddy).await;
         check.is("Caddy resolves", caddy.is_ok(), &format!("{caddy:?}"));
         let caddy = caddy.ok()?;
 

@@ -8,10 +8,10 @@ use rexenv_lib::platform;
 #[tokio::main]
 async fn main() {
     let plat = platform::current();
-    let php = binaries::resolve(&*plat, "php", binaries::PHP_VERSION)
+    let php = binaries::resolve(&*plat, "php", binaries::pins().php)
         .await
         .expect("resolve php");
-    let wp = binaries::resolve_file(&*plat, "wp-cli", binaries::WP_CLI_VERSION)
+    let wp = binaries::resolve_file(&*plat, "wp-cli", binaries::pins().wp_cli)
         .await
         .expect("resolve wp-cli");
     println!("php:    {}", php.display());

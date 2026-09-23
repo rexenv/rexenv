@@ -289,16 +289,16 @@ pub fn plan_for_start_with(
     };
     let mysql_version = db_ver(DbEngine::Mysql);
     let mut set: Vec<(&str, &str)> = vec![
-        ("caddy", binaries::CADDY_VERSION),
-        ("nginx", binaries::NGINX_VERSION),
+        ("caddy", binaries::pins().caddy),
+        ("nginx", binaries::pins().nginx),
         ("mysql", &mysql_version),
-        ("mailpit", binaries::MAILPIT_VERSION),
+        ("mailpit", binaries::pins().mailpit),
         ("adminer", adminer_version),
     ];
     let mariadb_version = db_ver(DbEngine::Mariadb);
     let postgres_version = db_ver(DbEngine::Postgres);
     let mut minors = php_minors.to_vec();
-    let default_minor = php::minor_of(binaries::PHP_VERSION);
+    let default_minor = php::minor_of(binaries::pins().php);
     if !minors.contains(&default_minor) {
         minors.push(default_minor);
     }
@@ -311,10 +311,10 @@ pub fn plan_for_start_with(
         }
     }
     if sites.iter().any(|s| matches!(s.web_server, WebServer::Frankenphp)) {
-        set.push(("frankenphp", binaries::FRANKENPHP_VERSION));
+        set.push(("frankenphp", binaries::pins().frankenphp));
     }
     if sites.iter().any(|s| matches!(s.web_server, WebServer::Apache)) {
-        set.push(("httpd", binaries::HTTPD_VERSION));
+        set.push(("httpd", binaries::pins().httpd));
     }
     // The OPTIONAL engines, planned exactly when some site's database lives in
     // one. Both are user-toggled services otherwise, and planning them
@@ -370,7 +370,7 @@ pub fn plan_for_engine(
 /// (prefetch-before-lock, §5). Small binary, but a cold-cache toggle would
 /// otherwise download WHILE holding the lock and freeze every status read.
 pub fn plan_for_mailpit(platform: &dyn Platform) -> Vec<PlannedBinary> {
-    vec![PlannedBinary::new(platform, "mailpit", binaries::MAILPIT_VERSION)]
+    vec![PlannedBinary::new(platform, "mailpit", binaries::pins().mailpit)]
 }
 
 /// The binary set for installing a PHP version: its FPM build (the pool) plus
@@ -437,7 +437,7 @@ pub fn plan_for_wp_tooling_with(platform: &dyn Platform, minor: &str, patches: &
     if let Some(patch) = planned_patch(patches, minor) {
         plan.push(PlannedBinary::new(platform, "php", patch));
     }
-    plan.push(PlannedBinary::new(platform, "wp-cli", binaries::WP_CLI_VERSION));
+    plan.push(PlannedBinary::new(platform, "wp-cli", binaries::pins().wp_cli));
     plan
 }
 
@@ -457,7 +457,7 @@ pub fn plan_for_composer_tooling_with(
     if let Some(patch) = planned_patch(patches, minor) {
         plan.push(PlannedBinary::new(platform, "php", patch));
     }
-    plan.push(PlannedBinary::new(platform, "composer", binaries::COMPOSER_VERSION));
+    plan.push(PlannedBinary::new(platform, "composer", binaries::pins().composer));
     plan
 }
 
@@ -466,9 +466,9 @@ pub fn plan_for_composer_tooling_with(
 pub fn plan_for_override(platform: &dyn Platform, server: WebServer) -> Vec<PlannedBinary> {
     match server {
         WebServer::Frankenphp => {
-            vec![PlannedBinary::new(platform, "frankenphp", binaries::FRANKENPHP_VERSION)]
+            vec![PlannedBinary::new(platform, "frankenphp", binaries::pins().frankenphp)]
         }
-        WebServer::Apache => vec![PlannedBinary::new(platform, "httpd", binaries::HTTPD_VERSION)],
+        WebServer::Apache => vec![PlannedBinary::new(platform, "httpd", binaries::pins().httpd)],
         _ => Vec::new(),
     }
 }
@@ -1088,7 +1088,7 @@ mod tests {
                 &["8.3".into()],
                 &empty,
                 &PatchMap::new(),
-                binaries::ADMINER_VERSION,
+                binaries::pins().adminer,
             )
                 .into_iter()
                 .map(|b| b.name)
@@ -1123,17 +1123,17 @@ mod tests {
     fn plan_for_start_covers_stack_pools_and_conditional_frankenphp() {
         let plat = crate::platform::current();
         let plan =
-            plan_for_start_with(&*plat, &[site(WebServer::Nginx)], &["8.1".into()], &Default::default(), &PatchMap::new(), binaries::ADMINER_VERSION);
+            plan_for_start_with(&*plat, &[site(WebServer::Nginx)], &["8.1".into()], &Default::default(), &PatchMap::new(), binaries::pins().adminer);
         let names: Vec<(&str, &str)> = plan
             .iter()
             .map(|p| (p.name.as_str(), p.version.as_str()))
             .collect();
         for expected in [
-            ("caddy", binaries::CADDY_VERSION),
-            ("nginx", binaries::NGINX_VERSION),
-            ("mysql", binaries::MYSQL_VERSION),
-            ("mailpit", binaries::MAILPIT_VERSION),
-            ("adminer", binaries::ADMINER_VERSION),
+            ("caddy", binaries::pins().caddy),
+            ("nginx", binaries::pins().nginx),
+            ("mysql", binaries::pins().mysql),
+            ("mailpit", binaries::pins().mailpit),
+            ("adminer", binaries::pins().adminer),
         ] {
             assert!(names.contains(&expected), "missing {expected:?} in {names:?}");
         }
@@ -1145,13 +1145,13 @@ mod tests {
         let pool = plat.supervisor().php_pool_model().catalog_name();
         let fpms: Vec<&&str> = names.iter().filter(|(n, _)| *n == pool).map(|(_, v)| v).collect();
         assert!(fpms.contains(&&php::patch_for_minor("8.1").unwrap()));
-        assert!(fpms.contains(&&binaries::PHP_VERSION));
+        assert!(fpms.contains(&&binaries::pins().php));
         assert_eq!(fpms.len(), 2, "{names:?}");
         // No FrankenPHP: no site overrides to it.
         assert!(!names.iter().any(|(n, _)| *n == "frankenphp"));
 
         let plan =
-            plan_for_start_with(&*plat, &[site(WebServer::Frankenphp)], &[], &Default::default(), &PatchMap::new(), binaries::ADMINER_VERSION);
+            plan_for_start_with(&*plat, &[site(WebServer::Frankenphp)], &[], &Default::default(), &PatchMap::new(), binaries::pins().adminer);
         assert!(plan.iter().any(|p| p.name == "frankenphp"));
     }
 
@@ -1198,7 +1198,7 @@ mod tests {
             &["8.2".into()],
             &Default::default(),
             &map,
-            binaries::ADMINER_VERSION,
+            binaries::pins().adminer,
         );
         // The pool binary THIS platform starts from, never the literal `php-fpm`
         // (ledger #627) — the planner above derives it the same way, so a literal here
@@ -1259,7 +1259,7 @@ mod tests {
         let plan = plan_for_mailpit(&*plat);
         let names: Vec<(&str, &str)> =
             plan.iter().map(|p| (p.name.as_str(), p.version.as_str())).collect();
-        assert_eq!(names, vec![("mailpit", binaries::MAILPIT_VERSION)]);
+        assert_eq!(names, vec![("mailpit", binaries::pins().mailpit)]);
     }
 
     #[test]
@@ -1300,6 +1300,6 @@ pub fn plan_for_start_pinned(
         php_minors,
         db_versions,
         &PatchMap::new(),
-        binaries::ADMINER_VERSION,
+        binaries::pins().adminer,
     )
 }

@@ -40,7 +40,7 @@ fn edge_pids(plat: &dyn rexenv_lib::platform::traits::Platform) -> Vec<u32> {
         .paths()
         .bin_dir()
         .unwrap()
-        .join(format!("caddy-{}", binaries::CADDY_VERSION))
+        .join(format!("caddy-{}", binaries::pins().caddy))
         .join("caddy")
         .display()
         .to_string();

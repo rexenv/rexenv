@@ -24,7 +24,7 @@ async fn main() {
     let plat = platform::current();
     let host = "proxytest.test";
 
-    let caddy = binaries::resolve(&*plat, "caddy", binaries::CADDY_VERSION)
+    let caddy = binaries::resolve(&*plat, "caddy", binaries::pins().caddy)
         .await
         .expect("resolve caddy");
     let ca = ssl::load_or_create(plat.paths(), plat.permissions()).expect("ca");

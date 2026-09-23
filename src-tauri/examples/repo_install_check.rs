@@ -59,7 +59,7 @@ async fn main() {
     let npm = devtools::resolve_package_manager(&env, "npm").expect("npm").path;
     let patch = php::patch_for_minor("8.3").expect("8.3 pinned");
     let php_bin = binaries::resolve(&*plat, "php", patch).await.expect("bundled php");
-    let composer = binaries::resolve_file(&*plat, "composer", binaries::COMPOSER_VERSION)
+    let composer = binaries::resolve_file(&*plat, "composer", binaries::pins().composer)
         .await
         .expect("pinned composer.phar");
     println!("node = {} ({:?})", node.path.display(), node.version);

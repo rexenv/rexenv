@@ -809,7 +809,7 @@ pub(super) async fn resolve_wp_tools(state: &AppState, php_minor: &str) -> Resul
     let php_bin = resolve_php(state, php_minor).await?;
     let platform = state.platform.as_ref();
     // wp-cli is a .phar, not a Mach-O → resolve_file (no chmod/codesign).
-    let wp_phar = crate::core::binaries::resolve_file(platform, "wp-cli", crate::core::binaries::WP_CLI_VERSION).await?;
+    let wp_phar = crate::core::binaries::resolve_file(platform, "wp-cli", crate::core::binaries::pins().wp_cli).await?;
     Ok((php_bin, wp_phar))
 }
 
@@ -1569,7 +1569,7 @@ mod tests {
         // a hand-maintained second list is how a helpful refusal starts lying.
         assert_eq!(
             crate::core::php::available_minors().len(),
-            crate::core::binaries::PHP_VERSIONS.len(),
+            crate::core::binaries::pins().php_versions.len(),
             "available_minors drifted from the shipped build list"
         );
         assert!(crate::core::php::patch_for_minor("8.3").is_some(), "and the set is not empty");

@@ -23,8 +23,8 @@ async fn main() {
     let plat = platform::current();
 
     // Bundled PHP 8.3.31 + WP-CLI + the `wp` wrapper.
-    let php_bin = binaries::resolve(&*plat, "php", binaries::PHP_VERSION).await.expect("php");
-    let wp_phar = binaries::resolve_file(&*plat, "wp-cli", binaries::WP_CLI_VERSION).await.expect("wp-cli");
+    let php_bin = binaries::resolve(&*plat, "php", binaries::pins().php).await.expect("php");
+    let wp_phar = binaries::resolve_file(&*plat, "wp-cli", binaries::pins().wp_cli).await.expect("wp-cli");
     let wp_dir = terminal::ensure_wp_wrapper(&*plat, &php_bin, &wp_phar).expect("wp wrapper");
     let php_dir = php_bin.parent().unwrap().to_path_buf();
 
@@ -87,7 +87,7 @@ async fn main() {
 
     println!("\n────── PTY output ──────\n{out}\n────────────────────────");
 
-    let bundled = format!("PHP {}", binaries::PHP_VERSION); // "PHP 8.3.31"
+    let bundled = format!("PHP {}", binaries::pins().php); // "PHP 8.3.31"
     assert!(out.contains(&bundled), "php -v did not report the bundled version ({bundled})");
     println!("✓ `php -v` → bundled {bundled}");
 

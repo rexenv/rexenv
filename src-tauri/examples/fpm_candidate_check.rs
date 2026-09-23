@@ -53,7 +53,7 @@ async fn main() -> ExitCode {
     let mut checks = common::Check::new("fpm_candidate_check");
 
     let fpm_bin =
-        binaries::resolve(&*plat, "php-fpm", binaries::PHP_VERSION).await.expect("php-fpm");
+        binaries::resolve(&*plat, "php-fpm", binaries::pins().php).await.expect("php-fpm");
 
     // 1. The real pool, from the real conf.
     let conf = services::write_fpm_config(&*plat, "8.3", POOL_PORT, None, &[]).unwrap();

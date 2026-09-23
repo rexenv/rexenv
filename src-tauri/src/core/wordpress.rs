@@ -261,7 +261,7 @@ pub fn wp_argv_prefix(wp_phar: &Path) -> Vec<String> {
     // Resolving the platform here keeps the signature — and so the guard's
     // "build yours from wp_argv_prefix" instruction — unchanged.
     let platform = crate::platform::current();
-    let mailpit = super::binaries::cached_bin(&*platform, "mailpit", super::binaries::MAILPIT_VERSION);
+    let mailpit = super::binaries::cached_bin(&*platform, "mailpit", super::binaries::pins().mailpit);
     finish_wp_argv(argv, wp_phar, mailpit.as_deref(), platform.supervisor().php_pool_model())
 }
 

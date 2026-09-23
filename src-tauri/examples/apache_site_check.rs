@@ -56,8 +56,8 @@ async fn main() {
     let plat = platform::current();
     let mut ok = true;
 
-    println!("=== resolve_bundle(httpd {}) ===", binaries::HTTPD_VERSION);
-    let basedir = binaries::resolve_bundle(&*plat, "httpd", binaries::HTTPD_VERSION)
+    println!("=== resolve_bundle(httpd {}) ===", binaries::pins().httpd);
+    let basedir = binaries::resolve_bundle(&*plat, "httpd", binaries::pins().httpd)
         .await
         .expect("resolve httpd bundle");
     println!("  published at {}", basedir.display());
@@ -110,7 +110,7 @@ async fn main() {
     .unwrap();
 
     println!("\n=== throwaway php-fpm pool on :{FPM_PORT} ===");
-    let fpm_bin = binaries::resolve(&*plat, "php-fpm", binaries::PHP_VERSION)
+    let fpm_bin = binaries::resolve(&*plat, "php-fpm", binaries::pins().php)
         .await
         .expect("php-fpm");
     let fpm_conf = docroot.join("fpm.ini");

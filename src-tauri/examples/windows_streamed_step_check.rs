@@ -103,7 +103,7 @@ mod windows {
             &format!("{:?}", get("Path")),
         );
 
-        let php = match binaries::resolve_program(&*plat, "php", binaries::PHP_VERSION).await {
+        let php = match binaries::resolve_program(&*plat, "php", binaries::pins().php).await {
             Ok(p) => p,
             Err(e) => {
                 check.is("the site's PHP resolves", false, &e.to_string());
@@ -181,7 +181,7 @@ mod windows {
         );
 
         // ── 6. Composer through the site's PHP. ──
-        match binaries::resolve_file(&*plat, "composer", binaries::COMPOSER_VERSION).await {
+        match binaries::resolve_file(&*plat, "composer", binaries::pins().composer).await {
             Ok(composer) => {
                 let project = root.join("laravel app");
                 std::fs::create_dir_all(&project).unwrap();

@@ -324,7 +324,7 @@ pub async fn adminer_update_apply(
     let php = crate::core::binaries::resolve_program(
         platform,
         "php",
-        crate::core::binaries::PHP_VERSION,
+        crate::core::binaries::pins().php,
     )
     .await?;
     crate::core::adminer::verify_pair(&php, &file)?;

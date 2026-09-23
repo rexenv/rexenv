@@ -57,7 +57,7 @@ async fn main() -> std::process::ExitCode {
     let mut mgr = ServiceManager::with_ports(Ports { http: 8080, https: 8443, nginx: services::NGINX_HTTP_PORT });
     let all = sites::list(&conn).unwrap();
     let php_minors = rexenv_lib::core::php::installed_minors(&conn).unwrap();
-    if let Err(e) = mgr.start_all(&*plat, &ca, &all, &php_minors, binaries::ADMINER_VERSION, true).await {
+    if let Err(e) = mgr.start_all(&*plat, &ca, &all, &php_minors, binaries::pins().adminer, true).await {
         eprintln!("start_all failed: {e}");
         // `FAILURE`, never a bare `return` — a bare return from `main` exits 0 and the
         // tier records a run that asserted nothing as green (common/mod.rs, the
@@ -66,7 +66,7 @@ async fn main() -> std::process::ExitCode {
     }
 
     // Resolve cloudflared + start the quick tunnel.
-    let bin = binaries::resolve(&*plat, "cloudflared", binaries::CLOUDFLARED_VERSION).await.unwrap();
+    let bin = binaries::resolve(&*plat, "cloudflared", binaries::pins().cloudflared).await.unwrap();
     println!("✓ cloudflared resolved: {}", bin.display());
     let mut child = tunnels::start(&*plat, &bin, domain, services::NGINX_HTTP_PORT).unwrap();
 

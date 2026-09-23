@@ -91,7 +91,7 @@ async fn main() -> std::process::ExitCode {
     let mut mgr = ServiceManager::with_ports(ports);
     let all = sites::list(&conn).unwrap();
     let php_minors = rexenv_lib::core::php::installed_minors(&conn).unwrap();
-    if let Err(e) = mgr.start_all(&*plat, &ca, &all, &php_minors, binaries::ADMINER_VERSION, true).await {
+    if let Err(e) = mgr.start_all(&*plat, &ca, &all, &php_minors, binaries::pins().adminer, true).await {
         eprintln!("start_all failed: {e}");
         // `FAILURE`, never a bare `return` — a bare return from `main` exits 0 and the
         // tier records a run that asserted nothing as green (common/mod.rs, the
@@ -106,10 +106,10 @@ async fn main() -> std::process::ExitCode {
     }
 
     // Install WordPress (MySQL is up now).
-    let php = rexenv_lib::core::binaries::resolve(&*plat, "php", rexenv_lib::core::binaries::PHP_VERSION).await.unwrap();
-    let wp = rexenv_lib::core::binaries::resolve_file(&*plat, "wp-cli", rexenv_lib::core::binaries::WP_CLI_VERSION).await.unwrap();
+    let php = rexenv_lib::core::binaries::resolve(&*plat, "php", rexenv_lib::core::binaries::pins().php).await.unwrap();
+    let wp = rexenv_lib::core::binaries::resolve_file(&*plat, "wp-cli", rexenv_lib::core::binaries::pins().wp_cli).await.unwrap();
     let (db_client, _) = rexenv_lib::core::db::DbEngine::Mysql
-        .sql_client_bins(&*plat, rexenv_lib::core::binaries::MYSQL_VERSION)
+        .sql_client_bins(&*plat, rexenv_lib::core::binaries::pins().mysql)
         .await
         .expect("bundled MySQL client");
     common::install_wp(&php, &wp, &docroot, domain, "WP Login", &db_client);

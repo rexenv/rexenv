@@ -24,7 +24,7 @@ use std::process::Command;
 #[tokio::main]
 async fn main() {
     let plat = rexenv_lib::platform::current();
-    let bin = binaries::resolve(&*plat, "frankenphp", binaries::FRANKENPHP_VERSION)
+    let bin = binaries::resolve(&*plat, "frankenphp", binaries::pins().frankenphp)
         .await
         .expect("frankenphp binary (cached)");
     let tmp = std::env::temp_dir().join(format!("rexenv-fp-validate-{}", std::process::id()));

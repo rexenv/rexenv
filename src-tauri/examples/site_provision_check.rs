@@ -46,7 +46,7 @@ async fn main() {
     };
     let ca = ssl::load_or_create(plat.paths(), plat.permissions()).unwrap();
     let (db_client, _) = rexenv_lib::core::db::DbEngine::Mysql
-        .sql_client_bins(&*plat, rexenv_lib::core::binaries::MYSQL_VERSION)
+        .sql_client_bins(&*plat, rexenv_lib::core::binaries::pins().mysql)
         .await
         .expect("bundled MySQL client");
 

@@ -62,7 +62,7 @@ async fn main() -> std::process::ExitCode {
     let mut mgr = ServiceManager::with_ports(Ports { http: 8080, https: HTTPS, nginx: services::NGINX_HTTP_PORT });
     let all = sites::list(&conn).unwrap();
     let php_minors = rexenv_lib::core::php::installed_minors(&conn).unwrap();
-    if let Err(e) = mgr.start_all(&*plat, &ca, &all, &php_minors, binaries::ADMINER_VERSION, true).await {
+    if let Err(e) = mgr.start_all(&*plat, &ca, &all, &php_minors, binaries::pins().adminer, true).await {
         eprintln!("start_all failed: {e}");
         // `FAILURE`, never a bare `return` — a bare return from `main` exits 0 and the
         // tier records a run that asserted nothing as green (common/mod.rs, the
@@ -80,14 +80,14 @@ async fn main() -> std::process::ExitCode {
     common::await_listening(rexenv_lib::core::services::NGINX_HTTP_PORT, "nginx", None);
     common::await_listening(rexenv_lib::core::services::PHP_FPM_PORT, "php-fpm 8.3", None);
 
-    let php = binaries::resolve(&*plat, "php", binaries::PHP_VERSION).await.unwrap();
-    let wp = binaries::resolve_file(&*plat, "wp-cli", binaries::WP_CLI_VERSION).await.unwrap();
+    let php = binaries::resolve(&*plat, "php", binaries::pins().php).await.unwrap();
+    let wp = binaries::resolve_file(&*plat, "wp-cli", binaries::pins().wp_cli).await.unwrap();
 
     // Clean slate (re-runnable): drop any leftover DB + docroot from a prior run so
     // we genuinely start single-site before converting.
-    let mysql_base = binaries::resolve_dir(&*plat, "mysql", binaries::MYSQL_VERSION).await.unwrap();
+    let mysql_base = binaries::resolve_dir(&*plat, "mysql", binaries::pins().mysql).await.unwrap();
     let (db_client, _) = rexenv_lib::core::db::DbEngine::Mysql
-        .sql_client_bins(&*plat, rexenv_lib::core::binaries::MYSQL_VERSION)
+        .sql_client_bins(&*plat, rexenv_lib::core::binaries::pins().mysql)
         .await
         .expect("bundled MySQL client");
     {

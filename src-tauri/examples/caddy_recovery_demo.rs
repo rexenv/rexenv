@@ -19,7 +19,7 @@ async fn main() {
     // shared stack. Without this, core::stack_guard skips adopted services.
     rexenv_lib::core::stack_guard::allow_real_stack_control();
     let plat = platform::current();
-    let caddy = binaries::resolve(&*plat, "caddy", binaries::CADDY_VERSION).await.unwrap();
+    let caddy = binaries::resolve(&*plat, "caddy", binaries::pins().caddy).await.unwrap();
     let sock = proxy::admin_socket_path(&*plat).expect("admin socket path");
 
     // An edge config with no sites — enough to bind the admin socket.

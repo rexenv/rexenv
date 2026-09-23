@@ -52,7 +52,7 @@ async fn main() {
     let mut ok = true;
 
     // ── sandbox mysqld = "rexenv's engine" on a fixture port ────────────────
-    let basedir = binaries::resolve_dir(&*plat, "mysql", binaries::MYSQL_VERSION)
+    let basedir = binaries::resolve_dir(&*plat, "mysql", binaries::pins().mysql)
         .await
         .expect("mysql tree (cached)");
     let datadir = sandbox.root().join("mysql-data");
@@ -71,7 +71,7 @@ async fn main() {
     }
     assert!(database::mysql_running(PORT), "sandbox mysqld is up");
     let (client, _) = rexenv_lib::core::db::DbEngine::Mysql
-        .sql_client_bins(&*plat, rexenv_lib::core::binaries::MYSQL_VERSION)
+        .sql_client_bins(&*plat, rexenv_lib::core::binaries::pins().mysql)
         .await
         .expect("bundled MySQL client");
     rexenv_lib::core::db::DbEngine::Mysql.create_database(&client, PORT, DB).expect("create the imported copy");
@@ -152,7 +152,7 @@ async fn main() {
         rexenv_lib::core::dbsource::Probe::Listening(id) => id,
         other => panic!("fixture engine not listening: {other:?}"),
     };
-    let ours = [dbdump::OurEngine { port: PORT, version: binaries::MYSQL_VERSION.into() }];
+    let ours = [dbdump::OurEngine { port: PORT, version: binaries::pins().mysql.into() }];
     let is_ours = dbdump::server_is_ours(&conn_now.host, conn_now.port, &identity, &ours);
     let state = db::open(&sandbox.root().join("app.db")).expect("sandbox state db");
     state

@@ -60,7 +60,7 @@ async fn main() {
     let minor = php::minor_of(&site.php_version);
     let patch = php::patch_for_minor(&minor).unwrap();
     let php_bin = binaries::resolve(&*plat, "php", patch).await.unwrap();
-    let wp_phar = binaries::resolve_file(&*plat, "wp-cli", binaries::WP_CLI_VERSION).await.unwrap();
+    let wp_phar = binaries::resolve_file(&*plat, "wp-cli", binaries::pins().wp_cli).await.unwrap();
     let wp_dir = terminal::ensure_wp_wrapper(&*plat, &php_bin, &wp_phar).unwrap();
     let php_dir = php_bin.parent().unwrap().to_path_buf();
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
@@ -104,8 +104,8 @@ async fn main() {
     println!("docroot: {}", site.path);
     assert!(out.contains("WP-CLI version"), "`wp --info` did not run WP-CLI");
     println!("✓ `wp --info` runs WP-CLI");
-    assert!(out.contains(binaries::PHP_VERSION), "wp --info shows wrong PHP (want {})", binaries::PHP_VERSION);
-    println!("✓ wp --info reports bundled PHP {}", binaries::PHP_VERSION);
+    assert!(out.contains(binaries::pins().php), "wp --info shows wrong PHP (want {})", binaries::pins().php);
+    println!("✓ wp --info reports bundled PHP {}", binaries::pins().php);
     assert!(out.contains("index.php"), "`ls` did not list the docroot (index.php)");
     println!("✓ `ls` lists the docroot");
 

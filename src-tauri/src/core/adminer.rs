@@ -482,7 +482,7 @@ pub fn verify_pair(php_bin: &std::path::Path, adminer_php: &std::path::Path) -> 
 pub const VERSION_KEY: &str = "adminer_version";
 
 /// **The ONE answer to "which Adminer version runs".** Everything that resolves,
-/// stages, plans or displays Adminer asks this — never `binaries::ADMINER_VERSION`.
+/// stages, plans or displays Adminer asks this — never `binaries::pins().adminer`.
 ///
 /// Three things in order, and each is load-bearing:
 ///
@@ -511,7 +511,7 @@ fn effective_version_for(conn: &Connection, arch: crate::platform::traits::Arch)
     if binaries::manifest("adminer", &want, std::env::consts::OS, arch).is_some() {
         return want;
     }
-    binaries::ADMINER_VERSION.to_string()
+    binaries::pins().adminer.to_string()
 }
 
 /// Record the user's chosen Adminer version, or clear it back to the pin.
@@ -1152,7 +1152,7 @@ mod tests {
         use crate::platform::traits::Arch;
         let _catalog = binaries::catalog_test_lock();
         let conn = crate::state::db::open_in_memory().unwrap();
-        let pin = binaries::ADMINER_VERSION;
+        let pin = binaries::pins().adminer;
         // A version ABOVE the pin, derived from it: the fixture used to spell one
         // out, so re-pinning 5.4.2 → 6.1.0 (21 Sep 2026) turned "newer than the
         // pin" into "older" and the floor swallowed it. A patch bump stays under

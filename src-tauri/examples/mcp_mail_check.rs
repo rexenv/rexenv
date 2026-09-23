@@ -237,7 +237,7 @@ async fn main() {
     ]);
 
     // ── Mailpit, ours, reaped however this ends ─────────────────────────────
-    let bin = binaries::resolve(&*plat, "mailpit", binaries::MAILPIT_VERSION)
+    let bin = binaries::resolve(&*plat, "mailpit", binaries::pins().mailpit)
         .await
         .expect("resolve mailpit");
     // Not `common::Reaped`: that guard sweeps its port, and its contract is a

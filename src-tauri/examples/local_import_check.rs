@@ -74,7 +74,7 @@ async fn main() -> std::process::ExitCode {
     let mut check = common::Check::new("local_import_check");
 
     // ── the stand-in for Local's per-site mysqld ─────────────────────────────
-    let basedir = binaries::resolve_dir(&*plat, "mysql", binaries::MYSQL_VERSION)
+    let basedir = binaries::resolve_dir(&*plat, "mysql", binaries::pins().mysql)
         .await
         .expect("mysql tree");
     let datadir = sandbox.root().join("mysql-data");
@@ -98,15 +98,15 @@ async fn main() -> std::process::ExitCode {
         return check.verdict();
     }
     let (client, _) = DbEngine::Mysql
-        .sql_client_bins(&*plat, binaries::MYSQL_VERSION)
+        .sql_client_bins(&*plat, binaries::pins().mysql)
         .await
         .expect("bundled MySQL client");
 
     // ── A. sign-in over the socket (#572) ─────────────────────────────────────
     DbEngine::Mysql.create_database(&client, PORT, "local").expect("create `local`");
     let verdict = compat(
-        &Source { vendor: Some(Vendor::Mysql), version: Version::parse(binaries::MYSQL_VERSION) },
-        &Target { vendor: Vendor::Mysql, version: Version::parse(binaries::MYSQL_VERSION).unwrap() },
+        &Source { vendor: Some(Vendor::Mysql), version: Version::parse(binaries::pins().mysql) },
+        &Target { vendor: Vendor::Mysql, version: Version::parse(binaries::pins().mysql).unwrap() },
     );
     let cleared = dbdump::gate(None, &verdict, false).expect("gate clears");
     let conn = DbConnection {
@@ -142,8 +142,8 @@ async fn main() -> std::process::ExitCode {
     );
 
     // ── B. the URL pass on a copy whose wp-config signs in nowhere (#573) ─────
-    let php8 = binaries::resolve(&*plat, "php", binaries::PHP_VERSION).await.expect("php");
-    let wp = binaries::resolve_file(&*plat, "wp-cli", binaries::WP_CLI_VERSION).await.expect("wp-cli");
+    let php8 = binaries::resolve(&*plat, "php", binaries::pins().php).await.expect("php");
+    let wp = binaries::resolve_file(&*plat, "wp-cli", binaries::pins().wp_cli).await.expect("wp-cli");
     let docroot = sandbox.root().join("Local Sites/ea/app/public");
     std::fs::create_dir_all(&docroot).unwrap();
     wordpress::install_for_site(

@@ -26,7 +26,7 @@ async fn main() {
     // server. FIRST statement — after anything is spawned, exiting leaks it.
     common::require_stack_stopped();
     let plat = platform::current();
-    let bin = binaries::resolve(&*plat, "mailpit", binaries::MAILPIT_VERSION)
+    let bin = binaries::resolve(&*plat, "mailpit", binaries::pins().mailpit)
         .await
         .expect("resolve mailpit");
     let mut server = common::OwnedService::new(mail::start(&*plat, &bin).expect("start mailpit"), "mailpit");

@@ -97,7 +97,7 @@ mod windows {
             &text.lines().filter(|l| l.contains('\\')).collect::<Vec<_>>().join(" | "),
         );
 
-        let nginx = binaries::resolve_program(&*plat, "nginx", binaries::NGINX_VERSION).await;
+        let nginx = binaries::resolve_program(&*plat, "nginx", binaries::pins().nginx).await;
         check.is("resolve_program finds nginx.exe inside the Windows tree", nginx.as_ref().is_ok_and(|p| p.ends_with("nginx.exe")), &format!("{nginx:?}"));
         let Ok(nginx) = nginx else {
             pools.stop_all(&*plat);

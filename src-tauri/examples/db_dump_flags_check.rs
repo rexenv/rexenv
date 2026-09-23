@@ -138,12 +138,12 @@ async fn main() {
 
     // Default pins — resolve (warm cache on a dev machine; the one download
     // this check may legitimately trigger on a cold one).
-    let mysql = binaries::resolve_dir(&*plat, "mysql", binaries::MYSQL_VERSION)
+    let mysql = binaries::resolve_dir(&*plat, "mysql", binaries::pins().mysql)
         .await
         .expect("mysql tree");
     probe_dump_tool(&mut ok, "mysqldump-default", &mysql.join("bin/mysqldump"), Vendor::Mysql, &tmp);
 
-    let mdb = binaries::resolve_bundle(&*plat, "mariadb", binaries::MARIADB_VERSION)
+    let mdb = binaries::resolve_bundle(&*plat, "mariadb", binaries::pins().mariadb)
         .await
         .expect("mariadb bundle");
     probe_dump_tool(&mut ok, "mariadb-dump-default", &mariadb::mariadb_dump_bin(&mdb), Vendor::Mariadb, &tmp);
@@ -154,11 +154,11 @@ async fn main() {
     // Client paths via `sql_client_bins` — the ONE constructor of `SqlClient`
     // — so this probe exercises the exact binary production would spawn.
     let (mdb_client, _) = rexenv_lib::core::db::DbEngine::Mariadb
-        .sql_client_bins(&*plat, binaries::MARIADB_VERSION)
+        .sql_client_bins(&*plat, binaries::pins().mariadb)
         .await
         .expect("mariadb client");
     let (mysql_client, _) = rexenv_lib::core::db::DbEngine::Mysql
-        .sql_client_bins(&*plat, binaries::MYSQL_VERSION)
+        .sql_client_bins(&*plat, binaries::pins().mysql)
         .await
         .expect("mysql client");
     for (label, client) in [
@@ -175,13 +175,13 @@ async fn main() {
     }
 
     // Non-default pinned versions: probe when cached, say so when not.
-    for v in binaries::MYSQL_VERSIONS.iter().filter(|v| **v != binaries::MYSQL_VERSION) {
+    for v in binaries::pins().mysql_versions.iter().filter(|v| **v != binaries::pins().mysql) {
         match cached_dump_tool(&*plat, "mysql", v) {
             Some(tool) => probe_dump_tool(&mut ok, &format!("mysqldump-{v}"), &tool, Vendor::Mysql, &tmp),
             None => println!("  – mysql {v} not cached; skipped (offline probe only)"),
         }
     }
-    for v in binaries::MARIADB_VERSIONS.iter().filter(|v| **v != binaries::MARIADB_VERSION) {
+    for v in binaries::pins().mariadb_versions.iter().filter(|v| **v != binaries::pins().mariadb) {
         match cached_dump_tool(&*plat, "mariadb", v) {
             Some(tool) => {
                 probe_dump_tool(&mut ok, &format!("mariadb-dump-{v}"), &tool, Vendor::Mariadb, &tmp)

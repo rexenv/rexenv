@@ -56,7 +56,7 @@ async fn main() {
             caddyfile_text.contains("respond @rexenv_probe 204"),
             "regenerated Caddyfile lacks the probe route"
         );
-        let caddy = binaries::resolve(&*plat, "caddy", binaries::CADDY_VERSION).await.unwrap();
+        let caddy = binaries::resolve(&*plat, "caddy", binaries::pins().caddy).await.unwrap();
         proxy::reload(&*plat, &caddy, &cfg.caddyfile, false).unwrap();
         assert!(proxy::admin_alive(&*plat), "edge must still answer after reload");
         println!("reloaded live edge with probe route ✓");
@@ -104,7 +104,7 @@ async fn main() {
             return;
         }
     }
-    let nginx = binaries::resolve(&*plat, "nginx", binaries::NGINX_VERSION).await.unwrap();
+    let nginx = binaries::resolve(&*plat, "nginx", binaries::pins().nginx).await.unwrap();
     let ca = ssl::load_or_create(plat.paths(), plat.permissions()).unwrap();
     let cert =
         ssl::ensure_site_cert(plat.paths(), plat.permissions(), &ca, adminer::ADMINER_HOST)

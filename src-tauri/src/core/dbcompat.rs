@@ -363,8 +363,8 @@ fn cross_vendor(vendor: Vendor, version: &Version, target: &Target) -> Verdict {
 /// offer a real way out of a downgrade rather than only a warning.
 fn newer_target_available(target: &Target) -> Option<&'static str> {
     let engine = match target.vendor {
-        Vendor::Mysql => crate::core::binaries::MYSQL_VERSIONS,
-        Vendor::Mariadb => crate::core::binaries::MARIADB_VERSIONS,
+        Vendor::Mysql => crate::core::binaries::pins().mysql_versions,
+        Vendor::Mariadb => crate::core::binaries::pins().mariadb_versions,
     };
     engine
         .iter()

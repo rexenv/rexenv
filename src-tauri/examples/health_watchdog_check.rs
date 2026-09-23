@@ -68,7 +68,7 @@ async fn main() {
 
     let mut mgr = ServiceManager::with_ports(ports);
     println!("starting stack (high ports)…");
-    mgr.start_all(&*plat, &ca, &all, &["8.3".into()], binaries::ADMINER_VERSION, true).await.unwrap();
+    mgr.start_all(&*plat, &ca, &all, &["8.3".into()], binaries::pins().adminer, true).await.unwrap();
 
     // Baseline: everything green.
     let running = |mgr: &ServiceManager, name: &str| {

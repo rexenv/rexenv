@@ -99,7 +99,7 @@ async fn main() -> std::process::ExitCode {
     let conn = rexenv_lib::state::db::open(&db_file).unwrap();
     let ca = ssl::load_or_create(plat.paths(), plat.permissions()).unwrap();
     let (mysql, _) = rexenv_lib::core::db::DbEngine::Mysql
-        .sql_client_bins(&*plat, rexenv_lib::core::binaries::MYSQL_VERSION)
+        .sql_client_bins(&*plat, rexenv_lib::core::binaries::pins().mysql)
         .await
         .expect("bundled MySQL client");
 

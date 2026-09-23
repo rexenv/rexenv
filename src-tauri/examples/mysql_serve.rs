@@ -20,7 +20,7 @@ async fn main() {
     let plat = platform::current();
     let port = database::MYSQL_PORT;
 
-    let basedir = binaries::resolve_dir(&*plat, "mysql", binaries::MYSQL_VERSION)
+    let basedir = binaries::resolve_dir(&*plat, "mysql", binaries::pins().mysql)
         .await
         .expect("resolve mysql");
     println!("mysql basedir: {}", basedir.display());
@@ -53,7 +53,7 @@ async fn main() {
     // Connect with the bundled client.
     let out = Command::new(
         rexenv_lib::core::db::DbEngine::Mysql
-            .sql_client_bins(&*plat, binaries::MYSQL_VERSION)
+            .sql_client_bins(&*plat, binaries::pins().mysql)
             .await
             .expect("bundled MySQL client")
             .0

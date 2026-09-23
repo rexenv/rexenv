@@ -112,7 +112,7 @@ async fn main() {
     let mut pools = PhpFpmPools::default();
     pools.start(&*plat, &["8.3".to_string()]).await.expect("pool");
 
-    let fp_bin = binaries::resolve(&*plat, "frankenphp", binaries::FRANKENPHP_VERSION).await.unwrap();
+    let fp_bin = binaries::resolve(&*plat, "frankenphp", binaries::pins().frankenphp).await.unwrap();
     // The RECORDED port, never the derived one — the same rule the product
     // states at `service_manager::reconcile_overrides`: "The RECORDED backend
     // port (B20 §4), never re-derived — so the spawned backend and the edge
@@ -155,8 +155,8 @@ async fn main() {
 
     // Shared nginx (ng.test) + edge Caddy (routes both).
     let cfg = sites::rebuild_configs(&conn, &*plat, &ca, NGINX_PORT, CADDY_HTTP, CADDY_HTTPS).unwrap();
-    let nginx_bin = binaries::resolve(&*plat, "nginx", binaries::NGINX_VERSION).await.unwrap();
-    let caddy_bin = binaries::resolve(&*plat, "caddy", binaries::CADDY_VERSION).await.unwrap();
+    let nginx_bin = binaries::resolve(&*plat, "nginx", binaries::pins().nginx).await.unwrap();
+    let caddy_bin = binaries::resolve(&*plat, "caddy", binaries::pins().caddy).await.unwrap();
     let mut nginx = common::OwnedService::new(
         services::start_nginx(&*plat, &nginx_bin, &cfg.nginx_conf, &cfg.nginx_prefix).unwrap(),
         "nginx",

@@ -44,7 +44,7 @@ fn main() {
     // The FLAG must be in the argv the app actually builds. Asserted first: if
     // it is missing, the delivery check below would fail for a reason this
     // example would otherwise report as "Mailpit is down".
-    let phar = binaries::cached_path(&*plat, "wp-cli", binaries::WP_CLI_VERSION)
+    let phar = binaries::cached_path(&*plat, "wp-cli", binaries::pins().wp_cli)
         .expect("wp-cli is not downloaded — run the app once first");
     let argv = wordpress::wp_argv_prefix(&phar);
     let flag = argv

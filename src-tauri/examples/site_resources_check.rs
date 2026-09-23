@@ -27,7 +27,7 @@ async fn main() {
     // victim of the tree-vs-client class, found by the SqlClient type change —
     // the 14 Aug sweep grepped for mysql_client_bin and this file never called it.
     let client = DbEngine::Mysql
-        .cached_sql_client(&*plat, binaries::MYSQL_VERSION)
+        .cached_sql_client(&*plat, binaries::pins().mysql)
         .expect("bundled MySQL client cached (Start all downloads it)");
     let sizes = DbEngine::Mysql.db_sizes(&client, DbEngine::Mysql.port()).unwrap();
     println!("== db sizes ==");
@@ -108,7 +108,7 @@ async fn main() {
         .paths()
         .bin_dir()
         .unwrap()
-        .join(format!("nginx-{}", binaries::NGINX_VERSION))
+        .join(format!("nginx-{}", binaries::pins().nginx))
         .join("nginx");
     services::reload_nginx(&*plat, &nginx_bin, &cfg.nginx_conf, &cfg.nginx_prefix, services::NGINX_HTTP_PORT).unwrap();
     // Let the old worker drain — a request raced right at the signal still

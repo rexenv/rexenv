@@ -97,7 +97,7 @@ async fn main() {
     // outlived a quit app) so the port gates see them as ours.
     let pre = a.adopt_startup(&*plat, &all, true);
     println!("session A: adopted {pre} survivor(s), starting core stack…");
-    match a.start_core(&*plat, &ca, &all, &minors, binaries::ADMINER_VERSION, true).await {
+    match a.start_core(&*plat, &ca, &all, &minors, binaries::pins().adminer, true).await {
         Ok((_caddyfile, checks)) => await_ready(checks).await.expect("core stack ready"),
         Err(e) => {
             eprintln!("start_core failed: {e}");

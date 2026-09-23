@@ -562,7 +562,7 @@ pub async fn repo_run_step<R: tauri::Runtime>(
                 let phar = binaries::resolve_file(
                     state.platform.as_ref(),
                     "composer",
-                    binaries::COMPOSER_VERSION,
+                    binaries::pins().composer,
                 )
                 .await?;
                 Ok::<_, Error>(Some((php_bin, phar)))
@@ -747,7 +747,7 @@ pub async fn run_offered_steps<R: tauri::Runtime>(
             let phar = binaries::resolve_file(
                 state.platform.as_ref(),
                 "composer",
-                binaries::COMPOSER_VERSION,
+                binaries::pins().composer,
             )
             .await?;
             Ok::<_, Error>(Some((php_bin, phar)))
@@ -1568,7 +1568,7 @@ pub async fn repo_dist_archive<R: tauri::Runtime>(
     };
     let php_bin = binaries::resolve_program(state.platform.as_ref(), "php", &patch).await?;
     let wp_phar =
-        binaries::resolve_file(state.platform.as_ref(), "wp-cli", binaries::WP_CLI_VERSION).await?;
+        binaries::resolve_file(state.platform.as_ref(), "wp-cli", binaries::pins().wp_cli).await?;
     // Writes ~370 KB once per version, then a single `is_file` on every later
     // call — cheap enough to keep here, where a failure is still the click's.
     let autoload = wp_packages::ensure_dist_archive(state.platform.paths())?;

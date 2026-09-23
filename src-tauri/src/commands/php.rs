@@ -43,7 +43,7 @@ pub fn list_php_versions(state: State<'_, AppState>) -> Result<Vec<PhpVersionVie
 /// so the UI can never carry a second copy that drifts.
 #[tauri::command]
 pub fn frankenphp_embedded_php() -> String {
-    core::php::minor_of(core::binaries::FRANKENPHP_EMBEDDED_PHP)
+    core::php::minor_of(core::binaries::pins().frankenphp_embedded_php)
 }
 
 /// Enable (install) or disable (remove) a PHP version. Guarded in `core::php`

@@ -332,7 +332,7 @@ mod tests {
         use crate::core::binaries;
         use crate::platform::traits::Arch;
         let bundle =
-            binaries::bundle_manifest("httpd", binaries::HTTPD_VERSION, "macos", Arch::Arm64)
+            binaries::bundle_manifest("httpd", binaries::pins().httpd, "macos", Arch::Arm64)
                 .expect("httpd bundle pinned");
         let includes = bundle.parts[0].include;
         for (_, file) in MODULES {

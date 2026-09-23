@@ -265,7 +265,7 @@ mod windows {
         let freed = wait(|| !answers("127.0.0.1", 443) && !answers("127.0.0.1", 80), Duration::from_secs(10));
         check.is("after stop_all, :443 and :80 are released", freed, "still answering");
         check.is("after stop_all, admin_alive is false", !proxy::admin_alive(plat), "");
-        let caddy_marker = rexenv_lib::core::binaries::cached_bin(plat, "caddy", rexenv_lib::core::binaries::CADDY_VERSION)
+        let caddy_marker = rexenv_lib::core::binaries::cached_bin(plat, "caddy", rexenv_lib::core::binaries::pins().caddy)
             .map(|p| p.display().to_string())
             .unwrap_or_default();
         let survivors: Vec<u32> = plat.supervisor().owned_pids(&caddy_marker).into_iter().filter(|p| started.contains(p)).collect();

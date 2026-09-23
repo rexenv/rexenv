@@ -216,7 +216,7 @@ mod tests {
         use crate::core::binaries;
         use crate::platform::traits::Arch;
         let bundle =
-            binaries::bundle_manifest("mariadb", binaries::MARIADB_VERSION, "macos", Arch::Arm64)
+            binaries::bundle_manifest("mariadb", binaries::pins().mariadb, "macos", Arch::Arm64)
                 .expect("mariadb bundle pinned");
         let includes = bundle.parts[0].include;
         for sql in BOOTSTRAP_SQL {

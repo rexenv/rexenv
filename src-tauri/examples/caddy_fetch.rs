@@ -8,7 +8,7 @@ use rexenv_lib::platform;
 #[tokio::main]
 async fn main() {
     let plat = platform::current();
-    match binaries::resolve(&*plat, "caddy", binaries::CADDY_VERSION).await {
+    match binaries::resolve(&*plat, "caddy", binaries::pins().caddy).await {
         Ok(path) => {
             println!("caddy cached at: {}", path.display());
             let out = std::process::Command::new(&path)

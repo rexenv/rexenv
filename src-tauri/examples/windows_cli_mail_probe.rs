@@ -57,8 +57,8 @@ mod windows {
         let plat = common::sandbox_platform_at(root.clone());
 
         let (mailpit, php) = match (
-            binaries::resolve(&*plat, "mailpit", binaries::MAILPIT_VERSION).await,
-            binaries::resolve_program(&*plat, "php", binaries::PHP_VERSION).await,
+            binaries::resolve(&*plat, "mailpit", binaries::pins().mailpit).await,
+            binaries::resolve_program(&*plat, "php", binaries::pins().php).await,
         ) {
             (Ok(m), Ok(p)) => (m, p),
             (m, p) => {
