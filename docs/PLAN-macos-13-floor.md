@@ -382,7 +382,9 @@ Then upgrade the 13 VM to 15 in place and re-run T6's proof through the GUI. *Do
 say which OS each proof came from.
 
 **T8 — release.** `RELEASING.md`'s order; the release note names the subset. Rule 3
-(§6.6) opens as its own TODO rows after this ships.
+(§6.6) opens as its own TODO rows after this ships. ✓ **0.8.7 published 23 Sep 2026**
+(`docs/PUBLISH-TESTING.md` §A 0.8.7): tap release + cask `:ventura`, app-manifest serial
+13 with the 13.0 floor, the release note naming the subset; source `34bd0d7e`.
 
 Not in this list, deliberately: any Intel run (no hardware), the PostgreSQL self-build
 (T8's follow-up), and relaxing PHP 8.0 to x86_64-only-on-13 (owner's call, one line in T3

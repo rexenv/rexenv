@@ -55,7 +55,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   agent before the swap in the updater's Finder-replace guidance (`docs/INSTALL.md`), or have the
   agent's KeepAlive wait for a settled bundle (a signature check before exec). Not a 0.8.7
   blocker — the shipped path is the updater.
-- [ ] **macOS 13 floor — three tiers, T0–T6 landed, T7 RUN on a 13.6 VM and its in-place 15.8 upgrade (six real defects found and fixed; 14-VM left), T8 open** (owner ruled 23 Sep 2026):
+- [ ] **macOS 13 floor — three tiers, T0–T6 landed, T7 RUN on a 13.6 VM and its in-place 15.8 upgrade (six real defects found and fixed; 14-VM left), T8 SHIPPED as 0.8.7** (owner ruled 23 Sep 2026):
   macOS 15 stays the STANDARD (every feature, latest pins); the app also RUNS on 13 and 14
   with a per-host pin set (`BinaryTier`, derived from the host every launch) and a
   "needs macOS 14" refusal for PostgreSQL and PHP 8.0 on 13; self-builds
@@ -102,6 +102,15 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   8.4.6 / MariaDB 12.3.2 / Redis 8.8.0 came up on the datadirs the legacy pins wrote, markers
   and rows intact, PostgreSQL and PHP 8.0 ordinary rows — and it found the `DnsMode::Down`
   latch (#442 leg 4). **Still open:** the macOS **14** VM. `docs/SMOKE-TEST.md` "macOS 13 and 14".
+  ✓ **T8** 23 Sep 2026 — 0.8.7 published (`docs/PUBLISH-TESTING.md` §A 0.8.7): tap release +
+  cask `:ventura`, app-manifest serial 13, source `34bd0d7e`. The row stays open for the 14 VM
+  and for §6.6's self-build follow-ups, listed below it.
+- [ ] **PostgreSQL self-build for macOS 13/14** (`docs/PLAN-macos-13-floor.md` §6.6 rule 3, item 1
+  — opened at T8, 23 Sep 2026). Both slices, `MACOSX_DEPLOYMENT_TARGET=13.0`, in `rexenv/runtimes`
+  on the nginx recipe; ships as a Legacy13/Legacy14 pin and flips the "Needs macOS 14/15" refusal
+  on the Databases page, New Site and `rex db versions`. Items 2 (PHP 8.0 — blocked on
+  static-php-cli's x86_64 abort) and 3 (Redis/MariaDB/httpd — the Intel bottle row) stay where
+  §6.6 leaves them.
 - [ ] **`rex site list` / `site info` say `serving` about a site that cannot be reached.** Seen on the
   15.8 VM, 23 Sep 2026: a WordPress create died at "downloading WordPress core" (cURL 28) and the
   site stayed setup-incomplete with NO vhost in the Caddyfile — `curl https://legacy-mwp.rex`

@@ -103,6 +103,29 @@ strips exactly one component and both other shapes produce a broken install.
 If it fails, do not publish: the dmg would install fine and every in-app update from it
 would break.
 
+## A) ✅ 0.8.7 — PUBLISHED (the first release that runs on macOS 13 and 14)
+
+`rexenv_0.8.7_universal.dmg`, sha256
+`8e3f78db9765ee596932d353c9e75474b54f0e8b921b3bc6afb8e02125ba7ab8`, 29,988,825 bytes.
+Update archive `rexenv_0.8.7_universal.app.tar.gz`, sha256
+`f68bd78e502a1da350c3fdfa47211ca51cffe72be48814b432ab95f68dbcf583`, 29,593,098 bytes.
+Source `34bd0d7e` (local tag `v0.8.7`; the repo is private, the tag is not pushed), clean
+tree, `verify: all green`. **§A0 ✅ by hand:** one dmg, both binaries `x86_64 arm64`,
+`Dist_Archive_Command` ×5 in EACH slice, codesign valid, `minos 13.0` in both slices.
+**§A ✅ measured** as the clean-15 SMOKE run recorded in `docs/SMOKE-TEST.md`'s header
+(the earlier dmg `cb17756a…` from `5aab0be0` ran the whole list; `8e3f78db…` differs by
+#715 and re-ran the uninstall row). Also run on the shipped 13.6 VM before that (SMOKE
+"macOS 13 and 14").
+
+**PUBLISHED 23 Sep 2026, 18:11:08Z** (release id 394930824; all four assets' API digests
+equal the local hashes). Update cask ran on the publish (run 35900712077, success): cask
+`0.8.7`, sha `8e3f78db…`, `depends_on macos: :ventura`. `rexenv/runtimes` "Publish app
+update manifest": dry run 35900920838 then publish 35906078876, both through the
+`manifest-signing` approval — **serial 12 → 13**, `check-app-manifest.sh` all green
+(signature OK, asset exists, digest matches). **`brew audit --cask --online` did NOT run
+on the dev Mac** — Homebrew refused to start ("Your Command Line Tools are too outdated",
+wants the CLT for Xcode 26.6); it is owed from a Mac whose brew runs.
+
 ## A) ✅ 0.6.1 — PUBLISHED, and the release the updater was finally RUN on
 
 `rexenv_0.6.1_universal.dmg`, sha256
