@@ -482,7 +482,11 @@ Live-proven end to end by `site_stop_start_check`.
   back: release it, `kickstart` the agent so its bind happens now rather than on its own
   cadence, probe, and rebind in-process if it did not take — and a rebind that fails
   because the agent took the port just after the probe window is read as the late
-  success it is, not latched as `Down`. The watchdog's own fallback into in-process
+  success it is, not latched as `Down` — and `Down` itself is a snapshot the watchdog
+  re-probes every poll, never a verdict: on the macOS 13→15 upgrade run (23 Sep 2026) the
+  agent held the port without answering yet at the one instant that re-probe fired, and an
+  empty `Down` arm then reported a dead resolver for two hours while `.rex` resolved (#442
+  leg 4). The watchdog's own fallback into in-process
   mode spawns the same handoff (it was the second door, and had none until 3 Sep
   2026). The release AWAITS the aborted task, so the port is free when the agent is
   kicked, not "soon". Bounded (5 attempts) and loud

@@ -1535,10 +1535,28 @@ Environment: macOS 13.6 (22G120) arm64, UTM (CLT-less at first, CLT installed la
 - [ ] **Xdebug on 13**: the toggle works on 8.1–8.4 (pool banner "with Xdebug v3.4.5"); on
       8.5 the toggle is off with the "no bottle pinned yet" reason.
 - [x] **WordPress and Laravel sites serve over HTTPS** exactly as the Core sections say. ✓ 23 Sep 2026 (macOS 13.6 VM, over `rex`): `legacy-wp.rex` (WordPress, one-click install on MySQL 8.4.3) and `legacy-lv.rex` (Laravel, composer + migrations on MySQL 8.4.3) both created and answered HTTPS 200 (`curl --resolve`, the CA not yet trusted on that VM); the Blank-PHP site too. No `crash.log` entry after any of it.
-- [ ] **In-place upgrade to macOS 15**, then relaunch: no note at Welcome; Databases →
+- [x] **In-place upgrade to macOS 15**, then relaunch: no note at Welcome; Databases →
       MySQL/MariaDB/Redis restart on the standard pins and the sites' databases are still
       there (T6's forward-upgrade proof, seen through the GUI); PostgreSQL and PHP 8.0 appear
-      as ordinary rows.
+      as ordinary rows. ✓ 23 Sep 2026 — the SAME 13.6 VM upgraded in place to **15.8 (24H23)**
+      by `startosinstall` from the full Sequoia installer (the 13→15 path, app-data untouched),
+      then the 0.8.7 app relaunched into the Standard tier: Databases page (screenshot) shows
+      **MySQL 8.4.6** running on the datadir 8.4.3 wrote (`mysql-error.log`: "Server upgrade
+      from '80403' to '80406' completed"; marker `written-on-13.6-by-8.4.3` read back,
+      `wp_posts` 4, `migrations` 3), **MariaDB 12.3.2** on the 12.0.2 datadir (marker
+      `written-on-13.6-by-12.0.2`; the app spawned it by the site-engine rule when a
+      WordPress site was created ON MariaDB after the upgrade — that create then died at
+      "downloading WordPress core" (cURL 28 after 600s, 37.0 of 37.2 MB: the VM's network,
+      not the tier) and stayed setup-incomplete), **Redis 8.8.0** started from the Services
+      toggle and loaded the old RDB;
+      **PostgreSQL 18.6.0** and **Redis** are ordinary rows ("Start … from Services"), and
+      `rex php list` carries **8.0** with `unavailableReason: null` (the Settings row renders
+      that field — its 13 shape was seen on the same VM before the upgrade). All five sites
+      `serving`, `https://legacy-wp.rex` 200 in Safari. **Not seen**: the Welcome note — an
+      upgraded install never shows Welcome again (`legacy_notice` is `None` on Standard, L0).
+      **Found there**: the app said `DNS DOWN` for two hours while the agent answered every
+      query (#442 leg 4, fixed in the next build) — and the edge-blocked/unblocked toast pair
+      fires during the app's OWN reload at site create (`docs/TODO.md`).
 
 ## Windows — what this checklist means on that OS
 

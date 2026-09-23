@@ -55,7 +55,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   agent before the swap in the updater's Finder-replace guidance (`docs/INSTALL.md`), or have the
   agent's KeepAlive wait for a settled bundle (a signature check before exec). Not a 0.8.7
   blocker — the shipped path is the updater.
-- [ ] **macOS 13 floor — three tiers, T0–T6 landed, T7 RUN on a 13.6 VM (five real defects found and fixed; 14-VM/15-upgrade left), T8 open** (owner ruled 23 Sep 2026):
+- [ ] **macOS 13 floor — three tiers, T0–T6 landed, T7 RUN on a 13.6 VM and its in-place 15.8 upgrade (six real defects found and fixed; 14-VM left), T8 open** (owner ruled 23 Sep 2026):
   macOS 15 stays the STANDARD (every feature, latest pins); the app also RUNS on 13 and 14
   with a per-host pin set (`BinaryTier`, derived from the host every launch) and a
   "needs macOS 14" refusal for PostgreSQL and PHP 8.0 on 13; self-builds
@@ -98,7 +98,26 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   share ran on **cloudflared 2025.4.0** and answered 200 from the host. With CLT installed on
   the VM: Apache 2.4.65 served, MariaDB 12.0.2 ran; **Redis 8.2.1 died on the session's
   `LANG=C.UTF-8`** (a locale macOS 13 lacks) — fixed by spawning with `LC_ALL=C` (#714).
-  **Still open:** the in-place upgrade to 15, and the macOS **14** VM. `docs/SMOKE-TEST.md` "macOS 13 and 14".
+  **The in-place upgrade to 15 ran the same day** (that VM, `startosinstall` to 15.8): MySQL
+  8.4.6 / MariaDB 12.3.2 / Redis 8.8.0 came up on the datadirs the legacy pins wrote, markers
+  and rows intact, PostgreSQL and PHP 8.0 ordinary rows — and it found the `DnsMode::Down`
+  latch (#442 leg 4). **Still open:** the macOS **14** VM. `docs/SMOKE-TEST.md` "macOS 13 and 14".
+- [ ] **`rex site list` / `site info` say `serving` about a site that cannot be reached.** Seen on the
+  15.8 VM, 23 Sep 2026: a WordPress create died at "downloading WordPress core" (cURL 28) and the
+  site stayed setup-incomplete with NO vhost in the Caddyfile — `curl https://legacy-mwp.rex`
+  answered a TLS `internal error` (no certificate for the name) while both `rex` commands printed
+  `serving`. The CLI reads `sites_serving` — the manager's belief (edge up && the site's upstream
+  up), the Sites-page bool — not `readctx::probe_serving`, which asks the wire and keeps
+  setup-incomplete distinct (#200) for the MCP. Same fact, two answers, one of them wrong: the
+  CLI should render the MCP's classification, not the belief.
+- [ ] **The edge wire probe reads the app's OWN Caddy reload as a foreign proxy.** Three times in
+  three minutes on the 15.8 VM (23 Sep 2026, one per `rex site create`), and earlier the same day
+  on 13.6: `[edge-blocked] … another local proxy answers port 443 in front of it — no site will
+  load until you quit that app` followed ~10s later by `[edge-unblocked]`. Nothing foreign was
+  there — the marker-header probe (`proxy::edge_wire`) misses during the reload the app itself
+  just asked for, and "another local proxy" is the fallback when no holder is found. Two toasts
+  per site create, naming an app that does not exist. Fix: the watchdog should know a reload is
+  in flight (or require the miss on two consecutive polls) before calling the wire foreign.
 
 - [ ] **Adminer: the documented revert does not exist.** After Update (5.4.2 → 6.0.2) the Databases
   row reads only `Adminer 6.0.2`; the older tree stays on disk but nothing offers it, so

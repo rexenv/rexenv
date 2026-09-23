@@ -1101,13 +1101,30 @@ pub fn run() {
                     // launchctl kickstart, and after 3 failed kicks we fall back
                     // to an IN-PROCESS resolver so sites keep resolving NOW (the
                     // degraded mode is surfaced in Settings). InProcess → restart
-                    // the task in place (the old behavior). A resolver that never
-                    // started (Down) stays a Settings problem, not a restart loop.
+                    // the task in place (the old behavior). Down → treated as
+                    // Agent: `Down` is latched by ONE path, the handoff's rebind
+                    // failing while the agent holds the port but does not answer
+                    // YET — the agent's cold bind is a process booting — and the
+                    // first version left that arm empty, so the app said DOWN for
+                    // the rest of the session while `.rex` resolved fine (macOS
+                    // 13→15 upgrade run, 23 Sep 2026: agent answering 20s after
+                    // the latch, `rex status` DOWN two hours later). The probe
+                    // below is what makes Down a snapshot, not a verdict.
                     let dns = watchdog.state::<state::app::DnsState>();
                     match dns.mode() {
-                        state::app::DnsMode::Agent => {
+                        state::app::DnsMode::Agent | state::app::DnsMode::Down => {
                             if core::dns::answers_as_ours(core::dns::DEFAULT_DNS_PORT) {
                                 dns_failures = 0;
+                                if matches!(dns.mode(), state::app::DnsMode::Down) {
+                                    dns.set(None, state::app::DnsMode::Agent);
+                                    events.push(core::service_manager::HealthEvent {
+                                        service: "DNS".into(),
+                                        action: "adopted",
+                                        detail: "resolver agent is answering after all — \
+                                                 adopted (the handoff had given it up as down)"
+                                            .into(),
+                                    });
+                                }
                             } else if dns_failures < 3 {
                                 dns_failures += 1;
                                 match state.platform.dns_agent().kickstart() {
@@ -1197,7 +1214,6 @@ pub fn run() {
                                 dns_failures = 0;
                             }
                         }
-                        state::app::DnsMode::Down => {}
                     }
 
                     if !events.is_empty() {
@@ -2495,6 +2511,33 @@ mod tests {
         assert!(release < kickstart, "release the port BEFORE asking the agent to take it");
         assert!(kickstart < probe, "kickstart BEFORE probing, or the probe measures the wait");
         assert!(probe < rebind, "rebind only AFTER the probe says the agent did not take it");
+    }
+
+    /// Ledger #442, leg (4) — **the watchdog re-examines `Down`; there is no
+    /// empty `Down` arm.** TEXT, not behaviour (the #175 bound): the watchdog
+    /// is a closure over a live app. What it catches is the arm going back to
+    /// `DnsMode::Down => {}` — the shape that, on the macOS 13→15 upgrade run
+    /// (23 Sep 2026), had `rex status` say DOWN for two hours while the agent
+    /// answered every query.
+    #[test]
+    fn the_dns_watchdog_never_leaves_down_unexamined() {
+        let src = crate::core::copy_scan::production_source(include_str!("lib.rs"));
+        let start = src.find("let dns = watchdog.state::<state::app::DnsState>();").expect("the watchdog reads DnsState");
+        let body = &src[start..];
+        let end = body.find("if !events.is_empty()").expect("the watchdog flushes its events");
+        let body = &body[..end];
+        assert!(body.contains("kickstart"), "sliced the wrong block");
+        assert!(
+            !body.contains("DnsMode::Down => {}"),
+            "Down must be probed like Agent, never left as an empty arm"
+        );
+        assert!(
+            body.contains("DnsMode::Agent | state::app::DnsMode::Down =>"),
+            "Down shares the Agent arm's probe, kick and fallback"
+        );
+        let probe = body.find("answers_as_ours").expect("the arm probes the wire");
+        let adopt = body[probe..].find("DnsMode::Agent);").expect("an answering agent is adopted out of Down");
+        assert!(adopt > 0, "adoption follows the probe");
     }
 
     /// Ledger #624 — **the Windows tray opens the window on a LEFT click and the menu on a RIGHT one, with the

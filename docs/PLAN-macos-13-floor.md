@@ -372,7 +372,7 @@ One L1 example per stateful engine: init a datadir on the Legacy13 binary, start
 the Standard binary, query it. MySQL 8.4 + 8.0, MariaDB 12 + 11.4. Sandbox tier,
 fixture-owned. *Done when:* `live-checks.sh` lists them and they pass here.
 
-**T7 — the human gate: real 13 and 14.** ◐ 23 Sep 2026 — see the SMOKE section for what ran over ssh and what still needs eyes.
+**T7 — the human gate: real 13 and 14.** ◐ 23 Sep 2026 — the 13.6 VM ran the legacy stack, and the same VM upgraded in place to 15.8 ran the standard pins on the legacy datadirs (§6.4's forward move, seen through the GUI); the macOS 14 VM is what remains — see the SMOKE section.
 UTM arm64 VMs for macOS 13.7 and 14.x (the 15.6.1 VM recipe in `SMOKE-TEST.md`): clean
 install, onboarding says the subset, WordPress + Laravel sites serve over HTTPS, MySQL /
 MariaDB / Redis / Apache / Xdebug start from the Legacy pins, a tunnel opens on cloudflared
