@@ -18,8 +18,17 @@ pub enum DnsMode {
     Agent,
     /// Served by the legacy in-process task — dies with the app.
     InProcess,
-    /// Nothing serving (agent install AND in-process bind both failed).
+    /// Nothing serving (agent install AND in-process bind both failed). A
+    /// snapshot the watchdog re-probes, never a verdict (#442 leg 4).
     Down,
+    /// Nothing serving because the USER asked — Settings → "Remove system
+    /// changes" uninstalled the agent. The one mode the watchdog leaves alone:
+    /// on the clean-15 smoke (23 Sep 2026) it read this as `Agent`, kicked the
+    /// uninstalled agent three times ("DNS stopped unexpectedly — restarted
+    /// automatically", thrice) and then bound an in-process resolver — the app
+    /// re-serving the DNS it had just been told to remove. Cleared by the next
+    /// launch, which installs the agent again.
+    Removed,
 }
 
 /// DNS resolution state, managed as its OWN Tauri state (separate from

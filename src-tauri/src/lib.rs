@@ -1214,6 +1214,12 @@ pub fn run() {
                                 dns_failures = 0;
                             }
                         }
+                        // The user asked for this silence (Settings → Remove
+                        // system changes). Probing it would kick the agent
+                        // that was just uninstalled and, after three misses,
+                        // serve DNS in-process — the clean-15 smoke watched
+                        // exactly that (#715). Deliberately empty.
+                        state::app::DnsMode::Removed => {}
                     }
 
                     if !events.is_empty() {
@@ -2538,6 +2544,37 @@ mod tests {
         let probe = body.find("answers_as_ours").expect("the arm probes the wire");
         let adopt = body[probe..].find("DnsMode::Agent);").expect("an answering agent is adopted out of Down");
         assert!(adopt > 0, "adoption follows the probe");
+    }
+
+    /// Ledger #715 — **a resolver the user REMOVED is never brought back by the
+    /// watchdog.** TEXT, not behaviour (the #175 bound). Two halves, both
+    /// required: the teardown command must SAY the removal was asked for
+    /// (`DnsMode::Removed`), and the watchdog must have a deliberately empty arm
+    /// for it — the `Down` arm is probed (#442 leg 4), so folding `Removed` into
+    /// it would kick the uninstalled agent exactly as before.
+    #[test]
+    fn a_removed_resolver_is_never_resurrected_by_the_watchdog() {
+        let src = crate::core::copy_scan::production_source(include_str!("lib.rs"));
+        let start = src.find("let dns = watchdog.state::<state::app::DnsState>();").expect("the watchdog reads DnsState");
+        let body = &src[start..];
+        let end = body.find("if !events.is_empty()").expect("the watchdog flushes its events");
+        let body = &body[..end];
+        assert!(body.contains("kickstart"), "sliced the wrong block");
+        assert!(
+            body.contains("state::app::DnsMode::Removed => {}"),
+            "the watchdog must leave a removed resolver alone — an empty Removed arm"
+        );
+        assert!(
+            !body.contains("| state::app::DnsMode::Removed") && !body.contains("DnsMode::Removed |"),
+            "Removed must not share the probing arms"
+        );
+        let cmd = crate::core::copy_scan::production_source(include_str!("commands/system.rs"));
+        let teardown = cmd.find("pub async fn uninstall_system(").expect("the uninstall command exists");
+        let teardown = &cmd[teardown..];
+        let teardown = &teardown[..teardown.find("\n#[").unwrap_or(teardown.len())];
+        let ran = teardown.find("run_system_teardown(").expect("uninstall_system runs the teardown");
+        let told = teardown.find("DnsMode::Removed").expect("uninstall_system must set DnsMode::Removed");
+        assert!(told > ran, "the mode is set AFTER the teardown succeeded, not before it could fail");
     }
 
     /// Ledger #624 — **the Windows tray opens the window on a LEFT click and the menu on a RIGHT one, with the

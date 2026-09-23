@@ -444,6 +444,7 @@ pub fn dns_status(
         crate::state::app::DnsMode::Agent => "agent",
         crate::state::app::DnsMode::InProcess => "in-process",
         crate::state::app::DnsMode::Down => "down",
+        crate::state::app::DnsMode::Removed => "removed",
     };
     // The Settings indicator reports the BACKBONE (.rex) resolver file — the
     // one system setup installs and that always stays active.
@@ -660,6 +661,7 @@ pub fn set_autostart(state: State<'_, AppState>, enabled: bool) -> Result<()> {
 #[tauri::command]
 pub async fn uninstall_system(
     state: State<'_, AppState>,
+    dns: State<'_, crate::state::app::DnsState>,
 ) -> Result<core::setup::TeardownReport> {
     {
         let mut mgr = state.services.lock().await;
@@ -669,7 +671,13 @@ pub async fn uninstall_system(
     }
     // The database, not a guard on it: teardown locks it per step and never across
     // its prompts (#569).
-    core::prompt::while_prompting(|| core::setup::run_system_teardown(&state.db, state.platform.as_ref()))
+    let report =
+        core::prompt::while_prompting(|| core::setup::run_system_teardown(&state.db, state.platform.as_ref()))?;
+    // The teardown uninstalled the agent; tell the watchdog it was asked to,
+    // or it reads the silence as a crash and brings DNS back (#715). Any
+    // in-process resolver goes with it — dropping the service closes the socket.
+    dns.set(None, crate::state::app::DnsMode::Removed);
+    Ok(report)
 }
 
 #[cfg(test)]

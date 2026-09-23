@@ -1066,7 +1066,7 @@ export interface DnsStatus {
   running: boolean; // a resolver with our semantics answers on the loopback port
   /** Who serves DNS: LaunchAgent (survives app quits), legacy in-process
    *  fallback (dies with the app), or nothing. */
-  mode: "agent" | "in-process" | "down";
+  mode: "agent" | "in-process" | "down" | "removed";
   port: number;
   resolverInstalled: boolean; // this OS routes the TLD to rexenv
   resolverPath: string;

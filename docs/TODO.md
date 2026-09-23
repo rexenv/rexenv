@@ -110,6 +110,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   up), the Sites-page bool — not `readctx::probe_serving`, which asks the wire and keeps
   setup-incomplete distinct (#200) for the MCP. Same fact, two answers, one of them wrong: the
   CLI should render the MCP's classification, not the belief.
+- [ ] **After Settings → Remove system changes, the health log blames an outsider.** Clean-15 smoke,
+  23 Sep 2026: `[edge-down] Caddy: edge stopped and its KeepAlive daemon is no longer installed
+  (removed outside the app)` — twenty seconds after the app itself removed it. The service
+  manager has no notion of a teardown, so the honest wording for "the user did this here" does
+  not exist. Same family as #715 (the DNS watchdog had the same blind spot, now fixed with a
+  mode); the edge needs its equivalent, or the teardown should tell the manager.
 - [ ] **The edge wire probe reads the app's OWN Caddy reload as a foreign proxy.** Three times in
   three minutes on the 15.8 VM (23 Sep 2026, one per `rex site create`), and earlier the same day
   on 13.6: `[edge-blocked] … another local proxy answers port 443 in front of it — no site will
@@ -1609,7 +1615,11 @@ SMOKE-TEST on the built dmg, then PUBLISH-TESTING §A0/§A before publishing.** 
 this note exists for: silence in a gate list reads as "this is the set", and a gate
 nobody can see from the list is indistinguishable from a gate nobody ran.
 
-- [ ] **PUBLISH-TESTING §B** — uninstall removes the root :443 daemon (live launchd).
+- [x] **PUBLISH-TESTING §B** — uninstall removes the root :443 daemon (live launchd). ✓ 23 Sep
+  2026, clean-15 smoke on the UTM VM (macOS 15.8, dmg `cb17756a…`, source `5aab0be0`): after
+  Settings → Remove, `/Library/LaunchDaemons/dev.rexenv.rexenv.edge.plist` gone, nothing on
+  :443, `/etc/resolver` empty, the CA still in the keychain but `CSSMERR_TP_NOT_TRUSTED`, the
+  DNS agent job gone; one admin prompt + the keychain's own trust dialog. Found #715 there.
 - [ ] **PUBLISH-TESTING §D** — `--zap` ONLY; everything else has now run four times.
   **Re-scoped 21 Aug 2026**: the row below pins the v0.1.0 cask hash, but the cask has
   bumped cleanly through 0.1.1, 0.2.0, 0.3.0 and 0.4.0 since, so the install half is not "half

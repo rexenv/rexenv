@@ -498,7 +498,11 @@ Live-proven end to end by `site_stop_start_check`.
   fallback (sites resolve now, mode says it won't survive quits); InProcess → restart the
   task in place. Emits `service-health` events. A resolver that never started (port
   conflict at launch) is NOT auto-restarted — surfaces in Settings. Teardown
-  (`run_system_teardown`) also uninstalls the agent.
+  (`run_system_teardown`) also uninstalls the agent, and the command then sets
+  `DnsMode::Removed`, the one mode the watchdog never probes: without it the clean-15
+  smoke (23 Sep 2026) watched the app kick the uninstalled agent three times and then
+  serve DNS in-process — resurrecting what the user had just removed (#715). `Down` is
+  different — it means we FAILED, and is re-probed every poll.
 - The OS-side `/etc/resolver/<tld>` files are a separate privileged step, independent
   of the in-process server: onboarding installs the `.rex` backbone (`core/setup.rs`);
   any other TLD (`.test` included) installs on first use (`dns::ensure_resolver`, one

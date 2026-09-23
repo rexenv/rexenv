@@ -635,7 +635,17 @@ Intel-only / other). I'd be surprised given the valid signature, but this is the
 
 ---
 
-## B) 🚧 B2 — uninstall removes the root :443 daemon (launchd live check)
+## B) ✅ B2 — uninstall removes the root :443 daemon (launchd live check)
+
+**Run 23 Sep 2026** on the clean-15 UTM VM (macOS 15.8, `rexenv_0.8.7_universal.dmg`
+`cb17756a…`, source `5aab0be0`), driven over ssh with the app's own Settings → Remove:
+`launchctl print system/dev.rexenv.rexenv.edge` gone, `/Library/LaunchDaemons/…edge.plist`
+gone, nothing listening on :443, `/etc/resolver` empty, `rexenv Local CA` still in the login
+keychain but `security verify-cert` → `CSSMERR_TP_NOT_TRUSTED`, the DNS LaunchAgent job gone.
+Prompts: the one branded admin prompt ("rexenv wants to remove its system changes…") plus
+macOS's own "Certificate Trust Settings" dialog — two dialogs, one of them not ours. **What
+the run found:** the watchdog then kicked the uninstalled agent three times and bound an
+in-process resolver (ledger #715, fixed the same day); the block below is unchanged.
 
 **Why:** confirms the B2 fix actually unloads the root edge LaunchDaemon and frees :443. The
 command *composition* is unit-tested (`edge_daemon_uninstall_boots_out_and_removes_plist_wrapper_and_binary`);
