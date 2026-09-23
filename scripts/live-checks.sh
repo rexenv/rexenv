@@ -139,6 +139,7 @@ mail_api_check                 service both
 mail_route_check               service both
 mailpit_check                  service both
 legacy_pins_check              network macos
+legacy_upgrade_check           network macos
 macos_floor_check              network macos
 manifest_sweep_check           network both
 mariadb_bundle_check           network macos

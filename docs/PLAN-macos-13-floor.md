@@ -3,7 +3,7 @@
 **Status:** PLANNED — 23 Sep 2026. Measurement done (§1–§5, both slices, every component);
 **the owner ruled the shape the same day (§6)**: macOS 15 stays the STANDARD — every feature,
 every latest pin — and the app additionally RUNS on macOS 13 and 14 with a per-host pin set
-and a per-feature refusal where no build exists. Task list in §7; **T0–T5 landed 23 Sep 2026** (ledger #707–#711; #433 re-shaped), T6 next.
+and a per-feature refusal where no build exists. Task list in §7; **T0–T6 landed 23 Sep 2026** (ledger #707–#712; #433 re-shaped), T7 (the human VM gate) next.
 Planned against `99942bca`. Tracked as the "macOS 13 floor" row in `docs/TODO.md` (Now).
 
 The stated floor is `tauri.conf.json` `minimumSystemVersion: 15.0`, asserted equal to
@@ -363,7 +363,7 @@ host; `scripts/publish-manifest.sh` fills it from `vtool`; `check-app-manifest-t
 covers the field. *Done when:* an L0 test proves a 14.0 artifact is not offered to a 13.7
 host and is offered to 15.0; a published test manifest round-trips.
 
-**T6 — forward-upgrade proofs (§6.4).**
+**T6 — forward-upgrade proofs (§6.4).** ✓ 23 Sep 2026, ledger #712 — one example for all four pairs (fixture ports, so the running stack's MySQL/MariaDB need not stop). Finding: MariaDB 12.0.2 → 12.3.2 is NOT one `series_of` (major.minor), but both are their tier's default and share `mariadb/data`, so the directory is handed across a series — proven to work; §6.4's wording below assumed same-series everywhere.
 One L1 example per stateful engine: init a datadir on the Legacy13 binary, start it on
 the Standard binary, query it. MySQL 8.4 + 8.0, MariaDB 12 + 11.4. Sandbox tier,
 fixture-owned. *Done when:* `live-checks.sh` lists them and they pass here.

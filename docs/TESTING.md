@@ -804,7 +804,10 @@ commands/ 9 — commands/ is 1.7% of tests for ~20 files of orchestration):
   the RUN half: each legacy artifact resolved through the real download/relink/re-sign path
   into a sandbox platform and answering `--version` — on THIS macOS, so it proves the bytes
   and the relink, not the load on 13 itself (that is `minos` + T7's VM,
-  `docs/PLAN-macos-13-floor.md`).
+  `docs/PLAN-macos-13-floor.md`). `legacy_upgrade_check` (network tier, ledger #712) is the
+  OS-upgrade half: each legacy engine writes a row into a sandbox datadir on a fixture port,
+  and the standard pin of the same series starts on that directory and reads it back —
+  MySQL 8.4 / 8.0, MariaDB 12 / 11.4, all four on 23 Sep 2026.
 - **The design system's colour contrast was asserted in one comment and checked
   nowhere** (#337, scan landed 16 Aug 2026). `every_text_on_surface_pairing_meets_wcag_aa`
   and `every_rex_colour_class_names_a_token_that_exists` in `core::copy_scan` derive
