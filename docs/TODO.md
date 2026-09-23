@@ -60,8 +60,8 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   (manifest floor must follow the conf) / PORTS / TESTING; ledger #433 re-shaped.
   ✓ **T5** 23 Sep 2026 — catalog `minMacos`: a legacy host is offered only an entry that
   declares a floor it meets (undeclared = not offered there; Standard takes all); both
-  accessors gate; runtimes' publisher emits it from `vtool` (edited, UNCOMMITTED in
-  `../runtimes` — owner to commit + republish; serial 6 carries no floors); ledger #711.
+  accessors gate; runtimes' publisher emits it from `vtool` (runtimes `05220a5`, pushed);
+  **serial 7 published 23 Sep 2026** — `minMacos: "12.0"` on all 20 PHP entries; ledger #711.
   ✓ **T6** 23 Sep 2026 — `legacy_upgrade_check` (network tier): MySQL 8.4.3→8.4.6, 8.0.40→8.0.44,
   MariaDB 12.0.2→12.3.2 (default→default, one `mariadb/data`), 11.4.8→11.4.12 — legacy writes,
   standard reads, same datadir; ALL PASS here; ledger #712.

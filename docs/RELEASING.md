@@ -424,6 +424,6 @@ shape, not the shipped value — the value to publish is the conf's.
 `publish-manifest.sh` (in runtimes) now writes `minMacos` on every `php` / `php-fpm` entry,
 read with `vtool` off the artifact it just hashed, and refuses to publish a Mach-O whose floor
 it cannot read. rexenv offers a macOS 13 / 14 host only an entry whose floor it meets, and an
-entry WITHOUT the field is never offered to such a host (ledger #711) — so **the live manifest
-(serial 6, no floors) means legacy hosts get no catalog PHP updates until the next publish**.
-Standard hosts are unaffected. Nothing else in the document changed.
+entry WITHOUT the field is never offered to such a host (ledger #711). **Published as serial 7
+on 23 Sep 2026**: every `php` / `php-fpm` entry carries `minMacos: "12.0"` (our own builds), so
+a 13 / 14 host is offered the same PHP updates a 15 host is. Standard hosts saw no change.
