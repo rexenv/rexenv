@@ -1531,7 +1531,7 @@ Environment: macOS 13.6 (22G120) arm64, UTM, CLT-less · rexenv 0.8.6-dev (2d1e1
       with the sentence; `rex php install 8.0` refuses with it; New Site never offers 8.0.
 - [ ] **Xdebug on 13**: the toggle works on 8.1–8.4 (pool banner "with Xdebug v3.4.5"); on
       8.5 the toggle is off with the "no bottle pinned yet" reason.
-- [ ] **WordPress and Laravel sites serve over HTTPS** exactly as the Core sections say. (23 Sep 2026: a Blank-PHP site served 200 over HTTPS on 13.6; WordPress/Laravel not created on that run.)
+- [x] **WordPress and Laravel sites serve over HTTPS** exactly as the Core sections say. ✓ 23 Sep 2026 (macOS 13.6 VM, over `rex`): `legacy-wp.rex` (WordPress, one-click install on MySQL 8.4.3) and `legacy-lv.rex` (Laravel, composer + migrations on MySQL 8.4.3) both created and answered HTTPS 200 (`curl --resolve`, the CA not yet trusted on that VM); the Blank-PHP site too. No `crash.log` entry after any of it.
 - [ ] **In-place upgrade to macOS 15**, then relaunch: no note at Welcome; Databases →
       MySQL/MariaDB/Redis restart on the standard pins and the sites' databases are still
       there (T6's forward-upgrade proof, seen through the GUI); PostgreSQL and PHP 8.0 appear

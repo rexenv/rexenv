@@ -70,8 +70,8 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   `rex db versions --set postgres` said the platform sentence (a second copy of the engine
   gate — folded into `DbEngine::ensure_available_on`, #710). With both fixed: legacy pins
   offered and RUN (mysql-8.4.3, nginx, php-fpm 8.3 + the 3.4.5 Xdebug pool, Caddy, Mailpit),
-  a site served HTTPS 200, both refusals say the tier sentence, the app swap adopted the
-  running services. **Still open:** the GUI rows (onboarding note, muted PostgreSQL row, the
+  a Blank-PHP, a WordPress and a Laravel site were created and served HTTPS 200, both refusals
+  say the tier sentence, the app swap adopted the running services. **Still open:** the GUI rows (onboarding note, muted PostgreSQL row, the
   8.0 chip — need Screen Recording for ssh screenshots or an eyes-on pass), CA trust prompt,
   bottle bundles (VM has no CLT), a tunnel, WordPress/Laravel creates, the in-place upgrade
   to 15, and the macOS **14** VM. `docs/SMOKE-TEST.md` "macOS 13 and 14".
