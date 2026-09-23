@@ -6,7 +6,7 @@ month's evidence log (`docs/archive/SHIPPED-2026-07.md`, `-08.md`, `-09.md`) wit
 `reconcile-todo` skill. Tick an item in the commit that does the work, with a one-line
 ✓ evidence note. `scripts/todo-reconcile.py --count` prints the open/ticked tally.
 
-**Reconciled 23 Sep 2026, before the 0.9.0 cut** (HEAD `b208949e`, v0.8.6 + 16 commits): 19
+**Reconciled 23 Sep 2026, before the 0.8.7 cut** (HEAD `b208949e`, v0.8.6 + 16 commits): 19
 ticked blocks moved by the script (17 from Now, 2 from Release gates — the 18 Sep clean-VM
 fixes, the Windows rows, the Local/Valet multisite imports, the typed-`name.rex` fix). Shape 2
 (a row describing a state that no longer exists): 1 — "a self-built nginx would drop the floor
