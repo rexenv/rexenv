@@ -1506,12 +1506,15 @@ itself the first check.
 - [x] Settings → Uninstall → **Remove rexenv's system changes**; confirm. ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
 - [x] After: `ping foo.rex` no longer resolves; the local CA is no longer trusted (no cert warning is moot — it's gone); no rexenv services running. ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
 - [x] Site files remain under `~/Library/Application Support/dev.rexenv.rexenv/` (not deleted). ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9)
-- [ ] **Then wait a minute with the app open, watching the toasts and `rex status`** (ledger
+- [x] **Then wait a minute with the app open, watching the toasts and `rex status`** (ledger
       #715). Nothing must happen: no "DNS stopped unexpectedly — restarted automatically",
       and `rex status` reads `DNS … (removed, udp 15353) · resolver MISSING`. **Tell:** that
       toast three times, then `answering (in-process)` — the watchdog treating the uninstall
       as a crash and serving the DNS you just removed. That was 0.8.7's first dmg on the
       clean-15 VM, 23 Sep 2026 (`health.log`: three `kicked it`, then `serving in-process`).
+      ✓ 24 Sep 2026, same VM, the fixed dmg (`8e3f78db…`, source `34bd0d7e`): 80s after Remove,
+      no toast, `health.log` unchanged, `rex status` `DNS DOWN (removed, udp 15353) · resolver
+      MISSING · CA NOT TRUSTED`, nothing on UDP 15353, agent job and edge daemon gone.
 - [x] **`/usr/local/bin/rex` is removed by the uninstall, inside the one admin prompt** (ledger #677). It was left behind on the first VM uninstall of 18 Sep 2026: `/usr/local/bin` is root-owned on a clean Mac (the CLI install's own `mkdir -p` made it), so the unprivileged unlink failed silently. **Tell:** the link still there after Remove, pointing into the app you are about to drag to the Trash. ✓ 18 Sep 2026, same VM, fixed build: one prompt (its sentence now names the rex command), link gone, resolver gone.
 - [x] **Stale CA trust entries are swept** (ledger #678). Every fresh app-data folder mints a new local CA; until 18 Sep 2026 the ones earlier folders trusted stayed trusted roots (four on the VM after four hand wipes) and the uninstall untrusted only the current one. Now trusting a CA sweeps the others and the uninstall untrusts all of them. **Tell:** `security dump-trust-settings` listing more than one `rexenv Local CA` after setup. ✓ 18 Sep 2026, same VM: 4 trusted / 5 in the keychain before the Domains step → 1 / 1 after, ONE keychain dialog, log `untrusted 4 stale rexenv CA(s)`.
 
