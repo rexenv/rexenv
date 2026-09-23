@@ -1502,6 +1502,35 @@ itself the first check.
   the nginx global `client_max_body_size` is derived from the same defaults (8G). **Tell:** a
   413 from nginx on a body PHP would take.
 
+## macOS 13 and 14 — the legacy tiers (`docs/PLAN-macos-13-floor.md`, T7)
+
+Run the Core sections above on a **clean macOS 13.7 VM and a clean macOS 14 VM** (the UTM
+recipe from "Cold first run", arm64). What differs there, and what must be seen:
+
+Environment: macOS ____ (13.x / 14.x) · rexenv version ____ · build ____
+
+- [ ] **Onboarding's Welcome step shows the legacy note once** — "This Mac runs macOS 13.7 —
+      rexenv works here with older versions of some components and without PostgreSQL and
+      PHP 8.0. Everything is available on macOS 15 or later." (on 14: "…without PostgreSQL…"
+      is absent; PostgreSQL 16.4 is offered). On a 15+ Mac the note must NOT appear.
+- [ ] **Cold first run installs the LEGACY pins**: Settings → PHP shows the standard minors;
+      the Services/Databases rows, once started, report MySQL **8.4.3**, Redis **8.2.1**,
+      MariaDB **12.0.2**; Apache **2.4.65** on a site that picks it; a share opens on
+      cloudflared **2025.4.0** (Tunnels page shows the version). On 14 only cloudflared moves.
+- [ ] **PostgreSQL on 13**: Databases page lists it as a muted row reading "Needs macOS 14 or
+      later — this Mac runs macOS 13.x."; New Site → Laravel/Blank shows the same sentence under
+      the engine picker and offers no PostgreSQL option; `rex db versions --set postgres …`
+      and the MCP create tool refuse with the same words.
+- [ ] **PHP 8.0 on 13**: Settings → PHP keeps the 8.0 row, dot grey, Install disabled, a chip
+      with the sentence; `rex php install 8.0` refuses with it; New Site never offers 8.0.
+- [ ] **Xdebug on 13**: the toggle works on 8.1–8.4 (pool banner "with Xdebug v3.4.5"); on
+      8.5 the toggle is off with the "no bottle pinned yet" reason.
+- [ ] **WordPress and Laravel sites serve over HTTPS** exactly as the Core sections say.
+- [ ] **In-place upgrade to macOS 15**, then relaunch: no note at Welcome; Databases →
+      MySQL/MariaDB/Redis restart on the standard pins and the sites' databases are still
+      there (T6's forward-upgrade proof, seen through the GUI); PostgreSQL and PHP 8.0 appear
+      as ordinary rows.
+
 ## Windows — what this checklist means on that OS
 
 Run everything above on Windows too, EXCEPT what this section changes or removes. The

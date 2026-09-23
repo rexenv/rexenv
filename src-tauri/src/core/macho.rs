@@ -308,11 +308,11 @@ mod tests {
     /// is not "update the comment": it is this test, which fails HERE, in the
     /// repo that moves the floor, at the moment it moves.
     ///
-    /// The floor is not set by our code — it is the highest deployment target
-    /// among the binaries the default stack needs (nginx and cloudflared are
-    /// both 15.0 today; `docs/PORTS.md`). So raising it is a routine
-    /// consequence of a binary bump, which is exactly why it needs a tripwire
-    /// rather than a convention.
+    /// The floor is not set by our code — it is the LOWEST tier's floor
+    /// (`docs/PLAN-macos-13-floor.md` §6.5: 13.0 since 23 Sep 2026; before the
+    /// tiers it was the default stack's highest deployment target, 15.0). So
+    /// moving it is a routine consequence of a pin decision, which is exactly
+    /// why it needs a tripwire rather than a convention.
     #[test]
     fn the_macos_floor_matches_the_shipped_cask() {
         // Homebrew's version symbols, so the failure can name the one to use
@@ -328,7 +328,7 @@ mod tests {
         /// The major version the CASK currently demands, as a bare Homebrew
         /// symbol. Update BOTH this and `Casks/rexenv.rb` in the same change —
         /// that pairing is the whole point of the test.
-        const CASK_FLOOR_MAJOR: &str = "15";
+        const CASK_FLOOR_MAJOR: &str = "13";
 
         let conf = include_str!("../../tauri.conf.json");
         let key = "\"minimumSystemVersion\"";

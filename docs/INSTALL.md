@@ -16,14 +16,15 @@ notarized by Apple), so the **first launch needs one extra click** — see below
 
 ### Requirements
 
-- **macOS 15 (Sequoia) or later.** (Raised from the previously stated 11 on
-  15 Aug 2026 — that number was never true: the pinned nginx and cloudflared
-  builds require macOS 15, MySQL/MariaDB/Redis require 14, so on macOS 11–14
-  the app installed and then could not run its own web server. The stated
-  floor now matches the measured one — `docs/PORTS.md` carries the per-binary
-  numbers.) PostgreSQL's pinned builds were re-pinned on 30 Aug 2026 for that same
-  floor — 18.6.0 starts and serves a Laravel site on macOS 15.6 (measured on a clean
-  VM, 18 Sep 2026); this line said "requires macOS 26" until then.
+- **macOS 15 (Sequoia) or later for everything; macOS 13 (Ventura) or later to run.**
+  On 15+ every feature and the newest build of every component. On **13 and 14** rexenv
+  runs with the last build of each component that loads there (older MySQL, Redis,
+  MariaDB, Apache, Xdebug and tunnel client — `docs/PORTS.md` §"Legacy tiers" has the
+  versions) and **without PostgreSQL and PHP 8.0 on 13** (PostgreSQL 16.4 only on 14):
+  the app says so once at first launch, and each missing item stays listed with the
+  reason. Nothing older than 13 is offered a download. (History: the stated floor was
+  "11" until 15 Aug 2026 — never true; 15 from then to 23 Sep 2026, when the tiers
+  landed: `docs/PLAN-macos-13-floor.md`.)
 - **Intel or Apple Silicon** — this is a **universal** build, it runs natively on both.
 - An internet connection on **first run** (rexenv downloads its components — PHP,
   Nginx, MySQL, Caddy, etc. — the first time; after that it works offline).
@@ -152,11 +153,12 @@ real HTTPS dev stack.)
 - **"app is damaged and can't be opened"** → usually means the download was
   quarantined; right-click → Open as above. (The app is ad-hoc code-signed, which
   is what lets Apple Silicon run it at all.)
-- **Nothing happens / very old Mac** → check you're on **macOS 15 (Sequoia) or
-  later**, the same floor as the Requirements section above. (This line said
-  macOS 11 until 15 Aug 2026 — the number the Requirements section had already
-  been corrected away from, left behind in the one place a person reads *because*
-  something is wrong.)
+- **Nothing happens / very old Mac** → check you're on **macOS 13 (Ventura) or
+  later**, the same floor as the Requirements section above — and on 13 or 14 expect
+  the first-launch note about what that macOS gets. (This line said macOS 11 until
+  15 Aug 2026 and 15 until 23 Sep 2026 — each time the number the Requirements
+  section had already moved away from, left behind in the one place a person reads
+  *because* something is wrong.)
 
 ### Updating
 

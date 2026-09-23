@@ -35,7 +35,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
-- [ ] **macOS 13 floor — three tiers, T0–T3 landed, T4–T8 open** (owner ruled 23 Sep 2026):
+- [ ] **macOS 13 floor — three tiers, T0–T4 landed, T5–T8 open** (owner ruled 23 Sep 2026):
   macOS 15 stays the STANDARD (every feature, latest pins); the app also RUNS on 13 and 14
   with a per-host pin set (`BinaryTier`, derived from the host every launch) and a
   "needs macOS 14" refusal for PostgreSQL and PHP 8.0 on 13; self-builds
@@ -54,6 +54,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   ✓ **T3** 23 Sep 2026 — refusals: `php_minor_needs_macos` / `engine_needs_macos` (derived:
   the lowest tier that offers it), ONE sentence from `words.rs`, listed-disabled on Settings /
   Databases / New Site, the same words from `rex` and MCP through the core gates; ledger #710.
+  ✓ **T4** 23 Sep 2026 — `minimumSystemVersion` 13.0; `default_stack(tier)`; `macos_floor_check`
+  per tier (each stack ≤ its floor, stated == lowest); the onboarding legacy note
+  (`legacy_notice`, derived from the refusals); INSTALL / SMOKE (Legacy section) / RELEASING
+  (manifest floor must follow the conf) / PORTS / TESTING; ledger #433 re-shaped.
 
 - [x] **A typed bare `name.rex` goes to Google instead of the site** (owner report, 22 Sep 2026;
   `name.rex/` and `http://name.rex` worked). Browsers classify address-bar text against the public

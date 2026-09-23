@@ -3,7 +3,7 @@
 **Status:** PLANNED — 23 Sep 2026. Measurement done (§1–§5, both slices, every component);
 **the owner ruled the shape the same day (§6)**: macOS 15 stays the STANDARD — every feature,
 every latest pin — and the app additionally RUNS on macOS 13 and 14 with a per-host pin set
-and a per-feature refusal where no build exists. Task list in §7; **T0–T3 landed 23 Sep 2026** (ledger #707, #708, #709, #710), T4 next.
+and a per-feature refusal where no build exists. Task list in §7; **T0–T4 landed 23 Sep 2026** (ledger #707, #708, #709, #710; #433 re-shaped), T5 next.
 Planned against `99942bca`. Tracked as the "macOS 13 floor" row in `docs/TODO.md` (Now).
 
 The stated floor is `tauri.conf.json` `minimumSystemVersion: 15.0`, asserted equal to
@@ -350,7 +350,7 @@ MCP refuse with the same words (parity test). Copy-scan guard covers the new sen
 *Done when:* an L0 test drives each list site with a fixture tier and asserts the row is
 present, disabled, and carries the sentence; no site omits the row.
 
-**T4 — the floor moves: `13.0`, and the checks follow.**
+**T4 — the floor moves: `13.0`, and the checks follow.** ✓ 23 Sep 2026 — plus the onboarding note (`legacy_notice`, §6.3's last item) and a RELEASING rule: the signed app manifest's `minimumSystemVersion` must follow the conf's.
 `tauri.conf.json` `minimumSystemVersion: 13.0`; `macos_floor_check` per-tier (§6.5);
 `DEFAULT_STACK` becomes per-tier (`default_stack(tier)`); `INSTALL.md` requirements
 rewritten ("13 runs, 15 required for everything — what 13/14 lack"); `SMOKE-TEST.md` gains a

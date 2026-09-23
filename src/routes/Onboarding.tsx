@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronRight, Globe, Loader2, Lock, RotateCw, Shield } from "lucide-react";
-import { coreBinariesPlan, dnsStatus, prefetchCoreBinaries, retryDownload, setupEdgeConflict, systemSetup } from "@/lib/ipc";
+import { coreBinariesPlan, dnsStatus, legacyNotice, prefetchCoreBinaries, retryDownload, setupEdgeConflict, systemSetup } from "@/lib/ipc";
 import { onTitleBarMouseDown } from "@/lib/window-drag";
 import { useDownloads } from "@/lib/useDownloads";
 import { Track, pctOf } from "@/components/shell/DownloadPanel";
@@ -124,6 +124,11 @@ function CrownHero() {
 }
 
 function Welcome() {
+  // A macOS 13/14 host is told ONCE, here, what it gets and what it does not —
+  // one sentence core builds from the tier's own refusals (never a list typed
+  // here that could promise a feature the tier refuses). Null on every
+  // standard host, which renders nothing extra.
+  const { data: notice = null } = useQuery({ queryKey: ["legacy-notice"], queryFn: legacyNotice, staleTime: Infinity });
   return (
     <div className="flex flex-col items-center">
       <CrownHero />
@@ -137,6 +142,14 @@ function Welcome() {
         Run every server, site, and database from one calm command room. Let's get you set up — it
         takes about a minute.
       </div>
+      {notice && (
+        <div
+          data-probe="legacy-notice"
+          className="mt-4 max-w-[420px] rounded-lg border border-status-warning-border bg-status-warning-bg px-3 py-2 text-[0.75rem] leading-[1.5] text-status-warning-bright"
+        >
+          {notice}
+        </div>
+      )}
     </div>
   );
 }

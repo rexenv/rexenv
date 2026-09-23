@@ -102,9 +102,14 @@ zip — D1), FrankenPHP, Redis, MariaDB, Apache httpd, Xdebug.
 
 Measured 15 Aug 2026 on the real cache (`otool -l | grep minos`) — recorded because
 this drifted silently: the app claimed macOS 11 while shipping binaries below, and a
-number nobody records drifts again. **The app's stated floor
-(`tauri.conf.json` `minimumSystemVersion`, INSTALL.md) must equal the MAX across the
-binaries the default stack requires** — today that is cloudflared at 15.0.
+number nobody records drifts again. **Since 23 Sep 2026 the rule is PER TIER
+(`docs/PLAN-macos-13-floor.md` §6.5): each tier's default stack (`binaries::default_stack`)
+must declare `max(minos) ≤ that tier's floor` on both slices, and the app's stated floor
+(`tauri.conf.json` `minimumSystemVersion`, INSTALL.md) must EQUAL the lowest tier's — 13.0.**
+The Standard stack's max is 15.0 (cloudflared 2026.6.1); the Legacy13/14 stacks' max is
+13.0 on arm64 (cloudflared 2025.4.0) and 12.0 on x86_64 (its slice is `LC_VERSION_MIN_MACOSX
+10.13`, so caddy's 12.0 tops it) — measured live 23 Sep 2026, ALL PASS. A stated floor is a
+promise about the OS, not a measurement of the bytes: Legacy14's 14.0 sits above its 13.0 max.
 **PostgreSQL sat ABOVE that floor at 26.0 from 15 Aug to 30 Aug 2026** and the stated
 floor did not move with it, because the rule was maintained by hand and nothing was
 comparing. **It is now asserted rather than remembered** (30 Aug 2026,

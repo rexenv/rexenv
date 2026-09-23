@@ -370,6 +370,36 @@ pub fn refused_php_minors() -> Vec<(String, u32)> {
     out
 }
 
+/// What a legacy host is told ONCE (onboarding): which OS it runs, what that
+/// costs, which OS gets everything. `None` on a Standard host — the ordinary
+/// case renders nothing. What is missing is DERIVED from the same refusals the
+/// surfaces show, so the notice cannot promise a feature the tier refuses or
+/// name one it offers.
+pub fn legacy_notice() -> Option<String> {
+    if tier() == BinaryTier::Standard {
+        return None;
+    }
+    let running = crate::core::macho::host_macos()?;
+    let mut missing: Vec<String> = Vec::new();
+    for e in ["mysql", "mariadb", "postgres", "redis"] {
+        if engine_needs_macos(e).is_some() {
+            missing.push(
+                match e {
+                    "mysql" => "MySQL",
+                    "mariadb" => "MariaDB",
+                    "postgres" => "PostgreSQL",
+                    _ => "Redis",
+                }
+                .to_string(),
+            );
+        }
+    }
+    for (minor, _) in refused_php_minors() {
+        missing.push(format!("PHP {minor}"));
+    }
+    Some(crate::platform::words::current().legacy_notice(running, &missing, BinaryTier::Standard.floor().0))
+}
+
 /// The one sentence every tier refusal shows (`PlatformWords::needs_newer_os`),
 /// with the host's version when it can be read.
 pub fn needs_macos_sentence(major: u32) -> String {
@@ -419,8 +449,11 @@ pub fn tier() -> BinaryTier {
     }
 }
 
-/// The binaries a DEFAULT install actually runs, and therefore the set the app's
-/// stated macOS floor (`tauri.conf.json` `minimumSystemVersion`) is a claim about.
+/// The binaries a DEFAULT install actually runs ON A TIER, and therefore the set
+/// that tier's floor is a claim about. The app's stated floor (`tauri.conf.json`
+/// `minimumSystemVersion`) is the LOWEST tier's — 13.0 since T4 of
+/// `docs/PLAN-macos-13-floor.md` — and `macos_floor_check` holds every tier's
+/// stack under its own floor.
 ///
 /// **Why this is a list in production code and not in the check that reads it.**
 /// `docs/PORTS.md` maintains the floor by hand — "the MAX across the binaries the
@@ -436,16 +469,19 @@ pub fn tier() -> BinaryTier {
 /// the app's minimum, and they are the multi-hundred-MB trees a check would have
 /// to download in both arches to read 32 bytes. Their floors live in PORTS.md's
 /// table with the arch caveat that table carries.
-pub const DEFAULT_STACK: &[(&str, &str)] = &[
-    ("caddy", CADDY_VERSION),
-    ("nginx", NGINX_VERSION),
-    ("php", PHP_VERSION),
-    ("php-fpm", PHP_VERSION),
-    ("mailpit", MAILPIT_VERSION),
-    // Not started by a default launch, but shipped and run on the user's first
-    // share — a floor it raised would be discovered by a user, not by us.
-    ("cloudflared", CLOUDFLARED_VERSION),
-];
+pub fn default_stack(tier: BinaryTier) -> [(&'static str, &'static str); 6] {
+    let p = PinSet::for_tier(tier);
+    [
+        ("caddy", p.caddy),
+        ("nginx", p.nginx),
+        ("php", p.php),
+        ("php-fpm", p.php),
+        ("mailpit", p.mailpit),
+        // Not started by a default launch, but shipped and run on the user's first
+        // share — a floor it raised would be discovered by a user, not by us.
+        ("cloudflared", p.cloudflared),
+    ]
+}
 
 const REDIS_VERSION: &str = "8.8.0";
 /// Offered Redis versions (single — homebrew-core keeps no versioned redis
@@ -6227,14 +6263,30 @@ mod tests {
     /// would drop half the comparison and still report a max.
     #[test]
     fn every_default_stack_entry_is_pinned_for_both_arches() {
-        assert!(!DEFAULT_STACK.is_empty(), "an empty stack makes the floor check vacuous");
-        for (name, version) in DEFAULT_STACK {
-            for arch in [Arch::Arm64, Arch::X86_64] {
-                assert!(
-                    manifest(name, version, "macos", arch).is_some(),
-                    "{name} {version} has no macOS manifest for {arch:?} — the floor check would \
-                     compare one slice against nothing and call it a match"
-                );
+        for tier in PinSet::ALL_TIERS {
+            let stack = default_stack(tier);
+            assert!(!stack.is_empty(), "an empty stack makes the floor check vacuous");
+            for (name, version) in stack {
+                for arch in [Arch::Arm64, Arch::X86_64] {
+                    assert!(
+                        manifest(name, version, "macos", arch).is_some(),
+                        "{name} {version} ({tier:?}) has no macOS manifest for {arch:?} — the floor \
+                         check would compare one slice against nothing and call it a match"
+                    );
+                }
+            }
+        }
+        // The legacy stacks differ from the standard one in cloudflared ALONE:
+        // every other default-stack pin is 12.0 on both slices already.
+        let std = default_stack(BinaryTier::Standard);
+        for tier in [BinaryTier::Legacy14, BinaryTier::Legacy13] {
+            let legacy = default_stack(tier);
+            for (i, (name, v)) in legacy.iter().enumerate() {
+                if *name == "cloudflared" {
+                    assert_ne!(*v, std[i].1, "{tier:?} must move cloudflared");
+                } else {
+                    assert_eq!(*v, std[i].1, "{tier:?} moved {name} — is its floor measured?");
+                }
             }
         }
         // The engines are deliberately absent: user-chosen, and PORTS.md's table
@@ -6242,8 +6294,8 @@ mod tests {
         // change what the app's stated minimum CLAIMS to cover.
         for engine in ["mysql", "mariadb", "postgres", "redis"] {
             assert!(
-                !DEFAULT_STACK.iter().any(|(n, _)| *n == engine),
-                "{engine} joined DEFAULT_STACK — an optional engine's floor binds the user who \
+                !default_stack(BinaryTier::Standard).iter().any(|(n, _)| *n == engine),
+                "{engine} joined the default stack — an optional engine's floor binds the user who \
                  enables it, not the app's minimum. Decide that deliberately, in PORTS.md too"
             );
         }
@@ -6383,8 +6435,8 @@ mod tests {
         }
         // The default stack, minus php-fpm: on Windows the pool is php-cgi, which
         // ships inside the php zip (plan D1).
-        for (name, version) in DEFAULT_STACK {
-            if *name == "php-fpm" {
+        for (name, version) in default_stack(BinaryTier::Standard) {
+            if name == "php-fpm" {
                 continue;
             }
             assert!(manifest(name, version, "windows", Arch::X86_64).is_some(), "{name} {version}");
@@ -6405,9 +6457,8 @@ mod tests {
     /// silently gate a feature on the machine's CPU, so it is measured, not assumed.
     #[test]
     fn ships_on_does_not_depend_on_the_arch() {
-        let names: Vec<(&str, &str)> = DEFAULT_STACK
-            .iter()
-            .copied()
+        let names: Vec<(&str, &str)> = default_stack(BinaryTier::Standard)
+            .into_iter()
             .chain([
                 ("redis", REDIS_VERSION),
                 ("mariadb", MARIADB_VERSION),

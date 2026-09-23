@@ -304,6 +304,13 @@ it can:
   a number nobody compares to anything drifts silently (the same rule caught PostgreSQL
   sitting 11 majors above the floor for a fortnight), and a measurement taken only on the
   machine doing the measuring is an assumption wearing a number's clothes.
+  **Since 23 Sep 2026 (T4 of `docs/PLAN-macos-13-floor.md`) it is per TIER**: every tier's
+  default stack under its own floor on both slices, artifacts shared between tiers fetched
+  once, and the stated `minimumSystemVersion` equal to the lowest tier's (13.0) in both
+  directions. A slice divergence under the floor is now a printed note, not a failure —
+  cloudflared 2025.4.0's x86_64 slice carries `LC_VERSION_MIN_MACOSX 10.13`, which is the
+  first legitimately divergent pin; the per-tier max is what holds the line the old
+  slice check used to.
   **`tunnel_parent_death_check` (sandbox tier, 30 Aug 2026, ledger #432) is the layer
   aimed at a KERNEL mechanism, and it carries this month's sharpest lesson about how an
   example can be green and empty.** What it proves cannot be proved lower: that kqueue

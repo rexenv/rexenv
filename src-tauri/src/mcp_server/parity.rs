@@ -130,6 +130,7 @@ mod tests {
         ("dns_status", Tool("stack_status")),
         ("cli_status", Tool("stack_status")),
         ("app_info", Tool("stack_status")),
+        ("legacy_notice", Never("UI copy: the one onboarding sentence a macOS 13/14 host sees — what the tier refuses reaches an agent as the refusal itself, on the call it refuses")),
         ("platform_words", Never("UI copy: the words a button or a hint uses for this OS's own things (W7 S7) — an agent reads the same words inside the errors that carry them")),
         ("autostart_status", Tool("stack_status")),
         ("init_error", Never("when init fails there is no AppState, and the MCP server answers every call \"rexenv is still starting\" — an agent can never observe a value to read")),

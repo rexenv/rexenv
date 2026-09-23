@@ -203,6 +203,43 @@ impl PlatformWords {
     }
 }
 
+impl PlatformWords {
+    /// The ONE sentence a legacy host sees, once, at onboarding: what this OS version gets and
+    /// what it does not (`docs/PLAN-macos-13-floor.md` §6.3). `missing` is what the tier refuses,
+    /// already named ("PostgreSQL", "PHP 8.0"); `standard` is the major that gets everything.
+    pub fn legacy_notice(&self, running: (u32, u32, u32), missing: &[String], standard: u32) -> String {
+        let os = self.os_name;
+        let what = if missing.is_empty() {
+            "with older versions of some components".to_string()
+        } else {
+            format!("with older versions of some components and without {}", join_and(missing))
+        };
+        format!(
+            "{} runs {os} {}.{} — rexenv works here {what}. Everything is available on {os} {standard} or later.",
+            capitalize(self.host),
+            running.0,
+            running.1
+        )
+    }
+}
+
+fn capitalize(s: &str) -> String {
+    let mut c = s.chars();
+    match c.next() {
+        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+        None => String::new(),
+    }
+}
+
+fn join_and(items: &[String]) -> String {
+    match items {
+        [] => String::new(),
+        [a] => a.clone(),
+        [a, b] => format!("{a} and {b}"),
+        [rest @ .., last] => format!("{}, and {last}", rest.join(", ")),
+    }
+}
+
 /// This build's words.
 pub fn current() -> &'static PlatformWords {
     #[cfg(target_os = "windows")]
@@ -257,6 +294,18 @@ mod tests {
         assert_eq!(MACOS.needs_newer_os(14, None), "Needs macOS 14 or later on this Mac.");
         // Windows never refuses on a tier, but the sentence must not be a macOS one if it did.
         assert_eq!(WINDOWS.needs_newer_os(11, Some((10, 0, 19045))), "Needs Windows 11 or later — this PC runs Windows 10.0.");
+    }
+
+    #[test]
+    fn the_legacy_notice_names_what_is_missing_and_the_os_that_has_it_all() {
+        assert_eq!(
+            MACOS.legacy_notice((13, 7, 8), &["PostgreSQL".into(), "PHP 8.0".into()], 15),
+            "This Mac runs macOS 13.7 — rexenv works here with older versions of some components and without PostgreSQL and PHP 8.0. Everything is available on macOS 15 or later."
+        );
+        assert_eq!(
+            MACOS.legacy_notice((14, 8, 0), &[], 15),
+            "This Mac runs macOS 14.8 — rexenv works here with older versions of some components. Everything is available on macOS 15 or later."
+        );
     }
 
     /// Ledger #626 — the macOS words are what the app already showed: moving them into the platform changes no

@@ -1407,6 +1407,7 @@ pub fn run() {
             commands::database::stop_database,
             commands::database::db_engine_versions,
             commands::database::db_engine_refusals,
+            commands::system::legacy_notice,
             commands::database::set_db_engine_version,
             commands::settings::get_setting,
             commands::settings::set_setting,

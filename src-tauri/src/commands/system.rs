@@ -65,6 +65,14 @@ pub fn platform_words() -> crate::platform::words::PlatformWords {
     crate::platform::words::current().clone()
 }
 
+/// The one sentence a macOS 13 / 14 host sees at onboarding — what this OS version gets and
+/// what it does not (`docs/PLAN-macos-13-floor.md` §6.3). `None` on every standard host, which
+/// renders nothing. Built in core from the tier's own refusals, so it cannot disagree with them.
+#[tauri::command]
+pub fn legacy_notice() -> Option<String> {
+    core::binaries::legacy_notice()
+}
+
 /// TLDs a site ANSWERS on that this machine cannot resolve, each flagged with
 /// WHY: `foreign` = another tool owns the resolver file, otherwise it is simply
 /// missing.

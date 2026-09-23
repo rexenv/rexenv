@@ -97,6 +97,13 @@ export async function getPlatformWords(): Promise<PlatformWords> {
   return invoke<PlatformWords>("platform_words");
 }
 
+/** The one sentence a macOS 13/14 host sees at onboarding (what it gets, what it does not);
+ *  null on every standard host. Built in core — the UI renders it and adds nothing. */
+export async function legacyNotice(): Promise<string | null> {
+  if (!isTauri()) return null;
+  return invoke<string | null>("legacy_notice");
+}
+
 /** The fatal startup error, if backend init (DB/CA) failed. Read FIRST so the UI can
  *  show an error screen instead of driving a half-initialized app (which would panic
  *  on AppState commands). Null when init succeeded or outside Tauri. */

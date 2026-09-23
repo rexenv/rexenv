@@ -881,6 +881,9 @@ Live-proven end to end by `site_stop_start_check`.
   `minos` above the host resolves the last build that loads there, or is refused with the
   macOS it needs. The platform derives the tier (`Platform::binary_tier`; default `Standard`,
   because a tier is a macOS fact and `core/` may not name an OS); `lib.rs` installs it once;
+  `tauri.conf.json` states the LOWEST tier's floor (13.0); `macos_floor_check` holds every
+  tier's `default_stack(tier)` under its own floor. A legacy host is told once, at onboarding,
+  what it gets (`legacy_notice`, derived from the tier's refusals).
   `binaries::pins()` — `PinSet::for_tier(tier())` — is the ONLY door to a version: the
   `*_VERSION` constants are private to `binaries.rs`, so a consumer that spells one fails to
   compile (ledger #708). The legacy sets are `..STANDARD_PINS` with the measured rows

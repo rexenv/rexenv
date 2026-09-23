@@ -408,3 +408,13 @@ rather than the practice.
 - Runner note: `macos-14` is arm64; the universal build cross-compiles the x86_64
   slice via the checked-in `rustup target add`. Private-repo macOS minutes bill at a
   10× multiplier — the verify + universal build takes tens of minutes per run.
+
+## The app manifest's `minimumSystemVersion` (since 23 Sep 2026)
+
+The signed app manifest carries `minimumSystemVersion`, and `core::app_update::offer_for`
+refuses to offer a release to a host below it. **It must equal `tauri.conf.json`'s
+`minimumSystemVersion` — 13.0 since the legacy tiers landed** (`docs/PLAN-macos-13-floor.md`
+T4). A manifest still saying 15.0 would silently stop offering updates to every macOS 13/14
+user the app now runs for; one saying less than 13.0 would offer a build no tier serves.
+`scripts/check-app-manifest-test.sh`'s fixture says 15.0 because it tests the reader's
+shape, not the shipped value — the value to publish is the conf's.

@@ -44,7 +44,7 @@
     ],
     "macOS": {
       "signingIdentity": "-",
-      "minimumSystemVersion": "15.0"
+      "minimumSystemVersion": "13.0"
     },
     "windows": {
       "nsis": {
