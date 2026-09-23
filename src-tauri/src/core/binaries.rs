@@ -115,6 +115,86 @@ pub const CLOUDFLARED_VERSION: &str = "2026.6.1";
 /// two dylibs, relinked to `@loader_path` by `prepare_binary_tree` (the shipped
 /// "Deferred services" plan — docs/archive/SHIPPED-2026-07.md). Resolved via
 /// [`resolve_bundle`].
+/// Which pin set this host gets — the ONE fact `docs/PLAN-macos-13-floor.md` §6
+/// hangs on.
+///
+/// macOS 15 is the STANDARD: every feature, every latest pin. The app also runs
+/// on 13 and 14, where some upstreams publish nothing that loads (`minos` above
+/// the host's dyld), so those hosts resolve an older, measured build per
+/// component, or a refusal where none exists. The tier is the name for that
+/// choice; the pin sets it selects land in T2.
+///
+/// **Derived from the host every launch, never stored** (ledger #707). macOS only
+/// moves UP, so a stored tier could only ever be too LOW — a 13 host that became
+/// a 15 host would keep downloading the legacy set for as long as the row
+/// survived, and every legacy pin is a security patch or more behind by design.
+/// Re-deriving costs one `sw_vers` read; storing costs a stale fact with a
+/// lifetime nobody tracks (the same shape as the one-time-check guards in
+/// `docs/CLAIM-LEDGER.md`'s defect families).
+///
+/// The platform derives it (`Platform::binary_tier`), because a host version is
+/// an OS fact and `core/` may not name one: macOS reads `core::macho::host_macos`,
+/// every other OS answers `Standard` (a tier is a macOS concept — Windows has one
+/// floor, the installer's).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum BinaryTier {
+    /// macOS ≥ 15, and every non-macOS host. The compiled-in `*_VERSION` pins.
+    Standard,
+    /// macOS 14.x. Differs from Standard in exactly the rows whose standard pin
+    /// declares `minos 15.0` (`docs/PORTS.md` §"Measured macOS floors").
+    Legacy14,
+    /// macOS 13.x. The last 13-capable build per component, or a refusal.
+    Legacy13,
+}
+
+impl BinaryTier {
+    /// The tier for a host macOS version — `None` below 13.0, which is NOT a tier:
+    /// `tauri.conf.json`'s `minimumSystemVersion` keeps such a host from launching
+    /// the app at all, so a caller seeing `None` is looking at a version read that
+    /// went wrong, not at a supported host.
+    ///
+    /// Major-only on purpose: Apple's deployment target is a major (`minos 14.0`),
+    /// and a patch level never moved one in any build this project has measured.
+    pub fn for_host(host: (u32, u32, u32)) -> Option<Self> {
+        match host.0 {
+            0..=12 => None,
+            13 => Some(Self::Legacy13),
+            14 => Some(Self::Legacy14),
+            _ => Some(Self::Standard),
+        }
+    }
+
+    /// The floor this tier promises, as `minimumSystemVersion` spells it — what
+    /// `examples/macos_floor_check.rs` compares a tier's `max(minos)` against.
+    pub fn floor(self) -> (u32, u32, u32) {
+        match self {
+            Self::Standard => (15, 0, 0),
+            Self::Legacy14 => (14, 0, 0),
+            Self::Legacy13 => (13, 0, 0),
+        }
+    }
+}
+
+/// The tier this process resolves pins for. `Standard` until `install_tier`
+/// runs — which is every test, every example and every non-macOS launch, so the
+/// empty state is exactly today's behaviour and not a degraded one.
+static TIER: std::sync::RwLock<BinaryTier> = std::sync::RwLock::new(BinaryTier::Standard);
+
+/// Publish the host's tier to the resolve path. Called once at launch from the
+/// platform's answer; nothing else may call it in production (a tier that
+/// changes mid-run would hand two pin sets to one cache).
+pub fn install_tier(tier: BinaryTier) {
+    if let Ok(mut w) = TIER.write() {
+        *w = tier;
+    }
+}
+
+/// The tier every pin lookup consults (T1 routes the `*_VERSION` reads through
+/// it; until then nothing reads it but the tests).
+pub fn tier() -> BinaryTier {
+    TIER.read().map(|t| *t).unwrap_or(BinaryTier::Standard)
+}
+
 /// The binaries a DEFAULT install actually runs, and therefore the set the app's
 /// stated macOS floor (`tauri.conf.json` `minimumSystemVersion`) is a claim about.
 ///
@@ -3453,6 +3533,67 @@ fn publish(staging: &Path, dir: &Path, marker: &str) -> Result<()> {
             dir.display()
         ))
     })
+}
+
+#[cfg(test)]
+mod tier_tests {
+    use super::{install_tier, tier, BinaryTier};
+
+    /// `TIER` is process-global and tests run in parallel; the one test that
+    /// installs a tier holds this so a pure `for_host` test never observes it.
+    fn lock() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+        let m = LOCK.get_or_init(|| std::sync::Mutex::new(()));
+        m.lock().unwrap_or_else(|p| {
+            m.clear_poison();
+            p.into_inner()
+        })
+    }
+
+    #[test]
+    fn below_13_is_not_a_tier() {
+        // The installer refuses these hosts; a tier for them would be a promise
+        // nothing measured. 12.7.6 is the last Monterey.
+        assert_eq!(BinaryTier::for_host((12, 7, 6)), None);
+        assert_eq!(BinaryTier::for_host((11, 0, 0)), None);
+        assert_eq!(BinaryTier::for_host((0, 0, 0)), None);
+    }
+
+    #[test]
+    fn each_major_maps_to_its_tier_regardless_of_patch() {
+        assert_eq!(BinaryTier::for_host((13, 0, 0)), Some(BinaryTier::Legacy13));
+        assert_eq!(BinaryTier::for_host((13, 7, 8)), Some(BinaryTier::Legacy13));
+        assert_eq!(BinaryTier::for_host((14, 0, 0)), Some(BinaryTier::Legacy14));
+        assert_eq!(BinaryTier::for_host((14, 8, 2)), Some(BinaryTier::Legacy14));
+        assert_eq!(BinaryTier::for_host((15, 0, 0)), Some(BinaryTier::Standard));
+        assert_eq!(BinaryTier::for_host((15, 6, 1)), Some(BinaryTier::Standard));
+        // The version scheme jumped 15 → 26; anything newer is still Standard.
+        assert_eq!(BinaryTier::for_host((26, 4, 0)), Some(BinaryTier::Standard));
+        assert_eq!(BinaryTier::for_host((99, 0, 0)), Some(BinaryTier::Standard));
+    }
+
+    #[test]
+    fn a_tiers_floor_is_the_major_it_is_named_for() {
+        assert_eq!(BinaryTier::Legacy13.floor(), (13, 0, 0));
+        assert_eq!(BinaryTier::Legacy14.floor(), (14, 0, 0));
+        assert_eq!(BinaryTier::Standard.floor(), (15, 0, 0));
+        // A tier's own floor maps back to that tier — the two tables agree.
+        for t in [BinaryTier::Legacy13, BinaryTier::Legacy14, BinaryTier::Standard] {
+            assert_eq!(BinaryTier::for_host(t.floor()), Some(t));
+        }
+    }
+
+    #[test]
+    fn the_empty_state_is_standard_and_install_replaces_it() {
+        let _g = lock();
+        // Plant: with `install_tier` a no-op this read stayed Standard and the
+        // second assertion failed — the accessor is wired to the store.
+        assert_eq!(tier(), BinaryTier::Standard);
+        install_tier(BinaryTier::Legacy13);
+        assert_eq!(tier(), BinaryTier::Legacy13);
+        install_tier(BinaryTier::Standard);
+        assert_eq!(tier(), BinaryTier::Standard);
+    }
 }
 
 #[cfg(test)]

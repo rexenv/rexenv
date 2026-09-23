@@ -1284,6 +1284,15 @@ pub trait Platform: Send + Sync {
     fn dns_agent(&self) -> &dyn DnsAgentManager;
     /// Replacing the app's own bundle (self-update).
     fn app_bundle(&self) -> &dyn AppBundle;
+    /// Which pin set this host gets (`core::binaries::BinaryTier`), derived from
+    /// the host's OS version at the moment of asking — never stored (ledger #707).
+    /// DEFAULT `Standard`, for the same reason `local_ipc` has one: a tier is a
+    /// macOS fact, every other OS has exactly one floor, and the dozen stub
+    /// `Platform`s in tests and examples must keep resolving today's pins without
+    /// each growing a field. macOS overrides it from `core::macho::host_macos`.
+    fn binary_tier(&self) -> crate::core::binaries::BinaryTier {
+        crate::core::binaries::BinaryTier::Standard
+    }
 }
 
 /// Pick the MASTER from `(pid, ppid)` pairs of processes sharing one listen

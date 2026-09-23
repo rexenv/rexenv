@@ -874,6 +874,15 @@ Live-proven end to end by `site_stop_start_check`.
 
 - No Docker; everything is a native static binary downloaded on demand, pinned +
   checksum-locked in a manifest (os+arch+version → url+checksum). Versions: `docs/PORTS.md`.
+- **Which pin set a host gets is a TIER, derived from the host's macOS version at every
+  launch and never stored** (`BinaryTier`, ledger #707; `docs/PLAN-macos-13-floor.md`). macOS
+  15 is the STANDARD — every feature, the compiled-in `*_VERSION` pins. The app also runs on
+  13 and 14 (`Legacy13` / `Legacy14`), where a component whose standard build declares a
+  `minos` above the host resolves the last build that loads there, or is refused with the
+  macOS it needs. The platform derives the tier (`Platform::binary_tier`; default `Standard`,
+  because a tier is a macOS fact and `core/` may not name an OS); `lib.rs` installs it once;
+  `binaries::tier()` is what a pin lookup consults. **As of T0 nothing consults it** — the
+  per-tier pin sets and the refusals are T1–T3 of that plan.
 - macOS `prepare_binary` order (non-negotiable): **de-quarantine → relink Homebrew dylibs
   to `/usr/lib` → ad-hoc codesign LAST.**
 - **`prepare_binary` needs NO Xcode Command Line Tools on the common path** (ledger #676).

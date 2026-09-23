@@ -3,7 +3,7 @@
 **Status:** PLANNED — 23 Sep 2026. Measurement done (§1–§5, both slices, every component);
 **the owner ruled the shape the same day (§6)**: macOS 15 stays the STANDARD — every feature,
 every latest pin — and the app additionally RUNS on macOS 13 and 14 with a per-host pin set
-and a per-feature refusal where no build exists. Task list in §7; nothing in it has started.
+and a per-feature refusal where no build exists. Task list in §7; **T0 landed 23 Sep 2026** (ledger #707), T1 next.
 Planned against `99942bca`. Tracked as the "macOS 13 floor" row in `docs/TODO.md` (Now).
 
 The stated floor is `tauri.conf.json` `minimumSystemVersion: 15.0`, asserted equal to
@@ -321,7 +321,7 @@ the standard binary) before this ships.
 Each task is one commit with its docs (CLAUDE.md's table); order is dependency order.
 "Done when" is what the commit proves, not what it intends.
 
-**T0 — the tier, and nothing that uses it yet.**
+**T0 — the tier, and nothing that uses it yet.** ✓ 23 Sep 2026, ledger #707.
 `BinaryTier` enum in `core/binaries.rs`; `Platform::binary_tier()` in `platform/traits.rs`
 (macOS impl from `host_macos()`, Windows + Linux `Standard`); `install_tier` / `tier()`
 beside `CATALOG`. Unit tests: 12.x → the platform refuses (not a tier), 13.7 → Legacy13,

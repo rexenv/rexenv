@@ -35,13 +35,15 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
-- [ ] **macOS 13 floor — three tiers, planned, not started** (owner ruled 23 Sep 2026):
+- [ ] **macOS 13 floor — three tiers, T0 landed, T1–T8 open** (owner ruled 23 Sep 2026):
   macOS 15 stays the STANDARD (every feature, latest pins); the app also RUNS on 13 and 14
   with a per-host pin set (`BinaryTier`, derived from the host every launch) and a
   "needs macOS 14" refusal for PostgreSQL and PHP 8.0 on 13; self-builds
   (`rexenv/runtimes`) flip refusals to pins later. Every `minos` measured both slices,
   the pin set, the design and the task list T0–T8: `docs/PLAN-macos-13-floor.md` §6–§7.
   Ship line is T0–T8; proof is a real 13 + 14 VM (T7), never `minos` alone.
+  ✓ **T0** 23 Sep 2026 — `BinaryTier` + `Platform::binary_tier()` (default `Standard`,
+  macOS override) + `install_tier` at launch; ledger #707; no consumer reads it yet.
 
 - [x] **A typed bare `name.rex` goes to Google instead of the site** (owner report, 22 Sep 2026;
   `name.rex/` and `http://name.rex` worked). Browsers classify address-bar text against the public

@@ -125,6 +125,9 @@ pub fn run() {
         )
         .setup(move |app| {
             let platform = platform::current();
+            // The host's pin tier, derived now and never stored (ledger #707);
+            // every later resolve reads it through `binaries::tier()`.
+            core::binaries::install_tier(platform.binary_tier());
 
             let hidden_launch = std::env::args().any(|a| a == HIDDEN_LAUNCH_FLAG);
 

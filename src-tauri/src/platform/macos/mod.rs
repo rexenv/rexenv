@@ -2492,6 +2492,28 @@ impl Platform for MacosPlatform {
     fn app_bundle(&self) -> &dyn AppBundle {
         &self.app_bundle
     }
+    fn binary_tier(&self) -> crate::core::binaries::BinaryTier {
+        use crate::core::binaries::BinaryTier;
+        match crate::core::macho::host_macos().map(BinaryTier::for_host) {
+            Some(Some(t)) => t,
+            // `None` from `host_macos` is a version read that failed; `Some(None)`
+            // is a host below 13, which `minimumSystemVersion` keeps from launching
+            // at all. Neither is a tier; both get the standard pins, and the log
+            // says which happened, so a legacy host that somehow lands here is
+            // diagnosable rather than quietly served binaries it cannot load.
+            other => {
+                log::warn!(
+                    "binary tier: host macOS version {} — resolving the standard pins",
+                    match other {
+                        None => "could not be read".to_string(),
+                        Some(None) => "is below 13, which the installer refuses".to_string(),
+                        Some(Some(_)) => unreachable!(),
+                    }
+                );
+                BinaryTier::Standard
+            }
+        }
+    }
 }
 
 #[cfg(test)]
