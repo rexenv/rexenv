@@ -35,7 +35,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
-- [ ] **macOS 13 floor — three tiers, T0–T6 landed, T7 RUN on a 13.6 VM (four real defects found and fixed; bundles/14-VM/15-upgrade left), T8 open** (owner ruled 23 Sep 2026):
+- [ ] **macOS 13 floor — three tiers, T0–T6 landed, T7 RUN on a 13.6 VM (five real defects found and fixed; 14-VM/15-upgrade left), T8 open** (owner ruled 23 Sep 2026):
   macOS 15 stays the STANDARD (every feature, latest pins); the app also RUNS on 13 and 14
   with a per-host pin set (`BinaryTier`, derived from the host every launch) and a
   "needs macOS 14" refusal for PostgreSQL and PHP 8.0 on 13; self-builds
@@ -75,8 +75,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   screenshots) the same day: onboarding legacy note, the branded keychain prompt, muted
   PostgreSQL row, New Site's tier note, the 8.0 chip — all as designed after two TSX fixes
   found there (a PDO note firing beside the tier note; 8.0 appended out of order); a public
-  share ran on **cloudflared 2025.4.0** and answered 200 from the host. **Still open:** bottle
-  bundles (VM has no CLT), the in-place upgrade to 15, and the macOS **14** VM. `docs/SMOKE-TEST.md` "macOS 13 and 14".
+  share ran on **cloudflared 2025.4.0** and answered 200 from the host. With CLT installed on
+  the VM: Apache 2.4.65 served, MariaDB 12.0.2 ran; **Redis 8.2.1 died on the session's
+  `LANG=C.UTF-8`** (a locale macOS 13 lacks) — fixed by spawning with `LC_ALL=C` (#714).
+  **Still open:** the in-place upgrade to 15, and the macOS **14** VM. `docs/SMOKE-TEST.md` "macOS 13 and 14".
 
 - [x] **A typed bare `name.rex` goes to Google instead of the site** (owner report, 22 Sep 2026;
   `name.rex/` and `http://name.rex` worked). Browsers classify address-bar text against the public
