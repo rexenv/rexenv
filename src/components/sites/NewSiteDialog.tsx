@@ -257,10 +257,14 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
   // flag comes from core (`php::pdo_pgsql_supported`), never from a list of
   // minors written here, which is the second-copy shape ledger #545 and the
   // Xdebug toggle before it both paid for.
-  const postgresOffered =
-    siteType !== "wordpress" &&
-    (installed.find((v) => v.minor === phpVersion)?.postgresSupported ?? false) &&
-    (!offeredEngines || offeredEngines.includes("postgres"));
+  // Two different reasons PostgreSQL can be missing, each with its OWN note: the
+  // chosen PHP lacks the driver (the PDO note), or this Mac's macOS cannot run
+  // the engine at all (the refusal note, core's sentence). The first macOS 13
+  // run (23 Sep 2026) showed BOTH notes for a PHP 8.3 that has pdo_pgsql —
+  // because one boolean carried both facts. They are kept apart here.
+  const phpHasPgsql = installed.find((v) => v.minor === phpVersion)?.postgresSupported ?? false;
+  const postgresShipsHere = !offeredEngines || offeredEngines.includes("postgres");
+  const postgresOffered = siteType !== "wordpress" && phpHasPgsql && postgresShipsHere;
   // …and a choice that stops being legal must not survive as a silent payload.
   // Switching to WordPress, or to a PHP without the driver, with PostgreSQL
   // already picked would otherwise send an engine the backend refuses — the
@@ -450,6 +454,8 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
               dbEngine={dbEngine}
               setDbEngine={setDbEngine}
               postgresOffered={postgresOffered}
+              phpHasPgsql={phpHasPgsql}
+              postgresShipsHere={postgresShipsHere}
               needsDb={siteType !== "php" && !adopting}
               starterDbOffered={starterDbOffered}
               starterDb={starterDb}
@@ -805,6 +811,10 @@ function Step2(p: {
   /** Whether PostgreSQL is a legal choice for THIS site — the site type and the
    *  chosen PHP together (see the Database field). */
   postgresOffered: boolean;
+  /** The chosen PHP has a working pdo_pgsql — the PDO note shows only when this is false. */
+  phpHasPgsql: boolean;
+  /** This build/host can run PostgreSQL at all — when false the reason is in `engineNote`, not here. */
+  postgresShipsHere: boolean;
   starterDb: boolean;
   setStarterDb: (v: boolean) => void;
   source: DocrootSource;
@@ -1064,7 +1074,7 @@ function Step2(p: {
       {(p.needsDb || p.starterDbOffered) && p.engineNote && (
         <div className="-mt-1 text-[0.6875rem] leading-[1.5] text-rex-text-muted">{p.engineNote}</div>
       )}
-      {(p.needsDb || p.starterDbOffered) && p.siteType !== "wordpress" && !p.postgresOffered && (
+      {(p.needsDb || p.starterDbOffered) && p.siteType !== "wordpress" && p.postgresShipsHere && !p.phpHasPgsql && (
         <div className="-mt-1 text-[0.6875rem] leading-[1.5] text-rex-text-muted">
           PostgreSQL needs PDO, and the PHP {p.phpVersion} build has no working{" "}
           <span className="font-mono text-rex-text-bright">pdo_pgsql</span> — pick a newer PHP

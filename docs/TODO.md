@@ -35,7 +35,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
-- [ ] **macOS 13 floor — three tiers, T0–T6 landed, T7 PART-RUN on a 13.6 VM (two real defects found and fixed), T8 open** (owner ruled 23 Sep 2026):
+- [ ] **macOS 13 floor — three tiers, T0–T6 landed, T7 RUN on a 13.6 VM (four real defects found and fixed; bundles/14-VM/15-upgrade left), T8 open** (owner ruled 23 Sep 2026):
   macOS 15 stays the STANDARD (every feature, latest pins); the app also RUNS on 13 and 14
   with a per-host pin set (`BinaryTier`, derived from the host every launch) and a
   "needs macOS 14" refusal for PostgreSQL and PHP 8.0 on 13; self-builds
@@ -71,10 +71,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   gate — folded into `DbEngine::ensure_available_on`, #710). With both fixed: legacy pins
   offered and RUN (mysql-8.4.3, nginx, php-fpm 8.3 + the 3.4.5 Xdebug pool, Caddy, Mailpit),
   a Blank-PHP, a WordPress and a Laravel site were created and served HTTPS 200, both refusals
-  say the tier sentence, the app swap adopted the running services. **Still open:** the GUI rows (onboarding note, muted PostgreSQL row, the
-  8.0 chip — need Screen Recording for ssh screenshots or an eyes-on pass), CA trust prompt,
-  bottle bundles (VM has no CLT), a tunnel, WordPress/Laravel creates, the in-place upgrade
-  to 15, and the macOS **14** VM. `docs/SMOKE-TEST.md` "macOS 13 and 14".
+  say the tier sentence, the app swap adopted the running services. Eyes-on (JXA clicks +
+  screenshots) the same day: onboarding legacy note, the branded keychain prompt, muted
+  PostgreSQL row, New Site's tier note, the 8.0 chip — all as designed after two TSX fixes
+  found there (a PDO note firing beside the tier note; 8.0 appended out of order); a public
+  share ran on **cloudflared 2025.4.0** and answered 200 from the host. **Still open:** bottle
+  bundles (VM has no CLT), the in-place upgrade to 15, and the macOS **14** VM. `docs/SMOKE-TEST.md` "macOS 13 and 14".
 
 - [x] **A typed bare `name.rex` goes to Google instead of the site** (owner report, 22 Sep 2026;
   `name.rex/` and `http://name.rex` worked). Browsers classify address-bar text against the public

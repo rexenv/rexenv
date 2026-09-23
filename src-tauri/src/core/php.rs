@@ -589,7 +589,7 @@ pub fn list_versions(
         is_default: false,
         minor,
     });
-    Ok(store::list_php_versions(conn)?
+    let mut rows: Vec<PhpVersionView> = store::list_php_versions(conn)?
         .into_iter()
         .map(|v| {
             // THE BASELINE, and getting it wrong produced three wrong fields at
@@ -652,7 +652,19 @@ pub fn list_versions(
             }
         })
         .chain(refused)
-        .collect())
+        .collect();
+    // In version order, refused rows included: the first macOS 13 run listed
+    // 8.0 AFTER 8.5 because it was appended, and a list whose order changes
+    // with the host reads as a different list (23 Sep 2026).
+    rows.sort_by_key(|r| minor_key(&r.minor));
+    Ok(rows)
+}
+
+/// `"8.3"` → `(8, 3)`, for ordering minors numerically (`"8.10"` after `"8.9"`).
+fn minor_key(minor: &str) -> (u32, u32) {
+    let mut it = minor.split('.');
+    let n = |s: Option<&str>| s.and_then(|p| p.parse().ok()).unwrap_or(0);
+    (n(it.next()), n(it.next()))
 }
 
 /// Enable (install) or disable (remove) a PHP version. Guards on removal: the
@@ -1866,6 +1878,9 @@ mod tests {
         // …and the LIST still carries it, as a refusal.
         let rows = list_versions(&conn, &[], &Default::default(), "arm64").unwrap();
         let r = rows.iter().find(|r| r.minor == "8.0").expect("8.0 listed, not omitted");
+        // …in its place, not appended: 7.4, 8.0, 8.1, … (the first VM run showed 8.0 last).
+        let minors: Vec<&str> = rows.iter().map(|r| r.minor.as_str()).collect();
+        assert_eq!(&minors[..3], &["7.4", "8.0", "8.1"], "{minors:?}");
         let reason = r.unavailable_reason.as_deref().expect("the reason travels with the row");
         assert!(reason.contains("macOS 14"), "{reason}");
         assert!(!r.installed && !r.is_default && !r.xdebug_supported);
