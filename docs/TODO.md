@@ -44,6 +44,17 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [ ] **A Finder "Replace" of the running app can pop macOS's "rexenv quit unexpectedly"** (seen
+  three times on the 13.6 VM, 23 Sep 2026, every one during a HAND swap of the bundle over ssh
+  — `rm -rf` + copy, or copy + `mv`): the DNS agent's LaunchAgent (KeepAlive) relaunches
+  `rexenv --dns-agent` the instant the app is killed, lands in a half-replaced bundle, and dyld
+  kills it with `SIGKILL (Code Signature Invalid)` at `_dyld_start` — the report names rexenv, so
+  the user reads it as the app crashing. `crash.log` stays empty (nothing of ours ran). The
+  in-app updater swaps atomically (ledger's `app_bundle` rows) and never showed it; a user who
+  drags a newer dmg over a RUNNING copy in Finder walks the same race. Options: `bootout` the
+  agent before the swap in the updater's Finder-replace guidance (`docs/INSTALL.md`), or have the
+  agent's KeepAlive wait for a settled bundle (a signature check before exec). Not a 0.8.7
+  blocker — the shipped path is the updater.
 - [ ] **macOS 13 floor — three tiers, T0–T6 landed, T7 RUN on a 13.6 VM (five real defects found and fixed; 14-VM/15-upgrade left), T8 open** (owner ruled 23 Sep 2026):
   macOS 15 stays the STANDARD (every feature, latest pins); the app also RUNS on 13 and 14
   with a per-host pin set (`BinaryTier`, derived from the host every launch) and a
