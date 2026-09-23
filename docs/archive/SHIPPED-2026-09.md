@@ -3234,3 +3234,350 @@ paying for anyway: **the tick belongs in the commit that does the work.**
     app with both names working — "test korlam thik moto kaj korchhe". (At the time of
     recording the test site was already gone from rexenv and `tr-www` was still linked
     in Valet and Herd.)
+
+## Reconcile of 23 Sep 2026
+
+### From “Now — actionable code/test work”
+
+- [x] **A typed bare `name.rex` goes to Google instead of the site** (owner report, 22 Sep 2026;
+  `name.rex/` and `http://name.rex` worked). Browsers classify address-bar text against the public
+  TLD list before any DNS lookup. Firefox fix + a hint for the browsers that have no setting.
+  ✓ 22 Sep 2026 — Firefox's `browser.fixup.domainsuffixwhitelist.<tld>` written on TLD install, CA
+  trust and from Settings; "add a slash" hint on the default-TLD card and the site-page domain
+  tooltip (ledger #706: 4 L0 tests, plant-proven; live on Firefox 156 via BiDi `uriFixup`,
+  `acme.rex` SEARCH → URL). Windows run owed: SMOKE-TEST Windows section.
+
+- [x] **FrankenPHP 1.12.4 pin is STALE (18 Sep 2026)** — the live `frankenphp-mac-arm64` asset hashes to
+  `fb38e69514a04875b83900da0e1585d611fe0f52f3a904c50bef5605347e5dec`, the pin says `44308edd…`; the
+  checksum guard fires and FrankenPHP is uninstallable for every user (upstream rebuilds assets in
+  place, the documented signal). Re-pin per the procedure in `core/binaries.rs` (API digest +
+  sigstore attestation + `frankenphp version`), both arches. **Also:** `rex site server blank.rex
+  frankenphp` RECORDED `server = frankenphp` although the download failed — nginx kept serving
+  while the row said FrankenPHP, and the next edge reload failed on the missing binary. The switch
+  must not persist before the binary resolves.
+  ✓ 18 Sep 2026 — re-pinned (API digest + attestation + `frankenphp version`, both arches) and the switch now fetches before it writes (ledger #680); live on the VM: FrankenPHP downloaded, served, shared, caught mail.
+
+- [x] **Build zip (dist-archive) fails on every Mac — the TMPDIR has a space.** Clean-VM smoke
+  18 Sep 2026: `wp dist-archive` writes its zip include-pattern file into `TMPDIR` and passes it as
+  `-i@<file>` unquoted; rexenv points TMPDIR at `<app-data>/dist-archive-work/…`, so zip saw
+  `@/Users/…/Library/Application` and died ("File not found or no read permission"). The dev-Mac
+  examples use space-free fixture paths, which is why it never fired (fixtures-must-look-like-
+  production). Fix: a space-free per-run TMPDIR that the same `Drop` guard removes (under the
+  user's `$TMPDIR`/`var/folders`), then re-run SMOKE §Git assets 2–6 by hand.
+  ✓ 18 Sep 2026 — `scratch_root` picks the OS temp dir (whitespace-checked, refusal otherwise), ledger #679; live on the VM.
+
+- [x] **Site info claims a database that does not exist.** ✓ 18 Sep 2026 — `rex site info` /
+  `create` / `delete` now say "none" / "no database" for a Blank-PHP site without a starter
+  database, and `--db none` is accepted (ledger #682). The CLI's opt-in `--starter-db` default
+  is by design (#462), not the bug. Still open, narrower: the MCP `site_info` view and the app's
+  Site Settings tab serialize the same `dbEngine`/`dbName` for such a site — a `hasDatabase`
+  fact on the row would close both.
+
+- [x] **Apache override: delete leaves `apache-<domain>-error.log`.** ✓ 18 Sep 2026 — `apache::error_log_path` swept on delete and rename (ledger #302 amended).
+  the old names; delete removed `.conf` and `-stdout.log` but not `-error.log` (app-data litter).
+
+- [x] **Blank PHP starter: a stopped database reads as "no database".** ✓ 18 Sep 2026 — the template keeps `REXENV_DB` when the open throws; php-cli test (ledger #683).
+  Services, `db.php` present, the starter page shows the "pick MySQL, MariaDB or PostgreSQL —
+  generate the connection" card instead of "not connected" (SMOKE §Blank PHP row).
+
+- [x] **WordPress create logs `error sending mail … 127.0.0.1:11025 connect refused`.** ✓ 18 Sep 2026 — `wp core install --skip-email`; nothing read that mail.
+  install runs before the serve phase starts the stack (now that create starts a stopped stack,
+  18 Sep 2026), so Mailpit is down while WP-CLI sends the install mail. Harmless, but it is the
+  first red line a new user reads. Start Mailpit before `core install`, or suppress the mail.
+
+- [x] **Windows stale-CA sweep** ✓ 19 Sep 2026 — code 18 Sep (`cert_store::untrust_stale`, #678),
+  run against a real Root store the next day on the Dell with the owner at the keyboard
+  (`examples/windows_stale_ca_sweep.rs`, system tier, Windows only): a throwaway CA from the
+  production generator trusted beside the machine's real rexenv root, sweep returns **1**, store
+  ends with exactly one root and it is the real one — read back through PowerShell, not through the
+  module under test. The real CA is the `current` argument on purpose; a pair of throwaways would
+  have made the machine's own root a third certificate for the sweep to take.
+  **Measured, where the code had only reasoned:** two confirmations, one per change — the removal
+  raises its own, so Windows has no warm authorization to ride. Not covered: the multi-stale case
+  (one was swept, not four).
+
+- [x] **Windows: the pool ROW is labelled "PHP-FPM" on a machine with no php-fpm** ✓ 17 Sep 2026 (ledger #651: a `label` field the screen shows, the `name` key untouched — renaming it would have dropped the row out of the PHP group and taken Set-default with it) — the log-FILE half
+  of this landed first (16 Sep 2026, ledger #650: `PoolModel` owns both log names and `logs.rs` asks it, so
+  the Logs tab offers `php-cgi-<minor>.log` there — seen on the Dell). **Unseen on Windows:** the label
+  itself, until the next build reaches the Dell — seen in `rex status`
+  on the Dell, 16 Sep 2026: the service rows read `PHP-FPM 8.2` / `PHP-FPM 8.3`, but D1 ruled Windows
+  runs a php-cgi GROUP, not php-fpm. **Not a wording swap:** measured, that string is a KEY, not just
+  a label — `core/logs.rs:92` pairs it with the log FILE (`php-fpm-<minor>.log`, which on Windows is
+  `php-cgi-<minor>.log`), `service_manager::pool_service_name` feeds watchdog events and the
+  restart-attempt counters, and `core/pool_busy.rs` compares those strings. So renaming per OS changes
+  behaviour, not text, and it needs its own task: decide whether the key stays stable and only the
+  DISPLAY name moves (probably), then move it with the log names together
+
+- [x] **An older rexenv refuses a database a newer one migrated** ✓ 13 Sep 2026 — built the same
+  day at the owner's go: `refuse_newer_schema` in `state::db::open` (before any pragma) and
+  `migrate_with`, its own launch-screen arm, 2 L0 plant-proven, ledger #593. Owner, after
+  installing the 0.7.1 dmg over data a master dev build had been using. Measured: the only
+  production opener (`lib.rs:423` → `state::db::open_for_platform` → `open`, `state/db.rs:702`)
+  runs `migrate_with`, which applies the migrations numbered above `user_version` and says
+  nothing when `user_version` is ABOVE `MIGRATIONS.len()`; nothing else reads it. So the day
+  master adds migration 45, any older build opened on that data — a hand-installed older dmg,
+  or this Mac swapping between a dev build and a release — reads and writes tables it does not
+  know, silently. Not live today: v0.7.0 and master are both schema v44, and this Mac's
+  database reads `user_version` 44.
+  - [x] `open` refuses before any write when `user_version` > `MIGRATIONS.len()`, with a
+    message naming both numbers and the fix (run the rexenv that migrated the data, or newer),
+    shown wherever a failed database open is shown today (measure that path first) ✓ 13 Sep
+    2026 — measured first: an open failure becomes the always-managed `InitError`, rendered
+    verbatim by `FatalError`; the new `Error::NewerSchema` gets its own `lib.rs` arm, since the
+    generic arm's "not writable / disk full" advice is wrong for it
+  - [x] L0 test: a database stamped `len + 1` is refused and left byte-identical; plant-proven;
+    ledger row ✓ 13 Sep 2026 — two tests (file database; the engine alone); plants: both calls
+    removed → both FAIL, only `migrate_with`'s removed → the engine test FAILS; ledger #593
+  - [x] Ship it in a release BEFORE the first release that adds migration 45. Builds up to
+    0.7.1 stay unguarded forever, so the gap closes only for versions after the guard — say so
+    in `docs/RELEASING.md` beside the version bump ✓ 13 Sep 2026 — on master, so every release
+    from here carries it, including whichever adds migration 45; RELEASING's bump step now says a
+    release that grows `MIGRATIONS` must tell users that going back to ≤0.7.1 is unsupported,
+    and INSTALL explains the screen
+
+- [x] **Third-party notices — a Windows crate table before any Windows release** ✓ 16 Sep 2026 — 13 Sep 2026,
+  owner asked whether the notices count drift was tracked; it was not (the debt lived only
+  inside `THIRD-PARTY-NOTICES.md`). The macOS half is done below; open for ONE reason: the
+  Windows graph needs its table, and `notices-check.py` a Windows target, before a Windows
+  build ships.
+  - [x] The rows the shipped app was missing ✓ 13 Sep 2026 — 17 added: `mysql_async`,
+    `mysql_common` and 13 they pull in across arm64 + x86_64 (in the app since 24 Aug, so the
+    Licenses dialog of 0.4.0–0.7.0 left them out), and the `rex` CLI's `memchr` 2.8.3 + `zmij`
+    1.0.23 (the CLI's graph was never inventoried); heading 395 → 412
+  - [x] Checked, not remembered ✓ 13 Sep 2026 — `scripts/notices-check.py` in `verify.sh`: Rust
+    both directions (arm64 ∪ x86_64, app + CLI) with licences and the heading count, npm both
+    directions with its count; plant-proven, ledger #592
+  - [x] Windows: a crate table for the Windows graph and a Windows target in the check ✓ 16 Sep
+    2026 (ledger #644) — **the row's own numbers were stale**: measured 416 crates, not 410, and 39
+    beyond the macOS table, not 50 (this session added `windows`, `webview2-com` and the CLI's
+    `tokio`). A SEPARATE section, because 35 macOS rows have no Windows counterpart; read by
+    `rust_graph(TARGETS_WINDOWS)` — the same function and the same walk, one argument — and the
+    macOS 412 was re-derived by that walk as a control before the Windows number was trusted.
+    Plants 3/3
+
+- [x] **The admin-password dialog is rexenv's, like Local's** ✓ 12 Sep 2026 — owner: ours
+  read "osascript wants to make changes." over a plain lock beside Local's branded prompt.
+  Spike measured on macOS 26.6.2 first (name via bundle, badge only once `Assets.car` is
+  gone); ARCHITECTURE "The admin dialog is rexenv's".
+  - [x] T1 — `run_privileged` asks through a rexenv-named applet with our icon, script
+    compiled in, osascript only when no dialog was shown ✓ 12 Sep 2026 — ledger #577;
+    `a_built_applet_is_named_rexenv_badged_with_our_icon_and_holds_the_script_inside`
+    (plant-proven) + 3 L0; `priv_check` live: "rexenv" + logo, `root` returned
+  - [x] T2 — every prompt says what it is for ✓ 12 Sep 2026 — required `PromptReason` on
+    `run_privileged`, set by all 8 callers in `dns`/`proxy`/`setup`/`cli`, in the applet
+    and the osascript fallback; ledger #578;
+    `a_reason_completes_one_sentence_whatever_punctuation_the_caller_brought` + the
+    applet/osascript source tests
+  - [x] T3 — one live `priv_check`, eyes on the dialog ✓ 12 Sep 2026 — the owner read
+    "rexenv wants to run its password-prompt check." under "rexenv" (#578 → ✅); Cancel
+    returned "Administrator permission was cancelled — this step needs it. Try again and
+    approve the prompt." with no second dialog and no work dir left; the retry, approved,
+    returned `root` (#577).
+  - [x] T4 — the fallback split proven ✓ 12 Sep 2026 — `settle` + `classify` pulled out of
+    the shelling-out code; `only_a_run_that_showed_no_dialog_is_asked_again_through_osascript`
+    + `a_launch_that_ran_but_wrote_nothing_is_no_result_never_no_dialog` (both plant-proven)
+    over the measured `open -n -W` exits (1 = not launched, 0 = applet killed mid-dialog);
+    ledger #577 → ✅. The osascript dialog itself still never ran live (nothing here fails
+    to build) — the release SMOKE row's tell covers it. (The "App Background Activity: rexenv" notification seen during
+    the live run was NOT the applet: BTM log, 13:34:24, the DNS LaunchAgent re-registered
+    pointing at `target/debug/rexenv`, two minutes before the applet launched.)
+
+- [x] **Import Local multisite networks** ✓ 13 Sep 2026 — every child closed; the live
+  pass ran owner-run on `multisite.local`. 12 Sep 2026, planned in
+  `docs/PLAN-local-multisite.md`. Q2 of the Local import (`docs/archive/PLAN-local-import.md`
+  §9), parked the same morning and un-parked by the owner: "Q2 o kore felo multisite".
+  Adopt the network (record its mode, never convert), move rexenv's copy's network URLs,
+  and let the connect move `DOMAIN_CURRENT_SITE`.
+  - [x] T0 — the plan + this row ✓ 12 Sep 2026 — `docs/PLAN-local-multisite.md`
+  - [x] T1 — scan + adopt: network rows importable, mode recorded without convert ✓ 12 Sep
+    2026 — ledger #580; `adopting_a_network_records_the_mode_and_refuses_none`,
+    `a_network_imports_with_its_mode_and_a_mapped_subsite_is_refused`,
+    `an_imported_network_is_adopted_never_converted_and_reloaded` (both guards plant-proven).
+    Not usable alone: the copy still names `.local` until T2, and serving needs T3
+  - [x] T2 — network-aware URL pass on the copy ✓ 12 Sep 2026 — ledger #573 extended;
+    `a_network_moves_every_subsite_before_its_own_bare_name`,
+    `a_network_is_proved_moved_only_when_every_blog_reads_https_on_the_new_name` and the
+    wiring guard (plant-proven ×3). T4 measured its override pin unnecessary — removed;
+    the proof's `--url` is what works
+  - [x] T3 — `RewriteKey::NetworkDomain` in the connect ✓ 12 Sep 2026 — ledger #581;
+    `a_network_moves_only_its_domain_bytes`, `a_networks_domain_reaches_the_plan_before_the_diff`
+    (plant-proven ×2); the preview's `movesNetworkDomain` sentence in DbImportCard + MCP JSON
+  - [x] T4 — L1 network leg in `local_import_check` ✓ 12 Sep 2026 — leg C PASS (33 checks):
+    a real subdomain network with a subsite moves to `https://…multi.rex` in `wp_blogs`,
+    `wp_site`, `sitemeta` and both blogs' options (serialized length repaired), wp-config
+    byte-identical; the connect plan boots the SUBSITE on its rexenv name with
+    `COOKIE_DOMAIN` `.multi.rex`. Plant: removing `--url` from the proof fails it; removing
+    the override's `DOMAIN_CURRENT_SITE` pin did NOT — the pin was deleted
+  - [x] **fix: a failed import no longer orphans its copy** ✓ 12 Sep 2026 — the owner's
+    first `multisite.local` attempt stopped at "a database called `local` already exists …
+    no rexenv site owns it": an earlier attempt's copy, left when a post-restore failure
+    kept `local` while the row named its derived database, then orphaned by delete. Every
+    step from the feed to `finish` now drops the partial copy (ours only); ledger #586,
+    `every_failure_after_the_restore_drops_the_partial_copy` (plant-proven). The orphan
+    `local` was dropped with the owner's OK. Also found then: Local's router (Site Domains
+    mode) held :443/:80, so no rexenv site loaded
+  - [x] **A Local copy is named `local_<domain>` from the first import** ✓ 12 Sep 2026 —
+    every Local database is `local`, so the bare name only collided; ledger #587,
+    `a_local_copy_is_named_after_the_site`; PUBLISH-TESTING N7's diff is now 3 keys
+  - [x] **Local's router on :443 is named, with Router Mode → localhost** ✓ 12 Sep 2026 —
+    the port-conflict help and the MCP `site_status` verdict (which said "can't identify")
+    now name "Local's router" and the setting that frees the port without quitting Local;
+    ledger #588, `locals_router_is_named_with_the_way_out_that_keeps_local_running`,
+    `a_named_holder_replaces_the_cant_identify_sentence`. L3 owner-run
+  - [x] T5 — docs, PUBLISH-TESTING §N network steps, live pass on `multi.local` — steps
+    N10–N14 written 12 Sep 2026 (+ the summary row, and N0's stale "multisite can't
+    import" corrected) ✓ 13 Sep 2026 — owner-run on `multisite.local`: "ekhon sob thik
+    achhe"; the copy's blogs read back over MCP first (all `https://…multisite.rex`)
+
+- [x] **A network's sub-site rows sign in and choose a browser** ✓ 13 Sep 2026 — owner
+  report on `multisite.rex`: the Network tab's rows had a Visit icon (default browser
+  only) and an "Admin" icon that opened a plain `/wp-admin/`. Each row now has Visit and
+  Magic Login split buttons with the header's browser chooser; the login is minted ON the
+  sub-site's blog (a main-site token is invisible to a sub-site's request) for the URL the
+  network's own `wp site list` reports, host-checked. Ledger #589,
+  `a_subsite_login_is_built_only_on_this_sites_host`. L3 owner-run 13 Sep 2026: "thik
+  moto kaj korchhe".
+
+- [x] **One icon per hand-off, everywhere** ✓ 13 Sep 2026 — owner, after the sub-site
+  rows: their Visit and Magic Login showed a globe and a door while the header showed the
+  browser and the WordPress mark ("sob jaigai consistency"). `PreferredBrowserIcon` now
+  sits on every open-in-browser control (header, tile, Sites row, sub-site Visit, tunnel
+  URL, Open Mailpit, Adminer, Change domain's Open site) and `WordPressIcon` on every
+  magic login (header, tile, sub-site, One-click admin login, a user's Log in). DESIGN.md
+  rule; ledger #590, `open_in_browser_and_magic_login_wear_one_icon_everywhere`. Checked by
+  the owner in the dev app, 13 Sep 2026 ("icon gulo thik achhe").
+
+- [x] **A Valet or Herd multisite network imports silently as a single site** ✓ 13 Sep
+  2026 — owner: "Valet/Herd multisite er fix ta koro". The import reads the served
+  folder's wp-config text (`MULTISITE`, `SUBDOMAIN_INSTALL`; no PHP runs, at import, not
+  scan) and records the network like Local's; the batch reload covers a network found
+  there; and Convert on a docroot that already is a network records the file's mode
+  instead of converting — which also repairs a network imported before the fix, from
+  the WordPress tab's new "Already a multisite network → Record as a network" card.
+  Ledger #591, `a_network_is_read_from_wp_config_and_never_converted_again`,
+  `an_imported_network_is_adopted_never_converted_and_reloaded`. Original text: found
+  12 Sep 2026 researching the Local network import (`docs/PLAN-local-multisite.md` §6).
+  Nothing in `core/valet.rs` / `commands/valet_import.rs` detects multisite, so the site
+  lands as `multisite = none`: subdirectory subsites 404, subdomain subsites aren't
+  served, and the WordPress tab offers "Convert to multisite" on a live network. The
+  scan may not open project files, so detection needs another source (the copied
+  database, or a post-import `wp_info` read).
+
+- [x] **~16 flag-taking `rex` commands still ignore what they do not recognise** ✓ 18 Sep 2026
+  (3 Sep 2026, ledger #463/#466). Done: `site create`, `wp search-replace`,
+  `site delete`, `db reset`, `db import`; `tld` and `site domains` ✓ 18 Sep 2026 (#466 amended)
+  — a THIRD shape, and the one that does not fail but ANSWERS: every flag in both is an optional
+  `Some(..)`, so a misspelling matched no arm and fell through to the reading arm. `tld --remov x`
+  printed the default TLD, `site domains shop.rex --remov extra.rex` printed the list with
+  `extra.rex` still in it, both exit 0 — and for `--remove` the missing password prompt reads as
+  "already done". L1: the built `rex` now exits 2 before any socket call.
+  `site restart`, `site cert`, `db versions` and `site start|stop` ✓ the same day — the first three
+  are the same fall-through-to-the-reading-arm shape (`--pol` restarts the SITE instead of the shared
+  pool; `--regen` prints the expiry of the certificate it was asked to replace; `--sett` prints the
+  versions table while the pin stays), the fourth fails safe and takes the guard against the reverse
+  mistake. Each usage line is ONE const now, with `find_site` handed the part after its own
+  `rex: usage: ` prefix — the first cut printed `usage: usage:`.
+  `repo` ✓ the same day, and it needed a PER-ARM table rather than a union: `--branch` means nothing
+  to `delete`, `--yes` nothing to `add`, and one set wide enough for every arm accepts them
+  everywhere. The flag that earns the table is `--theme`, read once for all arms — a misspelt
+  `--theme` sent `repo delete` at the PLUGIN of that name after a confirmation that named the theme.
+  `repo watch start` also read its two positionals straight out of `words`, so
+  `watch start --theme mydir build` took `--theme` as the directory (the #466 read-a-flag-as-a-value
+  shape, in the one arm that does not go through the flag-filtered `rest`).
+  **Also learned here:** the refusal must come BEFORE `find_site`, which asks the app over the
+  socket — the first cut put it after and `rex repo … --them` hung with no rexenv running instead of
+  refusing. The four earlier commands were already ordered that way; `repo` was not.
+  `mail`, `tunnel`, `logs`, `site logs`, `site login`, `site domain` and `wp`'s per-arm sets ✓ the
+  same day, which closes the class for every flag-taking command. The ones that ANSWER rather than
+  fail: `mail list --unrea` listed the whole inbox (what an empty unread list looks like from
+  outside), `site logs --sourc app` printed the source MENU, `logs --line 500` printed the default
+  100 (indistinguishable from a short log), `site login --prin` opened a browser with a one-time
+  login URL on a session nobody was watching. `tunnel`, `site domain` and `site start|stop` fail
+  safe and took the guard against the reverse mistake.
+  **The test found one thing worth keeping:** `--lines` is read through the `lines_flag` HELPER, not
+  in either command's body, so the body scan called it accepted-but-unread. Named in the scan rather
+  than dropped from it — a lost `--lines` is as silent as any other.
+  Left deliberately: `site rename` (no flags; a `--x` is filtered out of the name and the empty name
+  is refused) and `doctor` (takes no words at all).
+  **Pick the rest by what an ignored flag DOES, not by how destructive the verb
+  sounds** — that was the first ordering here and it was wrong. On `db reset` and
+  `site delete` a typo fails SAFE: a misspelt `--yes` leaves the prompt standing.
+  The danger is a flag that SUPPRESSES a question (`--yes`, `--dry-run`) or
+  CHANGES what gets written or built. `wp search-replace` had both at once.
+  Two patterns to copy, each bought by a failure:
+  the accepted set is a FUNCTION or a table the test reads through a DIFFERENT
+  syntactic form than the one the code declares it in — a scan over the same
+  lines deletes its own evidence, and that plant came back green; and check the
+  POSITIONALS too, since `search-replace old --dry-run new` wrote the flag
+  itself into the database.
+
+
+### From “Release gates (human, scripted — see the docs named)”
+
+- [x] **Release 0.7.1 — the notices fix alone, cut from v0.7.0** ✓ 13 Sep 2026 — published, cask
+  bumped, app manifest serial 4 offering 0.7.1 (`check-app-manifest: all green`). Owner ruling 13 Sep 2026: never
+  rebuild a published version, and do not wait for the next feature release either, because
+  the shipped binary carries code whose notice does not travel with it. Flow: `docs/RELEASING.md`,
+  "A patch release cut from a published tag". Branch `release/0.7.1` in a worktree: the 17 rows,
+  `notices-check.py` wired into `verify.sh`, its ledger row, the four-manifest bump — and two
+  release-tooling fixes that ship in no binary: `verify-receipt.sh` hardcoded `.git/`, so the bar
+  and the pre-commit hook could not pass in any worktree (the first `verify-full` died on it);
+  and 14 example `curl` calls had no `--max-time`, so a fixture FrankenPHP that accepted and
+  never answered held the second `verify-full` for 50 minutes (owner: bound them, 13 Sep 2026).
+  The same run found a 4-day-old `vite` on :5199 left by an earlier `verify-full` — wk-checks
+  would have tested whatever that served; stopped with the owner's go.
+  - [x] `verify-full.sh` green on the branch; its four commits (receipt path, curl bounds, the
+    notices fix, the bump) ✓ 13 Sep 2026 — `verify-full: all green` (bar, sandbox tier,
+    wk-checks ALL PASS) on the third run; `release/0.7.1` = `d324fff` → `956ece1` → `94c9cf7` →
+    `b5c3d43`, `check-versions` 0.7.1 in all places
+  - [x] `pnpm release:mac`, then §A0 by hand (both slices, the per-slice payload, codesign, one dmg)
+    ✓ 13 Sep 2026 — the first build was killed at low memory (18 GB, swap full); the owner re-ran
+    it with `CARGO_BUILD_JOBS=4`. `release-assets: all green` (archive sha256 `e21b3525…`), §A0 all
+    green: one dmg, `rexenv` + `rex` x86_64 arm64, the payload in both slices, codesign, and the built
+    Licenses text carrying `mysql_async | 0.37.0`, `zmij | 1.0.23`, "410 external crates"
+  - [x] **Owner:** SMOKE-TEST on that dmg, then PUBLISH-TESTING §A ✓ 13 Sep 2026 — owner reported
+    both pass (after installing the same dmg on the dev Mac, where Local import was — correctly —
+    absent: it landed after v0.7.0)
+  - [x] Draft on `rexenv/homebrew-tap` with the one-line note ✓ 13 Sep 2026 — release id
+    387865008, draft, tag `v0.7.1`; four assets `uploaded`, and the API's digests equal the local
+    hashes (dmg `89239fd1…a3e3`, archive `e21b3525…c859`); exactly one asset ends
+    `_universal.dmg`, the same shape as 0.7.0
+  - [x] **Owner** publishes the draft → the cask bumps on that publish → runtimes "Publish app
+    update manifest" (dry run first) → `scripts/check-app-manifest.sh` ✓ 13 Sep 2026 — published
+    10:34:13Z, Latest; `update-cask` run 34752197550 success, cask `version "0.7.1"` with sha256
+    `89239fd1…` = the dmg; manifest dry run 34752249555 ("nothing committed"), real run 34752320411
+    → runtimes `b82cdba`, serial 3 → 4, release 0.7.1; `check-app-manifest: all green` once the
+    CDN served serial 4 (10:40:39Z)
+  - [x] Local tag `v0.7.1` ✓ 13 Sep 2026 — annotated, on `b5c3d43`, not pushed (the pre-push hook
+    refuses a `v*` tag while the repo is private)
+  - [x] After publish: master records the shipped commit (`git merge -s ours release/0.7.1`),
+    then the worktree and branch can go ✓ 13 Sep 2026 — merge `b563ac3` (no tree change;
+    `v0.7.1` is in master's history); the worktree's two symlinks were unlinked before
+    `git worktree remove`, the main target and wk-checks deps confirmed intact after; branch
+    deleted, the tag keeps `b5c3d43`
+
+- [x] **`check-app-manifest.sh` blames a forgotten click for CDN lag** ✓ 13 Sep 2026 — built at the
+  owner's go: step 2 reads the committed file through the contents API, verifies its signature, and
+  prints "the publish already happened — only the CDN is behind … Do NOT publish again" when the
+  commit names the tap's version; the forgotten-click line stays for a real miss. Proven offline by
+  `check-app-manifest-test.sh` in `verify.sh` (13 checks, two plants), and against the live
+  descriptor (all green). Ledger #594. Found 13 Sep 2026, releasing
+  0.7.1: run two minutes after the real publish (runtimes `b82cdba`, serial 4, 10:37:29Z), it read
+  `raw.githubusercontent.com`'s cached serial 3 and printed "This is the forgotten-second-click:
+  run … 'Publish app update manifest'" — advice that sends someone to publish a second time. The
+  committed file was already right (contents API: serial 4, 0.7.1). Read the descriptor through the
+  API as well, and when only the CDN is behind, say that and how long raw caches, instead.
+  Measured the same day: the CDN served serial 4 at 10:40:39Z, 3 min 10 s after the commit.
+  Done when: a check run inside the cache window prints the CDN-lag line, not the forgotten-click one.
+
+### Judgement moves (23 Sep 2026)
+
+Shape 2 — the row described a floor that no longer exists. nginx has been rexenv's own build at
+`minos 12.0` on both slices since 30 Aug 2026, and on 23 Sep 2026 the app's floor moved to
+macOS 13 with per-host pin tiers (`docs/PLAN-macos-13-floor.md`), so "would drop the floor
+from 15 to 14" is neither an option nor a question any more. Original text:
+
+- [ ] **Option, not a commitment: a self-built nginx (deployment target 12)
+  would drop the app floor from 15 to 14** (MySQL's floor). Same
+  `rexenv/runtimes` path that built PHP 7.4; recorded like the c-ares ruling -
+  known, waiting for a reason (e.g. macOS-14 users actually asking).
