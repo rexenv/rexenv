@@ -1507,7 +1507,7 @@ itself the first check.
 Run the Core sections above on a **clean macOS 13.7 VM and a clean macOS 14 VM** (the UTM
 recipe from "Cold first run", arm64). What differs there, and what must be seen:
 
-Environment: macOS 13.6 (22G120) arm64, UTM, CLT-less · rexenv 0.8.6-dev (2d1e1bc4 + the two T7 fixes) · run 23 Sep 2026 over ssh; **the macOS 14 VM has not been run**
+Environment: macOS 13.6 (22G120) arm64, UTM (CLT-less at first, CLT installed later the same day) · rexenv 0.8.6-dev (2d1e1bc4 + the T7 fixes), then **the shipped `rexenv_0.8.7_universal.dmg` (`a8b9dce2`, sha `6931094a…`) on the same VM at 18:50**: 9/9 services, Databases 3/3 running (MySQL 8.4.3, MariaDB 12.0.2, Redis 8.2.1), PostgreSQL's muted row, all four sites HTTPS 200, `crash.log` empty · run 23 Sep 2026 over ssh + JXA clicks; **the macOS 14 VM has not been run**
 
 - [x] **The app LAUNCHES and draws a window.** ✓ 23 Sep 2026 (clean UTM VM, macOS 13.6 arm64, CLT-less, build 2d1e1bc4+activation/gate fixes, driven over ssh + `rex`) — first build aborted (below); the fixed build launches, `rex open` answers "window opened", no `crash.log` entry. Not a formality: the first build put on a
       13.6 VM (23 Sep 2026) aborted in `applicationDidFinishLaunching` on a macOS-14-only
