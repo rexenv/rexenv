@@ -273,6 +273,41 @@ pub struct Artifact {
     pub url: String,
     /// Lowercase 64-hex SHA-256 of the artifact at `url`.
     pub sha256: String,
+    /// The oldest macOS the artifact's Mach-O declares (`minos`, "14.0"), set by
+    /// the publisher from the bytes it hashed. `docs/PLAN-macos-13-floor.md` §6.5:
+    /// a macOS 13 host must not be offered a PHP patch built at 14.0 the week it
+    /// is published — the exact failure the tiers exist to prevent, arriving by
+    /// the update path instead of the pin path. Absent on documents published
+    /// before 23 Sep 2026, and on entries that are not Mach-O (licences,
+    /// Adminer). See [`Artifact::admitted_on`] for what absence means.
+    #[serde(default, rename = "minMacos", skip_serializing_if = "Option::is_none")]
+    pub min_macos: Option<String>,
+}
+
+impl Artifact {
+    /// Whether THIS host's tier may resolve the entry.
+    ///
+    /// Only the Mach-O names carry a floor (`php`, `php-fpm`); licences and
+    /// Adminer are files and admitted everywhere. On the Standard tier every
+    /// entry is admitted — that tier IS every pin. On a legacy tier an entry is
+    /// admitted only when it DECLARES a floor at or under the tier's: an entry
+    /// with none is a build nobody measured, and the failure mode of guessing
+    /// is a pool that will not start on the user's machine.
+    pub fn admitted_on(&self, tier: crate::core::binaries::BinaryTier) -> bool {
+        use crate::core::binaries::BinaryTier;
+        if !needs_floor(&self.name) || tier == BinaryTier::Standard {
+            return true;
+        }
+        self.min_macos
+            .as_deref()
+            .and_then(crate::core::macho::parse_version)
+            .is_some_and(|need| need <= tier.floor())
+    }
+}
+
+/// The catalog names whose bytes are Mach-O and therefore carry a macOS floor.
+fn needs_floor(name: &str) -> bool {
+    matches!(name, "php" | "php-fpm")
 }
 
 /// The document, as signed.
@@ -331,9 +366,13 @@ impl VersionCatalog {
     /// actually carry, which for Adminer is [`ANY_ARCH`].
     pub fn newer_than(&self, family: Family, have: &str, arch: &str) -> Option<String> {
         let row_arch = family.row_arch(arch);
+        let tier = crate::core::binaries::tier();
         self.entries
             .iter()
             .filter(|a| Family::of_name(&a.name) == Some(family) && a.arch == row_arch)
+            // …that this host's tier may run (the completeness filter below asks
+            // `artifact`, which applies the same gate to every name in the family).
+            .filter(|a| a.admitted_on(tier))
             .map(|a| a.version.clone())
             .filter(|v| family.is_upgrade(v, have))
             .filter(|v| family.names().iter().all(|n| self.artifact(n, v, row_arch).is_some()))
@@ -344,9 +383,10 @@ impl VersionCatalog {
     ///
     /// `arch` is the MANIFEST's spelling — use [`catalog_arch`], never a literal.
     pub fn artifact(&self, name: &str, version: &str, arch: &str) -> Option<&Artifact> {
+        let tier = crate::core::binaries::tier();
         self.entries
             .iter()
-            .find(|a| a.name == name && a.version == version && a.arch == arch)
+            .find(|a| a.name == name && a.version == version && a.arch == arch && a.admitted_on(tier))
     }
 
     /// Every patch the catalog offers, for the GC's keep-set and for tests.
@@ -843,6 +883,29 @@ pub fn catalog_for_tests(rows: &[(&str, &str, &str, &str, &str)]) -> VersionCata
                 arch: (*arch).to_string(),
                 url: (*url).to_string(),
                 sha256: (*sha256).to_string(),
+                min_macos: None,
+            })
+            .collect(),
+    }
+}
+
+/// One test row for [`catalog_for_tests_with_floors`]: name, version, arch, url, sha256, floor.
+#[cfg(test)]
+pub type FlooredRow<'a> = (&'a str, &'a str, &'a str, &'a str, &'a str, Option<&'a str>);
+
+/// [`catalog_for_tests`] with a declared floor per row (`Some("14.0")`).
+#[cfg(test)]
+pub fn catalog_for_tests_with_floors(rows: &[FlooredRow<'_>]) -> VersionCatalog {
+    VersionCatalog {
+        entries: rows
+            .iter()
+            .map(|(name, version, arch, url, sha256, floor)| Artifact {
+                name: (*name).to_string(),
+                version: (*version).to_string(),
+                arch: (*arch).to_string(),
+                url: (*url).to_string(),
+                sha256: (*sha256).to_string(),
+                min_macos: floor.map(str::to_string),
             })
             .collect(),
     }
@@ -854,6 +917,54 @@ mod tests {
     // Test-only: the shipping code needs no pin table, it needs `php`'s view of
     // one. Kept out of the module imports so clippy's -D warnings stays clean.
     use crate::core::binaries;
+
+    /// §6.5 of the macOS-13 plan (ledger #711): a legacy host is offered — and
+    /// may resolve — only a PHP patch whose entry DECLARES a floor it meets. An
+    /// entry with no floor is a build nobody measured; a standard host takes it
+    /// as before (the Standard tier is every pin). Licences carry no floor.
+    #[test]
+    fn a_legacy_host_is_offered_only_a_patch_that_declares_a_floor_it_meets() {
+        use binaries::{install_tier, BinaryTier};
+        let sha = "a".repeat(64);
+        let url = "https://github.com/rexenv/runtimes/releases/download/x/y.tar.gz";
+        let have = binaries::pins().php;
+        let minor = php::minor_of(have);
+        let v = |n: u32| format!("{minor}.{n}");
+        fn group<'a>(version: &'a str, floor: Option<&'a str>, url: &'a str, sha: &'a str) -> Vec<FlooredRow<'a>> {
+            vec![
+                ("php", version, "arm64", url, sha, floor),
+                ("php-fpm", version, "arm64", url, sha, floor),
+                ("php-licenses", version, "arm64", url, sha, None),
+            ]
+        }
+        let (v1, v2, v3) = (v(9001), v(9002), v(9003));
+        let at_14 = catalog_for_tests_with_floors(&group(&v1, Some("14.0"), url, &sha));
+        let at_13 = catalog_for_tests_with_floors(&group(&v2, Some("13.0"), url, &sha));
+        let undeclared = catalog_for_tests_with_floors(&group(&v3, None, url, &sha));
+
+        install_tier(BinaryTier::Legacy13);
+        assert_eq!(at_14.newer_than(Family::Php, have, "arm64"), None, "14.0 outranks a 13 host");
+        assert_eq!(at_14.artifact("php", &v(9001), "arm64"), None, "the apply path refuses it too");
+        assert!(at_14.artifact("php-licenses", &v(9001), "arm64").is_some(), "licences carry no floor");
+        assert_eq!(at_13.newer_than(Family::Php, have, "arm64"), Some(v(9002)));
+        assert!(at_13.artifact("php-fpm", &v(9002), "arm64").is_some());
+        assert_eq!(undeclared.newer_than(Family::Php, have, "arm64"), None, "no floor = not measured = not offered");
+        // Plant: with `admitted_on` answering `true` for every entry, the first
+        // assertion offered 9001 to a 13 host (23 Sep 2026).
+        install_tier(BinaryTier::Legacy14);
+        assert_eq!(at_14.newer_than(Family::Php, have, "arm64"), Some(v(9001)), "14.0 fits a 14 host");
+        install_tier(BinaryTier::Standard);
+        for c in [&at_14, &at_13, &undeclared] {
+            assert!(c.newer_than(Family::Php, have, "arm64").is_some(), "a standard host takes every entry");
+        }
+        // The field round-trips under its published name, and is absent when None.
+        let a = &at_14.entries[0];
+        let json = serde_json::to_string(a).unwrap();
+        assert!(json.contains("\"minMacos\":\"14.0\""), "{json}");
+        let back: Artifact = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.min_macos.as_deref(), Some("14.0"));
+        assert!(!serde_json::to_string(&undeclared.entries[0]).unwrap().contains("minMacos"));
+    }
 
     /// **The pinned key is a real ed25519 public key, and nothing else verifies
     /// against it.**
@@ -1130,6 +1241,7 @@ mod tests {
             arch: "arm64".into(),
             url: "https://dl.static-php.dev/static-php-cli/bulk/x.tar.gz".into(),
             sha256: "a".repeat(64),
+            min_macos: None,
         };
         assert!(acceptable(&good), "the control entry must pass, or nothing below means anything");
 
@@ -1218,6 +1330,7 @@ mod tests {
                             arch: a.into(),
                             url: "https://dl.static-php.dev/x".into(),
                             sha256: "a".repeat(64),
+                            min_macos: None,
                         })
                     })
                 })
@@ -1291,6 +1404,7 @@ mod tests {
                 "https://github.com/vrana/adminer/releases/download/v{version}/adminer-{version}-en.php"
             ),
             sha256: "a".repeat(64),
+            min_macos: None,
         }
     }
 
@@ -1384,6 +1498,7 @@ mod tests {
             arch: ANY_ARCH.into(),
             url: "https://dl.static-php.dev/x.tar.gz".into(),
             sha256: "a".repeat(64),
+            min_macos: None,
         };
         assert!(!acceptable(&php_any), "a PHP row must name a real arch");
     }
@@ -1439,6 +1554,7 @@ mod tests {
                     arch: a.into(),
                     url: "https://dl.static-php.dev/x.tar.gz".into(),
                     sha256: "a".repeat(64),
+                    min_macos: None,
                 })
             })
             .collect();

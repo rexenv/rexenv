@@ -418,3 +418,12 @@ T4). A manifest still saying 15.0 would silently stop offering updates to every 
 user the app now runs for; one saying less than 13.0 would offer a build no tier serves.
 `scripts/check-app-manifest-test.sh`'s fixture says 15.0 because it tests the reader's
 shape, not the shipped value — the value to publish is the conf's.
+
+## The version catalog's `minMacos` (since 23 Sep 2026)
+
+`publish-manifest.sh` (in runtimes) now writes `minMacos` on every `php` / `php-fpm` entry,
+read with `vtool` off the artifact it just hashed, and refuses to publish a Mach-O whose floor
+it cannot read. rexenv offers a macOS 13 / 14 host only an entry whose floor it meets, and an
+entry WITHOUT the field is never offered to such a host (ledger #711) — so **the live manifest
+(serial 6, no floors) means legacy hosts get no catalog PHP updates until the next publish**.
+Standard hosts are unaffected. Nothing else in the document changed.

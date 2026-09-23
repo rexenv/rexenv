@@ -35,7 +35,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
-- [ ] **macOS 13 floor — three tiers, T0–T4 landed, T5–T8 open** (owner ruled 23 Sep 2026):
+- [ ] **macOS 13 floor — three tiers, T0–T5 landed, T6–T8 open** (owner ruled 23 Sep 2026):
   macOS 15 stays the STANDARD (every feature, latest pins); the app also RUNS on 13 and 14
   with a per-host pin set (`BinaryTier`, derived from the host every launch) and a
   "needs macOS 14" refusal for PostgreSQL and PHP 8.0 on 13; self-builds
@@ -58,6 +58,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   per tier (each stack ≤ its floor, stated == lowest); the onboarding legacy note
   (`legacy_notice`, derived from the refusals); INSTALL / SMOKE (Legacy section) / RELEASING
   (manifest floor must follow the conf) / PORTS / TESTING; ledger #433 re-shaped.
+  ✓ **T5** 23 Sep 2026 — catalog `minMacos`: a legacy host is offered only an entry that
+  declares a floor it meets (undeclared = not offered there; Standard takes all); both
+  accessors gate; runtimes' publisher emits it from `vtool` (edited, UNCOMMITTED in
+  `../runtimes` — owner to commit + republish; serial 6 carries no floors); ledger #711.
 
 - [x] **A typed bare `name.rex` goes to Google instead of the site** (owner report, 22 Sep 2026;
   `name.rex/` and `http://name.rex` worked). Browsers classify address-bar text against the public

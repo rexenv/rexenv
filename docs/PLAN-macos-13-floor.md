@@ -3,7 +3,7 @@
 **Status:** PLANNED — 23 Sep 2026. Measurement done (§1–§5, both slices, every component);
 **the owner ruled the shape the same day (§6)**: macOS 15 stays the STANDARD — every feature,
 every latest pin — and the app additionally RUNS on macOS 13 and 14 with a per-host pin set
-and a per-feature refusal where no build exists. Task list in §7; **T0–T4 landed 23 Sep 2026** (ledger #707, #708, #709, #710; #433 re-shaped), T5 next.
+and a per-feature refusal where no build exists. Task list in §7; **T0–T5 landed 23 Sep 2026** (ledger #707–#711; #433 re-shaped), T6 next.
 Planned against `99942bca`. Tracked as the "macOS 13 floor" row in `docs/TODO.md` (Now).
 
 The stated floor is `tauri.conf.json` `minimumSystemVersion: 15.0`, asserted equal to
@@ -357,7 +357,7 @@ rewritten ("13 runs, 15 required for everything — what 13/14 lack"); `SMOKE-TE
 Legacy section; `ARCHITECTURE.md` gets the tier paragraph. *Done when:* `macos_floor_check`
 ALL PASS with three tiers, `status.py --check` green, `doc-counts.sh` green.
 
-**T5 — the catalog learns `min_macos`.**
+**T5 — the catalog learns `min_macos`.** ✓ 23 Sep 2026, ledger #711 — two deviations from the text below: the reader does NOT refuse an entry without the field (that would break the live serial-6 manifest for every standard host); it treats absence as "not offered to a LEGACY host" and Standard takes all. And the gate is per tier, not per host version — it is scoped to the Mach-O names (php, php-fpm); licences and Adminer are files. `check-app-manifest-test.sh` is the APP manifest's test and was not the right file; the catalog's own tests cover it. Publisher patched in `../runtimes` (uncommitted).
 `updates::Artifact.min_macos`; reader refuses a macOS entry without it; `newer` filters by
 host; `scripts/publish-manifest.sh` fills it from `vtool`; `check-app-manifest-test.sh`
 covers the field. *Done when:* an L0 test proves a 14.0 artifact is not offered to a 13.7
