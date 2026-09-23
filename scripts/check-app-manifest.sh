@@ -20,6 +20,12 @@
 #      invisible until a user's update fails.)
 #   2. Does it name the version the tap actually published?
 #   3. Is the artifact it names really there, with that digest?
+#   4. Is its `minimumSystemVersion` the floor THIS source tree declares?
+#      (The publisher cannot read our tauri.conf.json — a private repo — so it
+#      restates the number by hand. 0.8.7 (24 Sep 2026) lowered the floor to 13.0
+#      and the publisher stayed at 15.0: serial 13 was signed telling every 13/14
+#      host that no later release will ever fit it. `NoOffer::NeedsNewerMacos`,
+#      silently, forever. APP-MANIFEST.md had claimed this check existed.)
 #
 # # And the false alarm it used to raise
 #
@@ -37,7 +43,7 @@
 #
 # Test seams (scripts/check-app-manifest-test.sh drives them offline, with file://
 # fixtures and a throwaway key): CHECK_APP_MANIFEST_DOC_URL, _SIG_URL,
-# _API_DOC_URL, _API_SIG_URL, _PUBKEY, _TAP_LATEST, and _OFFLINE=1 (skip gh). A
+# _API_DOC_URL, _API_SIG_URL, _PUBKEY, _TAP_LATEST, _FLOOR, and _OFFLINE=1 (skip gh). A
 # run with any of them set says so first, because it says nothing about the real
 # descriptor.
 set -euo pipefail
@@ -175,6 +181,26 @@ if [ "$HAVE_GH" = "1" ] && [ -n "$URL" ]; then
   else
     echo "check-app-manifest: the named asset exists and its digest matches"
   fi
+fi
+
+# ── 4. Is the floor it declares the one this source tree declares? ──────────
+# The macOS descriptor must say what tauri.conf.json says: higher, and hosts the
+# app supports are never offered an update; lower, and they are offered a bundle
+# LaunchServices refuses to open. The Windows descriptor carries an EMPTY floor —
+# the Windows app has no host version to compare (APP-MANIFEST.md §0).
+FLOOR="$(jstr minimumSystemVersion "$TMP/doc.json")"
+if [ "$DOC_NAME" = "app-manifest-windows.json" ]; then
+  [ -z "$FLOOR" ] || fail "the Windows descriptor declares minimumSystemVersion '$FLOOR'; it must be empty"
+else
+  WANT="${CHECK_APP_MANIFEST_FLOOR:-$(jstr minimumSystemVersion src-tauri/tauri.conf.json)}"
+  [ -n "$WANT" ] || fail "could not read minimumSystemVersion out of src-tauri/tauri.conf.json"
+  if [ "$FLOOR" != "$WANT" ]; then
+    fail "the descriptor's minimumSystemVersion is '$FLOOR'; tauri.conf.json declares '$WANT'.
+  MIN_MACOS in rexenv/runtimes scripts/publish-app-manifest.sh is a hand-copied number —
+  set it to $WANT and publish again. Until then a host between the two floors is either
+  never offered this release (descriptor higher) or offered one it cannot launch (lower)."
+  fi
+  echo "check-app-manifest: minimumSystemVersion $FLOOR matches tauri.conf.json"
 fi
 
 if [ "$WARNED" = "1" ]; then

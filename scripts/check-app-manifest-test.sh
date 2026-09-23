@@ -20,8 +20,9 @@ openssl genpkey -algorithm ed25519 -out "$T/key.pem" 2>/dev/null
 PUB="$(openssl pkey -in "$T/key.pem" -pubout -outform DER | tail -c 32 | xxd -p -c 64)"
 [ "${#PUB}" = "64" ] || { echo "check-app-manifest-test: could not derive a test public key" >&2; exit 1; }
 
-# descriptor <dir> <serial> <version>: a signed document shaped like the published one.
+# descriptor <dir> <serial> <version> [floor]: a signed document shaped like the published one.
 descriptor() {
+  local floor="${4:-13.0}"
   mkdir -p "$1"
   cat > "$1/app-manifest.json" <<EOF
 {
@@ -33,7 +34,7 @@ descriptor() {
     "sha256": "e21b3525e7d1de3d04f27f29d04560a60cc84ce476137b1d45eed095c9fce859",
     "sizeBytes": 29014289,
     "minAppVersion": "",
-    "minimumSystemVersion": "15.0",
+    "minimumSystemVersion": "$floor",
     "notes": "",
     "publishedAt": "2026-09-13T10:34:13Z"
   }
@@ -44,6 +45,8 @@ EOF
 
 descriptor "$T/old" 3 0.7.0
 descriptor "$T/new" 4 0.7.1
+# The floor the publisher restated by hand, and got wrong (0.8.7, 24 Sep 2026).
+descriptor "$T/floor" 4 0.7.1 15.0
 # A committed file whose signature does not match its bytes.
 mkdir -p "$T/badsig" && cp "$T/new/app-manifest.json" "$T/badsig/" && cp "$T/old/app-manifest.json.sig" "$T/badsig/"
 
@@ -65,6 +68,7 @@ file_url() {
 # run <cdn dir> <committed dir> <tap latest>
 run() {
   CHECK_APP_MANIFEST_PUBKEY="$PUB" CHECK_APP_MANIFEST_OFFLINE=1 CHECK_APP_MANIFEST_TAP_LATEST="$3" \
+  CHECK_APP_MANIFEST_FLOOR=13.0 \
   CHECK_APP_MANIFEST_DOC_URL="$(file_url "$1/app-manifest.json")" \
   CHECK_APP_MANIFEST_API_DOC_URL="$(file_url "$2/app-manifest.json")" \
     ./scripts/check-app-manifest.sh 2>&1
@@ -99,6 +103,11 @@ check "everything current" "no warning" "$(lacks "$out" "WARNING")"
 code=0; out="$(run "$T/old" "$T/badsig" 0.7.1)" || code=$?
 check "committed file badly signed" "fails instead of reassuring" "$([ "$code" != 0 ] && echo 1 || echo 0)"
 check "committed file badly signed" "says the committed descriptor does not verify" "$(has "$out" "COMMITTED descriptor")"
+
+code=0; out="$(run "$T/floor" "$T/floor" 0.7.1)" || code=$?
+check "floor drifted from tauri.conf.json" "fails instead of reassuring" "$([ "$code" != 0 ] && echo 1 || echo 0)"
+check "floor drifted from tauri.conf.json" "names both numbers" "$(has "$out" "is '15.0'; tauri.conf.json declares '13.0'")"
+check "floor drifted from tauri.conf.json" "points at MIN_MACOS" "$(has "$out" "MIN_MACOS")"
 
 if [ "$FAILS" -gt 0 ]; then
   echo "check-app-manifest-test: $FAILS check(s) FAILED"
