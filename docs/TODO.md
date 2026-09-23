@@ -35,7 +35,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
-- [ ] **macOS 13 floor — three tiers, T0–T1 landed, T2–T8 open** (owner ruled 23 Sep 2026):
+- [ ] **macOS 13 floor — three tiers, T0–T2 landed, T3–T8 open** (owner ruled 23 Sep 2026):
   macOS 15 stays the STANDARD (every feature, latest pins); the app also RUNS on 13 and 14
   with a per-host pin set (`BinaryTier`, derived from the host every launch) and a
   "needs macOS 14" refusal for PostgreSQL and PHP 8.0 on 13; self-builds
@@ -47,6 +47,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   ✓ **T1** 23 Sep 2026 — `PinSet` + `pins()`; the `*_VERSION` constants are private, so the
   guard is the compiler (135 files migrated); every tier still answers the Standard set;
   ledger #708.
+  ✓ **T2** 23 Sep 2026 — Legacy13/14 pin sets with digests (cloudflared 2025.4.0; MySQL
+  8.4.3/8.0.40 `macos14`; ventura blobs for Redis 8.2.1, MariaDB 12.0.2/11.4.8, httpd 2.4.65,
+  Xdebug 3.4.5 for 8.1–8.4, none loads for 8.5; PostgreSQL 16.4.0 on 14 only); `manifest_sweep_check` sweeps every tier;
+  `legacy_pins_check` resolves + runs each here; ledger #709.
 
 - [x] **A typed bare `name.rex` goes to Google instead of the site** (owner report, 22 Sep 2026;
   `name.rex/` and `http://name.rex` worked). Browsers classify address-bar text against the public

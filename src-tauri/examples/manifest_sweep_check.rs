@@ -26,7 +26,7 @@
 //! floor below alarms if the list shrinks — but a NEW binary name still has
 //! to be added here (the ledger row says so).
 
-use rexenv_lib::core::binaries::{self, Checksum};
+use rexenv_lib::core::binaries::{self, Checksum, PinSet};
 use rexenv_lib::core::php;
 use rexenv_lib::platform::traits::Arch;
 use sha2::Digest;
@@ -83,40 +83,54 @@ fn push_bundle(out: &mut Vec<Target>, name: &str, version: &str, arch: Arch) {
 async fn main() -> ExitCode {
     let mut checks = common::Check::new("manifest_sweep_check");
 
-    // 1. Enumerate — from the constants, not a retyped list.
+    // 1. Enumerate — from the pin sets, not a retyped list — and from EVERY
+    //    tier's set: a macOS 13 host resolves the Legacy13 pins, and a sweep that
+    //    read only this host's tier would never probe them. Dedup by (os, name,
+    //    version, arch): a version two tiers share is one artifact.
     let mut targets: Vec<Target> = Vec::new();
-    for arch in [Arch::Arm64, Arch::X86_64] {
-        push_single(&mut targets, "macos", "caddy", binaries::pins().caddy, arch);
-        push_single(&mut targets, "macos", "nginx", binaries::pins().nginx, arch);
-        push_single(&mut targets, "macos", "mailpit", binaries::pins().mailpit, arch);
-        push_single(&mut targets, "macos", "cloudflared", binaries::pins().cloudflared, arch);
-        push_single(&mut targets, "macos", "frankenphp", binaries::pins().frankenphp, arch);
-        push_single(&mut targets, "macos", "adminer", binaries::pins().adminer, arch);
-        push_single(&mut targets, "macos", "wp-cli", binaries::pins().wp_cli, arch);
-        push_single(&mut targets, "macos", "composer", binaries::pins().composer, arch);
-        for v in binaries::pins().php_versions {
-            push_single(&mut targets, "macos", "php", v, arch);
-            push_single(&mut targets, "macos", "php-fpm", v, arch);
-        }
-        for v in binaries::pins().mysql_versions {
-            push_single(&mut targets, "macos", "mysql", v, arch);
-        }
-        for v in binaries::pins().postgres_versions {
-            push_single(&mut targets, "macos", "postgres", v, arch);
-        }
-        for v in binaries::pins().redis_versions {
-            push_bundle(&mut targets, "redis", v, arch);
-        }
-        for v in binaries::pins().mariadb_versions {
-            push_bundle(&mut targets, "mariadb", v, arch);
-        }
-        push_bundle(&mut targets, "httpd", binaries::pins().httpd, arch);
-        for minor in php::all_minors() {
-            if let Some((bundle, version)) = binaries::xdebug_bundle_id(&minor) {
-                push_bundle(&mut targets, &bundle, version, arch);
+    for tier in PinSet::ALL_TIERS {
+        let p = PinSet::for_tier(tier);
+        for arch in [Arch::Arm64, Arch::X86_64] {
+            push_single(&mut targets, "macos", "caddy", p.caddy, arch);
+            push_single(&mut targets, "macos", "nginx", p.nginx, arch);
+            push_single(&mut targets, "macos", "mailpit", p.mailpit, arch);
+            push_single(&mut targets, "macos", "cloudflared", p.cloudflared, arch);
+            push_single(&mut targets, "macos", "frankenphp", p.frankenphp, arch);
+            push_single(&mut targets, "macos", "adminer", p.adminer, arch);
+            push_single(&mut targets, "macos", "wp-cli", p.wp_cli, arch);
+            push_single(&mut targets, "macos", "composer", p.composer, arch);
+            for v in p.php_versions {
+                push_single(&mut targets, "macos", "php", v, arch);
+                push_single(&mut targets, "macos", "php-fpm", v, arch);
+            }
+            for v in p.mysql_versions {
+                push_single(&mut targets, "macos", "mysql", v, arch);
+            }
+            for v in p.postgres_versions {
+                push_single(&mut targets, "macos", "postgres", v, arch);
+            }
+            for v in p.redis_versions {
+                push_bundle(&mut targets, "redis", v, arch);
+            }
+            for v in p.mariadb_versions {
+                push_bundle(&mut targets, "mariadb", v, arch);
+            }
+            push_bundle(&mut targets, "httpd", p.httpd, arch);
+            // Xdebug: the tier's version per minor, asked of the table directly
+            // (`xdebug_bundle_id` reads the HOST's tier). A minor with no row at
+            // that version (7.4, 8.0) simply has no target.
+            for minor in php::all_minors() {
+                let bundle = format!("xdebug-{minor}");
+                if binaries::bundle_manifest(&bundle, p.xdebug, "macos", arch).is_some() {
+                    push_bundle(&mut targets, &bundle, p.xdebug, arch);
+                }
             }
         }
     }
+    let before = targets.len();
+    targets.sort_by(|a, b| a.label.cmp(&b.label));
+    targets.dedup_by(|a, b| a.label == b.label);
+    eprintln!("targets: {} unique of {before} enumerated across {} tiers", targets.len(), PinSet::ALL_TIERS.len());
     // Windows x64 (port W2). ONE target per pin: every `Arch` resolves the same x64
     // URL there, so asking for both would probe it twice. The .phar/.php artifacts
     // are OS-agnostic and were swept above.

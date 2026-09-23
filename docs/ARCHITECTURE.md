@@ -883,8 +883,11 @@ Live-proven end to end by `site_stop_start_check`.
   because a tier is a macOS fact and `core/` may not name an OS); `lib.rs` installs it once;
   `binaries::pins()` — `PinSet::for_tier(tier())` — is the ONLY door to a version: the
   `*_VERSION` constants are private to `binaries.rs`, so a consumer that spells one fails to
-  compile (ledger #708). **As of T1 every tier answers the Standard set** — the legacy values
-  and the refusals are T2–T3 of that plan.
+  compile (ledger #708). The legacy sets are `..STANDARD_PINS` with the measured rows
+  overridden (`docs/PORTS.md` §"Legacy tiers"); the manifest tables themselves are
+  tier-blind — a legacy pin is its own row under its own version, so a standard host can
+  sweep, relink and run it (ledger #709). **As of T2 the refusals** (PostgreSQL and PHP 8.0 on
+  13) are an empty / shorter offered set with no words yet — T3 of that plan.
 - macOS `prepare_binary` order (non-negotiable): **de-quarantine → relink Homebrew dylibs
   to `/usr/lib` → ad-hoc codesign LAST.**
 - **`prepare_binary` needs NO Xcode Command Line Tools on the common path** (ledger #676).

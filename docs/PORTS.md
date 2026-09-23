@@ -52,6 +52,27 @@ binary, update THIS file in the same commit.
 | Adminer | 6.1.0 | single `.php`, OS-agnostic. sha256 `d21891f4…6d2000` (`ADMINER_6_1_0_SHA256`). Re-pinned from 5.4.2 on 21 Sep 2026 (rexenv/runtimes#5); this row still read 5.4.2 until the 0.8.6 release commit, because the re-pin commit changed the code and its fixtures but not this table |
 | cloudflared | 2026.6.1 | |
 
+### Legacy tiers — what a macOS 13 / 14 host resolves instead (`PinSet::for_tier`, 23 Sep 2026)
+
+The table above is the STANDARD set (macOS 15+, every non-macOS host). A host on 13 or 14
+resolves the rows below in its place — the newest upstream build whose `minos` fits, measured
+on both slices from the artifact (`docs/PLAN-macos-13-floor.md` §3); every row not listed is
+the standard pin unchanged. Same manifest tables, keyed by these version strings, so a
+standard host can sweep and run them (`manifest_sweep_check` enumerates every tier;
+`legacy_pins_check` resolves, relinks and runs each one here). The digests were computed
+from fresh downloads on 23 Sep 2026; the bottle hashes equal their ghcr digests.
+
+| Binary | Legacy14 (macOS 14) | Legacy13 (macOS 13) | Notes |
+|---|---|---|---|
+| cloudflared | **2025.4.0** | **2025.4.0** | last build before Cloudflare's macOS-15 SDK (2025.4.2+ = `minos 15.0`); arm64 13.0 / x86_64 `LC_VERSION_MIN_MACOSX 10.13` |
+| PostgreSQL | **16.4.0** (only) | **none — refused** | theseus arm64 builds are ≥ 14.0 everywhere (16.4.0 = 14.0 / x86_64 13.0); no build loads on Apple Silicon at 13. Refusal = T3 |
+| PHP | standard | **7.4.33 / 8.1–8.5 — no 8.0.30** | 8.0.30 (static-php.dev) is 14.0 on arm64; nothing older to pin, no self-build |
+| MySQL | standard | **8.4.3 (default) / 8.0.40** | the `macos14` CDN tarballs (`mysql_macos_build`); `macosNN` = deployment target NN−1, measured 8.0.33→8.4.6 |
+| Redis | standard | **8.2.1** + openssl@3 **3.5.2** | last ghcr tags with `ventura`/`arm64_ventura` blobs — Homebrew builds nothing for 13 now |
+| MariaDB | standard | **12.0.2 (default) / 11.4.8** + openssl@3 3.5.2 + pcre2 **10.46** | ventura blobs, same include lists |
+| Apache httpd | standard | **2.4.65** + apr 1.7.6 (ventura blob) + apr-util **1.6.3_1** + pcre2 10.46 | apr still publishes a ventura blob for 1.7.6 — same version, different digest |
+| Xdebug | standard | **3.4.5** for 8.1–8.4 — **8.5: none** | `xdebug_row_at(minor, version)` — the table holds both rows; the tier picks. 8.5's every ventura blob (3.3.0→3.4.5-3) was built against the 8.4 Zend API before 8.5 GA: `Xdebug requires Zend Engine API version 420240925` against php 8.5.8 (`legacy_pins_check`, 23 Sep 2026) — so on 13 the 8.5 toggle is NotPinned |
+
 ### Windows x64 artifacts (`manifest(…, "windows", …)`, port W2 — 12 Sep 2026)
 
 Same versions as the macOS rows, different builds. **x64 for every `Arch`**: Windows on
@@ -111,6 +132,7 @@ wrong number survives — it is only load-bearing on the day something else move
 | **PHP 8.0.30** (cli + fpm — the one PHP row that is NOT 12.0; static-php.dev, not ours) | **14.0 arm64 / 13.0 x86_64** — the one pinned binary whose two slices DISAGREE (23 Sep 2026) |
 | MySQL 8.0.44 / 8.4.6 (arm64 both-slice for 8.4.6's `macos15` build: 14.0 / 14.0), MariaDB 11.4.12 / 12.3.2, Redis 8.8.0, Apache httpd 2.4.68, Xdebug 3.5.3 bottles | 14.0 (arm64; the sonoma x86_64 bottles are still unswept) |
 | **cloudflared 2026.6.1** | **15.0** — the default stack's floor, and since 31 Aug 2026 the ONLY binary at it. **nginx 1.30.4 (ours) is 12.0 on both slices**, where the third-party 1.30.3 was 15.0 arm64 / **26.0 x86_64** |
+| **Legacy pins** (§"Legacy tiers" above): cloudflared 2025.4.0 13.0/10.13 · MySQL 8.4.3, 8.0.40 13.0/13.0 · Redis 8.2.1, MariaDB 12.0.2 / 11.4.8, httpd 2.4.65 (+ openssl 3.5.2, pcre2 10.46, apr, apr-util), Xdebug 3.4.5 ×4 (8.1–8.4; 8.5's ventura blobs do not load into 8.5) — every ventura blob 13.0/13.0 · PostgreSQL 16.4.0 **14.0**/13.0 | measured 23 Sep 2026, every Mach-O in every artifact, both slices |
 | **PostgreSQL 16.15.0 / 17.11.0 / 18.6.0** | **15.0** — measured 30 Aug 2026 on EVERY executable and dylib in all six shipped tarballs (`vtool -show-build`), so PostgreSQL no longer sets the app floor. The previous pins (16.14.0 / 17.10.0 / 18.4.0, June builds off macOS-26 runners) carried **26.0**, presumed-but-untestable death below macOS 26; re-pinning answered that question instead of waiting for a VM to ask it |
 
 **Arch caveat, narrowed 23 Sep 2026: the x86_64 slice is now MEASURED for the default

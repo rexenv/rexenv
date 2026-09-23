@@ -791,6 +791,13 @@ commands/ 9 — commands/ is 1.7% of tests for ~20 files of orchestration):
   **Since 12 Sep 2026 it sweeps the Windows x64 set too** (port W2): 104 targets, 88
   re-hashed. It proves the Windows URLs answer and the sub-cap bytes match — not that
   anything runs on Windows, which no layer on this Mac can show.
+  **Since 23 Sep 2026 it enumerates EVERY tier's pin set** (`PinSet::ALL_TIERS`, deduped by
+  label — 130 targets, 23 Sep 2026): the Legacy13/14 rows a macOS 13/14 host resolves are probed and hashed from a
+  standard host, which is the only place a sweep runs. `legacy_pins_check` (network tier) is
+  the RUN half: each legacy artifact resolved through the real download/relink/re-sign path
+  into a sandbox platform and answering `--version` — on THIS macOS, so it proves the bytes
+  and the relink, not the load on 13 itself (that is `minos` + T7's VM,
+  `docs/PLAN-macos-13-floor.md`).
 - **The design system's colour contrast was asserted in one comment and checked
   nowhere** (#337, scan landed 16 Aug 2026). `every_text_on_surface_pairing_meets_wcag_aa`
   and `every_rex_colour_class_names_a_token_that_exists` in `core::copy_scan` derive

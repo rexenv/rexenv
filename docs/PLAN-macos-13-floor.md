@@ -3,7 +3,7 @@
 **Status:** PLANNED — 23 Sep 2026. Measurement done (§1–§5, both slices, every component);
 **the owner ruled the shape the same day (§6)**: macOS 15 stays the STANDARD — every feature,
 every latest pin — and the app additionally RUNS on macOS 13 and 14 with a per-host pin set
-and a per-feature refusal where no build exists. Task list in §7; **T0–T1 landed 23 Sep 2026** (ledger #707, #708), T2 next.
+and a per-feature refusal where no build exists. Task list in §7; **T0–T2 landed 23 Sep 2026** (ledger #707, #708, #709), T3 next.
 Planned against `99942bca`. Tracked as the "macOS 13 floor" row in `docs/TODO.md` (Now).
 
 The stated floor is `tauri.conf.json` `minimumSystemVersion: 15.0`, asserted equal to
@@ -139,7 +139,7 @@ whose ghcr index still carries `macOS 13.x` bottles, and the measured minos of t
 | apr | 1.7.6 | **1.7.6** (same version — apr still publishes a ventura blob; the DIGEST changes) | 13.0 / 13.0 |
 | apr-util | 1.6.3 | **1.6.3_1** | 13.0 / 13.0 |
 | xdebug (shivammathur) 8.0–8.4 | 3.5.3 | **3.4.5** | 13.0 / 13.0 (8.3 measured; 8.0/8.1/8.2/8.4 same tag, blobs found, not swept) |
-| xdebug 8.5 | 3.5.3 | **3.4.5-3** | 13.0 / — (x86_64 blob found, not swept) |
+| xdebug 8.5 | 3.5.3 | **none** — 3.4.5-3 is 13.0 but was built against the 8.4 Zend API (pre-GA); loads into no PHP 8.5 (`legacy_pins_check`, 23 Sep 2026) | — |
 | xdebug 7.4 | 3.1.6 | **3.1.6** (same version, frozen minor — its ventura blob, not the pinned sonoma one) | 13.0 / — |
 
 Every candidate is an older release of the same formula, so the bundle recipes
@@ -181,7 +181,7 @@ WP-CLI 2.12.0, Composer 2.10.2, Adminer 6.1.0 are phars/PHP run by the bundled P
 | Free | Caddy, nginx, PHP 7.4 + 8.1–8.5, Mailpit, FrankenPHP | already 12.0 on both slices |
 | One re-pin | cloudflared → 2025.4.0 | new digests; accept a 17-month-old tunnel client (Cloudflare may deprecate old quick-tunnel clients server-side — untested) |
 | One re-pin, older patch level | MySQL → 8.4.3 / 8.0.40 | new digests + per-version URL template; 3–4 security patches behind |
-| Bulk re-pin | Redis 8.2.1, MariaDB 12.0.2 / 11.4.8, openssl@3 3.5.2, pcre2 10.46, httpd 2.4.65, apr-util 1.6.3_1, Xdebug 3.4.5 ×5 | ~20 ghcr digests, each bundle relinked + load-tested again |
+| Bulk re-pin | Redis 8.2.1, MariaDB 12.0.2 / 11.4.8, openssl@3 3.5.2, pcre2 10.46, httpd 2.4.65, apr-util 1.6.3_1, Xdebug 3.4.5 ×4 | ~18 ghcr digests, each bundle relinked + load-tested again |
 | Self-build or drop | PHP 8.0.30 (arm64 is 14.0), PostgreSQL (arm64 ≥ 14.0 everywhere) | either a `rexenv/runtimes` build with `MACOSX_DEPLOYMENT_TARGET=13.0`, or a per-minor / per-engine "needs macOS 14+" refusal |
 | Check + docs | `macos_floor_check` rule (≥ instead of ==), `PORTS.md` table, `INSTALL.md` requirement line, `tauri.conf.json` | small |
 | Proof | a macOS 13 VM run of the smoke test | `minos` is metadata; dyld enforcement is a property of the OLD host and cannot be observed on this machine (`PORTS.md`) |
@@ -247,7 +247,7 @@ BinaryTier::Legacy13   host 13.x        the §6.2 set; PostgreSQL + PHP 8.0 refu
 | Redis (+ openssl@3) | 8.8.0 (+ 3.6.3) | **8.2.1 (+ 3.5.2)**, ventura blobs |
 | MariaDB (+ openssl@3, pcre2) | 12.3.2 / 11.4.12 | **12.0.2 / 11.4.8** (+ 3.5.2, 10.46), ventura blobs |
 | Apache httpd (+ apr, apr-util, pcre2) | 2.4.68 (+ 1.7.6, 1.6.3, 10.47) | **2.4.65** (+ 1.7.6 ventura, 1.6.3_1, 10.46) |
-| Xdebug 8.1–8.4 / 8.5 / 7.4 | 3.5.3 / 3.5.3 / 3.1.6 | **3.4.5 / 3.4.5-3 / 3.1.6** (ventura blobs) |
+| Xdebug 8.1–8.4 / 8.5 / 7.4 | 3.5.3 / 3.5.3 / 3.1.6 | **3.4.5 / none (NotPinned) / no row either way** — 8.5's ventura blobs predate 8.5 GA and load into no 8.5 |
 | **PostgreSQL** | 18.6.0 / 17.11.0 / 16.15.0 | **refused — "needs macOS 14"** (rule 2; rule 3 later) |
 | **PHP 8.0.30** | static-php.dev | **refused — "needs macOS 14"** (arm64 is 14.0; the x86_64 slice would run, but one rule per feature beats a per-arch feature — owner may relax) |
 | WP-CLI, Composer, Adminer | as today | same (no floor) |
@@ -334,7 +334,7 @@ the `*_VERSION` constants become the Standard set's initialisers. Guard test: no
 constant read outside `binaries.rs`. *Done when:* behaviour byte-identical on 15
 (`macos_floor_check` ALL PASS unchanged), guard green, ledger row.
 
-**T2 — Legacy13 + Legacy14 pins, with digests.**
+**T2 — Legacy13 + Legacy14 pins, with digests.** ✓ 23 Sep 2026, ledger #709 — tables stay tier-blind (a legacy row is its own version); `legacy_pins_check` is the run proof on this host.
 For every §6.2 row: download both slices, hash, pin (MySQL: per-version URL template;
 bottles: ventura blob digests; cloudflared 2025.4.0 tgz digests). `manifest(...)` and
 `bundle_manifest(...)` take the tier through `pins()`, not a new parameter. Unit test per

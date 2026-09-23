@@ -188,9 +188,9 @@ impl BinaryTier {
 /// `docs/PLAN-macos-13-floor.md` §7 T1 asks for, without a source scan.
 ///
 /// Fields are the Standard set's literals, so every value is `'static` and the
-/// struct is `Copy`; a call to [`pins`] costs one lock read. **Until T2 lands,
-/// every tier answers the Standard set** — the shape is in, the legacy values are
-/// not, and `for_tier` says so in the one place they will go.
+/// struct is `Copy`; a call to [`pins`] costs one lock read. The legacy sets
+/// are `..STANDARD_PINS` with the measured rows overridden, so a row that does
+/// not differ cannot drift from the standard one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PinSet {
     pub php_versions: &'static [&'static str],
@@ -249,15 +249,51 @@ const STANDARD_PINS: PinSet = PinSet {
     bundled_apr_util: BUNDLED_APR_UTIL_VERSION,
 };
 
+/// macOS 14: the standard set except the two rows whose standard pin declares
+/// `minos 15.0` — cloudflared and PostgreSQL. Every other standard pin is 14.0
+/// or lower on both slices (`docs/PORTS.md`).
+const LEGACY14_PINS: PinSet = PinSet {
+    cloudflared: LEGACY_CLOUDFLARED_VERSION,
+    postgres: LEGACY14_POSTGRES_VERSION,
+    postgres_versions: LEGACY14_POSTGRES_VERSIONS,
+    ..STANDARD_PINS
+};
+
+/// macOS 13: `docs/PLAN-macos-13-floor.md` §6.2, row for row. PostgreSQL has
+/// NO build that loads on Apple Silicon at 13 and PHP 8.0.30 is 14.0 there, so
+/// their offered sets are empty / without 8.0 — the refusal that explains it to
+/// the user is T3's. `postgres` keeps a version that exists so nothing here is a
+/// sentinel string; an empty `postgres_versions` is what says "not offered".
+const LEGACY13_PINS: PinSet = PinSet {
+    cloudflared: LEGACY_CLOUDFLARED_VERSION,
+    php_versions: LEGACY13_PHP_VERSIONS,
+    mysql: LEGACY13_MYSQL_VERSION,
+    mysql_versions: LEGACY13_MYSQL_VERSIONS,
+    postgres: LEGACY14_POSTGRES_VERSION,
+    postgres_versions: &[],
+    redis: LEGACY13_REDIS_VERSION,
+    redis_versions: LEGACY13_REDIS_VERSIONS,
+    mariadb: LEGACY13_MARIADB_VERSION,
+    mariadb_versions: LEGACY13_MARIADB_VERSIONS,
+    httpd: LEGACY13_HTTPD_VERSION,
+    xdebug: LEGACY13_XDEBUG_VERSION,
+    bundled_openssl: LEGACY13_BUNDLED_OPENSSL_VERSION,
+    bundled_pcre2: LEGACY13_BUNDLED_PCRE2_VERSION,
+    ..STANDARD_PINS
+};
+
 impl PinSet {
-    /// The pin set a tier resolves. Legacy tiers are filled in by T2 of
-    /// `docs/PLAN-macos-13-floor.md`; until then they are the Standard set, which
-    /// is exactly what those hosts got before the tier existed.
+    /// The pin set a tier resolves — `docs/PLAN-macos-13-floor.md` §6.2.
     pub const fn for_tier(tier: BinaryTier) -> PinSet {
         match tier {
-            BinaryTier::Standard | BinaryTier::Legacy14 | BinaryTier::Legacy13 => STANDARD_PINS,
+            BinaryTier::Standard => STANDARD_PINS,
+            BinaryTier::Legacy14 => LEGACY14_PINS,
+            BinaryTier::Legacy13 => LEGACY13_PINS,
         }
     }
+
+    /// Every tier, for a test or a sweep that must cover all of them.
+    pub const ALL_TIERS: [BinaryTier; 3] = [BinaryTier::Standard, BinaryTier::Legacy14, BinaryTier::Legacy13];
 }
 
 /// The pins for THIS host — [`PinSet::for_tier`] of [`tier`]. Every consumer
@@ -525,12 +561,26 @@ fn mysql_sha256(version: &str, arch: Arch) -> Option<&'static str> {
     let (arm, amd) = match version {
         "8.4.6" => (MYSQL_8_4_6_MAC_ARM64_SHA256, MYSQL_8_4_6_MAC_AMD64_SHA256),
         "8.0.44" => (MYSQL_8_0_44_MAC_ARM64_SHA256, MYSQL_8_0_44_MAC_AMD64_SHA256),
+        // Legacy13 (`macos14` builds, minos 13.0) — see LEGACY13_MYSQL_VERSIONS.
+        "8.4.3" => (MYSQL_8_4_3_MAC_ARM64_SHA256, MYSQL_8_4_3_MAC_AMD64_SHA256),
+        "8.0.40" => (MYSQL_8_0_40_MAC_ARM64_SHA256, MYSQL_8_0_40_MAC_AMD64_SHA256),
         _ => return None,
     };
     Some(match arch {
         Arch::Arm64 => arm,
         Arch::X86_64 => amd,
     })
+}
+
+/// The `macosNN` token in a MySQL tarball's name — the macOS it was BUILT on,
+/// and one above the macOS it RUNS on (deployment target NN−1, measured). Not
+/// derivable from the version: Oracle moved 8.4 to `macos15` at 8.4.4 and 8.0 at
+/// 8.0.41, so this is a per-pin fact and a re-pin edits it beside the digest.
+fn mysql_macos_build(version: &str) -> &'static str {
+    match version {
+        "8.4.3" | "8.0.40" => "macos14",
+        _ => "macos15",
+    }
 }
 
 /// The CDN archive folder for a MySQL version (`mysql-8.0/`, `mysql-8.4/`).
@@ -549,6 +599,8 @@ fn postgres_sha256(version: &str, arch: Arch) -> Option<&'static str> {
         "18.6.0" => (POSTGRES_18_6_0_MAC_ARM64_SHA256, POSTGRES_18_6_0_MAC_AMD64_SHA256),
         "17.11.0" => (POSTGRES_17_11_0_MAC_ARM64_SHA256, POSTGRES_17_11_0_MAC_AMD64_SHA256),
         "16.15.0" => (POSTGRES_16_15_0_MAC_ARM64_SHA256, POSTGRES_16_15_0_MAC_AMD64_SHA256),
+        // Legacy14 — see LEGACY14_POSTGRES_VERSIONS.
+        "16.4.0" => (POSTGRES_16_4_0_MAC_ARM64_SHA256, POSTGRES_16_4_0_MAC_AMD64_SHA256),
         _ => return None,
     };
     Some(match arch {
@@ -691,6 +743,102 @@ const XDEBUG_PHP84_BOTTLE_AMD64_SHA256: &str = "bf938d1b176343cd13be5ae1b786e1d0
 const XDEBUG_PHP85_BOTTLE_ARM64_SHA256: &str = "c648f2a92e7f1995fb95b46981b16ffa9048c4507625f12999e247e7a3b58581";
 const XDEBUG_PHP85_BOTTLE_AMD64_SHA256: &str = "068070ccb2080d8ce7a312fc934dfe3c6d5901c6527a20fcec783f78e619b53c";
 
+// ── Legacy tiers: the pins a macOS 13 / 14 host resolves ──────────────────────
+//
+// `docs/PLAN-macos-13-floor.md` §6.2. Every row below is the NEWEST upstream build
+// whose `minos` fits the tier, measured on both slices from the artifact's own load
+// commands (§3 of that plan) — never inferred from a filename or a runner label.
+// Digests: every artifact downloaded and hashed here on 23 Sep 2026; the ghcr
+// blobs' hashes equal their content-addressed digests, as ghcr's contract says
+// they must (a pin that TRUSTED that would still be a pin we never checked).
+//
+// These sit in the SAME manifest tables as the standard pins, keyed by their own
+// version strings: the tables are tier-blind, the tier only decides which version
+// a consumer asks for (`PinSet::for_tier`). So a legacy artifact resolves on a
+// standard host too — which is what lets this Mac sweep, hash and load-test them.
+
+/// The last cloudflared built for macOS 13: 2025.4.2 moved to a macOS-15 SDK and
+/// declares `minos 15.0` on both slices from there on. arm64 13.0 / x86_64 10.13
+/// (the older `LC_VERSION_MIN_MACOSX` form, which `core::macho` reads).
+const LEGACY_CLOUDFLARED_VERSION: &str = "2025.4.0";
+const CLOUDFLARED_2025_4_0_MAC_ARM64_SHA256: &str = "7a9f9d72895cf3c5374327f65472789259eaedd82af93ac16f82035109fa121f";
+const CLOUDFLARED_2025_4_0_MAC_AMD64_SHA256: &str = "b5e8afdb58fc89f7f9cf499d6a593aa5284644054bc5f5c46649d3628812c0e2";
+
+/// MySQL's `macosNN` tarball is built with deployment target NN−1 (measured on
+/// every version from 8.0.33 to 8.4.6, both slices, ~100 Mach-Os each): the
+/// `macos14` builds are `minos 13.0`. 8.4.3 and 8.0.40 are the last of them —
+/// 8.4.4 / 8.0.41 onward are `macos15` = 14.0. See [`mysql_macos_build`].
+const LEGACY13_MYSQL_VERSION: &str = "8.4.3";
+const LEGACY13_MYSQL_VERSIONS: &[&str] = &["8.4.3", "8.0.40"];
+const MYSQL_8_4_3_MAC_ARM64_SHA256: &str = "af1af43030ac66b73dc2d5dcf645a61cdf9e7cf5404cf04bdf8e194447b0f153";
+const MYSQL_8_4_3_MAC_AMD64_SHA256: &str = "b690dfaad2108889390d40df388c16453e345f69a77784444687e8e308855af6";
+const MYSQL_8_0_40_MAC_ARM64_SHA256: &str = "a0b8449c19ef59ca688c93ffd89d42f5d78abe6cc136c0d754c6ccb3b202fb9a";
+const MYSQL_8_0_40_MAC_AMD64_SHA256: &str = "a416ee86e72f22089c41911bfee08be0d4dab3b816923be7b465f65df555b36d";
+
+/// theseus-rs builds arm64 on Apple Silicon runners that were never older than
+/// macOS 14, so NO PostgreSQL build loads on an Apple Silicon Mac at 13 — that
+/// engine is refused there (T3). 16.4.0 is the newest at 14.0 arm64 / 13.0
+/// x86_64; the 16.6.0+ builds are 15.0 on arm64. Published `.sha256` cross-checked
+/// against a fresh download of each slice.
+const LEGACY14_POSTGRES_VERSION: &str = "16.4.0";
+const LEGACY14_POSTGRES_VERSIONS: &[&str] = &["16.4.0"];
+const POSTGRES_16_4_0_MAC_ARM64_SHA256: &str = "0ec91e77eff381e43e3963f012aff3acb9de12ad3739a625e57cce9671b28b0f";
+const POSTGRES_16_4_0_MAC_AMD64_SHA256: &str = "3193b9747c610139990c9913ff5fd5ad73cd38cefcd5ffcdc46079fd1479406e";
+
+// Homebrew stopped building for macOS 13 in 2025; `formulae.brew.sh` lists no
+// `ventura` bottle for any of these formulas today. The rows below are the NEWEST
+// tag of each whose ghcr OCI index still carries an `os.version: macOS 13.x`
+// platform (walked newest→oldest), and the blob is fetched by digest exactly as
+// the sonoma ones are — content-addressed, so it can 404 on a registry prune but
+// never change. arm64 = `arm64_ventura`, x86_64 = `ventura`; every blob swept:
+// `minos 13.0` on both slices.
+const LEGACY13_REDIS_VERSION: &str = "8.2.1";
+const LEGACY13_REDIS_VERSIONS: &[&str] = &["8.2.1"];
+const REDIS_8_2_1_BOTTLE_ARM64_SHA256: &str = "97c7c21a13227b52c5634809c2a4ae6f1acde764367277cc20d3dfc9ab4a37ea";
+const REDIS_8_2_1_BOTTLE_AMD64_SHA256: &str = "d2fdc1571a609a3866aa45e15e9c051e685d4d90dfcef3ce88d8a8d36c177162";
+const LEGACY13_BUNDLED_OPENSSL_VERSION: &str = "3.5.2";
+const OPENSSL_3_5_2_BOTTLE_ARM64_SHA256: &str = "13545dea2fcfac0542556f969011892b2e0001b5ef0b71a787ca4ad714567ef5";
+const OPENSSL_3_5_2_BOTTLE_AMD64_SHA256: &str = "b51da4aaa601358273a5161c8aea4b19998ac1c48224a4b067c4c3e5475f9482";
+const LEGACY13_MARIADB_VERSION: &str = "12.0.2";
+const LEGACY13_MARIADB_VERSIONS: &[&str] = &["12.0.2", "11.4.8"];
+const MARIADB_12_0_2_BOTTLE_ARM64_SHA256: &str = "ccd5bf7fa727cb7fab1e133fcd20e9102d1939b0a8099b115e0943d8bc5aa99f";
+const MARIADB_12_0_2_BOTTLE_AMD64_SHA256: &str = "1dea9cef316370d57a541a4278ca5e787e46b95ea53c36d3fc9fe938010a7e65";
+const MARIADB_11_4_8_BOTTLE_ARM64_SHA256: &str = "d43c7c65aa17f0192ef7aaca3d265cd34325881c0cbc04867c3c23071756d5bd";
+const MARIADB_11_4_8_BOTTLE_AMD64_SHA256: &str = "f3d60f3215670b686323ad11eda4d9d3359f4d607c7904d11baa59aa55fa49fc";
+const LEGACY13_BUNDLED_PCRE2_VERSION: &str = "10.46";
+const PCRE2_10_46_BOTTLE_ARM64_SHA256: &str = "6b38069079a641040e1cf8c408afbf902384d70bcc8fdbd445a9acc31e1e70d1";
+const PCRE2_10_46_BOTTLE_AMD64_SHA256: &str = "e71e438a81766aafffd719f90ba93cdaa158f91c08e19d96428fa841da15bd5a";
+const LEGACY13_HTTPD_VERSION: &str = "2.4.65";
+const HTTPD_2_4_65_BOTTLE_ARM64_SHA256: &str = "c335d95bee9dc0d6c39abd07c94a57f019ae6f123c7f7b86929748858bea25b3";
+const HTTPD_2_4_65_BOTTLE_AMD64_SHA256: &str = "f256ac4ff3824cde9a0b9cad87b5c6316f690b88d43d2662df54010f283ccdd0";
+// apr is the one formula that still publishes a ventura bottle for its CURRENT
+// version: same 1.7.6, a different blob. apr-util's last ventura tag is 1.6.3_1.
+const APR_1_7_6_VENTURA_BOTTLE_ARM64_SHA256: &str = "c9c536ea3504e24b30b5cf6187100f746eba704e237d3839d0c04feb98df623e";
+const APR_1_7_6_VENTURA_BOTTLE_AMD64_SHA256: &str = "327273dae10ae18781b2f347531253d968e0c06533c913a80d775a5972e65477";
+const APR_UTIL_1_6_3_VENTURA_BOTTLE_ARM64_SHA256: &str = "cb73075171b2079d2b8e8028f42766dffa5db08882261c3f5aff59d8eb9638a9";
+const APR_UTIL_1_6_3_VENTURA_BOTTLE_AMD64_SHA256: &str = "127d4d4523d49a73e7dbf610f3e439ac2051a383edbf28cc18438faf78945ef0";
+// Xdebug 3.4.5 — the last shivammathur tag with ventura blobs, for 8.1–8.4.
+// **8.5 has NO legacy row**: every `xdebug@8.5` ventura blob (3.3.0 → 3.4.5-3)
+// was built before PHP 8.5 GA against the 8.4 Zend API (`Xdebug requires Zend
+// Engine API version 420240925`, measured against php 8.5.8 on 23 Sep 2026,
+// `legacy_pins_check`), and Homebrew stopped building for 13 before 8.5
+// shipped. So on a 13 host the 8.5 toggle is `XdebugStatus::NotPinned` —
+// honest: there is nothing to pin.
+const LEGACY13_XDEBUG_VERSION: &str = "3.4.5";
+const XDEBUG_PHP81_VENTURA_BOTTLE_ARM64_SHA256: &str = "0b9b84f40049789dcf39f6b30f341ee13bd2d6de50c0c60e7e50b94bed49b5ba";
+const XDEBUG_PHP81_VENTURA_BOTTLE_AMD64_SHA256: &str = "1cfb328038fb6af6f52aed030ae55d98a27cd077b909d74a19769a06ef240b98";
+const XDEBUG_PHP82_VENTURA_BOTTLE_ARM64_SHA256: &str = "d283de8feab11add522c15fe94342d16c318f969e9f547943a0b169258719b86";
+const XDEBUG_PHP82_VENTURA_BOTTLE_AMD64_SHA256: &str = "c85b6987673863d31814ee4e3724168525c307b961c7612ec0408e7edc78f0dc";
+const XDEBUG_PHP83_VENTURA_BOTTLE_ARM64_SHA256: &str = "619210495b3787c4f65a77390f14eb52a6c8ee783464ac9de7b6ed53b765a9db";
+const XDEBUG_PHP83_VENTURA_BOTTLE_AMD64_SHA256: &str = "fae1e4d5fd38c308731f64a631d5ca5b1fd952343402116489295ea6d5c41ee2";
+const XDEBUG_PHP84_VENTURA_BOTTLE_ARM64_SHA256: &str = "100d4377d2d5420d4cdc5d419147694752a60bdec15387883ca3b1124feaa910";
+const XDEBUG_PHP84_VENTURA_BOTTLE_AMD64_SHA256: &str = "e6a028aa2b5feaaad579ea5cda8e641801fc1b3dd22e0ee22865f8db38e3fc80";
+
+/// PHP 8.0.30 is static-php.dev's build and `minos 14.0` on arm64; there is no
+/// older artifact to pin (they rebuild in place) and no self-build (its x86_64
+/// build aborts — see `php_self_hosted_tag`). So a 13 host is not offered it.
+const LEGACY13_PHP_VERSIONS: &[&str] = &["7.4.33", "8.1.34", "8.2.32", "8.3.32", "8.4.23", "8.5.8"];
+
 /// One PHP minor's Xdebug row: the version pinned FOR THAT MINOR, the tap
 /// formula, and the two arch digests. Kept as one struct so the four facts can
 /// never be edited apart — a version bumped without its hashes is a 404, and
@@ -796,15 +944,30 @@ fn xdebug_absence(minor: &str) -> XdebugStatus {
 /// `xdebug_status` now carries a POLICY that asks `bundle_manifest` back. Row and policy in
 /// one function is what made that a cycle.
 fn xdebug_row(minor: &str) -> Option<XdebugBottle> {
+    xdebug_row_at(minor, pins().xdebug)
+}
+
+/// The pinned row for a minor AT A NAMED Xdebug version — the table itself,
+/// tier-blind like every other manifest table here: the Standard rows (3.5.3,
+/// sonoma blobs) and the Legacy13 rows (3.4.5, ventura blobs) both resolve on
+/// any host, and [`xdebug_row`] picks by the tier's pin. `bundle_manifest`'s
+/// xdebug arm asks this with the version it was handed, so a cache dir's
+/// identity is exactly one (minor, version) row.
+fn xdebug_row_at(minor: &str, version: &str) -> Option<XdebugBottle> {
     let row = |version, formula, arm64, amd64| Some(XdebugBottle { version, formula, arm64, amd64 });
-    match minor {
+    match (minor, version) {
         // Measured, not assumed. Both exports checked with `nm -gU`; 7.4's build
         // shows ~22,400 symbols and not the one that matters.
-        "8.1" => row(XDEBUG_VERSION, "xdebug@8.1", XDEBUG_PHP81_BOTTLE_ARM64_SHA256, XDEBUG_PHP81_BOTTLE_AMD64_SHA256),
-        "8.2" => row(XDEBUG_VERSION, "xdebug@8.2", XDEBUG_PHP82_BOTTLE_ARM64_SHA256, XDEBUG_PHP82_BOTTLE_AMD64_SHA256),
-        "8.3" => row(XDEBUG_VERSION, "xdebug@8.3", XDEBUG_PHP83_BOTTLE_ARM64_SHA256, XDEBUG_PHP83_BOTTLE_AMD64_SHA256),
-        "8.4" => row(XDEBUG_VERSION, "xdebug@8.4", XDEBUG_PHP84_BOTTLE_ARM64_SHA256, XDEBUG_PHP84_BOTTLE_AMD64_SHA256),
-        "8.5" => row(XDEBUG_VERSION, "xdebug@8.5", XDEBUG_PHP85_BOTTLE_ARM64_SHA256, XDEBUG_PHP85_BOTTLE_AMD64_SHA256),
+        ("8.1", XDEBUG_VERSION) => row(XDEBUG_VERSION, "xdebug@8.1", XDEBUG_PHP81_BOTTLE_ARM64_SHA256, XDEBUG_PHP81_BOTTLE_AMD64_SHA256),
+        ("8.2", XDEBUG_VERSION) => row(XDEBUG_VERSION, "xdebug@8.2", XDEBUG_PHP82_BOTTLE_ARM64_SHA256, XDEBUG_PHP82_BOTTLE_AMD64_SHA256),
+        ("8.3", XDEBUG_VERSION) => row(XDEBUG_VERSION, "xdebug@8.3", XDEBUG_PHP83_BOTTLE_ARM64_SHA256, XDEBUG_PHP83_BOTTLE_AMD64_SHA256),
+        ("8.4", XDEBUG_VERSION) => row(XDEBUG_VERSION, "xdebug@8.4", XDEBUG_PHP84_BOTTLE_ARM64_SHA256, XDEBUG_PHP84_BOTTLE_AMD64_SHA256),
+        ("8.5", XDEBUG_VERSION) => row(XDEBUG_VERSION, "xdebug@8.5", XDEBUG_PHP85_BOTTLE_ARM64_SHA256, XDEBUG_PHP85_BOTTLE_AMD64_SHA256),
+        ("8.1", LEGACY13_XDEBUG_VERSION) => row(LEGACY13_XDEBUG_VERSION, "xdebug@8.1", XDEBUG_PHP81_VENTURA_BOTTLE_ARM64_SHA256, XDEBUG_PHP81_VENTURA_BOTTLE_AMD64_SHA256),
+        ("8.2", LEGACY13_XDEBUG_VERSION) => row(LEGACY13_XDEBUG_VERSION, "xdebug@8.2", XDEBUG_PHP82_VENTURA_BOTTLE_ARM64_SHA256, XDEBUG_PHP82_VENTURA_BOTTLE_AMD64_SHA256),
+        ("8.3", LEGACY13_XDEBUG_VERSION) => row(LEGACY13_XDEBUG_VERSION, "xdebug@8.3", XDEBUG_PHP83_VENTURA_BOTTLE_ARM64_SHA256, XDEBUG_PHP83_VENTURA_BOTTLE_AMD64_SHA256),
+        ("8.4", LEGACY13_XDEBUG_VERSION) => row(LEGACY13_XDEBUG_VERSION, "xdebug@8.4", XDEBUG_PHP84_VENTURA_BOTTLE_ARM64_SHA256, XDEBUG_PHP84_VENTURA_BOTTLE_AMD64_SHA256),
+        // ("8.5", LEGACY13_XDEBUG_VERSION): deliberately absent — see LEGACY13_XDEBUG_VERSION.
         _ => None,
     }
 }
@@ -1838,9 +2001,10 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
         ("mysql", "macos", v) if mysql_sha256(v, arch).is_some() => Some(BinarySpec {
             // Direct CDN URL (the dev.mysql.com/get redirector 403s non-curl clients).
             url: format!(
-                "https://cdn.mysql.com/archives/mysql-{series}/mysql-{v}-macos15-{}.tar.gz",
+                "https://cdn.mysql.com/archives/mysql-{series}/mysql-{v}-{build}-{}.tar.gz",
                 mysql_arch(arch),
                 series = mysql_series(v),
+                build = mysql_macos_build(v),
             ),
             checksum: Checksum::Sha256(mysql_sha256(v, arch).unwrap().to_string()),
             archive: Archive::TarGzTree,
@@ -1884,17 +2048,17 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
             archive: Archive::TarGz,
             member: "mailpit",
         }),
-        ("cloudflared", "macos", "2026.6.1") => Some(BinarySpec {
+        ("cloudflared", "macos", v @ ("2026.6.1" | "2025.4.0")) => Some(BinarySpec {
             // One static Go binary per arch, inside a .tgz (member `cloudflared`).
             url: format!(
                 "https://github.com/cloudflare/cloudflared/releases/download/{version}/cloudflared-darwin-{}.tgz",
                 cloudflared_arch(arch)
             ),
-            checksum: Checksum::Sha256(pick(
-                arch,
-                CLOUDFLARED_2026_6_1_MAC_ARM64_SHA256,
-                CLOUDFLARED_2026_6_1_MAC_AMD64_SHA256,
-            )),
+            checksum: Checksum::Sha256(match v {
+                "2026.6.1" => pick(arch, CLOUDFLARED_2026_6_1_MAC_ARM64_SHA256, CLOUDFLARED_2026_6_1_MAC_AMD64_SHA256),
+                // Legacy tiers — see LEGACY_CLOUDFLARED_VERSION.
+                _ => pick(arch, CLOUDFLARED_2025_4_0_MAC_ARM64_SHA256, CLOUDFLARED_2025_4_0_MAC_AMD64_SHA256),
+            }),
             archive: Archive::TarGz,
             member: "cloudflared",
         }),
@@ -2002,14 +2166,55 @@ fn bottle_part(
 /// The openssl@3 runtime dylibs part shared by every TLS-linking bundle —
 /// never the static libs, headers, cmake/pkgconfig, or provider modules.
 fn openssl_part(arch: Arch) -> BundlePart {
-    bottle_part(
-        "openssl@3",
-        arch,
-        OPENSSL_3_6_3_BOTTLE_ARM64_SHA256,
-        OPENSSL_3_6_3_BOTTLE_AMD64_SHA256,
-        &["lib/libssl.3.dylib", "lib/libcrypto.3.dylib"],
-    )
+    openssl_part_from(arch, OPENSSL_3_6_3_BOTTLE_ARM64_SHA256, OPENSSL_3_6_3_BOTTLE_AMD64_SHA256)
 }
+
+/// [`openssl_part`] for the Legacy13 bundles: the 3.5.2 ventura blobs.
+fn legacy13_openssl_part(arch: Arch) -> BundlePart {
+    openssl_part_from(arch, OPENSSL_3_5_2_BOTTLE_ARM64_SHA256, OPENSSL_3_5_2_BOTTLE_AMD64_SHA256)
+}
+
+fn openssl_part_from(arch: Arch, arm_sha: &'static str, amd_sha: &'static str) -> BundlePart {
+    bottle_part("openssl@3", arch, arm_sha, amd_sha, &["lib/libssl.3.dylib", "lib/libcrypto.3.dylib"])
+}
+
+/// The pcre2 runtime dylib part (mariadb + httpd link `libpcre2-8`).
+fn pcre2_part(arch: Arch, arm_sha: &'static str, amd_sha: &'static str) -> BundlePart {
+    bottle_part("pcre2", arch, arm_sha, amd_sha, &["lib/libpcre2-8.0.dylib"])
+}
+
+/// The mariadb bottle's include list — server, the two clients the DB features
+/// need, the bootstrap SQL `core::mariadb::initialize` feeds over stdin, and the
+/// runtime share data. Identical across 11.4 and 12.x (verified from the bottles).
+const MARIADB_INCLUDE: &[&str] = &[
+    "bin/mariadbd",
+    "bin/mariadb",
+    "bin/mariadb-dump",
+    "share/mysql/english",
+    "share/mysql/charsets",
+    "share/mysql/mariadb_system_tables.sql",
+    "share/mysql/mariadb_performance_tables.sql",
+    "share/mysql/mariadb_system_tables_data.sql",
+];
+
+/// The httpd bottle's include list: the server binary, ONLY the modules our
+/// generated conf loads (mod_ssl/mod_http2/mod_brotli would drag openssl/nghttp2/
+/// brotli into the closure), and the real mime map (bottles stage etc/ under
+/// `.bottle/`).
+const HTTPD_INCLUDE: &[&str] = &[
+    "bin/httpd",
+    "lib/httpd/modules/mod_mpm_event.so",
+    "lib/httpd/modules/mod_unixd.so",
+    "lib/httpd/modules/mod_authz_core.so",
+    "lib/httpd/modules/mod_dir.so",
+    "lib/httpd/modules/mod_mime.so",
+    "lib/httpd/modules/mod_env.so",
+    "lib/httpd/modules/mod_rewrite.so",
+    "lib/httpd/modules/mod_proxy.so",
+    "lib/httpd/modules/mod_proxy_fcgi.so",
+    "lib/httpd/modules/mod_log_config.so",
+    ".bottle/etc/httpd/mime.types",
+];
 
 /// Look up the BUNDLE spec for `name`@`version` on `os`+`arch` — services with
 /// no portable static build, assembled from Homebrew bottles and relinked into
@@ -2029,6 +2234,39 @@ pub fn bundle_manifest(name: &str, version: &str, os: &str, arch: Arch) -> Optio
                     &["bin"],
                 ),
                 openssl_part(arch),
+            ],
+        }),
+        // ── Legacy13 bundles (ventura blobs) — same layouts, older tags ─────────
+        ("redis", "macos", "8.2.1") => Some(BundleSpec {
+            member: "bin/redis-server",
+            parts: vec![
+                bottle_part("redis", arch, REDIS_8_2_1_BOTTLE_ARM64_SHA256, REDIS_8_2_1_BOTTLE_AMD64_SHA256, &["bin"]),
+                legacy13_openssl_part(arch),
+            ],
+        }),
+        ("httpd", "macos", "2.4.65") => Some(BundleSpec {
+            member: "bin/httpd",
+            parts: vec![
+                bottle_part("httpd", arch, HTTPD_2_4_65_BOTTLE_ARM64_SHA256, HTTPD_2_4_65_BOTTLE_AMD64_SHA256, HTTPD_INCLUDE),
+                bottle_part("apr", arch, APR_1_7_6_VENTURA_BOTTLE_ARM64_SHA256, APR_1_7_6_VENTURA_BOTTLE_AMD64_SHA256, &["lib/libapr-1.0.dylib"]),
+                bottle_part("apr-util", arch, APR_UTIL_1_6_3_VENTURA_BOTTLE_ARM64_SHA256, APR_UTIL_1_6_3_VENTURA_BOTTLE_AMD64_SHA256, &["lib/libaprutil-1.0.dylib"]),
+                pcre2_part(arch, PCRE2_10_46_BOTTLE_ARM64_SHA256, PCRE2_10_46_BOTTLE_AMD64_SHA256),
+            ],
+        }),
+        ("mariadb", "macos", "11.4.8") => Some(BundleSpec {
+            member: "bin/mariadbd",
+            parts: vec![
+                bottle_part("mariadb@11.4", arch, MARIADB_11_4_8_BOTTLE_ARM64_SHA256, MARIADB_11_4_8_BOTTLE_AMD64_SHA256, MARIADB_INCLUDE),
+                legacy13_openssl_part(arch),
+                pcre2_part(arch, PCRE2_10_46_BOTTLE_ARM64_SHA256, PCRE2_10_46_BOTTLE_AMD64_SHA256),
+            ],
+        }),
+        ("mariadb", "macos", "12.0.2") => Some(BundleSpec {
+            member: "bin/mariadbd",
+            parts: vec![
+                bottle_part("mariadb", arch, MARIADB_12_0_2_BOTTLE_ARM64_SHA256, MARIADB_12_0_2_BOTTLE_AMD64_SHA256, MARIADB_INCLUDE),
+                legacy13_openssl_part(arch),
+                pcre2_part(arch, PCRE2_10_46_BOTTLE_ARM64_SHA256, PCRE2_10_46_BOTTLE_AMD64_SHA256),
             ],
         }),
         ("httpd", "macos", "2.4.68") => Some(BundleSpec {
@@ -2159,11 +2397,12 @@ pub fn bundle_manifest(name: &str, version: &str, os: &str, arch: Arch) -> Optio
         (n, "macos", v) if n.starts_with("xdebug-") => {
             // The ROW, never `xdebug_bottle_on`: that one applies the os policy, which asks
             // this table back (see `xdebug_status_on`).
-            let bottle = xdebug_row(n.strip_prefix("xdebug-")?)?;
-            // Cache-dir identity is honest: only THIS minor's pinned release
-            // resolves. Comparing against the row rather than one app-wide
-            // constant is the whole point — see [`XdebugBottle::version`].
-            (v == bottle.version).then(|| xdebug_spec(&bottle, arch))
+            // Cache-dir identity is honest: only a (minor, version) the table
+            // holds resolves — never one app-wide constant, and never the
+            // tier's pick (a standard host must be able to sweep the legacy
+            // rows). See [`XdebugBottle::version`] and [`xdebug_row_at`].
+            let bottle = xdebug_row_at(n.strip_prefix("xdebug-")?, v)?;
+            Some(xdebug_spec(&bottle, arch))
         }
         _ => None,
     }
@@ -3690,6 +3929,84 @@ mod tier_tests {
         assert_eq!(pins().php_versions, PHP_VERSIONS);
     }
 
+    /// §6.2 row for row: every legacy pin resolves on BOTH slices, its digests
+    /// differ per slice, and a legacy digest is never a standard one — a row
+    /// that reused the sonoma blob under a ventura version would pass the
+    /// resolve and hand a 13 host the very bytes the tier exists to avoid.
+    #[test]
+    fn legacy_pins_resolve_on_both_slices_with_their_own_bytes() {
+        use super::{bundle_manifest, manifest, Checksum};
+        use crate::platform::traits::Arch;
+        fn hex(c: &Checksum) -> String {
+            match c {
+                Checksum::Sha256(h) | Checksum::Sha512(h) => h.clone(),
+            }
+        }
+        let std = PinSet::for_tier(BinaryTier::Standard);
+        for tier in [BinaryTier::Legacy14, BinaryTier::Legacy13] {
+            let p = PinSet::for_tier(tier);
+            assert_ne!(p, std, "{tier:?} must differ from Standard");
+            // Singles: cloudflared on every legacy tier.
+            let a = manifest("cloudflared", p.cloudflared, "macos", Arch::Arm64).unwrap();
+            let x = manifest("cloudflared", p.cloudflared, "macos", Arch::X86_64).unwrap();
+            assert!(a.url.contains("/2025.4.0/"), "{}", a.url);
+            assert_ne!(hex(&a.checksum), hex(&x.checksum));
+            let s = manifest("cloudflared", std.cloudflared, "macos", Arch::Arm64).unwrap();
+            assert_ne!(hex(&a.checksum), hex(&s.checksum));
+        }
+        // Legacy14: PostgreSQL 16.4.0, and NOTHING else moves.
+        let l14 = PinSet::for_tier(BinaryTier::Legacy14);
+        assert_eq!(l14.postgres_versions, &["16.4.0"]);
+        assert_eq!(PinSet { cloudflared: std.cloudflared, postgres: std.postgres, postgres_versions: std.postgres_versions, ..l14 }, std);
+        // Legacy13: every engine row, both slices, own bytes.
+        let l13 = PinSet::for_tier(BinaryTier::Legacy13);
+        assert!(!l13.php_versions.contains(&"8.0.30"), "8.0.30 is minos 14.0 on arm64");
+        assert!(l13.php_versions.contains(&"7.4.33") && l13.php_versions.contains(&"8.5.8"));
+        for (name, versions) in [("mysql", l13.mysql_versions), ("postgres", &["16.4.0"][..])] {
+            for v in versions {
+                let a = manifest(name, v, "macos", Arch::Arm64).unwrap();
+                let x = manifest(name, v, "macos", Arch::X86_64).unwrap();
+                assert_ne!(hex(&a.checksum), hex(&x.checksum), "{name} {v}");
+            }
+        }
+        for (name, versions) in [("redis", l13.redis_versions), ("mariadb", l13.mariadb_versions), ("httpd", &[l13.httpd][..])] {
+            for v in versions {
+                let a = bundle_manifest(name, v, "macos", Arch::Arm64).unwrap();
+                let x = bundle_manifest(name, v, "macos", Arch::X86_64).unwrap();
+                let std_v = match name { "redis" => std.redis, "mariadb" => std.mariadb, _ => std.httpd };
+                let sv = bundle_manifest(name, std_v, "macos", Arch::Arm64).unwrap();
+                for (i, part) in a.parts.iter().enumerate() {
+                    assert_ne!(hex(&part.checksum), hex(&x.parts[i].checksum), "{name} {v} {}", part.formula);
+                    // Same formula in the standard bundle ⇒ a different (ventura) blob.
+                    if let Some(sp) = sv.parts.iter().find(|q| q.formula == part.formula) {
+                        assert_ne!(hex(&part.checksum), hex(&sp.checksum), "{name} {v} {} reuses the sonoma blob", part.formula);
+                    }
+                    assert!(part.url.contains("/blobs/sha256:"), "{}", part.url);
+                }
+            }
+        }
+        // Xdebug: one ventura row per minor that HAS one, at the legacy version —
+        // and none for 8.5, whose ventura blobs predate PHP 8.5 GA (measured:
+        // they load into no 8.5). A row added there would resolve, prepare and
+        // fail at dlopen on the user's machine.
+        assert!(bundle_manifest("xdebug-8.5", l13.xdebug, "macos", Arch::Arm64).is_none(), "8.5 has no 13-capable Xdebug");
+        for minor in ["8.1", "8.2", "8.3", "8.4"] {
+            let name = format!("xdebug-{minor}");
+            let a = bundle_manifest(&name, l13.xdebug, "macos", Arch::Arm64).unwrap();
+            let x = bundle_manifest(&name, l13.xdebug, "macos", Arch::X86_64).unwrap();
+            let s = bundle_manifest(&name, std.xdebug, "macos", Arch::Arm64).unwrap();
+            assert_ne!(hex(&a.parts[0].checksum), hex(&x.parts[0].checksum), "{name}");
+            assert_ne!(hex(&a.parts[0].checksum), hex(&s.parts[0].checksum), "{name} reuses the sonoma blob");
+            assert!(a.parts[0].url.contains(&format!("xdebug/{minor}/blobs/")), "{}", a.parts[0].url);
+        }
+        // …and the tier's pick is what `xdebug_row` reads.
+        let _g = lock();
+        install_tier(BinaryTier::Legacy13);
+        assert_eq!(super::xdebug_row("8.4").unwrap().version, "3.4.5");
+        install_tier(BinaryTier::Standard);
+        assert_eq!(super::xdebug_row("8.4").unwrap().version, "3.5.3");
+    }
+
     #[test]
     fn the_empty_state_is_standard_and_install_replaces_it() {
         let _g = lock();
@@ -5116,6 +5433,27 @@ mod tests {
         out.push(("mariadb".into(), all(MARIADB_VERSIONS)));
         out.push(("redis".into(), all(REDIS_VERSIONS)));
         out.push(("httpd".into(), one(HTTPD_VERSION)));
+        // …and every version a LEGACY tier asks for that the standard set does
+        // not (dedup by name: a version already listed is the same artifact).
+        for tier in [BinaryTier::Legacy14, BinaryTier::Legacy13] {
+            let p = PinSet::for_tier(tier);
+            let extra: Vec<(&str, Vec<String>)> = vec![
+                ("cloudflared", one(p.cloudflared)),
+                ("mysql", all(p.mysql_versions)),
+                ("postgres", all(p.postgres_versions)),
+                ("mariadb", all(p.mariadb_versions)),
+                ("redis", all(p.redis_versions)),
+                ("httpd", one(p.httpd)),
+            ];
+            for (name, versions) in extra {
+                let slot = out.iter_mut().find(|(n, _)| n == name).expect(name);
+                for v in versions {
+                    if !slot.1.contains(&v) {
+                        slot.1.push(v);
+                    }
+                }
+            }
+        }
         out
     }
 
@@ -5702,29 +6040,50 @@ mod tests {
 
     #[test]
     fn every_offered_db_version_is_pinned_in_the_manifest() {
-        for arch in [Arch::Arm64, Arch::X86_64] {
-            for v in MYSQL_VERSIONS {
-                let m = manifest("mysql", v, "macos", arch).expect(v);
-                assert!(m.url.contains(&format!("mysql-{v}-macos15-")), "{}", m.url);
-                // The CDN archives folder follows the series.
-                assert!(m.url.contains(&format!("archives/mysql-{}/", mysql_series(v))));
+        // Asked of EVERY tier's set, not the constants: a legacy tier that
+        // offers a version the manifest cannot resolve is the exact failure
+        // this test exists for, and the standard constants would never show it.
+        for tier in PinSet::ALL_TIERS {
+            let p = PinSet::for_tier(tier);
+            for arch in [Arch::Arm64, Arch::X86_64] {
+                for v in p.mysql_versions {
+                    let m = manifest("mysql", v, "macos", arch).expect(v);
+                    // The CDN name carries the macOS the tarball was BUILT on —
+                    // a per-pin fact, not one template (8.4.3 is `macos14`).
+                    assert!(m.url.contains(&format!("mysql-{v}-{}-", mysql_macos_build(v))), "{}", m.url);
+                    // The CDN archives folder follows the series.
+                    assert!(m.url.contains(&format!("archives/mysql-{}/", mysql_series(v))));
+                }
+                for v in p.postgres_versions {
+                    let m = manifest("postgres", v, "macos", arch).expect(v);
+                    assert!(m.url.contains(&format!("postgresql-{v}-")), "{}", m.url);
+                }
+                for v in p.mariadb_versions {
+                    assert!(bundle_manifest("mariadb", v, "macos", arch).is_some(), "{v}");
+                }
+                for v in p.redis_versions {
+                    assert!(bundle_manifest("redis", v, "macos", arch).is_some(), "{v}");
+                }
+                assert!(bundle_manifest("httpd", p.httpd, "macos", arch).is_some(), "{tier:?}");
+                assert!(manifest("cloudflared", p.cloudflared, "macos", arch).is_some(), "{tier:?}");
             }
-            for v in POSTGRES_VERSIONS {
-                let m = manifest("postgres", v, "macos", arch).expect(v);
-                assert!(m.url.contains(&format!("postgresql-{v}-")), "{}", m.url);
-            }
-            for v in MARIADB_VERSIONS {
-                assert!(bundle_manifest("mariadb", v, "macos", arch).is_some(), "{v}");
-            }
-            for v in REDIS_VERSIONS {
-                assert!(bundle_manifest("redis", v, "macos", arch).is_some(), "{v}");
+            // Defaults are members of their offered sets — where a set exists.
+            // Legacy13 offers NO PostgreSQL (no build loads on arm64 there); its
+            // `postgres` field names a real pin so nothing is a sentinel, and the
+            // empty set is the fact T3's refusal renders.
+            assert!(p.mysql_versions.contains(&p.mysql), "{tier:?}");
+            assert!(p.mariadb_versions.contains(&p.mariadb), "{tier:?}");
+            assert!(p.redis_versions.contains(&p.redis), "{tier:?}");
+            if tier == BinaryTier::Legacy13 {
+                assert!(p.postgres_versions.is_empty());
+                assert!(manifest("postgres", p.postgres, "macos", Arch::Arm64).is_some());
+            } else {
+                assert!(p.postgres_versions.contains(&p.postgres), "{tier:?}");
             }
         }
-        // Defaults are members of their offered sets.
-        assert!(MYSQL_VERSIONS.contains(&MYSQL_VERSION));
-        assert!(POSTGRES_VERSIONS.contains(&POSTGRES_VERSION));
-        assert!(MARIADB_VERSIONS.contains(&MARIADB_VERSION));
-        assert!(REDIS_VERSIONS.contains(&REDIS_VERSION));
+        assert_eq!(mysql_macos_build("8.4.6"), "macos15");
+        assert_eq!(mysql_macos_build("8.4.3"), "macos14");
+        assert_eq!(mysql_macos_build("8.0.40"), "macos14");
         // The versioned-formula ghcr path maps `@` → `/`.
         let lts = bundle_manifest("mariadb", "11.4.12", "macos", Arch::Arm64).unwrap();
         assert!(lts.parts[0].url.contains("homebrew/core/mariadb/11.4/blobs/"), "{}", lts.parts[0].url);
