@@ -14,6 +14,7 @@ import {
   adminerUpdateApply,
   adminerUpdateCheck,
   databasesStatus,
+  dbEngineRefusals,
   dbEngineVersions,
   setDbEngineVersion,
 } from "@/lib/ipc";
@@ -42,6 +43,14 @@ function Meter({ label, value, pct }: { label: string; value: string; pct: numbe
  * has no Adminer driver — its row gets no Browse button (the port +
  * `redis-cli` are the client story, shown inline). */
 const BROWSABLE = new Set(["mysql", "mariadb", "postgres"]);
+
+/** Labels for engines core refuses on this Mac — the running ones carry their own. */
+const ENGINE_LABELS: Record<string, string> = {
+  mysql: "MySQL",
+  mariadb: "MariaDB",
+  postgres: "PostgreSQL",
+  redis: "Redis",
+};
 
 function DbRow({
   db,
@@ -256,6 +265,14 @@ export function Databases() {
     queryFn: dbEngineVersions,
     staleTime: Infinity, // pinned sets only change with an app release
   });
+  // An engine this Mac's macOS cannot run is LISTED, disabled, with core's
+  // sentence — a page with one row fewer than on another Mac reads as a bug
+  // unless it says why. The tier is fixed for the app's lifetime.
+  const { data: refusals = {} } = useQuery({
+    queryKey: ["db-engine-refusals"],
+    queryFn: dbEngineRefusals,
+    staleTime: Infinity,
+  });
   const queryClient = useQueryClient();
   const switchVersion = useMutation({
     mutationFn: ({ key, version }: { key: string; version: string }) =>
@@ -337,6 +354,22 @@ export function Databases() {
                 }
                 onGoServices={() => navigate("/services")}
               />
+            ))}
+            {Object.entries(refusals).map(([key, reason]) => (
+              <div
+                key={key}
+                data-probe="db-row-refused"
+                data-engine={key}
+                className="flex flex-wrap items-center gap-4 border-b border-rex-border-subtle px-4 py-3 opacity-60 last:border-b-0"
+              >
+                <div className="flex h-7 w-7 flex-none items-center justify-center rounded-md border border-rex-border bg-rex-surface-2 text-rex-text-muted">
+                  <Database className="h-4 w-4" strokeWidth={1.7} />
+                </div>
+                <div className="min-w-[9rem] flex-1">
+                  <div className="text-[0.8125rem] font-medium text-rex-text">{ENGINE_LABELS[key] ?? key}</div>
+                  <div className="text-[0.6875rem] text-rex-text-muted">{reason}</div>
+                </div>
+              </div>
             ))}
           </div>
         )}

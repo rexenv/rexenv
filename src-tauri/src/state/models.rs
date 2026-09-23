@@ -508,6 +508,13 @@ pub struct PhpVersion {
 #[serde(rename_all = "camelCase")]
 pub struct PhpVersionView {
     pub minor: String,
+    /// Why this minor cannot be installed on THIS host, when the reason is the
+    /// host's macOS (`docs/PLAN-macos-13-floor.md` §6.3): the row is still
+    /// listed — disabled, with this sentence — never silently omitted. `None`
+    /// for every minor the host's tier offers. The sentence is built in Rust
+    /// (`binaries::needs_macos_sentence`), so the UI renders it and adds no OS
+    /// word of its own.
+    pub unavailable_reason: Option<String>,
     /// The patch this build PINS for the minor — derived from `PHP_VERSIONS`,
     /// never stored. It used to be a column, which meant a mirror that could
     /// disagree with the thing it mirrored (ledger #339/#340).

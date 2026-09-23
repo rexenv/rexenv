@@ -7,7 +7,7 @@ import { cn, TECH_INPUT } from "@/lib/utils";
 import { eolNote, eolTag } from "@/lib/php";
 import { Button } from "@/components/ui/button";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
-import { defaultTld, inspectLinkedFolder, listBlueprints, listPhpVersions, listSites, offeredDbEngines, offeredWebServers, pickFolder, repoProbe, siteProvisionCancel, siteProvisionJob, wpMultisiteConvert } from "@/lib/ipc";
+import { dbEngineRefusals, defaultTld, inspectLinkedFolder, listBlueprints, listPhpVersions, listSites, offeredDbEngines, offeredWebServers, pickFolder, repoProbe, siteProvisionCancel, siteProvisionJob, wpMultisiteConvert } from "@/lib/ipc";
 import { usePlatformWords } from "@/lib/usePlatformWords";
 import { SiteProvisionCard, useSiteProvision } from "@/components/sites/SiteProvisionCard";
 import { RefPicker, type RefGroup } from "@/components/wordpress/RefPicker";
@@ -243,21 +243,6 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
   // creates. Everywhere else it is either required (WordPress, Laravel) or
   // absent, and this one expression decides both what renders and what is sent.
   const starterDbOffered = siteType === "php" && source === "new";
-  // PostgreSQL: never for WordPress, and only on a PHP that can reach it — the
-  // flag comes from core (`php::pdo_pgsql_supported`), never from a list of
-  // minors written here, which is the second-copy shape ledger #545 and the
-  // Xdebug toggle before it both paid for.
-  const postgresOffered =
-    siteType !== "wordpress" &&
-    (installed.find((v) => v.minor === phpVersion)?.postgresSupported ?? false);
-  // …and a choice that stops being legal must not survive as a silent payload.
-  // Switching to WordPress, or to a PHP without the driver, with PostgreSQL
-  // already picked would otherwise send an engine the backend refuses — the
-  // dialog would look fine and the job would fail at prepare.
-  useEffect(() => {
-    if (!postgresOffered && dbEngine === "postgres") setDbEngine("mysql");
-  }, [postgresOffered, dbEngine]);
-
   // The engine picker offers what create would ACCEPT, from the same gate that refuses
   // (`sites::ensure_engine_available_on`). MySQL and MariaDB used to be listed unconditionally, so
   // on Windows the dialog offered MariaDB and create refused it — offered-then-refused, the shape
@@ -268,21 +253,49 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
     queryFn: offeredDbEngines,
     staleTime: Infinity,
   });
+  // PostgreSQL: never for WordPress, and only on a PHP that can reach it — the
+  // flag comes from core (`php::pdo_pgsql_supported`), never from a list of
+  // minors written here, which is the second-copy shape ledger #545 and the
+  // Xdebug toggle before it both paid for.
+  const postgresOffered =
+    siteType !== "wordpress" &&
+    (installed.find((v) => v.minor === phpVersion)?.postgresSupported ?? false) &&
+    (!offeredEngines || offeredEngines.includes("postgres"));
+  // …and a choice that stops being legal must not survive as a silent payload.
+  // Switching to WordPress, or to a PHP without the driver, with PostgreSQL
+  // already picked would otherwise send an engine the backend refuses — the
+  // dialog would look fine and the job would fail at prepare.
+  useEffect(() => {
+    if (!postgresOffered && dbEngine === "postgres") setDbEngine("mysql");
+  }, [postgresOffered, dbEngine]);
+
   // …and an engine that stops being offered must not survive as a silent payload.
   useEffect(() => {
     if (offeredEngines && offeredEngines.length > 0 && !offeredEngines.includes(dbEngine)) {
       setDbEngine(offeredEngines[0]);
     }
   }, [offeredEngines, dbEngine]);
+  // …and an engine this Mac's macOS cannot run says so IN core's words, ahead of
+  // the platform note: the sentence is the same one the Databases page shows.
+  const { data: refusals = {} } = useQuery({
+    queryKey: ["db-engine-refusals"],
+    queryFn: dbEngineRefusals,
+    staleTime: Infinity,
+  });
   const missingEngines = offeredEngines
-    ? (["mysql", "mariadb"] as SiteDbEngine[]).filter((e) => !offeredEngines.includes(e))
+    ? (["mysql", "mariadb"] as SiteDbEngine[]).filter((e) => !offeredEngines.includes(e) && !refusals[e])
     : [];
-  const engineNote =
+  const refusedNote = Object.entries(refusals)
+    .filter(([key]) => key === "postgres" ? siteType !== "wordpress" : key === "mysql" || key === "mariadb")
+    .map(([key, reason]) => `${key === "mariadb" ? "MariaDB" : key === "postgres" ? "PostgreSQL" : "MySQL"}: ${reason}`)
+    .join(" ");
+  const platformNote =
     missingEngines.length === 0
       ? undefined
       : `${missingEngines.map((e) => (e === "mariadb" ? "MariaDB" : "MySQL")).join(" and ")} ${
           missingEngines.length === 1 ? "isn't" : "aren't"
         } part of rexenv on ${words.osName} yet — rexenv only offers an engine it has a pinned build for.`;
+  const engineNote = [refusedNote || undefined, platformNote].filter(Boolean).join(" ") || undefined;
 
   // The web-server picker offers what create would ACCEPT. The list comes from core
   // (`sites::offered_web_servers`, the same gate that refuses); SERVERS above is only where

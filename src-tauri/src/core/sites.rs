@@ -546,6 +546,10 @@ fn ensure_engine_available_on(engine: SiteDbEngine, os: &str) -> Result<()> {
     let db = crate::core::db::DbEngine::from_site(engine);
     if db.available_on(os) {
         Ok(())
+    } else if let Some(reason) = db.unavailable_reason() {
+        // The host's macOS, not the platform: the same sentence the Databases
+        // page and the PHP list show (§6.3), so `rex` and the MCP server say it too.
+        Err(Error::Other(format!("{}: {reason}", db.label())))
     } else {
         Err(Error::Other(format!("{} is not available on this platform yet", db.label())))
     }
@@ -1547,6 +1551,14 @@ pub fn clear_multisite(conn: &Connection, id: &str) -> Result<Option<Site>> {
 pub fn set_php_version(conn: &Connection, id: &str, version: &str) -> Result<Option<Site>> {
     let minor = php::minor_of(version);
     if php::patch_for_minor(&minor).is_none() {
+        // A minor this macOS cannot run says so, before the "no build" sentence
+        // below would call a shipped version unknown (§6.3 of the macOS-13 plan).
+        if let Some(major) = crate::core::binaries::php_minor_needs_macos(&minor) {
+            return Err(Error::Other(format!(
+                "PHP {minor}: {}",
+                crate::core::binaries::needs_macos_sentence(major)
+            )));
+        }
         // NAME what is available; never substitute a neighbouring minor. The
         // import path settled this rule (`phpTarget: null` when theirs isn't one
         // we ship, so the user chooses) and it holds harder for an agent: a
@@ -2865,6 +2877,20 @@ mod tests {
             [(E::Mysql, "macos"), (E::Mysql, "windows"), (E::Postgres, "macos"), (E::Postgres, "windows"), (E::Mariadb, "macos")]
         {
             assert!(ensure_engine_available_on(engine, os).is_ok(), "{engine:?} ships on {os}");
+        }
+        // §6.3 (ledger #710): on a macOS 13 host PostgreSQL is refused with the
+        // macOS it needs — the Databases page, New Site, `rex` and the MCP server
+        // all read this one gate, so this sentence is the one they all show.
+        {
+            use crate::core::binaries::{install_tier, BinaryTier};
+            install_tier(BinaryTier::Legacy13);
+            let err = ensure_engine_available_on(E::Postgres, "macos").expect_err("no build loads on 13").to_string();
+            assert!(err.starts_with("PostgreSQL: Needs macOS 14"), "{err}");
+            assert!(!offered_db_engines_on("macos").contains(&E::Postgres));
+            assert!(ensure_engine_available_on(E::Mysql, "macos").is_ok());
+            install_tier(BinaryTier::Legacy14);
+            assert!(ensure_engine_available_on(E::Postgres, "macos").is_ok(), "16.4.0 loads on 14");
+            install_tier(BinaryTier::Standard);
         }
         // D4: MariaDB has no Windows pin — MySQL 8.4 and 8.0 both ship there, so it is out of v1.
         let e = ensure_engine_available_on(E::Mariadb, "windows").expect_err("no Windows pin");

@@ -251,6 +251,15 @@ impl DbEngine {
         self.versions().iter().any(|v| binaries::ships_on(self.key(), v, os))
     }
 
+    /// Why this engine is not offered on THIS host when the reason is the host's
+    /// macOS — the tier has no build that loads here but a newer macOS does
+    /// (`docs/PLAN-macos-13-floor.md` §6.3). `None` when offered, or when the
+    /// absence is the platform's (Windows v1 has no Redis pin — a different
+    /// sentence, owned by `sites::ensure_engine_available_on`).
+    pub fn unavailable_reason(&self) -> Option<String> {
+        binaries::engine_needs_macos(self.key()).map(binaries::needs_macos_sentence)
+    }
+
     /// Whether the site stack REQUIRES this engine — required engines are
     /// started by Start-all and count toward the footer's "All running";
     /// optional ones (Postgres, …) are user-toggled on the Databases page and

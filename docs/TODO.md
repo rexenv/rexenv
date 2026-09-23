@@ -35,7 +35,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
-- [ ] **macOS 13 floor — three tiers, T0–T2 landed, T3–T8 open** (owner ruled 23 Sep 2026):
+- [ ] **macOS 13 floor — three tiers, T0–T3 landed, T4–T8 open** (owner ruled 23 Sep 2026):
   macOS 15 stays the STANDARD (every feature, latest pins); the app also RUNS on 13 and 14
   with a per-host pin set (`BinaryTier`, derived from the host every launch) and a
   "needs macOS 14" refusal for PostgreSQL and PHP 8.0 on 13; self-builds
@@ -51,6 +51,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   8.4.3/8.0.40 `macos14`; ventura blobs for Redis 8.2.1, MariaDB 12.0.2/11.4.8, httpd 2.4.65,
   Xdebug 3.4.5 for 8.1–8.4, none loads for 8.5; PostgreSQL 16.4.0 on 14 only); `manifest_sweep_check` sweeps every tier;
   `legacy_pins_check` resolves + runs each here; ledger #709.
+  ✓ **T3** 23 Sep 2026 — refusals: `php_minor_needs_macos` / `engine_needs_macos` (derived:
+  the lowest tier that offers it), ONE sentence from `words.rs`, listed-disabled on Settings /
+  Databases / New Site, the same words from `rex` and MCP through the core gates; ledger #710.
 
 - [x] **A typed bare `name.rex` goes to Google instead of the site** (owner report, 22 Sep 2026;
   `name.rex/` and `http://name.rex` worked). Browsers classify address-bar text against the public

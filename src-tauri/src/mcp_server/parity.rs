@@ -71,6 +71,7 @@ mod tests {
         // ── database
         ("databases_status", Tool("stack_status")),
         ("db_engine_versions", Tool("stack_status")),
+        ("db_engine_refusals", Tool("stack_status")),
         // ── logs
         ("log_targets", Tool("site_logs")),
         ("tail_log", Tool("site_logs")),

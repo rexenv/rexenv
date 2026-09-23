@@ -413,9 +413,11 @@ function PhpVersionRow({
             read off a screenshot. */}
         <span
           title={
-            v.installed
-              ? `PHP ${v.minor} is installed and runs its own ${words.poolKind}.`
-              : `PHP ${v.minor} is not installed.`
+            v.unavailableReason
+              ? `PHP ${v.minor}: ${v.unavailableReason}`
+              : v.installed
+                ? `PHP ${v.minor} is installed and runs its own ${words.poolKind}.`
+                : `PHP ${v.minor} is not installed.`
           }
           className={cn(
             "h-[7px] w-[7px] flex-none rounded-full",
@@ -468,6 +470,19 @@ function PhpVersionRow({
               }
             >
               · {v.upstream} exists
+            </span>
+          )}
+          {/* A minor this Mac's macOS cannot run is LISTED, disabled, with core's
+              sentence — one row fewer than on another Mac reads as a bug unless
+              it says why (docs/PLAN-macos-13-floor.md §6.3). The words come from
+              core; this chip adds no OS name of its own. */}
+          {v.unavailableReason && (
+            <span
+              data-probe="php-row-refused"
+              className="whitespace-nowrap rounded border border-rex-border-strong bg-rex-surface-2 px-1.5 py-0.5 text-[0.625rem] font-medium text-rex-text-muted"
+              title={v.unavailableReason}
+            >
+              {v.unavailableReason}
             </span>
           )}
           {v.isDefault && (
@@ -577,7 +592,11 @@ function PhpVersionRow({
           <Button
             size="sm"
             variant="primary"
-            disabled={busy}
+            // A minor this Mac cannot run keeps its Install button, disabled and
+            // titled with core's sentence — the row says why, the button does not
+            // pretend (the chip above carries the same words).
+            disabled={busy || !!v.unavailableReason}
+            title={v.unavailableReason ?? undefined}
             onClick={() => onToggle(true)}
             className="h-[26px] flex-none gap-1.5 px-2.5 text-[0.75rem]"
           >

@@ -302,24 +302,121 @@ pub fn pins() -> PinSet {
     PinSet::for_tier(tier())
 }
 
+/// The Standard set, for a surface that must NAME what a legacy host is missing
+/// (a refused PHP minor's row still shows the patch it would have run).
+pub fn standard_pins() -> PinSet {
+    STANDARD_PINS
+}
+
+// ── Tier refusals (`docs/PLAN-macos-13-floor.md` §6.3, ledger #710) ────────────
+//
+// A feature the host's tier cannot serve is refused with the macOS it NEEDS —
+// derived, never listed: the answer is "the lowest tier whose pin set offers
+// it", read off the same `PinSet`s the resolver uses, so a row that moves
+// between tiers moves the sentence with it. `None` means "not a tier refusal":
+// either the feature is offered here, or it exists on no tier at all (an
+// unknown minor), which is a different sentence owned elsewhere.
+
+/// Tiers from the lowest floor up, so the FIRST that offers a thing is the
+/// oldest macOS it runs on — the number the refusal should name.
+const TIERS_LOWEST_FIRST: [BinaryTier; 3] = [BinaryTier::Legacy13, BinaryTier::Legacy14, BinaryTier::Standard];
+
+fn needs_macos_for(offered: impl Fn(&PinSet) -> bool) -> Option<u32> {
+    if offered(&pins()) {
+        return None;
+    }
+    TIERS_LOWEST_FIRST
+        .into_iter()
+        .find(|t| offered(&PinSet::for_tier(*t)))
+        .map(|t| t.floor().0)
+}
+
+/// The macOS major a PHP minor needs, when this host's tier does not offer it
+/// but a newer tier does (8.0 on a 13 host → `Some(14)`). `None` when offered
+/// here, or shipped nowhere.
+pub fn php_minor_needs_macos(minor: &str) -> Option<u32> {
+    needs_macos_for(|p| p.php_versions.iter().any(|v| crate::core::php::minor_of(v) == minor))
+}
+
+/// The macOS major a database engine (by `DbEngine::key`) needs, when this
+/// host's tier offers no version of it but a newer tier does (PostgreSQL on a
+/// 13 host → `Some(14)`).
+pub fn engine_needs_macos(key: &str) -> Option<u32> {
+    needs_macos_for(|p| {
+        !match key {
+            "mysql" => p.mysql_versions,
+            "mariadb" => p.mariadb_versions,
+            "postgres" => p.postgres_versions,
+            "redis" => p.redis_versions,
+            _ => &[],
+        }
+        .is_empty()
+    })
+}
+
+/// Every PHP minor the Standard set ships that this host's tier does not, with
+/// the macOS each needs — the rows a legacy host's PHP list shows DISABLED with
+/// the reason, rather than omitting (§6.3: never a silent omission).
+pub fn refused_php_minors() -> Vec<(String, u32)> {
+    let mut out = Vec::new();
+    for v in STANDARD_PINS.php_versions {
+        let minor = crate::core::php::minor_of(v);
+        if let Some(major) = php_minor_needs_macos(&minor) {
+            if !out.iter().any(|(m, _)| *m == minor) {
+                out.push((minor, major));
+            }
+        }
+    }
+    out
+}
+
+/// The one sentence every tier refusal shows (`PlatformWords::needs_newer_os`),
+/// with the host's version when it can be read.
+pub fn needs_macos_sentence(major: u32) -> String {
+    crate::platform::words::current().needs_newer_os(major, crate::core::macho::host_macos())
+}
+
+
 /// The tier this process resolves pins for. `Standard` until `install_tier`
-/// runs — which is every test, every example and every non-macOS launch, so the
-/// empty state is exactly today's behaviour and not a degraded one.
+/// runs — which is every example and every non-macOS launch, so the empty
+/// state is exactly today's behaviour and not a degraded one.
+#[cfg(not(test))]
 static TIER: std::sync::RwLock<BinaryTier> = std::sync::RwLock::new(BinaryTier::Standard);
+
+// Under `cargo test` the tier is PER THREAD, not per process. Every lib test
+// runs on its own thread, so a test that installs Legacy13 to look at a
+// refusal cannot make a words test on the next thread see PostgreSQL vanish —
+// which is exactly what happened the first time two of them ran together
+// (`the_credits_line_names_only_the_engines_this_os_ships`, 23 Sep 2026).
+// A lock would have to be taken by every READER too, and readers are every
+// test that touches a pin; a thread-local needs nothing of anyone.
+#[cfg(test)]
+thread_local! {
+    static TEST_TIER: std::cell::Cell<BinaryTier> = const { std::cell::Cell::new(BinaryTier::Standard) };
+}
 
 /// Publish the host's tier to the resolve path. Called once at launch from the
 /// platform's answer; nothing else may call it in production (a tier that
 /// changes mid-run would hand two pin sets to one cache).
 pub fn install_tier(tier: BinaryTier) {
+    #[cfg(test)]
+    TEST_TIER.with(|t| t.set(tier));
+    #[cfg(not(test))]
     if let Ok(mut w) = TIER.write() {
         *w = tier;
     }
 }
 
-/// The tier every pin lookup consults (T1 routes the `*_VERSION` reads through
-/// it; until then nothing reads it but the tests).
+/// The tier every pin lookup consults, through [`pins`].
 pub fn tier() -> BinaryTier {
-    TIER.read().map(|t| *t).unwrap_or(BinaryTier::Standard)
+    #[cfg(test)]
+    {
+        TEST_TIER.with(|t| t.get())
+    }
+    #[cfg(not(test))]
+    {
+        TIER.read().map(|t| *t).unwrap_or(BinaryTier::Standard)
+    }
 }
 
 /// The binaries a DEFAULT install actually runs, and therefore the set the app's
@@ -3867,17 +3964,36 @@ fn publish(staging: &Path, dir: &Path, marker: &str) -> Result<()> {
 
 #[cfg(test)]
 mod tier_tests {
-    use super::{install_tier, pins, tier, BinaryTier, PinSet, PHP_VERSION, PHP_VERSIONS};
+    use super::{
+        engine_needs_macos, install_tier, php_minor_needs_macos, pins, refused_php_minors, tier,
+        BinaryTier, PinSet, PHP_VERSION, PHP_VERSIONS,
+    };
 
-    /// `TIER` is process-global and tests run in parallel; the one test that
-    /// installs a tier holds this so a pure `for_host` test never observes it.
-    fn lock() -> std::sync::MutexGuard<'static, ()> {
-        static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
-        let m = LOCK.get_or_init(|| std::sync::Mutex::new(()));
-        m.lock().unwrap_or_else(|p| {
-            m.clear_poison();
-            p.into_inner()
-        })
+    /// §6.3 — a refusal names the LOWEST tier that offers the thing, derived from
+    /// the pin sets; a feature offered here, or nowhere, is not a tier refusal.
+    #[test]
+    fn a_refusal_names_the_oldest_macos_that_offers_the_thing() {
+        install_tier(BinaryTier::Legacy13);
+        assert_eq!(php_minor_needs_macos("8.0"), Some(14), "8.0.30 is 14.0 on arm64");
+        assert_eq!(php_minor_needs_macos("8.3"), None, "offered here");
+        assert_eq!(php_minor_needs_macos("7.4"), None, "offered here");
+        assert_eq!(php_minor_needs_macos("9.9"), None, "shipped nowhere — not a tier refusal");
+        assert_eq!(engine_needs_macos("postgres"), Some(14), "16.4.0 is the Legacy14 pin");
+        assert_eq!(engine_needs_macos("mysql"), None);
+        assert_eq!(engine_needs_macos("mariadb"), None);
+        assert_eq!(engine_needs_macos("redis"), None);
+        assert_eq!(engine_needs_macos("nosuch"), None);
+        assert_eq!(refused_php_minors(), vec![("8.0".to_string(), 14)]);
+        // Plant: with `needs_macos_for` returning the HIGHEST tier instead of the
+        // lowest, PostgreSQL read `Some(15)` here and this line failed.
+        install_tier(BinaryTier::Legacy14);
+        assert_eq!(php_minor_needs_macos("8.0"), None);
+        assert_eq!(engine_needs_macos("postgres"), None);
+        assert!(refused_php_minors().is_empty());
+        install_tier(BinaryTier::Standard);
+        assert_eq!(php_minor_needs_macos("8.0"), None);
+        assert_eq!(engine_needs_macos("postgres"), None);
+        assert!(refused_php_minors().is_empty());
     }
 
     #[test]
@@ -3915,7 +4031,6 @@ mod tier_tests {
 
     #[test]
     fn pins_follow_the_installed_tier() {
-        let _g = lock();
         // Every tier answers the Standard set until T2 — but through the tier,
         // not around it. Plant: with `pins()` returning `STANDARD_PINS` directly
         // this still passes today, so the load-bearing half is `for_tier` being
@@ -4000,7 +4115,6 @@ mod tier_tests {
             assert!(a.parts[0].url.contains(&format!("xdebug/{minor}/blobs/")), "{}", a.parts[0].url);
         }
         // …and the tier's pick is what `xdebug_row` reads.
-        let _g = lock();
         install_tier(BinaryTier::Legacy13);
         assert_eq!(super::xdebug_row("8.4").unwrap().version, "3.4.5");
         install_tier(BinaryTier::Standard);
@@ -4009,7 +4123,6 @@ mod tier_tests {
 
     #[test]
     fn the_empty_state_is_standard_and_install_replaces_it() {
-        let _g = lock();
         // Plant: with `install_tier` a no-op this read stayed Standard and the
         // second assertion failed — the accessor is wired to the store.
         assert_eq!(tier(), BinaryTier::Standard);

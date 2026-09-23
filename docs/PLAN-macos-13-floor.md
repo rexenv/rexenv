@@ -3,7 +3,7 @@
 **Status:** PLANNED — 23 Sep 2026. Measurement done (§1–§5, both slices, every component);
 **the owner ruled the shape the same day (§6)**: macOS 15 stays the STANDARD — every feature,
 every latest pin — and the app additionally RUNS on macOS 13 and 14 with a per-host pin set
-and a per-feature refusal where no build exists. Task list in §7; **T0–T2 landed 23 Sep 2026** (ledger #707, #708, #709), T3 next.
+and a per-feature refusal where no build exists. Task list in §7; **T0–T3 landed 23 Sep 2026** (ledger #707, #708, #709, #710), T4 next.
 Planned against `99942bca`. Tracked as the "macOS 13 floor" row in `docs/TODO.md` (Now).
 
 The stated floor is `tauri.conf.json` `minimumSystemVersion: 15.0`, asserted equal to
@@ -343,7 +343,7 @@ beside the standard one. *Done when:* `manifest_sweep_check` (network tier) reso
 re-hashes every Legacy artifact; the bundles relink and load-test (`prepare_binary_tree`)
 on this Mac.
 
-**T3 — the refusals.**
+**T3 — the refusals.** ✓ 23 Sep 2026, ledger #710 — `Availability` became two derived accessors (`php_minor_needs_macos`, `engine_needs_macos`) rather than an enum; the test tier is thread-local under `cfg(test)`.
 `Availability::NeedsMacos` on PostgreSQL (13) and PHP 8.0 (13); the sentence in
 `platform/words.rs`; every list site in §6.3 renders it disabled-with-reason; `rex` and
 MCP refuse with the same words (parity test). Copy-scan guard covers the new sentence.

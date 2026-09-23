@@ -561,6 +561,34 @@ pub fn list_versions(
 ) -> Result<Vec<PhpVersionView>> {
     let upstream = crate::core::php_upstream::cached(conn);
     let checked_at = (!upstream.checked_at.is_empty()).then(|| upstream.checked_at.clone());
+    // The minors this host's macOS cannot run, LISTED rather than omitted: a
+    // list with fewer rows than it has on another Mac reads as a bug unless it
+    // says why (§6.3). Never seeded into the registry (the seed follows the
+    // tier's pins), so they can never be installed or defaulted — the row is
+    // the sentence and the patch the minor would have run.
+    let refused = binaries::refused_php_minors().into_iter().map(|(minor, major)| PhpVersionView {
+        unavailable_reason: Some(binaries::needs_macos_sentence(major)),
+        xdebug_supported: false,
+        xdebug_unavailable_reason: binaries::xdebug_unavailable_reason(&minor),
+        xdebug_version: None,
+        eol_since: eol_since(&minor),
+        postgres_supported: false,
+        serving: None,
+        upstream: None,
+        upstream_checked_at: None,
+        updatable: None,
+        update_cost: None,
+        patch: binaries::standard_pins()
+            .php_versions
+            .iter()
+            .find(|p| minor_of(p) == minor)
+            .map(|p| p.to_string())
+            .unwrap_or_default(),
+        fpm_port: fpm_port(&minor).unwrap_or(0),
+        installed: false,
+        is_default: false,
+        minor,
+    });
     Ok(store::list_php_versions(conn)?
         .into_iter()
         .map(|v| {
@@ -573,6 +601,7 @@ pub fn list_versions(
             let effective = crate::core::updates::floored(&v.minor, v.selected_patch.as_deref())
                 .unwrap_or_default();
             PhpVersionView {
+                unavailable_reason: None,
                 xdebug_supported: binaries::xdebug_supported(&v.minor),
                 xdebug_unavailable_reason: binaries::xdebug_unavailable_reason(&v.minor),
                 xdebug_version: binaries::xdebug_version_for(&v.minor),
@@ -622,6 +651,7 @@ pub fn list_versions(
                 is_default: v.is_default,
             }
         })
+        .chain(refused)
         .collect())
 }
 
@@ -629,6 +659,17 @@ pub fn list_versions(
 /// default version can't be removed, nor can one a site currently uses (it would
 /// silently fall back to the default pool). The version must be in the registry.
 pub fn set_installed(conn: &Connection, minor: &str, installed: bool) -> Result<()> {
+    // The tier's refusal FIRST, with its sentence: on a 13 host "8.0" is not an
+    // unknown version, it is a known one this macOS cannot run, and every door
+    // (Settings, `rex php install`, the MCP tool) comes through here (§6.3).
+    if installed {
+        if let Some(major) = binaries::php_minor_needs_macos(minor) {
+            return Err(Error::Other(format!(
+                "PHP {minor}: {}",
+                binaries::needs_macos_sentence(major)
+            )));
+        }
+    }
     if !installed {
         let versions = store::list_php_versions(conn)?;
         if versions.iter().any(|v| v.minor == minor && v.is_default) {
@@ -1811,6 +1852,38 @@ mod tests {
     }
 
     /// The tell reaches the row the UI actually renders.
+    /// §6.3 of the macOS-13 plan (ledger #710): a minor this host's macOS cannot
+    /// run is LISTED — disabled, with core's sentence, the patch it would have
+    /// run — never omitted; and every door that installs it says the same words.
+    #[test]
+    fn a_legacy_host_lists_the_refused_minor_with_the_reason_and_refuses_to_install_it() {
+        use crate::core::binaries::{install_tier, BinaryTier};
+        let conn = db::open_in_memory().unwrap();
+        install_tier(BinaryTier::Legacy13);
+        // The seed follows the tier's pins, so 8.0 is never a registry row here…
+        seed_registry(&conn).unwrap();
+        assert!(!store::list_php_versions(&conn).unwrap().iter().any(|v| v.minor == "8.0"));
+        // …and the LIST still carries it, as a refusal.
+        let rows = list_versions(&conn, &[], &Default::default(), "arm64").unwrap();
+        let r = rows.iter().find(|r| r.minor == "8.0").expect("8.0 listed, not omitted");
+        let reason = r.unavailable_reason.as_deref().expect("the reason travels with the row");
+        assert!(reason.contains("macOS 14"), "{reason}");
+        assert!(!r.installed && !r.is_default && !r.xdebug_supported);
+        assert_eq!(r.patch, "8.0.30", "the patch it would have run, from the Standard set");
+        assert!(rows.iter().filter(|r| r.minor == "8.0").count() == 1);
+        // Every other row is an ordinary one.
+        assert!(rows.iter().filter(|r| r.minor != "8.0").all(|r| r.unavailable_reason.is_none()));
+        // The install door refuses with the SAME sentence (Settings, `rex php
+        // install`, the MCP tool all arrive here) — not "unknown PHP version".
+        let err = set_installed(&conn, "8.0", true).expect_err("refused").to_string();
+        assert!(err.contains(reason), "{err}");
+        // Plant: with `php_minor_needs_macos` returning `None` the row vanished
+        // and the first `expect` above failed (23 Sep 2026).
+        install_tier(BinaryTier::Standard);
+        let rows = list_versions(&conn, &[], &Default::default(), "arm64").unwrap();
+        assert!(rows.iter().all(|r| r.unavailable_reason.is_none()), "a standard host refuses nothing");
+    }
+
     #[test]
     fn the_version_list_carries_the_eol_date() {
         let conn = db::open_in_memory().unwrap();

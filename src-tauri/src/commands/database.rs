@@ -126,6 +126,18 @@ pub fn db_engine_versions() -> Result<std::collections::HashMap<String, Vec<Stri
         .collect())
 }
 
+/// The engines this host's macOS cannot run, with the sentence each shows —
+/// `key → reason`. The Databases page lists these as disabled rows and New Site
+/// as a disabled option, so an engine present on another Mac is never simply
+/// missing here (§6.3 of the macOS-13 plan). Empty on every standard host.
+#[tauri::command]
+pub fn db_engine_refusals() -> Result<std::collections::HashMap<String, String>> {
+    Ok(DbEngine::ALL
+        .into_iter()
+        .filter_map(|e| e.unavailable_reason().map(|r| (e.key().to_string(), r)))
+        .collect())
+}
+
 /// Switch an engine to another offered version. Each version SERIES keeps its
 /// own datadir (never an in-place upgrade/downgrade — PG major datadirs are
 /// incompatible, MySQL/MariaDB downgrades unsupported), so databases created

@@ -185,6 +185,24 @@ pub const WINDOWS: PlatformWords = PlatformWords {
     searching_browsers: "Chrome and Edge",
 };
 
+impl PlatformWords {
+    /// The sentence a feature shows when this host's OS is older than the newest build of it
+    /// loads on — `docs/PLAN-macos-13-floor.md` §6.3. ONE sentence for every surface (the PHP
+    /// row, the engine row, New Site, `rex`, the MCP server), built here so no TSX and no
+    /// command spells an OS name of its own. `running` is the host version when it could be
+    /// read; the sentence still stands without it.
+    pub fn needs_newer_os(&self, major: u32, running: Option<(u32, u32, u32)>) -> String {
+        let os = self.os_name;
+        match running {
+            Some((maj, min, _)) => format!(
+                "Needs {os} {major} or later — {} runs {os} {maj}.{min}.",
+                self.host
+            ),
+            None => format!("Needs {os} {major} or later on {}.", self.host),
+        }
+    }
+}
+
 /// This build's words.
 pub fn current() -> &'static PlatformWords {
     #[cfg(target_os = "windows")]
@@ -226,6 +244,19 @@ mod tests {
             w.import_search,
             w.searching_browsers,
         ]
+    }
+
+    /// The tier refusal names the OS, the floor and what this host runs — and nothing else, so a
+    /// TSX that renders it adds no OS word of its own (§6.3 of the macOS-13 plan).
+    #[test]
+    fn the_tier_refusal_names_the_floor_and_the_host() {
+        assert_eq!(
+            MACOS.needs_newer_os(14, Some((13, 7, 8))),
+            "Needs macOS 14 or later — this Mac runs macOS 13.7."
+        );
+        assert_eq!(MACOS.needs_newer_os(14, None), "Needs macOS 14 or later on this Mac.");
+        // Windows never refuses on a tier, but the sentence must not be a macOS one if it did.
+        assert_eq!(WINDOWS.needs_newer_os(11, Some((10, 0, 19045))), "Needs Windows 11 or later — this PC runs Windows 10.0.");
     }
 
     /// Ledger #626 — the macOS words are what the app already showed: moving them into the platform changes no

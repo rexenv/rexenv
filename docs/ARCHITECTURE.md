@@ -886,8 +886,11 @@ Live-proven end to end by `site_stop_start_check`.
   compile (ledger #708). The legacy sets are `..STANDARD_PINS` with the measured rows
   overridden (`docs/PORTS.md` §"Legacy tiers"); the manifest tables themselves are
   tier-blind — a legacy pin is its own row under its own version, so a standard host can
-  sweep, relink and run it (ledger #709). **As of T2 the refusals** (PostgreSQL and PHP 8.0 on
-  13) are an empty / shorter offered set with no words yet — T3 of that plan.
+  sweep, relink and run it (ledger #709). **A feature the tier cannot serve is refused with
+  the macOS it needs** — derived as the lowest tier that offers it, said in one Rust-built
+  sentence (`PlatformWords::needs_newer_os`), and LISTED disabled with it on Settings, Databases
+  and New Site rather than omitted; `rex` and the MCP server reach the same two core gates
+  (`php::set_installed`, `sites::ensure_engine_available_on`) and say the same words (ledger #710).
 - macOS `prepare_binary` order (non-negotiable): **de-quarantine → relink Homebrew dylibs
   to `/usr/lib` → ad-hoc codesign LAST.**
 - **`prepare_binary` needs NO Xcode Command Line Tools on the common path** (ledger #676).

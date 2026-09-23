@@ -52,6 +52,12 @@ the shipped UI toward one.
   and off only after two agreeing samples, so a burst does not flicker the row (#608). It names the
   state and its consequence, never a cause it cannot see: the health log's hosts are "recently
   served", because nginx logs a request only when it ends.
+- **A feature this Mac's macOS cannot run is listed, disabled, with the reason — never
+  simply missing.** On macOS 13 there is no PostgreSQL and no PHP 8.0 (`docs/PLAN-macos-13-floor.md`
+  §6.3): the Databases page keeps a muted row, the Settings PHP list keeps the row with its
+  Install button disabled, New Site's engine note says it — all from ONE sentence Rust builds
+  (`needs_newer_os`: "Needs macOS 14 or later — this Mac runs macOS 13.7."), because a page with
+  one row fewer than on another Mac reads as a bug unless it says why (ledger #710).
 - **A consent prompt's most load-bearing sentence has ONE source, and it is not the
   TSX.** The Agent access dial (MCP parity, D15) renders "An agent can …" under each
   level from strings Rust serves (`AccessLevel::what_it_allows`, in `AgentAccess.levels`),

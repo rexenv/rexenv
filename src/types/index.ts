@@ -647,6 +647,10 @@ export interface PhpUpdateOutcome {
  *  `binaries::xdebug_supported` that could silently disagree with it. */
 export interface PhpVersion {
   minor: string; // "8.3" — the key + what Site.phpVersion references
+  /** Why this minor cannot be installed on THIS Mac, when the reason is its macOS — the
+   *  row is listed disabled with this sentence, never omitted. Built in core
+   *  (`binaries::needs_macos_sentence`); null for every minor this Mac can run. */
+  unavailableReason: string | null;
   /** The patch this minor WILL RUN: the user's in-app update choice, floored by
    *  the patch this build pins. Derived in core, never stored.
    *
