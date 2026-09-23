@@ -42,6 +42,9 @@ fn wait_for(port: u16, want_listening: bool) -> bool {
 
 #[tokio::main]
 async fn main() -> std::process::ExitCode {
+    // Service tier: beside a running stack this would JOIN the user's PostgreSQL
+    // rather than collide with it, and report on a server it does not own.
+    common::require_stack_stopped();
     let plat = platform::current();
     let engine = DbEngine::Postgres;
     let port = engine.port();

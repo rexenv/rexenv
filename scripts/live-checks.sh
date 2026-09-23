@@ -170,6 +170,7 @@ php_update_check               network macos
 port_check                     sandbox both
 postgres_site_db_check         network both
 postgres_site_lifecycle_check  network both
+postgres_admin_token_check     service both
 prefetch_responsiveness_check  network both
 priv_check                     system  macos
 ready_split_check              service both
