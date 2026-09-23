@@ -255,9 +255,30 @@ impl DbEngine {
     /// macOS — the tier has no build that loads here but a newer macOS does
     /// (`docs/PLAN-macos-13-floor.md` §6.3). `None` when offered, or when the
     /// absence is the platform's (Windows v1 has no Redis pin — a different
-    /// sentence, owned by `sites::ensure_engine_available_on`).
+    /// sentence, [`Self::ensure_available_on`] owns both).
     pub fn unavailable_reason(&self) -> Option<String> {
         binaries::engine_needs_macos(self.key()).map(binaries::needs_macos_sentence)
+    }
+
+    /// Refuse an engine this build cannot run, with the RIGHT sentence: the host's
+    /// macOS when that is the reason (the tier), else the platform's. ONE door for
+    /// `start_database`, the version switch, `spawn_db` and site creation — the
+    /// first macOS 13 run (T7, 23 Sep 2026) got "PostgreSQL is not available on
+    /// this platform yet" from `rex db versions --set`, the platform sentence on
+    /// a tier refusal, because that command had its own copy of the gate.
+    pub fn ensure_available_on(&self, os: &str) -> Result<()> {
+        if self.available_on(os) {
+            Ok(())
+        } else if let Some(reason) = self.unavailable_reason() {
+            Err(Error::Other(format!("{}: {reason}", self.label())))
+        } else {
+            Err(Error::Other(format!("{} is not available on this platform yet", self.label())))
+        }
+    }
+
+    /// [`Self::ensure_available_on`] for the host.
+    pub fn ensure_available(&self) -> Result<()> {
+        self.ensure_available_on(std::env::consts::OS)
     }
 
     /// Whether the site stack REQUIRES this engine — required engines are

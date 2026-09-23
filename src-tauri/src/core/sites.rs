@@ -543,16 +543,10 @@ pub fn create_on(conn: &Connection, new: NewSite, os: &str) -> Result<Site> {
 /// `std::env::consts::OS` alone has a half that cannot fail on the machine running the test
 /// (ledger #647).
 fn ensure_engine_available_on(engine: SiteDbEngine, os: &str) -> Result<()> {
-    let db = crate::core::db::DbEngine::from_site(engine);
-    if db.available_on(os) {
-        Ok(())
-    } else if let Some(reason) = db.unavailable_reason() {
-        // The host's macOS, not the platform: the same sentence the Databases
-        // page and the PHP list show (§6.3), so `rex` and the MCP server say it too.
-        Err(Error::Other(format!("{}: {reason}", db.label())))
-    } else {
-        Err(Error::Other(format!("{} is not available on this platform yet", db.label())))
-    }
+    // ONE gate with ONE pair of sentences (`DbEngine::ensure_available_on`): the
+    // host's macOS when that is the reason, else the platform's — so `rex`, the
+    // MCP server, the Databases page and this create path cannot disagree.
+    crate::core::db::DbEngine::from_site(engine).ensure_available_on(os)
 }
 
 /// The database engines a site can actually be created with on this build, in the order the New
@@ -2886,6 +2880,11 @@ mod tests {
             install_tier(BinaryTier::Legacy13);
             let err = ensure_engine_available_on(E::Postgres, "macos").expect_err("no build loads on 13").to_string();
             assert!(err.starts_with("PostgreSQL: Needs macOS 14"), "{err}");
+            // …and the engine's OWN door says the same words: `rex db versions --set
+            // postgres` on the 13.6 VM answered "not available on this platform yet"
+            // because that command had a second copy of the gate (23 Sep 2026).
+            let own = crate::core::db::DbEngine::Postgres.ensure_available_on("macos").expect_err("refused").to_string();
+            assert_eq!(own, err, "two doors, one sentence");
             assert!(!offered_db_engines_on("macos").contains(&E::Postgres));
             assert!(ensure_engine_available_on(E::Mysql, "macos").is_ok());
             install_tier(BinaryTier::Legacy14);

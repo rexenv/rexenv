@@ -3,7 +3,7 @@
 **Status:** PLANNED — 23 Sep 2026. Measurement done (§1–§5, both slices, every component);
 **the owner ruled the shape the same day (§6)**: macOS 15 stays the STANDARD — every feature,
 every latest pin — and the app additionally RUNS on macOS 13 and 14 with a per-host pin set
-and a per-feature refusal where no build exists. Task list in §7; **T0–T6 landed 23 Sep 2026** (ledger #707–#712; #433 re-shaped), T7 (the human VM gate) next.
+and a per-feature refusal where no build exists. Task list in §7; **T0–T6 landed 23 Sep 2026** (ledger #707–#713; #433 re-shaped). **T7 part-run the same day on a macOS 13.6 VM** — it found two real defects (the 14-only `activate` selector, #713; a second copy of the engine gate, #710) and, with them fixed, the legacy stack ran and served; the GUI-only rows, the bundles (no CLT on the VM), the 15-upgrade and the macOS 14 VM remain (`docs/SMOKE-TEST.md`).
 Planned against `99942bca`. Tracked as the "macOS 13 floor" row in `docs/TODO.md` (Now).
 
 The stated floor is `tauri.conf.json` `minimumSystemVersion: 15.0`, asserted equal to
@@ -16,7 +16,11 @@ carries the per-binary numbers for the pins that ship; this file carries the ALT
 ## 1. Why the floor is 15 today — one binary
 
 Nothing in rexenv's own code names a macOS version. Tauri 2 / wry / the `objc2` APIs the
-app calls (`NSAlert`, `NSWindow`, `WKWebView`, kqueue) all exist since macOS 10.13. The
+app calls (`NSAlert`, `NSWindow`, `WKWebView`, kqueue) exist since macOS 10.13 — **with one
+exception this sentence missed and T7 found on its first launch: `NSApplication.activate` is
+macOS 14+, and the app aborted on 13.6 before drawing a window (ledger #713; now gated by
+`respondsToSelector:`).** No static check sees an ObjC selector's availability; only the
+run does, which is why T7 is a gate and not a formality. The
 floor is set entirely by the deployment target baked into the binaries rexenv downloads,
 and today **exactly one default-stack binary sits at 15.0: cloudflared 2026.6.1**. Every
 other default-stack binary is 12.0 on both slices (`macos_floor_check`, 23 Sep 2026, ALL
@@ -368,7 +372,7 @@ One L1 example per stateful engine: init a datadir on the Legacy13 binary, start
 the Standard binary, query it. MySQL 8.4 + 8.0, MariaDB 12 + 11.4. Sandbox tier,
 fixture-owned. *Done when:* `live-checks.sh` lists them and they pass here.
 
-**T7 — the human gate: real 13 and 14.**
+**T7 — the human gate: real 13 and 14.** ◐ 23 Sep 2026 — see the SMOKE section for what ran over ssh and what still needs eyes.
 UTM arm64 VMs for macOS 13.7 and 14.x (the 15.6.1 VM recipe in `SMOKE-TEST.md`): clean
 install, onboarding says the subset, WordPress + Laravel sites serve over HTTPS, MySQL /
 MariaDB / Redis / Apache / Xdebug start from the Legacy pins, a tunnel opens on cloudflared

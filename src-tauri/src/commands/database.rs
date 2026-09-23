@@ -77,12 +77,7 @@ pub(crate) fn effective_db_version(state: &AppState, engine: DbEngine) -> Result
 fn engine_from_key(key: &str) -> Result<DbEngine> {
     let engine =
         DbEngine::from_key(key).ok_or_else(|| Error::Other(format!("unknown DB engine: {key}")))?;
-    if !engine.available() {
-        return Err(Error::Other(format!(
-            "{} is not available on this platform yet",
-            engine.label()
-        )));
-    }
+    engine.ensure_available()?;
     Ok(engine)
 }
 

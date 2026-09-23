@@ -35,7 +35,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
-- [ ] **macOS 13 floor — three tiers, T0–T6 landed, T7–T8 open** (owner ruled 23 Sep 2026):
+- [ ] **macOS 13 floor — three tiers, T0–T6 landed, T7 PART-RUN on a 13.6 VM (two real defects found and fixed), T8 open** (owner ruled 23 Sep 2026):
   macOS 15 stays the STANDARD (every feature, latest pins); the app also RUNS on 13 and 14
   with a per-host pin set (`BinaryTier`, derived from the host every launch) and a
   "needs macOS 14" refusal for PostgreSQL and PHP 8.0 on 13; self-builds
@@ -65,6 +65,16 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   ✓ **T6** 23 Sep 2026 — `legacy_upgrade_check` (network tier): MySQL 8.4.3→8.4.6, 8.0.40→8.0.44,
   MariaDB 12.0.2→12.3.2 (default→default, one `mariadb/data`), 11.4.8→11.4.12 — legacy writes,
   standard reads, same datadir; ALL PASS here; ledger #712.
+  ◐ **T7** 23 Sep 2026, clean macOS 13.6 VM over ssh + `rex`: the first build ABORTED at launch
+  (`NSApplication.activate` is 14+ — ledger #713, gated by `respondsToSelector:`), and
+  `rex db versions --set postgres` said the platform sentence (a second copy of the engine
+  gate — folded into `DbEngine::ensure_available_on`, #710). With both fixed: legacy pins
+  offered and RUN (mysql-8.4.3, nginx, php-fpm 8.3 + the 3.4.5 Xdebug pool, Caddy, Mailpit),
+  a site served HTTPS 200, both refusals say the tier sentence, the app swap adopted the
+  running services. **Still open:** the GUI rows (onboarding note, muted PostgreSQL row, the
+  8.0 chip — need Screen Recording for ssh screenshots or an eyes-on pass), CA trust prompt,
+  bottle bundles (VM has no CLT), a tunnel, WordPress/Laravel creates, the in-place upgrade
+  to 15, and the macOS **14** VM. `docs/SMOKE-TEST.md` "macOS 13 and 14".
 
 - [x] **A typed bare `name.rex` goes to Google instead of the site** (owner report, 22 Sep 2026;
   `name.rex/` and `http://name.rex` worked). Browsers classify address-bar text against the public

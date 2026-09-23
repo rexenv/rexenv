@@ -539,12 +539,7 @@ impl ServiceManager {
         // stored engine (`SiteDbEngine`), so a database created on a Mac and opened on a
         // Windows build would otherwise try to start an engine that does not ship here and
         // fail somewhere less honest than this (W10, ledger #642).
-        if !engine.available() {
-            return Err(Error::Other(format!(
-                "{} is not available on this platform yet",
-                engine.label()
-            )));
-        }
+        engine.ensure_available()?;
         ports::ensure_free(platform, engine.port(), ports::Proto::Tcp, engine.label())?;
         let child = engine.start(platform, &self.db_version(engine)).await?;
         self.dbs.insert(engine, child);
@@ -3775,10 +3770,13 @@ mod tests {
         let from = src.find("pub async fn spawn_db").expect("the stripper ate spawn_db");
         let to = src[from..].find("pub async fn ensure_db").expect("ensure_db follows spawn_db");
         let body = &src[from..from + to];
+        // The gate is the engine's ONE door (`DbEngine::ensure_available`, 23 Sep 2026): it
+        // refuses with the host's macOS when that is the reason and the platform's otherwise,
+        // so this arm no longer carries its own copy of the check or its sentence (#710).
         assert!(
-            body.contains("if !engine.available()"),
+            body.contains("engine.ensure_available()?"),
             "spawn_db does not check that the engine ships here — a site's stored engine is the \
-             one that gets here without passing available():\n{body}"
+             one that gets here without passing the engine's gate:\n{body}"
         );
     }
 

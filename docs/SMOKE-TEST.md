@@ -1507,25 +1507,31 @@ itself the first check.
 Run the Core sections above on a **clean macOS 13.7 VM and a clean macOS 14 VM** (the UTM
 recipe from "Cold first run", arm64). What differs there, and what must be seen:
 
-Environment: macOS ____ (13.x / 14.x) · rexenv version ____ · build ____
+Environment: macOS 13.6 (22G120) arm64, UTM, CLT-less · rexenv 0.8.6-dev (2d1e1bc4 + the two T7 fixes) · run 23 Sep 2026 over ssh; **the macOS 14 VM has not been run**
 
+- [x] **The app LAUNCHES and draws a window.** ✓ 23 Sep 2026 (clean UTM VM, macOS 13.6 arm64, CLT-less, build 2d1e1bc4+activation/gate fixes, driven over ssh + `rex`) — first build aborted (below); the fixed build launches, `rex open` answers "window opened", no `crash.log` entry. Not a formality: the first build put on a
+      13.6 VM (23 Sep 2026) aborted in `applicationDidFinishLaunching` on a macOS-14-only
+      selector (`-[TaoApp activate]`, ledger #713), with `crash.log` saying only "panic in a
+      function that cannot unwind" — `~/Library/Logs/DiagnosticReports/rexenv-*.ips` and a
+      Terminal launch (`/Applications/rexenv.app/Contents/MacOS/rexenv`) show the real
+      message. Any newer-than-13 AppKit/WebKit selector the app sends will look like this.
 - [ ] **Onboarding's Welcome step shows the legacy note once** — "This Mac runs macOS 13.7 —
       rexenv works here with older versions of some components and without PostgreSQL and
       PHP 8.0. Everything is available on macOS 15 or later." (on 14: "…without PostgreSQL…"
       is absent; PostgreSQL 16.4 is offered). On a 15+ Mac the note must NOT appear.
-- [ ] **Cold first run installs the LEGACY pins**: Settings → PHP shows the standard minors;
+- [x] **Cold first run installs the LEGACY pins** ✓ 23 Sep 2026 (clean UTM VM, macOS 13.6 arm64, CLT-less, build 2d1e1bc4+activation/gate fixes, driven over ssh + `rex`): `rex db versions` offers MySQL 8.4.3 / 8.0.40, MariaDB 12.0.2 / 11.4.8, Redis 8.2.1 and NO PostgreSQL; a Blank-PHP site created over `rex` downloaded and RAN mysql-8.4.3, nginx-1.30.4, php-fpm 8.3, Caddy, Mailpit on the 13.6 host — `rex status` all running, the site answered HTTPS 200 with the rexenv starter title; the Xdebug toggle started the 8.3 debug pool from `xdebug-8.3-3.4.5`. **Not seen on this VM:** Apache / MariaDB / Redis (bottle bundles relink with `install_name_tool`, and this VM has no CLT — the standing bundles-without-CLT gap, same as on 15), a tunnel. Original text: Settings → PHP shows the standard minors;
       the Services/Databases rows, once started, report MySQL **8.4.3**, Redis **8.2.1**,
       MariaDB **12.0.2**; Apache **2.4.65** on a site that picks it; a share opens on
       cloudflared **2025.4.0** (Tunnels page shows the version). On 14 only cloudflared moves.
-- [ ] **PostgreSQL on 13**: Databases page lists it as a muted row reading "Needs macOS 14 or
+- [x] **PostgreSQL on 13** ✓ 23 Sep 2026 (clean UTM VM, macOS 13.6 arm64, CLT-less, build 2d1e1bc4+activation/gate fixes, driven over ssh + `rex`) — the CLI legs: `rex site create … --db postgres` → "PostgreSQL: Needs macOS 14 or later — this Mac runs macOS 13.6."; `rex db versions --set postgres 16.4.0` → the same sentence (the FIRST build answered the platform sentence there — fixed, ledger #710). The GUI row (muted Databases row, New Site note) is unseen: ssh screenshots omit other apps' windows without Screen Recording permission. Original text: Databases page lists it as a muted row reading "Needs macOS 14 or
       later — this Mac runs macOS 13.x."; New Site → Laravel/Blank shows the same sentence under
       the engine picker and offers no PostgreSQL option; `rex db versions --set postgres …`
       and the MCP create tool refuse with the same words.
-- [ ] **PHP 8.0 on 13**: Settings → PHP keeps the 8.0 row, dot grey, Install disabled, a chip
+- [x] **PHP 8.0 on 13** ✓ 23 Sep 2026 (clean UTM VM, macOS 13.6 arm64, CLT-less, build 2d1e1bc4+activation/gate fixes, driven over ssh + `rex`) — `rex php list` carries the 8.0 row with `unavailableReason` set and `installed: false`; `rex php install 8.0` → "PHP 8.0: Needs macOS 14 or later — this Mac runs macOS 13.6."; the GUI chip unseen (same screenshot limit). Original text: Settings → PHP keeps the 8.0 row, dot grey, Install disabled, a chip
       with the sentence; `rex php install 8.0` refuses with it; New Site never offers 8.0.
 - [ ] **Xdebug on 13**: the toggle works on 8.1–8.4 (pool banner "with Xdebug v3.4.5"); on
       8.5 the toggle is off with the "no bottle pinned yet" reason.
-- [ ] **WordPress and Laravel sites serve over HTTPS** exactly as the Core sections say.
+- [ ] **WordPress and Laravel sites serve over HTTPS** exactly as the Core sections say. (23 Sep 2026: a Blank-PHP site served 200 over HTTPS on 13.6; WordPress/Laravel not created on that run.)
 - [ ] **In-place upgrade to macOS 15**, then relaunch: no note at Welcome; Databases →
       MySQL/MariaDB/Redis restart on the standard pins and the sites' databases are still
       there (T6's forward-upgrade proof, seen through the GUI); PostgreSQL and PHP 8.0 appear
