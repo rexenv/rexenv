@@ -1905,7 +1905,9 @@ Environment: Ubuntu ____ (22.04+; x86_64 or aarch64) · package ____ (.deb / App
       → `rexenv-edge.service` active (running), `Main PID` = caddy under `/usr/local/lib/rexenv/bin/caddy`
       (`root:root 0755`), `:80`/`:443` listening, `config/caddy-admin.sock` user-owned, 5/5 running.
       A WordPress site created through the dialog served over HTTPS (curl 200, Chromium no warning).
-      Owed: the `kill -9` restart and the Stop-all disable legs below.
+      The other legs the same day: `sudo kill -9 <caddy>` → back in 4 s (new pid, `:443` up);
+      tray → Stop all (one prompt) → `is-enabled` = `disabled`, `inactive`, ports free, every
+      row idle; tray → Start all → enabled, active, 5/5 running. **P2 complete.**
 - [ ] After Start all: `systemctl status rexenv-edge` active, `ExecStart=/bin/sh
       "/usr/local/lib/rexenv/edge-launch.sh"`, `/usr/local/lib/rexenv/bin/caddy` is `root:root
       0755`, `:443` and `:80` answer. `ls -l ~/.local/share/rexenv/run/caddy-admin.sock` is

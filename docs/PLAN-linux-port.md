@@ -187,8 +187,8 @@ Each ends in something observable; each is its own commit.
   the same day: the resolved drop-in (D-L2, #717), the snap Chromium NSS database (#726), the
   thread-summed RAM figure (#725), `rex`'s Linux socket path (#727). P4 passed after a reboot (autologin → hidden autostart, every unit back, services up); the
   rebuilt deb proved #725 (260 MB) and #727 (`rex` answers); 7.4's Install button on Linux is
-  #728. Owed: the tunnel guard (P4's last leg), Firefox (snap), Stop-all/kill-9 legs of P2.
-  Original scope: Install Ubuntu 22.04 in UTM (D-L9), `tauri build` there, install
+  #728. P2's kill-9/Stop-all/Start-all legs passed too. Owed: the tunnel guard (P4's last leg — a
+  public tunnel, the owner's call), Firefox (snap). Original scope: Install Ubuntu 22.04 in UTM (D-L9), `tauri build` there, install
   the `.deb`, run SMOKE-TEST's Linux section — and FIRST the §7 P1 probe. Every ledger row L1
   marks `◐ (Docker only)` becomes `✓ (Ubuntu 22.04 VM)` or a bug.
 - **L7 — Release.** `manifest-linux.json` (Windows plan §3b: one signed document per OS), the
