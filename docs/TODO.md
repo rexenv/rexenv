@@ -1195,7 +1195,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     cloud-init seed, `ssh rexenv@192.168.64.7`) and P1 RAN: the first DNS design FAILED (a global
     resolved drop-in routed `example.com` to loopback), the dummy-link replacement passed by hand
     and then 23/23 through `linux_dns_route_check` (ledger #717). First `.deb` + AppImage built
-    on the VM (`tauri build`, 15 MB deb, polkit action inside). Owed: P2–P5 with the installed app**
+    on the VM (`tauri build`, 15 MB deb, polkit action inside). **The installed deb RAN through
+    onboarding, Start all and a WordPress site over HTTPS (curl 200, Chromium no warning) — P1/P2/P3
+    through the app, P5 partly; found and fixed: snap Chromium's NSS db (#726), thread-summed RAM
+    (#725), `rex`'s Linux socket (#727).** Owed: P4 (reboot autostart, tunnel guard), Firefox, the
+    P2 restart/disable legs, the rebuilt deb re-proving the fixes**
   - [ ] L7 `manifest-linux.json`, the download page
 
 - [ ] **The keychain (CA trust) dialog is rexenv's too** — 12 Sep 2026, owner, after the admin

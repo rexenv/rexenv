@@ -81,11 +81,56 @@ impl Monitor {
         let mut ram = 0u64;
         for pid in self.tree_pids(root) {
             if let Some(p) = self.sys.process(Pid::from_u32(pid)) {
+                // A THREAD is not a process: on Linux sysinfo lists every task of a
+                // process as its own entry, parented to the thread-group leader, and each
+                // reports the whole process's RSS — so a tree walk summed mysqld's ~30
+                // threads at ~490 MB each and the sidebar read "14.5 GB" for a stack using
+                // 600 MB (Ubuntu 22.04 VM, 24 Sep 2026). macOS and Windows list no
+                // threads, so the filter changes nothing there.
+                if p.thread_kind().is_some() {
+                    continue;
+                }
                 cpu += p.cpu_usage();
                 ram += p.memory() / MB;
             }
         }
         Some(ProcessMetrics { cpu_percent: cpu, ram_mb: ram })
+    }
+}
+
+#[cfg(test)]
+mod thread_tests {
+    use super::*;
+
+    /// A process's own threads must not multiply its memory: `tree(self)` while this test
+    /// holds a dozen parked threads equals the process's memory once, not thirteen times.
+    /// On Linux every thread is a sysinfo entry (the "14.5 GB" sidebar); elsewhere the
+    /// table lists no threads and both sides are the single reading.
+    #[test]
+    fn a_processs_own_threads_do_not_multiply_its_memory() {
+        let parked: Vec<_> = (0..12)
+            .map(|_| {
+                let (ptx, prx) = std::sync::mpsc::channel::<()>();
+                let h = std::thread::spawn(move || {
+                    let _ = prx.recv();
+                });
+                (h, ptx)
+            })
+            .collect();
+        let mut m = Monitor::new();
+        m.refresh_processes();
+        let me = std::process::id();
+        let tree = m.tree(me).expect("this process is alive");
+        let own = m.sys.process(Pid::from_u32(me)).map(|p| p.memory() / MB).unwrap_or(0);
+        // A thread-summed tree would read ≥ 13× the process (twelve parked threads plus the
+        // main one); the tree may legitimately exceed the process alone by the CHILDREN other
+        // tests in this binary are running at the same moment (a few MB of `sh`), so the bound
+        // is a multiple, not an equality — measured 24 Sep 2026: 55 MB vs 53 MB on the Mac.
+        assert!(tree.ram_mb < own * 4 + 8, "tree {} MB vs the process's own {} MB — threads were summed", tree.ram_mb, own);
+        for (h, ptx) in parked {
+            let _ = ptx.send(());
+            let _ = h.join();
+        }
     }
 }
 

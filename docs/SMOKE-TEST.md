@@ -1881,7 +1881,9 @@ Environment: Ubuntu ____ (22.04+; x86_64 or aarch64) · package ____ (.deb / App
       the stub (`nameserver 127.0.0.53`). Note `resolvectl query example.com`'s answer.
 - [x] ✓ 24 Sep 2026 (Ubuntu 22.04 arm64 VM, by hand — P1 with the FIRST design FAILED: the
       global drop-in made `example.com` resolve to `127.0.0.1`; P1b with the dummy link passed,
-      see ledger #717; `linux_dns_route_check` 23/23 with the app's own commands). The app's own onboarding on the VM is still owed.
+      see ledger #717; `linux_dns_route_check` 23/23 with the app's own commands) — **and the app's own onboarding on the VM, the installed deb,
+      24 Sep 2026: polkit dialog with rexenv's sentence, `rexenv0` up, marker + unit, `a.rex` →
+      loopback, `example.com` public.**
       Onboarding → the system-setup consent → ONE polkit dialog: from the `.deb` it reads
       "rexenv needs administrator permission to change system settings…" (#723); from an AppImage
       or a dev build it names `/bin/sh`.
@@ -1899,6 +1901,11 @@ Environment: Ubuntu ____ (22.04+; x86_64 or aarch64) · package ____ (.deb / App
       sentence naming systemd-resolved; nothing is written.
 
 ### P2 — the edge unit
+- [x] ✓ 24 Sep 2026 (VM, the installed deb, through the app): Start all → the third polkit dialog
+      → `rexenv-edge.service` active (running), `Main PID` = caddy under `/usr/local/lib/rexenv/bin/caddy`
+      (`root:root 0755`), `:80`/`:443` listening, `config/caddy-admin.sock` user-owned, 5/5 running.
+      A WordPress site created through the dialog served over HTTPS (curl 200, Chromium no warning).
+      Owed: the `kill -9` restart and the Stop-all disable legs below.
 - [ ] After Start all: `systemctl status rexenv-edge` active, `ExecStart=/bin/sh
       "/usr/local/lib/rexenv/edge-launch.sh"`, `/usr/local/lib/rexenv/bin/caddy` is `root:root
       0755`, `:443` and `:80` answer. `ls -l ~/.local/share/rexenv/run/caddy-admin.sock` is
@@ -1908,6 +1915,11 @@ Environment: Ubuntu ____ (22.04+; x86_64 or aarch64) · package ____ (.deb / App
       stays down across a reboot. Start all → enabled and up again.
 
 ### P3 — CA trust in two stores (D-L3)
+- [x] ✓ 24 Sep 2026 (VM): `certutil -L` lists `rexenv local CA C,,` in `~/.pki/nssdb`;
+      `/usr/local/share/ca-certificates/rexenv-local-ca.crt` + `/etc/ssl/certs/rexenv-local-ca.pem`;
+      `curl -I https://acme.rex` → 200 with no `-k`. **Snap Chromium said ERR_CERT_AUTHORITY_INVALID**
+      — its NSS database is the snap's own (ledger #726); the CA added there by hand opened the site
+      with no warning. The rebuilt deb writes both; Firefox (snap, never run on the VM) still owed.
 - [ ] After onboarding: `certutil -d sql:$HOME/.pki/nssdb -L` lists `rexenv local CA` with
       `C,,`; `/usr/local/share/ca-certificates/rexenv-local-ca.crt` exists; `curl -I
       https://<site>.rex` succeeds with no `-k`. Chrome/Chromium opens the site with no warning.
@@ -1928,10 +1940,16 @@ Environment: Ubuntu ____ (22.04+; x86_64 or aarch64) · package ____ (.deb / App
       gone and the guard has exited. Stop a share normally → the guard exits at once.
 
 ### P5 — the GUI
+- [x] ✓ 24 Sep 2026 (VM): the colour tray icon in GNOME's top bar; its menu opens with the full
+      model (All running · 5 services, Start/Stop all, Sites ▸, Services … Quit); no reserved
+      title-bar row. Owed: "Open rexenv" from the menu.
 - [ ] The tray icon appears (needs `libayatana-appindicator3`); its menu opens; "Open rexenv"
       shows the window. The window has NO reserved title-bar row (GTK draws its own).
 - [ ] Databases → Browse: Adminer renders INSIDE the app at `rexdb://localhost` (webkitgtk
       serves custom schemes as WebKit does — the macOS origin, ledger #703's Linux leg).
+- [x] ✓ 24 Sep 2026 (VM): onboarding says "this computer", "Linux will ask for permission"; the
+      New Site dialog refuses Apache and MariaDB with "isn't part of rexenv on Linux yet".
+      **Sidebar RAM read 14.5–16.3 GB for a ~600 MB stack** — ledger #725, fixed, rebuilt deb owed.
 - [ ] Settings: the words say Files, apt, "this computer", the tray, `/etc/rexenv/dns.d` — never
       Finder, brew, Explorer or winget (`words::LINUX`).
 - [ ] Open in editor / browser / terminal: each detected entry launches; a private window opens

@@ -443,7 +443,8 @@ store, and the `rex` copy on your `Path`.
    2026.)
 2. `/etc/systemd/system/rexenv-edge.service` and `/usr/local/lib/rexenv/` — the root Caddy edge
    on `:80`/`:443`, kept alive by systemd, its binary copied to a root-owned folder.
-3. Your browsers' certificate store (`~/.pki/nssdb`, via `certutil`, no prompt) AND the system
+3. Your browsers' certificate stores (`~/.pki/nssdb`, and the snap Chromium's own database when
+   that snap has run — a snap does not see your `~/.pki`; via `certutil`, no prompt) AND the system
    store (`/usr/local/share/ca-certificates/rexenv-local-ca.crt` + `update-ca-certificates`, the
    second prompt) — so both Chrome and `curl`/PHP accept `https://*.rex`.
 4. `~/.config/systemd/user/rexenv-dns.service` — the resolver, started at sign-in, restarted on

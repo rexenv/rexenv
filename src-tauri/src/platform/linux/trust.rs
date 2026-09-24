@@ -22,9 +22,30 @@ pub(crate) fn nss_db_dir(home: &Path) -> PathBuf {
     home.join(".pki/nssdb")
 }
 
+/// Every NSS database a browser on this machine reads — `~/.pki/nssdb` (Chrome's deb, Brave,
+/// Edge, Vivaldi, an unconfined Chromium) and, when Ubuntu's SNAP Chromium has ever run, ITS
+/// database: a snap's `$HOME` is `~/snap/chromium/current` and its XDG data dir
+/// `…/current/.local/share`, where the snap keeps `pki/nssdb`. Measured 24 Sep 2026 on the VM:
+/// with the CA in `~/.pki/nssdb` only, the snap showed `NET::ERR_CERT_AUTHORITY_INVALID` for
+/// `https://acme.rex`, and `find` put its `cert9.db` at
+/// `~/snap/chromium/3533/.local/share/pki/nssdb` (`current` → `3533`). snapd carries the
+/// revision's user data across refreshes, so the copy survives a Chromium update.
+pub(crate) fn nss_db_dirs(home: &Path) -> Vec<PathBuf> {
+    let mut dirs = vec![nss_db_dir(home)];
+    let snap_home = home.join("snap/chromium/current");
+    if snap_home.is_dir() {
+        dirs.push(snap_home.join(".local/share/pki/nssdb"));
+    }
+    dirs
+}
+
 /// `certutil`'s database argument — the SQLite form, which is what Chrome creates and reads.
 pub(crate) fn nss_db_arg(home: &Path) -> String {
-    format!("sql:{}", nss_db_dir(home).display())
+    nss_db_arg_for(&nss_db_dir(home))
+}
+
+pub(crate) fn nss_db_arg_for(db: &Path) -> String {
+    format!("sql:{}", db.display())
 }
 
 /// The fix when `certutil` is missing — named in the error, never guessed at by the user.
@@ -33,9 +54,13 @@ to your browsers' trust store. Install it, then retry:\n$ sudo apt install libns
 
 /// `certutil -A`: add `cert` as a trusted CA for SSL (`C,,`).
 pub(crate) fn nss_add_args(home: &Path, cert: &Path) -> Vec<String> {
+    nss_add_args_for(&nss_db_dir(home), cert)
+}
+
+pub(crate) fn nss_add_args_for(db: &Path, cert: &Path) -> Vec<String> {
     vec![
         "-d".into(),
-        nss_db_arg(home),
+        nss_db_arg_for(db),
         "-A".into(),
         "-t".into(),
         "C,,".into(),
@@ -48,17 +73,26 @@ pub(crate) fn nss_add_args(home: &Path, cert: &Path) -> Vec<String> {
 
 /// `certutil -D`: remove the nickname.
 pub(crate) fn nss_delete_args(home: &Path) -> Vec<String> {
-    vec!["-d".into(), nss_db_arg(home), "-D".into(), "-n".into(), NSS_NICKNAME.into()]
+    nss_delete_args_for(&nss_db_dir(home))
+}
+pub(crate) fn nss_delete_args_for(db: &Path) -> Vec<String> {
+    vec!["-d".into(), nss_db_arg_for(db), "-D".into(), "-n".into(), NSS_NICKNAME.into()]
 }
 
 /// `certutil -L -a`: the certificate under the nickname as PEM, for comparison with ours.
 pub(crate) fn nss_show_args(home: &Path) -> Vec<String> {
-    vec!["-d".into(), nss_db_arg(home), "-L".into(), "-n".into(), NSS_NICKNAME.into(), "-a".into()]
+    nss_show_args_for(&nss_db_dir(home))
+}
+pub(crate) fn nss_show_args_for(db: &Path) -> Vec<String> {
+    vec!["-d".into(), nss_db_arg_for(db), "-L".into(), "-n".into(), NSS_NICKNAME.into(), "-a".into()]
 }
 
 /// `certutil -N --empty-password`: create the database when Chrome never has.
 pub(crate) fn nss_create_args(home: &Path) -> Vec<String> {
-    vec!["-d".into(), nss_db_arg(home), "-N".into(), "--empty-password".into()]
+    nss_create_args_for(&nss_db_dir(home))
+}
+pub(crate) fn nss_create_args_for(db: &Path) -> Vec<String> {
+    vec!["-d".into(), nss_db_arg_for(db), "-N".into(), "--empty-password".into()]
 }
 
 /// Two PEMs describe the same certificate when their base64 bodies match — whitespace and
@@ -106,6 +140,20 @@ mod tests {
         assert_eq!(add[..7], ["-d", "sql:/home/u/.pki/nssdb", "-A", "-t", "C,,", "-n", "rexenv local CA"]);
         assert_eq!(nss_delete_args(home)[2..], ["-D", "-n", "rexenv local CA"]);
         assert!(nss_show_args(home).ends_with(&["-a".to_string()]));
+    }
+
+    /// The snap's database joins the list only once the snap has a home — a machine without
+    /// snap Chromium gets one database, never an empty directory created for a browser it lacks.
+    #[test]
+    fn the_snap_chromium_db_is_listed_only_when_the_snap_has_run() {
+        let home = std::env::temp_dir().join(format!("rexenv-nss-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        std::fs::create_dir_all(&home).unwrap();
+        assert_eq!(nss_db_dirs(&home), vec![home.join(".pki/nssdb")]);
+        std::fs::create_dir_all(home.join("snap/chromium/current")).unwrap();
+        assert_eq!(nss_db_dirs(&home), vec![home.join(".pki/nssdb"), home.join("snap/chromium/current/.local/share/pki/nssdb")]);
+        assert_eq!(nss_db_arg_for(&home.join("snap/chromium/current/.local/share/pki/nssdb")), format!("sql:{}/snap/chromium/current/.local/share/pki/nssdb", home.display()));
+        let _ = std::fs::remove_dir_all(&home);
     }
 
     #[test]

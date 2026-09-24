@@ -162,29 +162,35 @@ impl LinuxCertTrust {
     fn certutil() -> Result<PathBuf> {
         which("certutil").ok_or_else(|| Error::Other(trust::CERTUTIL_MISSING.into()))
     }
-    /// The PEM NSS holds under our nickname, if any.
-    fn nss_current(home: &Path) -> Option<String> {
+    /// The PEM the NSS database at `db` holds under our nickname, if any.
+    fn nss_current_in(db: &Path) -> Option<String> {
         let certutil = which("certutil")?;
-        let out = crate::platform::command(certutil).args(trust::nss_show_args(home)).output().ok()?;
+        let out = crate::platform::command(certutil).args(trust::nss_show_args_for(db)).output().ok()?;
         out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+    }
+    /// The PEM the user's primary database (`~/.pki/nssdb`) holds under our nickname.
+    fn nss_current(home: &Path) -> Option<String> {
+        Self::nss_current_in(&trust::nss_db_dir(home))
     }
 }
 
 impl CertTrustManager for LinuxCertTrust {
-    /// Both stores, the browsers' first (no prompt), then the system's (one `pkexec`).
+    /// Both stores, the browsers' first (no prompt — every NSS database a browser here reads,
+    /// the snap Chromium's included), then the system's (one `pkexec`).
     fn trust_ca(&self, ca_cert_path: &Path) -> Result<()> {
         let home = home_dir()?;
         let certutil = Self::certutil()?;
-        let db = trust::nss_db_dir(&home);
-        if !db.join("cert9.db").exists() {
-            std::fs::create_dir_all(&db)?;
-            run_ok(&certutil.display().to_string(), &trust::nss_create_args(&home))?;
+        for db in trust::nss_db_dirs(&home) {
+            if !db.join("cert9.db").exists() {
+                std::fs::create_dir_all(&db)?;
+                run_ok(&certutil.display().to_string(), &trust::nss_create_args_for(&db))?;
+            }
+            // A stale entry under the nickname would make `-A` a no-op that keeps the OLD root.
+            if Self::nss_current_in(&db).is_some() {
+                let _ = run_ok(&certutil.display().to_string(), &trust::nss_delete_args_for(&db));
+            }
+            run_ok(&certutil.display().to_string(), &trust::nss_add_args_for(&db, ca_cert_path))?;
         }
-        // A stale entry under the nickname would make `-A` a no-op that keeps the OLD root.
-        if Self::nss_current(&home).is_some() {
-            let _ = run_ok(&certutil.display().to_string(), &trust::nss_delete_args(&home));
-        }
-        run_ok(&certutil.display().to_string(), &trust::nss_add_args(&home, ca_cert_path))?;
         LinuxPrivileges.run_privileged(
             &trust::system_trust_command(ca_cert_path),
             &PromptReason::new("add its local certificate authority to this computer's trust store, so curl and PHP accept https://*.rex"),
@@ -194,8 +200,10 @@ impl CertTrustManager for LinuxCertTrust {
     fn untrust_ca(&self, _ca_cert_path: &Path) -> Result<()> {
         let home = home_dir()?;
         if let Ok(certutil) = Self::certutil() {
-            if Self::nss_current(&home).is_some() {
-                run_ok(&certutil.display().to_string(), &trust::nss_delete_args(&home))?;
+            for db in trust::nss_db_dirs(&home) {
+                if Self::nss_current_in(&db).is_some() {
+                    run_ok(&certutil.display().to_string(), &trust::nss_delete_args_for(&db))?;
+                }
             }
         }
         if Path::new(trust::SYSTEM_CERT_DIR).join(trust::SYSTEM_CERT_NAME).exists() {
@@ -206,16 +214,20 @@ impl CertTrustManager for LinuxCertTrust {
         }
         Ok(())
     }
-    /// One nickname holds one certificate: a different one there is the stale root.
+    /// One nickname holds one certificate per database: a different one there is a stale root.
     fn untrust_stale(&self, current_ca: &Path) -> Result<usize> {
         let home = home_dir()?;
-        let Some(held) = Self::nss_current(&home) else { return Ok(0) };
         let ours = std::fs::read_to_string(current_ca)?;
-        if trust::same_pem(&held, &ours) {
-            return Ok(0);
+        let mut removed = 0;
+        for db in trust::nss_db_dirs(&home) {
+            let Some(held) = Self::nss_current_in(&db) else { continue };
+            if trust::same_pem(&held, &ours) {
+                continue;
+            }
+            run_ok(&Self::certutil()?.display().to_string(), &trust::nss_delete_args_for(&db))?;
+            removed += 1;
         }
-        run_ok(&Self::certutil()?.display().to_string(), &trust::nss_delete_args(&home))?;
-        Ok(1)
+        Ok(removed)
     }
     fn is_trusted(&self, ca_cert_path: &Path) -> bool {
         let Ok(home) = home_dir() else { return false };

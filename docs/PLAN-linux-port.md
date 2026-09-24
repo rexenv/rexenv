@@ -179,7 +179,15 @@ Each ends in something observable; each is its own commit.
   `TESTING.md` ("Proving a Linux claim"), `SMOKE-TEST.md` Linux section, `INSTALL.md`,
   `RELEASING.md`, `CLAIM-LEDGER.md` rows (every new "never"), `TODO.md` ("Linux launch" under
   *Now*; the Phase 4+ row retired), `STATUS.md` regenerated.
-- **L6 — The VM run (owner).** Install Ubuntu 22.04 in UTM (D-L9), `tauri build` there, install
+- **L6 — The VM run.** **STARTED 24 Sep 2026 — the VM exists and the app has RUN on it.** Ubuntu
+  22.04 arm64 in UTM (cloud image + cloud-init seed, no installer; `ssh rexenv@192.168.64.7`);
+  `tauri build` there produced the first `.deb` and AppImage; the deb installed; onboarding
+  through polkit (rexenv's own sentence), the DNS route, both trust stores, Start all with the
+  root edge unit, a WordPress site served over HTTPS to `curl` and to Chromium. Found and fixed
+  the same day: the resolved drop-in (D-L2, #717), the snap Chromium NSS database (#726), the
+  thread-summed RAM figure (#725), `rex`'s Linux socket path (#727). Owed: P4 (autostart after
+  a reboot, the tunnel guard), Firefox (snap), Stop-all/kill-9 legs of P2, the rebuilt deb
+  proving #725–#727 through the app. Original scope: Install Ubuntu 22.04 in UTM (D-L9), `tauri build` there, install
   the `.deb`, run SMOKE-TEST's Linux section — and FIRST the §7 P1 probe. Every ledger row L1
   marks `◐ (Docker only)` becomes `✓ (Ubuntu 22.04 VM)` or a bug.
 - **L7 — Release.** `manifest-linux.json` (Windows plan §3b: one signed document per OS), the

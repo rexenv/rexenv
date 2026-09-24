@@ -330,10 +330,27 @@ fn socket_path() -> PathBuf {
     {
         windows_pipe_path("app")
     }
-    #[cfg(not(any(target_os = "macos", windows)))]
+    // Linux: the XDG data dir (`directories` drops the qualifier and org there), the same
+    // socket name — docs/PLAN-linux-port.md L1; the refusal below stood until 24 Sep 2026,
+    // when the first `rex site list` on the Ubuntu VM printed it.
+    #[cfg(target_os = "linux")]
+    {
+        linux_data_dir().join("rexenv/config/rexenv-cli.sock")
+    }
+    #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
     {
         eprintln!("rex: this platform is not supported yet");
         exit(1)
+    }
+}
+
+/// `$XDG_DATA_HOME`, else `~/.local/share` — what the app's `Paths::app_data_dir` resolves
+/// through `directories::ProjectDirs` on Linux.
+#[cfg(target_os = "linux")]
+fn linux_data_dir() -> PathBuf {
+    match std::env::var("XDG_DATA_HOME") {
+        Ok(x) if !x.is_empty() => PathBuf::from(x),
+        _ => PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".local/share"),
     }
 }
 
@@ -354,7 +371,11 @@ fn mcp_socket_path() -> PathBuf {
         // The endpoint's own pipe, alive only while the toggle is on (plan §5 W8 ruling Q2, ledger #632).
         windows_pipe_path("mcp")
     }
-    #[cfg(not(any(target_os = "macos", windows)))]
+    #[cfg(target_os = "linux")]
+    {
+        linux_data_dir().join("rexenv/config/rexenv-mcp.sock")
+    }
+    #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
     {
         eprintln!("rex: this platform is not supported yet");
         exit(1)
