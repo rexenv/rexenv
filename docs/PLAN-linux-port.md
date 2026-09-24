@@ -118,7 +118,7 @@ L8). The table below is the record of what was assumed while the owner slept.
 |---|---|---|---|
 | Caddy 2.11.4 | `caddy_2.11.4_linux_{amd64,arm64}.tar.gz` | ✓ 17 MB, SHA-512 matches `checksums.txt` | ✓ 16 MB, matches |
 | PHP 8.0.30–8.5.8 (cli + fpm) | static-php.dev `php-<v>-{cli,fpm}-linux-{x86_64,aarch64}.tar.gz` | ✓ all 12 (25–31 MB) | ✓ all 12 |
-| PHP 7.4.33 | — | **404** — static-php.dev never built 7.4 for Linux; rexenv's own 7.4 is macOS-only | 404 |
+| PHP 7.4.33 | `rexenv/runtimes` `php-7.4.33-7`: `php-7.4.33-{cli,fpm}-linux-{x86_64,aarch64}.tar.gz` (L8, 25 Sep 2026 — static-php.dev never built one) | ✓ 30–32 MB, SHA256SUMS match | ✓ |
 | nginx 1.30.4 | `rexenv/runtimes` — none published; jirutka `nginx-1.30.4-{x86_64,aarch64}-linux` static | ✓ 7 MB (jirutka) | ✓ 6.6 MB |
 | MySQL 8.4.6 / 8.0.44 | `mysql-<v>-linux-glibc2.28-{x86_64,aarch64}.tar.xz` (`.tar.gz` **404** — xz only) | ✓ 920 / 891 MB | ✓ 909 / 878 MB |
 | PostgreSQL 18.6.0 / 17.11.0 / 16.15.0 | theseus-rs `postgresql-<v>-{x86_64,aarch64}-unknown-linux-gnu.tar.gz` + `.sha256` | ✓ 11–12 MB, all match the published `.sha256` | ✓ all match |
@@ -226,10 +226,15 @@ Each ends in something observable; each is its own commit.
   `--linux <deb|appimage> <arch>` mode is a PR for the owner to merge and RUN — publishing is
   his gate), then `app_update_check` on the VM and a real 0.8.x → 0.8.y apply through the
   About screen (SMOKE-TEST's Linux "In-app update" rows).
-- **L8 — PHP 7.4 for Linux (RULED IN, 24 Sep 2026).** Built by rexenv in `rexenv/runtimes`
-  the way the macOS 7.4 is (static-php-cli on a Linux runner, `cli` + `fpm`, x86_64 + aarch64,
-  licences tarball beside), pinned through `php_self_hosted_tag` with Linux arms, swept and
-  hashed like every other pin. Until it ships, #728 keeps the row refused honestly.
+- **L8 — PHP 7.4 for Linux (RULED IN, 24 Sep 2026) — SHIPPED 25 Sep 2026.** rexenv/runtimes
+  PR #7 added `ubuntu-24.04` / `ubuntu-24.04-arm` lanes to `php-74.yml` + `build-php74.sh` (the
+  OS read from `uname`; `ldd`/`file` gates instead of `otool`/minos). Three dry runs found:
+  aarch64 links `sapi/cli/php` only with `-fPIC -fPIE` (small-GOT overflow on
+  `zend_ce_traversable`); the licence sweep needed freetype's `LICENSE.TXT` spelling and a
+  SQLite public-domain note; the static ELFs export no Zend symbols (no Xdebug, as on macOS).
+  The owner published `php-7.4.33-7`; rexenv pins the four Linux tarballs + two licence
+  tarballs on THAT tag (`PHP_7_4_33_LINUX_TAG` — the macOS pin stays on `-6`, the release that
+  proved it), `ships_on` answers true, and #728's refusal for 7.4 is gone by the same table.
 - **L7 (was) — Release.** `manifest-linux.json` (Windows plan §3b: one signed document per OS), the
   download page, `RELEASING.md`'s Linux leg.
 

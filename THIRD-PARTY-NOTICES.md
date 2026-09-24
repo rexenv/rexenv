@@ -244,16 +244,18 @@ true of any other row in `docs/PORTS.md`.
 
 | | |
 |---|---|
-| Artifacts | `php-7.4.33-{cli,fpm}-macos-{aarch64,x86_64}.tar.gz` |
+| Artifacts | `php-7.4.33-{cli,fpm}-macos-{aarch64,x86_64}.tar.gz`; since 25 Sep 2026 also `php-7.4.33-{cli,fpm}-linux-{aarch64,x86_64}.tar.gz` (fully static musl ELFs, same script on Ubuntu runners) |
 | Built by | `rexenv/runtimes` (public), static-php-cli, GitHub Actions |
 | Source | `shivammathur/php-src-backports` @ `5a576d8eb53e` — mirrored as an asset in the same release, so the build is reproducible from URLs alone rather than from a branch that is rebased, not appended |
-| Release | `php-7.4.33-6` — immutable, never re-uploaded; a rebuild is the next build number |
-| Pinned in | `core/binaries.rs` (`PHP_7_4_33_*_SHA256`, `php_self_hosted_tag`) |
+| Release | macOS: `php-7.4.33-6`; Linux: `php-7.4.33-7` (the first release with Linux lanes — its macOS artifacts are a rebuild, so the macOS pin stays on the release that proved it). Both immutable, never re-uploaded; a rebuild is the next build number |
+| Pinned in | `core/binaries.rs` (`PHP_7_4_33_*_SHA256`, `php_self_hosted_tag`; Linux: `PHP_7_4_33_*_LINUX_*_SHA256`, `PHP_7_4_33_LINUX_TAG`) |
 | Licence | **PHP License 3.01** (`licenses/PHP-3.01.txt`) |
 
 **Statically linked dependencies travel inside the binary, so their licences
 travel with it.** They are collected at build time and published beside every
-artifact as `licenses-<arch>.tar.gz`, which carries `PHP-3.01.txt`,
+artifact as `licenses-<arch>.tar.gz` (macOS) and `licenses-linux-<arch>.tar.gz` (Linux — a
+different closure: musl and the Linux pre-built dependencies; SQLite, public domain, is
+recorded there as a note rather than a licence file), which carries `PHP-3.01.txt`,
 `php-src.LICENSE`, and the licence text of each linked dependency (curl,
 freetype, libedit, libjpeg, libjxl, libtiff, libxml2, libxslt, libzip,
 imagemagick, imap, postgresql, ext-zip). A dependency with no findable licence

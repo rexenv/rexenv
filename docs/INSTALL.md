@@ -464,8 +464,8 @@ checking its version. A `cargo` build reads no update descriptor.
 
 ### Not in Linux v1
 
-PHP 7.4 (no static Linux build exists yet), Redis, MariaDB, Apache, Xdebug (Homebrew's Linux
-bottles are x86_64-only and unrelinked).
+Redis, MariaDB, Apache, Xdebug (Homebrew's Linux bottles are x86_64-only and unrelinked).
+PHP 7.4 IS available — rexenv's own static build, as on macOS.
 
 ### Uninstalling — do the in-app step FIRST
 

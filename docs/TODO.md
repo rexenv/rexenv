@@ -1209,8 +1209,14 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     `check-app-manifest.sh --linux`. Publisher: rexenv/runtimes PR #6 (`--linux <kind> <arch>`) — the
     owner merges and RUNS it; until a Linux descriptor is published, no Linux build is offered anything
     (SMOKE-TEST's Linux "In-app update" rows are the About-screen proof still owed)
-  - [ ] L8 **PHP 7.4 for Linux (owner ruled IN, 24 Sep 2026)** — built in `rexenv/runtimes` like the
-    macOS 7.4 (cli + fpm, both archs, licences), pinned with Linux arms, swept. **In flight 25 Sep 2026:**
+  - [x] L8 **PHP 7.4 for Linux (owner ruled IN, 24 Sep 2026)** ✓ 25 Sep 2026 — owner published
+    `php-7.4.33-7`; the four Linux tarballs + two licence tarballs pinned on that tag
+    (`PHP_7_4_33_LINUX_TAG`, macOS stays on `-6`), #728's refusal gone by the same table; L0 tests
+    flipped; **L1 `php_versions_check` on the VM: 7.4.33 cli + fpm downloaded from `php-7.4.33-7`, digests
+    verified, `PHP 7.4.33 (cli) (built: Sep 24 2026)` runs, `licenses/` beside it** (the example's macOS-only
+    spellings — `arm64` for an ELF, "self-distributed" resolved for macOS — were the run's only failures and
+    are fixed: `artifact_is_self_distributed` asks the host's OS). Built in `rexenv/runtimes` like the
+    macOS 7.4 (cli + fpm, both archs, licences). **History:**
     rexenv/runtimes PR #7 adds the `ubuntu-24.04` / `ubuntu-24.04-arm` lanes (static musl, ldd/file
     gates). **Dry run 36002401583: all four lanes green** (aarch64 needed `-fPIC -fPIE`; the licence sweep
     needed freetype's `LICENSE.TXT` and a SQLite public-domain note; the static ELFs export no Zend

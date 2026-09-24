@@ -1983,8 +1983,12 @@ Environment: Ubuntu ____ (22.04+; x86_64 or aarch64) · package ____ (.deb / App
       renamed by hand): the dialog names the failure, the OLD version keeps running, nothing in
       `/usr/bin` changed.
 
+### PHP 7.4 on Linux (L8, `php-7.4.33-7`)
+- [ ] Settings → PHP → 7.4 → Install: downloads rexenv's own Linux build, `php -v` in the
+      site's terminal says 7.4.33, a WordPress site on 7.4 serves; `bin/php-7.4.33/licenses/`
+      holds the Linux licence set; no Xdebug toggle for 7.4 (static ELF, expected).
+
 ### Not in Linux v1 (D-L8, refused in core with an honest message)
-- **PHP 7.4** — no static Linux build exists YET (L8 builds it); the picker must not offer it.
 - **Redis, MariaDB, Apache, Xdebug** — as Windows v1: not offered, and a refusal that names the OS.
 
 ---

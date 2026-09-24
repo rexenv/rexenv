@@ -107,8 +107,15 @@ fn version_line(bin: &Path) -> Result<String, String> {
         .to_string())
 }
 
+/// The word `file(1)` uses for this host's arch: Mach-O says `arm64`/`x86_64`, an ELF says
+/// `ARM aarch64`/`x86-64` (the first Linux run failed every row on the macOS spelling).
 fn main_arch() -> &'static str {
-    if cfg!(target_arch = "aarch64") { "arm64" } else { "x86_64" }
+    match (cfg!(target_os = "linux"), cfg!(target_arch = "aarch64")) {
+        (true, true) => "aarch64",
+        (true, false) => "x86-64",
+        (false, true) => "arm64",
+        (false, false) => "x86_64",
+    }
 }
 
 #[tokio::main]

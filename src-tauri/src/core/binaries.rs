@@ -1751,6 +1751,24 @@ const PHP_7_4_33_CLI_MAC_AMD64_SHA256: &str = "f6878248da0b9e119d29ec21fbe73e8c6
 const PHP_7_4_33_FPM_MAC_ARM64_SHA256: &str = "3f32e75738c66642c64b8d817680a872519007cf3903ad5824fa01c04be3fec9";
 const PHP_7_4_33_FPM_MAC_AMD64_SHA256: &str = "fc75852c08304d5c92ccb5c6f0e13f70719fda6262d6a2e798af8d4b86b2bfc4";
 
+/// The Linux 7.4 — the SAME script, on `ubuntu-24.04` / `ubuntu-24.04-arm` runners, as fully
+/// static musl ELFs (docs/PLAN-linux-port.md L8, owner ruling 24 Sep 2026; rexenv/runtimes
+/// PR #7). Its OWN tag, not `php_self_hosted_tag`'s: release `-7` is the first with Linux
+/// lanes, and its macOS artifacts are a REBUILD of what `-6` proved — the macOS pins stay on
+/// `-6`, so one version can sit on two immutable releases, one per OS. Hashed from full
+/// downloads over the real `releases/download` URL, 25 Sep 2026, and equal to the release's
+/// own `SHA256SUMS`. No Xdebug on this build either: a static ELF exports no Zend symbols
+/// (`nm -D` answers one), the same wall the macOS 7.4 and 8.0 hit.
+pub(crate) const PHP_7_4_33_LINUX_TAG: &str = "php-7.4.33-7";
+const PHP_7_4_33_CLI_LINUX_AARCH64_SHA256: &str = "16d03e18495ee8aa966be12f2b49588dbd1dbce206efd5111f78e42921f5ad1b";
+const PHP_7_4_33_CLI_LINUX_X86_64_SHA256: &str = "8db044a8cf96b046deb547f41bf30e9fab0fa05ee38cc10434f00e702ffb923f";
+const PHP_7_4_33_FPM_LINUX_AARCH64_SHA256: &str = "cbc5bba274068b05b259da07ff6dac800a431de7937619af39606fd8a0afbc75";
+const PHP_7_4_33_FPM_LINUX_X86_64_SHA256: &str = "35f576bc523237d479ed75b6303dcc8be5b49139bf87b3eb6c43b6d20bf3b015";
+/// `licenses-linux-<arch>.tar.gz` of the same release — a different closure from the macOS
+/// tarball (musl, and the Linux pre-built deps), so its own two pins.
+const PHP_7_4_33_LICENSES_LINUX_AARCH64_SHA256: &str = "6e053c1aa88e0a8621af87e20c8062a98a448a8f2c7db982a2f5db53cb57b62e";
+const PHP_7_4_33_LICENSES_LINUX_X86_64_SHA256: &str = "7993c247b239c3e29ede5be8cfc3a67b994ed62cb4743db822b87d462d5119dc";
+
 // ── The licence texts that travel with a PHP we BUILT ────────────────────────
 //
 // Pinned the same way and from the same release as the binaries above: each
@@ -1848,8 +1866,11 @@ pub fn is_self_distributed(url: &str) -> bool {
 /// so a live check cannot answer the ownership question differently from the
 /// resolve that acts on it. An unresolvable artifact is not ours to distribute,
 /// because it is not distributed at all.
+/// Resolved for THIS host's OS: on Linux the 8.1–8.5 rows are static-php.dev's while 7.4 is
+/// ours, the inverse of nothing on macOS — the first `php_versions_check` on the VM (25 Sep
+/// 2026) demanded licences beside every 8.x interpreter because this read "macos".
 pub fn artifact_is_self_distributed(name: &str, version: &str, arch: Arch) -> bool {
-    manifest(name, version, "macos", arch).is_some_and(|s| is_self_distributed(&s.url))
+    manifest(name, version, std::env::consts::OS, arch).is_some_and(|s| is_self_distributed(&s.url))
 }
 
 /// **Does `name`@`version` ship on `os` at all?** — the one question a feature gate asks.
@@ -1898,7 +1919,15 @@ fn licenses_spec(url: &str, name: &str, version: &str, arch: Arch) -> Result<Opt
     // is a property of each release, not a convention — deriving one name for
     // all of them would 404 half the tree, and only on a machine that had not
     // cached PHP yet.
+    // The Linux 7.4 is told from the macOS one by its URL (the artifact name carries the OS),
+    // never by the host: the sweep resolves every OS from a Mac.
+    let linux_74 = version == "7.4.33" && url.contains("-linux-");
     let (arm, amd, file) = match (name, version) {
+        ("php", "7.4.33") | ("php-fpm", "7.4.33") if linux_74 => (
+            PHP_7_4_33_LICENSES_LINUX_AARCH64_SHA256,
+            PHP_7_4_33_LICENSES_LINUX_X86_64_SHA256,
+            format!("licenses-linux-{}.tar.gz", php_arch(arch)),
+        ),
         ("php", "7.4.33") | ("php-fpm", "7.4.33") => (
             PHP_7_4_33_LICENSES_MAC_ARM64_SHA256,
             PHP_7_4_33_LICENSES_MAC_AMD64_SHA256,
@@ -2377,6 +2406,20 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
             checksum: Checksum::Sha512(pick(arch, CADDY_2_11_4_LINUX_ARM64_SHA512, CADDY_2_11_4_LINUX_AMD64_SHA512)),
             archive: Archive::TarGz,
             member: "caddy",
+        }),
+        // rexenv's own 7.4 for Linux (static-php.dev never built one) — the same tarball shape
+        // as the macOS 7.4, from its own immutable release (`PHP_7_4_33_LINUX_TAG`).
+        ("php", "linux", "7.4.33") => Some(BinarySpec {
+            url: format!("{RUNTIMES_RELEASE_BASE}/{PHP_7_4_33_LINUX_TAG}/php-7.4.33-cli-linux-{}.tar.gz", linux_arch(arch)),
+            checksum: Checksum::Sha256(match arch { Arch::Arm64 => PHP_7_4_33_CLI_LINUX_AARCH64_SHA256, Arch::X86_64 => PHP_7_4_33_CLI_LINUX_X86_64_SHA256 }.to_string()),
+            archive: Archive::TarGz,
+            member: "php",
+        }),
+        ("php-fpm", "linux", "7.4.33") => Some(BinarySpec {
+            url: format!("{RUNTIMES_RELEASE_BASE}/{PHP_7_4_33_LINUX_TAG}/php-7.4.33-fpm-linux-{}.tar.gz", linux_arch(arch)),
+            checksum: Checksum::Sha256(match arch { Arch::Arm64 => PHP_7_4_33_FPM_LINUX_AARCH64_SHA256, Arch::X86_64 => PHP_7_4_33_FPM_LINUX_X86_64_SHA256 }.to_string()),
+            archive: Archive::TarGz,
+            member: "php-fpm",
         }),
         // static-php.dev's Linux builds — the same publisher and the same tarball shape as
         // its macOS ones (a single static `php` / `php-fpm`), so the pool model is macOS's.
@@ -6737,15 +6780,31 @@ mod tests {
         }
     }
 
-    /// Every version the app OFFERS has a Linux pin, except PHP 7.4 (no static Linux build
-    /// exists to pin — D-L8), and what Linux does not get in v1 resolves to nothing.
+    /// Every version the app OFFERS has a Linux pin — 7.4 since rexenv built one (L8, release
+    /// `php-7.4.33-7`; the row was the D-L8 exception until 25 Sep 2026) — and what Linux does
+    /// not get in v1 resolves to nothing.
     #[test]
-    fn every_offered_version_but_php_74_has_a_linux_pin_and_the_rest_resolve_to_nothing() {
+    fn every_offered_version_has_a_linux_pin_and_the_rest_resolve_to_nothing() {
         for v in PHP_VERSIONS {
-            let want = !v.starts_with("7.4");
-            assert_eq!(manifest("php", v, "linux", Arch::X86_64).is_some(), want, "php {v}");
-            assert_eq!(manifest("php-fpm", v, "linux", Arch::X86_64).is_some(), want, "php-fpm {v}");
+            assert!(manifest("php", v, "linux", Arch::X86_64).is_some(), "php {v}");
+            assert!(manifest("php-fpm", v, "linux", Arch::X86_64).is_some(), "php-fpm {v}");
         }
+        // The Linux 7.4 is OURS, on its own release, with its own licence tarball — and the
+        // macOS 7.4 stays on the release that proved it (`php_self_hosted_tag`).
+        for (name, kind) in [("php", "cli"), ("php-fpm", "fpm")] {
+            for arch in [Arch::Arm64, Arch::X86_64] {
+                let spec = manifest(name, "7.4.33", "linux", arch).unwrap();
+                assert!(spec.url.contains(&format!("/releases/download/{PHP_7_4_33_LINUX_TAG}/php-7.4.33-{kind}-linux-{}.tar.gz", php_arch(arch))), "{}", spec.url);
+                assert!(!spec.url.contains("dl.static-php.dev"));
+                let lic = licenses_spec(&spec.url, name, "7.4.33", arch).unwrap().expect("we distribute it, so we owe its licences");
+                assert!(lic.url.ends_with(&format!("/{PHP_7_4_33_LINUX_TAG}/licenses-linux-{}.tar.gz", php_arch(arch))), "{}", lic.url);
+                let mac = manifest(name, "7.4.33", "macos", arch).unwrap();
+                let mac_lic = licenses_spec(&mac.url, name, "7.4.33", arch).unwrap().unwrap();
+                assert!(mac_lic.url.ends_with(&format!("/licenses-{}.tar.gz", php_arch(arch))) && !mac_lic.url.contains("-linux-"), "{}", mac_lic.url);
+                assert_ne!(format!("{:?}", mac.checksum), format!("{:?}", spec.checksum), "two OSes, two builds, two digests");
+            }
+        }
+        assert_ne!(PHP_7_4_33_LINUX_TAG, php_self_hosted_tag("7.4.33").unwrap(), "the macOS pin stays on the release that proved it");
         for v in MYSQL_VERSIONS {
             assert!(manifest("mysql", v, "linux", Arch::X86_64).is_some(), "mysql {v}");
         }
@@ -6772,10 +6831,20 @@ mod tests {
     }
 
     /// D-L8 — a minor with no build on an OS says so, by the same table a download reads.
+    /// Since L8 (25 Sep 2026) every Standard minor ships on every OS, so the refusal is
+    /// exercised through a minor the table does not carry on one OS: the row stays the
+    /// guard for the NEXT build that is missing somewhere (#728's shape on the VM).
     #[test]
     fn a_php_minor_with_no_build_on_an_os_is_refused_with_the_os_named() {
-        let why = php_minor_unavailable_on("7.4", "linux").expect("7.4 has no Linux build");
-        assert!(why.contains("PHP 7.4") && why.contains("Linux"), "{why}");
+        assert!(php_minor_unavailable_on("7.4", "linux").is_none(), "7.4 ships on Linux since php-7.4.33-7 (L8)");
+        for os in ["macos", "windows", "linux"] {
+            for v in PHP_VERSIONS {
+                assert!(php_minor_unavailable_on(&crate::core::php::minor_of(v), os).is_none(), "{v} on {os}");
+            }
+        }
+        // The sentence itself, on a made-up OS the table cannot carry anything for.
+        let why = php_minor_unavailable_on("8.3", "plan9").expect("nothing ships on plan9");
+        assert!(why.contains("PHP 8.3"), "{why}");
         assert!(php_minor_unavailable_on("8.3", "linux").is_none(), "8.3 ships on Linux");
         assert!(php_minor_unavailable_on("7.4", "macos").is_none(), "7.4 is rexenv's own macOS build");
         assert!(php_minor_unavailable_on("7.4", "windows").is_none(), "php.net ships 7.4 for Windows");

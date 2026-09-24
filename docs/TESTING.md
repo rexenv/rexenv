@@ -992,6 +992,10 @@ builds are for EXAMPLES; the app itself comes from the Dell.
   agent — and removed again. Does NOT cover the polkit dialog, the relaunch through the
   About screen, or a real signed descriptor (owner's publish gate) — SMOKE-TEST's Linux
   section (ledger #729, #730).
+- `php_versions_check` on Linux (by hand on the VM, 25 Sep 2026 — the tier row says `macos`, and a
+  Windows run has never been made, so it is not `both`): every pinned PHP downloaded, verified and
+  RUN, 7.4 from rexenv's own `php-7.4.33-7`; `file(1)`'s arch word and the self-distributed
+  question are read for the host OS since that run.
 - `app_update_check` (network) — the app's OWN update descriptor, fetched from where it is
   published and verified against the key compiled into the running binary: the half a
   user's "Check now" runs, where a publisher signing with a rotated key, or a document
