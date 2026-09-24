@@ -30,11 +30,23 @@ pub(crate) fn nss_db_dir(home: &Path) -> PathBuf {
 /// `https://acme.rex`, and `find` put its `cert9.db` at
 /// `~/snap/chromium/3533/.local/share/pki/nssdb` (`current` → `3533`). snapd carries the
 /// revision's user data across refreshes, so the copy survives a Chromium update.
+///
+/// **And every Firefox profile** (`cert9.db` lives IN the profile directory). On the other
+/// OSes `core::firefox`'s `user.js` pref (`security.enterprise_roots.enabled`) makes Firefox
+/// import the OS store, so no NSS write is needed; on Ubuntu the snap Firefox cannot see
+/// `/usr/local/share/ca-certificates` from inside its confinement, so the pref imports nothing.
+/// Measured 25 Sep 2026 on the VM: with the pref forced in `user.js`, a headless
+/// `firefox --screenshot https://guard.rex` hung on the TLS error for 150 s; `certutil -A` into
+/// the profile's database, and the same command rendered the site in seconds. Profiles come
+/// from `profiles.ini` under both roots (`firefox_roots`), never from a directory glob.
 pub(crate) fn nss_db_dirs(home: &Path) -> Vec<PathBuf> {
     let mut dirs = vec![nss_db_dir(home)];
     let snap_home = home.join("snap/chromium/current");
     if snap_home.is_dir() {
         dirs.push(snap_home.join(".local/share/pki/nssdb"));
+    }
+    for root in firefox_roots(home) {
+        dirs.extend(crate::core::firefox::profiles(&root));
     }
     dirs
 }
@@ -153,6 +165,17 @@ mod tests {
         std::fs::create_dir_all(home.join("snap/chromium/current")).unwrap();
         assert_eq!(nss_db_dirs(&home), vec![home.join(".pki/nssdb"), home.join("snap/chromium/current/.local/share/pki/nssdb")]);
         assert_eq!(nss_db_arg_for(&home.join("snap/chromium/current/.local/share/pki/nssdb")), format!("sql:{}/snap/chromium/current/.local/share/pki/nssdb", home.display()));
+        // A Firefox profile named by profiles.ini is a database too (the snap root here — the
+        // one the VM measured; the deb root is the same code). A directory profiles.ini does
+        // not name is not.
+        let ff = home.join("snap/firefox/common/.mozilla/firefox");
+        std::fs::create_dir_all(ff.join("s4g1o8kw.default")).unwrap();
+        std::fs::create_dir_all(ff.join("stray.dir")).unwrap();
+        std::fs::write(ff.join("profiles.ini"), "[Profile0]\nName=default\nIsRelative=1\nPath=s4g1o8kw.default\nDefault=1\n").unwrap();
+        assert_eq!(
+            nss_db_dirs(&home),
+            vec![home.join(".pki/nssdb"), home.join("snap/chromium/current/.local/share/pki/nssdb"), ff.join("s4g1o8kw.default")]
+        );
         let _ = std::fs::remove_dir_all(&home);
     }
 

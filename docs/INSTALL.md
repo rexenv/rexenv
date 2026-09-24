@@ -446,7 +446,8 @@ store, and the `rex` copy on your `Path`.
 3. Your browsers' certificate stores (`~/.pki/nssdb`, and the snap Chromium's own database when
    that snap has run — a snap does not see your `~/.pki`; via `certutil`, no prompt) AND the system
    store (`/usr/local/share/ca-certificates/rexenv-local-ca.crt` + `update-ca-certificates`, the
-   second prompt) — so both Chrome and `curl`/PHP accept `https://*.rex`.
+   second prompt) — so both Chrome and `curl`/PHP accept `https://*.rex`. Every Firefox profile's
+   own certificate database gets the CA as well (the snap Firefox cannot see the system store).
 4. `~/.config/systemd/user/rexenv-dns.service` — the resolver, started at sign-in, restarted on
    any exit, outliving the app. No prompt.
 5. `/usr/local/bin/rex` — the CLI symlink, when you click Install (one prompt).

@@ -1921,11 +1921,17 @@ Environment: Ubuntu ____ (22.04+; x86_64 or aarch64) · package ____ (.deb / App
       `/usr/local/share/ca-certificates/rexenv-local-ca.crt` + `/etc/ssl/certs/rexenv-local-ca.pem`;
       `curl -I https://acme.rex` → 200 with no `-k`. **Snap Chromium said ERR_CERT_AUTHORITY_INVALID**
       — its NSS database is the snap's own (ledger #726); the CA added there by hand opened the site
-      with no warning. The rebuilt deb writes both; Firefox (snap, never run on the VM) still owed.
+      with no warning. The rebuilt deb writes both. **Firefox (snap) measured 25 Sep 2026:** with
+      rexenv's `user.js` pref alone, headless `firefox --screenshot https://guard.rex` hung on the TLS
+      error (the snap cannot see the host's system store); `certutil -A` into the profile's own
+      `cert9.db` and it rendered the site — so the Linux trust step now writes every Firefox profile
+      too (ledger #726, extended). The GUI Firefox row below is still owed.
 - [ ] After onboarding: `certutil -d sql:$HOME/.pki/nssdb -L` lists `rexenv local CA` with
       `C,,`; `/usr/local/share/ca-certificates/rexenv-local-ca.crt` exists; `curl -I
       https://<site>.rex` succeeds with no `-k`. Chrome/Chromium opens the site with no warning.
-      Firefox (snap on Ubuntu) opens it — `core::firefox`'s policy file, `~/snap/firefox/…`.
+      Firefox (snap on Ubuntu) opens it — the CA is in the profile's own `cert9.db`
+      (`certutil -d sql:~/snap/firefox/common/.mozilla/firefox/<profile> -L` lists it), because the
+      snap cannot import the host's system store through the `user.js` pref.
 - [ ] A machine without `libnss3-tools`: the trust step fails with the `sudo apt install
       libnss3-tools` sentence, and the system half was NOT half-applied.
 - [ ] Settings → Remove system changes → both stores empty, drop-ins gone, units gone.
