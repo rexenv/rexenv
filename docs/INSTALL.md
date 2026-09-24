@@ -421,8 +421,9 @@ store, and the `rex` copy on your `Path`.
   webview needs), x86_64 or arm64. Other distros with systemd-resolved and polkit will
   probably work and are not tested.
 - **systemd-resolved** answering `/etc/resolv.conf` (Ubuntu's default). rexenv routes `.rex`
-  through a resolved drop-in; on a machine where resolved is not running the setup step
-  refuses with a sentence saying so, and writes nothing.
+  through a dummy network link (`rexenv0`) that resolved treats as a split-DNS link — only `.rex`
+  names go to it; on a machine where resolved is not running the setup step refuses with a
+  sentence saying so, and writes nothing.
 - **polkit** with a desktop authentication agent (any Ubuntu desktop). System changes are made
   through `pkexec`, so you see the desktop's own password dialog. From the `.deb` it reads
   "rexenv needs administrator permission to change system settings…" (the action file the
@@ -435,8 +436,11 @@ store, and the `rex` copy on your `Path`.
 
 ### What system setup changes (one polkit prompt, then one more for the certificate)
 
-1. `/etc/systemd/resolved.conf.d/rexenv-rex.conf` — routes ONLY `*.rex` to rexenv's resolver on
-   `127.0.0.1:15353` (`Domains=~rex`, a routing domain), then restarts systemd-resolved.
+1. `/etc/rexenv/dns.d/rex` (a marker), `/usr/local/lib/rexenv/dns-route.sh` and the unit
+   `rexenv-dns-route.service` — a dummy link `rexenv0` with `.rex` as its ONLY routing domain and
+   no default route, so `*.rex` goes to rexenv's resolver on `127.0.0.1:15353` and nothing else
+   does. (A global resolved drop-in was tried first and sent EVERY name there — measured 24 Sep
+   2026.)
 2. `/etc/systemd/system/rexenv-edge.service` and `/usr/local/lib/rexenv/` — the root Caddy edge
    on `:80`/`:443`, kept alive by systemd, its binary copied to a root-owned folder.
 3. Your browsers' certificate store (`~/.pki/nssdb`, via `certutil`, no prompt) AND the system

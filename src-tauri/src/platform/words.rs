@@ -206,7 +206,7 @@ pub const LINUX: PlatformWords = PlatformWords {
     host: "this computer",
     tray_home: "system tray",
     app_search: "the commands on your PATH (apt, snap and JetBrains Toolbox installs)",
-    routes_label: "drop-in under /etc/systemd/resolved.conf.d",
+    routes_label: "route marker under /etc/rexenv/dns.d",
     home_prefix: "~",
     import_search: "Valet's, Herd's and Local's own folders",
     imports_other_tools: false,
@@ -460,7 +460,7 @@ mod tests {
         }
         assert_eq!(LINUX.os_name, "Linux");
         assert!(LINUX.git_install.contains("apt install git"), "{}", LINUX.git_install);
-        assert!(LINUX.routes_label.contains("resolved.conf.d"), "{}", LINUX.routes_label);
+        assert!(LINUX.routes_label.contains("/etc/rexenv/dns.d"), "{}", LINUX.routes_label);
         assert_eq!(LINUX.db_browser_origin, MACOS.db_browser_origin, "webkitgtk serves custom schemes as scheme://localhost, as WebKit does");
         assert!(LINUX.reinstall_to_home.contains(".deb"), "no in-app update on Linux yet (D-L7): {}", LINUX.reinstall_to_home);
         let (imports, controls) = (LINUX.imports_other_tools, LINUX.window_controls_in_content);

@@ -41,10 +41,10 @@ pub(crate) use windows::{
 #[cfg(target_os = "linux")]
 mod linux;
 
-// The Linux port's pure halves — `ss`/`/proc` parsing, the resolved drop-in, the two
+// The Linux port's pure halves — `ss`/`/proc` parsing, the DNS route (dummy link), the two
 // systemd units, the autostart entry and app catalog, the NSS/system trust argv — are text,
 // so the macOS host proves them in `verify.sh` too (docs/PLAN-linux-port.md L1). The
-// `desktop`/`resolved` modules are siblings `units`/`trust` reach through `super::`, so all
+// `desktop`/`dnsroute` modules are siblings `units`/`trust` reach through `super::`, so all
 // five are mounted under ONE test-only parent that mirrors `linux/`.
 #[cfg(all(test, not(target_os = "linux")))]
 #[allow(dead_code)]
@@ -54,8 +54,8 @@ mod linux_pure {
     pub(crate) mod desktop;
     #[path = "proc_table.rs"]
     pub(crate) mod proc_table;
-    #[path = "resolved.rs"]
-    pub(crate) mod resolved;
+    #[path = "dnsroute.rs"]
+    pub(crate) mod dnsroute;
     #[path = "trust.rs"]
     pub(crate) mod trust;
     #[path = "units.rs"]

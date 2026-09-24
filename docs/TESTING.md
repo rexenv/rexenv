@@ -1016,6 +1016,9 @@ COMPILE gate on the host's arch, never a verdict: it says the code builds there,
 route resolves, a unit starts or a certificate is trusted. The Mac has no Ubuntu VM today
 (`docs/PLAN-linux-port.md` D-L9), so a Linux behaviour claim is proven one of two ways:
 
+0. **The Ubuntu 22.04 arm64 UTM VM** (`ssh rexenv@192.168.64.7`, built 24 Sep 2026 from the cloud
+   image + a cloud-init seed — no installer): `linux_dns_route_check` (system tier, sudo) is the
+   shape for a root-mechanism proof; it found the first DNS design wrong before any user did.
 1. **Inside the check container**, for anything that is a process or a file: `/proc` reads,
    `chmod`, unix sockets, the login-env probe. `docker run --rm -v "$PWD":/work -w /work/src-tauri
    rexenv-linux-check:ubuntu22 cargo test --lib platform::linux` runs the module's tests on real
@@ -1468,7 +1471,7 @@ bloating the fast path:
   container is the host's arch (aarch64 on Apple silicon), so it is a compile gate and never an
   x86_64 proof. First run (24 Sep 2026): RED on four dead-code sites the `todo!()` stubs never
   reached — a finding reachable from no other gate.
-- **Linux-only pure rules run on the Mac too** — `linux/{proc_table,resolved,units,desktop,trust}.rs`
+- **Linux-only pure rules run on the Mac too** — `linux/{proc_table,dnsroute,units,desktop,trust}.rs`
   are `#[path]`-mounted under `platform::linux_pure` in every non-Linux test build (ledger #716).
 - **Windows-only pure rules run on the Mac too.** A Windows module with no Win32 calls in it
   — `windows/owner_only.rs`, `pe.rs`, `port_table.rs` — is `#[path]`-included into the macOS

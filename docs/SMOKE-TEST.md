@@ -1879,18 +1879,22 @@ Environment: Ubuntu ____ (22.04+; x86_64 or aarch64) · package ____ (.deb / App
 ### P1 — DNS scoping (ledger #717 — the claim the whole port rests on)
 - [ ] Before onboarding: `resolvectl status` shows a link with DNS servers and `resolv.conf` is
       the stub (`nameserver 127.0.0.53`). Note `resolvectl query example.com`'s answer.
-- [ ] Onboarding → the system-setup consent → ONE polkit dialog: from the `.deb` it reads
+- [x] ✓ 24 Sep 2026 (Ubuntu 22.04 arm64 VM, by hand — P1 with the FIRST design FAILED: the
+      global drop-in made `example.com` resolve to `127.0.0.1`; P1b with the dummy link passed,
+      see ledger #717; `linux_dns_route_check` 23/23 with the app's own commands). The app's own onboarding on the VM is still owed.
+      Onboarding → the system-setup consent → ONE polkit dialog: from the `.deb` it reads
       "rexenv needs administrator permission to change system settings…" (#723); from an AppImage
       or a dev build it names `/bin/sh`.
-      After: `/etc/systemd/resolved.conf.d/rexenv-rex.conf` exists with `DNS=127.0.0.1:15353`
-      and `Domains=~rex`; `resolvectl status` lists `127.0.0.1:15353` under the global section
-      with `~rex` as a routing domain.
+      After: `/etc/rexenv/dns.d/rex` exists (`nameserver 127.0.0.1` / `port 15353`), `ip link`
+      shows `rexenv0`, `systemctl status rexenv-dns-route` is active (exited), and
+      `resolvectl status rexenv0` lists `127.0.0.1:15353` with `~rex` and `-DefaultRoute`.
 - [ ] `resolvectl query anything.rex` → `127.0.0.1`. **`resolvectl query example.com` → the SAME
       public answer as before, never `127.0.0.1`.** `curl -I https://example.com` works.
-      **Tell:** every site on the internet resolving to loopback — the drop-in became a default
-      route. If that happens: `sudo rm /etc/systemd/resolved.conf.d/rexenv-rex.conf && sudo
-      systemctl restart systemd-resolved`, and the mechanism (D-L2) is wrong, not the tester.
-- [ ] Add a second TLD in Settings → a second drop-in, both TLDs answer, `example.com` still does not.
+      **Tell:** every site on the internet resolving to loopback — a DEFAULT route. That is what
+      the first design did (24 Sep 2026); if the dummy link ever does it: `sudo ip link del
+      rexenv0`, and the mechanism is wrong, not the tester.
+- [ ] Add a second TLD in Settings → a second marker, `resolvectl status rexenv0` lists both
+      `~rex ~test`, both answer, `example.com` still does not. Remove both → `rexenv0` is gone.
 - [ ] A machine WITHOUT systemd-resolved (or with it stopped): the consent step FAILS with the
       sentence naming systemd-resolved; nothing is written.
 
@@ -1928,7 +1932,7 @@ Environment: Ubuntu ____ (22.04+; x86_64 or aarch64) · package ____ (.deb / App
       shows the window. The window has NO reserved title-bar row (GTK draws its own).
 - [ ] Databases → Browse: Adminer renders INSIDE the app at `rexdb://localhost` (webkitgtk
       serves custom schemes as WebKit does — the macOS origin, ledger #703's Linux leg).
-- [ ] Settings: the words say Files, apt, "this computer", the tray, `resolved.conf.d` — never
+- [ ] Settings: the words say Files, apt, "this computer", the tray, `/etc/rexenv/dns.d` — never
       Finder, brew, Explorer or winget (`words::LINUX`).
 - [ ] Open in editor / browser / terminal: each detected entry launches; a private window opens
       private; "Open in terminal" lands in the site folder.

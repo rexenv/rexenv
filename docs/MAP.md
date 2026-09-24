@@ -69,8 +69,9 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
   `linux/` — real since 24 Sep 2026 (`docs/PLAN-linux-port.md`): `mod.rs` the twelve impls (XDG paths,
   `pkexec`, `/proc` + `ss` supervision, `xdg-open`/D-Bus reveal, PATH-found editors/browsers/terminals,
   an autostart `.desktop`, systemd user unit for the DNS agent and system unit for the edge, a
-  resolved drop-in per TLD, NSS + system-store CA trust; in-app update `Unported`), with the pure
-  halves in `proc_table.rs`, `resolved.rs`, `units.rs`, `desktop.rs`, `trust.rs` — mounted as
+  a dummy-link DNS route per TLD (`dnsroute.rs` — the resolved drop-in it replaced is measured wrong
+  there), NSS + system-store CA trust; in-app update `Unported`), with the pure
+  halves in `proc_table.rs`, `dnsroute.rs`, `units.rs`, `desktop.rs`, `trust.rs` — mounted as
   `platform::linux_pure` in every non-Linux test build (ledger #716–#719); `parent_death_guard.rs`
   the pidfd tunnel guard (`--tunnel-guard`, #722); the polkit step `--privileged-step` +
   `src-tauri/linux/dev.rexenv.rexenv.policy` (#723)).

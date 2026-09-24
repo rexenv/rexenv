@@ -91,7 +91,7 @@ Linux needs its own answer; nothing is (c) — `linux-check` was green on the fi
 | # | Decision | Assumed (what was built) | Alternatives |
 |---|---|---|---|
 | **D-L1** | **Package format.** | `.deb` for Ubuntu 22.04+ (x86_64 and arm64), AppImage as the "any distro" fallback; `.rpm` built by Tauri but not published. `bundle.linux.deb.depends` lists `libwebkit2gtk-4.1-0`, `libayatana-appindicator3-1`, `xdg-utils`, `libnss3-tools`, `policykit-1` (see D-L3). | Snap / Flatpak (sandboxed — cannot write `/etc/systemd`, cannot `pkexec`; wrong fit for a tool that owns a root edge). |
-| **D-L2** | **DNS route mechanism.** | systemd-resolved drop-in per TLD: `/etc/systemd/resolved.conf.d/rexenv-<tld>.conf` with `DNS=127.0.0.1:15353` + `Domains=~<tld>` (a *routing* domain — only names under it go to the global server; everything else stays with the link's DHCP servers), then `systemctl restart systemd-resolved`. Ownership = exact file content, the macOS `/etc/resolver` shape with a suffix. Hosts without resolved get an honest refusal naming it. **UNMEASURED: whether a global route-only domain really keeps other names away from our answer-everything resolver** — the one claim that must be run on a VM before any user meets it (§7 P1). | NetworkManager's dnsmasq plugin (`/etc/NetworkManager/dnsmasq.d/`), only where NM manages DNS; a `nameserver 127.0.0.1` in `resolv.conf` (takes ALL names — rejected by ledger #44). |
+| **D-L2** | **DNS route mechanism.** | **REVISED after P1 failed on the VM (24 Sep 2026).** The first design — a global resolved drop-in `Domains=~rex` — routed `example.com` to rexenv's resolver too (the hazard §6 predicted). Built instead: a dummy link `rexenv0` with a link-scoped routing domain per TLD and `default-route no` (`resolvectl dns/domain/default-route`), applied by a root oneshot unit `rexenv-dns-route.service` (`PartOf=systemd-resolved`) from markers under `/etc/rexenv/dns.d/<tld>` whose bytes are the macOS resolver-file signature. Measured right on the VM (P1b): `.rex` → loopback, `example.com` public, `curl` 200, NM `unmanaged`, survives a resolved restart. Hosts without resolved get an honest refusal. | NetworkManager's dnsmasq plugin (only where NM manages DNS; no port syntax); `nameserver 127.0.0.1` in `resolv.conf` (all names — the P1 failure by another road). |
 | **D-L3** | **CA trust: where "trusted" lives.** | Both halves, in order: (1) the NSS user store `~/.pki/nssdb` via `certutil` — what Chrome/Chromium/Brave/Edge read on Linux, a USER op with no prompt; (2) the system store via `/usr/local/share/ca-certificates/rexenv-local-ca.crt` + `update-ca-certificates`, a ROOT op batched into the same `pkexec` as the DNS route — what `curl`, PHP, WP-CLI, Composer read. Firefox stays `core::firefox`'s policy file, as on the other OSes. `is_trusted` asks NSS (`certutil -L`); missing `certutil` (libnss3-tools) → the deb depends on it, and the message says so. | NSS only (Chrome works, `curl`/WordPress HTTP to a `.rex` site fails); system only (browsers refuse). |
 | **D-L4** | **Ubuntu floor.** | 22.04 LTS (first LTS with `libwebkit2gtk-4.1`; Tauri 2 needs 4.1). The check image (`scripts/linux-check/Dockerfile`) compiles against 22.04's libraries so a newer-only API cannot slip in. | 24.04 only. |
 | **D-L5** | **Architectures.** | x86_64 AND aarch64: every upstream in §4 publishes both except nginx (rexenv's own build — L2 pins x86_64 first; aarch64 waits on a `rexenv/runtimes` release) and Redis/MariaDB bottles (x86_64 only). The Mac's Docker runs aarch64 containers, so that slice is the one the agent can exercise. | x86_64 only for v1. |
@@ -187,12 +187,11 @@ Each ends in something observable; each is its own commit.
 
 ## 6. Linux hazards to design for, not discover
 
-- **Route-only domains and the answer-everything resolver (P1).** If systemd-resolved ever sends
-  a non-`.rex` query to `127.0.0.1:15353`, every site on the internet resolves to loopback for
-  that user. The macOS resolver file and the Windows NRPT rule scope by construction; a resolved
-  drop-in scopes by `~tld` semantics that the agent has read but not run. Until P1 is measured on
-  a VM, the Linux `install_command` is written but the onboarding step is labelled "measured on
-  no machine yet" in `SMOKE-TEST.md`.
+- **Route-only domains and the answer-everything resolver (P1) — IT HAPPENED.** The global
+  drop-in sent `example.com` to `127.0.0.1:15353` on the first VM run (24 Sep 2026): resolved
+  uses the global servers for every name no link claims, `~rex` or not. The dummy-link route
+  replaced it the same day (D-L2); the lesson stands for any future DNS change on Linux — a
+  GLOBAL server is a default route whatever its domains say, only a LINK scopes.
 - **The polkit dialog names `/bin/sh` unless the deb's action file is installed** — with it
   (`linux/dev.rexenv.rexenv.policy`, `exec.path` = `/usr/bin/rexenv`) the step runs as
   `rexenv --privileged-step <script>` and the dialog carries rexenv's sentence (#723). An

@@ -87,6 +87,7 @@ app_relaunch_check             sandbox macos
 windows_app_bundle_swap_check  sandbox windows
 windows_app_relaunch_check     sandbox windows
 windows_job_guard_check        sandbox windows
+linux_dns_route_check          system  linux
 app_swap_probe                 demo    macos
 app_update_check               network macos
 blueprint_check                network both
@@ -279,6 +280,7 @@ os_of() {
 case "$(uname -s)" in
   Darwin) HOST_OS=macos ;;
   MINGW*|MSYS*|CYGWIN*|Windows_NT) HOST_OS=windows ;;
+  Linux) HOST_OS=linux ;;
   *) HOST_OS=other ;;
 esac
 
@@ -311,8 +313,8 @@ while read -r name tier os; do
   # without a valid third column would silently run (or silently skip) on a host
   # nobody checked it against.
   case "$os" in
-    both|macos|windows) ;;
-    *) echo "BAD os column for $name: ${os:-(empty)} — use both | macos | windows" >&2; missing=1 ;;
+    both|macos|windows|linux) ;;
+    *) echo "BAD os column for $name: ${os:-(empty)} — use both | macos | windows | linux" >&2; missing=1 ;;
   esac
 done <<<"$TIERS"
 [ "$missing" -eq 0 ] || exit 1

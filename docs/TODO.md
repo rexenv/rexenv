@@ -1191,7 +1191,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     action file gives the deb's prompt rexenv's own sentence (#723)
   - [x] L5 docs ✓ 24 Sep 2026 — SMOKE-TEST Linux section (P1–P5, nothing run), INSTALL, RELEASING
     3b, PORTS Linux table, README tree. `notices-check.py` walks the Linux graph too (25 Sep, #724)
-  - [ ] L6 the VM run (owner, D-L9 — blocked on disk: 7.8 GB free) — P1 FIRST
+  - [ ] L6 the VM run — **the VM exists (24 Sep 2026: Ubuntu 22.04 arm64 in UTM, cloud image +
+    cloud-init seed, `ssh rexenv@192.168.64.7`) and P1 RAN: the first DNS design FAILED (a global
+    resolved drop-in routed `example.com` to loopback), the dummy-link replacement passed by hand
+    and then 23/23 through `linux_dns_route_check` (ledger #717). First `.deb` + AppImage built
+    on the VM (`tauri build`, 15 MB deb, polkit action inside). Owed: P2–P5 with the installed app**
   - [ ] L7 `manifest-linux.json`, the download page
 
 - [ ] **The keychain (CA trust) dialog is rexenv's too** — 12 Sep 2026, owner, after the admin

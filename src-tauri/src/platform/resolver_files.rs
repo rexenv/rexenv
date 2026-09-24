@@ -1,8 +1,8 @@
 //! Resolver FILES — the macOS route: one `/etc/resolver/<tld>` per TLD, owned by exact content (ledger
-//! #617). Pure file reads over a path or a directory, so the classification is testable against fixture
+//! #617) — and, since 24 Sep 2026, the Linux route's markers under `/etc/rexenv/dns.d`, the same bytes. Pure file reads over a path or a directory, so the classification is testable against fixture
 //! files, and the platform's `DnsManager` and the core's test platforms share one definition rather than
 //! a copy each. Moved here from `core/dns.rs` when the trait stopped being file-shaped (W6 R1).
-#![cfg_attr(not(target_os = "macos"), allow(dead_code))]
+#![cfg_attr(not(any(target_os = "macos", target_os = "linux")), allow(dead_code))]
 
 use crate::platform::traits::ResolverOwner;
 

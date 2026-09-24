@@ -79,7 +79,7 @@ pub(crate) fn system_trust_command(cert: &Path) -> String {
     format!(
         "/bin/mkdir -p {dir} && /bin/cp {src} {dst} && /bin/chmod 644 {dst} && /usr/sbin/update-ca-certificates",
         dir = SYSTEM_CERT_DIR,
-        src = super::resolved::sh_quote(cert),
+        src = super::dnsroute::sh_quote(cert),
         dst = format!("{SYSTEM_CERT_DIR}/{SYSTEM_CERT_NAME}"),
     )
 }

@@ -19,9 +19,9 @@ use std::process::Child;
 use std::time::Duration;
 
 mod desktop;
+mod dnsroute;
 pub mod parent_death_guard;
 mod proc_table;
-mod resolved;
 mod trust;
 mod units;
 
@@ -124,32 +124,33 @@ impl Paths for LinuxPaths {
 
 // ── DNS route (D-L2) ────────────────────────────────────────────────────────
 
+/// A marker per TLD under `/etc/rexenv/dns.d`, applied to the dummy link `rexenv0` by a root
+/// unit (`dnsroute.rs` — why not a resolved drop-in is measured there).
 pub struct LinuxDns;
 impl DnsManager for LinuxDns {
     fn route_label(&self, tld: &str) -> String {
-        resolved::dropin_path(tld).display().to_string()
+        dnsroute::marker_path(tld).display().to_string()
     }
-    /// Shown beside a foreign route before a takeover; the TLD is not in hand, so the backbone's.
     fn route_contents(&self, port: u16) -> String {
-        resolved::contents(crate::core::tld::BACKBONE_TLD, port)
+        dnsroute::signature(port)
     }
     fn route_owner(&self, tld: &str, port: u16) -> ResolverOwner {
-        resolved::owner_of(Path::new(resolved::DROPIN_DIR), tld, port)
+        dnsroute::owner_of(tld, port)
     }
     fn our_route_tlds(&self, port: u16) -> Vec<String> {
-        resolved::our_tlds(Path::new(resolved::DROPIN_DIR), port)
+        dnsroute::our_tlds(port)
     }
     fn foreign_route_tlds(&self, port: u16) -> Vec<String> {
-        resolved::foreign_tlds(Path::new(resolved::DROPIN_DIR), port)
+        dnsroute::foreign_tlds(port)
     }
     fn install_command(&self, tld: &str, port: u16) -> String {
-        resolved::install_command(tld, port)
+        dnsroute::install_command(tld, port)
     }
     fn uninstall_command(&self, tlds: &[String]) -> String {
-        resolved::uninstall_command(tlds)
+        dnsroute::uninstall_command(tlds)
     }
     fn restore_command(&self, restores: &[(String, PathBuf)]) -> String {
-        resolved::restore_command(restores)
+        dnsroute::restore_command(restores)
     }
 }
 

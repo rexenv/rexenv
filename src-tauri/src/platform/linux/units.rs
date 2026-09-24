@@ -8,7 +8,7 @@
 //! Every root command uses absolute paths: `pkexec` hands the script a minimal environment.
 #![cfg_attr(not(target_os = "linux"), allow(dead_code))]
 
-use super::resolved::sh_quote;
+use super::dnsroute::sh_quote;
 use std::path::{Path, PathBuf};
 
 pub(crate) const DNS_UNIT: &str = "rexenv-dns.service";
