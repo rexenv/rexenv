@@ -71,3 +71,8 @@ scripts/wk-checks/package-lock.json
 
 # Claude Code per-user permissions (the project skills in .claude/skills/ ARE tracked)
 .claude/settings.local.json
+
+# Python bytecode from importing scripts/*.py (notices-check is imported to generate its tables);
+# untracked files under scripts/ are part of the verify receipt fingerprint, so a stray cache
+# made a green commit read as "code changed since verify" (25 Sep 2026).
+__pycache__/
