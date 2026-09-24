@@ -1347,7 +1347,12 @@ fn postgres_windows_sha256(version: &str) -> Option<&'static str> {
 
 // ── Linux artifacts (docs/PLAN-linux-port.md L2) ──────────────────────────────
 // Every one streamed through sha256/sha512 on the Mac on 24 Sep 2026 (the Mac had no
-// disk for the files). Caddy's SHA-512 and PostgreSQL's SHA-256 match the digests their
+// disk for the files) — and then RE-HASHED by `manifest_sweep_check`, which found three
+// wrong: the first pass piped `curl -sL` into `shasum` with no `--fail` and no retry, so a
+// stream cut short still produced a full-length digest (cloudflared both archs, PHP 8.0.30
+// x86_64; PostgreSQL 18.6.0 aarch64 had even hashed as an EMPTY stream before the
+// publisher's `.sha256` caught it). Each was downloaded twice more with `--fail --retry`
+// and both runs agreed with the sweep. A pin is what a COMPLETE download hashed. Caddy's SHA-512 and PostgreSQL's SHA-256 match the digests their
 // publishers post; static-php.dev, jirutka, Mailpit, cloudflared, FrankenPHP and Oracle
 // post none we pin against (Oracle posts MD5), so those are pinned from our download —
 // the macOS rows' practice. BOTH archs, unlike Windows: every upstream here publishes
@@ -1361,8 +1366,8 @@ const NGINX_1_30_4_LINUX_X86_64_SHA256: &str = "9c0b53e93e43a33b0cd7876e7977099c
 const NGINX_1_30_4_LINUX_AARCH64_SHA256: &str = "b09cca8c5d2fb9443ea8c27b033ee04f050f253425bfbf2e0c50960c488a00f9";
 const MAILPIT_1_30_3_LINUX_AMD64_SHA256: &str = "6c7af993fb4054def4adfc7c85b40f9570fd6172eaccd0221c4969f2cc7a6294";
 const MAILPIT_1_30_3_LINUX_ARM64_SHA256: &str = "4211e158fcf46862b9b15bacd1fb10253a1865617ed5f38f27cbec230f89ec84";
-const CLOUDFLARED_2026_6_1_LINUX_AMD64_SHA256: &str = "67fc63f72ce3ffbfd797893d7cd76224717117eef4397190ce412755108b789c";
-const CLOUDFLARED_2026_6_1_LINUX_ARM64_SHA256: &str = "8b95e9b2f59edb022a7609a8d59b4ee46f62aff172ead28a20ebe0c9c3d2d539";
+const CLOUDFLARED_2026_6_1_LINUX_AMD64_SHA256: &str = "5861a10a438fe8ddcfebb3b830f83966cbf193edafce0fe2eeb198fbae1f7a22";
+const CLOUDFLARED_2026_6_1_LINUX_ARM64_SHA256: &str = "59816ce9b16db71f5bc2a86d59b3632a96c8c3ee934bde2bc8641ee83a6070eb";
 const FRANKENPHP_1_12_4_LINUX_X86_64_SHA256: &str = "db0f336e97f841eb3a606279cf6787d68f7fe9016b1c331489844d2c07e1aa5e";
 const FRANKENPHP_1_12_4_LINUX_AARCH64_SHA256: &str = "6fafdaa593b223391b96ba2b7aaf65da3e4c5092efd15411724ca6c1355808c5";
 
@@ -1376,7 +1381,7 @@ fn linux_arch(arch: Arch) -> &'static str {
 /// static-php.dev's Linux builds: `(aarch64, x86_64)` per `(kind, version)`.
 fn php_linux_sha256(kind: &str, version: &str, arch: Arch) -> Option<&'static str> {
     let (arm, amd) = match (kind, version) {
-        ("cli", "8.0.30") => ("2c3fbc72d878862cf3b3d18849d4ab2ca7c02d38821d880eb8fb74a2e6f5c1d3", "f8f139c6fbca27ad335a78b9ec962a72350846027af50fc8cf005905412ea6df"),
+        ("cli", "8.0.30") => ("2c3fbc72d878862cf3b3d18849d4ab2ca7c02d38821d880eb8fb74a2e6f5c1d3", "805fadfc7eaa97541344d53a5ef2912d7be1e6bdeab753fddc2ce0c63b40c1a5"),
         ("fpm", "8.0.30") => ("b693b0c1150b12287bfe915a67bd57d3189a791e8b0c0de534e803e04fade625", "08176de6fe5125b7c1486f723f601f5c1273663bc5f719abc9c62adaa55cafc7"),
         ("cli", "8.1.34") => ("fcaad73ceadad5afe6820ab3510de4452dadc875b3a295bf22dc2678845922b2", "e2932192836731163bf8d16d634f4bdda76c422ceb40c2c4d7c55ae63680f1aa"),
         ("fpm", "8.1.34") => ("a020585084d0d624e10ab795430816f160a73ad4e827130c55bc030be4f9ceb3", "c20b1283a4a635d4c062b473858a46d687e94bf8ef623f26e356592557065b15"),

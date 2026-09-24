@@ -116,11 +116,16 @@ Linux needs its own answer; nothing is (c) — `linux-check` was green on the fi
 | cloudflared 2026.6.1 | `cloudflared-linux-{amd64,arm64}` | ✓ 39 MB | ✓ 37 MB |
 | WP-CLI, Composer, Adminer | OS-agnostic | ✓ | ✓ |
 
-Pinned in `core/binaries.rs` (L2, 24 Sep 2026) with `docs/PORTS.md`'s Linux table. Two
-first-download digests disagreed with the publisher's (PostgreSQL 18.6.0 aarch64 came back as
-the SHA-256 of an EMPTY stream, 17.11.0 both archs differed) — a truncated stream on the
-first pass; re-downloaded with retries, all six then matched the `.sha256`. The lesson is
-the sweep's own rule: a pin is what OUR full download hashed, never one read off a page.
+Pinned in `core/binaries.rs` (L2, 24 Sep 2026) with `docs/PORTS.md`'s Linux table. **The first
+hashing pass was wrong five times**: `curl -sL | shasum` with no `--fail` and no retry turns a
+stream cut short into a full-length digest of the wrong bytes. Two were caught by the publisher's
+`.sha256` (PostgreSQL 18.6.0 aarch64 hashed as an EMPTY stream; 17.11.0 both archs) before the
+pins landed; three more (cloudflared both archs, PHP 8.0.30 x86_64) had no publisher digest and
+were caught only by `manifest_sweep_check`'s own re-hash — its "DIGEST MISMATCH" for 3 of 188
+targets, 25 Sep 2026. Each was downloaded twice more with `--fail --retry`, both runs agreed with
+the sweep, and the pins were corrected. Every artifact without a publisher digest now has THREE
+agreeing full downloads behind it; the lesson is the sweep's own rule, sharpened: a pin is what a
+COMPLETE download hashed, and a hash of a stream nobody checked for completeness is not one.
 
 ## 5. Tasks
 

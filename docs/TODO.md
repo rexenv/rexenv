@@ -1178,8 +1178,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   - [x] L2 Linux arms in the binary catalog ✓ 24 Sep 2026 — both archs, every digest from a full
     streamed download (ledger #720); MySQL `.tar.xz` → `Archive::TarXzTree` + Linux-only `xz2`;
     PHP 7.4 has no static Linux build (not in v1); nginx from jirutka's static builds until
-    `rexenv/runtimes` publishes a Linux one. Owed: `manifest_sweep_check` run (network tier)
-    after the change; `notices-check.py` taught the Linux graph (xz2/lzma-sys rows)
+    `rexenv/runtimes` publishes a Linux one. `manifest_sweep_check` RAN 25 Sep 2026 — 188 targets, and it CAUGHT
+    three wrong first-pass digests (truncated streams), now corrected and re-run green. Owed:
+    `notices-check.py` taught the Linux graph (xz2/lzma-sys rows)
   - [x] L3 build plumbing ✓ 24 Sep 2026 — `build-cli.sh` Linux arm (host triple from `rustc -vV`;
     ran in the Ubuntu container: `rex-aarch64-unknown-linux-gnu` staged), `bundle.linux` (deb
     depends incl. `libaio1 | libaio1t64`, `libnuma1`), `scripts/release-linux.sh` + `pnpm release:linux`

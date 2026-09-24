@@ -102,8 +102,10 @@ zip — D1), FrankenPHP, Redis, MariaDB, Apache httpd, Xdebug.
 
 Same versions as the macOS rows, different builds, **both archs with their own digest** (every
 upstream here publishes aarch64 — D-L5 of `docs/PLAN-linux-port.md`). Every artifact was
-streamed through sha256/sha512 on the Mac on 24 Sep 2026; the "Digest" column says whether a
-publisher's own digest confirmed it. Not in Linux v1, resolving to nothing there: **PHP 7.4**
+streamed through sha256/sha512 on the Mac on 24 Sep 2026 and re-hashed by `manifest_sweep_check`
+on 25 Sep (which caught three truncated first-pass streams — cloudflared both archs, PHP 8.0.30
+x86_64 — since corrected against two more full downloads each); the "Digest" column says whether
+a publisher's own digest confirmed it. Not in Linux v1, resolving to nothing there: **PHP 7.4**
 (no static Linux build exists anywhere — rexenv's own 7.4 is a macOS build), Redis, MariaDB,
 Apache httpd, Xdebug (Homebrew Linux bottles are x86_64-only and would need a `patchelf`
 relink rexenv has not written — D-L8). No target-specific images inside: these are native
