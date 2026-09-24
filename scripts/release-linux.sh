@@ -45,7 +45,6 @@ if systemctl --user is-active rexenv-dns.service >/dev/null 2>&1; then
   systemctl --user restart rexenv-dns.service && echo "post-build: restarted the rexenv-dns user unit on the new binary"
 fi
 
-echo "release-linux: artefacts"
-find "$BUNDLE/deb" "$BUNDLE/appimage" "$BUNDLE/rpm" -maxdepth 1 -type f \( -name '*.deb' -o -name '*.AppImage' -o -name '*.rpm' \) 2>/dev/null | while read -r f; do
-  printf '  %s  %s\n' "$(sha256sum "$f" | cut -c1-64)" "$f"
-done
+# §A0's Linux half: the facts the in-app updater will verify on the user's machine,
+# asserted here first, plus the digest sidecars the tap release carries.
+./scripts/release-linux-check.sh

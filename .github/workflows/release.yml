@@ -236,3 +236,84 @@ jobs:
           # `_universal.dmg`, which is the suffix the tap's update-cask.yml selects by.
           gh release upload "$TAG" "$SETUP" "rexenv_${V}_x64-setup.exe.sha256" "$ZIP" "$ZIP.sha256" --clobber
           echo "attached the Windows installer and update archive to draft $TAG"
+
+  # ── The Linux half, x86_64. It ATTACHES to the draft the macOS job created, like
+  #    the Windows job: one release, one tag, three platforms' assets.
+  #
+  #    x86_64 ONLY here. GitHub's arm64 Linux runners (`ubuntu-24.04-arm`) are free on
+  #    public repos and a paid larger-runner on private ones, so the aarch64 pair is
+  #    built on the Ubuntu VM with `pnpm release:linux` and uploaded by hand — the same
+  #    "built locally" answer the dmg has today (docs/RELEASING.md 3b). The substance
+  #    lives in the scripts, measured on the VM 25 Sep 2026: `release-linux.sh` (the
+  #    build + the DNS-agent restart) and `release-linux-check.sh` (§A0-linux: one deb
+  #    + one AppImage for the version and THIS arch, the rex sidecar, the ELF arch, the
+  #    embedded payload + update key, the deb's control fields, members, polkit action
+  #    and Depends, and BOTH artefacts answering --print-version — the facts the in-app
+  #    updater re-checks on the user's machine before it swaps).
+  release-linux:
+    name: Build the Linux deb + AppImage (x86_64) and attach them to the draft
+    needs: release
+    runs-on: ubuntu-24.04
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the tag matches every declared version
+        run: ./scripts/check-versions.sh "${TAG#v}"
+
+      # Tauri 2 on Linux links webkit2gtk 4.1 + gtk3 through pkg-config; the list is
+      # the check image's (scripts/linux-check/Dockerfile) plus what the bundlers need.
+      - name: Install the webview and bundler dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential curl ca-certificates pkg-config file dpkg-dev \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev \
+            libssl-dev libxdo-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libfuse2t64
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src-tauri
+            cli
+
+      # The same bar as the other two jobs (ledger #684's lesson: a lane that runs
+      # less than verify.sh is a weaker gate nobody declared). On a Linux host
+      # linux-check.sh lints natively and windows-check.sh is SKIPPED (no cargo-xwin).
+      - name: verify.sh (lib tests + examples + clippy + tsc)
+        run: |
+          set -uo pipefail
+          ./scripts/verify.sh > verify.log 2>&1
+          code=$?
+          cat verify.log
+          exit $code
+
+      - name: Build the deb + AppImage (+ §A0-linux)
+        run: pnpm release:linux
+
+      - name: Attach the deb and AppImage to the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          V="${TAG#v}"
+          DEB="src-tauri/target/release/bundle/deb/rexenv_${V}_amd64.deb"
+          IMG="src-tauri/target/release/bundle/appimage/rexenv_${V}_amd64.AppImage"
+          cat "$DEB.sha256" "$IMG.sha256"
+          # Neither name ends in `_universal.dmg`, the suffix the tap's update-cask.yml
+          # selects by; the in-app updater's four Linux descriptors name these files
+          # UNRENAMED (runtimes' publish-app-manifest.sh --linux).
+          gh release upload "$TAG" "$DEB" "$DEB.sha256" "$IMG" "$IMG.sha256" --clobber
+          echo "attached the x86_64 deb and AppImage to draft $TAG"

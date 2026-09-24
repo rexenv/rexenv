@@ -1222,7 +1222,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     needed freetype's `LICENSE.TXT` and a SQLite public-domain note; the static ELFs export no Zend
     symbols, so 7.4 on Linux gets no Xdebug — not in v1 anyway). Then: owner merges PR #7 and publishes
     `php-7.4.33-7`; pin the Linux arms in `binaries.rs` (`php_self_hosted_tag`), drop #728's refusal for 7.4
-  - [ ] L9 the download page and the release leg (`release-linux.sh` never run on an x86_64 host)
+  - [ ] L9 the release leg — `release-linux-check.sh` (§A0-linux) + `release.yml`'s x86_64
+    `release-linux` job landed 25 Sep 2026; VM (aarch64) run of `pnpm release:linux` pending in this
+    session; **x86_64 has never been built** (no host; the CI job has never run — private repo). The
+    download page is the tap release + website, outside this repo
 
 - [ ] **The keychain (CA trust) dialog is rexenv's too** — 12 Sep 2026, owner, after the admin
   dialog got its name: the CA trust dialog still read "security". Measured first: wrapping

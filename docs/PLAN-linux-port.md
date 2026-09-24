@@ -235,8 +235,17 @@ Each ends in something observable; each is its own commit.
   The owner published `php-7.4.33-7`; rexenv pins the four Linux tarballs + two licence
   tarballs on THAT tag (`PHP_7_4_33_LINUX_TAG` — the macOS pin stays on `-6`, the release that
   proved it), `ships_on` answers true, and #728's refusal for 7.4 is gone by the same table.
-- **L7 (was) — Release.** `manifest-linux.json` (Windows plan §3b: one signed document per OS), the
-  download page, `RELEASING.md`'s Linux leg.
+- **L9 — The release leg (25 Sep 2026).** `scripts/release-linux-check.sh` is §A0's Linux half,
+  run by `release-linux.sh` after the build: one deb + one AppImage for the version and THIS
+  arch, the `rex` sidecar, the ELF arch, the embedded payload + update key, the deb's control
+  fields / members / polkit action / `Depends`, and both artefacts answering `--print-version`
+  — the facts the in-app updater (L7) re-checks on the user's machine, asserted first where a
+  failure costs a rebuild rather than a user's dialog. `release.yml` gained a `release-linux`
+  job on `ubuntu-24.04` (x86_64) that attaches the pair to the draft like the Windows job;
+  aarch64 is the VM by hand (arm runners are paid on a private repo). The descriptors are
+  step 8's four `--linux` runs (L7). The download page lives outside this repo (the tap's
+  release + the website); the deb and AppImage sit beside the dmg there, with `.sha256`s.
+  Neither CI job has run — the repo is private — so the x86_64 pair is still owed a host.
 
 ## 6. Linux hazards to design for, not discover
 

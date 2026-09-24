@@ -31,8 +31,19 @@ git push origin v<X.Y.Z>            (or: Actions → "Release" → Run workflow)
         │                     its VERSIONINFO read the way the swap reads it) — then
         │                     ATTACHED to the draft above, not a second release.
         │                     **Never run: the repo is private.**
+        │
+        │  ── and, on an ubuntu-24.04 runner, the same tag's Linux x86_64 half:
+        │  version guard · scripts/verify.sh · pnpm release:linux
+        │                    → rexenv_<X.Y.Z>_amd64.deb + rexenv_<X.Y.Z>_amd64.AppImage
+        │  §A0-linux (one deb + one AppImage for the version and THIS arch, the rex
+        │                     sidecar, the ELF arch, embedded payload + update key, the
+        │                     deb's control/members/polkit action/Depends, and both
+        │                     artefacts answering --print-version — what the in-app
+        │                     updater re-checks before dpkg -i / the exchange) — then
+        │                     ATTACHED to the draft. aarch64 is built on the VM by hand
+        │                     (arm runners are paid on a private repo). **Never run.**
         ▼
-   DRAFT GitHub Release  ·  dmg + tar.gz + setup.exe + their .sha256 attached
+   DRAFT GitHub Release  ·  dmg + tar.gz + setup.exe + deb + AppImage + their .sha256 attached
         │
         │  ← THE HUMAN GATE: download the dmg, run PUBLISH-TESTING §A
         │    (quarantine → Gatekeeper blocks → xattr -rd → launches).
@@ -151,16 +162,29 @@ release** — which is the property that makes a stolen key survivable. Ledger
    because what a user receives is what comes OUT of it, not what went in.
 
 3b. **Linux (not yet cut — the port landed 24 Sep 2026, `docs/PLAN-linux-port.md`).**
-   `pnpm release:linux` on an Ubuntu 22.04+ host runs `scripts/release-linux.sh`: plain
-   `tauri build` (`bundle.targets` "all" → `.deb`, `.rpm`, `.AppImage`; `bundle.linux.deb.depends`
-   names webkit2gtk 4.1, the appindicator, xdg-utils, libnss3-tools, policykit-1 and MySQL's
-   `libaio1`/`libnuma1`), then restarts the `rexenv-dns` user unit if a dev launch registered one
-   on the binary the build replaced (Linux does not lock a running executable, so the build
-   succeeds and the OLD agent keeps running — the opposite failure to Windows's). Prints the
-   sha256 of every artefact. **A 4 GB host kills the release `rustc` (OOM, measured on the
-   VM 24 Sep 2026 — `Killed process … (rustc) anon-rss:1657856kB`): give the builder 8 GB or a
-   swapfile, and `CARGO_BUILD_JOBS=2`.** Both archs are two builds on two hosts (or one host
-   with `--target`), and the first x86_64 one has not been made. **The in-app update reads ONE
+   `pnpm release:linux` on an Ubuntu 22.04+ host of EACH arch runs `scripts/release-linux.sh`:
+   plain `tauri build` (`bundle.targets` "all" → `.deb`, `.rpm`, `.AppImage`;
+   `bundle.linux.deb.depends` names webkit2gtk 4.1, the appindicator, xdg-utils, libnss3-tools,
+   policykit-1 and MySQL's `libaio1`/`libnuma1`), then restarts the `rexenv-dns` user unit if a
+   dev launch registered one on the binary the build replaced (Linux does not lock a running
+   executable, so the build succeeds and the OLD agent keeps running — the opposite failure to
+   Windows's). **Then `scripts/release-linux-check.sh` — §A0's Linux half:** exactly one deb and
+   one AppImage named for the version and THIS arch, the `rex` sidecar, the ELF arch read off
+   the header, the embedded `Dist_Archive_Command` payload and update key, the deb's control
+   fields (`rexenv`, the version, the arch), its members (`usr/bin/{rexenv,rex}`, the polkit
+   action, the desktop entry) and `Depends`, and BOTH artefacts answering `--print-version` with
+   the version — extracted (`dpkg-deb -x`) and extract-and-run (`APPIMAGE_EXTRACT_AND_RUN=1`),
+   never installed, because these are exactly the facts the in-app updater verifies on the
+   user's machine before `dpkg -i` or the exchange (`platform/linux/app_bundle.rs`); a release
+   that fails here is one every installed copy would refuse. Writes the `.sha256` sidecars. The
+   pre-L7 0.8.7 bundles on the VM failed it on `--print-version` (they predate the flag) — the
+   check working, not a bug. **A 4 GB host kills the release `rustc` (OOM, measured on the VM 24
+   Sep 2026): give the builder 8 GB or a swapfile, `CARGO_BUILD_JOBS=1`, and ~10 GB of disk (one
+   release target + the bundles).** Two archs are two hosts: x86_64 is `release.yml`'s
+   `release-linux` job (`ubuntu-24.04`, attaches to the draft like the Windows job — never run,
+   the repo is private); aarch64 is the UTM VM by hand, uploaded to the tap release beside the
+   dmg. The AppImage needs `libfuse2` (`libfuse2t64` on 24.04) to MOUNT; rexenv's own checks
+   never mount it. **The in-app update reads ONE
    descriptor per package kind and arch** — `app-manifest-linux-deb-x86_64.json`,
    `-deb-aarch64`, `-appimage-x86_64`, `-appimage-aarch64`, each + `.sig`, same schema and key
    as macOS's — so a Linux release is four artifacts and four publisher runs (step 8's
