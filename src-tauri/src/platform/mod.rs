@@ -25,7 +25,7 @@ pub(crate) const APP_NAME: &str = "rexenv";
 #[allow(unused_macros)]
 macro_rules! unported {
     ($what:expr) => {
-        panic!("rexenv: {} is not ported to this OS yet (docs/PLAN-windows-port.md)", $what)
+        panic!("rexenv: {} is not ported to this OS yet (docs/PLAN-windows-port.md, docs/PLAN-linux-port.md)", $what)
     };
 }
 
@@ -40,6 +40,27 @@ pub(crate) use windows::{
 };
 #[cfg(target_os = "linux")]
 mod linux;
+
+// The Linux port's pure halves — `ss`/`/proc` parsing, the resolved drop-in, the two
+// systemd units, the autostart entry and app catalog, the NSS/system trust argv — are text,
+// so the macOS host proves them in `verify.sh` too (docs/PLAN-linux-port.md L1). The
+// `desktop`/`resolved` modules are siblings `units`/`trust` reach through `super::`, so all
+// five are mounted under ONE test-only parent that mirrors `linux/`.
+#[cfg(all(test, not(target_os = "linux")))]
+#[allow(dead_code)]
+#[path = "linux"]
+mod linux_pure {
+    #[path = "desktop.rs"]
+    pub(crate) mod desktop;
+    #[path = "proc_table.rs"]
+    pub(crate) mod proc_table;
+    #[path = "resolved.rs"]
+    pub(crate) mod resolved;
+    #[path = "trust.rs"]
+    pub(crate) mod trust;
+    #[path = "units.rs"]
+    pub(crate) mod units;
+}
 
 // The Windows owner-only SDDL builder is pure text: include it on the macOS/Linux
 // test host so its tests run in `verify.sh` too, not only on a Windows machine.
@@ -369,12 +390,21 @@ mod stub_guard {
     /// the Windows module does not compile.
     #[test]
     fn windows_stubs_fail_as_unported_never_todo() {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/platform/windows/mod.rs");
-        let text = std::fs::read_to_string(&path).expect("read platform/windows/mod.rs");
-        assert!(
-            text.contains("impl Paths for WindowsPaths"),
-            "not the Windows platform module — a moved file would make this scan vacuous"
-        );
+        stubs_fail_as_unported_never_todo("windows", "impl Paths for WindowsPaths");
+    }
+
+    /// The same rule for Linux (docs/PLAN-linux-port.md L1): every method of `linux/mod.rs`
+    /// was `todo!()` until 24 Sep 2026, and a `todo!()` reached from an IPC command is a
+    /// frontend waiting forever on a release build with no console.
+    #[test]
+    fn linux_stubs_fail_as_unported_never_todo() {
+        stubs_fail_as_unported_never_todo("linux", "impl Paths for LinuxPaths");
+    }
+
+    fn stubs_fail_as_unported_never_todo(os: &str, anchor: &str) {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("src/platform/{os}/mod.rs"));
+        let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read platform/{os}/mod.rs: {e}"));
+        assert!(text.contains(anchor), "not the {os} platform module — a moved file would make this scan vacuous");
         let forbidden = ["todo!(", "unimplemented!("];
         // Canary: the matcher must see a planted one, or its zero proves nothing.
         assert_eq!(
@@ -385,7 +415,7 @@ mod stub_guard {
         let found = hits(&text, &forbidden);
         assert!(
             found.is_empty(),
-            "platform/windows has {} todo!/unimplemented! — return Error::Unported, or unported! where the trait cannot return an error: {found:?}",
+            "platform/{os} has {} todo!/unimplemented! — return Error::Unported, or unported! where the trait cannot return an error: {found:?}",
             found.len()
         );
     }

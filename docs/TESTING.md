@@ -1009,6 +1009,23 @@ builds are for EXAMPLES; the app itself comes from the Dell.
   `--connect-timeout` were documented in prose only — prose the new proof promptly
   FALSIFIED (mariadb-dump warns-and-ignores rather than hard-erroring; ledger #195).
 
+## Proving a Linux claim
+
+`verify.sh`'s `linux-check` compiles both crates inside an Ubuntu 22.04 container. That is a
+COMPILE gate on the host's arch, never a verdict: it says the code builds there, not that a
+route resolves, a unit starts or a certificate is trusted. The Mac has no Ubuntu VM today
+(`docs/PLAN-linux-port.md` D-L9), so a Linux behaviour claim is proven one of two ways:
+
+1. **Inside the check container**, for anything that is a process or a file: `/proc` reads,
+   `chmod`, unix sockets, the login-env probe. `docker run --rm -v "$PWD":/work -w /work/src-tauri
+   rexenv-linux-check:ubuntu22 cargo test --lib platform::linux` runs the module's tests on real
+   `/proc`. No systemd, no polkit, no desktop, no browser in there.
+2. **An Ubuntu 22.04 VM**, for everything else — the plan's P1–P5: DNS scoping
+   (`resolvectl query example.com` must NOT answer `127.0.0.1` after the drop-in), the edge unit
+   and its admin socket across a reload, CA trust in Chrome and `curl`, autostart, the GUI. Each
+   is a row in `SMOKE-TEST.md`'s Linux section; a ledger row resting on one says `◐ (Docker
+   only)` until the VM run flips it.
+
 ### 1.2 Audit: assertions that are wrong or vacuous (delete/fix, not keep)
 
 - The **>80-char verdict check still exists and is still wrong**: `dbcompat.rs:456`
@@ -1441,6 +1458,18 @@ bloating the fast path:
   library error behind one line; and a placeholder `rex-<triple>.exe` sidecar staged for
   the run and removed on exit, because `tauri_build` refuses a missing `externalBin` —
   kept OUT of `build.rs` so no real Windows bundle can ever ship a fake `rex`.
+- **`scripts/linux-check.sh`** (24 Sep 2026, `docs/PLAN-linux-port.md` L0): does the tree COMPILE
+  for Linux? The same `cargo clippy --all-targets --keep-going -- -D warnings` over both crates,
+  run inside the Ubuntu 22.04 image `scripts/linux-check/Dockerfile` builds — a container, not a
+  cross-compile, because Tauri links webkit2gtk/gtk3/libsoup through pkg-config and nothing
+  packages a GTK sysroot for a Mac host. Inside `verify.sh` from the day the Linux impls landed
+  (same contract as windows-check, ledger #719): Docker missing or its daemon down →
+  `verify: linux-check SKIPPED — …` above the verdict; any other non-zero exit is red. The
+  container is the host's arch (aarch64 on Apple silicon), so it is a compile gate and never an
+  x86_64 proof. First run (24 Sep 2026): RED on four dead-code sites the `todo!()` stubs never
+  reached — a finding reachable from no other gate.
+- **Linux-only pure rules run on the Mac too** — `linux/{proc_table,resolved,units,desktop,trust}.rs`
+  are `#[path]`-mounted under `platform::linux_pure` in every non-Linux test build (ledger #716).
 - **Windows-only pure rules run on the Mac too.** A Windows module with no Win32 calls in it
   — `windows/owner_only.rs`, `pe.rs`, `port_table.rs` — is `#[path]`-included into the macOS
   test build (`platform/mod.rs`), so its L0 tests run in `verify.sh`. The Win32 calls around

@@ -58,7 +58,7 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
   folders — `WindowsShell::symlink_dir` / `remove_symlink` over `windows/junction.rs` (a junction through
   `FSCTL_SET_REPARSE_POINT`, the link-only removal) and `windows/junction_rules.rs` (the target rule, the
   reparse data — tested on every host) (ledger #625); the words for the OS's own things — `platform/words.rs`
-  (`PlatformWords`, `MACOS`/`WINDOWS`, `current()`; tested on every host, including a scan of the frontend),
+  (`PlatformWords`, `MACOS`/`WINDOWS`/`LINUX`, `current()`; tested on every host, including a scan of the frontend),
   served by `commands::system::platform_words` and read through `src/lib/usePlatformWords.ts`
   (`mockPlatformWords` in `src/lib/mock.ts`), used by `core/devtools.rs` and `core/repo.rs`'s install hints
   (ledger #626); finding a command on `PATH` — `platform/path_lookup.rs` (`PathLookup`, `UNIX`/`WINDOWS`,
@@ -66,7 +66,12 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
   `core/devtools.rs` `find_tool` (ledger #628); a path's last part in the UI — `src/lib/path.ts` (`baseName`
   on either separator, `joinPath`; held by a frontend scan in `path_lookup.rs`) (ledger #629); nginx's Windows shape — `services::nginx_path`,
   `binaries::resolve_program`, the master climb and nginx's events (ledger #602);
-  `linux/` is `todo!()`).
+  `linux/` — real since 24 Sep 2026 (`docs/PLAN-linux-port.md`): `mod.rs` the twelve impls (XDG paths,
+  `pkexec`, `/proc` + `ss` supervision, `xdg-open`/D-Bus reveal, PATH-found editors/browsers/terminals,
+  an autostart `.desktop`, systemd user unit for the DNS agent and system unit for the edge, a
+  resolved drop-in per TLD, NSS + system-store CA trust; in-app update `Unported`), with the pure
+  halves in `proc_table.rs`, `resolved.rs`, `units.rs`, `desktop.rs`, `trust.rs` — mounted as
+  `platform::linux_pure` in every non-Linux test build (ledger #716–#719)).
 - `state/` = SQLite migrations + the store layer; only `state/` writes SQL.
 - `crash.rs` = the panic hook, installed FIRST in `main.rs`: every panic appended to
   `<log_dir>/crash.log` (temp dir if `Paths` cannot answer), and the first one raised through

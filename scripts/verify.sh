@@ -187,6 +187,29 @@ case "$wc_code" in
     ;;
 esac
 
+# The Linux compile check (docs/PLAN-linux-port.md L0), the same contract: it runs the
+# same clippy question inside an Ubuntu 22.04 container, so it needs Docker's daemon up
+# — closed on the dev Mac most days — and exit 3 becomes a SKIPPED line; any other
+# non-zero exit is a Linux break and fails the bar. Wired the day the Linux impls landed
+# (24 Sep 2026) so a Linux break surfaces in the commit that made it, as Windows's does.
+# Pending the owner's D-L10 ruling on whether it stays in this bar or moves to
+# verify-full.sh (it costs minutes per run while Docker is up).
+LC_LOG="$(mktemp -t rexenv-linux-check.XXXXXX)"
+set +e
+./scripts/linux-check.sh > "$LC_LOG" 2>&1
+lc_code=$?
+set -e
+LC_SKIPPED=""
+case "$lc_code" in
+  0) grep '^linux-check:' "$LC_LOG" || true ;;
+  3) LC_SKIPPED="$(grep -m1 '^linux-check:' "$LC_LOG" || head -n1 "$LC_LOG" || true)" ;;
+  *)
+    cat "$LC_LOG"
+    echo "verify: linux-check is RED (exit $lc_code) — the tree no longer compiles for Linux"
+    exit 1
+    ;;
+esac
+
 # The receipt (see scripts/verify-receipt.sh). Written LAST, and only when the
 # tree is still the one that was checked.
 if [ -n "$TREE_BEFORE" ]; then
@@ -200,5 +223,8 @@ fi
 
 if [ -n "$WC_SKIPPED" ]; then
   echo "verify: windows-check SKIPPED — ${WC_SKIPPED}"
+fi
+if [ -n "$LC_SKIPPED" ]; then
+  echo "verify: linux-check SKIPPED — ${LC_SKIPPED}"
 fi
 echo "verify: all green"

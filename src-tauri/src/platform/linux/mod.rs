@@ -1,136 +1,834 @@
-//! Linux implementations — Phase 4 (same era as Windows; this said "Phase 5"
-//! until 21 Aug 2026, which is two numbers for one era). Stubs only: every method is `todo!()`.
-//! Filling these in is the entire Linux port; `core/` does not change.
+//! Linux implementations — the port in progress (`docs/PLAN-linux-port.md`), Ubuntu first.
+//!
+//! **No `todo!()` here, by rule (ledger #595, widened to Linux).** A stub that can return an
+//! error returns `Error::Unported`, so a half-ported build fails that ONE feature as an
+//! ordinary error the UI shows; one whose trait method cannot return an error panics through
+//! `unported!`. `core/` does not change.
+//!
+//! What Linux has that the other two do not: systemd (a supervisor with `Restart=always`, per
+//! user and system-wide), polkit's `pkexec` (the desktop's own privilege prompt), `/proc`
+//! (process identity without `lsof`), and php-fpm itself — so the pool model is macOS's.
+//! The pure halves (`proc_table`, `resolved`, `units`, `desktop`, `trust`) are text, tested on
+//! the macOS host too (`platform/mod.rs` includes them under `cfg(test)`).
 #![allow(dead_code)]
 
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::platform::traits::*;
 use std::path::{Path, PathBuf};
 use std::process::Child;
+use std::time::Duration;
+
+mod desktop;
+mod proc_table;
+mod resolved;
+mod trust;
+mod units;
+
+use crate::platform::{APP_NAME, APP_ORG, APP_QUALIFIER};
+
+/// The file the user installed and runs — `$APPIMAGE` when this is an AppImage (the process's
+/// own exe is then a file inside a FUSE mount that is gone at the next launch), the exe itself
+/// otherwise (`/usr/bin/rexenv` from the deb, a `target/` binary in development). Every unit
+/// and autostart entry records THIS path.
+fn installed_exe() -> Result<PathBuf> {
+    if let Some(appimage) = std::env::var_os("APPIMAGE") {
+        let p = PathBuf::from(appimage);
+        if p.is_file() {
+            return Ok(p);
+        }
+    }
+    Ok(std::env::current_exe()?)
+}
+
+fn home_dir() -> Result<PathBuf> {
+    std::env::var_os("HOME").map(PathBuf::from).ok_or_else(|| Error::Other("HOME is not set".into()))
+}
+
+fn config_home() -> Result<PathBuf> {
+    if let Some(x) = std::env::var_os("XDG_CONFIG_HOME").filter(|v| !v.is_empty()) {
+        return Ok(PathBuf::from(x));
+    }
+    Ok(home_dir()?.join(".config"))
+}
+
+fn which(bin: &str) -> Option<PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    std::env::split_paths(&path).map(|d| d.join(bin)).find(|p| p.is_file())
+}
+
+/// Run a command and turn a non-zero exit into an error carrying stderr.
+fn run_ok(program: &str, args: &[String]) -> Result<String> {
+    let out = crate::platform::command(program).args(args).output()?;
+    if out.status.success() {
+        Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+    } else {
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        let stderr = stderr.trim();
+        Err(Error::Other(format!(
+            "`{program} {}` failed ({}): {}",
+            args.join(" "),
+            out.status,
+            if stderr.is_empty() { "(no stderr)" } else { stderr }
+        )))
+    }
+}
+
+/// Start a desktop program detached: no inherited stdio, and a reaper thread so the child
+/// never sits as a zombie for the app's life (`Child::drop` neither kills nor waits).
+fn spawn_detached(program: &Path, args: &[String]) -> Result<()> {
+    use std::process::Stdio;
+    let mut child = crate::platform::command(program)
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()?;
+    std::thread::Builder::new()
+        .name("detached-reaper".into())
+        .spawn(move || {
+            let _ = child.wait();
+        })?;
+    Ok(())
+}
+
+// ── Paths ───────────────────────────────────────────────────────────────────
 
 pub struct LinuxPaths;
 impl Paths for LinuxPaths {
+    /// `~/.local/share/rexenv` — `directories` drops the qualifier and org on Linux, the XDG
+    /// convention; ONE namespace fact shared with the other OSes (`platform/mod.rs`).
     fn app_data_dir(&self) -> Result<PathBuf> {
-        todo!("linux app_data_dir")
+        let dirs = directories::ProjectDirs::from(APP_QUALIFIER, APP_ORG, APP_NAME)
+            .ok_or(Error::Other("cannot resolve home directory".into()))?;
+        Ok(dirs.data_dir().to_path_buf())
     }
     fn config_dir(&self) -> Result<PathBuf> {
-        todo!("linux config_dir")
+        Ok(self.app_data_dir()?.join("config"))
     }
     fn log_dir(&self) -> Result<PathBuf> {
-        todo!("linux log_dir")
+        Ok(self.app_data_dir()?.join("logs"))
     }
     fn bin_dir(&self) -> Result<PathBuf> {
-        todo!("linux bin_dir")
+        Ok(self.app_data_dir()?.join("bin"))
     }
     fn hosts_file(&self) -> PathBuf {
         PathBuf::from("/etc/hosts")
     }
+    /// The same place as macOS: on every distro `/usr/local/bin` is on the default `PATH`
+    /// (`~/.local/bin` is only on GNOME's, and only once it exists at login).
+    fn cli_symlink_path(&self) -> Result<PathBuf> {
+        Ok(PathBuf::from("/usr/local/bin/rex"))
+    }
 }
+
+// ── DNS route (D-L2) ────────────────────────────────────────────────────────
 
 pub struct LinuxDns;
 impl DnsManager for LinuxDns {
-    fn route_label(&self, _tld: &str) -> String {
-        todo!("linux systemd-resolved / dnsmasq")
+    fn route_label(&self, tld: &str) -> String {
+        resolved::dropin_path(tld).display().to_string()
     }
-    fn route_contents(&self, _port: u16) -> String {
-        todo!("linux DNS")
+    /// Shown beside a foreign route before a takeover; the TLD is not in hand, so the backbone's.
+    fn route_contents(&self, port: u16) -> String {
+        resolved::contents(crate::core::tld::BACKBONE_TLD, port)
     }
-    fn route_owner(&self, _tld: &str, _port: u16) -> ResolverOwner {
-        todo!("linux DNS")
+    fn route_owner(&self, tld: &str, port: u16) -> ResolverOwner {
+        resolved::owner_of(Path::new(resolved::DROPIN_DIR), tld, port)
     }
-    fn our_route_tlds(&self, _port: u16) -> Vec<String> {
-        todo!("linux DNS")
+    fn our_route_tlds(&self, port: u16) -> Vec<String> {
+        resolved::our_tlds(Path::new(resolved::DROPIN_DIR), port)
     }
-    fn foreign_route_tlds(&self, _port: u16) -> Vec<String> {
-        todo!("linux DNS")
+    fn foreign_route_tlds(&self, port: u16) -> Vec<String> {
+        resolved::foreign_tlds(Path::new(resolved::DROPIN_DIR), port)
     }
-    fn install_command(&self, _tld: &str, _port: u16) -> String {
-        todo!("linux DNS")
+    fn install_command(&self, tld: &str, port: u16) -> String {
+        resolved::install_command(tld, port)
     }
-    fn uninstall_command(&self, _tlds: &[String]) -> String {
-        todo!("linux DNS")
+    fn uninstall_command(&self, tlds: &[String]) -> String {
+        resolved::uninstall_command(tlds)
     }
-    fn restore_command(&self, _restores: &[(String, PathBuf)]) -> String {
-        todo!("linux DNS")
+    fn restore_command(&self, restores: &[(String, PathBuf)]) -> String {
+        resolved::restore_command(restores)
     }
 }
+
+// ── CA trust (D-L3) ─────────────────────────────────────────────────────────
 
 pub struct LinuxCertTrust;
-impl CertTrustManager for LinuxCertTrust {
-    fn trust_ca(&self, _ca_cert_path: &Path) -> Result<()> {
-        todo!("linux update-ca-certificates (+ NSS for Firefox)")
+
+impl LinuxCertTrust {
+    fn certutil() -> Result<PathBuf> {
+        which("certutil").ok_or_else(|| Error::Other(trust::CERTUTIL_MISSING.into()))
     }
-    fn untrust_ca(&self, _ca_cert_path: &Path) -> Result<()> {
-        todo!("linux untrust")
+    /// The PEM NSS holds under our nickname, if any.
+    fn nss_current(home: &Path) -> Option<String> {
+        let certutil = which("certutil")?;
+        let out = crate::platform::command(certutil).args(trust::nss_show_args(home)).output().ok()?;
+        out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
     }
 }
 
-pub struct LinuxPrivileges;
-impl PrivilegeManager for LinuxPrivileges {
-    fn run_privileged(
-        &self,
-        _script: &str,
-        _reason: &crate::platform::traits::PromptReason,
-    ) -> Result<String> {
-        todo!("linux pkexec / sudo elevation")
+impl CertTrustManager for LinuxCertTrust {
+    /// Both stores, the browsers' first (no prompt), then the system's (one `pkexec`).
+    fn trust_ca(&self, ca_cert_path: &Path) -> Result<()> {
+        let home = home_dir()?;
+        let certutil = Self::certutil()?;
+        let db = trust::nss_db_dir(&home);
+        if !db.join("cert9.db").exists() {
+            std::fs::create_dir_all(&db)?;
+            run_ok(&certutil.display().to_string(), &trust::nss_create_args(&home))?;
+        }
+        // A stale entry under the nickname would make `-A` a no-op that keeps the OLD root.
+        if Self::nss_current(&home).is_some() {
+            let _ = run_ok(&certutil.display().to_string(), &trust::nss_delete_args(&home));
+        }
+        run_ok(&certutil.display().to_string(), &trust::nss_add_args(&home, ca_cert_path))?;
+        LinuxPrivileges.run_privileged(
+            &trust::system_trust_command(ca_cert_path),
+            &PromptReason::new("add its local certificate authority to this computer's trust store, so curl and PHP accept https://*.rex"),
+        )?;
+        Ok(())
     }
+    fn untrust_ca(&self, _ca_cert_path: &Path) -> Result<()> {
+        let home = home_dir()?;
+        if let Ok(certutil) = Self::certutil() {
+            if Self::nss_current(&home).is_some() {
+                run_ok(&certutil.display().to_string(), &trust::nss_delete_args(&home))?;
+            }
+        }
+        if Path::new(trust::SYSTEM_CERT_DIR).join(trust::SYSTEM_CERT_NAME).exists() {
+            LinuxPrivileges.run_privileged(
+                &trust::system_untrust_command(),
+                &PromptReason::new("remove its local certificate authority from this computer's trust store"),
+            )?;
+        }
+        Ok(())
+    }
+    /// One nickname holds one certificate: a different one there is the stale root.
+    fn untrust_stale(&self, current_ca: &Path) -> Result<usize> {
+        let home = home_dir()?;
+        let Some(held) = Self::nss_current(&home) else { return Ok(0) };
+        let ours = std::fs::read_to_string(current_ca)?;
+        if trust::same_pem(&held, &ours) {
+            return Ok(0);
+        }
+        run_ok(&Self::certutil()?.display().to_string(), &trust::nss_delete_args(&home))?;
+        Ok(1)
+    }
+    fn is_trusted(&self, ca_cert_path: &Path) -> bool {
+        let Ok(home) = home_dir() else { return false };
+        let Some(held) = Self::nss_current(&home) else { return false };
+        std::fs::read_to_string(ca_cert_path).map(|ours| trust::same_pem(&held, &ours)).unwrap_or(false)
+    }
+    fn firefox_profiles_root(&self) -> Option<PathBuf> {
+        let home = home_dir().ok()?;
+        trust::firefox_roots(&home).into_iter().find(|r| r.join("profiles.ini").is_file())
+    }
+}
+
+// ── Privileges: pkexec ──────────────────────────────────────────────────────
+
+pub struct LinuxPrivileges;
+
+impl LinuxPrivileges {
+    /// `pkexec` exit codes: 126 = the user dismissed the dialog or failed to authenticate,
+    /// 127 = polkit refused (no agent, not an admin). Both read as recoverable sentences.
+    fn error_message(code: Option<i32>, stderr: &str) -> String {
+        match code {
+            Some(126) => "Administrator permission was cancelled — this step needs it. Try again and approve the prompt.".into(),
+            Some(127) => format!(
+                "This account is not allowed to administer the computer (polkit refused), or no authentication agent is running. {}",
+                stderr.trim()
+            ),
+            _ => format!("privileged operation failed: {}", stderr.trim()),
+        }
+    }
+}
+
+impl PrivilegeManager for LinuxPrivileges {
+    fn run_privileged(&self, script: &str, _reason: &PromptReason) -> Result<String> {
+        static ONE_PROMPT: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _one = ONE_PROMPT.lock().unwrap_or_else(|p| p.into_inner());
+        let pkexec = which("pkexec").ok_or_else(|| {
+            Error::Other("pkexec (polkit) is not installed — rexenv needs it to ask for administrator permission.".into())
+        })?;
+        // The reason is on screen already (the consent card); pkexec's own dialog names the
+        // program it runs and nothing rexenv can say without a shipped polkit action file.
+        let out = crate::platform::command(pkexec).args(["/bin/sh", "-c", script]).output()?;
+        if out.status.success() {
+            Ok(String::from_utf8_lossy(&out.stdout).trim_end().to_string())
+        } else {
+            Err(Error::Other(Self::error_message(out.status.code(), &String::from_utf8_lossy(&out.stderr))))
+        }
+    }
+}
+
+// ── Process supervision ─────────────────────────────────────────────────────
+
+const STOP_GRACE_TRIES: u32 = 30;
+const STOP_POLL_INTERVAL: Duration = Duration::from_millis(100);
+
+fn proc_stat(pid: u32) -> Option<proc_table::StatFields> {
+    proc_table::parse_stat(&std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?)
+}
+
+/// Live and not a zombie (a zombie has exited and only awaits its parent's reap).
+fn process_running(pid: u32) -> bool {
+    matches!(proc_stat(pid), Some(s) if s.state != 'Z' && s.state != 'X')
+}
+
+fn stop_pid(pid: u32, grace_tries: u32, interval: Duration) -> Result<()> {
+    let _ = crate::platform::command("kill").arg(pid.to_string()).status();
+    for _ in 0..grace_tries {
+        if !process_running(pid) {
+            return Ok(());
+        }
+        std::thread::sleep(interval);
+    }
+    let _ = crate::platform::command("kill").args(["-9", &pid.to_string()]).status();
+    for _ in 0..10 {
+        if !process_running(pid) {
+            return Ok(());
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    if process_running(pid) {
+        Err(Error::Other(format!("pid {pid} survived SIGKILL")))
+    } else {
+        Ok(())
+    }
+}
+
+/// Every numeric entry of `/proc`.
+fn all_pids() -> Vec<u32> {
+    std::fs::read_dir("/proc")
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| e.file_name().to_str()?.parse().ok())
+        .collect()
+}
+
+fn ss_rows(args: &[&str]) -> Option<Vec<proc_table::SocketRow>> {
+    let out = crate::platform::command("ss").args(args).output().ok()?;
+    Some(proc_table::parse_ss(&String::from_utf8_lossy(&out.stdout)))
 }
 
 pub struct LinuxSupervisor;
 impl ProcessSupervisor for LinuxSupervisor {
-    fn spawn(&self, _program: &Path, _args: &[String]) -> Result<Child> {
-        todo!("linux spawn")
+    fn terminate_child(&self, child: &mut Child) {
+        let _ = crate::platform::command("kill").arg(child.id().to_string()).status();
+        for _ in 0..20 {
+            if matches!(child.try_wait(), Ok(Some(_))) {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        let _ = child.kill();
+        let _ = child.wait();
     }
-    fn spawn_logged(&self, _program: &Path, _args: &[String], _log_path: &Path) -> Result<Child> {
-        todo!("linux spawn_logged")
+    fn signal_reload(&self, pid: u32) -> bool {
+        matches!(crate::platform::command("kill").args(["-HUP", &pid.to_string()]).status(), Ok(s) if s.success())
     }
-    fn stop(&self, _pid: u32) -> Result<()> {
-        todo!("linux stop")
+    fn pid_alive(&self, pid: u32) -> bool {
+        process_running(pid)
+    }
+    fn spawn(&self, program: &Path, args: &[String]) -> Result<Child> {
+        Ok(crate::platform::command(program).args(args).spawn()?)
+    }
+    fn spawn_logged(&self, program: &Path, args: &[String], log_path: &Path) -> Result<Child> {
+        self.spawn_logged_env(program, args, log_path, &[])
+    }
+    fn spawn_logged_env(&self, program: &Path, args: &[String], log_path: &Path, env: &[(String, String)]) -> Result<Child> {
+        if let Some(parent) = log_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let out = std::fs::OpenOptions::new().create(true).append(true).open(log_path)?;
+        let err = out.try_clone()?;
+        Ok(crate::platform::command(program)
+            .args(args)
+            .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
+            .stdout(out)
+            .stderr(err)
+            .spawn()?)
+    }
+    fn stop(&self, pid: u32) -> Result<()> {
+        stop_pid(pid, STOP_GRACE_TRIES, STOP_POLL_INTERVAL)
+    }
+    /// `/proc/<pid>/comm` (15 bytes, what `pgrep -x` compares) or the exe's file name — a
+    /// title-rewriting master (`php-fpm: master process`) keeps `comm` = `php-fpm`.
+    fn pids_named(&self, name: &str) -> Vec<u32> {
+        all_pids()
+            .into_iter()
+            .filter(|&pid| {
+                let comm = std::fs::read_to_string(format!("/proc/{pid}/comm")).unwrap_or_default();
+                comm.trim() == name
+                    || self.pid_exe(pid).and_then(|p| p.file_name().map(|f| f == name)).unwrap_or(false)
+            })
+            .collect()
+    }
+    fn pid_command(&self, pid: u32) -> Option<String> {
+        proc_table::cmdline_to_string(&std::fs::read(format!("/proc/{pid}/cmdline")).ok()?)
+    }
+    /// `readlink /proc/<pid>/exe` — the kernel's answer, immune to a title rewrite. `EACCES`
+    /// for another user's process (the root edge) is `None`: cannot tell, never "not ours".
+    fn pid_exe(&self, pid: u32) -> Option<PathBuf> {
+        let p = std::fs::read_link(format!("/proc/{pid}/exe")).ok()?;
+        let s = p.to_string_lossy();
+        Some(PathBuf::from(s.strip_suffix(" (deleted)").unwrap_or(&s)))
+    }
+    fn spawn_streamed(&self, program: &Path, args: &[String], cwd: &Path, env: &[(String, String)]) -> Result<Child> {
+        use std::os::unix::process::CommandExt;
+        use std::process::Stdio;
+        let mut cmd = crate::platform::command(program);
+        cmd.args(args)
+            .current_dir(cwd)
+            .env_clear()
+            .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .process_group(0);
+        Ok(cmd.spawn()?)
+    }
+    fn stop_group(&self, pgid: u32) -> Result<()> {
+        fn group_signal(sig: &str, pgid: u32) {
+            let _ = crate::platform::command("pkill").args([&format!("-{sig}"), "-g", &pgid.to_string()]).status();
+        }
+        fn group_alive(pgid: u32) -> bool {
+            crate::platform::command("pgrep")
+                .args(["-g", &pgid.to_string()])
+                .output()
+                .map(|o| o.status.success() && !o.stdout.is_empty())
+                .unwrap_or(false)
+        }
+        group_signal("TERM", pgid);
+        for _ in 0..STOP_GRACE_TRIES {
+            if !group_alive(pgid) {
+                return Ok(());
+            }
+            std::thread::sleep(STOP_POLL_INTERVAL);
+        }
+        group_signal("KILL", pgid);
+        for _ in 0..STOP_GRACE_TRIES {
+            if !group_alive(pgid) {
+                return Ok(());
+            }
+            std::thread::sleep(STOP_POLL_INTERVAL);
+        }
+        Err(Error::Other(format!("process group {pgid} survived SIGKILL")))
+    }
+    fn owned_listeners(&self, port: u16, owner_marker: &str) -> Vec<u32> {
+        let Some(rows) = ss_rows(&["-Hltnp"]) else { return Vec::new() };
+        let mut pids: Vec<u32> = rows
+            .into_iter()
+            .filter(|r| r.local_port == port)
+            .flat_map(|r| r.users.into_iter().map(|(_, pid)| pid))
+            .filter(|&pid| self.pid_command(pid).is_some_and(|c| c.contains(owner_marker)))
+            .collect();
+        pids.sort();
+        pids.dedup();
+        pids
+    }
+    fn owned_master(&self, port: u16, owner_marker: &str) -> Option<u32> {
+        let pids = self.owned_listeners(port, owner_marker);
+        if pids.is_empty() {
+            return None;
+        }
+        let pairs: Vec<(u32, u32)> = pids.iter().filter_map(|&pid| Some((pid, proc_stat(pid)?.ppid))).collect();
+        super::traits::select_master(&pairs).or_else(|| pids.into_iter().min())
+    }
+    fn resource_usage(&self, pid: u32) -> Option<(f32, u64)> {
+        let out = crate::platform::command("ps").args(["-o", "%cpu=,rss=", "-p", &pid.to_string()]).output().ok()?;
+        let text = String::from_utf8_lossy(&out.stdout);
+        let mut it = text.split_whitespace();
+        let cpu: f32 = it.next()?.parse().ok()?;
+        let rss_kb: u64 = it.next()?.parse().ok()?;
+        Some((cpu, rss_kb / 1024))
+    }
+    fn owned_pids(&self, marker: &str) -> Vec<u32> {
+        all_pids().into_iter().filter(|&pid| self.pid_command(pid).is_some_and(|c| c.contains(marker))).collect()
+    }
+    /// `ss` names the pid only for this user's sockets; a root holder is a row with no pid and
+    /// is left to the trial bind, as on macOS.
+    fn port_holders(&self, port: u16, udp: bool) -> Option<Vec<u32>> {
+        let rows = ss_rows(&[if udp { "-Hlunp" } else { "-Hltnp" }])?;
+        let mut pids: Vec<u32> =
+            rows.into_iter().filter(|r| r.local_port == port).flat_map(|r| r.users.into_iter().map(|(_, p)| p)).collect();
+        pids.sort();
+        pids.dedup();
+        Some(pids)
+    }
+    fn established_on(&self, port: u16) -> Option<usize> {
+        let rows = ss_rows(&["-Htn", "state", "established"])?;
+        Some(rows.iter().filter(|r| r.local_port == port).count())
+    }
+    fn port_conflict_help(&self, port: u16, udp: bool) -> PortConflictHelp {
+        let rows = ss_rows(&[if udp { "-Hlunp" } else { "-Hltnp" }]).unwrap_or_default();
+        let row = rows.into_iter().find(|r| r.local_port == port);
+        let holder = row.and_then(|r| {
+            // Masters fork first: the lowest pid of the set.
+            let (name, pid) = r.users.iter().min_by_key(|(_, pid)| *pid)?.clone();
+            let exe = self.pid_exe(pid).map(|p| p.display().to_string()).unwrap_or_default();
+            Some(if exe.is_empty() { format!("{name} (pid {pid})") } else { format!("{name} (pid {pid}, {exe})") })
+        });
+        PortConflictHelp { holder, app: None, free_command: Some(proc_table::free_port_command(port, udp)) }
     }
 }
 
+// ── Autostart: an XDG autostart entry ───────────────────────────────────────
+
 pub struct LinuxAutostart;
-impl AutostartManager for LinuxAutostart {
-    fn enable(&self) -> Result<()> {
-        todo!("linux systemd user unit")
-    }
-    fn disable(&self) -> Result<()> {
-        todo!("linux systemd user unit")
-    }
-    fn is_enabled(&self) -> Result<bool> {
-        todo!("linux systemd user unit")
+impl LinuxAutostart {
+    fn entry_path() -> Result<PathBuf> {
+        Ok(config_home()?.join("autostart").join("rexenv.desktop"))
     }
 }
+impl AutostartManager for LinuxAutostart {
+    fn enable(&self) -> Result<()> {
+        let entry = Self::entry_path()?;
+        if let Some(parent) = entry.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&entry, desktop::autostart_contents(&installed_exe()?, crate::HIDDEN_LAUNCH_FLAG))?;
+        Ok(())
+    }
+    fn disable(&self) -> Result<()> {
+        let entry = Self::entry_path()?;
+        if entry.exists() {
+            std::fs::remove_file(&entry)?;
+        }
+        Ok(())
+    }
+    fn is_enabled(&self) -> Result<bool> {
+        Ok(Self::entry_path()?.exists())
+    }
+    /// Re-point an installed launch; keep a development launch's entry on the recorded
+    /// binary while that binary exists (the macOS "not an .app bundle" rule).
+    fn refresh(&self) -> Result<()> {
+        let entry = Self::entry_path()?;
+        let program = installed_exe()?;
+        let want = desktop::autostart_contents(&program, crate::HIDDEN_LAUNCH_FLAG);
+        let have = std::fs::read_to_string(&entry).unwrap_or_default();
+        if have == want {
+            return Ok(());
+        }
+        let installed = program.starts_with("/usr") || program.starts_with("/opt") || std::env::var_os("APPIMAGE").is_some();
+        if !installed {
+            if let Some(recorded) = desktop::autostart_program(&have).filter(|p| p.exists()) {
+                log::info!("autostart: this launch is {} (a development build) — keeping the entry on {}", program.display(), recorded.display());
+                return Ok(());
+            }
+        }
+        self.enable()
+    }
+}
+
+// ── The DNS agent: a systemd USER unit ──────────────────────────────────────
+
+pub struct LinuxDnsAgent;
+impl LinuxDnsAgent {
+    fn systemctl_user(args: &[&str]) -> Result<()> {
+        let st = crate::platform::command("systemctl").arg("--user").args(args).status()?;
+        if st.success() {
+            Ok(())
+        } else {
+            Err(Error::Other(format!("systemctl --user {} failed (exit {:?})", args.join(" "), st.code())))
+        }
+    }
+}
+impl DnsAgentManager for LinuxDnsAgent {
+    fn is_installed(&self) -> bool {
+        self.definition_path().map(|p| p.exists()).unwrap_or(false)
+    }
+    fn definition_path(&self) -> Result<PathBuf> {
+        Ok(config_home()?.join("systemd/user").join(units::DNS_UNIT))
+    }
+    fn definition_contents(&self, exe: &Path, log: &Path) -> String {
+        units::dns_unit_contents(exe, log)
+    }
+    fn install(&self, exe: &Path, log: &Path) -> Result<()> {
+        let unit = self.definition_path()?;
+        if let Some(parent) = unit.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        // The exe the app was started from, unless that is an AppImage's mount.
+        let exe = if std::env::var_os("APPIMAGE").is_some() { installed_exe()? } else { exe.to_path_buf() };
+        let contents = self.definition_contents(&exe, log);
+        let unchanged = std::fs::read_to_string(&unit).map(|c| c == contents).unwrap_or(false);
+        std::fs::write(&unit, &contents)?;
+        Self::systemctl_user(&["daemon-reload"])?;
+        if unchanged {
+            // Already defined; make sure it is up (a fresh login, a stopped unit).
+            return Self::systemctl_user(&["enable", "--now", units::DNS_UNIT]);
+        }
+        Self::systemctl_user(&["enable", units::DNS_UNIT])?;
+        Self::systemctl_user(&["restart", units::DNS_UNIT])
+    }
+    fn kickstart(&self) -> Result<()> {
+        Self::systemctl_user(&["restart", units::DNS_UNIT])
+            .or_else(|_| Self::systemctl_user(&["enable", "--now", units::DNS_UNIT]))
+    }
+    fn uninstall(&self) -> Result<()> {
+        let unit = self.definition_path()?;
+        if unit.exists() {
+            let _ = Self::systemctl_user(&["disable", "--now", units::DNS_UNIT]);
+            std::fs::remove_file(&unit)?;
+            let _ = Self::systemctl_user(&["daemon-reload"]);
+        }
+        Ok(())
+    }
+}
+
+// ── The edge: a systemd SYSTEM unit ─────────────────────────────────────────
+
+pub struct LinuxEdge;
+impl EdgeSupervisor for LinuxEdge {
+    fn plist_path(&self) -> PathBuf {
+        units::edge_unit_path()
+    }
+    fn wrapper_path(&self) -> PathBuf {
+        units::edge_wrapper_path()
+    }
+    fn daemon_binary_path(&self) -> PathBuf {
+        units::edge_binary_path()
+    }
+    fn is_installed(&self) -> bool {
+        self.plist_path().exists()
+    }
+    /// `systemctl is-enabled` is readable without privilege; anything but a plain `disabled`
+    /// counts as enabled (a wrong "disabled" diagnosis would mislead more than a generic one).
+    fn is_enabled(&self) -> bool {
+        match crate::platform::command("systemctl").args(["is-enabled", units::EDGE_UNIT]).output() {
+            Ok(o) => String::from_utf8_lossy(&o.stdout).trim() != "disabled",
+            Err(_) => true,
+        }
+    }
+    fn plist_contents(&self, wrapper: &Path, start_log: &Path) -> String {
+        units::edge_unit_contents(wrapper, start_log)
+    }
+    fn wrapper_contents(&self, caddy_bin: &Path, caddyfile: &Path, admin_sock: &Path, appdata: &Path) -> String {
+        units::edge_wrapper_contents(caddy_bin, caddyfile, admin_sock, appdata)
+    }
+    fn install_command(&self, src_caddy: &Path, staged_wrapper: &Path, staged_plist: &Path) -> String {
+        units::edge_install_command(src_caddy, staged_wrapper, staged_plist)
+    }
+    fn start_command(&self) -> String {
+        units::edge_start_command()
+    }
+    fn stop_command(&self) -> String {
+        units::edge_stop_command()
+    }
+    fn uninstall_command(&self) -> String {
+        units::edge_uninstall_command()
+    }
+}
+
+// ── Permissions ─────────────────────────────────────────────────────────────
 
 pub struct LinuxPermissions;
 impl PermissionManager for LinuxPermissions {
-    fn set_executable(&self, _path: &Path) -> Result<()> {
-        todo!("linux chmod")
+    fn set_executable(&self, path: &Path) -> Result<()> {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(path)?.permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(path, perms)?;
+        Ok(())
     }
-    fn set_private(&self, _path: &Path) -> Result<()> {
-        todo!("linux chmod 0600")
+    fn set_private(&self, path: &Path) -> Result<()> {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(path)?.permissions();
+        perms.set_mode(0o600);
+        std::fs::set_permissions(path, perms)?;
+        Ok(())
     }
-    fn write_private(&self, _path: &Path, _contents: &[u8]) -> Result<()> {
-        todo!("linux owner-only create (OpenOptions mode 0600)")
+    fn write_private(&self, path: &Path, contents: &[u8]) -> Result<()> {
+        use std::io::Write;
+        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+        let mut f = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(path)?;
+        let mut perms = f.metadata()?.permissions();
+        if perms.mode() & 0o777 != 0o600 {
+            perms.set_mode(0o600);
+            f.set_permissions(perms)?;
+        }
+        f.write_all(contents)?;
+        Ok(())
     }
 }
+
+// ── Shell and the desktop's apps ────────────────────────────────────────────
 
 pub struct LinuxShell;
-impl ShellRunner for LinuxShell {
-    fn interactive_shell(&self) -> String {
-        todo!()
-    }
 
-    fn run(&self, _command: &str, _args: &[String]) -> Result<String> {
-        todo!("linux shell runner")
+impl LinuxShell {
+    fn installed(app: &desktop::DesktopApp) -> Option<PathBuf> {
+        app.bins.iter().find_map(|b| which(b))
     }
-    fn open(&self, _target: &str) -> Result<()> {
-        todo!("linux shell open")
-    }
-    fn reveal(&self, _path: &str) -> Result<()> {
-        todo!("linux shell reveal")
+    fn default_browser_id() -> Option<&'static str> {
+        let out = crate::platform::command("xdg-settings").args(["get", "default-web-browser"]).output().ok()?;
+        desktop::browser_for_desktop_id(&String::from_utf8_lossy(&out.stdout)).map(|b| b.id)
     }
 }
+
+impl ShellRunner for LinuxShell {
+    fn interactive_shell(&self) -> String {
+        std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string())
+    }
+    fn run(&self, command: &str, args: &[String]) -> Result<String> {
+        run_ok(command, args)
+    }
+    fn open(&self, target: &str) -> Result<()> {
+        let xdg = which("xdg-open").ok_or_else(|| Error::Other("xdg-open is not installed (xdg-utils)".into()))?;
+        spawn_detached(&xdg, &[target.to_string()])
+    }
+    /// The file manager's own D-Bus interface selects the item; a desktop without it gets the
+    /// containing folder opened, which is honest about what happened (nothing is selected).
+    fn reveal(&self, path: &str) -> Result<()> {
+        if let Some(dbus) = which("dbus-send") {
+            let uri = format!("file://{path}");
+            let ok = crate::platform::command(dbus)
+                .args([
+                    "--session",
+                    "--print-reply",
+                    "--dest=org.freedesktop.FileManager1",
+                    "/org/freedesktop/FileManager1",
+                    "org.freedesktop.FileManager1.ShowItems",
+                    &format!("array:string:{uri}"),
+                    "string:",
+                ])
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false);
+            if ok {
+                return Ok(());
+            }
+        }
+        let parent = Path::new(path).parent().map(|p| p.display().to_string()).unwrap_or_else(|| path.to_string());
+        self.open(&parent)
+    }
+    fn detect_editors(&self) -> Vec<EditorApp> {
+        desktop::EDITORS
+            .iter()
+            .filter(|a| Self::installed(a).is_some())
+            .map(|a| EditorApp { id: a.id.into(), name: a.name.into(), icon: None })
+            .collect()
+    }
+    fn open_in_editor(&self, editor_id: &str, path: &str) -> Result<()> {
+        let app = desktop::EDITORS.iter().find(|a| a.id == editor_id).ok_or_else(|| Error::Other(format!("unknown editor: {editor_id}")))?;
+        let bin = Self::installed(app).ok_or_else(|| Error::Other(format!("{} is not installed anymore", app.name)))?;
+        spawn_detached(&bin, &[path.to_string()])
+    }
+    fn detect_browsers(&self) -> Vec<BrowserApp> {
+        let default = Self::default_browser_id();
+        desktop::BROWSERS
+            .iter()
+            .filter(|a| Self::installed(a).is_some())
+            .map(|a| BrowserApp {
+                id: a.id.into(),
+                name: a.name.into(),
+                icon: None,
+                system_default: default == Some(a.id),
+                supports_private: a.private_flag.is_some(),
+            })
+            .collect()
+    }
+    fn open_in_browser(&self, browser_id: &str, url: &str, private: bool) -> Result<()> {
+        if !(url.starts_with("http://") || url.starts_with("https://")) {
+            return Err(Error::Other(format!(
+                "refusing to open {url} in a browser — only http:// and https:// URLs go to a chosen browser (paths go to the system handler)"
+            )));
+        }
+        let app = desktop::BROWSERS.iter().find(|a| a.id == browser_id).ok_or_else(|| Error::Other(format!("unknown browser: {browser_id}")))?;
+        let bin = Self::installed(app).ok_or_else(|| Error::Other(format!("{} is not installed anymore", app.name)))?;
+        let mut args = Vec::new();
+        if private {
+            let flag = app.private_flag.ok_or_else(|| {
+                Error::Other(format!(
+                    "{} has no private-window command line — rexenv only offers private mode for browsers it can actually open one in",
+                    app.name
+                ))
+            })?;
+            args.push(flag.to_string());
+        }
+        args.push(url.to_string());
+        spawn_detached(&bin, &args)
+    }
+    fn detect_terminals(&self) -> Vec<TerminalApp> {
+        desktop::TERMINALS
+            .iter()
+            .filter(|t| t.bins.iter().any(|b| which(b).is_some()))
+            .map(|t| TerminalApp { id: t.id.into(), name: t.name.into(), icon: None })
+            .collect()
+    }
+    fn open_in_terminal(&self, terminal_id: &str, path: &Path) -> Result<()> {
+        if !path.is_dir() {
+            return Err(Error::Other(format!(
+                "refusing to open a terminal at {} — only an existing directory is a working directory (a terminal handed a file would run it)",
+                path.display()
+            )));
+        }
+        let dir = path.to_str().ok_or_else(|| Error::Other(format!("path is not valid UTF-8: {}", path.display())))?;
+        let term = desktop::TERMINALS.iter().find(|t| t.id == terminal_id).ok_or_else(|| Error::Other(format!("unknown terminal: {terminal_id}")))?;
+        let bin = term.bins.iter().find_map(|b| which(b)).ok_or_else(|| Error::Other(format!("{} is not installed anymore", term.name)))?;
+        spawn_detached(&bin, &desktop::terminal_args(term.cwd, dir))
+    }
+    fn login_shell_env(&self) -> Result<Vec<(String, String)>> {
+        use std::io::Read;
+        use std::process::Stdio;
+        let shell = self.interactive_shell();
+        let cmd = format!("printf '\\0{}\\0'; command env -0", ENV_MARKER);
+        let mut child = crate::platform::command(&shell)
+            .args(["-ilc", &cmd])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()?;
+        let mut stdout = child.stdout.take().expect("stdout piped above");
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            let _ = stdout.read_to_end(&mut buf);
+            let _ = tx.send(buf);
+        });
+        let raw = match rx.recv_timeout(Duration::from_secs(10)) {
+            Ok(buf) => buf,
+            Err(_) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(Error::Other(format!(
+                    "your shell ({shell}) took more than 10s to start — a slow startup file? Fix the shell startup, then hit Re-detect."
+                )));
+            }
+        };
+        let _ = child.wait();
+        let env = parse_shell_env_output(&raw);
+        if env.iter().any(|(k, _)| k == "PATH") {
+            Ok(env)
+        } else {
+            Err(Error::Other(format!(
+                "couldn't read your shell environment ({shell} printed no PATH). Check the shell's startup files, then hit Re-detect."
+            )))
+        }
+    }
+    fn symlink_dir(&self, target: &Path, link: &Path) -> Result<()> {
+        std::os::unix::fs::symlink(target, link)?;
+        Ok(())
+    }
+    fn symlink_file(&self, target: &Path, link: &Path) -> Result<()> {
+        std::os::unix::fs::symlink(target, link)?;
+        Ok(())
+    }
+    fn remove_symlink(&self, link: &Path) -> Result<()> {
+        let meta = std::fs::symlink_metadata(link)?;
+        if !meta.file_type().is_symlink() {
+            return Err(Error::Other(format!("{} is not a symlink — refusing to remove it here", link.display())));
+        }
+        std::fs::remove_file(link)?;
+        Ok(())
+    }
+}
+
+// ── Binaries ────────────────────────────────────────────────────────────────
 
 pub struct LinuxBinaryProvider;
 impl BinaryProvider for LinuxBinaryProvider {
@@ -141,125 +839,66 @@ impl BinaryProvider for LinuxBinaryProvider {
             Arch::X86_64
         }
     }
-    fn prepare_binary(&self, _path: &Path) -> Result<()> {
-        todo!("linux binary prepare (chmod handled via PermissionManager)")
+    /// No quarantine, no signature: an executable bit is the whole preparation. Every single
+    /// binary rexenv pins for Linux is static (static-php, Caddy, Mailpit, cloudflared, the
+    /// jirutka nginx) or carries its own `RUNPATH` (theseus PostgreSQL).
+    fn prepare_binary(&self, path: &Path) -> Result<()> {
+        LinuxPermissions.set_executable(path)
     }
+    /// Homebrew-bottle trees (Redis, MariaDB, httpd, Xdebug) are not in Linux v1 (D-L8):
+    /// `ships_on` refuses them before a download, so this is reached by no path today.
     fn prepare_binary_tree(&self, _root: &Path) -> Result<()> {
-        todo!("linux bundle-tree prepare (patchelf RUNPATH $ORIGIN relink)")
+        Err(Error::Unported("linux bundle trees (patchelf relink)"))
     }
 }
 
-pub struct LinuxEdge;
-impl EdgeSupervisor for LinuxEdge {
-    fn is_installed(&self) -> bool {
-        todo!("linux edge supervisor (systemd unit Restart=always)")
-    }
-    fn is_enabled(&self) -> bool {
-        todo!("linux edge supervisor")
-    }
-    fn plist_path(&self) -> PathBuf {
-        todo!("linux edge supervisor")
-    }
-    fn wrapper_path(&self) -> PathBuf {
-        todo!("linux edge supervisor")
-    }
-    fn daemon_binary_path(&self) -> PathBuf {
-        todo!("linux edge supervisor")
-    }
-    fn plist_contents(&self, _wrapper: &Path, _start_log: &Path) -> String {
-        todo!("linux edge supervisor")
-    }
-    fn wrapper_contents(
-        &self,
-        _caddy_bin: &Path,
-        _caddyfile: &Path,
-        _admin_sock: &Path,
-        _appdata: &Path,
-    ) -> String {
-        todo!("linux edge supervisor")
-    }
-    fn install_command(
-        &self,
-        _src_caddy: &Path,
-        _staged_wrapper: &Path,
-        _staged_plist: &Path,
-    ) -> String {
-        todo!("linux edge supervisor")
-    }
-    fn start_command(&self) -> String {
-        todo!("linux edge supervisor")
-    }
-    fn stop_command(&self) -> String {
-        todo!("linux edge supervisor")
-    }
-    fn uninstall_command(&self) -> String {
-        todo!("linux edge supervisor")
-    }
-}
+// ── The app bundle: no in-app update on Linux (D-L7) ────────────────────────
 
-pub struct LinuxDnsAgent;
-impl DnsAgentManager for LinuxDnsAgent {
-    fn is_installed(&self) -> bool {
-        todo!("linux dns agent")
-    }
-    fn definition_path(&self) -> Result<PathBuf> {
-        todo!("linux dns agent")
-    }
-    fn definition_contents(&self, _exe: &Path, _log: &Path) -> String {
-        todo!("linux dns agent")
-    }
-    fn install(&self, _exe: &Path, _log: &Path) -> Result<()> {
-        todo!("linux dns agent")
-    }
-    fn kickstart(&self) -> Result<()> {
-        todo!("linux dns agent")
-    }
-    fn uninstall(&self) -> Result<()> {
-        todo!("linux dns agent")
-    }
-}
 pub struct LinuxAppBundle;
 impl AppBundle for LinuxAppBundle {
-    fn facts(&self, _exe: &Path) -> Result<BundleFacts> {
-        todo!("linux app bundle facts — self-update is macOS-only today")
+    /// Facts, honestly: a `target/` binary is a dev build; anything else is `Elsewhere`, which
+    /// `core::app_update::preflight` turns into the "install the new package" refusal
+    /// (`words::LINUX.reinstall_to_home`). No Linux install is replaceable in place yet.
+    fn facts(&self, exe: &Path) -> Result<BundleFacts> {
+        let bundle = installed_exe().unwrap_or_else(|_| exe.to_path_buf());
+        let parent = bundle.parent().map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("/"));
+        let kind = if bundle.components().any(|c| c.as_os_str() == "target") { InstallKind::DevBuild } else { InstallKind::Elsewhere };
+        Ok(BundleFacts {
+            bundle,
+            parent,
+            kind,
+            homebrew: false,
+            parent_writable: false,
+            owned_by_me: false,
+            read_only: false,
+            canonical: std::fs::canonicalize(exe).map(|c| c == exe).unwrap_or(false),
+            free_parent_bytes: 0,
+        })
     }
-    fn stage(
-        &self,
-        _facts: &BundleFacts,
-        _archive: &Path,
-        _expect: &StagedExpect,
-    ) -> Result<StagedBundle> {
-        todo!("linux stage a replacement bundle")
+    fn stage(&self, _facts: &BundleFacts, _archive: &Path, _expect: &StagedExpect) -> Result<StagedBundle> {
+        Err(Error::Unported("linux in-app update"))
     }
-    fn swap(
-        &self,
-        _installed: &Path,
-        _staged: &StagedBundle,
-    ) -> std::result::Result<SwapReceipt, SwapFailure> {
-        todo!("linux swap the bundle")
+    fn swap(&self, _installed: &Path, _staged: &StagedBundle) -> std::result::Result<SwapReceipt, SwapFailure> {
+        Err(SwapFailure::Unsupported)
     }
     fn spawn_relauncher(&self, _bundle: &Path) -> Result<()> {
-        todo!("linux relauncher")
+        Err(Error::Unported("linux relauncher"))
     }
-    fn sweep_leftovers(
-        &self,
-        _parent: &Path,
-        _my_version: &str,
-        _delete_previous: bool,
-    ) -> Result<Vec<Leftover>> {
-        todo!("linux sweep update leftovers")
+    fn sweep_leftovers(&self, _parent: &Path, _my_version: &str, _delete_previous: bool) -> Result<Vec<Leftover>> {
+        Ok(Vec::new())
     }
 }
+
+/// Local IPC on Linux: a unix-domain socket, exactly as macOS.
 pub struct LinuxLocalIpc;
 impl LocalIpc for LinuxLocalIpc {
-    fn connect(
-        &self,
-        _path: &Path,
-        _read_timeout: Option<std::time::Duration>,
-    ) -> std::io::Result<Box<dyn std::io::Read + Send>> {
-        todo!("linux local IPC — a unix-domain socket, as on macOS")
+    fn connect(&self, path: &Path, read_timeout: Option<Duration>) -> std::io::Result<Box<dyn std::io::Read + Send>> {
+        let stream = std::os::unix::net::UnixStream::connect(path)?;
+        let _ = stream.set_read_timeout(read_timeout);
+        Ok(Box::new(stream))
     }
 }
+
 pub struct LinuxPlatform {
     paths: LinuxPaths,
     dns: LinuxDns,

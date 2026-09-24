@@ -1166,6 +1166,24 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     Plant-proven (ledger #685): `cargo xwin check` with no placeholder prints
     `no rex sidecar for x86_64-pc-windows-msvc …` and skips `build-cli.sh`
 
+- [ ] **Linux launch** — 24 Sep 2026, owner: "ami chai ekhon rexenv er linux version o build
+  korte … at least Ubuntu". Reasoning, measurements, the decisions D-L1–D-L10 (defaults
+  assumed overnight, owner rules in the morning) and "Done when" per task:
+  `docs/PLAN-linux-port.md`. Windows's W1/W2/W6 did the groundwork, so this IS "fill the stubs".
+  - [x] L0 `scripts/linux-check.sh` in `verify.sh` ✓ 24 Sep 2026 — Ubuntu 22.04 container
+    (ledger #719); first run RED on 4 dead-code sites, green with L1
+  - [x] L1 `platform/linux/` filled ✓ 24 Sep 2026 — no `todo!()` (ledger #716); DNS = resolved
+    drop-in (#717, **P1 unmeasured**), edge = systemd system unit (#718), DNS agent = user unit,
+    `pkexec`, `/proc`+`ss`, NSS + system CA trust, XDG autostart, `words::LINUX`
+  - [ ] L2 Linux arms in the binary catalog (both archs; MySQL is `.tar.xz` → an xz reader; PHP
+    7.4 has no static Linux build — not in v1; nginx from jirutka's static builds until
+    `rexenv/runtimes` publishes a Linux one)
+  - [ ] L3 build plumbing: `build-cli.sh` Linux arm, `bundle.linux` (deb depends), `release-linux.sh`
+  - [ ] L4 the app shell on Linux (tray, tunnel guard, `activate_app`)
+  - [ ] L5 docs: SMOKE-TEST Linux section, INSTALL, RELEASING, PORTS Linux table
+  - [ ] L6 the VM run (owner, D-L9 — blocked on disk: 7.8 GB free) — P1 FIRST
+  - [ ] L7 `manifest-linux.json`, the download page
+
 - [ ] **The keychain (CA trust) dialog is rexenv's too** — 12 Sep 2026, owner, after the admin
   dialog got its name: the CA trust dialog still read "security". Measured first: wrapping
   `security` in the rexenv applet does NOT change the title; calling the trust API
@@ -1816,9 +1834,10 @@ the first and exits) — its box stayed `[ ]` under a struck-through title, tick
 
 ## Phase 4+ (next era)
 
-- [ ] Linux platform impls — `platform/linux/mod.rs`. Windows moved to *Now* as
-  "Windows launch" on 12 Sep 2026; its W1/W2 (traits for the Unix-only leaks, the
-  `(os, arch)` binary catalog) are most of Linux's groundwork too.
+- [x] Linux platform impls — `platform/linux/mod.rs` ✓ moved to *Now* as "Linux launch" on
+  24 Sep 2026 (`docs/PLAN-linux-port.md`); the stubs are filled (ledger #716). Windows's
+  W1/W2 (traits for the Unix-only leaks, the `(os, arch)` binary catalog) were most of
+  Linux's groundwork, as this row predicted.
 - [ ] Public distribution (the open-sourcing half of the old "packaging polish" row).
   **The updater half moved out of Phase 4+ on 6 Sep 2026** — it is the "In-app
   self-update" row under *Now*, planned in `docs/archive/PLAN-self-update.md`, and it does

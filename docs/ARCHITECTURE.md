@@ -8,7 +8,8 @@ rexenv = native, no-Docker local dev environment for web/WordPress developers.
 Tauri 2 desktop app: Rust backend + React/TS frontend. Runs the whole stack — edge
 proxy, shared web server, multi-version PHP, databases, one-click WordPress, local-TLD
 DNS (`.rex` backbone, configurable) + auto-HTTPS, mail catching, tunnels — from one UI. macOS complete; Windows
-in progress (unfilled stubs fail as `Error::Unported`); Linux `todo!()` stubs.
+shipping; Linux in progress since 24 Sep 2026 (`docs/PLAN-linux-port.md` — the impls are
+real, unmeasured on any Linux machine; the two unported pieces fail as `Error::Unported`).
 
 ## 1. Layering (non-negotiable)
 

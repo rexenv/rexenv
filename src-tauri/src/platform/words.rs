@@ -185,6 +185,43 @@ pub const WINDOWS: PlatformWords = PlatformWords {
     searching_browsers: "Chrome and Edge",
 };
 
+/// Ubuntu first (docs/PLAN-linux-port.md L3): GNOME's file manager is "Files" (Nautilus), tools
+/// come from apt, the privilege prompt is polkit's, and the trust store is two stores (D-L3).
+pub const LINUX: PlatformWords = PlatformWords {
+    reveal: "Show in Files",
+    file_manager: "Files",
+    login_item: "rexenv launches when you sign in (an autostart entry in ~/.config/autostart).",
+    git_install: "On Ubuntu install it with apt, then hit Re-detect:\n$ sudo apt install git",
+    node_install: "$ sudo apt install nodejs npm",
+    bun_install: "$ curl -fsSL https://bun.sh/install | bash",
+    native_build: "That needs a C/C++ toolchain and Python — install them, then retry:\n$ sudo apt install build-essential python3",
+    cli_install: "Put the rex command on your PATH to manage rexenv from the terminal. One administrator prompt.",
+    cli_stale: "points elsewhere (an old copy or another tool) — reinstall to point it at this app.",
+    cli_installed: "rex installed — run it from any terminal",
+    trust_store: "browser (NSS) and system trust stores",
+    privileged_prompt: "asks for your password once",
+    os_name: "Linux",
+    ca_target: "this computer",
+    elevation_note: "the system will also ask for your password",
+    host: "this computer",
+    tray_home: "system tray",
+    app_search: "the commands on your PATH (apt, snap and JetBrains Toolbox installs)",
+    routes_label: "drop-in under /etc/systemd/resolved.conf.d",
+    home_prefix: "~",
+    import_search: "Valet's, Herd's and Local's own folders",
+    imports_other_tools: false,
+    window_controls_in_content: false,
+    pool_kind: "php-fpm pool",
+    bundled_tools: "nginx, PHP, MySQL, PostgreSQL, Mailpit, Adminer & cloudflared",
+    path_sep: "/",
+    db_browser_origin: "rexdb://localhost",
+    reinstall_to_home: "Install the new release with your package manager (sudo apt install ./rexenv_<version>_amd64.deb), then open it from there.",
+    take_ownership: "sudo chown -R \"$USER\"",
+    update_replaces: "rexenv's program files",
+    update_reprompt: "",
+    searching_browsers: "Chrome and Firefox",
+};
+
 impl PlatformWords {
     /// The sentence a feature shows when this host's OS is older than the newest build of it
     /// loads on — `docs/PLAN-macos-13-floor.md` §6.3. ONE sentence for every surface (the PHP
@@ -246,7 +283,11 @@ pub fn current() -> &'static PlatformWords {
     {
         &WINDOWS
     }
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "linux")]
+    {
+        &LINUX
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
     {
         &MACOS
     }
@@ -405,6 +446,26 @@ mod tests {
         assert_eq!(WINDOWS.home_prefix, "%USERPROFILE%");
         assert!(!WINDOWS.import_search.contains('~'), "{}", WINDOWS.import_search);
         assert!(!WINDOWS.searching_browsers.contains("Safari"), "Safari does not run on Windows: {}", WINDOWS.searching_browsers);
+    }
+
+    /// The Linux words name no macOS or Windows thing (docs/PLAN-linux-port.md L3): before the
+    /// `LINUX` set existed, `current()` answered macOS's words for every non-Windows build, so an
+    /// Ubuntu screen would have told the user to open Finder and run `xcode-select --install`.
+    #[test]
+    fn linux_words_name_no_macos_or_windows_thing() {
+        for word in fields(&LINUX) {
+            for foreign in ["Finder", "Mac", "macOS", "Xcode", "xcode", "brew", "Explorer", "winget", "%", "NRPT"] {
+                assert!(!word.contains(foreign), "Linux word {word:?} names {foreign:?}");
+            }
+        }
+        assert_eq!(LINUX.os_name, "Linux");
+        assert!(LINUX.git_install.contains("apt install git"), "{}", LINUX.git_install);
+        assert!(LINUX.routes_label.contains("resolved.conf.d"), "{}", LINUX.routes_label);
+        assert_eq!(LINUX.db_browser_origin, MACOS.db_browser_origin, "webkitgtk serves custom schemes as scheme://localhost, as WebKit does");
+        assert!(LINUX.reinstall_to_home.contains(".deb"), "no in-app update on Linux yet (D-L7): {}", LINUX.reinstall_to_home);
+        let (imports, controls) = (LINUX.imports_other_tools, LINUX.window_controls_in_content);
+        assert!(!imports, "Valet/Herd/Local layouts on Linux are not known yet");
+        assert!(!controls, "GTK draws its own title bar");
     }
 
     /// Ledger #641 — rexenv looks for the other tools' sites only where it knows their layout. Scanning a
