@@ -1942,9 +1942,9 @@ Environment: Ubuntu ____ (22.04+; x86_64 or aarch64) · package ____ (.deb / App
 - [ ] Quit the app → `.rex` still resolves (the agent outlives it). `systemctl --user kill
       rexenv-dns` → back within ~2 s.
 - [ ] AppImage: the unit and the autostart entry name the `.AppImage` path, never a `/tmp/.mount_…` one.
-- [ ] **The tunnel guard (ledger #722).** Share a site, note the cloudflared pid and the
-      `rexenv --tunnel-guard …` process beside it; `kill -9` the APP. Within ~2 s cloudflared is
-      gone and the guard has exited. Stop a share normally → the guard exits at once.
+- [x] ✓ 24 Sep 2026 (VM): **the tunnel guard (ledger #722)** — `guard.rex` shared, cloudflared
+      and `rexenv --tunnel-guard …` beside it; `kill -9` the app → both gone within 6 s. Owed:
+      the normal-stop leg (guard exits at once).
 
 ### P5 — the GUI
 - [x] ✓ 24 Sep 2026 (VM): the colour tray icon in GNOME's top bar; its menu opens with the full

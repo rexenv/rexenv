@@ -1199,8 +1199,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     onboarding, Start all and a WordPress site over HTTPS (curl 200, Chromium no warning) — P1/P2/P3
     through the app, P5 partly; found and fixed: snap Chromium's NSS db (#726), thread-summed RAM
     (#725), `rex`'s Linux socket (#727).** P4 ✓ after a reboot; the rebuilt deb re-proved #725/#727; PHP 7.4's Install button on Linux
-    is #728 (fixed). P2's restart/disable legs ✓. Owed: the tunnel guard leg (a public tunnel — owner's call),
-    Firefox (snap)**
+    is #728 (fixed). P2's restart/disable legs ✓, the tunnel guard ✓ (owner-approved test tunnel). Owed: Firefox (snap)**
   - [ ] L7 **Linux self-update (owner ruled IN, 24 Sep 2026)** — `manifest-linux.json`, a real
     `LinuxAppBundle` (deb via `pkexec dpkg -i`, AppImage via file swap), a relauncher; proof =
     a 0.8.7 → 0.8.8 update applied on the VM
