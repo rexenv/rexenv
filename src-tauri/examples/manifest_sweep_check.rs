@@ -147,11 +147,30 @@ async fn main() -> ExitCode {
     for v in binaries::pins().postgres_versions {
         push_single(&mut targets, "windows", "postgres", v, Arch::X86_64);
     }
+    // Linux (port L2): both archs, every upstream publishes aarch64. PHP 7.4 has no static
+    // Linux build to pin (D-L8), so it is filtered here — `push_single` panics on a missing arm.
+    for arch in [Arch::X86_64, Arch::Arm64] {
+        push_single(&mut targets, "linux", "caddy", binaries::pins().caddy, arch);
+        push_single(&mut targets, "linux", "nginx", binaries::pins().nginx, arch);
+        push_single(&mut targets, "linux", "mailpit", binaries::pins().mailpit, arch);
+        push_single(&mut targets, "linux", "cloudflared", binaries::pins().cloudflared, arch);
+        push_single(&mut targets, "linux", "frankenphp", binaries::pins().frankenphp, arch);
+        for v in binaries::pins().php_versions.iter().filter(|v| !v.starts_with("7.4")) {
+            push_single(&mut targets, "linux", "php", v, arch);
+            push_single(&mut targets, "linux", "php-fpm", v, arch);
+        }
+        for v in binaries::pins().mysql_versions {
+            push_single(&mut targets, "linux", "mysql", v, arch);
+        }
+        for v in binaries::pins().postgres_versions {
+            push_single(&mut targets, "linux", "postgres", v, arch);
+        }
+    }
     // The count floor is the drift alarm for the LIST itself: pins only ever
     // grow, so a shrink means an enumeration line was lost, not a pin.
     checks.is(
-        &format!("enumeration floor ({} targets ≥ 86)", targets.len()),
-        targets.len() >= 86,
+        &format!("enumeration floor ({} targets ≥ 130)", targets.len()),
+        targets.len() >= 130,
         "the sweep's list shrank — an enumeration line was lost",
     );
 

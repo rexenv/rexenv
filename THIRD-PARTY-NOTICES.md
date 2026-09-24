@@ -21,6 +21,17 @@ The Windows app binary links a different Rust graph (the `windows-*` and `webvie
 families in place of `objc2`) and has its own table below, read by the SAME walk as the macOS
 one — two graphs built by two rules is how this file drifted before.
 
+**Linux (port in progress, 24 Sep 2026 — no Linux build has shipped).** The Linux build
+downloads from distributors too: PHP from static-php.dev's Linux tarballs, nginx from
+jirutka's static builds, MySQL from Oracle's `linux-glibc2.28` tarballs, PostgreSQL from
+theseus-rs's `unknown-linux-gnu` builds, and Caddy, FrankenPHP, Mailpit and cloudflared from
+their GitHub releases (`docs/PORTS.md`, Linux table). The Linux app binary links one crate
+family the other two do not: `xz2` 0.1.7 (MIT OR Apache-2.0) over `lzma-sys` 0.1.20 (MIT OR
+Apache-2.0, which builds liblzma — public domain — from source), for MySQL's `.tar.xz`. They
+are NOT rows in the tables below yet: `scripts/notices-check.py` walks the macOS and Windows
+graphs only, and a row no walked graph contains would fail its reconcile. Teaching it a Linux
+graph is an L5 item in `docs/PLAN-linux-port.md`; until then this paragraph is the record.
+
 **Two exceptions, and each is a real change to the sentence above.** They are
 listed separately because they arrived for different reasons and carry different
 obligations.

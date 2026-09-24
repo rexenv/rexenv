@@ -44,9 +44,31 @@ what is left, measured against the tree, so the morning starts from facts.
   platform impls; it has no systemd, no polkit, no desktop and no browser — so DNS routing, the
   edge unit, CA trust, autostart and every GUI claim need an Ubuntu VM (§7).
 
-### 1.1 OS branches outside `platform/`
+### 1.1 OS branches outside `platform/` (grep inventory, 24 Sep 2026)
 
-Filled from the inventory run 24 Sep 2026 (see the L3/L4 task notes for what each got).
+Every `cfg(target_os)`, `cfg(unix)`, `cfg(windows)` and `consts::OS` read outside `platform/`,
+and what a Linux build gets from it. (a) = compiles and behaves right as-is; (b) = compiles,
+Linux needs its own answer; nothing is (c) — `linux-check` was green on the first run.
+
+| Where | Branch | Linux |
+|---|---|---|
+| `main.rs:33` tunnel guard entry (`cfg(macos)`) | macOS-only kqueue watcher | (b) no guard process on Linux — `guard_child_against_our_death` answers `Unsupported`, the share logs "WITHOUT a parent-death guard" and the other two legs (exit hook, launch sweep) hold. A `prctl(PR_SET_PDEATHSIG)` at spawn would be the Linux shape — a TODO, not v1 |
+| `main.rs:44` relauncher (`cfg(any(macos, windows))`) | self-update relaunch | (a) D-L7: no in-app update, nothing to relaunch |
+| `lib.rs:31/37` CLI socket claim (`cfg(unix)`/`cfg(windows)`) | unix socket vs named pipe | (a) the unix arm |
+| `lib.rs:70, 170, 284, 294` dock/activation policy (`cfg(macos)`) | Accessory vs Regular | (a) no dock concept; the tray is the way back |
+| `lib.rs:267` About menu item (`cfg(macos)`) | edits the app menu | (a) GTK has no app menu; the tray's About raises the same event |
+| `lib.rs:306` WebView2 accelerator keys (`cfg(windows)`) | Ctrl+R reload | (a) webkitgtk has no browser shortcuts in an app |
+| `lib.rs:1575–1610` tray icon (`cfg(not(windows))` template / `cfg(windows)` colour) | the glyph | **(b)** the macOS template glyph is a black mark on Ubuntu's dark top bar — Linux takes the colour icon (L4) |
+| `lib.rs:2351`, `commands/tunnels.rs:407` `activate_app` (`cfg(macos)`) | bring to front | (a) Wayland forbids it anyway; the dialog is modal to the window |
+| `core/proxy.rs:132, 966` `LISTEN_PROBE_WAIT` | Windows 3 s vs 500 ms | (a) Linux refuses a loopback listen at once, like macOS |
+| `core/terminal.rs` (`consts::OS` reads) | PATH separator, wp wrapper, export line | (a) every `os == "windows"` branch falls to the unix arm |
+| `core/binaries.rs` (`consts::OS` reads) | the catalog | (b) → L2: Linux arms |
+| `core/app_update.rs:91, 612` | the descriptor name per OS | (a) D-L7: `manifest-linux.json` is L7 |
+| `core/app_info.rs:33` | the OS name for About | (a) already answers `"linux" => "Linux"` |
+| `core/sites.rs:1276` blast radius | Windows path shape | (a) unix arm |
+| `core/firefox.rs:295` | a test fixture path | (a) `cfg(unix)` |
+| `core/ports.rs:466, 673`, `confverify.rs:247, 270`, `sites.rs:4333, 5185`, `setup.rs:410` | test-only `cfg(macos)` | (a) tests skipped, never production |
+| `src/` (TSX) | — | (a) NO OS string in the frontend: every OS word comes through `usePlatformWords` (the `words.rs` frontend scan holds this) |
 
 ## 2. What Linux has that the other two do not
 
@@ -79,19 +101,26 @@ Filled from the inventory run 24 Sep 2026 (see the L3/L4 task notes for what eac
 | **D-L9** | **Test hardware.** | An Ubuntu 22.04 VM in UTM on the Mac (aarch64, ~20 GB disk — **the Mac has 7.8 GB free after tonight's cache purge, so this is blocked on disk**); the Docker image for everything that needs no systemd. | An old x86_64 laptop with Ubuntu (the Dell dual-boot?), a cloud VM. |
 | **D-L10** | **Where the Linux check runs.** | In `verify.sh`, like `windows-check`: SKIPPED (exit 3) when Docker is not running, red on a real break. Costs minutes per run while Docker is up. | `verify-full.sh` only. |
 
-## 4. Upstream availability (measured 24 Sep 2026 — filled by the probe, see L2)
+## 4. Upstream availability (measured 24 Sep 2026 — every row HEAD-probed, then hashed in full)
 
 | Binary | Linux artifact | x86_64 | aarch64 |
 |---|---|---|---|
-| Caddy 2.11.4 | `caddy_2.11.4_linux_{amd64,arm64}.tar.gz` | | |
-| PHP (7 minors) | static-php.dev `php-<v>-{cli,fpm}-linux-{x86_64,aarch64}.tar.gz` | | |
-| nginx 1.30.4 | own build (`rexenv/runtimes`) — none published yet; jirutka static builds as the interim? | | |
-| MySQL 8.4.6 / 8.0.44 | `mysql-<v>-linux-glibc2.28-{x86_64,aarch64}.tar.{xz,gz}` | | |
-| PostgreSQL 18.6.0 / 17.11.0 / 16.15.0 | theseus-rs `postgresql-<v>-{x86_64,aarch64}-unknown-linux-gnu.tar.gz` + `.sha256` | | |
-| FrankenPHP 1.12.4 | `frankenphp-linux-{x86_64,aarch64}` | | |
-| Mailpit 1.30.3 | `mailpit-linux-{amd64,arm64}.tar.gz` | | |
-| cloudflared 2026.6.1 | `cloudflared-linux-{amd64,arm64}` | | |
+| Caddy 2.11.4 | `caddy_2.11.4_linux_{amd64,arm64}.tar.gz` | ✓ 17 MB, SHA-512 matches `checksums.txt` | ✓ 16 MB, matches |
+| PHP 8.0.30–8.5.8 (cli + fpm) | static-php.dev `php-<v>-{cli,fpm}-linux-{x86_64,aarch64}.tar.gz` | ✓ all 12 (25–31 MB) | ✓ all 12 |
+| PHP 7.4.33 | — | **404** — static-php.dev never built 7.4 for Linux; rexenv's own 7.4 is macOS-only | 404 |
+| nginx 1.30.4 | `rexenv/runtimes` — none published; jirutka `nginx-1.30.4-{x86_64,aarch64}-linux` static | ✓ 7 MB (jirutka) | ✓ 6.6 MB |
+| MySQL 8.4.6 / 8.0.44 | `mysql-<v>-linux-glibc2.28-{x86_64,aarch64}.tar.xz` (`.tar.gz` **404** — xz only) | ✓ 920 / 891 MB | ✓ 909 / 878 MB |
+| PostgreSQL 18.6.0 / 17.11.0 / 16.15.0 | theseus-rs `postgresql-<v>-{x86_64,aarch64}-unknown-linux-gnu.tar.gz` + `.sha256` | ✓ 11–12 MB, all match the published `.sha256` | ✓ all match |
+| FrankenPHP 1.12.4 | `frankenphp-linux-{x86_64,aarch64}` | ✓ 170 MB | ✓ 163 MB |
+| Mailpit 1.30.3 | `mailpit-linux-{amd64,arm64}.tar.gz` | ✓ 10 MB | ✓ 9.6 MB |
+| cloudflared 2026.6.1 | `cloudflared-linux-{amd64,arm64}` | ✓ 39 MB | ✓ 37 MB |
 | WP-CLI, Composer, Adminer | OS-agnostic | ✓ | ✓ |
+
+Pinned in `core/binaries.rs` (L2, 24 Sep 2026) with `docs/PORTS.md`'s Linux table. Two
+first-download digests disagreed with the publisher's (PostgreSQL 18.6.0 aarch64 came back as
+the SHA-256 of an EMPTY stream, 17.11.0 both archs differed) — a truncated stream on the
+first pass; re-downloaded with retries, all six then matched the `.sha256`. The lesson is
+the sweep's own rule: a pin is what OUR full download hashed, never one read off a page.
 
 ## 5. Tasks
 
@@ -117,12 +146,12 @@ Each ends in something observable; each is its own commit.
   `linux/mod.rs`. *Done when:* no `todo!()` under `platform/linux/`, L0 green, and the pure
   halves (unit contents, drop-in contents, `ss` parse, `.desktop` parse) have L0 tests that run
   on the Mac.
-- **L2 — Linux arms in the catalog.** `(name, "linux", version)` arms for D-L8's set, both
-  archs, every checksum from a full download hashed on the Mac (streamed — the Mac has no disk
-  for the files), `ships_on`/`shape_of_on`/`xdebug_unavailable_reason_on` answering for Linux,
-  `manifest_sweep_check` enumerating the Linux set, `docs/PORTS.md` table. MySQL's `.tar.xz`
-  needs an xz reader (`liblzma`/`xz2` — a new crate) unless the `.tar.gz` exists; the probe
-  decides. *Done when:* L0 URL tests pass per OS and the sweep hashes every Linux artifact.
+- **L2 — Linux arms in the catalog.** ✓ **24 Sep 2026.** `(name, "linux", version)` arms for
+  D-L8's set, both archs, every checksum from a full streamed download; `ships_on` refuses the
+  bottles by the same absence Windows uses; `Archive::TarXzTree` + a Linux-only `xz2`
+  behind `platform::xz_decoder` (Oracle publishes no `.tar.gz` for Linux); PHP 7.4 has no
+  arm (§4); `manifest_sweep_check` enumerates the Linux set (floor 86 → 130) — **not yet RUN**
+  against the network after the change; `docs/PORTS.md` Linux table.
 - **L3 — Build plumbing and words.** `build-cli.sh` Linux arm (`rex-<triple>` for the host
   triple), `tauri.conf.json` `bundle.linux` (deb depends, desktop entry, AppImage), `words::LINUX`
   + three-way `current()`, `path_lookup` (UNIX already), the TSX platform reads from §1.1,

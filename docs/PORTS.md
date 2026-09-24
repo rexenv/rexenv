@@ -98,6 +98,33 @@ zip — D1), FrankenPHP, Redis, MariaDB, Apache httpd, Xdebug.
 | cloudflared 2026.6.1 | GitHub release `cloudflared-windows-amd64.exe` | `Raw` → `cloudflared.exe` | SHA-256 of our download |
 | WP-CLI · Composer · Adminer | as above — OS-agnostic | unchanged | unchanged |
 
+### Linux artifacts (`manifest(…, "linux", …)`, port L2 — 24 Sep 2026)
+
+Same versions as the macOS rows, different builds, **both archs with their own digest** (every
+upstream here publishes aarch64 — D-L5 of `docs/PLAN-linux-port.md`). Every artifact was
+streamed through sha256/sha512 on the Mac on 24 Sep 2026; the "Digest" column says whether a
+publisher's own digest confirmed it. Not in Linux v1, resolving to nothing there: **PHP 7.4**
+(no static Linux build exists anywhere — rexenv's own 7.4 is a macOS build), Redis, MariaDB,
+Apache httpd, Xdebug (Homebrew Linux bottles are x86_64-only and would need a `patchelf`
+relink rexenv has not written — D-L8). No target-specific images inside: these are native
+builds for each arch.
+
+| Binary | Source | Archive → published as | Digest |
+|---|---|---|---|
+| Caddy 2.11.4 | GitHub release `caddy_2.11.4_linux_{amd64,arm64}.tar.gz` | `TarGz` → `caddy` | SHA-512, **matches** Caddy's `checksums.txt` |
+| PHP 8.0.30 · 8.1.34 · 8.2.32 · 8.3.32 · 8.4.23 · 8.5.8 | static-php.dev `bulk/php-<v>-{cli,fpm}-linux-{x86_64,aarch64}.tar.gz` — the same publisher and shape as the macOS rows | `TarGz` → `php` / `php-fpm` (the pool is php-fpm, as on macOS) | SHA-256 of our download — static-php.dev posts none |
+| nginx 1.30.4 | jirutka `nginx-binaries/nginx-1.30.4-{x86_64,aarch64}-linux` (static; the third-party build macOS used before `rexenv/runtimes`), interim until rexenv publishes a Linux build | `Raw` → `nginx` | SHA-256 of our download |
+| MySQL 8.4.6 · 8.0.44 | `cdn.mysql.com/archives/mysql-<series>/mysql-<v>-linux-glibc2.28-{x86_64,aarch64}.tar.xz` — Oracle publishes NO `.tar.gz` for Linux, hence `Archive::TarXzTree` and the Linux-only `xz2` crate | `TarXzTree` → `bin/mysqld` | SHA-256 of our download — Oracle posts MD5 |
+| PostgreSQL 18.6.0 · 17.11.0 · 16.15.0 | theseus-rs `postgresql-<v>-{x86_64,aarch64}-unknown-linux-gnu.tar.gz` | `TarGzTree` → `bin/postgres` | SHA-256, the project's `.sha256`, **matched by our own full download** (all six) |
+| FrankenPHP 1.12.4 | GitHub release `frankenphp-linux-{x86_64,aarch64}` | `Raw` → `frankenphp` | SHA-256 of our download |
+| Mailpit 1.30.3 | GitHub release `mailpit-linux-{amd64,arm64}.tar.gz` | `TarGz` → `mailpit` | SHA-256 of our download |
+| cloudflared 2026.6.1 | GitHub release `cloudflared-linux-{amd64,arm64}` | `Raw` → `cloudflared` | SHA-256 of our download |
+| WP-CLI · Composer · Adminer | as above — OS-agnostic | unchanged | unchanged |
+
+Runtime dependencies the `.deb` must declare for these (D-L1; measured against the tarballs'
+`ldd` on nothing yet — an L6 item): MySQL's generic build needs `libaio1` (`libaio1t64` on
+24.04) and `libnuma1`; the rest are static.
+
 ### Measured macOS floors (`minos`, per binary)
 
 Measured 15 Aug 2026 on the real cache (`otool -l | grep minos`) — recorded because

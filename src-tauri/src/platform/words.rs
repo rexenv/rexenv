@@ -385,7 +385,7 @@ mod tests {
     #[test]
     fn the_credits_line_names_only_the_engines_this_os_ships() {
         use crate::core::db::DbEngine;
-        for (words, os) in [(MACOS, "macos"), (WINDOWS, "windows")] {
+        for (words, os) in [(MACOS, "macos"), (WINDOWS, "windows"), (LINUX, "linux")] {
             for engine in DbEngine::ALL {
                 let name = engine.label();
                 assert_eq!(

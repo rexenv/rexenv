@@ -349,6 +349,22 @@ pub fn fatal_notice(summary: &str, crash_log: Option<&std::path::Path>) {
     let _ = (summary, crash_log);
 }
 
+/// An xz decoder over `reader` — MySQL's generic Linux tarballs are `.tar.xz` and nothing
+/// else rexenv fetches is (docs/PLAN-linux-port.md L2). Only the Linux build links liblzma
+/// (`xz2`, a Linux-only dependency); every other OS answers `Unsupported` rather than
+/// carrying a C library for an archive it never downloads, and `core` keeps no `cfg`.
+pub fn xz_decoder(reader: Box<dyn std::io::Read + Send>) -> crate::error::Result<Box<dyn std::io::Read + Send>> {
+    #[cfg(target_os = "linux")]
+    {
+        Ok(Box::new(xz2::read::XzDecoder::new(reader)))
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = reader;
+        Err(crate::error::Error::Unsupported("xz archives (Linux only)"))
+    }
+}
+
 /// Construct the platform implementation for the current OS.
 pub fn current() -> Box<dyn Platform> {
     #[cfg(target_os = "macos")]

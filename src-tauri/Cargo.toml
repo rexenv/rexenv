@@ -100,6 +100,12 @@ sha2 = "0.10"
 # console. ALREADY in the Windows graph at this version with these features
 # (tao/wry), so this declares a crate that was compiled anyway; the macOS graph
 # is unchanged.
+# MySQL's generic Linux tarball is `.tar.xz` (docs/PLAN-linux-port.md L2); liblzma is built
+# from source (`static`) so the deb depends on no lzma package. Linux only — every other OS
+# fetches no xz archive and `platform::xz_decoder` answers `Unsupported` there.
+[target.'cfg(target_os = "linux")'.dependencies]
+xz2 = { version = "0.1", features = ["static"] }
+
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",

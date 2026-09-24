@@ -1175,9 +1175,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   - [x] L1 `platform/linux/` filled ✓ 24 Sep 2026 — no `todo!()` (ledger #716); DNS = resolved
     drop-in (#717, **P1 unmeasured**), edge = systemd system unit (#718), DNS agent = user unit,
     `pkexec`, `/proc`+`ss`, NSS + system CA trust, XDG autostart, `words::LINUX`
-  - [ ] L2 Linux arms in the binary catalog (both archs; MySQL is `.tar.xz` → an xz reader; PHP
-    7.4 has no static Linux build — not in v1; nginx from jirutka's static builds until
-    `rexenv/runtimes` publishes a Linux one)
+  - [x] L2 Linux arms in the binary catalog ✓ 24 Sep 2026 — both archs, every digest from a full
+    streamed download (ledger #720); MySQL `.tar.xz` → `Archive::TarXzTree` + Linux-only `xz2`;
+    PHP 7.4 has no static Linux build (not in v1); nginx from jirutka's static builds until
+    `rexenv/runtimes` publishes a Linux one. Owed: `manifest_sweep_check` run (network tier)
+    after the change; `notices-check.py` taught the Linux graph (xz2/lzma-sys rows)
   - [ ] L3 build plumbing: `build-cli.sh` Linux arm, `bundle.linux` (deb depends), `release-linux.sh`
   - [ ] L4 the app shell on Linux (tray, tunnel guard, `activate_app`)
   - [ ] L5 docs: SMOKE-TEST Linux section, INSTALL, RELEASING, PORTS Linux table

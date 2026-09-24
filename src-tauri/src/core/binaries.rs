@@ -539,6 +539,10 @@ pub enum Archive {
     /// gzip-compressed tar of a full directory tree; extracted whole (the
     /// single top-level dir is stripped). Used for MySQL (bin/lib/share).
     TarGzTree,
+    /// xz-compressed tar of a full directory tree, extracted whole like `TarGzTree`.
+    /// Oracle publishes its generic Linux MySQL only as `.tar.xz`. Decoded through
+    /// `platform::xz_decoder`, which only the Linux build carries (docs/PLAN-linux-port.md L2).
+    TarXzTree,
     /// A zip holding one executable; extract `member` (Windows: `caddy.exe`).
     Zip,
     /// A zip of a whole directory tree, extracted after dropping `strip` leading
@@ -1339,6 +1343,85 @@ fn postgres_windows_sha256(version: &str) -> Option<&'static str> {
         "16.15.0" => Some("157bd7322f8c653f06b0373d1b2280e9cb238b6a6d3bd05541aeb8f33885a8ad"),
         _ => None,
     }
+}
+
+// ── Linux artifacts (docs/PLAN-linux-port.md L2) ──────────────────────────────
+// Every one streamed through sha256/sha512 on the Mac on 24 Sep 2026 (the Mac had no
+// disk for the files). Caddy's SHA-512 and PostgreSQL's SHA-256 match the digests their
+// publishers post; static-php.dev, jirutka, Mailpit, cloudflared, FrankenPHP and Oracle
+// post none we pin against (Oracle posts MD5), so those are pinned from our download —
+// the macOS rows' practice. BOTH archs, unlike Windows: every upstream here publishes
+// aarch64 (D-L5). PHP 7.4 has no static Linux build anywhere, so it is not in Linux v1.
+// nginx is jirutka's static build (the third-party pin macOS used before its own), until
+// `rexenv/runtimes` publishes a Linux one. MySQL ships only `.tar.xz` for Linux, which is
+// why `Archive::TarXzTree` exists.
+const CADDY_2_11_4_LINUX_AMD64_SHA512: &str = "8220d1f013b6f27510247b2360c9e0ca9f018feebd82515f07635318b34ff9777ccc8fd0b6e6f2486ce3a33fe389fbb7db12d05baa474f4587509fb4f5ebf1c9";
+const CADDY_2_11_4_LINUX_ARM64_SHA512: &str = "d5a7c423853c24a799765e0e8210d5c7c22a8f56ed37a3cae2fb9f58be138853c02b4efd6b59d576e6d8c7c0d30b9c1592deeaa6a536ff69bcca23b8c1ea709c";
+const NGINX_1_30_4_LINUX_X86_64_SHA256: &str = "9c0b53e93e43a33b0cd7876e7977099ce82b8bcf9bea5bd5b631db6080ad17a2";
+const NGINX_1_30_4_LINUX_AARCH64_SHA256: &str = "b09cca8c5d2fb9443ea8c27b033ee04f050f253425bfbf2e0c50960c488a00f9";
+const MAILPIT_1_30_3_LINUX_AMD64_SHA256: &str = "6c7af993fb4054def4adfc7c85b40f9570fd6172eaccd0221c4969f2cc7a6294";
+const MAILPIT_1_30_3_LINUX_ARM64_SHA256: &str = "4211e158fcf46862b9b15bacd1fb10253a1865617ed5f38f27cbec230f89ec84";
+const CLOUDFLARED_2026_6_1_LINUX_AMD64_SHA256: &str = "67fc63f72ce3ffbfd797893d7cd76224717117eef4397190ce412755108b789c";
+const CLOUDFLARED_2026_6_1_LINUX_ARM64_SHA256: &str = "8b95e9b2f59edb022a7609a8d59b4ee46f62aff172ead28a20ebe0c9c3d2d539";
+const FRANKENPHP_1_12_4_LINUX_X86_64_SHA256: &str = "db0f336e97f841eb3a606279cf6787d68f7fe9016b1c331489844d2c07e1aa5e";
+const FRANKENPHP_1_12_4_LINUX_AARCH64_SHA256: &str = "6fafdaa593b223391b96ba2b7aaf65da3e4c5092efd15411724ca6c1355808c5";
+
+/// The Linux spelling of an arch as static-php, jirutka, theseus-rs, FrankenPHP and
+/// Oracle name it (`x86_64`/`aarch64`); Caddy, Mailpit and cloudflared use Go's
+/// (`amd64`/`arm64`, `caddy_arch`).
+fn linux_arch(arch: Arch) -> &'static str {
+    php_arch(arch)
+}
+
+/// static-php.dev's Linux builds: `(aarch64, x86_64)` per `(kind, version)`.
+fn php_linux_sha256(kind: &str, version: &str, arch: Arch) -> Option<&'static str> {
+    let (arm, amd) = match (kind, version) {
+        ("cli", "8.0.30") => ("2c3fbc72d878862cf3b3d18849d4ab2ca7c02d38821d880eb8fb74a2e6f5c1d3", "f8f139c6fbca27ad335a78b9ec962a72350846027af50fc8cf005905412ea6df"),
+        ("fpm", "8.0.30") => ("b693b0c1150b12287bfe915a67bd57d3189a791e8b0c0de534e803e04fade625", "08176de6fe5125b7c1486f723f601f5c1273663bc5f719abc9c62adaa55cafc7"),
+        ("cli", "8.1.34") => ("fcaad73ceadad5afe6820ab3510de4452dadc875b3a295bf22dc2678845922b2", "e2932192836731163bf8d16d634f4bdda76c422ceb40c2c4d7c55ae63680f1aa"),
+        ("fpm", "8.1.34") => ("a020585084d0d624e10ab795430816f160a73ad4e827130c55bc030be4f9ceb3", "c20b1283a4a635d4c062b473858a46d687e94bf8ef623f26e356592557065b15"),
+        ("cli", "8.2.32") => ("e94cc88f535f4e20a931093bbd36aa74b1b48f4121954aa6d7310912a8aad26e", "866532d2b463ff256d063432d529e966cc53e4a039109ccbfc4ee4dc51d649f1"),
+        ("fpm", "8.2.32") => ("d16bd173d30d8d8d663146bddc785d4350f584d5ce105c52f0a0c85305ba5e51", "e324b63d961bedb7273c1a3585f9b209cc1e057016056ed34b8bb1b32526db3e"),
+        ("cli", "8.3.32") => ("4c29858ecfa30d93e854d17494f422b593afa6da8ec80ae979191e69604dc955", "7928396c17aabcd5bb074fe82e07b4cb693c6d04360a4415799a143a9f9686c6"),
+        ("fpm", "8.3.32") => ("f0d50fa3d8c5114a93cef02b44a1c01642018bc1dab96644d29ef2d1034eb624", "02964d89c54810471c35bbd3877e1a420693305cb2e33aab18636d0db29ff7bc"),
+        ("cli", "8.4.23") => ("1faabbea9c500daab9ba202cb75ea9876191a2a8f902244e9d0464addb9b55b1", "5fa2b5f1cc9d7f79b19718926b4f4f0bb6949db52073b2fabf8ae52de3993af5"),
+        ("fpm", "8.4.23") => ("8ca6b8d44f12f981cdd96b5aa31f6bf5373a89d201a4a49ed0feb5f242631dec", "40e341db82e5e90450122462aa6038fe653b63da951c1da1f10b15d0da4a26a0"),
+        ("cli", "8.5.8") => ("86ea1fe2f6d2415eff78c2e0bcb479b221d5637c89d72e19809b65c4c0527c27", "bfaa12e0f6f5788259bc20d0d3f08e1e851bce7f05d43e38fb77041e12a32663"),
+        ("fpm", "8.5.8") => ("4bd94d191f1f8f620a1ca76236f679d2e2491ecfa987036fc6d7a7c08e663f3b", "d2a5c031ae23a72b97ed5ab739bd5b8fe75dd09754d2f406a9216b7d7c8311d8"),
+        _ => return None,
+    };
+    Some(match arch {
+        Arch::Arm64 => arm,
+        Arch::X86_64 => amd,
+    })
+}
+
+/// Oracle's generic Linux tarballs (`linux-glibc2.28`, `.tar.xz`): `(aarch64, x86_64)`.
+fn mysql_linux_sha256(version: &str, arch: Arch) -> Option<&'static str> {
+    let (arm, amd) = match version {
+        "8.4.6" => ("ab2c553ee4349a6bbe62325d4efcb427204e389264c4759ca32a92eae9aa2abc", "60ab7b0f63494d788a7267589c5073c9222f7a6a288306cc42cc6852df51729b"),
+        "8.0.44" => ("1cc9217d0584a7e5e49469424160e5aaedb34a367f8801a0c26f1a0897ce2fe6", "be3b92f01e61555468528ada57aace433e3a4f1eab58569197304c328f4bfb6f"),
+        _ => return None,
+    };
+    Some(match arch {
+        Arch::Arm64 => arm,
+        Arch::X86_64 => amd,
+    })
+}
+
+/// theseus-rs's `unknown-linux-gnu` builds: `(aarch64, x86_64)`, each matching the
+/// project's published `.sha256`.
+fn postgres_linux_sha256(version: &str, arch: Arch) -> Option<&'static str> {
+    let (arm, amd) = match version {
+        "18.6.0" => ("5d2b5e8be9e96bfc3d7f22090057a836ec36d5d092542d8d3b93cc145cf4ee13", "bb3d09f876b2383e25a8c9ce09e32d185a03656a23d074f5195542b1b1b3ca61"),
+        "17.11.0" => ("abffda09209280ec1502b73720dc4d254fb7fff9a072e324926c600a5b16c221", "b7a1ba6bae6499d8296e3e81b0171eecfd1766ca9aaa0057e41ad3e844e5e2e0"),
+        "16.15.0" => ("f6d49ffbaea28cf8732785b18afb75bded905667d4ec8e2308a13a30fe0a24d1", "77dd669eda3985ea8be26256f6af28d3c8414152ada713797555bb7423b4486a"),
+        _ => return None,
+    };
+    Some(match arch {
+        Arch::Arm64 => arm,
+        Arch::X86_64 => amd,
+    })
 }
 
 fn pick(arch: Arch, arm: &str, amd: &str) -> String {
@@ -2256,6 +2339,74 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
             archive: Archive::Raw,
             member: "cloudflared.exe",
         }),
+        // ── Linux (docs/PLAN-linux-port.md L2; both archs, see the Linux pins above) ──
+        ("caddy", "linux", "2.11.4") => Some(BinarySpec {
+            url: format!(
+                "https://github.com/caddyserver/caddy/releases/download/v{version}/caddy_{version}_linux_{}.tar.gz",
+                caddy_arch(arch)
+            ),
+            checksum: Checksum::Sha512(pick(arch, CADDY_2_11_4_LINUX_ARM64_SHA512, CADDY_2_11_4_LINUX_AMD64_SHA512)),
+            archive: Archive::TarGz,
+            member: "caddy",
+        }),
+        // static-php.dev's Linux builds — the same publisher and the same tarball shape as
+        // its macOS ones (a single static `php` / `php-fpm`), so the pool model is macOS's.
+        ("php", "linux", v) => php_linux_sha256("cli", v, arch).map(|hex| BinarySpec {
+            url: format!("https://dl.static-php.dev/static-php-cli/bulk/php-{v}-cli-linux-{}.tar.gz", linux_arch(arch)),
+            checksum: Checksum::Sha256(hex.to_string()),
+            archive: Archive::TarGz,
+            member: "php",
+        }),
+        ("php-fpm", "linux", v) => php_linux_sha256("fpm", v, arch).map(|hex| BinarySpec {
+            url: format!("https://dl.static-php.dev/static-php-cli/bulk/php-{v}-fpm-linux-{}.tar.gz", linux_arch(arch)),
+            checksum: Checksum::Sha256(hex.to_string()),
+            archive: Archive::TarGz,
+            member: "php-fpm",
+        }),
+        // jirutka's static build (raw binary), the interim until rexenv/runtimes has a Linux nginx.
+        ("nginx", "linux", "1.30.4") => Some(BinarySpec {
+            url: format!("https://jirutka.github.io/nginx-binaries/nginx-{version}-{}-linux", linux_arch(arch)),
+            checksum: Checksum::Sha256(pick(arch, NGINX_1_30_4_LINUX_AARCH64_SHA256, NGINX_1_30_4_LINUX_X86_64_SHA256)),
+            archive: Archive::Raw,
+            member: "nginx",
+        }),
+        ("mysql", "linux", v) => mysql_linux_sha256(v, arch).map(|hex| BinarySpec {
+            url: format!(
+                "https://cdn.mysql.com/archives/mysql-{series}/mysql-{v}-linux-glibc2.28-{}.tar.xz",
+                linux_arch(arch),
+                series = mysql_series(v),
+            ),
+            checksum: Checksum::Sha256(hex.to_string()),
+            archive: Archive::TarXzTree,
+            member: "bin/mysqld",
+        }),
+        ("postgres", "linux", v) => postgres_linux_sha256(v, arch).map(|hex| BinarySpec {
+            url: format!(
+                "https://github.com/theseus-rs/postgresql-binaries/releases/download/{v}/postgresql-{v}-{}-unknown-linux-gnu.tar.gz",
+                linux_arch(arch)
+            ),
+            checksum: Checksum::Sha256(hex.to_string()),
+            archive: Archive::TarGzTree,
+            member: "bin/postgres",
+        }),
+        ("frankenphp", "linux", "1.12.4") => Some(BinarySpec {
+            url: format!("https://github.com/php/frankenphp/releases/download/v{version}/frankenphp-linux-{}", linux_arch(arch)),
+            checksum: Checksum::Sha256(pick(arch, FRANKENPHP_1_12_4_LINUX_AARCH64_SHA256, FRANKENPHP_1_12_4_LINUX_X86_64_SHA256)),
+            archive: Archive::Raw,
+            member: "frankenphp",
+        }),
+        ("mailpit", "linux", "1.30.3") => Some(BinarySpec {
+            url: format!("https://github.com/axllent/mailpit/releases/download/v{version}/mailpit-linux-{}.tar.gz", mailpit_arch(arch)),
+            checksum: Checksum::Sha256(pick(arch, MAILPIT_1_30_3_LINUX_ARM64_SHA256, MAILPIT_1_30_3_LINUX_AMD64_SHA256)),
+            archive: Archive::TarGz,
+            member: "mailpit",
+        }),
+        ("cloudflared", "linux", "2026.6.1") => Some(BinarySpec {
+            url: format!("https://github.com/cloudflare/cloudflared/releases/download/{version}/cloudflared-linux-{}", cloudflared_arch(arch)),
+            checksum: Checksum::Sha256(pick(arch, CLOUDFLARED_2026_6_1_LINUX_ARM64_SHA256, CLOUDFLARED_2026_6_1_LINUX_AMD64_SHA256)),
+            archive: Archive::Raw,
+            member: "cloudflared",
+        }),
         // Adminer is a single PHP file (run via the bundled PHP), identical on every OS.
         ("adminer", _, v) => adminer_spec(v),
         // WP-CLI is a PHP .phar (run via the bundled PHP), identical on every OS.
@@ -3086,7 +3237,7 @@ pub async fn resolve(platform: &dyn Platform, name: &str, version: &str) -> Resu
             php_arch(arch)
         ))
     })?;
-    if matches!(spec.archive, Archive::TarGzTree | Archive::ZipTree { .. }) {
+    if matches!(spec.archive, Archive::TarGzTree | Archive::TarXzTree | Archive::ZipTree { .. }) {
         return Err(Error::Other(format!(
             "{name} is a directory distribution — use resolve_dir"
         )));
@@ -3135,7 +3286,7 @@ pub async fn resolve(platform: &dyn Platform, name: &str, version: &str) -> Resu
                 extract_zip_member(&archive, spec.member, &staged_bin)?;
                 std::fs::remove_file(&archive)?;
             }
-            Archive::TarGzTree | Archive::ZipTree { .. } => unreachable!("trees returned above"),
+            Archive::TarGzTree | Archive::TarXzTree | Archive::ZipTree { .. } => unreachable!("trees returned above"),
         }
         platform.permissions().set_executable(&staged_bin)?;
         platform.binaries().prepare_binary(&staged_bin)?;
@@ -3254,7 +3405,7 @@ async fn resolve_dir_tree(platform: &dyn Platform, name: &str, version: &str) ->
         return Ok(hit);
     }
 
-    if !matches!(spec.archive, Archive::TarGzTree | Archive::ZipTree { .. }) {
+    if !matches!(spec.archive, Archive::TarGzTree | Archive::TarXzTree | Archive::ZipTree { .. }) {
         return Err(Error::Other(format!(
             "{name} is not a directory distribution — use resolve"
         )));
@@ -3276,15 +3427,17 @@ async fn resolve_dir_tree(platform: &dyn Platform, name: &str, version: &str) ->
         std::fs::create_dir_all(&staging)?;
         // A tar tree strips its one top-level dir; a zip tree strips what its
         // manifest arm says (a PHP zip is flat, an nginx zip is not).
-        let (archive, zip_strip) = match spec.archive {
-            Archive::ZipTree { strip } => (staging.join(".archive.zip"), Some(strip)),
-            _ => (staging.join(".archive.tar.gz"), None),
+        let archive = match spec.archive {
+            Archive::ZipTree { .. } => staging.join(".archive.zip"),
+            Archive::TarXzTree => staging.join(".archive.tar.xz"),
+            _ => staging.join(".archive.tar.gz"),
         };
         download(&spec.url, &archive, Some(&spec.checksum), Some(&id)).await?;
         downloads::hub().item_preparing(&id);
-        match zip_strip {
-            Some(strip) => extract_zip_tree(&archive, &staging, strip)?,
-            None => extract_tar_gz_tree(open_buffered(&archive)?, &staging)?,
+        match spec.archive {
+            Archive::ZipTree { strip } => extract_zip_tree(&archive, &staging, strip)?,
+            Archive::TarXzTree => extract_tar_xz_tree(open_buffered(&archive)?, &staging)?,
+            _ => extract_tar_gz_tree(open_buffered(&archive)?, &staging)?,
         }
         // Drop the archive BEFORE publishing so the cached tree doesn't carry a
         // dead 600MB archive into the final dir.
@@ -3763,6 +3916,14 @@ pub(crate) fn extract_tar_gz_tree(reader: impl std::io::Read, dest: &Path) -> Re
     extract_tar_gz_tree_filtered(reader, dest, 1, None)
 }
 
+/// [`extract_tar_gz_tree`] for an xz-compressed tar (MySQL's Linux tarballs). The decoder
+/// is the platform's: only the Linux build links liblzma, and every other OS answers
+/// `Unsupported` here rather than carrying a C library for an archive it never fetches.
+pub(crate) fn extract_tar_xz_tree(reader: impl std::io::Read + Send + 'static, dest: &Path) -> Result<()> {
+    let decoded = crate::platform::xz_decoder(Box::new(reader))?;
+    extract_tar_tree_filtered(decoded, dest, 1, None)
+}
+
 /// [`extract_tar_gz_tree`] with a configurable strip depth and an optional
 /// include filter (component-wise prefix match on the post-strip path).
 /// Homebrew bottles nest `<formula>/<version>/…` (strip 2) and carry receipts/
@@ -3773,11 +3934,21 @@ fn extract_tar_gz_tree_filtered(
     strip: usize,
     include: Option<&[&str]>,
 ) -> Result<()> {
-    use flate2::read::GzDecoder;
+    extract_tar_tree_filtered(flate2::read::GzDecoder::new(reader), dest, strip, include)
+}
+
+/// The tar half of [`extract_tar_gz_tree_filtered`], over an already-decompressed stream —
+/// one extractor for gzip and xz, so the escape guards below are written once.
+fn extract_tar_tree_filtered(
+    reader: impl std::io::Read,
+    dest: &Path,
+    strip: usize,
+    include: Option<&[&str]>,
+) -> Result<()> {
     use std::path::PathBuf;
     use tar::Archive as TarArchive;
 
-    let mut archive = TarArchive::new(GzDecoder::new(reader));
+    let mut archive = TarArchive::new(reader);
     for entry in archive.entries()? {
         let mut entry = entry?;
         // Drop the leading stripped components.
@@ -6468,7 +6639,7 @@ mod tests {
             .collect();
         assert!(names.len() > 5, "too few names to be a real sweep");
         for (name, version) in names {
-            for os in ["macos", "windows"] {
+            for os in ["macos", "windows", "linux"] {
                 let arm = manifest(name, version, os, Arch::Arm64).is_some()
                     || bundle_manifest(name, version, os, Arch::Arm64).is_some();
                 assert_eq!(arm, ships_on(name, version, os), "{name} {version} on {os}");
@@ -6505,6 +6676,86 @@ mod tests {
         }
     }
 
+    /// L2 (docs/PLAN-linux-port.md) — the Linux arms: source, archive kind and member per
+    /// artifact, BOTH archs with their own digest (every upstream publishes aarch64), and
+    /// the spellings each publisher uses for an arch.
+    #[test]
+    fn manifest_pins_the_linux_artifacts_for_both_archs() {
+        let cases: &[(&str, &str, &str, &str, Archive, &str)] = &[
+            ("caddy", CADDY_VERSION, "caddy_2.11.4_linux_amd64.tar.gz", "caddy_2.11.4_linux_arm64.tar.gz", Archive::TarGz, "caddy"),
+            ("php", PHP_VERSION, "php-8.3.32-cli-linux-x86_64.tar.gz", "php-8.3.32-cli-linux-aarch64.tar.gz", Archive::TarGz, "php"),
+            ("php-fpm", PHP_VERSION, "php-8.3.32-fpm-linux-x86_64.tar.gz", "php-8.3.32-fpm-linux-aarch64.tar.gz", Archive::TarGz, "php-fpm"),
+            ("nginx", NGINX_VERSION, "nginx-binaries/nginx-1.30.4-x86_64-linux", "nginx-binaries/nginx-1.30.4-aarch64-linux", Archive::Raw, "nginx"),
+            ("mysql", MYSQL_VERSION, "mysql-8.4.6-linux-glibc2.28-x86_64.tar.xz", "mysql-8.4.6-linux-glibc2.28-aarch64.tar.xz", Archive::TarXzTree, "bin/mysqld"),
+            ("postgres", POSTGRES_VERSION, "postgresql-18.6.0-x86_64-unknown-linux-gnu.tar.gz", "postgresql-18.6.0-aarch64-unknown-linux-gnu.tar.gz", Archive::TarGzTree, "bin/postgres"),
+            ("frankenphp", FRANKENPHP_VERSION, "frankenphp-linux-x86_64", "frankenphp-linux-aarch64", Archive::Raw, "frankenphp"),
+            ("mailpit", MAILPIT_VERSION, "mailpit-linux-amd64.tar.gz", "mailpit-linux-arm64.tar.gz", Archive::TarGz, "mailpit"),
+            ("cloudflared", CLOUDFLARED_VERSION, "cloudflared-linux-amd64", "cloudflared-linux-arm64", Archive::Raw, "cloudflared"),
+        ];
+        for (name, version, amd_tail, arm_tail, archive, member) in cases {
+            let amd = manifest(name, version, "linux", Arch::X86_64).unwrap_or_else(|| panic!("{name} {version}: no Linux x86_64 arm"));
+            let arm = manifest(name, version, "linux", Arch::Arm64).unwrap_or_else(|| panic!("{name} {version}: no Linux aarch64 arm"));
+            assert!(amd.url.ends_with(amd_tail), "{name}: {}", amd.url);
+            assert!(arm.url.ends_with(arm_tail), "{name}: {}", arm.url);
+            assert_eq!(amd.archive, *archive, "{name}");
+            assert_eq!(amd.member, *member, "{name}");
+            assert_ne!(checksum_hex(&amd.checksum), checksum_hex(&arm.checksum), "{name}: two builds, two digests");
+            for spec in [&amd, &arm] {
+                let hex = checksum_hex(&spec.checksum);
+                let want = if matches!(spec.checksum, Checksum::Sha512(_)) { 128 } else { 64 };
+                assert_eq!(hex.len(), want, "{name}: not a full digest: {hex}");
+            }
+        }
+    }
+
+    /// Every version the app OFFERS has a Linux pin, except PHP 7.4 (no static Linux build
+    /// exists to pin — D-L8), and what Linux does not get in v1 resolves to nothing.
+    #[test]
+    fn every_offered_version_but_php_74_has_a_linux_pin_and_the_rest_resolve_to_nothing() {
+        for v in PHP_VERSIONS {
+            let want = !v.starts_with("7.4");
+            assert_eq!(manifest("php", v, "linux", Arch::X86_64).is_some(), want, "php {v}");
+            assert_eq!(manifest("php-fpm", v, "linux", Arch::X86_64).is_some(), want, "php-fpm {v}");
+        }
+        for v in MYSQL_VERSIONS {
+            assert!(manifest("mysql", v, "linux", Arch::X86_64).is_some(), "mysql {v}");
+        }
+        for v in POSTGRES_VERSIONS {
+            assert!(manifest("postgres", v, "linux", Arch::X86_64).is_some(), "postgres {v}");
+        }
+        for (name, version) in default_stack(BinaryTier::Standard) {
+            assert!(manifest(name, version, "linux", Arch::X86_64).is_some(), "{name} {version}");
+        }
+        for (name, version) in [("redis", REDIS_VERSION), ("mariadb", MARIADB_VERSION), ("httpd", HTTPD_VERSION)] {
+            assert!(bundle_manifest(name, version, "linux", Arch::X86_64).is_none(), "{name}");
+            assert!(!ships_on(name, version, "linux"), "{name} must not ship on Linux v1 (D-L8)");
+        }
+        // Shapes: php and nginx are single static files on Linux, as on macOS.
+        for n in ["php", "nginx", "caddy"] {
+            assert_eq!(shape_of_on(n, "linux"), Shape::Single, "{n}");
+        }
+        assert_eq!(exe_name("caddy", "linux"), "caddy");
+        for (name, version) in [("mysql", MYSQL_VERSION), ("postgres", POSTGRES_VERSION)] {
+            let spec = manifest(name, version, "linux", Arch::X86_64).unwrap();
+            assert!(matches!(spec.archive, Archive::TarGzTree | Archive::TarXzTree), "{name} is a tree");
+            assert_eq!(shape_of_on(name, "linux"), Shape::Dir);
+        }
+    }
+
+    /// The xz path is refused, not silently gzip-parsed, on a build without the decoder.
+    #[test]
+    fn an_xz_tree_on_a_build_without_the_decoder_is_a_named_refusal() {
+        let dir = std::env::temp_dir().join(format!("rexenv-xz-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let r = extract_tar_xz_tree(std::io::Cursor::new(vec![0u8; 8]), &dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        if cfg!(target_os = "linux") {
+            assert!(r.is_err(), "eight zero bytes are not an xz stream");
+        } else {
+            assert!(matches!(r, Err(Error::Unsupported(_))), "{r:?}");
+        }
+    }
+
     #[test]
     fn manifest_unknown_is_none() {
         assert!(manifest("nginx", "1.0", "macos", Arch::Arm64).is_none());
@@ -6512,7 +6763,8 @@ mod tests {
         // Windows HAS arms since W2 (this line used to assert it had none); an unknown
         // version there still resolves to nothing, and so does an OS with no arms yet.
         assert!(manifest("caddy", "9.9.9", "windows", Arch::X86_64).is_none());
-        assert!(manifest("caddy", CADDY_VERSION, "linux", Arch::X86_64).is_none());
+        assert!(manifest("caddy", "9.9.9", "linux", Arch::X86_64).is_none());
+        assert!(manifest("caddy", CADDY_VERSION, "freebsd", Arch::X86_64).is_none(), "an OS with no arms");
         assert!(manifest("php", "9.9.9", "macos", Arch::Arm64).is_none());
     }
 
