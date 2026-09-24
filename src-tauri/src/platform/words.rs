@@ -215,7 +215,7 @@ pub const LINUX: PlatformWords = PlatformWords {
     bundled_tools: "nginx, PHP, MySQL, PostgreSQL, Mailpit, Adminer & cloudflared",
     path_sep: "/",
     db_browser_origin: "rexdb://localhost",
-    reinstall_to_home: "Install the new release with your package manager (sudo apt install ./rexenv_<version>_amd64.deb), then open it from there.",
+    reinstall_to_home: "Install rexenv from its .deb (sudo apt install ./rexenv_<version>_<arch>.deb) or run it as the AppImage from a folder you own, then update from there.",
     take_ownership: "sudo chown -R \"$USER\"",
     update_replaces: "rexenv's program files",
     update_reprompt: "",
@@ -462,7 +462,7 @@ mod tests {
         assert!(LINUX.git_install.contains("apt install git"), "{}", LINUX.git_install);
         assert!(LINUX.routes_label.contains("/etc/rexenv/dns.d"), "{}", LINUX.routes_label);
         assert_eq!(LINUX.db_browser_origin, MACOS.db_browser_origin, "webkitgtk serves custom schemes as scheme://localhost, as WebKit does");
-        assert!(LINUX.reinstall_to_home.contains(".deb"), "no in-app update on Linux yet (D-L7): {}", LINUX.reinstall_to_home);
+        assert!(LINUX.reinstall_to_home.contains(".deb") && LINUX.reinstall_to_home.contains("AppImage"), "the two install shapes the Linux updater can replace (L7): {}", LINUX.reinstall_to_home);
         let (imports, controls) = (LINUX.imports_other_tools, LINUX.window_controls_in_content);
         assert!(!imports, "Valet/Herd/Local layouts on Linux are not known yet");
         assert!(!controls, "GTK draws its own title bar");

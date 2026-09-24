@@ -1963,10 +1963,23 @@ Environment: Ubuntu ____ (22.04+; x86_64 or aarch64) · package ____ (.deb / App
 - [ ] Open in editor / browser / terminal: each detected entry launches; a private window opens
       private; "Open in terminal" lands in the site folder.
 
-### Not in Linux v1 (D-L7/D-L8, refused in core with an honest message)
-- **PHP 7.4** — no static Linux build exists; the picker must not offer it.
+### In-app update on Linux (L7, ledger #729/#730 — needs a PUBLISHED Linux descriptor)
+- [ ] `.deb` install, an older version: Settings → About → Check now finds the release named in
+      `app-manifest-linux-deb-<arch>.json`; Update → ONE polkit dialog, rexenv's own sentence
+      (not "run /bin/sh as the super user"); the app quits and comes back as the new version;
+      `dpkg -s rexenv` says so; `~/.local/share/rexenv/updates/` is empty after the health sweep.
+- [ ] AppImage in a folder you own, an older version: Check now reads
+      `app-manifest-linux-appimage-<arch>.json`; Update swaps the file with NO prompt; the app
+      comes back as the new version FROM THE SAME PATH; the folder holds no `.rexenv-update-*`
+      after the sweep. A host without `libfuse2`: still works (`APPIMAGE_EXTRACT_AND_RUN`).
+- [ ] A `cargo run` dev build: Check now says a dev build reads no descriptor — no fetch, no offer.
+- [ ] Mid-update `dpkg -i` fails (unplug the network after the download, or a wrong-arch package
+      renamed by hand): the dialog names the failure, the OLD version keeps running, nothing in
+      `/usr/bin` changed.
+
+### Not in Linux v1 (D-L8, refused in core with an honest message)
+- **PHP 7.4** — no static Linux build exists YET (L8 builds it); the picker must not offer it.
 - **Redis, MariaDB, Apache, Xdebug** — as Windows v1: not offered, and a refusal that names the OS.
-- **In-app update** — Settings → About says to install the new `.deb`; Check still works.
 
 ---
 Result: ____ / all pass.  Issues found: ________________________________________

@@ -451,11 +451,20 @@ store, and the `rex` copy on your `Path`.
    any exit, outliving the app. No prompt.
 5. `/usr/local/bin/rex` — the CLI symlink, when you click Install (one prompt).
 
+### Updating
+
+Settings → About → Check now, as on macOS. From the `.deb`, Update downloads the new package,
+checks it (`dpkg-deb`: it must be `rexenv`, the version the signed release names, and your
+architecture, carrying `rexenv` and `rex`), and installs it with ONE polkit prompt — the same
+rexenv sentence as setup. From an AppImage, Update swaps the file beside itself with no prompt
+(keep it in a folder you own; a read-only or root-owned folder is refused with the fix named).
+An AppImage needs `libfuse2` to mount, or nothing at all — rexenv runs it extract-and-run when
+checking its version. A `cargo` build reads no update descriptor.
+
 ### Not in Linux v1
 
-PHP 7.4 (no static Linux build exists), Redis, MariaDB, Apache, Xdebug (Homebrew's Linux
-bottles are x86_64-only and unrelinked), and the in-app self-update — Settings → About says
-to install the new `.deb`.
+PHP 7.4 (no static Linux build exists yet), Redis, MariaDB, Apache, Xdebug (Homebrew's Linux
+bottles are x86_64-only and unrelinked).
 
 ### Uninstalling — do the in-app step FIRST
 

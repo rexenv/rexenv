@@ -54,8 +54,18 @@ cd "$(dirname "$0")/.."
 # manifest_urls_on`), because one `release` names one artifact and the macOS one is
 # a universal .app.tar.gz no Windows machine can use. Same key, same rules, same
 # forgotten-second-click — so the same check, pointed at the other document.
+# `--linux <deb|appimage> <x86_64|aarch64>`: one document per package kind and arch
+# (`core::app_update::manifest_urls_for`, docs/PLAN-linux-port.md L7) — a `.deb` and an
+# AppImage are different bytes, and so are the two archs. Empty floor, as Windows.
 DOC_NAME="app-manifest.json"
-[ "${1:-}" = "--windows" ] && DOC_NAME="app-manifest-windows.json"
+case "${1:-}" in
+  --windows) DOC_NAME="app-manifest-windows.json" ;;
+  --linux)
+    case "${2:-}/${3:-}" in
+      deb/x86_64|deb/aarch64|appimage/x86_64|appimage/aarch64) DOC_NAME="app-manifest-linux-$2-$3.json" ;;
+      *) echo "check-app-manifest: --linux takes <deb|appimage> <x86_64|aarch64>" >&2; exit 2 ;;
+    esac ;;
+esac
 
 DOC_URL="${CHECK_APP_MANIFEST_DOC_URL:-https://raw.githubusercontent.com/rexenv/runtimes/main/$DOC_NAME}"
 SIG_URL="${CHECK_APP_MANIFEST_SIG_URL:-$DOC_URL.sig}"
@@ -189,8 +199,8 @@ fi
 # LaunchServices refuses to open. The Windows descriptor carries an EMPTY floor —
 # the Windows app has no host version to compare (APP-MANIFEST.md §0).
 FLOOR="$(jstr minimumSystemVersion "$TMP/doc.json")"
-if [ "$DOC_NAME" = "app-manifest-windows.json" ]; then
-  [ -z "$FLOOR" ] || fail "the Windows descriptor declares minimumSystemVersion '$FLOOR'; it must be empty"
+if [ "$DOC_NAME" != "app-manifest.json" ]; then
+  [ -z "$FLOOR" ] || fail "the $DOC_NAME descriptor declares minimumSystemVersion '$FLOOR'; it must be empty (only macOS compares a host version)"
 else
   WANT="${CHECK_APP_MANIFEST_FLOOR:-$(jstr minimumSystemVersion src-tauri/tauri.conf.json)}"
   [ -n "$WANT" ] || fail "could not read minimumSystemVersion out of src-tauri/tauri.conf.json"

@@ -66,7 +66,10 @@ async fn main() -> ExitCode {
     // watching it — the same choice the "Check now" button makes, so what this
     // measures is what a user's press measures.
     let started = std::time::Instant::now();
-    let fetched = app_update::fetch(updates::INTERACTIVE_DEADLINE).await;
+    // The platform names which descriptor this build reads (Linux has one per package
+    // kind and arch; macOS and Windows have one) — the same question the button asks.
+    let variant = plat.app_bundle().descriptor_variant();
+    let fetched = app_update::fetch(variant.as_deref(), updates::INTERACTIVE_DEADLINE).await;
     // The deadline is a promise about the WORST case, so bound the check on it
     // whichever way the fetch went: the failure this guards (#540) was a fetch
     // that never returned at all, and a check that only looks at the happy path

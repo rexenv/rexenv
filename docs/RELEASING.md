@@ -159,9 +159,13 @@ release** — which is the property that makes a stolen key survivable. Ledger
    succeeds and the OLD agent keeps running — the opposite failure to Windows's). Prints the
    sha256 of every artefact. **A 4 GB host kills the release `rustc` (OOM, measured on the
    VM 24 Sep 2026 — `Killed process … (rustc) anon-rss:1657856kB`): give the builder 8 GB or a
-   swapfile, and `CARGO_BUILD_JOBS=2`.** No §A0-linux check exists yet, no `app-manifest-linux.json`, no
-   in-app update (D-L7): the release is the `.deb` on the download page. Both archs are two
-   builds on two hosts (or one host with `--target`), and the first one has not been made.
+   swapfile, and `CARGO_BUILD_JOBS=2`.** Both archs are two builds on two hosts (or one host
+   with `--target`), and the first x86_64 one has not been made. **The in-app update reads ONE
+   descriptor per package kind and arch** — `app-manifest-linux-deb-x86_64.json`,
+   `-deb-aarch64`, `-appimage-x86_64`, `-appimage-aarch64`, each + `.sig`, same schema and key
+   as macOS's — so a Linux release is four artifacts and four publisher runs (step 8's
+   `--linux <deb|appimage> <arch>` mode); a variant with no document is simply never offered
+   anything. No §A0-linux check exists yet.
 4. `pnpm release:mac` → `src-tauri/target/universal-apple-darwin/release/bundle/dmg/rexenv_<X.Y.Z>_universal.dmg`.
    Runs `scripts/release-mac.sh`, which PRE-CLEANS before building. `tauri build`
    shells out to a generated `bundle_dmg.sh` that attaches a temporary
@@ -241,6 +245,12 @@ release** — which is the property that makes a stolen key survivable. Ledger
    manifest" → `windows: true`, `dry_run` first, as for macOS — after a release that carries
    the zip. Until it has RUN, no installed Windows rexenv is offered anything, exactly as
    step 8 says of macOS.
+   **Linux has FOUR documents** (`app-manifest-linux-<deb|appimage>-<x86_64|aarch64>.json`
+   + `.sig`, L7 of `docs/PLAN-linux-port.md`): the publisher's `--linux <kind> <arch>` mode,
+   one run per artifact the release carries, `dry_run` first. A `.deb` is verified on the
+   user's side by its control fields and members before `dpkg -i`, an AppImage by running it
+   with `--print-version` — so the artifact the descriptor names MUST be the one `tauri build`
+   produced, unrenamed. Until each has RUN, that kind+arch is offered nothing.
    **And the winget manifest** (the tap's Windows counterpart): `./scripts/winget-manifest.sh`
    renders the three manifests for the tap's latest release into
    `src-tauri/target/winget/<version>/` — the installer URL and sha256 from the PUBLISHED
@@ -258,7 +268,7 @@ release** — which is the property that makes a stolen key survivable. Ledger
    (first submission: 0.8.3, PR 437674, 20 Sep 2026). No signing
    requirement stands in the way (their SmartScreen check is the URL's reputation, not the
    binary's signature; `docs/TODO.md` W11).
-9. `./scripts/check-app-manifest.sh` (and `--windows` for the second document) — verifies
+9. `./scripts/check-app-manifest.sh` (and `--windows` for the second document, `--linux <deb|appimage> <x86_64|aarch64>` for each of the four Linux ones) — verifies
    the published descriptor against the key compiled into THIS tree, warns when the tap is ahead of it (the forgotten step 7), and
    compares the descriptor's sha256 to the published asset's digest.
    **Run within five minutes of step 7 and it may say "only the CDN is behind".** Installed

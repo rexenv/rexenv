@@ -107,7 +107,7 @@ L8). The table below is the record of what was assumed while the owner slept.
 | **D-L4** | **Ubuntu floor.** | 22.04 LTS (first LTS with `libwebkit2gtk-4.1`; Tauri 2 needs 4.1). The check image (`scripts/linux-check/Dockerfile`) compiles against 22.04's libraries so a newer-only API cannot slip in. | 24.04 only. |
 | **D-L5** | **Architectures.** | x86_64 AND aarch64: every upstream in §4 publishes both except nginx (rexenv's own build — L2 pins x86_64 first; aarch64 waits on a `rexenv/runtimes` release) and Redis/MariaDB bottles (x86_64 only). The Mac's Docker runs aarch64 containers, so that slice is the one the agent can exercise. | x86_64 only for v1. |
 | **D-L6** | **Signing.** | None (the Windows ruling: no money for certificates). A `.deb` is verified by the apt repo's key only if there is a repo — there is not; the download page carries SHA-256s. | An apt repository on `dl.rexenv.dev` (later). |
-| **D-L7** | **Self-update.** | Not in v1: `AppBundle` returns `Error::Unported`, and `words::LINUX.update_path` tells the user to install the new `.deb`. The macOS/Windows swap-and-relaunch has no safe `.deb` equivalent without `pkexec dpkg -i`, which is a root op over the whole system. | `pkexec dpkg -i <downloaded .deb>` (later, once the descriptor has a Linux entry — `manifest-linux.json`, plan §3b of the Windows port). |
+| **D-L7** | **Self-update.** | **RULED IN, 24 Sep 2026** ("Ekhon-i, v1 te"). Built as L7: the `.deb` through `dpkg -i` in the polkit step (the one root command, after `dpkg-deb` verified the package), the AppImage by the macOS exchange beside itself, one descriptor per kind and arch. The overnight default had been "not in v1: `AppBundle` returns `Error::Unported`", on the argument that `pkexec dpkg -i` is a root op over the whole system — the ruling accepted that in exchange for one prompt. | Stay `Unported` and tell the user to `apt install` the new `.deb` (the overnight default). |
 | **D-L8** | **Which tools the Linux catalog carries.** | Caddy, PHP (cli+fpm, all seven minors), nginx (own build), MySQL (Oracle's glibc2.28 generic tarball), PostgreSQL (theseus-rs), FrankenPHP, Mailpit, cloudflared, plus the OS-agnostic phars. **Not in v1:** Redis, MariaDB, httpd, Xdebug — each a Homebrew Linux bottle (x86_64 only) or a build rexenv does not have; `ships_on` refuses them on Linux so Settings says so (D4's shape). | Pin the x86_64 bottles now (relink is `patchelf`, not `install_name_tool` — new code, untested). |
 | **D-L9** | **Test hardware.** | An Ubuntu 22.04 VM in UTM on the Mac (aarch64, ~20 GB disk — **the Mac has 7.8 GB free after tonight's cache purge, so this is blocked on disk**); the Docker image for everything that needs no systemd. | An old x86_64 laptop with Ubuntu (the Dell dual-boot?), a cloud VM. |
 | **D-L10** | **Where the Linux check runs.** | In `verify.sh`, like `windows-check`: SKIPPED (exit 3) when Docker is not running, red on a real break. Costs minutes per run while Docker is up. | `verify-full.sh` only. |
@@ -202,14 +202,30 @@ Each ends in something observable; each is its own commit.
   too. Owed: Firefox (snap). Original scope: Install Ubuntu 22.04 in UTM (D-L9), `tauri build` there, install
   the `.deb`, run SMOKE-TEST's Linux section — and FIRST the §7 P1 probe. Every ledger row L1
   marks `◐ (Docker only)` becomes `✓ (Ubuntu 22.04 VM)` or a bug.
-- **L7 — Self-update on Linux (RULED IN, 24 Sep 2026).** `manifest-linux.json` (+ `.sig`) with
-  one entry per package kind and arch; `LinuxAppBundle::facts` telling a `.deb` install
-  (`/usr/bin/rexenv`, root-owned → `InstallKind` for a package) from an AppImage (`$APPIMAGE`,
-  user-owned) from a dev build; `stage` = download + verify (the deb's control fields / the
-  AppImage's embedded version); `swap` = `pkexec dpkg -i` through the polkit step for a deb,
-  the rename pair for an AppImage; the relauncher re-execs `/usr/bin/rexenv` or the new
-  AppImage after the old process is gone. Proof: an update applied on the VM from a 0.8.7 deb
-  to a 0.8.8 deb built there.
+- **L7 — Self-update on Linux (RULED IN, 24 Sep 2026) — BUILT 25 Sep 2026.** What landed
+  differs from the sketch in two places, both measured: (1) ONE descriptor per package kind
+  AND arch (`app-manifest-linux-<deb|appimage>-<x86_64|aarch64>.json` + `.sig`, `core::app_update::
+  manifest_urls_for`), not one `manifest-linux.json` with entries — the macOS/Windows schema
+  names ONE artifact per document and the reader is shared, so a per-variant document reuses
+  every line of it; the platform's `AppBundle::descriptor_variant` picks it and a dev build
+  (`None`) fetches nothing. (2) The AppImage's version is read by RUNNING the staged file with
+  `--print-version` (`main.rs` answers it before Tauri loads; `APPIMAGE_EXTRACT_AND_RUN=1` so a
+  host without libfuse2 still answers) — an AppImage embeds no version field a reader could
+  trust. The deb is verified with `dpkg-deb -f` (Package/Version/Architecture) and `-c`
+  (`usr/bin/rexenv` + `usr/bin/rex` present) BEFORE the one root command, `/usr/bin/dpkg -i
+  '<staged>'`, runs through the polkit step (`--privileged-step`, rexenv's sentence). The
+  AppImage swap is `renameat2(RENAME_EXCHANGE)` with the rename pair as fallback, the
+  previous copy left in the stage dir for the health sweep, as on macOS. `InstallKind` grew
+  `SystemPackage` and `PortableFile`; `preflight` asks the STAGING folder (app-data
+  `updates/`) for room and writability for a package, never `/usr/bin`. The relauncher waits
+  on a pidfd (capped 120 s) and starts `/usr/bin/rexenv` or the image detached. Proof: L0
+  `app_bundle_rules::tests` + `app_update::tests`; L1 `linux_app_swap_check` (system tier)
+  on the VM — fixture image exchanged, fixture package `rexenv-swapfixture` refused twice
+  then installed by the platform's own command and removed, beside the real installed deb
+  (ledger #729, #730). **Owed:** a signed Linux descriptor (the runtimes publisher's
+  `--linux <deb|appimage> <arch>` mode is a PR for the owner to merge and RUN — publishing is
+  his gate), then `app_update_check` on the VM and a real 0.8.x → 0.8.y apply through the
+  About screen (SMOKE-TEST's Linux "In-app update" rows).
 - **L8 — PHP 7.4 for Linux (RULED IN, 24 Sep 2026).** Built by rexenv in `rexenv/runtimes`
   the way the macOS 7.4 is (static-php-cli on a Linux runner, `cli` + `fpm`, x86_64 + aarch64,
   licences tarball beside), pinned through `php_self_hosted_tag` with Linux arms, swept and

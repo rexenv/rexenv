@@ -18,6 +18,8 @@ use std::path::{Path, PathBuf};
 use std::process::Child;
 use std::time::Duration;
 
+pub mod app_bundle;
+mod app_bundle_rules;
 mod desktop;
 mod dnsroute;
 pub mod parent_death_guard;
@@ -935,42 +937,8 @@ impl BinaryProvider for LinuxBinaryProvider {
     }
 }
 
-// ── The app bundle: no in-app update on Linux (D-L7) ────────────────────────
-
-pub struct LinuxAppBundle;
-impl AppBundle for LinuxAppBundle {
-    /// Facts, honestly: a `target/` binary is a dev build; anything else is `Elsewhere`, which
-    /// `core::app_update::preflight` turns into the "install the new package" refusal
-    /// (`words::LINUX.reinstall_to_home`). No Linux install is replaceable in place yet.
-    fn facts(&self, exe: &Path) -> Result<BundleFacts> {
-        let bundle = installed_exe().unwrap_or_else(|_| exe.to_path_buf());
-        let parent = bundle.parent().map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("/"));
-        let kind = if bundle.components().any(|c| c.as_os_str() == "target") { InstallKind::DevBuild } else { InstallKind::Elsewhere };
-        Ok(BundleFacts {
-            bundle,
-            parent,
-            kind,
-            homebrew: false,
-            parent_writable: false,
-            owned_by_me: false,
-            read_only: false,
-            canonical: std::fs::canonicalize(exe).map(|c| c == exe).unwrap_or(false),
-            free_parent_bytes: 0,
-        })
-    }
-    fn stage(&self, _facts: &BundleFacts, _archive: &Path, _expect: &StagedExpect) -> Result<StagedBundle> {
-        Err(Error::Unported("linux in-app update"))
-    }
-    fn swap(&self, _installed: &Path, _staged: &StagedBundle) -> std::result::Result<SwapReceipt, SwapFailure> {
-        Err(SwapFailure::Unsupported)
-    }
-    fn spawn_relauncher(&self, _bundle: &Path) -> Result<()> {
-        Err(Error::Unported("linux relauncher"))
-    }
-    fn sweep_leftovers(&self, _parent: &Path, _my_version: &str, _delete_previous: bool) -> Result<Vec<Leftover>> {
-        Ok(Vec::new())
-    }
-}
+// ── The app bundle: `app_bundle.rs` (a `.deb` through dpkg, an AppImage by exchange — L7) ──
+pub use app_bundle::LinuxAppBundle;
 
 /// Local IPC on Linux: a unix-domain socket, exactly as macOS.
 pub struct LinuxLocalIpc;

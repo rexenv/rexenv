@@ -1200,11 +1200,20 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     through the app, P5 partly; found and fixed: snap Chromium's NSS db (#726), thread-summed RAM
     (#725), `rex`'s Linux socket (#727).** P4 ✓ after a reboot; the rebuilt deb re-proved #725/#727; PHP 7.4's Install button on Linux
     is #728 (fixed). P2's restart/disable legs ✓, the tunnel guard ✓ (owner-approved test tunnel). Owed: Firefox (snap)**
-  - [ ] L7 **Linux self-update (owner ruled IN, 24 Sep 2026)** — `manifest-linux.json`, a real
-    `LinuxAppBundle` (deb via `pkexec dpkg -i`, AppImage via file swap), a relauncher; proof =
-    a 0.8.7 → 0.8.8 update applied on the VM
+  - [x] L7 **Linux self-update (owner ruled IN, 24 Sep 2026)** ✓ 25 Sep 2026 — `LinuxAppBundle`
+    (deb: `dpkg-deb` checks, then `dpkg -i` in the polkit step; AppImage: `--print-version`, then
+    `renameat2` exchange), one descriptor per kind+arch (`app-manifest-linux-<deb|appimage>-<arch>.json`),
+    relauncher on a pidfd (ledger #729, #730). **`linux_app_swap_check` PASS 16/16 on the VM** beside the
+    installed deb (fixture package installed by the platform's own command and removed; Tauri's deb
+    lists members WITHOUT `./` — caught by the real 0.8.7 deb, would have refused every update).
+    `check-app-manifest.sh --linux`. Publisher: rexenv/runtimes PR #6 (`--linux <kind> <arch>`) — the
+    owner merges and RUNS it; until a Linux descriptor is published, no Linux build is offered anything
+    (SMOKE-TEST's Linux "In-app update" rows are the About-screen proof still owed)
   - [ ] L8 **PHP 7.4 for Linux (owner ruled IN, 24 Sep 2026)** — built in `rexenv/runtimes` like the
-    macOS 7.4 (cli + fpm, both archs, licences), pinned with Linux arms, swept
+    macOS 7.4 (cli + fpm, both archs, licences), pinned with Linux arms, swept. **In flight 25 Sep 2026:**
+    rexenv/runtimes PR #7 adds the `ubuntu-24.04` / `ubuntu-24.04-arm` lanes (static musl, ldd/file
+    gates); dry run (publish=false) triggered on the branch. Then: owner publishes `php-7.4.33-7`, pin
+    the Linux arms in `binaries.rs` (`php_self_hosted_tag`), drop #728's refusal for 7.4
   - [ ] L9 the download page and the release leg (`release-linux.sh` never run on an x86_64 host)
 
 - [ ] **The keychain (CA trust) dialog is rexenv's too** — 12 Sep 2026, owner, after the admin

@@ -44,7 +44,11 @@ pub async fn app_update_check(
     // in `lib.rs` gets the long one — the distinction that did not exist when a
     // single client timeout served both (ledger #540).
     let (doc, sig) =
-        core::app_update::fetch(core::updates::INTERACTIVE_DEADLINE).await?;
+        core::app_update::fetch(
+            crate::platform::current().app_bundle().descriptor_variant().as_deref(),
+            core::updates::INTERACTIVE_DEADLINE,
+        )
+        .await?;
     let conn = lock(&state)?;
     // A serial we already have is not an error — it is the ordinary answer on
     // every check after the first, and `accept` says so by writing nothing.

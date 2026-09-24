@@ -95,6 +95,23 @@ pub fn manifest_urls_on(os: &str) -> (&'static str, &'static str) {
     }
 }
 
+/// Where Linux's descriptors live — one per package kind and arch, the same schema and key
+/// (docs/PLAN-linux-port.md L7): `app-manifest-linux-<variant>.json`, published beside the
+/// other two from `rexenv/runtimes`.
+pub const APP_MANIFEST_BASE_LINUX: &str = "https://raw.githubusercontent.com/rexenv/runtimes/main/app-manifest-linux-";
+
+/// [`manifest_urls_on`] with the install's `AppBundle::descriptor_variant`: Linux reads the
+/// document for its package kind and arch; every other OS ignores the variant.
+pub fn manifest_urls_for(os: &str, variant: Option<&str>) -> (String, String) {
+    match (os, variant) {
+        ("linux", Some(v)) => (format!("{APP_MANIFEST_BASE_LINUX}{v}.json"), format!("{APP_MANIFEST_BASE_LINUX}{v}.json.sig")),
+        _ => {
+            let (d, s) = manifest_urls_on(os);
+            (d.to_string(), s.to_string())
+        }
+    }
+}
+
 /// Path prefixes an app artifact may be downloaded from.
 ///
 /// PREFIXES, not hosts. `https://github.com/` alone would let any GitHub account
@@ -569,7 +586,24 @@ pub fn preflight(
         K::ProgramFiles => {
             return Err(Refusal::PerMachineInstall { path: facts.bundle.display().to_string() })
         }
-        K::Applications | K::UserApplications | K::ProgramsPerUser => {}
+        K::Applications | K::UserApplications | K::ProgramsPerUser | K::PortableFile => {}
+        // The package manager swaps the files as root; what the user's side needs is a
+        // writable, owned staging folder with room — which is what `parent` IS for this kind
+        // (the app-data `updates/` dir), and ownership of `/usr/bin/rexenv` is root's by
+        // design, not a refusal.
+        K::SystemPackage => {
+            if facts.read_only {
+                return Err(Refusal::ReadOnlyVolume { path: facts.parent.display().to_string() });
+            }
+            if !facts.parent_writable {
+                return Err(Refusal::ParentNotWritable { parent: facts.parent.display().to_string() });
+            }
+            let need = archive_bytes.saturating_mul(3);
+            if facts.free_parent_bytes < need {
+                return Err(Refusal::NotEnoughSpace { need, have: facts.free_parent_bytes });
+            }
+            return Ok(());
+        }
     }
     if facts.read_only {
         return Err(Refusal::ReadOnlyVolume { path: facts.parent.display().to_string() });
@@ -616,6 +650,19 @@ pub fn staged_expect_on(version: &str, os: &str) -> crate::platform::traits::Sta
             executable: "rexenv.exe".into(),
             archs: vec![Arch::X86_64],
             required_binaries: vec!["rex.exe".into()],
+            codesign: false,
+        };
+    }
+    // Linux: the identity is the package NAME (`dpkg-deb -f … Package`), the arch is checked
+    // by `dpkg` against the machine rather than listed here (an AppImage carries one), and
+    // nothing is signed to verify (D-L6).
+    if os == "linux" {
+        return StagedExpect {
+            version: version.to_string(),
+            identifier: "rexenv".into(),
+            executable: "rexenv".into(),
+            archs: vec![],
+            required_binaries: vec!["rex".into()],
             codesign: false,
         };
     }
@@ -673,14 +720,21 @@ pub fn store_check(conn: &Connection, offered: Option<Offer>) -> Result<CheckCac
 /// what happened (ledger #540).
 ///
 /// Verification happens in [`accept`]; this is deliberately dumb about trust.
-pub async fn fetch(deadline: std::time::Duration) -> Result<(Vec<u8>, String)> {
+pub async fn fetch(variant: Option<&str>, deadline: std::time::Duration) -> Result<(Vec<u8>, String)> {
     if !enabled() {
         return Err(Error::Other(
             "this build has no update key pinned, so it does not check for app updates".into(),
         ));
     }
-    let (doc, sig) = manifest_urls_on(std::env::consts::OS);
-    updates::fetch_signed_pair(doc, sig, MAX_DOC, deadline).await
+    // A Linux install that reads no descriptor (a dev build) is told so, rather than fetching
+    // a document for a package it is not.
+    if std::env::consts::OS == "linux" && variant.is_none() {
+        return Err(Error::Other(
+            "this rexenv is not a .deb or an AppImage install, so there is no update descriptor for it".into(),
+        ));
+    }
+    let (doc, sig) = manifest_urls_for(std::env::consts::OS, variant);
+    updates::fetch_signed_pair(&doc, &sig, MAX_DOC, deadline).await
 }
 
 /// The offer the TRAY is allowed to read: an in-process snapshot, installed by
@@ -802,6 +856,10 @@ pub fn state(conn: &Connection) -> AppUpdateState {
 /// that runs it is the one being replaced. Renaming it would mean the version
 /// being replaced cannot start the version replacing it.
 pub const RELAUNCH_FLAG: &str = "--relaunch-after";
+
+/// `rexenv --print-version` prints this build's version and exits — how a staged Linux copy
+/// is asked what it is (`platform/linux/app_bundle.rs`). Every OS answers it (`main.rs`).
+pub const PRINT_VERSION_FLAG: &str = "--print-version";
 
 /// What the relauncher needs, parsed here so the parsing is OS-free and testable.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1479,6 +1537,36 @@ mod tests {
         let mut f = facts(K::Applications);
         f.read_only = true;
         assert!(matches!(preflight(&f, 1), Err(Refusal::ReadOnlyVolume { .. })));
+    }
+
+    /// L7 — a package install is judged on its STAGING folder (the user's app-data), never on
+    /// `/usr/bin` being root's; an AppImage on the folder it sits in, like an `.app`.
+    #[test]
+    fn a_linux_package_install_needs_only_a_writable_staging_folder_with_room() {
+        use crate::platform::traits::InstallKind as K;
+        let mut f = facts(K::SystemPackage);
+        f.bundle = "/usr/bin/rexenv".into();
+        f.parent = "/home/u/.local/share/rexenv/updates".into();
+        f.owned_by_me = true; // of the staging folder
+        f.parent_writable = true;
+        assert!(preflight(&f, 15_000_000).is_ok());
+        f.free_parent_bytes = 1;
+        assert!(matches!(preflight(&f, 15_000_000), Err(Refusal::NotEnoughSpace { .. })));
+        f.free_parent_bytes = u64::MAX;
+        f.parent_writable = false;
+        assert!(matches!(preflight(&f, 1), Err(Refusal::ParentNotWritable { .. })));
+        // An AppImage is refused where an .app is: a folder the user does not own.
+        let mut a = facts(K::PortableFile);
+        a.owned_by_me = false;
+        assert!(matches!(preflight(&a, 1), Err(Refusal::ForeignOwner { .. })));
+        // The expectation on Linux is the package name, no code signature, the rex sidecar.
+        let e = staged_expect_on("0.8.8", "linux");
+        assert_eq!((e.identifier.as_str(), e.executable.as_str(), e.codesign), ("rexenv", "rexenv", false));
+        assert_eq!(e.required_binaries, vec!["rex".to_string()]);
+        // …and the descriptor is per variant.
+        let (d, sg) = manifest_urls_for("linux", Some("deb-aarch64"));
+        assert!(d.ends_with("/app-manifest-linux-deb-aarch64.json") && sg.ends_with(".json.sig"), "{d}");
+        assert_eq!(manifest_urls_for("macos", Some("deb-aarch64")).0, APP_MANIFEST_URL, "other OSes ignore the variant");
     }
 
     #[test]

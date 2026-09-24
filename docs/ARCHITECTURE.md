@@ -1109,6 +1109,24 @@ honest footer —
   `ProgramsPerUser` (the ordinary case) and `ProgramFiles` (per-machine — refused with the
   per-user reinstall named, never a UAC prompt); the vocabulary was made platform-neutral
   for this rather than bolted on, because Linux is next.
+  **On Linux, two install shapes, two swaps** (`platform/linux/app_bundle.rs`, owner ruling
+  24 Sep 2026 — D-L7 reversed, self-update IS in v1). A `.deb` install is `/usr/bin/rexenv`,
+  root-owned: the user's side stages the downloaded package in its own app-data `updates/`
+  folder (`InstallKind::SystemPackage` — the preflight asks the STAGING folder for room and
+  writability, since root's ownership of `/usr/bin` is by design), reads its `Package`,
+  `Version` and `Architecture` and its `usr/bin/{rexenv,rex}` members with `dpkg-deb`, and
+  then the ONE privileged command an update runs — `/usr/bin/dpkg -i '<staged>'` — goes
+  through the same polkit step as the DNS route (one prompt, rexenv's own sentence). An
+  AppImage is ONE user-owned file (`$APPIMAGE`, `InstallKind::PortableFile`): it is the
+  macOS shape exactly — staged beside itself, verified by running the staged file with
+  `--print-version` (the flag `main.rs` answers before anything else loads) and comparing
+  to the signed release, then `renameat2(RENAME_EXCHANGE)` with the rename pair as the
+  fallback, no prompt. A `cargo` build in `target/` and a bare binary anywhere else are
+  refused with both shapes named. Each build reads its OWN descriptor,
+  `app-manifest-linux-<deb|appimage>-<x86_64|aarch64>.json`, chosen by what the process IS;
+  a build that is neither asks for none and `fetch` refuses rather than guess (ledger #729,
+  #730; `linux_app_swap_check` is the L1). The relauncher is the same `--relaunch-after`
+  self-exec, waiting on a pidfd and then starting `/usr/bin/rexenv` or the image detached.
   **The relaunch** (T4) is a QUIT: `app_update_apply` ends in `app.exit(0)`, so
   `ExitRequested` runs the same live-share confirm every other quit passes through, and
   `RunEvent::Exit` — reached only once that gate agreed — spawns a detached helper

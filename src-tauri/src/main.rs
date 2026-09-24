@@ -12,6 +12,13 @@ fn main() {
     // it runs only rexenv's own ops and exits. Before every other mode — it opens no window. Linux's
     // polkit step (`rexenv --privileged-step`) takes the same door.
     let argv: Vec<String> = std::env::args().collect();
+    // `--print-version`: what THIS binary is, for the self-update's staged copy to answer for
+    // itself (a Linux AppImage has no Info.plist or VERSIONINFO to read). Before everything —
+    // it must open nothing and touch nothing.
+    if argv.iter().any(|a| a == rexenv_lib::core::app_update::PRINT_VERSION_FLAG) {
+        println!("{}", env!("CARGO_PKG_VERSION"));
+        std::process::exit(0);
+    }
     if let Some(code) = rexenv_lib::platform::run_elevated_step(&argv) {
         std::process::exit(code);
     }
@@ -42,7 +49,7 @@ fn main() {
     // cross-version contract — and checked here, before Tauri, because it must
     // open no window and touch no app state. macOS and Windows; Linux with its
     // port.
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
     if let Some(args) = rexenv_lib::core::app_update::parse_relaunch_args(&argv) {
         std::process::exit(rexenv_lib::platform::run_relauncher(args));
     }

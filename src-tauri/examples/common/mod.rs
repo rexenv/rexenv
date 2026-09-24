@@ -374,12 +374,16 @@ fn refuse_on_the_real_app_db(conn: &rusqlite::Connection, what: &str) {
 /// is a DRIVE-RELATIVE path: Rust's `fs` resolves it to `C:\private\tmp`, but a
 /// program handed the string as spelled (Explorer, in `windows_job_guard_check`)
 /// cannot open it — measured 19 Sep 2026, the leg failed "None" for the path, not
-/// the claim.
+/// the claim. On Linux `/private` does not exist at all (the first
+/// `linux_app_swap_check` on the VM died creating it, 25 Sep 2026), and `/tmp` is
+/// already the short path the 108-byte Linux socket ceiling wants.
 pub fn fixture_base() -> PathBuf {
-    if cfg!(target_os = "windows") {
-        std::env::temp_dir()
-    } else {
+    if cfg!(target_os = "macos") {
         PathBuf::from("/private/tmp")
+    } else if cfg!(target_os = "linux") {
+        PathBuf::from("/tmp")
+    } else {
+        std::env::temp_dir()
     }
 }
 

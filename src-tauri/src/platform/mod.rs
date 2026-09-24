@@ -50,6 +50,8 @@ mod linux;
 #[allow(dead_code)]
 #[path = "linux"]
 mod linux_pure {
+    #[path = "app_bundle_rules.rs"]
+    pub(crate) mod app_bundle_rules;
     #[path = "desktop.rs"]
     pub(crate) mod desktop;
     #[path = "proc_table.rs"]
@@ -191,6 +193,8 @@ pub use linux::parent_death_guard::run as run_tunnel_guard;
 pub use macos::relauncher::run as run_relauncher;
 #[cfg(target_os = "windows")]
 pub use windows::app_bundle::run_relauncher;
+#[cfg(target_os = "linux")]
+pub use linux::app_bundle::run_relauncher;
 
 /// A process's start-time token — the guard's second identity for its parent.
 /// Re-exported for the live check that spawns guards by hand.

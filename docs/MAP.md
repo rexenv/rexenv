@@ -70,8 +70,10 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
   `pkexec`, `/proc` + `ss` supervision, `xdg-open`/D-Bus reveal, PATH-found editors/browsers/terminals,
   an autostart `.desktop`, systemd user unit for the DNS agent and system unit for the edge, a
   a dummy-link DNS route per TLD (`dnsroute.rs` — the resolved drop-in it replaced is measured wrong
-  there), NSS + system-store CA trust; in-app update `Unported`), with the pure
-  halves in `proc_table.rs`, `dnsroute.rs`, `units.rs`, `desktop.rs`, `trust.rs` — mounted as
+  there), NSS + system-store CA trust; in-app update in `app_bundle.rs` — `.deb` via `dpkg -i`
+  in the polkit step, AppImage via `renameat2` exchange, `run_relauncher` on a pidfd, ledger
+  #729/#730), with the pure
+  halves in `proc_table.rs`, `dnsroute.rs`, `units.rs`, `desktop.rs`, `trust.rs`, `app_bundle_rules.rs` — mounted as
   `platform::linux_pure` in every non-Linux test build (ledger #716–#719); `parent_death_guard.rs`
   the pidfd tunnel guard (`--tunnel-guard`, #722); the polkit step `--privileged-step` +
   `src-tauri/linux/dev.rexenv.rexenv.policy` (#723)).

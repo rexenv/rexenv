@@ -982,6 +982,16 @@ builds are for EXAMPLES; the app itself comes from the Dell.
   confuse it with the app, and it reports to a file beside itself when Explorer (whose
   environment it inherits) started it. Does NOT cover the real hop of an installed copy started
   by the installer's Finish page — SMOKE-TEST's Windows section (ledger #692).
+- `linux_app_swap_check` (system, Linux) — the Linux updater's two swaps on fixtures the
+  sandbox owns: a fixture "AppImage" (a script answering `--print-version`) refused when its
+  version disagrees with the signed one, then exchanged in place with the previous copy kept
+  until the sweep is told; a fixture package `rexenv-swapfixture` (built with `dpkg-deb`,
+  owning only `usr/bin/rexenv-swapfixture` + `rex-swapfixture` so it can be installed beside
+  the REAL rexenv deb) refused on version and on a missing sidecar, then installed with the
+  SAME command the platform hands to `pkexec` — through `sudo -n`, a terminal has no polkit
+  agent — and removed again. Does NOT cover the polkit dialog, the relaunch through the
+  About screen, or a real signed descriptor (owner's publish gate) — SMOKE-TEST's Linux
+  section (ledger #729, #730).
 - `app_update_check` (network) — the app's OWN update descriptor, fetched from where it is
   published and verified against the key compiled into the running binary: the half a
   user's "Check now" runs, where a publisher signing with a rotated key, or a document
@@ -1019,6 +1029,12 @@ route resolves, a unit starts or a certificate is trusted. The Mac has no Ubuntu
 0. **The Ubuntu 22.04 arm64 UTM VM** (`ssh rexenv@192.168.64.7`, built 24 Sep 2026 from the cloud
    image + a cloud-init seed — no installer): `linux_dns_route_check` (system tier, sudo) is the
    shape for a root-mechanism proof; it found the first DNS design wrong before any user did.
+   `linux_app_swap_check` (system tier, sudo) is the updater's — PASS 16/16 there 25 Sep 2026,
+   beside the installed deb. Build examples on the VM in DEBUG with `CARGO_BUILD_JOBS=1`
+   (`source ~/.cargo/env` first: the ssh shell is not a login shell): a release build of the
+   lib is SIGKILLed by the OOM killer on 4 GB even with the swapfile, and the 24 GB disk fills
+   at one release + one debug target. `fixture_base()` is `/tmp` on Linux (`/private` does not
+   exist there — the first run died creating it).
 1. **Inside the check container**, for anything that is a process or a file: `/proc` reads,
    `chmod`, unix sockets, the login-env probe. `docker run --rm -v "$PWD":/work -w /work/src-tauri
    rexenv-linux-check:ubuntu22 cargo test --lib platform::linux` runs the module's tests on real

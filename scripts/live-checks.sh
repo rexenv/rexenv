@@ -88,6 +88,7 @@ windows_app_bundle_swap_check  sandbox windows
 windows_app_relaunch_check     sandbox windows
 windows_job_guard_check        sandbox windows
 linux_dns_route_check          system  linux
+linux_app_swap_check           system  linux
 app_swap_probe                 demo    macos
 app_update_check               network macos
 blueprint_check                network both

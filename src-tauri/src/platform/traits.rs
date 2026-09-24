@@ -1027,6 +1027,14 @@ pub enum InstallKind {
     Translocated,
     /// Installed somewhere else — Downloads, a project folder, a second copy.
     Elsewhere,
+    /// Linux, the ordinary case: a package manager's install (`/usr/bin/rexenv` from the
+    /// `.deb`, root-owned). Replaced THROUGH the package manager in the polkit step — one
+    /// prompt — never by a rename; the staging happens in the user's app-data, so the
+    /// facts about the parent describe THAT folder (docs/PLAN-linux-port.md L7).
+    SystemPackage,
+    /// Linux, an AppImage: one user-owned file, replaced by the macOS-shaped exchange
+    /// beside itself with no prompt.
+    PortableFile,
 }
 
 /// What the platform can SEE about the installed bundle. Facts only: no
@@ -1237,6 +1245,14 @@ pub trait AppBundle: Send + Sync {
     /// quit through — so a cancelled quit leaves no helper waiting on a pid that
     /// is not going to die.
     fn spawn_relauncher(&self, bundle: &Path) -> Result<()>;
+    /// Which of an OS's update descriptors THIS install reads, when the OS publishes more
+    /// than one: Linux has a document per package kind and arch (`deb-x86_64`,
+    /// `appimage-aarch64`), because one release there is four artifacts and the descriptor
+    /// schema names one. `None` (the default) means the OS's single document — macOS,
+    /// Windows — or an install that reads none (a dev build).
+    fn descriptor_variant(&self) -> Option<String> {
+        None
+    }
 }
 
 /// Local (non-TCP) inter-process transport — how rexenv reaches a server on THIS

@@ -671,8 +671,8 @@ pub async fn fetch() -> Result<(Vec<u8>, String)> {
 /// Deliberately dumb about trust: it returns bytes. Verification lives in each
 /// document's own `accept`, so there is exactly one place that decides.
 pub async fn fetch_signed_pair(
-    doc_url: &'static str,
-    sig_url: &'static str,
+    doc_url: &str,
+    sig_url: &str,
     max_doc: usize,
     deadline: std::time::Duration,
 ) -> Result<(Vec<u8>, String)> {
@@ -707,8 +707,8 @@ pub async fn fetch_signed_pair(
     });
     // The pattern throughout: log the URL and the library's own words, return the
     // sentence. Two audiences, two texts, one failure.
-    let get = |url: &'static str| async move {
-        let res = client.get(url).send().await.map_err(|e| {
+    let get = |url: String| async move {
+        let res = client.get(&url).send().await.map_err(|e| {
             log::warn!("update fetch: {url}: {e}");
             Error::Other(FetchFailure::Unreachable.message())
         })?;
@@ -727,8 +727,8 @@ pub async fn fetch_signed_pair(
         Ok(body.to_vec())
     };
     bounded(deadline, doc_url, async move {
-        let doc = get(doc_url).await?;
-        let sig = get(sig_url).await?;
+        let doc = get(doc_url.to_string()).await?;
+        let sig = get(sig_url.to_string()).await?;
         let sig = String::from_utf8(sig)
             .map_err(|_| Error::Other("the signature file is not text".into()))?;
         Ok((doc, sig))
