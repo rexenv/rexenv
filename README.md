@@ -49,7 +49,7 @@ it on (`docs/ARCHITECTURE.md` §8.3).
 - **`docs/TODO.md`** — all open work (open items only; the shipped evidence log is archived).
 - **`docs/CLI-ROADMAP.md`** — the `rex` CLI: shipped command surface + remaining items.
 - **`CLAUDE.md`** — agent router: non-negotiable rules + "for X read Y" index.
-- **`docs/INSTALL.md`** / **`docs/SMOKE-TEST.md`** — user install guide (macOS + Windows) / release checklist (clean Mac, with a Windows section).
+- **`docs/INSTALL.md`** / **`docs/SMOKE-TEST.md`** — user install guide (macOS + Windows + Linux) / release checklist (clean Mac, with Windows and Linux sections).
 - **`docs/STATUS.md`** — generated (`scripts/status.py`): open work by section, ledger tally, plans in flight.
 - **`docs/archive/PLAN-*.md`** — design records for every shipped feature (why it is shaped the way it is); indexed in `docs/archive/README.md`. A plan lives in `docs/` only while in flight.
 - **`docs/archive/`** — historical: founding spec, design brief, phase task logs, audit record. May contradict current code.
@@ -80,6 +80,7 @@ scripts/verify.sh
 scripts/live-checks.sh                     # tiered live checks against real binaries
 scripts/verify-full.sh                     # release gate: verify + sandbox tier + WebKit harness
 scripts/windows-check.sh                   # does it COMPILE for Windows x64? (cargo-xwin; also run by verify.sh)
+scripts/linux-check.sh                     # does it COMPILE for Linux? (Ubuntu 22.04 container; also run by verify.sh)
 cargo run --example <name>                 # a single live check (src-tauri/examples/)
 ```
 
@@ -206,7 +207,9 @@ rexenv/
         │   │                   #   ShellRunner, Paths, BinaryProvider, EdgeSupervisor,
         │   │                   #   DnsAgentManager, AppBundle, LocalIpc
         │   ├── macos/          # all 13 impls real (+ app_bundle.rs, relauncher.rs, webview_dialogs.rs, parent_death_guard.rs, activation.rs, prompt_applet.rs, keychain_trust.rs)
-        │   └── windows/ · linux/   # Windows: Error::Unported stubs being filled (docs/PLAN-windows-port.md); Linux: todo!()
+        │   ├── windows/        # all impls real (docs/PLAN-windows-port.md)
+        │   └── linux/          # all impls real since 24 Sep 2026, unmeasured on Linux (docs/PLAN-linux-port.md);
+        │                       #   pure halves proc_table/resolved/units/desktop/trust tested on every host
         │
         └── state/              # app state
             ├── db.rs           # SQLite + migrations (v1–v44)

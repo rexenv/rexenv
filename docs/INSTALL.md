@@ -1,6 +1,6 @@
 # Installing rexenv
 
-**macOS is below; Windows is at the end of this file** — the two installs share
+**macOS is below; Windows and Linux are at the end of this file** — the installs share
 almost nothing mechanically (a `.dmg` and Gatekeeper against an installer and
 SmartScreen; `/etc/resolver` against NRPT; a keychain against the CurrentUser Root
 store), so each is written out rather than cross-referenced.
@@ -406,3 +406,55 @@ store, and the `rex` copy on your `Path`.
    `%LOCALAPPDATA%\rexenv`. **Your site files live under
    `%LOCALAPPDATA%\rexenv\rexenv\data` unless you moved the Sites folder**, so check
    before deleting.
+
+## Linux (Ubuntu)
+
+> **Not yet installable, and not yet run anywhere.** The Linux port landed 24 Sep 2026
+> (`docs/PLAN-linux-port.md`): the code compiles for Linux and every platform piece is written,
+> but no `.deb` has been built and no Linux machine has run it. This section says what the
+> build WILL do on an Ubuntu machine, so it is ready when the package lands — and so the first
+> tester knows what to look for.
+
+### Requirements
+
+- **Ubuntu 22.04 LTS or newer** (the first LTS with `libwebkit2gtk-4.1`, which the app's
+  webview needs), x86_64 or arm64. Other distros with systemd-resolved and polkit will
+  probably work and are not tested.
+- **systemd-resolved** answering `/etc/resolv.conf` (Ubuntu's default). rexenv routes `.rex`
+  through a resolved drop-in; on a machine where resolved is not running the setup step
+  refuses with a sentence saying so, and writes nothing.
+- **polkit** with a desktop authentication agent (any Ubuntu desktop). System changes are made
+  through `pkexec`, so you see the desktop's own password dialog — it names `/bin/sh`, because
+  rexenv ships no polkit action file yet.
+- `libnss3-tools` (`certutil`), `xdg-utils`, `libayatana-appindicator3-1` (the tray). The
+  `.deb` will declare these; an AppImage will not, and the messages name the missing one.
+- An internet connection on **first run** — the same downloads as macOS, from the same
+  publishers where they publish Linux builds (`docs/PORTS.md`, Linux table). MySQL's generic
+  Linux build additionally needs `libaio1` and `libnuma1` from apt.
+
+### What system setup changes (one polkit prompt, then one more for the certificate)
+
+1. `/etc/systemd/resolved.conf.d/rexenv-rex.conf` — routes ONLY `*.rex` to rexenv's resolver on
+   `127.0.0.1:15353` (`Domains=~rex`, a routing domain), then restarts systemd-resolved.
+2. `/etc/systemd/system/rexenv-edge.service` and `/usr/local/lib/rexenv/` — the root Caddy edge
+   on `:80`/`:443`, kept alive by systemd, its binary copied to a root-owned folder.
+3. Your browsers' certificate store (`~/.pki/nssdb`, via `certutil`, no prompt) AND the system
+   store (`/usr/local/share/ca-certificates/rexenv-local-ca.crt` + `update-ca-certificates`, the
+   second prompt) — so both Chrome and `curl`/PHP accept `https://*.rex`.
+4. `~/.config/systemd/user/rexenv-dns.service` — the resolver, started at sign-in, restarted on
+   any exit, outliving the app. No prompt.
+5. `/usr/local/bin/rex` — the CLI symlink, when you click Install (one prompt).
+
+### Not in Linux v1
+
+PHP 7.4 (no static Linux build exists), Redis, MariaDB, Apache, Xdebug (Homebrew's Linux
+bottles are x86_64-only and unrelinked), and the in-app self-update — Settings → About says
+to install the new `.deb`.
+
+### Uninstalling — do the in-app step FIRST
+
+1. In the app: **Settings → "Remove system changes"** (polkit prompts — removes the drop-ins,
+   the edge unit and its root folder, both certificate trusts, the DNS agent unit and the
+   `rex` symlink).
+2. Then `sudo apt remove rexenv` (or delete the AppImage), and — only if you want a full wipe —
+   `~/.local/share/rexenv`. **Your site files live there unless you moved the Sites folder.**

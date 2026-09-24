@@ -1,4 +1,4 @@
-# rexenv — release smoke test (clean Mac · Windows section at the end)
+# rexenv — release smoke test (clean Mac · Windows and Linux sections at the end)
 
 Run this end-to-end on a **clean Mac or a fresh macOS user account** (no cached
 rexenv binaries) from the distributed **universal .dmg**, after the INSTALL.md
@@ -1863,6 +1863,75 @@ sentence is now OS-neutral.
   now says **"rexenv is still running: the app, or the small background resolver…"** with the
   "starts again on its own" line (`src-tauri/nsis/English.nsh`). OK → the app closed, Setup
   completed, Finish reopened the app, and the agent was back beside it.
+
+## Linux — what this checklist means on that OS (nothing here has run yet — 24 Sep 2026)
+
+Run everything above on Linux too, EXCEPT what this section changes or removes. Ubuntu is the
+supported target (22.04 LTS or newer, D-L4 of `docs/PLAN-linux-port.md`); every mechanism below
+is systemd's, polkit's or the desktop's, and **no row in this section has been run on any
+Linux machine** — the impls landed from a Mac with a Docker container that has no systemd, no
+polkit and no desktop. The P-numbered rows are the plan's §7: the ones only a VM can answer,
+in the order they must be run. **P1 first, before anything else in this file** — it is the
+row that can break the tester's own internet.
+
+Environment: Ubuntu ____ (22.04+; x86_64 or aarch64) · package ____ (.deb / AppImage) · rexenv version ____
+
+### P1 — DNS scoping (ledger #717 — the claim the whole port rests on)
+- [ ] Before onboarding: `resolvectl status` shows a link with DNS servers and `resolv.conf` is
+      the stub (`nameserver 127.0.0.53`). Note `resolvectl query example.com`'s answer.
+- [ ] Onboarding → the system-setup consent → ONE polkit dialog (`pkexec`, names `/bin/sh`).
+      After: `/etc/systemd/resolved.conf.d/rexenv-rex.conf` exists with `DNS=127.0.0.1:15353`
+      and `Domains=~rex`; `resolvectl status` lists `127.0.0.1:15353` under the global section
+      with `~rex` as a routing domain.
+- [ ] `resolvectl query anything.rex` → `127.0.0.1`. **`resolvectl query example.com` → the SAME
+      public answer as before, never `127.0.0.1`.** `curl -I https://example.com` works.
+      **Tell:** every site on the internet resolving to loopback — the drop-in became a default
+      route. If that happens: `sudo rm /etc/systemd/resolved.conf.d/rexenv-rex.conf && sudo
+      systemctl restart systemd-resolved`, and the mechanism (D-L2) is wrong, not the tester.
+- [ ] Add a second TLD in Settings → a second drop-in, both TLDs answer, `example.com` still does not.
+- [ ] A machine WITHOUT systemd-resolved (or with it stopped): the consent step FAILS with the
+      sentence naming systemd-resolved; nothing is written.
+
+### P2 — the edge unit
+- [ ] After Start all: `systemctl status rexenv-edge` active, `ExecStart=/bin/sh
+      "/usr/local/lib/rexenv/edge-launch.sh"`, `/usr/local/lib/rexenv/bin/caddy` is `root:root
+      0755`, `:443` and `:80` answer. `ls -l ~/.local/share/rexenv/run/caddy-admin.sock` is
+      owned by YOU within a second of any site change (the chown loop) — create a site, check
+      again. `sudo kill -9 <caddy pid>` → back within ~2 s (`Restart=always`).
+- [ ] Stop all → `systemctl is-enabled rexenv-edge` says `disabled`, the port is free, and it
+      stays down across a reboot. Start all → enabled and up again.
+
+### P3 — CA trust in two stores (D-L3)
+- [ ] After onboarding: `certutil -d sql:$HOME/.pki/nssdb -L` lists `rexenv local CA` with
+      `C,,`; `/usr/local/share/ca-certificates/rexenv-local-ca.crt` exists; `curl -I
+      https://<site>.rex` succeeds with no `-k`. Chrome/Chromium opens the site with no warning.
+      Firefox (snap on Ubuntu) opens it — `core::firefox`'s policy file, `~/snap/firefox/…`.
+- [ ] A machine without `libnss3-tools`: the trust step fails with the `sudo apt install
+      libnss3-tools` sentence, and the system half was NOT half-applied.
+- [ ] Settings → Remove system changes → both stores empty, drop-ins gone, units gone.
+
+### P4 — autostart and the DNS agent
+- [ ] `~/.config/autostart/rexenv.desktop` after enabling the login item; sign out, sign in →
+      rexenv is in the tray with no window. `~/.config/systemd/user/rexenv-dns.service` is
+      `active` after a sign-in with the app NOT started; `dig @127.0.0.1 -p 15353 x.rex` answers.
+- [ ] Quit the app → `.rex` still resolves (the agent outlives it). `systemctl --user kill
+      rexenv-dns` → back within ~2 s.
+- [ ] AppImage: the unit and the autostart entry name the `.AppImage` path, never a `/tmp/.mount_…` one.
+
+### P5 — the GUI
+- [ ] The tray icon appears (needs `libayatana-appindicator3`); its menu opens; "Open rexenv"
+      shows the window. The window has NO reserved title-bar row (GTK draws its own).
+- [ ] Databases → Browse: Adminer renders INSIDE the app at `rexdb://localhost` (webkitgtk
+      serves custom schemes as WebKit does — the macOS origin, ledger #703's Linux leg).
+- [ ] Settings: the words say Files, apt, "this computer", the tray, `resolved.conf.d` — never
+      Finder, brew, Explorer or winget (`words::LINUX`).
+- [ ] Open in editor / browser / terminal: each detected entry launches; a private window opens
+      private; "Open in terminal" lands in the site folder.
+
+### Not in Linux v1 (D-L7/D-L8, refused in core with an honest message)
+- **PHP 7.4** — no static Linux build exists; the picker must not offer it.
+- **Redis, MariaDB, Apache, Xdebug** — as Windows v1: not offered, and a refusal that names the OS.
+- **In-app update** — Settings → About says to install the new `.deb`; Check still works.
 
 ---
 Result: ____ / all pass.  Issues found: ________________________________________

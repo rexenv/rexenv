@@ -150,6 +150,16 @@ release** — which is the property that makes a stolen key survivable. Ledger
    the executable's own `ProductVersion`/`ProductName`, the words the swap verifies —
    because what a user receives is what comes OUT of it, not what went in.
 
+3b. **Linux (not yet cut — the port landed 24 Sep 2026, `docs/PLAN-linux-port.md`).**
+   `pnpm release:linux` on an Ubuntu 22.04+ host runs `scripts/release-linux.sh`: plain
+   `tauri build` (`bundle.targets` "all" → `.deb`, `.rpm`, `.AppImage`; `bundle.linux.deb.depends`
+   names webkit2gtk 4.1, the appindicator, xdg-utils, libnss3-tools, policykit-1 and MySQL's
+   `libaio1`/`libnuma1`), then restarts the `rexenv-dns` user unit if a dev launch registered one
+   on the binary the build replaced (Linux does not lock a running executable, so the build
+   succeeds and the OLD agent keeps running — the opposite failure to Windows's). Prints the
+   sha256 of every artefact. No §A0-linux check exists yet, no `app-manifest-linux.json`, no
+   in-app update (D-L7): the release is the `.deb` on the download page. Both archs are two
+   builds on two hosts (or one host with `--target`), and the first one has not been made.
 4. `pnpm release:mac` → `src-tauri/target/universal-apple-darwin/release/bundle/dmg/rexenv_<X.Y.Z>_universal.dmg`.
    Runs `scripts/release-mac.sh`, which PRE-CLEANS before building. `tauri build`
    shells out to a generated `bundle_dmg.sh` that attaches a temporary
