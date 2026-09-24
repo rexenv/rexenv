@@ -1984,9 +1984,12 @@ Environment: Ubuntu ____ (22.04+; x86_64 or aarch64) · package ____ (.deb / App
       `/usr/bin` changed.
 
 ### PHP 7.4 on Linux (L8, `php-7.4.33-7`)
-- [ ] Settings → PHP → 7.4 → Install: downloads rexenv's own Linux build, `php -v` in the
-      site's terminal says 7.4.33, a WordPress site on 7.4 serves; `bin/php-7.4.33/licenses/`
-      holds the Linux licence set; no Xdebug toggle for 7.4 (static ELF, expected).
+- [x] ✓ 25 Sep 2026 (VM, the rebuilt deb): `rex php install 7.4` → "✓ PHP 7.4 installed", `rex php
+      list` shows 7.4 installed with no refusal note, `rex site create php74.rex --type php --php 7.4`
+      → `curl https://php74.rex/` prints 7.4.33, `rex status` shows `PHP-FPM 7.4 running` on 9774;
+      `bin/php-7.4.33/licenses/` holds the Linux licence set (`php_versions_check`).
+- [ ] Settings → PHP → 7.4 → Install through the GUI, and a WordPress site on 7.4; no Xdebug toggle
+      for 7.4 (static ELF, expected).
 
 ### Not in Linux v1 (D-L8, refused in core with an honest message)
 - **Redis, MariaDB, Apache, Xdebug** — as Windows v1: not offered, and a refusal that names the OS.

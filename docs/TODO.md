@@ -1215,7 +1215,8 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     flipped; **L1 `php_versions_check` on the VM: 7.4.33 cli + fpm downloaded from `php-7.4.33-7`, digests
     verified, `PHP 7.4.33 (cli) (built: Sep 24 2026)` runs, `licenses/` beside it** (the example's macOS-only
     spellings — `arm64` for an ELF, "self-distributed" resolved for macOS — were the run's only failures and
-    are fixed: `artifact_is_self_distributed` asks the host's OS). Built in `rexenv/runtimes` like the
+    are fixed: `artifact_is_self_distributed` asks the host's OS). **Through the rebuilt deb on the VM:
+    `rex php install 7.4` ✓, `PHP-FPM 7.4 running` on 9774, `php74.rex` serves 7.4.33 over HTTPS.** Built in `rexenv/runtimes` like the
     macOS 7.4 (cli + fpm, both archs, licences). **History:**
     rexenv/runtimes PR #7 adds the `ubuntu-24.04` / `ubuntu-24.04-arm` lanes (static musl, ldd/file
     gates). **Dry run 36002401583: all four lanes green** (aarch64 needed `-fPIC -fPIE`; the licence sweep
@@ -1223,8 +1224,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     symbols, so 7.4 on Linux gets no Xdebug — not in v1 anyway). Then: owner merges PR #7 and publishes
     `php-7.4.33-7`; pin the Linux arms in `binaries.rs` (`php_self_hosted_tag`), drop #728's refusal for 7.4
   - [ ] L9 the release leg — `release-linux-check.sh` (§A0-linux) + `release.yml`'s x86_64
-    `release-linux` job landed 25 Sep 2026; VM (aarch64) run of `pnpm release:linux` pending in this
-    session; **x86_64 has never been built** (no host; the CI job has never run — private repo). The
+    `release-linux` job landed 25 Sep 2026; **VM (aarch64) `pnpm release:linux` exit 0 — §A0-linux all
+    green on the rebuilt 0.8.7 deb + AppImage (`--print-version` answers, polkit action, Depends, rex
+    sidecar), and that deb installed and runs**; **x86_64 has never been built** (no host; the CI job has never run — private repo). The
     download page is the tap release + website, outside this repo
 
 - [ ] **The keychain (CA trust) dialog is rexenv's too** — 12 Sep 2026, owner, after the admin
