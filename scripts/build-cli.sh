@@ -30,9 +30,18 @@ case "$(uname -s)" in
     cp cli/target/x86_64-pc-windows-msvc/release/rex.exe src-tauri/binaries/rex-x86_64-pc-windows-msvc.exe
     echo "build-cli: staged rex sidecar (x86_64-pc-windows-msvc)"
     ;;
+  Linux)
+    # Linux (docs/PLAN-linux-port.md L3): the HOST triple's sidecar — `tauri build` on an
+    # x86_64 box bundles `rex-x86_64-unknown-linux-gnu`, on an arm64 box the aarch64 one.
+    # `rustc -vV` names the host; a hardcoded x86_64 would stage the wrong name on the
+    # aarch64 machines this port is exercised on (the Mac's Docker containers).
+    triple="$(rustc -vV | sed -n 's/^host: //p')"
+    cargo build --manifest-path cli/Cargo.toml --release --target "$triple"
+    cp "cli/target/$triple/release/rex" "src-tauri/binaries/rex-$triple"
+    echo "build-cli: staged rex sidecar ($triple)"
+    ;;
   *)
-    # Linux staging lands with its platform impls.
-    echo "build-cli: only macOS and Windows staging are implemented" >&2
+    echo "build-cli: only macOS, Windows and Linux staging are implemented" >&2
     exit 1
     ;;
 esac

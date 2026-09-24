@@ -46,6 +46,23 @@
       "signingIdentity": "-",
       "minimumSystemVersion": "13.0"
     },
+    "linux": {
+      "deb": {
+        "depends": [
+          "libwebkit2gtk-4.1-0",
+          "libgtk-3-0",
+          "libayatana-appindicator3-1",
+          "xdg-utils",
+          "libnss3-tools",
+          "policykit-1",
+          "libaio1 | libaio1t64",
+          "libnuma1"
+        ]
+      },
+      "appimage": {
+        "bundleMediaFramework": false
+      }
+    },
     "windows": {
       "nsis": {
         "installMode": "currentUser",

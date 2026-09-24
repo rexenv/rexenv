@@ -1572,13 +1572,19 @@ fn log_sinks(log_dir: Option<std::path::PathBuf>, debug: bool) -> Vec<LogSink> {
 /// app has no `icons/` directory beside the binary. Derived from the app icon
 /// by `scripts/make-menubar-icon.py`, never hand-drawn: a second mark drifts
 /// from the first the day the brand changes.
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
 const MENUBAR_ICON: &[u8] = include_bytes!("../icons/menubar.png");
 
 /// Windows' tray icon: the colour app icon. The notification area draws an icon as it is, so macOS's
 /// template glyph would be a black mark on a dark taskbar (W7 S5, owner's ruling Q2, ledger #624).
 #[cfg(windows)]
 const WINDOWS_TRAY_ICON: &[u8] = include_bytes!("../icons/32x32.png");
+
+/// Linux's tray icon: the colour app icon too, for the Windows reason — an appindicator draws an icon
+/// as it is, and Ubuntu's top bar is dark, so the template glyph would vanish into it
+/// (docs/PLAN-linux-port.md L4; unmeasured on a desktop yet).
+#[cfg(target_os = "linux")]
+const LINUX_TRAY_ICON: &[u8] = include_bytes!("../icons/32x32.png");
 
 /// Install the menu-bar status item.
 ///
@@ -1603,8 +1609,12 @@ fn install_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     *last_menu().lock().unwrap_or_else(|e| e.into_inner()) = Some((spec, menu.clone()));
 
     // macOS: the template glyph, tinted for a light or a dark menu bar, and the menu on any click.
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
     let builder = TrayIconBuilder::with_id(TRAY_ID).icon(Image::from_bytes(MENUBAR_ICON)?).icon_as_template(true);
+    // Linux: the colour icon, and the menu on any click — an appindicator has no click event of its
+    // own, so the menu IS the interaction (docs/PLAN-linux-port.md L4).
+    #[cfg(target_os = "linux")]
+    let builder = TrayIconBuilder::with_id(TRAY_ID).icon(Image::from_bytes(LINUX_TRAY_ICON)?);
     // Windows (W7 S5, owner's ruling Q2, ledger #624): the colour icon, and the Windows convention for the
     // clicks — the window on a LEFT click, the menu on a RIGHT one. Acting on the release, as a button does.
     #[cfg(windows)]

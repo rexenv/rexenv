@@ -152,18 +152,24 @@ Each ends in something observable; each is its own commit.
   behind `platform::xz_decoder` (Oracle publishes no `.tar.gz` for Linux); PHP 7.4 has no
   arm (§4); `manifest_sweep_check` enumerates the Linux set (floor 86 → 130) — **not yet RUN**
   against the network after the change; `docs/PORTS.md` Linux table.
-- **L3 — Build plumbing and words.** `build-cli.sh` Linux arm (`rex-<triple>` for the host
+- **L3 — Build plumbing and words.** ✓ 24 Sep 2026 (words landed with L1). `build-cli.sh`'s
+  Linux arm stages the HOST triple (proven in the Ubuntu container); `bundle.linux.deb.depends`;
+  `scripts/release-linux.sh` — never run, no Ubuntu host. Original scope: `build-cli.sh` Linux arm (`rex-<triple>` for the host
   triple), `tauri.conf.json` `bundle.linux` (deb depends, desktop entry, AppImage), `words::LINUX`
   + three-way `current()`, `path_lookup` (UNIX already), the TSX platform reads from §1.1,
   `scripts/release-linux.sh` (the `tauri build` recipe for a VM). *Done when:* `tauri build`
   on an Ubuntu host would need nothing that is not in the tree (proven on the VM in L6).
-- **L4 — The app shell on Linux.** Tray (`tray-icon` needs `libayatana-appindicator`), no dock
+- **L4 — The app shell on Linux.** ✓ 24 Sep 2026: the tray takes the colour icon (an
+  appindicator draws it as-is on a dark top bar — ledger #721); everything else in §1.1 falls
+  to a default that is right for Linux, the tunnel guard excepted (a `PR_SET_PDEATHSIG` shape
+  is a TODO). Original scope: Tray (`tray-icon` needs `libayatana-appindicator`), no dock
   concept (the macOS accessory-policy code stays `cfg(macos)`), `titleBarStyle`, the tunnel
   guard (Linux HAS `PR_SET_PDEATHSIG` — the guard process is unnecessary; `prctl` on the child),
   `run_relauncher`/`activate_app` (Unported / no-op), the mail `sendmail_path` (Unix — as macOS).
   *Done when:* `main.rs` and `lib.rs` compile for Linux with every `cfg(macos)` item either
   shared or given a Linux answer, and L0 is green.
-- **L5 — Docs.** `ARCHITECTURE.md` (the OS rule now says three), `MAP.md`, `PORTS.md`,
+- **L5 — Docs.** ✓ 24 Sep 2026 (owed: `notices-check.py`'s Linux graph — the Mac's registry
+  lacks the gtk crates for an offline `cargo metadata --filter-platform`). Original scope: `ARCHITECTURE.md` (the OS rule now says three), `MAP.md`, `PORTS.md`,
   `TESTING.md` ("Proving a Linux claim"), `SMOKE-TEST.md` Linux section, `INSTALL.md`,
   `RELEASING.md`, `CLAIM-LEDGER.md` rows (every new "never"), `TODO.md` ("Linux launch" under
   *Now*; the Phase 4+ row retired), `STATUS.md` regenerated.

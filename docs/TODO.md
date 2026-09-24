@@ -1180,9 +1180,15 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     PHP 7.4 has no static Linux build (not in v1); nginx from jirutka's static builds until
     `rexenv/runtimes` publishes a Linux one. Owed: `manifest_sweep_check` run (network tier)
     after the change; `notices-check.py` taught the Linux graph (xz2/lzma-sys rows)
-  - [ ] L3 build plumbing: `build-cli.sh` Linux arm, `bundle.linux` (deb depends), `release-linux.sh`
-  - [ ] L4 the app shell on Linux (tray, tunnel guard, `activate_app`)
-  - [ ] L5 docs: SMOKE-TEST Linux section, INSTALL, RELEASING, PORTS Linux table
+  - [x] L3 build plumbing ✓ 24 Sep 2026 — `build-cli.sh` Linux arm (host triple from `rustc -vV`;
+    ran in the Ubuntu container: `rex-aarch64-unknown-linux-gnu` staged), `bundle.linux` (deb
+    depends incl. `libaio1 | libaio1t64`, `libnuma1`), `scripts/release-linux.sh` + `pnpm release:linux`
+    (never run — needs an Ubuntu host)
+  - [x] L4 the app shell ✓ 24 Sep 2026 — the Linux tray takes the colour icon (ledger #721); the
+    tunnel guard, activation and the About menu are macOS-only by design and Linux falls to the
+    documented defaults (plan §1.1). Owed: a `PR_SET_PDEATHSIG` guard at spawn (a TODO, not v1)
+  - [x] L5 docs ✓ 24 Sep 2026 — SMOKE-TEST Linux section (P1–P5, nothing run), INSTALL, RELEASING
+    3b, PORTS Linux table, README tree. Owed: `notices-check.py` Linux graph
   - [ ] L6 the VM run (owner, D-L9 — blocked on disk: 7.8 GB free) — P1 FIRST
   - [ ] L7 `manifest-linux.json`, the download page
 
