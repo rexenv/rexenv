@@ -57,7 +57,10 @@
           "policykit-1",
           "libaio1 | libaio1t64",
           "libnuma1"
-        ]
+        ],
+        "files": {
+          "/usr/share/polkit-1/actions/dev.rexenv.rexenv.policy": "linux/dev.rexenv.rexenv.policy"
+        }
       },
       "appimage": {
         "bundleMediaFramework": false

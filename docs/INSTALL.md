@@ -424,8 +424,9 @@ store, and the `rex` copy on your `Path`.
   through a resolved drop-in; on a machine where resolved is not running the setup step
   refuses with a sentence saying so, and writes nothing.
 - **polkit** with a desktop authentication agent (any Ubuntu desktop). System changes are made
-  through `pkexec`, so you see the desktop's own password dialog — it names `/bin/sh`, because
-  rexenv ships no polkit action file yet.
+  through `pkexec`, so you see the desktop's own password dialog. From the `.deb` it reads
+  "rexenv needs administrator permission to change system settings…" (the action file the
+  package installs); from an AppImage it is polkit's generic "run /bin/sh as the super user".
 - `libnss3-tools` (`certutil`), `xdg-utils`, `libayatana-appindicator3-1` (the tray). The
   `.deb` will declare these; an AppImage will not, and the messages name the missing one.
 - An internet connection on **first run** — the same downloads as macOS, from the same

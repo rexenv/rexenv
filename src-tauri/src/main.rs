@@ -9,7 +9,8 @@ fn main() {
     rexenv_lib::crash::install();
 
     // Windows' elevated step (`rexenv.exe --elevated-step`, W6 S3): started by UAC for one privileged change,
-    // it runs only rexenv's own ops and exits. Before every other mode — it opens no window.
+    // it runs only rexenv's own ops and exits. Before every other mode — it opens no window. Linux's
+    // polkit step (`rexenv --privileged-step`) takes the same door.
     let argv: Vec<String> = std::env::args().collect();
     if let Some(code) = rexenv_lib::platform::run_elevated_step(&argv) {
         std::process::exit(code);
@@ -30,7 +31,7 @@ fn main() {
     // that started it dies — including a SIGKILL, which runs none of our
     // shutdown code. Checked here, before Tauri boots, for the same reason the
     // DNS agent is: it must never open a window or touch app state.
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     {
         if let Some(args) = rexenv_lib::core::tunnels::parse_guard_args(&argv) {
             std::process::exit(rexenv_lib::platform::run_tunnel_guard(args));

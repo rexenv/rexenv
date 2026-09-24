@@ -19,6 +19,7 @@ use std::process::Child;
 use std::time::Duration;
 
 mod desktop;
+pub mod parent_death_guard;
 mod proc_table;
 mod resolved;
 mod trust;
@@ -252,9 +253,17 @@ impl PrivilegeManager for LinuxPrivileges {
         let pkexec = which("pkexec").ok_or_else(|| {
             Error::Other("pkexec (polkit) is not installed — rexenv needs it to ask for administrator permission.".into())
         })?;
-        // The reason is on screen already (the consent card); pkexec's own dialog names the
-        // program it runs and nothing rexenv can say without a shipped polkit action file.
-        let out = crate::platform::command(pkexec).args(["/bin/sh", "-c", script]).output()?;
+        // The reason is on screen already (the consent card). The dialog's own words come from
+        // the polkit action the deb installs, which names `/usr/bin/rexenv`: when both exist the
+        // step runs through rexenv itself (`--privileged-step`, `run_step` below) and the dialog
+        // says what rexenv is doing; otherwise (an AppImage, a dev build) it is `/bin/sh` and
+        // polkit's generic sentence.
+        let mut cmd = crate::platform::command(pkexec);
+        match privileged_step_program() {
+            Some(exe) => cmd.arg(exe).arg(PRIVILEGED_STEP_FLAG).arg(script),
+            None => cmd.args(["/bin/sh", "-c", script]),
+        };
+        let out = cmd.output()?;
         if out.status.success() {
             Ok(String::from_utf8_lossy(&out.stdout).trim_end().to_string())
         } else {
@@ -263,10 +272,48 @@ impl PrivilegeManager for LinuxPrivileges {
     }
 }
 
+/// The flag the privileged step is dispatched on (`main.rs`, before anything else).
+pub(crate) const PRIVILEGED_STEP_FLAG: &str = "--privileged-step";
+/// Where the deb installs the polkit action, and the program path that action annotates.
+const POLKIT_ACTION_PATH: &str = "/usr/share/polkit-1/actions/dev.rexenv.rexenv.policy";
+const POLKIT_ANNOTATED_EXE: &str = "/usr/bin/rexenv";
+
+/// `/usr/bin/rexenv` when THIS process is that file and the action file is installed — the
+/// only pair polkit would show rexenv's own sentence for. Anything else falls back to `/bin/sh`.
+fn privileged_step_program() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    (exe == Path::new(POLKIT_ANNOTATED_EXE) && Path::new(POLKIT_ACTION_PATH).is_file()).then_some(exe)
+}
+
+/// The privileged step itself, run as root by pkexec: `/bin/sh -c <script>` with stdio
+/// inherited, so the caller reads exactly what the shell form would have produced. Only rexenv's
+/// own scripts reach here (through `run_privileged`), and polkit asked for an administrator's
+/// password first. `None` when argv is not a step.
+pub(crate) fn run_step(argv: &[String]) -> Option<i32> {
+    let i = argv.iter().position(|a| a == PRIVILEGED_STEP_FLAG)?;
+    let script = argv.get(i + 1)?;
+    let status = std::process::Command::new("/bin/sh").arg("-c").arg(script).status();
+    Some(match status {
+        Ok(s) => s.code().unwrap_or(1),
+        Err(e) => {
+            eprintln!("rexenv privileged step: cannot run /bin/sh: {e}");
+            127
+        }
+    })
+}
+
 // ── Process supervision ─────────────────────────────────────────────────────
 
 const STOP_GRACE_TRIES: u32 = 30;
 const STOP_POLL_INTERVAL: Duration = Duration::from_millis(100);
+
+/// A process's start time in clock ticks since boot (`/proc/<pid>/stat` field 22) — the
+/// identity the tunnel guard checks beyond the pid: a recycled pid wears a different one.
+/// `None` when the pid is gone.
+pub fn process_start_token(pid: u32) -> Option<String> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    proc_table::start_time_of(&stat)
+}
 
 fn proc_stat(pid: u32) -> Option<proc_table::StatFields> {
     proc_table::parse_stat(&std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?)
@@ -335,6 +382,29 @@ impl ProcessSupervisor for LinuxSupervisor {
     }
     fn spawn(&self, program: &Path, args: &[String]) -> Result<Child> {
         Ok(crate::platform::command(program).args(args).spawn()?)
+    }
+    /// Our own binary re-executed in guard mode (`parent_death_guard`), the macOS shape: a
+    /// pidfd watcher, because `PR_SET_PDEATHSIG` binds to the spawning THREAD and a retired
+    /// pool thread would end the share with the app alive.
+    fn guard_child_against_our_death(&self, child: u32, domain: &str) -> Result<()> {
+        let exe = std::env::current_exe()?;
+        let me = std::process::id();
+        let start = process_start_token(me)
+            .ok_or_else(|| Error::Other(format!("could not read this process's start time (pid {me})")))?;
+        let args = crate::core::tunnels::guard_argv(me, child, domain, &start);
+        let mut guard = crate::platform::command(exe)
+            .args(&args)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()?;
+        // Reaped by a parked thread, as on macOS: a dropped handle would leave a zombie per share.
+        std::thread::Builder::new()
+            .name(format!("tunnel-guard-reaper-{child}"))
+            .spawn(move || {
+                let _ = guard.wait();
+            })?;
+        Ok(())
     }
     fn spawn_logged(&self, program: &Path, args: &[String], log_path: &Path) -> Result<Child> {
         self.spawn_logged_env(program, args, log_path, &[])

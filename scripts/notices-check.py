@@ -21,8 +21,9 @@ Checks, BOTH directions (a one-way check is what hid the npm gap):
          packages its own `vendor/composer/installed.json` records equal the
          table's rows, with their licences, and the heading's count equals them.
 
-Dev-dependencies are excluded: they never ship. The Windows graph is NOT checked
-yet — no Windows build has shipped (docs/TODO.md, "Third-party notices").
+Dev-dependencies are excluded: they never ship. Three Rust graphs, one walk: the
+universal macOS one, the x86_64 Windows one, and (since 25 Sep 2026) the Linux one
+for both archs — each with its own section, because each links a different closure.
 
 Usage: scripts/notices-check.py   (exit 0 = matches, 1 = drift)
 """
@@ -41,10 +42,16 @@ TARGETS = ["aarch64-apple-darwin", "x86_64-apple-darwin"]
 # windows-*/webview2-com* families instead. One arch, because that is what ships (plan §4: no
 # arm64 PHP), and it is what `scripts/windows-check.sh` compiles.
 TARGETS_WINDOWS = ["x86_64-pc-windows-msvc"]
+# The Linux app links a third closure (gtk/webkit2gtk -sys crates, xz2/lzma-sys for MySQL's
+# .tar.xz; no objc2, no windows-*). BOTH archs, as the macOS graph: every Linux upstream
+# publishes aarch64 (docs/PLAN-linux-port.md D-L5). Resolvable offline on the Mac — the lock
+# file pins the crates and the registry cache has them (measured 25 Sep 2026).
+TARGETS_LINUX = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu"]
 RUST_HEADING = re.compile(r"^## Rust crates \(statically linked; (\d+) external crates, universal macOS graph\)$")
 # NOTE the heading may not begin with "## Rust crates": `section()` matches by startswith, so a
 # "## Rust crates — Windows" heading would make the macOS section ambiguous and exit.
 WINDOWS_HEADING = re.compile(r"^## Windows Rust crates \(statically linked; (\d+) external crates, x86_64 Windows graph\)$")
+LINUX_HEADING = re.compile(r"^## Linux Rust crates \(statically linked; (\d+) external crates, x86_64 \+ aarch64 Linux graph\)$")
 NPM_HEADING = re.compile(r"^## npm packages \(production closure bundled by Vite; (\d+) packages\)$")
 VENDORED_HEADING = re.compile(r"^## Vendored PHP \(compiled into the app binary; (\d+) packages\)$")
 COMPOSER_INSTALLED = os.path.join(ROOT, "src-tauri/resources/wp-dist-archive/vendor/composer/installed.json")
@@ -204,6 +211,10 @@ def main():
         windows = rust_graph(TARGETS_WINDOWS)
     except GraphUnresolvable as e:
         windows, _ = None, skipped.append(f"Windows graph — {e}")
+    try:
+        linux = rust_graph(TARGETS_LINUX)
+    except GraphUnresolvable as e:
+        linux, _ = None, skipped.append(f"Linux graph — {e}")
     if rust is None and windows is None:
         print("notices-check: neither Rust graph could be resolved on this host:")
         for s in skipped:
@@ -217,6 +228,10 @@ def main():
         problems += compare(
             "rust (windows)", windows, *section("## Windows Rust crates", WINDOWS_HEADING), windows
         )
+    if linux is not None:
+        problems += compare(
+            "rust (linux)", linux, *section("## Linux Rust crates", LINUX_HEADING), linux
+        )
     problems += compare("npm", npm, *section("## npm packages", NPM_HEADING), None)
     composer = composer_graph()
     problems += compare(
@@ -229,8 +244,9 @@ def main():
         return 1
     mac_says = f"{len(rust)} Rust crates (arm64 + x86_64, app + rex CLI)" if rust is not None else "macOS graph SKIPPED"
     win_says = f"{len(windows)} for the x86_64 Windows graph" if windows is not None else "Windows graph SKIPPED"
+    linux_says = f"{len(linux)} for the Linux graph" if linux is not None else "Linux graph SKIPPED"
     print(
-        f"notices-check: {mac_says} with rows and licences; {win_says}; {len(npm)} npm packages "
+        f"notices-check: {mac_says} with rows and licences; {win_says}; {linux_says}; {len(npm)} npm packages "
         f"with rows; {len(composer)} vendored composer packages with rows and licences"
     )
     for s in skipped:

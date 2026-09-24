@@ -1179,17 +1179,18 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     streamed download (ledger #720); MySQL `.tar.xz` → `Archive::TarXzTree` + Linux-only `xz2`;
     PHP 7.4 has no static Linux build (not in v1); nginx from jirutka's static builds until
     `rexenv/runtimes` publishes a Linux one. `manifest_sweep_check` RAN 25 Sep 2026 — 188 targets, and it CAUGHT
-    three wrong first-pass digests (truncated streams), now corrected and re-run green. Owed:
-    `notices-check.py` taught the Linux graph (xz2/lzma-sys rows)
+    three wrong first-pass digests (truncated streams), now corrected and re-run green
   - [x] L3 build plumbing ✓ 24 Sep 2026 — `build-cli.sh` Linux arm (host triple from `rustc -vV`;
     ran in the Ubuntu container: `rex-aarch64-unknown-linux-gnu` staged), `bundle.linux` (deb
     depends incl. `libaio1 | libaio1t64`, `libnuma1`), `scripts/release-linux.sh` + `pnpm release:linux`
     (never run — needs an Ubuntu host)
   - [x] L4 the app shell ✓ 24 Sep 2026 — the Linux tray takes the colour icon (ledger #721); the
     tunnel guard, activation and the About menu are macOS-only by design and Linux falls to the
-    documented defaults (plan §1.1). Owed: a `PR_SET_PDEATHSIG` guard at spawn (a TODO, not v1)
+    documented defaults (plan §1.1). The tunnel guard landed 25 Sep 2026 as a pidfd watcher
+    (ledger #722 — NOT `PR_SET_PDEATHSIG`, which binds to the spawning thread), and the polkit
+    action file gives the deb's prompt rexenv's own sentence (#723)
   - [x] L5 docs ✓ 24 Sep 2026 — SMOKE-TEST Linux section (P1–P5, nothing run), INSTALL, RELEASING
-    3b, PORTS Linux table, README tree. Owed: `notices-check.py` Linux graph
+    3b, PORTS Linux table, README tree. `notices-check.py` walks the Linux graph too (25 Sep, #724)
   - [ ] L6 the VM run (owner, D-L9 — blocked on disk: 7.8 GB free) — P1 FIRST
   - [ ] L7 `manifest-linux.json`, the download page
 
@@ -1406,14 +1407,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   Firefox, Brave and Safari are). So this is not "nobody got round to it" — it cannot be
   tested here at all, and the honest `None` stands until someone with one of those
   browsers runs the flag.
-- [ ] **Windows/Linux: `detect_browsers`/`open_in_browser` are the default empty
-  stubs** (Phase 4, same shape as `detect_editors`). **The Windows half is closed** (W7 S3, 15 Sep 2026,
-  ledger #622: detected from the registry, Chrome flagged default on the Dell, private windows by flag);
-  Linux's is what remains here. Until they are filled, those
-  platforms open every link in the OS handler and show no chevron — honest, but
-  the Settings row will read "No browser detected". The private-window arm is
-  part of that stub: `supports_private` is false everywhere, so those platforms
-  show no private target rather than a dead one.
+- [x] **Windows/Linux: `detect_browsers`/`open_in_browser` are the default empty
+  stubs** ✓ both halves filled. Windows W7 S3, 15 Sep 2026 (ledger #622: the registry, Chrome
+  flagged default on the Dell, private windows by flag). Linux 24 Sep 2026 (`platform/linux/desktop.rs`,
+  L1): found on `PATH` (deb, snap, Toolbox names), the default from `xdg-settings`'s `.desktop` id
+  (the snap's `firefox_firefox.desktop` included), private windows by the same flags as macOS —
+  **unmeasured on a desktop** (SMOKE-TEST Linux P5).
 
 - [ ] **Eliminate the bug class: bundled PHP with curl's THREADED resolver** (the real
   fix for #251

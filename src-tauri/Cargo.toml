@@ -105,6 +105,9 @@ sha2 = "0.10"
 # fetches no xz archive and `platform::xz_decoder` answers `Unsupported` there.
 [target.'cfg(target_os = "linux")'.dependencies]
 xz2 = { version = "0.1", features = ["static"] }
+# pidfd_open/poll/kill for the tunnel guard (platform/linux/parent_death_guard.rs) — already in
+# the tree transitively, declared directly as on macOS.
+libc = "0.2"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-sys = { version = "0.61", features = [

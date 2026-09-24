@@ -1879,7 +1879,9 @@ Environment: Ubuntu ____ (22.04+; x86_64 or aarch64) · package ____ (.deb / App
 ### P1 — DNS scoping (ledger #717 — the claim the whole port rests on)
 - [ ] Before onboarding: `resolvectl status` shows a link with DNS servers and `resolv.conf` is
       the stub (`nameserver 127.0.0.53`). Note `resolvectl query example.com`'s answer.
-- [ ] Onboarding → the system-setup consent → ONE polkit dialog (`pkexec`, names `/bin/sh`).
+- [ ] Onboarding → the system-setup consent → ONE polkit dialog: from the `.deb` it reads
+      "rexenv needs administrator permission to change system settings…" (#723); from an AppImage
+      or a dev build it names `/bin/sh`.
       After: `/etc/systemd/resolved.conf.d/rexenv-rex.conf` exists with `DNS=127.0.0.1:15353`
       and `Domains=~rex`; `resolvectl status` lists `127.0.0.1:15353` under the global section
       with `~rex` as a routing domain.
@@ -1917,6 +1919,9 @@ Environment: Ubuntu ____ (22.04+; x86_64 or aarch64) · package ____ (.deb / App
 - [ ] Quit the app → `.rex` still resolves (the agent outlives it). `systemctl --user kill
       rexenv-dns` → back within ~2 s.
 - [ ] AppImage: the unit and the autostart entry name the `.AppImage` path, never a `/tmp/.mount_…` one.
+- [ ] **The tunnel guard (ledger #722).** Share a site, note the cloudflared pid and the
+      `rexenv --tunnel-guard …` process beside it; `kill -9` the APP. Within ~2 s cloudflared is
+      gone and the guard has exited. Stop a share normally → the guard exits at once.
 
 ### P5 — the GUI
 - [ ] The tray icon appears (needs `libayatana-appindicator3`); its menu opens; "Open rexenv"

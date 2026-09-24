@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+  "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<!--
+  rexenv's polkit action (docs/PLAN-linux-port.md L1, the pkexec prompt).
+
+  Installed by the .deb at /usr/share/polkit-1/actions/. With it, the password dialog says what
+  rexenv is doing instead of "Authentication is required to run /bin/sh as the super user":
+  pkexec matches the annotated program path, so rexenv runs its privileged scripts as
+  `/usr/bin/rexenv - -privileged-step <script>` (platform/linux/mod.rs, `run_privileged`)
+  whenever this file AND that path exist, and falls back to /bin/sh (the generic dialog)
+  otherwise — an AppImage, a development build.
+
+  auth_admin: an administrator's password, every time (no _keep) — each system change
+  rexenv makes is consented to in the app first, and a cached grant would let a later step
+  run without the prompt the consent card promised.
+-->
+<policyconfig>
+  <vendor>rexenv</vendor>
+  <vendor_url>https://rexenv.dev</vendor_url>
+  <action id="dev.rexenv.rexenv.privileged-step">
+    <description>Change system settings for rexenv</description>
+    <message>rexenv needs administrator permission to change system settings — the .rex DNS route, the HTTPS edge, or the local certificate authority.</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/bin/rexenv</annotate>
+  </action>
+</policyconfig>

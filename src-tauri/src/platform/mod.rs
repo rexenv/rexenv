@@ -184,6 +184,9 @@ pub use macos::webview_dialogs::install_js_dialog_panels;
 /// outside `platform/` may name a concrete OS type.
 #[cfg(target_os = "macos")]
 pub use macos::parent_death_guard::run as run_tunnel_guard;
+/// Linux: the same guard over pidfds (`linux/parent_death_guard.rs`).
+#[cfg(target_os = "linux")]
+pub use linux::parent_death_guard::run as run_tunnel_guard;
 #[cfg(target_os = "macos")]
 pub use macos::relauncher::run as run_relauncher;
 #[cfg(target_os = "windows")]
@@ -195,6 +198,8 @@ pub use windows::app_bundle::run_relauncher;
 pub use macos::process_start_token;
 #[cfg(target_os = "windows")]
 pub use windows::app_bundle::process_start_token;
+#[cfg(target_os = "linux")]
+pub use linux::process_start_token;
 
 /// Bring rexenv to the front. Needed because it is an ACCESSORY app (menu bar,
 /// no dock tile): nothing activates it on the user's behalf, so a window it
@@ -256,7 +261,13 @@ pub fn run_elevated_step(argv: &[String]) -> Option<i32> {
     {
         windows::run_step(argv)
     }
-    #[cfg(not(target_os = "windows"))]
+    // Linux: the polkit step (`rexenv --privileged-step <script>`, run as root by pkexec so the
+    // dialog carries rexenv's own action text — `linux/dev.rexenv.rexenv.policy`).
+    #[cfg(target_os = "linux")]
+    {
+        linux::run_step(argv)
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
     {
         let _ = argv;
         None

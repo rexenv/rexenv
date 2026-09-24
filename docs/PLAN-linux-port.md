@@ -52,7 +52,7 @@ Linux needs its own answer; nothing is (c) — `linux-check` was green on the fi
 
 | Where | Branch | Linux |
 |---|---|---|
-| `main.rs:33` tunnel guard entry (`cfg(macos)`) | macOS-only kqueue watcher | (b) no guard process on Linux — `guard_child_against_our_death` answers `Unsupported`, the share logs "WITHOUT a parent-death guard" and the other two legs (exit hook, launch sweep) hold. A `prctl(PR_SET_PDEATHSIG)` at spawn would be the Linux shape — a TODO, not v1 |
+| `main.rs:33` tunnel guard entry (now `any(macos, linux)`) | kqueue watcher / pidfd watcher | (a) since 25 Sep 2026: `linux/parent_death_guard.rs`, the macOS shape over `pidfd_open` + `poll` (ledger #722). NOT `PR_SET_PDEATHSIG`: it binds to the spawning THREAD, and a retired tokio pool thread would have ended the share with the app alive |
 | `main.rs:44` relauncher (`cfg(any(macos, windows))`) | self-update relaunch | (a) D-L7: no in-app update, nothing to relaunch |
 | `lib.rs:31/37` CLI socket claim (`cfg(unix)`/`cfg(windows)`) | unix socket vs named pipe | (a) the unix arm |
 | `lib.rs:70, 170, 284, 294` dock/activation policy (`cfg(macos)`) | Accessory vs Regular | (a) no dock concept; the tray is the way back |
@@ -173,8 +173,9 @@ Each ends in something observable; each is its own commit.
   `run_relauncher`/`activate_app` (Unported / no-op), the mail `sendmail_path` (Unix — as macOS).
   *Done when:* `main.rs` and `lib.rs` compile for Linux with every `cfg(macos)` item either
   shared or given a Linux answer, and L0 is green.
-- **L5 — Docs.** ✓ 24 Sep 2026 (owed: `notices-check.py`'s Linux graph — the Mac's registry
-  lacks the gtk crates for an offline `cargo metadata --filter-platform`). Original scope: `ARCHITECTURE.md` (the OS rule now says three), `MAP.md`, `PORTS.md`,
+- **L5 — Docs.** ✓ 24 Sep 2026; `notices-check.py` walks the Linux graph since 25 Sep (#724 —
+  the Mac's registry DOES resolve it offline; the earlier note here was a guess, not a measurement).
+  Original scope: `ARCHITECTURE.md` (the OS rule now says three), `MAP.md`, `PORTS.md`,
   `TESTING.md` ("Proving a Linux claim"), `SMOKE-TEST.md` Linux section, `INSTALL.md`,
   `RELEASING.md`, `CLAIM-LEDGER.md` rows (every new "never"), `TODO.md` ("Linux launch" under
   *Now*; the Phase 4+ row retired), `STATUS.md` regenerated.
@@ -192,6 +193,10 @@ Each ends in something observable; each is its own commit.
   drop-in scopes by `~tld` semantics that the agent has read but not run. Until P1 is measured on
   a VM, the Linux `install_command` is written but the onboarding step is labelled "measured on
   no machine yet" in `SMOKE-TEST.md`.
+- **The polkit dialog names `/bin/sh` unless the deb's action file is installed** — with it
+  (`linux/dev.rexenv.rexenv.policy`, `exec.path` = `/usr/bin/rexenv`) the step runs as
+  `rexenv --privileged-step <script>` and the dialog carries rexenv's sentence (#723). An
+  AppImage never gets that: pkexec matches the path exactly.
 - **`pkexec` strips the environment** (`HOME`, `PATH` reduced to a safe set). Every privileged
   script must use absolute paths (`/usr/bin/systemctl`, `/bin/cp`) and never rely on `$HOME`.
 - **Wayland.** `xdotool`-style activation does nothing; `activate_app` is a no-op, and "bring

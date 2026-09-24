@@ -85,6 +85,13 @@ pub(crate) fn parse_stat(stat: &str) -> Option<StatFields> {
     Some(StatFields { state, ppid })
 }
 
+/// Field 22 of `/proc/<pid>/stat`, `starttime` — clock ticks since boot, the process's identity
+/// beyond its pid. Fields are counted AFTER the `)` that ends `comm` (state is field 3).
+pub(crate) fn start_time_of(stat: &str) -> Option<String> {
+    let rest = &stat[stat.rfind(')')? + 1..];
+    rest.split_whitespace().nth(22 - 3).map(str::to_string)
+}
+
 /// `/proc/<pid>/cmdline` is NUL-separated; the space-joined form is what `pid_command`
 /// promises. A trailing NUL is the normal ending, not an empty last argument.
 pub(crate) fn cmdline_to_string(raw: &[u8]) -> Option<String> {
@@ -142,6 +149,15 @@ mod tests {
         assert_eq!(parse_stat(s), Some(StatFields { state: 'S', ppid: 1 }));
         assert_eq!(parse_stat("9 (nginx) Z 8 9 9"), Some(StatFields { state: 'Z', ppid: 8 }));
         assert_eq!(parse_stat("garbage"), None);
+    }
+
+    #[test]
+    fn the_start_time_is_field_22_counted_past_the_comm() {
+        // pid (comm) state ppid pgrp session tty tpgid flags minflt cminflt majflt cmajflt utime
+        // stime cutime cstime priority nice num_threads itrealvalue starttime …
+        let s = "4242 (php-fpm: master (x)) S 1 4242 4242 0 -1 4194560 100 0 0 0 5 3 0 0 20 0 3 0 987654 12345 0";
+        assert_eq!(start_time_of(s), Some("987654".into()));
+        assert_eq!(start_time_of("9 (x) S 1"), None);
     }
 
     #[test]
