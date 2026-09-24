@@ -97,8 +97,12 @@ members="$(dpkg-deb -c "$DEB" | awk '{print $NF}' | sed 's#^\./##')"
 for m in usr/bin/rexenv usr/bin/rex usr/share/polkit-1/actions/dev.rexenv.rexenv.policy usr/share/applications/rexenv.desktop; do
   printf '%s\n' "$members" | grep -qx "$m" || fail "the package is missing $m"
 done
-for dep in libwebkit2gtk-4.1-0 libayatana-appindicator3-1 policykit-1 libnss3-tools; do
-  printf '%s' "$(field Depends)" | grep -q "$dep" || fail "the package's Depends lacks $dep: $(field Depends)"
+# `pkexec | policykit-1`: 22.04 ships pkexec inside policykit-1, 24.04 has both names, and
+# 26.04 has dropped policykit-1 altogether (measured on the Dell's WSL Ubuntu 26.04, 25 Sep
+# 2026 — a deb naming only policykit-1 has no installation candidate there). Same shape as
+# `libaio1 | libaio1t64`.
+for dep in libwebkit2gtk-4.1-0 libayatana-appindicator3-1 "pkexec | policykit-1" libnss3-tools; do
+  printf '%s' "$(field Depends)" | grep -qF "$dep" || fail "the package's Depends lacks $dep: $(field Depends)"
 done
 echo "deb: rexenv $VERSION $DEB_ARCH — usr/bin/{rexenv,rex}, the polkit action, the desktop entry, Depends complete"
 

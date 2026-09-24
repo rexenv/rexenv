@@ -165,7 +165,9 @@ release** — which is the property that makes a stolen key survivable. Ledger
    `pnpm release:linux` on an Ubuntu 22.04+ host of EACH arch runs `scripts/release-linux.sh`:
    plain `tauri build` (`bundle.targets` "all" → `.deb`, `.rpm`, `.AppImage`;
    `bundle.linux.deb.depends` names webkit2gtk 4.1, the appindicator, xdg-utils, libnss3-tools,
-   policykit-1 and MySQL's `libaio1`/`libnuma1`), then restarts the `rexenv-dns` user unit if a
+   `pkexec | policykit-1` — 26.04 has no `policykit-1` package at all, measured on the Dell's WSL
+   25 Sep 2026; a deb naming only it is uninstallable there — and MySQL's `libaio1 | libaio1t64`/
+   `libnuma1`), then restarts the `rexenv-dns` user unit if a
    dev launch registered one on the binary the build replaced (Linux does not lock a running
    executable, so the build succeeds and the OLD agent keeps running — the opposite failure to
    Windows's). **Then `scripts/release-linux-check.sh` — §A0's Linux half:** exactly one deb and
