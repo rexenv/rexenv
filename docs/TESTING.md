@@ -1030,6 +1030,12 @@ COMPILE gate on the host's arch, never a verdict: it says the code builds there,
 route resolves, a unit starts or a certificate is trusted. The Mac has no Ubuntu VM today
 (`docs/PLAN-linux-port.md` D-L9), so a Linux behaviour claim is proven one of two ways:
 
+0b. **The Dell's WSL2 Ubuntu 26.04 (x86_64)**, set up 25 Sep 2026: `wsl -d Ubuntu -u rexenv`, the
+   tree unpacked at `~/rexenv`, systemd on, 6 GB + swap. Proves the x86_64 BUILD (`pnpm release:linux`,
+   §A0-linux) and the process/file examples (`linux_app_swap_check`, `php_versions_check`); it is
+   NOT the 22.04 floor (a deb built there links 26.04's glibc) and has no desktop, polkit agent or
+   real resolved, so DNS route, trust prompts and GUI rows stay the VM's. Never pass bash inline
+   through `ssh dell 'wsl -- bash -c …'` — PowerShell eats the quotes; scp a script and run it.
 0. **The Ubuntu 22.04 arm64 UTM VM** (`ssh rexenv@192.168.64.7`, built 24 Sep 2026 from the cloud
    image + a cloud-init seed — no installer): `linux_dns_route_check` (system tier, sudo) is the
    shape for a root-mechanism proof; it found the first DNS design wrong before any user did.

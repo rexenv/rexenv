@@ -9,8 +9,8 @@ Tauri 2 desktop app: Rust backend + React/TS frontend. Runs the whole stack — 
 proxy, shared web server, multi-version PHP, databases, one-click WordPress, local-TLD
 DNS (`.rex` backbone, configurable) + auto-HTTPS, mail catching, tunnels — from one UI. macOS complete; Windows
 shipping; Linux since 24 Sep 2026 (`docs/PLAN-linux-port.md` — every impl real and RUN on
-the Ubuntu 22.04 VM through the installed `.deb`, self-update included; an x86_64 host and the
-Firefox GUI row are the proofs still owed).
+the Ubuntu 22.04 VM through the installed `.deb`, self-update included, and the x86_64 build +
+its swap and PHP checks on the Dell's WSL2 Ubuntu; the GUI rows in SMOKE-TEST are what remains).
 
 ## 1. Layering (non-negotiable)
 

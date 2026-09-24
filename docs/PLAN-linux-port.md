@@ -91,7 +91,7 @@ Linux needs its own answer; nothing is (c) — `linux-check` was green on the fi
 The owner ruled on every row on 24 Sep 2026, after the VM run. Confirmed as built: D-L1
 (`.deb` + AppImage), D-L2 (the dummy-link route — the drop-in had already failed P1),
 D-L3 (two stores, two prompts; the snap Chromium database added), D-L4 (22.04), D-L5 (both
-archs; an x86_64 host is still owed), D-L6 (unsigned), D-L9 (the UTM VM), D-L10
+archs; x86_64 proven 25 Sep 2026 on the Dell's WSL2 Ubuntu — a build host, not the floor), D-L6 (unsigned), D-L9 (the UTM VM), D-L10
 (`linux-check` stays in `verify.sh`). **Changed:** **D-L7 — self-update IS in v1**: a `.deb`
 install updates through `pkexec dpkg -i <downloaded .deb>` (one prompt per update), an
 AppImage through the macOS-shaped file swap with no prompt — `manifest-linux.json`, a real

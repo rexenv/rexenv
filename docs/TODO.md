@@ -1226,7 +1226,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   - [ ] L9 the release leg — `release-linux-check.sh` (§A0-linux) + `release.yml`'s x86_64
     `release-linux` job landed 25 Sep 2026; **VM (aarch64) `pnpm release:linux` exit 0 — §A0-linux all
     green on the rebuilt 0.8.7 deb + AppImage (`--print-version` answers, polkit action, Depends, rex
-    sidecar), and that deb installed and runs**; **x86_64 has never been built** (no host; the CI job has never run — private repo). The
+    sidecar), and that deb installed and runs**; **x86_64 built 25 Sep 2026 on the Dell's WSL2 Ubuntu 26.04**
+    (`pnpm release:linux` §A0-linux all green: amd64 deb 14 MB + AppImage 89 MB; the deb installed —
+    after `pkexec | policykit-1`, 26.04 has no `policykit-1` — `linux_app_swap_check` PASS,
+    `php_versions_check` exit 0 with the x86_64 7.4 from `php-7.4.33-7`). 26.04 is not the 22.04 floor,
+    so that deb is a proof, not a release artefact; the CI job (ubuntu-24.04) has never run — private repo. The
     download page is the tap release + website, outside this repo
 
 - [ ] **The keychain (CA trust) dialog is rexenv's too** — 12 Sep 2026, owner, after the admin
