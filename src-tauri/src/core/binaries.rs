@@ -354,6 +354,30 @@ pub fn engine_needs_macos(key: &str) -> Option<u32> {
     })
 }
 
+/// Why a pinned PHP minor cannot be installed on `os` at all — no build of it is pinned
+/// there, whichever pool binary the OS runs — or `None` when it can.
+///
+/// The tier refusal above is about a macOS VERSION; this is about the OS itself: PHP 7.4 has
+/// no static Linux build anywhere (docs/PLAN-linux-port.md D-L8), yet the registry seeds every
+/// minor of the Standard set, so the first Linux run showed 7.4 with an Install button that
+/// would have failed at the download (Ubuntu 22.04 VM, 24 Sep 2026). Asked of the same table a
+/// download reads (`ships_on`, either pool binary), never of a per-OS list kept here.
+pub fn php_minor_unavailable_on(minor: &str, os: &str) -> Option<String> {
+    let patch = STANDARD_PINS.php_versions.iter().find(|v| crate::core::php::minor_of(v) == minor)?;
+    if ships_on("php-fpm", patch, os) || ships_on("php", patch, os) {
+        return None;
+    }
+    Some(format!(
+        "PHP {minor} isn't part of rexenv on {} yet — rexenv only offers a version it has a pinned build for.",
+        if os == "windows" { "Windows" } else if os == "linux" { "Linux" } else { crate::platform::words::current().os_name }
+    ))
+}
+
+/// [`php_minor_unavailable_on`] for THIS host.
+pub fn php_minor_unavailable(minor: &str) -> Option<String> {
+    php_minor_unavailable_on(minor, std::env::consts::OS)
+}
+
 /// Every PHP minor the Standard set ships that this host's tier does not, with
 /// the macOS each needs — the rows a legacy host's PHP list shows DISABLED with
 /// the reason, rather than omitting (§6.3: never a silent omission).
@@ -6745,6 +6769,17 @@ mod tests {
             assert!(matches!(spec.archive, Archive::TarGzTree | Archive::TarXzTree), "{name} is a tree");
             assert_eq!(shape_of_on(name, "linux"), Shape::Dir);
         }
+    }
+
+    /// D-L8 — a minor with no build on an OS says so, by the same table a download reads.
+    #[test]
+    fn a_php_minor_with_no_build_on_an_os_is_refused_with_the_os_named() {
+        let why = php_minor_unavailable_on("7.4", "linux").expect("7.4 has no Linux build");
+        assert!(why.contains("PHP 7.4") && why.contains("Linux"), "{why}");
+        assert!(php_minor_unavailable_on("8.3", "linux").is_none(), "8.3 ships on Linux");
+        assert!(php_minor_unavailable_on("7.4", "macos").is_none(), "7.4 is rexenv's own macOS build");
+        assert!(php_minor_unavailable_on("7.4", "windows").is_none(), "php.net ships 7.4 for Windows");
+        assert!(php_minor_unavailable_on("9.9", "linux").is_none(), "an unknown minor is not this refusal's business");
     }
 
     /// The xz path is refused, not silently gzip-parsed, on a build without the decoder.

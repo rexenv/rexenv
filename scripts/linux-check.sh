@@ -70,10 +70,16 @@ if ! docker info >/dev/null 2>&1; then
 fi
 
 # The image, built once from the checked-in Dockerfile (a Dockerfile change = rebuild).
-if [ "${REXENV_LINUX_CHECK_REBUILD:-0}" = "1" ] || ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
+# `docker image inspect` is asked TWICE: on 24 Sep 2026 a verify.sh run saw it fail once
+# while the image was there (the daemon mid-something), took that for "no image", tried to
+# rebuild on a 2 GB-free disk, and reported the tree RED — for a state of the machine, not
+# of the code. A rebuild that fails is the same kind of thing, so it exits 3 (SKIPPED in
+# verify.sh) with the reason, never 1.
+have_image() { docker image inspect "$IMAGE" >/dev/null 2>&1; }
+if [ "${REXENV_LINUX_CHECK_REBUILD:-0}" = "1" ] || { ! have_image && sleep 3 && ! have_image; }; then
   if ! docker build -t "$IMAGE" scripts/linux-check > /dev/null 2>&1; then
-    echo "linux-check: could not build $IMAGE from scripts/linux-check/Dockerfile" >&2
-    exit 1
+    echo "linux-check: could not build $IMAGE from scripts/linux-check/Dockerfile (disk? network?) — not a code verdict" >&2
+    exit 3
   fi
 fi
 

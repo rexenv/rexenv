@@ -592,6 +592,10 @@ pub fn list_versions(
     let mut rows: Vec<PhpVersionView> = store::list_php_versions(conn)?
         .into_iter()
         .map(|v| {
+            // A minor the registry seeds but this OS has no build of (7.4 on Linux) is
+            // LISTED with the reason, its Install disabled — the tier rows' rule, for the
+            // OS instead of the macOS version (docs/PLAN-linux-port.md D-L8).
+            let not_on_this_os = binaries::php_minor_unavailable(&v.minor);
             // THE BASELINE, and getting it wrong produced three wrong fields at
             // once. Every question this row answers is relative to what the minor
             // WILL RUN — the user's selection floored by the pin — NOT to the pin.
@@ -601,7 +605,7 @@ pub fn list_versions(
             let effective = crate::core::updates::floored(&v.minor, v.selected_patch.as_deref())
                 .unwrap_or_default();
             PhpVersionView {
-                unavailable_reason: None,
+                unavailable_reason: not_on_this_os,
                 xdebug_supported: binaries::xdebug_supported(&v.minor),
                 xdebug_unavailable_reason: binaries::xdebug_unavailable_reason(&v.minor),
                 xdebug_version: binaries::xdebug_version_for(&v.minor),
@@ -680,6 +684,10 @@ pub fn set_installed(conn: &Connection, minor: &str, installed: bool) -> Result<
                 "PHP {minor}: {}",
                 binaries::needs_macos_sentence(major)
             )));
+        }
+        // …and the OS's own refusal (7.4 on Linux, D-L8), through the same door.
+        if let Some(why) = binaries::php_minor_unavailable(minor) {
+            return Err(Error::Other(why));
         }
     }
     if !installed {

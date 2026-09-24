@@ -76,7 +76,7 @@ App version **0.8.7** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md`
 
 ## Claim ledger (`scripts/ledger-tally.sh`)
 
-**✅ 634 · ◐ 62 · 🔨 14 · 🚫 17** of 727 rows, plus 15 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432, #486, #541).
+**✅ 635 · ◐ 62 · 🔨 14 · 🚫 17** of 728 rows, plus 15 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432, #486, #541).
 
 ## Plans in flight (`docs/PLAN-*.md`) and their own Status line
 

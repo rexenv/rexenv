@@ -1929,6 +1929,11 @@ Environment: Ubuntu ____ (22.04+; x86_64 or aarch64) · package ____ (.deb / App
 - [ ] Settings → Remove system changes → both stores empty, drop-ins gone, units gone.
 
 ### P4 — autostart and the DNS agent
+- [x] ✓ 24 Sep 2026 (VM, `sudo reboot` with both launch toggles on): after the reboot's autologin
+      `rexenv --hidden` is running (no window), `rexenv --dns-agent` under the user unit is
+      `active`, `rexenv-edge` and `rexenv-dns-route` are `active`, `rexenv0` carries `~rex` with
+      no default route, `a.rex` → loopback, `example.com` public, `:443`/`:18088` listening —
+      "Start services when rexenv opens" brought the stack back with no click.
 - [ ] `~/.config/autostart/rexenv.desktop` after enabling the login item; sign out, sign in →
       rexenv is in the tray with no window. `~/.config/systemd/user/rexenv-dns.service` is
       `active` after a sign-in with the app NOT started; `dig @127.0.0.1 -p 15353 x.rex` answers.
@@ -1949,7 +1954,8 @@ Environment: Ubuntu ____ (22.04+; x86_64 or aarch64) · package ____ (.deb / App
       serves custom schemes as WebKit does — the macOS origin, ledger #703's Linux leg).
 - [x] ✓ 24 Sep 2026 (VM): onboarding says "this computer", "Linux will ask for permission"; the
       New Site dialog refuses Apache and MariaDB with "isn't part of rexenv on Linux yet".
-      **Sidebar RAM read 14.5–16.3 GB for a ~600 MB stack** — ledger #725, fixed, rebuilt deb owed.
+      **Sidebar RAM read 14.5–16.3 GB for a ~600 MB stack** — ledger #725, fixed; the rebuilt deb
+      reads 260 MB. **PHP 7.4 showed an Install button** (no Linux build exists) — ledger #728, fixed.
 - [ ] Settings: the words say Files, apt, "this computer", the tray, `/etc/rexenv/dns.d` — never
       Finder, brew, Explorer or winget (`words::LINUX`).
 - [ ] Open in editor / browser / terminal: each detected entry launches; a private window opens

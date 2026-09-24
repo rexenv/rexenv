@@ -185,9 +185,10 @@ Each ends in something observable; each is its own commit.
   through polkit (rexenv's own sentence), the DNS route, both trust stores, Start all with the
   root edge unit, a WordPress site served over HTTPS to `curl` and to Chromium. Found and fixed
   the same day: the resolved drop-in (D-L2, #717), the snap Chromium NSS database (#726), the
-  thread-summed RAM figure (#725), `rex`'s Linux socket path (#727). Owed: P4 (autostart after
-  a reboot, the tunnel guard), Firefox (snap), Stop-all/kill-9 legs of P2, the rebuilt deb
-  proving #725–#727 through the app. Original scope: Install Ubuntu 22.04 in UTM (D-L9), `tauri build` there, install
+  thread-summed RAM figure (#725), `rex`'s Linux socket path (#727). P4 passed after a reboot (autologin → hidden autostart, every unit back, services up); the
+  rebuilt deb proved #725 (260 MB) and #727 (`rex` answers); 7.4's Install button on Linux is
+  #728. Owed: the tunnel guard (P4's last leg), Firefox (snap), Stop-all/kill-9 legs of P2.
+  Original scope: Install Ubuntu 22.04 in UTM (D-L9), `tauri build` there, install
   the `.deb`, run SMOKE-TEST's Linux section — and FIRST the §7 P1 probe. Every ledger row L1
   marks `◐ (Docker only)` becomes `✓ (Ubuntu 22.04 VM)` or a bug.
 - **L7 — Release.** `manifest-linux.json` (Windows plan §3b: one signed document per OS), the

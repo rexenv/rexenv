@@ -1198,8 +1198,8 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     on the VM (`tauri build`, 15 MB deb, polkit action inside). **The installed deb RAN through
     onboarding, Start all and a WordPress site over HTTPS (curl 200, Chromium no warning) — P1/P2/P3
     through the app, P5 partly; found and fixed: snap Chromium's NSS db (#726), thread-summed RAM
-    (#725), `rex`'s Linux socket (#727).** Owed: P4 (reboot autostart, tunnel guard), Firefox, the
-    P2 restart/disable legs, the rebuilt deb re-proving the fixes**
+    (#725), `rex`'s Linux socket (#727).** P4 ✓ after a reboot; the rebuilt deb re-proved #725/#727; PHP 7.4's Install button on Linux
+    is #728 (fixed). Owed: the tunnel guard leg, Firefox (snap), the P2 restart/disable legs**
   - [ ] L7 `manifest-linux.json`, the download page
 
 - [ ] **The keychain (CA trust) dialog is rexenv's too** — 12 Sep 2026, owner, after the admin
