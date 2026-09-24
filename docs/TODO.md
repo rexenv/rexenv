@@ -1212,8 +1212,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   - [ ] L8 **PHP 7.4 for Linux (owner ruled IN, 24 Sep 2026)** — built in `rexenv/runtimes` like the
     macOS 7.4 (cli + fpm, both archs, licences), pinned with Linux arms, swept. **In flight 25 Sep 2026:**
     rexenv/runtimes PR #7 adds the `ubuntu-24.04` / `ubuntu-24.04-arm` lanes (static musl, ldd/file
-    gates); dry run (publish=false) triggered on the branch. Then: owner publishes `php-7.4.33-7`, pin
-    the Linux arms in `binaries.rs` (`php_self_hosted_tag`), drop #728's refusal for 7.4
+    gates). **Dry run 36002401583: all four lanes green** (aarch64 needed `-fPIC -fPIE`; the licence sweep
+    needed freetype's `LICENSE.TXT` and a SQLite public-domain note; the static ELFs export no Zend
+    symbols, so 7.4 on Linux gets no Xdebug — not in v1 anyway). Then: owner merges PR #7 and publishes
+    `php-7.4.33-7`; pin the Linux arms in `binaries.rs` (`php_self_hosted_tag`), drop #728's refusal for 7.4
   - [ ] L9 the download page and the release leg (`release-linux.sh` never run on an x86_64 host)
 
 - [ ] **The keychain (CA trust) dialog is rexenv's too** — 12 Sep 2026, owner, after the admin
