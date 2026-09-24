@@ -157,7 +157,9 @@ release** — which is the property that makes a stolen key survivable. Ledger
    `libaio1`/`libnuma1`), then restarts the `rexenv-dns` user unit if a dev launch registered one
    on the binary the build replaced (Linux does not lock a running executable, so the build
    succeeds and the OLD agent keeps running — the opposite failure to Windows's). Prints the
-   sha256 of every artefact. No §A0-linux check exists yet, no `app-manifest-linux.json`, no
+   sha256 of every artefact. **A 4 GB host kills the release `rustc` (OOM, measured on the
+   VM 24 Sep 2026 — `Killed process … (rustc) anon-rss:1657856kB`): give the builder 8 GB or a
+   swapfile, and `CARGO_BUILD_JOBS=2`.** No §A0-linux check exists yet, no `app-manifest-linux.json`, no
    in-app update (D-L7): the release is the `.deb` on the download page. Both archs are two
    builds on two hosts (or one host with `--target`), and the first one has not been made.
 4. `pnpm release:mac` → `src-tauri/target/universal-apple-darwin/release/bundle/dmg/rexenv_<X.Y.Z>_universal.dmg`.
