@@ -86,7 +86,18 @@ Linux needs its own answer; nothing is (c) — `linux-check` was green on the fi
   (§4).
 - **`sendmail_path` works** (Unix PHP), so mail catching needs no SMTP keys.
 
-## 3. Decisions for the owner (each with the default the overnight work assumed)
+## 3. Decisions for the owner — RULED 24 Sep 2026 (the overnight defaults, confirmed or changed)
+
+The owner ruled on every row on 24 Sep 2026, after the VM run. Confirmed as built: D-L1
+(`.deb` + AppImage), D-L2 (the dummy-link route — the drop-in had already failed P1),
+D-L3 (two stores, two prompts; the snap Chromium database added), D-L4 (22.04), D-L5 (both
+archs; an x86_64 host is still owed), D-L6 (unsigned), D-L9 (the UTM VM), D-L10
+(`linux-check` stays in `verify.sh`). **Changed:** **D-L7 — self-update IS in v1**: a `.deb`
+install updates through `pkexec dpkg -i <downloaded .deb>` (one prompt per update), an
+AppImage through the macOS-shaped file swap with no prompt — `manifest-linux.json`, a real
+`LinuxAppBundle`, a relauncher (task L7). **D-L8 — PHP 7.4 IS wanted on Linux**: no static
+build exists upstream, so rexenv builds it in `rexenv/runtimes` as it does for macOS (task
+L8). The table below is the record of what was assumed while the owner slept.
 
 | # | Decision | Assumed (what was built) | Alternatives |
 |---|---|---|---|
@@ -191,7 +202,19 @@ Each ends in something observable; each is its own commit.
   public tunnel, the owner's call), Firefox (snap). Original scope: Install Ubuntu 22.04 in UTM (D-L9), `tauri build` there, install
   the `.deb`, run SMOKE-TEST's Linux section — and FIRST the §7 P1 probe. Every ledger row L1
   marks `◐ (Docker only)` becomes `✓ (Ubuntu 22.04 VM)` or a bug.
-- **L7 — Release.** `manifest-linux.json` (Windows plan §3b: one signed document per OS), the
+- **L7 — Self-update on Linux (RULED IN, 24 Sep 2026).** `manifest-linux.json` (+ `.sig`) with
+  one entry per package kind and arch; `LinuxAppBundle::facts` telling a `.deb` install
+  (`/usr/bin/rexenv`, root-owned → `InstallKind` for a package) from an AppImage (`$APPIMAGE`,
+  user-owned) from a dev build; `stage` = download + verify (the deb's control fields / the
+  AppImage's embedded version); `swap` = `pkexec dpkg -i` through the polkit step for a deb,
+  the rename pair for an AppImage; the relauncher re-execs `/usr/bin/rexenv` or the new
+  AppImage after the old process is gone. Proof: an update applied on the VM from a 0.8.7 deb
+  to a 0.8.8 deb built there.
+- **L8 — PHP 7.4 for Linux (RULED IN, 24 Sep 2026).** Built by rexenv in `rexenv/runtimes`
+  the way the macOS 7.4 is (static-php-cli on a Linux runner, `cli` + `fpm`, x86_64 + aarch64,
+  licences tarball beside), pinned through `php_self_hosted_tag` with Linux arms, swept and
+  hashed like every other pin. Until it ships, #728 keeps the row refused honestly.
+- **L7 (was) — Release.** `manifest-linux.json` (Windows plan §3b: one signed document per OS), the
   download page, `RELEASING.md`'s Linux leg.
 
 ## 6. Linux hazards to design for, not discover

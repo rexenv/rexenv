@@ -1201,7 +1201,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     (#725), `rex`'s Linux socket (#727).** P4 ✓ after a reboot; the rebuilt deb re-proved #725/#727; PHP 7.4's Install button on Linux
     is #728 (fixed). P2's restart/disable legs ✓. Owed: the tunnel guard leg (a public tunnel — owner's call),
     Firefox (snap)**
-  - [ ] L7 `manifest-linux.json`, the download page
+  - [ ] L7 **Linux self-update (owner ruled IN, 24 Sep 2026)** — `manifest-linux.json`, a real
+    `LinuxAppBundle` (deb via `pkexec dpkg -i`, AppImage via file swap), a relauncher; proof =
+    a 0.8.7 → 0.8.8 update applied on the VM
+  - [ ] L8 **PHP 7.4 for Linux (owner ruled IN, 24 Sep 2026)** — built in `rexenv/runtimes` like the
+    macOS 7.4 (cli + fpm, both archs, licences), pinned with Linux arms, swept
+  - [ ] L9 the download page and the release leg (`release-linux.sh` never run on an x86_64 host)
 
 - [ ] **The keychain (CA trust) dialog is rexenv's too** — 12 Sep 2026, owner, after the admin
   dialog got its name: the CA trust dialog still read "security". Measured first: wrapping
