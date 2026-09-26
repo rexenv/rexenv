@@ -182,10 +182,13 @@ release** — which is the property that makes a stolen key survivable. Ledger
    pre-L7 0.8.7 bundles on the VM failed it on `--print-version` (they predate the flag) — the
    check working, not a bug. **A 4 GB host kills the release `rustc` (OOM, measured on the VM 24
    Sep 2026): give the builder 8 GB or a swapfile, `CARGO_BUILD_JOBS=1`, and ~10 GB of disk (one
-   release target + the bundles).** Two archs are two hosts: x86_64 is `release.yml`'s
-   `release-linux` job (`ubuntu-24.04`, attaches to the draft like the Windows job — never run,
-   the repo is private); aarch64 is the UTM VM by hand, uploaded to the tap release beside the
-   dmg. The AppImage needs `libfuse2` (`libfuse2t64` on 24.04) to MOUNT; rexenv's own checks
+   release target + the bundles).** Two archs are two hosts, and BOTH build on the 22.04 floor — a
+   deb runs on nothing older than the glibc it was linked against (the Dell's WSL Ubuntu 26.04
+   build proves x86_64 and installs only from 26.04 up): x86_64 is `release.yml`'s
+   `release-linux` job on `ubuntu-22.04` (attaches to the draft like the Windows job), and
+   `linux-build.yml` is the same build on dispatch with no release, asserting the binary's
+   highest `GLIBC_` symbol version is ≤ 2.35 and uploading the pair as a run artifact;
+   aarch64 is the 22.04 UTM VM by hand, uploaded to the tap release beside the dmg. The AppImage needs `libfuse2` (`libfuse2t64` on 24.04) to MOUNT; rexenv's own checks
    never mount it. **The in-app update reads ONE
    descriptor per package kind and arch** — `app-manifest-linux-deb-x86_64.json`,
    `-deb-aarch64`, `-appimage-x86_64`, `-appimage-aarch64`, each + `.sig`, same schema and key
