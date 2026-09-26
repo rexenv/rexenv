@@ -1926,6 +1926,13 @@ Environment: Ubuntu ____ (22.04+; x86_64 or aarch64) · package ____ (.deb / App
       error (the snap cannot see the host's system store); `certutil -A` into the profile's own
       `cert9.db` and it rendered the site — so the Linux trust step now writes every Firefox profile
       too (ledger #726, extended). The GUI Firefox row below is still owed.
+- [x] ✓ 27 Sep 2026 (Dell WSL Ubuntu 26.04, x86_64, the rebuilt deb, driven from the desktop): onboarding
+      through the GUI (Get started → components → "Set up domains & SSL" → "Nearly there"), the route
+      unit + `rexenv0` link, both stores; `rex start` (root edge via the polkit step), `rex site create
+      acme.rex --type wordpress` → **`curl https://acme.rex/` 200 with the CA verified, wp-login 200,
+      http→https 308**. Found on the way: `libaio.so.1t64` (ledger #731) and the stale system-store
+      CA behind a green "trusted" (#732). WSL caveats: no polkit agent (a test rule stood in), the
+      `.rex` answer came through the Windows host's DNS, so P1 stays the VM's.
 - [ ] After onboarding: `certutil -d sql:$HOME/.pki/nssdb -L` lists `rexenv local CA` with
       `C,,`; `/usr/local/share/ca-certificates/rexenv-local-ca.crt` exists; `curl -I
       https://<site>.rex` succeeds with no `-k`. Chrome/Chromium opens the site with no warning.

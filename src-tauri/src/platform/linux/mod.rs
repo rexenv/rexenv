@@ -22,6 +22,7 @@ pub mod app_bundle;
 mod app_bundle_rules;
 mod desktop;
 mod dnsroute;
+mod libcompat;
 pub mod parent_death_guard;
 mod proc_table;
 mod trust;
@@ -41,6 +42,45 @@ fn installed_exe() -> Result<PathBuf> {
         }
     }
     Ok(std::env::current_exe()?)
+}
+
+/// `LD_LIBRARY_PATH` for a service spawn when this distribution renamed a soname a bundled
+/// binary asks for (`libcompat.rs`: `libaio.so.1` → `libaio.so.1t64` on Ubuntu 24.04+). The
+/// symlinks live in `<app data>/lib-compat/`, made on first use; `None` on a system that has the
+/// real names, so nothing changes where nothing is missing. Read once per process: the library
+/// directory does not change under a running app, and a spawn is on the start-all path.
+fn lib_compat_env() -> Option<(&'static str, String)> {
+    use std::sync::OnceLock;
+    static DIR: OnceLock<Option<PathBuf>> = OnceLock::new();
+    let dir = DIR.get_or_init(|| {
+        let lib_dir = libcompat::multiarch_lib_dir(std::env::consts::ARCH);
+        let present: Vec<String> = std::fs::read_dir(&lib_dir)
+            .ok()?
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        let shims = libcompat::shims_for(&lib_dir, &present);
+        if shims.is_empty() {
+            return None;
+        }
+        let compat = LinuxPaths.app_data_dir().ok()?.join("lib-compat");
+        std::fs::create_dir_all(&compat).ok()?;
+        for shim in shims {
+            let link = compat.join(&shim.wanted);
+            if std::fs::read_link(&link).ok().as_deref() != Some(shim.target.as_path()) {
+                let _ = std::fs::remove_file(&link);
+                if let Err(e) = std::os::unix::fs::symlink(&shim.target, &link) {
+                    log::warn!("lib-compat: could not link {} -> {}: {e}", link.display(), shim.target.display());
+                    return None;
+                }
+            }
+            log::info!("lib-compat: {} -> {}", link.display(), shim.target.display());
+        }
+        Some(compat)
+    })
+    .as_ref()?;
+    let existing = std::env::var("LD_LIBRARY_PATH").ok();
+    Some(("LD_LIBRARY_PATH", libcompat::library_path(dir, existing.as_deref())))
 }
 
 fn home_dir() -> Result<PathBuf> {
@@ -231,10 +271,23 @@ impl CertTrustManager for LinuxCertTrust {
         }
         Ok(removed)
     }
+    /// BOTH stores hold the CURRENT CA — the browsers' NSS database AND the system store's copy
+    /// (`/usr/local/share/ca-certificates/rexenv-local-ca.crt`, what `curl`, PHP and WP-CLI
+    /// read). This asked NSS alone until 27 Sep 2026, when the Dell's WSL Ubuntu carried a
+    /// stale CA in the system store beside the right one in NSS: `rex status` said
+    /// "CA trusted" while every `curl https://acme.rex` died with `certificate signature
+    /// failure` — the guard-covers-claimed-surface shape (a two-store claim, one store
+    /// checked). A missing or different system copy is "not trusted", which re-offers the
+    /// one-prompt step that rewrites both.
     fn is_trusted(&self, ca_cert_path: &Path) -> bool {
         let Ok(home) = home_dir() else { return false };
         let Some(held) = Self::nss_current(&home) else { return false };
-        std::fs::read_to_string(ca_cert_path).map(|ours| trust::same_pem(&held, &ours)).unwrap_or(false)
+        let Ok(ours) = std::fs::read_to_string(ca_cert_path) else { return false };
+        if !trust::same_pem(&held, &ours) {
+            return false;
+        }
+        let system = Path::new(trust::SYSTEM_CERT_DIR).join(trust::SYSTEM_CERT_NAME);
+        std::fs::read_to_string(system).map(|sys| trust::same_pem(&sys, &ours)).unwrap_or(false)
     }
     fn firefox_profiles_root(&self) -> Option<PathBuf> {
         let home = home_dir().ok()?;
@@ -396,7 +449,12 @@ impl ProcessSupervisor for LinuxSupervisor {
         process_running(pid)
     }
     fn spawn(&self, program: &Path, args: &[String]) -> Result<Child> {
-        Ok(crate::platform::command(program).args(args).spawn()?)
+        let mut cmd = crate::platform::command(program);
+        cmd.args(args);
+        if let Some((k, v)) = lib_compat_env() {
+            cmd.env(k, v);
+        }
+        Ok(cmd.spawn()?)
     }
     /// Our own binary re-executed in guard mode (`parent_death_guard`), the macOS shape: a
     /// pidfd watcher, because `PR_SET_PDEATHSIG` binds to the spawning THREAD and a retired
@@ -430,12 +488,12 @@ impl ProcessSupervisor for LinuxSupervisor {
         }
         let out = std::fs::OpenOptions::new().create(true).append(true).open(log_path)?;
         let err = out.try_clone()?;
-        Ok(crate::platform::command(program)
-            .args(args)
-            .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
-            .stdout(out)
-            .stderr(err)
-            .spawn()?)
+        let mut cmd = crate::platform::command(program);
+        cmd.args(args).envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str()))).stdout(out).stderr(err);
+        if let Some((k, v)) = lib_compat_env() {
+            cmd.env(k, v);
+        }
+        Ok(cmd.spawn()?)
     }
     fn stop(&self, pid: u32) -> Result<()> {
         stop_pid(pid, STOP_GRACE_TRIES, STOP_POLL_INTERVAL)

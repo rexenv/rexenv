@@ -123,8 +123,13 @@ builds for each arch.
 | WP-CLI · Composer · Adminer | as above — OS-agnostic | unchanged | unchanged |
 
 Runtime dependencies the `.deb` must declare for these (D-L1; measured against the tarballs'
-`ldd` on nothing yet — an L6 item): MySQL's generic build needs `libaio1` (`libaio1t64` on
-24.04) and `libnuma1`; the rest are static.
+`ldd` on the Dell's WSL, 26 Sep 2026): MySQL's generic build needs `libaio.so.1` and `libnuma1`; the
+rest are static. **`libaio1t64` (24.04+) does NOT provide `libaio.so.1`** — the soname was renamed to
+`libaio.so.1t64` in the time_t transition, so the deb's `libaio1 | libaio1t64` is satisfied and
+`mysqld` still dies at exec (exit 127, measured on 26.04 at the first x86_64 site create). rexenv
+keeps `<app data>/lib-compat/libaio.so.1 -> …/libaio.so.1t64` and spawns its services with that
+directory on `LD_LIBRARY_PATH` (`platform/linux/libcompat.rs`, ledger #731); a system with the real
+name gets no shim and no env.
 
 ### Measured macOS floors (`minos`, per binary)
 

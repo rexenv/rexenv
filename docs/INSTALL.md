@@ -432,7 +432,9 @@ store, and the `rex` copy on your `Path`.
   `.deb` will declare these; an AppImage will not, and the messages name the missing one.
 - An internet connection on **first run** — the same downloads as macOS, from the same
   publishers where they publish Linux builds (`docs/PORTS.md`, Linux table). MySQL's generic
-  Linux build additionally needs `libaio1` and `libnuma1` from apt.
+  Linux build additionally needs `libaio1` and `libnuma1` from apt (the `.deb` declares them; on
+  24.04+ the `libaio1t64` package's renamed soname is bridged by a private symlink rexenv keeps
+  under its own data folder, so MySQL starts there too).
 
 ### What system setup changes (one polkit prompt, then one more for the certificate)
 

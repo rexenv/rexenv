@@ -66,7 +66,7 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
   `core/devtools.rs` `find_tool` (ledger #628); a path's last part in the UI — `src/lib/path.ts` (`baseName`
   on either separator, `joinPath`; held by a frontend scan in `path_lookup.rs`) (ledger #629); nginx's Windows shape — `services::nginx_path`,
   `binaries::resolve_program`, the master climb and nginx's events (ledger #602);
-  `linux/` — real since 24 Sep 2026 (`docs/PLAN-linux-port.md`): `mod.rs` the twelve impls (XDG paths,
+  `linux/` — real since 24 Sep 2026 (`libcompat.rs`: the `libaio.so.1 → .1t64` shim MySQL needs on 24.04+, #731; `docs/PLAN-linux-port.md`): `mod.rs` the twelve impls (XDG paths,
   `pkexec`, `/proc` + `ss` supervision, `xdg-open`/D-Bus reveal, PATH-found editors/browsers/terminals,
   an autostart `.desktop`, systemd user unit for the DNS agent and system unit for the edge, a
   a dummy-link DNS route per TLD (`dnsroute.rs` — the resolved drop-in it replaced is measured wrong

@@ -58,6 +58,8 @@ mod linux_pure {
     pub(crate) mod proc_table;
     #[path = "dnsroute.rs"]
     pub(crate) mod dnsroute;
+    #[path = "libcompat.rs"]
+    pub(crate) mod libcompat;
     #[path = "trust.rs"]
     pub(crate) mod trust;
     #[path = "units.rs"]
