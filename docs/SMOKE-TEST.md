@@ -1934,7 +1934,9 @@ Environment: Ubuntu ____ (22.04+; x86_64 or aarch64) · package ____ (.deb / App
       CA behind a green "trusted" (#732). **PostgreSQL** (the owner's Start did nothing): theseus's `postgres`
       asks for `libxml2.so.2`, 26.04 has `.so.16` — the same shim + PostgreSQL's closure in `Depends`; then
       `rex site create lara.rex --type laravel --db postgres` → PostgreSQL 18.6 running on 15432, migrations
-      ran, `https://lara.rex` 200. WSL caveats: no polkit agent (a test rule stood in), the
+      ran, `https://lara.rex` 200; **the owner then pressed Start on PostgreSQL in the Databases screen
+      and it came up (27 Sep 2026)** — the GUI door for #731, not just `rex`. WSL caveats: no polkit
+      agent (a test rule stood in), the
       `.rex` answer came through the Windows host's DNS, so P1 stays the VM's.
 - [ ] After onboarding: `certutil -d sql:$HOME/.pki/nssdb -L` lists `rexenv local CA` with
       `C,,`; `/usr/local/share/ca-certificates/rexenv-local-ca.crt` exists; `curl -I
