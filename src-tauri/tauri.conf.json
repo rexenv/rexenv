@@ -56,7 +56,17 @@
           "libnss3-tools",
           "pkexec | policykit-1",
           "libaio1 | libaio1t64",
-          "libnuma1"
+          "libnuma1",
+          "libxml2 | libxml2-16",
+          "libssl3 | libssl3t64",
+          "libzstd1",
+          "liblz4-1",
+          "libkrb5-3",
+          "libgssapi-krb5-2",
+          "libxxhash0",
+          "zlib1g",
+          "libcom-err2",
+          "libkeyutils1"
         ],
         "files": {
           "/usr/share/polkit-1/actions/dev.rexenv.rexenv.policy": "linux/dev.rexenv.rexenv.policy"

@@ -124,7 +124,14 @@ builds for each arch.
 
 Runtime dependencies the `.deb` must declare for these (D-L1; measured against the tarballs'
 `ldd` on the Dell's WSL, 26 Sep 2026): MySQL's generic build needs `libaio.so.1` and `libnuma1`; the
-rest are static. **`libaio1t64` (24.04+) does NOT provide `libaio.so.1`** — the soname was renamed to
+rest are static — except PostgreSQL (theseus-rs, a Debian 12 build), whose `ldd` on 26.04 names
+`libxml2.so.2`, `libssl.so.3`/`libcrypto.so.3`, `libzstd.so.1`, `liblz4.so.1`, `libgssapi_krb5.so.2` +
+the krb5 set, `libxxhash.so.0`, `libz.so.1`, `libcom_err.so.2`, `libkeyutils.so.1`; the deb declares them
+(`libxml2 | libxml2-16`, `libssl3 | libssl3t64`, …) since 27 Sep 2026 — nothing did before, and the
+22.04 VM happened to have every one. **libxml2 2.14 bumped its soname to `libxml2.so.16`** (26.04's
+`libxml2-16`), so `postgres` died at exec there like `mysqld` — the same shim answers
+(`libxml2.so.2 -> libxml2.so.16`; a real initdb + `xmlparse`/`xpath` measured fine). **`libaio1t64`
+(24.04+) does NOT provide `libaio.so.1`** — the soname was renamed to
 `libaio.so.1t64` in the time_t transition, so the deb's `libaio1 | libaio1t64` is satisfied and
 `mysqld` still dies at exec (exit 127, measured on 26.04 at the first x86_64 site create). rexenv
 keeps `<app data>/lib-compat/libaio.so.1 -> …/libaio.so.1t64` and spawns its services with that

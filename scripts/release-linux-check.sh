@@ -101,7 +101,10 @@ done
 # 26.04 has dropped policykit-1 altogether (measured on the Dell's WSL Ubuntu 26.04, 25 Sep
 # 2026 — a deb naming only policykit-1 has no installation candidate there). Same shape as
 # `libaio1 | libaio1t64`.
-for dep in libwebkit2gtk-4.1-0 libayatana-appindicator3-1 "pkexec | policykit-1" libnss3-tools; do
+# …and PostgreSQL's dynamic closure (theseus-rs, a Debian build): measured by `ldd` on the
+# Dell, 27 Sep 2026 — libxml2 (soname 2 on ≤24.04, 16 on 26.04), libssl3 (t64 on 24.04+),
+# zstd, lz4, Kerberos, xxhash. Nothing declared these before; 22.04 happened to have them.
+for dep in libwebkit2gtk-4.1-0 libayatana-appindicator3-1 "pkexec | policykit-1" libnss3-tools "libxml2 | libxml2-16" "libssl3 | libssl3t64" libzstd1 liblz4-1 libxxhash0; do
   printf '%s' "$(field Depends)" | grep -qF "$dep" || fail "the package's Depends lacks $dep: $(field Depends)"
 done
 echo "deb: rexenv $VERSION $DEB_ARCH — usr/bin/{rexenv,rex}, the polkit action, the desktop entry, Depends complete"
