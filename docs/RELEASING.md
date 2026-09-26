@@ -3,9 +3,11 @@
 Releases are driven **from GitHub**: a tag builds everything, a human click publishes
 it, and the Homebrew tap updates itself. Two workflows implement this.
 
-> **Read the interim section below first if you are cutting a release today.** This
-> pipeline needs `rexenv/rexenv` to be public; while it is private the dmg is built
-> locally and released from the tap.
+> **Since 27 Sep 2026 every release is built ONLY on GitHub Actions, every OS at once**
+> (owner ruling, `docs/PLAN-ci-release.md`): one tag → macOS + Windows + Linux ×2 lanes →
+> one DRAFT on `rexenv/homebrew-tap` with all eight assets. The "build locally, upload to
+> the tap by hand" flow that cut 0.1.0–0.8.7 is retired; its section below is kept as the
+> record of why the artefacts live on the tap.
 
 
 ```
@@ -76,10 +78,12 @@ release event the checkout is the tag, a detached HEAD the bump cannot push from
 Verified 2026-08-08: the tap workflow's explicit `permissions: contents: write` is
 granted (`Contents: write` in the run log) even though the org default is read.
 
-## ⚠️ Today's flow: the repo is PRIVATE, so the dmg ships from the tap
+## The artefacts live on the tap (why) — and the local flow this replaced
 
-Everything below the next heading describes the pipeline **as it will run once
-`rexenv/rexenv` is public**. It is not the flow in effect right now.
+**Retired 27 Sep 2026.** From 0.1.0 to 0.8.7 the dmg was built on the owner's Mac and uploaded
+to a tap release by hand; Windows on the Dell; Linux on a VM. The owner's ruling ended that:
+a release is what `release.yml` builds on hosted runners, nothing else, and it is all three
+OSes or nothing. What is still true in this section is WHERE the artefacts go and why.
 
 **Why it can't be.** `brew` fetches a cask's `url` with **no authentication**. A private
 repo's release asset answers **404** to an unauthenticated GET — so a cask pointing at a
@@ -91,9 +95,10 @@ the source stays private, the dmg goes somewhere public.
 already the home of the cask, and same-repo so `update-cask.yml` still needs no secret
 of any kind (`SOURCE_REPO` there points at itself; the cask's `url` names it too).
 
-**And it is built locally, not in CI.** Uploading from this repo to the tap would need a
-cross-repo credential — exactly the PAT this pipeline was designed to avoid (see the note
-above). A local build also dodges the 10× macOS-minute multiplier on a private repo.
+**It used to be built locally, not in CI**, to avoid a cross-repo credential and the 10×
+macOS-minute multiplier. Both costs are now paid on purpose: `TAP_TOKEN` (a fine-grained PAT
+scoped to `rexenv/homebrew-tap`, contents:write, nothing else) lets `release.yml`'s `publish`
+job draft the release on the tap, and the macOS minutes buy a build nobody's laptop shaped.
 
 **Before a release that carries an in-app PHP update:** the manifest must be signed
 and published, or the button offers nothing.
@@ -374,7 +379,7 @@ never reaches it. Without a new trigger (a schedule — slow, see above — or a
 `repository_dispatch` sent from `release.yml` with a token) the cask would simply stop
 moving, with every workflow green.
 
-## Cutting a release (the automated pipeline — for when the repo is public)
+## Cutting a release (the pipeline — the only flow since 27 Sep 2026)
 
 1. Bump the version in **all four** manifests (the workflow refuses a mismatch):
    `src-tauri/tauri.conf.json`, `package.json`, `src-tauri/Cargo.toml`,
@@ -395,18 +400,29 @@ moving, with every workflow green.
      then `git push origin v<X.Y.Z>`, or
    - GitHub → Actions → **Release** → *Run workflow* → enter `<X.Y.Z>` (creates the
      tag for you; token-pushed tags don't re-trigger the workflow).
-3. Wait for the draft release. Download the attached dmg and run
-   `docs/PUBLISH-TESTING.md` **§A** on it (§A0 already ran in CI). Record the pass
-   next to the dmg's sha256 in that doc.
-4. **Publish** the release. The tap sees NO event for a release here unless going
-   public restored a trigger (above); until then, `rexenv/homebrew-tap` → Actions →
-   **Update cask** → *Run workflow*.
+3. Wait for the draft release **on `rexenv/homebrew-tap`** — `publish` drafts it only when all
+   four lanes delivered (dmg + app.tar.gz, setup.exe + zip, amd64/arm64 deb + AppImage, every
+   `.sha256` matching). Download the attached dmg and run `docs/PUBLISH-TESTING.md` **§A** on
+   it (§A0 already ran in CI, per OS). Record the pass next to the dmg's sha256 in that doc.
+4. **Publish** the release. Publishing on the tap fires its own `update-cask.yml` (the cask
+   bumps from the published dmg's hash).
 5. Sanity check: `brew update && brew audit --cask --online rexenv/tap/rexenv`,
    or the full §D dry-run for a first-time setup.
+6. `rexenv/runtimes` → "Publish app update manifest", dry-run then publish, **six times**
+   (macOS, Windows, Linux deb/AppImage × x86_64/aarch64) — step 8 below; then
+   `./scripts/check-app-manifest.sh` for each.
 
 ## One-time setup (required before the first automated release)
 
-- **`rexenv/rexenv` must be public** for the pipeline above to run at all. Two things
+- **`TAP_TOKEN`** on `rexenv/rexenv` (Settings → Secrets → Actions): a fine-grained PAT with
+  repository access to `rexenv/homebrew-tap` only and `Contents: read and write`. The `publish`
+  job refuses with a sentence naming it when it is missing.
+- **The arm64 Linux lane** runs on `ubuntu-22.04-arm`, free on public repositories and a paid
+  larger runner on private ones; if the first tag run leaves that lane queued, enable arm
+  runners for the org or go public — the ruling does not allow shipping without it.
+- **macOS minutes** are billed 10× on a private repo (~400 per release); the free tier is 2,000.
+- **`rexenv/rexenv` need not be public any more** for the pipeline to run; going public would
+  only let the draft move back here. The older note follows for the record. Two things
   depend on it: the cask's `url` is fetched by users' machines with no auth, and the
   tap's poller reads this repo's releases cross-repo. While it is private the poller
   finds nothing here and the dmg ships from the tap instead — see the interim section

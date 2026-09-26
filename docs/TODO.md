@@ -1223,6 +1223,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     needed freetype's `LICENSE.TXT` and a SQLite public-domain note; the static ELFs export no Zend
     symbols, so 7.4 on Linux gets no Xdebug — not in v1 anyway). Then: owner merges PR #7 and publishes
     `php-7.4.33-7`; pin the Linux arms in `binaries.rs` (`php_self_hosted_tag`), drop #728's refusal for 7.4
+  - [ ] **Release = GitHub Actions only, all three OSes at once** (owner ruling 27 Sep 2026,
+    `docs/PLAN-ci-release.md`) — `release.yml` rewritten (macos-14 / windows-latest / ubuntu-22.04 /
+    ubuntu-22.04-arm → one draft on the tap with eight assets, or nothing). **Owed:** the owner's
+    `TAP_TOKEN` secret and the arm64 runner decision; the first tag run (it has never executed end to end)
   - [ ] L9 the release leg — `release-linux-check.sh` (§A0-linux) + `release.yml`'s x86_64
     `release-linux` job landed 25 Sep 2026; **VM (aarch64) `pnpm release:linux` exit 0 — §A0-linux all
     green on the rebuilt 0.8.7 deb + AppImage (`--print-version` answers, polkit action, Depends, rex

@@ -1,17 +1,37 @@
-# Release pipeline — tag (or run from the Actions tab) → universal dmg → DRAFT release.
+# Release pipeline — ONE tag → every OS's artefacts, built on GitHub, drafted on the tap.
+#
+# Owner ruling, 27 Sep 2026 (docs/PLAN-ci-release.md): every release ships macOS, Windows
+# and Linux TOGETHER, and every artefact is built on a GitHub-hosted runner — never on a
+# developer's machine. The Linux port found three device-shaped bugs in one day (a deb
+# built on a 26.04 laptop runs on nothing older; a distro's renamed sonames), and a dmg
+# built on someone's Mac carries that Mac's toolchain. A runner is the same machine every
+# time, and its floor is a label this file states and the jobs assert.
+#
+# Five jobs. Four build lanes run in parallel, each ending in the platform's §A0 artefact
+# check and an uploaded run artifact; `publish` waits for ALL of them and drafts one
+# release on `rexenv/homebrew-tap` (the public home of the cask — this repo is private, and
+# `brew` fetches anonymously) with every asset attached. A lane that fails means no draft:
+# a release is all three OSes or nothing.
 #
 # The release is created as a DRAFT on purpose: CI can prove everything about the
-# artefact EXCEPT the one publish-blocking gate that needs a human at a real Mac —
-# docs/PUBLISH-TESTING.md §A (quarantine → Gatekeeper block → xattr -rd → launches).
-# Flow: this workflow drafts the release with the dmg attached; you download the
-# asset, run §A on it, then click "Publish release" on GitHub. Publishing fires
-# the tap's own update-cask.yml (in rexenv/homebrew-tap), which bumps the Homebrew
-# cask from the PUBLISHED asset's hash — see docs/RELEASING.md.
+# artefacts EXCEPT the one gate that needs a human at a real Mac — docs/PUBLISH-TESTING.md
+# §A (quarantine → Gatekeeper block → xattr -rd → launches). Download the dmg from the
+# draft, run §A, click "Publish release". Publishing fires the tap's own update-cask.yml
+# (bumps the Homebrew cask from the PUBLISHED asset's hash), and only a published release's
+# assets are reachable — which is what protects every in-app updater until a human said yes.
+# Then, in rexenv/runtimes: "Publish app update manifest", once per descriptor (macOS,
+# Windows, Linux deb/AppImage × x86_64/aarch64) — docs/RELEASING.md step 8.
 #
 # Two ways to start a release, both end in the same draft:
 #   1. git tag v<version> && git push origin v<version>
-#   2. Actions tab → "Release" → Run workflow → type the version (creates the tag
-#      for you; tags pushed with the workflow token do not re-trigger this).
+#   2. Actions tab → "Release" → Run workflow → type the version (creates the tag for you;
+#      tags pushed with the workflow token do not re-trigger this).
+#
+# One secret: TAP_TOKEN, a fine-grained PAT with `contents: write` on rexenv/homebrew-tap and
+# nothing else (Settings → Secrets → Actions). The draft is created with it because the
+# workflow token cannot write another repository. When the source repo goes public the
+# draft can move back here (and the tap's SOURCE_REPO with it) — one commit, RELEASING.md
+# "Going public later".
 name: Release
 
 on:
@@ -20,32 +40,27 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to release (e.g. 0.1.0 — must match tauri.conf.json)"
+        description: "Version to release (e.g. 0.8.8 — must match tauri.conf.json)"
         required: true
 
 permissions:
-  contents: write # create the tag (dispatch path) + the draft release
+  contents: write # create the tag (dispatch path); artifacts
+
+env:
+  TAG: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
 
 jobs:
-  release:
-    name: Build universal dmg and draft the release
-    runs-on: macos-14
-    env:
-      TAG: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
+  # ── One version, everywhere. A tag that disagrees with the configs would ship a dmg
+  #    whose filename and cask URL never match — fail loudly before any runner spends
+  #    minutes. The check lives in `scripts/check-versions.sh`, the same script a local
+  #    bump runs, so the two cannot drift.
+  versions:
+    name: Version guard + tag
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      # ── One version, everywhere. A tag that disagrees with the configs would
-      #    ship a dmg whose filename and cask URL never match — fail loudly first.
-      #
-      #    The check itself lives in `scripts/check-versions.sh`, not here: this
-      #    workflow does not run while the repo is private, so for every release
-      #    so far the guard has been in the one place that never executed. The
-      #    local build now runs the same script, and one implementation cannot
-      #    drift from the other.
       - name: Check the tag matches every declared version
         run: ./scripts/check-versions.sh "${TAG#v}"
-
       - name: Create and push the tag (dispatch path only)
         if: github.event_name == 'workflow_dispatch'
         run: |
@@ -54,16 +69,22 @@ jobs:
             echo "tag $TAG already exists locally"
           elif git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
             echo "tag $TAG already exists on origin"
-            git fetch origin "refs/tags/$TAG:refs/tags/$TAG"
           else
             git tag "$TAG"
             git push origin "refs/tags/$TAG"
           fi
 
-      # No `version:` — pnpm/action-setup reads `packageManager` from package.json,
-      # so CI runs the pnpm this repo declares. Pinning 11 here while developers ran
-      # 12 made `pnpm list --prod` report 112 packages against the notices file's 127
-      # (21 Sep 2026): a red bar on Windows CI that no machine could reproduce.
+  # ── macOS: the universal dmg + the in-app update archive.
+  macos:
+    name: macOS universal dmg (macos-14)
+    needs: versions
+    runs-on: macos-14
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      # No `version:` — pnpm/action-setup reads `packageManager` from package.json, so CI
+      # runs the pnpm this repo declares (a pinned 11 beside developers' 12 once made
+      # `pnpm list --prod` disagree with the notices file on Windows CI, 21 Sep 2026).
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -71,7 +92,6 @@ jobs:
           cache: pnpm
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
-
       - name: Install Rust (both Apple targets)
         run: |
           rustup toolchain install stable --profile minimal
@@ -82,10 +102,9 @@ jobs:
           workspaces: |
             src-tauri
             cli
-
-      # ── The pre-commit bar, run as the release bar too. verify.sh refuses a
-      #    piped stdout by design; the file redirect is its sanctioned form and
-      #    `exit $code` carries the real verdict.
+      # The pre-commit bar, run as the release bar too. verify.sh refuses a piped stdout
+      # by design; the file redirect is its sanctioned form and `exit $code` carries the
+      # real verdict.
       - name: verify.sh (lib tests + examples + clippy + tsc)
         run: |
           set -uo pipefail
@@ -93,14 +112,11 @@ jobs:
           code=$?
           cat verify.log
           exit $code
-
       - name: Build the universal dmg
         run: pnpm release:mac
-
-      # ── docs/PUBLISH-TESTING.md §A0, the automatable half: a universal binary
-      #    is two binaries in a trench coat, and anything embedded at compile
-      #    time is embedded per slice. Add a line here whenever something new is
-      #    compiled into the binary.
+      # docs/PUBLISH-TESTING.md §A0, the automatable half: a universal binary is two
+      # binaries in a trench coat, and anything embedded at compile time is embedded per
+      # slice. Add a line here whenever something new is compiled into the binary.
       - name: "§A0 artefact integrity — per-slice checks"
         run: |
           set -euo pipefail
@@ -109,13 +125,8 @@ jobs:
           DMG="src-tauri/target/universal-apple-darwin/release/bundle/dmg/rexenv_${V}_universal.dmg"
           test -f "$DMG" || { echo "::error::expected dmg not found: $DMG" >&2; ls src-tauri/target/universal-apple-darwin/release/bundle/dmg/ >&2; exit 1; }
           [ "$(find src-tauri/target/universal-apple-darwin/release/bundle/dmg -name '*.dmg' | wc -l)" -eq 1 ]
-
           [ "$(lipo -archs "$APP/Contents/MacOS/rexenv")" = "x86_64 arm64" ]
           [ "$(lipo -archs "$APP/Contents/MacOS/rex")" = "x86_64 arm64" ]
-
-          # Embedded payloads must be in EACH slice on its own, not merely
-          # somewhere in the fat binary (a half-populated fat binary is invisible
-          # to `lipo -archs`). Today's list: the vendored `wp dist-archive` tree.
           for arch in arm64 x86_64; do
             lipo -thin "$arch" "$APP/Contents/MacOS/rexenv" -output "/tmp/rexenv-$arch"
             n=$(strings -a "/tmp/rexenv-$arch" | grep -c Dist_Archive_Command || true)
@@ -123,69 +134,42 @@ jobs:
             [ "$n" -gt 0 ] || { echo "::error::Dist_Archive_Command missing from the $arch slice" >&2; exit 1; }
             echo "slice $arch: Dist_Archive_Command x$n"
           done
-
           codesign --verify --deep --strict "$APP"
           echo "§A0: all green"
-
-      # ── The update archive, and §A0 re-run on the bundle that comes back OUT
-      #    of it. `pnpm release:mac` already ran this (release-mac.sh calls it),
-      #    so this step is a no-op that fails loudly if the build did not — one
-      #    implementation, checked from both entry points.
+      # The update archive, and §A0 re-run on the bundle that comes back OUT of it
+      # (release-mac.sh already ran this; a no-op that fails loudly if the build did not).
       - name: Update archive + §A0 on the extracted bundle
         run: ./scripts/release-assets.sh --check
-
-      - name: Draft the release with the dmg attached
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Stage the assets
         run: |
           set -euo pipefail
           V="${TAG#v}"
-          DMG="src-tauri/target/universal-apple-darwin/release/bundle/dmg/rexenv_${V}_universal.dmg"
-          shasum -a 256 "$DMG" | awk '{print $1 "  rexenv_'"$V"'_universal.dmg"}' > "rexenv_${V}_universal.dmg.sha256"
-          cat "rexenv_${V}_universal.dmg.sha256"
-          # The update archive rides along: an in-app update downloads a
-          # BUNDLE, not a dmg. Its name must never end in `_universal.dmg` —
-          # the tap's update-cask.yml selects the cask's asset by that suffix
-          # and would hash whichever it found first.
-          TAR="src-tauri/target/universal-apple-darwin/release/bundle/macos/rexenv_${V}_universal.app.tar.gz"
-          gh release create "$TAG" \
-            --draft \
-            --verify-tag \
-            --title "rexenv $V" \
-            --generate-notes \
-            --notes "> ⚠️ Draft until docs/PUBLISH-TESTING.md §A (Apple-Silicon launch gate) passes on this exact dmg. Publishing this release auto-updates the Homebrew cask in rexenv/homebrew-tap, and is the gate that makes the update archive reachable — a draft's assets 404 for everyone." \
-            "$DMG" "rexenv_${V}_universal.dmg.sha256" \
-            "$TAR" "$TAR.sha256"
-          echo "draft release $TAG created — run §A on the attached dmg, then publish it"
+          mkdir -p out
+          B=src-tauri/target/universal-apple-darwin/release/bundle
+          cp "$B/dmg/rexenv_${V}_universal.dmg" out/
+          cp "$B/macos/rexenv_${V}_universal.app.tar.gz" "$B/macos/rexenv_${V}_universal.app.tar.gz.sha256" out/
+          ( cd out && shasum -a 256 "rexenv_${V}_universal.dmg" > "rexenv_${V}_universal.dmg.sha256" && cat ./*.sha256 )
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: out/
+          if-no-files-found: error
 
-  # ── The Windows half. It ATTACHES to the draft the macOS job created rather
-  #    than creating its own: one release, one tag, both platforms' assets.
-  #
-  #    **This job has never run.** The repo is private, so neither has the one
-  #    above — and that is exactly why the substance lives in scripts instead of
-  #    in these steps. `release-windows.sh` (the pre-clean + the nsis-only build)
-  #    and `release-windows-check.sh` (the §A0 half: one installer, the sidecar,
-  #    the PE architecture, the embedded payload, and NotSigned) were measured on
-  #    a real Windows machine 19 Sep 2026, plants included. What is unproven here
-  #    is the YAML, not the release.
-  release-windows:
-    name: Build the Windows installer and attach it to the draft
-    needs: release
+  # ── Windows: the per-user NSIS installer (unsigned by ruling, D5) + the in-app update zip.
+  #    `release-windows.sh` pre-cleans for the Windows reason (the DNS agent is our own
+  #    binary and locks the exe), builds `--bundles nsis` only, and ends in
+  #    `release-windows-check.sh` — §A0-windows: one installer, the rex sidecar, PE x64,
+  #    the embedded payload + update key, NotSigned, the zip extracted and re-checked.
+  windows:
+    name: Windows installer (windows-latest)
+    needs: versions
     runs-on: windows-latest
-    env:
-      TAG: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
+    timeout-minutes: 120
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@v4
-      - name: Check the tag matches every declared version
-        run: ./scripts/check-versions.sh "${TAG#v}"
-
-      # No `version:` — pnpm/action-setup reads `packageManager` from package.json,
-      # so CI runs the pnpm this repo declares. Pinning 11 here while developers ran
-      # 12 made `pnpm list --prod` report 112 packages against the notices file's 127
-      # (21 Sep 2026): a red bar on Windows CI that no machine could reproduce.
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -193,7 +177,6 @@ jobs:
           cache: pnpm
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
-
       - name: Install Rust
         run: |
           rustup toolchain install stable --profile minimal
@@ -203,13 +186,8 @@ jobs:
           workspaces: |
             src-tauri
             cli
-
-      # ── The same bar as the macOS job, deliberately. A Windows job that runs
-      #    LESS than verify.sh is a weaker gate nobody declared — the mistake
-      #    ledger #684 records, where the Windows check was `cargo check` beside a
-      #    macOS `clippy -D warnings`. If this proves too slow on a hosted runner,
-      #    the answer is to make the bar faster or split it openly, not to quietly
-      #    run a subset here.
+      # The same bar as the macOS job, deliberately (ledger #684: a lane that runs less
+      # than verify.sh is a weaker gate nobody declared).
       - name: verify.sh (lib tests + examples + clippy + tsc)
         run: |
           set -uo pipefail
@@ -217,57 +195,52 @@ jobs:
           code=$?
           cat verify.log
           exit $code
-
       - name: Build the installer (pre-clean + nsis only + §A0-windows)
         run: pnpm release:win
-
-      - name: Attach the installer to the draft
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Stage the assets
         run: |
           set -euo pipefail
           V="${TAG#v}"
-          SETUP="src-tauri/target/release/bundle/nsis/rexenv_${V}_x64-setup.exe"
-          ZIP="src-tauri/target/release/bundle/nsis/rexenv_${V}_x64.zip"
-          sha256sum "$SETUP" | awk '{print $1 "  rexenv_'"$V"'_x64-setup.exe"}' > "rexenv_${V}_x64-setup.exe.sha256"
-          cat "rexenv_${V}_x64-setup.exe.sha256" "$ZIP.sha256"
-          # The update archive rides along: an in-app update downloads the install
-          # directory's contents, not the installer. Neither name ends in
-          # `_universal.dmg`, which is the suffix the tap's update-cask.yml selects by.
-          gh release upload "$TAG" "$SETUP" "rexenv_${V}_x64-setup.exe.sha256" "$ZIP" "$ZIP.sha256" --clobber
-          echo "attached the Windows installer and update archive to draft $TAG"
+          mkdir -p out
+          B=src-tauri/target/release/bundle/nsis
+          cp "$B/rexenv_${V}_x64-setup.exe" "$B/rexenv_${V}_x64.zip" "$B/rexenv_${V}_x64.zip.sha256" out/
+          ( cd out && sha256sum "rexenv_${V}_x64-setup.exe" | awk '{print $1 "  rexenv_'"$V"'_x64-setup.exe"}' > "rexenv_${V}_x64-setup.exe.sha256" && cat ./*.sha256 )
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: out/
+          if-no-files-found: error
 
-  # ── The Linux half, x86_64. It ATTACHES to the draft the macOS job created, like
-  #    the Windows job: one release, one tag, three platforms' assets.
+  # ── Linux: the deb + AppImage, one lane per arch, both ON THE FLOOR. A deb runs on
+  #    nothing older than the glibc it was linked against, so the runner is Ubuntu 22.04
+  #    (the oldest GitHub offers, and exactly D-L4's floor) and the lane reads the highest
+  #    GLIBC_ symbol version out of the binaries rather than trusting the label.
+  #    `release-linux.sh` ends in `release-linux-check.sh` — §A0-linux: one deb + one
+  #    AppImage for the version and THIS arch, the rex sidecar, the ELF arch, the embedded
+  #    payload + update key, the deb's control/members/polkit action/Depends, and both
+  #    artefacts answering --print-version (what the in-app updater re-checks before
+  #    dpkg -i / the exchange).
   #
-  #    ON THE FLOOR: `ubuntu-22.04`, because a deb runs on nothing older than the glibc it
-  #    was linked against (the Dell's 26.04 build proves x86_64, and is installable only
-  #    from 26.04 up). `linux-build.yml` is these same steps without the release, plus the
-  #    glibc-floor assertion, for a build that can be inspected without cutting a tag.
-  #
-  #    x86_64 ONLY here. GitHub's arm64 Linux runners (`ubuntu-24.04-arm`) are free on
-  #    public repos and a paid larger-runner on private ones, so the aarch64 pair is
-  #    built on the Ubuntu VM with `pnpm release:linux` and uploaded by hand — the same
-  #    "built locally" answer the dmg has today (docs/RELEASING.md 3b). The substance
-  #    lives in the scripts, measured on the VM 25 Sep 2026: `release-linux.sh` (the
-  #    build + the DNS-agent restart) and `release-linux-check.sh` (§A0-linux: one deb
-  #    + one AppImage for the version and THIS arch, the rex sidecar, the ELF arch, the
-  #    embedded payload + update key, the deb's control fields, members, polkit action
-  #    and Depends, and BOTH artefacts answering --print-version — the facts the in-app
-  #    updater re-checks on the user's machine before it swaps).
-  release-linux:
-    name: Build the Linux deb + AppImage (x86_64, Ubuntu 22.04 floor) and attach them to the draft
-    needs: release
-    runs-on: ubuntu-22.04
-    env:
-      TAG: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
+  #    `ubuntu-22.04-arm` is a GitHub-hosted arm64 runner: free on public repositories, a
+  #    "larger runner" billed per minute on a private one. If the lane cannot find a runner
+  #    the whole release waits — the owner's ruling is all three OSes or nothing, so the
+  #    answer is to pay for the lane or go public, not to ship without aarch64.
+  linux:
+    name: Linux deb + AppImage (${{ matrix.arch }}, Ubuntu 22.04 floor)
+    needs: versions
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: ubuntu-22.04,     arch: x86_64,  deb_arch: amd64, img_arch: amd64 }
+          - { runner: ubuntu-22.04-arm, arch: aarch64, deb_arch: arm64, img_arch: aarch64 }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
-      - name: Check the tag matches every declared version
-        run: ./scripts/check-versions.sh "${TAG#v}"
-
-      # Tauri 2 on Linux links webkit2gtk 4.1 + gtk3 through pkg-config; the list is
-      # the check image's (scripts/linux-check/Dockerfile) plus what the bundlers need.
+      # Tauri 2 on Linux links webkit2gtk 4.1 + gtk3 through pkg-config (the check image's
+      # list, scripts/linux-check/Dockerfile) plus what the bundlers need; 22.04's names
+      # (`libfuse2`, not 24.04's `libfuse2t64`).
       - name: Install the webview and bundler dependencies
         run: |
           sudo apt-get update
@@ -275,7 +248,6 @@ jobs:
             build-essential curl ca-certificates pkg-config file dpkg-dev \
             libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev \
             libssl-dev libxdo-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libfuse2
-
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -283,7 +255,6 @@ jobs:
           cache: pnpm
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
-
       - name: Install Rust
         run: |
           rustup toolchain install stable --profile minimal
@@ -293,10 +264,8 @@ jobs:
           workspaces: |
             src-tauri
             cli
-
-      # The same bar as the other two jobs (ledger #684's lesson: a lane that runs
-      # less than verify.sh is a weaker gate nobody declared). On a Linux host
-      # linux-check.sh lints natively and windows-check.sh is SKIPPED (no cargo-xwin).
+      # The same bar. On a Linux host linux-check.sh lints natively and windows-check.sh
+      # is SKIPPED (no cargo-xwin) — verify.sh prints which.
       - name: verify.sh (lib tests + examples + clippy + tsc)
         run: |
           set -uo pipefail
@@ -304,21 +273,72 @@ jobs:
           code=$?
           cat verify.log
           exit $code
-
       - name: Build the deb + AppImage (+ §A0-linux)
         run: pnpm release:linux
-
-      - name: Attach the deb and AppImage to the draft
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Assert the glibc floor (≤ 2.35, Ubuntu 22.04)
+        run: |
+          set -euo pipefail
+          for f in src-tauri/target/release/rexenv src-tauri/target/release/rex; do
+            max="$(objdump -T "$f" | grep -o 'GLIBC_[0-9.]*' | sed 's/GLIBC_//' | sort -V | tail -1)"
+            echo "$f asks for glibc ≤ $max"
+            [ "$(printf '%s\n2.35\n' "$max" | sort -V | tail -1)" = "2.35" ] || { echo "::error::$f needs glibc $max, above the 22.04 floor (2.35)"; exit 1; }
+          done
+      - name: Stage the assets
         run: |
           set -euo pipefail
           V="${TAG#v}"
-          DEB="src-tauri/target/release/bundle/deb/rexenv_${V}_amd64.deb"
-          IMG="src-tauri/target/release/bundle/appimage/rexenv_${V}_amd64.AppImage"
-          cat "$DEB.sha256" "$IMG.sha256"
-          # Neither name ends in `_universal.dmg`, the suffix the tap's update-cask.yml
-          # selects by; the in-app updater's four Linux descriptors name these files
-          # UNRENAMED (runtimes' publish-app-manifest.sh --linux).
-          gh release upload "$TAG" "$DEB" "$DEB.sha256" "$IMG" "$IMG.sha256" --clobber
-          echo "attached the x86_64 deb and AppImage to draft $TAG"
+          mkdir -p out
+          B=src-tauri/target/release/bundle
+          cp "$B/deb/rexenv_${V}_${{ matrix.deb_arch }}.deb" "$B/deb/rexenv_${V}_${{ matrix.deb_arch }}.deb.sha256" out/
+          cp "$B/appimage/rexenv_${V}_${{ matrix.img_arch }}.AppImage" "$B/appimage/rexenv_${V}_${{ matrix.img_arch }}.AppImage.sha256" out/
+          cat out/*.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}
+          path: out/
+          if-no-files-found: error
+
+  # ── The draft: every OS's assets on ONE release on the tap. Nothing here builds; it
+  #    only refuses to draft anything unless all four lanes delivered.
+  publish:
+    name: Draft the release on rexenv/homebrew-tap
+    needs: [macos, windows, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: staged
+      - name: Every lane delivered
+        run: |
+          set -euo pipefail
+          V="${TAG#v}"
+          mkdir -p out && find staged -type f -exec cp {} out/ \;
+          cd out && ls -la
+          for want in "rexenv_${V}_universal.dmg" "rexenv_${V}_universal.app.tar.gz" \
+                      "rexenv_${V}_x64-setup.exe" "rexenv_${V}_x64.zip" \
+                      "rexenv_${V}_amd64.deb" "rexenv_${V}_amd64.AppImage" \
+                      "rexenv_${V}_arm64.deb" "rexenv_${V}_aarch64.AppImage"; do
+            [ -f "$want" ] || { echo "::error::$want is missing — a lane did not deliver; nothing is drafted"; exit 1; }
+            [ -f "$want.sha256" ] || { echo "::error::$want.sha256 is missing"; exit 1; }
+            sha256sum -c "$want.sha256" >/dev/null || { echo "::error::$want does not match its .sha256"; exit 1; }
+          done
+          echo "all eight assets present, every digest matches"
+      - name: Draft the release on the tap
+        env:
+          GH_TOKEN: ${{ secrets.TAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          [ -n "$GH_TOKEN" ] || { echo "::error::TAP_TOKEN is not set — a fine-grained PAT with contents:write on rexenv/homebrew-tap (docs/RELEASING.md, one-time setup)"; exit 1; }
+          V="${TAG#v}"
+          if gh release view "$TAG" --repo rexenv/homebrew-tap >/dev/null 2>&1; then
+            echo "::error::release $TAG already exists on rexenv/homebrew-tap — never re-issue a version's bytes; bump and tag again"; exit 1
+          fi
+          # The dmg's name must be the only asset ending in `_universal.dmg`: the tap's
+          # update-cask.yml selects the cask's asset by that suffix.
+          gh release create "$TAG" \
+            --repo rexenv/homebrew-tap \
+            --draft \
+            --title "rexenv $V" \
+            --notes "> ⚠️ Draft until docs/PUBLISH-TESTING.md §A (Apple-Silicon launch gate) passes on this exact dmg. Publishing auto-updates the Homebrew cask, and is what makes every asset reachable — a draft's assets 404 for everyone. Then publish the six app-update descriptors in rexenv/runtimes (RELEASING.md step 8). Built on GitHub-hosted runners only: macos-14, windows-latest, ubuntu-22.04 and ubuntu-22.04-arm (the Linux floor, glibc ≤ 2.35 asserted)." \
+            out/*
+          echo "draft release $TAG created on rexenv/homebrew-tap with $(ls out | wc -l) files — run §A on the dmg, then publish it"
