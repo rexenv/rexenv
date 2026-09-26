@@ -245,7 +245,10 @@ Each ends in something observable; each is its own commit.
   aarch64 is the VM by hand (arm runners are paid on a private repo). The descriptors are
   step 8's four `--linux` runs (L7). The download page lives outside this repo (the tap's
   release + the website); the deb and AppImage sit beside the dmg there, with `.sha256`s.
-  Neither CI job has run — the repo is private — so the x86_64 pair is still owed a host.
+  `linux-build.yml` (dispatch, `ubuntu-22.04`) ran 27 Sep 2026: §A0-linux green, glibc ≤ 2.34 asserted off
+  the binaries — the first x86_64 artefact built on the floor (the Dell's 26.04 build proves x86_64, this
+  one is what a user can install). `release.yml`'s job moved to 22.04 for the same reason; a tag run is
+  still owed.
 
 ## 6. Linux hazards to design for, not discover
 

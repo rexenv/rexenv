@@ -1230,7 +1230,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     (`pnpm release:linux` §A0-linux all green: amd64 deb 14 MB + AppImage 89 MB; the deb installed —
     after `pkexec | policykit-1`, 26.04 has no `policykit-1` — `linux_app_swap_check` PASS,
     `php_versions_check` exit 0 with the x86_64 7.4 from `php-7.4.33-7`). 26.04 is not the 22.04 floor,
-    so that deb is a proof, not a release artefact; the CI job (ubuntu-24.04) has never run — private repo.
+    so that deb is a proof, not a release artefact. **The FLOOR build exists (27 Sep 2026): `linux-build.yml`
+    on `ubuntu-22.04`, run 36264369017 — §A0-linux all green, `rexenv`/`rex` ask for glibc ≤ 2.34 (asserted
+    off the binary, 22.04 has 2.35), `rexenv_0.8.7_amd64.deb` + `.AppImage` as the run artifact.**
+    `release.yml`'s Linux job moved to 22.04 too; it still has never run on a tag.
     **27 Sep: the rebuilt amd64 deb ran the whole thing on the Dell — GUI onboarding under WSLg, root edge,
     MySQL (after the `libaio.so.1t64` shim, #731), a WordPress site at `https://acme.rex` → 200; the stale
     system-store CA behind a green "trusted" is #732; PostgreSQL needed the same shim for `libxml2.so.2 → .16`
