@@ -1233,7 +1233,8 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     so that deb is a proof, not a release artefact; the CI job (ubuntu-24.04) has never run — private repo.
     **27 Sep: the rebuilt amd64 deb ran the whole thing on the Dell — GUI onboarding under WSLg, root edge,
     MySQL (after the `libaio.so.1t64` shim, #731), a WordPress site at `https://acme.rex` → 200; the stale
-    system-store CA behind a green "trusted" is #732.** The
+    system-store CA behind a green "trusted" is #732; PostgreSQL needed the same shim for `libxml2.so.2 → .16`
+    and its whole dynamic closure declared in the deb — then a Laravel site on postgres served.** The
     download page is the tap release + website, outside this repo
 
 - [ ] **The keychain (CA trust) dialog is rexenv's too** — 12 Sep 2026, owner, after the admin
