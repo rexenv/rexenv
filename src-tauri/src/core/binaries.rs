@@ -107,7 +107,7 @@ const POSTGRES_VERSIONS: &[&str] = &["18.6.0", "17.11.0", "16.15.0"];
 const MAILPIT_VERSION: &str = "1.30.3";
 /// Pinned Adminer version (a single `adminer.php`, all drivers, run via the bundled
 /// PHP — OS-agnostic, like WP-CLI). Phase 3 §5.1.
-const ADMINER_VERSION: &str = "6.1.0";
+const ADMINER_VERSION: &str = "6.1.1";
 /// Pinned cloudflared version (one static Go binary; quick-tunnel public sharing). Phase 3 §9.1.
 const CLOUDFLARED_VERSION: &str = "2026.6.1";
 /// Pinned Redis version — the FIRST Homebrew-bottle BUNDLE (no portable static
@@ -777,15 +777,16 @@ const WP_CLI_2_12_0_SHA256: &str = "ce34ddd838f7351d6759068d09793f26755463b4a461
 const COMPOSER_2_10_2_SHA256: &str =
     "5ee7125f8a30a34d246cefdc0bc85b8a783b28f2aec968994118512350d28027";
 
-// Adminer single-file SHA-256 (GitHub release `adminer-6.1.0-en.php`; same on every
+// Adminer single-file SHA-256 (GitHub release `adminer-6.1.1-en.php`; same on every
 // OS/arch — a PHP script). English UI, all DB drivers (MySQL + PostgreSQL).
 //
 // Re-pinned 21 Sep 2026 from 5.4.2, which was EIGHT releases behind the published
 // manifest (rexenv/rexenv#1): the pin is what a fresh install downloads, so a stale
 // one ships an old console to every new machine while the update path quietly offers
 // a newer one. The digest is the signed manifest's, checked against the release file
-// itself before it landed here.
-const ADMINER_6_1_0_SHA256: &str = "d21891f420eac5553e9a85d8af2ef3375c1066c4b5c0f573d8e4f936666d2000";
+// itself before it landed here. 27 Sep 2026: 6.1.0 → 6.1.1, the same way — runtimes
+// manifest serial 8 (rexenv/runtimes#8) and `curl | shasum` on the release agree.
+const ADMINER_6_1_1_SHA256: &str = "d2cbf80da00f7630304477b4a09f1bd2212bc6c4a53c71df1520a8afce3dc865";
 
 // cloudflared static Go binary SHA-256 (computed at pin time from the GitHub
 // release `.tgz`). De-quarantined + ad-hoc signed by prepare_binary (no relink).
@@ -1655,7 +1656,7 @@ fn adminer_spec(version: &str) -> Option<BinarySpec> {
             url: format!(
                 "https://github.com/vrana/adminer/releases/download/v{version}/adminer-{version}-en.php"
             ),
-            checksum: Checksum::Sha256(ADMINER_6_1_0_SHA256.to_string()),
+            checksum: Checksum::Sha256(ADMINER_6_1_1_SHA256.to_string()),
             archive: Archive::Raw,
             member: "adminer.php",
         });
@@ -7054,7 +7055,7 @@ mod tests {
     fn the_adminer_pin_outranks_the_catalog_and_an_unpinned_version_needs_one() {
         let pinned = manifest("adminer", ADMINER_VERSION, "macos", Arch::Arm64)
             .expect("the pinned version resolves with no catalog at all");
-        assert!(matches!(pinned.checksum, Checksum::Sha256(ref h) if h == ADMINER_6_1_0_SHA256));
+        assert!(matches!(pinned.checksum, Checksum::Sha256(ref h) if h == ADMINER_6_1_1_SHA256));
         assert!(matches!(pinned.archive, Archive::Raw));
         assert_eq!(pinned.member, "adminer.php");
         // Same on the other Mac: one file, no arch in the answer.
@@ -7085,7 +7086,7 @@ mod tests {
         ]));
         let still_pinned = manifest("adminer", ADMINER_VERSION, "macos", Arch::Arm64).unwrap();
         assert!(
-            matches!(still_pinned.checksum, Checksum::Sha256(ref h) if h == ADMINER_6_1_0_SHA256),
+            matches!(still_pinned.checksum, Checksum::Sha256(ref h) if h == ADMINER_6_1_1_SHA256),
             "a signed manifest moved a version the app already pins onto other bytes"
         );
         assert_eq!(still_pinned.url, pinned.url);
