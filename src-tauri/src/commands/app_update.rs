@@ -20,10 +20,17 @@ fn lock<'a>(
 
 /// What the About card renders. Pure reads — no network, so opening Settings
 /// never waits on GitHub.
+/// The update document THIS install reads (`app_update::this_document`), keyed by the
+/// platform's package kind and arch — every read of the stored descriptor, its floor and
+/// its cache goes through it, so no command can read another document's answer.
+fn document() -> String {
+    core::app_update::this_document(crate::platform::current().app_bundle().descriptor_variant().as_deref())
+}
+
 #[tauri::command]
 pub fn app_update_state(state: State<'_, AppState>) -> Result<core::app_update::AppUpdateState> {
     let conn = lock(&state)?;
-    Ok(core::app_update::state(&conn))
+    Ok(core::app_update::state(&conn, &document()))
 }
 
 /// Check now: fetch the signed descriptor, accept it under one brief lock, and
@@ -52,8 +59,8 @@ pub async fn app_update_check(
     let conn = lock(&state)?;
     // A serial we already have is not an error — it is the ordinary answer on
     // every check after the first, and `accept` says so by writing nothing.
-    core::app_update::accept(&conn, &doc, &sig)?;
-    let st = core::app_update::state(&conn);
+    core::app_update::accept(&conn, &document(), &doc, &sig)?;
+    let st = core::app_update::state(&conn, &document());
     let check = core::app_update::store_check(&conn, st.offered.clone())?;
     Ok(core::app_update::AppUpdateState { checked_at: Some(check.checked_at), ..st })
 }
@@ -112,7 +119,7 @@ pub async fn app_update_apply(state: State<'_, AppState>) -> Result<ApplyOutcome
 
     let offer = {
         let conn = lock(&state)?;
-        core::app_update::state(&conn).offered.ok_or_else(|| {
+        core::app_update::state(&conn, &document()).offered.ok_or_else(|| {
             Error::Other(
                 "there is nothing to install — check for updates first, or the release \
                  that was offered no longer applies to this build"
@@ -201,7 +208,7 @@ pub struct ApplyReadiness {
 pub fn app_update_readiness(state: State<'_, AppState>) -> Result<Option<ApplyReadiness>> {
     let offer = {
         let conn = lock(&state)?;
-        core::app_update::state(&conn).offered
+        core::app_update::state(&conn, &document()).offered
     };
     let Some(offer) = offer else { return Ok(None) };
     let platform = crate::platform::current();
@@ -228,7 +235,7 @@ pub fn app_update_skip(
 ) -> Result<core::app_update::AppUpdateState> {
     let conn = lock(&state)?;
     core::app_update::set_skipped(&conn, version.as_deref())?;
-    Ok(core::app_update::state(&conn))
+    Ok(core::app_update::state(&conn, &document()))
 }
 
 /// Turn automatic checking on or off, and answer with the state that follows.
@@ -244,5 +251,5 @@ pub fn app_update_set_auto_check(
 ) -> Result<core::app_update::AppUpdateState> {
     let conn = lock(&state)?;
     core::app_update::set_auto_check(&conn, enabled)?;
-    Ok(core::app_update::state(&conn))
+    Ok(core::app_update::state(&conn, &document()))
 }

@@ -1108,7 +1108,10 @@ honest footer —
   the installed one copied in before the swap and the HKCU uninstall entry's
   `DisplayVersion` rewritten after it; and each OS fetches its OWN descriptor
   (`app-manifest-windows.json`, same schema, same key) because one `release` names one
-  artifact and the macOS one is a universal `.app.tar.gz`. `InstallKind` grew
+  artifact and the macOS one is a universal `.app.tar.gz` — and each document's accepted
+  serial, bytes and signature sit under their own settings keys (`app_update::doc_key`), since
+  28 Sep 2026: a machine that had read another document's serial refused its own document
+  as a replay forever (#519). `InstallKind` grew
   `ProgramsPerUser` (the ordinary case) and `ProgramFiles` (per-machine — refused with the
   per-user reinstall named, never a UAC prompt); the vocabulary was made platform-neutral
   for this rather than bolted on, because Linux is next.

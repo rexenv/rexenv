@@ -1789,9 +1789,10 @@ async fn check_for_app_update(state: &state::app::AppState) {
                 log::warn!("app update: descriptor not stored — db lock");
                 return;
             };
-            match core::app_update::accept(&conn, &doc, sig.trim()) {
+            let document = core::app_update::this_document(variant.as_deref());
+            match core::app_update::accept(&conn, &document, &doc, sig.trim()) {
                 Ok(m) => {
-                    let st = core::app_update::state(&conn);
+                    let st = core::app_update::state(&conn, &document);
                     if let Err(e) = core::app_update::store_check(&conn, st.offered.clone()) {
                         log::warn!("app update: could not record the check: {e}");
                     }

@@ -151,13 +151,14 @@ async fn main() -> ExitCode {
 
     // ── 4. Accept it into a SANDBOX database, then replay it ─────────────────
     let conn = common::sandbox_db(&*plat);
-    let accepted = app_update::accept(&conn, &doc, sig.trim());
+    let document = app_update::this_document(variant.as_deref());
+    let accepted = app_update::accept(&conn, &document, &doc, sig.trim());
     checks.is(
         "the descriptor is accepted and its serial recorded",
         accepted.is_ok(),
         &format!("{accepted:?}"),
     );
-    let stored = store::get_setting(&conn, app_update::SERIAL_KEY).ok().flatten();
+    let stored = store::get_setting(&conn, &app_update::serial_key(&document)).ok().flatten();
     checks.is(
         "the high-water mark holds the published serial",
         stored.as_deref() == Some(manifest.serial.to_string().as_str()),
@@ -168,7 +169,7 @@ async fn main() -> ExitCode {
     // first: accepted, and it writes nothing.
     checks.is(
         "re-accepting the same serial is a no-op, not a replay refusal",
-        app_update::accept(&conn, &doc, sig.trim()).is_ok(),
+        app_update::accept(&conn, &document, &doc, sig.trim()).is_ok(),
         "the every-launch case must not put 'refusing a replay' in a user's log daily",
     );
 

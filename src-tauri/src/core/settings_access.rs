@@ -134,11 +134,17 @@ pub fn cli_access(key: &str) -> CliAccess {
         // The APP's own update chain (`core::app_update`). Same shape, same
         // reasons, and a strictly larger grant: these bytes are the process that
         // enforces every rule on this page.
-        "app_update_release" | "app_update_release_sig" => CliAccess::Denied(
+        // Per document since 28 Sep 2026 (`app_update::doc_key`): the bare names are the first
+        // document's, `<name>:<document>` the others'. Same chain, same refusal.
+        k if k == "app_update_release"
+            || k == "app_update_release_sig"
+            || k.starts_with("app_update_release:")
+            || k.starts_with("app_update_release_sig:") =>
+        CliAccess::Denied(
             "part of the SIGNED app update chain — the descriptor and its signature are \
              verified together, and they name the bytes rexenv would replace ITSELF with",
         ),
-        "app_update_release_serial" => CliAccess::Denied(
+        k if k == "app_update_release_serial" || k.starts_with("app_update_release_serial:") => CliAccess::Denied(
             "the app update chain's rollback protection — writing this key re-opens a \
              replayed older release, which is how a host would hold rexenv on a \
              superseded build",

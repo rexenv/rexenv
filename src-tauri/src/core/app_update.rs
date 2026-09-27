@@ -129,6 +129,52 @@ pub const SIG_KEY: &str = "app_update_release_sig";
 /// Highest serial ever accepted — stored apart from the document precisely so it
 /// survives the document being replaced.
 pub const SERIAL_KEY: &str = "app_update_release_serial";
+
+/// Which update document an install reads, as a key suffix: `""` for the first document
+/// (`app-manifest.json`, the macOS one — its keys stay the bare names above, so every Mac
+/// keeps the floor and the cache it already has), `windows`, `linux-<kind>-<arch>`.
+///
+/// **Why the keys are per document (27–28 Sep 2026):** one `SERIAL_KEY` served every
+/// document, and the serial is a floor. A Windows build from before the per-OS URL had
+/// read the macOS document (serial 9 on 19 Sep) and the Dell's 0.8.5 then refused EVERY
+/// Windows publish — serials 6, 7, 8 — as "OLDER than the highest already accepted (9)";
+/// the 22.04 VM's dev deb had stored the macOS serial 14 and refused the Linux document's
+/// first serial, 1. A stuck install never accepts another descriptor, so it cannot even
+/// receive this fix; the Windows document was re-signed to serial 10 for those. Each
+/// document is its own replay space — that is what its own serial means — so its floor,
+/// its cached bytes and its signature live under its own keys.
+pub fn document_for(os: &str, variant: Option<&str>) -> String {
+    match (os, variant) {
+        ("linux", Some(v)) => format!("linux-{v}"),
+        ("windows", _) => "windows".to_string(),
+        _ => String::new(),
+    }
+}
+
+/// [`document_for`] on THIS build's OS — the same source [`fetch`] chooses its URL by.
+pub fn this_document(variant: Option<&str>) -> String {
+    document_for(std::env::consts::OS, variant)
+}
+
+fn keyed(base: &str, document: &str) -> String {
+    if document.is_empty() {
+        base.to_string()
+    } else {
+        format!("{base}:{document}")
+    }
+}
+/// The stored descriptor's key for `document` — [`DOC_KEY`] itself for the first document.
+pub fn doc_key(document: &str) -> String {
+    keyed(DOC_KEY, document)
+}
+/// The stored signature's key for `document`.
+pub fn sig_key(document: &str) -> String {
+    keyed(SIG_KEY, document)
+}
+/// The high-water mark's key for `document`.
+pub fn serial_key(document: &str) -> String {
+    keyed(SERIAL_KEY, document)
+}
 /// `{checkedAt, offered}` in ONE value, written only after a successful check.
 /// Two keys would let a crash between the writes leave "checked just now" over
 /// yesterday's answer — the rule `php_upstream` already learned.
@@ -382,18 +428,19 @@ fn verify_with(pubkey_hex: &str, doc: &[u8], sig_hex: &str) -> Result<AppManifes
 /// The stale-serial refusal happens BEFORE any write, so a replayed older
 /// descriptor cannot displace a newer one. Equal is not stale — it is the
 /// ordinary state on every launch after the first, and it writes nothing.
-pub fn accept(conn: &Connection, doc: &[u8], sig_hex: &str) -> Result<AppManifest> {
-    accept_with(updates::release_pubkey(), conn, doc, sig_hex)
+pub fn accept(conn: &Connection, document: &str, doc: &[u8], sig_hex: &str) -> Result<AppManifest> {
+    accept_with(updates::release_pubkey(), conn, document, doc, sig_hex)
 }
 
 fn accept_with(
     pubkey_hex: &str,
     conn: &Connection,
+    document: &str,
     doc: &[u8],
     sig_hex: &str,
 ) -> Result<AppManifest> {
     let m = verify_with(pubkey_hex, doc, sig_hex)?;
-    let highest: u64 = store::get_setting(conn, SERIAL_KEY)
+    let highest: u64 = store::get_setting(conn, &serial_key(document))
         .ok()
         .flatten()
         .and_then(|s| s.parse().ok())
@@ -411,17 +458,17 @@ fn accept_with(
     }
     let text = std::str::from_utf8(doc)
         .map_err(|_| Error::Other("the app update descriptor is not valid UTF-8".into()))?;
-    store::set_setting(conn, DOC_KEY, text)?;
-    store::set_setting(conn, SIG_KEY, sig_hex.trim())?;
-    store::set_setting(conn, SERIAL_KEY, &m.serial.to_string())?;
+    store::set_setting(conn, &doc_key(document), text)?;
+    store::set_setting(conn, &sig_key(document), sig_hex.trim())?;
+    store::set_setting(conn, &serial_key(document), &m.serial.to_string())?;
     Ok(m)
 }
 
-/// The stored descriptor. **No network, and the signature is re-checked on every
-/// call** — every failure reads as "nothing stored", never as an error.
-pub fn cached(conn: &Connection) -> Option<AppManifest> {
-    let doc = store::get_setting(conn, DOC_KEY).ok().flatten()?;
-    let sig = store::get_setting(conn, SIG_KEY).ok().flatten()?;
+/// The stored descriptor for `document`. **No network, and the signature is re-checked
+/// on every call** — every failure reads as "nothing stored", never as an error.
+pub fn cached(conn: &Connection, document: &str) -> Option<AppManifest> {
+    let doc = store::get_setting(conn, &doc_key(document)).ok().flatten()?;
+    let sig = store::get_setting(conn, &sig_key(document)).ok().flatten()?;
     verify(doc.as_bytes(), &sig).ok()
 }
 
@@ -798,7 +845,7 @@ pub struct AppUpdateState {
 /// Assemble [`AppUpdateState`] from the database and this machine. Pure reads:
 /// no network, no writes, and every failure degrades to "nothing to offer"
 /// rather than an error, because this feeds a card that must not be able to fail.
-pub fn state(conn: &Connection) -> AppUpdateState {
+pub fn state(conn: &Connection, document: &str) -> AppUpdateState {
     let running = env!("CARGO_PKG_VERSION").to_string();
     let skipped = skipped_version(conn);
     let check = cached_check(conn);
@@ -826,7 +873,7 @@ pub fn state(conn: &Connection) -> AppUpdateState {
             installed_pending: pending.clone(),
         };
     }
-    if let Some(m) = cached(conn) {
+    if let Some(m) = cached(conn, document) {
         match offer_for(&m.release, &running, crate::core::macho::host_macos(), skipped.as_deref())
         {
             Ok(o) => offered = Some(o),
@@ -1271,12 +1318,47 @@ mod tests {
         }
     }
 
+    /// The Dell (27 Sep 2026): a Windows install that had once read the macOS document
+    /// held serial 9 and refused every Windows publish as a replay. Each document is its
+    /// own replay space, so its floor, bytes and signature live under its own keys — and
+    /// the first document keeps the bare keys, so no Mac loses the floor it has.
+    #[test]
+    fn each_document_has_its_own_floor_and_the_first_document_keeps_the_bare_keys() {
+        let (pk, kp) = keypair();
+        let conn = db();
+        let mac = doc(14, "0.8.7");
+        accept_with(&pk, &conn, "", &mac, &sign(&kp, &mac)).unwrap();
+        // The Windows document's first serial is 1 — far below 14 — and is accepted.
+        let win = doc(1, "0.8.8");
+        accept_with(&pk, &conn, "windows", &win, &sign(&kp, &win)).unwrap();
+        assert_eq!(store::get_setting(&conn, SERIAL_KEY).unwrap().as_deref(), Some("14"));
+        assert_eq!(store::get_setting(&conn, "app_update_release_serial:windows").unwrap().as_deref(), Some("1"));
+        // Each cache is its own: the Windows keys hold the Windows bytes, the bare keys the
+        // macOS ones, and a document never read has nothing (`cached` re-verifies with the
+        // REAL release key, so the test keypair's documents are read here as stored text).
+        assert!(store::get_setting(&conn, "app_update_release:windows").unwrap().unwrap().contains("0.8.8"));
+        assert!(store::get_setting(&conn, DOC_KEY).unwrap().unwrap().contains("0.8.7"));
+        assert!(store::get_setting(&conn, "app_update_release:linux-deb-x86_64").unwrap().is_none());
+        assert!(cached(&conn, "linux-deb-x86_64").is_none());
+        // And a replay within ONE document is still refused.
+        let older = doc(0, "0.8.5");
+        assert!(accept_with(&pk, &conn, "windows", &older, &sign(&kp, &older)).unwrap_err().to_string().contains("refusing a replay"));
+        // The keys, spelled: bare for the first document, suffixed otherwise.
+        assert_eq!(serial_key(""), SERIAL_KEY);
+        assert_eq!(doc_key("windows"), "app_update_release:windows");
+        assert_eq!(sig_key("linux-appimage-aarch64"), "app_update_release_sig:linux-appimage-aarch64");
+        assert_eq!(document_for("macos", None), "");
+        assert_eq!(document_for("windows", None), "windows");
+        assert_eq!(document_for("linux", Some("deb-x86_64")), "linux-deb-x86_64");
+        assert_eq!(document_for("linux", None), "", "a Linux build with no variant reads no document — `fetch` refuses before here");
+    }
+
     #[test]
     fn the_app_descriptor_serial_is_its_own_high_water_mark() {
         let (pk, kp) = keypair();
         let conn = db();
         let newer = doc(7, "0.7.0");
-        accept_with(&pk, &conn, &newer, &sign(&kp, &newer)).unwrap();
+        accept_with(&pk, &conn, "", &newer, &sign(&kp, &newer)).unwrap();
         assert_eq!(
             store::get_setting(&conn, SERIAL_KEY).unwrap().as_deref(),
             Some("7")
@@ -1285,7 +1367,7 @@ mod tests {
         // Older: refused BEFORE any write, so a replay cannot displace what is
         // stored — that is the whole reason the mark is a separate key.
         let older = doc(6, "0.6.0");
-        let err = accept_with(&pk, &conn, &older, &sign(&kp, &older)).unwrap_err().to_string();
+        let err = accept_with(&pk, &conn, "", &older, &sign(&kp, &older)).unwrap_err().to_string();
         assert!(err.contains("refusing a replay"), "{err}");
         let stored = store::get_setting(&conn, DOC_KEY).unwrap().unwrap();
         assert!(stored.contains("0.7.0"), "the replay overwrote the newer descriptor");
@@ -1293,7 +1375,7 @@ mod tests {
 
         // Equal is the ordinary every-launch state: accepted, writes nothing.
         let same = doc(7, "0.7.0");
-        assert!(accept_with(&pk, &conn, &same, &sign(&kp, &same)).is_ok());
+        assert!(accept_with(&pk, &conn, "", &same, &sign(&kp, &same)).is_ok());
         assert_eq!(
             store::get_setting(&conn, SERIAL_KEY).unwrap().as_deref(),
             Some("7")
@@ -1309,13 +1391,13 @@ mod tests {
         let (pk, kp) = keypair();
         let conn = db();
         let d = doc(1, "0.6.0");
-        accept_with(&pk, &conn, &d, &sign(&kp, &d)).unwrap();
+        accept_with(&pk, &conn, "", &d, &sign(&kp, &d)).unwrap();
         // The stored pair verifies against the key it was signed with…
         assert!(verify_with(&pk, &d, &sign(&kp, &d)).is_ok());
         // …and `cached` uses the COMPILED-IN key, which did not sign this, so a
         // document planted in the database by anything but a real publish reads
         // as nothing at all rather than as an offer.
-        assert!(cached(&conn).is_none());
+        assert!(cached(&conn, "").is_none());
 
         // Edit one byte of a validly signed document: refused.
         let mut tampered = d.clone();
@@ -1418,7 +1500,7 @@ mod tests {
         store_notice(&conn, "99.0.0").unwrap();
         assert_eq!(installed_pending(&conn).as_deref(), Some("99.0.0"));
 
-        let st = state(&conn);
+        let st = state(&conn, "");
         assert_eq!(st.installed_pending.as_deref(), Some("99.0.0"));
         assert!(st.offered.is_none(), "no button may be offered for work already done");
         assert!(
@@ -1474,7 +1556,7 @@ mod tests {
     #[test]
     fn every_key_this_module_owns_is_ruled_on_and_the_signed_chain_is_denied() {
         use crate::core::settings_access::{cli_access, CliAccess};
-        for key in [DOC_KEY, SIG_KEY, SERIAL_KEY] {
+        for key in [DOC_KEY, SIG_KEY, SERIAL_KEY, "app_update_release:windows", "app_update_release_sig:linux-deb-x86_64", "app_update_release_serial:linux-appimage-aarch64"] {
             assert!(
                 matches!(cli_access(key), CliAccess::Denied(_)),
                 "{key} names or protects the bytes rexenv replaces itself with — a shell \
@@ -1791,7 +1873,7 @@ mod tests {
     fn the_check_cache_is_one_value_written_only_on_success() {
         let conn = db();
         assert!(cached_check(&conn).is_none(), "nothing checked yet is its own state");
-        assert!(state(&conn).checked_at.is_none());
+        assert!(state(&conn, "").checked_at.is_none());
 
         let offer = Offer {
             version: "0.6.0".into(),
@@ -1828,7 +1910,7 @@ mod tests {
         let unreadable = "not json";
         store::set_setting(&conn, CHECK_KEY, unreadable).unwrap();
         assert!(cached_check(&conn).is_none(), "a corrupt cache reads as never-checked");
-        assert!(state(&conn).checked_at.is_none());
+        assert!(state(&conn, "").checked_at.is_none());
     }
 
     #[test]

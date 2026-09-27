@@ -56,10 +56,17 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   package (seen 27 Sep 2026, the first deb update). One action id = one message; the update
   wants its own id (`…privileged-update`) and sentence, the way the macOS prompt names what it
   is for.
-- [ ] **The accepted-descriptor serial is ONE key for every update document, so a machine
-  that once read another document refuses this one as a replay** (`core/app_update.rs`
-  `SERIAL_KEY`, found 28 Sep 2026 on the Dell, and the same hour on the 22.04 VM: its 0.8.7
-  dev deb held serial 14 — the macOS document — and refused the Linux document's serial 1): its Windows 0.8.5 held `serial 9`, the
+- [ ] **A refused descriptor reads as "Couldn't reach the update server"** in the About card
+  (`AppUpdateCard.tsx` maps any check error to that line; seen 28 Sep 2026 on the Dell where
+  the refusal was a replay): the server answered, and the sentence hides that the machine
+  will never be offered anything. The check should surface a refusal as its own state with
+  its own words.
+- [x] **The accepted-descriptor serial is ONE key for every update document, so a machine
+  that once read another document refuses this one as a replay** ✓ 28 Sep 2026 — per-document
+  keys (`app_update::document_for`/`serial_key`, ledger #519; the first document keeps the
+  bare names), L0 `each_document_has_its_own_floor_and_the_first_document_keeps_the_bare_keys`.
+  Found on the Dell (`core/app_update.rs` `SERIAL_KEY`), and the same hour on the 22.04 VM:
+  its 0.8.7 dev deb held serial 14 — the macOS document — and refused the Linux document's serial 1): its Windows 0.8.5 held `serial 9`, the
   macOS document's 0.8.3 of 19 Sep 17:54:25Z (a Windows build from before the per-OS URL
   read `app-manifest.json`), and every Windows publish since — serials 6, 7, 8 — was
   refused "OLDER than the highest already accepted (9)". The About card then said
