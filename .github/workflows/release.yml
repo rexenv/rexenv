@@ -112,14 +112,20 @@ jobs:
       # real verdict.
       - name: verify.sh (lib tests + examples + clippy + tsc)
         run: |
-          # `set +e`: the runner invokes bash with `-e`, so a red verify.sh ended the step
-          # BEFORE `cat` — v0.8.8's first run failed on macOS and Windows with no log at
-          # all (27 Sep 2026). The verdict is carried by `exit $code`, nothing else.
+          # STREAMED, not captured: a runner that dies mid-bar ("lost communication" — both
+          # Linux lanes, twice, 27 Sep 2026) uploads no file, and a captured verify.log is the
+          # one thing that could have said where. verify.sh refuses a piped stdout by design
+          # (a pipe hides its exit code from an `&&` chain); REXENV_ALLOW_PIPE=1 is its
+          # sanctioned CI form and PIPESTATUS carries the verdict. A sampler prints memory and
+          # disk every minute beside the output, for the same reason.
           set +e
           set -uo pipefail
-          ./scripts/verify.sh > verify.log 2>&1
-          code=$?
-          cat verify.log
+          ( while true; do echo "[sampler $(date -u +%H:%M:%S)] $(free -m 2>/dev/null | awk '/Mem:/{print "mem used " $3 "M free " $4 "M"}') $(df -h . | awk 'NR==2{print "disk free " $4}')"; sleep 60; done ) &
+          SAMPLER=$!
+          REXENV_ALLOW_PIPE=1 ./scripts/verify.sh 2>&1 | tee verify.log
+          code=${PIPESTATUS[0]}
+          kill $SAMPLER 2>/dev/null
+          echo "verify.sh exit $code"
           exit $code
       - name: Build the universal dmg
         run: pnpm release:mac
@@ -199,14 +205,20 @@ jobs:
       # than verify.sh is a weaker gate nobody declared).
       - name: verify.sh (lib tests + examples + clippy + tsc)
         run: |
-          # `set +e`: the runner invokes bash with `-e`, so a red verify.sh ended the step
-          # BEFORE `cat` — v0.8.8's first run failed on macOS and Windows with no log at
-          # all (27 Sep 2026). The verdict is carried by `exit $code`, nothing else.
+          # STREAMED, not captured: a runner that dies mid-bar ("lost communication" — both
+          # Linux lanes, twice, 27 Sep 2026) uploads no file, and a captured verify.log is the
+          # one thing that could have said where. verify.sh refuses a piped stdout by design
+          # (a pipe hides its exit code from an `&&` chain); REXENV_ALLOW_PIPE=1 is its
+          # sanctioned CI form and PIPESTATUS carries the verdict. A sampler prints memory and
+          # disk every minute beside the output, for the same reason.
           set +e
           set -uo pipefail
-          ./scripts/verify.sh > verify.log 2>&1
-          code=$?
-          cat verify.log
+          ( while true; do echo "[sampler $(date -u +%H:%M:%S)] $(free -m 2>/dev/null | awk '/Mem:/{print "mem used " $3 "M free " $4 "M"}') $(df -h . | awk 'NR==2{print "disk free " $4}')"; sleep 60; done ) &
+          SAMPLER=$!
+          REXENV_ALLOW_PIPE=1 ./scripts/verify.sh 2>&1 | tee verify.log
+          code=${PIPESTATUS[0]}
+          kill $SAMPLER 2>/dev/null
+          echo "verify.sh exit $code"
           exit $code
       - name: Build the installer (pre-clean + nsis only + §A0-windows)
         run: pnpm release:win
@@ -293,14 +305,20 @@ jobs:
       # is SKIPPED (no cargo-xwin) — verify.sh prints which.
       - name: verify.sh (lib tests + examples + clippy + tsc)
         run: |
-          # `set +e`: the runner invokes bash with `-e`, so a red verify.sh ended the step
-          # BEFORE `cat` — v0.8.8's first run failed on macOS and Windows with no log at
-          # all (27 Sep 2026). The verdict is carried by `exit $code`, nothing else.
+          # STREAMED, not captured: a runner that dies mid-bar ("lost communication" — both
+          # Linux lanes, twice, 27 Sep 2026) uploads no file, and a captured verify.log is the
+          # one thing that could have said where. verify.sh refuses a piped stdout by design
+          # (a pipe hides its exit code from an `&&` chain); REXENV_ALLOW_PIPE=1 is its
+          # sanctioned CI form and PIPESTATUS carries the verdict. A sampler prints memory and
+          # disk every minute beside the output, for the same reason.
           set +e
           set -uo pipefail
-          ./scripts/verify.sh > verify.log 2>&1
-          code=$?
-          cat verify.log
+          ( while true; do echo "[sampler $(date -u +%H:%M:%S)] $(free -m 2>/dev/null | awk '/Mem:/{print "mem used " $3 "M free " $4 "M"}') $(df -h . | awk 'NR==2{print "disk free " $4}')"; sleep 60; done ) &
+          SAMPLER=$!
+          REXENV_ALLOW_PIPE=1 ./scripts/verify.sh 2>&1 | tee verify.log
+          code=${PIPESTATUS[0]}
+          kill $SAMPLER 2>/dev/null
+          echo "verify.sh exit $code"
           exit $code
       - name: Build the deb + AppImage (+ §A0-linux)
         run: pnpm release:linux

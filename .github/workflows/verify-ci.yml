@@ -92,13 +92,20 @@ jobs:
             cli
       - name: verify.sh
         run: |
+          # STREAMED, not captured: a runner that dies mid-bar ("lost communication" — both
+          # Linux lanes, twice, 27 Sep 2026) uploads no file, and a captured verify.log is the
+          # one thing that could have said where. verify.sh refuses a piped stdout by design
+          # (a pipe hides its exit code from an `&&` chain); REXENV_ALLOW_PIPE=1 is its
+          # sanctioned CI form and PIPESTATUS carries the verdict. A sampler prints memory and
+          # disk every minute beside the output, for the same reason.
           set +e
           set -uo pipefail
-          ./scripts/verify.sh > verify.log 2>&1
-          code=$?
-          cat verify.log
+          ( while true; do echo "[sampler $(date -u +%H:%M:%S)] $(free -m 2>/dev/null | awk '/Mem:/{print "mem used " $3 "M free " $4 "M"}') $(df -h . | awk 'NR==2{print "disk free " $4}')"; sleep 60; done ) &
+          SAMPLER=$!
+          REXENV_ALLOW_PIPE=1 ./scripts/verify.sh 2>&1 | tee verify.log
+          code=${PIPESTATUS[0]}
+          kill $SAMPLER 2>/dev/null
           echo "verify.sh exit $code"
-          df -h . | tail -1
           exit $code
       - uses: actions/upload-artifact@v4
         if: always()
