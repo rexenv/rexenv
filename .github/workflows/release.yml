@@ -107,6 +107,10 @@ jobs:
       # real verdict.
       - name: verify.sh (lib tests + examples + clippy + tsc)
         run: |
+          # `set +e`: the runner invokes bash with `-e`, so a red verify.sh ended the step
+          # BEFORE `cat` — v0.8.8's first run failed on macOS and Windows with no log at
+          # all (27 Sep 2026). The verdict is carried by `exit $code`, nothing else.
+          set +e
           set -uo pipefail
           ./scripts/verify.sh > verify.log 2>&1
           code=$?
@@ -190,6 +194,10 @@ jobs:
       # than verify.sh is a weaker gate nobody declared).
       - name: verify.sh (lib tests + examples + clippy + tsc)
         run: |
+          # `set +e`: the runner invokes bash with `-e`, so a red verify.sh ended the step
+          # BEFORE `cat` — v0.8.8's first run failed on macOS and Windows with no log at
+          # all (27 Sep 2026). The verdict is carried by `exit $code`, nothing else.
+          set +e
           set -uo pipefail
           ./scripts/verify.sh > verify.log 2>&1
           code=$?
@@ -268,6 +276,10 @@ jobs:
       # is SKIPPED (no cargo-xwin) — verify.sh prints which.
       - name: verify.sh (lib tests + examples + clippy + tsc)
         run: |
+          # `set +e`: the runner invokes bash with `-e`, so a red verify.sh ended the step
+          # BEFORE `cat` — v0.8.8's first run failed on macOS and Windows with no log at
+          # all (27 Sep 2026). The verdict is carried by `exit $code`, nothing else.
+          set +e
           set -uo pipefail
           ./scripts/verify.sh > verify.log 2>&1
           code=$?
