@@ -23,8 +23,14 @@ for c in "$OPENSSL" /opt/homebrew/opt/openssl@3/bin/openssl /usr/local/opt/opens
   # `if` reads "no -rawin" — how ubuntu-22.04's and windows-latest's OpenSSL 3, which have
   # it, were refused on 27 Sep 2026 (the nm|grep trap the ledger already records).
   command -v "$c" >/dev/null 2>&1 || continue
-  help="$("$c" pkeyutl -help 2>&1 || true)"
-  case "$help" in *-rawin*) OPENSSL="$c"; break ;; esac
+  # By NAME and version, not by grepping `-help`: OpenSSL 3.0.2's pkeyutl help does not list
+  # `-rawin` although the flag works (ubuntu-22.04, 27 Sep 2026 — the Rust test that signs
+  # through the same binary passed in the same run). `-rawin` exists in every OpenSSL since
+  # 1.1.1; LibreSSL, which macOS calls `openssl`, has never had it.
+  ver="$("$c" version 2>/dev/null || true)"
+  case "$ver" in
+    "OpenSSL 1.1.1"*|"OpenSSL 3"*|"OpenSSL 4"*) OPENSSL="$c"; break ;;
+  esac
 done
 [ -n "$OPENSSL" ] || { echo "$(basename "$0"): no openssl with 'pkeyutl -rawin' found (macOS's LibreSSL lacks it) — brew install openssl@3" >&2; exit 1; }
 
