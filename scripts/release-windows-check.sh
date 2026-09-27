@@ -129,7 +129,12 @@ pn="$(powershell -NoProfile -Command "(Get-Item '$(cd "$TMP" && pwd -W 2>/dev/nu
 echo "archive: flat, x64, version $pv, product $pn"
 
 if [ "$CHECK_ONLY" = "0" ]; then
-  ( cd "$BUNDLE" && sha256sum "$(basename "$ZIP")" | awk '{print $1 "  " $2}' > "$(basename "$ZIP").sha256" )
+  # The NAME is spelled here, never taken from sha256sum's second column: Git Bash's
+  # sha256sum hashes in binary mode on Windows and prints `<hash> *name`, and `$2`
+  # carried that `*` into the file — release.yml's publish job then ran `sha256sum -c`
+  # on the Linux runner, which read a file called `*rexenv_0.8.8_x64.zip` and refused
+  # the whole draft (run 36324734214, 27 Sep 2026). Two spaces = GNU text mode.
+  ( cd "$BUNDLE" && sha256sum "$(basename "$ZIP")" | awk -v name="$(basename "$ZIP")" '{print $1 "  " name}' > "$(basename "$ZIP").sha256" )
 fi
 ZIP_SHA="$(sha256sum "$ZIP" | awk '{print $1}')"
 

@@ -93,6 +93,15 @@ recipe. The tap stays the public home of the artefacts while the source is priva
   limit (Settings → Billing → Actions). Then: `rexenv-verify.yml` on
   `windows-latest,ubuntu-22.04,ubuntu-22.04-arm`, then move the `v0.8.8` tag to HEAD (it points
   at the bump commit, before these fixes; nothing was released from it) and let `release.yml`
-  draft on the tap.
+  draft on the tap. **Done, from runtimes: run 36322831560** (tag at the bump commit) was green
+  on Windows and both Linux lanes and red on macOS — the openssl VERSION probe still picked
+  LibreSSL, so the probe now signs on a throwaway key and keeps the candidate that can
+  (073d5ee1). **Run 36324734214** (tag moved to 073d5ee1): all four lanes green, eight
+  assets staged — and `publish` refused the draft: the Windows zip's `.sha256` read
+  `<hash>  *rexenv_0.8.8_x64.zip`. Git Bash's `sha256sum` hashes in binary mode on Windows
+  and prints `*name`; `release-windows-check.sh` took the name from awk's `$2`. The 0.8.6
+  sidecar on the tap carries the same star (checked 27 Sep; nothing ever read these files:
+  the updater trusts the descriptor's digest, and `brew` has no Windows). The writer spells the
+  name now. The publish gate's `sha256sum -c` is what found it — keep it strict.
 - A Linux 22.04 x86_64 **run** of the floor deb: the Dell's WSL gets an Ubuntu-22.04 distro for
   it (in progress).
