@@ -43,8 +43,19 @@ pub(crate) const SCRIPT_PATH: &str = "/usr/local/lib/rexenv/dns-route.sh";
 pub(crate) const UNIT: &str = "rexenv-dns-route.service";
 pub(crate) const UNIT_PATH: &str = "/etc/systemd/system/rexenv-dns-route.service";
 
+/// `base/rel` as LINUX text. These modules write shell, unit files and `certutil` argv for a
+/// Linux machine, and they are unit-tested on every host — `Path::join` on Windows puts a `\`
+/// between the parts, which is how `verify.sh`'s first run on windows-latest saw
+/// `/etc/rexenv/dns.d\rex` and `"/usr/local/lib/rexenv\edge-launch.sh"` in the generated
+/// text (27 Sep 2026, seven tests red that could never fail on a Mac or a Linux box). The
+/// slash is part of the OUTPUT, not of this host's filesystem, so it is written as a slash.
+pub(crate) fn unix_join(base: &Path, rel: &str) -> PathBuf {
+    let b = base.display().to_string();
+    PathBuf::from(format!("{}/{}", b.trim_end_matches('/'), rel))
+}
+
 pub(crate) fn marker_path(tld: &str) -> PathBuf {
-    Path::new(MARKER_DIR).join(tld)
+    unix_join(Path::new(MARKER_DIR), tld)
 }
 
 /// The marker's bytes — the ownership signature, identical for every TLD (the macOS shape).

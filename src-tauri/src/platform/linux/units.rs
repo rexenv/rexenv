@@ -8,7 +8,7 @@
 //! Every root command uses absolute paths: `pkexec` hands the script a minimal environment.
 #![cfg_attr(not(target_os = "linux"), allow(dead_code))]
 
-use super::dnsroute::sh_quote;
+use super::dnsroute::{sh_quote, unix_join};
 use std::path::{Path, PathBuf};
 
 pub(crate) const DNS_UNIT: &str = "rexenv-dns.service";
@@ -75,13 +75,13 @@ pub(crate) fn unit_program(unit: &str) -> Option<PathBuf> {
 }
 
 pub(crate) fn edge_unit_path() -> PathBuf {
-    PathBuf::from("/etc/systemd/system").join(EDGE_UNIT)
+    unix_join(Path::new("/etc/systemd/system"), EDGE_UNIT)
 }
 pub(crate) fn edge_binary_path() -> PathBuf {
-    PathBuf::from(EDGE_ROOT_DIR).join("bin/caddy")
+    unix_join(Path::new(EDGE_ROOT_DIR), "bin/caddy")
 }
 pub(crate) fn edge_wrapper_path() -> PathBuf {
-    PathBuf::from(EDGE_ROOT_DIR).join("edge-launch.sh")
+    unix_join(Path::new(EDGE_ROOT_DIR), "edge-launch.sh")
 }
 
 /// The edge's system unit: `Restart=always` is the `KeepAlive`; `KillMode=mixed` sends the
@@ -141,7 +141,7 @@ pub(crate) fn edge_install_command(src_caddy: &Path, staged_wrapper: &Path, stag
          /bin/cp {sw} {wrapper} && /bin/chown root:root {wrapper} && /bin/chmod 755 {wrapper} && \
          /bin/cp {su} {unit} && /bin/chown root:root {unit} && /bin/chmod 644 {unit} && \
          /usr/bin/systemctl daemon-reload && /usr/bin/systemctl enable {name} && /usr/bin/systemctl restart {name}",
-        bindir = sh_quote(&PathBuf::from(EDGE_ROOT_DIR).join("bin")),
+        bindir = sh_quote(&unix_join(Path::new(EDGE_ROOT_DIR), "bin")),
         src = sh_quote(src_caddy),
         bin = sh_quote(&edge_binary_path()),
         sw = sh_quote(staged_wrapper),

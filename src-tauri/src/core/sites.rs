@@ -2879,7 +2879,8 @@ mod tests {
             use crate::core::binaries::{install_tier, BinaryTier};
             install_tier(BinaryTier::Legacy13);
             let err = ensure_engine_available_on(E::Postgres, "macos").expect_err("no build loads on 13").to_string();
-            assert!(err.starts_with("PostgreSQL: Needs macOS 14"), "{err}");
+            let os = crate::platform::words::current().os_name;
+            assert!(err.starts_with(&format!("PostgreSQL: Needs {os} 14")), "{err}");
             // …and the engine's OWN door says the same words: `rex db versions --set
             // postgres` on the 13.6 VM answered "not available on this platform yet"
             // because that command had a second copy of the gate (23 Sep 2026).

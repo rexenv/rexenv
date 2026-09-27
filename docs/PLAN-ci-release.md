@@ -67,9 +67,13 @@ recipe. The tap stays the public home of the artefacts while the source is priva
 
 ## 6. Owed
 
-- The first tag run: it has never executed end to end (the old workflow never ran either —
-  the repo was private and the flow was local). The first real release is the proof; expect
-  one round of runner-shaped fixes (the Windows lane's `release-windows.sh` has run only on
-  the Dell).
+- The first tag run, **v0.8.8, run 36296169737 (27 Sep 2026): all four lanes red in
+  verify.sh, no draft** — and the round of runner-shaped fixes it predicted: (1) the step's
+  `bash -e` swallowed the log (`set +e` now, and `verify-ci.yml` runs the bar on any release
+  runner without a tag); (2) `notices-check.py` needs a `cargo fetch` per target on a cold
+  runner — every OS was red on it; (3) seven Linux pure tests built Linux text with
+  `Path::join` and got `\` on windows-latest, two tier tests asserted "macOS 14" on a host
+  whose words say "Windows 14". The Windows lane's `release-windows.sh` has still run only
+  on the Dell; the next tag is the proof.
 - A Linux 22.04 x86_64 **run** of the floor deb: the Dell's WSL gets an Ubuntu-22.04 distro for
   it (in progress).

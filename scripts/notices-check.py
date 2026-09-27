@@ -80,11 +80,21 @@ def rust_graph(targets=None):
     out = {}
     for manifest in MANIFESTS:
         for target in targets or TARGETS:
-            done = subprocess.run(
-                ["cargo", "metadata", "--format-version", "1", "--locked", "--offline",
-                 "--filter-platform", target, "--manifest-path", os.path.join(ROOT, manifest)],
-                capture_output=True, encoding="utf-8",
-            )
+            args = ["cargo", "metadata", "--format-version", "1", "--locked", "--offline",
+                    "--filter-platform", target, "--manifest-path", os.path.join(ROOT, manifest)]
+            done = subprocess.run(args, capture_output=True, encoding="utf-8")
+            if done.returncode != 0 and os.environ.get("CI"):
+                # A fresh CI runner has no registry cache for the OTHER targets' crates (a macOS
+                # build never fetched windows-*, a Linux one never fetched objc2), so `--offline`
+                # fails for every graph and the gate went red on all four release runners the
+                # first time it ran there (v0.8.8, 27 Sep 2026). CI has the network by definition:
+                # fetch that target's lockfile closure once (no build), then read offline as
+                # before. A developer's machine keeps the offline-only rule — a gate that quietly
+                # reaches for the network is not the same gate on a plane.
+                subprocess.run(["cargo", "fetch", "--locked", "--target", target,
+                                "--manifest-path", os.path.join(ROOT, manifest)],
+                               capture_output=True, encoding="utf-8")
+                done = subprocess.run(args, capture_output=True, encoding="utf-8")
             if done.returncode != 0:
                 raise GraphUnresolvable(f"{target} ({manifest}): {done.stderr.strip().splitlines()[-1] if done.stderr.strip() else 'cargo metadata failed'}")
             raw = done.stdout

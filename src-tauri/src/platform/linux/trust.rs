@@ -9,6 +9,7 @@
 //! `is_trusted` answers for the NSS half: the browsers are what the user sees first.
 #![cfg_attr(not(target_os = "linux"), allow(dead_code))]
 
+use super::dnsroute::unix_join;
 use std::path::{Path, PathBuf};
 
 /// The nickname rexenv's CA carries in NSS. ONE fixed name: `untrust_stale` finds an older CA
@@ -19,7 +20,7 @@ pub(crate) const SYSTEM_CERT_NAME: &str = "rexenv-local-ca.crt";
 pub(crate) const SYSTEM_CERT_DIR: &str = "/usr/local/share/ca-certificates";
 
 pub(crate) fn nss_db_dir(home: &Path) -> PathBuf {
-    home.join(".pki/nssdb")
+    unix_join(home, ".pki/nssdb")
 }
 
 /// Every NSS database a browser on this machine reads — `~/.pki/nssdb` (Chrome's deb, Brave,
@@ -41,9 +42,9 @@ pub(crate) fn nss_db_dir(home: &Path) -> PathBuf {
 /// from `profiles.ini` under both roots (`firefox_roots`), never from a directory glob.
 pub(crate) fn nss_db_dirs(home: &Path) -> Vec<PathBuf> {
     let mut dirs = vec![nss_db_dir(home)];
-    let snap_home = home.join("snap/chromium/current");
+    let snap_home = unix_join(home, "snap/chromium/current");
     if snap_home.is_dir() {
-        dirs.push(snap_home.join(".local/share/pki/nssdb"));
+        dirs.push(unix_join(&snap_home, ".local/share/pki/nssdb"));
     }
     for root in firefox_roots(home) {
         dirs.extend(crate::core::firefox::profiles(&root));
@@ -137,7 +138,7 @@ pub(crate) fn system_untrust_command() -> String {
 
 /// Where Firefox keeps profiles on Linux: the deb/tarball location, and Ubuntu's snap.
 pub(crate) fn firefox_roots(home: &Path) -> [PathBuf; 2] {
-    [home.join(".mozilla/firefox"), home.join("snap/firefox/common/.mozilla/firefox")]
+    [unix_join(home, ".mozilla/firefox"), unix_join(home, "snap/firefox/common/.mozilla/firefox")]
 }
 
 #[cfg(test)]
@@ -161,20 +162,22 @@ mod tests {
         let home = std::env::temp_dir().join(format!("rexenv-nss-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&home);
         std::fs::create_dir_all(&home).unwrap();
-        assert_eq!(nss_db_dirs(&home), vec![home.join(".pki/nssdb")]);
+        // Expectations through `unix_join` too: on a Windows host `home.join` would put a `\`
+        // where the Linux text has a `/` (the 27 Sep 2026 windows-latest run).
+        assert_eq!(nss_db_dirs(&home), vec![unix_join(&home, ".pki/nssdb")]);
         std::fs::create_dir_all(home.join("snap/chromium/current")).unwrap();
-        assert_eq!(nss_db_dirs(&home), vec![home.join(".pki/nssdb"), home.join("snap/chromium/current/.local/share/pki/nssdb")]);
-        assert_eq!(nss_db_arg_for(&home.join("snap/chromium/current/.local/share/pki/nssdb")), format!("sql:{}/snap/chromium/current/.local/share/pki/nssdb", home.display()));
+        assert_eq!(nss_db_dirs(&home), vec![unix_join(&home, ".pki/nssdb"), unix_join(&home, "snap/chromium/current/.local/share/pki/nssdb")]);
+        assert_eq!(nss_db_arg_for(&unix_join(&home, "snap/chromium/current/.local/share/pki/nssdb")), format!("sql:{}/snap/chromium/current/.local/share/pki/nssdb", home.display()));
         // A Firefox profile named by profiles.ini is a database too (the snap root here — the
         // one the VM measured; the deb root is the same code). A directory profiles.ini does
         // not name is not.
-        let ff = home.join("snap/firefox/common/.mozilla/firefox");
+        let ff = unix_join(&home, "snap/firefox/common/.mozilla/firefox");
         std::fs::create_dir_all(ff.join("s4g1o8kw.default")).unwrap();
         std::fs::create_dir_all(ff.join("stray.dir")).unwrap();
         std::fs::write(ff.join("profiles.ini"), "[Profile0]\nName=default\nIsRelative=1\nPath=s4g1o8kw.default\nDefault=1\n").unwrap();
         assert_eq!(
             nss_db_dirs(&home),
-            vec![home.join(".pki/nssdb"), home.join("snap/chromium/current/.local/share/pki/nssdb"), ff.join("s4g1o8kw.default")]
+            vec![unix_join(&home, ".pki/nssdb"), unix_join(&home, "snap/chromium/current/.local/share/pki/nssdb"), unix_join(&ff, "s4g1o8kw.default")]
         );
         let _ = std::fs::remove_dir_all(&home);
     }

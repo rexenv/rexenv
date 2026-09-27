@@ -1890,7 +1890,10 @@ mod tests {
         let minors: Vec<&str> = rows.iter().map(|r| r.minor.as_str()).collect();
         assert_eq!(&minors[..3], &["7.4", "8.0", "8.1"], "{minors:?}");
         let reason = r.unavailable_reason.as_deref().expect("the reason travels with the row");
-        assert!(reason.contains("macOS 14"), "{reason}");
+        // The host's words: this tier only exists on macOS 13 in production, but the test runs
+        // on every release runner, and windows-latest answered "Windows 14" (27 Sep 2026).
+        let os = crate::platform::words::current().os_name;
+        assert!(reason.contains(&format!("{os} 14")), "{reason}");
         assert!(!r.installed && !r.is_default && !r.xdebug_supported);
         assert_eq!(r.patch, "8.0.30", "the patch it would have run, from the Standard set");
         assert!(rows.iter().filter(|r| r.minor == "8.0").count() == 1);

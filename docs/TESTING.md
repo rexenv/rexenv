@@ -1499,6 +1499,18 @@ bloating the fast path:
   reached — a finding reachable from no other gate.
 - **Linux-only pure rules run on the Mac too** — `linux/{proc_table,dnsroute,units,desktop,trust}.rs`
   are `#[path]`-mounted under `platform::linux_pure` in every non-Linux test build (ledger #716).
+  **They join paths with `dnsroute::unix_join`, never `Path::join`:** the text they produce is a
+  Linux machine's shell, unit files and `certutil` argv, and on a Windows host `Path::join` puts a
+  `\` between the parts — `verify.sh`'s first run on windows-latest (27 Sep 2026, v0.8.8's release
+  pipeline) had seven of these tests red on `/etc/rexenv/dns.d\rex`-shaped output that no Mac or
+  Linux run could ever show. Same family as the two tier tests that asserted "macOS 14" on a
+  host whose words say "Windows 14": every assertion about the HOST's answer asks
+  `words::current()`.
+- **`notices-check.py` on a fresh CI runner** fetches each target's lockfile closure once
+  (`cargo fetch --locked --target …`, only when `$CI` is set) before its offline `cargo metadata`
+  read: a runner that has built for one OS has no registry cache for the other two targets'
+  crates, and the gate was red on all four release runners the first time it ran there. A
+  developer's machine keeps the offline-only rule.
 - **Windows-only pure rules run on the Mac too.** A Windows module with no Win32 calls in it
   — `windows/owner_only.rs`, `pe.rs`, `port_table.rs` — is `#[path]`-included into the macOS
   test build (`platform/mod.rs`), so its L0 tests run in `verify.sh`. The Win32 calls around
