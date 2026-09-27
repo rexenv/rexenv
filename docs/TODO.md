@@ -44,9 +44,22 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [x] **Linux deb in-app update: the app did not come back after the swap** ✓ fixed 27 Sep 2026
+  (`rules::relauncher_exe`, ledger #729): `current_exe()` is `/proc/self/exe` and read
+  `/usr/bin/rexenv (deleted)` after `dpkg -i`, so spawning the relauncher was ENOENT and the
+  honest fallback ran. A package install runs the relauncher from the new `/usr/bin/rexenv`.
+  Ships in the next release; because the OLD side spawns, 0.8.8 → next still needs a hand
+  open, and the relaunch is proven by the release after that (SMOKE's Linux row).
+- [ ] **The polkit sentence for an in-app update is the generic one** — "rexenv needs
+  administrator permission to change system settings — the .rex DNS route, the HTTPS edge, or
+  the local certificate authority" — while the step it authorises is `dpkg -i` of the new
+  package (seen 27 Sep 2026, the first deb update). One action id = one message; the update
+  wants its own id (`…privileged-update`) and sentence, the way the macOS prompt names what it
+  is for.
 - [ ] **The accepted-descriptor serial is ONE key for every update document, so a machine
   that once read another document refuses this one as a replay** (`core/app_update.rs`
-  `SERIAL_KEY`, found 28 Sep 2026 on the Dell): its Windows 0.8.5 held `serial 9`, the
+  `SERIAL_KEY`, found 28 Sep 2026 on the Dell, and the same hour on the 22.04 VM: its 0.8.7
+  dev deb held serial 14 — the macOS document — and refused the Linux document's serial 1): its Windows 0.8.5 held `serial 9`, the
   macOS document's 0.8.3 of 19 Sep 17:54:25Z (a Windows build from before the per-OS URL
   read `app-manifest.json`), and every Windows publish since — serials 6, 7, 8 — was
   refused "OLDER than the highest already accepted (9)". The About card then said
@@ -54,9 +67,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   that line), which is wrong twice: the server answered, and the machine will stay on
   0.8.5 forever. Fix: key the stored serial by document (`…_serial:<document>`), and give a
   refused descriptor its own sentence. Only machines that changed document are affected;
-  a fresh install reads one document from its first check. The Dell was reset by
-  deleting the three `app_update_release*` settings rows, and then updated 0.8.5 → 0.8.8
-  through the card.
+  a fresh install reads one document from its first check. The Dell and the VM were reset
+  by deleting the three `app_update_release*` settings rows, and then updated through the
+  card. **A stuck install cannot receive the code fix (it refuses every descriptor), so the
+  Windows document must also be published past the highest macOS serial an early Windows
+  build could have stored (≤ 10 on 19–20 Sep 2026 — two more Windows publishes take it from
+  8 to 10); the Linux documents start at 1 and nothing shipped read another one.**
 - [ ] **A Finder "Replace" of the running app can pop macOS's "rexenv quit unexpectedly"** (seen
   three times on the 13.6 VM, 23 Sep 2026, every one during a HAND swap of the bundle over ssh
   — `rm -rf` + copy, or copy + `mv`): the DNS agent's LaunchAgent (KeepAlive) relaunches

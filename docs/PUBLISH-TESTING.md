@@ -156,8 +156,18 @@ shape); after `takeown` as the desktop user: Install → `Apps & Features now re
 `swapped to 0.8.8 (RenamePair)` → dialog → relaunched `rex 0.8.8 (49c0735) · app rexenv
 0.8.8`, DNS agent restarted as 0.8.8 on udp 53, the previous bundle gone, Apps & Features
 `0.8.8`. Driven over ssh + a title-guarded click task in the desktop session
-(`schtasks /IT`). Linux descriptors: four fresh runs queued after PR #12; the Linux About
-proof is owed once they land.
+(`schtasks /IT`). Linux descriptors: PR #12's retry then died in the rebase ("empty ident name" — PR #13
+passes the identity to the rebase too), so deb x86_64 landed first, the other three on the
+fixed main; all four `check-app-manifest.sh --linux` green (serial 1 each). **§M on the 22.04
+arm64 VM (0.8.7 dev deb → 0.8.8):** first Check now refused as a replay (the dev deb had read
+the macOS document, serial 14 — the same one-key bug as the Dell); after the reset: offered
+"0.8.8 · 14.5 MB", Install → ONE polkit dialog → `dpkg -l` 0.8.8, `swapped to 0.8.8
+(RenamePair)` → the "close and open again" dialog → **the app did not come back**: `could not
+spawn the relauncher (No such file or directory)` — `/proc/self/exe` was a deleted inode
+after dpkg; the honest fallback ran, the DNS agent had relaunched as 0.8.8, the three sites
+stayed 200, and the next hand open was `0.8.8 (49c0735)`. Fixed on master (ledger #729,
+`rules::relauncher_exe`); the fix runs in the old side of a swap, so the relaunch is proven by
+the release after the next one.
 
 ## A) ✅ 0.8.7 — PUBLISHED (the first release that runs on macOS 13 and 14)
 

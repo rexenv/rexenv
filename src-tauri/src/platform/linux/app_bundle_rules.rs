@@ -39,6 +39,25 @@ pub(crate) fn classify(exe: &Path, appimage: Option<&Path>) -> (PathBuf, Install
     (exe.to_path_buf(), InstallKind::Elsewhere)
 }
 
+/// The executable that runs the relauncher after a swap. On macOS and Windows
+/// `current_exe()` is a PATH, and after the bundle rename / RenamePair that path names the
+/// NEW build — so the old process starts the new one through its own path. On Linux
+/// `current_exe()` is `/proc/self/exe`, which names the INODE: once `dpkg -i` has unlinked
+/// `/usr/bin/rexenv` it reads `/usr/bin/rexenv (deleted)`, and spawning that is ENOENT —
+/// measured 27 Sep 2026 on the 22.04 VM, the first in-app deb update: "could not spawn the
+/// relauncher (No such file or directory)", the app closed and did not come back (the honest
+/// fallback ran; the next open was 0.8.8). So a package install — or any executable the
+/// kernel already calls deleted — starts the relauncher from `bundle`, the new
+/// `/usr/bin/rexenv`, whose `--relaunch-after` contract is cross-version. An AppImage keeps
+/// `current_exe()`: its mount lives as long as this process, and the new image at `bundle`
+/// may need FUSE this process was not started with.
+pub(crate) fn relauncher_exe(current_exe: &Path, bundle: &Path, kind: InstallKind) -> PathBuf {
+    if kind == InstallKind::SystemPackage || current_exe.to_string_lossy().ends_with(" (deleted)") {
+        return bundle.to_path_buf();
+    }
+    current_exe.to_path_buf()
+}
+
 /// The descriptor a Linux build reads: one per package kind and arch, the same schema as the
 /// macOS and Windows documents (`app-manifest-linux-<kind>-<arch>.json`).
 pub(crate) fn descriptor_variant(kind: InstallKind, arch: &str) -> Option<String> {
@@ -148,6 +167,19 @@ mod tests {
     fn the_kind_comes_from_the_executable_and_the_appimage_variable() {
         assert_eq!(classify(Path::new("/tmp/.mount_rexenvX/usr/bin/rexenv"), Some(Path::new("/home/u/Apps/rexenv.AppImage"))), (PathBuf::from("/home/u/Apps/rexenv.AppImage"), InstallKind::PortableFile));
         assert_eq!(classify(Path::new("/usr/bin/rexenv"), None).1, InstallKind::SystemPackage);
+    }
+
+    #[test]
+    fn the_relauncher_runs_from_the_new_package_exe_never_from_a_deleted_inode() {
+        // The 27 Sep 2026 VM update: `/proc/self/exe` read "(deleted)" after dpkg and the spawn
+        // was ENOENT. A package install always uses the bundle; so does anything deleted.
+        let deb = Path::new("/usr/bin/rexenv");
+        assert_eq!(relauncher_exe(Path::new("/usr/bin/rexenv (deleted)"), deb, InstallKind::Elsewhere), deb);
+        assert_eq!(relauncher_exe(Path::new("/usr/bin/rexenv"), deb, InstallKind::SystemPackage), deb);
+        // An AppImage keeps its own mounted executable — the mount outlives the swap.
+        let mount = Path::new("/tmp/.mount_rexenvX/usr/bin/rexenv");
+        let image = Path::new("/home/u/Apps/rexenv.AppImage");
+        assert_eq!(relauncher_exe(mount, image, InstallKind::PortableFile), mount);
         assert_eq!(classify(Path::new("/home/u/rexenv/src-tauri/target/release/rexenv"), None).1, InstallKind::DevBuild);
         assert_eq!(classify(Path::new("/home/u/Downloads/rexenv"), None).1, InstallKind::Elsewhere);
         assert_eq!(descriptor_variant(InstallKind::SystemPackage, "x86_64").as_deref(), Some("deb-x86_64"));

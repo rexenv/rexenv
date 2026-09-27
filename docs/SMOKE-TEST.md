@@ -1992,6 +1992,14 @@ Environment: Ubuntu ____ (22.04+; x86_64 or aarch64) · package ____ (.deb / App
       `app-manifest-linux-deb-<arch>.json`; Update → ONE polkit dialog, rexenv's own sentence
       (not "run /bin/sh as the super user"); the app quits and comes back as the new version;
       `dpkg -s rexenv` says so; `~/.local/share/rexenv/updates/` is empty after the health sweep.
+      **◐ 27 Sep 2026, 22.04 arm64 VM, 0.8.7 dev deb → 0.8.8 (serial 1):** found, ONE polkit
+      dialog (rexenv's sentence — but the generic one, naming DNS/edge/CA and not the update:
+      TODO row), `dpkg -l` 0.8.8, the DNS agent relaunched as 0.8.8, three sites 200 throughout
+      — and the app did NOT come back: `could not spawn the relauncher (No such file or
+      directory)` (ledger #729, fixed on master; the fix runs in the OLD side of a swap, so
+      this row closes on the release after the fix). Opened by hand: 0.8.8. `updates/` still
+      held `0.8.8/` and `.rexenv-update-<pid>/` right after (the sweep had not run yet). First
+      Check now was refused as a replay — the dev deb had read the macOS document (TODO row).
 - [ ] AppImage in a folder you own, an older version: Check now reads
       `app-manifest-linux-appimage-<arch>.json`; Update swaps the file with NO prompt; the app
       comes back as the new version FROM THE SAME PATH; the folder holds no `.rexenv-update-*`

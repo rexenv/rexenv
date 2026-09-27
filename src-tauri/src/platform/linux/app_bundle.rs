@@ -281,8 +281,12 @@ impl AppBundle for LinuxAppBundle {
 
     fn spawn_relauncher(&self, bundle: &Path) -> Result<()> {
         // Our own binary in relauncher mode — the DNS agent's and the tunnel guard's self-exec
-        // shape. Spawned from the OLD inode: the version being replaced starts the replacement.
-        let exe = std::env::current_exe()?;
+        // shape. NOT from `current_exe()` for a package install: after `dpkg -i` that is a
+        // deleted inode (`rules::relauncher_exe`, measured 27 Sep 2026); the NEW `/usr/bin/rexenv`
+        // runs the relauncher instead — the flag is a cross-version contract either way.
+        let current = std::env::current_exe()?;
+        let (_, kind) = rules::classify(&current, Self::appimage().as_deref());
+        let exe = rules::relauncher_exe(&current, bundle, kind);
         let me = std::process::id();
         let start = super::process_start_token(me)
             .ok_or_else(|| Error::Other(format!("could not read this process's start time (pid {me})")))?;
