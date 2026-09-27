@@ -106,6 +106,9 @@ recipe. The tap stays the public home of the artefacts while the source is priva
   36329787548** (tag at 49c07350): Windows red in verify.sh on the `repo` idle-watchdog test —
   the 18 Sep "not yet explained" Dell flake, now explained: #600's per-spawn handle sweep
   cleared other threads' fresh child pipes (measured 119/400 on the Dell). Fixed on master (the
-  sweep runs once at start); the lane was re-run for the tag as it stood.
+  sweep runs once at start); the lane was re-run for the tag as it stood — green, and **`publish`
+  drafted `v0.8.8` on `rexenv/homebrew-tap` with all eight assets and eight sidecars (27 Sep
+  2026, ~15:30 UTC): the first release built entirely on GitHub Actions.** Owner's steps from
+  here: §A on the dmg, Publish, then the six runtimes descriptor publishes.
 - A Linux 22.04 x86_64 **run** of the floor deb: the Dell's WSL gets an Ubuntu-22.04 distro for
   it (in progress).
