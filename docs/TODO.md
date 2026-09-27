@@ -51,7 +51,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   kills it with `SIGKILL (Code Signature Invalid)` at `_dyld_start` — the report names rexenv, so
   the user reads it as the app crashing. `crash.log` stays empty (nothing of ours ran). The
   in-app updater swaps atomically (ledger's `app_bundle` rows) and never showed it; a user who
-  drags a newer dmg over a RUNNING copy in Finder walks the same race. Options: `bootout` the
+  drags a newer dmg over a RUNNING copy in Finder walks the same race. **Seen a fourth time,
+  27 Sep 2026, 0.8.8's §A on the 15.8 VM:** the app was NOT running — only the 0.8.7 agent was
+  (from the deleted bundle); the new app kickstarted it for the version mismatch, the first
+  relaunch died `Launch Constraint Violation`, the second served. So the trigger is any
+  relaunch of the agent right after a swap, not the app being replaced while open. Options: `bootout` the
   agent before the swap in the updater's Finder-replace guidance (`docs/INSTALL.md`), or have the
   agent's KeepAlive wait for a settled bundle (a signature check before exec). Not a 0.8.7
   blocker — the shipped path is the updater.

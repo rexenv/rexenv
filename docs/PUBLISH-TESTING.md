@@ -103,6 +103,42 @@ strips exactly one component and both other shapes produce a broken install.
 If it fails, do not publish: the dmg would install fine and every in-app update from it
 would break.
 
+## A) ✅ 0.8.8 — DRAFTED on the tap by CI (the first release built entirely on GitHub Actions)
+
+`rexenv_0.8.8_universal.dmg`, sha256
+`6f393da47d2d75e7…` (`shasum -c` against the attached `.sha256`: OK), 28,851,845 bytes; update
+archive `rexenv_0.8.8_universal.app.tar.gz` 28,355,104 bytes (`.sha256` OK). Source `49c07350`
+(tag `v0.8.8`, pushed), built by `rexenv/runtimes` run 36329787548 (macos-14 lane, 15:38:48 UTC);
+the same run built Windows and both Linux artefacts and drafted them together
+(`docs/PLAN-ci-release.md`). **§A0 ✅ by hand on the downloaded assets, 27 Sep 2026:** both
+binaries `x86_64 arm64`, `Dist_Archive_Command` ×5 in EACH slice, `minos 13.0` in both, codesign
+valid, Info.plist `0.8.8`, and the dmg's `rexenv` binary byte-identical to the archive's (the
+lane's `release-assets.sh --check` asserted the update key per slice and the archive layout).
+**§A ✅ measured on the 15.8 arm64 UTM VM as an UPGRADED INSTALL** (0.8.7 with three sites
+and app-data from the 23 Sep clean run — NOT a clean Mac; the draft is private, so the dmg was
+`scp`'d and given the synthetic `0083` quarantine, with `rm -rf /Applications/rexenv.app` first
+as this file's note requires), driven over ssh + `System Events` clicks with screenshots:
+Gatekeeper's **"rexenv" Not Opened** (no "damaged"); after `sudo xattr -rd` the app launched
+into its existing Sites list; **`rex --version` and Settings → About: `0.8.8 (49c0735)`, built
+2026-09-27 15:38:48 UTC**; Start all → the branded edge prompt from the right place → All
+running 6/6, `smoke1.rex` (WordPress), `smoke-lv.rex` (Laravel/MySQL), `smoke-pg.rex`
+(Laravel/PostgreSQL) all **200 over HTTPS with the system trust store** (`curl` verify 0);
+Stop all → the branded stop prompt → every service idle, the edge daemon unloaded. **Seen
+once, known:** "rexenv quit unexpectedly" right after launch — `docs/TODO.md`'s "Finder Replace"
+row: the 0.8.7 DNS agent was still running from the deleted bundle, the new app kickstarted it
+(`the resolver agent is running 0.8.7 … this build is 0.8.8`), the KeepAlive relaunch got
+`SIGKILL (Code Signature Invalid) / Launch Constraint Violation` once, the next relaunch served.
+Same signature as the three 23 Sep reports (0.8.6/0.8.7). Also: the health log kicked the agent
+three times in six minutes while it answered `dig` throughout — the VM was slow (every `rex`
+call passed its 10 s "no reply yet" line), unexplained, not seen on the Mac. **Not run:** the
+clean-Mac SMOKE list, the Windows and Linux installers from this draft (Linux was proven from
+the identical floor build 36264369017 on the Dell's 22.04 WSL, Windows from the Dell's own
+build), and the in-app update 0.8.7 → 0.8.8 (needs the published descriptor — owner's step).
+
+**Publish is the owner's gate.** After it: the six runtimes descriptor publishes, then
+`check-app-manifest.sh` (macOS, `--windows`, `--linux <kind> <arch>` ×4) and the About-screen
+update from a reinstalled 0.8.7 on the VM and the Dell.
+
 ## A) ✅ 0.8.7 — PUBLISHED (the first release that runs on macOS 13 and 14)
 
 `rexenv_0.8.7_universal.dmg`, sha256
