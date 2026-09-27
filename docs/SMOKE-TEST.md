@@ -1935,7 +1935,13 @@ Environment: Ubuntu ____ (22.04+; x86_64 or aarch64) · package ____ (.deb / App
       asks for `libxml2.so.2`, 26.04 has `.so.16` — the same shim + PostgreSQL's closure in `Depends`; then
       `rex site create lara.rex --type laravel --db postgres` → PostgreSQL 18.6 running on 15432, migrations
       ran, `https://lara.rex` 200; **the owner then pressed Start on PostgreSQL in the Databases screen
-      and it came up (27 Sep 2026)** — the GUI door for #731, not just `rex`. WSL caveats: no polkit
+      and it came up (27 Sep 2026)** — the GUI door for #731, not just `rex`.
+      **And on the FLOOR, 27 Sep 2026:** the CI-built `rexenv_0.8.7_amd64.deb` (`linux-build.yml`, ubuntu-22.04)
+      installed through `apt` on a fresh WSL **Ubuntu 22.04.5 x86_64** (every `Depends` satisfied, `ldd`
+      clean, glibc 2.35), GUI onboarding to "Domains & SSL are ready", `rex start` (root edge), WordPress
+      on MySQL at `https://acme.rex` 200 and Laravel on PostgreSQL at `https://lara.rex` 200 — no
+      `lib-compat/` needed there (the real sonames exist), which is the shim's "none" case measured.
+      WSL caveats: no polkit
       agent (a test rule stood in), the
       `.rex` answer came through the Windows host's DNS, so P1 stays the VM's.
 - [ ] After onboarding: `certutil -d sql:$HOME/.pki/nssdb -L` lists `rexenv local CA` with

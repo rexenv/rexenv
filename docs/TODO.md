@@ -1237,7 +1237,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     so that deb is a proof, not a release artefact. **The FLOOR build exists (27 Sep 2026): `linux-build.yml`
     on `ubuntu-22.04`, run 36264369017 — §A0-linux all green, `rexenv`/`rex` ask for glibc ≤ 2.34 (asserted
     off the binary, 22.04 has 2.35), `rexenv_0.8.7_amd64.deb` + `.AppImage` as the run artifact.**
-    `release.yml`'s Linux job moved to 22.04 too; it still has never run on a tag.
+    `release.yml`'s Linux job moved to 22.04 too; it still has never run on a tag. **That floor deb RAN
+    on a fresh WSL Ubuntu 22.04.5 x86_64 (27 Sep 2026): apt-installed, onboarding, root edge, WordPress on
+    MySQL + Laravel on PostgreSQL both 200 over HTTPS — the x86_64 22.04 run-test the row was missing.**
     **27 Sep: the rebuilt amd64 deb ran the whole thing on the Dell — GUI onboarding under WSLg, root edge,
     MySQL (after the `libaio.so.1t64` shim, #731), a WordPress site at `https://acme.rex` → 200; the stale
     system-store CA behind a green "trusted" is #732; PostgreSQL needed the same shim for `libxml2.so.2 → .16`
