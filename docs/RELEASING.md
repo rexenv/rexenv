@@ -3,6 +3,14 @@
 Releases are driven **from GitHub**: a tag builds everything, a human click publishes
 it, and the Homebrew tap updates itself. Two workflows implement this.
 
+> **Interim (27 Sep 2026 → the day this repo goes public): the pipeline RUNS FROM
+> `rexenv/runtimes`** — `rexenv-release.yml` and `rexenv-verify.yml` there are these two
+> workflows with a cross-repo checkout (`REXENV_SRC_TOKEN`, Contents: read on this repo),
+> because this repo's Actions quota ran out on the first run (macOS lanes bill 10× on a
+> private repo, the arm64 runner is a larger runner) and a public repo's minutes are free.
+> Push the tag here (the pre-push hook checks the version), then Actions → runtimes →
+> "rexenv release (from runtimes)" → the version. Step output is public there.
+>
 > **Since 27 Sep 2026 every release is built ONLY on GitHub Actions, every OS at once**
 > (owner ruling, `docs/PLAN-ci-release.md`): one tag → macOS + Windows + Linux ×2 lanes →
 > one DRAFT on `rexenv/homebrew-tap` with all eight assets. The "build locally, upload to

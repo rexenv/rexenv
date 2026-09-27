@@ -86,7 +86,11 @@ recipe. The tap stays the public home of the artefacts while the source is priva
   runner is a larger runner. State at that point: macos-14 green, windows-latest and both
   Linux lanes green through every test and gate but the openssl probe, whose fix is on master
   unverified on CI. The Windows lane's `release-windows.sh` has still run only on the Dell.
-  **Next:** raise the spending limit (Settings → Billing → Actions), `verify-ci.yml` on
+  **The owner's answer (27 Sep 2026): run the pipeline from `rexenv/runtimes` (public, free
+  minutes) until this repo goes public** — runtimes PR: `rexenv-release.yml` + `rexenv-verify.yml`,
+  the same workflows with a cross-repo checkout; needs `REXENV_SRC_TOKEN` (Contents: read on
+  rexenv/rexenv) and `TAP_TOKEN` in runtimes' secrets. The alternative was to raise the spending
+  limit (Settings → Billing → Actions). Then: `rexenv-verify.yml` on
   `windows-latest,ubuntu-22.04,ubuntu-22.04-arm`, then move the `v0.8.8` tag to HEAD (it points
   at the bump commit, before these fixes; nothing was released from it) and let `release.yml`
   draft on the tap.
