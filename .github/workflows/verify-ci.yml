@@ -41,8 +41,11 @@ jobs:
           RUNNERS: ${{ inputs.runners }}
         run: |
           set -euo pipefail
-          list="$(printf '%s' "$RUNNERS" | tr -d ' ' | tr ',' '\n' | grep -v '^$' | sed 's/.*/"&"/' | paste -sd, -)"
-          echo "matrix={\"runner\":[$list]}" >> "$GITHUB_OUTPUT"
+          # jq, not a tr|grep|sed|paste chain: the chain reported a failure on a one-runner
+          # input (27 Sep 2026) and its log did not survive to say which link.
+          list="$(printf '%s' "$RUNNERS" | jq -R -c 'split(",") | map(gsub("\\s";"")) | map(select(length > 0))')"
+          echo "matrix={\"runner\":$list}" >> "$GITHUB_OUTPUT"
+          echo "runners: $list"
   verify:
     needs: plan
     name: verify.sh on ${{ matrix.runner }}

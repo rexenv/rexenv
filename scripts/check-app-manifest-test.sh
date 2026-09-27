@@ -17,7 +17,7 @@ set -euo pipefail
 # Homebrew's OpenSSL 3 first on PATH. Asked, not assumed: the first candidate whose
 # `pkeyutl -help` lists `-rawin` wins; none is a named refusal, never a confusing exit.
 OPENSSL=""
-for c in "$OPENSSL" /opt/homebrew/opt/openssl@3/bin/openssl /usr/local/opt/openssl@3/bin/openssl /opt/homebrew/bin/openssl; do
+for c in openssl /opt/homebrew/opt/openssl@3/bin/openssl /usr/local/opt/openssl@3/bin/openssl /opt/homebrew/bin/openssl; do
   # CAPTURED and matched, never `| grep -q`: under `set -o pipefail` a grep that exits at
   # the first match leaves the writer dying of SIGPIPE, the pipeline reports 141 and the
   # `if` reads "no -rawin" — how ubuntu-22.04's and windows-latest's OpenSSL 3, which have
