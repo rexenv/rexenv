@@ -53,6 +53,10 @@ mod windows {
     }
 
     pub async fn main() -> ExitCode {
+        // What `main.rs` does first: the check process was born with sshd's handles, and a
+        // service spawned below must not inherit them (ledger #600 — the first two runs hung
+        // their session on exactly that). Nothing else of this process spawns yet.
+        rexenv_lib::platform::sweep_inheritable_handles_before_boot();
         match std::env::args().nth(1).as_deref() {
             Some("phase1") => phase1().await,
             Some("phase2") => phase2(),

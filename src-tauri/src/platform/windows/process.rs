@@ -703,15 +703,31 @@ impl super::stop_policy::Target for Stoppable {
     }
 }
 
-/// Clear the inherit flag on every handle THIS process holds, so a service spawned next
+/// Clear the inherit flag on every handle THIS process holds, so a child spawned later
 /// inherits only the stdio `std` hands it (ledger #600, `handles.rs` for the measurement).
 ///
-/// Runs before each service spawn rather than once at start, so a handle some library
-/// opened inheritable later is caught too. `std`'s `Stdio::inherit`/`Stdio::from(File)`
-/// duplicate their OWN inheritable copy inside `spawn`, after this, so no `std` child loses
-/// its stdio; `std` serialises its spawns, so another thread's child-stdio copies cannot
-/// slip in between. Returns how many flags were cleared. If the snapshot cannot be read
-/// (it needs Windows 8), the standard handles are still cleared — the old, partial answer.
+/// **Called ONCE, at process start, while this process has one thread** — through
+/// `platform::sweep_inheritable_handles_before_boot`, and from nowhere else (a test in
+/// `handles.rs` counts the callers). From 13 to 27 Sep 2026 it ran before EACH service, step
+/// and editor spawn instead, on the reasoning that a handle some library opened inheritable
+/// later would be caught too, and that `std` serialises its spawns so another thread's
+/// child-stdio copies could not slip in between. Half of that was wrong: `std`'s lock is
+/// private, so it serialises `std` spawns against each other, not against THIS sweep. A
+/// sweep that runs while another thread is between making its child's inheritable pipe
+/// ends and `CreateProcessW` clears those ends too, and that child starts with no stdio —
+/// `cmd` then exits 1 having printed nothing, and both pipes read EOF at once. Measured on
+/// the Dell 27 Sep 2026 with a 400-spawn stressor: 0 bad spawns alone, 119 with a sweeping
+/// thread beside them (99 of them exactly "exit 1, no output"). That was the `repo` idle-
+/// watchdog test's "not yet explained" failure (2 in ~7 Dell runs, then release run
+/// 36329787548 on windows-latest): another test's spawn was sweeping. `core/` spawns
+/// `Command`s of its own from many threads, so no lock of rexenv's can cover every victim;
+/// the only placement with no other thread is process start. The handles that measured as
+/// the leak — the 20–25 the launcher was BORN with from sshd — all exist by then.
+///
+/// `std`'s `Stdio::inherit`/`Stdio::from(File)` duplicate their OWN inheritable copy inside
+/// `spawn`, so no `std` child loses its stdio to a sweep that happened before its spawn began.
+/// Returns how many flags were cleared. If the snapshot cannot be read (it needs Windows 8),
+/// the standard handles are still cleared — the old, partial answer.
 pub(crate) fn keep_inheritable_handles_out_of_children() -> usize {
     use windows_sys::Win32::Foundation::{SetHandleInformation, HANDLE_FLAG_INHERIT};
     use windows_sys::Win32::System::Threading::GetCurrentProcess;

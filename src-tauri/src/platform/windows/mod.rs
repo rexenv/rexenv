@@ -179,6 +179,12 @@ impl PrivilegeManager for WindowsPrivileges {
 
 /// `platform::command`'s Windows half: a console program started from the
 /// console-less app must not get a console of its own (see there).
+/// The one call of `process::keep_inheritable_handles_out_of_children` (ledger #600): at process
+/// start, before any thread exists, so no spawn in flight can lose its child's stdio to the sweep.
+pub(crate) fn sweep_inheritable_handles() -> usize {
+    process::keep_inheritable_handles_out_of_children()
+}
+
 pub(crate) fn hide_console(cmd: &mut std::process::Command) {
     use std::os::windows::process::CommandExt;
     cmd.creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW);
@@ -224,7 +230,6 @@ impl ProcessSupervisor for WindowsSupervisor {
         use std::os::windows::process::CommandExt;
         use std::process::Stdio;
         use windows_sys::Win32::System::Threading::{CREATE_NEW_PROCESS_GROUP, CREATE_NO_WINDOW, CREATE_SUSPENDED};
-        process::keep_inheritable_handles_out_of_children();
         let job = process::StepJob::new()
             .ok_or_else(|| Error::Other(format!("could not create a job object to run {}", program.display())))?;
         let mut child = std::process::Command::new(program)
@@ -291,9 +296,10 @@ impl ProcessSupervisor for WindowsSupervisor {
         env: &[(String, String)],
     ) -> Result<Child> {
         use std::os::windows::process::CommandExt;
-        // Before the spawn: a service must not inherit — and pin open for its whole life —
-        // the handles rexenv itself was started with (`handles.rs`, measured).
-        process::keep_inheritable_handles_out_of_children();
+        // A service must not inherit — and pin open for its whole life — the handles rexenv
+        // itself was started with (`handles.rs`, measured). Their inherit flags were cleared
+        // at process start (`sweep_inheritable_handles`); clearing them HERE, beside a spawn,
+        // raced every other thread's spawn (ledger #600, 27 Sep 2026).
         if let Some(parent) = log_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -656,8 +662,8 @@ impl ShellRunner for WindowsShell {
 /// never ended; VS Code's Electron warnings landed there too). A GUI app needs none of them.
 /// NUL alone was not enough: `std` starts every child inheriting ALL of this process's inheritable handles, so
 /// the same Chrome still held the pipe open, silently, and the run still never ended (measured the same day).
-/// So every handle's inherit flag is cleared first, as before a service spawn (ledger #600): an editor or a
-/// browser can never pin a pipe, a log or a socket of rexenv's for as long as it stays open.
+/// So every handle's inherit flag is cleared at process start, as for a service spawn (ledger #600): an
+/// editor or a browser can never pin a pipe, a log or a socket of rexenv's for as long as it stays open.
 fn start(launch: app_catalog::Launch) -> Result<()> {
     if launch.new_console {
         return start_in_new_console(&launch);
@@ -670,7 +676,6 @@ fn start(launch: app_catalog::Launch) -> Result<()> {
     if let Some(dir) = &launch.current_dir {
         cmd.current_dir(dir);
     }
-    process::keep_inheritable_handles_out_of_children();
     cmd.spawn().map_err(|e| Error::Other(format!("could not start {}: {e}", launch.exe.display())))?;
     Ok(())
 }

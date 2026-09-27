@@ -12,6 +12,10 @@ fn main() {
     // it runs only rexenv's own ops and exits. Before every other mode — it opens no window. Linux's
     // polkit step (`rexenv --privileged-step`) takes the same door.
     let argv: Vec<String> = std::env::args().collect();
+    // First, on one thread: no child of this process — in any of the modes below — may
+    // inherit the handles it was born with (ledger #600; the sweep must never run beside a
+    // spawn, so it runs before there is one).
+    rexenv_lib::platform::sweep_inheritable_handles_before_boot();
     // `--print-version`: what THIS binary is, for the self-update's staged copy to answer for
     // itself (a Linux AppImage has no Info.plist or VERSIONINFO to read). Before everything —
     // it must open nothing and touch nothing.

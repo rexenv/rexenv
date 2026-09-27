@@ -102,6 +102,10 @@ recipe. The tap stays the public home of the artefacts while the source is priva
   and prints `*name`; `release-windows-check.sh` took the name from awk's `$2`. The 0.8.6
   sidecar on the tap carries the same star (checked 27 Sep; nothing ever read these files:
   the updater trusts the descriptor's digest, and `brew` has no Windows). The writer spells the
-  name now. The publish gate's `sha256sum -c` is what found it — keep it strict.
+  name now. The publish gate's `sha256sum -c` is what found it — keep it strict. **Run
+  36329787548** (tag at 49c07350): Windows red in verify.sh on the `repo` idle-watchdog test —
+  the 18 Sep "not yet explained" Dell flake, now explained: #600's per-spawn handle sweep
+  cleared other threads' fresh child pipes (measured 119/400 on the Dell). Fixed on master (the
+  sweep runs once at start); the lane was re-run for the tag as it stood.
 - A Linux 22.04 x86_64 **run** of the floor deb: the Dell's WSL gets an Ubuntu-22.04 distro for
   it (in progress).

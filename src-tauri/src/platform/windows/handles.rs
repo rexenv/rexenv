@@ -72,6 +72,24 @@ mod tests {
         assert_eq!(inheritable_handles(&buf), vec![0x174, 0x178, 0x1dc]);
     }
 
+    /// The sweep runs ONCE, at process start, from `sweep_inheritable_handles` — never beside a
+    /// spawn. A sweep on one thread clears the pipe ends another thread's spawn has just made
+    /// for its child, and that child starts with no stdio (`process.rs`, measured 27 Sep 2026:
+    /// 119 of 400 spawns). Counted in source so the placement cannot drift back quietly.
+    #[test]
+    fn the_sweep_has_one_caller_and_main_runs_it_first() {
+        let platform = include_str!("mod.rs");
+        let callers = platform.matches("process::keep_inheritable_handles_out_of_children()").count();
+        assert_eq!(callers, 1, "the sweep is called from `sweep_inheritable_handles` only; found {callers} call(s)");
+        for f in [include_str!("app_bundle.rs"), include_str!("job_guard.rs"), include_str!("elevation.rs"), include_str!("process.rs")] {
+            assert!(!f.contains("keep_inheritable_handles_out_of_children();"), "a spawn site calls the sweep");
+        }
+        let main = include_str!("../../main.rs");
+        let sweep = main.find("sweep_inheritable_handles_before_boot()").expect("main.rs sweeps before boot");
+        let first_mode = main.find("run_elevated_step(").expect("main.rs dispatches modes");
+        assert!(sweep < first_mode, "the sweep comes before the first mode that could spawn");
+    }
+
     #[test]
     fn a_claimed_count_past_the_buffer_is_clamped_and_short_buffers_are_empty() {
         let buf = snapshot(&[(0x10, 2), (0x14, 2)], 9_999);

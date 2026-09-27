@@ -280,6 +280,20 @@ pub fn run_elevated_step(argv: &[String]) -> Option<i32> {
     }
 }
 
+/// Clear the inherit flag on every handle this process was born holding, so no child — a
+/// service, a step, an editor — inherits and pins them (ledger #600: services inherited 20–25 of
+/// sshd's handles and held the launcher's SSH session open for as long as they ran). Called by
+/// `main.rs` FIRST, while the process has one thread: a sweep beside each spawn, which is where
+/// it lived until 27 Sep 2026, cleared the pipe ends of whatever OTHER spawn was in flight on
+/// another thread, and that child started with no stdio (measured: 119 of 400 spawns). A no-op
+/// off Windows, where `std` spawns with `CLOEXEC` and nothing is inherited.
+pub fn sweep_inheritable_handles_before_boot() {
+    #[cfg(target_os = "windows")]
+    {
+        windows::sweep_inheritable_handles();
+    }
+}
+
 /// When this process was started inside a job that forbids its services to break away — the
 /// installer's Finish page did that on the first installed copy, 19 Sep 2026 (ledger #692) — ask
 /// Explorer to start rexenv again and return the code this copy exits with; `None` means run here.

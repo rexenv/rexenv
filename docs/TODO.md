@@ -1129,12 +1129,14 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     from here. **The structural finding:** `windows-check.sh` runs `cargo check` with no clippy and
     no `-D warnings`, so the Mac's Windows gate is strictly weaker than the macOS clippy gate and
     could never have caught any of this — closing that is its own row below. **An intermittent, measured
-    and not yet explained:** with the clippy fixes in, `cargo test --lib` on the Dell failed
+    18 Sep and explained 27 Sep 2026:** with the clippy fixes in, `cargo test --lib` on the Dell failed
     `idle_watchdog_kills_a_silent_step_and_reports_the_stall` twice in ~7 full-suite runs with
-    `tail: []` — the `cmd` child closed both pipes before printing a line — while passing 6/6 alone,
-    3/3 in further parallel full runs and 1/1 single-threaded; a pid-reuse path through the job
-    registry was checked and ruled out. The test now reports exit code, callback lines and tail on
-    failure, so the next one explains itself.
+    `tail: []` — the `cmd` child closed both pipes before printing a line — while passing 6/6 alone;
+    release run 36329787548 (windows-latest) failed it again with `exit=Some(1) … lines=[] tail=[]`.
+    Cause: #600's handle sweep ran before EACH spawn, and a sweep on one thread clears the
+    child-stdio pipe ends another thread's spawn has just made (`std`'s spawn lock is private);
+    that child starts with no stdio. Stressor on the Dell: 0/400 bad alone, 119/400 beside a
+    sweeping thread. The sweep now runs once at process start (`sweep_inheritable_handles_before_boot`).
     **Ruled 18 Sep 2026 (owner): the Dell runs ONLY what the Mac cannot.** Three verify.sh
     runs had capped inside `cargo build --examples` (1h, 2h, 5h) and a fourth reached clippy
     only because nothing had changed -- 184 examples each relink the whole lib, ~5h on that

@@ -664,7 +664,9 @@ Live-proven end to end by `site_stop_start_check`.
   showed services carrying 20–25 handles the launcher was born with (from sshd — not just its
   stdio) and holding its SSH session open until they were stopped; the same would pin a
   terminal's pipe for a service's life. Every inheritable handle in rexenv's own snapshot is
-  cleared before each service spawn (`windows/handles.rs`).
+  cleared ONCE, first thing in `main.rs` (`windows/handles.rs`) — not beside each spawn, where
+  it lived until 27 Sep 2026: a sweep on one thread cleared the pipe ends another thread's
+  spawn had just made, and that child started with no stdio (#600, measured 119/400).
   **A PHP minor on Windows is a php-cgi GROUP, not a php-fpm pool** (#601, W4): the platform
   answers `ProcessSupervisor::php_pool_model()` with `PoolModel::CgiGroup` and the extensions its
   PHP build loads; `core::php_cgi` renders rexenv's own ini (`php-cgi -n -c`: `extension_dir`,
