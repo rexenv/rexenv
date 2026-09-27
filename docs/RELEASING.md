@@ -274,7 +274,10 @@ release** — which is the property that makes a stolen key survivable. Ledger
    the first 0.8.8 round approved all six from one page and five were rejected
    `main -> main (fetch first)` — each run had committed its own file seconds after another
    pushed. **A rerun does not fix that**: it checks out the run's ORIGINAL commit and
-   pushes from the same stale main. Queue a NEW run instead. It reads the tap's `releases/latest` (so it can never name a draft or a
+   pushes from the same stale main. Queue a NEW run instead. Two runs on the SAME document are
+   serialised by their concurrency group but each reads the serial from the commit it was
+   triggered at — runtimes PR #14 (28 Sep 2026) pulls the checkout to the tip first; before it,
+   approve same-document runs one at a time. It reads the tap's `releases/latest` (so it can never name a draft or a
    prerelease), takes the archive's immutable API digest, re-hashes what it downloaded,
    increments its own serial, signs with the reviewer-gated key and commits
    `app-manifest.json` + `.sig`. **Until this runs, no installed rexenv is offered

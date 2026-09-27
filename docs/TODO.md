@@ -71,8 +71,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   by deleting the three `app_update_release*` settings rows, and then updated through the
   card. **A stuck install cannot receive the code fix (it refuses every descriptor), so the
   Windows document must also be published past the highest macOS serial an early Windows
-  build could have stored (≤ 10 on 19–20 Sep 2026 — two more Windows publishes take it from
-  8 to 10); the Linux documents start at 1 and nothing shipped read another one.**
+  build could have stored (≤ 10 on 19–20 Sep 2026); the Linux documents start at 1 and nothing
+  shipped read another one. ✓ Done 28 Sep 2026: the Windows document re-signed to serial 10
+  (runs 36342956297 and 36343274888 — a second run approved beside the first read the same
+  serial from its trigger-time checkout and conflicted, runtimes PR #14 reads the tip first).**
 - [ ] **A Finder "Replace" of the running app can pop macOS's "rexenv quit unexpectedly"** (seen
   three times on the 13.6 VM, 23 Sep 2026, every one during a HAND swap of the bundle over ssh
   — `rm -rf` + copy, or copy + `mv`): the DNS agent's LaunchAgent (KeepAlive) relaunches
