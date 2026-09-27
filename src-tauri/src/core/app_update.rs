@@ -840,12 +840,32 @@ pub struct AppUpdateState {
     /// A version already swapped onto disk that this process is not running —
     /// an update whose quit was cancelled. `None` in every ordinary state.
     pub installed_pending: Option<String>,
+    /// The sentence for a check whose fetched descriptor was REFUSED — a stale
+    /// serial, a bad signature — as opposed to one that could not be fetched.
+    /// `None` from [`state`]; only the interactive check sets it, for that one
+    /// answer, and it is never stored (a refused check writes nothing). Until
+    /// 28 Sep 2026 the card folded a refusal into "couldn't reach the update
+    /// server": the server HAD answered, and the machine would never be offered
+    /// anything — the Dell sat on a replayed serial reading that line for a week.
+    pub check_refusal: Option<String>,
+}
+
+/// What the About card says when the published descriptor was fetched and then
+/// refused. The rule's words live here, beside the rule (`accept_with`), and the
+/// card renders what it is sent. `reason` is `accept`'s own error text.
+pub fn refusal_sentence(reason: &str) -> String {
+    format!(
+        "The update server answered, but rexenv refused what it published: {reason}. \
+         Nothing here changes until a descriptor this copy accepts is published."
+    )
 }
 
 /// Assemble [`AppUpdateState`] from the database and this machine. Pure reads:
 /// no network, no writes, and every failure degrades to "nothing to offer"
 /// rather than an error, because this feeds a card that must not be able to fail.
 pub fn state(conn: &Connection, document: &str) -> AppUpdateState {
+    // `check_refusal` is the interactive check's to set; every read from the
+    // database answers `None` (see the field).
     let running = env!("CARGO_PKG_VERSION").to_string();
     let skipped = skipped_version(conn);
     let check = cached_check(conn);
@@ -871,6 +891,7 @@ pub fn state(conn: &Connection, document: &str) -> AppUpdateState {
             checked_at: check.map(|c| c.checked_at),
             skipped,
             installed_pending: pending.clone(),
+            check_refusal: None,
         };
     }
     if let Some(m) = cached(conn, document) {
@@ -894,6 +915,7 @@ pub fn state(conn: &Connection, document: &str) -> AppUpdateState {
         checked_at: check.map(|c| c.checked_at),
         skipped,
         installed_pending: None,
+        check_refusal: None,
     }
 }
 
@@ -1351,6 +1373,16 @@ mod tests {
         assert_eq!(document_for("windows", None), "windows");
         assert_eq!(document_for("linux", Some("deb-x86_64")), "linux-deb-x86_64");
         assert_eq!(document_for("linux", None), "", "a Linux build with no variant reads no document — `fetch` refuses before here");
+    }
+
+    /// A refusal is not "couldn't reach": the sentence says the server answered and
+    /// names the reason, and the card renders this text (copy_scan pins that).
+    #[test]
+    fn a_refused_descriptor_has_its_own_sentence_that_never_says_unreachable() {
+        let s = refusal_sentence("this app update descriptor's serial (8) is OLDER than the highest already accepted (9)");
+        assert!(s.starts_with("The update server answered"), "{s}");
+        assert!(s.contains("serial (8) is OLDER"), "{s}");
+        assert!(!s.to_ascii_lowercase().contains("reach"), "{s}");
     }
 
     #[test]

@@ -56,11 +56,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   package (seen 27 Sep 2026, the first deb update). One action id = one message; the update
   wants its own id (`…privileged-update`) and sentence, the way the macOS prompt names what it
   is for.
-- [ ] **A refused descriptor reads as "Couldn't reach the update server"** in the About card
-  (`AppUpdateCard.tsx` maps any check error to that line; seen 28 Sep 2026 on the Dell where
-  the refusal was a replay): the server answered, and the sentence hides that the machine
-  will never be offered anything. The check should surface a refusal as its own state with
-  its own words.
+- [x] **A refused descriptor reads as "Couldn't reach the update server"** in the About card
+  ✓ 28 Sep 2026 — `app_update_check` returns a refusal as `checkRefusal` (Rust's
+  `refusal_sentence`, "The update server answered, but rexenv refused what it published: …"),
+  the card renders it as its fourth footer sentence, `copy_scan` pins the field, ledger #534.
+  (Seen on the Dell where the refusal was a replay: the server had answered, and the line
+  hid that the machine would never be offered anything.)
 - [x] **The accepted-descriptor serial is ONE key for every update document, so a machine
   that once read another document refuses this one as a replay** ✓ 28 Sep 2026 — per-document
   keys (`app_update::document_for`/`serial_key`, ledger #519; the first document keeps the

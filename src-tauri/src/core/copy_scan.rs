@@ -758,7 +758,9 @@ const LINK = "https://example.test/a//b";
                  'checked N ago' is the honest form"
             );
         }
-        for must in ["checked ", "install rexenv", "couldn't reach"] {
+        // `checkrefusal`: a refused descriptor renders Rust's own sentence (28 Sep 2026),
+        // not the unreachable one — the card must keep reading that field.
+        for must in ["checked ", "install rexenv", "couldn't reach", "checkrefusal"] {
             assert!(
                 text.contains(must),
                 "AppUpdateCard.tsx no longer says {must:?} — the ban must not be satisfied \

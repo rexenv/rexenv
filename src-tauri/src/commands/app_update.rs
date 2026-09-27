@@ -57,12 +57,27 @@ pub async fn app_update_check(
         )
         .await?;
     let conn = lock(&state)?;
+    let document = document();
     // A serial we already have is not an error — it is the ordinary answer on
-    // every check after the first, and `accept` says so by writing nothing.
-    core::app_update::accept(&conn, &document(), &doc, &sig)?;
-    let st = core::app_update::state(&conn, &document());
-    let check = core::app_update::store_check(&conn, st.offered.clone())?;
-    Ok(core::app_update::AppUpdateState { checked_at: Some(check.checked_at), ..st })
+    // every check after the first, and `accept` says so by writing nothing. A
+    // REFUSAL (stale serial, bad signature) is not "couldn't reach" either: the
+    // fetch succeeded, so it comes back as a state with its own sentence rather
+    // than an error the card would read as the server being away. It writes
+    // nothing — `checkedAt` keeps pointing at the last check that was accepted.
+    match core::app_update::accept(&conn, &document, &doc, &sig) {
+        Ok(_) => {
+            let st = core::app_update::state(&conn, &document);
+            let check = core::app_update::store_check(&conn, st.offered.clone())?;
+            Ok(core::app_update::AppUpdateState { checked_at: Some(check.checked_at), ..st })
+        }
+        Err(e) => {
+            log::warn!("app update: descriptor not accepted: {e}");
+            Ok(core::app_update::AppUpdateState {
+                check_refusal: Some(core::app_update::refusal_sentence(&e.to_string())),
+                ..core::app_update::state(&conn, &document)
+            })
+        }
+    }
 }
 
 /// What an apply actually did — measured, never assumed.

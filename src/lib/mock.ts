@@ -218,6 +218,7 @@ export const mockAppUpdateState: AppUpdateState = {
   checkedAt: null,
   skipped: null,
   installedPending: null,
+  checkRefusal: null,
 };
 
 /** Nothing offered in the browser mock, so nothing to be ready for. */

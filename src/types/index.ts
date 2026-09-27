@@ -771,6 +771,11 @@ export interface AppUpdateState {
    *  update whose quit the user cancelled ("Keep sharing"). While it is set the
    *  card offers no button: the work is done and only a restart is left. */
   installedPending: string | null;
+  /** The check's own verdict when the published descriptor was fetched and then
+   *  REFUSED (a stale serial, a bad signature) — Rust's sentence, rendered as
+   *  sent. `null` in every stored state; only the interactive check sets it. It
+   *  is not "couldn't reach": the server answered. */
+  checkRefusal: string | null;
 }
 
 /** What an apply actually did — measured by the backend, never inferred.

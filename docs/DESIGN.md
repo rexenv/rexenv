@@ -72,10 +72,13 @@ the shipped UI toward one.
   publishing a site lives in Full beside "runs code of its choosing as you", because a
   second prompt for a thing the chosen level spells out is friction the user reads as
   noise, not as consent.
-- **"Never checked", "checked and nothing", and "the check failed" are three sentences,
-  not one.** The self-update card says which, from ONE backend value carrying the timestamp
-  and the answer together — so a failed check keeps yesterday's timestamp instead of ageing
-  into a lie. It never says "up to date" (unprovable before a check has ever succeeded, and
+- **"Never checked", "checked and nothing", "couldn't reach the server" and "the server
+  answered but rexenv refused what it published" are four sentences, not one.** The
+  self-update card says which, from ONE backend value carrying the timestamp and the answer
+  together — so a failed check keeps yesterday's timestamp instead of ageing into a lie. The
+  fourth was folded into the third until 28 Sep 2026: a machine refusing every descriptor as a
+  replay read "couldn't reach" for a week, which hid that it would never be offered anything.
+  Its sentence is Rust's (`refusal_sentence`), rendered as sent. It never says "up to date" (unprovable before a check has ever succeeded, and
   true only of the instant it ran) and never "update available" (which says nothing about
   whether THIS Mac can install it — the refusals exist because sometimes it cannot). A
   refusal renders where the button would have been, with its fix as a copyable command and

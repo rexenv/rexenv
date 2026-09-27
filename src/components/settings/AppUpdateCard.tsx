@@ -122,9 +122,16 @@ export function AppUpdateCard({ downloads }: { downloads: DownloadsSnapshot }) {
             ? "offered"
             : "none";
 
+  // Three different facts, three sentences: the server could not be reached; the
+  // server answered and rexenv REFUSED what it published (Rust's sentence, as
+  // sent — a refusal used to read as "couldn't reach", and a machine stuck on a
+  // replayed serial showed that line for a week); or when the last accepted
+  // check ran.
   const footer = failed
     ? "Couldn't reach the update server just now, so nothing here says whether a newer rexenv exists."
-    : st.checkedAt
+    : st.checkRefusal
+      ? st.checkRefusal
+      : st.checkedAt
       ? `Release list from rexenv, checked ${agoLabel(st.checkedAt)}.`
       : "Not checked yet, so nothing here says whether a newer rexenv exists.";
 
@@ -139,6 +146,7 @@ export function AppUpdateCard({ downloads }: { downloads: DownloadsSnapshot }) {
       data-phase={phase}
       data-auto-check={String(st.autoCheck)}
       data-installed-pending={st.installedPending ?? ""}
+      data-check-refusal={st.checkRefusal ?? ""}
     >
       <div className="flex items-center gap-[14px] border-b border-rex-border-subtle py-[15px] last:border-b-0">
         <div className="flex-1">
