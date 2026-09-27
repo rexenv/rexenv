@@ -78,7 +78,17 @@ recipe. The tap stays the public home of the artefacts while the source is priva
   helper ended a child's group with `/bin/kill -KILL -<pid>`, and procps's kill on a pid that
   is no group leader signals the caller's own group — `cargo test` and the runner died with
   no log, four runs in a row, until the Ubuntu container bisect found it (ledger #733). The
-  Linux lib tests had never run anywhere before that day. The Windows lane's
-  `release-windows.sh` has still run only on the Dell; the next tag is the proof.
+  Linux lib tests had never run anywhere before that day; (6) `pgrep -g` counted a zombie
+  leader as alive (a cancel took the whole grace); (7) the openssl probe's candidate list had
+  lost the PATH entry to a rewrite. **Then the account's Actions spending limit was hit** (27
+  Sep 2026, ~12:40 UTC: "The job was not started because recent account payments have failed
+  or your spending limit needs to be increased") — the macOS lanes bill 10× and the arm64
+  runner is a larger runner. State at that point: macos-14 green, windows-latest and both
+  Linux lanes green through every test and gate but the openssl probe, whose fix is on master
+  unverified on CI. The Windows lane's `release-windows.sh` has still run only on the Dell.
+  **Next:** raise the spending limit (Settings → Billing → Actions), `verify-ci.yml` on
+  `windows-latest,ubuntu-22.04,ubuntu-22.04-arm`, then move the `v0.8.8` tag to HEAD (it points
+  at the bump commit, before these fixes; nothing was released from it) and let `release.yml`
+  draft on the tap.
 - A Linux 22.04 x86_64 **run** of the floor deb: the Dell's WSL gets an Ubuntu-22.04 distro for
   it (in progress).
