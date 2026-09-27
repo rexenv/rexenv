@@ -20,6 +20,12 @@ on:
 permissions:
   contents: read
 
+env:
+  # Debug info is most of a debug target (the Mac's debug/examples alone is ~13 GB) and
+  # nothing in the bar reads it; without this the Linux runners ran out of disk.
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
+
 jobs:
   plan:
     runs-on: ubuntu-latest
@@ -46,6 +52,19 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v4
+      # A hosted Linux runner has ~14 GB free on /, and verify.sh's debug tests + examples +
+      # two clippy passes need more: both Linux lanes of verify-ci (27 Sep 2026) died at 50
+      # minutes with "The hosted runner lost communication with the server" — starved. Two
+      # answers, both here: the image's preinstalled toolchains nobody here uses go
+      # (~25 GB back), and CARGO_PROFILE_DEV_DEBUG=0 (workflow env) drops the debug info
+      # that is most of a debug target.
+      - name: Free disk on the runner
+        if: startsWith(matrix.runner, 'ubuntu')
+        run: |
+          df -h / | tail -1
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost 2>/dev/null || true
+          sudo docker image prune -af >/dev/null 2>&1 || true
+          df -h / | tail -1
       - name: Install the webview dependencies (Linux only)
         if: startsWith(matrix.runner, 'ubuntu')
         run: |
@@ -79,6 +98,7 @@ jobs:
           code=$?
           cat verify.log
           echo "verify.sh exit $code"
+          df -h . | tail -1
           exit $code
       - uses: actions/upload-artifact@v4
         if: always()

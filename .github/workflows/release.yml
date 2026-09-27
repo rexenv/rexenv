@@ -48,6 +48,11 @@ permissions:
 
 env:
   TAG: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
+  # Debug info is most of a debug target and nothing in the bar reads it; the Linux
+  # runners ran out of disk under verify.sh without this (27 Sep 2026). The RELEASE
+  # profile is untouched.
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
 
 jobs:
   # ── One version, everywhere. A tag that disagrees with the configs would ship a dmg
@@ -246,6 +251,18 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
+      # A hosted Linux runner has ~14 GB free on /, and verify.sh's debug tests + examples +
+      # two clippy passes need more: both Linux lanes of verify-ci (27 Sep 2026) died at 50
+      # minutes with "The hosted runner lost communication with the server" — starved. Two
+      # answers, both here: the image's preinstalled toolchains nobody here uses go
+      # (~25 GB back), and CARGO_PROFILE_DEV_DEBUG=0 (workflow env) drops the debug info
+      # that is most of a debug target.
+      - name: Free disk on the runner
+        run: |
+          df -h / | tail -1
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost 2>/dev/null || true
+          sudo docker image prune -af >/dev/null 2>&1 || true
+          df -h / | tail -1
       # Tauri 2 on Linux links webkit2gtk 4.1 + gtk3 through pkg-config (the check image's
       # list, scripts/linux-check/Dockerfile) plus what the bundlers need; 22.04's names
       # (`libfuse2`, not 24.04's `libfuse2t64`).
