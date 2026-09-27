@@ -23,6 +23,12 @@ Verdicts: ✅ proven (a NAMED lib test or example exercises exactly this claim) 
 scripted manual) · 🚫 inherently unprovable (real second device / third-party
 internals / human eye → maps to a SMOKE step or an accepted posture).
 
+**The verdict names the OS.** rexenv is built for macOS, Windows and Linux
+(`docs/PLATFORMS.md`). ✅ means proven on every OS the claim covers; proven on one
+only is `◐ (macOS only)` / `◐ (Windows only)` / `◐ (Docker only)`, with the other
+OS's run as a row in that OS's section of `docs/SMOKE-TEST.md`. A claim that is
+OS-specific by nature says which OS in the "where" column (`platform/linux/…`).
+
 Two rules with teeth:
 - **Measure which layer can even see the subject before assigning a verdict.**
   Two L2 legs were planned for subjects Playwright cannot contain

@@ -1,7 +1,9 @@
 # Ports & pinned binaries (as built — macOS)
 
 The single place for the two fact sets that drift most. If you change a port or bump a
-binary, update THIS file in the same commit.
+binary, update THIS file in the same commit — the table for EVERY OS whose pin moved (macOS
+below, then the Windows and Linux artifact tables). Ports are common except where
+`docs/PLATFORMS.md` §3 says otherwise (the resolver: 53 on Windows).
 
 ## Port map
 

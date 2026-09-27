@@ -44,6 +44,15 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [x] **The instruction docs said "macOS and Windows", and "Linux is `todo!()`"** ✓ 28 Sep 2026 —
+  owner: every new feature must work on Mac, Windows and Linux, common work written in common
+  places, OS-specific work written OS-wise. New `docs/PLATFORMS.md` (§1 common, §2 where a
+  difference goes, §3 per-OS mechanism table, §4 the feature checklist, §5 per-OS proof, §6–§8
+  macOS/Windows/Linux traps); CLAUDE.md's rule is now "All three platforms" with its
+  non-negotiables split into common + OS-only; new `all-platforms` skill; `finish-task`,
+  `verify`, `ledger-row`, `live-check`, `release` (now the CI-only, every-OS flow) and
+  CONTRIBUTING name all three. Stale "Linux stubs are `todo!()`" removed from CLAUDE.md,
+  CONTRIBUTING and README (`platform/linux/` has none since L1, ledger #716).
 - [x] **Linux deb in-app update: the app did not come back after the swap** ✓ fixed 27 Sep 2026
   (`rules::relauncher_exe`, ledger #729): `current_exe()` is `/proc/self/exe` and read
   `/usr/bin/rexenv (deleted)` after `dpkg -i`, so spawning the relauncher was ENOENT and the

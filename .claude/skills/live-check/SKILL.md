@@ -29,7 +29,20 @@ cd src-tauri && cargo run --example <name>   # a single example
 - **system**: root ops, resolver files — one at a time, foreground (privileged
   prompts cannot render from a background shell).
 
-Every new example declares a tier in the script's table, or the script fails.
+Every new example declares a tier AND an OS in the script's table, or the script
+fails. The OS column: `both` (the name predates Linux — it means **every OS**),
+`macos`, `windows`, `linux`; the script skips an example on a host it does not list.
+An OS-neutral example is `both`, and its fixtures come from `common::fixture_base()`
+(`/private/tmp` on macOS, `/tmp` on Linux, the temp dir on Windows) — never a literal
+path (a Linux run died creating `/private`).
+
+## Running on the other OSes
+
+An example run on the Mac proves the macOS half only. Windows and Linux runs happen on
+their own hosts — `docs/TESTING.md` §"Proving a Windows claim" (cross-build the example
+with cargo-xwin, run on the Dell / Win11 VM over SSH) and §"Proving a Linux claim"
+(Ubuntu 22.04 arm64 UTM VM — debug builds, `CARGO_BUILD_JOBS=1`; the Dell's WSL2 for
+x86_64; the check container for process/file halves). Record which host ran it.
 
 ## Rules learned the hard way
 

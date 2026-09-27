@@ -10,8 +10,9 @@ A native, lightweight, limitless local development environment for web & WordPre
 > (serve any existing folder in place), full Valet/Herd migration (scan → import →
 > database copy → consent-gated connection rewrite, all reversible), plugin/theme
 > add-from-Git with streamed jobs and watchers, per-site Xdebug, and the 40+-command
-> `rex` CLI. Open work is tracked in `docs/TODO.md`; the Windows port is in
-> progress (`docs/PLAN-windows-port.md`) and Linux is `todo!()` stubs by design.
+> `rex` CLI. Built for **macOS, Windows and Linux (Ubuntu 22.04+)** from one tag
+> (`docs/PLATFORMS.md`: what is common, what differs per OS). Open work is tracked in
+> `docs/TODO.md`.
 
 ---
 
@@ -42,6 +43,7 @@ it on (`docs/ARCHITECTURE.md` §8.3).
 
 - **`docs/ARCHITECTURE.md`** — how rexenv works today, end-to-end. *Read this first.*
 - **`docs/MAP.md`** — where everything lives: subsystem → files → entry points.
+- **`docs/PLATFORMS.md`** — one feature, three OSes: what is common, where an OS difference goes, each OS's mechanism and traps, the checklist every feature walks.
 - **`CONTRIBUTING.md`** — build/run, the verification gate, conventions, deliberate decisions.
 - **`docs/TESTING.md`** / **`docs/CLAIM-LEDGER.md`** — the layer model + the claim
   inventory that is the project's test metric.
@@ -101,7 +103,7 @@ rexenv/
 ├── LICENSE · NOTICE · THIRD-PARTY-NOTICES.md · SECURITY.md
 ├── CLAUDE.md                   # agent router: rules + doc index
 ├── CONTRIBUTING.md             # build/run · the gate · conventions · deliberate decisions · DCO
-├── docs/                       # ARCHITECTURE · MAP · TESTING · CLAIM-LEDGER · PORTS
+├── docs/                       # ARCHITECTURE · MAP · PLATFORMS · TESTING · CLAIM-LEDGER · PORTS
 │   │                           #   TODO · INSTALL · SMOKE-TEST · PUBLISH-TESTING
 │   │                           #   CLI-ROADMAP · SIGNING · DESIGN · STATUS (generated)
 │   └── archive/                # historical: spec, design brief, task logs, audit,
@@ -208,7 +210,7 @@ rexenv/
         │   │                   #   DnsAgentManager, AppBundle, LocalIpc
         │   ├── macos/          # all 13 impls real (+ app_bundle.rs, relauncher.rs, webview_dialogs.rs, parent_death_guard.rs, activation.rs, prompt_applet.rs, keychain_trust.rs)
         │   ├── windows/        # all impls real (docs/PLAN-windows-port.md)
-        │   └── linux/          # all impls real since 24 Sep 2026, unmeasured on Linux (docs/PLAN-linux-port.md);
+        │   └── linux/          # all impls real since 24 Sep 2026, run on Ubuntu 22.04 (docs/PLAN-linux-port.md);
         │                       #   pure halves proc_table/resolved/units/desktop/trust tested on every host
         │
         └── state/              # app state
@@ -218,8 +220,8 @@ rexenv/
 ```
 
 ### Why this shape
-- **`platform/` is the whole cross-platform strategy.** Every OS difference (DNS, trust store, privileges, process supervision, paths, binaries, permissions, shell) is a trait with per-OS impls. Build the macOS impls now and leave Windows/Linux as `todo!()` — the goal is that adding them later means filling stubs, not restructuring. **Measured 12 Sep 2026, the tree is not there yet** (the `rex` CLI's unix socket and macOS binary URLs outside `platform/`; no php-fpm or `/etc/resolver` on Windows) — see `docs/PLAN-windows-port.md`.
-- **`core/` never imports OS-specific code** — it talks to `platform/` traits only. This keeps the Windows/Linux ports clean.
+- **`platform/` is the whole cross-platform strategy.** Every OS difference (DNS, trust store, privileges, process supervision, paths, binaries, permissions, shell) is a trait with per-OS impls in `macos/`, `windows/` and `linux/`, and every differing value or sentence is a `platform/words.rs` field with all three answers. macOS came first; Windows (Sep 2026) and then Linux (24 Sep 2026, two days, `core/` untouched) were added by filling stubs, not restructuring. Every new feature is built for all three in the same change — `docs/PLATFORMS.md`.
+- **`core/` never imports OS-specific code** — it talks to `platform/` traits only (a scan test fails the build otherwise, ledger #163). That is what keeps one feature one change on three OSes.
 - **`commands/` stay thin** — they translate IPC calls into `core/` calls, so the business logic is testable without the UI.
 - **Frontend mirrors the design** — `routes/` map 1:1 to screens (`docs/DESIGN.md` holds the design system + the comps' intentional divergences); `components/shell/` is the app shell; `lib/ipc/` is the typed bridge to Rust.
 

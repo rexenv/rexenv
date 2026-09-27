@@ -17,29 +17,36 @@ point → `docs/MAP.md` + README tree; invariant comment ("never/always/the ONE
 place") → `docs/CLAIM-LEDGER.md` row + verdict (`ledger-row` skill); a probe,
 example or tier → `docs/TESTING.md` + `scripts/live-checks.sh`; a hand-tested
 flow → `docs/SMOKE-TEST.md` / `docs/PUBLISH-TESTING.md`; port / pin / checksum →
-`docs/PORTS.md`; install or first-run prompt → `docs/INSTALL.md`; a `rex` command
+`docs/PORTS.md` (the table for each OS whose pin moved); install or first-run prompt →
+`docs/INSTALL.md`'s section for each OS it changes; a per-OS mechanism →
+`docs/PLATFORMS.md`; a `rex` command
 → `docs/CLI-ROADMAP.md`; a design token or honest-UI rule → `docs/DESIGN.md`.
 
 A doc that is now WRONG outranks one that is merely incomplete: if the fix closes
 a gap some doc lists as open, correct that entry. Say what it cost, not just what
 it does — the failure that motivated a rule is the half that survives.
 
-## 1b. Both platforms — did this ship for Windows too?
+## 1b. All three platforms — did this ship for Windows AND Linux too?
 
-macOS and Windows are both shipping targets (CLAUDE.md, "Both platforms"). Before
-the commit, answer these out loud:
+macOS, Windows and Linux are all build targets (CLAUDE.md, "All three platforms";
+`docs/PLATFORMS.md` §4 is the full checklist, the `all-platforms` skill the order).
+Before the commit, answer these out loud:
 
 - Did anything OS-shaped get spelled INLINE — a path, a URL or origin, a command
   line, a refusal, a user-facing sentence? It belongs in `platform/words.rs` or a
-  `platform/traits.rs` capability, with BOTH answers filled in. (`rexdb://localhost`
-  hardcoded for macOS is how the Windows Database Browser shipped blank, #703.)
+  `platform/traits.rs` capability, with ALL THREE answers filled in (`MACOS`,
+  `WINDOWS`, `LINUX`). (`rexdb://localhost` hardcoded for macOS is how the Windows
+  Database Browser shipped blank, #703.)
 - Does `core/` name an OS? It may not — ask for a capability instead (#698).
 - Is a policy enforced at two ends (a CSP, a header, a URL shape)? Check every end,
-  not the one you changed (#699 + #702 + #703 were all needed for ONE panel).
-- Is the claim proven on Windows, or only compiled there? `windows-check` is a
-  compile gate. If there is no Windows run, the ledger verdict is `◐` and
-  `docs/SMOKE-TEST.md`'s Windows section carries the row —
-  `docs/TESTING.md` §"Proving a Windows claim" says how to get a real one.
+  on every OS, not the one you changed (#699 + #702 + #703 were all needed for ONE panel).
+- Did `verify.sh` print `windows-check SKIPPED` or `linux-check SKIPPED`? Then that
+  OS was not even compiled — say so in the report.
+- Is the claim proven on each OS, or only compiled there? The two checks are compile
+  gates. For every OS without a run, the ledger verdict is `◐ (<os> only)` and
+  `docs/SMOKE-TEST.md`'s section for the missing OS carries the row —
+  `docs/TESTING.md` §"Proving a Windows claim" / §"Proving a Linux claim" say how.
+- Did a per-OS mechanism, host or trap change? `docs/PLATFORMS.md` §3 / §6–§8.
 
 ## 2. Tick the TODO row, in this commit
 
@@ -75,5 +82,7 @@ One task = one commit; do not batch.
 
 ## 6. Report
 
-Say what shipped, what proves it (test / example / ledger #), and what is still
-owed by hand (the row keeps saying so). If verify was not run, say that.
+Say what shipped, what proves it (test / example / ledger #) **per OS** — macOS,
+Windows, Linux: compiled only, example run on which host, or installed-package run —
+and what is still owed by hand (the row keeps saying so). If verify was not run, or a
+cross-OS gate SKIPPED, say that.

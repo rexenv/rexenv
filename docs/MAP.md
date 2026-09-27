@@ -12,7 +12,10 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
 - `core/` = platform-agnostic domain logic; talks to `platform/` only through traits.
 - `platform/` = ALL OS-specific code behind the 13 traits in `platform/traits.rs`
   (the 13th, `LocalIpc`, is local non-TCP IPC — its dial is a unix socket on every OS, AF_UNIX on
-  Windows (#611); the CLI/MCP listeners' Windows named pipes are W8)
+  Windows (#611); the CLI/MCP listeners' Windows named pipes are W8).
+  **Today `macos/`, `windows/` and `linux/` are all real** — what is common and what differs per
+  OS, and each OS's mechanism: `docs/PLATFORMS.md`. The parenthetical that follows is the
+  Windows fill's record, in the order it landed, with its ledger rows
   (macOS real; `windows/` stubs return `Error::Unported` / `unported!` — ledger #595 — except
   `Paths`, `PermissionManager` and `BinaryProvider`, written but not yet run on Windows, and
   `ProcessSupervisor`'s identity and port-gate half, run on the Dell:

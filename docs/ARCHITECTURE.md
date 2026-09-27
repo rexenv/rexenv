@@ -3,6 +3,9 @@
 The current-truth reference. Read this before any feature or bug task; it replaces
 reading the codebase end-to-end. Line numbers are anchors, not contracts — trust the
 file, verify the line. Ports + pinned versions: `docs/PORTS.md`. Open work: `docs/TODO.md`.
+**Written against macOS's mechanisms.** The behaviour described here is common to every OS;
+how Windows and Linux keep each promise (DNS route, edge, trust, prompts, autostart, IPC) is
+`docs/PLATFORMS.md` §3, and a new feature walks that file's §4 checklist for all three.
 
 rexenv = native, no-Docker local dev environment for web/WordPress developers.
 Tauri 2 desktop app: Rust backend + React/TS frontend. Runs the whole stack — edge

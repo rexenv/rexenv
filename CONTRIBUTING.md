@@ -3,24 +3,38 @@
 rexenv is a native (no-Docker) local dev environment: a Tauri 2 app — Rust backend,
 React/TS frontend — that runs a real local stack (edge proxy with HTTPS, nginx,
 multi-version PHP, MySQL/MariaDB/Postgres/Redis, WordPress tooling, DNS, mail,
-tunnels). macOS is complete; the Windows port is in progress (its stubs fail as
-`Error::Unported`), and Linux stubs are deliberate `todo!()`.
+tunnels). It is built for **macOS, Windows and Linux (Ubuntu 22.04+)** from one tag, and
+every change is made for all three at once — `docs/PLATFORMS.md` says what is common, where
+an OS difference goes, and how each OS keeps the same promise. No OS has a `todo!()`: a
+piece an OS cannot do yet fails as `Error::Unported`.
 
 Read `docs/ARCHITECTURE.md` before changing anything — it replaces reading the
 codebase end-to-end. `docs/MAP.md` answers "where does X live".
 
 ## Build and run
 
-Prerequisites (macOS): Rust stable · Node LTS + pnpm · Xcode Command Line Tools.
+Prerequisites, every OS: Rust stable · Node LTS + pnpm. Per OS:
+- **macOS** — Xcode Command Line Tools.
+- **Windows** — MSVC Build Tools 2022 + a Windows 10/11 SDK; WebView2 (preinstalled on 11).
+- **Linux (Ubuntu 22.04+)** — `build-essential pkg-config libwebkit2gtk-4.1-dev libgtk-3-dev
+  libayatana-appindicator3-dev librsvg2-dev libssl-dev libxdo-dev libsoup-3.0-dev
+  libjavascriptcoregtk-4.1-dev` (the list `scripts/linux-check/Dockerfile` builds with).
 
 ```bash
 pnpm install
 pnpm tauri dev          # the app (Vite + cargo, first build is slow)
 ```
 
-The app manages real system state (a root LaunchDaemon on :443, `/etc/resolver/*`
-files, a login-keychain CA, LaunchAgents). First run walks Onboarding and asks for
-those permissions. `Settings → Remove system changes` undoes all of it.
+The app manages real system state, a different mechanism per OS (`docs/PLATFORMS.md` §3):
+- **macOS** — a root LaunchDaemon on :443, `/etc/resolver/*` files, a login-keychain CA,
+  a LaunchAgent for DNS.
+- **Windows** — an NRPT rule (one UAC), a CA in `CurrentUser\Root`, a logon scheduled task
+  for DNS, an HKCU Run value for autostart.
+- **Linux** — the `rexenv0` DNS link + a systemd system unit for it and for the edge (polkit),
+  a CA in the system store and the NSS dbs, a systemd user unit for DNS, an XDG autostart entry.
+
+First run walks Onboarding and asks for those permissions. `Settings → Remove system
+changes` undoes all of it, on every OS.
 
 ## The verification gate
 
@@ -32,6 +46,8 @@ scripts/verify-full.sh   # release gate: verify + L1 sandbox tier + WebKit harne
 scripts/live-checks.sh   # tiered live checks (see the tier table inside)
 scripts/windows-check.sh # Windows x64 COMPILE check via cargo-xwin — runs inside verify.sh;
                          #   SKIPPED there without the toolchain + XWIN_ACCEPT_LICENSE=1 (TESTING.md §6)
+scripts/linux-check.sh   # Linux COMPILE check in an Ubuntu 22.04 container — runs inside verify.sh;
+                         #   SKIPPED there without a running Docker
 ```
 
 Green comes ONLY from a script's own final line (`verify: all green`). An ad-hoc
@@ -96,11 +112,14 @@ because"), its ledger row lands in the SAME commit.
 
 ## Working conventions
 
-- **Both platforms, same change.** macOS and Windows are both shipping targets. Anything
-  OS-shaped — a path, a URL or origin, a command line, a refusal, a user-facing sentence —
-  goes in `platform/words.rs` or behind a `platform/traits.rs` capability, never inline in
-  one OS's spelling. `verify.sh`'s `windows-check` only proves it COMPILES there; a Windows
-  claim needs a Windows run (`docs/TESTING.md` §"Proving a Windows claim").
+- **All three platforms, same change.** macOS, Windows and Linux are all build targets.
+  The common part is written once in `core/` (which names no OS); anything OS-shaped — a
+  path, a URL or origin, a command line, a refusal, a user-facing sentence — goes in
+  `platform/words.rs` (all three constants filled) or behind a `platform/traits.rs`
+  capability with an impl per OS, never inline in one OS's spelling. `verify.sh`'s
+  `windows-check` and `linux-check` only prove it COMPILES there; a behaviour claim needs a
+  run on that OS (`docs/TESTING.md` §"Proving a Windows claim" / §"Proving a Linux
+  claim"). The full checklist: `docs/PLATFORMS.md` §4.
 - **Plan first.** Non-trivial work starts with a written plan (`docs/PLAN-<feature>.md`
   while in flight; it moves to `docs/archive/` when shipped); surface assumptions before
   building. One task at a time. `./scripts/status.py` shows what is open and in flight.
@@ -118,8 +137,10 @@ because"), its ledger row lands in the SAME commit.
   are read from the record, never re-derived.
 - **Frontend:** typed IPC wrappers in `src/lib/ipc/` only (never raw `invoke`);
   design tokens from `src/styles/tokens.css` (never hardcoded hex); JetBrains Mono
-  for all technical values. WKWebView is the shipping engine — verify UI in the
-  WebKit harness (`scripts/wk-checks/`), not just Chrome.
+  for all technical values. The UI runs in three engines — WKWebView (macOS), WebView2
+  (Windows), webkitgtk (Linux) — never Chrome; verify UI in the WebKit harness
+  (`scripts/wk-checks/`), and a per-OS URL/origin (custom schemes differ) comes from
+  `platform/words.rs`.
 
 ## Deliberate decisions (don't "fix" these)
 
@@ -130,10 +151,11 @@ check `docs/ARCHITECTURE.md` and this list:
   checksum-locked. Nothing third-party ships inside the app bundle.
 - **Services OUTLIVE the app** (closing rexenv stops nothing; next launch adopts) —
   EXCEPT repo jobs/watchers and tunnels, which die with the app on purpose.
-- **Edge admin is a private unix socket, never TCP :2019** — a TCP admin on a root
-  Caddy is arbitrary file r/w as root.
-- **One php-fpm pool per PHP version, not per site.** Per-site needs ride the
-  request (fastcgi_param / SetEnv), not the pool.
+- **Edge admin is a private local socket, never TCP :2019** — a TCP admin on a root
+  Caddy is arbitrary file r/w as root. (A unix socket on every OS — AF_UNIX via Winsock on
+  Windows.)
+- **One PHP pool per PHP version, not per site** (php-fpm on macOS/Linux, a php-cgi
+  group on Windows). Per-site needs ride the request (fastcgi_param / SetEnv), not the pool.
 - **The MCP endpoint's capability comes from WHICH REGISTRY a tool is in**, never from
   anything the tool says about itself — read-only tools live in `mcp_server/tools.rs` and
   take a `ReadCtx` that has no mutating method; executing tools live in
@@ -145,11 +167,15 @@ check `docs/ARCHITECTURE.md` and this list:
   socket, dispatching to the same command fns as the UI. App not running = exit 2,
   by design (a headless second brain is the bug class the stack guard exists to kill).
 - **`commands/` are thin; `core/` is platform-agnostic; ALL OS code sits behind the
-  13 traits in `platform/traits.rs`.** Unfilled Windows stubs return `Error::Unported`
-  (or panic through `unported!` where the trait cannot return an error — never `todo!()`,
-  ledger #595); Linux stubs stay `todo!()`. A port fills them — never restructure around them.
-- **TLS leaves ≤398 days** (Safari rejects longer), CA trust in the LOGIN keychain
-  (System keychain is unreachable from a detached-root osascript).
+  13 traits in `platform/traits.rs`**, one impl folder per OS (`macos/`, `windows/`,
+  `linux/`). A piece an OS cannot do yet returns `Error::Unported` (or panics through
+  `unported!` where the trait cannot return an error — never `todo!()`, ledger #595/#716).
+  A port fills them — never restructure around them; the Linux port did it without
+  touching `core/`.
+- **TLS leaves ≤398 days** (Safari rejects longer; enforced on every OS). CA trust goes
+  to the USER's store where the OS has one: the LOGIN keychain on macOS (System keychain is
+  unreachable from a detached-root osascript), `CurrentUser\Root` on Windows (never
+  LocalMachine); Linux needs the system store AND the NSS dbs.
 - **Quote every path in generated configs** — app-data paths contain spaces.
 - **wp-cli never via `wp db …`/shell redirection** — bundled DB clients with
   shell-free I/O (PATH assumptions break in a Finder-launched app).
