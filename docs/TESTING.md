@@ -1506,6 +1506,17 @@ bloating the fast path:
   Linux run could ever show. Same family as the two tier tests that asserted "macOS 14" on a
   host whose words say "Windows 14": every assertion about the HOST's answer asks
   `words::current()`.
+- **The Linux LIB TESTS run in the check container** — `docker run … rexenv-linux-check:ubuntu22
+  cargo test --lib` with the target volume — and had never run anywhere before 27 Sep 2026
+  (the VM ran examples, the Dell ran clippy). Their first run found the release pipeline's
+  Linux killer: `dist_archive`'s test helper ended a child's process group with
+  `/bin/kill -KILL -<pid>`, and procps's kill, handed a pid that is no longer a group
+  leader (the "ok"/"failed" outcomes' child has exited), signals the CALLER's group — cargo
+  test died 137, and on a GitHub runner the job ("lost communication", no log, streamed or
+  not). BSD kill answers ESRCH, so weeks of Mac runs never saw it. The helper uses kill(2)
+  now and `stop_group` refuses pgid 0/1 on both unixes (ledger #733). Bisect tool when a
+  runner dies without a log: `verify-ci.yml` with `bisect=true` runs the bar's stages as
+  separate steps, whose logs survive.
 - **`notices-check.py` on a fresh CI runner** fetches each target's lockfile closure once
   (`cargo fetch --locked --target …`, only when `$CI` is set) before its offline `cargo metadata`
   read: a runner that has built for one OS has no registry cache for the other two targets'

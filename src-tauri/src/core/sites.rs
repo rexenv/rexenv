@@ -4270,8 +4270,11 @@ mod tests {
         // the way `symlink`'s `Unsupported` did — it quietly makes the test assert
         // something that cannot happen (W12). Locking a folder on Windows means ACLs,
         // which is a different fixture, not a mode.
+        // Not as root: root ignores mode bits, so a 0o555 folder is not locked for it and
+        // the move succeeds — the Ubuntu check container runs as root (27 Sep 2026). The
+        // release runners and every developer run as a user, where the fixture holds.
         #[cfg(unix)]
-        {
+        if unsafe { libc::geteuid() } != 0 {
             let locked = root.join("locked");
             std::fs::create_dir_all(&locked).unwrap();
             crate::test_support::set_mode(&locked, 0o555).unwrap();

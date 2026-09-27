@@ -66,7 +66,8 @@ fn parse_users(s: &str) -> Vec<(String, u32)> {
     out
 }
 
-/// The fields of `/proc/<pid>/stat` rexenv reads: the state letter and the parent pid.
+/// The fields of `/proc/<pid>/stat` rexenv reads: the state letter, the parent pid and the
+/// process group (field 5 — what `stop_group` ends, and what a zombie still belongs to).
 ///
 /// The second field, `comm`, is in parentheses and may itself contain spaces and parentheses
 /// (`(php-fpm: master process (/x/y.conf))` is real), so the split is at the LAST `)`, never the
@@ -75,6 +76,7 @@ fn parse_users(s: &str) -> Vec<(String, u32)> {
 pub(crate) struct StatFields {
     pub state: char,
     pub ppid: u32,
+    pub pgrp: u32,
 }
 
 pub(crate) fn parse_stat(stat: &str) -> Option<StatFields> {
@@ -82,7 +84,8 @@ pub(crate) fn parse_stat(stat: &str) -> Option<StatFields> {
     let mut it = rest.split_whitespace();
     let state = it.next()?.chars().next()?;
     let ppid = it.next()?.parse().ok()?;
-    Some(StatFields { state, ppid })
+    let pgrp = it.next()?.parse().ok()?;
+    Some(StatFields { state, ppid, pgrp })
 }
 
 /// Field 22 of `/proc/<pid>/stat`, `starttime` — clock ticks since boot, the process's identity
@@ -146,8 +149,8 @@ mod tests {
     #[test]
     fn stat_is_split_at_the_last_paren() {
         let s = "4242 (php-fpm: master process (/home/u/.local/share/rexenv/config/php-fpm-8.3.conf)) S 1 4242 4242 0 -1";
-        assert_eq!(parse_stat(s), Some(StatFields { state: 'S', ppid: 1 }));
-        assert_eq!(parse_stat("9 (nginx) Z 8 9 9"), Some(StatFields { state: 'Z', ppid: 8 }));
+        assert_eq!(parse_stat(s), Some(StatFields { state: 'S', ppid: 1, pgrp: 4242 }));
+        assert_eq!(parse_stat("9 (nginx) Z 8 9 9"), Some(StatFields { state: 'Z', ppid: 8, pgrp: 9 }));
         assert_eq!(parse_stat("garbage"), None);
     }
 

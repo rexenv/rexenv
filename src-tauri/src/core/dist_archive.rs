@@ -1032,10 +1032,23 @@ mod tests {
         {
             // The group, as the real supervisor does: the leader is its own group leader
             // (`process_group(0)` in the spawn above), so `-pgid` reaches the children.
-            let _ = std::process::Command::new("/bin/kill")
-                .arg("-KILL")
-                .arg(format!("-{pgid}"))
-                .status();
+            //
+            // The SYSCALL, never `/bin/kill`. This was `/bin/kill -KILL -<pgid>` until
+            // 27 Sep 2026, and on Linux that binary is procps's: handed a pid that is
+            // not a group leader — the "ok" and "failed" outcomes' child has already
+            // EXITED by the time the sweep calls this — procps kill signalled the
+            // CALLER's own process group (measured in the Ubuntu 22.04 image: the
+            // `kill` process itself died 137 beside its target). BSD kill on macOS
+            // answers ESRCH, which is why this passed for weeks on every Mac and killed
+            // `cargo test`, and with it the GitHub runner's job ("lost communication"),
+            // on every Linux lane of the release pipeline. kill(2) with a negative pid
+            // does exactly what the comment above says and nothing else; a pgid of 0
+            // or 1 would be the caller's own group / init, so it is refused outright.
+            if pgid > 1 {
+                unsafe {
+                    libc::kill(-(pgid as libc::pid_t), libc::SIGKILL);
+                }
+            }
         }
         #[cfg(windows)]
         {

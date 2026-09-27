@@ -535,15 +535,25 @@ impl ProcessSupervisor for LinuxSupervisor {
         Ok(cmd.spawn()?)
     }
     fn stop_group(&self, pgid: u32) -> Result<()> {
+        // `pgrep`/`pkill -g 0` means "MY OWN process group" — the app's — so a caller
+        // that reaches here with 0 (or 1, init) is refused before any signal is sent.
+        // Found the day procps's `kill -KILL -<pid>` killed the whole `cargo test`
+        // group in the release pipeline (27 Sep 2026, `dist_archive`'s test helper);
+        // this is the same family a step away, and a guard is cheaper than a repeat.
+        if pgid <= 1 {
+            return Err(Error::Other(format!("refusing to signal process group {pgid} — that would be rexenv's own")));
+        }
         fn group_signal(sig: &str, pgid: u32) {
             let _ = crate::platform::command("pkill").args([&format!("-{sig}"), "-g", &pgid.to_string()]).status();
         }
+        // `pgrep -g` counts ZOMBIES: a leader that died on the TERM but whose parent has not
+        // reaped it yet (the caller still holds the `Child`, reading its pipe) kept the group
+        // "alive" for the whole grace loop, so a cancel that should return at once took the
+        // full 3 s + 3 s before `Err` — measured in the Ubuntu 22.04 image, 27 Sep 2026
+        // (`captured_cap_kills_the_whole_group…` at 6.8 s, the Mac at under 1 s). /proc is
+        // asked directly: a member of the group that is not Z/X is what "alive" means.
         fn group_alive(pgid: u32) -> bool {
-            crate::platform::command("pgrep")
-                .args(["-g", &pgid.to_string()])
-                .output()
-                .map(|o| o.status.success() && !o.stdout.is_empty())
-                .unwrap_or(false)
+            all_pids().into_iter().any(|pid| matches!(proc_stat(pid), Some(s) if s.pgrp == pgid && s.state != 'Z' && s.state != 'X'))
         }
         group_signal("TERM", pgid);
         for _ in 0..STOP_GRACE_TRIES {

@@ -518,6 +518,14 @@ impl ProcessSupervisor for MacosSupervisor {
         // pitfalls. Liveness = "any process left in the group" (pgrep -g),
         // NOT the leader's pid: a dead leader can leave TERM-ignoring
         // children holding the group.
+        // `pgrep`/`pkill -g 0` means "MY OWN process group" — the app's — so a caller
+        // that reaches here with 0 (or 1, init) is refused before any signal is sent.
+        // Found the day procps's `kill -KILL -<pid>` killed the whole `cargo test`
+        // group in the release pipeline (27 Sep 2026, `dist_archive`'s test helper);
+        // this is the same family a step away, and a guard is cheaper than a repeat.
+        if pgid <= 1 {
+            return Err(Error::Other(format!("refusing to signal process group {pgid} — that would be rexenv's own")));
+        }
         fn group_signal(sig: &str, pgid: u32) {
             let _ = std::process::Command::new("pkill")
                 .args([&format!("-{sig}"), "-g", &pgid.to_string()])
