@@ -91,9 +91,11 @@ def rust_graph(targets=None):
                 # fetch that target's lockfile closure once (no build), then read offline as
                 # before. A developer's machine keeps the offline-only rule — a gate that quietly
                 # reaches for the network is not the same gate on a plane.
-                subprocess.run(["cargo", "fetch", "--locked", "--target", target,
-                                "--manifest-path", os.path.join(ROOT, manifest)],
-                               capture_output=True, encoding="utf-8")
+                fetched = subprocess.run(["cargo", "fetch", "--locked", "--target", target,
+                                          "--manifest-path", os.path.join(ROOT, manifest)],
+                                         capture_output=True, encoding="utf-8")
+                if fetched.returncode != 0:
+                    print(f"notices-check: cargo fetch --target {target} failed: {fetched.stderr.strip().splitlines()[-1] if fetched.stderr.strip() else 'no output'}")
                 done = subprocess.run(args, capture_output=True, encoding="utf-8")
             if done.returncode != 0:
                 raise GraphUnresolvable(f"{target} ({manifest}): {done.stderr.strip().splitlines()[-1] if done.stderr.strip() else 'cargo metadata failed'}")

@@ -11,13 +11,25 @@
 # half). Exit code is the verdict.
 set -euo pipefail
 
+# ── Which `openssl`: one that knows `pkeyutl -rawin` (ed25519 over raw bytes). macOS ships
+# LibreSSL as `openssl`, which does not — the GitHub macos-14 runner failed here with
+# "pkeyutl: Option unknown option -rawin" (27 Sep 2026) while every developer Mac had
+# Homebrew's OpenSSL 3 first on PATH. Asked, not assumed: the first candidate whose
+# `pkeyutl -help` lists `-rawin` wins; none is a named refusal, never a confusing exit.
+OPENSSL=""
+for c in "$OPENSSL" /opt/homebrew/opt/openssl@3/bin/openssl /usr/local/opt/openssl@3/bin/openssl /opt/homebrew/bin/openssl; do
+  if command -v "$c" >/dev/null 2>&1 && "$c" pkeyutl -help 2>&1 | grep -q -- '-rawin'; then OPENSSL="$c"; break; fi
+done
+[ -n "$OPENSSL" ] || { echo "$(basename "$0"): no "$OPENSSL" with 'pkeyutl -rawin' found (macOS's LibreSSL lacks it) — brew install openssl@3" >&2; exit 1; }
+
+
 cd "$(dirname "$0")/.."
 
 T="$(mktemp -d)"
 trap 'rm -rf "$T"' EXIT
 
-openssl genpkey -algorithm ed25519 -out "$T/key.pem" 2>/dev/null
-PUB="$(openssl pkey -in "$T/key.pem" -pubout -outform DER | tail -c 32 | xxd -p -c 64)"
+"$OPENSSL" genpkey -algorithm ed25519 -out "$T/key.pem" 2>/dev/null
+PUB="$("$OPENSSL" pkey -in "$T/key.pem" -pubout -outform DER | tail -c 32 | xxd -p -c 64)"
 [ "${#PUB}" = "64" ] || { echo "check-app-manifest-test: could not derive a test public key" >&2; exit 1; }
 
 # descriptor <dir> <serial> <version> [floor]: a signed document shaped like the published one.
@@ -40,7 +52,7 @@ descriptor() {
   }
 }
 EOF
-  openssl pkeyutl -sign -inkey "$T/key.pem" -rawin -in "$1/app-manifest.json" | xxd -p -c 256 > "$1/app-manifest.json.sig"
+  "$OPENSSL" pkeyutl -sign -inkey "$T/key.pem" -rawin -in "$1/app-manifest.json" | xxd -p -c 256 > "$1/app-manifest.json.sig"
 }
 
 descriptor "$T/old" 3 0.7.0

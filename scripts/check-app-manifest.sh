@@ -48,6 +48,18 @@
 # descriptor.
 set -euo pipefail
 
+# ── Which `openssl`: one that knows `pkeyutl -rawin` (ed25519 over raw bytes). macOS ships
+# LibreSSL as `openssl`, which does not — the GitHub macos-14 runner failed here with
+# "pkeyutl: Option unknown option -rawin" (27 Sep 2026) while every developer Mac had
+# Homebrew's OpenSSL 3 first on PATH. Asked, not assumed: the first candidate whose
+# `pkeyutl -help` lists `-rawin` wins; none is a named refusal, never a confusing exit.
+OPENSSL=""
+for c in "$OPENSSL" /opt/homebrew/opt/openssl@3/bin/openssl /usr/local/opt/openssl@3/bin/openssl /opt/homebrew/bin/openssl; do
+  if command -v "$c" >/dev/null 2>&1 && "$c" pkeyutl -help 2>&1 | grep -q -- '-rawin'; then OPENSSL="$c"; break; fi
+done
+[ -n "$OPENSSL" ] || { echo "$(basename "$0"): no "$OPENSSL" with 'pkeyutl -rawin' found (macOS's LibreSSL lacks it) — brew install openssl@3" >&2; exit 1; }
+
+
 cd "$(dirname "$0")/.."
 
 # `--windows`: the SECOND descriptor. Each OS reads its own (`core::app_update::
@@ -105,7 +117,7 @@ PUB="${CHECK_APP_MANIFEST_PUBKEY:-$(sed -n 's/^const RELEASE_PUBKEY: &str = "\(.
 # verified <doc> <hex sig file>: exit 0 only when the signature verifies.
 verified() {
   tr -d '[:space:]' < "$2" | xxd -r -p > "$2.bin" 2>/dev/null || return 1
-  openssl pkeyutl -verify -pubin -inkey "$TMP/pub.pem" -rawin \
+  "$OPENSSL" pkeyutl -verify -pubin -inkey "$TMP/pub.pem" -rawin \
     -in "$1" -sigfile "$2.bin" >/dev/null 2>&1
 }
 
