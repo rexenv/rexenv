@@ -16,6 +16,10 @@ on:
         description: "Which runners (comma-separated subset of: macos-14,windows-latest,ubuntu-22.04,ubuntu-22.04-arm)"
         required: false
         default: "macos-14,windows-latest"
+      bisect:
+        description: "true = run the bar's stages as SEPARATE steps (lib tests, cli tests, examples, clippy, the rest) instead of one verify.sh — a runner that dies keeps no log of the step it died in, but every finished step's log survives, so this says WHICH stage killed it"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -90,7 +94,28 @@ jobs:
           workspaces: |
             src-tauri
             cli
+      # ── Bisect mode: the same commands verify.sh runs, one per step, so a dying runner
+      #    leaves the finished steps' logs behind. Not the bar — a diagnostic.
+      - name: "bisect 1/5 — lib tests (src-tauri)"
+        if: inputs.bisect
+        run: cd src-tauri && cargo test --lib 2>&1 | tail -40
+      - name: "bisect 2/5 — cli tests"
+        if: inputs.bisect
+        run: cd cli && cargo test 2>&1 | tail -20
+      - name: "bisect 3/5 — examples build"
+        if: inputs.bisect
+        run: cd src-tauri && cargo build --examples 2>&1 | tail -20 && df -h . | tail -1 && free -m | sed -n 2p
+      - name: "bisect 4/5 — clippy, both crates"
+        if: inputs.bisect
+        run: (cd src-tauri && cargo clippy --all-targets -- -D warnings 2>&1 | tail -20) && (cd cli && cargo clippy --all-targets -- -D warnings 2>&1 | tail -10)
+      - name: "bisect 5/5 — the whole bar (everything else is quick)"
+        if: inputs.bisect
+        run: |
+          set +e
+          REXENV_ALLOW_PIPE=1 ./scripts/verify.sh 2>&1 | tee verify.log | tail -60
+          code=${PIPESTATUS[0]}; echo "verify.sh exit $code"; exit $code
       - name: verify.sh
+        if: ${{ !inputs.bisect }}
         run: |
           # STREAMED, not captured: a runner that dies mid-bar ("lost communication" — both
           # Linux lanes, twice, 27 Sep 2026) uploads no file, and a captured verify.log is the
