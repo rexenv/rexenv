@@ -44,6 +44,19 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [ ] **The accepted-descriptor serial is ONE key for every update document, so a machine
+  that once read another document refuses this one as a replay** (`core/app_update.rs`
+  `SERIAL_KEY`, found 28 Sep 2026 on the Dell): its Windows 0.8.5 held `serial 9`, the
+  macOS document's 0.8.3 of 19 Sep 17:54:25Z (a Windows build from before the per-OS URL
+  read `app-manifest.json`), and every Windows publish since — serials 6, 7, 8 — was
+  refused "OLDER than the highest already accepted (9)". The About card then said
+  **"Couldn't reach the update server"** (`AppUpdateCard.tsx` maps any check error to
+  that line), which is wrong twice: the server answered, and the machine will stay on
+  0.8.5 forever. Fix: key the stored serial by document (`…_serial:<document>`), and give a
+  refused descriptor its own sentence. Only machines that changed document are affected;
+  a fresh install reads one document from its first check. The Dell was reset by
+  deleting the three `app_update_release*` settings rows, and then updated 0.8.5 → 0.8.8
+  through the card.
 - [ ] **A Finder "Replace" of the running app can pop macOS's "rexenv quit unexpectedly"** (seen
   three times on the 13.6 VM, 23 Sep 2026, every one during a HAND swap of the bundle over ssh
   — `rm -rf` + copy, or copy + `mv`): the DNS agent's LaunchAgent (KeepAlive) relaunches

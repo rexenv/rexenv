@@ -268,7 +268,13 @@ release** — which is the property that makes a stolen key survivable. Ledger
    Publishing is also what makes the update archive reachable at all: a draft's assets
    answer 404 for everyone, so the §A gate protects in-app updaters for free.
 8. **`rexenv/runtimes` → Actions → "Publish app update manifest"** — dry run first, then
-   for real. It reads the tap's `releases/latest` (so it can never name a draft or a
+   for real. Six documents now (macOS, Windows, Linux deb/AppImage × x86_64/aarch64), one
+   run each, each behind the `manifest-signing` approval. **Approve them together only
+   because runtimes PR #12 (27 Sep 2026) taught the script to rebase and retry its push:**
+   the first 0.8.8 round approved all six from one page and five were rejected
+   `main -> main (fetch first)` — each run had committed its own file seconds after another
+   pushed. **A rerun does not fix that**: it checks out the run's ORIGINAL commit and
+   pushes from the same stale main. Queue a NEW run instead. It reads the tap's `releases/latest` (so it can never name a draft or a
    prerelease), takes the archive's immutable API digest, re-hashes what it downloaded,
    increments its own serial, signs with the reviewer-gated key and commits
    `app-manifest.json` + `.sig`. **Until this runs, no installed rexenv is offered

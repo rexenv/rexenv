@@ -135,9 +135,29 @@ clean-Mac SMOKE list, the Windows and Linux installers from this draft (Linux wa
 the identical floor build 36264369017 on the Dell's 22.04 WSL, Windows from the Dell's own
 build), and the in-app update 0.8.7 → 0.8.8 (needs the published descriptor — owner's step).
 
-**Publish is the owner's gate.** After it: the six runtimes descriptor publishes, then
-`check-app-manifest.sh` (macOS, `--windows`, `--linux <kind> <arch>` ×4) and the About-screen
-update from a reinstalled 0.8.7 on the VM and the Dell.
+**PUBLISHED 27 Sep 2026, 16:48:14Z.** Update cask run 36334584205 green (cask `0.8.8`, sha
+`6f393da4…`); both universal assets' API digests equal the local hashes. **Descriptors:**
+six dry runs green (serials macOS 14→15, Windows 7→8, the four Linux documents 0→1, their
+first); the six publishes approved from one page → five rejected `main -> main (fetch first)`
+(the push race; runtimes PR #12 rebases and retries now — a rerun cannot recover, it checks
+out the original commit). macOS serial 15 and Windows serial 8 published,
+`check-app-manifest.sh` and `--windows` all green. **§M measured on both desktops the same
+night:** the 15.8 VM reinstalled with the public 0.8.7 dmg → About "rexenv 0.8.8 · 27.0 MB
+has been published" → Install → `swapped to 0.8.8 (AtomicSwap)` → the "close and open
+again" dialog → relaunched `0.8.8 (49c0735)`, DNS agent answering, the kept bundle gone, no
+crash report. The Dell's installed Windows 0.8.5 → About → Check now first said **"Couldn't
+reach the update server"**: its stored serial was 9 (the macOS document of 19 Sep, read by
+a Windows build before the per-OS URL — `docs/TODO.md`'s new "one serial key" row); after
+deleting the three `app_update_release*` rows it offered 0.8.8 · 13.2 MB, then **refused
+with the ownership sentence** (`C:\Users\DELL\AppData\Local\rexenv belongs to another
+account … takeown /R /F …` — the 0.8.5 install had come through the elevated SSH token, so
+the folder was `BUILTIN\Administrators`'; the guard and its copy-paste fix are the designed
+shape); after `takeown` as the desktop user: Install → `Apps & Features now reads 0.8.8`,
+`swapped to 0.8.8 (RenamePair)` → dialog → relaunched `rex 0.8.8 (49c0735) · app rexenv
+0.8.8`, DNS agent restarted as 0.8.8 on udp 53, the previous bundle gone, Apps & Features
+`0.8.8`. Driven over ssh + a title-guarded click task in the desktop session
+(`schtasks /IT`). Linux descriptors: four fresh runs queued after PR #12; the Linux About
+proof is owed once they land.
 
 ## A) ✅ 0.8.7 — PUBLISHED (the first release that runs on macOS 13 and 14)
 

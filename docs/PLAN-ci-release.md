@@ -111,6 +111,8 @@ recipe. The tap stays the public home of the artefacts while the source is priva
   2026, ~15:30 UTC): the first release built entirely on GitHub Actions.** §A0 by hand on the
   downloaded assets and §A on the 15.8 UTM VM (upgraded install; `docs/PUBLISH-TESTING.md`
   0.8.8 record) passed the same evening. Owner's steps from here: Publish, then the six
-  runtimes descriptor publishes.
+  runtimes descriptor publishes. Published 16:48 UTC; cask bumped; macOS + Windows descriptors
+  live and the in-app update measured on the VM (0.8.7 → 0.8.8) and the Dell (0.8.5 → 0.8.8);
+  the six-from-one-page push race is fixed in runtimes PR #12 (`docs/RELEASING.md` step 8).
 - A Linux 22.04 x86_64 **run** of the floor deb: the Dell's WSL gets an Ubuntu-22.04 distro for
   it (in progress).
