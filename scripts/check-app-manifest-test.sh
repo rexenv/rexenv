@@ -18,9 +18,15 @@ set -euo pipefail
 # `pkeyutl -help` lists `-rawin` wins; none is a named refusal, never a confusing exit.
 OPENSSL=""
 for c in "$OPENSSL" /opt/homebrew/opt/openssl@3/bin/openssl /usr/local/opt/openssl@3/bin/openssl /opt/homebrew/bin/openssl; do
-  if command -v "$c" >/dev/null 2>&1 && "$c" pkeyutl -help 2>&1 | grep -q -- '-rawin'; then OPENSSL="$c"; break; fi
+  # CAPTURED and matched, never `| grep -q`: under `set -o pipefail` a grep that exits at
+  # the first match leaves the writer dying of SIGPIPE, the pipeline reports 141 and the
+  # `if` reads "no -rawin" — how ubuntu-22.04's and windows-latest's OpenSSL 3, which have
+  # it, were refused on 27 Sep 2026 (the nm|grep trap the ledger already records).
+  command -v "$c" >/dev/null 2>&1 || continue
+  help="$("$c" pkeyutl -help 2>&1 || true)"
+  case "$help" in *-rawin*) OPENSSL="$c"; break ;; esac
 done
-[ -n "$OPENSSL" ] || { echo "$(basename "$0"): no "$OPENSSL" with 'pkeyutl -rawin' found (macOS's LibreSSL lacks it) — brew install openssl@3" >&2; exit 1; }
+[ -n "$OPENSSL" ] || { echo "$(basename "$0"): no openssl with 'pkeyutl -rawin' found (macOS's LibreSSL lacks it) — brew install openssl@3" >&2; exit 1; }
 
 
 cd "$(dirname "$0")/.."

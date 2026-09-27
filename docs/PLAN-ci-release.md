@@ -73,7 +73,12 @@ recipe. The tap stays the public home of the artefacts while the source is priva
   runner without a tag); (2) `notices-check.py` needs a `cargo fetch` per target on a cold
   runner — every OS was red on it; (3) seven Linux pure tests built Linux text with
   `Path::join` and got `\` on windows-latest, two tier tests asserted "macOS 14" on a host
-  whose words say "Windows 14". The Windows lane's `release-windows.sh` has still run only
-  on the Dell; the next tag is the proof.
+  whose words say "Windows 14"; (4) macos-14's `openssl` is LibreSSL (no `pkeyutl -rawin`) —
+  the descriptor scripts pick an OpenSSL 3 now; (5) **the Linux killer**: `dist_archive`'s test
+  helper ended a child's group with `/bin/kill -KILL -<pid>`, and procps's kill on a pid that
+  is no group leader signals the caller's own group — `cargo test` and the runner died with
+  no log, four runs in a row, until the Ubuntu container bisect found it (ledger #733). The
+  Linux lib tests had never run anywhere before that day. The Windows lane's
+  `release-windows.sh` has still run only on the Dell; the next tag is the proof.
 - A Linux 22.04 x86_64 **run** of the floor deb: the Dell's WSL gets an Ubuntu-22.04 distro for
   it (in progress).
