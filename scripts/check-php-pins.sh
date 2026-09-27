@@ -45,9 +45,13 @@ PINS_REPO="${REXENV_PINS_REPO:-rexenv/runtimes}"
 PINS_PATH="scripts/publish-manifest.sh"
 PINS_URL="${REXENV_PINS_URL:-https://raw.githubusercontent.com/$PINS_REPO/main/$PINS_PATH}"
 
-# Ours, from the source of truth rather than a list typed twice.
-ours="$(sed -n '/^pub const PHP_VERSIONS/,/\];/p' src-tauri/src/core/binaries.rs \
-  | grep -oE '"[0-9]+\.[0-9]+\.[0-9]+"' | tr -d '"' | sort -V)"
+# Ours, from the source of truth rather than a list typed twice. `pub` optional:
+# 5cad407a (23 Sep 2026) made PHP_VERSIONS and ADMINER_VERSION private behind
+# `pins()`, and a `^pub const` match then found nothing — the `grep -o` exited 1,
+# pipefail made that the substitution's status, and `set -e` exited SILENTLY
+# before the "could not read" line below could say so. `|| true` lets it speak.
+ours="$(sed -n '/^\(pub \)*const PHP_VERSIONS/,/\];/p' src-tauri/src/core/binaries.rs \
+  | grep -oE '"[0-9]+\.[0-9]+\.[0-9]+"' | tr -d '"' | sort -V || true)"
 [ -n "$ours" ] || { echo "could not read PHP_VERSIONS from core/binaries.rs" >&2; exit 1; }
 
 # Through the API when `gh` is here, `raw.githubusercontent.com` otherwise.
@@ -81,7 +85,7 @@ theirs="$(printf '%s\n' "$remote" | sed -n '/^PINS=(/,/^)/p' \
 # looks successful); a publisher ceiling BELOW the app's quietly withholds
 # versions the app would happily take. Neither is visible from either side alone,
 # which is why this is the check that exits non-zero.
-app_adminer="$(sed -n 's/^pub const ADMINER_VERSION: &str = "\([^"]*\)".*/\1/p' \
+app_adminer="$(sed -n 's/^\(pub \)*const ADMINER_VERSION: &str = "\([^"]*\)".*/\2/p' \
   src-tauri/src/core/binaries.rs | head -1)"
 app_ceiling="$(sed -n 's/^pub const ADMINER_MAX_MAJOR: u32 = \([0-9]*\).*/\1/p' \
   src-tauri/src/core/updates.rs | head -1)"
