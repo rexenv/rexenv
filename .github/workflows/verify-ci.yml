@@ -1,0 +1,88 @@
+# The BAR on every release runner, without cutting a tag.
+#
+# `release.yml` runs scripts/verify.sh on macos-14, windows-latest, ubuntu-22.04 and
+# ubuntu-22.04-arm before it builds anything. A red bar there costs a tag (v0.8.8's first
+# run, 27 Sep 2026: macOS and Windows red in verify.sh, and the step's `bash -e` swallowed
+# the log). This workflow is the same step on the same runners, on demand, with the log
+# printed and kept — so the bar is made green here first and the next tag builds.
+#
+# Manual only. It changes nothing and publishes nothing.
+name: verify.sh on the release runners
+
+on:
+  workflow_dispatch:
+    inputs:
+      runners:
+        description: "Which runners (comma-separated subset of: macos-14,windows-latest,ubuntu-22.04,ubuntu-22.04-arm)"
+        required: false
+        default: "macos-14,windows-latest"
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+    steps:
+      - id: m
+        env:
+          RUNNERS: ${{ inputs.runners }}
+        run: |
+          set -euo pipefail
+          list="$(printf '%s' "$RUNNERS" | tr -d ' ' | tr ',' '\n' | grep -v '^$' | sed 's/.*/"&"/' | paste -sd, -)"
+          echo "matrix={\"runner\":[$list]}" >> "$GITHUB_OUTPUT"
+  verify:
+    needs: plan
+    name: verify.sh on ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the webview dependencies (Linux only)
+        if: startsWith(matrix.runner, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential curl ca-certificates pkg-config file dpkg-dev \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev \
+            libssl-dev libxdo-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libfuse2
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          if [ "$(uname -s)" = Darwin ]; then rustup target add aarch64-apple-darwin x86_64-apple-darwin; fi
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src-tauri
+            cli
+      - name: verify.sh
+        run: |
+          set +e
+          set -uo pipefail
+          ./scripts/verify.sh > verify.log 2>&1
+          code=$?
+          cat verify.log
+          echo "verify.sh exit $code"
+          exit $code
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verify-log-${{ matrix.runner }}
+          path: verify.log
+          if-no-files-found: ignore
