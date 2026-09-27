@@ -250,17 +250,11 @@ release** — which is the property that makes a stolen key survivable. Ledger
    API must equal the local `shasum -a 256` and the sidecar's text. That is the same
    hash match §A records, done one step earlier, and it is what proves the bytes
    survived the wire.
-   Tag the same `v<X.Y.Z>` **here** too, so a shipped dmg maps to a commit. Careful:
-   **pushing a `v*` tag triggers `release.yml`**, which would spend tens of 10×-billed
-   macOS minutes building a second dmg nobody can download. Keep the tag local
-   (`git tag -a v<X.Y.Z> <commit>`) until the repo is public, or disable the
-   **Release** workflow in the Actions tab first.
-
-   **This is enforced, not remembered** (16 Aug 2026): `scripts/git-hooks/pre-push`
-   refuses a `v*` tag push to `rexenv/rexenv` while the repo is private, and stands
-   down on its own once it is public. It exists because this paragraph is a memory,
-   and the piped-verdict rule proved that a rule relying on memory is not a control —
-   it was walked into by the person who wrote it, in the session he wrote it.
+   (Retired 27 Sep 2026: this step used to say "keep the tag local — pushing it would
+   build a dmg nobody can download", and `scripts/git-hooks/pre-push` refused the push.
+   Pushing the tag IS the release now; the hook instead refuses a tag whose version
+   disagrees with the four manifests AT THE TAGGED COMMIT — the one thing a local hook
+   can still catch before a 40-minute build, and cheaper than a second tag.)
 7. Publish the tap release → **Update cask** runs on that publish and bumps the cask
    within a minute (Actions → Update cask → Run workflow if it did not).
    Publishing is also what makes the update archive reachable at all: a draft's assets

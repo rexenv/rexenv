@@ -68,30 +68,26 @@ a control.
   (the receipt covers the whole tree, so a staged subset was never put through the bar
   on its own) and the quality of the bar itself.
 
-#### `pre-push` — no `v*` tag to a private `rexenv/rexenv`
+#### `pre-push` — a `v*` tag must name the version the tagged commit declares
 
-`.github/workflows/release.yml` fires on `push: tags: ["v*"]`. While this repo is
-private that build spends tens of macOS-runner minutes at the 10x private multiplier
-to produce a dmg **nobody can download** — `brew` fetches a cask url with no auth and
-a private repo's asset answers 404, which is the whole reason the artefact ships from
-the tap (`docs/RELEASING.md`). It also drafts a release *here*, beside the real one on
-the tap: a second artefact waiting to be published by mistake.
+Pushing a `v*` tag to `rexenv/rexenv` IS the release (since 27 Sep 2026: `release.yml`
+builds every OS on GitHub and drafts the release on the tap — `docs/PLAN-ci-release.md`).
+The hook runs `scripts/check-versions.sh` against the four manifests **at the tagged
+commit** (a scratch copy, never the working tree) and refuses a tag that disagrees:
+CI's first job would fail in seconds anyway, but a tag GitHub has seen is fixed by a
+second tag, not a deletion — cheaper to be refused here.
 
-RELEASING.md already said "keep the tag local". That was a memory, and the same
-finding applies as above — so it has a mechanism now.
+Until 27 Sep 2026 this hook did the opposite — refused every `v*` tag while the repo was
+private, because the old pipeline drafted a dmg nobody could download in this repo while
+the real one was cut by hand on the tap. The owner's ruling that no release is built on a
+device retired that flow and the refusal with it; a guard that outlives its reason trains
+`--no-verify` into a habit.
 
 - **Only `v*` tags to this repo's own remote.** Branches, other tags, forks and
-  mirrors are untouched; none of them trigger our workflow. Tag **deletions** pass.
-- **It retires itself.** It asks GitHub whether `rexenv/rexenv` is still private and
-  stands down the moment it is public — because then pushing a tag becomes the
-  intended release path, and a guard that outlives its reason trains `--no-verify`
-  into a habit, which would kill the pre-commit hook too.
-- **Unknown counts as private** (no `gh`, not logged in, offline). The errors are not
-  symmetrical: a wrong refusal costs one flag, a wrong allow costs a billed build and
-  a stray release. This only runs when you push a `v*` tag, so strict is cheap.
-- **Override explicitly**: `git push --no-verify origin v<X.Y.Z>`. The message says so.
-- **What it cannot see**: Actions → Release → *Run workflow*, which starts the same
-  build from the web UI.
+  mirrors are untouched. Tag **deletions** pass.
+- **Override explicitly**: `git push --no-verify origin v<X.Y.Z>`.
+- **What it cannot see**: Actions → Release → *Run workflow*, which creates the tag
+  itself (and runs the same guard first).
 
 The project's test metric is `docs/CLAIM-LEDGER.md` (claims proven / claims provable),
 never line coverage. The layer model — what each test level can and cannot prove — is

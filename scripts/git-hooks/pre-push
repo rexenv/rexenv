@@ -1,116 +1,77 @@
 #!/bin/bash
-# Refuse pushing a `v*` tag to a PRIVATE rexenv/rexenv.
+# Before pushing a `v*` tag to rexenv/rexenv: the tag must name the version the tree declares.
 #
-# Installed via `core.hooksPath` (see CONTRIBUTING.md), so it is versioned with
-# the repo rather than living unshared in `.git/hooks`.
+# Installed via `core.hooksPath` (see CONTRIBUTING.md), so it is versioned with the repo
+# rather than living unshared in `.git/hooks`.
 #
-# ── WHY ─────────────────────────────────────────────────────────────────────
+# ── WHAT THIS USED TO BE, AND WHY IT CHANGED ────────────────────────────────
 #
-# `.github/workflows/release.yml` fires on `push: tags: ["v*"]`. While
-# `rexenv/rexenv` is private that build is pure waste and worse than waste:
+# From 16 Aug to 27 Sep 2026 this hook REFUSED every `v*` tag push while the repo was
+# private: `release.yml` fired on the tag, spent 10×-billed macOS minutes, and drafted a
+# release HERE — next to the real one on the tap, which was cut by hand from a laptop.
+# Keeping the tag local was the interim flow, and the hook made that a mechanism rather
+# than a memory.
 #
-#   * it spends tens of macOS-runner minutes at the private-repo 10x multiplier,
-#   * to produce a dmg NOBODY CAN DOWNLOAD — `brew` fetches a cask url with no
-#     auth, and a private repo's release asset answers 404 to that, which is the
-#     entire reason the artefact ships from the tap instead (docs/RELEASING.md),
-#   * and it drafts a release in the wrong repo, next to the real one on the tap,
-#     which is exactly the kind of second artefact that gets published by mistake.
+# On 27 Sep 2026 the owner ruled the opposite (docs/PLAN-ci-release.md): every release is
+# built ONLY on GitHub Actions, every OS at once, and `release.yml` now drafts the release
+# ON THE TAP (with TAP_TOKEN) with all eight assets. Pushing the tag IS the release. The
+# refusal's three reasons are gone — the minutes buy the build nobody's laptop shaped, the
+# artefacts land where `brew` can fetch them, and nothing is drafted in this repo — so the
+# refusal is gone too. A guard that outlives its reason trains `--no-verify` into a habit.
 #
-# `docs/RELEASING.md` already says to keep the tag local until the repo is
-# public. That instruction is a MEMORY, and this repo's own finding is that a
-# rule which relies on memory is not a control: the piped-verdict rule was walked
-# into by the person who wrote it, in the session he wrote it. So the tag-local
-# rule gets a mechanism too, for the same reason the pre-commit receipt exists.
+# ── WHAT IT GUARDS NOW ──────────────────────────────────────────────────────
 #
-# ── IT RETIRES ITSELF ───────────────────────────────────────────────────────
-#
-# When `rexenv/rexenv` goes public, pushing a `v*` tag becomes the INTENDED way
-# to cut a release (RELEASING.md, "the automated pipeline"). So this asks GitHub
-# whether the repo is still private and stands down the moment it is not. A guard
-# that outlives its reason becomes a nuisance, and a nuisance trains `--no-verify`
-# into a habit, which kills every other hook here too.
+# The one thing a local hook can still catch before a 40-minute build: a tag that
+# disagrees with the four version manifests. `release.yml`'s first job runs the same
+# `scripts/check-versions.sh` and would fail in seconds — but a tag pushed to origin is a
+# tag GitHub has seen, and the fix is a second tag rather than a deletion. Better refused
+# here, from the tree the tag points at.
 #
 # ── WHAT IT DOES NOT CATCH ──────────────────────────────────────────────────
 #
-#   1. Anything but `v*` tags to this repo's own remote. Branches, other tags,
-#      other remotes and forks are untouched — none of them trigger release.yml.
-#   2. `Actions → Release → Run workflow`, which starts the same build from the
-#      web UI. Nothing local can see that.
-#   3. `--no-verify`, deliberately. This is an honesty aid on your own machine,
-#      not a permission system.
+#   1. Anything but `v*` tags to this repo's own remote.
+#   2. `Actions → Release → Run workflow`, which creates the tag itself (and runs the
+#      same guard first).
+#   3. `--no-verify`, deliberately. This is an honesty aid on your own machine.
 #
-# Tag DELETIONS are allowed: deleting a tag does not fire a `push` event with a
-# ref to build, and being unable to undo a mistake is not a safety property.
+# Tag DELETIONS are allowed.
 
 set -euo pipefail
 
 REMOTE_NAME="${1:-}"
 REMOTE_URL="${2:-}"
 
-# ── Only this repo's remote. A fork or a mirror has no release.yml of ours. ──
 case "$REMOTE_URL" in
   *rexenv/rexenv.git | *rexenv/rexenv | *rexenv/rexenv/) ;;
   *) exit 0 ;;
 esac
 
-# ── Collect the `v*` tags this push would CREATE or UPDATE ──────────────────
-# stdin is `<local-ref> <local-sha> <remote-ref> <remote-sha>` per ref. A local
-# sha of all zeros is a deletion.
 ZERO='0000000000000000000000000000000000000000'
-tags=()
+ROOT="$(git rev-parse --show-toplevel)"
 while read -r _local_ref local_sha remote_ref _remote_sha; do
   [ -n "${remote_ref:-}" ] || continue
   case "$remote_ref" in refs/tags/v*) ;; *) continue ;; esac
   [ "$local_sha" = "$ZERO" ] && continue # a deletion builds nothing
-  tags+=("${remote_ref#refs/tags/}")
+  tag="${remote_ref#refs/tags/}"
+  version="${tag#v}"
+  # The manifests AT THE TAGGED COMMIT, not the working tree: what CI will build.
+  commit="$(git rev-parse "${local_sha}^{commit}")"
+  # check-versions.sh cd's to ITS OWN repo root, so it is copied beside the manifests it
+  # should read — the tagged commit's, in a scratch tree, never the working tree's.
+  tmp="$(mktemp -d)"
+  for f in src-tauri/tauri.conf.json package.json src-tauri/Cargo.toml cli/Cargo.toml scripts/check-versions.sh; do
+    mkdir -p "$tmp/$(dirname "$f")"
+    git show "$commit:$f" > "$tmp/$f"
+  done
+  chmod +x "$tmp/scripts/check-versions.sh"
+  if ! "$tmp/scripts/check-versions.sh" "$version" >/dev/null 2>&1; then
+    printf '\n  ✗ pre-push: %s names %s, but the manifests at %s disagree:\n\n' "$tag" "$version" "${commit:0:8}" >&2
+    "$tmp/scripts/check-versions.sh" "$version" 2>&1 | sed 's/^/      /' >&2 || true
+    printf '\n  Bump all four (docs/RELEASING.md step 1), commit, and tag THAT commit.\n\n' >&2
+    rm -rf "$tmp"
+    exit 1
+  fi
+  rm -rf "$tmp"
+  echo "pre-push: $tag agrees with the manifests at ${commit:0:8} — release.yml will build it on GitHub"
 done
-
-[ ${#tags[@]} -eq 0 ] && exit 0
-
-# ── Is the repo still private? ──────────────────────────────────────────────
-# UNKNOWN is treated as private, i.e. refused. The two errors are not
-# symmetrical: a wrong refusal costs one `--no-verify`, and a wrong allow costs
-# a 10x-billed build plus a stray draft release in the wrong repo. This only
-# ever runs when someone pushes a `v*` tag, so the strict direction is cheap.
-private='unknown'
-if command -v gh >/dev/null 2>&1; then
-  private="$(gh api repos/rexenv/rexenv --jq '.private' 2>/dev/null || echo unknown)"
-fi
-
-if [ "$private" = "false" ]; then
-  exit 0 # public — pushing a tag is now the intended release path
-fi
-
-printf '\n  ✗ pre-push: refusing to push %s to a private rexenv/rexenv\n\n' "${tags[*]}"  >&2
-if [ "$private" = 'unknown' ]; then
-  cat >&2 <<'MSG'
-    (Could not ask GitHub whether the repo is public — no `gh`, not logged in,
-    or offline. Unknown is treated as PRIVATE, because a wrong refusal costs you
-    one flag and a wrong allow costs a billed build and a stray release.)
-
-MSG
-fi
-cat >&2 <<MSG
-    release.yml fires on \`push: tags: ["v*"]\`. While this repo is private that
-    build spends tens of macOS-runner minutes at the 10x private multiplier to
-    produce a dmg nobody can download — \`brew\` fetches a cask url with NO auth,
-    and a private repo's asset answers 404. It also drafts a release here, beside
-    the real one on the tap, which is a second artefact waiting to be published
-    by mistake.
-
-  Keep the tag local — that is the whole interim flow (docs/RELEASING.md):
-
-      git tag -a v<X.Y.Z> <commit>     # local, so a dmg maps to a commit
-      # the ARTEFACT goes to the tap:
-      gh release create v<X.Y.Z> --repo rexenv/homebrew-tap --draft ...
-
-  If you MEAN to run the CI build — the repo just went public, or you have
-  disabled the Release workflow in the Actions tab first:
-
-      git push --no-verify origin ${tags[*]}
-
-  This hook stands down on its own once rexenv/rexenv is public.
-  See scripts/git-hooks/pre-push and docs/RELEASING.md.
-
-MSG
-exit 1
+exit 0
