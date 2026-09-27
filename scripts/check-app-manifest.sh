@@ -54,21 +54,21 @@ set -euo pipefail
 # Homebrew's OpenSSL 3 first on PATH. Asked, not assumed: the first candidate whose
 # `pkeyutl -help` lists `-rawin` wins; none is a named refusal, never a confusing exit.
 OPENSSL=""
+# Probed by DOING, not by name or help text: the two earlier probes each read something
+# other than the capability — `-help` (OpenSSL 3.0.2 has -rawin and does not list it) and
+# `version` (matched, and the macOS runner still signed with LibreSSL, 27 Sep 2026). A
+# throwaway ed25519 key signed with `pkeyutl -sign -rawin` either works or it does not.
+_probe="$(mktemp -d)"
 for c in openssl /opt/homebrew/opt/openssl@3/bin/openssl /usr/local/opt/openssl@3/bin/openssl /opt/homebrew/bin/openssl; do
-  # CAPTURED and matched, never `| grep -q`: under `set -o pipefail` a grep that exits at
-  # the first match leaves the writer dying of SIGPIPE, the pipeline reports 141 and the
-  # `if` reads "no -rawin" — how ubuntu-22.04's and windows-latest's OpenSSL 3, which have
-  # it, were refused on 27 Sep 2026 (the nm|grep trap the ledger already records).
   command -v "$c" >/dev/null 2>&1 || continue
-  # By NAME and version, not by grepping `-help`: OpenSSL 3.0.2's pkeyutl help does not list
-  # `-rawin` although the flag works (ubuntu-22.04, 27 Sep 2026 — the Rust test that signs
-  # through the same binary passed in the same run). `-rawin` exists in every OpenSSL since
-  # 1.1.1; LibreSSL, which macOS calls `openssl`, has never had it.
-  ver="$("$c" version 2>/dev/null || true)"
-  case "$ver" in
-    "OpenSSL 1.1.1"*|"OpenSSL 3"*|"OpenSSL 4"*) OPENSSL="$c"; break ;;
-  esac
+  if "$c" genpkey -algorithm ed25519 -out "$_probe/k.pem" >/dev/null 2>&1 \
+     && printf 'x' > "$_probe/m" \
+     && "$c" pkeyutl -sign -inkey "$_probe/k.pem" -rawin -in "$_probe/m" -out "$_probe/s" >/dev/null 2>&1 \
+     && [ -s "$_probe/s" ]; then
+    OPENSSL="$c"; break
+  fi
 done
+rm -rf "$_probe"
 [ -n "$OPENSSL" ] || { echo "$(basename "$0"): no openssl with 'pkeyutl -rawin' found (macOS's LibreSSL lacks it) — brew install openssl@3" >&2; exit 1; }
 
 
