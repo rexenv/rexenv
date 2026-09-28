@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronRight, Globe, Loader2, Lock, RotateCw, Shield } from "lucide-react";
-import { coreBinariesPlan, dnsStatus, legacyNotice, prefetchCoreBinaries, retryDownload, setupEdgeConflict, systemSetup } from "@/lib/ipc";
+import { coreBinariesPlan, dnsStatus, legacyNotice, listSites, prefetchCoreBinaries, retryDownload, setupEdgeConflict, systemSetup } from "@/lib/ipc";
 import { onTitleBarMouseDown } from "@/lib/window-drag";
 import { useDownloads } from "@/lib/useDownloads";
 import { Track, pctOf } from "@/components/shell/DownloadPanel";
@@ -21,8 +21,16 @@ const STEP_META = [
   { label: "Welcome", primary: "Get started" },
   { label: "Step 2 of 4 · Install", primary: "Continue" },
   { label: "Step 3 of 4 · Domains & SSL", primary: "Continue" },
+  // The last step's button is decided by the sites the machine already has (below): a
+  // re-setup after an update reaches this page too, and "Create your first site" over
+  // three existing sites was what the 22.04 VM showed on 28 Sep 2026.
   { label: "All set", primary: "Create your first site" },
 ];
+
+/** The finish button, from the sites count the backend reports — never assumed. */
+function finishLabel(siteCount: number): string {
+  return siteCount > 0 ? "Open your sites" : "Create your first site";
+}
 
 export function Onboarding() {
   const navigate = useNavigate();
@@ -30,6 +38,11 @@ export function Onboarding() {
   const finish = () => navigate("/sites");
   const next = () => (step >= STEP_COUNT - 1 ? finish() : setStep(step + 1));
   const meta = STEP_META[step];
+  // The sites this machine already has: a re-setup (an update whose route script went
+  // stale, a second account) lands here with sites, and the page must not read as a first run.
+  const { data: sites } = useQuery({ queryKey: ["sites"], queryFn: listSites });
+  const siteCount = sites?.length ?? 0;
+  const primary = step === STEP_COUNT - 1 ? finishLabel(siteCount) : meta.primary;
 
   // The Domains & SSL step is MANDATORY: without the resolver + trusted CA no
   // site loads, so Continue stays locked until real state says both are done
@@ -85,7 +98,7 @@ export function Onboarding() {
           {step === 0 && <Welcome />}
           {step === 1 && <Install />}
           {step === 2 && <Domains />}
-          {step === 3 && <OnboardingDone />}
+          {step === 3 && <OnboardingDone siteCount={siteCount} />}
         </div>
       </div>
 
@@ -102,7 +115,7 @@ export function Onboarding() {
             title={locked ? "Finish the domains & SSL setup to continue" : undefined}
             className="flex h-10 items-center gap-2 rounded-[11px] bg-primary px-[18px] text-[0.84375rem] font-semibold text-white shadow-glow-primary transition-[filter] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45 disabled:shadow-none disabled:hover:brightness-100"
           >
-            {meta.primary}
+            {primary}
             {step < STEP_COUNT - 1 && <ChevronRight className="h-[15px] w-[15px]" strokeWidth={2.2} />}
           </button>
         </div>
@@ -472,7 +485,7 @@ function CommandLine({ command }: { command: string }) {
 /** The last step tells the truth the Install step's rows tell: ready, still
  *  downloading, or failed — and only the first one gets "Everything's
  *  installed". See `useCoreComponents` for the run that made this a rule. */
-export function OnboardingDone() {
+export function OnboardingDone({ siteCount = 0 }: { siteCount?: number }) {
   const core = useCoreComponents();
   const [retrying, setRetrying] = useState(false);
   const retryAll = () => {
@@ -481,12 +494,19 @@ export function OnboardingDone() {
       setRetrying(false),
     );
   };
+  // "your sites" once the machine has any — the sentence about a first site is a first
+  // run's, and this page is reached again after an update re-runs setup.
+  const sitesWord = siteCount === 1 ? "your site" : `your ${siteCount} sites`;
   const copy =
     core.verdict === "failed"
       ? `Your local domains work over HTTPS, but ${core.failed.length} of ${core.total} core components failed to download. Retry them here or from the footer — a site can't start until they land.`
       : core.verdict === "downloading"
-        ? `Your local domains work over HTTPS. Core components are still downloading (${core.done} of ${core.total} ready) — create your first site now and it starts as soon as they land.`
-        : "Everything's installed and your local domains work over HTTPS. Create your first site and rexenv will serve it instantly.";
+        ? siteCount > 0
+          ? `Your local domains work over HTTPS. Core components are still downloading (${core.done} of ${core.total} ready) — ${sitesWord} start as soon as they land.`
+          : `Your local domains work over HTTPS. Core components are still downloading (${core.done} of ${core.total} ready) — create your first site now and it starts as soon as they land.`
+        : siteCount > 0
+          ? `Everything's installed and your local domains work over HTTPS. rexenv will serve ${sitesWord} instantly.`
+          : "Everything's installed and your local domains work over HTTPS. Create your first site and rexenv will serve it instantly.";
   const ready = core.verdict === "ready";
   return (
     <div className="flex flex-col items-center">

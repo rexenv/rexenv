@@ -78,9 +78,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   itself only when setup did not. Found the same day (0.8.9 over 0.8.8 on the 22.04 VM,
   SMOKE P1): two `pkexec` steps two minutes apart, the second rewriting a store that
   already held the certificate. Proof through the installed app: the release after 0.8.9.
-- [ ] **The onboarding finish page says "Create your first site" on an install that has
-  sites** (28 Sep 2026: the 22.04 VM's re-setup, three sites present). A re-setup reaches
-  that page too; the button should read from the sites count.
+- [x] **The onboarding finish page says "Create your first site" on an install that has
+  sites** ✓ 28 Sep 2026 — the page reads the sites count from the backend (`listSites`):
+  with sites the button is "Open your sites" and the sentence "rexenv will serve your N
+  sites instantly" (or "your site start as soon as they land" while components download);
+  a first run keeps its words. Found on the 22.04 VM's re-setup, three sites present.
 - [ ] **The polkit sentence for an in-app update is the generic one** — "rexenv needs
   administrator permission to change system settings — the .rex DNS route, the HTTPS edge, or
   the local certificate authority" — while the step it authorises is `dpkg -i` of the new

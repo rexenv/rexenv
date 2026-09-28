@@ -2392,7 +2392,8 @@ rexenv0 <name>` and read `Current Scopes:`.
       file even though "CA trusted" already held) — **fixed on master the same day, ledger
       #723: setup's root legs are one step, and the store leg is skipped when the store already
       holds the PEM; one dialog is owed a run through the next release**; and the finish page
-      says "Create your first site" on an install that has three (TODO row).
+      says "Create your first site" on an install that has three (fixed on master the same day:
+      the page reads the sites count — "Open your sites" / "your 3 sites").
       History: P1 with the FIRST design (a global resolved drop-in) FAILED — `example.com`
       resolved to `127.0.0.1`; the dummy link replaced it the same day (#717).
       **Tell:** every site on the internet resolving to loopback — a DEFAULT route. If the dummy
