@@ -88,6 +88,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   with sites the button is "Open your sites" and the sentence "rexenv will serve your N
   sites instantly" (or "your site start as soon as they land" while components download);
   a first run keeps its words. Found on the 22.04 VM's re-setup, three sites present.
+- [ ] **A `certutil` that exists but cannot run gives a raw "io error: Permission denied (os
+  error 13)"** on the Linux trust step (28 Sep 2026, the VM with `chmod -x /usr/bin/certutil`);
+  only an ABSENT one gets the `sudo apt install libnss3-tools` sentence. Small: spawn failures
+  of certutil should read as the same sentence with the reason appended.
 - [ ] **The polkit sentence for an in-app update is the generic one** — "rexenv needs
   administrator permission to change system settings — the .rex DNS route, the HTTPS edge, or
   the local certificate authority" — while the step it authorises is `dpkg -i` of the new
@@ -105,7 +109,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   keys (`app_update::document_for`/`serial_key`, ledger #519; the first document keeps the
   bare names), L0 `each_document_has_its_own_floor_and_the_first_document_keeps_the_bare_keys`.
   Found on the Dell (`core/app_update.rs` `SERIAL_KEY`), and the same hour on the 22.04 VM:
-  its 0.8.7 dev deb held serial 14 — the macOS document — and refused the Linux document's serial 1): its Windows 0.8.5 held `serial 9`, the
+  its 0.8.7 dev deb held serial 14 — the macOS document — and refused the Linux document's serial 1;
+  and a third time on 0.8.8 between two LINUX documents: the deb app stored the deb document,
+  the AppImage app on the same machine then offered the `.deb` and refused it as "printed no
+  version"): its Windows 0.8.5 held `serial 9`, the
   macOS document's 0.8.3 of 19 Sep 17:54:25Z (a Windows build from before the per-OS URL
   read `app-manifest.json`), and every Windows publish since — serials 6, 7, 8 — was
   refused "OLDER than the highest already accepted (9)". The About card then said

@@ -2467,9 +2467,14 @@ rexenv0 <name>` and read `Current Scopes:`.
       2026 (VM, 0.8.9's own onboarding):** the site row's browser icon opened `lm.rex` in snap
       Firefox 156 — the shield, no warning; Settings' "Trust HTTPS in Firefox" reads "Enabled in
       all 1 profile".
-- [ ] An **AppImage** on a machine without `libnss3-tools` (the deb `Depends` on it, so only the
+- [x] An **AppImage** on a machine without `libnss3-tools` (the deb `Depends` on it, so only the
       AppImage can meet this): the trust step fails with the `sudo apt install libnss3-tools`
-      sentence, and the system half was NOT half-applied. **Open: no run recorded.**
+      sentence, and the system half was NOT half-applied. **✓ 28 Sep 2026 (VM, the AppImage
+      app, `certutil` moved off PATH):** Settings → Re-trust → "certutil is not installed, so
+      rexenv cannot add its certificate authority to your browsers' trust store. Install it,
+      then retry: `sudo apt install libnss3-tools`" with a copy button; no `pkexec` ran and the
+      system store's file kept its mtime. (A certutil that is present but not executable gives
+      the raw "io error: Permission denied (os error 13)" instead — TODO row.)
 - [ ] Settings → Remove system changes → both stores empty (NSS dbs and the system file), the
       `rexenv0` link, route marker, units and autostart entry gone. **Open: no Linux run recorded.**
 
@@ -2486,9 +2491,13 @@ rexenv0 <name>` and read `Current Scopes:`.
       **✓ 28 Sep 2026 (VM, 0.8.9):** autostart entry moved aside, reboot, login → only
       `rexenv --dns-agent` running, unit `active`, `dig` → 127.0.0.1; `systemctl --user kill
       rexenv-dns` → `active` again after 3 s, `dig` answers.
-- [ ] AppImage: the unit and the autostart entry name the `.AppImage` path, never a
-      `/tmp/.mount_…` one. **Open: no AppImage has been installed and run past `--print-version`
-      (§A0-linux).**
+- [x] AppImage: the unit and the autostart entry name the `.AppImage` path, never a
+      `/tmp/.mount_…` one. **✓ 28 Sep 2026 (VM, the tap's 0.8.8 aarch64 AppImage, no
+      `libfuse2` → `APPIMAGE_EXTRACT_AND_RUN`):** the process runs from
+      `/tmp/appimage_extracted_…/usr/bin/rexenv` with `APPIMAGE=/home/rexenv/Apps/rexenv_0.8.8_aarch64.AppImage`;
+      after launch `rexenv-dns.service` reads `ExecStart="/home/rexenv/Apps/rexenv_0.8.8_aarch64.AppImage"
+      --dns-agent` and `rexenv.desktop` `Exec="…AppImage" --hidden` (both had been the deb's
+      `/usr/bin/rexenv`), and the agent process is the AppImage.
 - [x] ✓ 24 Sep 2026 (VM, an owner-approved public test tunnel): **the tunnel guard (ledger
       #722)** — `guard.rex` shared, cloudflared and `rexenv --tunnel-guard …` beside it; `kill -9`
       the app → both gone within 6 s.
@@ -2541,16 +2550,32 @@ rexenv0 <name>` and read `Current Scopes:`.
       document (TODO row). **28 Sep, 0.8.8 → 0.8.9 on the same VM:** offered (serial 1 → 2), one
       polkit dialog, `dpkg -l` 0.8.9, swap logged, OK → 0.8.8's relauncher failed the same way
       (expected — the old side spawns), hand open → 0.8.9. Closes on 0.8.9 → the next release.
-- [ ] AppImage in a folder you own, an older version: Check now reads
+- [x] AppImage in a folder you own, an older version: Check now reads
       `app-manifest-linux-appimage-<arch>.json`; Update swaps the file with NO prompt; the app
       comes back as the new version FROM THE SAME PATH; the folder holds no `.rexenv-update-*`
       after the sweep. A host without `libfuse2`: still works (`APPIMAGE_EXTRACT_AND_RUN`).
-      **Open: no run recorded** (`linux_app_swap_check` proves the exchange on a fixture, 16/16).
+      **✓ 28 Sep 2026 (VM without `libfuse2`, 0.8.8 AppImage → 0.8.9):** Check now → "0.8.9 ·
+      86.2 MB" (the AppImage document, serial 2) → Install → no prompt (no `pkexec` in the
+      journal) → `swapped to 0.8.9 (AtomicSwap); previous bundle kept at
+      ~/Apps/.rexenv-update-<pid>/…` → the same path `~/Apps/rexenv_0.8.8_aarch64.AppImage` now
+      prints `0.8.9` → OK → came back from that path as `0.8.9 (bfcd8cf)` with
+      `APPIMAGE=` the same file, the agent relaunched as 0.8.9. **First attempt showed the
+      shared-key bug from the other side:** the deb app had stored the deb document under 0.8.8's
+      one key minutes earlier, so the AppImage app offered "0.8.9 · 14.5 MB", downloaded the
+      `.deb`, and refused it as "did not run as rexenv (it printed no version)" — nothing changed;
+      cleared the cache and the AppImage document was read (#519, fixed in 0.8.9). The kept
+      previous copy's sweep: see the row's next run.
 - [ ] A `cargo run` dev build: Check now says a dev build reads no descriptor — no fetch, no
       offer. **Open: no run recorded** (the VM's dev deb is a package install, not this case).
-- [ ] Mid-update `dpkg -i` fails (unplug the network after the download, or a wrong-arch package
+- [x] Mid-update `dpkg -i` fails (unplug the network after the download, or a wrong-arch package
       renamed by hand): the dialog names the failure, the OLD version keeps running, nothing in
-      `/usr/bin` changed. **Open: no run recorded.**
+      `/usr/bin` changed. **✓ 28 Sep 2026 (VM, 0.8.8 deb with `chattr +i /usr/bin/rexenv`):**
+      Install → one polkit dialog → the toast "could not put rexenv 0.8.9 in place (privileged
+      operation failed: dpkg: error processing archive … unable to make backup link of
+      'usr/bin/rexenv' before installing new version: Operation not permitted …). The rexenv you
+      were running is still installed and untouched." — `rexenv --print-version` 0.8.8, `rex
+      --version` app 0.8.8 still running, `dpkg -l` 0.8.8. (A toast, not a dialog: it stays a
+      few seconds and the offer returns beneath it.)
 
 ### PHP 7.4 on Linux (L8, `php-7.4.33-7`)
 - [x] ✓ 25 Sep 2026 (VM, the rebuilt deb): `rex php install 7.4` → "✓ PHP 7.4 installed", `rex php
