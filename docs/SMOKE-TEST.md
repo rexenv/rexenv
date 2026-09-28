@@ -1081,8 +1081,13 @@ hand can prove a spec entry became the item it describes.*
   window to the FRONT — in front of a full-screen browser, not behind it. ✓ 18 Sep 2026
   (clean 15.6.1 VM, CLT-less, `8437afd9`): menu, not window; Open rexenv brought it to the
   front. ✓ 23 Sep 2026 (clean 15.8 VM, 0.8.7): tray Open after a window close.
-- [ ] **Hold the menu open for ~30 seconds** (the refresh tick is 5s) while the stack is
-  mid-start, so the status line and the greyed Start/Stop actually move. The numbers must
+- [x] **Hold the menu open for ~30 seconds** (the refresh tick is 5s) while the stack is
+  mid-start, so the status line and the greyed Start/Stop actually move. **✓ 28 Sep 2026
+  (15.8 arm64 VM, 0.8.9, read through the menu's own accessibility tree every 3 s):** menu
+  opened on a stopped stack — "Stopped", Start all enabled, Stop all disabled — `rex start`
+  fired behind it → t+3 s "Partial · 6 of 7 running", BOTH enabled, and the line held that
+  reading through t+30 s with the menu still open (the seventh, the edge, waited on its admin
+  prompt behind the menu). The menu never closed itself; Escape closed it. The numbers must
   change UNDER the open menu and the menu must stay open. It closing itself is the bug
   in-place editing exists for (reported 8 Sep 2026, ledger #437). **Open: owed since the 8
   Sep fix (`docs/TODO.md` "Hold the tray menu open while the stack MOVES") — the 15s hold
