@@ -1057,23 +1057,36 @@ site with a REAL plugin, which is the part the fixtures cannot buy.
       `39610cc7` + self-update to 0.7.2).
 
 ## Public sharing (Tunnels) — needs internet
-- [ ] **Share a site, then STOP that site** (v44): the Tunnels row grows an amber strip
+- [x] **Share a site, then STOP that site** (v44): the Tunnels row grows an amber strip
       saying the link now shows the "site stopped" page — without re-sharing, because the
       warning is derived on each poll. Start the site again and the strip goes away.
-      **Open: no live run recorded** — the strip's rendering is L2 (`wk-checks/sharedstopped.js`,
-      ledger #509); a real share stopping under it is this row.
-- [ ] **Open the public URL of a STOPPED shared site, and reload it a few times** — it
+      **✓ 28 Sep 2026 (15.8 arm64 VM, 0.8.9):** `smoke1.rex` shared live, then `rex site stop
+      smoke1.rex` → the Tunnels page (tray → Tunnels) showed under its card "⚠ smoke1.rex is
+      stopped in rexenv, so this link shows the "site stopped" page to anyone who opens it.
+      Start the site to serve it." with the toggle still Live and "Public link confirmed
+      reachable — checked every 30 s"; `rex site start smoke1.rex` → that strip gone while the
+      other stopped share's strip stayed. The subtitle followed the share count: "2 sites
+      shared publicly" → "1 site shared publicly" after one `rex tunnel stop`.
+- [x] **Open the public URL of a STOPPED shared site, and reload it a few times** — it
       must show rexenv's stop page EVERY time, never another site's content, and the page
       must name the LOCAL site (`ea.test`) with a runnable `rex site start ea.test` — not
       the trycloudflare hostname the browser is showing (ledger #512). (This failed
       on 5 Sep 2026: a tunnel bypasses the edge and nginx answered from its default
       server — ledger #511. Reload more than once; the first response was a Cloudflare
       error while the tunnel came up, and the wrong site appeared only afterwards.)
-      **Open: no run through a real tunnel recorded since the fix** — `site_stop_start_check`
+      **✓ 28 Sep 2026 (15.8 arm64 VM, 0.8.9, four reloads from the dev Mac after `rex site
+      stop smoke1.rex`):** every reload 503 with `<title>This site is stopped · rexenv`, the
+      page naming `smoke1.rex` and `rex site start smoke1.rex`, never the trycloudflare
+      hostname, never another site. **Before the fix:** — `site_stop_start_check`
       (L1) proves the direct-to-nginx path a tunnel takes, not Cloudflare in front of it.
-- [ ] Share a site that is ALREADY stopped: it shares (no refusal) and a toast says what
+- [x] Share a site that is ALREADY stopped: it shares (no refusal) and a toast says what
       the link publishes. `rex tunnel start <domain>` prints the same sentence.
-      **Open: no run recorded.**
+      **✓ the CLI door, 28 Sep 2026 (15.8 arm64 VM, 0.8.9):** `rex site stop smoke-lv.rex`,
+      then `rex tunnel start smoke-lv.rex` → consent → "✓ public URL: https://…trycloudflare.com"
+      and "warning: smoke-lv.rex is stopped in rexenv, so this link shows the "site stopped"
+      page to anyone who opens it. Start the site to serve it." — `rex tunnel list` repeats
+      that warning under each stopped share (derived per poll, not stored). The toast in the
+      app: not seen (the share was started from the CLI).
 - [ ] **Filter while a share is live** (19 Aug 2026, #371 — the half L2 cannot reach,
   since the harness has no event transport): share two sites, type a query in the
   Tunnels search box that matches NEITHER. The amber line must name both ("2 shared
@@ -1085,15 +1098,25 @@ site with a REAL plugin, which is the part the fixtures cannot buy.
   URL appears; press ENTER with a note at each physical action (kill -9, wifi off/on).
   It prints the banner→resolver deltas and the break/recovery windows. (The full timing
   session is its own Release-gates row in `docs/TODO.md`, "Tunnel probe session".)
+  **◐ 28 Sep 2026 (15.8 arm64 VM, 0.8.9):** with two live shares the subtitle read "2 sites
+  shared publicly", one `rex tunnel stop` took it to "1 site shared publicly", and **Stop all
+  sharing** (pressed with a share live) left `rex tunnel list` at "no public tunnels running"
+  with no confirm step. **Open: the filter half** — the search field's placeholder could not be
+  read by automation, so no query was typed and the amber "hidden by this filter" line was not
+  seen.
 - [x] Toggle **Share publicly**; a `*.trycloudflare.com` URL appears, badge Unverified →
   **Live** once the probe confirms. ✓ 18 Sep 2026 (clean 15.6.1 VM, `39610cc7` + self-update
   to 0.7.2).
 - [x] **An override site shares too** (per-backend origins, 15 Aug 2026 — ledger #332's live
   half): switch a site to FrankenPHP (or Apache) and share it. ✓ 18 Sep 2026 (clean 15.6.1
   VM): `blank.rex` on FrankenPHP shared without refusal and a public URL was issued.
-- [ ] …and the public URL serves THAT site's content — not another site's (the old
+- [x] …and the public URL serves THAT site's content — not another site's (the old
   nginx-origin fallthrough). **◐ 18 Sep 2026 (VM): the URL was stopped before propagation,
-  so the content was never checked from a second device. Open: the content check.**
+  so the content was never checked from a second device.** **✓ 28 Sep 2026 (15.8 arm64 VM,
+  0.8.9; the dev Mac as the second device):** `rex tunnel start smoke1.rex` asked "expose
+  smoke1.rex PUBLICLY via a cloudflared tunnel? [y/N]" (a piped `y`), printed the
+  `trycloudflare.com` URL; three fetches from the Mac: 200, `<title>smoke1`, five `smoke1`
+  mentions and none of the three other sites, `/wp-login.php` 200.
 - [ ] Sharing an override site while its server is stopped refuses with a message naming
   the server, and does not start a tunnel. **Open: no run recorded.**
 - [x] **Unverified + dead link on THIS machine is NORMAL on networks that negative-cache
@@ -1107,7 +1130,12 @@ site with a REAL plugin, which is the part the fixtures cannot buy.
 - [ ] Refusals name the EXPOSURE, never "busy": db-import / connection rewrite /
   provision-retry / multisite convert while shared; Share while a db-import runs;
   web-server switch while shared; docroot move while shared. CLI texts match
-  (`rex tunnel start`, `rex site server`, `rex site move`). **Open: no run recorded.**
+  (`rex tunnel start`, `rex site server`, `rex site move`). **◐ one of seven, 28 Sep 2026
+  (15.8 arm64 VM, 0.8.9):** `rex site server smoke1.rex frankenphp` while shared → "smoke1.rex
+  is publicly shared right now — switching its web server would remove it from the shared
+  nginx the tunnel serves from, and the live link would start publishing whatever nginx's
+  default site answers with — a DIFFERENT site. Stop sharing it (Tunnels…" — the exposure,
+  not "busy". **Open: the other six.**
 - [ ] Apache/FrankenPHP site with NO recorded backend port: sharing refuses naming the site
   and its server ("… runs on <server> but has no recorded backend port to share — re-save
   the site's web server (Site → Settings), then share it."), never falling back to nginx's
