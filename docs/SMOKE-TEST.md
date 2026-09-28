@@ -1584,53 +1584,63 @@ Environment: macOS 13.6 (22G120) arm64, UTM (CLT-less at first, CLT installed la
       query (#442 leg 4, fixed in the next build) — and the edge-blocked/unblocked toast pair
       fires during the app's OWN reload at site create (`docs/TODO.md`).
 
-## Windows — what this checklist means on that OS
+## Windows — what this checklist means on that OS (reconciled 28 Sep 2026)
 
 Run everything above on Windows too, EXCEPT what this section changes or removes. The
 macOS file is written against a Mac's mechanisms (a `.dmg`, Gatekeeper, `/etc/resolver`,
 the login keychain, a root LaunchDaemon, the Dock); Windows reaches the same user-visible
-promises by different machinery, and a step that names a Mac mechanism is not a step a
-Windows tester can pass or fail.
+promises by different machinery (`docs/PLATFORMS.md` §3, §7), and a step that names a Mac
+mechanism is not a step a Windows tester can pass or fail.
+
+**Where this section has run** (the ✓ rows name which): the **clean Windows 11 Pro 24H2 VM**
+(26100.4349 — UTM on the Mac, an ARM guest running the x64 build under emulation, so timings
+are not a PC's; D6) — runs 1–6, 19–21 Sep 2026, driven from a screenshot-guarded click helper
+over SSH; and the **Dell, Windows 10 22H2 x64** (the best-effort floor) — the `rex` copy (16
+Sep), the installer's running-app sentence (21 Sep) and the 0.8.5 → 0.8.8 in-app update (28
+Sep). Until 28 Sep each ticked row here carried its evidence and then the original step text
+glued on after it, and three rows still described states later runs had closed; reconciled
+into one row per step, with each open row saying what it is waiting for.
+
+**Still open on Windows, in one list:** Firefox's typed addresses (#706 — proven on macOS
+only) · Chrome's download wording (no Chrome on the VM) · WebView2's bootstrapper on a machine
+without it · the certificate dialog's **No** path · the tray's LEFT click · uninstalling an
+UPDATED copy with the in-app step first · Apps & Features without the in-app step leaves a
+live agent, and a pre-#695 `.bak` nobody sweeps (both TODO W12 rows).
 
 Environment: Windows ____ (11 x64 supported · 10 22H2 best-effort — D6) · rexenv version ____
 
-### Typed addresses in Firefox on Windows (ledger #706 — proven on macOS only)
+### Typed addresses in Firefox (ledger #706 — proven on macOS only)
 - [ ] Settings → Firefox → **Open typed addresses in Firefox** → Enable; restart Firefox; type
       `acme.rex` with no slash → the site opens. The `user.js` under
       `%APPDATA%\Mozilla\Firefox\Profiles\…` carries the line. The Settings hint and the
-      site-page tooltip name **Chrome and Edge**, never Safari.
+      site-page tooltip name **Chrome and Edge**, never Safari. **Open: no Windows run recorded.**
 
-### Two Windows-only rows, both found on a real machine 20 Sep 2026
-- [x] **PostgreSQL starts — including with UAC OFF.** ✓ 20 Sep 2026 (Win11 VM, `EnableLUA=0`,
-      0.8.5): Services → PostgreSQL → **7 of 7 running**, `:15432` listening, `health.log` empty
-      a minute later (#698 launches it through `pg_ctl`, #701 stops the watchdog racing it).
-      The check itself: Services → start PostgreSQL: it
-      reaches Running and `netstat -ano | findstr :15432` shows it LISTENING. Then the case
-      that broke it: on a machine with UAC disabled (`EnableLUA=0`, where EVERY process
-      carries the Administrators token) it must still start, because rexenv launches it
-      through `pg_ctl` (#698). **Tell:** "PostgreSQL did not start within 15s", then three
-      watchdog restarts and `gave-up`, with `postgres-stdout.log` saying "Execution of
-      PostgreSQL by a user with administrative permissions is not permitted" — that is the
-      bug this row exists for. Stop all afterwards: the port must be FREE (a hard kill left
-      backend processes holding it, which is why shutdown goes through `pg_ctl stop`).
-- [x] **The Database Browser renders.** ✓ 20 Sep 2026 (Win11 VM, 0.8.5): Databases → Browse on
-      MySQL shows Adminer 6.0.2 INSIDE the app, auto-logged-in as `root@localhost`, listing
+### Windows-only rows found on real machines (20–21 Sep 2026)
+- [x] **PostgreSQL starts — including with UAC OFF.** Services → start PostgreSQL: it reaches
+      Running and `netstat -ano | findstr :15432` shows it LISTENING — also on a machine with
+      UAC disabled (`EnableLUA=0`, where EVERY process carries the Administrators token),
+      because rexenv launches it through `pg_ctl` (#698). Stop all afterwards: the port must be
+      FREE (a hard kill left backend processes holding it, which is why shutdown goes through
+      `pg_ctl stop`). ✓ 20 Sep 2026 (Win11 VM, `EnableLUA=0`, 0.8.5): **7 of 7 running**,
+      `:15432` listening, `health.log` empty a minute later (#701 stops the watchdog racing it).
+      **Tell:** "PostgreSQL did not start within 15s", then three watchdog restarts and
+      `gave-up`, with `postgres-stdout.log` saying "Execution of PostgreSQL by a user with
+      administrative permissions is not permitted".
+- [x] **The Database Browser renders.** Databases → Browse on MySQL: Adminer appears INSIDE the
+      app (table list, not an empty white/grey panel) and its buttons work. ✓ 20 Sep 2026 (Win11
+      VM, 0.8.5): Adminer 6.0.2 inside the app, auto-logged-in as `root@localhost`, listing
       `wp_lm_rex`. It took three fixes that all had to be right — the frame's URL (#703), the
-      app's own `frame-src` (#702) and Adminer's replayed `frame-ancestors` (#699).
-      The check itself: Databases → Browse on MySQL: Adminer appears INSIDE
-      the app (table list, not an empty white/grey panel) and its buttons work. **Tell:** a
-      blank frame with the URL bar above it filled in — the CSP refused the app's origin
-      (#699), and nothing in any log says so.
-- [x] ✓ 21 Sep 2026 (Win11 VM, the fixed build, a 200 ms window watcher): Start all with
-      PostgreSQL, a share started and stopped, a WordPress site created and deleted, Tunnels,
-      Adminer on PostgreSQL — no rexenv console window at all (#705).
-      **No console window, ever.** Start all (PostgreSQL included), open Tunnels, share a site,
+      app's own `frame-src` (#702) and Adminer's replayed `frame-ancestors` (#699). **Tell:** a
+      blank frame with the URL bar above it filled in — the CSP refused the app's origin (#699),
+      and nothing in any log says so.
+- [x] **No console window, ever.** Start all (PostgreSQL included), open Tunnels, share a site,
       Browse a database, create a WordPress site: NO terminal / console window appears at any
-      point, and none is left on the desktop afterwards (#705). **Tell:** an empty Windows
-      Terminal titled `…\pg_ctl.exe` or `…\php.exe` — found 21 Sep 2026 on the VM with 0.8.4
-      and 0.8.5. Do NOT close a pg_ctl one to "tidy up": PostgreSQL inherited that console and
+      point, and none is left on the desktop afterwards (#705). ✓ 21 Sep 2026 (Win11 VM, the
+      fixed build, a 200 ms window watcher): Start all with PostgreSQL, a share started and
+      stopped, a WordPress site created and deleted, Tunnels, Adminer on PostgreSQL — none.
+      **Tell:** an empty Windows Terminal titled `…\pg_ctl.exe` or `…\php.exe` (0.8.4 and 0.8.5
+      on the VM). Do NOT close a pg_ctl one to "tidy up": PostgreSQL inherited that console and
       closing it stops the database.
-
 
 **Not in Windows v1 at all (D4, refused in core with an honest message).** Skip every
 section and leg about them; a refusal that NAMES the reason is the pass:
@@ -1644,225 +1654,196 @@ section and leg about them; a refusal that NAMES the reason is the pass:
   plan. Their absence IS the check.
 
 ### Install & first launch — replaces the `.dmg` section
-The installer exists since 19 Sep 2026 (`pnpm release:win` → `rexenv_<X.Y.Z>_x64-setup.exe`,
-NSIS, per-user, UNSIGNED by ruling — D5: open source, no income, no spend, the same answer
-macOS got). **First run 19 Sep 2026** on a clean Windows 11 Pro 24H2 (26100.4349) VM — UTM on
-the Mac, so an ARM guest running the x64 build under emulation (D6; timings there are not a
-PC's) — with `rexenv_0.7.0_x64-setup.exe` built at `276fc7cb`; the ticks below are that run's,
-driven from a screenshot-guarded click helper over SSH. It found two bugs the Dell could not
-(#691, #692). **Run 2, the same day**, installed the guard build (`46ccefed`) OVER that copy and
-ran the rest: second-hash SmartScreen, the Finish-page start that now hops and starts services,
-`rex` on the Path, and the two uninstall halves.
-- [x] Edge, 19 Sep 2026 (no Chrome on the VM — Chrome's shelf wording is still unmeasured): ZoneId=3,
-  sha256 matched the Dell's build. SmartScreen DID appear, verbatim in `docs/INSTALL.md`: "Windows
-  protected your PC" with **Run anyway behind More info**, then straight into the NSIS wizard — no
-  "Open File - Security Warning" behind it. **Second build (run 2): the same two SmartScreen
-  screens again, verbatim** — a new hash is a new stranger. ~~**Download through a browser** (Edge AND Chrome), so the file carries the Mark of the~~
-  Web. Record each browser's own download warning verbatim. **Do not write SmartScreen steps
-  from memory.** What IS measured, and lives in `docs/INSTALL.md`: the "Open File - Security
-  Warning" dialog, verbatim, with **Run on the first screen** and no "More info" to find.
-  What is NOT: SmartScreen's own "Windows protected your PC" never appeared during that
-  measurement, and the reason is why it belongs here — that machine has
-  `EnableSmartScreen = 0` by policy. A clean Windows 11 install does not, so this is the run
-  that answers it: record the dialog verbatim, where "Run anyway" sits (first screen or behind
-  "More info"), and whether a second build (a new hash) repeats all of it.
-- [x] 19 Sep 2026: no UAC at any wizard page; `%LOCALAPPDATA%\rexenv` = `rex.exe` (1,009,152 B),
-  `rexenv.exe`, `uninstall.exe`; `HKCU\…\Uninstall\rexenv` with `DisplayVersion 0.7.0`,
-  `InstallLocation` quoted, `Publisher rexenv`; Start Menu `rexenv.lnk`; desktop shortcut from the
-  Finish page. **The install asks for NO admin.** Per-user (`installMode: currentUser`): it lands in
-  `%LOCALAPPDATA%\rexenv` — `rexenv.exe`, `rex.exe`, `uninstall.exe`, nothing else — and the
-  uninstall entry is under **HKCU**, so Apps & Features lists rexenv with `DisplayVersion`
-  equal to the release. **Tell:** a UAC prompt during install, or an entry under HKLM — the
-  installer was built per-machine, which is the mode D5 refused.
-- [ ] **WebView2.** On a machine WITHOUT the WebView2 runtime (a clean VM may have it; check
-  Apps & Features first), the installer's `downloadBootstrapper` fetches it. Record whether
-  that step asked for admin: nothing has measured it, because every machine so far already
-  had WebView2 (`docs/TODO.md` W11).
-- [x] 19 Sep 2026: started by the Finish page and again from Explorer — window up, onboarding
-  "Welcome", no console. The app starts from the Start Menu entry and shows its window; no console window
-  appears behind it (a `windows_subsystem` regression shows as a black console).
-- [x] Run 2: the Finish-page copy's parent is a fresh `explorer.exe` (the hop), `rex --version`
-  reads `46ccefedb4`, Stop all → Start all from the tray: 5/5 running. **The copy the Finish page starts can start services.** Before #692 it could NOT: "Run
-  rexenv" left it in a job with limits `0x0`, and Start all failed on `mysqld` with the #600
-  access-denied wording (19 Sep 2026); the same copy from Explorer started all five. With the
-  guard: the Finish-page copy hops through Explorer once (a brief flash, one window) and Start
-  all works. **Tell:** the access-denied toast, or two rexenv windows.
-- [x] Run 2: Install → no prompt; user `Path` gains `%LOCALAPPDATA%\rexenv\bin`, `rex.exe` copied
-  there (1,009,152 B), a shell with the user Path answers `rex status`; the card then reads
-  "Installed — … Reinstall". **`rex` on the PATH** — Settings → General → Command-line tool offers Install; after it,
-  a NEW terminal answers `rex status`. The copy is `%LOCALAPPDATA%\rexenv\bin\rex.exe`.
+The installer is `rexenv_<X.Y.Z>_x64-setup.exe` — NSIS, per-user, UNSIGNED by ruling (D5: open
+source, no income, no spend, the same answer macOS got). Built by CI from the release tag since
+0.8.8; runs 1–2 below used `pnpm release:win` builds (`276fc7cb`, then the guard build
+`46ccefed` installed over it). Run 1 found two bugs the Dell could not (#691, #692).
+- [x] **Download through a browser**, so the file carries the Mark of the Web, and record each
+      browser's own warning verbatim — **never write SmartScreen steps from memory.** ✓ 19 Sep
+      2026 (Win11 VM, Edge): `ZoneId=3`, sha256 matched the build. SmartScreen appeared,
+      verbatim in `docs/INSTALL.md`: "Windows protected your PC" with **Run anyway behind More
+      info**, then straight into the NSIS wizard — no "Open File - Security Warning" behind it.
+      **A second build (run 2) repeated both screens verbatim** — a new hash is a new stranger.
+      (The Dell's earlier "Open File - Security Warning" with Run on the first screen is that
+      machine's `EnableSmartScreen = 0` policy, not what a user meets.)
+- [ ] The same download through **Chrome**: its shelf / download-bubble wording, verbatim.
+      **Open: no Chrome on the VM.**
+- [x] **The install asks for NO admin.** Per-user (`installMode: currentUser`): it lands in
+      `%LOCALAPPDATA%\rexenv` — `rexenv.exe`, `rex.exe`, `uninstall.exe`, nothing else — and the
+      uninstall entry is under **HKCU**, so Apps & Features lists rexenv with `DisplayVersion`
+      equal to the release. ✓ 19 Sep 2026 (VM): no UAC at any wizard page; `rex.exe`
+      (1,009,152 B); `HKCU\…\Uninstall\rexenv` with `DisplayVersion 0.7.0`, `InstallLocation`
+      quoted, `Publisher rexenv`; Start Menu `rexenv.lnk`; desktop shortcut from the Finish
+      page. **Tell:** a UAC prompt during install, or an entry under HKLM — the installer was
+      built per-machine, which is the mode D5 refused.
+- [ ] **WebView2.** On a machine WITHOUT the WebView2 runtime (check Apps & Features first), the
+      installer's `downloadBootstrapper` fetches it; record whether that step asked for admin.
+      **Open: every machine so far already had WebView2** (the VM had 153).
+- [x] The app starts from the Finish page, the Start Menu entry and Explorer and shows its
+      window; no console window appears behind it (a `windows_subsystem` regression shows as a
+      black console). ✓ 19 Sep 2026 (VM): window up, onboarding "Welcome", no console.
+- [x] **The copy the Finish page starts can start services.** With the guard (#692) the
+      Finish-page copy hops through Explorer once (a brief flash, one window) and Start all
+      works. ✓ run 2 (VM): its parent is a fresh `explorer.exe`, `rex --version` reads
+      `46ccefedb4`, Stop all → Start all from the tray: 5/5 running. Before #692 "Run rexenv" left
+      it in a job with limits `0x0` and Start all failed on `mysqld` with the #600 access-denied
+      wording. **Tell:** the access-denied toast, or two rexenv windows.
+- [x] **`rex` on the PATH** — Settings → General → Command-line tool → Install (no prompt); a NEW
+      terminal answers `rex status`; the copy is `%LOCALAPPDATA%\rexenv\bin\rex.exe`. ✓ run 2
+      (VM): the user `Path` gained `%LOCALAPPDATA%\rexenv\bin`, `rex.exe` copied there
+      (1,009,152 B), `rex status` answered; the card then reads "Installed — … Reinstall".
 
-### In-app self-update — replaces the macOS section (RUN 19 Sep 2026, one row still open)
+### In-app self-update — replaces the macOS section
 The swap and the relaunch are measured on fixtures on the Dell
 (`windows_app_bundle_swap_check`, `windows_app_relaunch_check` — `docs/TESTING.md`); what no
 fixture can do is the real install directory, the real quit gate and the real registry entry.
-- [x] 19 Sep 2026, run 3: a throwaway 0.7.9 build installed, 0.8.0 published with its Windows
-  descriptor (serial 1): About → Check now → "rexenv 0.8.0 · 13.2 MB has been published", the
-  Settings badge reads 0.8.0. Two things it took to get there, both real: (1) this VM's database
-  still held the macOS descriptor (serial 5) from run 1's pre-per-OS build, so the Windows
-  document (serial 1) was refused as a replay — a state no shipped Windows user can be in, cleared
-  by hand here; (2) the offer came with a REFUSAL, "belongs to another account … sudo chown" —
-  the install directory is owned by `BUILTIN\Administrators` for an admin account, fixed in
-  ledger #693 (ships in 0.8.1). With an older build installed and a newer release published (its `rexenv_<X.Y.Z>_x64.zip`
-  attached and `app-manifest-windows.json` signed on `rexenv/runtimes`), Settings → About
-  offers the update; the consent sentence is the Windows one (no "rexenv.app", no
-  Applications folder).
-- [x] **The app says it is about to close, and waits.** ✓ 20 Sep 2026 (Win11 VM, a real
-      0.8.4 → 0.8.5 in-app update): the swap landed and the window stayed; the dialog said
-      "rexenv 0.8.5 is installed — rexenv will now close and open again on 0.8.5 …" with ONE
-      button; nothing happened until OK, and OK quit and reopened it on 0.8.5. Apps & Features
-      read 0.8.5 afterwards (#696's first proof).
-      The check itself: after Install finishes, a dialog
-      names the new version and says rexenv will close and open again, what keeps running,
-      what closes with it, and what dismissing means. It has ONE button (OK) — no Cancel.
-      Nothing happens until you press it; pressing it quits and the app reopens on the new
-      version. **Tell:** the window vanishing on its own the moment the install finishes
-      (#700, fixed 20 Sep 2026), or a dialog whose OK does nothing.
-- [x] **Run 4, 19 Sep 2026 — the whole path, on the published 0.8.2.** A 0.7.9 carrying the swap
-  fix (#695) installed; About → Check now offered "rexenv 0.8.2 · 13.2 MB has been published" with
-  the WINDOWS consent sentence ("replaces rexenv's program files (your data folder is not
-  touched)", no Apple re-prompt line); Install swapped the three program files in place, the app
-  quit and **reopened by itself on 0.8.2**, the previous bundle was swept on that launch, and
-  `rex --version` read `0.8.2 (e457970201)`. The log names each step. **The one miss:** Apps &
-  Features still read 0.7.9. **Run 5 (0.8.2 → 0.8.3, same day) named the cause**: the entry moved
-  to 0.8.2 — the OLD version, written fresh — so a version read off a just-renamed path answers
-  for the file that used to be there, and the old code wrote that over itself and logged nothing.
-  Fixed in 0.8.3 (#696: read the STAGED executable, before anything moves); the first update from
-  a 0.8.3 install is what proves it.
-- [x] ✓ 21 Sep 2026, run 6 (Win11 VM, the published 0.8.4 → the published 0.8.5, a live share on
-  `lm.rex`): Install → progress bar → "rexenv 0.8.5 is installed" with one OK → OK raised
-  **"Stop sharing? Quitting stops 1 public share — its link goes dead immediately."** [Quit]
-  [Keep sharing] → Quit → rexenv reopened by itself, ONE window, toast "rexenv is now 0.8.5
-  (updated from 0.8.4)"; the share was gone. Press Install: the archive downloads into the ONE download hub, the app quits through
-  the quit gate (a live share still asks), and rexenv **reopens on its own** on the new build —
-  the relauncher waited for the old process, not merely for a timer. **Tell:** two rexenv
-  windows, or none.
-- [x] ✓ run 6: `rexenv.exe` 0.8.5, no `.rexenv-update-*` left (swept at the relaunch),
-  `uninstall.exe` still there (dated the 0.8.4 install), `DisplayVersion` 0.8.5, `rexenv.db` in
-  place. One stray: `rexenv-0.8.3.bak` (38 MB, 19 Sep) from a pre-#695 swap — nothing sweeps it
-  (docs/TODO.md W12). Afterwards: `%LOCALAPPDATA%\rexenv` holds the new `rexenv.exe`; the previous build sits
-  beside it in `.rexenv-update-<pid>\previous` — the three FILES, not a directory: the data
-  tree under `%LOCALAPPDATA%\rexenv\rexenv\data` never moves (#695) — **until the next launch sweeps it** (it cannot
-  be deleted while the old process runs — measured); `uninstall.exe` is still there (carried
-  across — the installer wrote it, the build did not); and **Apps & Features shows the NEW
-  version** (`DisplayVersion` rewritten; the entry exists, so it is rewritten — the fixture
-  runs could not reach this line).
-- [x] ✓ run 6: the agent was restarted at the swap (new pid, its exe reads 0.8.5), the CA
-  thumbprint is unchanged (`1A6A20BE…` before and after), `lm.rex` → 127.0.0.1 and HTTPS 200.
-  The updated copy still resolves `.rex` and still serves HTTPS: the DNS agent was
-  re-launched onto the new binary and the CA did not change.
-- [ ] ◐ 21 Sep 2026, run 6 (published 0.8.4 → 0.8.5 in-app, then the carried-across
-  `uninstall.exe /S`, WITHOUT the in-app "Remove system changes" first): it removed `rex.exe`
-  (a swapped file), itself, the HKCU entry and both shortcuts, and kept the data — but
-  **`rexenv.exe` stayed**: the `\rexenv\dns-agent` task, which only the in-app step removes, re-ran
-  the agent from it within the minute, so the file was locked when the uninstaller got to it,
-  and the agent went on answering `:53` from an uninstalled app (docs/TODO.md W12). The row as
-  written — in-app step first — is still to run; it needs the Root-store DELETE dialog clicked
-  and a re-onboarding after. Apps & Features → Uninstall on the UPDATED copy works: the carried-across uninstaller
-  removes the directory the swap put in place.
+The first installed copy (`276fc7cb`, before per-OS descriptors) read the macOS descriptor and
+logged "this Mac's macOS version could not be read"; builds from `a0d4868f` on fetch
+`app-manifest-windows.json`, and that sentence is OS-neutral.
+- [x] With an older build installed and a newer release published (its `rexenv_<X.Y.Z>_x64.zip`
+      attached and `app-manifest-windows.json` signed on `rexenv/runtimes`), Settings → About
+      offers the update; the consent sentence is the Windows one ("replaces rexenv's program
+      files (your data folder is not touched)" — no "rexenv.app", no Applications folder, no
+      Apple re-prompt line). ✓ 19 Sep 2026, runs 3–4 (VM, 0.7.9 → 0.8.0, then → the published
+      0.8.2). ✓ **28 Sep 2026 on the Dell (Win10), the installed 0.8.5 → the published 0.8.8.**
+- [x] **An install directory another account owns is refused with the copy-paste fix, never a
+      prompt** (#693). ✓ 28 Sep 2026 (Dell): the 0.8.5 install had come through the elevated SSH
+      token, so the folder was `BUILTIN\Administrators`'; the offer came with "…`C:\Users\DELL\
+      AppData\Local\rexenv` belongs to another account … `takeown /R /F` …"; after that
+      `takeown` as the desktop user, Install went through. (Run 3 on 19 Sep met the same refusal
+      in macOS's words — `sudo chown` — which is what #693 fixed.)
+- [x] **The app says it is about to close, and waits.** After Install finishes, a dialog names
+      the new version and says rexenv will close and open again, what keeps running, what closes
+      with it, and what dismissing means. ONE button (OK) — no Cancel; nothing happens until you
+      press it; pressing it quits and the app reopens on the new version. ✓ 20 Sep 2026 (VM,
+      0.8.4 → 0.8.5): "rexenv 0.8.5 is installed — rexenv will now close and open again on 0.8.5
+      …", one button, OK quit and reopened it. ✓ 28 Sep (Dell, → 0.8.8). **Tell:** the window
+      vanishing on its own the moment the install finishes (#700, fixed 20 Sep 2026), or a
+      dialog whose OK does nothing.
+- [x] **The quit gate still asks, and rexenv reopens on its own.** Press Install with a live
+      share: the archive downloads into the ONE download hub, the app quits through the quit
+      gate, and rexenv **reopens on its own** on the new build — the relauncher waited for the
+      old process, not merely for a timer. ✓ 21 Sep 2026, run 6 (VM, the published 0.8.4 → 0.8.5,
+      a live share on `lm.rex`): OK raised **"Stop sharing? Quitting stops 1 public share — its
+      link goes dead immediately."** [Quit] [Keep sharing] → Quit → rexenv reopened, ONE window,
+      toast "rexenv is now 0.8.5 (updated from 0.8.4)"; the share was gone. **Tell:** two rexenv
+      windows, or none.
+- [x] **Afterwards on disk and in Apps & Features.** `%LOCALAPPDATA%\rexenv` holds the new
+      `rexenv.exe`; the previous build (the three FILES, not a directory — the data tree under
+      `%LOCALAPPDATA%\rexenv\rexenv\data` never moves, #695) sits in
+      `.rexenv-update-<pid>\previous` until the next launch sweeps it (it cannot be deleted while
+      the old process runs — measured); `uninstall.exe` is still there (carried across); **Apps &
+      Features shows the NEW version** (#696). ✓ run 6 (VM): `rexenv.exe` 0.8.5, no
+      `.rexenv-update-*` left, `uninstall.exe` still there, `DisplayVersion` 0.8.5, `rexenv.db` in
+      place. ✓ 28 Sep (Dell): `swapped to 0.8.8 (RenamePair)`, Apps & Features `0.8.8`, the
+      previous bundle gone. History: runs 4–5 (19 Sep) left Apps & Features on the OLD version —
+      a version read off a just-renamed path; #696 reads the STAGED executable, proven by run 6.
+- [x] **The updated copy still resolves `.rex` and still serves HTTPS:** the DNS agent is
+      re-launched onto the new binary and the CA does not change. ✓ run 6 (VM): agent restarted
+      (new pid, its exe reads 0.8.5), CA thumbprint `1A6A20BE…` before and after, `lm.rex` →
+      127.0.0.1 and HTTPS 200. ✓ 28 Sep (Dell): the agent restarted as 0.8.8 on udp 53.
+- [ ] **Uninstalling the UPDATED copy:** Settings → Services → Uninstall (the in-app step)
+      FIRST, then Apps & Features → Uninstall — the carried-across uninstaller removes the
+      directory the swap put in place. **◐ 21 Sep 2026, run 6 (VM), done WITHOUT the in-app step:**
+      `uninstall.exe /S` removed `rex.exe`, itself, the HKCU entry and both shortcuts and kept the
+      data — but `rexenv.exe` stayed: the `\rexenv\dns-agent` task (which only the in-app step
+      removes) re-ran the agent from it within the minute, so the file was locked, and the agent
+      went on answering `:53` from an uninstalled app (TODO W12 row). **Open: the row as written —
+      in-app step first — needs the Root-store DELETE dialog clicked and a re-onboarding after.**
+- [ ] A stray `rexenv-0.8.3.bak` (38 MB, 19 Sep) from a pre-#695 swap sits beside the app for
+      good — the launch sweep looks only for `.rexenv-update-*`. **Open: TODO W12 row.**
 
 ### Where rexenv lives — replaces "The menu bar (no dock icon)"
-- [x] 19 Sep 2026: right-click menu measured — "Stopped / Start all / Stop all / No sites yet /
-  All sites… / Services / Databases / Mail / Tunnels / MCP server / About rexenv / Open rexenv /
-  Quit rexenv" ("All running · 5 services" once started). Left-click: not driven. rexenv is a **taskbar tray** app. **Left click opens the WINDOW; right click opens
-  the MENU** (ledger #624, the owner's Q2 ruling) — the opposite of macOS, deliberately.
-- [x] 19 Sep 2026: the colour icon, in the overflow flyout (Windows 11 hides new tray icons
-  there by default). The tray icon is the **colour** icon, not a template glyph: it must be legible on a
-  dark taskbar. **Tell:** a black square — macOS's `icon_as_template` leaking to Windows.
-- [x] 19 Sep 2026: window closed, `rex status` answered with 5 running. Closing the window leaves the app alive in the tray: `rex status` still answers and
-  an MCP client keeps working.
-- [x] ✓ 21 Sep 2026 (Win11 VM, 0.8.5): window closed each time, then overflow → right-click →
-  Services, Databases, Mail, Tunnels, All sites… — each opened the window ON that screen.
-  Every menu item that names a screen brings the window up on it, including from a
-  window that was closed.
+- [x] rexenv is a **taskbar tray** app; right click opens the MENU (ledger #624, the owner's Q2
+      ruling — the opposite of macOS, deliberately). ✓ 19 Sep 2026 (VM): "Stopped / Start all /
+      Stop all / No sites yet / All sites… / Services / Databases / Mail / Tunnels / MCP server /
+      About rexenv / Open rexenv / Quit rexenv" ("All running · 5 services" once started).
+- [ ] **Left click opens the WINDOW.** **Open: not driven on either machine.**
+- [x] The tray icon is the **colour** icon, not a template glyph: it must be legible on a dark
+      taskbar. ✓ 19 Sep 2026 (VM): the colour icon, in the overflow flyout (Windows 11 hides new
+      tray icons there by default). **Tell:** a black square — macOS's `icon_as_template` leaking.
+- [x] Closing the window leaves the app alive in the tray: `rex status` still answers and an MCP
+      client keeps working. ✓ 19 Sep 2026 (VM): window closed, `rex status` answered, 5 running.
+- [x] Every menu item that names a screen brings the window up on it, including from a window
+      that was closed. ✓ 21 Sep 2026 (VM, 0.8.5): Services, Databases, Mail, Tunnels, All sites…
+      — each opened the window ON that screen.
 
 ### First-run setup prompts — ONE elevated step, not three
 macOS asks three times (resolver, keychain, ports 80/443). Windows asks twice, and one of
 them is Windows' own dialog:
-- [x] 19 Sep 2026: rexenv's own dialog first ("rexenv wants to add a DNS resolver so .rex sites
-  open on this PC. Windows will ask for your permission next."), then ONE UAC, then
-  `Get-DnsClientNrptRule` = `.rex → 127.0.0.1`. **One elevated (UAC) step** — the `.rex` NRPT rule
-  (`Add-DnsClientNrptRule -Namespace .rex -NameServers 127.0.0.1`). `.rex` only on a fresh
-  machine; other TLDs get theirs on first use.
-- [x] 19 Sep 2026: verbatim — "You are about to install a certificate from a certification
-  authority (CA) claiming to represent: rexenv Local CA … Thumbprint (sha1): 1A6A20BE …
-  Do you want to install this certificate? [Yes] [No]"; after Yes, `Cert:\CurrentUser\Root`
-  holds `CN=rexenv Local CA` with that thumbprint, NotAfter 2036. The No path: not driven.
-  **Windows' own certificate dialog** — "Security Warning: You are about to install a
-  certificate from a certification authority…" for rexenv's local CA, into **this user's**
-  Root store (never LocalMachine — ledger #613). A **No** reads as a cancel, and setup
-  offers the step again rather than continuing as if it succeeded.
-- [x] 19 Sep 2026 (VM, unelevated user, Explorer-started copy): `rex start` → Caddy on
-  `127.0.0.1:443` and `:80`, no UAC, no dialog. **NO third prompt for ports 80/443.** Measured on the Dell under the desktop user's
-  unelevated token: the pinned `caddy.exe` binds `:443` and `:80` with no elevation. **Tell:**
-  a UAC prompt for the edge — something reintroduced a privileged bind.
-- [x] 19 Sep 2026: none; `netstat` shows `127.0.0.1:443`, `127.0.0.1:80`, `127.0.0.1:18088`.
-  **No Windows Defender Firewall alert.** The edge binds `127.0.0.1` only (owner's
-  ruling 14 Sep 2026); an all-interfaces bind raised "Windows Security Alert" on the Dell.
-  **Tell:** that alert appearing — `default_bind` was lost, and sites would be reachable
-  from the LAN.
+- [x] **One elevated (UAC) step** — the `.rex` NRPT rule (`Add-DnsClientNrptRule -Namespace .rex
+      -NameServers 127.0.0.1`), after rexenv's own dialog. `.rex` only on a fresh machine; other
+      TLDs get theirs on first use. ✓ 19 Sep 2026 (VM): "rexenv wants to add a DNS resolver so
+      .rex sites open on this PC. Windows will ask for your permission next.", then ONE UAC, then
+      `Get-DnsClientNrptRule` = `.rex → 127.0.0.1`.
+- [x] **Windows' own certificate dialog** for rexenv's local CA, into **this user's** Root store
+      (never LocalMachine — ledger #613). ✓ 19 Sep 2026 (VM), verbatim: "You are about to install
+      a certificate from a certification authority (CA) claiming to represent: rexenv Local CA …
+      Thumbprint (sha1): 1A6A20BE … Do you want to install this certificate? [Yes] [No]"; after
+      Yes, `Cert:\CurrentUser\Root` holds `CN=rexenv Local CA` with that thumbprint, NotAfter 2036.
+- [ ] The certificate dialog's **No** reads as a cancel, and setup offers the step again rather
+      than continuing as if it succeeded. **Open: the No path was not driven.**
+- [x] **NO third prompt for ports 80/443** — the pinned `caddy.exe` binds `:443` and `:80` under
+      the unelevated desktop token (measured on the Dell). ✓ 19 Sep 2026 (VM, unelevated user,
+      Explorer-started copy): `rex start` → Caddy on `127.0.0.1:443` and `:80`, no UAC, no
+      dialog. **Tell:** a UAC prompt for the edge — something reintroduced a privileged bind.
+- [x] **No Windows Defender Firewall alert.** The edge binds `127.0.0.1` only (owner's ruling 14
+      Sep 2026); an all-interfaces bind raised "Windows Security Alert" on the Dell. ✓ 19 Sep 2026
+      (VM): none; `netstat` shows `127.0.0.1:443`, `127.0.0.1:80`, `127.0.0.1:18088`. **Tell:**
+      that alert appearing — `default_bind` was lost, and sites would be reachable from the LAN.
 
 ### DNS — the agent on :53, not :15353
-- [x] 19 Sep 2026: exactly that line; `rex doctor` ✓ on DNS, resolvers, TLDs, edge ("answering
-  as rexenv on :443"), ports — its one finding is `rex not on PATH`, as designed before the
-  Settings install. `rex status` reads `DNS answering (agent, udp 53) · resolver installed · CA trusted`.
-  The port is the platform's `RESOLVER_PORT`, **53 on Windows** (NRPT has no port field —
-  D2), so a line saying 15353 is macOS's number leaking.
-- [x] 19 Sep 2026: after Quit from the tray only `rexenv.exe --dns-agent` remains (task
-  `\rexenv\dns-agent`, Running, Interactive only), `probe.rex → 127.0.0.1`, and all 16
-  service processes kept running; `rex status` then says "rexenv isn't running — open the
-  app first". **DNS outlives the app**: quit rexenv, and `Resolve-DnsName probe.rex -Server 127.0.0.1`
-  still answers `127.0.0.1`. The agent is a **scheduled task**, `\rexenv\dns-agent`, run at
-  logon — not a LaunchAgent.
-- [x] 19 Sep 2026: zero `.rex` lines in `hosts`. **The `hosts` file is never touched.** rexenv's rule is never to overwrite a file
-  somebody else owns, and `hosts` is shared by every tool on the machine (D2 refuses the
-  fallback). **Tell:** any `.rex` entry appearing in
-  `C:\Windows\System32\drivers\etc\hosts`.
+- [x] The port is the platform's `RESOLVER_PORT`, **53 on Windows** (NRPT has no port field —
+      D2), so a line saying 15353 is macOS's number leaking. ✓ 19 Sep 2026 (VM): `rex status`
+      reads `DNS answering (agent, udp 53) · resolver installed · CA trusted`; `rex doctor` ✓ on
+      DNS, resolvers, TLDs, edge ("answering as rexenv on :443"), ports — its one finding
+      `rex not on PATH`, as designed before the Settings install.
+- [x] **DNS outlives the app**: quit rexenv, and `Resolve-DnsName probe.rex -Server 127.0.0.1`
+      still answers `127.0.0.1`. The agent is a **scheduled task**, `\rexenv\dns-agent`, run at
+      logon — not a LaunchAgent. ✓ 19 Sep 2026 (VM): after Quit from the tray only `rexenv.exe
+      --dns-agent` remains (task Running, Interactive only), `probe.rex → 127.0.0.1`, all 16
+      service processes kept running; `rex status` says "rexenv isn't running — open the app
+      first". A DELETED task is re-registered by the watchdog's next tick (#704, VM 20 Sep).
+- [x] **The `hosts` file is never touched** — rexenv never overwrites a file somebody else owns,
+      and D2 refuses the fallback. ✓ 19 Sep 2026 (VM): zero `.rex` lines. **Tell:** any `.rex`
+      entry in `C:\Windows\System32\drivers\etc\hosts`.
 
 ### Where things live on disk
-- [x] 19 Sep 2026: `bin\` (adminer 5.4.2, caddy 2.11.4, mailpit 1.30.3, mysql 8.4.6, nginx 1.30.4,
-  php 8.3.32, each with `.pinned-digest`), `ca\`, `config\`, `logs\`, `rexenv.db`. App data: `%LOCALAPPDATA%\rexenv\rexenv\data` (with `config\`, `logs\`, `bin\`
-  under it).
-- [x] The `rex` CLI is a **copy** on the user's `Path` at `%LOCALAPPDATA%\rexenv\bin`
-  (ledger #634) — beside the data tree, not inside it — not a symlink. ✓ 16 Sep 2026 on the Dell
-  (#634's L1: the folder held `rex.exe` with the sidecar's SHA-256 — byte-identical, so a copy;
-  the user `Path` gained exactly that one entry, `REG_SZ` kept; `where.exe rex` and a fresh
-  desktop process's `Get-Command rex` both found it) and 19 Sep on the clean VM (run 2,
-  "`rex` on the Path").
-
-### Updating
-The Windows updater shipped 19 Sep 2026 (ledger #690) — its rows are the "In-app self-update"
-section above. What the first installed copy (built at `276fc7cb`, BEFORE per-OS descriptors)
-showed is worth one line: its log read the macOS descriptor and said "this Mac's macOS version
-could not be read" — a build from `a0d4868f` on fetches `app-manifest-windows.json`, and that
-sentence is now OS-neutral.
+- [x] App data: `%LOCALAPPDATA%\rexenv\rexenv\data` (with `config\`, `logs\`, `bin\` under it).
+      ✓ 19 Sep 2026 (VM): `bin\` (adminer 5.4.2, caddy 2.11.4, mailpit 1.30.3, mysql 8.4.6, nginx
+      1.30.4, php 8.3.32, each with `.pinned-digest`), `ca\`, `config\`, `logs\`, `rexenv.db`.
+- [x] The `rex` CLI is a **copy** on the user's `Path` at `%LOCALAPPDATA%\rexenv\bin` (ledger
+      #634) — beside the data tree, not inside it — not a symlink. ✓ 16 Sep 2026 on the Dell
+      (the folder held `rex.exe` with the sidecar's SHA-256 — byte-identical, so a copy; the user
+      `Path` gained exactly that one entry, `REG_SZ` kept; `where.exe rex` and a fresh desktop
+      process's `Get-Command rex` both found it) and 19 Sep on the clean VM (run 2).
 
 ### Clean uninstall — replaces the macOS one
-- [x] Run 2: it lives under Settings → **Services** → Uninstall; the confirm reads "This stops
-  all services, deletes every rexenv NRPT rule (.rex and any other TLDs), and untrusts the
-  local CA (Windows will also ask for approval). Your sites and databases are kept."; then one
-  UAC and Windows' own "Root Certificate Store — Do you want to DELETE the following
-  certificate from the Root Store?" (subject, serial, both thumbprints). Settings → Uninstall → **Remove rexenv's system changes**; confirm.
-- [x] Run 2: NRPT rules 0, CurrentUser Root 0 rexenv certs, task gone (`schtasks` "cannot find
-  the path"), services 0, `Path` entry and `bin\rex.exe` gone, data kept. **`.rex` still
-  resolved while the app was open** — the in-process fallback resolver holds `127.0.0.1:53`
-  until Quit, by design; after Quit it does not. After: `Resolve-DnsName foo.rex -Server 127.0.0.1` no longer answers, the NRPT rule
-  for `.rex` is gone (`Get-DnsClientNrptRule`), the `\rexenv\dns-agent` task is gone, the
-  CA is out of the CurrentUser Root store, the `rex` copy and its `Path` entry are gone,
-  and no rexenv service is running.
-- [x] Run 2: `rexenv.db` still there. Site files remain under `%LOCALAPPDATA%\rexenv\rexenv\data` (not deleted).
-- [x] Run 2: **Apps & Features' `uninstall.exe`** — one page ("Uninstalling from: …\rexenv\", a
-  "Delete the application data" box, unticked by default) → Uninstall → Close, no UAC:
-  `rexenv.exe`, the HKCU entry, the Start Menu and desktop shortcuts are gone; the data tree
-  and an EMPTY `%LOCALAPPDATA%\rexenv\bin` stay (the `rex` copy was removed by the step above;
-  the directory is nobody's to delete — docs/TODO.md W12 lists it).
-- [x] Run 2, installing OVER a running copy: only the DNS agent was alive (the app had quit),
-  and the NSIS installer said **"rexenv is running! Click OK to kill it"** — the agent IS
-  `rexenv.exe`. OK killed it; its logon task restarted it after the install, on the new binary.
-- [x] ✓ 21 Sep 2026 (Dell, Win10 22H2, installer 7388104…): the same over-a-running-copy install
-  now says **"rexenv is still running: the app, or the small background resolver…"** with the
-  "starts again on its own" line (`src-tauri/nsis/English.nsh`). OK → the app closed, Setup
-  completed, Finish reopened the app, and the agent was back beside it.
+- [x] Settings → **Services** → Uninstall → **Remove rexenv's system changes**; the confirm
+      reads "This stops all services, deletes every rexenv NRPT rule (.rex and any other TLDs),
+      and untrusts the local CA (Windows will also ask for approval). Your sites and databases
+      are kept."; then one UAC and Windows' own "Root Certificate Store — Do you want to DELETE
+      the following certificate from the Root Store?" (subject, serial, both thumbprints). ✓ run 2.
+- [x] After: `Resolve-DnsName foo.rex -Server 127.0.0.1` no longer answers, the `.rex` NRPT rule
+      is gone (`Get-DnsClientNrptRule`), the `\rexenv\dns-agent` task is gone, the CA is out of
+      the CurrentUser Root store, the `rex` copy and its `Path` entry are gone, no rexenv service
+      is running. ✓ run 2: NRPT rules 0, CurrentUser Root 0 rexenv certs, task gone (`schtasks`
+      "cannot find the path"), services 0, `Path` entry and `bin\rex.exe` gone. **`.rex` still
+      resolved while the app was open** — the in-process fallback resolver holds `127.0.0.1:53`
+      until Quit, by design; after Quit it does not.
+- [x] Site files and `rexenv.db` remain under `%LOCALAPPDATA%\rexenv\rexenv\data` (not deleted).
+      ✓ run 2.
+- [x] **Apps & Features' `uninstall.exe`** — one page ("Uninstalling from: …\rexenv\", a "Delete
+      the application data" box, unticked by default) → Uninstall → Close, no UAC: `rexenv.exe`,
+      the HKCU entry, the Start Menu and desktop shortcuts are gone; the data tree stays. ✓ run 2.
+      That run also left an EMPTY `%LOCALAPPDATA%\rexenv\bin`; the Settings uninstall now removes
+      the folder when it empties (`remove_symlink_best_effort`, 19 Sep) — not re-run since.
+- [x] **Installing OVER a running copy** names what is running and restarts it: "rexenv is still
+      running: the app, or the small background resolver…" with the "starts again on its own"
+      line (`src-tauri/nsis/English.nsh`). ✓ 21 Sep 2026 (Dell, Win10 22H2, installer
+      7388104…): OK → the app closed, Setup completed, Finish reopened the app, the agent was back
+      beside it. (Run 2 on 19 Sep showed Tauri's stock "rexenv is running! Click OK to kill it" —
+      the agent IS `rexenv.exe` — which is why the sentence was replaced.)
 
 ## Linux — what this checklist means on that OS (reconciled 28 Sep 2026)
 

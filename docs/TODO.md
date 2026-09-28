@@ -1072,7 +1072,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
       stops the database), Tunnels left one titled `…\php.exe`. Fixed in code: `platform::command`
       (`CREATE_NO_WINDOW` on Windows) for all 22 helper spawns in `core/` + a source-scan guard.
     - [ ] Chrome's download wording (no Chrome on the VM); the certificate dialog's **No** path;
-      WebView2's `downloadBootstrapper` on a machine without it (the VM had 153).
+      WebView2's `downloadBootstrapper` on a machine without it (the VM had 153). SMOKE-TEST's
+      Windows section (reconciled 28 Sep 2026) lists these with the rest of what is open there —
+      the tray's left click, Firefox's typed addresses (#706), the updated-copy uninstall.
     - [x] ✓ 19 Sep 2026, display only — the Services row already carried its platform label (#651);
       now `rex status` reads `PHP-CGI 8.3` on Windows too (`pool_display_name`); the key stays
       `PHP-FPM 8.3` on every OS. `rex status` names the pool `PHP-FPM 8.3` on Windows, where the pool is `php-cgi`
