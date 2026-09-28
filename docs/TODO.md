@@ -1253,7 +1253,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     onboarding, Start all and a WordPress site over HTTPS (curl 200, Chromium no warning) — P1/P2/P3
     through the app, P5 partly; found and fixed: snap Chromium's NSS db (#726), thread-summed RAM
     (#725), `rex`'s Linux socket (#727).** P4 ✓ after a reboot; the rebuilt deb re-proved #725/#727; PHP 7.4's Install button on Linux
-    is #728 (fixed). P2's restart/disable legs ✓, the tunnel guard ✓ (owner-approved test tunnel). Owed: Firefox (snap)**
+    is #728 (fixed). P2's restart/disable legs ✓, the tunnel guard ✓ (owner-approved test tunnel).** **Owed (SMOKE-TEST's Linux section, reconciled 28 Sep 2026 — its "Still open on Linux" list is the whole remainder):** snap Chromium + Firefox through the app's own onboarding, the Database Browser at `rexdb://localhost`, Remove system changes, the edge staying down across a reboot after Stop all, the AppImage legs, the open-in actions, Settings' words
   - [x] L7 **Linux self-update (owner ruled IN, 24 Sep 2026)** ✓ 25 Sep 2026 — `LinuxAppBundle`
     (deb: `dpkg-deb` checks, then `dpkg -i` in the polkit step; AppImage: `--print-version`, then
     `renameat2` exchange), one descriptor per kind+arch (`app-manifest-linux-<deb|appimage>-<arch>.json`),

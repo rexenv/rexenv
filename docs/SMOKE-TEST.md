@@ -1,4 +1,4 @@
-# rexenv — release smoke test (clean Mac · Windows and Linux sections at the end)
+# rexenv — release smoke test, all three OSes (the main body is the clean Mac · the Windows and Linux sections at the end say what changes on each)
 
 Run this end-to-end on a **clean Mac or a fresh macOS user account** (no cached
 rexenv binaries) from the distributed **universal .dmg**, after the INSTALL.md
@@ -1864,130 +1864,152 @@ sentence is now OS-neutral.
   "starts again on its own" line (`src-tauri/nsis/English.nsh`). OK → the app closed, Setup
   completed, Finish reopened the app, and the agent was back beside it.
 
-## Linux — what this checklist means on that OS (nothing here has run yet — 24 Sep 2026)
+## Linux — what this checklist means on that OS (reconciled 28 Sep 2026)
 
 Run everything above on Linux too, EXCEPT what this section changes or removes. Ubuntu is the
-supported target (22.04 LTS or newer, D-L4 of `docs/PLAN-linux-port.md`); every mechanism below
-is systemd's, polkit's or the desktop's, and **no row in this section has been run on any
-Linux machine** — the impls landed from a Mac with a Docker container that has no systemd, no
-polkit and no desktop. The P-numbered rows are the plan's §7: the ones only a VM can answer,
-in the order they must be run. **P1 first, before anything else in this file** — it is the
-row that can break the tester's own internet.
+supported target (22.04 LTS or newer, x86_64 or aarch64 — D-L4 of `docs/PLAN-linux-port.md`);
+every mechanism below is systemd's, polkit's or the desktop's (`docs/PLATFORMS.md` §3, §8).
+**P1 first, before anything else in this file** — it is the row that can break the tester's
+own internet.
+
+**Where this section has run** (the ✓ rows name which): the **Ubuntu 22.04 arm64 UTM VM** (the
+installed deb, GNOME desktop, real polkit and systemd-resolved — 24–27 Sep 2026); the **Dell's
+WSL2 Ubuntu 26.04 x86_64** (the rebuilt deb under WSLg, 27 Sep); a **fresh WSL Ubuntu 22.04.5
+x86_64** (the CI-built floor deb, 27 Sep). WSL has no polkit agent and its `.rex` answer comes
+through the Windows host's DNS, so **P1 and every polkit-dialog row count only from the VM**.
+Until 28 Sep this header said "nothing here has run yet"; the runs were recorded row by row
+beneath it, and the unticked rows beside them described steps those runs had already done —
+reconciled into one row per step, each open row saying what it is still waiting for.
+
+**Still open on Linux, in one list:** P1 the Settings door for a second TLD, and a machine with
+no systemd-resolved · P2 the edge staying down across a reboot after Stop all · P3 snap Chromium
+and Firefox through the app's own onboarding (GUI), an AppImage without `libnss3-tools`, Remove
+system changes · P4 the agent with the app never started, its restart, the AppImage's paths,
+the guard's normal-stop leg · P5 "Open rexenv" from the tray, the Database Browser, Settings'
+words, the open-in actions · the in-app update's relaunch and three other update rows · PHP 7.4
+through the GUI.
 
 Environment: Ubuntu ____ (22.04+; x86_64 or aarch64) · package ____ (.deb / AppImage) · rexenv version ____
 
 ### P1 — DNS scoping (ledger #717 — the claim the whole port rests on)
-- [ ] Before onboarding: `resolvectl status` shows a link with DNS servers and `resolv.conf` is
-      the stub (`nameserver 127.0.0.53`). Note `resolvectl query example.com`'s answer.
-- [x] ✓ 24 Sep 2026 (Ubuntu 22.04 arm64 VM, by hand — P1 with the FIRST design FAILED: the
-      global drop-in made `example.com` resolve to `127.0.0.1`; P1b with the dummy link passed,
-      see ledger #717; `linux_dns_route_check` 23/23 with the app's own commands) — **and the app's own onboarding on the VM, the installed deb,
-      24 Sep 2026: polkit dialog with rexenv's sentence, `rexenv0` up, marker + unit, `a.rex` →
-      loopback, `example.com` public.**
-      Onboarding → the system-setup consent → ONE polkit dialog: from the `.deb` it reads
-      "rexenv needs administrator permission to change system settings…" (#723); from an AppImage
-      or a dev build it names `/bin/sh`.
-      After: `/etc/rexenv/dns.d/rex` exists (`nameserver 127.0.0.1` / `port 15353`), `ip link`
-      shows `rexenv0`, `systemctl status rexenv-dns-route` is active (exited), and
+- Prep, every run: before onboarding, `resolvectl status` shows a link with DNS servers and
+  `resolv.conf` is the stub (`nameserver 127.0.0.53`); note `resolvectl query example.com`'s answer.
+- [x] ✓ 24 Sep 2026 (22.04 arm64 VM, the installed deb). Onboarding → the system-setup consent → ONE polkit
+      dialog: from the `.deb` it reads "rexenv needs administrator permission to change system
+      settings…" (#723); from an AppImage or a dev build it names `/bin/sh`. After:
+      `/etc/rexenv/dns.d/rex` exists (`nameserver 127.0.0.1` / `port 15353`), `ip link` shows
+      `rexenv0`, `systemctl status rexenv-dns-route` is active (exited), and
       `resolvectl status rexenv0` lists `127.0.0.1:15353` with `~rex` and `-DefaultRoute`.
-- [ ] `resolvectl query anything.rex` → `127.0.0.1`. **`resolvectl query example.com` → the SAME
-      public answer as before, never `127.0.0.1`.** `curl -I https://example.com` works.
-      **Tell:** every site on the internet resolving to loopback — a DEFAULT route. That is what
-      the first design did (24 Sep 2026); if the dummy link ever does it: `sudo ip link del
-      rexenv0`, and the mechanism is wrong, not the tester.
+      **Measured: rexenv's own sentence in the dialog, `rexenv0` up, marker + unit present.**
+- [x] ✓ 24 Sep 2026 (VM): `resolvectl query anything.rex` → `127.0.0.1`. **`resolvectl query
+      example.com` → the SAME public answer as before, never `127.0.0.1`.** `curl -I
+      https://example.com` works. **Measured: `a.rex` → loopback, `example.com` public — through
+      the app, and 23/23 in `linux_dns_route_check` with the app's own commands.** History: P1
+      with the FIRST design (a global resolved drop-in) FAILED — `example.com` resolved to
+      `127.0.0.1`; the dummy link replaced it the same day (#717).
+      **Tell:** every site on the internet resolving to loopback — a DEFAULT route. If the dummy
+      link ever does it: `sudo ip link del rexenv0`, and the mechanism is wrong, not the tester.
 - [ ] Add a second TLD in Settings → a second marker, `resolvectl status rexenv0` lists both
       `~rex ~test`, both answer, `example.com` still does not. Remove both → `rexenv0` is gone.
+      **◐ the mechanism ✓ 24 Sep 2026 (VM):** `linux_dns_route_check` ran exactly this with the
+      app's `install_command`/`uninstall_command` — two TLDs, a resolved restart, partial removal
+      keeps the link, the last removal takes link + unit. **Open: the Settings door.**
 - [ ] A machine WITHOUT systemd-resolved (or with it stopped): the consent step FAILS with the
-      sentence naming systemd-resolved; nothing is written.
+      sentence naming systemd-resolved; nothing is written. **Open: no run recorded** (the refusal is
+      `REQUIRE_RESOLVED` in `dnsroute.rs`; no host without resolved has been tried).
 
-### P2 — the edge unit
-- [x] ✓ 24 Sep 2026 (VM, the installed deb, through the app): Start all → the third polkit dialog
-      → `rexenv-edge.service` active (running), `Main PID` = caddy under `/usr/local/lib/rexenv/bin/caddy`
-      (`root:root 0755`), `:80`/`:443` listening, `config/caddy-admin.sock` user-owned, 5/5 running.
-      A WordPress site created through the dialog served over HTTPS (curl 200, Chromium no warning).
-      The other legs the same day: `sudo kill -9 <caddy>` → back in 4 s (new pid, `:443` up);
-      tray → Stop all (one prompt) → `is-enabled` = `disabled`, `inactive`, ports free, every
-      row idle; tray → Start all → enabled, active, 5/5 running. **P2 complete.**
-- [ ] After Start all: `systemctl status rexenv-edge` active, `ExecStart=/bin/sh
-      "/usr/local/lib/rexenv/edge-launch.sh"`, `/usr/local/lib/rexenv/bin/caddy` is `root:root
-      0755`, `:443` and `:80` answer. `ls -l ~/.local/share/rexenv/run/caddy-admin.sock` is
-      owned by YOU within a second of any site change (the chown loop) — create a site, check
-      again. `sudo kill -9 <caddy pid>` → back within ~2 s (`Restart=always`).
-- [ ] Stop all → `systemctl is-enabled rexenv-edge` says `disabled`, the port is free, and it
-      stays down across a reboot. Start all → enabled and up again.
+### P2 — the edge unit (ledger #718)
+- [x] ✓ 24 Sep 2026 (VM, the installed deb, through the app). After Start all (its own polkit
+      dialog): `systemctl status rexenv-edge` active (running), `Main PID` = caddy under
+      `/usr/local/lib/rexenv/bin/caddy` (`root:root 0755`), `:443` and `:80` answer.
+      `ls -l ~/.local/share/rexenv/config/caddy-admin.sock` is owned by YOU — and stays so across
+      a site change (the chown loop): a WordPress site created afterwards went through that
+      socket and served over HTTPS (curl 200, Chromium no warning). (The unit's
+      `ExecStart=/bin/sh "/usr/local/lib/rexenv/edge-launch.sh"` is L0-tested text, #718; the run
+      did not record it.)
+- [x] ✓ 24 Sep 2026 (VM): `sudo kill -9 <caddy pid>` → back within seconds (`Restart=always`;
+      measured 4 s, new pid, `:443` up).
+- [x] ✓ 24 Sep 2026 (VM): tray → Stop all (one prompt) → `systemctl is-enabled rexenv-edge` says
+      `disabled`, `inactive`, the ports are free, every row idle. Start all → enabled, active,
+      5/5 running.
+- [ ] Stop all, then reboot → the edge STAYS down (disabled survives the boot; `Restart=always`
+      must not bring it back). **Open: the reboot leg was run with the stack started (P4), never
+      after a Stop all.**
 
-### P3 — CA trust in two stores (D-L3)
-- [x] ✓ 24 Sep 2026 (VM): `certutil -L` lists `rexenv local CA C,,` in `~/.pki/nssdb`;
-      `/usr/local/share/ca-certificates/rexenv-local-ca.crt` + `/etc/ssl/certs/rexenv-local-ca.pem`;
-      `curl -I https://acme.rex` → 200 with no `-k`. **Snap Chromium said ERR_CERT_AUTHORITY_INVALID**
-      — its NSS database is the snap's own (ledger #726); the CA added there by hand opened the site
-      with no warning. The rebuilt deb writes both. **Firefox (snap) measured 25 Sep 2026:** with
-      rexenv's `user.js` pref alone, headless `firefox --screenshot https://guard.rex` hung on the TLS
-      error (the snap cannot see the host's system store); `certutil -A` into the profile's own
-      `cert9.db` and it rendered the site — so the Linux trust step now writes every Firefox profile
-      too (ledger #726, extended). The GUI Firefox row below is still owed.
-- [x] ✓ 27 Sep 2026 (Dell WSL Ubuntu 26.04, x86_64, the rebuilt deb, driven from the desktop): onboarding
-      through the GUI (Get started → components → "Set up domains & SSL" → "Nearly there"), the route
-      unit + `rexenv0` link, both stores; `rex start` (root edge via the polkit step), `rex site create
-      acme.rex --type wordpress` → **`curl https://acme.rex/` 200 with the CA verified, wp-login 200,
-      http→https 308**. Found on the way: `libaio.so.1t64` (ledger #731) and the stale system-store
-      CA behind a green "trusted" (#732). **PostgreSQL** (the owner's Start did nothing): theseus's `postgres`
-      asks for `libxml2.so.2`, 26.04 has `.so.16` — the same shim + PostgreSQL's closure in `Depends`; then
-      `rex site create lara.rex --type laravel --db postgres` → PostgreSQL 18.6 running on 15432, migrations
-      ran, `https://lara.rex` 200; **the owner then pressed Start on PostgreSQL in the Databases screen
-      and it came up (27 Sep 2026)** — the GUI door for #731, not just `rex`.
-      **And on the FLOOR, 27 Sep 2026:** the CI-built `rexenv_0.8.7_amd64.deb` (`linux-build.yml`, ubuntu-22.04)
-      installed through `apt` on a fresh WSL **Ubuntu 22.04.5 x86_64** (every `Depends` satisfied, `ldd`
-      clean, glibc 2.35), GUI onboarding to "Domains & SSL are ready", `rex start` (root edge), WordPress
-      on MySQL at `https://acme.rex` 200 and Laravel on PostgreSQL at `https://lara.rex` 200 — no
-      `lib-compat/` needed there (the real sonames exist), which is the shim's "none" case measured.
-      WSL caveats: no polkit
-      agent (a test rule stood in), the
-      `.rex` answer came through the Windows host's DNS, so P1 stays the VM's.
-- [ ] After onboarding: `certutil -d sql:$HOME/.pki/nssdb -L` lists `rexenv local CA` with
-      `C,,`; `/usr/local/share/ca-certificates/rexenv-local-ca.crt` exists; `curl -I
-      https://<site>.rex` succeeds with no `-k`. Chrome/Chromium opens the site with no warning.
-      Firefox (snap on Ubuntu) opens it — the CA is in the profile's own `cert9.db`
-      (`certutil -d sql:~/snap/firefox/common/.mozilla/firefox/<profile> -L` lists it), because the
-      snap cannot import the host's system store through the `user.js` pref.
-- [ ] A machine without `libnss3-tools`: the trust step fails with the `sudo apt install
-      libnss3-tools` sentence, and the system half was NOT half-applied.
-- [ ] Settings → Remove system changes → both stores empty, drop-ins gone, units gone.
+### P3 — CA trust in two stores (D-L3, ledger #726, #732)
+- [x] ✓ After onboarding: `certutil -d sql:$HOME/.pki/nssdb -L` lists `rexenv local CA` with
+      `C,,`; `/usr/local/share/ca-certificates/rexenv-local-ca.crt` exists (and
+      `/etc/ssl/certs/rexenv-local-ca.pem`); `curl -I https://<site>.rex` succeeds with no `-k`.
+      **Measured three times:** 24 Sep 2026 on the VM; 27 Sep on the Dell's WSL 26.04 (GUI
+      onboarding → "Nearly there", `rex start`, `rex site create acme.rex --type wordpress` →
+      `curl https://acme.rex/` 200 with the CA verified, wp-login 200, http→https 308; found on the
+      way: `libaio.so.1t64` (#731) and a stale system-store CA behind a green "trusted" (#732),
+      both fixed; then Laravel on **PostgreSQL** — the `libxml2.so.2 → .16` shim + PostgreSQL's
+      closure in `Depends` — `https://lara.rex` 200, and the owner's Start on PostgreSQL in the
+      Databases screen brought it up); and 27 Sep on the **floor** — the CI-built
+      `rexenv_0.8.7_amd64.deb` (`linux-build.yml`, ubuntu-22.04) `apt`-installed on a fresh WSL
+      22.04.5 x86_64 (every `Depends` satisfied, `ldd` clean, glibc 2.35), GUI onboarding to
+      "Domains & SSL are ready", WordPress on MySQL at `https://acme.rex` 200 and Laravel on
+      PostgreSQL at `https://lara.rex` 200, no `lib-compat/` needed (the shim's "none" case).
+- [ ] Chrome/Chromium (snap on Ubuntu) opens a site with no warning — the CA is in the snap's
+      own NSS database (`~/snap/chromium/current/.local/share/pki/nssdb`), written by the app's
+      onboarding. **◐ 24 Sep 2026 (VM):** the first deb wrote `~/.pki/nssdb` only and snap
+      Chromium said `ERR_CERT_AUTHORITY_INVALID`; the CA added to the snap's database by hand
+      opened the site, and the deb now writes both (#726). **Open: the rebuilt deb's onboarding
+      writing the snap database itself, seen in Chromium.**
+- [ ] Firefox (snap on Ubuntu) opens it with no warning — the CA is in the profile's own
+      `cert9.db` (`certutil -d sql:~/snap/firefox/common/.mozilla/firefox/<profile> -L` lists it),
+      because the snap cannot import the host's system store through the `user.js` pref.
+      **◐ 25 Sep 2026 (VM, headless):** with the pref alone `firefox --screenshot
+      https://guard.rex` hung on the TLS error; `certutil -A` into the profile's `cert9.db` and it
+      rendered — so the trust step now writes every Firefox profile (#726, extended). **Open: the
+      GUI Firefox after the app's own onboarding.**
+- [ ] An **AppImage** on a machine without `libnss3-tools` (the deb `Depends` on it, so only the
+      AppImage can meet this): the trust step fails with the `sudo apt install libnss3-tools`
+      sentence, and the system half was NOT half-applied. **Open: no run recorded.**
+- [ ] Settings → Remove system changes → both stores empty (NSS dbs and the system file), the
+      `rexenv0` link, route marker, units and autostart entry gone. **Open: no Linux run recorded.**
 
 ### P4 — autostart and the DNS agent
-- [x] ✓ 24 Sep 2026 (VM, `sudo reboot` with both launch toggles on): after the reboot's autologin
-      `rexenv --hidden` is running (no window), `rexenv --dns-agent` under the user unit is
+- [x] ✓ 24 Sep 2026 (VM, `sudo reboot` with both launch toggles on): after the reboot's
+      autologin `rexenv --hidden` is running (no window) — the autostart entry `~/.config/autostart/rexenv.desktop` —
+      `rexenv --dns-agent` under the user unit (`~/.config/systemd/user/rexenv-dns.service`) is
       `active`, `rexenv-edge` and `rexenv-dns-route` are `active`, `rexenv0` carries `~rex` with
       no default route, `a.rex` → loopback, `example.com` public, `:443`/`:18088` listening —
       "Start services when rexenv opens" brought the stack back with no click.
-- [ ] `~/.config/autostart/rexenv.desktop` after enabling the login item; sign out, sign in →
-      rexenv is in the tray with no window. `~/.config/systemd/user/rexenv-dns.service` is
-      `active` after a sign-in with the app NOT started; `dig @127.0.0.1 -p 15353 x.rex` answers.
-- [ ] Quit the app → `.rex` still resolves (the agent outlives it). `systemctl --user kill
-      rexenv-dns` → back within ~2 s.
-- [ ] AppImage: the unit and the autostart entry name the `.AppImage` path, never a `/tmp/.mount_…` one.
-- [x] ✓ 24 Sep 2026 (VM): **the tunnel guard (ledger #722)** — `guard.rex` shared, cloudflared
-      and `rexenv --tunnel-guard …` beside it; `kill -9` the app → both gone within 6 s. Owed:
-      the normal-stop leg (guard exits at once).
+- [ ] With the login item OFF: sign in → the DNS agent is `active` with the app NOT started, and
+      `dig @127.0.0.1 -p 15353 x.rex` answers. Quit the app → `.rex` still resolves (the agent
+      outlives it). `systemctl --user kill rexenv-dns` → back within seconds.
+      **Open: the reboot above had the app autostarting, so the agent was never seen alone.**
+- [ ] AppImage: the unit and the autostart entry name the `.AppImage` path, never a
+      `/tmp/.mount_…` one. **Open: no AppImage has been installed and run past `--print-version`
+      (§A0-linux).**
+- [x] ✓ 24 Sep 2026 (VM, an owner-approved public test tunnel): **the tunnel guard (ledger
+      #722)** — `guard.rex` shared, cloudflared and `rexenv --tunnel-guard …` beside it; `kill -9`
+      the app → both gone within 6 s.
+- [ ] The guard's normal-stop leg: stop the share from the app → the guard exits at once, no
+      stray process. **Open: owed since 24 Sep** (and `tunnel_parent_death_check` has no Linux tier entry).
 
 ### P5 — the GUI
-- [x] ✓ 24 Sep 2026 (VM): the colour tray icon in GNOME's top bar; its menu opens with the full
-      model (All running · 5 services, Start/Stop all, Sites ▸, Services … Quit); no reserved
-      title-bar row. Owed: "Open rexenv" from the menu.
-- [ ] The tray icon appears (needs `libayatana-appindicator3`); its menu opens; "Open rexenv"
-      shows the window. The window has NO reserved title-bar row (GTK draws its own).
+- [x] ✓ 24 Sep 2026 (VM): the COLOUR tray icon in GNOME's top bar (needs
+      `libayatana-appindicator3`); its menu opens with the full model (All running · 5 services,
+      Start/Stop all, Sites ▸, Services … Quit); the window has NO reserved title-bar row (GTK
+      draws its own). Also 27 Sep, the Dell's WSLg: onboarding end to end through the GUI.
+- [ ] Tray → "Open rexenv" shows the window. **Open: owed since 24 Sep — the menu was opened, this item not recorded.**
 - [ ] Databases → Browse: Adminer renders INSIDE the app at `rexdb://localhost` (webkitgtk
       serves custom schemes as WebKit does — the macOS origin, ledger #703's Linux leg).
+      **Open: no run recorded** — the Windows panel shipped blank for exactly this kind of reason.
 - [x] ✓ 24 Sep 2026 (VM): onboarding says "this computer", "Linux will ask for permission"; the
-      New Site dialog refuses Apache and MariaDB with "isn't part of rexenv on Linux yet".
-      **Sidebar RAM read 14.5–16.3 GB for a ~600 MB stack** — ledger #725, fixed; the rebuilt deb
-      reads 260 MB. **PHP 7.4 showed an Install button** (no Linux build exists) — ledger #728, fixed.
+      New Site dialog refuses Apache and MariaDB with "isn't part of rexenv on Linux yet". Found
+      and fixed the same day: the sidebar read 14.5–16.3 GB for a ~600 MB stack (#725; the rebuilt
+      deb reads 260 MB) and PHP 7.4 showed an Install button before Linux had a build (#728).
 - [ ] Settings: the words say Files, apt, "this computer", the tray, `/etc/rexenv/dns.d` — never
-      Finder, brew, Explorer or winget (`words::LINUX`).
+      Finder, brew, Explorer or winget (`words::LINUX`). **Open: onboarding's words were read,
+      Settings' were not.**
 - [ ] Open in editor / browser / terminal: each detected entry launches; a private window opens
-      private; "Open in terminal" lands in the site folder.
+      private; "Open in terminal" lands in the site folder. **Open: no run recorded.**
 
-### In-app update on Linux (L7, ledger #729/#730 — needs a PUBLISHED Linux descriptor)
+### In-app update on Linux (L7, ledger #729/#730)
 - [ ] `.deb` install, an older version: Settings → About → Check now finds the release named in
       `app-manifest-linux-deb-<arch>.json`; Update → ONE polkit dialog, rexenv's own sentence
       (not "run /bin/sh as the super user"); the app quits and comes back as the new version;
@@ -1996,18 +2018,21 @@ Environment: Ubuntu ____ (22.04+; x86_64 or aarch64) · package ____ (.deb / App
       dialog (rexenv's sentence — but the generic one, naming DNS/edge/CA and not the update:
       TODO row), `dpkg -l` 0.8.8, the DNS agent relaunched as 0.8.8, three sites 200 throughout
       — and the app did NOT come back: `could not spawn the relauncher (No such file or
-      directory)` (ledger #729, fixed on master; the fix runs in the OLD side of a swap, so
-      this row closes on the release after the fix). Opened by hand: 0.8.8. `updates/` still
-      held `0.8.8/` and `.rexenv-update-<pid>/` right after (the sweep had not run yet). First
-      Check now was refused as a replay — the dev deb had read the macOS document (TODO row).
+      directory)` (ledger #729, fixed on master 28 Sep; the fix runs in the OLD side of a swap,
+      so **this row closes on the release AFTER the one carrying the fix**). Opened by hand:
+      0.8.8. `updates/` still held `0.8.8/` and `.rexenv-update-<pid>/` right after (the sweep had
+      not run yet). First Check now was refused as a replay — the dev deb had read the macOS
+      document (TODO row).
 - [ ] AppImage in a folder you own, an older version: Check now reads
       `app-manifest-linux-appimage-<arch>.json`; Update swaps the file with NO prompt; the app
       comes back as the new version FROM THE SAME PATH; the folder holds no `.rexenv-update-*`
       after the sweep. A host without `libfuse2`: still works (`APPIMAGE_EXTRACT_AND_RUN`).
-- [ ] A `cargo run` dev build: Check now says a dev build reads no descriptor — no fetch, no offer.
+      **Open: no run recorded** (`linux_app_swap_check` proves the exchange on a fixture, 16/16).
+- [ ] A `cargo run` dev build: Check now says a dev build reads no descriptor — no fetch, no
+      offer. **Open: no run recorded** (the VM's dev deb is a package install, not this case).
 - [ ] Mid-update `dpkg -i` fails (unplug the network after the download, or a wrong-arch package
       renamed by hand): the dialog names the failure, the OLD version keeps running, nothing in
-      `/usr/bin` changed.
+      `/usr/bin` changed. **Open: no run recorded.**
 
 ### PHP 7.4 on Linux (L8, `php-7.4.33-7`)
 - [x] ✓ 25 Sep 2026 (VM, the rebuilt deb): `rex php install 7.4` → "✓ PHP 7.4 installed", `rex php
@@ -2015,10 +2040,11 @@ Environment: Ubuntu ____ (22.04+; x86_64 or aarch64) · package ____ (.deb / App
       → `curl https://php74.rex/` prints 7.4.33, `rex status` shows `PHP-FPM 7.4 running` on 9774;
       `bin/php-7.4.33/licenses/` holds the Linux licence set (`php_versions_check`).
 - [ ] Settings → PHP → 7.4 → Install through the GUI, and a WordPress site on 7.4; no Xdebug toggle
-      for 7.4 (static ELF, expected).
+      for 7.4 (static ELF, expected). **Open: the `rex` door was run, the GUI door was not.**
 
 ### Not in Linux v1 (D-L8, refused in core with an honest message)
 - **Redis, MariaDB, Apache, Xdebug** — as Windows v1: not offered, and a refusal that names the OS.
+  ✓ 24 Sep 2026 (VM) for Apache and MariaDB in New Site (P5 above).
 
 ---
 Result: ____ / all pass.  Issues found: ________________________________________
