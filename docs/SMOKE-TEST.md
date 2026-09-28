@@ -447,7 +447,7 @@ examples; **a 7.4 site answering over HTTPS end to end is not**, and it was the
 only proof of that — sitting inside "M2b — the PHP matrix and mail", four HOLD
 steps deep in an optional section a reviewer skips whenever MCP is off. A gate
 that only runs when an unrelated feature is enabled is not a gate for this one.
-- [ ] **A PHP 7.4 site actually serves.** Settings → PHP versions → install
+- [x] **A PHP 7.4 site actually serves.** Settings → PHP versions → install
   **7.4**, then create a WordPress site on it and open it. Expect: the site
   loads over HTTPS, `phpinfo()`/Site Health reports **7.4.33**, and WordPress
   shows its own "outdated PHP" notice — **which rexenv should already have
@@ -463,11 +463,15 @@ that only runs when an unrelated feature is enabled is not a gate for this one.
   site create php74.rex --type wordpress --php 7.4` → `serving`, `https://php74.rex/` 200
   and a `PHP_VERSION` probe in its docroot answered **7.4.33** over HTTPS; `rex status` shows
   `PHP-FPM 7.4` on **9774** beside 8.3 on 9783. The 7.4 row in Settings carries make-default,
-  ini settings and remove — no Xdebug control (8.3's row has ini settings only). **Open:** the
-  create dialog's and the Environment card's EOL warning, and WordPress's own Site Health —
-  the site's detail page could not be opened by automation on this VM (every press on a Sites
-  row, including the row's accessibility button, opened the site in Safari instead — noted
-  in the Site Settings row).
+  ini settings and remove — no Xdebug control (8.3's row has ini settings only). **The create
+  dialog warns FIRST:** New site → WordPress → Configure → PHP version `7.4 — end of life` →
+  the amber note "PHP 7.4 stopped receiving upstream security fixes in November 2022. It still
+  runs — use it to work on a legacy project, not to build a new one. WordPress will show its
+  own 'outdated PHP' notice and a Site Health critical on sites using it." **And WordPress
+  then says it second:** the magic-login session's Site Health → Status lists the critical
+  "Your site is running on an outdated version of PHP (7.4.33)" under Security. **Open:** the
+  Environment card on the site page — not reachable by automation on this VM (the Site
+  Settings row).
 - [ ] **A real WordPress action, through the site.** WP Manager → install and
   activate a plugin on the 7.4 site. Both WP-CLI and Composer are **phars run
   through the SITE's PHP**, and both have broken on this row before — the first
