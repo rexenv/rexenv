@@ -2317,13 +2317,16 @@ own internet.
 installed deb, GNOME desktop, real polkit and systemd-resolved — 24–27 Sep 2026); the **Dell's
 WSL2 Ubuntu 26.04 x86_64** (the rebuilt deb under WSLg, 27 Sep); a **fresh WSL Ubuntu 22.04.5
 x86_64** (the CI-built floor deb, 27 Sep). WSL has no polkit agent and its `.rex` answer comes
-through the Windows host's DNS, so **P1 and every polkit-dialog row count only from the VM**.
+through the Windows host's DNS — and the VM's comes through the Mac's (P1, measured 28 Sep) — so
+**a `.rex` resolution counts only when pinned to `rexenv0`** (`resolvectl query -i rexenv0`), and
+every polkit-dialog row counts only from the VM. The HTTPS, trust and serving facts below stand;
+their `.rex` lookups before 28 Sep were answered by the host, not by rexenv's route.
 Until 28 Sep this header said "nothing here has run yet"; the runs were recorded row by row
 beneath it, and the unticked rows beside them described steps those runs had already done —
 reconciled into one row per step, each open row saying what it is still waiting for.
 
-**Still open on Linux, in one list:** P1 the Settings door for a second TLD, and a machine with
-no systemd-resolved · P2 the edge staying down across a reboot after Stop all · P3 snap Chromium
+**Still open on Linux, in one list:** P1 the route answering `.rex` itself through the installed
+app (fixed on master 28 Sep — needs a release), and the Settings door for a second TLD · P2 the edge staying down across a reboot after Stop all · P3 snap Chromium
 and Firefox through the app's own onboarding (GUI), an AppImage without `libnss3-tools`, Remove
 system changes · P4 the agent with the app never started, its restart, the AppImage's paths,
 the guard's normal-stop leg · P5 "Open rexenv" from the tray, the Database Browser, Settings'
@@ -2332,7 +2335,15 @@ through the GUI.
 
 Environment: Ubuntu ____ (22.04+; x86_64 or aarch64) · package ____ (.deb / AppImage) · rexenv version ____
 
-### P1 — DNS scoping (ledger #717 — the claim the whole port rests on)
+### P1 — DNS scoping (ledger #717, #734 — the claim the whole port rests on)
+**Ask resolved WHICH link answered, never only what the answer was.** On a VM or under WSL the
+upstream DNS is the host's — and a host running rexenv answers `*.rex` with `127.0.0.1` itself
+(the Mac through `/etc/resolver/rex`, Windows through NRPT). Measured 28 Sep 2026 on the 22.04
+VM with NO route and NO agent on it: `resolvectl query anything.rex` → `127.0.0.1 -- link:
+enp0s1`. Every `.rex` answer this section recorded before 28 Sep came that way; the route
+itself had no DNS scope (0.8.8 and earlier — see the second row). Use `resolvectl query -i
+rexenv0 <name>` and read `Current Scopes:`.
+
 - Prep, every run: before onboarding, `resolvectl status` shows a link with DNS servers and
   `resolv.conf` is the stub (`nameserver 127.0.0.53`); note `resolvectl query example.com`'s answer.
 - [x] ✓ 24 Sep 2026 (22.04 arm64 VM, the installed deb). Onboarding → the system-setup consent → ONE polkit
@@ -2342,22 +2353,40 @@ Environment: Ubuntu ____ (22.04+; x86_64 or aarch64) · package ____ (.deb / App
       `rexenv0`, `systemctl status rexenv-dns-route` is active (exited), and
       `resolvectl status rexenv0` lists `127.0.0.1:15353` with `~rex` and `-DefaultRoute`.
       **Measured: rexenv's own sentence in the dialog, `rexenv0` up, marker + unit present.**
-- [x] ✓ 24 Sep 2026 (VM): `resolvectl query anything.rex` → `127.0.0.1`. **`resolvectl query
-      example.com` → the SAME public answer as before, never `127.0.0.1`.** `curl -I
-      https://example.com` works. **Measured: `a.rex` → loopback, `example.com` public — through
-      the app, and 23/23 in `linux_dns_route_check` with the app's own commands.** History: P1
-      with the FIRST design (a global resolved drop-in) FAILED — `example.com` resolved to
-      `127.0.0.1`; the dummy link replaced it the same day (#717).
+- [ ] **`rexenv0` has a DNS scope and answers `.rex` ITSELF:** `resolvectl status rexenv0` reads
+      `Current Scopes: DNS` and carries `192.0.2.53/32` (`ip addr show rexenv0`);
+      `resolvectl query -i rexenv0 anything.rex` → `127.0.0.1`. **`resolvectl query example.com`
+      → the SAME public answer as before, never `127.0.0.1`.** `curl -I https://example.com`
+      works. **✗ FAILED 28 Sep 2026 on 0.8.8 (22.04 arm64 VM):** `Current Scopes: none`,
+      `-i rexenv0` → "No appropriate name servers or networks for name found" — resolved gives
+      no DNS scope to a link whose only address is link-local (`fe80::`), so the route routed
+      nothing and a lone Ubuntu machine never resolved `.rex`. The 24 Sep ✓ ("`a.rex` →
+      loopback", 23/23 in `linux_dns_route_check`) was the host's answer. **Fixed on master 28
+      Sep:** the link carries `192.0.2.53/32` (TEST-NET-1), and a route script older than the
+      build reads as not installed, so setup rewrites it (#734). **L1 on the same VM, 28 Sep:
+      `linux_dns_route_check` PASS 32/32** with the app's own commands — `Current Scopes: DNS`,
+      `.rex`/`.test` answered through `-i rexenv0`, `example.com` public at every step; the
+      0.8.8 script planted back → 4 named FAILs (scope, and the three pinned queries) while the
+      unpinned `anything.rex → 127.0.0.1` still passed, which is how the old check passed.
+      **Open: this row through the installed app** — a release carrying the fix, installed over
+      0.8.8: setup offered again (the stale script), ONE polkit dialog, then the reads above.
+      History: P1 with the FIRST design (a global resolved drop-in) FAILED — `example.com`
+      resolved to `127.0.0.1`; the dummy link replaced it the same day (#717).
       **Tell:** every site on the internet resolving to loopback — a DEFAULT route. If the dummy
       link ever does it: `sudo ip link del rexenv0`, and the mechanism is wrong, not the tester.
+      **Second tell:** `Current Scopes: none` on `rexenv0` — `.rex` then works only while some
+      other machine answers it.
 - [ ] Add a second TLD in Settings → a second marker, `resolvectl status rexenv0` lists both
-      `~rex ~test`, both answer, `example.com` still does not. Remove both → `rexenv0` is gone.
-      **◐ the mechanism ✓ 24 Sep 2026 (VM):** `linux_dns_route_check` ran exactly this with the
-      app's `install_command`/`uninstall_command` — two TLDs, a resolved restart, partial removal
-      keeps the link, the last removal takes link + unit. **Open: the Settings door.**
-- [ ] A machine WITHOUT systemd-resolved (or with it stopped): the consent step FAILS with the
-      sentence naming systemd-resolved; nothing is written. **Open: no run recorded** (the refusal is
-      `REQUIRE_RESOLVED` in `dnsroute.rs`; no host without resolved has been tried).
+      `~rex ~test`, both answer THROUGH `rexenv0`, `example.com` still does not. Remove both →
+      `rexenv0` is gone. **◐ the mechanism ✓ 28 Sep 2026 (VM):** `linux_dns_route_check` with the
+      app's `install_command`/`uninstall_command` — two TLDs answered via `-i rexenv0`, a resolved
+      restart, partial removal keeps the link, the last removal takes link + unit. **Open: the
+      Settings door.**
+- [x] A machine WITHOUT systemd-resolved (or with it stopped): the consent step FAILS with the
+      sentence naming systemd-resolved; nothing is written. ✓ 28 Sep 2026 (VM,
+      `linux_dns_route_check` with resolved stopped): the app's install command refused with
+      "systemd-resolved is not running on this machine…", no marker written; resolved started
+      again straight after and `example.com` resolved publicly.
 
 ### P2 — the edge unit (ledger #718)
 - [x] ✓ 24 Sep 2026 (VM, the installed deb, through the app). After Start all (its own polkit
@@ -2416,7 +2445,7 @@ Environment: Ubuntu ____ (22.04+; x86_64 or aarch64) · package ____ (.deb / App
       autologin `rexenv --hidden` is running (no window) — the autostart entry `~/.config/autostart/rexenv.desktop` —
       `rexenv --dns-agent` under the user unit (`~/.config/systemd/user/rexenv-dns.service`) is
       `active`, `rexenv-edge` and `rexenv-dns-route` are `active`, `rexenv0` carries `~rex` with
-      no default route, `a.rex` → loopback, `example.com` public, `:443`/`:18088` listening —
+      no default route, `a.rex` → loopback (through the Mac host, it turned out — P1), `example.com` public, `:443`/`:18088` listening —
       "Start services when rexenv opens" brought the stack back with no click.
 - [ ] With the login item OFF: sign in → the DNS agent is `active` with the app NOT started, and
       `dig @127.0.0.1 -p 15353 x.rex` answers. Quit the app → `.rex` still resolves (the agent

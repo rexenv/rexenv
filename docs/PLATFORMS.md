@@ -77,7 +77,7 @@ detail and the reasoning live in the linked plan and the OS's code; this is the 
 |---|---|---|---|
 | Supported floor | 13+ (13/14 = legacy pin tiers, `PLAN-macos-13-floor`) | 11 x64; 10 22H2 best-effort (D6) | 22.04+ x86_64 / aarch64 (glibc ≤ 2.34 asserted) |
 | Webview (what the UI really runs in) | WKWebView | WebView2 | webkitgtk |
-| `*.rex` routed to the resolver | `/etc/resolver/<tld>` (root) | NRPT rule `.rex → 127.0.0.1` (UAC) | dummy link `rexenv0` + `resolvectl` link-scoped domains; markers `/etc/rexenv/dns.d/<tld>`; `rexenv-dns-route.service` (#717) |
+| `*.rex` routed to the resolver | `/etc/resolver/<tld>` (root) | NRPT rule `.rex → 127.0.0.1` (UAC) | dummy link `rexenv0` carrying `192.0.2.53/32` + `resolvectl` link-scoped domains; markers `/etc/rexenv/dns.d/<tld>`; `rexenv-dns-route.service` (#717, #734) |
 | Resolver port (`platform::RESOLVER_PORT`) | UDP 15353 | UDP **53** (NRPT has no port field — D2) | UDP 15353 |
 | DNS agent that outlives the app | per-user LaunchAgent (`--dns-agent`) | scheduled task `\rexenv\dns-agent` at logon | systemd **user** unit |
 | Edge on `:443` | root LaunchDaemon | unelevated user process, `127.0.0.1` only (no Firewall alert) | systemd **system** unit + wrapper (#718) |
@@ -183,6 +183,13 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
 - **Never a global resolved drop-in** — it sends every name to rexenv's loopback resolver.
   DNS routing is the dummy link with link-scoped domains (#717). P1 of SMOKE's Linux section
   runs first because it is the row that can break the tester's own internet.
+- **A link with only a link-local address gets NO DNS scope** from systemd-resolved — the dummy
+  link must carry a real address (`192.0.2.53/32`, TEST-NET-1), or the route routes nothing.
+  0.8.8 shipped without it (#734, measured 28 Sep 2026).
+- **A VM's or WSL's upstream DNS is the HOST's, and a host running rexenv answers `.rex` itself.**
+  That hid the dead route above through every Linux proof for four days. Ask WHICH link answered
+  (`resolvectl query -i rexenv0`, `Current Scopes:`), never only what the answer was — the same
+  "check the whole surface" rule, in DNS.
 - **`pkexec` strips `PATH`** — every privileged command is absolute-pathed, and content
   travels through `printf` with `%` doubled.
 - **Trust has two stores** (system + NSS), and snap browsers carry their own NSS db (#726).

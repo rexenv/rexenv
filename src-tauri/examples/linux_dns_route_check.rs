@@ -8,6 +8,14 @@
 //! no text test can see. This is the run that would have caught it, kept so the NEXT change
 //! to the route is measured before a user meets it.
 //!
+//! **And why it asks WHICH link answered (28 Sep 2026).** Its first version passed 23/23 while
+//! the route routed nothing: `rexenv0` had no DNS scope (resolved ignores a link whose only
+//! address is link-local), and every `.rex` answer came from the VM's upstream — the Mac,
+//! running rexenv, whose `/etc/resolver/rex` answers loopback. "anything.rex → 127.0.0.1" is
+//! true on such a machine whatever the route does. So the link's scope is asserted, the `.rex`
+//! queries are pinned to `rexenv0` (`resolvectl query -i`), a stale route script must read as
+//! not installed (the update's repair path), and a stopped systemd-resolved must be refused.
+//!
 //! Linux only, `system` tier: it needs `sudo` (pkexec has no terminal) and changes the
 //! machine's DNS for its duration. It refuses when a rexenv route already exists (the owner's
 //! own install would be torn down), and removes everything it created on every exit.
@@ -72,6 +80,13 @@ async fn main() -> std::process::ExitCode {
         if s.is_empty() { String::from_utf8_lossy(&out.stderr).lines().next().unwrap_or("").to_string() } else { s }
     };
     let loopback = |answer: &str| answer.contains(": 127.0.0.1");
+    // The answer from the LINK ITSELF — a host upstream that answers `.rex` (a Mac or a Windows
+    // PC running rexenv, under a VM or WSL) cannot satisfy this.
+    let via_link = |name: &str| -> String {
+        let out = Command::new("resolvectl").args(["query", "-i", "rexenv0", name]).output().expect("resolvectl");
+        let s = String::from_utf8_lossy(&out.stdout).lines().next().unwrap_or("").to_string();
+        if s.is_empty() { String::from_utf8_lossy(&out.stderr).lines().next().unwrap_or("").to_string() } else { s }
+    };
 
     let before = query("example.com");
     checks.is("example.com resolves publicly before", !loopback(&before) && before.contains("example.com:"), &before);
@@ -85,6 +100,9 @@ async fn main() -> std::process::ExitCode {
     let link = Command::new("resolvectl").args(["status", "rexenv0"]).output().map(|o| String::from_utf8_lossy(&o.stdout).into_owned()).unwrap_or_default();
     let link_ok = link.contains("127.0.0.1:15353") && link.contains("~rex") && link.contains("-DefaultRoute");
     checks.is("rexenv0 carries 127.0.0.1:15353 and ~rex with no default route", link_ok, &link);
+    let scoped = link.contains("Current Scopes: DNS");
+    checks.is("rexenv0 HAS a DNS scope (without one the link routes nothing)", scoped, &link);
+    let link_ok = link_ok && scoped;
     if !link_ok {
         // The diagnosis a failure needs, printed here because the unit is gone by the end.
         for (what, cmd) in [
@@ -99,6 +117,8 @@ async fn main() -> std::process::ExitCode {
     }
     let a = query("anything.rex");
     checks.is("anything.rex → 127.0.0.1", loopback(&a), &a);
+    let pinned = via_link("anything.rex");
+    checks.is("anything.rex answered BY rexenv0, not by an upstream host", loopback(&pinned), &pinned);
     let sub = query("sub.site.rex");
     checks.is("sub.site.rex → 127.0.0.1 (multisite)", loopback(&sub), &sub);
     let ex = query("example.com");
@@ -110,8 +130,8 @@ async fn main() -> std::process::ExitCode {
     checks.is("a second TLD installs", inst2.is_ok(), &inst2.clone().err().unwrap_or_default());
     std::thread::sleep(std::time::Duration::from_secs(2));
     checks.is("our_route_tlds = [rex, test]", dns.our_route_tlds(DEFAULT_DNS_PORT) == vec!["rex".to_string(), "test".to_string()], "");
-    let t = query("a.test");
-    checks.is("a.test → 127.0.0.1", loopback(&t), &t);
+    let t = via_link("a.test");
+    checks.is("a.test → 127.0.0.1 through rexenv0", loopback(&t), &t);
     let b = query("b.rex");
     checks.is("b.rex still → 127.0.0.1", loopback(&b), &b);
     let ex2 = query("example.com");
@@ -120,8 +140,19 @@ async fn main() -> std::process::ExitCode {
     // A resolved restart must not lose the route (PartOf).
     let _ = root("/usr/bin/systemctl restart systemd-resolved");
     std::thread::sleep(std::time::Duration::from_secs(3));
-    let after_restart = query("c.rex");
-    checks.is("c.rex → 127.0.0.1 after a resolved restart", loopback(&after_restart), &after_restart);
+    let after_restart = via_link("c.rex");
+    checks.is("c.rex → 127.0.0.1 through rexenv0 after a resolved restart", loopback(&after_restart), &after_restart);
+
+    // The update's repair path: a route script this build did not write (0.8.8's had no link
+    // address) must read as NOT installed, so setup is offered again — and re-running the
+    // install puts the current script back.
+    let stale = root("/usr/bin/printf '# stale\\n' >> /usr/local/lib/rexenv/dns-route.sh");
+    checks.is("a stale route script can be planted", stale.is_ok(), &stale.clone().err().unwrap_or_default());
+    checks.is("route_owner(rex) = Absent with a stale script", dns.route_owner("rex", DEFAULT_DNS_PORT) == ResolverOwner::Absent, "");
+    let repair = root(&dns.install_command("rex", DEFAULT_DNS_PORT));
+    checks.is("setup's install repairs it", repair.is_ok(), &repair.clone().err().unwrap_or_default());
+    std::thread::sleep(std::time::Duration::from_secs(2));
+    checks.is("route_owner(rex) = Ours after the repair", dns.route_owner("rex", DEFAULT_DNS_PORT) == ResolverOwner::Ours, "");
 
     // Partial removal keeps the link; removing the last TLD takes it down.
     let un1 = root(&dns.uninstall_command(&["test".to_string()]));
@@ -137,6 +168,18 @@ async fn main() -> std::process::ExitCode {
     checks.is("route_owner(rex) = Absent", dns.route_owner("rex", DEFAULT_DNS_PORT) == ResolverOwner::Absent, "");
     let ex3 = query("example.com");
     checks.is("example.com public after uninstall", !loopback(&ex3), &ex3);
+
+    // No systemd-resolved → the install refuses, naming it, and writes nothing. resolved is
+    // started again straight after, whatever the install did.
+    let _ = root("/usr/bin/systemctl stop systemd-resolved");
+    let refused = root(&dns.install_command("rex", DEFAULT_DNS_PORT));
+    let _ = root("/usr/bin/systemctl start systemd-resolved");
+    std::thread::sleep(std::time::Duration::from_secs(2));
+    let why = refused.clone().err().unwrap_or_default();
+    checks.is("without systemd-resolved the install refuses, naming it", refused.is_err() && why.contains("systemd-resolved is not running"), &why);
+    checks.is("…and writes no marker", !std::path::Path::new("/etc/rexenv/dns.d/rex").exists(), "");
+    let ex4 = query("example.com");
+    checks.is("example.com public again once resolved is back", !loopback(&ex4) && ex4.contains("example.com:"), &ex4);
 
     checks.verdict()
 }

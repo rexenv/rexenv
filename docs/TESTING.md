@@ -1056,6 +1056,15 @@ route resolves, a unit starts or a certificate is trusted. The Mac has no Ubuntu
    is a row in `SMOKE-TEST.md`'s Linux section; a ledger row resting on one says `◐ (Docker
    only)` until the VM run flips it.
 
+**The trap every Linux host here shares, measured 28 Sep 2026: its DNS upstream is a machine
+running rexenv.** The UTM VM resolves through the Mac (whose `/etc/resolver/rex` answers
+loopback) and WSL through Windows (NRPT), so `*.rex → 127.0.0.1` is true on them with NO route
+installed — the VM said so with the route and the agent both removed. `linux_dns_route_check`
+passed 23/23 on 24 Sep while `rexenv0` had no DNS scope at all (#734). A Linux DNS claim is
+proven only by an answer PINNED to the link (`resolvectl query -i rexenv0 <name>`) and
+`Current Scopes: DNS` on it; the check asserts both since 28 Sep, and fails 4 checks by name
+against the 0.8.8 script.
+
 ### 1.2 Audit: assertions that are wrong or vacuous (delete/fix, not keep)
 
 - The **>80-char verdict check still exists and is still wrong**: `dbcompat.rs:456`

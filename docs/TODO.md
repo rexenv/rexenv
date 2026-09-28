@@ -44,6 +44,18 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [x] **SHIPPED LINUX BUG — `.rex` resolved only where another machine answered it** ✓ fixed 28 Sep
+  2026 (ledger #717, #734). Found running SMOKE Linux P1 on the 22.04 VM: `rexenv0` carried the
+  server and `~rex` but `Current Scopes: none` — systemd-resolved gives no DNS scope to a link
+  whose only address is link-local — so 0.8.8's route routed nothing, and every `.rex` answer
+  recorded on Linux came from a HOST running rexenv (the VM's upstream is the Mac, WSL's is
+  Windows): with no route and no agent on the VM, `anything.rex` → `127.0.0.1 -- link: enp0s1`.
+  Fix: the link carries `192.0.2.53/32` (TEST-NET-1; owner's pick over a ULA, which would flip
+  `AI_ADDRCONFIG`), and a stale route script reads as not installed so setup rewrites it on
+  machines that already ran 0.8.8's. `linux_dns_route_check` now asserts the scope and pinned
+  answers: PASS 32/32 on the VM; the 0.8.8 script planted back → 4 named FAILs. Ships in the next
+  release; the GUI half (a 0.8.8 install updated, setup re-offered, `.rex` answered by `rexenv0`)
+  is SMOKE Linux P1's open row.
 - [x] **The instruction docs said "macOS and Windows", and "Linux is `todo!()`"** ✓ 28 Sep 2026 —
   owner: every new feature must work on Mac, Windows and Linux, common work written in common
   places, OS-specific work written OS-wise. New `docs/PLATFORMS.md` (§1 common, §2 where a
@@ -1250,7 +1262,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   - [ ] L6 the VM run — **the VM exists (24 Sep 2026: Ubuntu 22.04 arm64 in UTM, cloud image +
     cloud-init seed, `ssh rexenv@192.168.64.7`) and P1 RAN: the first DNS design FAILED (a global
     resolved drop-in routed `example.com` to loopback), the dummy-link replacement passed by hand
-    and then 23/23 through `linux_dns_route_check` (ledger #717). First `.deb` + AppImage built
+    and then 23/23 through `linux_dns_route_check` (ledger #717) — **a false pass, found 28 Sep 2026:
+    the Mac host answered `.rex`; the link had no DNS scope until #734's fix, re-proven 32/32 with
+    queries pinned to `rexenv0`**. First `.deb` + AppImage built
     on the VM (`tauri build`, 15 MB deb, polkit action inside). **The installed deb RAN through
     onboarding, Start all and a WordPress site over HTTPS (curl 200, Chromium no warning) — P1/P2/P3
     through the app, P5 partly; found and fixed: snap Chromium's NSS db (#726), thread-summed RAM

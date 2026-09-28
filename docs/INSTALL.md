@@ -442,8 +442,11 @@ store, and the `rex` copy on your `Path`.
 1. `/etc/rexenv/dns.d/rex` (a marker), `/usr/local/lib/rexenv/dns-route.sh` and the unit
    `rexenv-dns-route.service` — a dummy link `rexenv0` with `.rex` as its ONLY routing domain and
    no default route, so `*.rex` goes to rexenv's resolver on `127.0.0.1:15353` and nothing else
-   does. (A global resolved drop-in was tried first and sent EVERY name there — measured 24 Sep
-   2026.)
+   does. The link carries one address, `192.0.2.53/32` — from TEST-NET-1, a range reserved for
+   documentation that no real network uses — because systemd-resolved ignores a link with no
+   real address. (A global resolved drop-in was tried first and sent EVERY name there — measured
+   24 Sep 2026. And 0.8.8's link had no address, so `.rex` resolved only where another machine
+   answered it; after updating from 0.8.8 rexenv offers its setup step once more to fix that.)
 2. `/etc/systemd/system/rexenv-edge.service` and `/usr/local/lib/rexenv/` — the root Caddy edge
    on `:80`/`:443`, kept alive by systemd, its binary copied to a root-owned folder.
 3. Your browsers' certificate stores (`~/.pki/nssdb`, and the snap Chromium's own database when

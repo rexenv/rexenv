@@ -17,6 +17,13 @@
 //! `unmanaged`, and the settings survived a resolved restart. Ubuntu Server (no NM) has the
 //! same `ip` and `resolvectl`.
 //!
+//! **…but "what works" was measured through a host that answered `.rex` itself.** On 28 Sep
+//! 2026 the link turned out to carry NO DNS scope (`Current Scopes: none`): resolved ignores a
+//! link whose only address is link-local, and every `.rex` answer had come from the VM's
+//! upstream — the Mac, running rexenv. The link now carries `LINK_ADDR` (a TEST-NET `/32`), and
+//! a route script older than this build's reads as not installed, so setup rewrites it. Ask
+//! resolved WHICH link answered (`resolvectl query -i rexenv0`), never just what the answer was.
+//!
 //! **The shape.** One marker file per TLD under `/etc/rexenv/dns.d/<tld>` — its bytes are the
 //! macOS resolver file's (`nameserver 127.0.0.1\nport <port>\n`), so ownership and the TLD scan
 //! are `platform::resolver_files`, shared with macOS, unchanged. One root script
@@ -39,6 +46,21 @@ use std::path::{Path, PathBuf};
 pub(crate) const MARKER_DIR: &str = "/etc/rexenv/dns.d";
 /// The dummy interface that carries the route.
 pub(crate) const LINK: &str = "rexenv0";
+/// The one address the link carries, so systemd-resolved gives it a DNS scope at all.
+///
+/// **Without it the route routed nothing — measured 28 Sep 2026 on the 22.04 VM (systemd 249).**
+/// resolved counts a link as relevant for unicast DNS only when it holds an address that is not
+/// link-local; a dummy link has only its automatic `fe80::`, so `resolvectl status rexenv0` read
+/// `Current Scopes: none` with the server and `~rex` configured, and `resolvectl query -i rexenv0`
+/// said "No appropriate name servers". Every `.rex` answer the port had recorded came from a HOST
+/// running rexenv — the VM's upstream is the Mac's resolver (whose `/etc/resolver/rex` answers
+/// loopback), and WSL's is Windows' (NRPT) — so a lone Ubuntu machine would never have resolved
+/// `.rex` at all. A ULA `/128` gave the link its scope in the same measurement; an IPv4 `/32`
+/// was chosen instead (owner, 28 Sep 2026) because a global IPv6 address on an IPv4-only host
+/// flips `getaddrinfo`'s `AI_ADDRCONFIG` and starts handing out AAAA records. `192.0.2.0/24` is
+/// TEST-NET-1 (RFC 5737): documentation only, never on a real network, so a `/32` of it on a
+/// dummy link collides with nothing and routes nothing.
+pub(crate) const LINK_ADDR: &str = "192.0.2.53/32";
 pub(crate) const SCRIPT_PATH: &str = "/usr/local/lib/rexenv/dns-route.sh";
 pub(crate) const UNIT: &str = "rexenv-dns-route.service";
 pub(crate) const UNIT_PATH: &str = "/etc/systemd/system/rexenv-dns-route.service";
@@ -64,7 +86,20 @@ pub(crate) fn signature(port: u16) -> String {
 }
 
 pub(crate) fn owner_of(tld: &str, port: u16) -> ResolverOwner {
-    resolver_files::owner_of(&marker_path(tld), &signature(port))
+    let installed = std::fs::read_to_string(SCRIPT_PATH).ok();
+    owner_given(resolver_files::owner_of(&marker_path(tld), &signature(port)), installed.as_deref(), port)
+}
+
+/// A marker of ours counts as INSTALLED only while the route script beside it is the one this
+/// build writes. An older script (0.8.8's gave the link no address, so it routed nothing) or a
+/// missing one reads as `Absent`, which is what makes the app offer its setup step again — and
+/// that step rewrites the script. Without this, an update fixes nothing on a machine that already
+/// ran setup: the marker says "installed" forever while the route stays dead.
+pub(crate) fn owner_given(marker: ResolverOwner, installed_script: Option<&str>, port: u16) -> ResolverOwner {
+    match marker {
+        ResolverOwner::Ours if installed_script != Some(script_contents(port).as_str()) => ResolverOwner::Absent,
+        other => other,
+    }
 }
 pub(crate) fn our_tlds(port: u16) -> Vec<String> {
     resolver_files::tlds_matching_signature(Path::new(MARKER_DIR), &signature(port))
@@ -84,6 +119,7 @@ pub(crate) fn script_contents(port: u16) -> String {
          set -e\n\
          /sbin/ip link show {LINK} >/dev/null 2>&1 || /sbin/ip link add {LINK} type dummy\n\
          /sbin/ip link set {LINK} up\n\
+         /sbin/ip addr replace {LINK_ADDR} dev {LINK}\n\
          D=\"\"\n\
          for f in {MARKER_DIR}/*; do\n\
          \x20 [ -f \"$f\" ] || continue\n\
@@ -202,6 +238,31 @@ mod tests {
         assert!(u.contains("PartOf=systemd-resolved.service\n"), "a resolved restart must re-apply the link");
         assert!(u.contains("ExecStop=/sbin/ip link del rexenv0\n"));
         assert!(u.contains("RemainAfterExit=yes\n"));
+    }
+
+    /// resolved gives a link no DNS scope without a non-link-local address (28 Sep 2026, the VM):
+    /// the address must be set, before the server, and must never be link-local.
+    #[test]
+    fn the_link_carries_a_non_link_local_address_so_resolved_gives_it_a_dns_scope() {
+        let s = script_contents(15353);
+        let addr = s.find("/sbin/ip addr replace 192.0.2.53/32 dev rexenv0\n").expect(&s);
+        assert!(addr < s.find("/usr/bin/resolvectl dns").unwrap(), "the address comes before the server: {s}");
+        assert!(!LINK_ADDR.starts_with("169.254.") && !LINK_ADDR.starts_with("fe80"), "link-local gets no DNS scope");
+        assert!(LINK_ADDR.starts_with("192.0.2.") && LINK_ADDR.ends_with("/32"), "TEST-NET-1, one host: {LINK_ADDR}");
+    }
+
+    /// A marker of ours with a stale or missing script is NOT installed — the update's repair path.
+    #[test]
+    fn an_old_or_missing_route_script_reads_as_absent_so_setup_is_offered_again() {
+        let current = script_contents(15353);
+        let old = current.replace("/sbin/ip addr replace 192.0.2.53/32 dev rexenv0\n", "");
+        assert_ne!(old, current, "the 0.8.8 script is the current one minus the address line");
+        assert_eq!(owner_given(ResolverOwner::Ours, Some(&current), 15353), ResolverOwner::Ours);
+        assert_eq!(owner_given(ResolverOwner::Ours, Some(&old), 15353), ResolverOwner::Absent);
+        assert_eq!(owner_given(ResolverOwner::Ours, None, 15353), ResolverOwner::Absent);
+        assert_eq!(owner_given(ResolverOwner::Absent, Some(&current), 15353), ResolverOwner::Absent);
+        let foreign = ResolverOwner::Foreign { content: None };
+        assert_eq!(owner_given(foreign.clone(), None, 15353), foreign, "a foreign route is never reclassified");
     }
 
     #[test]
