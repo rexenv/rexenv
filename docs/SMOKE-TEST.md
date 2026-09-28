@@ -2501,7 +2501,9 @@ rexenv0 <name>` and read `Current Scopes:`.
       so **this row closes on the release AFTER the one carrying the fix**). Opened by hand:
       0.8.8. `updates/` still held `0.8.8/` and `.rexenv-update-<pid>/` right after (the sweep had
       not run yet). First Check now was refused as a replay — the dev deb had read the macOS
-      document (TODO row).
+      document (TODO row). **28 Sep, 0.8.8 → 0.8.9 on the same VM:** offered (serial 1 → 2), one
+      polkit dialog, `dpkg -l` 0.8.9, swap logged, OK → 0.8.8's relauncher failed the same way
+      (expected — the old side spawns), hand open → 0.8.9. Closes on 0.8.9 → the next release.
 - [ ] AppImage in a folder you own, an older version: Check now reads
       `app-manifest-linux-appimage-<arch>.json`; Update swaps the file with NO prompt; the app
       comes back as the new version FROM THE SAME PATH; the folder holds no `.rexenv-update-*`

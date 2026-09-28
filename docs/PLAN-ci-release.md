@@ -119,5 +119,9 @@ recipe. The tap stays the public home of the artefacts while the source is priva
   deleted, and run 36386674456 built it again: all four lanes green first time, draft with 16
   assets, §A0/§A green the same hour (`docs/PUBLISH-TESTING.md`). A tag that moves is cheap
   while nothing is published from it; the pre-push guard re-checked the manifests both times.
+  Published 07:09 UTC; six descriptors approved together and green first time; the in-app
+  update measured 0.8.8 → 0.8.9 on the macOS VM (relaunch), the Dell (relaunch) and the 22.04
+  VM (swap; hand open, as the old side predicted). **The CI-only release now takes one
+  evening end to end with four owner clicks: Publish, six approvals, and nothing else.**
 - A Linux 22.04 x86_64 **run** of the floor deb: the Dell's WSL gets an Ubuntu-22.04 distro for
   it (in progress).
