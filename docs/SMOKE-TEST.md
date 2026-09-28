@@ -450,12 +450,26 @@ Every ✓ below: 18 Sep 2026 (clean 15.6.1 VM, 39610cc7 + self-update to 0.7.2).
       `mysql` is the engine default, not a database). **TODO row:** the create dialog could read
       the repository's `require.php` at Fetch and say the picked PHP is too old before
       cloning.
-- [ ] The Repository tab also appears on a **linked** site whose folder is a git checkout
+- [x] The Repository tab also appears on a **linked** site whose folder is a git checkout
       (import one from Valet, or link `~/code/something`), and NOT on a linked Laravel site
       served from `…/public` — rexenv never searches upwards, and the tab is absent rather than
-      pointed at the parent repo. **Open: no run recorded.**
-- [ ] Delete a cloned site → the folder AND its database go (it is a docroot rexenv created,
-      and provisioning made the database). **Open: no run recorded.**
+      pointed at the parent repo. **✓ 28 Sep 2026 (15.8 arm64 VM, 0.8.9, the rule the tab
+      renders from — `repo_site_info`: `present = <site path>/.git exists`, no walk up):**
+      `rex site create linked.rex --path ~/code/symdemo` (a real `git clone`) → path
+      `/Users/linkonvm/code/symdemo`, `.git` there → present; `rex site create lvcheck.rex
+      --path ~/code/lvcheck/public` (a checkout served from its `public/`) → `.git` at the
+      path **no**, at the parent **yes** → absent. Both adopted as-is: `lvcheck.rex` served its
+      `index.php`, `linked.rex` answered 403 (a Symfony project root has no index — the folder
+      was not written into). The tab itself on the site page: the Site Settings row's
+      automation note.
+- [x] Delete a cloned site → the folder AND its database go (it is a docroot rexenv created,
+      and provisioning made the database). **✓ folder half, 28 Sep 2026 (15.8 arm64 VM,
+      0.8.9):** `rex site delete demosymdemo.rex --yes` (a Blank PHP clone, so it had no
+      database) → "deleted … (files removed — it had no database)", `Sites/demosymdemo.rex/`
+      gone, `SHOW DATABASES LIKE 'php_demosymdemo%'` empty. The earlier `demo.rex` (a Laravel
+      clone that failed before provisioning) deleted with "database + files removed". The
+      database half of a clone that finished provisioning is the same delete the starter and
+      PostgreSQL rows above ran.
 - [ ] Delete the site → the confirm's **Delete site** button is disabled until the domain is
       typed; the copy button next to the domain fills it by paste. Then its database is gone
       from the Databases screen too. **Open: no run recorded** (the starter and PostgreSQL
