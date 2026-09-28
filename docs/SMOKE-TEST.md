@@ -2262,7 +2262,11 @@ logged "this Mac's macOS version could not be read"; builds from `a0d4868f` on f
       data — but `rexenv.exe` stayed: the `\rexenv\dns-agent` task (which only the in-app step
       removes) re-ran the agent from it within the minute, so the file was locked, and the agent
       went on answering `:53` from an uninstalled app (TODO W12 row). **Open: the row as written —
-      in-app step first — needs the Root-store DELETE dialog clicked and a re-onboarding after.**
+      in-app step first — needs the Root-store DELETE dialog clicked and a re-onboarding after.
+      Not driven on 28 Sep 2026: the in-app step and the re-onboarding raise Windows UAC on the
+      secure desktop, which the screenshot-and-click driver cannot see or answer (the Win11 VM's
+      finding), so it would leave the Dell's install half-removed until a person clicks — a
+      person at the Dell runs this row and the certificate-dialog "No" row together.**
 - [ ] A stray `rexenv-0.8.3.bak` (38 MB, 19 Sep) from a pre-#695 swap sits beside the app for
       good — the launch sweep looks only for `.rexenv-update-*`. **Open: TODO W12 row.**
 
@@ -2299,7 +2303,9 @@ them is Windows' own dialog:
       Thumbprint (sha1): 1A6A20BE … Do you want to install this certificate? [Yes] [No]"; after
       Yes, `Cert:\CurrentUser\Root` holds `CN=rexenv Local CA` with that thumbprint, NotAfter 2036.
 - [ ] The certificate dialog's **No** reads as a cancel, and setup offers the step again rather
-      than continuing as if it succeeded. **Open: the No path was not driven.**
+      than continuing as if it succeeded. **Open: the No path was not driven — it needs a fresh
+      onboarding on a Windows machine with someone at the keyboard (UAC on the secure desktop;
+      see the uninstall row above).**
 - [x] **NO third prompt for ports 80/443** — the pinned `caddy.exe` binds `:443` and `:80` under
       the unelevated desktop token (measured on the Dell). ✓ 19 Sep 2026 (VM, unelevated user,
       Explorer-started copy): `rex start` → Caddy on `127.0.0.1:443` and `:80`, no UAC, no
