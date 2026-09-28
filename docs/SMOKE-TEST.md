@@ -219,8 +219,12 @@ nothing.** The silent case is the one that ships to everybody.
       (clean 15.6.1 VM, 8437afd9) · ✓ 23 Sep 2026 (clean 15.8 VM, 0.8.7).
 - [x] **WP admin** opens (`/wp-admin`). ✓ 18 Sep 2026 (clean 15.6.1 VM, 39610cc7 + self-update
       to 0.7.2): `/wp-admin/` → 302 to login, checked over curl.
-- [ ] The **"Log in as"** magic link logs in. **Open: not exercised on 18 Sep** (the row was
-      ticked with that caveat); no later run recorded.
+- [x] The **"Log in as"** magic link logs in. **✓ 28 Sep 2026 (15.8 arm64 VM, 0.8.9):** `rex
+      site login smoke1.rex --print` minted `https://smoke1.rex/?rexenv_login=<token>`; fetched
+      with a cookie jar it answered 302 → `/wp-admin/`, and `/wp-admin/` with that session was
+      200 "Dashboard ‹ smoke1 — WordPress"; the same URL with no cookie redirected to
+      `wp-login.php?reauth=1`. (The button's door on the site page: the Site Settings row's
+      automation note.)
 
 ## Core: Laravel (the second create flow)
 - [x] **New site** → Laravel → create; the card runs `installing Laravel` (Composer streams
