@@ -82,16 +82,12 @@ pub const UNVALIDATED_BUT_SAFE: &[(&str, &str)] = &[
          a command line",
     ),
     (
-        "start_services_on_launch",
-        "a boolean read once at launch; a junk value reads as false, which is the safe \
-         direction (nothing starts)",
-    ),
-    (
         "app_update_auto_check",
-        "a boolean read before any update I/O. Junk reads as ON, the OPPOSITE of \
-         start_services_on_launch and deliberately: there the safe direction is that \
-         nothing starts, here it is that the user still hears about a security release. \
-         Only the exact string `false` turns it off",
+        "a boolean read before any update I/O. Junk reads as ON, deliberately: the safe \
+         direction here is that the user still hears about a security release. Only the \
+         exact string `false` turns it off. (The retired `start_services_on_launch` chose \
+         the opposite — junk read as false, nothing started — before the login toggle \
+         absorbed it, 29 Sep 2026)",
     ),
     (
         "app_update_skipped",
@@ -118,8 +114,8 @@ pub fn cli_access(key: &str) -> CliAccess {
     }
     match key {
         // Preferences that reach the raw setter; see UNVALIDATED_BUT_SAFE.
-        "preferred_editor" | "preferred_browser" | "start_services_on_launch"
-        | "app_update_auto_check" | "app_update_skipped" => CliAccess::ReadWrite,
+        "preferred_editor" | "preferred_browser" | "app_update_auto_check"
+        | "app_update_skipped" => CliAccess::ReadWrite,
         // The signed update chain. The serial is the one that matters most:
         // resetting it re-opens a replayed older manifest.
         "php_update_manifest" | "php_update_manifest_sig" => CliAccess::Denied(

@@ -641,7 +641,8 @@ pub fn autostart_status(state: State<'_, AppState>) -> Result<bool> {
     state.platform.autostart().is_enabled()
 }
 
-/// Enable/disable "Start rexenv on login" via the platform `AutostartManager`
+/// Enable/disable "Start rexenv at login" — the one toggle: the login item, whose
+/// `--hidden` launch is what runs Start all — via the platform `AutostartManager`
 /// (macOS: a per-user launchd LaunchAgent).
 #[tauri::command]
 pub fn set_autostart(state: State<'_, AppState>, enabled: bool) -> Result<()> {

@@ -491,8 +491,8 @@ pub fn set_skipped(conn: &Connection, version: Option<&str>) -> Result<()> {
 
 /// Whether the app may check for updates on its own.
 ///
-/// Absent, empty or unparseable reads as ON — the opposite of
-/// `start_services_on_launch`, and deliberately. There the safe direction is
+/// Absent, empty or unparseable reads as ON — the opposite of the retired
+/// `start_services_on_launch`, and deliberately. There the safe direction was
 /// "nothing starts"; here it is "the user hears about a security release",
 /// because the failure mode of the other direction is a machine that silently
 /// stops being told. Only the exact string `false` turns it off, which is what

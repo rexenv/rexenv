@@ -15,7 +15,11 @@ pub struct PlatformWords {
     pub reveal: &'static str,
     /// The file manager's name, as a sentence uses it.
     pub file_manager: &'static str,
-    /// The "Open rexenv at login" toggle's description.
+    /// The "Start rexenv at login" toggle's description — the whole promise in one sentence pair:
+    /// the app opens where this OS keeps it, the OS mechanism by name, and that the login launch
+    /// runs Start all (a RULE, so it lives here and not in the TSX). One toggle since 29 Sep 2026:
+    /// it used to sit beside a second, "Start services when rexenv opens", and the two together
+    /// were one wish split in half.
     pub login_item: &'static str,
     /// The fix a missing-git message gives.
     pub git_install: &'static str,
@@ -117,7 +121,7 @@ pub struct PlatformWords {
 pub const MACOS: PlatformWords = PlatformWords {
     reveal: "Show in Finder",
     file_manager: "Finder",
-    login_item: "rexenv launches when you sign in to your Mac (a macOS login item).",
+    login_item: "rexenv opens in the menu bar when you sign in to your Mac (a macOS login item) and runs Start all — your sites come back after a reboot without a click. Never downloads or prompts at login.",
     git_install: "On macOS it ships with the Xcode Command Line Tools — install them, then hit Re-detect:\n$ xcode-select --install",
     node_install: "$ brew install node",
     bun_install: "$ brew install oven-sh/bun/bun",
@@ -153,7 +157,7 @@ pub const MACOS: PlatformWords = PlatformWords {
 pub const WINDOWS: PlatformWords = PlatformWords {
     reveal: "Show in Explorer",
     file_manager: "File Explorer",
-    login_item: "rexenv launches when you sign in to Windows (a startup app — Task Manager's Startup tab can turn it off too).",
+    login_item: "rexenv opens in the notification area when you sign in to Windows (a startup app — Task Manager's Startup tab can turn it off too) and runs Start all — your sites come back after a reboot without a click. Never downloads or prompts at login.",
     git_install: "On Windows install Git for Windows, then hit Re-detect:\n> winget install --id Git.Git -e",
     node_install: "> winget install --id OpenJS.NodeJS.LTS -e",
     bun_install: "> winget install --id Oven-sh.Bun -e",
@@ -190,7 +194,7 @@ pub const WINDOWS: PlatformWords = PlatformWords {
 pub const LINUX: PlatformWords = PlatformWords {
     reveal: "Show in Files",
     file_manager: "Files",
-    login_item: "rexenv launches when you sign in (an autostart entry in ~/.config/autostart).",
+    login_item: "rexenv opens in the system tray when you sign in (an autostart entry in ~/.config/autostart) and runs Start all — your sites come back after a reboot without a click. Never downloads or prompts at login.",
     git_install: "On Ubuntu install it with apt, then hit Re-detect:\n$ sudo apt install git",
     node_install: "$ sudo apt install nodejs npm",
     bun_install: "$ curl -fsSL https://bun.sh/install | bash",
@@ -355,7 +359,10 @@ mod tests {
     fn macos_keeps_the_words_it_always_showed() {
         assert_eq!(MACOS.reveal, "Show in Finder");
         assert_eq!(MACOS.file_manager, "Finder");
-        assert_eq!(MACOS.login_item, "rexenv launches when you sign in to your Mac (a macOS login item).");
+        assert_eq!(
+            MACOS.login_item,
+            "rexenv opens in the menu bar when you sign in to your Mac (a macOS login item) and runs Start all — your sites come back after a reboot without a click. Never downloads or prompts at login."
+        );
         assert!(MACOS.git_install.ends_with("$ xcode-select --install"));
         assert_eq!(MACOS.node_install, "$ brew install node");
         // The CLI card's words, moved here from Settings.tsx by W8 S5 (#634), byte for byte.

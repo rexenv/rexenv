@@ -1964,7 +1964,7 @@ export async function autostartStatus(): Promise<boolean> {
   return invoke<boolean>("autostart_status");
 }
 
-/** Enable/disable "Start rexenv on login". No-op outside Tauri. */
+/** Enable/disable "Start rexenv at login" — the login item, whose `--hidden` launch runs Start all. No-op outside Tauri. */
 export async function setAutostart(enabled: boolean): Promise<void> {
   if (!isTauri()) return;
   await invoke("set_autostart", { enabled });

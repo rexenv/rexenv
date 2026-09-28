@@ -1241,8 +1241,8 @@ hand can prove a spec entry became the item it describes.*
   15.6.1 VM, `39610cc7` + self-update to 0.7.2).
 - [x] **Quit rexenv** with a public share up still pauses once and names the count.
   ✓ 18 Sep 2026 (clean 15.6.1 VM, `39610cc7` + self-update to 0.7.2).
-- [x] **Open rexenv at login** (Settings → Services; this row called it "Start on login"
-  until 28 Sep) → log out and back in: rexenv comes up in the MENU
+- [x] **Start rexenv at login** (Settings → Services; "Open rexenv at login" until 29 Sep
+  2026, "Start on login" before 28 Sep) → log out and back in: rexenv comes up in the MENU
   BAR with **no window** (and no dock tile). Check the FILE first —
   `~/Library/LaunchAgents/dev.rexenv.rexenv.plist` must name the app you are testing and
   contain `--hidden` — but do NOT check `launchctl print`: an already-loaded job keeps
@@ -1260,9 +1260,12 @@ hand can prove a spec entry became the item it describes.*
   --hidden`, `lsappinfo` `type="UIElement"`, the log's own "launched at login — staying in
   the menu bar", both sockets answering, no window ever opened; the plist had been rewritten
   on launch to name the current binary with `--hidden`.
-- [ ] **…and the services it manages are up** after that login, with no click — with
-  **Start services when rexenv opens** (the toggle beside it) on as well: `rex status` lists them running and a site
-  answers over HTTPS before the window is ever opened. **Open: no run recorded.** The 1 Sep
+- [ ] **…and the services it manages are up** after that login, with no click — the SAME
+  toggle since 29 Sep 2026 (ledger #739: the second toggle, "Start services when rexenv
+  opens", is gone; the `--hidden` launch runs Start all and a launch you made does not — open
+  the app by hand with the stack stopped and nothing starts): `rex status` lists them running and a site
+  answers over HTTPS before the window is ever opened. **Open: no run recorded — owed on
+  0.8.10, the first build with the one toggle.** The 1 Sep
   login recorded the window half above and not the services (the script prints only
   `rex status`'s first three lines); what that login DID show was the DNS race the next row
   exists for — the app won UDP 15353 and served DNS in-process (#442, fixed 2 Sep). Neither
@@ -1335,7 +1338,7 @@ L1 `browser_detect_check`, L2 `openin.js`); the rows are what a human must see.*
   15.6.1 VM, `39610cc7` + self-update to 0.7.2).
 - [x] DNS & SSL shows Running + Resolver; "Make default" moves the default PHP version.
   ✓ 18 Sep 2026 (clean 15.6.1 VM); DNS & SSL ✓ again 23 Sep 2026 (clean 15.8 VM, 0.8.7).
-- [x] "Start rexenv on login" toggles (LaunchAgent created/removed). ✓ 18 Sep 2026 (clean
+- [x] "Start rexenv at login" toggles (LaunchAgent created/removed). ✓ 18 Sep 2026 (clean
   15.6.1 VM, `39610cc7` + self-update to 0.7.2).
 - [x] **PHP versions list shows SEVEN rows, 7.4 first** (7.4, 8.0–8.5). 7.4 and 8.0
   carry an **EOL** chip with the date; 8.1's says Dec 2025. Neither 7.4 nor 8.0
@@ -2019,7 +2022,7 @@ update to 0.7.2; the macOS 15.8 arm64 UTM VM, 27 Sep 2026 — the public 0.8.7 d
   Sep pass recorded the reboot only; no sleep/wake run recorded.**
 - [ ] **Login autostart stays silent on a cold cache** (ledger #175 — this checklist IS
   that row's wiring proof; the code has only a text-order guard, which cannot see
-  behaviour). Setup: enable "start services on launch" + "Open rexenv at login", then
+  behaviour). Setup: enable "Start rexenv at login" (the one toggle since 29 Sep 2026), then
   move one binary out of the cache (e.g. `mv "…/bin/mysql-"* /tmp/`), reboot, log in,
   and WATCH the first minute: **no download progress anywhere, no admin password
   prompt** — only the honest "binaries not downloaded yet (…) — open rexenv and press
@@ -2417,6 +2420,11 @@ logged "this Mac's macOS version could not be read"; builds from `a0d4868f` on f
 - [x] Every menu item that names a screen brings the window up on it, including from a window
       that was closed. ✓ 21 Sep 2026 (VM, 0.8.5): Services, Databases, Mail, Tunnels, All sites…
       — each opened the window ON that screen.
+- [ ] **Start rexenv at login is ONE toggle** (29 Sep 2026, ledger #739; the words name the
+      notification area and Task Manager's Startup tab): Stop all, turn it on, sign out and in →
+      `rexenv.exe --hidden` under `explorer.exe`, no window, and `rex status` lists the backends
+      running with no click. Then Stop all and open the app from the Start menu → nothing
+      starts (a launch you made is not a login). **Open: owed on 0.8.10.**
 
 ### First-run setup prompts — ONE elevated step, not three
 macOS asks three times (resolver, keychain, ports 80/443). Windows asks twice, and one of
@@ -2718,6 +2726,12 @@ rexenv0 <name>` and read `Current Scopes:`.
       the app → both gone within 6 s.
 - [ ] The guard's normal-stop leg: stop the share from the app → the guard exits at once, no
       stray process. **Open: owed since 24 Sep** (and `tunnel_parent_death_check` has no Linux tier entry).
+
+- [ ] **Start rexenv at login is ONE toggle** (29 Sep 2026, ledger #739; the words name the
+      system tray and `~/.config/autostart`): Stop all, turn it on, reboot into the autologin →
+      `rexenv --hidden` with no window and `rex status` listing the backends running with no
+      click. Then Stop all and launch the app from the desktop → nothing starts. **Open: owed on
+      0.8.10** (the 24 Sep row above ran with the two old toggles).
 
 ### P5 — the GUI
 - [x] ✓ 24 Sep 2026 (VM): the COLOUR tray icon in GNOME's top bar (needs

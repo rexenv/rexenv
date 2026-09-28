@@ -143,10 +143,12 @@ command line and the AI-agent (MCP) endpoint are remote controls for the running
 closing a window used to take them down while your sites kept serving. Quit with
 **Quit rexenv** in the menu.
 
-If you turn on **Start on login** (Settings), rexenv starts straight into the menu bar
-with no window — except when first-run setup isn't finished, where it shows the window,
-because there is nothing useful it could do quietly on a machine that can't resolve
-`.rex` yet.
+If you turn on **Start rexenv at login** (Settings → Services), rexenv starts straight into
+the menu bar with no window and runs Start all, so your sites are back after a reboot
+without a click — it never downloads or prompts at login. (One toggle since 29 Sep 2026; the
+separate "Start services when rexenv opens" switch is gone.) The exception is a machine where
+first-run setup isn't finished: there it shows the window, because there is nothing useful it
+could do quietly on a machine that can't resolve `.rex` yet.
 
 > **Keep exactly one copy of rexenv.app.** macOS finds an app by its bundle id, not by
 > where it sits, so a second copy — an old one in Downloads, a build left in a project

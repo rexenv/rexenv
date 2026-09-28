@@ -264,12 +264,13 @@ pub async fn stop_services(state: State<'_, AppState>) -> Result<()> {
     state.services.lock().await.stop_all(state.platform.as_ref())
 }
 
-/// Setting key for the opt-in "start services when rexenv opens" behavior
-/// (Settings toggle; combined with "Open rexenv at login" it brings the whole
-/// stack back after a reboot without a click).
-pub const AUTO_START_SETTING: &str = "start_services_on_launch";
-
-/// Opt-in auto-start, run once from app setup when [`AUTO_START_SETTING`] is on.
+/// Login-start, run once from app setup on a LOGIN launch (`--hidden`, the
+/// launch the "Start rexenv at login" toggle installs) — never on a launch the
+/// user made. One toggle, one fact: the login item IS the opt-in, so the stack
+/// comes back after a reboot without a click and a manual open mid-day starts
+/// nothing (until 29 Sep 2026 a second setting, `start_services_on_launch`, said
+/// whether ANY launch ran Start all; two toggles for one wish, and a user with
+/// only the second on got services at every open and nothing at login).
 /// Same flow as [`start_services`] with two LOGIN-SAFETY guards, because this
 /// runs unattended at login:
 ///

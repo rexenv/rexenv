@@ -2985,7 +2985,15 @@ IPC surface — which is how a reader ends up designing against a system with on
     with the app, Restart-never-auto.
 - **Autostart** (`AutostartManager`, macOS): per-user LaunchAgent
   `~/Library/LaunchAgents/dev.rexenv.rexenv.plist`, `RunAtLoad` — launches the app at
-  login (not headless services; the edge still needs its `:443` prompt). The plist
+  login (not headless services; the edge still needs its `:443` prompt). **The login
+  launch is also what runs Start all** (`auto_start_services`, #175's guards: never download,
+  never prompt), gated on the `--hidden` flag and on nothing else — so "Start rexenv at
+  login" is ONE toggle and the whole of "my sites are back after a reboot", and a launch the
+  user made never starts services behind their back (ledger #739). Until 29 Sep 2026 a second
+  toggle, "Start services when rexenv opens", held that half in a setting
+  (`start_services_on_launch`) that gated ANY launch: two switches for one wish, and either one
+  alone did something the user did not mean. The setting is retired and a leftover row is swept
+  at launch. The plist
   passes **`--hidden`**: a login launch goes to the menu bar and opens NO window, which
   is what makes autostart tolerable — an app that throws a window at every login is one
   that has to be closed before work starts. The flag is a REQUEST: `first_window_decision`

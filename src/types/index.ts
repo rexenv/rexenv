@@ -1106,7 +1106,7 @@ export interface WpOrgTheme {
 export interface PlatformWords {
   reveal: string; // the button that shows a file in the OS file manager, e.g. "Show in Explorer"
   fileManager: string; // the OS file manager's name, e.g. "File Explorer"
-  loginItem: string; // the "Open rexenv at login" toggle's description
+  loginItem: string; // the "Start rexenv at login" toggle's description (the login launch runs Start all)
   gitInstall: string;
   nodeInstall: string;
   bunInstall: string;

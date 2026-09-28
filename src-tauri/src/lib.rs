@@ -526,17 +526,12 @@ pub fn run() {
                     // real. This pass covers sites that predate the file, and it
                     // is also how turning the catch-all OFF reaches them.
                     core::wp_mail_catch::apply_all(&conn, &sites);
-                    // Opt-in "start services when rexenv opens" (Settings) — read
-                    // while the connection is still ours; acted on below, after
-                    // AppState is managed and survivors are adopted.
-                    let auto_start = state::store::get_setting(
-                        &conn,
-                        commands::services::AUTO_START_SETTING,
-                    )
-                    .ok()
-                    .flatten()
-                    .as_deref()
-                        == Some("true");
+                    // The retired "start services when rexenv opens" setting
+                    // (folded into the login toggle, 29 Sep 2026): swept so
+                    // `rex setting` never lists a key nothing reads.
+                    if let Err(e) = state::store::delete_setting(&conn, RETIRED_AUTO_START_SETTING) {
+                        log::warn!("settings: could not sweep {RETIRED_AUTO_START_SETTING}: {e}");
+                    }
                     // Drift: a resolver file we BORROWED that Valet/Herd has
                     // since taken back. Checked here because it is otherwise
                     // silent — our resolver still answers on its own port, so
@@ -944,13 +939,14 @@ pub fn run() {
                         }
                     });
 
-                    // Opt-in login-start: with "Open rexenv at login" + this
-                    // setting, the whole stack returns after a reboot without a
-                    // click. Runs AFTER adoption (already-running services are
-                    // skipped, so a mid-day relaunch is a no-op) and is login-safe
-                    // by construction: never downloads, never prompts (see
-                    // `auto_start_services`).
-                    if auto_start {
+                    // Login-start: the ONE "Start rexenv at login" toggle installs
+                    // a `--hidden` launch, and that launch — only that launch —
+                    // runs Start all, so the whole stack returns after a reboot
+                    // without a click while an open the user made starts nothing.
+                    // Runs AFTER adoption (already-running services are skipped)
+                    // and is login-safe by construction: never downloads, never
+                    // prompts (see `auto_start_services`).
+                    if hidden_launch {
                         let auto = app.handle().clone();
                         tauri::async_runtime::spawn(async move {
                             commands::services::auto_start_services(auto).await;
@@ -1942,6 +1938,11 @@ fn spawn_dns_handoff(app: tauri::AppHandle, port: u16) {
 /// It is a REQUEST, not a command — see `first_window_decision`.
 pub const HIDDEN_LAUNCH_FLAG: &str = "--hidden";
 
+/// The setting that used to say whether ANY launch ran Start all — retired 29 Sep 2026
+/// when it was folded into the login toggle (a `--hidden` launch starts the stack, a
+/// user's launch does not). Named only so the launch sweep can delete a leftover row.
+const RETIRED_AUTO_START_SETTING: &str = "start_services_on_launch";
+
 /// The tray icon's id — also how `refresh_tray` finds it again.
 const TRAY_ID: &str = "main";
 
@@ -2492,6 +2493,42 @@ mod tests {
         // An unresolvable log dir must not silently become stdout-only in a
         // release build: there is no terminal, so that is "no logging" again.
         assert!(log_sinks(None, false).is_empty());
+    }
+
+    /// **Login-start runs on a `--hidden` launch and on nothing else.** The
+    /// "Start rexenv at login" toggle installs that launch, so the one switch
+    /// is the whole of "my sites are back after a reboot" — and an open the
+    /// user made never runs Start all behind their back. Until 29 Sep 2026 a
+    /// second setting (`start_services_on_launch`) gated this instead, on ANY
+    /// launch; it is retired, and the only mention left in production source is
+    /// the sweep that deletes a leftover row.
+    ///
+    /// **TEXT, not behaviour** (the #175 bound): the call to
+    /// `auto_start_services` sits inside `if hidden_launch {`, and no setting
+    /// read gates it. The behaviour — a real login, no click, the stack up — is
+    /// a SMOKE leg per OS.
+    #[test]
+    fn login_start_runs_only_on_a_hidden_launch() {
+        let src = crate::core::copy_scan::production_source(include_str!("lib.rs"));
+        let call = src
+            .find("commands::services::auto_start_services(")
+            .expect("login-start is still spawned from setup (moved? update this guard AND ledger #739)");
+        let before = &src[..call];
+        let gate = before.rfind("if ").expect("some `if` precedes the call");
+        assert!(
+            before[gate..].starts_with("if hidden_launch {"),
+            "the `if` nearest above the login-start call is not `if hidden_launch {{` — login-start \
+             would run on a launch the user made: {:?}",
+            &before[gate..(gate + 40).min(before.len())]
+        );
+        // The retired setting gates nothing: its one production mention is the
+        // constant the launch sweep deletes it by.
+        assert_eq!(
+            src.matches("\"start_services_on_launch\"").count(),
+            1,
+            "start_services_on_launch is read somewhere again — the login toggle is the ONE opt-in"
+        );
+        assert!(src.contains("delete_setting(&conn, RETIRED_AUTO_START_SETTING)"));
     }
 
     /// **The DNS handoff's ORDER is the whole of it.** Release the port, then

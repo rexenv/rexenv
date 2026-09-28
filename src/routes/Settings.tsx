@@ -63,9 +63,6 @@ import { getStoredTheme, setTheme, subscribeTheme, type Theme } from "@/lib/them
 import type { AppInfo, Blueprint, MultisiteMode, PhpSetting, PhpVersion, DownloadsSnapshot } from "@/types";
 
 const SITES_DIR_KEY = "sites_dir";
-// Mirrors commands::services::AUTO_START_SETTING — the opt-in "run Start all
-// when rexenv opens" behavior (login-start when combined with app autostart).
-const AUTO_START_KEY = "start_services_on_launch";
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -1390,11 +1387,13 @@ function PrefRow({
   );
 }
 
-/** Services prefs: app-autostart + login-start toggles + a (UI-only) idle-stop
- *  toggle. Copy is deliberately literal about the mechanics: the app OPENS at
- *  login (a macOS login item — you'll see it launch), and the second toggle
- *  makes that launch also start the stack. Both on = sites back after a reboot
- *  without a click. */
+/** Services prefs: the ONE login toggle + a (UI-only) idle-stop toggle. The
+ *  login item's `--hidden` launch is what runs Start all (lib.rs), so one
+ *  switch is the whole wish "my sites are back after a reboot". Until 29 Sep
+ *  2026 a second row, "Start services when rexenv opens", held the other half
+ *  in a setting — two toggles for one wish, and either alone did something the
+ *  user did not mean. The description is the platform's sentence (words.rs):
+ *  where the app opens, the OS mechanism, and the never-download promise. */
 function ServicePrefsCard() {
   const qc = useQueryClient();
   const words = usePlatformWords();
@@ -1404,33 +1403,16 @@ function ServicePrefsCard() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["autostart"] }),
     onError: (e) => toastBackendError(e),
   });
-  const { data: autoStart } = useQuery({
-    queryKey: ["setting", AUTO_START_KEY],
-    queryFn: () => getSetting(AUTO_START_KEY),
-  });
-  const autoStartOn = autoStart === "true";
-  const toggleAutoStart = useMutation({
-    mutationFn: (on: boolean) => setSetting(AUTO_START_KEY, on ? "true" : "false"),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["setting", AUTO_START_KEY] }),
-    onError: (e) => toastBackendError(e),
-  });
   const [stopIdle, setStopIdle] = useState(false);
 
   return (
     <div className="rounded-[13px] border border-rex-border-subtle bg-rex-surface-1 px-5">
       <PrefRow
-        title="Open rexenv at login"
+        title="Start rexenv at login"
         desc={words.loginItem}
         on={!!enabled}
         onToggle={() => toggle.mutate(!enabled)}
-        label="Open rexenv at login"
-      />
-      <PrefRow
-        title="Start services when rexenv opens"
-        desc="Runs Start all automatically on launch — with 'Open rexenv at login' on, your sites come back after a reboot without a click. Never downloads or prompts at login."
-        on={autoStartOn}
-        onToggle={() => toggleAutoStart.mutate(!autoStartOn)}
-        label="Start services when rexenv opens"
+        label="Start rexenv at login"
       />
       <PrefRow
         title="Stop idle services automatically"

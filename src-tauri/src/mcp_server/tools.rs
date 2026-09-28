@@ -146,7 +146,7 @@ static REGISTRY: &[ReadTool] = &[
         name: "settings_get",
         description: "Read one rexenv setting by key — the same allow-list `rex config get` uses: \
                       preferences like `preferred_browser`, `preferred_editor`, \
-                      `start_services_on_launch`, `default_tld`, the pinned engine versions. Keys \
+                      `app_update_auto_check`, `default_tld`, the pinned engine versions. Keys \
                       that hold signed update state or the MCP switches are refused with the \
                       reason. Takes `key`. Writing is the `settings` tool, under `system`.",
         input_schema: || json!({

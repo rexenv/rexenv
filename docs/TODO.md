@@ -44,6 +44,16 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [ ] **"Start rexenv at login" is ONE toggle — prove the merged login on 0.8.10, all three OSes**
+  (owner, 29 Sep 2026: "ekta toggle on korlei auto service on hoye jai login er pore"; ledger
+  #739). Built 29 Sep: the login item's `--hidden` launch runs Start all and nothing else does;
+  the `start_services_on_launch` setting is retired and swept; the description is each OS's
+  sentence in `words.rs`. *Done when:* on 0.8.10, with the one toggle on — macOS (a real logout
+  and login: `rex status` lists the backends running before the window opens), the Dell
+  (`rexenv.exe --hidden` under `explorer.exe`, backends running, and a Start-menu launch after
+  Stop all starts nothing), the Ubuntu VM (autologin reboot, same two halves) — the three SMOKE
+  rows the ledger row names are ticked with the evidence.
+
 - [ ] **One-command install — `curl … | bash` (macOS, Linux) and `irm … | iex` (Windows)** —
   owner, 28 Sep 2026: "the Claude Code way", and can it get past Gatekeeper / SmartScreen / Linux's
   equivalent. `docs/PLAN-install-scripts.md` (research §1, rulings D1–D4 — every recommendation
