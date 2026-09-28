@@ -341,13 +341,23 @@ Every ✓ below: 18 Sep 2026 (clean 15.6.1 VM, 39610cc7 + self-update to 0.7.2).
 - [ ] A **private** repo over `git@` clones using your own SSH agent. A private repo over
       `https://` fails at **Fetch** with a message pointing at the `git@` form — never a hang,
       never a hidden credential prompt. **Open: no run recorded.**
-- [ ] Point it at a repo that is NOT Laravel (e.g. a plain PHP one): the clone phase fails
+- [x] Point it at a repo that is NOT Laravel (e.g. a plain PHP one): the clone phase fails
       naming what it found ("looks like PHP project — not laravel"), the site shows **setup
       incomplete**, and `Sites/<name>.rex/` is EMPTY with no `.rexenv-clone-*` folder left
-      beside it. **Open: no run recorded** — `git_site_provision_check` case 3 proves the empty
-      docroot and no staging folder for a clone that fails on a missing ref, not this refusal.
-- [ ] **Retry** that site after quitting and relaunching the app: it re-clones (the row
-      remembers the repository; the job registry did not survive). **Open: no run recorded.**
+      beside it. **✓ 28 Sep 2026 (15.8 arm64 VM, 0.8.9):** New site → Laravel → From Git →
+      `symfony/demo` → Fetch (branch `main`, both checkboxes on, the "runs the repository's own
+      code" note) → Create site → the dialog's job card: "✕ creating demo.rex — failed at:
+      cloning the repository · this repository looks like Symfony — not laravel. Create the
+      site as php instead (the code is cloned, nothing else has been set up)."; the Sites row
+      shows `setup incomplete` with the retry icon; `Sites/demo.rex/` is empty and no
+      `.rexenv-clone-*` folder remains.
+- [x] **Retry** that site after quitting and relaunching the app: it re-clones (the row
+      remembers the repository; the job registry did not survive). **✓ 28 Sep 2026 (15.8 arm64
+      VM, 0.8.9, through `rex site retry demo.rex` after the quit + relaunch):** a fresh
+      `.rexenv-clone-demo.rex-<id>` staging folder appeared within 5 s, a second
+      `site-provision-demo.rex-*.log` was written, the clone ran to the same refusal, and the
+      staging folder was gone afterwards with the docroot still empty. (The row's retry icon
+      could not be pressed by automation — the site-page note on the Site Settings row.)
 - [x] The create dialog's two checkboxes both start ON. Untick **Run `php artisan migrate`**:
       the `finalize` phase label reads "generating app key" (not "app key + migrations"), the
       log says migrations were skipped, and the Databases screen shows the database with
