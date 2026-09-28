@@ -51,7 +51,8 @@ recorded" where nothing was found).
   (#371), an override site's content through the tunnel (◐), the refusals (stopped server, no
   recorded backend port, "never busy"), the orphan WARN.
 - *Menu bar / links / Settings / terminal:* the dock tile going away (◐), the 30 s hold (#437),
-  routes from a closed window, the agent after a real login (◐), a login launch with setup
+  routes from a closed window, services up after a real login, the agent after a real login
+  (◐), a login launch with setup
   unfinished, `rex status` with the app closed · all four "which app opens a link" rows (needs
   two browsers) · the Sites-folder refusals, the WP-CLI pin card and its failure line.
 - *AI agents (MCP):* 3, 7, 8 (◐), 9, 11, 13, 14 (◐), 15 (◐), 18 (◐), 23 (◐), 26 (◐), 27–31,
@@ -1088,23 +1089,34 @@ hand can prove a spec entry became the item it describes.*
   15.6.1 VM, `39610cc7` + self-update to 0.7.2).
 - [x] **Quit rexenv** with a public share up still pauses once and names the count.
   ✓ 18 Sep 2026 (clean 15.6.1 VM, `39610cc7` + self-update to 0.7.2).
-- [x] **Start on login** (Settings) → log out and back in: rexenv comes up in the MENU
-  BAR with **no window**, and the services it manages are up. Check the FILE first —
+- [x] **Open rexenv at login** (Settings → Services; this row called it "Start on login"
+  until 28 Sep) → log out and back in: rexenv comes up in the MENU
+  BAR with **no window** (and no dock tile). Check the FILE first —
   `~/Library/LaunchAgents/dev.rexenv.rexenv.plist` must name the app you are testing and
   contain `--hidden` — but do NOT check `launchctl print`: an already-loaded job keeps
   the arguments it was loaded with, so the running session shows the old ones until the
   next login. The file is the thing that carries into the next login.
   After logging back in, run **`scripts/login-leg-check.sh`** BEFORE opening the window:
-  it collects the whole leg in one output — the process and its `--hidden`, the accessory
+  it collects the leg in one output — the process and its `--hidden`, the accessory
   policy (no dock tile), the app's own "launched at login — staying in the menu bar" log
-  line, both sockets answering with no window, and the plist that produced it. Written
-  because this leg is checked once per release, by a human who has just logged in and has
-  no interest in remembering five commands. ✓ 1 Sep 2026 (dev Mac, a real logout and login,
-  ledger #439): `/Applications/rexenv.app/… --hidden`, `lsappinfo` `type="UIElement"`, the
-  log's own "launched at login — staying in the menu bar", both sockets answering, no
-  window ever opened; the plist had been rewritten on launch to name the current binary
-  with `--hidden`. Not re-run on a clean VM (a VM logout/login was not part of the 18 or
-  23 Sep passes).
+  line, both sockets, and the plist that produced it. Written because this leg is checked
+  once per release, by a human who has just logged in and has no interest in remembering
+  five commands. (It runs from a repo checkout — its `rex` is the repo's
+  `src-tauri/binaries/rex-universal-apple-darwin`; on a clean Mac without the repo, run the
+  same five reads by hand with `/Applications/rexenv.app/Contents/MacOS/rex status`.)
+  ✓ 1 Sep 2026 (dev Mac, a real logout and login, ledger #439): `/Applications/rexenv.app/…
+  --hidden`, `lsappinfo` `type="UIElement"`, the log's own "launched at login — staying in
+  the menu bar", both sockets answering, no window ever opened; the plist had been rewritten
+  on launch to name the current binary with `--hidden`.
+- [ ] **…and the services it manages are up** after that login, with no click — with
+  **Start services when rexenv opens** (the toggle beside it) on as well: `rex status` lists them running and a site
+  answers over HTTPS before the window is ever opened. **Open: no run recorded.** The 1 Sep
+  login recorded the window half above and not the services (the script prints only
+  `rex status`'s first three lines); what that login DID show was the DNS race the next row
+  exists for — the app won UDP 15353 and served DNS in-process (#442, fixed 2 Sep). Neither
+  the 18 nor the 23 Sep clean-VM pass included a logout/login; the 18 Sep reboot came up with
+  the edge and the DNS agent but the backends waiting for Start all, because Start on login
+  was not on there (§Robustness "Reboot").
 - [ ] **A couple of minutes after that login, `rex status` must read
   `answering (agent, udp 15353)`, not `(in-process…)`.** At login the app and the agent
   race for the port; in-process means DNS dies with the app, and the handoff (#442) has
