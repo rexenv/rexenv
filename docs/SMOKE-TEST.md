@@ -2127,7 +2127,10 @@ source, no income, no spend, the same answer macOS got). Built by CI from the re
       (The Dell's earlier "Open File - Security Warning" with Run on the first screen is that
       machine's `EnableSmartScreen = 0` policy, not what a user meets.)
 - [ ] The same download through **Chrome**: its shelf / download-bubble wording, verbatim.
-      **Open: no Chrome on the VM.**
+      **Open: no Chrome on the VM; the Dell HAS Chrome (28 Sep 2026) but it will not start
+      from the desktop session's scheduled task — `Start-Process` returns a pid that is gone
+      within 8 s, 0 `chrome` processes, no window — so its wording could not be captured
+      there either. A machine with a Chrome that opens is what this row waits for.**
 - [x] **The install asks for NO admin.** Per-user (`installMode: currentUser`): it lands in
       `%LOCALAPPDATA%\rexenv` — `rexenv.exe`, `rex.exe`, `uninstall.exe`, nothing else — and the
       uninstall entry is under **HKCU**, so Apps & Features lists rexenv with `DisplayVersion`
@@ -2218,7 +2221,11 @@ logged "this Mac's macOS version could not be read"; builds from `a0d4868f` on f
       ruling — the opposite of macOS, deliberately). ✓ 19 Sep 2026 (VM): "Stopped / Start all /
       Stop all / No sites yet / All sites… / Services / Databases / Mail / Tunnels / MCP server /
       About rexenv / Open rexenv / Quit rexenv" ("All running · 5 services" once started).
-- [ ] **Left click opens the WINDOW.** **Open: not driven on either machine.**
+- [x] **Left click opens the WINDOW.** **✓ 28 Sep 2026 (Dell, Windows 10, 0.8.9):** the window
+      closed with its title-bar ×, the tray overflow (`^`) opened, ONE left click on the rexenv
+      icon in it → the `rexenv` Tauri window is back in front (its title listed among the
+      desktop's windows; driven through a click that first checks the window under the cursor is
+      the notification area or its overflow, never a blind click).
 - [x] The tray icon is the **colour** icon, not a template glyph: it must be legible on a dark
       taskbar. ✓ 19 Sep 2026 (VM): the colour icon, in the overflow flyout (Windows 11 hides new
       tray icons there by default). **Tell:** a black square — macOS's `icon_as_template` leaking.
