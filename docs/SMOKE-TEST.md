@@ -1202,7 +1202,9 @@ this section needs a Mac with two browsers. The rules are proven below the eye (
 L1 `browser_detect_check`, L2 `openin.js`); the rows are what a human must see.*
 - [ ] Site header → chevron beside **Open in browser**: every browser you have is
   listed, the one a plain click uses is marked `default`, and picking one opens
-  the site there **without** changing the default. **Open: no run recorded.**
+  the site there **without** changing the default. **Open: no run recorded — the 15.8 VM
+  has Safari only (checked 28 Sep 2026), so all four rows here wait for a Mac with a second
+  browser installed.**
 - [ ] Each row's second icon (right of the divider) opens the site in **that
   browser's private/incognito window** — check the window really is private (the
   incognito/private badge, and the site logged OUT even though your normal window
