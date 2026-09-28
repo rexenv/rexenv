@@ -121,10 +121,23 @@ VM note: it now auto-logs in (`/etc/kcpassword` + `autoLoginUser`, set this day 
 booting to the login window). **Not run:** the clean-Mac list, the Windows and Linux
 installers from this draft, the in-app updates (descriptors — after Publish).
 
-**Publish is the owner's gate.** After it: the six descriptor publishes (approve together —
-runtimes PRs #12–#14), `check-app-manifest.sh` ×6, then the update proofs: the VM from a
-reinstalled 0.8.8 (macOS relaunch), the Dell from 0.8.8 (Windows relaunch), the 22.04 VM from
-0.8.8 (Linux: the swap lands, the app does NOT come back — 0.8.8 is the old side; open by hand).
+**PUBLISHED 28 Sep 2026, 07:09:32Z.** Update cask green. **Descriptors: six publishes queued,
+approved from one page, all six green on the first try** (runtimes PRs #12–#14 at work) —
+serials macOS 16, Windows 11, the four Linux documents 2 — `check-app-manifest.sh` ×6 all green
+within the hour. **§M on all three desktops, 0.8.8 → 0.8.9, the same hour:** the 15.8 VM
+(reinstalled public 0.8.8): About offered "0.8.9 · 27.0 MB", Install → `swapped to 0.8.9
+(AtomicSwap)` → OK → relaunched `0.8.9 (bfcd8cf)`, agent answering, kept bundle gone, no
+crash report. The Dell (Windows 0.8.8): offered "0.8.9 · 13.2 MB" with no replay refusal
+(serial 10 → 11) and no ownership refusal, Install → `Apps & Features now reads 0.8.9`,
+`swapped to 0.8.9 (RenamePair)` → OK → relaunched `0.8.9 (bfcd8cf)`, agent 0.8.9 on udp 53,
+previous bundle gone. The 22.04 VM (deb 0.8.8): offered "0.8.9 · 14.5 MB" (serial 1 → 2, same
+document — accepted), ONE polkit dialog, `dpkg -l` 0.8.9, `swapped to 0.8.9 (RenamePair)` →
+OK → **as predicted, 0.8.8's relauncher failed** (`could not spawn the relauncher (No such
+file or directory)` — the old side of the swap runs the old code), the DNS agent relaunched
+as 0.8.9, a hand open ran `0.8.9 (bfcd8cf)`; the relaunch itself is proven by the release
+after this one. Then `rex status` said **resolver MISSING**: 0.8.9's route fix reads 0.8.8's
+link-local-only `rexenv0` (`Current Scopes: none`) as not installed, which is that fix's
+design; re-installing the route is SMOKE's Linux P1 row.
 
 ## A) ✅ 0.8.8 — DRAFTED on the tap by CI (the first release built entirely on GitHub Actions)
 
