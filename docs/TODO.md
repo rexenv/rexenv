@@ -1431,12 +1431,16 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     Tray item, no-click offer and the startup notice (`rexenv 0.6.1`) all confirmed good.
     The offline leg found a SECOND bug: "Check now" with no network spun past 40 seconds
     and never returned — reqwest's `Client::timeout` did not fire, the same trap `binaries.rs`
-    already knew as B34 and this seam did not inherit. Fixed with an enforced 12-second
-    deadline over the whole pair, covering the PHP manifest too since they share the seam;
-    ledger #540, plant-proven (without it the L0 hangs past 45s).
-    **Still owed:** "dark when current" as the CARD renders it, the consent sentence's
-    Homebrew line, and a re-run of BOTH fixed legs — public-share and offline — against the
-    fixes, which wants the next release.
+    already knew as B34 and this seam did not inherit. Fixed with an enforced deadline over
+    the whole pair (doc + signature, TOTAL — not per request), covering the PHP manifest too
+    since they share the seam; ledger #540, plant-proven (without it the L0 hangs past 45s).
+    The first fix (`642aae98`) gave every caller 12 s; the same day (`fd45aebc`) the callers
+    were split — **Check now waits `INTERACTIVE_DEADLINE` = 6 s, the poller and the launch
+    sweep `BACKGROUND_DEADLINE` = 12 s** (`core/updates.rs`), pinned by a source-scan L0.
+    **Still owed** (`docs/SMOKE-TEST.md` §"In-app self-update"): "dark when current" as the
+    CARD renders it, the consent sentence's Homebrew line, and the offline leg re-run against
+    the fix — timed, it should give up within about 6 s. (The public-share leg re-ran ✓ 18 Sep
+    2026 on the clean VM, the self-update to 0.7.2 with a live share.)
   - [x] T12 — archive the plan as a design record ✓ 7 Sep 2026: `git mv` to
     `docs/archive/PLAN-self-update.md`, its Status line rewritten to say what IS proven
     (26 L0 in the module, four examples, seven L2 states, both publishers' refusals) and
