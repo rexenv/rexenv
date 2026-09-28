@@ -6,11 +6,16 @@ what is written ONCE for every OS (§1), where an OS difference goes (§2), how 
 the same promise (§3), the checklist a feature walks (§4), how a claim is proven per OS (§5),
 and each OS's own traps (§6–§8). `CLAUDE.md` states the rule; this file is the reference.
 
+**"All OSes" / "every OS" means exactly THREE — macOS, Windows and Linux — everywhere in
+rexenv's docs, scripts and skills.** Never two of them. (The live-check OS value that means it
+was spelled `both` until 28 Sep 2026, a leftover of the two-OS days; it is `all` now.)
+
 **Why this file exists — what one-OS work cost.**
 - 20 Sep 2026: four Windows-only defects shipped to a user in one week (#698, #699, #701, #703),
   each written for macOS and merely *compiled* for Windows. The Database Browser pointed at
   `rexdb://localhost`, a URL no Windows webview can load, from a file that said "Windows …
-  Phase 4". Owner ruling that day: both OSes, same change.
+  Phase 4". Owner ruling that day: both OSes, same change — widened to all three (macOS,
+  Windows, Linux) when the Linux build landed.
 - 21 Sep 2026: the first `verify.sh` run on Windows failed two TESTS that asserted macOS's
   spelling (`$ sudo chown` where Windows says `takeown /R /F`; a `:`-joined PATH).
 - 24 Sep 2026: the first Linux DNS design (a global systemd-resolved drop-in) routed the
@@ -21,7 +26,7 @@ and each OS's own traps (§6–§8). `CLAUDE.md` states the rule; this file is t
 
 ---
 
-## 1. Common — written ONCE, for every OS
+## 1. Common — written ONCE, for all three OSes
 
 These are OS-neutral. They live in `core/` (or the frontend) and never branch on the OS.
 A change here is automatically a change on all three — which is exactly why an OS spelling
@@ -55,7 +60,7 @@ must never leak into them.
 | A **yes/no the core must branch on** | a capability method on a trait (not an OS check) | `may_spawn_with_admin_token` (#698) |
 | **Pure text or rules** an impl produces (a unit file, a registry value, an NRPT line) | a `*_rules.rs` / pure module inside the OS folder, unit-tested on ANY host (`platform/mod.rs` includes them under `cfg(test)`) | `windows/autostart_rules.rs`, `linux/units.rs`, `linux/dnsroute.rs` |
 | A **pinned download** | an OS arm in `binaries::manifest(…, os, arch)` + a row in `docs/PORTS.md`'s table for that OS | the Windows and Linux artifact tables in PORTS |
-| **Shared by two OSes** (both Unix) | a neutral module in `platform/` both call — not a copy | `platform/resolver_files.rs` (macOS resolver files = Linux route markers), `APP_QUALIFIER`/`APP_ORG`/`APP_NAME` |
+| **Shared by macOS and Linux** (both Unix) | a neutral module in `platform/` both call — not a copy | `platform/resolver_files.rs` (macOS resolver files = Linux route markers), `APP_QUALIFIER`/`APP_ORG`/`APP_NAME` |
 | An OS that **cannot** do it yet | `Error::Unported("<what>")`, or `unported!("<what>")` where the method cannot return an error — **never `todo!()`** (#595, widened to Linux #716); plus a TODO row and an honest refusal in the UI | `LinuxAppBundle` bundle trees |
 | An OS that **will not** do it (a decision) | a refusal in `core/` with a sentence from `words.rs`, recorded in that OS's "not in v1" section of INSTALL + SMOKE | Linux D-L8 list |
 
@@ -125,8 +130,9 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
   and §"Proving a Linux claim" list the ways, cheapest first (headless example over SSH →
   the real installed package → the GUI).
 - **Examples declare where they can run** — the third column of `scripts/live-checks.sh`:
-  `both` (the name predates Linux; it means *every OS*), `macos`, `windows`, `linux`. An
-  example whose logic is OS-neutral is `both`; its fixtures use `common::fixture_base()`
+  `all` (macOS, Windows AND Linux), `macos`, `windows`, `linux`. An example whose logic is
+  OS-neutral is `all` — and `all` is a claim that it RUNS on all three, so an `all` example
+  nobody has run on Windows or Linux is a claim to check, not a fact. Its fixtures use `common::fixture_base()`
   (`/private/tmp` on macOS, `/tmp` on Linux, the temp dir on Windows), never a literal path.
 - **Ledger verdicts name the OS.** ✅ means proven on every OS the claim covers. Proven on one
   OS only = `◐ (macOS only)` / `◐ (Docker only)` etc., and the missing OS's run is a row in

@@ -30,9 +30,9 @@ cd src-tauri && cargo run --example <name>   # a single example
   prompts cannot render from a background shell).
 
 Every new example declares a tier AND an OS in the script's table, or the script
-fails. The OS column: `both` (the name predates Linux — it means **every OS**),
-`macos`, `windows`, `linux`; the script skips an example on a host it does not list.
-An OS-neutral example is `both`, and its fixtures come from `common::fixture_base()`
+fails. The OS column: `all` (**macOS, Windows AND Linux** — spelled `both` until 28 Sep
+2026), `macos`, `windows`, `linux`; the script skips an example on a host it does not list.
+An OS-neutral example is `all`, and its fixtures come from `common::fixture_base()`
 (`/private/tmp` on macOS, `/tmp` on Linux, the temp dir on Windows) — never a literal
 path (a Linux run died creating `/private`).
 

@@ -42,10 +42,11 @@ can be stated here without a guard of its own.
 
 **Classification has TWO axes since 16 Sep 2026 (W12).** The tier says what an example
 NEEDS (prompts, ports, the network, the real database); a third column says which OS it
-can run on at all — `both`, `macos` or `windows` — and the runner skips what this host
+can run on at all — `all` (macOS, Windows AND Linux; spelled `both` until 28 Sep 2026, when
+it had come to read as "two of three"), `macos`, `windows` or `linux` — and the runner skips what this host
 cannot run, saying how many it skipped. The tiers never encoded an OS, so before this the
 Windows runner would have tried `/etc/resolver`, `osascript`, php-fpm and unix sockets and
-read their failures as regressions. Measured the same day: of 184 examples, 88 are `both`,
+read their failures as regressions. Measured the same day: of 184 examples, 88 are `both` (now `all`),
 69 `macos` (php-fpm pools, Homebrew bottles, FrankenPHP, unix sockets, `.app` bundles,
 osascript/keychain/LaunchAgents, Valet/Local/DBngin paths, and unix tooling like `ps`,
 `kill`, `unzip`, `zip`, `openssl`), and 27 `windows` (the `windows_*` probes, whose macOS
@@ -993,7 +994,7 @@ builds are for EXAMPLES; the app itself comes from the Dell.
   About screen, or a real signed descriptor (owner's publish gate) — SMOKE-TEST's Linux
   section (ledger #729, #730).
 - `php_versions_check` on Linux (by hand on the VM, 25 Sep 2026 — the tier row says `macos`, and a
-  Windows run has never been made, so it is not `both`): every pinned PHP downloaded, verified and
+  Windows run has never been made, so it is not `all`): every pinned PHP downloaded, verified and
   RUN, 7.4 from rexenv's own `php-7.4.33-7`; `file(1)`'s arch word and the self-distributed
   question are read for the host OS since that run.
 - `app_update_check` (network) — the app's OWN update descriptor, fetched from where it is

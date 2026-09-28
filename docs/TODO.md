@@ -1090,7 +1090,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
       and `rex doctor` says "answering as rexenv on :443" — unexplained; a browser visit to a
       real site is the row that settles whether it is curl's or the edge's.
     **The example half is done 16 Sep 2026 (ledger #645):** the tier table grew an os column
-    (`both`/`macos`/`windows`, enforced like the tier itself), the runner skips what this host
+    (`both`/`macos`/`windows` then — `all`/`macos`/`windows`/`linux` since 28 Sep 2026, enforced like the tier itself), the runner skips what this host
     cannot run and says how many, and a skip is printed beside the verdict rather than folded
     into it. 184 examples: 88 both, 69 macOS-only, 27 Windows-only. Plants 4/4. **Script side surveyed 16 Sep 2026** (read, not run):
     four portable-by-construction fixes landed here — `verify.sh`'s `mktemp` template, `status.py`'s

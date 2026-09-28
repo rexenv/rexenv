@@ -39,9 +39,10 @@ headers saying "not started" about shipped features. Derived beats typed.
 
 ## All three platforms, in the same change (non-negotiable)
 
-A feature that works on one OS is a third of a feature. macOS, Windows and Linux are all
-build targets, so "Windows/Linux later" is not a plan — it is a bug with a date on it. Owner
-ruling, 20 Sep 2026 (both OSes), after a week in which four Windows-only defects shipped to a
+**"All OSes" means exactly three: macOS, Windows AND Linux** — in every doc, script and
+skill here, never two of them. A feature that works on one OS is a third of a feature. All
+three are build targets, so "Windows/Linux later" is not a plan — it is a bug with a date on it. Owner
+ruling, 20 Sep 2026 (macOS + Windows then), after a week in which four Windows-only defects shipped to a
 user because the work had been written for macOS and compiled for Windows; widened to Linux
 when the Linux build landed (24–27 Sep 2026). **Read `docs/PLATFORMS.md` before designing
 any feature** — §1 what is common, §2 where a difference goes, §3 the per-OS mechanism

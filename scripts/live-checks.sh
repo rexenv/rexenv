@@ -72,15 +72,15 @@ fi
 cd "$(dirname "$0")/../src-tauri"
 
 TIERS="
-adminer_check                  network both
-adminer_deeplink_check         network both
-adminer_login_gate_check       sandbox both
-adminer_proxy_check            stack   both
-adminer_update_check           network both
-adminer_serve_check            service both
-agent_db_check                 service both
+adminer_check                  network all
+adminer_deeplink_check         network all
+adminer_login_gate_check       sandbox all
+adminer_proxy_check            stack   all
+adminer_update_check           network all
+adminer_serve_check            service all
+agent_db_check                 service all
 wp_mail_sink_check             service macos
-adopt_check                    demo    both
+adopt_check                    demo    all
 apache_site_check              sandbox macos
 app_bundle_swap_check          sandbox macos
 app_relaunch_check             sandbox macos
@@ -91,148 +91,148 @@ linux_dns_route_check          system  linux
 linux_app_swap_check           system  linux
 app_swap_probe                 demo    macos
 app_update_check               network macos
-blueprint_check                network both
-browser_detect_check           sandbox both
-ca_gen                         system  both
+blueprint_check                network all
+browser_detect_check           sandbox all
+ca_gen                         system  all
 caddy_443                      system  macos
-caddy_fetch                    network both
-caddy_recovery_demo            system  both
-caddy_serve                    service both
+caddy_fetch                    network all
+caddy_recovery_demo            system  all
+caddy_serve                    service all
 cert_trust_prompt_check        system  macos
 windows_stale_ca_sweep         system  windows
 cli_repo_check                 system  macos
 cli_socket_check               stack   macos
-cli_wp_install_check           network both
-config_rewrite_check           sandbox both
+cli_wp_install_check           network all
+config_rewrite_check           sandbox all
 create_site_serve              service macos
-db_compat_matrix               sandbox both
-db_drop_check                  service both
-db_dump_check                  sandbox both
+db_compat_matrix               sandbox all
+db_drop_check                  service all
+db_dump_check                  sandbox all
 db_dump_flags_check            sandbox macos
-db_engine_serve                service both
-db_restore_check               sandbox both
+db_engine_serve                service all
+db_restore_check               sandbox all
 db_source_check                sandbox macos
 db_version_switch_check        network macos
 delete_site_serve              service macos
-devtools_check                 sandbox both
+devtools_check                 sandbox all
 dist_archive_check             sandbox macos
 dotfile_guard_check            sandbox macos
-dns_serve                      demo    both
+dns_serve                      demo    all
 dns_ssl_autostart_check        system  macos
-download_progress_check        network both
-edge_adopt_reload_check        stack   both
-edge_wire_check                sandbox both
+download_progress_check        network all
+edge_adopt_reload_check        stack   all
+edge_wire_check                sandbox all
 fpm_candidate_check            sandbox macos
 frankenphp_edge_serve          service macos
 frankenphp_fetch               network macos
 frankenphp_mail_catch_check    sandbox macos
 frankenphp_serve               service macos
 frankenphp_subdir_validate     sandbox macos
-git_site_clone_check           sandbox both
-git_site_provision_check       network both
+git_site_clone_check           sandbox all
+git_site_provision_check       network all
 health_watchdog_check          service macos
-laravel_postgres_check         network both
-linked_site_check              sandbox both
+laravel_postgres_check         network all
+linked_site_check              sandbox all
 local_import_check             network macos
 local_scan_check               sandbox macos
 log_tail_check                 service macos
 mail_adopt_settings_check      system  macos
-mail_api_check                 service both
-mail_route_check               service both
-mailpit_check                  service both
+mail_api_check                 service all
+mail_route_check               service all
+mailpit_check                  service all
 legacy_pins_check              network macos
 legacy_upgrade_check           network macos
 macos_floor_check              network macos
-manifest_sweep_check           network both
+manifest_sweep_check           network all
 mariadb_bundle_check           network macos
 mariadb_site_check             network macos
 mcp_control_check              sandbox macos
 mcp_mail_check                 service macos
 mcp_scratch_check              sandbox macos
-mcp_secret_sweep               sandbox both
+mcp_secret_sweep               sandbox all
 mcp_socket_check               stack   macos
 mcp_user_site_check            sandbox macos
-metrics_check                  sandbox both
+metrics_check                  sandbox all
 monitor_coverage_demo          service macos
-multisite_check                network both
+multisite_check                network all
 multisite_wildcard_check       network macos
-mysql_serve                    service both
-network_check                  network both
-nginx_fetch                    network both
+mysql_serve                    service all
+network_check                  network all
+nginx_fetch                    network all
 nginx_php_serve                sandbox macos
-override_fallthrough_check     service both
-php_fetch                      network both
+override_fallthrough_check     service all
+php_fetch                      network all
 php_fpm_serve                  sandbox macos
-php_per_site_serve             service both
-php_pools_serve                service both
-php_switch_serve               service both
-php_tools_check                network both
+php_per_site_serve             service all
+php_pools_serve                service all
+php_switch_serve               service all
+php_tools_check                network all
 php_versions_check             network macos
 php_update_check               network macos
-port_check                     sandbox both
-postgres_site_db_check         network both
-postgres_site_lifecycle_check  network both
-postgres_admin_token_check     service both
-prefetch_responsiveness_check  network both
+port_check                     sandbox all
+postgres_site_db_check         network all
+postgres_site_lifecycle_check  network all
+postgres_admin_token_check     service all
+prefetch_responsiveness_check  network all
 priv_check                     system  macos
-ready_split_check              service both
+ready_split_check              service all
 redis_bundle_check             network macos
 relink_tree_check              sandbox macos
 repo_clone_check               network macos
-repo_git_ops_check             sandbox both
-repo_install_check             network both
-repo_link_check                sandbox both
-repo_run_all_check             network both
+repo_git_ops_check             sandbox all
+repo_install_check             network all
+repo_link_check                sandbox all
+repo_run_all_check             network all
 repo_watch_check               network macos
 resource_totals_check          stack   macos
-retry_recovery_check           sandbox both
-robustness_check               network both
-seed_and_list                  system  both
+retry_recovery_check           sandbox all
+robustness_check               network all
+seed_and_list                  system  all
 server_switch_serve            service macos
 service_manager_demo           system  macos
-site_cert_gen                  system  both
+site_cert_gen                  system  all
 site_matrix_check              network macos
-site_provision_check           network both
-site_resources_check           stack   both
-site_stop_start_check          sandbox both
-sites_folder_check             sandbox both
-starter_seed_check             sandbox both
-stack_guard_check              stack   both
-stack_stop                     system  both
-system_setup                   system  both
-system_teardown                system  both
+site_provision_check           network all
+site_resources_check           stack   all
+site_stop_start_check          sandbox all
+sites_folder_check             sandbox all
+starter_seed_check             sandbox all
+stack_guard_check              stack   all
+stack_stop                     system  all
+system_setup                   system  all
+system_teardown                system  all
 teardown_check                 system  macos
 terminal_check                 sandbox macos
 terminal_site_check            stack   macos
-tunnel_check                   network both
+tunnel_check                   network all
 tunnel_delete_order_check      network macos
 tunnel_exposure_check          network macos
 tunnel_guard_check             sandbox macos
-tunnel_muplugin_check          sandbox both
+tunnel_muplugin_check          sandbox all
 tunnel_parent_death_check      sandbox macos
 tunnel_sweep                   sandbox macos
 valet_import_check             sandbox macos
 valet_scan_check               sandbox macos
 webview_dialogs_check          sandbox macos
-wire_probe_check               stack   both
+wire_probe_check               stack   all
 wp_create_serve                network macos
-wp_debug_log_check             demo    both
-wp_debug_toggle_check          demo    both
-wp_info_check                  network both
+wp_debug_log_check             demo    all
+wp_debug_toggle_check          demo    all
+wp_info_check                  network all
 wp_dns_check                   sandbox macos
 wp_install_serve               network macos
 wp_install_stream_check        network macos
-wp_login_check                 network both
-wp_login_client_ip_check       sandbox both
-wp_noise_check                 sandbox both
-wp_packages_check              sandbox both
-wp_plugins_check               network both
-wp_premium_update_check        network both
+wp_login_check                 network all
+wp_login_client_ip_check       sandbox all
+wp_noise_check                 sandbox all
+wp_packages_check              sandbox all
+wp_plugins_check               network all
+wp_premium_update_check        network all
 wp_real443_setup               demo    macos
-wp_themes_check                network both
-wp_tools_check                 network both
-wpcli_check                    sandbox both
-wporg_icons_check              network both
+wp_themes_check                network all
+wp_tools_check                 network all
+wpcli_check                    sandbox all
+wporg_icons_check              network all
 xdebug_pool_check              sandbox macos
 windows_port_gate_check        sandbox windows
 windows_supervision_check      demo    windows
@@ -244,9 +244,9 @@ windows_cgi_churn_probe        demo    windows
 windows_cgi_breaker_check      demo    windows
 windows_wp_site_check          demo    windows
 windows_cli_mail_probe         demo    windows
-pool_get_values_probe          demo    both
-pool_health_check              demo    both
-pool_busy_check                demo    both
+pool_get_values_probe          demo    all
+pool_health_check              demo    all
+pool_busy_check                demo    all
 windows_streamed_step_check    demo    windows
 windows_edge_probe             demo    windows
 windows_edge_start_check       demo    windows
@@ -264,14 +264,16 @@ windows_shell_open_check       demo    windows
 windows_app_open_check         demo    windows
 windows_autostart_check        demo    windows
 windows_junction_check         demo    windows
-wp_core_zip_check              network both
+wp_core_zip_check              network all
 "
 
 tier_of() {
   echo "$TIERS" | awk -v n="$1" '$1 == n { print $2 }'
 }
 
-# Which OS an example can run on: both | macos | windows (the third column).
+# Which OS an example can run on: all | macos | windows | linux (the third column).
+# `all` = every OS rexenv is built for — macOS, Windows AND Linux. It was spelled `both`
+# until 28 Sep 2026, from the days of two OSes; with Linux it read as "two of three".
 os_of() {
   echo "$TIERS" | awk -v n="$1" '$1 == n { print $3 }'
 }
@@ -285,10 +287,10 @@ case "$(uname -s)" in
   *) HOST_OS=other ;;
 esac
 
-# Can this example run HERE? `both` everywhere, otherwise only on its own OS.
+# Can this example run HERE? `all` on macOS, Windows and Linux, otherwise only on its own OS.
 runs_here() {
   case "$(os_of "$1")" in
-    both) return 0 ;;
+    all) return 0 ;;
     "$HOST_OS") return 0 ;;
     *) return 1 ;;
   esac
@@ -314,8 +316,8 @@ while read -r name tier os; do
   # without a valid third column would silently run (or silently skip) on a host
   # nobody checked it against.
   case "$os" in
-    both|macos|windows|linux) ;;
-    *) echo "BAD os column for $name: ${os:-(empty)} — use both | macos | windows | linux" >&2; missing=1 ;;
+    all|macos|windows|linux) ;;
+    *) echo "BAD os column for $name: ${os:-(empty)} — use all | macos | windows | linux" >&2; missing=1 ;;
   esac
 done <<<"$TIERS"
 [ "$missing" -eq 0 ] || exit 1

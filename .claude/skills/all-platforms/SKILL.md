@@ -5,6 +5,8 @@ description: Design and build a rexenv feature or fix so it works on macOS, Wind
 
 # all-platforms — a feature that works on one OS is a third of a feature
 
+"All platforms" = exactly three: **macOS, Windows and Linux**. Never two of them.
+
 The reference is `docs/PLATFORMS.md`. Read §3 (the per-OS mechanism table) and the trap
 section of every OS the change touches (§6 macOS · §7 Windows · §8 Linux) BEFORE writing
 code. This skill is the order; the file is the facts.
@@ -53,7 +55,7 @@ every OS.
   a `SKIPPED` line means that OS was not even compiled — say so in the report.
 - A behaviour claim needs a RUN on that OS: `docs/TESTING.md` §"Proving a Windows claim" /
   §"Proving a Linux claim" (headless example → installed package → GUI).
-- A new example declares its OS in `scripts/live-checks.sh` (`both` = every OS).
+- A new example declares its OS in `scripts/live-checks.sh` (`all` = macOS, Windows AND Linux).
 - The ledger verdict names the OS: proven on one only = `◐ (<os> only)`.
 - Every OS without a run gets its row in `docs/SMOKE-TEST.md`'s section for that OS.
 
