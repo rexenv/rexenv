@@ -2588,8 +2588,14 @@ rexenv0 <name>` and read `Current Scopes:`.
       list` shows 7.4 installed with no refusal note, `rex site create php74.rex --type php --php 7.4`
       → `curl https://php74.rex/` prints 7.4.33, `rex status` shows `PHP-FPM 7.4 running` on 9774;
       `bin/php-7.4.33/licenses/` holds the Linux licence set (`php_versions_check`).
-- [ ] Settings → PHP → 7.4 → Install through the GUI, and a WordPress site on 7.4; no Xdebug toggle
-      for 7.4 (static ELF, expected). **Open: the `rex` door was run, the GUI door was not.**
+- [x] Settings → PHP → 7.4 → Install through the GUI, and a WordPress site on 7.4; no Xdebug toggle
+      for 7.4 (static ELF, expected). **✓ 28 Sep 2026 (VM, 0.8.9):** with `lm.rex` on 7.4 the
+      row's remove was refused — "PHP 7.4 is in use by a site — switch those sites first"; the
+      site's picker → 8.3 ("Switch lm.rex to PHP 8.3? … restarts briefly") → remove → the row
+      shows Install → Install → `rex php` 7.4 `yes` (its pool on 9774) → the site's picker back
+      to 7.4 → Start site → `serving`, `https://lm.rex/` 200 and the REST route 200. The 7.4 row
+      carries make-default, ini settings and remove — no Xdebug control (8.3's row has ini
+      settings only); the version list shows "EOL November 2022" beside it.
 
 ### Not in Linux v1 (D-L8, refused in core with an honest message)
 - **Redis, MariaDB, Apache, Xdebug** — as Windows v1: not offered, and a refusal that names the OS.
