@@ -395,20 +395,55 @@ pub fn agent_is_stale(answered: Option<&str>) -> bool {
 /// `core::setup`'s module docs).
 pub fn configure_resolver(platform: &dyn Platform, tld: &str, port: u16) -> Result<()> {
     let cmd = platform.dns().install_command(tld, port);
-    platform.privileges().run_privileged(
-        &cmd,
-        &crate::platform::traits::PromptReason::new(format!(
-            "add a DNS resolver so .{tld} sites open on {}",
-            crate::platform::words::current().host
-        )),
-    )?;
-    // The moment rexenv starts answering `.{tld}` is the moment a typed
-    // `name.{tld}` should open in Firefox too (`core::firefox`). Best-effort.
+    platform.privileges().run_privileged(&cmd, &resolver_prompt_reason(tld))?;
+    resolver_installed(platform, tld);
+    Ok(())
+}
+
+/// The words on the resolver's own admin prompt.
+pub fn resolver_prompt_reason(tld: &str) -> crate::platform::traits::PromptReason {
+    crate::platform::traits::PromptReason::new(format!(
+        "add a DNS resolver so .{tld} sites open on {}",
+        crate::platform::words::current().host
+    ))
+}
+
+/// What follows a route install, whoever ran the root command: the moment rexenv starts
+/// answering `.{tld}` is the moment a typed `name.{tld}` should open in Firefox too
+/// (`core::firefox`). Best-effort.
+pub fn resolver_installed(platform: &dyn Platform, tld: &str) {
     crate::core::firefox::allow_tlds_best_effort(
         platform.cert_trust().firefox_profiles_root(),
         &[tld.to_string()],
     );
-    Ok(())
+}
+
+/// The root command that would make `tld`'s route ours, or `None` when it already is —
+/// the same decision `ensure_resolver` makes, handed to a caller that wants to batch the
+/// command with other root work into ONE prompt (`setup::run_system_setup`). `prompt`
+/// keeps the agent rule: an operation that may not prompt gets the error, never a command.
+pub fn resolver_install_command(
+    platform: &dyn Platform,
+    tld: &str,
+    port: u16,
+    prompt: ResolverPrompt,
+) -> Result<Option<String>> {
+    match resolver_owner(platform, tld, port) {
+        ResolverOwner::Ours => Ok(None),
+        ResolverOwner::Absent => match prompt {
+            ResolverPrompt::Allow => Ok(Some(platform.dns().install_command(tld, port))),
+            ResolverPrompt::Never => Err(resolver_missing_error(tld)),
+        },
+        ResolverOwner::Foreign { .. } => Err(foreign_resolver_error(&platform.dns().route_label(tld))),
+    }
+}
+
+fn resolver_missing_error(tld: &str) -> Error {
+    Error::Other(format!(
+        "rexenv can't serve `.{tld}` yet — its system resolver file is missing, and \
+         installing one needs your administrator password, which only you can give. \
+         Open rexenv and finish its setup, then try again."
+    ))
 }
 
 /// Every TLD rexenv answers on with the default port — its installed routes plus
@@ -485,19 +520,9 @@ pub fn ensure_resolver(
     port: u16,
     prompt: ResolverPrompt,
 ) -> Result<()> {
-    match resolver_owner(platform, tld, port) {
-        ResolverOwner::Ours => Ok(()),
-        ResolverOwner::Absent => match prompt {
-            ResolverPrompt::Allow => configure_resolver(platform, tld, port),
-            ResolverPrompt::Never => Err(Error::Other(format!(
-                "rexenv can't serve `.{tld}` yet — its system resolver file is missing, and \
-                 installing one needs your administrator password, which only you can give. \
-                 Open rexenv and finish its setup, then try again."
-            ))),
-        },
-        ResolverOwner::Foreign { .. } => {
-            Err(foreign_resolver_error(&platform.dns().route_label(tld)))
-        }
+    match resolver_install_command(platform, tld, port, prompt)? {
+        None => Ok(()),
+        Some(_) => configure_resolver(platform, tld, port),
     }
 }
 

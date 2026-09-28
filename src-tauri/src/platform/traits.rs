@@ -131,7 +131,19 @@ pub trait CertTrustManager: Send + Sync {
     /// even when system-wide setup (e.g. the resolver file) already happened —
     /// first-run detection must check this, not just system-wide artifacts.
     /// Default: `false` (conservative — re-offers setup).
-    fn is_trusted(&self, _ca_cert_path: &std::path::Path) -> bool {
+     /// The ROOT command that puts the CA in the OS's system trust store — only where trust
+    /// needs root at all, and only when that store does not already hold this PEM. `None`
+    /// on macOS and Windows (the login keychain and the CurrentUser root store are user ops)
+    /// and on a Linux machine whose store already carries the same certificate. Setup
+    /// batches it with the resolver's root command into ONE privileged step: on Linux the
+    /// polkit action is `auth_admin` without `_keep` (#723), so two root legs are two
+    /// password dialogs — measured 28 Sep 2026 on the 22.04 VM, where a re-setup asked
+    /// twice, the second time for a store that already held the PEM. `trust_ca` runs the
+    /// same command itself when setup did not, so a bare `trust_ca` is still complete.
+    fn root_trust_command(&self, _ca_cert_path: &std::path::Path) -> Option<String> {
+        None
+    }
+   fn is_trusted(&self, _ca_cert_path: &std::path::Path) -> bool {
         false
     }
     /// This user's Firefox profiles root (the dir holding `profiles.ini`), or

@@ -71,13 +71,16 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   honest fallback ran. A package install runs the relauncher from the new `/usr/bin/rexenv`.
   Ships in the next release; because the OLD side spawns, 0.8.8 → next still needs a hand
   open, and the relaunch is proven by the release after that (SMOKE's Linux row).
-- [ ] **A re-setup on an upgraded Linux install asks for the admin password TWICE** (28 Sep
-  2026, 0.8.9 over 0.8.8 on the 22.04 VM, SMOKE P1): the stale route script sends the user
-  back through onboarding, and step 3 ran two `pkexec` steps two minutes apart — the route,
-  then `mkdir -p /usr/local/share/ca-certificates …` — although `rex status` already said "CA
-  trusted". A fresh install asks once (#723). Either the CA leg should skip a store that
-  already holds the same PEM, or both legs should ride one privileged step as they do on a
-  fresh machine. Also: the finish page says "Create your first site" on an install with three.
+- [x] **A re-setup on an upgraded Linux install asks for the admin password TWICE** ✓ fixed
+  28 Sep 2026 (ledger #723): setup gathers the resolver's root command and — on Linux only,
+  and only when the system store lacks the PEM — the CA store's, and runs them as ONE
+  privileged step under one sentence (`setup_root_batch`); `trust_ca` runs the store leg
+  itself only when setup did not. Found the same day (0.8.9 over 0.8.8 on the 22.04 VM,
+  SMOKE P1): two `pkexec` steps two minutes apart, the second rewriting a store that
+  already held the certificate. Proof through the installed app: the release after 0.8.9.
+- [ ] **The onboarding finish page says "Create your first site" on an install that has
+  sites** (28 Sep 2026: the 22.04 VM's re-setup, three sites present). A re-setup reaches
+  that page too; the button should read from the sites count.
 - [ ] **The polkit sentence for an in-app update is the generic one** — "rexenv needs
   administrator permission to change system settings — the .rex DNS route, the HTTPS edge, or
   the local certificate authority" — while the step it authorises is `dpkg -i` of the new

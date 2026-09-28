@@ -110,6 +110,13 @@ pub(crate) fn nss_create_args_for(db: &Path) -> Vec<String> {
 
 /// Two PEMs describe the same certificate when their base64 bodies match — whitespace and
 /// header text differ between writers and mean nothing.
+/// Whether the system store still needs a root step for `ours`: it does unless the store's
+/// file already holds the same certificate. A re-setup on 28 Sep 2026 rewrote a store that
+/// already held the PEM — and asked for the password to do it.
+pub(crate) fn system_store_needs(system: Option<&str>, ours: &str) -> bool {
+    !system.is_some_and(|s| same_pem(s, ours))
+}
+
 pub(crate) fn same_pem(a: &str, b: &str) -> bool {
     fn body(s: &str) -> String {
         s.lines()
@@ -189,6 +196,12 @@ mod tests {
         assert!(same_pem(a, b));
         assert!(!same_pem(a, "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n"));
         assert!(!same_pem("", ""), "two empties are not the same certificate");
+        // The store needs a root step when it has no file, a different PEM, or an empty one —
+        // and none when it already holds ours.
+        assert!(system_store_needs(None, a));
+        assert!(system_store_needs(Some("-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n"), a));
+        assert!(system_store_needs(Some(""), a));
+        assert!(!system_store_needs(Some(b), a));
     }
 
     #[test]

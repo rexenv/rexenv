@@ -2389,8 +2389,10 @@ rexenv0 <name>` and read `Current Scopes:`.
       "resolver installed · CA trusted". **Two findings, TODO rows:** the re-setup showed TWO
       polkit dialogs, not one — the journal shows two `pkexec` runs, the route at 07:52 and
       `mkdir -p /usr/local/share/ca-certificates …` at 07:54 (the CA leg rewrote the system-store
-      file even though "CA trusted" already held); and the finish page says "Create your first
-      site" on an install that has three.
+      file even though "CA trusted" already held) — **fixed on master the same day, ledger
+      #723: setup's root legs are one step, and the store leg is skipped when the store already
+      holds the PEM; one dialog is owed a run through the next release**; and the finish page
+      says "Create your first site" on an install that has three (TODO row).
       History: P1 with the FIRST design (a global resolved drop-in) FAILED — `example.com`
       resolved to `127.0.0.1`; the dummy link replaced it the same day (#717).
       **Tell:** every site on the internet resolving to loopback — a DEFAULT route. If the dummy

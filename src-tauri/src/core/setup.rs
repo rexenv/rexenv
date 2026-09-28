@@ -52,16 +52,53 @@ pub fn resolver_install_script(platform: &dyn Platform, dns_port: u16) -> String
 /// setup only shows the keychain dialog, not a pointless admin prompt.
 pub fn run_system_setup(platform: &dyn Platform) -> Result<ssl::LocalCa> {
     let ca = ssl::load_or_create(platform.paths(), platform.permissions())?;
-    // 1) privileged: install the backbone resolver file (one admin prompt).
-    dns::ensure_resolver(
+    // 1) privileged, ONCE: the backbone resolver's root command and — where trusting the
+    //    CA needs root too (Linux's system store; macOS and Windows answer None) — the
+    //    store's, in the same prompt. Two prompts is what a Linux setup showed on 28 Sep
+    //    2026: the polkit action deliberately keeps no grant (#723), so every root leg is
+    //    its own dialog unless the legs are one command.
+    let resolver = dns::resolver_install_command(
         platform,
         tld::BACKBONE_TLD,
         dns::DEFAULT_DNS_PORT,
         dns::ResolverPrompt::Allow, // first-run setup: the user IS the one asking
     )?;
-    // 2) user: trust the CA (native dialog; login keychain, no root).
+    let store = platform.cert_trust().root_trust_command(&ca.cert_path);
+    if let Some((script, reason)) = setup_root_batch(resolver.as_deref(), store.as_deref(), tld::BACKBONE_TLD) {
+        platform.privileges().run_privileged(&script, &reason)?;
+        if resolver.is_some() {
+            dns::resolver_installed(platform, tld::BACKBONE_TLD);
+        }
+    }
+    // 2) user: trust the CA (native dialog; login keychain, no root — on Linux the NSS
+    //    databases; its root leg finds the store already right and asks nothing).
     ssl::trust_ca(platform, &ca)?;
     Ok(ca)
+}
+
+/// The ONE privileged step of setup: the resolver's command, the store's, or both joined —
+/// and the sentence for the prompt that names everything it does. `None` when the
+/// resolver is already ours and the store needs nothing (or is a user op): `trust_ca` then
+/// owns whatever prompt remains, which on macOS is the keychain's and on Linux none.
+pub fn setup_root_batch(
+    resolver: Option<&str>,
+    store: Option<&str>,
+    tld: &str,
+) -> Option<(String, crate::platform::traits::PromptReason)> {
+    use crate::platform::traits::PromptReason;
+    match (resolver, store) {
+        (Some(r), Some(s)) => Some((
+            format!("{r}\n{s}"),
+            PromptReason::new(format!(
+                "add a DNS resolver so .{tld} sites open on {}, and add its local certificate \
+                 authority to this computer's trust store so curl and PHP accept https://*.{tld}",
+                crate::platform::words::current().host
+            )),
+        )),
+        (Some(r), None) => Some((r.to_string(), dns::resolver_prompt_reason(tld))),
+        // The store alone rides `trust_ca`'s own prompt — one dialog either way.
+        (None, _) => None,
+    }
 }
 
 /// Reverse system setup: remove ALL rexenv-owned resolver files — every
@@ -410,6 +447,23 @@ mod lock_tests {
 #[cfg(all(test, target_os = "macos"))]
 mod tests {
     use super::*;
+
+    /// One privileged step for setup, however many root legs the OS has (28 Sep 2026: a
+    /// Linux re-setup asked twice). Both → one script, one sentence naming both; the
+    /// resolver alone → its own sentence; nothing for the resolver → no batch (the store,
+    /// if any, rides `trust_ca`'s single prompt).
+    #[test]
+    fn setup_runs_its_root_legs_as_one_step_with_one_sentence() {
+        let both = setup_root_batch(Some("install-route"), Some("install-store"), "rex").unwrap();
+        assert_eq!(both.0, "install-route\ninstall-store");
+        assert!(both.1.sentence().contains("DNS resolver"), "{}", both.1.sentence());
+        assert!(both.1.sentence().contains("certificate authority"), "{}", both.1.sentence());
+        let route = setup_root_batch(Some("install-route"), None, "rex").unwrap();
+        assert_eq!(route.0, "install-route");
+        assert!(!route.1.sentence().contains("certificate"), "{}", route.1.sentence());
+        assert!(setup_root_batch(None, Some("install-store"), "rex").is_none());
+        assert!(setup_root_batch(None, None, "rex").is_none());
+    }
 
     #[test]
     fn resolver_install_script_writes_backbone_resolver_for_port() {

@@ -233,11 +233,23 @@ impl CertTrustManager for LinuxCertTrust {
             }
             run_ok(&certutil.display().to_string(), &trust::nss_add_args_for(&db, ca_cert_path))?;
         }
-        LinuxPrivileges.run_privileged(
-            &trust::system_trust_command(ca_cert_path),
-            &PromptReason::new("add its local certificate authority to this computer's trust store, so curl and PHP accept https://*.rex"),
-        )?;
+        // The root leg only when the store lacks this PEM — setup may already have run it in
+        // its one batched step, and a re-setup must not ask for a store that is already right.
+        match self.root_trust_command(ca_cert_path) {
+            Some(cmd) => {
+                LinuxPrivileges.run_privileged(
+                    &cmd,
+                    &PromptReason::new("add its local certificate authority to this computer's trust store, so curl and PHP accept https://*.rex"),
+                )?;
+            }
+            None => log::info!("trust: the system store already holds this CA — no root step"),
+        }
         Ok(())
+    }
+    fn root_trust_command(&self, ca_cert_path: &Path) -> Option<String> {
+        let ours = std::fs::read_to_string(ca_cert_path).ok()?;
+        let system = std::fs::read_to_string(Path::new(trust::SYSTEM_CERT_DIR).join(trust::SYSTEM_CERT_NAME)).ok();
+        trust::system_store_needs(system.as_deref(), &ours).then(|| trust::system_trust_command(ca_cert_path))
     }
     fn untrust_ca(&self, _ca_cert_path: &Path) -> Result<()> {
         let home = home_dir()?;
