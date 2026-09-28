@@ -2397,13 +2397,10 @@ Until 28 Sep this header said "nothing here has run yet"; the runs were recorded
 beneath it, and the unticked rows beside them described steps those runs had already done —
 reconciled into one row per step, each open row saying what it is still waiting for.
 
-**Still open on Linux, in one list:** P1's Settings door for a second TLD (the route itself
-✓ 28 Sep through 0.8.9) · P2 the edge staying down across a reboot after Stop all · P3 snap Chromium
-and Firefox through the app's own onboarding (GUI), an AppImage without `libnss3-tools`, Remove
-system changes · P4 the agent with the app never started, its restart, the AppImage's paths,
-the guard's normal-stop leg · P5 "Open rexenv" from the tray, the Database Browser, Settings'
-words, the open-in actions · the in-app update's relaunch and three other update rows · PHP 7.4
-through the GUI.
+**Still open on Linux, in one list** (re-derived from the unticked rows, 28 Sep 2026): P4 the
+tunnel guard's normal-stop leg · the `.deb` in-app update's relaunch (0.8.9 → the next release).
+**Owed through the next release, inside ticked rows:** a re-setup is ONE polkit dialog (#723,
+fixed after 0.8.9 — P1) and the AppImage's kept previous copy is swept (its row's next run).
 
 Environment: Ubuntu ____ (22.04+; x86_64 or aarch64) · package ____ (.deb / AppImage) · rexenv version ____
 
@@ -2514,14 +2511,14 @@ rexenv0 <name>` and read `Current Scopes:`.
       22.04.5 x86_64 (every `Depends` satisfied, `ldd` clean, glibc 2.35), GUI onboarding to
       "Domains & SSL are ready", WordPress on MySQL at `https://acme.rex` 200 and Laravel on
       PostgreSQL at `https://lara.rex` 200, no `lib-compat/` needed (the shim's "none" case).
-- [ ] Chrome/Chromium (snap on Ubuntu) opens a site with no warning — the CA is in the snap's
+- [x] Chrome/Chromium (snap on Ubuntu) opens a site with no warning — the CA is in the snap's
       own NSS database (`~/snap/chromium/current/.local/share/pki/nssdb`), written by the app's
       onboarding. **◐ 24 Sep 2026 (VM):** the first deb wrote `~/.pki/nssdb` only and snap
       Chromium said `ERR_CERT_AUTHORITY_INVALID`; the CA added to the snap's database by hand
       opened the site, and the deb now writes both (#726). **✓ 28 Sep 2026 (VM, 0.8.9's own
       onboarding):** `certutil -L` on the snap's database lists "rexenv local CA  C,,", and snap
       Chromium 153 opened `https://lm.rex/` with the tune icon and no warning.
-- [ ] Firefox (snap on Ubuntu) opens it with no warning — the CA is in the profile's own
+- [x] Firefox (snap on Ubuntu) opens it with no warning — the CA is in the profile's own
       `cert9.db` (`certutil -d sql:~/snap/firefox/common/.mozilla/firefox/<profile> -L` lists it),
       because the snap cannot import the host's system store through the `user.js` pref.
       **◐ 25 Sep 2026 (VM, headless):** with the pref alone `firefox --screenshot
@@ -2624,7 +2621,8 @@ rexenv0 <name>` and read `Current Scopes:`.
       not run yet). First Check now was refused as a replay — the dev deb had read the macOS
       document (TODO row). **28 Sep, 0.8.8 → 0.8.9 on the same VM:** offered (serial 1 → 2), one
       polkit dialog, `dpkg -l` 0.8.9, swap logged, OK → 0.8.8's relauncher failed the same way
-      (expected — the old side spawns), hand open → 0.8.9. Closes on 0.8.9 → the next release.
+      (expected — the old side spawns), hand open → 0.8.9. **Open: the relaunch — 0.8.9 → the
+      next release is the first update whose OLD side carries #729's fix.**
 - [x] AppImage in a folder you own, an older version: Check now reads
       `app-manifest-linux-appimage-<arch>.json`; Update swaps the file with NO prompt; the app
       comes back as the new version FROM THE SAME PATH; the folder holds no `.rexenv-update-*`

@@ -53,9 +53,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   Fix: the link carries `192.0.2.53/32` (TEST-NET-1; owner's pick over a ULA, which would flip
   `AI_ADDRCONFIG`), and a stale route script reads as not installed so setup rewrites it on
   machines that already ran 0.8.8's. `linux_dns_route_check` now asserts the scope and pinned
-  answers: PASS 32/32 on the VM; the 0.8.8 script planted back → 4 named FAILs. Ships in the next
-  release; the GUI half (a 0.8.8 install updated, setup re-offered, `.rex` answered by `rexenv0`)
-  is SMOKE Linux P1's open row.
+  answers: PASS 32/32 on the VM; the 0.8.8 script planted back → 4 named FAILs. Shipped in 0.8.9;
+  the GUI half ran the same day on the VM — the in-app update over 0.8.8, setup re-offered,
+  `.rex` answered by `rexenv0` (SMOKE Linux P1 ✓), and still so after the VM's next reboot.
 - [x] **The instruction docs said "macOS and Windows", and "Linux is `todo!()`"** ✓ 28 Sep 2026 —
   owner: every new feature must work on Mac, Windows and Linux, common work written in common
   places, OS-specific work written OS-wise. New `docs/PLATFORMS.md` (§1 common, §2 where a
