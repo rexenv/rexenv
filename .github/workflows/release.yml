@@ -23,9 +23,16 @@
 # Windows, Linux deb/AppImage × x86_64/aarch64) — docs/RELEASING.md step 8.
 #
 # Two ways to start a release, both end in the same draft:
-#   1. git tag v<version> && git push origin v<version>
-#   2. Actions tab → "Release" → Run workflow → type the version (creates the tag for you;
-#      tags pushed with the workflow token do not re-trigger this).
+#   1. git tag -a v<version> -m "rexenv <version>" -m "<notes>" && git push origin v<version>
+#   2. Actions tab → "Release" → Run workflow → type the version and the notes (creates the
+#      annotated tag for you; tags pushed with the workflow token do not re-trigger this).
+#
+# The release notes ARE the annotated tag's body — the one text written for this release,
+# by a human, before any runner starts. `versions` refuses a lightweight or bodiless tag;
+# `publish` puts that body on the draft verbatim. Never an internal note: 0.8.8 and 0.8.9
+# were published with the draft-gate warning as their public notes ("Draft until …, a
+# draft's assets 404 for everyone") because nothing in the publish step replaced it (fixed
+# by hand 28 Sep 2026). The gate reminder lives in the run's summary, which never ships.
 #
 # One secret: TAP_TOKEN, a fine-grained PAT with `contents: write` on rexenv/homebrew-tap and
 # nothing else (Settings → Secrets → Actions). The draft is created with it because the
@@ -41,6 +48,9 @@ on:
     inputs:
       version:
         description: "Version to release (e.g. 0.8.8 — must match tauri.conf.json)"
+        required: true
+      notes:
+        description: "Release notes — what this release means (becomes the tag's body and the public release notes)"
         required: true
 
 permissions:
@@ -75,9 +85,21 @@ jobs:
           elif git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
             echo "tag $TAG already exists on origin"
           else
-            git tag "$TAG"
+            git -c user.name="github-actions[bot]" \
+                -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+                tag -a "$TAG" -m "rexenv ${TAG#v}" -m "$NOTES"
             git push origin "refs/tags/$TAG"
           fi
+        env:
+          NOTES: ${{ inputs.notes }}
+      # Before any runner spends minutes: the release notes come from here, and a tag
+      # without them would otherwise be found out only after the builds.
+      - name: The tag carries release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ./scripts/tag-notes.sh "$TAG" > /dev/null
 
   # ── macOS: the universal dmg + the in-app update archive.
   macos:
@@ -352,6 +374,10 @@ jobs:
     needs: [macos, windows, linux]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts/tag-notes.sh
+          sparse-checkout-cone-mode: false
       - uses: actions/download-artifact@v4
         with:
           path: staged
@@ -373,6 +399,7 @@ jobs:
       - name: Draft the release on the tap
         env:
           GH_TOKEN: ${{ secrets.TAP_TOKEN }}
+          SOURCE_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           [ -n "$GH_TOKEN" ] || { echo "::error::TAP_TOKEN is not set — a fine-grained PAT with contents:write on rexenv/homebrew-tap (docs/RELEASING.md, one-time setup)"; exit 1; }
@@ -380,12 +407,20 @@ jobs:
           if gh release view "$TAG" --repo rexenv/homebrew-tap >/dev/null 2>&1; then
             echo "::error::release $TAG already exists on rexenv/homebrew-tap — never re-issue a version's bytes; bump and tag again"; exit 1
           fi
+          # The notes are the tag's body and nothing else: they become public on publish,
+          # so no maintainer instruction goes in them (0.8.8/0.8.9, see the header).
+          GH_TOKEN="$SOURCE_TOKEN" ./scripts/tag-notes.sh "$TAG" > notes.md
           # The dmg's name must be the only asset ending in `_universal.dmg`: the tap's
           # update-cask.yml selects the cask's asset by that suffix.
           gh release create "$TAG" \
             --repo rexenv/homebrew-tap \
             --draft \
             --title "rexenv $V" \
-            --notes "> ⚠️ Draft until docs/PUBLISH-TESTING.md §A (Apple-Silicon launch gate) passes on this exact dmg. Publishing auto-updates the Homebrew cask, and is what makes every asset reachable — a draft's assets 404 for everyone. Then publish the six app-update descriptors in rexenv/runtimes (RELEASING.md step 8). Built on GitHub-hosted runners only: macos-14, windows-latest, ubuntu-22.04 and ubuntu-22.04-arm (the Linux floor, glibc ≤ 2.35 asserted)." \
+            --notes-file notes.md \
             out/*
           echo "draft release $TAG created on rexenv/homebrew-tap with $(ls out | wc -l) files — run §A on the dmg, then publish it"
+          {
+            echo "### ⚠️ rexenv $V is a DRAFT on rexenv/homebrew-tap"
+            echo "Publish only after docs/PUBLISH-TESTING.md §A (Apple-Silicon launch gate) passes on this exact dmg. Publishing auto-updates the Homebrew cask and is what makes every asset reachable — a draft's assets 404 for everyone. Then publish the six app-update descriptors in rexenv/runtimes (RELEASING.md step 8)."
+            echo "Built on GitHub-hosted runners only: macos-14, windows-latest, ubuntu-22.04 and ubuntu-22.04-arm (the Linux floor, glibc ≤ 2.35 asserted)."
+          } >> "$GITHUB_STEP_SUMMARY"

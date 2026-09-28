@@ -20,6 +20,7 @@ it, and the Homebrew tap updates itself. Two workflows implement this.
 
 ```
 git push origin v<X.Y.Z>            (or: Actions → "Release" → Run workflow)
+        │  the ANNOTATED tag's body = the public release notes (scripts/tag-notes.sh)
         │
         ▼
 .github/workflows/release.yml   — macos-14 runner
@@ -364,7 +365,7 @@ notices fix alone, while 65 commits of Windows groundwork and features stayed on
   ("outside of Vite serving allow list", 14 Sep 2026), every page's console carrying the error
   while the panels that load no font passed. The wk-checks harness's own `node_modules` is
   plain Node and does not go through vite, which is why that one link is safe.
-- The draft's notes say in one line what the patch fixes — for 0.7.1, that earlier copies
+- The tag's body (= the draft's notes, step 2 below) says in one line what the patch fixes — for 0.7.1, that earlier copies
   carry an incomplete licence list. Users who downloaded before have a right to know.
 - After it ships, master records the shipped commit: `git merge -s ours release/X.Y.Z`
   keeps the tag's commit in master's history without taking its tree (master already
@@ -409,13 +410,24 @@ moving, with every workflow green.
    Either:
    - `git tag -a v<X.Y.Z> -m "rexenv <X.Y.Z>" -m "<what this release means>" <commit>`
      then `git push origin v<X.Y.Z>`, or
-   - GitHub → Actions → **Release** → *Run workflow* → enter `<X.Y.Z>` (creates the
-     tag for you; token-pushed tags don't re-trigger the workflow).
+   - GitHub → Actions → **Release** → *Run workflow* → enter `<X.Y.Z>` and the notes
+     (creates the annotated tag for you; token-pushed tags don't re-trigger the workflow).
+
+   **The tag's body IS the public release notes** — the workflow puts it on the draft
+   verbatim (`scripts/tag-notes.sh`), and the website's changelog sync reads it from there.
+   So write it for a user: what changed for them, per OS where it differs. The `versions`
+   job refuses a lightweight or subject-only tag before any runner builds. Until 28 Sep
+   2026 the draft was created with a fixed maintainer warning as its body ("Draft until
+   PUBLISH-TESTING §A passes …, a draft's assets 404 for everyone"), step 4 said only
+   "Publish", and **0.8.8 and 0.8.9 went public with that warning as their release
+   notes** — replaced by hand with their tag bodies the same day. The gate reminder now
+   goes to the run's summary page, which is never published.
 3. Wait for the draft release **on `rexenv/homebrew-tap`** — `publish` drafts it only when all
    four lanes delivered (dmg + app.tar.gz, setup.exe + zip, amd64/arm64 deb + AppImage, every
    `.sha256` matching). Download the attached dmg and run `docs/PUBLISH-TESTING.md` **§A** on
    it (§A0 already ran in CI, per OS). Record the pass next to the dmg's sha256 in that doc.
-4. **Publish** the release. Publishing on the tap fires its own `update-cask.yml` (the cask
+4. **Publish** the release — its notes are already the tag's body; read them once as a
+   user would. Publishing on the tap fires its own `update-cask.yml` (the cask
    bumps from the published dmg's hash).
 5. Sanity check: `brew update && brew audit --cask --online rexenv/tap/rexenv`,
    or the full §D dry-run for a first-time setup.
@@ -450,6 +462,9 @@ rather than the practice.
 
 - **The release is born a draft.** §A is publish-blocking and human-only; publishing
   IS the sign-off. Never flip the workflow to publish directly.
+- **The draft's body is only ever the tag's body.** It turns public the moment the draft
+  is published, and nothing between the two replaces it. A maintainer instruction goes to
+  `$GITHUB_STEP_SUMMARY`, never into `--notes` (0.8.8/0.8.9, step 2).
 - **The cask hash comes from the published asset.** `update-cask.yml` downloads what
   users will download and hashes that. Hand-editing the cask from a local build's
   hash reintroduces the exact staleness bug the old staging copy had.

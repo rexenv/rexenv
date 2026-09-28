@@ -29,8 +29,10 @@ While the interim note at the top of RELEASING.md stands, the workflow runs from
    (`notices-check.py`, ledger #592, the macOS, Windows and Linux graphs); the
    downloaded-binary sections are not — update those by hand if pins moved on any OS.
 6. Tag the commit being SHIPPED — annotated, message says what changed since the
-   last tag (`git log --oneline <last-tag>..HEAD` is the source). The owner pushes /
-   triggers — see "Do not".
+   last tag (`git log --oneline <last-tag>..HEAD` is the source). **The body becomes the
+   public release notes verbatim** (`scripts/tag-notes.sh` → the draft), so write it for
+   users, never a maintainer instruction; CI refuses a lightweight or subject-only tag.
+   The owner pushes / triggers — see "Do not".
 7. CI builds every lane and runs §A0 per OS (`release-windows-check.sh`,
    `release-linux-check.sh`, the macOS per-slice checks). A lane that fails means no
    draft — fix and re-tag per RELEASING.md, never ship a partial set.

@@ -1813,6 +1813,16 @@ SMOKE-TEST on the built installers, then PUBLISH-TESTING §A0/§A before publish
 this note exists for: silence in a gate list reads as "this is the set", and a gate
 nobody can see from the list is indistinguishable from a gate nobody ran.
 
+- [x] **0.8.8 and 0.8.9 went public with the draft-gate warning as their release notes** ✓ 28 Sep
+  2026 — `release.yml` created every draft with a fixed "⚠️ Draft until PUBLISH-TESTING §A
+  passes …" body and nothing replaced it before publish. Both tap releases' notes replaced by
+  hand with their annotated tag bodies; `publish` now drafts with `scripts/tag-notes.sh <tag>`
+  (the tag's body), the gate reminder goes to the run summary, `versions` refuses a lightweight
+  or subject-only tag before the builds, the dispatch path takes a required `notes` input.
+  RELEASING.md step 2/4 + "Rules the pipeline encodes"; ledger #736.
+- [ ] **Next release: the notes wiring runs in CI for the first time** (ledger #736 ◐) — the
+  `versions` job's "The tag carries release notes" passes on the real tag, and the tap draft's
+  body is the tag body verbatim, with the §A reminder only on the run's summary page.
 - [x] **PUBLISH-TESTING §B** — uninstall removes the root :443 daemon (live launchd). ✓ 23 Sep
   2026, clean-15 smoke on the UTM VM (macOS 15.8, dmg `cb17756a…`, source `5aab0be0`): after
   Settings → Remove, `/Library/LaunchDaemons/dev.rexenv.rexenv.edge.plist` gone, nothing on
@@ -1979,6 +1989,12 @@ the first and exits) — its box stayed `[ ]` under a struck-through title, tick
 
 ## Blocked on external work
 
+- [ ] ⚠ **`rexenv/website`'s "Release sync" has not run since 0.8.7** — every scheduled run
+  since 27 Sep 2026 19:18 is `failure` in ~5 s with "The job was not started because recent
+  account payments have failed or your spending limit needs to be increased" (GitHub billing,
+  the org's Actions). So no `release/v0.8.8` / `v0.8.9` changelog PR exists and the site still
+  says 0.8.7. Owner: fix billing, then the next poll (or a manual run) syncs — it reads the
+  tap release body, which is the real tag notes again since 28 Sep (the row in Release gates).
 - [ ] ⚠ **Homebrew publishes NO Intel macOS bottle for `redis` or `mariadb` any more**
   (found 23 Sep 2026 while walking ghcr for `docs/PLAN-macos-13-floor.md`: `formulae.brew.sh`
   lists only `arm64_*` + Linux for redis 8.10.2 and mariadb 13.0.2; `mariadb@11.4`,
