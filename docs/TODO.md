@@ -54,29 +54,30 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   Stop all starts nothing), the Ubuntu VM (autologin reboot, same two halves) — the three SMOKE
   rows the ledger row names are ticked with the evidence.
 
-- [ ] **One-command install — `curl … | bash` (macOS, Linux) and `irm … | iex` (Windows)** —
-  owner, 28 Sep 2026: "the Claude Code way", and can it get past Gatekeeper / SmartScreen / Linux's
-  equivalent. `docs/PLAN-install-scripts.md` (research §1, rulings D1–D4 — every recommendation
-  taken). **Built 28 Sep:** `install.sh`, `install.ps1`, `.github/workflows/install-scripts.yml`
-  and the README section in `rexenv/homebrew-tap`; the two 302s in the website's `_redirects`
-  (ledger #738). **Proven 28 Sep:** macOS 15.8 VM (installed, opened, no quarantine, no dialog);
-  Win11 24H2 ARM VM as a temporary standard user (fresh install, 20 s, no UAC) + the Dell (the
-  already-installed path, the caller's session untouched); Ubuntu 22.04 and 24.04 arm64, 22.04
-  amd64 and Fedora (AppImage) in fresh containers; shellcheck, actionlint, PSScriptAnalyzer clean.
-  **Shipped 28 Sep (owner's go):** rexenv/homebrew-tap#1 merged after `install-scripts.yml` run
-  36460033263 installed rexenv on 8 fresh runners — macOS arm64 AND Intel (`macos-15-intel`
-  exists), Ubuntu 22.04 amd64, 24.04 arm64, Fedora (AppImage), Windows PowerShell 5.1 and 7, each
-  twice; rexenv/website#12 merged, so `rexenv.rex.bd/install.sh` / `.ps1` answer 302 to the raw
-  files (byte-identical to the tap's main). The literal commands ran on the dev Mac and the Dell
-  (both already installed → stopped, nothing changed). **Found on the way:** the website's own
-  Actions never START — "recent account payments have failed or your spending limit needs to be
-  increased" — so its CI and its scheduled Release sync have failed since at least 27 Sep 22:34
-  UTC (the site still says 0.8.7); the tap and `rexenv/runtimes` are public and unaffected.
-  #12 merged on the local `pnpm verify` (green) and the Cloudflare preview build.
-  **Open:** (1) the SMOKE rows it added — a GUI Mac that never had rexenv, the SmartScreen
-  dialog's absence SEEN from the Win11 desktop, the Linux desktop launch; (2) the website's
-  install page naming the command (its own `update-website` routine — blocked on the billing
-  above for its automation, not for a hand edit).
+- [x] **One-command install — `curl … | bash` (macOS, Linux) and `irm … | iex` (Windows)** ✓ 29 Sep
+  2026 — owner, 28 Sep: "the Claude Code way", and can it get past Gatekeeper / SmartScreen / Linux's
+  equivalent. Design record `docs/archive/PLAN-install-scripts.md`; ledger #738. Scripts in
+  `rexenv/homebrew-tap` (#1, then #2), short URLs in `rexenv/website` (#12), the site's hero and
+  install pages lead with the command (#13). Proven per OS: macOS on two fresh GitHub runners
+  (onboarding's Welcome, no Gatekeeper window) and the 15.8 VM; Windows on the Win11 VM's desktop
+  (no dialog; a `ZoneId=3` copy met "Open File - Security Warning" in the same session) and 8 CI
+  runners; Linux on the 22.04 VM's GNOME desktop (`sudo` mid-pipe, launch) and fresh containers.
+  **The desktop run found what no automated run could:** interactive PowerShell 5.1 shadows
+  `RuntimeInformation` (PSReadLine 2.0.0), and the first `install.ps1` refused every Windows desktop
+  for about a day — fixed in tap #2, grep-guarded in its lint job. Still open by nature: Smart App
+  Control ON (SMOKE § Windows row; no machine has it).
+- [ ] **Windows: `\rexenv\dns-agent` is one task per MACHINE, and every launch re-registers it
+  with `/F`** — found 29 Sep 2026 reading `lib.rs` (the launch-time `dns_agent().install`) and
+  `platform/windows/logon_task.rs` (`DNS_AGENT_TASK`) while testing a second Windows user on the
+  Win11 VM; **not run**. A second user's first launch either replaces the first user's agent task
+  (the task runs as the SID in its definition) or, as a standard user, fails to overwrite a task
+  it does not own and falls back to in-process DNS — and both users' agents want `:53`. Rare for a
+  dev tool; decide between a per-user task name and a refusal that says so.
+- [ ] **The website's GitHub Actions never start — billing** — found 28 Sep 2026: every run since at
+  least 27 Sep 22:34 UTC fails with "recent account payments have failed or your spending limit
+  needs to be increased", so the site's CI, its scheduled Release sync (the site still says 0.8.7)
+  and its weekly checks are all dark. The org's billing settings; nothing in code. The tap and
+  `rexenv/runtimes` are public and unaffected.
 - [x] **SHIPPED LINUX BUG — `.rex` resolved only where another machine answered it** ✓ fixed 28 Sep
   2026 (ledger #717, #734). Found running SMOKE Linux P1 on the 22.04 VM: `rexenv0` carried the
   server and `~rex` but `Current Scopes: none` — systemd-resolved gives no DNS scope to a link

@@ -42,7 +42,7 @@ and the Windows section's "Run anyway" are the BROWSER-download path only. Two t
 command does not change: Windows **Smart App Control**, where it is on, blocks unsigned
 apps whatever their source; and the trust is yours — the checksum proves the download
 arrived intact, while that it is rexenv's rests on HTTPS to github.com, as for a browser
-download (`docs/PLAN-install-scripts.md` §1).
+download (`docs/archive/PLAN-install-scripts.md` §1).
 
 ## macOS
 

@@ -73,7 +73,7 @@ rexenv/homebrew-tap .github/workflows/update-cask.yml
 ```
 
 **The asset NAMES are an interface, not a detail** (28 Sep 2026). The one-command
-installers in the tap (`install.sh`, `install.ps1` — `docs/PLAN-install-scripts.md`) build
+installers in the tap (`install.sh`, `install.ps1` — `docs/archive/PLAN-install-scripts.md`) build
 `rexenv_<X.Y.Z>_universal.app.tar.gz`, `_x64-setup.exe`, `_<amd64|arm64>.deb` and
 `_<amd64|aarch64>.AppImage` plus each `.sha256` (`<hash>  <name>`) from the tap's
 `releases/latest` tag. Rename one and every new install on that OS fails, while the cask —

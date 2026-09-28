@@ -1,13 +1,13 @@
 # PLAN — one-command install: `install.sh` (macOS + Linux) and `install.ps1` (Windows)
 
-**Status:** IN FLIGHT — 28 Sep 2026. The owner asked for a Claude-Code-style install
-(`curl -fsSL … | bash`, `irm … | iex`) on all three OSes, and asked whether it can get past
-Gatekeeper, SmartScreen and "whatever Linux has". The research is §1, the rulings §2 (the
-owner took every recommendation the same day), the design §3, the tasks and their proof §4.
-**T1–T5 built, run and shipped the same day** (ledger #738; rexenv/homebrew-tap#1 after its
-first `install-scripts.yml` run went green on 8 runners, then rexenv/website#12 — the URLs
-are live). What is left: the desktop-only SMOKE rows and the website's install page. Tracked
-as the "One-command install" row in `docs/TODO.md`.
+**Status:** SHIPPED — 28–29 Sep 2026, archived. The owner asked for a Claude-Code-style
+install (`curl -fsSL … | bash`, `irm … | iex`) on all three OSes, and asked whether it can get
+past Gatekeeper, SmartScreen and "whatever Linux has". The research is §1, the rulings §2 (the
+owner took every recommendation the same day), the design §3, the tasks and their proof §4,
+what the desktop runs found §6. Ledger #738. The scripts live in `rexenv/homebrew-tap`
+(#1, and #2 — the fix §6 records); the short URLs in `rexenv/website` (#12). **Still open, by
+nature:** a Windows machine with Smart App Control ON (none exists here — `docs/SMOKE-TEST.md`
+§ Windows keeps the row).
 
 ```
 curl -fsSL https://rexenv.rex.bd/install.sh | bash      # macOS, Linux
@@ -135,3 +135,46 @@ each publish and weekly, and `docs/RELEASING.md` names the scripts beside the as
   work, but rexenv updates itself, and a repo is a signing key to guard.
 - **Choosing a version** (`REXENV_VERSION=`) — nothing needs it; the in-app update and the
   release assets cover downgrades by hand.
+
+## 6. What the desktop runs found (29 Sep 2026)
+
+**Every automated run was the wrong shape, and it hid a defect that refused every Windows
+desktop.** CI (8 runners), the Dell over SSH and the Win11 VM through a scheduled task all ran
+PowerShell NON-interactively. A user opens PowerShell and types the command: an INTERACTIVE
+Windows PowerShell 5.1, which loads PSReadLine 2.0.0 — and in that session the type name
+`[System.Runtime.InteropServices.RuntimeInformation]` resolves to PSReadLine's own internal class
+(`Microsoft.PowerShell.PSReadLine, Version=3.0.0.0`, measured), which has no `OSArchitecture`.
+PowerShell reads a missing static property as `$null`, so the first `install.ps1` threw *"rexenv
+is built for 64-bit Windows (x64); this machine is ."* on the first desktop run — 2 of 2 in a
+`-NoExit` session, 0 of 3 without one. It was live on `rexenv.rex.bd` for about a day. The fix
+(tap #2): the architecture comes from `PROCESSOR_ARCHITEW6432` / `PROCESSOR_ARCHITECTURE` and
+only drives the Windows-on-Arm note; the one refusal is a 32-bit Windows
+(`[Environment]::Is64BitOperatingSystem`). `Import-Module PSReadLine` in a non-interactive
+session does NOT reproduce it (measured on the VM and the Dell), so the lint job greps for the
+type name instead — plant: the grep fires on the pre-fix script. **The lesson is the
+fixtures one again:** the session was the fixture. A command a person types is proven only by
+a person-shaped session — here, a scheduled task with `-NoExit` in a signed-in desktop.
+
+**The dialog proofs, as seen:**
+- **Windows** — the Win11 24H2 VM (SmartScreen on, Smart App Control off), a temporary standard
+  user signed in at the console: the fixed script, interactive, installed in about a minute with
+  no dialog on screen and no click. **Negative control, same session:** the same `setup.exe` with
+  a synthetic `Zone.Identifier` (`ZoneId=3` + `HostUrl`) launched through `Start-Process` met
+  Windows' **"Open File - Security Warning"** — *"The publisher could not be verified. Are you sure
+  you want to run this software?"*, Publisher: Unknown Publisher — so the mark-keyed gate was live
+  in that session. Recorded as seen: that is NOT the "Windows protected your PC" wording Edge's
+  download met on 19 Sep; why a synthetic mark on this build met the other dialog was not
+  established. The run used `REXENV_NO_LAUNCH=1` on purpose: rexenv registers the machine-wide
+  task `\rexenv\dns-agent` at every launch, and a second user's launch must not replace the
+  owner's (that is its own TODO row). `rexenv.exe` as installed carries no `Zone.Identifier`
+  either, so launching it consults nothing.
+- **macOS** — two fresh GitHub runners that never had rexenv, with a GUI session and Gatekeeper
+  `assessments enabled` (macOS 26.6.2 arm64, 15.7.9 Intel): the literal command installed and
+  opened rexenv on onboarding's Welcome screen, no `CoreServicesUIAgent` window (the process
+  that draws Gatekeeper's dialog) on screen, no quarantine attribute. One temporary run
+  (36469732464) on a branch deleted after.
+- **Linux** — the Ubuntu 22.04 VM's GNOME desktop, rexenv removed first and `sudo` made to ask
+  for a password: `[sudo] password for rexenv:` appeared in the terminal mid-pipe, apt installed,
+  and — with the running copy quit first — the script started a NEW `/usr/bin/rexenv` in its own
+  session (`setsid`), window and tray up. The VM went back to the release deb it had (same
+  binary hash) and to passwordless sudo.

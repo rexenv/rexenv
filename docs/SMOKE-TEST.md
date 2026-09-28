@@ -32,7 +32,6 @@ split into their own rows, every open row ending with **Open:** and what it wait
 recorded" where nothing was found).
 
 **Still open on macOS, by section** (the rows say why):
-- *Install:* the one command on a GUI Mac that never had rexenv (onboarding after it).
 - *Onboarding / first run:* the :443 notice with another proxy on :443 · downloads moving while
   a prompt is open (#567) · a dialog never freezing the window (#568, ◐) · a database dialog
   after a Valet/Herd takeover (#569).
@@ -83,7 +82,7 @@ against their installers), then PUBLISH-TESTING §A0/§A — publishing IS the �
 - [x] Subsequent launches open with a normal double-click. ✓ 18 Sep 2026 (clean 15.6.1 VM,
       8437afd9).
 - [x] **The one command** (`curl -fsSL https://rexenv.rex.bd/install.sh | bash`,
-      `docs/PLAN-install-scripts.md`) installs `/Applications/rexenv.app` from the `.app.tar.gz`
+      `docs/archive/PLAN-install-scripts.md`) installs `/Applications/rexenv.app` from the `.app.tar.gz`
       after the checksum, and it OPENS with no Gatekeeper dialog: no `com.apple.quarantine`,
       `codesign --verify --deep --strict` passes, `spctl -a` still says `rejected` (ad-hoc —
       expected, and irrelevant without quarantine). A second run says "already installed" and
@@ -92,12 +91,14 @@ against their installers), then PUBLISH-TESTING §A0/§A — publishing IS the �
       restored after): the window came up, no dialog in the screenshot — only macOS's two
       "Background Items Added" notifications for rexenv's login item and agent. **Tell:** "rexenv
       Not Opened", or a quarantine attribute on the installed bundle.
-- [ ] **The same, from `rexenv.rex.bd` on a Mac that never had rexenv** — the literal command
-      through the redirect, then onboarding (the VM run reused app data, so it skipped
-      onboarding). The redirect half is proven: live 28 Sep, byte-identical to the tap's
-      `install.sh`, and the literal command ran on the dev Mac (installed → stopped); GitHub's
-      fresh `macos-latest` and `macos-15-intel` runners installed through the same file with no
-      GUI. **Open: a GUI Mac with no rexenv and no app data.**
+- [x] **The same, from `rexenv.rex.bd` on a Mac that never had rexenv** — the literal command
+      through the redirect, then onboarding. ✓ 29 Sep 2026 on two fresh GitHub runners with a GUI
+      session and Gatekeeper `assessments enabled` — macOS 26.6.2 arm64 and 15.7.9 Intel, neither
+      with `/Applications/rexenv.app` nor its app data: installed, opened on onboarding's
+      **Welcome** screen (screenshot), a rexenv window on screen and NO `CoreServicesUIAgent`
+      window (the process that draws Gatekeeper's dialog), no quarantine attribute (one temporary
+      run, 36469732464). The redirect is byte-identical to the tap's `install.sh`, and the literal
+      command on the dev Mac stopped at the installed copy.
 
 ## App menu → About
 - [x] **rexenv menu → "About rexenv" lands on Settings → About**, from whatever screen was
@@ -2229,8 +2230,8 @@ glued on after it, and three rows still described states later runs had closed; 
 into one row per step, with each open row saying what it is waiting for.
 
 **Still open on Windows, in one list:** Firefox's typed addresses (#706 — proven on macOS
-only) · Chrome's download wording (no Chrome on the VM) · the one command's missing SmartScreen
-dialog seen from a desktop, and Smart App Control ON (no machine has it on) · WebView2's bootstrapper on a machine
+only) · Chrome's download wording (no Chrome on the VM) · the one command under Smart App
+Control ON (no machine has it on) · WebView2's bootstrapper on a machine
 without it · the certificate dialog's **No** path · the tray's LEFT click · uninstalling an
 UPDATED copy with the in-app step first · Apps & Features without the in-app step leaves a
 live agent, and a pre-#695 `.bak` nobody sweeps (both TODO W12 rows).
@@ -2307,12 +2308,24 @@ source, no income, no spend, the same answer macOS got). Built by CI from the re
       script text, 20 s, the Windows-on-Arm note printed; the Dell (Win10 22H2) took the
       already-installed path, and the caller's session kept its `$ErrorActionPreference` and
       gained no functions. `Invoke-WebRequest` wrote no `Zone.Identifier` on either machine.
-- [ ] **No SmartScreen dialog, SEEN.** In PowerShell on the VM's DESKTOP (SmartScreen on), for a
-      user with no rexenv, run the command and screenshot: the installer runs with no "Windows
-      protected your PC". The mechanism is measured (no Mark of the Web, above); a dialog's
-      absence needs a GUI session — SSH is not the desktop. **Open: needs the desktop signed in.**
-      Record Smart App Control's state (`Get-MpComputerStatus`; the VM and the Dell are `Off`) —
-      on a machine where it is ON, record verbatim what it does to the command path.
+- [x] **No SmartScreen dialog, SEEN.** In PowerShell on the VM's DESKTOP (SmartScreen on), for a
+      user with no rexenv, run the command and screenshot. ✓ 29 Sep 2026 (Win11 24H2 VM, a
+      temporary standard user signed in at the console, an interactive `-NoExit` Windows
+      PowerShell 5.1 in Windows Terminal): installed in about a minute, no dialog on screen, no
+      click. **Negative control, same session:** the same `setup.exe` given a synthetic
+      `Zone.Identifier` (`ZoneId=3`) met **"Open File - Security Warning"** — *"The publisher could
+      not be verified. Are you sure you want to run this software?"* · Publisher: Unknown
+      Publisher · [Run] [Cancel] — so the mark-keyed gate was live there (not the "Windows
+      protected your PC" wording Edge's download met on 19 Sep; the difference was not
+      explained). **The first desktop run found a defect every automated run had missed:** in an
+      interactive PowerShell the old architecture check read `$null` (PSReadLine 2.0.0 shadows
+      `RuntimeInformation`) and refused with *"this machine is ."* — fixed in the tap's #2, this
+      run is the fixed script. Launch skipped (`REXENV_NO_LAUNCH=1`) so a second user's rexenv
+      would not re-register the machine-wide `\rexenv\dns-agent` task (TODO row).
+- [ ] **Smart App Control ON.** On a Windows 11 where `Get-MpComputerStatus` says
+      `SmartAppControlState: On`, run the command and record verbatim what SAC does to the unsigned
+      installer. **Open: no machine has it on** (the VM and the Dell are `Off`; SAC is on only on
+      clean installs that pass its evaluation).
 - [x] **The install asks for NO admin.** Per-user (`installMode: currentUser`): it lands in
       `%LOCALAPPDATA%\rexenv` — `rexenv.exe`, `rex.exe`, `uninstall.exe`, nothing else — and the
       uninstall entry is under **HKCU**, so Apps & Features lists rexenv with `DisplayVersion`
@@ -2535,14 +2548,13 @@ beneath it, and the unticked rows beside them described steps those runs had alr
 reconciled into one row per step, each open row saying what it is still waiting for.
 
 **Still open on Linux, in one list** (re-derived from the unticked rows, 28 Sep 2026): P4 the
-tunnel guard's normal-stop leg · the `.deb` in-app update's relaunch (0.8.9 → the next release) ·
-the one-command install's desktop launch.
+tunnel guard's normal-stop leg · the `.deb` in-app update's relaunch (0.8.9 → the next release).
 **Owed through the next release, inside ticked rows:** a re-setup is ONE polkit dialog (#723,
 fixed after 0.8.9 — P1) and the AppImage's kept previous copy is swept (its row's next run).
 
 Environment: Ubuntu ____ (22.04+; x86_64 or aarch64) · package ____ (.deb / AppImage) · rexenv version ____
 
-### Install — the one command (`docs/PLAN-install-scripts.md`)
+### Install — the one command (`docs/archive/PLAN-install-scripts.md`)
 
 - [x] `curl -fsSL https://rexenv.rex.bd/install.sh | bash` installs the `.deb` through `apt`
       (dependencies pulled in, `sudo` asked once), `rexenv --print-version` answers the release,
@@ -2551,9 +2563,14 @@ Environment: Ubuntu ____ (22.04+; x86_64 or aarch64) · package ____ (.deb / App
       package lists deleted (apt failed once, the script refreshed them and retried); 22.04 amd64
       (emulated). Ubuntu 20.04 is refused with the webview sentence; Fedora (no apt) got the
       AppImage in `~/Applications` plus the `libfuse2` hint.
-- [ ] **From a GNOME Terminal, on a desktop with no rexenv:** the command installs, `sudo` asks
-      in the terminal, and rexenv starts into the tray (the containers had no desktop, so the
-      launch leg printed "no desktop session" instead). **Open.**
+- [x] **From a GNOME Terminal, on a desktop with no rexenv:** the command installs, `sudo` asks
+      in the terminal, and rexenv starts into the tray. ✓ 29 Sep 2026 (the 22.04 VM's GNOME
+      desktop; the release deb removed first and `sudo` made to ask for a password with a
+      temporary sudoers drop-in, both undone after): `[sudo] password for rexenv:` appeared
+      mid-pipe, apt installed, and — with the autostarted copy quit first — the script started a
+      NEW `/usr/bin/rexenv` in its own session (`setsid`), window and tray up. **Tell:** with a
+      copy already running, the launch only raises that copy's window (single instance) — which
+      is what the first attempt showed, and why it was repeated with the app quit.
 
 ### P1 — DNS scoping (ledger #717, #734 — the claim the whole port rests on)
 **Ask resolved WHICH link answered, never only what the answer was.** On a VM or under WSL the

@@ -91,7 +91,7 @@ detail and the reasoning live in the linked plan and the OS's code; this is the 
 | `rex` on PATH | symlink, one admin prompt | a **copy** in `%LOCALAPPDATA%\rexenv\bin` on the user Path, no prompt (#634) | one admin prompt |
 | Binary preparation (`prepare_binary`) | de-quarantine → relink Homebrew dylibs → ad-hoc codesign **last** | strip Mark-of-the-Web → refuse a non-runnable PE (`pe.rs`) | set executable; soname shims in `lib-compat/` at spawn (`libaio.so.1t64`, #731); bottle trees `Unported` (D-L8) |
 | Installer / in-app update | `.dmg` + `.app.tar.gz`, Homebrew cask | unsigned NSIS per-user `setup.exe` + zip | `.deb` (`dpkg -i` under polkit) / AppImage (`renameat2` exchange) (#729/#730) |
-| One-command install (`install.sh` / `install.ps1` in `rexenv/homebrew-tap`, `docs/PLAN-install-scripts.md`) | `curl` fetches the `.app.tar.gz` → `/Applications`; curl writes no quarantine, so no Gatekeeper dialog; `xattr -dr` anyway, as the cask's postflight | `Invoke-WebRequest` fetches `setup.exe` — no Mark of the Web (measured Win10 22H2 + Win11 24H2), so no SmartScreen dialog — then `/S`: per-user, no UAC. Smart App Control, where on, still blocks | `apt-get install ./…deb` under `sudo` (Depends resolved); no apt → AppImage in `~/Applications`. No gate to meet |
+| One-command install (`install.sh` / `install.ps1` in `rexenv/homebrew-tap`, `docs/archive/PLAN-install-scripts.md`) | `curl` fetches the `.app.tar.gz` → `/Applications`; curl writes no quarantine, so no Gatekeeper dialog; `xattr -dr` anyway, as the cask's postflight | `Invoke-WebRequest` fetches `setup.exe` — no Mark of the Web (measured Win10 22H2 + Win11 24H2), so no SmartScreen dialog — then `/S`: per-user, no UAC. Smart App Control, where on, still blocks | `apt-get install ./…deb` under `sudo` (Depends resolved); no apt → AppImage in `~/Applications`. No gate to meet |
 | Compile gate in `verify.sh` | native | `windows-check` (cargo-xwin) — #584 | `linux-check` (Ubuntu 22.04 container) — #719 |
 | Where a RUN happens | the dev Mac; UTM macOS 13.6→15.8 VM | the Dell (Win10) + Win11 ARM VM; CI `windows-verify.yml` | Ubuntu 22.04 arm64 UTM VM; Dell WSL2 (x86_64); CI `linux-build.yml` |
 | Human checklist | `SMOKE-TEST.md` main body | `SMOKE-TEST.md` § Windows | `SMOKE-TEST.md` § Linux |
@@ -185,10 +185,17 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
 - **Unsigned** (owner ruling, D5): a BROWSER-downloaded `setup.exe` meets SmartScreen, and its
   text is documented, not worked around. The one-command install meets none — `Invoke-WebRequest`
   writes no Mark of the Web, which is what SmartScreen keys on (measured 28 Sep 2026; the owner
-  took that path the same day, `docs/PLAN-install-scripts.md` D2). `install.ps1` never calls
+  took that path the same day, `docs/archive/PLAN-install-scripts.md` D2). `install.ps1` never calls
   `Unblock-File` and never touches Defender: "download, unblock, run silently" is the shape AMSI
   flags in a script piped to `iex`. **Smart App Control**, where on, blocks unsigned apps
   either way — no command changes that.
+- **An interactive Windows PowerShell is not the one CI runs.** A person typing `irm … | iex`
+  gets PSReadLine 2.0.0, and in that session `[System.Runtime.InteropServices.RuntimeInformation]`
+  resolves to PSReadLine's internal class — `OSArchitecture` reads `$null`. CI, SSH and scheduled
+  tasks are non-interactive and load none of it (`Import-Module PSReadLine` there does not
+  reproduce it either). The first `install.ps1` refused every Windows desktop that way (fixed
+  29 Sep 2026, tap #2). A PowerShell claim meant for a person is proven in a `-NoExit` session
+  on a signed-in desktop.
 - Proof hosts, SSH, the click helpers: `docs/TESTING.md` §"Proving a Windows claim";
   design record `docs/PLAN-windows-port.md`; user side `docs/INSTALL.md` § Windows.
 
