@@ -2334,8 +2334,8 @@ Until 28 Sep this header said "nothing here has run yet"; the runs were recorded
 beneath it, and the unticked rows beside them described steps those runs had already done —
 reconciled into one row per step, each open row saying what it is still waiting for.
 
-**Still open on Linux, in one list:** P1 the route answering `.rex` itself through the installed
-app (fixed on master 28 Sep — needs a release), and the Settings door for a second TLD · P2 the edge staying down across a reboot after Stop all · P3 snap Chromium
+**Still open on Linux, in one list:** P1's Settings door for a second TLD (the route itself
+✓ 28 Sep through 0.8.9) · P2 the edge staying down across a reboot after Stop all · P3 snap Chromium
 and Firefox through the app's own onboarding (GUI), an AppImage without `libnss3-tools`, Remove
 system changes · P4 the agent with the app never started, its restart, the AppImage's paths,
 the guard's normal-stop leg · P5 "Open rexenv" from the tray, the Database Browser, Settings'
@@ -2362,7 +2362,7 @@ rexenv0 <name>` and read `Current Scopes:`.
       `rexenv0`, `systemctl status rexenv-dns-route` is active (exited), and
       `resolvectl status rexenv0` lists `127.0.0.1:15353` with `~rex` and `-DefaultRoute`.
       **Measured: rexenv's own sentence in the dialog, `rexenv0` up, marker + unit present.**
-- [ ] **`rexenv0` has a DNS scope and answers `.rex` ITSELF:** `resolvectl status rexenv0` reads
+- [x] **`rexenv0` has a DNS scope and answers `.rex` ITSELF:** `resolvectl status rexenv0` reads
       `Current Scopes: DNS` and carries `192.0.2.53/32` (`ip addr show rexenv0`);
       `resolvectl query -i rexenv0 anything.rex` → `127.0.0.1`. **`resolvectl query example.com`
       → the SAME public answer as before, never `127.0.0.1`.** `curl -I https://example.com`
@@ -2377,8 +2377,20 @@ rexenv0 <name>` and read `Current Scopes:`.
       `.rex`/`.test` answered through `-i rexenv0`, `example.com` public at every step; the
       0.8.8 script planted back → 4 named FAILs (scope, and the three pinned queries) while the
       unpinned `anything.rex → 127.0.0.1` still passed, which is how the old check passed.
-      **Open: this row through the installed app** — a release carrying the fix, installed over
-      0.8.8: setup offered again (the stale script), ONE polkit dialog, then the reads above.
+      **✓ 28 Sep 2026 through the installed app — 0.8.9 (the tap's deb, in-app update over
+      0.8.8) on the 22.04 arm64 VM:** prep — enp0s1 `Current Scopes: DNS`, `example.com` →
+      `2606:4700:10::6814:179a`, rexenv0 `Scopes: none`, no IPv4. Launch → "launched at login
+      with setup incomplete — showing the window" → onboarding again → step 3 "Set up domains &
+      SSL" → polkit dialog with rexenv's own sentence → "Domains & SSL are ready" → "Your kingdom
+      is ready". Reads: `Current Scopes: DNS`, `-DefaultRoute`, `inet 192.0.2.53/32 scope global
+      rexenv0`, `resolvectl query -i rexenv0 anything.rex` → `127.0.0.1` (and `lm.rex`),
+      `example.com` → the same public answer, `curl -I https://example.com` → `HTTP/2 200`,
+      `rexenv-dns-route` active, marker `nameserver 127.0.0.1 port 15353`, `rex status`
+      "resolver installed · CA trusted". **Two findings, TODO rows:** the re-setup showed TWO
+      polkit dialogs, not one — the journal shows two `pkexec` runs, the route at 07:52 and
+      `mkdir -p /usr/local/share/ca-certificates …` at 07:54 (the CA leg rewrote the system-store
+      file even though "CA trusted" already held); and the finish page says "Create your first
+      site" on an install that has three.
       History: P1 with the FIRST design (a global resolved drop-in) FAILED — `example.com`
       resolved to `127.0.0.1`; the dummy link replaced it the same day (#717).
       **Tell:** every site on the internet resolving to loopback — a DEFAULT route. If the dummy

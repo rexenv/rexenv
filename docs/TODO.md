@@ -71,6 +71,13 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   honest fallback ran. A package install runs the relauncher from the new `/usr/bin/rexenv`.
   Ships in the next release; because the OLD side spawns, 0.8.8 → next still needs a hand
   open, and the relaunch is proven by the release after that (SMOKE's Linux row).
+- [ ] **A re-setup on an upgraded Linux install asks for the admin password TWICE** (28 Sep
+  2026, 0.8.9 over 0.8.8 on the 22.04 VM, SMOKE P1): the stale route script sends the user
+  back through onboarding, and step 3 ran two `pkexec` steps two minutes apart — the route,
+  then `mkdir -p /usr/local/share/ca-certificates …` — although `rex status` already said "CA
+  trusted". A fresh install asks once (#723). Either the CA leg should skip a store that
+  already holds the same PEM, or both legs should ride one privileged step as they do on a
+  fresh machine. Also: the finish page says "Create your first site" on an install with three.
 - [ ] **The polkit sentence for an in-app update is the generic one** — "rexenv needs
   administrator permission to change system settings — the .rex DNS route, the HTTPS edge, or
   the local certificate authority" — while the step it authorises is `dpkg -i` of the new
