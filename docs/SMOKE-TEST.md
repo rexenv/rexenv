@@ -452,8 +452,16 @@ that only runs when an unrelated feature is enabled is not a gate for this one.
   7.4 pool is **9774**, below the 8.x block, not 9779); no EOL warning anywhere
   (the honest-UI promise, ledger #322); the Xdebug toggle offered on 7.4 (it
   must not be — that build cannot dlopen, ledger #320/#321).
-  **Open: no macOS run recorded** (the only recorded 7.4-over-HTTPS run is Linux's,
-  `php74.rex` on the Ubuntu VM, 25 Sep 2026 — see the Linux section).
+  **◐ 28 Sep 2026 (15.8 arm64 VM, 0.8.9):** Settings → PHP versions → 7.4 → Install (the
+  row read `yes` seconds later — the build was already cached from the 23 Sep run), `rex
+  site create php74.rex --type wordpress --php 7.4` → `serving`, `https://php74.rex/` 200
+  and a `PHP_VERSION` probe in its docroot answered **7.4.33** over HTTPS; `rex status` shows
+  `PHP-FPM 7.4` on **9774** beside 8.3 on 9783. The 7.4 row in Settings carries make-default,
+  ini settings and remove — no Xdebug control (8.3's row has ini settings only). **Open:** the
+  create dialog's and the Environment card's EOL warning, and WordPress's own Site Health —
+  the site's detail page could not be opened by automation on this VM (every press on a Sites
+  row, including the row's accessibility button, opened the site in Safari instead — noted
+  in the Site Settings row).
 - [ ] **A real WordPress action, through the site.** WP Manager → install and
   activate a plugin on the 7.4 site. Both WP-CLI and Composer are **phars run
   through the SITE's PHP**, and both have broken on this row before — the first
@@ -465,7 +473,11 @@ that only runs when an unrelated feature is enabled is not a gate for this one.
   minor including 7.4, and is the guard against those two regressions. What this
   step adds is the part it deliberately skips — a phar driven against a real
   WordPress install over the running stack, rather than `--version` in isolation.
-  **Open: no run recorded.**
+  **✓ 28 Sep 2026 (15.8 arm64 VM, 0.8.9, the CLI door of the same manager):** `rex wp
+  php74.rex plugin install hello-dolly --activate` → "installed hello-dolly (activated)";
+  `rex wp php74.rex plugin list` → hello-dolly active beside the two must-use plugins; the
+  site still answered 7.4.33 afterwards. No Phar or JIT failure. (WP Manager's GUI door on
+  the site page: not driven — see the Site Settings row.)
 
 ## PHP update button — the apply and the REVERT (18 Aug 2026)
 
@@ -484,7 +496,10 @@ is still L3").
   **Open: no run recorded — only a dev build with the key emptied can show it; no
   release dmg can.**
 - [ ] **A real update applies.** With a manifest offering a newer patch for an
-  installed minor: press Update. Expect real download bytes in the hub, the row
+  installed minor: press Update. **Blocked 28 Sep 2026 (VM):** the 8.3 row reads "8.3.32 ·
+  8.3.35 exists" with NO Update button — php.net announced 8.3.35 but `rexenv/runtimes` has
+  published no 8.3.35 build, and "exists" is not a button by design. This row and the seven
+  below it wait for the next published patch. Expect real download bytes in the hub, the row
   moving to the new patch, and a `restarted the 8.3 pool` style confirmation.
   Then open a site on that minor — it must still serve, and Site Health must
   report the NEW patch. **Open: no run recorded.**
