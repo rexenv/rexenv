@@ -154,14 +154,18 @@ nothing.** The silent case is the one that ships to everybody.
   is answered — the prompt waiting on a runtime worker again (#567). **Open: no run
   recorded** — #567's L0 guard proves the call sits off the runtime; the behaviour is this
   hand check.
-- [ ] **A dialog never freezes the window.** (Added 11 Sep 2026.) Settings → re-trust the
+- [x] **A dialog never freezes the window.** (Added 11 Sep 2026.) Settings → re-trust the
   local CA (or Repair a TLD's resolver): while the keychain/admin dialog is open, the app
   window must still scroll, switch screens and show live status. **Tell:** a beachball or
   a window that ignores clicks until the dialog is answered — a prompting command running
   on the main thread (#568). **◐ 18 Sep 2026 (clean 15.6.1 VM): INCONCLUSIVE** — with the
   keychain dialog up a sidebar click did not switch the page while the footer's live numbers
   kept moving; a second Re-trust needed no dialog (auth cached), so it could not be re-tried.
-  **Open: a clean re-run of the screen switch with the dialog up.**
+  **✓ 28 Sep 2026 (15.8 arm64 VM, 0.8.9, first Re-trust after a reboot so the dialog was
+  real):** the branded keychain sheet up ("rexenv — You are making changes to your
+  Certificate Trust Settings", Re-trust's spinner running) → one click on the Sites sidebar
+  entry → the page switched to the Sites list behind the still-open dialog, the footer's
+  CPU/RAM kept updating, rexenv stayed frontmost; the dialog was then cancelled.
 - [ ] **Same check with a dialog that touches the database**: Import → take over a Valet/Herd
   TLD (or hand one back). While its admin prompt is open, the Sites list and status must still
   load. **Tell:** screens that spin until the prompt is answered — the database locked across
