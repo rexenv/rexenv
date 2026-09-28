@@ -94,6 +94,13 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   through `checkRefusal`) before any network; `fetch` keeps the same words for the poller. Found
   on the VM with the 0.8.9 binary run from a `target/debug/` path (SMOKE Linux, the dev-build
   update row) — the fetch-side twin of the accept-side refusal wording fixed the same morning.
+- [ ] **The DNS health probe calls the agent "not answering" while it answers** (15.8 arm64
+  VM, 27–28 Sep 2026: "resolver agent was not answering; kicked it" three times in six minutes
+  on 27 Sep with `dig @127.0.0.1 -p 15353` answering throughout, and four times plus one
+  "gave-up … port already in use by rexenv (pid <agent>)" then "[adopted] … answering after
+  all" in the two minutes after a login launch on 28 Sep). The probe's verdict disagrees with
+  the resolver's own answer; either its timeout is too short for a slow VM or it asks the wrong
+  socket. Not seen on the Mac or the Dell. Measure the probe against `dig` before changing it.
 - [ ] **A `certutil` that exists but cannot run gives a raw "io error: Permission denied (os
   error 13)"** on the Linux trust step (28 Sep 2026, the VM with `chmod -x /usr/bin/certutil`);
   only an ABSENT one gets the `sudo apt install libnss3-tools` sentence. Small: spawn failures

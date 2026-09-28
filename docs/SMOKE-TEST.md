@@ -1150,8 +1150,16 @@ hand can prove a spec entry became the item it describes.*
   the 18 nor the 23 Sep clean-VM pass included a logout/login; the 18 Sep reboot came up with
   the edge and the DNS agent but the backends waiting for Start all, because Start on login
   was not on there (§Robustness "Reboot").
-- [ ] **A couple of minutes after that login, `rex status` must read
-  `answering (agent, udp 15353)`, not `(in-process…)`.** At login the app and the agent
+- [x] **A couple of minutes after that login, `rex status` must read
+  `answering (agent, udp 15353)`, not `(in-process…)`.** **✓ with churn, 28 Sep 2026 (15.8
+  arm64 VM, 0.8.9, the app back at login through macOS's window restore):** ~35 s after login
+  `rex status` said `DNS DOWN (down, udp 15353)` while the log had "resolver agent
+  unavailable — running IN-PROCESS"; at ~2.5 min it read `answering (agent, udp 15353)` — the
+  handoff won. Between them the log shows the handoff's rough edge: "could not rebind
+  in-process after a handoff attempt: Address already in use", then health "resolver agent
+  was not answering; kicked it" four times, one "gave-up … port 15353/udp is already in use by
+  rexenv (pid …)", then "[adopted] resolver agent is answering after all". The same "kicked it"
+  churn showed on this VM on 27 Sep while `dig` answered throughout (TODO row). At login the app and the agent
   race for the port; in-process means DNS dies with the app, and the handoff (#442) has
   up to ~2 minutes to take it back. If it still says in-process after that, the app is
   serving DNS it should have given away — the log will say whether the agent was ever
@@ -1166,9 +1174,11 @@ hand can prove a spec entry became the item it describes.*
   CA untrusted for this user), a LOGIN launch **does** show the window. A silent tray
   there would hide the only screen that fixes it. **Open: no run recorded** (the rule is
   `first_window_decision`, #439).
-- [ ] `rex status` with the app closed prints the reason **and** `open -a rexenv` — and
-  does NOT start the app. **Open: no macOS run recorded** (L0 #440 proves the text and that
-  no spawn names the app).
+- [x] `rex status` with the app closed prints the reason **and** `open -a rexenv` — and
+  does NOT start the app. **✓ 28 Sep 2026 (15.8 arm64 VM, 0.8.9):** tray → Quit rexenv →
+  `rex status` printed "rexenv isn't running — open the app first (the CLI controls the
+  running app). Start it with: open -a rexenv (the installed app)"; the app's process count
+  stayed 0 three seconds later.
 - [x] `rex open` with the app running brings the window to the front. ✓ 18 Sep 2026 (clean
   15.6.1 VM, `39610cc7` + self-update to 0.7.2).
 - [x] **Launch rexenv a second time while it is running**: the second copy exits with
