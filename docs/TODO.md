@@ -101,6 +101,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   all" in the two minutes after a login launch on 28 Sep). The probe's verdict disagrees with
   the resolver's own answer; either its timeout is too short for a slow VM or it asks the wrong
   socket. Not seen on the Mac or the Dell. Measure the probe against `dig` before changing it.
+- [x] **A Bedrock site fails after WordPress is installed — the admin-password step and the
+  WordPress manager point wp-cli at `web/`, not `web/wp`** ✓ fixed 28 Sep 2026 (ledger #737):
+  fifteen hand-built `--path=<docroot>` flags routed through one `wp_path_arg` that resolves
+  the core; the manager uses `Site::served_root`. Found on the first real Bedrock provision
+  (SMOKE's Bedrock row); ships in the next release, proven there.
 - [ ] **A From-Git create on a PHP version the repository's lock rejects fails only after the
   clone, inside `composer install`** (28 Sep 2026, `symfony/demo` on the default 8.3: lock
   requires PHP ≥ 8.4.1; the card said "failed at: installing dependencies · composer install

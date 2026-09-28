@@ -198,6 +198,21 @@ pub fn core_root(docroot: &Path) -> PathBuf {
     docroot.to_path_buf()
 }
 
+/// THE `--path=` every rexenv-run wp-cli command that names a path uses: the served docroot
+/// resolved through [`core_root`], so a Bedrock/Radicle site (WordPress under `web/wp`, the
+/// docroot `web/`) points wp-cli at the core, not at the folder above it.
+///
+/// Why one builder: on 28 Sep 2026 the first real Bedrock provision (`roots/bedrock` through
+/// New site → From Git) ran `wp core install` through the streamed step — which appends
+/// [`core_path_arg`] when no `--path` is given, so it found `web/wp` — and then set the
+/// admin password through `wp_run_script`, which spelled `--path=<docroot>` itself: wp-cli
+/// answered "This does not seem to be a WordPress installation. The used path is …/web/",
+/// the job failed after WordPress was installed, and the salts were never written. Ten
+/// functions built that flag by hand; each was one Bedrock away from the same failure.
+pub fn wp_path_arg(docroot: &Path) -> String {
+    format!("--path={}", core_root(docroot).display())
+}
+
 /// [`core_root`] as a wp-cli flag, or `None` when the docroot IS the root.
 pub fn core_path_arg(docroot: &Path) -> Option<String> {
     let root = core_root(docroot);
@@ -707,7 +722,7 @@ pub fn active_stylesheet(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Resu
 /// happen. A script on stdin is read by nobody but the phar.
 pub fn wp_run_script(php_bin: &Path, wp_phar: &Path, docroot: &Path, script: &str) -> Result<String> {
     use std::io::Write;
-    let path = format!("--path={}", docroot.display());
+    let path = wp_path_arg(docroot);
     let mut cmd = wp_command(php_bin, wp_phar);
     cmd.args(["eval-file", "-", &path]);
     cmd.stdin(std::process::Stdio::piped());
@@ -736,7 +751,7 @@ pub fn set_password_script(user_id: u64, password: &str) -> String {
 }
 
 pub fn wp_run(php_bin: &Path, wp_phar: &Path, docroot: &Path, args: &[&str]) -> Result<String> {
-    let path = format!("--path={}", docroot.display());
+    let path = wp_path_arg(docroot);
     let mut full: Vec<&str> = Vec::with_capacity(args.len() + 1);
     full.extend_from_slice(args);
     full.push(&path);
@@ -768,7 +783,7 @@ pub fn wp_run_raw(
     args: &[String],
     timeout: Duration,
 ) -> Result<Output> {
-    let path = format!("--path={}", docroot.display());
+    let path = wp_path_arg(docroot);
     let mut cmd = wp_command(php_bin, wp_phar);
     cmd.args(args).arg(&path);
     let what = format!("wp {}", args.first().map(String::as_str).unwrap_or(""));
@@ -784,7 +799,7 @@ pub fn wp_json<T: serde::de::DeserializeOwned>(
     docroot: &Path,
     args: &[&str],
 ) -> Result<T> {
-    let path = format!("--path={}", docroot.display());
+    let path = wp_path_arg(docroot);
     let mut full: Vec<&str> = Vec::with_capacity(args.len() + 2);
     full.extend_from_slice(args);
     full.push(&path);
@@ -1101,7 +1116,7 @@ fn wp_run_timed(
     args: &[&str],
     timeout: Duration,
 ) -> Result<String> {
-    let path = format!("--path={}", docroot.display());
+    let path = wp_path_arg(docroot);
     let mut full: Vec<&str> = Vec::with_capacity(args.len() + 1);
     full.extend_from_slice(args);
     full.push(&path);
@@ -1195,7 +1210,7 @@ fn wp_presence(out: &Output) -> WpPresence {
 /// report, 5 Sep 2026). Whether the *install* finished cannot be known without
 /// the database, so files-on-disk is the honest answer in that state.
 pub fn wp_info(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<WpInfo> {
-    let path = format!("--path={}", docroot.display());
+    let path = wp_path_arg(docroot);
 
     let presence = wp_cli(php_bin, wp_phar, &["core", "is-installed", &path], None)
         .map(|o| wp_presence(&o))
@@ -1411,7 +1426,7 @@ pub fn update_streamed(
     }
     // `--no-color`: the phase text is parsed and shown to a user, not a TTY.
     args.push("--no-color".into());
-    args.push(format!("--path={}", docroot.display()));
+    args.push(wp_path_arg(docroot));
     let cancel = crate::core::repo::CancelToken::new();
     let res = crate::core::repo::run_step_streamed(
         supervisor,
@@ -2419,7 +2434,7 @@ pub fn core_verify_checksums(
     wp_phar: &Path,
     docroot: &Path,
 ) -> Result<WpChecksumReport> {
-    let path = format!("--path={}", docroot.display());
+    let path = wp_path_arg(docroot);
     let out = wp_cli(php_bin, wp_phar, &["core", "verify-checksums", &path], None)?;
     let mut text = String::from_utf8_lossy(&out.stdout).trim().to_string();
     let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
@@ -2642,7 +2657,7 @@ pub fn config_flag_set(
 /// file WP-CLI manages in the docroot). `is-active` exits 0 when active,
 /// non-zero when not — same status-as-answer shape as `core is-installed`.
 pub fn maintenance_mode_get(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<bool> {
-    let path = format!("--path={}", docroot.display());
+    let path = wp_path_arg(docroot);
     Ok(
         wp_cli(php_bin, wp_phar, &["maintenance-mode", "is-active", &path], None)
             .map(|o| o.status.success())
@@ -2838,7 +2853,7 @@ pub fn rehome_urls_on_copy(
     let _gone = Gone(&file);
 
     let require = format!("--require={}", file.display());
-    let path = format!("--path={}", docroot.display());
+    let path = wp_path_arg(docroot);
     let tail = ["--skip-plugins", "--skip-themes", require.as_str(), path.as_str()];
     let last_line = |s: &str| s.trim().lines().last().unwrap_or("").trim().to_string();
 
@@ -3494,7 +3509,7 @@ pub fn valid_locale(locale: &str) -> bool {
 /// exits 0/1). This is the ONLY trustworthy install signal — see
 /// [`switch_language`].
 fn language_is_installed(php_bin: &Path, wp_phar: &Path, docroot: &Path, locale: &str) -> bool {
-    let path = format!("--path={}", docroot.display());
+    let path = wp_path_arg(docroot);
     wp_cli(php_bin, wp_phar, &["language", "core", "is-installed", locale, &path], None)
         .map(|o| o.status.success())
         .unwrap_or(false)
@@ -3520,7 +3535,7 @@ pub fn switch_language(php_bin: &Path, wp_phar: &Path, docroot: &Path, locale: &
         return Err(Error::Other(format!("invalid locale: {locale:?}")));
     }
     if !language_is_installed(php_bin, wp_phar, docroot, locale) {
-        let path = format!("--path={}", docroot.display());
+        let path = wp_path_arg(docroot);
         // Timed AND its result deliberately not trusted: install lies (exit 0
         // on a failed download) and stalls for minutes offline. Whatever it
         // claims — success, error, or timeout — `is-installed` below is the
@@ -3639,7 +3654,7 @@ pub fn core_switch_version(
         return Err(Error::Other(format!("{version} is not a known WordPress release")));
     }
 
-    let path = format!("--path={}", docroot.display());
+    let path = wp_path_arg(docroot);
     let varg = format!("--version={version}");
     let update = wp_cli_timed(
         php_bin,
@@ -3781,7 +3796,7 @@ pub struct InstallOptions {
 /// create the DB → `wp core install` (single-site). Each step is skipped if
 /// already done, so the flow is re-runnable.
 pub fn install_wordpress(php_bin: &Path, wp_phar: &Path, opts: &WpInstall) -> Result<()> {
-    let path = format!("--path={}", opts.docroot.display());
+    let path = wp_path_arg(opts.docroot);
 
     // 1) WordPress core (optionally a localized build) — always the ZIP (`core_zip_url`).
     if !opts.docroot.join("wp-load.php").exists() {
@@ -3867,6 +3882,28 @@ pub fn throwaway_password() -> String {
 #[cfg(test)]
 mod password_channel_tests {
     use super::*;
+
+    /// Bedrock: WordPress under `web/wp`, docroot `web/`. Every `--path=` a rexenv-run wp-cli
+    /// gets must name the core — the streamed step already did, `wp_run_script` did not, and
+    /// the first real Bedrock provision failed setting the admin password (28 Sep 2026).
+    #[test]
+    fn the_path_flag_names_the_core_under_a_bedrock_docroot_and_the_docroot_itself_otherwise() {
+        let dir = std::env::temp_dir().join(format!("rexenv-wp-path-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("web/wp")).unwrap();
+        std::fs::write(dir.join("web/wp/wp-load.php"), "<?php").unwrap();
+        assert_eq!(wp_path_arg(&dir.join("web")), format!("--path={}", dir.join("web/wp").display()));
+        // A stock site: wp-load.php at the docroot itself.
+        std::fs::create_dir_all(dir.join("stock")).unwrap();
+        std::fs::write(dir.join("stock/wp-load.php"), "<?php").unwrap();
+        assert_eq!(wp_path_arg(&dir.join("stock")), format!("--path={}", dir.join("stock").display()));
+        // No WordPress anywhere: the docroot as given (the caller's error names it).
+        assert_eq!(wp_path_arg(&dir.join("nothing")), format!("--path={}", dir.join("nothing").display()));
+        let src = crate::core::copy_scan::production_source(include_str!("wordpress.rs"));
+        assert_eq!(src.matches("--path={}\", docroot.display()").count(), 0, "a hand-built --path=<docroot> is back — route it through wp_path_arg");
+        assert_eq!(src.matches("--path={}\", opts.docroot.display()").count(), 0, "a hand-built --path=<docroot> is back — route it through wp_path_arg");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// The password never appears in the script as itself: base64 means no
     /// byte of it can close the PHP string, and the script is the ONLY place it
@@ -3980,7 +4017,7 @@ pub fn wp_step_streamed(
 /// Whether core is already installed in `docroot` (captured, instant —
 /// `wp core is-installed` exits 0/1 and prints nothing useful).
 pub fn core_is_installed(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> bool {
-    let path = format!("--path={}", docroot.display());
+    let path = wp_path_arg(docroot);
     wp_cli(php_bin, wp_phar, &["core", "is-installed", &path], None)
         .map(|o| o.status.success())
         .unwrap_or(false)
@@ -4075,7 +4112,7 @@ pub fn reset_site(
 
     // 2) Clear multisite constants — best effort per constant (`wp config
     //    delete` errors on one that isn't defined, which is the common case).
-    let path = format!("--path={}", docroot.display());
+    let path = wp_path_arg(docroot);
     for constant in MULTISITE_CONSTANTS {
         let _ = wp_cli(php_bin, wp_phar, &["config", "delete", constant, &path], None);
     }
@@ -4109,7 +4146,7 @@ pub fn reset_site(
 /// convenience, but on a public tunnel URL it's an open wp-admin. Any failure
 /// (no `admin` user, broken site, non-WP docroot) reads as `false`.
 pub fn default_creds_active(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> bool {
-    let path = format!("--path={}", docroot.display());
+    let path = wp_path_arg(docroot);
     wp_cli(
         php_bin,
         wp_phar,

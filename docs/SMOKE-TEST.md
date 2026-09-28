@@ -403,8 +403,25 @@ Every ✓ below: 18 Sep 2026 (clean 15.6.1 VM, 39610cc7 + self-update to 0.7.2).
         (the Site's content dir must read `app`, not `wp-content`).
       - Delete and re-create it: the salts differ (fresh site), and a **Retry** on a
         half-built one does NOT change them.
-      **Open: no packaged-app run recorded** (the Bedrock "Log in as" leg is also in TODO's
-      Tunnel probe session row).
+      **✗ then fixed, 28 Sep 2026 (15.8 arm64 VM, 0.8.9, `roots/bedrock` through New site →
+      WordPress → From Git):** Fetch → branch `master`, the amber "your code comes from the
+      repository; the database is new and empty" note, MySQL, the admin fields → Install
+      WordPress → `cloning`, `installing dependencies` (composer, WordPress core through
+      Composer), **`downloading WordPress core` → "this layout installs WordPress core through
+      Composer"** (skipped), `writing wp-config + creating database` → ".env created from the
+      repository's .env.example / .env wired to this site's database and URL", `installing
+      WordPress` → "Success: WordPress installed successfully." — **and then the job failed:**
+      "wp core install: setting the admin password failed: wp eval-file failed … This does not
+      seem to be a WordPress installation. The used path is …/bedrock.rex/web/". Exactly ONE
+      WordPress (`web/wp`; `web/` holds `app index.php wp wp-config.php`), `web/wp-config.php`
+      is the repository's stub (`config/application.php`), `.env` has `DB_NAME=wp_bedrock_rex`,
+      `DB_HOST=127.0.0.1:13306`, `WP_HOME=https://bedrock.rex`, the literal
+      `WP_SITEURL=${WP_HOME}/wp` — but the eight salts still read `generateme` (the step that
+      writes them never ran) and the site did not serve. Cause and fix: ledger #737 (one
+      `--path` builder resolving `web/wp`; the manager on the served root — `rex wp
+      bedrock.rex` had failed the same way). **The rest of this row — salts, wp-admin, plugins
+      into `web/app/plugins`, delete/re-create salts differ, Retry keeps them — waits for the
+      release carrying #737.**
 - [x] **Repository tab** (Stage 3). It appears on the cloned site and NOT on an ordinary one.
       It shows the branch, a clean tree, and the remote. ✓ (the tab's presence and header;
       the sub-steps below were not recorded individually on 18 Sep).

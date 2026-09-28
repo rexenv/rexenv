@@ -83,7 +83,7 @@ pub async fn wp_info(state: State<'_, AppState>, id: String) -> Result<WpInfo> {
         core::sites::get(&conn, &id)?.ok_or_else(|| Error::Other(format!("no site {id}")))?
     };
     let (php_bin, wp_phar) = wp_tools(&state, &site.php_version).await?;
-    let docroot = PathBuf::from(site.path);
+    let docroot = site.served_root();
     wp_blocking(move || core::wordpress::wp_info(&php_bin, &wp_phar, &docroot)).await
 }
 
@@ -134,7 +134,10 @@ async fn site_tools(
         core::sites::get(&conn, id)?.ok_or_else(|| Error::Other(format!("no site {id}")))?
     };
     let (php_bin, wp_phar) = wp_tools(state, &site.php_version).await?;
-    Ok((PathBuf::from(site.path), php_bin, wp_phar))
+    // The SERVED root, not the project root: a Bedrock site's WordPress is under `web/`
+    // (`Site::served_root`, the same answer the vhost uses) — `rex wp bedrock.rex` ran
+    // against the project root on 28 Sep 2026 and wp-cli saw no WordPress there.
+    Ok((site.served_root(), php_bin, wp_phar))
 }
 
 /// The site's recorded content dir (v24). The delete guards must stat the
