@@ -2400,12 +2400,16 @@ rexenv0 <name>` and read `Current Scopes:`.
       link ever does it: `sudo ip link del rexenv0`, and the mechanism is wrong, not the tester.
       **Second tell:** `Current Scopes: none` on `rexenv0` — `.rex` then works only while some
       other machine answers it.
-- [ ] Add a second TLD in Settings → a second marker, `resolvectl status rexenv0` lists both
+- [x] Add a second TLD in Settings → a second marker, `resolvectl status rexenv0` lists both
       `~rex ~test`, both answer THROUGH `rexenv0`, `example.com` still does not. Remove both →
       `rexenv0` is gone. **◐ the mechanism ✓ 28 Sep 2026 (VM):** `linux_dns_route_check` with the
       app's `install_command`/`uninstall_command` — two TLDs answered via `-i rexenv0`, a resolved
-      restart, partial removal keeps the link, the last removal takes link + unit. **Open: the
-      Settings door.**
+      restart, partial removal keeps the link, the last removal takes link + unit. **✓ the door,
+      28 Sep 2026 (VM, 0.8.9):** Settings → DNS & SSL → default domain ending `.test` → Save (the
+      words say the route installs on the first `.test` site) → `rex site create tld2.test` →
+      ONE polkit dialog → `/etc/rexenv/dns.d/{rex,test}`, `DNS Domain: ~rex ~test`, `resolvectl
+      query -i rexenv0 tld2.test` → 127.0.0.1 and `lm.rex` too, `example.com` public,
+      `https://tld2.test` 200. Removal of both is Remove system changes (P3's row).
 - [x] A machine WITHOUT systemd-resolved (or with it stopped): the consent step FAILS with the
       sentence naming systemd-resolved; nothing is written. ✓ 28 Sep 2026 (VM,
       `linux_dns_route_check` with resolved stopped): the app's install command refused with
@@ -2426,9 +2430,11 @@ rexenv0 <name>` and read `Current Scopes:`.
 - [x] ✓ 24 Sep 2026 (VM): tray → Stop all (one prompt) → `systemctl is-enabled rexenv-edge` says
       `disabled`, `inactive`, the ports are free, every row idle. Start all → enabled, active,
       5/5 running.
-- [ ] Stop all, then reboot → the edge STAYS down (disabled survives the boot; `Restart=always`
-      must not bring it back). **Open: the reboot leg was run with the stack started (P4), never
-      after a Stop all.**
+- [x] Stop all, then reboot → the edge STAYS down (disabled survives the boot; `Restart=always`
+      must not bring it back). **✓ 28 Sep 2026 (VM, 0.8.9):** Stop all (its polkit dialog —
+      a GNOME shell modal, not an X window) → `rexenv-edge` disabled / inactive, 0 running →
+      reboot → still disabled / inactive, no caddy, nothing on :443, no service processes; the
+      DNS agent alone is active and answers (by design).
 
 ### P3 — CA trust in two stores (D-L3, ledger #726, #732)
 - [x] ✓ After onboarding: `certutil -d sql:$HOME/.pki/nssdb -L` lists `rexenv local CA` with
@@ -2449,15 +2455,18 @@ rexenv0 <name>` and read `Current Scopes:`.
       own NSS database (`~/snap/chromium/current/.local/share/pki/nssdb`), written by the app's
       onboarding. **◐ 24 Sep 2026 (VM):** the first deb wrote `~/.pki/nssdb` only and snap
       Chromium said `ERR_CERT_AUTHORITY_INVALID`; the CA added to the snap's database by hand
-      opened the site, and the deb now writes both (#726). **Open: the rebuilt deb's onboarding
-      writing the snap database itself, seen in Chromium.**
+      opened the site, and the deb now writes both (#726). **✓ 28 Sep 2026 (VM, 0.8.9's own
+      onboarding):** `certutil -L` on the snap's database lists "rexenv local CA  C,,", and snap
+      Chromium 153 opened `https://lm.rex/` with the tune icon and no warning.
 - [ ] Firefox (snap on Ubuntu) opens it with no warning — the CA is in the profile's own
       `cert9.db` (`certutil -d sql:~/snap/firefox/common/.mozilla/firefox/<profile> -L` lists it),
       because the snap cannot import the host's system store through the `user.js` pref.
       **◐ 25 Sep 2026 (VM, headless):** with the pref alone `firefox --screenshot
       https://guard.rex` hung on the TLS error; `certutil -A` into the profile's `cert9.db` and it
-      rendered — so the trust step now writes every Firefox profile (#726, extended). **Open: the
-      GUI Firefox after the app's own onboarding.**
+      rendered — so the trust step now writes every Firefox profile (#726, extended). **✓ 28 Sep
+      2026 (VM, 0.8.9's own onboarding):** the site row's browser icon opened `lm.rex` in snap
+      Firefox 156 — the shield, no warning; Settings' "Trust HTTPS in Firefox" reads "Enabled in
+      all 1 profile".
 - [ ] An **AppImage** on a machine without `libnss3-tools` (the deb `Depends` on it, so only the
       AppImage can meet this): the trust step fails with the `sudo apt install libnss3-tools`
       sentence, and the system half was NOT half-applied. **Open: no run recorded.**
@@ -2471,10 +2480,12 @@ rexenv0 <name>` and read `Current Scopes:`.
       `active`, `rexenv-edge` and `rexenv-dns-route` are `active`, `rexenv0` carries `~rex` with
       no default route, `a.rex` → loopback (through the Mac host, it turned out — P1), `example.com` public, `:443`/`:18088` listening —
       "Start services when rexenv opens" brought the stack back with no click.
-- [ ] With the login item OFF: sign in → the DNS agent is `active` with the app NOT started, and
+- [x] With the login item OFF: sign in → the DNS agent is `active` with the app NOT started, and
       `dig @127.0.0.1 -p 15353 x.rex` answers. Quit the app → `.rex` still resolves (the agent
       outlives it). `systemctl --user kill rexenv-dns` → back within seconds.
-      **Open: the reboot above had the app autostarting, so the agent was never seen alone.**
+      **✓ 28 Sep 2026 (VM, 0.8.9):** autostart entry moved aside, reboot, login → only
+      `rexenv --dns-agent` running, unit `active`, `dig` → 127.0.0.1; `systemctl --user kill
+      rexenv-dns` → `active` again after 3 s, `dig` answers.
 - [ ] AppImage: the unit and the autostart entry name the `.AppImage` path, never a
       `/tmp/.mount_…` one. **Open: no AppImage has been installed and run past `--print-version`
       (§A0-linux).**
@@ -2489,19 +2500,30 @@ rexenv0 <name>` and read `Current Scopes:`.
       `libayatana-appindicator3`); its menu opens with the full model (All running · 5 services,
       Start/Stop all, Sites ▸, Services … Quit); the window has NO reserved title-bar row (GTK
       draws its own). Also 27 Sep, the Dell's WSLg: onboarding end to end through the GUI.
-- [ ] Tray → "Open rexenv" shows the window. **Open: owed since 24 Sep — the menu was opened, this item not recorded.**
-- [ ] Databases → Browse: Adminer renders INSIDE the app at `rexdb://localhost` (webkitgtk
+- [x] Tray → "Open rexenv" shows the window. **✓ 28 Sep 2026 (VM, 0.8.9):** the top-bar icon
+      opens the menu ("Partial · 5 of 6 running", Start/Stop all, Sites ▸, All sites…, Services,
+      Databases, Mail, Tunnels, MCP server, About, Open, Quit); Open rexenv brought the window up.
+- [x] Databases → Browse: Adminer renders INSIDE the app at `rexdb://localhost` (webkitgtk
       serves custom schemes as WebKit does — the macOS origin, ledger #703's Linux leg).
-      **Open: no run recorded** — the Windows panel shipped blank for exactly this kind of reason.
+      **✓ 28 Sep 2026 (VM, 0.8.9):** Browse on MySQL → "Browsing MySQL", Adminer 6.1.1 inside the
+      panel, "MySQL version: 8.4.6 through PHP extension MySQLi", the `wp_lm_rex` database
+      listed; the address bar carries the `adminer.rexenv.rex` URL with Copy / Open in browser.
 - [x] ✓ 24 Sep 2026 (VM): onboarding says "this computer", "Linux will ask for permission"; the
       New Site dialog refuses Apache and MariaDB with "isn't part of rexenv on Linux yet". Found
       and fixed the same day: the sidebar read 14.5–16.3 GB for a ~600 MB stack (#725; the rebuilt
       deb reads 260 MB) and PHP 7.4 showed an Install button before Linux had a build (#728).
-- [ ] Settings: the words say Files, apt, "this computer", the tray, `/etc/rexenv/dns.d` — never
-      Finder, brew, Explorer or winget (`words::LINUX`). **Open: onboarding's words were read,
-      Settings' were not.**
-- [ ] Open in editor / browser / terminal: each detected entry launches; a private window opens
-      private; "Open in terminal" lands in the site folder. **Open: no run recorded.**
+- [x] Settings: the words say Files, apt, "this computer", the tray, `/etc/rexenv/dns.d` — never
+      Finder, brew, Explorer or winget (`words::LINUX`). **✓ 28 Sep 2026 (VM, 0.8.9):** General —
+      "System follows your Linux appearance", Sites folder `/home/rexenv/rexenv/Sites`, CLI
+      "`/usr/local/bin/rex → /usr/bin/rex` · One administrator prompt"; DNS & SSL — "trusted ·
+      browser (NSS) and system trust stores", "asks for your password once", the Firefox rows
+      with `~/.local/share/rexenv/ca/rexenv-ca.pem`. No Finder, brew, Explorer or winget anywhere.
+- [x] Open in editor / browser / terminal: each detected entry launches; a private window opens
+      private; "Open in terminal" lands in the site folder. **✓ 28 Sep 2026 (VM, 0.8.9), the two
+      the VM has:** the row's browser icon → Firefox at `lm.rex` (the site); the folder icon →
+      Files at `Home/rexenv/Sites/lm.rex` (wp-admin, wp-content, wp-config.php…). No editor is
+      installed ("No code editor detected"), so that entry does not exist to launch; the private
+      window and the terminal legs are not on this VM's menu.
 
 ### In-app update on Linux (L7, ledger #729/#730)
 - [ ] `.deb` install, an older version: Settings → About → Check now finds the release named in
