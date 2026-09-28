@@ -47,15 +47,21 @@ pub fn app_update_state(state: State<'_, AppState>) -> Result<core::app_update::
 pub async fn app_update_check(
     state: State<'_, AppState>,
 ) -> Result<core::app_update::AppUpdateState> {
+    // A build that reads no descriptor (no key pinned; a Linux dev build) answers in its own
+    // words before any network — as a STATE, not an error: an error here is what the card
+    // renders as "couldn't reach the update server", and nothing was reached.
+    let variant = crate::platform::current().app_bundle().descriptor_variant();
+    if let Some(why) = core::app_update::no_descriptor_reason(variant.as_deref()) {
+        let conn = lock(&state)?;
+        return Ok(core::app_update::AppUpdateState {
+            check_refusal: Some(why),
+            ..core::app_update::state(&conn, &document())
+        });
+    }
     // A person is watching this one, so it gets the short deadline. The poller
     // in `lib.rs` gets the long one — the distinction that did not exist when a
     // single client timeout served both (ledger #540).
-    let (doc, sig) =
-        core::app_update::fetch(
-            crate::platform::current().app_bundle().descriptor_variant().as_deref(),
-            core::updates::INTERACTIVE_DEADLINE,
-        )
-        .await?;
+    let (doc, sig) = core::app_update::fetch(variant.as_deref(), core::updates::INTERACTIVE_DEADLINE).await?;
     let conn = lock(&state)?;
     let document = document();
     // A serial we already have is not an error — it is the ordinary answer on

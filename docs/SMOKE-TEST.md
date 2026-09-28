@@ -2565,8 +2565,14 @@ rexenv0 <name>` and read `Current Scopes:`.
       `.deb`, and refused it as "did not run as rexenv (it printed no version)" — nothing changed;
       cleared the cache and the AppImage document was read (#519, fixed in 0.8.9). The kept
       previous copy's sweep: see the row's next run.
-- [ ] A `cargo run` dev build: Check now says a dev build reads no descriptor — no fetch, no
-      offer. **Open: no run recorded** (the VM's dev deb is a package install, not this case).
+- [x] A `cargo run` dev build: Check now says a dev build reads no descriptor — no fetch, no
+      offer. **◐ 28 Sep 2026 (VM, the 0.8.9 binary run from a `target/debug/` path — what
+      `classify` calls a dev build):** no fetch and no offer — the log reads "app update: check
+      skipped: this rexenv is not a .deb or an AppImage install, so there is no update
+      descriptor for it" — but the card SAID "Couldn't reach the update server just now": the
+      interactive check returned the refusal as an error, and the card renders every error as
+      unreachable. Fixed on master the same day (`no_descriptor_reason` → `checkRefusal`, its
+      own sentence before any network; TODO row); the words are proven by the next release.
 - [x] Mid-update `dpkg -i` fails (unplug the network after the download, or a wrong-arch package
       renamed by hand): the dialog names the failure, the OLD version keeps running, nothing in
       `/usr/bin` changed. **✓ 28 Sep 2026 (VM, 0.8.8 deb with `chattr +i /usr/bin/rexenv`):**

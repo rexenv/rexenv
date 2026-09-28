@@ -768,20 +768,35 @@ pub fn store_check(conn: &Connection, offered: Option<Offer>) -> Result<CheckCac
 ///
 /// Verification happens in [`accept`]; this is deliberately dumb about trust.
 pub async fn fetch(variant: Option<&str>, deadline: std::time::Duration) -> Result<(Vec<u8>, String)> {
-    if !enabled() {
-        return Err(Error::Other(
-            "this build has no update key pinned, so it does not check for app updates".into(),
-        ));
-    }
-    // A Linux install that reads no descriptor (a dev build) is told so, rather than fetching
-    // a document for a package it is not.
-    if std::env::consts::OS == "linux" && variant.is_none() {
-        return Err(Error::Other(
-            "this rexenv is not a .deb or an AppImage install, so there is no update descriptor for it".into(),
-        ));
+    if let Some(why) = no_descriptor_reason(variant) {
+        return Err(Error::Other(why));
     }
     let (doc, sig) = manifest_urls_for(std::env::consts::OS, variant);
     updates::fetch_signed_pair(&doc, &sig, MAX_DOC, deadline).await
+}
+
+/// Why THIS build reads no descriptor at all — before any network: no key pinned, or a Linux
+/// build that is neither a `.deb` nor an AppImage (a dev build). `None` for a build that
+/// fetches. The sentence is the check's own answer, rendered by the About card as sent:
+/// until 28 Sep 2026 the interactive check returned it as an error, and the card read every
+/// error as "couldn't reach the update server" — measured on the 22.04 VM with the 0.8.9
+/// binary run from a `target/debug` path, where nothing had been reached at all.
+pub fn no_descriptor_reason(variant: Option<&str>) -> Option<String> {
+    no_descriptor_reason_on(std::env::consts::OS, enabled(), variant)
+}
+
+fn no_descriptor_reason_on(os: &str, key_pinned: bool, variant: Option<&str>) -> Option<String> {
+    if !key_pinned {
+        return Some("This build has no update key pinned, so it does not check for app updates.".into());
+    }
+    if os == "linux" && variant.is_none() {
+        return Some(
+            "This rexenv is not a .deb or an AppImage install, so there is no update descriptor for it — \
+             nothing here says whether a newer rexenv exists."
+                .into(),
+        );
+    }
+    None
 }
 
 /// The offer the TRAY is allowed to read: an in-process snapshot, installed by
@@ -1377,6 +1392,20 @@ mod tests {
 
     /// A refusal is not "couldn't reach": the sentence says the server answered and
     /// names the reason, and the card renders this text (copy_scan pins that).
+    /// A build that reads no descriptor answers before any network, in its own words —
+    /// never "couldn't reach" (the VM's dev build read that line, 28 Sep 2026).
+    #[test]
+    fn a_build_with_no_descriptor_says_so_before_any_network() {
+        assert!(no_descriptor_reason_on("linux", true, None).unwrap().contains("not a .deb or an AppImage"));
+        assert!(no_descriptor_reason_on("macos", false, None).unwrap().contains("no update key pinned"));
+        assert_eq!(no_descriptor_reason_on("linux", true, Some("deb-x86_64")), None);
+        assert_eq!(no_descriptor_reason_on("macos", true, None), None);
+        assert_eq!(no_descriptor_reason_on("windows", true, None), None);
+        for why in [no_descriptor_reason_on("linux", true, None).unwrap(), no_descriptor_reason_on("linux", false, None).unwrap()] {
+            assert!(!why.to_ascii_lowercase().contains("reach"), "{why}");
+        }
+    }
+
     #[test]
     fn a_refused_descriptor_has_its_own_sentence_that_never_says_unreachable() {
         let s = refusal_sentence("this app update descriptor's serial (8) is OLDER than the highest already accepted (9)");

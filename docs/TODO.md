@@ -88,6 +88,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   with sites the button is "Open your sites" and the sentence "rexenv will serve your N
   sites instantly" (or "your site start as soon as they land" while components download);
   a first run keeps its words. Found on the 22.04 VM's re-setup, three sites present.
+- [x] **A build that reads no descriptor (a Linux dev build; no key pinned) made the About card
+  say "Couldn't reach the update server"** ✓ fixed 28 Sep 2026: the interactive check answers
+  such a build as a state with its own sentence (`app_update::no_descriptor_reason`, rendered
+  through `checkRefusal`) before any network; `fetch` keeps the same words for the poller. Found
+  on the VM with the 0.8.9 binary run from a `target/debug/` path (SMOKE Linux, the dev-build
+  update row) — the fetch-side twin of the accept-side refusal wording fixed the same morning.
 - [ ] **A `certutil` that exists but cannot run gives a raw "io error: Permission denied (os
   error 13)"** on the Linux trust step (28 Sep 2026, the VM with `chmod -x /usr/bin/certutil`);
   only an ABSENT one gets the `sudo apt install libnss3-tools` sentence. Small: spawn failures
