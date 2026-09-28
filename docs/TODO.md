@@ -101,6 +101,13 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   all" in the two minutes after a login launch on 28 Sep). The probe's verdict disagrees with
   the resolver's own answer; either its timeout is too short for a slow VM or it asks the wrong
   socket. Not seen on the Mac or the Dell. Measure the probe against `dig` before changing it.
+- [ ] **A From-Git create on a PHP version the repository's lock rejects fails only after the
+  clone, inside `composer install`** (28 Sep 2026, `symfony/demo` on the default 8.3: lock
+  requires PHP ≥ 8.4.1; the card said "failed at: installing dependencies · composer install
+  failed…", the reason two screens away in Show log). Fetch already reads the repository; it
+  could read `composer.json`'s `require.php` too and say "this repository needs PHP ≥ 8.4 —
+  pick 8.4" beside the version picker before anything is cloned. Recovery today: switch the
+  site's PHP and Retry (worked).
 - [ ] **A `certutil` that exists but cannot run gives a raw "io error: Permission denied (os
   error 13)"** on the Linux trust step (28 Sep 2026, the VM with `chmod -x /usr/bin/certutil`);
   only an ABSENT one gets the `sudo apt install libnss3-tools` sentence. Small: spawn failures

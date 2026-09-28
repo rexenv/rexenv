@@ -371,8 +371,10 @@ Every ✓ below: 18 Sep 2026 (clean 15.6.1 VM, 39610cc7 + self-update to 0.7.2).
       tick, an amber "Front-end assets weren't built" banner naming the reason, and the site
       loads. It must NOT show "setup incomplete" — this is the one non-fatal phase and the only
       way to check it. ✓
-- [ ] A repo with no `package.json` and the box ticked: the phase reports **skipped**, not
-      failed. **Open: no run recorded.**
+- [x] A repo with no `package.json` and the box ticked: the phase reports **skipped**, not
+      failed. **✓ 28 Sep 2026 (15.8 arm64 VM, 0.8.9, the Symfony run below — a Blank PHP site,
+      same phase code):** "── building front-end assets / no package.json in this repository —
+      nothing to build", the job went on to serve.
 - [ ] **WordPress from a repository.** New site → WordPress → From Git → a repo holding a theme
       + `wp-content` (core gitignored). The dialog shows an amber "your code comes from the
       repository; the database is new and empty" note BEFORE Create, and still asks for the
@@ -432,8 +434,22 @@ Every ✓ below: 18 Sep 2026 (clean 15.6.1 VM, 39610cc7 + self-update to 0.7.2).
       `https://<name>.rex` loads and `https://<name>.rex/composer.json` 404s. The card runs
       `installing dependencies`; a repo with no `composer.json` reports that phase **skipped**,
       not failed. No database is downloaded for it. **◐** `git_site_provision_check` case 2
-      proves the no-`composer.json` skip and no database. **Open: a framework repo through the
-      packaged app — no run recorded.**
+      proves the no-`composer.json` skip and no database. **✓ 28 Sep 2026 (15.8 arm64 VM,
+      0.8.9, `symfony/demo` as Blank PHP → From Git):** Fetch → branch `main`, the assets box,
+      the "runs the repository's own code: composer install … then the repository's package
+      manager" note, Database `None` → Create → the clone phase printed **"✓ Symfony — serving
+      public/"**; `installing dependencies` ran and the job card then said "✕ failed at:
+      installing dependencies · composer install failed…" — the repository's lock requires
+      PHP ≥ 8.4.1 and the site was on the default 8.3 (composer's `platform_check.php`, in Show
+      log), the site left as `setup incomplete`. `rex php install 8.4` + `rex site php
+      demosymdemo.rex 8.4` + `rex site retry` → dependencies installed, **`building front-end
+      assets` → "no package.json in this repository — nothing to build"** (skipped, not
+      failed), `starting to serve` → `https://demosymdemo.rex/` **200 "Symfony Demo
+      application"**, `/composer.json` **404** (served from `public/`), no `public/build`, and
+      `SHOW DATABASES LIKE 'php_demosymdemo%'` empty — no database made (the Sites row's
+      `mysql` is the engine default, not a database). **TODO row:** the create dialog could read
+      the repository's `require.php` at Fetch and say the picked PHP is too old before
+      cloning.
 - [ ] The Repository tab also appears on a **linked** site whose folder is a git checkout
       (import one from Valet, or link `~/code/something`), and NOT on a linked Laravel site
       served from `…/public` — rexenv never searches upwards, and the tab is absent rather than
